@@ -197,16 +197,25 @@ Main pain points that drive the roadmap:
 
 ---
 
-## Minimal MVP path (if under sales pressure)
+## ★ MVP path — ACTIVE plan (chosen 2026-04-21)
 
-If rushed, skip to these tasks for a sellable second-client:
-- ✅ Phase 0 (security) — mandatory
-- ✅ Phase 1.2 (error reporting)
-- ✅ Phase 2.3 (remove AAC hardcode)
-- ✅ Phase 5.1 (configurable CoA via role)
-- ✅ Phase 5.3 (onboarding wizard)
+To reach "sellable to a second client" with minimum rework, the team agreed
+to skip the full Phase 2 / 3 / 4 refactors and pull the highest-leverage items
+from 5 forward. Everything else stays on the roadmap for after the first
+paying client signs.
 
-Everything else can wait until first paying customer.
+MVP scope (in order):
+1. **Phase 2.3** — Remove AAC product hardcode; client maps sheets→products in UI
+2. **Phase 5.1** — Configurable Chart of Accounts via `role` field (so analytics
+   stops grepping SAP code prefixes like 711/721/731 and works for ANY numbering)
+3. **Phase 5.3** — Onboarding wizard (Org details → CoA upload → column mapping
+   → first import → done)
+
+Skipped for MVP (revisit after first paying client):
+- Phase 2.2 (i18n keywords), 2.4 (staging import), 3 (UI refactor), 4 (audit
+  log), 5.2 (RLS), 5.4 (billing), 6 (scale)
+
+Estimated: **~8 weeks of focused work** to MVP.
 
 ---
 
