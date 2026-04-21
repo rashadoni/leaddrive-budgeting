@@ -379,9 +379,14 @@ export default function ReportBuilderPage() {
               onChange={e => setGroupBy(e.target.value)}
             >
               <option value="">{t("noGrouping")}</option>
-              {currentEntity.fields.filter(f => f.type === "string").map(f => (
-                <option key={f.name} value={f.name}>{f.label}</option>
-              ))}
+              {currentEntity.fields
+                // Prisma's groupBy only accepts scalar fields on the base model,
+                // not traversals like "plan.year" or "account.code". Hide those
+                // from the dropdown so users can't pick an invalid option.
+                .filter(f => f.type === "string" && !f.name.includes("."))
+                .map(f => (
+                  <option key={f.name} value={f.name}>{f.label}</option>
+                ))}
             </select>
           </div>
         )}
