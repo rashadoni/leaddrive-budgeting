@@ -96,6 +96,22 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
     onSuccess: () => queryClient.invalidateQueries(),
   })
 
+  const purgeMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const res = await fetch(`/api/budgeting/plans/${planId}/purge`, {
+        method: "DELETE",
+        headers: { ...headers, "Content-Type": "application/json" },
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Permanent delete failed")
+      }
+      return res.json()
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+  const [purgeConfirm, setPurgeConfirm] = useState<string | null>(null)
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("No file selected")
@@ -173,15 +189,42 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                     Deleted {new Date(p.deletedAt).toLocaleDateString()} · {daysRemaining(p.deletedAt)} day{daysRemaining(p.deletedAt) === 1 ? "" : "s"} until permanent removal
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs"
-                  disabled={restoreMutation.isPending}
-                  onClick={() => restoreMutation.mutate(p.id)}
-                >
-                  {restoreMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : (<><Undo2 className="h-3.5 w-3.5 mr-1" />Restore</>)}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={restoreMutation.isPending}
+                    onClick={() => restoreMutation.mutate(p.id)}
+                  >
+                    {restoreMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : (<><Undo2 className="h-3.5 w-3.5 mr-1" />Restore</>)}
+                  </Button>
+                  {purgeConfirm === p.id ? (
+                    <>
+                      <span className="text-[10px] text-destructive">Forever?</span>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 text-xs"
+                        disabled={purgeMutation.isPending}
+                        onClick={() => { purgeMutation.mutate(p.id); setPurgeConfirm(null) }}
+                      >
+                        {purgeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes"}
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setPurgeConfirm(null)}>Cancel</Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-destructive hover:text-destructive"
+                      onClick={() => setPurgeConfirm(p.id)}
+                      title="Remove permanently (skip 30-day retention)"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
             {restoreMutation.isError && (
