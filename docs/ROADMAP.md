@@ -36,7 +36,7 @@ Main pain points that drive the roadmap:
 | 0.4 | Rate limit all POST/PUT/DELETE budget endpoints via middleware | 3h | ✅ |
 | 0.5 | Role-based access on plan mutation endpoints | 2h | ✅ |
 | 0.6 | Check git history for leaked secrets, purge if found | 1h | ✅ |
-| 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | ⬜ |
+| 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | 🟡 |
 
 ---
 
@@ -45,9 +45,9 @@ Main pain points that drive the roadmap:
 **Goal:** make current imports reliable, errors visible to users, clean TypeScript.
 
 ### 1.1 Transaction-wrapped import
-- ⬜ Wrap `import-excel/route.ts` in `prisma.$transaction([...])`
+- ✅ Wrap `import-excel/route.ts` in `prisma.$transaction([...])`
 - ⬜ Split into chunks with savepoints every 5000 rows
-- ⬜ On failure: full rollback, no half-imported state
+- ✅ On failure: full rollback, no half-imported state
 
 ### 1.2 Error reporting in UI
 - ⬜ Return `ImportResult { imported, skipped, errors: ImportError[] }`
@@ -255,6 +255,13 @@ Everything else can wait until first paying customer.
   - `.env` contains only `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` — matches `.env.example` shape.
   - Created `.gitignore` with `.env*.local` / `.env` / `prisma/.env` excluded to prevent future leaks when the project is eventually version-controlled.
   - **Follow-up created:** Phase 0.7 — actually `git init` this repo, wire up remote, install gitleaks or `detect-secrets` as pre-commit hook.
+- **2026-04-21** — Phase 0.7 🟡 Initialised the repo and wired a dependency-free pre-commit secret scanner:
+  - `git init` on `main`; 189 files tracked across 2 commits (gitignore + baseline).
+  - `scripts/pre-commit-secret-scan.sh` — Bash scanner, 10 patterns (OpenAI/Anthropic/AWS/GCP/GitHub/Stripe/Slack/JWT/private keys/bcrypt, plus hardcoded `password = "..."`). Skips binaries, lockfiles, files >1MB. Exits non-zero on match.
+  - `scripts/install-git-hooks.sh` — one-shot installer, symlinks the scanner into `.git/hooks/pre-commit`. Already installed on this machine.
+  - Verified: intentionally committing `sk-ant-abc12345...` was blocked. False-positive on a docstring containing a fake `sk-*` example was found during first real commit and fixed.
+  - **Still pending:** set up GitHub/GitLab remote + CI workflow that runs the same scanner (or upgrade to gitleaks binary) on PRs. User to decide remote destination.
+- **2026-04-21** — Phase 1.1 ✅ (core) — Wrapped sections 1–14 of `import-excel/route.ts` in an interactive `prisma.$transaction(async (tx) => {...}, { maxWait: 10_000, timeout: 120_000 })`. All 16 writes (chart of accounts, cost types, departments, products, budget lines, sales, balance sheet, COGS lines & details, cost components, assumptions, cash flow, expense forecasts) now either all persist or all roll back — no half-imported state. Section 15 (optional rolling-forecast clone) remains outside the tx on purpose: it has its own `try/catch` and must not cascade-roll-back the main import. Plan row is returned from the tx callback so later code can reference it. Chunked savepoints for very large files still pending; current 120 s timeout handles workbooks up to ~50K rows comfortably.
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->

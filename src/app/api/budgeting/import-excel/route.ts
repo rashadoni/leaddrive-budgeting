@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
@@ -135,587 +136,580 @@ export async function POST(req: NextRequest) {
     const year = parseInt(formData.get("year") as string) || 2026
     const results: Record<string, number> = {}
 
-    // ═══════════════════════════════════════════════════════
-    // 1. CREATE BUDGET PLAN
-    // ═══════════════════════════════════════════════════════
-    const plan = await prisma.budgetPlan.create({
-      data: {
-        organizationId: orgId,
-        name: `Budget ${year} (Imported)`,
-        periodType: "annual",
-        year,
-        status: "draft",
-      },
-    })
-    results.planCreated = 1
-
-    // ═══════════════════════════════════════════════════════
-    // 2. CHART OF ACCOUNTS from P&L sheet
-    // ═══════════════════════════════════════════════════════
-    const plSheet = wb.getWorksheet("P&L")
-    const chartOfAccounts: any[] = []
-    const seenCodes = new Set<string>()
-
-    if (plSheet) {
-      for (let r = 4; r <= plSheet.rowCount; r++) {
-        const row = plSheet.getRow(r)
-        const code = getCellValue(row.getCell(1))
-        const name = getCellValue(row.getCell(2))
-        if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
-        if (!name || typeof name !== "string" || name.trim() === "") continue
-
-        const codeStr = code.trim()
-        if (seenCodes.has(codeStr)) {
-          // Duplicate code with different name — append to make unique
-          const uniqueCode = `${codeStr}-r${r}`
-          if (seenCodes.has(uniqueCode)) continue
-          seenCodes.add(uniqueCode)
-          // Skip duplicates — they are the same account used for different products
-          continue
-        }
-        seenCodes.add(codeStr)
-
-        const parts = codeStr.split("-")
-        const parentCode = parts.length > 2 ? parts.slice(0, 2).join("-") : parts.length > 1 ? parts[0] : null
-        const accountType = classifyAccount(codeStr)
-
-        chartOfAccounts.push({
+    // Wrap all plan-scoped writes in an interactive transaction so a mid-import
+    // failure rolls back every row (no half-imported state). maxWait/timeout are
+    // generous because large workbooks can take up to a minute to persist.
+    // Transaction returns the created plan so section 15 (outside tx) can clone from it.
+    const plan = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // ═══════════════════════════════════════════════════════
+      // 1. CREATE BUDGET PLAN
+      // ═══════════════════════════════════════════════════════
+      const planRow = await tx.budgetPlan.create({
+        data: {
           organizationId: orgId,
-          code: codeStr,
-          name: name.trim(),
-          nameAz: name.trim(),
-          parentCode,
-          accountType,
-          category: categoryFromCode(codeStr),
-          sortOrder: r,
-          isActive: true,
-        })
+          name: `Budget ${year} (Imported)`,
+          periodType: "annual",
+          year,
+          status: "draft",
+        },
+      })
+      results.planCreated = 1
+
+      // ═══════════════════════════════════════════════════════
+      // 2. CHART OF ACCOUNTS from P&L sheet
+      // ═══════════════════════════════════════════════════════
+      const plSheet = wb.getWorksheet("P&L")
+      const chartOfAccounts: any[] = []
+      const seenCodes = new Set<string>()
+
+      if (plSheet) {
+        for (let r = 4; r <= plSheet.rowCount; r++) {
+          const row = plSheet.getRow(r)
+          const code = getCellValue(row.getCell(1))
+          const name = getCellValue(row.getCell(2))
+          if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
+          if (!name || typeof name !== "string" || name.trim() === "") continue
+
+          const codeStr = code.trim()
+          if (seenCodes.has(codeStr)) {
+            // Duplicate code with different name — append to make unique
+            const uniqueCode = `${codeStr}-r${r}`
+            if (seenCodes.has(uniqueCode)) continue
+            seenCodes.add(uniqueCode)
+            // Skip duplicates — they are the same account used for different products
+            continue
+          }
+          seenCodes.add(codeStr)
+
+          const parts = codeStr.split("-")
+          const parentCode = parts.length > 2 ? parts.slice(0, 2).join("-") : parts.length > 1 ? parts[0] : null
+          const accountType = classifyAccount(codeStr)
+
+          chartOfAccounts.push({
+            organizationId: orgId,
+            code: codeStr,
+            name: name.trim(),
+            nameAz: name.trim(),
+            parentCode,
+            accountType,
+            category: categoryFromCode(codeStr),
+            sortOrder: r,
+            isActive: true,
+          })
+        }
+
+        // Upsert chart of accounts
+        for (const coa of chartOfAccounts) {
+          await tx.chartOfAccount.upsert({
+            where: { organizationId_code: { organizationId: orgId, code: coa.code } },
+            update: { name: coa.name, nameAz: coa.nameAz, parentCode: coa.parentCode, accountType: coa.accountType, category: coa.category, sortOrder: coa.sortOrder },
+            create: coa,
+          })
+        }
+        results.chartOfAccounts = chartOfAccounts.length
       }
 
-      // Upsert chart of accounts
-      for (const coa of chartOfAccounts) {
-        await prisma.chartOfAccount.upsert({
-          where: { organizationId_code: { organizationId: orgId, code: coa.code } },
-          update: { name: coa.name, nameAz: coa.nameAz, parentCode: coa.parentCode, accountType: coa.accountType, category: coa.category, sortOrder: coa.sortOrder },
-          create: coa,
+      // ═══════════════════════════════════════════════════════
+      // 3. BUDGET COST TYPES
+      // ═══════════════════════════════════════════════════════
+      const costTypeIds: Record<string, string> = {}
+      for (const ct of COST_TYPE_DEFS) {
+        const created = await tx.budgetCostType.upsert({
+          where: { organizationId_key: { organizationId: orgId, key: ct.key } },
+          update: { label: ct.label, sortOrder: ct.sortOrder },
+          create: { organizationId: orgId, key: ct.key, label: ct.label, sortOrder: ct.sortOrder, isActive: true },
         })
+        costTypeIds[ct.key] = created.id
       }
-      results.chartOfAccounts = chartOfAccounts.length
-    }
+      results.costTypes = COST_TYPE_DEFS.length
 
-    // ═══════════════════════════════════════════════════════
-    // 3. BUDGET COST TYPES
-    // ═══════════════════════════════════════════════════════
-    const costTypeIds: Record<string, string> = {}
-    for (const ct of COST_TYPE_DEFS) {
-      const created = await prisma.budgetCostType.upsert({
-        where: { organizationId_key: { organizationId: orgId, key: ct.key } },
-        update: { label: ct.label, sortOrder: ct.sortOrder },
-        create: { organizationId: orgId, key: ct.key, label: ct.label, sortOrder: ct.sortOrder, isActive: true },
-      })
-      costTypeIds[ct.key] = created.id
-    }
-    results.costTypes = COST_TYPE_DEFS.length
+      // ═══════════════════════════════════════════════════════
+      // 4. BUDGET DEPARTMENTS (from product lines as revenue depts)
+      // ═══════════════════════════════════════════════════════
+      const DEPT_DEFS = [
+        { key: "production", label: "İstehsalat (Production)", hasRevenue: false, sortOrder: 1 },
+        { key: "sales", label: "Satış və marketinq (Sales & Marketing)", hasRevenue: true, sortOrder: 2 },
+        { key: "admin", label: "İnzibati (Administrative)", hasRevenue: false, sortOrder: 3 },
+        { key: "finance", label: "Maliyyə (Finance)", hasRevenue: false, sortOrder: 4 },
+        { key: "logistics", label: "Logistika (Logistics)", hasRevenue: false, sortOrder: 5 },
+        { key: "mhb", label: "MHB (Qaz beton)", hasRevenue: true, sortOrder: 10 },
+        { key: "lime_burnt", label: "Yandırılmış əhəng", hasRevenue: true, sortOrder: 11 },
+        { key: "lime_slaked", label: "Söndürülmüş əhəng", hasRevenue: true, sortOrder: 12 },
+        { key: "adhesive", label: "Yapışqan", hasRevenue: true, sortOrder: 13 },
+        { key: "ublock", label: "U-block", hasRevenue: true, sortOrder: 14 },
+        { key: "lime_waste", label: "Tullantı əhəng", hasRevenue: true, sortOrder: 15 },
+      ]
+      const deptIds: Record<string, string> = {}
+      for (const d of DEPT_DEFS) {
+        const created = await tx.budgetDepartment.upsert({
+          where: { organizationId_key: { organizationId: orgId, key: d.key } },
+          update: { label: d.label, hasRevenue: d.hasRevenue, sortOrder: d.sortOrder },
+          create: { organizationId: orgId, key: d.key, label: d.label, hasRevenue: d.hasRevenue, sortOrder: d.sortOrder, isActive: true },
+        })
+        deptIds[d.key] = created.id
+      }
+      results.departments = DEPT_DEFS.length
 
-    // ═══════════════════════════════════════════════════════
-    // 4. BUDGET DEPARTMENTS (from product lines as revenue depts)
-    // ═══════════════════════════════════════════════════════
-    const DEPT_DEFS = [
-      { key: "production", label: "İstehsalat (Production)", hasRevenue: false, sortOrder: 1 },
-      { key: "sales", label: "Satış və marketinq (Sales & Marketing)", hasRevenue: true, sortOrder: 2 },
-      { key: "admin", label: "İnzibati (Administrative)", hasRevenue: false, sortOrder: 3 },
-      { key: "finance", label: "Maliyyə (Finance)", hasRevenue: false, sortOrder: 4 },
-      { key: "logistics", label: "Logistika (Logistics)", hasRevenue: false, sortOrder: 5 },
-      { key: "mhb", label: "MHB (Qaz beton)", hasRevenue: true, sortOrder: 10 },
-      { key: "lime_burnt", label: "Yandırılmış əhəng", hasRevenue: true, sortOrder: 11 },
-      { key: "lime_slaked", label: "Söndürülmüş əhəng", hasRevenue: true, sortOrder: 12 },
-      { key: "adhesive", label: "Yapışqan", hasRevenue: true, sortOrder: 13 },
-      { key: "ublock", label: "U-block", hasRevenue: true, sortOrder: 14 },
-      { key: "lime_waste", label: "Tullantı əhəng", hasRevenue: true, sortOrder: 15 },
-    ]
-    const deptIds: Record<string, string> = {}
-    for (const d of DEPT_DEFS) {
-      const created = await prisma.budgetDepartment.upsert({
-        where: { organizationId_key: { organizationId: orgId, key: d.key } },
-        update: { label: d.label, hasRevenue: d.hasRevenue, sortOrder: d.sortOrder },
-        create: { organizationId: orgId, key: d.key, label: d.label, hasRevenue: d.hasRevenue, sortOrder: d.sortOrder, isActive: true },
-      })
-      deptIds[d.key] = created.id
-    }
-    results.departments = DEPT_DEFS.length
+      // ═══════════════════════════════════════════════════════
+      // 5. PRODUCT LINES
+      // ═══════════════════════════════════════════════════════
+      const createdProducts: any[] = []
+      for (let i = 0; i < PRODUCT_CODES.length; i++) {
+        const product = await tx.productLine.upsert({
+          where: { organizationId_code: { organizationId: orgId, code: PRODUCT_CODES[i] } },
+          update: { name: PRODUCT_NAMES[i], unit: PRODUCT_UNITS[i] },
+          create: { organizationId: orgId, code: PRODUCT_CODES[i], name: PRODUCT_NAMES[i], unit: PRODUCT_UNITS[i], sortOrder: i },
+        })
+        createdProducts.push(product)
+      }
+      results.productLines = createdProducts.length
 
-    // ═══════════════════════════════════════════════════════
-    // 5. PRODUCT LINES
-    // ═══════════════════════════════════════════════════════
-    const createdProducts: any[] = []
-    for (let i = 0; i < PRODUCT_CODES.length; i++) {
-      const product = await prisma.productLine.upsert({
-        where: { organizationId_code: { organizationId: orgId, code: PRODUCT_CODES[i] } },
-        update: { name: PRODUCT_NAMES[i], unit: PRODUCT_UNITS[i] },
-        create: { organizationId: orgId, code: PRODUCT_CODES[i], name: PRODUCT_NAMES[i], unit: PRODUCT_UNITS[i], sortOrder: i },
-      })
-      createdProducts.push(product)
-    }
-    results.productLines = createdProducts.length
+      // ═══════════════════════════════════════════════════════
+      // 6. BUDGET LINES from P&L
+      // ═══════════════════════════════════════════════════════
+      if (plSheet) {
+        const budgetLines: any[] = []
+        for (let r = 4; r <= plSheet.rowCount; r++) {
+          const row = plSheet.getRow(r)
+          const code = getCellValue(row.getCell(1))
+          const name = getCellValue(row.getCell(2))
+          if (!name || typeof name !== "string" || name.trim() === "") continue
+          if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
 
-    // ═══════════════════════════════════════════════════════
-    // 6. BUDGET LINES from P&L
-    // ═══════════════════════════════════════════════════════
-    if (plSheet) {
-      const budgetLines: any[] = []
-      for (let r = 4; r <= plSheet.rowCount; r++) {
-        const row = plSheet.getRow(r)
-        const code = getCellValue(row.getCell(1))
-        const name = getCellValue(row.getCell(2))
-        if (!name || typeof name !== "string" || name.trim() === "") continue
-        if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
+          const lineType = classifyAccount(code.trim())
 
-        const lineType = classifyAccount(code.trim())
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(4 + m))
+            if (val !== 0) {
+              budgetLines.push({
+                organizationId: orgId,
+                planId: planRow.id,
+                category: name.trim(),
+                department: code.trim(),
+                lineType,
+                plannedAmount: Math.abs(val),
+                forecastAmount: Math.abs(val),
+                isAutoPlanned: false,
+                isAutoActual: false,
+                notes: `Imported from P&L row ${r}, ${MONTHS[m]} (account ${code.trim()})`,
+                sortOrder: r * 100 + m,
+              })
+            }
+          }
+        }
+        if (budgetLines.length > 0) {
+          await tx.budgetLine.createMany({ data: budgetLines, skipDuplicates: true })
+          results.budgetLines = budgetLines.length
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // 7. SALES BUDGET LINES from S-1..S-6
+      // ═══════════════════════════════════════════════════════
+      const salesData: any[] = []
+      for (let si = 0; si < SALES_SHEETS.length; si++) {
+        const sheet = wb.getWorksheet(SALES_SHEETS[si])
+        if (!sheet || !createdProducts[si]) continue
+
+        let qtyRow = 0, amountRow = 0, priceRow = 0
+
+        for (let r = 1; r <= sheet.rowCount; r++) {
+          const row = sheet.getRow(r)
+          const yearVal = getCellValue(row.getCell(2))
+          const typeVal = getCellValue(row.getCell(3))
+          const catVal = getCellValue(row.getCell(4))
+
+          if (yearVal !== year && yearVal !== String(year)) continue
+          if (!typeVal || typeof typeVal !== "string") continue
+          const catStr = catVal && typeof catVal === "string" ? catVal.toLowerCase() : ""
+
+          if (typeVal === "Miqdar" && catStr.includes("cəmi")) qtyRow = r
+          if (typeVal === "Məbləğ" && catStr.includes("cəmi")) amountRow = r
+          if (typeVal === "Qiymət" && catStr && !catStr.includes("cəmi") && !priceRow) priceRow = r
+        }
 
         for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(4 + m))
-          if (val !== 0) {
-            budgetLines.push({
+          const qty = qtyRow ? getNumericValue(sheet.getRow(qtyRow).getCell(5 + m)) : 0
+          const amount = amountRow ? getNumericValue(sheet.getRow(amountRow).getCell(5 + m)) : 0
+          let price = priceRow ? getNumericValue(sheet.getRow(priceRow).getCell(5 + m)) : 0
+          if (price === 0 && qty > 0 && amount > 0) price = amount / qty
+
+          if (qty > 0 || amount > 0) {
+            salesData.push({
               organizationId: orgId,
-              planId: plan.id,
-              category: name.trim(),
-              department: code.trim(),
-              lineType,
-              plannedAmount: Math.abs(val),
-              forecastAmount: Math.abs(val),
-              isAutoPlanned: false,
-              isAutoActual: false,
-              notes: `Imported from P&L row ${r}, ${MONTHS[m]} (account ${code.trim()})`,
-              sortOrder: r * 100 + m,
+              planId: planRow.id,
+              productLineId: createdProducts[si].id,
+              year,
+              month: m + 1,
+              quantity: qty,
+              unitPrice: price,
+              amount: amount || qty * price,
             })
           }
         }
       }
-      if (budgetLines.length > 0) {
-        await prisma.budgetLine.createMany({ data: budgetLines, skipDuplicates: true })
-        results.budgetLines = budgetLines.length
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 7. SALES BUDGET LINES from S-1..S-6
-    // ═══════════════════════════════════════════════════════
-    const salesData: any[] = []
-    for (let si = 0; si < SALES_SHEETS.length; si++) {
-      const sheet = wb.getWorksheet(SALES_SHEETS[si])
-      if (!sheet || !createdProducts[si]) continue
-
-      let qtyRow = 0, amountRow = 0, priceRow = 0
-
-      for (let r = 1; r <= sheet.rowCount; r++) {
-        const row = sheet.getRow(r)
-        const yearVal = getCellValue(row.getCell(2))
-        const typeVal = getCellValue(row.getCell(3))
-        const catVal = getCellValue(row.getCell(4))
-
-        if (yearVal !== year && yearVal !== String(year)) continue
-        if (!typeVal || typeof typeVal !== "string") continue
-        const catStr = catVal && typeof catVal === "string" ? catVal.toLowerCase() : ""
-
-        if (typeVal === "Miqdar" && catStr.includes("cəmi")) qtyRow = r
-        if (typeVal === "Məbləğ" && catStr.includes("cəmi")) amountRow = r
-        if (typeVal === "Qiymət" && catStr && !catStr.includes("cəmi") && !priceRow) priceRow = r
+      if (salesData.length > 0) {
+        await tx.salesBudgetLine.createMany({ data: salesData, skipDuplicates: true })
+        results.salesBudgetLines = salesData.length
       }
 
-      for (let m = 0; m < 12; m++) {
-        const qty = qtyRow ? getNumericValue(sheet.getRow(qtyRow).getCell(5 + m)) : 0
-        const amount = amountRow ? getNumericValue(sheet.getRow(amountRow).getCell(5 + m)) : 0
-        let price = priceRow ? getNumericValue(sheet.getRow(priceRow).getCell(5 + m)) : 0
-        if (price === 0 && qty > 0 && amount > 0) price = amount / qty
-
-        if (qty > 0 || amount > 0) {
-          salesData.push({
-            organizationId: orgId,
-            planId: plan.id,
-            productLineId: createdProducts[si].id,
-            year,
-            month: m + 1,
-            quantity: qty,
-            unitPrice: price,
-            amount: amount || qty * price,
-          })
+      // ═══════════════════════════════════════════════════════
+      // 8. SALES FORECAST (from S-all consolidated sheet)
+      // ═══════════════════════════════════════════════════════
+      const sAllSheet = wb.getWorksheet("S-all")
+      if (sAllSheet) {
+        const productDeptMap: Record<string, string> = {
+          "mhb": "mhb", "qaz beton": "mhb",
+          "yandırılmış": "lime_burnt", "yanmış": "lime_burnt", "əhəng yanmış": "lime_burnt",
+          "söndürülmüş": "lime_slaked", "sönmüş": "lime_slaked", "əhəng sönmüş": "lime_slaked",
+          "yapışqan": "adhesive",
+          "u-block": "ublock", "u block": "ublock",
+          "tullantı": "lime_waste",
         }
-      }
-    }
-    if (salesData.length > 0) {
-      await prisma.salesBudgetLine.createMany({ data: salesData, skipDuplicates: true })
-      results.salesBudgetLines = salesData.length
-    }
+        let forecastCount = 0
 
-    // ═══════════════════════════════════════════════════════
-    // 8. SALES FORECAST (from S-all consolidated sheet)
-    // ═══════════════════════════════════════════════════════
-    const sAllSheet = wb.getWorksheet("S-all")
-    if (sAllSheet) {
-      const productDeptMap: Record<string, string> = {
-        "mhb": "mhb", "qaz beton": "mhb",
-        "yandırılmış": "lime_burnt", "yanmış": "lime_burnt", "əhəng yanmış": "lime_burnt",
-        "söndürülmüş": "lime_slaked", "sönmüş": "lime_slaked", "əhəng sönmüş": "lime_slaked",
-        "yapışqan": "adhesive",
-        "u-block": "ublock", "u block": "ublock",
-        "tullantı": "lime_waste",
-      }
-      let forecastCount = 0
+        // S-all structure: header rows have product name in col 2,
+        // "CƏMİ məbləğ:" total rows have amounts in cols 3-14 (Jan-Dec)
+        // Track current product section from header rows
+        let currentDept: string | null = null
 
-      // S-all structure: header rows have product name in col 2,
-      // "CƏMİ məbləğ:" total rows have amounts in cols 3-14 (Jan-Dec)
-      // Track current product section from header rows
-      let currentDept: string | null = null
+        for (let r = 1; r <= sAllSheet.rowCount; r++) {
+          const row = sAllSheet.getRow(r)
+          const col2 = getCellValue(row.getCell(2))
+          if (!col2 || typeof col2 !== "string") continue
+          const col2Lower = col2.toLowerCase().trim()
 
-      for (let r = 1; r <= sAllSheet.rowCount; r++) {
-        const row = sAllSheet.getRow(r)
-        const col2 = getCellValue(row.getCell(2))
-        if (!col2 || typeof col2 !== "string") continue
-        const col2Lower = col2.toLowerCase().trim()
-
-        // Check if this is a product header row (has month names in cols 3+)
-        const col3Val = getCellValue(row.getCell(3))
-        if (col3Val === "Jan" || col3Val === "Yan") {
-          // This is a header row — match product name
-          for (const [keyword, deptKey] of Object.entries(productDeptMap)) {
-            if (col2Lower.includes(keyword)) { currentDept = deptKey; break }
+          // Check if this is a product header row (has month names in cols 3+)
+          const col3Val = getCellValue(row.getCell(3))
+          if (col3Val === "Jan" || col3Val === "Yan") {
+            // This is a header row — match product name
+            for (const [keyword, deptKey] of Object.entries(productDeptMap)) {
+              if (col2Lower.includes(keyword)) { currentDept = deptKey; break }
+            }
+            continue
           }
-          continue
-        }
 
-        // Check if this is a "CƏMİ məbləğ:" total row or a "Məbləğ" row
-        const isTotal = col2Lower.includes("cəmi") && col2Lower.includes("məbləğ")
-        const col3 = getCellValue(row.getCell(3))
-        const isMebleg = col3 === "Məbləğ"
+          // Check if this is a "CƏMİ məbləğ:" total row or a "Məbləğ" row
+          const isTotal = col2Lower.includes("cəmi") && col2Lower.includes("məbləğ")
+          const col3 = getCellValue(row.getCell(3))
+          const isMebleg = col3 === "Məbləğ"
 
-        if (!isTotal && !isMebleg) continue
-        if (!currentDept || !deptIds[currentDept]) continue
+          if (!isTotal && !isMebleg) continue
+          if (!currentDept || !deptIds[currentDept]) continue
 
-        // Values are in cols 3-14 (for CƏMİ rows) or cols 5-16 (for Məbləğ rows)
-        const startCol = isTotal ? 3 : 5
+          // Values are in cols 3-14 (for CƏMİ rows) or cols 5-16 (for Məbləğ rows)
+          const startCol = isTotal ? 3 : 5
 
-        for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(startCol + m))
-          if (val !== 0) {
-            await prisma.salesForecast.upsert({
-              where: {
-                organizationId_departmentId_year_month: {
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(startCol + m))
+            if (val !== 0) {
+              await tx.salesForecast.upsert({
+                where: {
+                  organizationId_departmentId_year_month: {
+                    organizationId: orgId,
+                    departmentId: deptIds[currentDept]!,
+                    year,
+                    month: m + 1,
+                  },
+                },
+                update: { amount: Math.abs(val) },
+                create: {
                   organizationId: orgId,
                   departmentId: deptIds[currentDept]!,
                   year,
                   month: m + 1,
+                  amount: Math.abs(val),
                 },
-              },
-              update: { amount: Math.abs(val) },
-              create: {
-                organizationId: orgId,
-                departmentId: deptIds[currentDept]!,
-                year,
-                month: m + 1,
-                amount: Math.abs(val),
-              },
-            })
-            forecastCount++
+              })
+              forecastCount++
+            }
           }
+
+          // Reset dept after consuming total to prevent double-matching
+          if (isTotal) currentDept = null
         }
-
-        // Reset dept after consuming total to prevent double-matching
-        if (isTotal) currentDept = null
+        results.salesForecasts = forecastCount
       }
-      results.salesForecasts = forecastCount
-    }
 
-    // ═══════════════════════════════════════════════════════
-    // 9. BALANCE SHEET LINES from BS sheet
-    // ═══════════════════════════════════════════════════════
-    const bsSheet = wb.getWorksheet("BS")
-    if (bsSheet) {
-      const bsLines: any[] = []
-      const skipPatterns = ["CƏMİ", "KONTROL", "KAPİTAL", "QISAMÜDDƏTLİ AKTİV", "UZUNMÜDDƏTLİ AKTİV", "QISAMÜDDƏTLİ ÖHDƏLİK", "UZUNMÜDDƏTLİ ÖHDƏLİK"]
-      const parentNames = [
-        "torpaq, tikili və avadanlıqlar", "qeyri-maddi aktivlər",
-        "pul vəsaitləri və onların ekvivalentləri", "qısamüddətli debitor borcları",
-        "sair qısamüddətli aktivlər", "ehtiyatlar",
-        "uzunmüddətli faiz xərcləri yaradan öhdəliklər", "qısamüddətli kreditor borcları",
-        "sair qısamüddətli öhdəliklər", "vergi və sair məcburi ödənişlər üzrə öhdəliklər",
-        "ödənilmiş nominal (nizamnamə) kapital", "bölüşdürülməmiş mənfəət (ödənilməmiş zərər)",
-      ]
+      // ═══════════════════════════════════════════════════════
+      // 9. BALANCE SHEET LINES from BS sheet
+      // ═══════════════════════════════════════════════════════
+      const bsSheet = wb.getWorksheet("BS")
+      if (bsSheet) {
+        const bsLines: any[] = []
+        const skipPatterns = ["CƏMİ", "KONTROL", "KAPİTAL", "QISAMÜDDƏTLİ AKTİV", "UZUNMÜDDƏTLİ AKTİV", "QISAMÜDDƏTLİ ÖHDƏLİK", "UZUNMÜDDƏTLİ ÖHDƏLİK"]
+        const parentNames = [
+          "torpaq, tikili və avadanlıqlar", "qeyri-maddi aktivlər",
+          "pul vəsaitləri və onların ekvivalentləri", "qısamüddətli debitor borcları",
+          "sair qısamüddətli aktivlər", "ehtiyatlar",
+          "uzunmüddətli faiz xərcləri yaradan öhdəliklər", "qısamüddətli kreditor borcları",
+          "sair qısamüddətli öhdəliklər", "vergi və sair məcburi ödənişlər üzrə öhdəliklər",
+          "ödənilmiş nominal (nizamnamə) kapital", "bölüşdürülməmiş mənfəət (ödənilməmiş zərər)",
+        ]
 
-      for (let r = 4; r <= Math.min(180, bsSheet.rowCount); r++) {
-        const row = bsSheet.getRow(r)
-        const name = getCellValue(row.getCell(2))
-        if (!name || typeof name !== "string" || name.trim() === "") continue
+        for (let r = 4; r <= Math.min(180, bsSheet.rowCount); r++) {
+          const row = bsSheet.getRow(r)
+          const name = getCellValue(row.getCell(2))
+          if (!name || typeof name !== "string" || name.trim() === "") continue
 
-        const nameUpper = name.toUpperCase().trim()
-        const nameLower = name.toLowerCase().trim()
-        if (skipPatterns.some(p => nameUpper === p || nameUpper.startsWith(p + " ") || nameUpper.startsWith(p + "L"))) continue
-        if (parentNames.includes(nameLower)) continue
+          const nameUpper = name.toUpperCase().trim()
+          const nameLower = name.toLowerCase().trim()
+          if (skipPatterns.some(p => nameUpper === p || nameUpper.startsWith(p + " ") || nameUpper.startsWith(p + "L"))) continue
+          if (parentNames.includes(nameLower)) continue
 
-        let lineType = "asset"
-        if ((nameLower.includes("öhdəlik") || nameLower.includes("kreditor") ||
-             nameLower.includes("kredit") || nameLower.includes("maliyyələşmə") ||
-             nameLower.includes("maliyyələşdirmə") || nameLower.includes("sığorta") ||
-             nameLower.includes("vergi öhdəlik") || (nameLower.includes("alınmış") && nameLower.includes("avans"))) &&
-            !nameLower.includes("debitor")) lineType = "liability"
-        else if ((nameLower.includes("kapital") && !nameLower.includes("kapitallaşdırılması")) ||
-                 nameLower.includes("mənfəət") || nameLower.includes("ehtiyat") ||
-                 nameLower.includes("bölüşdürülməmiş") || nameLower.includes("nizamnamə") ||
-                 nameLower.includes("yenidən qiymət") || nameLower.includes("səhmdar") ||
-                 nameLower.includes("divident") || nameLower.includes("emissiya")) lineType = "equity"
+          let lineType = "asset"
+          if ((nameLower.includes("öhdəlik") || nameLower.includes("kreditor") ||
+               nameLower.includes("kredit") || nameLower.includes("maliyyələşmə") ||
+               nameLower.includes("maliyyələşdirmə") || nameLower.includes("sığorta") ||
+               nameLower.includes("vergi öhdəlik") || (nameLower.includes("alınmış") && nameLower.includes("avans"))) &&
+              !nameLower.includes("debitor")) lineType = "liability"
+          else if ((nameLower.includes("kapital") && !nameLower.includes("kapitallaşdırılması")) ||
+                   nameLower.includes("mənfəət") || nameLower.includes("ehtiyat") ||
+                   nameLower.includes("bölüşdürülməmiş") || nameLower.includes("nizamnamə") ||
+                   nameLower.includes("yenidən qiymət") || nameLower.includes("səhmdar") ||
+                   nameLower.includes("divident") || nameLower.includes("emissiya")) lineType = "equity"
 
-        for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(5 + m))
-          bsLines.push({
-            organizationId: orgId,
-            planId: plan.id,
-            accountCode: `BS-${r}`,
-            accountName: name.trim(),
-            lineType,
-            year,
-            month: m + 1,
-            amount: val,
-          })
-        }
-      }
-      if (bsLines.length > 0) {
-        await prisma.balanceSheetLine.createMany({ data: bsLines, skipDuplicates: true })
-        results.balanceSheetLines = bsLines.length
-      }
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 10. COGS BUDGET LINES from COGS sheet
-    // ═══════════════════════════════════════════════════════
-    // COGS sheet structure:
-    //   Section header (col 2): "MHB maya dəyəri", "Əhəng (yanmış) maya dəyəri", etc.
-    //   "Məbləğ" row (col 3 = "Məbləğ"): actual cost amounts in cols 5-16 (Jan-Dec)
-    //   "Daşıma" section has "Məbləğ" row too
-    const cogsSheet = wb.getWorksheet("COGS")
-    if (cogsSheet) {
-      const cogsData: any[] = []
-      let currentProductId: string | null = null
-
-      for (let r = 1; r <= cogsSheet.rowCount; r++) {
-        const row = cogsSheet.getRow(r)
-        const col2 = getCellValue(row.getCell(2))
-        const col3 = getCellValue(row.getCell(3))
-
-        // Detect product section headers (col 2 has product name)
-        if (col2 && typeof col2 === "string") {
-          const nameLower = col2.toLowerCase()
-          if (nameLower.includes("mhb") || nameLower.includes("qaz beton")) currentProductId = createdProducts[0]?.id
-          else if ((nameLower.includes("əhəng") && nameLower.includes("yanmış")) || nameLower.includes("yandırılmış")) currentProductId = createdProducts[1]?.id
-          else if ((nameLower.includes("əhəng") && nameLower.includes("sönmüş")) || nameLower.includes("söndürülmüş")) currentProductId = createdProducts[2]?.id
-          else if (nameLower.includes("yapışqan")) currentProductId = createdProducts[3]?.id
-          else if (nameLower.includes("u-block") || nameLower.includes("u block")) currentProductId = createdProducts[4]?.id
-          else if (nameLower.includes("tullantı")) currentProductId = createdProducts[5]?.id
-          else if (nameLower.includes("daşıma")) currentProductId = null // transport = service COGS, skip product
-          else if (nameLower.includes("istehsaldan") || nameLower.includes("cəmi")) currentProductId = null
-        }
-
-        // Look for "Məbləğ" rows (col 3 = "Məbləğ") — these have the actual cost values
-        if (col3 !== "Məbləğ") continue
-        if (!currentProductId) continue
-
-        // Values in cols 5-16 (Jan-Dec)
-        for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(5 + m))
-          if (val !== 0) {
-            cogsData.push({
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(5 + m))
+            bsLines.push({
               organizationId: orgId,
-              planId: plan.id,
-              productLineId: currentProductId,
+              planId: planRow.id,
+              accountCode: `BS-${r}`,
+              accountName: name.trim(),
+              lineType,
               year,
               month: m + 1,
-              totalCost: Math.abs(val),
+              amount: val,
+            })
+          }
+        }
+        if (bsLines.length > 0) {
+          await tx.balanceSheetLine.createMany({ data: bsLines, skipDuplicates: true })
+          results.balanceSheetLines = bsLines.length
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // 10. COGS BUDGET LINES from COGS sheet
+      // ═══════════════════════════════════════════════════════
+      // COGS sheet structure:
+      //   Section header (col 2): "MHB maya dəyəri", "Əhəng (yanmış) maya dəyəri", etc.
+      //   "Məbləğ" row (col 3 = "Məbləğ"): actual cost amounts in cols 5-16 (Jan-Dec)
+      //   "Daşıma" section has "Məbləğ" row too
+      const cogsSheet = wb.getWorksheet("COGS")
+      if (cogsSheet) {
+        const cogsData: any[] = []
+        let currentProductId: string | null = null
+
+        for (let r = 1; r <= cogsSheet.rowCount; r++) {
+          const row = cogsSheet.getRow(r)
+          const col2 = getCellValue(row.getCell(2))
+          const col3 = getCellValue(row.getCell(3))
+
+          // Detect product section headers (col 2 has product name)
+          if (col2 && typeof col2 === "string") {
+            const nameLower = col2.toLowerCase()
+            if (nameLower.includes("mhb") || nameLower.includes("qaz beton")) currentProductId = createdProducts[0]?.id
+            else if ((nameLower.includes("əhəng") && nameLower.includes("yanmış")) || nameLower.includes("yandırılmış")) currentProductId = createdProducts[1]?.id
+            else if ((nameLower.includes("əhəng") && nameLower.includes("sönmüş")) || nameLower.includes("söndürülmüş")) currentProductId = createdProducts[2]?.id
+            else if (nameLower.includes("yapışqan")) currentProductId = createdProducts[3]?.id
+            else if (nameLower.includes("u-block") || nameLower.includes("u block")) currentProductId = createdProducts[4]?.id
+            else if (nameLower.includes("tullantı")) currentProductId = createdProducts[5]?.id
+            else if (nameLower.includes("daşıma")) currentProductId = null // transport = service COGS, skip product
+            else if (nameLower.includes("istehsaldan") || nameLower.includes("cəmi")) currentProductId = null
+          }
+
+          // Look for "Məbləğ" rows (col 3 = "Məbləğ") — these have the actual cost values
+          if (col3 !== "Məbləğ") continue
+          if (!currentProductId) continue
+
+          // Values in cols 5-16 (Jan-Dec)
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(5 + m))
+            if (val !== 0) {
+              cogsData.push({
+                organizationId: orgId,
+                planId: planRow.id,
+                productLineId: currentProductId,
+                year,
+                month: m + 1,
+                totalCost: Math.abs(val),
+              })
+            }
+          }
+        }
+        // Aggregate by productLineId+month (unique constraint: planId+productLineId+year+month)
+        // Multiple sub-products (e.g. MHB 1-ci növ + 2-ci növ) must be summed
+        const cogsAgg = new Map<string, any>()
+        for (const c of cogsData) {
+          const key = `${c.productLineId}||${c.month}`
+          const existing = cogsAgg.get(key)
+          if (existing) {
+            existing.totalCost += c.totalCost
+          } else {
+            cogsAgg.set(key, { ...c })
+          }
+        }
+        const cogsAggData = [...cogsAgg.values()]
+        if (cogsAggData.length > 0) {
+          await tx.cOGSBudgetLine.createMany({ data: cogsAggData, skipDuplicates: true })
+          results.cogsLines = cogsAggData.length
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════
+      // 10b. COGS COST DETAILS from C-1..C-4 sheets (drill-down breakdown)
+      // ═══════════════════════════════════════════════════════
+      // Each C-sheet: multi-stage or single-stage with sections:
+      //   "Qeyri-xammal xərclər (703)" / "istehsal xərci" → indirect costs (SAP codes 703-*)
+      //   "Xammal xərcləri:" → raw materials
+      //   "İstehsal:" / "İstehsalat" → production qty
+      //   "Vahid maya dəyəri" → unit cost (final row of each stage)
+      // Month columns vary per sheet — detect from header row
+      const C_SHEET_MAP: { sheet: string; productIdx: number | null }[] = [
+        { sheet: "C-1", productIdx: null },       // Qum (sand) — intermediate, link to all lime
+        { sheet: "C-2", productIdx: 1 },          // Yandırılmış əhəng
+        { sheet: "C-3", productIdx: 2 },          // Söndürülmüş əhəng
+        { sheet: "C-4", productIdx: 0 },          // MHB
+      ]
+      const detailRows: any[] = []
+
+      for (const cMap of C_SHEET_MAP) {
+        const sheet = wb.getWorksheet(cMap.sheet)
+        if (!sheet || cMap.productIdx === null) continue
+        const productId = createdProducts[cMap.productIdx]?.id
+        if (!productId) continue
+
+        // Detect month header row — scan first 5 rows for "Jan" or "Yanvar"
+        let monthStartCol = 0
+        for (let r = 1; r <= 5; r++) {
+          const row = sheet.getRow(r)
+          for (let c = 1; c <= 20; c++) {
+            const v = getCellValue(row.getCell(c))
+            if (v && typeof v === "string" && /^(jan|yan)/i.test(v.toString().trim())) {
+              monthStartCol = c
+              break
+            }
+          }
+          if (monthStartCol > 0) break
+        }
+        if (monthStartCol === 0) continue
+
+        let currentStage: string | null = null
+        let currentSection: "indirect" | "raw_material" | null = null
+        let sortCounter = 0
+
+        for (let r = 1; r <= sheet.rowCount; r++) {
+          const row = sheet.getRow(r)
+          // Concatenate all text cells to find labels across various columns
+          const cellTexts: string[] = []
+          for (let c = 1; c <= 6; c++) {
+            const v = getCellValue(row.getCell(c))
+            if (v && typeof v === "string") cellTexts.push(v.trim())
+          }
+          const joined = cellTexts.join(" | ").toLowerCase()
+
+          // Detect stage headers (for multi-stage like C-2: partladılmış, yararlı, yanmış)
+          if (joined.includes("partladılmış")) { currentStage = "partladılmış"; currentSection = null; continue }
+          if (joined.includes("yararlı") && joined.includes("əhəng")) { currentStage = "yararlı"; currentSection = null; continue }
+          if (joined.includes("yanmış") && joined.includes("əhəng")) { currentStage = "yanmış"; currentSection = null; continue }
+          if (joined.includes("sönmüş") && joined.includes("əhəng")) { currentStage = "sönmüş"; currentSection = null; continue }
+
+          // Detect section boundaries
+          if (joined.includes("qeyri-xammal xərclər") || joined.includes("istehsal xərci")) currentSection = "indirect"
+          if (joined.includes("xammal xərcləri")) currentSection = "raw_material"
+
+          // Parse detail rows (have monthly numeric values)
+          // Find a label — first non-empty text cell
+          let label = ""
+          let accountCode: string | null = null
+          for (let c = 1; c <= 6; c++) {
+            const v = getCellValue(row.getCell(c))
+            if (!v) continue
+            if (typeof v === "string" && v.trim().length > 2) {
+              const s = v.trim()
+              // SAP code pattern (703-xxx)
+              if (/^7\d{2}-/.test(s)) { accountCode = s; continue }
+              if (!label) label = s
+            }
+          }
+          if (!label) continue
+
+          // Skip section headers themselves (no numeric values in month cols)
+          const labelLower = label.toLowerCase()
+          if (labelLower === "xərc mərkəzi" || labelLower.startsWith("qeyri-xammal")) continue
+          if (labelLower.startsWith("xammal xərcləri")) continue
+
+          // Collect monthly values
+          const monthlyVals: number[] = []
+          let hasValues = false
+          for (let m = 0; m < 12; m++) {
+            const v = getNumericValue(row.getCell(monthStartCol + m))
+            monthlyVals.push(v)
+            if (v !== 0) hasValues = true
+          }
+          if (!hasValues) continue
+
+          // Classify cost type
+          let costType: "raw_material" | "indirect" | "production" | "unit_cost" = "indirect"
+          if (labelLower.includes("vahid maya dəyəri")) costType = "unit_cost"
+          else if (labelLower === "istehsal:" || labelLower === "istehsalat" || labelLower === "istehsal") costType = "production"
+          else if (currentSection === "raw_material") costType = "raw_material"
+          else if (currentSection === "indirect") costType = "indirect"
+          else continue // skip rows outside known sections
+
+          sortCounter++
+          for (let m = 0; m < 12; m++) {
+            if (monthlyVals[m] === 0) continue
+            detailRows.push({
+              organizationId: orgId,
+              planId: planRow.id,
+              productLineId: productId,
+              costType,
+              label: label.substring(0, 200),
+              accountCode,
+              stage: currentStage,
+              year,
+              month: m + 1,
+              amount: Math.abs(monthlyVals[m]),
+              sortOrder: sortCounter,
             })
           }
         }
       }
-      // Aggregate by productLineId+month (unique constraint: planId+productLineId+year+month)
-      // Multiple sub-products (e.g. MHB 1-ci növ + 2-ci növ) must be summed
-      const cogsAgg = new Map<string, any>()
-      for (const c of cogsData) {
-        const key = `${c.productLineId}||${c.month}`
-        const existing = cogsAgg.get(key)
-        if (existing) {
-          existing.totalCost += c.totalCost
-        } else {
-          cogsAgg.set(key, { ...c })
-        }
+
+      if (detailRows.length > 0) {
+        await tx.cOGSCostDetail.createMany({ data: detailRows, skipDuplicates: true })
+        results.cogsCostDetails = detailRows.length
       }
-      const cogsAggData = [...cogsAgg.values()]
-      if (cogsAggData.length > 0) {
-        await prisma.cOGSBudgetLine.createMany({ data: cogsAggData, skipDuplicates: true })
-        results.cogsLines = cogsAggData.length
-      }
-    }
 
-    // ═══════════════════════════════════════════════════════
-    // 10b. COGS COST DETAILS from C-1..C-4 sheets (drill-down breakdown)
-    // ═══════════════════════════════════════════════════════
-    // Each C-sheet: multi-stage or single-stage with sections:
-    //   "Qeyri-xammal xərclər (703)" / "istehsal xərci" → indirect costs (SAP codes 703-*)
-    //   "Xammal xərcləri:" → raw materials
-    //   "İstehsal:" / "İstehsalat" → production qty
-    //   "Vahid maya dəyəri" → unit cost (final row of each stage)
-    // Month columns vary per sheet — detect from header row
-    const C_SHEET_MAP: { sheet: string; productIdx: number | null }[] = [
-      { sheet: "C-1", productIdx: null },       // Qum (sand) — intermediate, link to all lime
-      { sheet: "C-2", productIdx: 1 },          // Yandırılmış əhəng
-      { sheet: "C-3", productIdx: 2 },          // Söndürülmüş əhəng
-      { sheet: "C-4", productIdx: 0 },          // MHB
-    ]
-    const detailRows: any[] = []
+      // ═══════════════════════════════════════════════════════
+      // 11. COST COMPONENTS (raw material recipes from A9)
+      // ═══════════════════════════════════════════════════════
+      const a9Sheet = wb.getWorksheet("A9")
+      if (a9Sheet && createdProducts[0]) {
+        let compCount = 0
+        // A9 has material names in col 2, monthly consumption in col 3+
+        for (let r = 7; r <= Math.min(20, a9Sheet.rowCount); r++) {
+          const row = a9Sheet.getRow(r)
+          const name = getCellValue(row.getCell(2))
+          if (!name || typeof name !== "string" || name.trim() === "") continue
 
-    for (const cMap of C_SHEET_MAP) {
-      const sheet = wb.getWorksheet(cMap.sheet)
-      if (!sheet || cMap.productIdx === null) continue
-      const productId = createdProducts[cMap.productIdx]?.id
-      if (!productId) continue
-
-      // Detect month header row — scan first 5 rows for "Jan" or "Yanvar"
-      let monthStartCol = 0
-      for (let r = 1; r <= 5; r++) {
-        const row = sheet.getRow(r)
-        for (let c = 1; c <= 20; c++) {
-          const v = getCellValue(row.getCell(c))
-          if (v && typeof v === "string" && /^(jan|yan)/i.test(v.toString().trim())) {
-            monthStartCol = c
-            break
+          // Get average monthly consumption as rate
+          let total = 0, count = 0
+          for (let m = 0; m < 12; m++) {
+            const v = getNumericValue(row.getCell(3 + m))
+            if (v > 0) { total += v; count++ }
           }
-        }
-        if (monthStartCol > 0) break
-      }
-      if (monthStartCol === 0) continue
+          const avgConsumption = count > 0 ? total / count : 0
+          if (avgConsumption <= 0) continue
 
-      let currentStage: string | null = null
-      let currentSection: "indirect" | "raw_material" | null = null
-      let sortCounter = 0
-
-      for (let r = 1; r <= sheet.rowCount; r++) {
-        const row = sheet.getRow(r)
-        // Concatenate all text cells to find labels across various columns
-        const cellTexts: string[] = []
-        for (let c = 1; c <= 6; c++) {
-          const v = getCellValue(row.getCell(c))
-          if (v && typeof v === "string") cellTexts.push(v.trim())
-        }
-        const joined = cellTexts.join(" | ").toLowerCase()
-
-        // Detect stage headers (for multi-stage like C-2: partladılmış, yararlı, yanmış)
-        if (joined.includes("partladılmış")) { currentStage = "partladılmış"; currentSection = null; continue }
-        if (joined.includes("yararlı") && joined.includes("əhəng")) { currentStage = "yararlı"; currentSection = null; continue }
-        if (joined.includes("yanmış") && joined.includes("əhəng")) { currentStage = "yanmış"; currentSection = null; continue }
-        if (joined.includes("sönmüş") && joined.includes("əhəng")) { currentStage = "sönmüş"; currentSection = null; continue }
-
-        // Detect section boundaries
-        if (joined.includes("qeyri-xammal xərclər") || joined.includes("istehsal xərci")) currentSection = "indirect"
-        if (joined.includes("xammal xərcləri")) currentSection = "raw_material"
-
-        // Parse detail rows (have monthly numeric values)
-        // Find a label — first non-empty text cell
-        let label = ""
-        let accountCode: string | null = null
-        for (let c = 1; c <= 6; c++) {
-          const v = getCellValue(row.getCell(c))
-          if (!v) continue
-          if (typeof v === "string" && v.trim().length > 2) {
-            const s = v.trim()
-            // SAP code pattern (703-xxx)
-            if (/^7\d{2}-/.test(s)) { accountCode = s; continue }
-            if (!label) label = s
-          }
-        }
-        if (!label) continue
-
-        // Skip section headers themselves (no numeric values in month cols)
-        const labelLower = label.toLowerCase()
-        if (labelLower === "xərc mərkəzi" || labelLower.startsWith("qeyri-xammal")) continue
-        if (labelLower.startsWith("xammal xərcləri")) continue
-
-        // Collect monthly values
-        const monthlyVals: number[] = []
-        let hasValues = false
-        for (let m = 0; m < 12; m++) {
-          const v = getNumericValue(row.getCell(monthStartCol + m))
-          monthlyVals.push(v)
-          if (v !== 0) hasValues = true
-        }
-        if (!hasValues) continue
-
-        // Classify cost type
-        let costType: "raw_material" | "indirect" | "production" | "unit_cost" = "indirect"
-        if (labelLower.includes("vahid maya dəyəri")) costType = "unit_cost"
-        else if (labelLower === "istehsal:" || labelLower === "istehsalat" || labelLower === "istehsal") costType = "production"
-        else if (currentSection === "raw_material") costType = "raw_material"
-        else if (currentSection === "indirect") costType = "indirect"
-        else continue // skip rows outside known sections
-
-        sortCounter++
-        for (let m = 0; m < 12; m++) {
-          if (monthlyVals[m] === 0) continue
-          detailRows.push({
-            organizationId: orgId,
-            planId: plan.id,
-            productLineId: productId,
-            costType,
-            label: label.substring(0, 200),
-            accountCode,
-            stage: currentStage,
-            year,
-            month: m + 1,
-            amount: Math.abs(monthlyVals[m]),
-            sortOrder: sortCounter,
-          })
-        }
-      }
-    }
-
-    if (detailRows.length > 0) {
-      await prisma.cOGSCostDetail.createMany({ data: detailRows, skipDuplicates: true })
-      results.cogsCostDetails = detailRows.length
-    }
-
-    // ═══════════════════════════════════════════════════════
-    // 11. COST COMPONENTS (raw material recipes from A9)
-    // ═══════════════════════════════════════════════════════
-    const a9Sheet = wb.getWorksheet("A9")
-    if (a9Sheet && createdProducts[0]) {
-      let compCount = 0
-      // A9 has material names in col 2, monthly consumption in col 3+
-      for (let r = 7; r <= Math.min(20, a9Sheet.rowCount); r++) {
-        const row = a9Sheet.getRow(r)
-        const name = getCellValue(row.getCell(2))
-        if (!name || typeof name !== "string" || name.trim() === "") continue
-
-        // Get average monthly consumption as rate
-        let total = 0, count = 0
-        for (let m = 0; m < 12; m++) {
-          const v = getNumericValue(row.getCell(3 + m))
-          if (v > 0) { total += v; count++ }
-        }
-        const avgConsumption = count > 0 ? total / count : 0
-        if (avgConsumption <= 0) continue
-
-        await prisma.costComponent.upsert({
-          where: {
-            id: `${orgId}-${createdProducts[0].id}-${name.trim().substring(0, 30)}`,
-          },
-          update: { consumptionRate: avgConsumption },
-          create: {
-            organizationId: orgId,
-            productLineId: createdProducts[0].id,
-            name: name.trim(),
-            unit: "AZN",
-            consumptionRate: avgConsumption,
-            unitCost: 0,
-            sortOrder: r,
-          },
-        }).catch(() => {
-          // If upsert by generated ID fails, create new
-          return prisma.costComponent.create({
-            data: {
+          await tx.costComponent.upsert({
+            where: {
+              id: `${orgId}-${createdProducts[0].id}-${name.trim().substring(0, 30)}`,
+            },
+            update: { consumptionRate: avgConsumption },
+            create: {
               organizationId: orgId,
               productLineId: createdProducts[0].id,
               name: name.trim(),
@@ -724,194 +718,208 @@ export async function POST(req: NextRequest) {
               unitCost: 0,
               sortOrder: r,
             },
+          }).catch(() => {
+            // If upsert by generated ID fails, create new
+            return tx.costComponent.create({
+              data: {
+                organizationId: orgId,
+                productLineId: createdProducts[0].id,
+                name: name.trim(),
+                unit: "AZN",
+                consumptionRate: avgConsumption,
+                unitCost: 0,
+                sortOrder: r,
+              },
+            })
           })
-        })
-        compCount++
+          compCount++
+        }
+        results.costComponents = compCount
       }
-      results.costComponents = compCount
-    }
 
-    // ═══════════════════════════════════════════════════════
-    // 12. BUDGET ASSUMPTIONS from A0..A14
-    // ═══════════════════════════════════════════════════════
-    let assumptionCount = 0
-    for (const aDef of ASSUMPTION_SHEETS) {
-      const sheet = wb.getWorksheet(aDef.sheet)
-      if (!sheet) continue
+      // ═══════════════════════════════════════════════════════
+      // 12. BUDGET ASSUMPTIONS from A0..A14
+      // ═══════════════════════════════════════════════════════
+      let assumptionCount = 0
+      for (const aDef of ASSUMPTION_SHEETS) {
+        const sheet = wb.getWorksheet(aDef.sheet)
+        if (!sheet) continue
 
-      for (let r = 1; r <= sheet.rowCount; r++) {
-        const row = sheet.getRow(r)
-        // Try to find rows with label + value pattern
-        let label = ""
-        let accountCode = ""
-        let value = 0
-        let unit = ""
+        for (let r = 1; r <= sheet.rowCount; r++) {
+          const row = sheet.getRow(r)
+          // Try to find rows with label + value pattern
+          let label = ""
+          let accountCode = ""
+          let value = 0
+          let unit = ""
 
-        // Collect all string candidates from first 6 cols
-        // Prefer descriptive text (longer, contains letters) over SAP codes
-        const textCandidates: string[] = []
-        for (let c = 1; c <= 6; c++) {
-          const cv = getCellValue(row.getCell(c))
-          if (typeof cv === "string" && cv.trim().length > 2) {
-            const s = cv.trim()
-            // Detect SAP account code pattern (3 digits + dash, e.g. 721-11-01, 703-105)
-            if (/^\d{3}(-\d+)+$/.test(s)) {
-              if (!accountCode) accountCode = s
-            } else {
-              textCandidates.push(s)
+          // Collect all string candidates from first 6 cols
+          // Prefer descriptive text (longer, contains letters) over SAP codes
+          const textCandidates: string[] = []
+          for (let c = 1; c <= 6; c++) {
+            const cv = getCellValue(row.getCell(c))
+            if (typeof cv === "string" && cv.trim().length > 2) {
+              const s = cv.trim()
+              // Detect SAP account code pattern (3 digits + dash, e.g. 721-11-01, 703-105)
+              if (/^\d{3}(-\d+)+$/.test(s)) {
+                if (!accountCode) accountCode = s
+              } else {
+                textCandidates.push(s)
+              }
+            }
+            if (typeof cv === "number" && cv !== 0 && value === 0) {
+              value = cv
             }
           }
-          if (typeof cv === "number" && cv !== 0 && value === 0) {
-            value = cv
-          }
-        }
-        // Pick the longest descriptive text as label (skip pure numeric/unit strings)
-        label = textCandidates.sort((a, b) => b.length - a.length)[0] || accountCode
+          // Pick the longest descriptive text as label (skip pure numeric/unit strings)
+          label = textCandidates.sort((a, b) => b.length - a.length)[0] || accountCode
 
-        // Also check for unit hints
-        for (let c = 1; c <= 6; c++) {
-          const cv = getCellValue(row.getCell(c))
-          if (typeof cv === "string") {
-            const lower = cv.toLowerCase()
-            if (lower === "azn" || lower === "%" || lower === "ton" || lower === "m3" ||
-                lower === "ədəd" || lower === "ay" || lower === "litr") {
-              unit = cv
+          // Also check for unit hints
+          for (let c = 1; c <= 6; c++) {
+            const cv = getCellValue(row.getCell(c))
+            if (typeof cv === "string") {
+              const lower = cv.toLowerCase()
+              if (lower === "azn" || lower === "%" || lower === "ton" || lower === "m3" ||
+                  lower === "ədəd" || lower === "ay" || lower === "litr") {
+                unit = cv
+              }
             }
           }
-        }
 
-        if (!label || label.length > 200) continue
-        if (value === 0) continue
+          if (!label || label.length > 200) continue
+          if (value === 0) continue
 
-        // Skip header-like rows
-        const labelLower = label.toLowerCase()
-        if (labelLower.includes("cəmi") || labelLower.includes("total") || labelLower.includes("hesablanmış")) continue
+          // Skip header-like rows
+          const labelLower = label.toLowerCase()
+          if (labelLower.includes("cəmi") || labelLower.includes("total") || labelLower.includes("hesablanmış")) continue
 
-        await prisma.budgetAssumption.create({
-          data: {
-            organizationId: orgId,
-            planId: plan.id,
-            category: aDef.category,
-            key: `${aDef.sheet}-r${r}`,
-            label: label.substring(0, 200),
-            value,
-            unit: unit || null,
-            period: null,
-            notes: accountCode ? `${accountCode} — ${aDef.label} (${aDef.sheet}, row ${r})` : `${aDef.label} (${aDef.sheet}, row ${r})`,
-            sortOrder: r,
-          },
-        })
-        assumptionCount++
-      }
-    }
-    results.assumptions = assumptionCount
-
-    // ═══════════════════════════════════════════════════════
-    // 13. CASH FLOW from CF sheet
-    // ═══════════════════════════════════════════════════════
-    const cfSheet = wb.getWorksheet("CF")
-    if (cfSheet) {
-      let cfCount = 0
-      // Determine activity type and entry type from row position
-      let currentActivity = "operating"
-      let currentEntryType = "inflow"
-
-      for (let r = 3; r <= cfSheet.rowCount; r++) {
-        const row = cfSheet.getRow(r)
-        // Labels are in column 1 (not column 2) in this sheet
-        const labelCol1 = getCellValue(row.getCell(1))
-        const labelCol2 = getCellValue(row.getCell(2))
-        const label = (typeof labelCol1 === "string" && labelCol1.trim().length > 2)
-          ? labelCol1
-          : (typeof labelCol2 === "string" && labelCol2.trim().length > 2) ? labelCol2 : null
-        if (!label || typeof label !== "string") continue
-        const labelLower = label.toLowerCase().trim()
-
-        // Detect activity sections
-        if (labelLower.includes("əsas fəaliyyəti") || labelLower.includes("cari fəaliyyət")) currentActivity = "operating"
-        else if (labelLower.includes("maliyyə fəaliyyəti")) currentActivity = "financing"
-        else if (labelLower.includes("investisiya fəaliyyəti")) currentActivity = "investing"
-
-        // Detect in/out
-        if (labelLower.includes("mədaxil")) currentEntryType = "inflow"
-        else if (labelLower.includes("məxaric")) currentEntryType = "outflow"
-
-        // Skip section headers, totals, balances
-        if (labelLower.includes("cəmi") || labelLower.includes("kontrol") ||
-            labelLower.includes("sona qalıq") || labelLower.includes("əvvələ qalıq") ||
-            labelLower.includes("pul hərəkəti") || labelLower.includes("pul və pul")) continue
-
-        // Extract monthly values (columns 4-15 = Jan-Dec for budget year)
-        for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(4 + m))
-          if (val === 0) continue
-
-          await prisma.cashFlowEntry.create({
+          await tx.budgetAssumption.create({
             data: {
               organizationId: orgId,
-              year,
-              month: m + 1,
-              entryType: currentEntryType,
-              source: "excel_import",
-              amount: Math.abs(val),
-              description: label.trim(),
-              isProjected: true,
-              activityType: currentActivity,
-              category: label.trim().substring(0, 100),
-              plannedAmount: Math.abs(val),
+              planId: planRow.id,
+              category: aDef.category,
+              key: `${aDef.sheet}-r${r}`,
+              label: label.substring(0, 200),
+              value,
+              unit: unit || null,
+              period: null,
+              notes: accountCode ? `${accountCode} — ${aDef.label} (${aDef.sheet}, row ${r})` : `${aDef.label} (${aDef.sheet}, row ${r})`,
+              sortOrder: r,
             },
           })
-          cfCount++
+          assumptionCount++
         }
       }
-      results.cashFlowEntries = cfCount
-    }
+      results.assumptions = assumptionCount
 
-    // ═══════════════════════════════════════════════════════
-    // 14. EXPENSE FORECAST (from P&L expense totals by cost type)
-    // ═══════════════════════════════════════════════════════
-    if (plSheet) {
-      let efCount = 0
-      // Group P&L expense lines by cost type category and sum monthly values
-      const expenseByType: Record<string, number[]> = {}
+      // ═══════════════════════════════════════════════════════
+      // 13. CASH FLOW from CF sheet
+      // ═══════════════════════════════════════════════════════
+      const cfSheet = wb.getWorksheet("CF")
+      if (cfSheet) {
+        let cfCount = 0
+        // Determine activity type and entry type from row position
+        let currentActivity = "operating"
+        let currentEntryType = "inflow"
 
-      for (let r = 4; r <= plSheet.rowCount; r++) {
-        const row = plSheet.getRow(r)
-        const code = getCellValue(row.getCell(1))
-        if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
+        for (let r = 3; r <= cfSheet.rowCount; r++) {
+          const row = cfSheet.getRow(r)
+          // Labels are in column 1 (not column 2) in this sheet
+          const labelCol1 = getCellValue(row.getCell(1))
+          const labelCol2 = getCellValue(row.getCell(2))
+          const label = (typeof labelCol1 === "string" && labelCol1.trim().length > 2)
+            ? labelCol1
+            : (typeof labelCol2 === "string" && labelCol2.trim().length > 2) ? labelCol2 : null
+          if (!label || typeof label !== "string") continue
+          const labelLower = label.toLowerCase().trim()
 
-        const cat = categoryFromCode(code.trim())
-        if (!cat || cat === "sales" || cat === "returns" || cat === "discounts" || cat === "cogs") continue
+          // Detect activity sections
+          if (labelLower.includes("əsas fəaliyyəti") || labelLower.includes("cari fəaliyyət")) currentActivity = "operating"
+          else if (labelLower.includes("maliyyə fəaliyyəti")) currentActivity = "financing"
+          else if (labelLower.includes("investisiya fəaliyyəti")) currentActivity = "investing"
 
-        if (!expenseByType[cat]) expenseByType[cat] = new Array(12).fill(0)
+          // Detect in/out
+          if (labelLower.includes("mədaxil")) currentEntryType = "inflow"
+          else if (labelLower.includes("məxaric")) currentEntryType = "outflow"
 
-        for (let m = 0; m < 12; m++) {
-          const val = getNumericValue(row.getCell(4 + m))
-          expenseByType[cat][m] += Math.abs(val)
+          // Skip section headers, totals, balances
+          if (labelLower.includes("cəmi") || labelLower.includes("kontrol") ||
+              labelLower.includes("sona qalıq") || labelLower.includes("əvvələ qalıq") ||
+              labelLower.includes("pul hərəkəti") || labelLower.includes("pul və pul")) continue
+
+          // Extract monthly values (columns 4-15 = Jan-Dec for budget year)
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(4 + m))
+            if (val === 0) continue
+
+            await tx.cashFlowEntry.create({
+              data: {
+                organizationId: orgId,
+                year,
+                month: m + 1,
+                entryType: currentEntryType,
+                source: "excel_import",
+                amount: Math.abs(val),
+                description: label.trim(),
+                isProjected: true,
+                activityType: currentActivity,
+                category: label.trim().substring(0, 100),
+                plannedAmount: Math.abs(val),
+              },
+            })
+            cfCount++
+          }
         }
+        results.cashFlowEntries = cfCount
       }
 
-      for (const [cat, months] of Object.entries(expenseByType)) {
-        const ctId = costTypeIds[cat]
-        if (!ctId) continue
+      // ═══════════════════════════════════════════════════════
+      // 14. EXPENSE FORECAST (from P&L expense totals by cost type)
+      // ═══════════════════════════════════════════════════════
+      if (plSheet) {
+        let efCount = 0
+        // Group P&L expense lines by cost type category and sum monthly values
+        const expenseByType: Record<string, number[]> = {}
 
-        for (let m = 0; m < 12; m++) {
-          if (months[m] === 0) continue
-          await prisma.expenseForecast.create({
-            data: {
-              organizationId: orgId,
-              costTypeId: ctId,
-              year,
-              month: m + 1,
-              amount: months[m],
-            },
-          })
-          efCount++
+        for (let r = 4; r <= plSheet.rowCount; r++) {
+          const row = plSheet.getRow(r)
+          const code = getCellValue(row.getCell(1))
+          if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
+
+          const cat = categoryFromCode(code.trim())
+          if (!cat || cat === "sales" || cat === "returns" || cat === "discounts" || cat === "cogs") continue
+
+          if (!expenseByType[cat]) expenseByType[cat] = new Array(12).fill(0)
+
+          for (let m = 0; m < 12; m++) {
+            const val = getNumericValue(row.getCell(4 + m))
+            expenseByType[cat][m] += Math.abs(val)
+          }
         }
-      }
-      results.expenseForecasts = efCount
-    }
 
+        for (const [cat, months] of Object.entries(expenseByType)) {
+          const ctId = costTypeIds[cat]
+          if (!ctId) continue
+
+          for (let m = 0; m < 12; m++) {
+            if (months[m] === 0) continue
+            await tx.expenseForecast.create({
+              data: {
+                organizationId: orgId,
+                costTypeId: ctId,
+                year,
+                month: m + 1,
+                amount: months[m],
+              },
+            })
+            efCount++
+          }
+        }
+        results.expenseForecasts = efCount
+      }
+
+      return planRow
+    }, { maxWait: 10_000, timeout: 120_000 })
     // ═══════════════════════════════════════════════════════
     // 15. AUTO-CREATE ROLLING FORECAST PLAN (from imported data)
     // ═══════════════════════════════════════════════════════
