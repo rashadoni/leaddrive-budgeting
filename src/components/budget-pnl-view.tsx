@@ -410,9 +410,11 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
-                  const cogs = monthlyCogs?.[i + 1] || 0
-                  const monthOpex = opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                  const monthEbitda = rev + cogs + monthOpex
+                  const cogs = monthlyCogs?.[i + 1] || 0 // already negative
+                  // OpEx rows are stored as positive amounts, so we subtract them.
+                  // (cogs is already negative, hence the + for that part.)
+                  const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                  const monthEbitda = rev + cogs - monthOpex
                   return (
                     <td key={i} className={`px-2 py-2.5 text-right tabular-nums ${monthEbitda >= 0 ? "text-purple-700 dark:text-purple-400" : "text-red-700 dark:text-red-400"}`}>
                       {monthEbitda < 0 ? `(${fmtNum(Math.abs(monthEbitda))})` : fmtNum(monthEbitda)}
@@ -430,9 +432,11 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
-                  const cogs = monthlyCogs?.[i + 1] || 0
-                  const monthOpex = opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                  const monthEbitda = rev + cogs + monthOpex
+                  const cogs = monthlyCogs?.[i + 1] || 0 // already negative
+                  // OpEx rows are stored as positive amounts, so we subtract them.
+                  // (cogs is already negative, hence the + for that part.)
+                  const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                  const monthEbitda = rev + cogs - monthOpex
                   const pct = rev > 0 ? ((monthEbitda / rev) * 100).toFixed(1) : "—"
                   return (
                     <td key={i} className={`px-2 py-1 text-right text-[10px] font-medium ${Number(pct) < 0 ? "text-red-500" : "text-purple-600 dark:text-purple-400"}`}>
@@ -473,10 +477,10 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
-                  const cogs = monthlyCogs?.[i + 1] || 0
-                  const monthOpex = opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                  const monthBelow = belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                  const np = rev + cogs + monthOpex + monthBelow
+                  const cogs = monthlyCogs?.[i + 1] || 0 // already negative
+                  const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                  const monthBelow = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                  const np = rev + cogs - monthOpex - monthBelow
                   return (
                     <td key={i} className={`px-2 py-3 text-right tabular-nums ${np >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
                       {np < 0 ? `(${fmtNum(Math.abs(np))})` : fmtNum(np)}

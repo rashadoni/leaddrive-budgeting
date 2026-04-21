@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useRef } from "react"
+import React, { useState, useMemo, useRef, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import { useSession as useSessionHook } from "next-auth/react"
 import { useSearchParams, useRouter } from "next/navigation"
@@ -717,9 +717,31 @@ function WorkspaceTab({ planId, onNavigateTab }: { planId: string; onNavigateTab
     return variancePctVal >= materialityPct || varianceAbsVal >= materialityAbs
   }
 
-  const expenseLines = filteredLines.filter((l: BudgetLine) => l.lineType === "expense")
-  const revenueLines = filteredLines.filter((l: BudgetLine) => l.lineType === "revenue")
-  const cogsLines = filteredLines.filter((l: BudgetLine) => l.lineType === "cogs")
+  // Exclude parent-aggregate rows so totals don't double-count. Same filter as
+  // the Workspace analytics endpoint. Without this, a P&L with both 601-01
+  // (parent total) and 601-01-02 (child line) would count every revenue twice.
+  const allLineCodes = useMemo(() => {
+    const s = new Set<string>()
+    for (const l of filteredLines) {
+      const code = (l as any).account?.code ?? l.department ?? ""
+      if (code) s.add(code)
+    }
+    return s
+  }, [filteredLines])
+  const isParentCode = useCallback((code: string): boolean => {
+    for (const c of allLineCodes) {
+      if (c !== code && c.startsWith(code + "-")) return true
+    }
+    return false
+  }, [allLineCodes])
+  const isLeafLine = useCallback((l: BudgetLine): boolean => {
+    const code = (l as any).account?.code ?? l.department ?? ""
+    return !code || !isParentCode(code)
+  }, [isParentCode])
+
+  const expenseLines = filteredLines.filter((l: BudgetLine) => l.lineType === "expense" && isLeafLine(l))
+  const revenueLines = filteredLines.filter((l: BudgetLine) => l.lineType === "revenue" && isLeafLine(l))
+  const cogsLines = filteredLines.filter((l: BudgetLine) => l.lineType === "cogs" && isLeafLine(l))
 
   // Helper: get leaf amount (children sum if group parent, else own amount)
   const leafPlanned = (l: BudgetLine) => l.children?.length ? l.children.reduce((s, c) => s + c.plannedAmount, 0) : l.plannedAmount
@@ -1403,13 +1425,17 @@ function WorkspaceTab({ planId, onNavigateTab }: { planId: string; onNavigateTab
   const overspendPct = expExecPct - 100
   const overspendAmount = totalCostActual - totalCostPlanned
 
-  // Composite budget execution: 60% revenue achievement + 40% cost discipline
+  // Composite budget execution: 60% revenue achievement + 40% cost discipline.
+  // Only meaningful once actuals exist — previously cost discipline defaulted to
+  // 100% when there were no actuals, producing a misleading "40% composite" on
+  // an untouched plan.
   const hasAnyActuals = totalRevenueActual > 0 || totalCostActual > 0
-  const revAchieve = totalRevenuePlanned > 0 ? Math.min((totalRevenueActual / totalRevenuePlanned) * 100, 150) : 100
-  const costDisc = totalCostActual > 0 && totalCostPlanned > 0 ? Math.min((totalCostPlanned / totalCostActual) * 100, 150) : 100
-  const budgetExecPct = Math.max(0, Math.round(revAchieve * 0.6 + costDisc * 0.4))
-  const budgetExecColor = budgetExecPct >= 80 ? "green" as const : budgetExecPct >= 50 ? "amber" as const : "red" as const
-  const budgetExecEmoji = budgetExecPct >= 80 ? "🟢" : budgetExecPct >= 50 ? "🟡" : "🔴"
+  const revAchieve = totalRevenuePlanned > 0 ? Math.min((totalRevenueActual / totalRevenuePlanned) * 100, 150) : 0
+  const costDisc = totalCostActual > 0 && totalCostPlanned > 0 ? Math.min((totalCostPlanned / totalCostActual) * 100, 150) : 0
+  const budgetExecPct = hasAnyActuals ? Math.max(0, Math.round(revAchieve * 0.6 + costDisc * 0.4)) : 0
+  const budgetExecColor = !hasAnyActuals ? "amber" as const : budgetExecPct >= 80 ? "green" as const : budgetExecPct >= 50 ? "amber" as const : "red" as const
+  const budgetExecEmoji = !hasAnyActuals ? "⏳" : budgetExecPct >= 80 ? "🟢" : budgetExecPct >= 50 ? "🟡" : "🔴"
+  const budgetExecLabel = hasAnyActuals ? `${budgetExecPct}% composite score` : "No actuals yet"
 
   const totExpActual = expenseLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
   const totRevActual = revenueLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
@@ -1497,7 +1523,7 @@ function WorkspaceTab({ planId, onNavigateTab }: { planId: string; onNavigateTab
           <Card className="lg:col-span-1 border-0 shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold">{t("budgetExecution") || "Budget Execution"}</CardTitle>
-              <p className="text-[10px] text-muted-foreground">{budgetExecEmoji} {budgetExecPct}% composite score</p>
+              <p className="text-[10px] text-muted-foreground">{budgetExecEmoji} {budgetExecLabel}</p>
             </CardHeader>
             <CardContent className="flex justify-center">
               <BudgetExecutionGauge
@@ -3122,8 +3148,26 @@ function PLTab({ planId }: { planId: string }) {
 
   // Split expenses into Direct Costs (labor + tech_infra) and Indirect/Overhead (admin + risk + standalone)
   const DIRECT_GROUPS = new Set(["Direct Labor Costs", "Technical Infrastructure"])
-  const directExpRows = expRows.filter(c => c.parentCategory && DIRECT_GROUPS.has(c.parentCategory))
-  const indirectExpRows = expRows.filter(c => !c.parentCategory || !DIRECT_GROUPS.has(c.parentCategory))
+  const directExpRowsRaw = expRows.filter(c => c.parentCategory && DIRECT_GROUPS.has(c.parentCategory))
+  const indirectExpRowsRaw = expRows.filter(c => !c.parentCategory || !DIRECT_GROUPS.has(c.parentCategory))
+
+  // Fallback for non-IT workloads (e.g. cement/manufacturing imports):
+  // if the imported P&L doesn't use the "Direct Labor Costs" / "Technical
+  // Infrastructure" parent groups at all, treat cogs-typed rows as Direct
+  // Costs. Overhead becomes ONLY the 711 (sales) and 721 (admin) expense
+  // rows — items below EBITDA (depreciation 731, finance 741/751, tax 771,
+  // 761/801) are collected separately and subtracted AFTER EBITDA so the
+  // displayed "EBITDA" is the real metric, not a mislabelled Net Profit.
+  const hasITStructure = directExpRowsRaw.length > 0
+  const BELOW_EBITDA_PREFIXES = ["731", "741", "751", "761", "771", "801"]
+  const rowCode = (r: typeof byCategory[number]) => (r as any).accountCode ?? r.category ?? ""
+  const isBelowEBITDA = (r: typeof byCategory[number]) =>
+    BELOW_EBITDA_PREFIXES.some((p) => rowCode(r).startsWith(p))
+  const directExpRows = hasITStructure ? directExpRowsRaw : cogsRows
+  const indirectExpRows = hasITStructure
+    ? indirectExpRowsRaw
+    : expRows.filter((r) => !isBelowEBITDA(r))
+  const belowEbitdaRows = hasITStructure ? [] : expRows.filter(isBelowEBITDA)
 
   // Helper: get group actual — use parent's auto-actual if children sum to 0
   const getGroupActual = (parentName: string, childRows: typeof byCategory): number => {
@@ -3155,6 +3199,7 @@ function PLTab({ planId }: { planId: string }) {
   const revGrouped = buildGrouped(revRows)
   const directGrouped = buildGrouped(directExpRows)
   const indirectGrouped = buildGrouped(indirectExpRows)
+  const belowEbitdaGrouped = buildGrouped(belowEbitdaRows)
 
   const categoryCount = byCategory.length
   const sectionCount = sections.length
@@ -3188,15 +3233,28 @@ function PLTab({ planId }: { planId: string }) {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-purple-500" /></div>
   }
 
-  // Revenue totals — also account for parent auto-actuals
-  const totalRevenuePlanned = revRows.reduce((s, r) => s + r.planned, 0)
-  const revLeafActual = revRows.reduce((s, r) => s + r.actual, 0)
+  // Revenue totals — also account for parent auto-actuals.
+  // Contra-revenue rows (SAP 602 = returns, 603 = discounts) reduce net sales
+  // rather than add to them. Without subtracting them here the Plan view shows
+  // gross sales (18.4M) while the P&L Report shows net revenue (18.0M),
+  // confusing finance reviewers.
+  const isContraRevenue = (r: typeof byCategory[number]) => {
+    const code = rowCode(r)
+    return code.startsWith("602") || code.startsWith("603")
+  }
+  const revGross = revRows.filter((r) => !isContraRevenue(r)).reduce((s, r) => s + r.planned, 0)
+  const revContra = revRows.filter(isContraRevenue).reduce((s, r) => s + r.planned, 0)
+  const totalRevenuePlanned = revGross - revContra
+  const revLeafActual = revRows.filter((r) => !isContraRevenue(r)).reduce((s, r) => s + r.actual, 0)
+    - revRows.filter(isContraRevenue).reduce((s, r) => s + r.actual, 0)
   const totalRevenueActual = revLeafActual > 0 ? revLeafActual : revGrouped.groups.reduce((s, g) => s + getGroupActual(g.parent, g.children), 0) + revGrouped.standalone.reduce((s, r) => s + r.actual, 0)
   // Direct costs: labor + tech infrastructure — use parent auto-actuals when children have 0
   const totalDirectPlanned = directExpRows.reduce((s, r) => s + r.planned, 0)
   const totalDirectActual = directGrouped.groups.reduce((s, g) => s + getGroupActual(g.parent, g.children), 0) + directGrouped.standalone.reduce((s, r) => s + r.actual, 0)
   // Indirect costs: admin overhead + risk + standalone expense lines
   const totalIndirectPlanned = indirectExpRows.reduce((s, r) => s + r.planned, 0)
+  const totalBelowEbitdaPlanned = belowEbitdaRows.reduce((s, r) => s + r.planned, 0)
+  const totalBelowEbitdaActual = belowEbitdaRows.reduce((s, r) => s + r.actual, 0)
   const totalIndirectActual = indirectGrouped.groups.reduce((s, g) => s + getGroupActual(g.parent, g.children), 0) + indirectGrouped.standalone.reduce((s, r) => s + r.actual, 0)
   // Total all expenses (for KPI)
   const totalExpensePlanned = totalDirectPlanned + totalIndirectPlanned
@@ -3744,7 +3802,7 @@ function PLTab({ planId }: { planId: string }) {
       </div>
 
       {/* P&L Income Statement — no COGS (allocated costs shown in Profitability module) */}
-      {renderSection(t("plRevenue"), revRows, "auto-revenue", <DollarSign className="h-4 w-4" />, "bg-primary/[0.04]", false, 0, 0, false, revGrouped)}
+      {renderSection(t("plRevenue"), revRows, "auto-revenue", <DollarSign className="h-4 w-4" />, "bg-primary/[0.04]", true, totalRevenuePlanned, totalRevenueActual, false, revGrouped)}
       {renderSection("Direct Costs", directExpRows, "auto-direct", <Settings2 className="h-4 w-4" />, "bg-orange-50/60 dark:bg-orange-950/20", false, 0, 0, true, directGrouped)}
 
       {/* Gross Profit = Revenue - Direct Costs */}
@@ -3804,6 +3862,47 @@ function PLTab({ planId }: { planId: string }) {
           </div>
         </div>
       </div>
+
+      {/* D&A / Finance / Tax — below-EBITDA items */}
+      {belowEbitdaRows.length > 0 && (
+        <>
+          {renderSection("D&A, Finance & Tax", belowEbitdaRows, "auto-below-ebitda", <Banknote className="h-4 w-4" />, "bg-slate-50/60 dark:bg-slate-950/20", false, 0, 0, true, belowEbitdaGrouped)}
+
+          {/* Net Profit */}
+          {(() => {
+            const netPlanned = opProfitPlanned - totalBelowEbitdaPlanned
+            const netActual = opProfitActual - totalBelowEbitdaActual
+            return (
+              <div className={`border-2 rounded-xl overflow-hidden mb-3 ${netActual < 0 ? "border-red-400/50 dark:border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/30" : "border-emerald-400/50 dark:border-emerald-500/50 bg-gradient-to-r from-emerald-50 to-muted/50 dark:from-emerald-950/30 dark:to-muted/50"}`}>
+                <div className="flex items-center justify-between px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${netActual < 0 ? "bg-red-100 dark:bg-red-900/50" : "bg-emerald-100 dark:bg-emerald-900/50"}`}>
+                      {netActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-base">Net Profit / (Loss)</div>
+                      {totalRevenuePlanned > 0 && (
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Net Margin: {((netPlanned / totalRevenuePlanned) * 100).toFixed(1)}% (plan)
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6 font-mono font-bold text-base">
+                    <AnimatedNumber value={netPlanned} duration={600} />
+                    <span className={netActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
+                      <AnimatedNumber value={netActual} duration={600} />
+                    </span>
+                    <span className={`text-sm ${netActual - netPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      <AnimatedNumber value={netActual - netPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+        </>
+      )}
 
       {/* Custom sections */}
       {sections.map(sec => (
@@ -4029,8 +4128,11 @@ function ForecastTab({ planId }: { planId: string }) {
   const totalRevenue = getSectionTotal(revenueLines)
   const totalCogs = getSectionTotal(cogsLines)
   const totalExpense = getSectionTotal(expenseLines)
-  const totalGrossProfit = totalRevenue - totalExpense  // Expenses already include all costs
-  const totalMargin = totalRevenue - totalExpense        // No COGS deduction (same costs as OpEx)
+  // Gross Profit = Revenue - COGS; EBITDA = Gross Profit - OpEx (totalExpense).
+  // Earlier this block deducted OpEx from revenue only, which inflated EBITDA
+  // by the full COGS amount (user saw 25.8M instead of -4.6M for the AAC demo).
+  const totalGrossProfit = totalRevenue - totalCogs
+  const totalMargin = totalGrossProfit - totalExpense
 
   // Inline edit handlers
   const startEdit = (category: string, lineType: string, month: number) => {
@@ -4409,8 +4511,8 @@ function ForecastTab({ planId }: { planId: string }) {
                             <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
                             <span className="text-sm font-medium">{s.name}</span>
                           </div>
-                          <span className={`text-sm font-bold font-mono ${s.profit < 0 ? "text-red-500" : ""}`}>
-                            {s.profit < 0 ? `(${fmtK(Math.abs(s.profit))})` : fmtK(s.profit)} ₼
+                          <span className={`text-sm font-bold font-mono ${s.profit < 0 ? "text-red-500" : "text-emerald-600 dark:text-emerald-400"}`}>
+                            {s.profit < 0 ? `−${fmtK(Math.abs(s.profit))}` : `+${fmtK(s.profit)}`} ₼
                           </span>
                         </div>
                         <div className="w-full h-2.5 bg-muted rounded-full overflow-hidden">

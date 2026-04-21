@@ -101,10 +101,30 @@ export async function GET(req: NextRequest) {
     where: { planId, organizationId: orgId },
   })
 
-  // Totals — split by expense vs revenue vs cogs
-  const expenseLines = lines.filter((l: { lineType: string }) => l.lineType === "expense")
-  const revenueLines = lines.filter((l: { lineType: string }) => l.lineType === "revenue")
-  const cogsLines = lines.filter((l: { lineType: string }) => l.lineType === "cogs")
+  // Exclude parent-aggregate rows so we don't double-count. A code is a parent
+  // when another code starts with "<code>-" (e.g. 601-01 is a parent of 601-01-02).
+  // The imported P&L sheet contains both totals and sub-totals, so without this
+  // filter `Revenue` on Workspace was ~2x what the P&L Report shows.
+  const allCodes = new Set<string>(
+    lines
+      .map((l: any) => (l.account?.code ?? l.department ?? "").toString())
+      .filter((c: string) => Boolean(c)),
+  )
+  const isParentCode = (code: string): boolean => {
+    for (const c of allCodes) {
+      if (c !== code && c.startsWith(code + "-")) return true
+    }
+    return false
+  }
+  const isLeaf = (l: any): boolean => {
+    const code = l.account?.code ?? l.department ?? ""
+    return !code || !isParentCode(code)
+  }
+
+  // Totals — split by expense vs revenue vs cogs (leaves only)
+  const expenseLines = lines.filter((l: { lineType: string }) => l.lineType === "expense").filter(isLeaf)
+  const revenueLines = lines.filter((l: { lineType: string }) => l.lineType === "revenue").filter(isLeaf)
+  const cogsLines = lines.filter((l: { lineType: string }) => l.lineType === "cogs").filter(isLeaf)
 
   const totalExpensePlanned = expenseLines.reduce((s: number, l: any) => s + getEffectivePlanned(l), 0)
   const totalRevenuePlanned = revenueLines.reduce((s: number, l: any) => s + getEffectivePlanned(l), 0)
@@ -202,21 +222,28 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // By category — merge lines, auto-actuals, and manual actuals
-  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string }>()
+  // By category — merge lines, auto-actuals, and manual actuals.
+  // Only count leaf lines; parent SAP-code rows like "601-01" duplicate the
+  // sum of their children (e.g. "601-01-02") and would inflate byCategory.
+  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null }>()
 
   for (const l of lines) {
+    if (!isLeaf(l)) continue
     const key = `${l.category}||${l.lineType}`
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType }
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: null }
     existing.planned += getEffectivePlanned(l)
     existing.forecast += l.forecastAmount ?? getEffectivePlanned(l)
+    // Preserve SAP code so the P&L (Plan) view can split OpEx vs below-EBITDA.
+    if (!existing.accountCode) {
+      existing.accountCode = (l as any).account?.code ?? l.department ?? null
+    }
     categoryMap.set(key, existing)
   }
 
   // Apply auto-actuals first
   for (const [key, amount] of autoActualByCategory) {
     const lineType = key.split("||")[1] ?? "expense"
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType }
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType, accountCode: null as string | null }
     existing.actual += amount
     categoryMap.set(key, existing)
   }
@@ -226,7 +253,7 @@ export async function GET(req: NextRequest) {
     const key = `${a.category}||${a.lineType}`
     // Skip if auto-actual already covers this category
     if (autoActualByCategory.has(key)) continue
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: a.lineType }
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: a.lineType, accountCode: null as string | null }
     existing.actual += a.actualAmount
     categoryMap.set(key, existing)
   }
@@ -238,7 +265,7 @@ export async function GET(req: NextRequest) {
       : val.planned - val.actual
     const variancePct = val.planned > 0 ? (variance / val.planned) * 100 : 0
     const parentCategory = parentLookup.get(key) ?? null
-    return { category, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory }
+    return { category, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode }
   })
 
   // By department — track expense and revenue separately for correct variance
