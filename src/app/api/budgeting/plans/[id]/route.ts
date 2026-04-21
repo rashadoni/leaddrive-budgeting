@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params
 
   const plan = await prisma.budgetPlan.findFirst({
-    where: { id, organizationId: orgId },
+    where: { id, organizationId: orgId, deletedAt: null },
     include: { lines: true, actuals: true },
   })
 
@@ -201,11 +201,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(req, "admin")
   if (session instanceof NextResponse) return session
-  const { orgId } = session
+  const { orgId, userId } = session
 
   const { id } = await params
 
-  await prisma.budgetPlan.deleteMany({ where: { id, organizationId: orgId } })
+  // Soft-delete: mark the plan as deleted but keep all child rows intact.
+  // Every read filters `deletedAt: null`, so the plan disappears from the UI
+  // while remaining restorable for 30 days. A cleanup job purges old rows.
+  const result = await prisma.budgetPlan.updateMany({
+    where: { id, organizationId: orgId, deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy: userId },
+  })
+
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Plan not found or already deleted" }, { status: 404 })
+  }
 
   return NextResponse.json({ success: true, data: null })
 }

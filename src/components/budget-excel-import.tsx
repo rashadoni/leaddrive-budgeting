@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Trash2, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react"
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Trash2, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, Undo2 } from "lucide-react"
 
 interface ImportIssue {
   sheet: string
@@ -69,6 +69,33 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
     enabled: !!orgId,
   })
 
+  // Load soft-deleted plans so we can offer Restore during the 30-day undo window.
+  const { data: deletedPlans = [] } = useQuery({
+    queryKey: ["budgeting", "plans-deleted", orgId],
+    queryFn: async () => {
+      const res = await fetch("/api/budgeting/plans?onlyDeleted=true", { headers: { ...headers, "Content-Type": "application/json" } })
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.data ?? json) as any[]
+    },
+    enabled: !!orgId,
+  })
+
+  const restoreMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const res = await fetch(`/api/budgeting/plans/${planId}/restore`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Restore failed")
+      }
+      return res.json()
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
+  })
+
   const importMutation = useMutation({
     mutationFn: async () => {
       if (!file) throw new Error("No file selected")
@@ -118,8 +145,55 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
 
   const importedPlans = plans.filter((p: any) => p.name?.includes("(Imported)"))
 
+  // How many days until the soft-deleted plan gets purged
+  const daysRemaining = (deletedAt: string | null) => {
+    if (!deletedAt) return 30
+    const age = (Date.now() - new Date(deletedAt).getTime()) / (1000 * 60 * 60 * 24)
+    return Math.max(0, Math.ceil(30 - age))
+  }
+
   return (
     <div className="space-y-4">
+      {/* Recently deleted plans — restore option (30-day undo window) */}
+      {deletedPlans.length > 0 && (
+        <Card className="border-sky-200 dark:border-sky-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Undo2 className="h-4 w-4 text-sky-600" />
+              Recently Deleted — Restore Within 30 Days
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {deletedPlans.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">{p.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{p.year}</span>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Deleted {new Date(p.deletedAt).toLocaleDateString()} · {daysRemaining(p.deletedAt)} day{daysRemaining(p.deletedAt) === 1 ? "" : "s"} until permanent removal
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  disabled={restoreMutation.isPending}
+                  onClick={() => restoreMutation.mutate(p.id)}
+                >
+                  {restoreMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : (<><Undo2 className="h-3.5 w-3.5 mr-1" />Restore</>)}
+                </Button>
+              </div>
+            ))}
+            {restoreMutation.isError && (
+              <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {(restoreMutation.error as Error).message}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Existing imported plans — delete option */}
       {importedPlans.length > 0 && (
         <Card className="border-amber-200 dark:border-amber-800">

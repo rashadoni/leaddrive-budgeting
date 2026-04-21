@@ -33,8 +33,21 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+  // Clients can opt in to deleted plans via ?includeDeleted=true (used by the
+  // Recently Deleted / Restore UI). By default only live plans are returned.
+  const { searchParams } = new URL(req.url)
+  const includeDeleted = searchParams.get("includeDeleted") === "true"
+  const onlyDeleted = searchParams.get("onlyDeleted") === "true"
+
   const plans = await prisma.budgetPlan.findMany({
-    where: { organizationId: orgId },
+    where: {
+      organizationId: orgId,
+      ...(onlyDeleted
+        ? { deletedAt: { not: null } }
+        : includeDeleted
+          ? {}
+          : { deletedAt: null }),
+    },
     orderBy: [{ year: "desc" }, { month: "desc" }],
   })
 
@@ -293,93 +306,36 @@ export async function DELETE(req: NextRequest) {
   // Bulk destructive operation — admin only (reset / deleteAll clears org data)
   const session = await requireRole(req, "admin")
   if (session instanceof NextResponse) return session
-  const { orgId } = session
+  const { orgId, userId } = session
 
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
   const deleteAll = searchParams.get("deleteAll") === "true"
 
-  // DELETE ALL — wipe everything for this organization
+  // DELETE ALL — soft-delete every plan in the org.
+  // Child rows (lines, actuals, forecasts, balance sheet, COGS, assumptions,
+  // comments, reports, change logs) and org-level masters (chart of accounts,
+  // product lines, cost types, etc.) are KEPT so that a plan restore brings
+  // everything back. A background cleanup job physically removes plans whose
+  // `deletedAt` is older than 30 days.
   if (deleteAll && !planId) {
-    // Get all plan IDs first
-    const allPlans = await prisma.budgetPlan.findMany({
-      where: { organizationId: orgId },
-      select: { id: true, name: true },
+    const result = await prisma.budgetPlan.updateMany({
+      where: { organizationId: orgId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedBy: userId },
     })
-    const planIds = allPlans.map((p: { id: string }) => p.id)
-
-    if (planIds.length > 0) {
-      await prisma.$transaction([
-        prisma.budgetForecastEntry.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.rollingForecastMonth.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetActual.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetLine.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.salesBudgetLine.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.cOGSBudgetLine.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.balanceSheetLine.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetAssumption.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetApprovalComment.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.savedBudgetReport.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetChangeLog.deleteMany({ where: { planId: { in: planIds } } }),
-        prisma.budgetPlan.deleteMany({ where: { organizationId: orgId } }),
-      ])
-    }
-
-    // Clean org-level data (including remaining saved reports without planId)
-    await prisma.$transaction([
-      prisma.chartOfAccount.deleteMany({ where: { organizationId: orgId } }),
-      prisma.salesForecast.deleteMany({ where: { organizationId: orgId } }),
-      prisma.expenseForecast.deleteMany({ where: { organizationId: orgId } }),
-      prisma.cashFlowEntry.deleteMany({ where: { organizationId: orgId } }),
-      prisma.cashFlowAlert.deleteMany({ where: { organizationId: orgId } }),
-      prisma.costComponent.deleteMany({ where: { organizationId: orgId } }),
-      prisma.productLine.deleteMany({ where: { organizationId: orgId } }),
-      prisma.budgetDepartment.deleteMany({ where: { organizationId: orgId } }),
-      prisma.budgetCostType.deleteMany({ where: { organizationId: orgId } }),
-      prisma.savedBudgetReport.deleteMany({ where: { organizationId: orgId } }),
-      prisma.budgetChangeLog.deleteMany({ where: { organizationId: orgId } }),
-    ])
-
-    return NextResponse.json({ success: true, deletedPlans: allPlans.length, deletedAll: true })
+    return NextResponse.json({ success: true, deletedPlans: result.count, deletedAll: true })
   }
 
   // DELETE single plan
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
+  const result = await prisma.budgetPlan.updateMany({
+    where: { id: planId, organizationId: orgId, deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy: userId },
   })
-  if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
-
-  await prisma.$transaction([
-    prisma.budgetForecastEntry.deleteMany({ where: { planId } }),
-    prisma.rollingForecastMonth.deleteMany({ where: { planId } }),
-    prisma.budgetActual.deleteMany({ where: { planId } }),
-    prisma.budgetLine.deleteMany({ where: { planId } }),
-    prisma.salesBudgetLine.deleteMany({ where: { planId } }),
-    prisma.cOGSBudgetLine.deleteMany({ where: { planId } }),
-    prisma.balanceSheetLine.deleteMany({ where: { planId } }),
-    prisma.budgetAssumption.deleteMany({ where: { planId } }),
-    prisma.budgetApprovalComment.deleteMany({ where: { planId } }),
-    prisma.savedBudgetReport.deleteMany({ where: { planId } }),
-    prisma.budgetChangeLog.deleteMany({ where: { planId } }),
-    prisma.budgetPlan.delete({ where: { id: planId } }),
-  ])
-
-  // If deleteAll — also clean org-level imported data
-  if (deleteAll) {
-    await prisma.$transaction([
-      prisma.chartOfAccount.deleteMany({ where: { organizationId: orgId } }),
-      prisma.salesForecast.deleteMany({ where: { organizationId: orgId } }),
-      prisma.expenseForecast.deleteMany({ where: { organizationId: orgId } }),
-      prisma.cashFlowEntry.deleteMany({ where: { organizationId: orgId } }),
-      prisma.cashFlowAlert.deleteMany({ where: { organizationId: orgId } }),
-      prisma.costComponent.deleteMany({ where: { organizationId: orgId } }),
-      prisma.productLine.deleteMany({ where: { organizationId: orgId } }),
-      prisma.budgetDepartment.deleteMany({ where: { organizationId: orgId } }),
-      prisma.budgetCostType.deleteMany({ where: { organizationId: orgId } }),
-    ])
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Plan not found or already deleted" }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, deletedPlan: plan.name, deletedAll: deleteAll })
+  return NextResponse.json({ success: true, deletedPlan: planId, deletedAll: false })
 }

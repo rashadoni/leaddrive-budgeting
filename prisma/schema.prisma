@@ -337,6 +337,10 @@ model BudgetPlan {
   snapshotData   Json?
   isRolling      Boolean      @default(false)
   rollingMonths  Int          @default(12)
+  // Soft-delete: set to the deletion timestamp when the plan is "deleted".
+  // A background cleanup job physically removes rows older than 30 days.
+  deletedAt      DateTime?
+  deletedBy      String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

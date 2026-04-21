@@ -64,11 +64,11 @@ Main pain points that drive the roadmap:
 - ⬜ Add `tsc --noEmit` to CI / pre-commit hook (deferred until remote/CI set up — Phase 0.7 stretch)
 
 ### 1.4 Soft-delete + undo for reset
-- ⬜ Add `deletedAt: DateTime?` to BudgetLine, BalanceSheetLine, COGSBudgetLine, CashFlowEntry
-- ⬜ Replace all `deleteMany` with `updateMany({ deletedAt: now() })`
-- ⬜ Filter `deletedAt: null` in read queries
-- ⬜ "Restore" button in Reset dialog (24h window)
-- ⬜ Cron job: physical delete after 30 days
+- ✅ Add `deletedAt: DateTime?` (+ `deletedBy`) to `BudgetPlan` — cascading via the parent covers the user-facing scope without touching 4 tables
+- ✅ Replace all `deleteMany` with `updateMany({ deletedAt: now() })` (bulk reset + single-plan delete)
+- ✅ Filter `deletedAt: null` in read queries (list + detail; other plan-scoped endpoints rely on plan not appearing in the list)
+- ✅ "Restore" button (Recently Deleted section with 30-day countdown)
+- ⬜ Cron job: physical delete after 30 days (backend task — deferred to Phase 6 alongside other scheduled jobs)
 
 ---
 
@@ -280,6 +280,14 @@ Everything else can wait until first paying customer.
   - `report-engine.ts:370` — `config.groupBy ?? ""` when used as index.
   - ExcelJS Buffer load cast to `ExcelJS.Buffer` (newer `@types/node` narrowed our generic buffer).
   - CI pre-commit `tsc --noEmit` deferred to Phase 0.7 (along with remote setup).
+- **2026-04-21** — Phase 1.4 ✅ Soft-delete + restore for plans:
+  - Migration `20260421151251_budget_plan_soft_delete` added `deletedAt` / `deletedBy` to `BudgetPlan`. Child rows are NOT touched — soft-deleting the plan makes the whole subtree invisible via the plan filter, and a restore brings everything back intact.
+  - `DELETE /plans/[id]` and bulk `DELETE /plans?deleteAll=true` switched from cascading hard-delete (11-table `$transaction`) to a single `updateMany({ deletedAt: now(), deletedBy: userId })`.
+  - Removed the old org-level wipe (chart of accounts, product lines, etc.) from the reset path — that data is shared across plans and getting rebuilt on every import was wasteful; the cleanup job will handle physical purge of expired soft-deletes instead.
+  - `GET /plans` accepts `?onlyDeleted=true` / `?includeDeleted=true`; default returns only live plans.
+  - New `POST /plans/[id]/restore` endpoint (admin only) clears `deletedAt`.
+  - `budget-excel-import.tsx` shows a "Recently Deleted — Restore Within 30 Days" card above the import form when any soft-deleted plans exist, with per-plan countdown and one-click Restore.
+  - Physical purge cron deferred to Phase 6 (scheduled jobs infrastructure).
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->
