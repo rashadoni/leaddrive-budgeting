@@ -135,6 +135,16 @@ export async function POST(req: NextRequest) {
 
     const year = parseInt(formData.get("year") as string) || 2026
     const results: Record<string, number> = {}
+    // Collect per-row skip/warning information so the UI can surface what was ignored.
+    // Capped to avoid memory blowup on large workbooks with many malformed rows.
+    type ImportIssue = { sheet: string; row?: number; reason: string; rawValue?: string }
+    const issues: ImportIssue[] = []
+    const ISSUE_CAP = 500
+    let issuesTruncated = false
+    const pushIssue = (i: ImportIssue) => {
+      if (issues.length < ISSUE_CAP) issues.push(i)
+      else issuesTruncated = true
+    }
 
     // Wrap all plan-scoped writes in an interactive transaction so a mid-import
     // failure rolls back every row (no half-imported state). maxWait/timeout are
@@ -273,10 +283,15 @@ export async function POST(req: NextRequest) {
           const row = plSheet.getRow(r)
           const code = getCellValue(row.getCell(1))
           const name = getCellValue(row.getCell(2))
-          if (!name || typeof name !== "string" || name.trim() === "") continue
-          if (!code || typeof code !== "string" || !code.match(/^\d{3}/)) continue
+          const nameStr = typeof name === "string" ? name.trim() : ""
+          const codeStr = typeof code === "string" ? code.trim() : ""
+          if (!nameStr) continue // truly empty rows — not a real skip, no need to log
+          if (!codeStr || !codeStr.match(/^\d{3}/)) {
+            pushIssue({ sheet: "P&L", row: r, reason: "Account code missing or malformed", rawValue: `code=${code ?? ""} name=${nameStr}` })
+            continue
+          }
 
-          const lineType = classifyAccount(code.trim())
+          const lineType = classifyAccount(codeStr)
 
           for (let m = 0; m < 12; m++) {
             const val = getNumericValue(row.getCell(4 + m))
@@ -284,14 +299,14 @@ export async function POST(req: NextRequest) {
               budgetLines.push({
                 organizationId: orgId,
                 planId: planRow.id,
-                category: name.trim(),
-                department: code.trim(),
+                category: nameStr,
+                department: codeStr,
                 lineType,
                 plannedAmount: Math.abs(val),
                 forecastAmount: Math.abs(val),
                 isAutoPlanned: false,
                 isAutoActual: false,
-                notes: `Imported from P&L row ${r}, ${MONTHS[m]} (account ${code.trim()})`,
+                notes: `Imported from P&L row ${r}, ${MONTHS[m]} (account ${codeStr})`,
                 sortOrder: r * 100 + m,
               })
             }
@@ -454,8 +469,14 @@ export async function POST(req: NextRequest) {
 
           const nameUpper = name.toUpperCase().trim()
           const nameLower = name.toLowerCase().trim()
-          if (skipPatterns.some(p => nameUpper === p || nameUpper.startsWith(p + " ") || nameUpper.startsWith(p + "L"))) continue
-          if (parentNames.includes(nameLower)) continue
+          if (skipPatterns.some(p => nameUpper === p || nameUpper.startsWith(p + " ") || nameUpper.startsWith(p + "L"))) {
+            pushIssue({ sheet: "BS", row: r, reason: "Section header (summary row, not imported)", rawValue: name })
+            continue
+          }
+          if (parentNames.includes(nameLower)) {
+            pushIssue({ sheet: "BS", row: r, reason: "Parent aggregate row (imported as children)", rawValue: name })
+            continue
+          }
 
           let lineType = "asset"
           if ((nameLower.includes("öhdəlik") || nameLower.includes("kreditor") ||
@@ -786,12 +807,18 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          if (!label || label.length > 200) continue
-          if (value === 0) continue
+          if (!label || label.length > 200) continue // truly empty / junk row — skip silently
+          if (value === 0) {
+            pushIssue({ sheet: aDef.sheet, row: r, reason: "Zero value — assumption row not imported", rawValue: label })
+            continue
+          }
 
           // Skip header-like rows
           const labelLower = label.toLowerCase()
-          if (labelLower.includes("cəmi") || labelLower.includes("total") || labelLower.includes("hesablanmış")) continue
+          if (labelLower.includes("cəmi") || labelLower.includes("total") || labelLower.includes("hesablanmış")) {
+            pushIssue({ sheet: aDef.sheet, row: r, reason: "Summary row (cəmi/total/hesablanmış) — not imported", rawValue: label })
+            continue
+          }
 
           await tx.budgetAssumption.create({
             data: {
@@ -1049,6 +1076,9 @@ export async function POST(req: NextRequest) {
       planName: plan.name,
       results,
       sheetsFound: wb.worksheets.map((ws) => ws.name),
+      issues,
+      issuesTruncated,
+      issueCount: issues.length + (issuesTruncated ? 1 : 0),
     })
   } catch (err: any) {
     console.error("[Import Excel]", err)

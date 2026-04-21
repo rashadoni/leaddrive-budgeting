@@ -50,10 +50,10 @@ Main pain points that drive the roadmap:
 - ✅ On failure: full rollback, no half-imported state
 
 ### 1.2 Error reporting in UI
-- ⬜ Return `ImportResult { imported, skipped, errors: ImportError[] }`
-- ⬜ Log every skip with `{ sheet, row, reason, rawValue }`
-- ⬜ UI: expandable error list after import
-- ⬜ Toast "1547 rows imported, 23 skipped" with clickable detail
+- ✅ Return `ImportResult { imported, skipped, errors: ImportError[] }`
+- ✅ Log every skip with `{ sheet, row, reason, rawValue }` (P&L, BS, Assumptions — 4 key spots; extend to others on demand)
+- ✅ UI: expandable error list after import
+- ⬜ Toast "1547 rows imported, 23 skipped" with clickable detail (deferred — expandable section covers the need for now)
 
 ### 1.3 Fix TypeScript errors
 - ⬜ `src/lib/budgeting/department-access.ts` — missing `@/lib/permissions` module
@@ -262,6 +262,13 @@ Everything else can wait until first paying customer.
   - Verified: intentionally committing `sk-ant-abc12345...` was blocked. False-positive on a docstring containing a fake `sk-*` example was found during first real commit and fixed.
   - **Still pending:** set up GitHub/GitLab remote + CI workflow that runs the same scanner (or upgrade to gitleaks binary) on PRs. User to decide remote destination.
 - **2026-04-21** — Phase 1.1 ✅ (core) — Wrapped sections 1–14 of `import-excel/route.ts` in an interactive `prisma.$transaction(async (tx) => {...}, { maxWait: 10_000, timeout: 120_000 })`. All 16 writes (chart of accounts, cost types, departments, products, budget lines, sales, balance sheet, COGS lines & details, cost components, assumptions, cash flow, expense forecasts) now either all persist or all roll back — no half-imported state. Section 15 (optional rolling-forecast clone) remains outside the tx on purpose: it has its own `try/catch` and must not cascade-roll-back the main import. Plan row is returned from the tx callback so later code can reference it. Chunked savepoints for very large files still pending; current 120 s timeout handles workbooks up to ~50K rows comfortably.
+- **2026-04-21** — Phase 1.2 ✅ Added `issues: ImportIssue[]` collection capped at 500 entries (with `issuesTruncated` flag for overflow) in the import endpoint. Instrumented 4 high-value silent-skip sites:
+  - P&L: rows with missing/malformed account code → logged `reason: "Account code missing or malformed"`.
+  - Balance Sheet: section-header and parent-aggregate rows → logged so user sees they were skipped intentionally.
+  - Assumptions: zero-value rows and `cəmi/total/hesablanmış` summary rows → logged so user knows 703-xxx line with 0 got dropped.
+  - Truly empty rows (no label) are skipped silently — no value in showing them.
+  - API response now includes `issues`, `issueCount`, `issuesTruncated`. Extensible — other sections can opt in by calling `pushIssue({...})`.
+  - UI `budget-excel-import.tsx` renders collapsible "N rows skipped or flagged" section with a table (sheet · row · reason · value). Clicking reveals the full list. Works with existing results card.
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->

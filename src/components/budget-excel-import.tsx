@@ -7,13 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Trash2, RefreshCw } from "lucide-react"
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Trash2, RefreshCw, ChevronDown, ChevronRight, AlertTriangle } from "lucide-react"
+
+interface ImportIssue {
+  sheet: string
+  row?: number
+  reason: string
+  rawValue?: string
+}
 
 interface ImportResult {
   planId: string
   planName: string
   results: Record<string, number>
   sheetsFound: string[]
+  issues?: ImportIssue[]
+  issueCount?: number
+  issuesTruncated?: boolean
 }
 
 const RESULT_LABELS: Record<string, string> = {
@@ -42,6 +52,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
   const [year, setYear] = useState("2026")
   const [result, setResult] = useState<ImportResult | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [issuesOpen, setIssuesOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const headers: Record<string, string> = orgId ? { "x-organization-id": String(orgId) } : {}
@@ -274,6 +285,48 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                 <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>
               ))}
             </div>
+
+            {/* Skipped/warning rows — collapsible */}
+            {result.issues && result.issues.length > 0 && (
+              <div className="pt-3 border-t border-amber-200 dark:border-amber-800">
+                <button
+                  type="button"
+                  onClick={() => setIssuesOpen(v => !v)}
+                  className="w-full flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline"
+                >
+                  {issuesOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span>
+                    {result.issueCount ?? result.issues.length} row{(result.issueCount ?? result.issues.length) === 1 ? "" : "s"} skipped or flagged
+                    {result.issuesTruncated ? ` (showing first ${result.issues.length})` : ""}
+                  </span>
+                </button>
+                {issuesOpen && (
+                  <div className="mt-2 max-h-80 overflow-y-auto rounded border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
+                    <table className="w-full text-[11px]">
+                      <thead className="bg-amber-100/50 dark:bg-amber-900/30 sticky top-0">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-semibold w-16">Sheet</th>
+                          <th className="px-2 py-1 text-left font-semibold w-12">Row</th>
+                          <th className="px-2 py-1 text-left font-semibold">Reason</th>
+                          <th className="px-2 py-1 text-left font-semibold">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.issues.map((iss, i) => (
+                          <tr key={i} className="border-t border-amber-200/50 dark:border-amber-800/50 hover:bg-amber-100/40 dark:hover:bg-amber-900/20">
+                            <td className="px-2 py-1 font-mono text-amber-800 dark:text-amber-300">{iss.sheet}</td>
+                            <td className="px-2 py-1 font-mono text-muted-foreground">{iss.row ?? ""}</td>
+                            <td className="px-2 py-1">{iss.reason}</td>
+                            <td className="px-2 py-1 font-mono text-muted-foreground truncate max-w-xs" title={iss.rawValue}>{iss.rawValue ?? ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
