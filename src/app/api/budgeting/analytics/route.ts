@@ -225,47 +225,78 @@ export async function GET(req: NextRequest) {
   // By category — merge lines, auto-actuals, and manual actuals.
   // Only count leaf lines; parent SAP-code rows like "601-01" duplicate the
   // sum of their children (e.g. "601-01-02") and would inflate byCategory.
-  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null }>()
+  // Key INCLUDES SAP accountCode because several codes in the AAC chart share
+  // the same human-readable category name (e.g. "Sair xərclər" appears under
+  // 711-09-99, 721-09-99 and 731-01-99). Merging them by name misclassifies
+  // OpEx vs below-EBITDA by thousands of manat.
+  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null; displayCategory: string }>()
 
   for (const l of lines) {
     if (!isLeaf(l)) continue
-    const key = `${l.category}||${l.lineType}`
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: null }
+    const code = (l as any).account?.code ?? l.department ?? null
+    const key = `${code ?? l.category}||${l.lineType}`
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category }
     existing.planned += getEffectivePlanned(l)
     existing.forecast += l.forecastAmount ?? getEffectivePlanned(l)
-    // Preserve SAP code so the P&L (Plan) view can split OpEx vs below-EBITDA.
-    if (!existing.accountCode) {
-      existing.accountCode = (l as any).account?.code ?? l.department ?? null
+    categoryMap.set(key, existing)
+  }
+
+  // Actuals are keyed by `${category}||${lineType}` (legacy) while categoryMap
+  // is now keyed by `${code}||${lineType}`. Try the legacy category key for
+  // each map entry when applying actuals so we don't miss them entirely.
+  const categoryToKeysIndex = new Map<string, string[]>()
+  for (const [key, val] of categoryMap) {
+    const legacyKey = `${val.displayCategory}||${val.lineType}`
+    const arr = categoryToKeysIndex.get(legacyKey) ?? []
+    arr.push(key)
+    categoryToKeysIndex.set(legacyKey, arr)
+  }
+
+  // Apply auto-actuals first — spread across matching entries proportionally
+  // to their planned amount. For demo data with zero actuals this is a no-op.
+  for (const [legacyKey, amount] of autoActualByCategory) {
+    const codeKeys = categoryToKeysIndex.get(legacyKey) ?? []
+    const totalPlanned = codeKeys.reduce((s, k) => s + (categoryMap.get(k)?.planned ?? 0), 0)
+    if (totalPlanned > 0) {
+      for (const k of codeKeys) {
+        const entry = categoryMap.get(k)!
+        const share = entry.planned / totalPlanned
+        entry.actual += amount * share
+      }
+    } else if (codeKeys.length > 0) {
+      // Fallback: put all of it on the first matching entry
+      categoryMap.get(codeKeys[0])!.actual += amount
     }
-    categoryMap.set(key, existing)
   }
 
-  // Apply auto-actuals first
-  for (const [key, amount] of autoActualByCategory) {
-    const lineType = key.split("||")[1] ?? "expense"
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType, accountCode: null as string | null }
-    existing.actual += amount
-    categoryMap.set(key, existing)
-  }
-
-  // Apply manual actuals for lines without auto-actual
+  // Apply manual actuals for lines without auto-actual (same strategy)
   for (const a of manualActuals) {
-    const key = `${a.category}||${a.lineType}`
-    // Skip if auto-actual already covers this category
-    if (autoActualByCategory.has(key)) continue
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: a.lineType, accountCode: null as string | null }
-    existing.actual += a.actualAmount
-    categoryMap.set(key, existing)
+    const legacyKey = `${a.category}||${a.lineType}`
+    if (autoActualByCategory.has(legacyKey)) continue
+    const codeKeys = categoryToKeysIndex.get(legacyKey) ?? []
+    const totalPlanned = codeKeys.reduce((s, k) => s + (categoryMap.get(k)?.planned ?? 0), 0)
+    if (totalPlanned > 0) {
+      for (const k of codeKeys) {
+        const entry = categoryMap.get(k)!
+        const share = entry.planned / totalPlanned
+        entry.actual += a.actualAmount * share
+      }
+    } else if (codeKeys.length > 0) {
+      categoryMap.get(codeKeys[0])!.actual += a.actualAmount
+    }
   }
 
   const byCategory = Array.from(categoryMap.entries()).map(([key, val]) => {
-    const [category, lineType] = key.split("||")
+    const [, lineType] = key.split("||")
     const variance = lineType === "revenue"
       ? val.actual - val.planned
       : val.planned - val.actual
     const variancePct = val.planned > 0 ? (variance / val.planned) * 100 : 0
-    const parentCategory = parentLookup.get(key) ?? null
-    return { category, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode }
+    // parentLookup is keyed by the legacy "category||lineType" — rebuild the
+    // legacy key from our display name so existing children/parent wiring holds.
+    const legacyKey = `${val.displayCategory}||${val.lineType}`
+    const parentCategory = parentLookup.get(legacyKey) ?? null
+    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode }
   })
 
   // By department — track expense and revenue separately for correct variance
