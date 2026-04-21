@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
     prisma.budgetLine.findMany({
       where: { planId, organizationId: orgId },
-      include: { costType: true, budgetDept: true },
+      // account is added in Phase 2.1 — prefer it for display/grouping when set
+      include: { costType: true, budgetDept: true, account: { select: { code: true, name: true } } },
     }),
     prisma.budgetActual.findMany({ where: { planId, organizationId: orgId } }),
     prisma.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
@@ -246,6 +247,8 @@ export async function GET(req: NextRequest) {
   const looksLikeSapCode = (s: string) => /^\d{3}(-\d+)*$/.test(s)
 
   const resolveDept = (l: any): string => {
+    // Prefer canonical account name when FK is populated (Phase 2.1).
+    if (l.account?.name) return l.account.name
     const d = l.department || ""
     if (d && !looksLikeSapCode(d)) return d
     return l.category || "General"

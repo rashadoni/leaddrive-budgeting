@@ -33,6 +33,9 @@ export async function GET(req: NextRequest) {
   const [budgetLines, salesLines, cogsLines] = await Promise.all([
     prisma.budgetLine.findMany({
       where: { organizationId: orgId, planId },
+      // Include the FK'd account so reads prefer canonical code/name from
+      // the Chart of Accounts over the denormalised category/department strings
+      include: { account: { select: { code: true, name: true, accountType: true } } },
     }),
     prisma.salesBudgetLine.findMany({
       where: { organizationId: orgId, planId, year },
@@ -58,20 +61,33 @@ export async function GET(req: NextRequest) {
 
   type BL = (typeof budgetLines)[number]
   budgetLines.forEach((bl: BL) => {
-    // After import refactor: category=name, department=code
-    // Fallback to old order (category=code, department=name) for legacy rows
-    const maybeCode = bl.department || ""
-    const maybeName = bl.category || ""
-    const looksLikeCode = (s: string) => /^\d{3}/.test(s)
-    const code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
-    const name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
+    // Preferred path: the FK to Chart of Accounts is set, so use canonical
+    // code + name from there. Everything else is fallback for legacy rows
+    // imported before Phase 2.1.
+    let code: string
+    let name: string
+    if (bl.account) {
+      code = bl.account.code
+      name = bl.account.name
+    } else {
+      // Legacy rows: after the Phase 0 import refactor we flipped the fields,
+      // so category holds the name and department holds the code — but earlier
+      // rows may still be the other way around. Detect by shape.
+      const maybeCode = bl.department || ""
+      const maybeName = bl.category || ""
+      const looksLikeCode = (s: string) => /^\d{3}/.test(s)
+      code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
+      name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
+    }
     const mapKey = `${code}::${name}` // unique key per code+name
 
     if (!accountMap.has(mapKey)) {
-      let accountType = "expense"
-      if (code.startsWith("601") || code.startsWith("611")) accountType = "revenue"
-      else if (code.startsWith("602") || code.startsWith("603")) accountType = "revenue"
-      else if (code.startsWith("701")) accountType = "cogs"
+      let accountType = bl.account?.accountType ?? "expense"
+      if (!bl.account) {
+        if (code.startsWith("601") || code.startsWith("611")) accountType = "revenue"
+        else if (code.startsWith("602") || code.startsWith("603")) accountType = "revenue"
+        else if (code.startsWith("701")) accountType = "cogs"
+      }
 
       accountMap.set(mapKey, {
         code,

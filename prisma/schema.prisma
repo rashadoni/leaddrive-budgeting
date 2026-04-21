@@ -209,12 +209,15 @@ model CashFlowEntry {
   isProjected    Boolean      @default(true)
   activityType   String       @default("operating")
   category       String?
+  accountId      String?
+  account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   counterpartyId String?
   plannedAmount  Float?
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, year, month])
   @@index([organizationId, activityType])
+  @@index([accountId])
   @@map("cash_flow_entries")
 }
 
@@ -382,6 +385,12 @@ model BudgetLine {
   costType       BudgetCostType?     @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
   departmentId   String?
   budgetDept     BudgetDepartment?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  // Optional FK to the Chart of Accounts entry. Phase 2.1 adds this alongside
+  // the legacy `category`/`department` strings so new imports can join against
+  // ChartOfAccount; existing rows keep working via the string fallback until
+  // the backfill script runs.
+  accountId      String?
+  account        ChartOfAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
   vatIncluded    Boolean             @default(false)
   vatRate        Float?
   amountExVat    Float?
@@ -399,6 +408,7 @@ model BudgetLine {
   @@index([parentId])
   @@index([costTypeId])
   @@index([departmentId])
+  @@index([accountId])
   @@map("budget_lines")
 }
 
@@ -597,6 +607,14 @@ model ChartOfAccount {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  // Reverse relations — lets callers include { account: { ... } } on any
+  // plan-scoped fact table so display name/parentCode/accountType stay in sync
+  // with the Chart of Accounts instead of being duplicated as strings.
+  budgetLines       BudgetLine[]
+  cogsBudgetLines   COGSBudgetLine[]
+  balanceSheetLines BalanceSheetLine[]
+  cashFlowEntries   CashFlowEntry[]
+
   @@unique([organizationId, code])
   @@index([organizationId])
   @@map("chart_of_accounts")
@@ -690,6 +708,8 @@ model COGSBudgetLine {
   productLineId  String
   productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
   accountCode    String?      // "701-01-02"
+  accountId      String?
+  account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   year           Int
   month          Int
   productionQty  Float        @default(0)
@@ -701,6 +721,7 @@ model COGSBudgetLine {
   @@unique([planId, productLineId, year, month])
   @@index([organizationId])
   @@index([planId])
+  @@index([accountId])
   @@map("cogs_budget_lines")
 }
 
@@ -743,6 +764,8 @@ model BalanceSheetLine {
   plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
   accountCode    String
   accountName    String
+  accountId      String?
+  account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   lineType       String       // asset | liability | equity
   subType        String?      // current_asset | fixed_asset | current_liability | long_term
   year           Int
@@ -755,6 +778,7 @@ model BalanceSheetLine {
   @@index([organizationId])
   @@index([planId])
   @@index([planId, year, month])
+  @@index([accountId])
   @@map("balance_sheet_lines")
 }
 

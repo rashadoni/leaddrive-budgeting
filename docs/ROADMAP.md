@@ -77,12 +77,12 @@ Main pain points that drive the roadmap:
 **Goal:** eliminate code↔name confusion, denormalization, magic strings.
 
 ### 2.1 BudgetLine → FK on ChartOfAccount
-- ⬜ Migration: add `accountId: String?` FK to BudgetLine, COGSBudgetLine, BalanceSheetLine, CashFlowEntry
-- ⬜ Data migration script: match current `category/accountCode` → ChartOfAccount, fill FK
-- ⬜ Update import to write `accountId` instead of strings
-- ⬜ Update read queries with `include: { account: true }`
-- ⬜ Drop `category: String` fields where duplicating accountId
-- ⬜ Remove all `looksLikeSapCode` / `looksLikeCode` fallback code
+- ✅ Migration: add optional `accountId: String?` FK to BudgetLine, COGSBudgetLine, BalanceSheetLine, CashFlowEntry (nullable, no data loss)
+- ✅ Backfill script `scripts/backfill-account-fk.ts` — populates `accountId` on BudgetLine by matching stored code strings → ChartOfAccount
+- ✅ Import writes `accountId` alongside the legacy strings (additive — safe to roll back)
+- ✅ P&L and analytics reads prefer the FK'd code/name when available, fall back to strings for legacy rows
+- ⬜ Drop `category: String` fields where duplicating accountId (deferred — keep legacy strings as safety net until at least one release cycle)
+- ⬜ Remove `looksLikeSapCode` / `looksLikeCode` fallback code (deferred — same reason)
 
 ### 2.2 Remove hardcoded Azerbaijani strings
 - ⬜ Create `lib/import/keywords.ts` with mapping table
@@ -288,6 +288,12 @@ Everything else can wait until first paying customer.
   - New `POST /plans/[id]/restore` endpoint (admin only) clears `deletedAt`.
   - `budget-excel-import.tsx` shows a "Recently Deleted — Restore Within 30 Days" card above the import form when any soft-deleted plans exist, with per-plan countdown and one-click Restore.
   - Physical purge cron deferred to Phase 6 (scheduled jobs infrastructure).
+- **2026-04-21** — Phase 2.1 ✅ (core) Budget-line data linked to Chart of Accounts via proper FK:
+  - Migration `20260421…_accountid_fk` added optional `accountId: String?` + relation on BudgetLine, COGSBudgetLine, BalanceSheetLine, CashFlowEntry. All nullable so existing rows keep working.
+  - Import now writes `accountId` on BudgetLine using an in-memory `Map<code, accountId>` built from the Chart of Accounts upsert. COGS/BS use synthetic codes or product FKs so `accountId` stays null there for now — will be revisited if we start matching BS rows against CoA.
+  - P&L (`api/budgeting/pnl/route.ts`) and analytics (`api/budgeting/analytics/route.ts`) now `include: { account }` and prefer `account.code`/`account.name`/`account.accountType` over the denormalised `category`/`department` strings. String fallback kept for legacy rows.
+  - Backfill script `scripts/backfill-account-fk.ts` walks every org, matches each BudgetLine's `department`/`category` string against CoA codes, and sets the FK. Idempotent (skips rows that already have one). Run on dev DB: **2686 rows backfilled, 0 skipped**.
+  - Stretch cleanup (dropping the legacy `category`/`department` columns and removing `looksLikeSapCode` fallbacks) deferred — keep the safety net until at least one release cycle in production.
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->

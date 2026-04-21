@@ -220,6 +220,17 @@ export async function POST(req: NextRequest) {
         results.chartOfAccounts = chartOfAccounts.length
       }
 
+      // Load accountId lookup so downstream sections can set the FK on every
+      // plan-scoped row. Any code that isn't in the Chart of Accounts just
+      // leaves accountId null — legacy string fallback still works.
+      const allAccounts = await tx.chartOfAccount.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, code: true },
+      })
+      const accountIdByCode = new Map<string, string>(
+        allAccounts.map((a: { id: string; code: string }) => [a.code, a.id]),
+      )
+
       // ═══════════════════════════════════════════════════════
       // 3. BUDGET COST TYPES
       // ═══════════════════════════════════════════════════════
@@ -300,6 +311,7 @@ export async function POST(req: NextRequest) {
               budgetLines.push({
                 organizationId: orgId,
                 planId: planRow.id,
+                accountId: accountIdByCode.get(codeStr) ?? null,
                 category: nameStr,
                 department: codeStr,
                 lineType,
