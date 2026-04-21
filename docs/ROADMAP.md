@@ -204,18 +204,35 @@ to skip the full Phase 2 / 3 / 4 refactors and pull the highest-leverage items
 from 5 forward. Everything else stays on the roadmap for after the first
 paying client signs.
 
-MVP scope (in order):
+### Product constraints locked in
+
+- **English-only.** No multi-locale. Delete next-intl plumbing and hardcode
+  English strings — removes a whole category of bugs and saves onboarding time.
+- **Enterprise B2B, no self-serve billing.** Contracts are signed offline; we
+  don't need Stripe, pricing pages, paywalls, plan gating UI, or feature flags
+  driven by subscription tier. Org access is toggled manually by an admin.
+
+### MVP scope (in order)
+
 1. **Phase 2.3** — Remove AAC product hardcode; client maps sheets→products in UI
 2. **Phase 5.1** — Configurable Chart of Accounts via `role` field (so analytics
    stops grepping SAP code prefixes like 711/721/731 and works for ANY numbering)
 3. **Phase 5.3** — Onboarding wizard (Org details → CoA upload → column mapping
    → first import → done)
+4. **i18n cleanup** — Rip out next-intl, inline all strings as English literals
 
-Skipped for MVP (revisit after first paying client):
-- Phase 2.2 (i18n keywords), 2.4 (staging import), 3 (UI refactor), 4 (audit
-  log), 5.2 (RLS), 5.4 (billing), 6 (scale)
+### Skipped for MVP (revisit after first paying client)
 
-Estimated: **~8 weeks of focused work** to MVP.
+- Phase 2.2 (non-English keyword mapping) — English-only locks this out entirely
+- Phase 2.4 (staging import) — direct import works well enough
+- Phase 3 (UI refactor) — 5k-line page.tsx is ugly but not blocking sales
+- Phase 4 (audit log) — needed for regulated enterprise, not for MVP
+- Phase 5.2 (RLS) — app-level isolation is audited in Phase 0.2
+- Phase 5.4 (billing) — **permanently** skipped; B2B contracts, not SaaS self-serve
+- Phase 6 (scale) — 50+ clients is a future problem
+
+Estimated: **~6-8 weeks of focused work** to MVP (slightly less now that
+billing and i18n plumbing are out of scope).
 
 ---
 
