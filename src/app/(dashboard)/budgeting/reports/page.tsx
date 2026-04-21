@@ -148,6 +148,13 @@ export default function ReportBuilderPage() {
 
   const preview = useBudgetReportPreview(previewConfig)
 
+  // Narrowing helpers — declared here so every useMemo below can read them
+  // without triggering a TDZ error. `preview.data` is optionally chained in
+  // case the hook hasn't resolved yet.
+  const previewRows = preview.data?.data as any[] | undefined
+  const previewTotal = preview.data?.total as number | undefined
+  const hasRows = Boolean(previewRows && previewRows.length > 0)
+
   // Handlers
   const handleEntityChange = useCallback((val: string) => {
     setEntityType(val)
@@ -281,12 +288,6 @@ export default function ReportBuilderPage() {
       .filter(f => f.type === "string" && selectedColumns.includes(f.name))
     return strCols[0]?.name ?? "id"
   }, [currentEntity, selectedColumns, periodGroupBy, groupBy, preview.data])
-
-  // Narrowing helpers — extracted so TypeScript can track that the rows array
-  // is present inside the JSX branches below.
-  const previewRows = preview.data?.data as any[] | undefined
-  const previewTotal = preview.data?.total as number | undefined
-  const hasRows = Boolean(previewRows && previewRows.length > 0)
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
