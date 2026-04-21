@@ -1,0 +1,282 @@
+"use client"
+
+import { useState, useRef } from "react"
+import { useSession } from "next-auth/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2, Trash2, RefreshCw } from "lucide-react"
+
+interface ImportResult {
+  planId: string
+  planName: string
+  results: Record<string, number>
+  sheetsFound: string[]
+}
+
+const RESULT_LABELS: Record<string, string> = {
+  planCreated: "Plan",
+  chartOfAccounts: "Chart of Accounts",
+  costTypes: "Cost Types",
+  departments: "Departments",
+  productLines: "Product Lines",
+  budgetLines: "P&L Budget Lines",
+  salesBudgetLines: "Sales Budget",
+  salesForecasts: "Sales Forecast",
+  balanceSheetLines: "Balance Sheet",
+  cogsLines: "COGS Lines",
+  costComponents: "Cost Components",
+  assumptions: "Assumptions",
+  cashFlowEntries: "Cash Flow",
+  expenseForecasts: "Expense Forecast",
+}
+
+export function BudgetExcelImport({ onImported }: { onImported?: (planId: string) => void }) {
+  const { data: session } = useSession()
+  const orgId = (session?.user as any)?.organizationId
+  const queryClient = useQueryClient()
+
+  const [file, setFile] = useState<File | null>(null)
+  const [year, setYear] = useState("2026")
+  const [result, setResult] = useState<ImportResult | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const headers: Record<string, string> = orgId ? { "x-organization-id": String(orgId) } : {}
+
+  // Load existing plans to show delete option
+  const { data: plans = [] } = useQuery({
+    queryKey: ["budgeting", "plans", orgId],
+    queryFn: async () => {
+      const res = await fetch("/api/budgeting/plans", { headers: { ...headers, "Content-Type": "application/json" } })
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.data ?? json) as any[]
+    },
+    enabled: !!orgId,
+  })
+
+  const importMutation = useMutation({
+    mutationFn: async () => {
+      if (!file) throw new Error("No file selected")
+
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("year", year)
+
+      const res = await fetch("/api/budgeting/import-excel", {
+        method: "POST",
+        headers: { "x-organization-id": orgId || "" },
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Import failed")
+      }
+
+      return res.json()
+    },
+    onSuccess: (data) => {
+      setResult(data)
+      queryClient.invalidateQueries()
+      if (data.planId && onImported) onImported(data.planId)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (planId: string) => {
+      const res = await fetch(`/api/budgeting/plans?planId=${planId}&deleteAll=true`, {
+        method: "DELETE",
+        headers: { ...headers, "Content-Type": "application/json" },
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Delete failed")
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      setDeleteConfirm(null)
+      setResult(null)
+      queryClient.invalidateQueries()
+    },
+  })
+
+  const importedPlans = plans.filter((p: any) => p.name?.includes("(Imported)"))
+
+  return (
+    <div className="space-y-4">
+      {/* Existing imported plans — delete option */}
+      {importedPlans.length > 0 && (
+        <Card className="border-amber-200 dark:border-amber-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-amber-600" />
+              Existing Imported Plans
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {importedPlans.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between p-2 rounded bg-muted/50">
+                <div>
+                  <span className="text-sm font-medium">{p.name}</span>
+                  <span className="text-xs text-muted-foreground ml-2">{p.year}</span>
+                </div>
+                {deleteConfirm === p.id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-destructive">Delete all data?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-xs"
+                      disabled={deleteMutation.isPending}
+                      onClick={() => deleteMutation.mutate(p.id)}
+                    >
+                      {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes, Delete"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeleteConfirm(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs text-destructive hover:text-destructive"
+                    onClick={() => setDeleteConfirm(p.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    Delete & Re-import
+                  </Button>
+                )}
+              </div>
+            ))}
+            {deleteMutation.isError && (
+              <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 text-destructive text-xs">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {(deleteMutation.error as Error).message}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Upload area */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-primary" />
+            Import Budget from Excel
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Upload your budget Excel file (AAC format). The system will automatically import:
+            P&L, Balance Sheet, Sales, COGS, Cash Flow, Assumptions, Chart of Accounts, Cost Types, Departments, and Forecasts.
+          </p>
+
+          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) { setFile(f); setResult(null) }
+              }}
+            />
+
+            {!file ? (
+              <div className="space-y-3">
+                <Upload className="h-10 w-10 text-muted-foreground mx-auto" />
+                <p className="text-sm text-muted-foreground">
+                  Drag & drop an Excel file, or click to select
+                </p>
+                <Button variant="outline" onClick={() => fileRef.current?.click()}>
+                  Select File
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <FileSpreadsheet className="h-10 w-10 text-emerald-600 mx-auto" />
+                <p className="text-sm font-medium">{file.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {(file.size / 1024 / 1024).toFixed(2)} MB
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => { setFile(null); setResult(null) }}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1" /> Change file
+                </Button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">Budget Year:</label>
+              <Input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="w-24"
+              />
+            </div>
+
+            <Button
+              onClick={() => importMutation.mutate()}
+              disabled={!file || importMutation.isPending}
+              className="ml-auto"
+            >
+              {importMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
+              ) : (
+                <><Upload className="h-4 w-4 mr-2" />Import Budget</>
+              )}
+            </Button>
+          </div>
+
+          {importMutation.isError && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
+              <AlertCircle className="h-4 w-4" />
+              {(importMutation.error as Error).message}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Results */}
+      {result && (
+        <Card className="border-emerald-200 dark:border-emerald-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
+              <CheckCircle className="h-5 w-5" />
+              Import Successful — {result.planName}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+              {Object.entries(result.results)
+                .filter(([, v]) => v > 0)
+                .map(([key, count]) => (
+                  <div key={key} className="p-2 rounded bg-muted text-center">
+                    <div className="text-lg font-bold">{count}</div>
+                    <div className="text-[10px] text-muted-foreground">{RESULT_LABELS[key] || key}</div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="flex flex-wrap gap-1 pt-2">
+              <span className="text-[10px] text-muted-foreground mr-1">Sheets parsed:</span>
+              {result.sheetsFound?.map((s: string) => (
+                <Badge key={s} variant="outline" className="text-[10px]">{s}</Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

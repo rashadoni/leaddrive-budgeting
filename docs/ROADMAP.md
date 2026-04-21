@@ -1,0 +1,260 @@
+# BudgetPro Roadmap
+
+> **Auto-loaded by Claude at start of session** — read this before starting any refactoring work.
+> Update **Status** column (`⬜ Todo` → `🟡 In progress` → `✅ Done`) after completing a task.
+> Append a note to the **Changelog** section at the bottom when a phase/task is completed.
+
+**Last updated:** 2026-04-21
+**Owner:** Rashad Rahimov
+**Context:** Multi-phase refactoring of BudgetPro (leaddrive-budgeting) from AAC-specific prototype → multi-tenant SaaS.
+
+---
+
+## Summary of current issues (audit conducted 2026-04-21)
+
+Main pain points that drive the roadmap:
+- `BudgetLine.category` / `department` fields have fuzzy semantics — imports put code in one, name in the other, with no contract. Led to `looksLikeSapCode` regex fallbacks in analytics/pnl.
+- `ChartOfAccount` exists but BudgetLine/COGSBudgetLine/BalanceSheetLine hold `accountCode: String` — no FK, data is denormalized.
+- `import-excel/route.ts` is a 900+ line procedural monolith with no transaction, no partial re-import, no user-facing error reporting.
+- `budgeting/page.tsx` is a 5000+ line god-component mixing all tabs.
+- AAC-specific hardcoded product codes (`PRODUCT_CODES = ["MHB", "LIME_BURNT", ...]`) and Azerbaijani strings (`"Vahid maya dəyəri"`, `"Xammal xərcləri"`) scattered throughout.
+- Pre-existing TypeScript errors ignored (`department-access.ts` missing module, `cost-model-map.ts` unknown type).
+- No audit log, no soft-delete, no period locking — not compliance-ready.
+- Security: weak dev admin password, org isolation done manually per endpoint (no RLS), no rate limits on import.
+
+---
+
+## Phase 0: Critical security fixes (1 week, ~17h)
+
+**Goal:** close holes that could leak data or cause financial loss.
+
+| # | Task | Est. | Status |
+|---|------|------|--------|
+| 0.1 | Rotate `admin@budgetpro.com` password, remove from CLAUDE.md | 30m | 🟡 |
+| 0.2 | Audit all API endpoints for `getOrgId(req)` + `where: { organizationId }` | 4h | ✅ |
+| 0.3 | Rate limit `/api/budgeting/import-excel` (2 req/min/org) + 20MB cap | 2h | ✅ |
+| 0.4 | Rate limit all POST/PUT/DELETE budget endpoints via middleware | 3h | ✅ |
+| 0.5 | Role-based access on plan mutation endpoints | 2h | ✅ |
+| 0.6 | Check git history for leaked secrets, purge if found | 1h | ✅ |
+| 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | ⬜ |
+
+---
+
+## Phase 1: Stabilization (2 weeks, ~50h)
+
+**Goal:** make current imports reliable, errors visible to users, clean TypeScript.
+
+### 1.1 Transaction-wrapped import
+- ⬜ Wrap `import-excel/route.ts` in `prisma.$transaction([...])`
+- ⬜ Split into chunks with savepoints every 5000 rows
+- ⬜ On failure: full rollback, no half-imported state
+
+### 1.2 Error reporting in UI
+- ⬜ Return `ImportResult { imported, skipped, errors: ImportError[] }`
+- ⬜ Log every skip with `{ sheet, row, reason, rawValue }`
+- ⬜ UI: expandable error list after import
+- ⬜ Toast "1547 rows imported, 23 skipped" with clickable detail
+
+### 1.3 Fix TypeScript errors
+- ⬜ `src/lib/budgeting/department-access.ts` — missing `@/lib/permissions` module
+- ⬜ `src/lib/budgeting/cost-model-map.ts:61` — unknown/number type
+- ⬜ `src/lib/budgeting/report-engine.ts:370` — undefined indexing
+- ⬜ `src/app/api/budgeting/import-excel/route.ts:116` — Buffer type
+- ⬜ Set `typescript.ignoreBuildErrors: false` in `next.config.ts`
+- ⬜ Add `tsc --noEmit` to CI / pre-commit hook
+
+### 1.4 Soft-delete + undo for reset
+- ⬜ Add `deletedAt: DateTime?` to BudgetLine, BalanceSheetLine, COGSBudgetLine, CashFlowEntry
+- ⬜ Replace all `deleteMany` with `updateMany({ deletedAt: now() })`
+- ⬜ Filter `deletedAt: null` in read queries
+- ⬜ "Restore" button in Reset dialog (24h window)
+- ⬜ Cron job: physical delete after 30 days
+
+---
+
+## Phase 2: Data model refactor (3-4 weeks, ~100h)
+
+**Goal:** eliminate code↔name confusion, denormalization, magic strings.
+
+### 2.1 BudgetLine → FK on ChartOfAccount
+- ⬜ Migration: add `accountId: String?` FK to BudgetLine, COGSBudgetLine, BalanceSheetLine, CashFlowEntry
+- ⬜ Data migration script: match current `category/accountCode` → ChartOfAccount, fill FK
+- ⬜ Update import to write `accountId` instead of strings
+- ⬜ Update read queries with `include: { account: true }`
+- ⬜ Drop `category: String` fields where duplicating accountId
+- ⬜ Remove all `looksLikeSapCode` / `looksLikeCode` fallback code
+
+### 2.2 Remove hardcoded Azerbaijani strings
+- ⬜ Create `lib/import/keywords.ts` with mapping table
+- ⬜ Move org-specific mappings to `Organization.importConfig` JSON
+- ⬜ Remove inline regex `/^7\d{2}-/` from business logic
+
+### 2.3 Remove AAC product hardcode
+- ⬜ Delete `PRODUCT_CODES = ["MHB", "LIME_BURNT", ...]` from code
+- ⬜ User maps sheets → products in UI during import
+- ⬜ Persist mapping in `Organization.importConfig.products[]`
+
+### 2.4 Import = staging + validation + apply
+- ⬜ New `import_staging` table — raw parsed data
+- ⬜ `/api/import/parse` endpoint → stages data
+- ⬜ UI preview + validation warnings before commit
+- ⬜ User confirms → `/api/import/apply` → copy to production tables
+- ⬜ Persist `ImportRun` history
+
+---
+
+## Phase 3: UI refactor (2 weeks, ~80h)
+
+**Goal:** break god-component, better feedback, fill UX gaps.
+
+### 3.1 Split `budgeting/page.tsx`
+- ⬜ Each tab → separate file in `components/budget-tabs/`:
+  - `PlansTab.tsx`, `PLTab.tsx`, `ForecastTab.tsx`, `BalanceSheetTab.tsx`, `CashFlowTab.tsx`, `CompareTab.tsx`, `MatrixTab.tsx`, `ReportsTab.tsx`
+- ⬜ Shared state → zustand store (`stores/budgetStore.ts`)
+- ⬜ `page.tsx` routes + tab switcher only (<500 lines)
+
+### 3.2 Consistent loading/error states
+- ⬜ Unified `<DataBoundary>` component (skeleton + error fallback + retry)
+- ⬜ Replace all `isLoading ? <Loader/> : ...` occurrences
+- ⬜ Sentry / LogRocket integration for frontend errors
+
+### 3.3 Drill-down everywhere code+name appears
+- ⬜ Click P&L row → side panel with plan vs actual by month
+- ⬜ Click chart category → open line list
+- ⬜ Hover tooltips with account code on all names
+
+---
+
+## Phase 4: Audit log & compliance (2 weeks, ~80h)
+
+**Goal:** financial audit readiness (SOX / GAAP).
+
+### 4.1 Immutable change history
+- ⬜ Table `audit_log`: `id, orgId, userId, entityType, entityId, action, beforeJson, afterJson, at`
+- ⬜ Prisma middleware auto-writes on all mutations
+- ⬜ Never delete audit_log rows
+
+### 4.2 Period locking
+- ⬜ Add `Organization.lockedPeriods: Month[]`
+- ⬜ API rejects writes to locked periods
+- ⬜ UI shows lock icon + reason
+
+### 4.3 Approval workflow
+- ⬜ Table `approval_request` for changes > X ₼ or after period close
+- ⬜ Route to manager / CFO
+- ⬜ Email + UI notifications
+
+---
+
+## Phase 5: Multi-tenancy / SaaS-ready (4-6 weeks, ~160h)
+
+**Goal:** sell to second client without rewriting code.
+
+### 5.1 Configurable Chart of Accounts
+- ⬜ Remove hardcoded SAP-code prefixes from analytics (`startsWith("601")`)
+- ⬜ `ChartOfAccount.role: "revenue" | "cogs" | "opex" | "depreciation" | "finance" | "tax"`
+- ⬜ Analytics computes EBITDA/Gross Profit via role field, not prefix matching
+
+### 5.2 Row-level security
+- ⬜ Postgres RLS policies on all tables with orgId
+- ⬜ `SET app.organization_id = ...` in Prisma client before queries
+- ⬜ DB blocks cross-tenant access, not app code
+
+### 5.3 Onboarding wizard for new clients
+- ⬜ Step 1: Organization details (name, currency, locale)
+- ⬜ Step 2: Upload Chart of Accounts (Excel)
+- ⬜ Step 3: Column mapping UI
+- ⬜ Step 4: First budget import
+- ⬜ Step 5: Ready
+
+### 5.4 Billing/subscription
+- ⬜ Stripe integration (referenced in leaddrive-v2 memory `project_subscription_billing_flow.md`)
+- ⬜ Plan gating: Free / Pro / Enterprise
+- ⬜ Feature flags via `Organization.features`
+
+---
+
+## Phase 6: Scale & performance (2-3 weeks, ~80h)
+
+**Goal:** support 50+ clients × 100K+ rows.
+
+### 6.1 Background jobs
+- ⬜ BullMQ + Redis for imports (currently sync in request)
+- ⬜ WebSocket/SSE for import progress in UI
+- ⬜ Retry policy
+
+### 6.2 Analytics caching
+- ⬜ Materialized views or Redis cache for byCategory / byDepartment
+- ⬜ Invalidate on write
+
+### 6.3 Partitioning
+- ⬜ Partition `budget_lines`, `journal_entries` by orgId or year
+- ⬜ Review slow queries, add/tune indexes
+
+### 6.4 CDN + static
+- ⬜ Next.js Image optimization
+- ⬜ Static assets → Cloudflare R2 / S3
+
+---
+
+## Minimal MVP path (if under sales pressure)
+
+If rushed, skip to these tasks for a sellable second-client:
+- ✅ Phase 0 (security) — mandatory
+- ✅ Phase 1.2 (error reporting)
+- ✅ Phase 2.3 (remove AAC hardcode)
+- ✅ Phase 5.1 (configurable CoA via role)
+- ✅ Phase 5.3 (onboarding wizard)
+
+Everything else can wait until first paying customer.
+
+---
+
+## Totals
+
+| Phase | Duration | Hours |
+|-------|----------|-------|
+| 0. Security | 1 week | 15 |
+| 1. Stabilization | 2 weeks | 50 |
+| 2. Data model | 3-4 weeks | 100 |
+| 3. UI refactor | 2 weeks | 80 |
+| 4. Audit log | 2 weeks | 80 |
+| 5. SaaS-ready | 4-6 weeks | 160 |
+| 6. Scale | 2-3 weeks | 80 |
+| **TOTAL** | **~4 months** | **~565h** |
+
+---
+
+## Changelog
+
+- **2026-04-21** — Initial roadmap created after full codebase audit during session where EBITDA, COGS detail drill-down, and Assumption Details refactors were implemented.
+- **2026-04-21** — Phase 0.1 🟡 `scripts/create-admin.ts` refactored (no more hardcoded `admin123!`, requires env vars, generates random). Live password temporarily reverted to `Admin123!` at user request — proper rotation to a strong password still pending before production launch.
+- **2026-04-21** — Phase 0.2 ✅ Audited 58 API endpoints. Found & fixed 4 real IDOR-class issues:
+  - `changelog/route.ts` — `budgetLine.update({ where: { id } })` lacked org filter → switched to `updateMany({ where: { id, organizationId } })`.
+  - `import-csv/route.ts` — `planId` from body not validated against org (cross-tenant actual attribution); `integrationId` update lacked org filter. Added explicit `budgetPlan.findFirst({ id, orgId })` + `integrationId` ownership check; converted updates to `updateMany` with org filter.
+  - `forecast/route.ts` — only first entry's `planId` validated; each entry could target any org's plan. Now validates ALL unique `planId`s up front via `findMany({ id: { in }, orgId })`.
+  - `expense-forecast/route.ts` — `costTypeId`/`departmentId` from body not validated; could create rows with FKs to other orgs. Now verifies all referenced IDs belong to org before upserting.
+  - Other flagged files (`plans/route.ts`, `rolling/route.ts`, `[id]/route.ts` family) use safe "check-then-act with server-derived IDs" pattern. Not critical; defense-in-depth hardening (explicit `orgId` on every `update`/`delete`) deferred to later phase.
+- **2026-04-21** — Phase 0.3 ✅ Added in-memory sliding-window rate limiter at `src/lib/rate-limit.ts` (per-process, to be swapped for Redis in Phase 6). Applied to `/api/budgeting/import-excel`: 2 requests/min per org, 20 MB file-size cap to prevent memory DoS. Returns 429 with `Retry-After` header when exceeded. Verified: direct unit test shows 3rd request in window blocked with 60s wait; different orgs keep independent buckets.
+- **2026-04-21** — Phase 0.4 ✅ Added centralised per-org rate limiting in `src/middleware.ts` with tiered config — one change covers all 46 mutation endpoints:
+  - **Heavy ops** (cash-flow/generate, rolling/auto-forecast, matrix-seed, templates/seed, snapshot-actuals, sync-actuals, resolve-costs, ai-narrative, reports/export, create-version, apply-templates) → 5/min per org.
+  - **Destructive plan ops** (DELETE `/plans/*`) → 5/min per org.
+  - **Normal CRUD** (all other POST/PUT/PATCH/DELETE under `/api/budgeting/*`) → 120/min per org — generous enough for bulk UI edits.
+  - Returns 429 with `Retry-After` / `X-RateLimit-*` headers. Import-excel keeps its own stricter in-handler limit (2/min).
+  - Known limitation: in-memory state per Node instance; multi-pod prod setup will have `max × N` effective quota. Redis migration scheduled in Phase 6.
+- **2026-04-21** — Phase 0.5 ✅ Added role-based access helper `hasRole()` / `requireRole()` in `src/lib/api-auth.ts` with hierarchy admin > manager > editor > viewer. Unknown roles default to deny. Applied to plan mutation endpoints:
+  - `POST /plans` (create plan) — manager+
+  - `DELETE /plans` (bulk destroy / org reset) — **admin only**
+  - `DELETE /plans/[id]` (single plan delete) — **admin only**
+  - `POST /plans/[id]/create-version` — manager+
+  - `POST /plans/[id]/apply-templates` — manager+
+  - Existing `PUT /plans/[id]` approve/reject already checked for admin/manager/canApprove — kept as-is.
+  - Not restricted: `POST /plans/[id]/comments` (editors should comment), `GET /plans/[id]/versions`/`diff` (read-only).
+- **2026-04-21** — Phase 0.6 ✅ Secret audit:
+  - **Project not under git yet** — so no history to purge. Scanned all `.ts/.tsx/.js/.json/.md/.env*` files against 11 secret patterns (OpenAI, Anthropic, AWS, GitHub, Stripe, Slack, JWT, private keys, bcrypt hashes, etc.) — zero findings.
+  - `.env` contains only `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL` — matches `.env.example` shape.
+  - Created `.gitignore` with `.env*.local` / `.env` / `prisma/.env` excluded to prevent future leaks when the project is eventually version-controlled.
+  - **Follow-up created:** Phase 0.7 — actually `git init` this repo, wire up remote, install gitleaks or `detect-secrets` as pre-commit hook.
+
+<!-- Append entries here as tasks complete. Format: -->
+<!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->

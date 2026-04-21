@@ -1,0 +1,808 @@
+// BudgetPro — Standalone Budgeting App
+// Extracted from LeadDrive CRM v2
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════
+// ORGANIZATION & AUTH
+// ═══════════════════════════════════════════════════
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users                  User[]
+  budgetPlans            BudgetPlan[]
+  budgetCostTypes        BudgetCostType[]
+  budgetDepartments      BudgetDepartment[]
+  salesForecasts         SalesForecast[]
+  expenseForecasts       ExpenseForecast[]
+  budgetDeptOwners       BudgetDepartmentOwner[]
+  budgetApprovalComments BudgetApprovalComment[]
+  currencyRateHistory    CurrencyRateHistory[]
+  accountingIntegrations AccountingIntegration[]
+  accountingImports      AccountingImport[]
+  rollingForecastMonths  RollingForecastMonth[]
+  cashFlowEntries        CashFlowEntry[]
+  cashFlowAlerts         CashFlowAlert[]
+  chartOfAccounts        ChartOfAccount[]
+  productLines           ProductLine[]
+  salesBudgetLines       SalesBudgetLine[]
+  costComponents         CostComponent[]
+  cogsBudgetLines        COGSBudgetLine[]
+  cogsCostDetails        COGSCostDetail[]
+  balanceSheetLines      BalanceSheetLine[]
+  budgetAssumptions      BudgetAssumption[]
+}
+
+model User {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  name           String
+  passwordHash   String
+  role           String    @default("viewer")
+  avatar         String?
+  phone          String?
+  department     String?
+  lastLogin      DateTime?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  budgetDeptOwnership BudgetDepartmentOwner[]
+  accounts            Account[]
+
+  @@unique([organizationId, email])
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+// ═══════════════════════════════════════════════════
+// CURRENCY
+// ═══════════════════════════════════════════════════
+
+model Currency {
+  id             String   @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  symbol         String
+  exchangeRate   Float    @default(1.0)
+  isBase         Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, code])
+  @@map("currencies")
+}
+
+model CurrencyRateHistory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  currencyCode   String
+  rate           Float
+  rateDate       DateTime
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, currencyCode, rateDate])
+  @@map("currency_rate_history")
+}
+
+// ═══════════════════════════════════════════════════
+// ACCOUNTING INTEGRATION
+// ═══════════════════════════════════════════════════
+
+model AccountingIntegration {
+  id              String   @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  provider        String
+  name            String
+  config          Json     @default("{}")
+  categoryMapping Json     @default("{}")
+  isActive        Boolean  @default(true)
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?
+  lastSyncError   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  imports         AccountingImport[]
+
+  @@index([organizationId])
+  @@map("accounting_integrations")
+}
+
+model AccountingImport {
+  id              String                 @id @default(cuid())
+  organizationId  String
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrationId   String?
+  integration     AccountingIntegration? @relation(fields: [integrationId], references: [id])
+  planId          String
+  plan            BudgetPlan             @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fileName        String?
+  importType      String
+  status          String   @default("pending")
+  totalRows       Int      @default(0)
+  matchedRows     Int      @default(0)
+  unmatchedRows   Int      @default(0)
+  errors          Json?
+  createdAt       DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([planId])
+  @@map("accounting_imports")
+}
+
+// ═══════════════════════════════════════════════════
+// ROLLING FORECAST
+// ═══════════════════════════════════════════════════
+
+model RollingForecastMonth {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int
+  status         String       @default("forecast")
+  lockedAt       DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([planId, year, month])
+  @@index([organizationId])
+  @@map("rolling_forecast_months")
+}
+
+// ═══════════════════════════════════════════════════
+// CASH FLOW FORECASTING
+// ═══════════════════════════════════════════════════
+
+model CashFlowEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int
+  entryType      String
+  source         String
+  sourceId       String?
+  amount         Float
+  currencyCode   String       @default("AZN")
+  description    String?
+  paymentDate    DateTime?
+  isProjected    Boolean      @default(true)
+  activityType   String       @default("operating")
+  category       String?
+  counterpartyId String?
+  plannedAmount  Float?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, year, month])
+  @@index([organizationId, activityType])
+  @@map("cash_flow_entries")
+}
+
+model CashFlowAlert {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  year             Int
+  month            Int
+  alertType        String
+  message          String
+  threshold        Float?
+  projectedBalance Float
+  isResolved       Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+
+  @@index([organizationId])
+  @@map("cash_flow_alerts")
+}
+
+// ═══════════════════════════════════════════════════
+// BUDGET CHANGE LOG
+// ═══════════════════════════════════════════════════
+
+model BudgetChangeLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  planId         String
+  entityType     String
+  entityId       String
+  action         String
+  field          String?
+  oldValue       Json?
+  newValue       Json?
+  snapshot       Json?
+  userId         String?
+  createdAt      DateTime @default(now())
+
+  @@index([planId, createdAt])
+  @@index([organizationId])
+  @@map("budget_change_logs")
+}
+
+// ═══════════════════════════════════════════════════
+// BUDGET CORE
+// ═══════════════════════════════════════════════════
+
+model BudgetCostType {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key              String
+  label            String
+  costModelPattern String?
+  isShared         Boolean      @default(false)
+  allocationMethod String?
+  color            String?
+  sortOrder        Int          @default(0)
+  isActive         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  budgetLines        BudgetLine[]
+  budgetActuals      BudgetActual[]
+  forecastEntries    BudgetForecastEntry[]
+  directionTemplates BudgetDirectionTemplate[]
+  expenseForecasts   ExpenseForecast[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("budget_cost_types")
+}
+
+model BudgetDepartment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  label          String
+  serviceKey     String?
+  hasRevenue     Boolean      @default(true)
+  color          String?
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  budgetLines        BudgetLine[]
+  budgetActuals      BudgetActual[]
+  forecastEntries    BudgetForecastEntry[]
+  directionTemplates BudgetDirectionTemplate[]
+  salesForecasts     SalesForecast[]
+  expenseForecasts   ExpenseForecast[]
+  owners             BudgetDepartmentOwner[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("budget_departments")
+}
+
+model BudgetPlan {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  periodType     String       @default("monthly")
+  year           Int
+  month          Int?
+  quarter        Int?
+  status         String       @default("draft")
+  notes          String?
+  submittedBy    String?
+  submittedAt    DateTime?
+  approvedBy     String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  amendmentOf    String?
+  version        Int          @default(1)
+  versionLabel   String?
+  snapshotData   Json?
+  isRolling      Boolean      @default(false)
+  rollingMonths  Int          @default(12)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  lines                 BudgetLine[]
+  actuals               BudgetActual[]
+  sections              BudgetSection[]
+  forecastEntries       BudgetForecastEntry[]
+  approvalComments      BudgetApprovalComment[]
+  accountingImports     AccountingImport[]
+  rollingForecastMonths RollingForecastMonth[]
+  salesBudgetLines      SalesBudgetLine[]
+  cogsBudgetLines       COGSBudgetLine[]
+  cogsCostDetails       COGSCostDetail[]
+  balanceSheetLines     BalanceSheetLine[]
+  budgetAssumptions     BudgetAssumption[]
+
+  @@index([organizationId])
+  @@map("budget_plans")
+}
+
+model BudgetLine {
+  id             String              @id @default(cuid())
+  organizationId String
+  planId         String
+  plan           BudgetPlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category       String
+  department     String?
+  lineType       String              @default("expense")
+  lineSubtype    String?
+  plannedAmount  Float               @default(0)
+  forecastAmount Float?
+  unitPrice      Float?
+  unitCost       Float?
+  quantity       Int?
+  costModelKey   String?
+  isAutoPlanned  Boolean             @default(true)
+  isAutoActual   Boolean             @default(false)
+  costTypeId     String?
+  costType       BudgetCostType?     @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  budgetDept     BudgetDepartment?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  vatIncluded    Boolean             @default(false)
+  vatRate        Float?
+  amountExVat    Float?
+  currencyCode   String?
+  exchangeRate   Float?
+  originalAmount Float?
+  notes          String?
+  sortOrder      Int                 @default(0)
+  parentId       String?
+  parent         BudgetLine?         @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children       BudgetLine[]        @relation("LineChildren")
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([parentId])
+  @@index([costTypeId])
+  @@index([departmentId])
+  @@map("budget_lines")
+}
+
+model BudgetActual {
+  id             String            @id @default(cuid())
+  organizationId String
+  planId         String
+  plan           BudgetPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category       String
+  department     String?
+  lineType       String            @default("expense")
+  actualAmount   Float             @default(0)
+  expenseDate    String?
+  description    String?
+  currencyCode   String?
+  exchangeRate   Float?
+  originalAmount Float?
+  costTypeId     String?
+  costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([costTypeId])
+  @@index([departmentId])
+  @@map("budget_actuals")
+}
+
+model BudgetSection {
+  id             String     @id @default(cuid())
+  organizationId String
+  planId         String
+  plan           BudgetPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  name           String
+  sectionType    String     @default("expense")
+  sortOrder      Int        @default(0)
+  createdAt      DateTime   @default(now())
+
+  @@index([organizationId])
+  @@index([planId])
+  @@map("budget_sections")
+}
+
+model BudgetForecastEntry {
+  id             String            @id @default(cuid())
+  organizationId String
+  planId         String
+  plan           BudgetPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
+  month          Int
+  year           Int
+  category       String
+  lineType       String            @default("expense")
+  forecastAmount Float             @default(0)
+  costTypeId     String?
+  costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([planId, year, month, category, lineType])
+  @@index([organizationId])
+  @@index([planId])
+  @@index([costTypeId])
+  @@index([departmentId])
+  @@map("budget_forecast_entries")
+}
+
+model BudgetDirectionTemplate {
+  id             String            @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  lineType       String            @default("revenue")
+  lineSubtype    String?
+  defaultAmount  Float             @default(0)
+  unitPrice      Float?
+  unitCost       Float?
+  quantity       Int?
+  costModelKey   String?
+  department     String?
+  costTypeId     String?
+  costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
+  departmentId   String?
+  budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  sortOrder      Int               @default(0)
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([costTypeId])
+  @@index([departmentId])
+  @@map("budget_direction_templates")
+}
+
+model SalesForecast {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  budgetDept     BudgetDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int
+  amount         Float            @default(0)
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, departmentId, year, month])
+  @@index([organizationId])
+  @@index([organizationId, year])
+  @@map("sales_forecasts")
+}
+
+model ExpenseForecast {
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  costTypeId     String
+  budgetCostType BudgetCostType    @relation(fields: [costTypeId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int
+  amount         Float             @default(0)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, year])
+  @@index([organizationId, costTypeId, departmentId, year, month])
+  @@map("expense_forecasts")
+}
+
+// ═══════════════════════════════════════════════════
+// BUDGET ACCESS CONTROL & APPROVAL
+// ═══════════════════════════════════════════════════
+
+model BudgetDepartmentOwner {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  budgetDept     BudgetDepartment @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  canEdit        Boolean          @default(true)
+  canApprove     Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+
+  @@unique([organizationId, departmentId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@map("budget_department_owners")
+}
+
+model BudgetApprovalComment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  userId         String
+  userName       String
+  status         String
+  comment        String
+  createdAt      DateTime     @default(now())
+
+  @@index([planId, createdAt])
+  @@index([organizationId])
+  @@map("budget_approval_comments")
+}
+
+// ═══════════════════════════════════════════════════
+// CHART OF ACCOUNTS (План счетов)
+// ═══════════════════════════════════════════════════
+
+model ChartOfAccount {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String       // "601-01-02", "711-02-01"
+  name           String       // primary name
+  nameAz         String?      // Azerbaijani
+  nameRu         String?      // Russian
+  nameEn         String?      // English
+  parentCode     String?      // "601-01" → parent of "601-01-02"
+  accountType    String       // revenue | expense | cogs | asset | liability | equity
+  category       String?      // sales | staff | utilities | services | depreciation
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("chart_of_accounts")
+}
+
+// ═══════════════════════════════════════════════════
+// PRODUCT LINES (Продуктовые линии)
+// ═══════════════════════════════════════════════════
+
+model ProductLine {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String       // "MHB", "LIME_BURNT"
+  name           String
+  unit           String       // "m3", "ton", "ədəd"
+  revenueAccountCode String?  // links to ChartOfAccount.code
+  cogsAccountCode    String?  // links to ChartOfAccount.code
+  sortOrder      Int          @default(0)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  salesBudgetLines SalesBudgetLine[]
+  costComponents   CostComponent[]
+  cogsBudgetLines  COGSBudgetLine[]
+  cogsCostDetails  COGSCostDetail[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("product_lines")
+}
+
+// ═══════════════════════════════════════════════════
+// SALES BUDGET (Бюджет продаж)
+// ═══════════════════════════════════════════════════
+
+model SalesBudgetLine {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  productLineId  String
+  productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  year           Int
+  month          Int          // 1-12
+  quantity       Float        @default(0)
+  unitPrice      Float        @default(0)
+  amount         Float        @default(0) // quantity * unitPrice
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([planId, productLineId, year, month])
+  @@index([organizationId])
+  @@index([planId])
+  @@map("sales_budget_lines")
+}
+
+// ═══════════════════════════════════════════════════
+// COGS (Себестоимость)
+// ═══════════════════════════════════════════════════
+
+model CostComponent {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productLineId   String
+  productLine     ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  name            String       // "Qum", "Sement", "Əhəng"
+  unit            String
+  consumptionRate Float        @default(0) // norm per unit of product
+  unitCost        Float        @default(0)
+  sortOrder       Int          @default(0)
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([productLineId])
+  @@map("cost_components")
+}
+
+model COGSBudgetLine {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  productLineId  String
+  productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  accountCode    String?      // "701-01-02"
+  year           Int
+  month          Int
+  productionQty  Float        @default(0)
+  totalCost      Float        @default(0)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([planId, productLineId, year, month])
+  @@index([organizationId])
+  @@index([planId])
+  @@map("cogs_budget_lines")
+}
+
+model COGSCostDetail {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  productLineId  String
+  productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  costType       String       // "raw_material" | "indirect" | "production" | "unit_cost"
+  label          String       // "Qum", "703-104 istehsal xərci", "Maqnotoloq", etc.
+  accountCode    String?      // "703-104"
+  stage          String?      // Multi-stage lime: "partladılmış" | "yararlı" | "yanmış"
+  year           Int
+  month          Int
+  amount         Float        @default(0)
+  quantity       Float?       // e.g. 0.49 KG
+  unitPrice      Float?       // e.g. 11.3 AZN/KG
+  unit           String?      // "KG", "TON"
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([productLineId])
+  @@map("cogs_cost_details")
+}
+
+// ═══════════════════════════════════════════════════
+// BALANCE SHEET
+// ═══════════════════════════════════════════════════
+
+model BalanceSheetLine {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  accountCode    String
+  accountName    String
+  lineType       String       // asset | liability | equity
+  subType        String?      // current_asset | fixed_asset | current_liability | long_term
+  year           Int
+  month          Int
+  amount         Float        @default(0)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([planId, year, month])
+  @@map("balance_sheet_lines")
+}
+
+// ═══════════════════════════════════════════════════
+// BUDGET ASSUMPTIONS (Допущения)
+// ═══════════════════════════════════════════════════
+
+model BudgetAssumption {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  planId         String
+  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  category       String       // transport | food | utilities | mining | repair | marketing
+  key            String
+  label          String
+  value          Float        @default(0)
+  unit           String?      // "AZN", "%", "ton"
+  period         String?      // monthly | annual | per_unit
+  notes          String?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([planId])
+  @@index([planId, category])
+  @@map("budget_assumptions")
+}
+
+model SavedBudgetReport {
+  id              String   @id @default(cuid())
+  organizationId  String
+  createdBy       String?
+  name            String
+  description     String?
+  entityType      String   // budgetLines, budgetActuals, salesBudget, cogsBudget, balanceSheet, cashFlow, forecasts, assumptions
+  planId          String?
+  columns         Json     // [{ field, label?, aggregate? }]
+  filters         Json     @default("[]") // [{ field, op, value }]
+  groupBy         String?
+  periodGroupBy   String?  // month | quarter | year
+  sortBy          String?
+  sortOrder       String   @default("desc")
+  chartType       String   @default("table") // table, bar, line, pie, area, stacked_bar
+  chartConfig     Json?
+  computedFields  Json?    // [variance, execution_pct, margin_pct]
+  isShared        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, planId])
+  @@map("saved_budget_reports")
+}

@@ -1,0 +1,190 @@
+import { NextRequest, NextResponse } from "next/server"
+import { z, ZodError } from "zod"
+import { getOrgId } from "@/lib/api-auth"
+import { prisma, logBudgetChange } from "@/lib/prisma"
+
+const importCsvSchema = z.object({
+  planId: z.string().min(1).max(100),
+  rows: z.array(z.record(z.string(), z.unknown())).min(1),
+  integrationId: z.string().max(100).optional().nullable(),
+  fileName: z.string().max(500).optional(),
+}).strict()
+
+// POST — import CSV data as budget actuals
+// Accepts JSON array of rows: [{ category, department, amount, date, description, lineType }]
+export async function POST(req: NextRequest) {
+  const orgId = await getOrgId(req)
+  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  let body
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
+  }
+
+  let data
+  try {
+    data = importCsvSchema.parse(body)
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return NextResponse.json({ error: "Validation failed", details: e.flatten().fieldErrors }, { status: 400 })
+    }
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 })
+  }
+
+  const { planId, rows, integrationId, fileName } = data
+
+  const MAX_ROWS = 50000
+  if (rows.length > MAX_ROWS) {
+    return NextResponse.json({ error: `Maximum ${MAX_ROWS} rows allowed` }, { status: 400 })
+  }
+
+  // Verify planId belongs to caller's org (prevents cross-tenant attribution)
+  const planOwned = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId },
+    select: { id: true },
+  })
+  if (!planOwned) {
+    return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+  }
+
+  // Verify integrationId (if given) belongs to caller's org
+  if (integrationId) {
+    const integrationOwned = await prisma.accountingIntegration.findFirst({
+      where: { id: integrationId, organizationId: orgId },
+      select: { id: true },
+    })
+    if (!integrationOwned) {
+      return NextResponse.json({ error: "Integration not found in this organization" }, { status: 404 })
+    }
+  }
+
+  // Create import record
+  const importRecord = await prisma.accountingImport.create({
+    data: {
+      organizationId: orgId,
+      planId,
+      integrationId: integrationId || null,
+      fileName: fileName || "manual-import.csv",
+      importType: "csv",
+      status: "processing",
+      totalRows: rows.length,
+    },
+  })
+
+  let matched = 0
+  let unmatched = 0
+  const errors: Array<{ row: number; error: string }> = []
+
+  // Get category mapping if integration exists
+  let categoryMapping: Record<string, string> = {}
+  if (integrationId) {
+    const integration = await prisma.accountingIntegration.findFirst({
+      where: { id: integrationId, organizationId: orgId },
+    })
+    if (integration?.categoryMapping) {
+      categoryMapping = integration.categoryMapping as Record<string, string>
+    }
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as Record<string, any>
+    try {
+      const rawCategory: string = row.category || row.Category || row.account || row.Account || ""
+      const category = categoryMapping[rawCategory] || rawCategory
+
+      if (!category) {
+        unmatched++
+        errors.push({ row: i + 1, error: "Missing category" })
+        continue
+      }
+
+      const amount = parseFloat(row.amount || row.Amount || row.sum || row.Sum || "0")
+      if (isNaN(amount) || amount === 0) {
+        unmatched++
+        errors.push({ row: i + 1, error: "Invalid amount" })
+        continue
+      }
+
+      await prisma.budgetActual.create({
+        data: {
+          organizationId: orgId,
+          planId,
+          category,
+          department: row.department || row.Department || null,
+          lineType: row.lineType || row.type || "expense",
+          actualAmount: Math.abs(amount),
+          expenseDate: row.date || row.Date || null,
+          description: row.description || row.Description || row.memo || null,
+        },
+      })
+      matched++
+    } catch (err: any) {
+      console.error(`Import CSV row ${i + 1} error:`, err)
+      unmatched++
+      errors.push({ row: i + 1, error: "Failed to process row" })
+    }
+  }
+
+  // Update import record (scoped to org for defense-in-depth)
+  await prisma.accountingImport.updateMany({
+    where: { id: importRecord.id, organizationId: orgId },
+    data: {
+      status: errors.length === rows.length ? "failed" : errors.length > 0 ? "completed" : "completed",
+      matchedRows: matched,
+      unmatchedRows: unmatched,
+      errors: errors.length > 0 ? errors : undefined,
+    },
+  })
+
+  // Update integration sync status (scoped to org)
+  if (integrationId) {
+    await prisma.accountingIntegration.updateMany({
+      where: { id: integrationId, organizationId: orgId },
+      data: {
+        lastSyncAt: new Date(),
+        lastSyncStatus: unmatched > 0 ? "partial" : "success",
+        lastSyncError: errors.length > 0 ? `${unmatched} rows failed` : null,
+      },
+    })
+  }
+
+  logBudgetChange({
+    orgId,
+    planId,
+    entityType: "import",
+    entityId: importRecord.id,
+    action: "create",
+    snapshot: { matched, unmatched, total: rows.length },
+  })
+
+  return NextResponse.json({
+    success: true,
+    importId: importRecord.id,
+    totalRows: rows.length,
+    matchedRows: matched,
+    unmatchedRows: unmatched,
+    errors: errors.slice(0, 20), // limit errors in response
+  })
+}
+
+// GET — list import history
+export async function GET(req: NextRequest) {
+  const orgId = await getOrgId(req)
+  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+  const planId = req.nextUrl.searchParams.get("planId")
+
+  const where: any = { organizationId: orgId }
+  if (planId) where.planId = planId
+
+  const imports = await prisma.accountingImport.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: { integration: { select: { name: true, provider: true } } },
+  })
+
+  return NextResponse.json(imports)
+}
