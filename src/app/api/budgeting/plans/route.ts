@@ -78,12 +78,14 @@ export async function POST(req: NextRequest) {
 
   const { name, periodType, year, month, quarter, notes } = data
 
-  // Check for duplicate plan in same period
+  // Check for duplicate plan in same period — ignore soft-deleted plans,
+  // otherwise user can't re-create after a Reset/Delete.
   const duplicate = await prisma.budgetPlan.findFirst({
     where: {
       organizationId: orgId,
       periodType,
       year,
+      deletedAt: null,
       ...(month ? { month } : {}),
       ...(quarter ? { quarter } : {}),
     },

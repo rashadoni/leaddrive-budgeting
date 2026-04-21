@@ -1018,6 +1018,9 @@ export async function POST(req: NextRequest) {
           data: {
             organizationId: orgId, planId: rollingPlan.id, category: sl.category,
             department: sl.department, lineType: sl.lineType,
+            // Preserve the FK to Chart of Accounts so the Rolling Forecast plan
+            // displays canonical names in the same way as the main budget plan.
+            accountId: sl.accountId,
             plannedAmount: sl.plannedAmount, costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
@@ -1032,6 +1035,7 @@ export async function POST(req: NextRequest) {
           data: {
             organizationId: orgId, planId: rollingPlan.id, category: sl.category,
             department: sl.department, lineType: sl.lineType,
+            accountId: sl.accountId,
             plannedAmount: sl.plannedAmount, costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
