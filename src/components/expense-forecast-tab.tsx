@@ -411,7 +411,7 @@ export function ExpenseForecastTab() {
                   <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
                   <YAxis tick={AXIS_TICK} tickFormatter={fmtK} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(v: number) => [fmt(v) + " ₼", "Expenses"]}
+                    formatter={((v: number) => [fmt(v) + " ₼", "Expenses"]) as never}
                     contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                   />
                   <Bar dataKey="expenses" fill="url(#ef-exp-grad)" radius={[4, 4, 0, 0]} animationDuration={ANIMATION.duration} />
@@ -444,7 +444,7 @@ export function ExpenseForecastTab() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(v: number) => [fmt(v) + " ₼"]}
+                    formatter={((v: number) => [fmt(v) + " ₼"]) as never}
                     contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                   />
                 </PieChart>

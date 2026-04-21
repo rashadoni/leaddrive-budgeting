@@ -225,7 +225,7 @@ export default function ReportBuilderPage() {
   // Compute KPI from preview data
   const kpis = useMemo(() => {
     if (!preview.data?.data?.length) return null
-    const rows = preview.data.data
+    const rows = (previewRows ?? [])
     let totalPlanned = 0, totalActual = 0, totalAmount = 0
     for (const r of rows) {
       totalPlanned += r.plannedAmount ?? r.amount ?? r.forecastAmount ?? r.totalCost ?? 0
@@ -244,7 +244,7 @@ export default function ReportBuilderPage() {
     const dataType = preview.data?.type
 
     // For grouped or period data, detect numeric keys from actual response rows
-    if ((dataType === "grouped" || dataType === "period") && rows?.length > 0) {
+    if ((dataType === "grouped" || dataType === "period") && rows && rows.length > 0) {
       const sample = rows[0]
       const exclude = new Set(["_count", "_sum", "year", "month", "quarter", "period", "id"])
       // Include the groupBy field in exclude since it's the label, not a value
@@ -265,7 +265,7 @@ export default function ReportBuilderPage() {
     const rows = preview.data?.data
 
     // Period data always has "period" key
-    if (dataType === "period" && rows?.length > 0 && "period" in rows[0]) return "period"
+    if (dataType === "period" && rows && rows.length > 0 && "period" in rows[0]) return "period"
 
     // Period groupBy set but entity doesn't support it — fall through to groupBy or string col
     if (periodGroupBy !== "none" && dataType !== "period") {
@@ -281,6 +281,12 @@ export default function ReportBuilderPage() {
       .filter(f => f.type === "string" && selectedColumns.includes(f.name))
     return strCols[0]?.name ?? "id"
   }, [currentEntity, selectedColumns, periodGroupBy, groupBy, preview.data])
+
+  // Narrowing helpers — extracted so TypeScript can track that the rows array
+  // is present inside the JSX branches below.
+  const previewRows = preview.data?.data as any[] | undefined
+  const previewTotal = preview.data?.total as number | undefined
+  const hasRows = Boolean(previewRows && previewRows.length > 0)
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden">
@@ -594,12 +600,12 @@ export default function ReportBuilderPage() {
         )}
 
         {/* Chart */}
-        {preview.data?.data?.length > 0 && chartType !== "table" && numericColumns.length > 0 && (
+        {hasRows && chartType !== "table" && numericColumns.length > 0 && (
           <Card>
             <CardContent className="p-4">
               <ResponsiveContainer width="100%" height={350}>
                 {chartType === "bar" ? (
-                  <BarChart data={preview.data.data}>
+                  <BarChart data={(previewRows ?? [])}>
                     <defs>
                       {numericColumns.map((col, i) => (
                         <VBarGradient key={col} id={`grad-${col}`} color={BUDGET_COLORS.pie[i % BUDGET_COLORS.pie.length]} />
@@ -608,7 +614,7 @@ export default function ReportBuilderPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
                     <XAxis dataKey={labelColumn} tick={AXIS_TICK} />
                     <YAxis tickFormatter={fmtK} tick={AXIS_TICK} />
-                    <Tooltip formatter={(v: number) => fmtManat(v)} />
+                    <Tooltip formatter={((v: number) => fmtManat(v)) as never} />
                     <Legend />
                     {numericColumns.map((col, i) => (
                       <Bar
@@ -621,7 +627,7 @@ export default function ReportBuilderPage() {
                     ))}
                   </BarChart>
                 ) : chartType === "stacked_bar" ? (
-                  <BarChart data={preview.data.data}>
+                  <BarChart data={(previewRows ?? [])}>
                     <defs>
                       {numericColumns.map((col, i) => (
                         <VBarGradient key={col} id={`grad-stk-${col}`} color={BUDGET_COLORS.pie[i % BUDGET_COLORS.pie.length]} />
@@ -630,7 +636,7 @@ export default function ReportBuilderPage() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
                     <XAxis dataKey={labelColumn} tick={AXIS_TICK} />
                     <YAxis tickFormatter={fmtK} tick={AXIS_TICK} />
-                    <Tooltip formatter={(v: number) => fmtManat(v)} />
+                    <Tooltip formatter={((v: number) => fmtManat(v)) as never} />
                     <Legend />
                     {numericColumns.map((col, i) => (
                       <Bar
@@ -643,11 +649,11 @@ export default function ReportBuilderPage() {
                     ))}
                   </BarChart>
                 ) : chartType === "line" ? (
-                  <RLineChart data={preview.data.data}>
+                  <RLineChart data={(previewRows ?? [])}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
                     <XAxis dataKey={labelColumn} tick={AXIS_TICK} />
                     <YAxis tickFormatter={fmtK} tick={AXIS_TICK} />
-                    <Tooltip formatter={(v: number) => fmtManat(v)} />
+                    <Tooltip formatter={((v: number) => fmtManat(v)) as never} />
                     <Legend />
                     {numericColumns.map((col, i) => (
                       <Line
@@ -662,11 +668,11 @@ export default function ReportBuilderPage() {
                     ))}
                   </RLineChart>
                 ) : chartType === "area" ? (
-                  <RAreaChart data={preview.data.data}>
+                  <RAreaChart data={(previewRows ?? [])}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" />
                     <XAxis dataKey={labelColumn} tick={AXIS_TICK} />
                     <YAxis tickFormatter={fmtK} tick={AXIS_TICK} />
-                    <Tooltip formatter={(v: number) => fmtManat(v)} />
+                    <Tooltip formatter={((v: number) => fmtManat(v)) as never} />
                     <Legend />
                     {numericColumns.map((col, i) => (
                       <Area
@@ -683,7 +689,7 @@ export default function ReportBuilderPage() {
                 ) : (
                   <RPieChart>
                     <Pie
-                      data={preview.data.data.slice(0, 10).map((r: any, i: number) => ({
+                      data={(previewRows ?? []).slice(0, 10).map((r: any, i: number) => ({
                         name: r[labelColumn] || `Item ${i + 1}`,
                         value: r[numericColumns[0]] ?? 0,
                       }))}
@@ -695,11 +701,11 @@ export default function ReportBuilderPage() {
                       animationDuration={ANIMATION.duration}
                       label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
                     >
-                      {preview.data.data.slice(0, 10).map((_: any, i: number) => (
+                      {(previewRows ?? []).slice(0, 10).map((_: any, i: number) => (
                         <Cell key={i} fill={BUDGET_COLORS.pie[i % BUDGET_COLORS.pie.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => fmtManat(v)} />
+                    <Tooltip formatter={((v: number) => fmtManat(v)) as never} />
                     <Legend />
                   </RPieChart>
                 )}
@@ -709,10 +715,10 @@ export default function ReportBuilderPage() {
         )}
 
         {/* Data Table */}
-        {preview.data?.data?.length > 0 && (
+        {hasRows && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">{t("dataPreview")} ({preview.data.total} {t("rows")})</CardTitle>
+              <CardTitle className="text-sm">{t("dataPreview")} ({(previewTotal ?? 0)} {t("rows")})</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -732,7 +738,7 @@ export default function ReportBuilderPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.data.data.map((row: any, i: number) => (
+                    {(previewRows ?? []).map((row: any, i: number) => (
                       <tr key={i} className="border-b hover:bg-muted/30">
                         {selectedColumns.map(col => {
                           const fd = currentEntity?.fields.find(f => f.name === col)

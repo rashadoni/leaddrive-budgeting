@@ -5,7 +5,9 @@ const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts")
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  typescript: { ignoreBuildErrors: true },
+  // TS errors now fail the build. Previously we had ~40 pre-existing errors
+  // silently skipped here; they were fixed in Phase 1.3 so we can enable strict mode.
+  typescript: { ignoreBuildErrors: false },
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
 }
 

@@ -131,7 +131,8 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
     const wb = new ExcelJS.Workbook()
-    await wb.xlsx.load(buffer)
+    // exceljs expects the node Buffer-ish type; recent @types/node narrows our generic Buffer<ArrayBuffer>.
+    await wb.xlsx.load(buffer as unknown as ExcelJS.Buffer)
 
     const year = parseInt(formData.get("year") as string) || 2026
     const results: Record<string, number> = {}
@@ -957,7 +958,7 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       })
       if (existingRolling.length > 0) {
-        const rollingIds = existingRolling.map(p => p.id)
+        const rollingIds = existingRolling.map((p: { id: string }) => p.id)
         await prisma.$transaction([
           prisma.budgetForecastEntry.deleteMany({ where: { planId: { in: rollingIds } } }),
           prisma.rollingForecastMonth.deleteMany({ where: { planId: { in: rollingIds } } }),

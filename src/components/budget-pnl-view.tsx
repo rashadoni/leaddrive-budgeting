@@ -265,7 +265,7 @@ export function BudgetPnlView({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip formatter={(v: number) => fmtCurrency(v) + " AZN"} />
+              <Tooltip formatter={((v: number) => fmtCurrency(v) + " AZN") as never} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
               <Bar dataKey="COGS" fill="#ef4444" radius={[4, 4, 0, 0]} />
@@ -282,7 +282,7 @@ export function BudgetPnlView({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v + "%"} />
-              <Tooltip formatter={(v: number) => v.toFixed(1) + "%"} />
+              <Tooltip formatter={((v: number) => v.toFixed(1) + "%") as never} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Area type="monotone" dataKey="Gross Margin" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.1} strokeWidth={2} />
               <Area type="monotone" dataKey="EBITDA Margin" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.08} strokeWidth={2} />
@@ -300,7 +300,7 @@ export function BudgetPnlView({ planId }: { planId: string }) {
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-            <Tooltip formatter={(v: number) => fmtCurrency(Math.abs(v)) + " AZN"} />
+            <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
               {waterfallData.map((entry, i) => (
                 <Cell key={i} fill={entry.fill} />

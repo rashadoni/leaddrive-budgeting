@@ -16,9 +16,10 @@ export async function GET(req: NextRequest) {
   })
 
   // Group by lineType
-  const assets = lines.filter((l) => l.lineType === "asset")
-  const liabilities = lines.filter((l) => l.lineType === "liability")
-  const equity = lines.filter((l) => l.lineType === "equity")
+  type BSRow = (typeof lines)[number]
+  const assets = lines.filter((l: BSRow) => l.lineType === "asset")
+  const liabilities = lines.filter((l: BSRow) => l.lineType === "liability")
+  const equity = lines.filter((l: BSRow) => l.lineType === "equity")
 
   return NextResponse.json({ assets, liabilities, equity, all: lines })
 }

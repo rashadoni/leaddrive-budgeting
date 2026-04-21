@@ -360,7 +360,7 @@ export function SalesForecastTab() {
                   <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
                   <YAxis tick={AXIS_TICK} tickFormatter={fmtK} axisLine={false} tickLine={false} />
                   <Tooltip
-                    formatter={(v: number) => [fmt(v) + " ₼", "Revenue"]}
+                    formatter={((v: number) => [fmt(v) + " ₼", "Revenue"]) as never}
                     contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                   />
                   <Bar dataKey="revenue" fill="url(#sf-rev-grad)" radius={[4, 4, 0, 0]} animationDuration={ANIMATION.duration} />
@@ -392,7 +392,7 @@ export function SalesForecastTab() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(v: number) => [fmt(v) + " ₼"]}
+                    formatter={((v: number) => [fmt(v) + " ₼"]) as never}
                     contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                   />
                 </PieChart>

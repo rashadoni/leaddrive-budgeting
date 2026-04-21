@@ -219,7 +219,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip formatter={(v: number, name: string) => [fmtCurrency(v) + " AZN", name]} />
+              <Tooltip formatter={((v: number, name: string) => [fmtCurrency(v) + " AZN", name]) as never} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               {productList.map((p, i) => (
                 <Bar key={p.name} dataKey={p.name} stackId="a" fill={COLORS[i % COLORS.length]} />
@@ -239,7 +239,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
                   <Cell key={i} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => fmtCurrency(v) + " AZN"} />
+              <Tooltip formatter={((v: number) => fmtCurrency(v) + " AZN") as never} />
             </PieChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-2">
@@ -265,7 +265,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-            <Tooltip formatter={(v: number) => fmtCurrency(v) + " AZN"} />
+            <Tooltip formatter={((v: number) => fmtCurrency(v) + " AZN") as never} />
             <Area type="monotone" dataKey="COGS" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} />
           </AreaChart>
         </ResponsiveContainer>

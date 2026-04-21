@@ -293,7 +293,7 @@ export function BudgetRollingForecast({
                 <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
                 <YAxis tick={AXIS_TICK} tickFormatter={fmtK} axisLine={false} tickLine={false} />
                 <Tooltip
-                  formatter={(v: number) => [fmt(v) + " ₼", "Cumulative Margin"]}
+                  formatter={((v: number) => [fmt(v) + " ₼", "Cumulative Margin"]) as never}
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", background: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
                 />
                 <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth={1} />

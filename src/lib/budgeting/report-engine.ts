@@ -367,7 +367,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     // Flatten _sum fields so chart & KPI can read them directly
     const flatResult = result.map((row: any) => {
       const flat: any = { ...row }
-      flat.count = countByGroup.get(String(row[config.groupBy] ?? "")) ?? 0
+      flat.count = countByGroup.get(String(row[config.groupBy ?? ""] ?? "")) ?? 0
       if (row._sum) {
         for (const [k, v] of Object.entries(row._sum)) {
           flat[k] = v ?? 0

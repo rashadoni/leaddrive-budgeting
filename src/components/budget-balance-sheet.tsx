@@ -234,7 +234,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip formatter={(v: number) => fmtCurrency(Math.abs(v)) + " AZN"} />
+              <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Area type="monotone" dataKey="Assets" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} strokeWidth={2} />
               <Area type="monotone" dataKey="Liabilities" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} />
@@ -253,7 +253,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
                   <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={(v: number) => fmtCurrency(v) + " AZN"} />
+              <Tooltip formatter={((v: number) => fmtCurrency(v) + " AZN") as never} />
             </PieChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-1 gap-y-1 mt-2">

@@ -306,7 +306,7 @@ export async function DELETE(req: NextRequest) {
       where: { organizationId: orgId },
       select: { id: true, name: true },
     })
-    const planIds = allPlans.map(p => p.id)
+    const planIds = allPlans.map((p: { id: string }) => p.id)
 
     if (planIds.length > 0) {
       await prisma.$transaction([

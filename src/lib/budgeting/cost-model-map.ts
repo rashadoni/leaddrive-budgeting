@@ -25,45 +25,56 @@ export type CostModelKey = string
 export function resolveCostModelKey(result: CostModelResult, key: CostModelKey): number {
   if (!key) return 0
 
-  if (key === "grandTotalG") return result.grandTotalG
-  if (key === "grandTotalF") return result.grandTotalF
-  if (key === "adminOverhead") return result.adminOverhead
-  if (key === "techInfraTotal") return result.techInfraTotal
-  if (key === "totalOverhead") return result.totalOverhead
-  if (key === "backOfficeCost") return result.backOfficeCost
-  if (key === "coreLabor") return result.coreLabor
-  if (key === "misc") return result.misc
-  if (key === "riskCost") return result.riskCost
-  if (key === "grcDirectCost") return result.grcDirectCost
+  // Helper: narrow an optional number to 0 when missing (the stub cost model
+  // leaves many fields off, so every scalar read must be defensive)
+  const num = (v: unknown): number => (typeof v === "number" ? v : 0)
+  const r = result as Record<string, unknown>
+
+  if (key === "grandTotalG") return num(r.grandTotalG)
+  if (key === "grandTotalF") return num(r.grandTotalF)
+  if (key === "adminOverhead") return num(r.adminOverhead)
+  if (key === "techInfraTotal") return num(r.techInfraTotal)
+  if (key === "totalOverhead") return num(r.totalOverhead)
+  if (key === "backOfficeCost") return num(r.backOfficeCost)
+  if (key === "coreLabor") return num(r.coreLabor)
+  if (key === "misc") return num(r.misc)
+  if (key === "riskCost") return num(r.riskCost)
+  if (key === "grcDirectCost") return num(r.grcDirectCost)
+
+  const svcRevenues = (result.serviceRevenues ?? {}) as Record<string, number>
+  const svcCosts = (result.serviceCosts ?? {}) as Record<string, number>
+  const deptCosts = (result.deptCosts ?? {}) as Record<string, number>
+  const summary = (result as { summary?: { totalRevenue?: number } }).summary
+  const serviceDetails = (result.serviceDetails ?? {}) as Record<string, Record<string, unknown>>
 
   if (key.startsWith("deptCosts.")) {
     const dept = key.slice("deptCosts.".length)
-    return result.deptCosts[dept] ?? 0
+    return deptCosts[dept] ?? 0
   }
 
   if (key === "serviceRevenues.total") {
     // Use summary.totalRevenue (from PricingProfile) to match profitability page
-    return result.summary.totalRevenue
+    return summary?.totalRevenue ?? 0
   }
 
   if (key.startsWith("serviceRevenues.")) {
     const svc = key.slice("serviceRevenues.".length)
-    const raw = result.serviceRevenues[svc] ?? 0
+    const raw = svcRevenues[svc] ?? 0
     // Scale per-service revenue proportionally to match summary.totalRevenue (PricingProfile)
-    const rawTotal = Object.values(result.serviceRevenues).reduce((s, v) => s + v, 0)
-    if (rawTotal > 0 && result.summary.totalRevenue > 0) {
-      return raw * (result.summary.totalRevenue / rawTotal)
+    const rawTotal: number = Object.values(svcRevenues).reduce((s: number, v: number) => s + v, 0)
+    if (rawTotal > 0 && (summary?.totalRevenue ?? 0) > 0) {
+      return raw * ((summary!.totalRevenue as number) / rawTotal)
     }
     return raw
   }
 
   if (key === "serviceCosts.total") {
-    return Object.values(result.serviceCosts).reduce((s, v) => s + v, 0)
+    return Object.values(svcCosts).reduce((s: number, v: number) => s + v, 0)
   }
 
   if (key.startsWith("serviceCosts.")) {
     const svc = key.slice("serviceCosts.".length)
-    return result.serviceCosts[svc] ?? 0
+    return svcCosts[svc] ?? 0
   }
 
   // serviceDetails.{svc}.{field} → e.g. serviceDetails.permanent_it.directLabor
@@ -71,9 +82,11 @@ export function resolveCostModelKey(result: CostModelResult, key: CostModelKey):
     const parts = key.split(".")
     if (parts.length === 3) {
       const svc = parts[1]
-      const field = parts[2] as keyof (typeof result.serviceDetails)[string]
-      const detail = result.serviceDetails[svc]
-      if (detail && field in detail) return (detail[field] as number) ?? 0
+      const field = parts[2]
+      const detail = serviceDetails[svc]
+      if (detail && typeof detail === "object" && field in detail) {
+        return num((detail as Record<string, unknown>)[field])
+      }
     }
     return 0
   }

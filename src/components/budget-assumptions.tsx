@@ -283,7 +283,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v: number) => v + " items"} />
+                <Tooltip formatter={((v: number) => v + " items") as never} />
               </PieChart>
             </ResponsiveContainer>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">

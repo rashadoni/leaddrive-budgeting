@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
         // Find matching service revenue
         for (const [svc, category] of Object.entries(SVC_REVENUE_MAP)) {
           if (line.category === category) {
-            monthlyAmount = costModel.serviceRevenues[svc] ?? 0
+            monthlyAmount = (costModel.serviceRevenues as Record<string, number>)?.[svc] ?? 0
             break
           }
         }

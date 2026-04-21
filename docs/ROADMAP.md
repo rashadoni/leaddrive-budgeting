@@ -56,12 +56,12 @@ Main pain points that drive the roadmap:
 - ⬜ Toast "1547 rows imported, 23 skipped" with clickable detail (deferred — expandable section covers the need for now)
 
 ### 1.3 Fix TypeScript errors
-- ⬜ `src/lib/budgeting/department-access.ts` — missing `@/lib/permissions` module
-- ⬜ `src/lib/budgeting/cost-model-map.ts:61` — unknown/number type
-- ⬜ `src/lib/budgeting/report-engine.ts:370` — undefined indexing
-- ⬜ `src/app/api/budgeting/import-excel/route.ts:116` — Buffer type
-- ⬜ Set `typescript.ignoreBuildErrors: false` in `next.config.ts`
-- ⬜ Add `tsc --noEmit` to CI / pre-commit hook
+- ✅ `src/lib/budgeting/department-access.ts` — missing `@/lib/permissions` module (created as re-export)
+- ✅ `src/lib/budgeting/cost-model-map.ts` — unknown/number types (defensive `num()` helper)
+- ✅ `src/lib/budgeting/report-engine.ts:370` — undefined indexing (guard with `?? ""`)
+- ✅ `src/app/api/budgeting/import-excel/route.ts` — Buffer type (cast to ExcelJS.Buffer)
+- ✅ Set `typescript.ignoreBuildErrors: false` in `next.config.ts`
+- ⬜ Add `tsc --noEmit` to CI / pre-commit hook (deferred until remote/CI set up — Phase 0.7 stretch)
 
 ### 1.4 Soft-delete + undo for reset
 - ⬜ Add `deletedAt: DateTime?` to BudgetLine, BalanceSheetLine, COGSBudgetLine, CashFlowEntry
@@ -269,6 +269,17 @@ Everything else can wait until first paying customer.
   - Truly empty rows (no label) are skipped silently — no value in showing them.
   - API response now includes `issues`, `issueCount`, `issuesTruncated`. Extensible — other sections can opt in by calling `pushIssue({...})`.
   - UI `budget-excel-import.tsx` renders collapsible "N rows skipped or flagged" section with a table (sheet · row · reason · value). Clicking reveals the full list. Works with existing results card.
+- **2026-04-21** — Phase 1.3 ✅ TypeScript error cleanup — went from **~40 silently-ignored errors to 0** and flipped `typescript.ignoreBuildErrors: false` so future mistakes break the build. Changes:
+  - Created `src/lib/permissions.ts` re-exporting `Role`/`hasRole`/`requireRole` from `api-auth` (3 files imported a module that never existed).
+  - Created `src/lib/cost-model/types.ts` with a permissive `CostModelResult` interface to match the stubbed `loadAndCompute`.
+  - Created `src/types/next-auth.d.ts` augmenting both `next-auth` and `@auth/core/types` `Session.user` + `User` + `JWT` so every `session.user.organizationId`/`role`/`organizationName` access is typed.
+  - Defensive rewrite of `cost-model-map.ts` — `num()` helper coerces unknown → number, all FK reads go through `Record<string, number>` narrowing.
+  - Recharts `<Tooltip formatter={...}>` types cast as `never` in 21 call sites across 8 components (`budget-pnl-view`, `budget-balance-sheet`, `cogs-calculator`, `sales-budget-table`, `budget-assumptions`, `budget-rolling-forecast`, `expense-forecast-tab`, `sales-forecast-tab`, `reports/page.tsx`) — simplest pragmatic fix, no behaviour change.
+  - `reports/page.tsx` — extracted `previewRows`/`previewTotal`/`hasRows` helpers so TS narrows optional chain through JSX `&&` branches (14 errors gone).
+  - Explicit parameter types on `balance-sheet`, `plans`, `pnl`, `import-excel` route handlers (5 implicit-any).
+  - `report-engine.ts:370` — `config.groupBy ?? ""` when used as index.
+  - ExcelJS Buffer load cast to `ExcelJS.Buffer` (newer `@types/node` narrowed our generic buffer).
+  - CI pre-commit `tsc --noEmit` deferred to Phase 0.7 (along with remote setup).
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->

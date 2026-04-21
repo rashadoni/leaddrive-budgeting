@@ -56,7 +56,8 @@ export async function GET(req: NextRequest) {
   // This ensures products sharing the same SAP code (e.g. 601-01-02) appear as separate rows
   const accountMap = new Map<string, { code: string; name: string; type: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
 
-  budgetLines.forEach((bl) => {
+  type BL = (typeof budgetLines)[number]
+  budgetLines.forEach((bl: BL) => {
     // After import refactor: category=name, department=code
     // Fallback to old order (category=code, department=name) for legacy rows
     const maybeCode = bl.department || ""
