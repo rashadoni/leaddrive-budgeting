@@ -309,6 +309,33 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   const where = buildWhere(orgId, config.planId, entityConfig, config.filters)
   const limit = Math.min(config.limit ?? 500, 10000)
 
+  // For budgetLines, the imported P&L contains BOTH parent SAP codes (e.g.
+  // "601-01") AND their children (e.g. "601-01-02"). Summing them in any
+  // grouping / aggregation double-counts every revenue or expense. Build the
+  // set of parent codes up-front and exclude them from every query below.
+  if (config.entityType === "budgetLines") {
+    const distinctCodes = await (prisma as any).budgetLine.findMany({
+      where,
+      select: { department: true },
+      distinct: ["department"],
+    }) as Array<{ department: string | null }>
+    const codes = new Set<string>()
+    for (const r of distinctCodes) {
+      if (r.department) codes.add(r.department)
+    }
+    const parents: string[] = []
+    for (const a of codes) {
+      for (const b of codes) {
+        if (a !== b && b.startsWith(a + "-")) { parents.push(a); break }
+      }
+    }
+    if (parents.length > 0) {
+      where.department = where.department
+        ? { ...where.department, notIn: parents }
+        : { notIn: parents }
+    }
+  }
+
   // ── Period groupBy path ──
   if (config.periodGroupBy && entityConfig.hasYearMonth) {
     const allRows = await (prisma as any)[entityConfig.model].findMany({
