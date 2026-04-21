@@ -259,14 +259,23 @@ export default function ReportBuilderPage() {
       return Object.keys(sample).filter(k => !exclude.has(k) && typeof sample[k] === "number")
     }
 
-    // Flat data — use selected numeric columns from entity definition
-    const excludeWhenPeriod = periodGroupBy !== "none" ? ["year", "month"] : []
+    // Flat data — use selected numeric columns from entity definition.
+    // Year/month/quarter are period columns, not measures, so never plot them
+    // as chart series even when the user selected them in the table.
+    const PERIOD_COLS = ["year", "month", "quarter"]
     return currentEntity.fields
-      .filter(f => f.type === "number" && selectedColumns.includes(f.name) && !excludeWhenPeriod.includes(f.name))
+      .filter(f =>
+        f.type === "number"
+        && selectedColumns.includes(f.name)
+        && !PERIOD_COLS.includes(f.name),
+      )
       .map(f => f.name)
   }, [currentEntity, selectedColumns, periodGroupBy, groupBy, preview.data])
 
-  // Label column for charts
+  // Label column for charts — must be a key Recharts can read via dataKey.
+  // Relation traversals like "productLine.code" don't work because Recharts
+  // doesn't walk nested objects by default, so we skip them when picking a
+  // fallback string column.
   const labelColumn = useMemo(() => {
     const dataType = preview.data?.type
     const rows = preview.data?.data
@@ -284,8 +293,11 @@ export default function ReportBuilderPage() {
     // GroupBy uses the grouped field
     if (groupBy) return groupBy
     if (!currentEntity) return "id"
+    // Prefer a scalar string column on the base model. Fall back to id if
+    // every selected column is relational or numeric — empty X axis is better
+    // than trying to plot bars against an undefined key.
     const strCols = currentEntity.fields
-      .filter(f => f.type === "string" && selectedColumns.includes(f.name))
+      .filter(f => f.type === "string" && selectedColumns.includes(f.name) && !f.name.includes("."))
     return strCols[0]?.name ?? "id"
   }, [currentEntity, selectedColumns, periodGroupBy, groupBy, preview.data])
 
