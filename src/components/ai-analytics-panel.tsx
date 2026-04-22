@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Sparkles, Loader2, Send, Search, X, Eraser, Database, AlertTriangle } from "lucide-react"
+import { Sparkles, Loader2, Send, Search, X, Eraser, Database, AlertTriangle, FileDown } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -194,6 +194,41 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
     setError(null)
   }, [])
 
+  const [exporting, setExporting] = useState(false)
+  const handleExportPdf = useCallback(async () => {
+    if (!messages.length || exporting) return
+    setExporting(true)
+    try {
+      // Dynamic import — @react-pdf/renderer is ~300KB gzipped, don't ship
+      // it on every page just for a rarely-used export button.
+      const [{ pdf }, { ChatPdfDoc }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("./ai-chat-pdf"),
+      ])
+      const doc = (
+        <ChatPdfDoc
+          sectionLabel={sectionLabel}
+          planName={planName}
+          messages={messages.map((m) => ({ role: m.role, content: m.content }))}
+        />
+      )
+      const blob = await pdf(doc).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
+      a.download = `budget-ai-analysis-${section}-${ts}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to export PDF")
+    } finally {
+      setExporting(false)
+    }
+  }, [messages, section, sectionLabel, planName, exporting])
+
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-[560px] sm:max-w-[560px] flex flex-col p-0 gap-0">
@@ -233,9 +268,26 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
               ))}
             </div>
             {messages.length > 0 && (
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleClear} disabled={streaming}>
-                <Eraser className="h-3.5 w-3.5 mr-1" />Clear
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={handleExportPdf}
+                  disabled={streaming || exporting}
+                  title="Export chat as PDF"
+                >
+                  {exporting ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <FileDown className="h-3.5 w-3.5 mr-1" />
+                  )}
+                  PDF
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleClear} disabled={streaming || exporting}>
+                  <Eraser className="h-3.5 w-3.5 mr-1" />Clear
+                </Button>
+              </>
             )}
             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onClose}>
               <X className="h-4 w-4" />
