@@ -57,12 +57,13 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
   const [language, setLanguage] = useState<Language>("en")
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  // Clear chat when section changes or panel closes
+  // Reset chat only when the user switches to a different section or plan.
+  // Closing and reopening the panel on the same section keeps the history so
+  // the conversation can be continued after a tab detour.
   useEffect(() => {
-    if (!open) return
     setMessages([])
     setError(null)
-  }, [open, section, planId])
+  }, [section, planId])
 
   // Autoscroll
   useEffect(() => {
