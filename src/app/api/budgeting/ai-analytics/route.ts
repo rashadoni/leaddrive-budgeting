@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+import type Anthropic from "@anthropic-ai/sdk"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { AI_MODEL, getAnthropicClient, hasAnthropicKey } from "@/lib/ai/client"
 import { buildKickoffUserMessage, buildSystemPrompt } from "@/lib/ai/prompts"
 import { collectSectionContext, type Section } from "@/lib/ai/section-context"
+import { AI_TOOLS, isCustomTool, runTool, type ToolName } from "@/lib/ai/tools"
 
 export const maxDuration = 120
 export const runtime = "nodejs"
@@ -30,6 +32,10 @@ const requestSchema = z.object({
     )
     .max(20),
 })
+
+// Hard cap on tool-use iterations so a badly-behaved model can't loop forever.
+// Each iteration is one streamed assistant turn; most flows resolve in 1-2.
+const MAX_TOOL_ITERATIONS = 5
 
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req)
@@ -68,58 +74,123 @@ export async function POST(req: NextRequest) {
   }
 
   const systemPrompt = buildSystemPrompt(section as Section, sectionData)
-  const apiMessages = messages.length > 0
+  const initialMessages: Anthropic.Messages.MessageParam[] = messages.length > 0
     ? messages
-    : [{ role: "user" as const, content: buildKickoffUserMessage(section as Section) }]
+    : [{ role: "user", content: buildKickoffUserMessage(section as Section) }]
 
   const client = getAnthropicClient()
 
-  // Stream the response as SSE so the UI can render tokens as they arrive.
-  // Each event is a JSON line: { type: "text" | "tool_use" | "done" | "error", ... }
+  // Stream responses as SSE. Events emitted per line:
+  //   { type: "text", text }
+  //   { type: "tool_use",    id, name, input }
+  //   { type: "tool_result", id, name, ok, error? }
+  //   { type: "done" }
+  //   { type: "error", error }
+  //
+  // The tool-use loop runs up to MAX_TOOL_ITERATIONS — each iteration streams
+  // one assistant turn, then if it ended with stop_reason="tool_use" we
+  // execute any custom tools locally and feed tool_results back as a new user
+  // turn. Anthropic's native `web_search` is a server-side tool and is
+  // handled transparently inside a single iteration; our loop only fires for
+  // the custom drill-down tools declared in `AI_TOOLS`.
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: unknown) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
       }
-      try {
-        const streamResp = client.messages.stream({
-          model: AI_MODEL,
-          max_tokens: 2048,
-          system: [
-            {
-              type: "text",
-              text: systemPrompt,
-              // Prompt caching: section data is reused across turns in the same
-              // conversation, so cache it to cut token spend on follow-ups.
-              cache_control: { type: "ephemeral" },
-            },
-          ],
-          messages: apiMessages,
-          tools: [
-            // Anthropic's native web search tool — no custom handler needed;
-            // results flow back through the stream as tool_use / tool_result.
-            { type: "web_search_20250305", name: "web_search", max_uses: 3 } as any,
-          ],
-        })
 
-        for await (const event of streamResp) {
-          if (event.type === "content_block_delta") {
-            const delta = (event as any).delta
-            if (delta?.type === "text_delta" && delta.text) {
-              send({ type: "text", text: delta.text })
+      const conversation: Anthropic.Messages.MessageParam[] = [...initialMessages]
+
+      try {
+        for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+          const streamResp = client.messages.stream({
+            model: AI_MODEL,
+            max_tokens: 2048,
+            system: [
+              {
+                type: "text",
+                text: systemPrompt,
+                // Prompt caching: section data is reused across turns in the same
+                // conversation, so cache it to cut token spend on follow-ups.
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            messages: conversation,
+            tools: [
+              // Anthropic's native web search — server-side, resolved inside the
+              // same assistant turn so we don't have to touch it from here.
+              { type: "web_search_20250305", name: "web_search", max_uses: 3 } as unknown as Anthropic.Messages.Tool,
+              ...AI_TOOLS,
+            ],
+          })
+
+          for await (const event of streamResp) {
+            if (event.type === "content_block_delta") {
+              const delta = (event as any).delta
+              if (delta?.type === "text_delta" && delta.text) {
+                send({ type: "text", text: delta.text })
+              }
+            } else if (event.type === "content_block_start") {
+              const block = (event as any).content_block
+              if (block?.type === "tool_use" || block?.type === "server_tool_use") {
+                send({
+                  type: "tool_use",
+                  id: block.id,
+                  name: block.name ?? "tool",
+                  input: block.input ?? {},
+                })
+              }
             }
-          } else if (event.type === "content_block_start") {
-            const block = (event as any).content_block
-            if (block?.type === "tool_use" && block.name === "web_search") {
-              send({ type: "tool_use", name: "web_search", input: block.input })
-            } else if (block?.type === "server_tool_use") {
-              send({ type: "tool_use", name: block.name ?? "tool", input: block.input })
-            }
-          } else if (event.type === "message_stop") {
-            send({ type: "done" })
+            // message_stop intentionally ignored — we emit "done" once after
+            // the loop exits so the UI doesn't see a premature stop between
+            // tool-use iterations.
           }
+
+          const final = await streamResp.finalMessage()
+
+          if (final.stop_reason !== "tool_use") break
+
+          // Collect any custom tool_use blocks the model asked us to run. We
+          // skip server-side blocks (web_search) since Anthropic already
+          // handled them inside this turn.
+          const toolResults: Anthropic.Messages.ToolResultBlockParam[] = []
+          for (const block of final.content) {
+            if (block.type !== "tool_use") continue
+            if (!isCustomTool(block.name)) continue
+            try {
+              const result = await runTool(block.name as ToolName, block.input, {
+                orgId: auth.orgId,
+                planId,
+              })
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              })
+              send({ type: "tool_result", id: block.id, name: block.name, ok: true })
+            } catch (err: any) {
+              const message = err?.message ?? "Tool call failed"
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify({ error: message }),
+                is_error: true,
+              })
+              send({ type: "tool_result", id: block.id, name: block.name, ok: false, error: message })
+            }
+          }
+
+          // No custom tools actually ran — either only server-side tools were
+          // used (Anthropic already handled them) or the model asked for a
+          // tool we don't implement. Nothing to feed back, so stop.
+          if (toolResults.length === 0) break
+
+          conversation.push({ role: "assistant", content: final.content })
+          conversation.push({ role: "user", content: toolResults })
         }
+
+        send({ type: "done" })
         controller.close()
       } catch (err: any) {
         send({ type: "error", error: err?.message ?? "AI request failed" })

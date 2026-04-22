@@ -3,16 +3,31 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Sparkles, Loader2, Send, Search, X, Eraser } from "lucide-react"
+import { Sparkles, Loader2, Send, Search, X, Eraser, Database, AlertTriangle } from "lucide-react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+
+type ToolChip = {
+  id: string
+  name: string
+  query?: string
+  status: "running" | "done" | "error"
+  error?: string
+}
 
 type Message = {
   role: "user" | "assistant"
   content: string
   /** Appended tool-use chips the assistant emitted during this turn. */
-  toolChips?: { name: string; query?: string }[]
+  toolChips?: ToolChip[]
+}
+
+function chipLabel(chip: ToolChip): string {
+  if (chip.name === "web_search") return chip.query ? `Searching: "${chip.query}"` : "Searching the web…"
+  if (chip.name === "get_monthly_breakdown") return "Fetching monthly breakdown…"
+  if (chip.name === "get_account_drill") return "Drilling into account…"
+  return chip.name
 }
 
 interface Props {
@@ -113,7 +128,29 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
                 const copy = [...h]
                 const last = copy[copy.length - 1]
                 if (last?.role === "assistant") {
-                  const chips = [...(last.toolChips ?? []), { name: parsed.name, query: parsed.input?.query }]
+                  const chips: ToolChip[] = [
+                    ...(last.toolChips ?? []),
+                    {
+                      id: parsed.id ?? `t_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                      name: parsed.name,
+                      query: parsed.input?.query,
+                      status: "running",
+                    },
+                  ]
+                  copy[copy.length - 1] = { ...last, toolChips: chips }
+                }
+                return copy
+              })
+            } else if (parsed.type === "tool_result") {
+              setMessages(h => {
+                const copy = [...h]
+                const last = copy[copy.length - 1]
+                if (last?.role === "assistant" && last.toolChips) {
+                  const chips = last.toolChips.map((c) =>
+                    c.id === parsed.id
+                      ? { ...c, status: (parsed.ok ? "done" : "error") as ToolChip["status"], error: parsed.error }
+                      : c,
+                  )
                   copy[copy.length - 1] = { ...last, toolChips: chips }
                 }
                 return copy
@@ -198,12 +235,29 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
                   <>
                     {m.toolChips && m.toolChips.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2">
-                        {m.toolChips.map((c, j) => (
-                          <span key={j} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
-                            <Search className="h-3 w-3" />
-                            {c.name === "web_search" ? (c.query ? `Searching: "${c.query}"` : "Searching the web...") : c.name}
-                          </span>
-                        ))}
+                        {m.toolChips.map((c) => {
+                          const isWeb = c.name === "web_search"
+                          const Icon = c.status === "error" ? AlertTriangle : isWeb ? Search : Database
+                          const tone = c.status === "error"
+                            ? "bg-destructive/10 text-destructive border-destructive/30"
+                            : isWeb
+                              ? "bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800"
+                              : "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
+                          return (
+                            <span
+                              key={c.id}
+                              title={c.error ?? undefined}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${tone} ${c.status === "running" ? "animate-pulse" : ""}`}
+                            >
+                              {c.status === "running" ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Icon className="h-3 w-3" />
+                              )}
+                              {chipLabel(c)}
+                            </span>
+                          )
+                        })}
                       </div>
                     )}
                     <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-headings:mt-4 prose-headings:mb-2">
