@@ -32,6 +32,25 @@ function pctOfRev(amount: number, rev: number): string {
   return ((Math.abs(amount) / Math.abs(rev)) * 100).toFixed(1) + "%"
 }
 
+/**
+ * Plan-vs-actual variance % as a signed string. Returns "—" when plan is zero
+ * (ratio is undefined). `favorable` decides the colour: for revenue "up" is
+ * good (actual > plan outperforms), for costs "down" is good (actual < plan
+ * means we spent less than budgeted).
+ */
+function varianceStr(actual: number, plan: number): string {
+  if (!plan) return "—"
+  const delta = ((actual - plan) / plan) * 100
+  return (delta >= 0 ? "+" : "") + delta.toFixed(1) + "%"
+}
+
+function varianceClass(actual: number, plan: number, favorable: "up" | "down"): string {
+  if (!plan || actual === plan) return "text-muted-foreground"
+  const positive = actual > plan
+  const good = favorable === "up" ? positive : !positive
+  return good ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+}
+
 interface PnlRow {
   accountCode: string
   accountName: string
@@ -86,6 +105,9 @@ export function BudgetPnlView({ planId }: { planId: string }) {
   }
 
   const { rows, monthlyRevenue, monthlyCogs } = data
+  const actualByKey: Record<string, number> = data.actualByKey ?? {}
+  const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
+  const hasActuals: boolean = Boolean(data.hasActuals)
 
   // Calculate totals
   const totalRevenue = Object.values(monthlyRevenue || {}).reduce((s: number, v: any) => s + (v || 0), 0)
@@ -116,6 +138,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
   const ebitdaMargin = totalRevenue > 0 ? (ebitda / totalRevenue) * 100 : 0
   const netProfit = grossProfit - totalOpex - totalBelowEbitda
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
+
+  // Derived actual equivalents — match the plan-side formulas so the
+  // Actual column keeps meaning for computed rows (Gross Profit, EBITDA, Net).
+  const actualGrossProfit = sectionActuals.revenue - sectionActuals.cogs
+  const actualEbitda = actualGrossProfit - sectionActuals.opex
+  const actualNetProfit = actualEbitda - sectionActuals.belowEbitda
 
   // Chart data
   const chartData = MONTHS.map((m, i) => {
@@ -160,11 +188,15 @@ export function BudgetPnlView({ planId }: { planId: string }) {
     })
   }
 
-  const renderSectionRows = (sectionRows: PnlRow[], colorClass: string, showPct = true) => (
-    sectionRows.map((row: PnlRow) => {
+  const renderSectionRows = (sectionRows: PnlRow[], colorClass: string, showPct = true) => {
+    // Costs improve when actual < plan; revenue improves when actual > plan.
+    const favorable: "up" | "down" = showPct ? "down" : "up"
+    return sectionRows.map((row: PnlRow) => {
       const isParent = !row.parentCode
+      const rowKey = `${row.accountCode}::${row.accountName}`
+      const actual = actualByKey[rowKey] || 0
       return (
-        <tr key={`${row.accountCode}::${row.accountName}`} className={`border-b hover:bg-muted/30 ${isParent ? "font-medium" : "text-muted-foreground"}`}>
+        <tr key={rowKey} className={`border-b hover:bg-muted/30 ${isParent ? "font-medium" : "text-muted-foreground"}`}>
           <td className="sticky left-0 bg-card px-3 py-1.5 text-xs">
             <span className="text-[10px] text-muted-foreground/60 mr-2 font-mono">{row.accountCode}</span>
             {row.accountName}
@@ -187,10 +219,16 @@ export function BudgetPnlView({ planId }: { planId: string }) {
               <div className="text-[10px] text-muted-foreground/60 font-normal">{pctOfRev(row.total, totalRevenue)}</div>
             )}
           </td>
+          <td className={`px-3 py-1.5 text-right text-xs tabular-nums bg-muted/30 ${actual ? colorClass : "text-muted-foreground/50"}`}>
+            {actual ? fmtNum(actual) : "—"}
+          </td>
+          <td className={`px-3 py-1.5 text-right text-xs tabular-nums bg-muted/30 ${varianceClass(actual, row.total, favorable)}`}>
+            {varianceStr(actual, row.total)}
+          </td>
         </tr>
       )
     })
-  )
+  }
 
   return (
     <div className="space-y-4">
@@ -332,7 +370,14 @@ export function BudgetPnlView({ planId }: { planId: string }) {
       {/* P&L Table */}
       <div className="rounded-xl border bg-card">
         <div className="flex items-center justify-between p-4 border-b">
-          <h3 className="text-sm font-semibold text-foreground">P&L Statement — Detail</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">P&L Statement — Detail</h3>
+            {!hasActuals && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+                No actuals imported — Δ% columns show "—"
+              </span>
+            )}
+          </div>
           <Badge variant="outline">{data.year}</Badge>
         </div>
         <div className="overflow-x-auto">
@@ -343,7 +388,9 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 {MONTHS.map((m) => (
                   <th key={m} className="px-2 py-2.5 text-right font-semibold min-w-[80px]">{m}</th>
                 ))}
-                <th className="px-3 py-2.5 text-right font-bold min-w-[90px] bg-muted">Total</th>
+                <th className="px-3 py-2.5 text-right font-bold min-w-[90px] bg-muted">Plan (Total)</th>
+                <th className="px-3 py-2.5 text-right font-semibold min-w-[90px] bg-muted">Actual</th>
+                <th className="px-3 py-2.5 text-right font-semibold min-w-[80px] bg-muted">Δ%</th>
               </tr>
             </thead>
             <tbody>
@@ -363,6 +410,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 ))}
                 <td className="px-3 py-2 text-right font-bold bg-muted text-emerald-700 dark:text-emerald-400 tabular-nums">
                   {fmtNum(totalRevenue)}
+                </td>
+                <td className={`px-3 py-2 text-right font-bold bg-muted/70 tabular-nums ${sectionActuals.revenue ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground/50"}`}>
+                  {sectionActuals.revenue ? fmtNum(sectionActuals.revenue) : "—"}
+                </td>
+                <td className={`px-3 py-2 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(sectionActuals.revenue, totalRevenue, "up")}`}>
+                  {varianceStr(sectionActuals.revenue, totalRevenue)}
                 </td>
               </tr>
               {expandedSections.has("revenue") && renderSectionRows(revenueRows, "text-emerald-600", false)}
@@ -394,6 +447,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                     <div className="text-[10px] text-red-600/70 dark:text-red-400/60 font-normal">{pctOfRev(totalCogs, totalRevenue)}</div>
                   )}
                 </td>
+                <td className={`px-3 py-2 text-right font-bold bg-muted/70 tabular-nums ${sectionActuals.cogs ? "text-red-700 dark:text-red-400" : "text-muted-foreground/50"}`}>
+                  {sectionActuals.cogs ? `(${fmtNum(sectionActuals.cogs)})` : "—"}
+                </td>
+                <td className={`px-3 py-2 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(sectionActuals.cogs, totalCogs, "down")}`}>
+                  {varianceStr(sectionActuals.cogs, totalCogs)}
+                </td>
               </tr>
               {expandedSections.has("cogs") && renderSectionRows(cogsRows, "text-red-600")}
 
@@ -421,6 +480,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                       {grossMargin.toFixed(1)}%
                     </div>
                   )}
+                </td>
+                <td className={`px-3 py-2.5 text-right font-bold bg-muted/70 tabular-nums ${actualGrossProfit || sectionActuals.revenue ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground/50"}`}>
+                  {actualGrossProfit || sectionActuals.revenue ? fmtNum(actualGrossProfit) : "—"}
+                </td>
+                <td className={`px-3 py-2.5 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(actualGrossProfit, grossProfit, "up")}`}>
+                  {varianceStr(actualGrossProfit, grossProfit)}
                 </td>
               </tr>
 
@@ -451,6 +516,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                     <div className="text-[10px] text-amber-600/70 dark:text-amber-400/60 font-normal">{pctOfRev(totalOpex, totalRevenue)}</div>
                   )}
                 </td>
+                <td className={`px-3 py-2 text-right font-bold bg-muted/70 tabular-nums ${sectionActuals.opex ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground/50"}`}>
+                  {sectionActuals.opex ? `(${fmtNum(sectionActuals.opex)})` : "—"}
+                </td>
+                <td className={`px-3 py-2 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(sectionActuals.opex, totalOpex, "down")}`}>
+                  {varianceStr(sectionActuals.opex, totalOpex)}
+                </td>
               </tr>
               {expandedSections.has("opex") && renderSectionRows(opexRows, "text-amber-600")}
 
@@ -475,6 +546,14 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 <td className={`px-3 py-2.5 text-right font-bold text-sm bg-muted tabular-nums ${ebitda >= 0 ? "text-purple-700 dark:text-purple-400" : "text-red-700 dark:text-red-400"}`}>
                   {ebitda < 0 ? `(${fmtNum(Math.abs(ebitda))})` : fmtNum(ebitda)}
                 </td>
+                <td className={`px-3 py-2.5 text-right font-bold text-sm bg-muted/70 tabular-nums ${actualEbitda || sectionActuals.revenue ? (actualEbitda >= 0 ? "text-purple-700 dark:text-purple-400" : "text-red-700 dark:text-red-400") : "text-muted-foreground/50"}`}>
+                  {actualEbitda || sectionActuals.revenue
+                    ? (actualEbitda < 0 ? `(${fmtNum(Math.abs(actualEbitda))})` : fmtNum(actualEbitda))
+                    : "—"}
+                </td>
+                <td className={`px-3 py-2.5 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(actualEbitda, ebitda, "up")}`}>
+                  {varianceStr(actualEbitda, ebitda)}
+                </td>
               </tr>
               {/* EBITDA Margin % */}
               <tr className="bg-purple-50/50 dark:bg-purple-950/10">
@@ -498,6 +577,10 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                 <td className={`px-3 py-1 text-right text-[10px] font-bold bg-muted ${ebitdaMargin < 0 ? "text-red-500" : "text-purple-600 dark:text-purple-400"}`}>
                   {ebitdaMargin.toFixed(1)}%
                 </td>
+                {/* Actual margin not computed per-month (would require monthly actual aggregation);
+                    keep cells empty to preserve column alignment. */}
+                <td className="px-3 py-1 bg-muted/70" />
+                <td className="px-3 py-1 bg-muted/70" />
               </tr>
 
               {/* D&A, Finance, Tax — below EBITDA items */}
@@ -527,6 +610,12 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                     {totalBelowEbitda > 0 && totalRevenue > 0 && (
                       <div className="text-[10px] text-slate-500/80 dark:text-slate-400/60 font-normal">{pctOfRev(totalBelowEbitda, totalRevenue)}</div>
                     )}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-bold bg-muted/70 tabular-nums ${sectionActuals.belowEbitda ? "text-slate-600 dark:text-slate-400" : "text-muted-foreground/50"}`}>
+                    {sectionActuals.belowEbitda ? `(${fmtNum(sectionActuals.belowEbitda)})` : "—"}
+                  </td>
+                  <td className={`px-3 py-2 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(sectionActuals.belowEbitda, totalBelowEbitda, "down")}`}>
+                    {varianceStr(sectionActuals.belowEbitda, totalBelowEbitda)}
                   </td>
                 </tr>
               )}
@@ -558,6 +647,14 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                   {totalRevenue > 0 && (
                     <div className={`text-[10px] font-normal ${netProfit >= 0 ? "text-emerald-600/70 dark:text-emerald-400/60" : "text-red-600/70 dark:text-red-400/60"}`}>{netMargin.toFixed(1)}%</div>
                   )}
+                </td>
+                <td className={`px-3 py-3 text-right font-bold text-sm bg-muted/70 tabular-nums ${actualNetProfit || sectionActuals.revenue ? (actualNetProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400") : "text-muted-foreground/50"}`}>
+                  {actualNetProfit || sectionActuals.revenue
+                    ? (actualNetProfit < 0 ? `(${fmtNum(Math.abs(actualNetProfit))})` : fmtNum(actualNetProfit))
+                    : "—"}
+                </td>
+                <td className={`px-3 py-3 text-right font-semibold bg-muted/70 tabular-nums ${varianceClass(actualNetProfit, netProfit, "up")}`}>
+                  {varianceStr(actualNetProfit, netProfit)}
                 </td>
               </tr>
             </tbody>

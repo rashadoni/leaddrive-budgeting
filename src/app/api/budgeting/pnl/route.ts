@@ -26,11 +26,19 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
-  const year = parseInt(searchParams.get("year") || "2026")
+  const yearOverride = searchParams.get("year")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  // Get all budget lines + sales + COGS data
-  const [budgetLines, salesLines, cogsLines] = await Promise.all([
+  // Resolve plan year up-front — we need it to filter actuals by expenseDate.
+  const plan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId, deletedAt: null },
+    select: { year: true },
+  })
+  if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+  const year = yearOverride ? parseInt(yearOverride) : plan.year
+
+  // Get all budget lines + sales + COGS data + actuals
+  const [budgetLines, salesLines, cogsLines, actuals] = await Promise.all([
     prisma.budgetLine.findMany({
       where: { organizationId: orgId, planId },
       // Include the FK'd account so reads prefer canonical code/name from
@@ -44,6 +52,16 @@ export async function GET(req: NextRequest) {
     prisma.cOGSBudgetLine.findMany({
       where: { organizationId: orgId, planId, year },
       include: { productLine: true },
+    }),
+    prisma.budgetActual.findMany({
+      where: { organizationId: orgId, planId },
+      select: {
+        category: true,
+        department: true,
+        lineType: true,
+        actualAmount: true,
+        expenseDate: true,
+      },
     }),
   ])
 
@@ -157,11 +175,82 @@ export async function GET(req: NextRequest) {
       }
     })
 
+  // ---- Actuals aggregation ------------------------------------------------
+  // Aggregate BudgetActual rows to match the same code::name keys as the plan
+  // rows. Actuals don't have an accountId FK, so we rely on the same
+  // department/category string heuristic as the legacy branch above.
+  const looksLikeCode = (s: string) => /^\d{3}/.test(s)
+  const resolveActualKey = (dep: string | null, cat: string): { code: string; name: string; key: string } => {
+    const maybeCode = dep || ""
+    const maybeName = cat || ""
+    const code = looksLikeCode(maybeCode)
+      ? maybeCode
+      : looksLikeCode(maybeName)
+        ? maybeName
+        : maybeCode || "other"
+    const name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
+    return { code, name, key: `${code}::${name}` }
+  }
+
+  const actualByKey: Record<string, number> = {}
+  const actualMonthlyByKey: Record<string, Record<number, number>> = {}
+  const sectionActuals = { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
+  const monthlyActualRevenue: Record<number, number> = {}
+  const monthlyActualCogs: Record<number, number> = {}
+  for (let m = 1; m <= 12; m++) {
+    monthlyActualRevenue[m] = 0
+    monthlyActualCogs[m] = 0
+  }
+
+  for (const a of actuals) {
+    if (!a.expenseDate) continue
+    const d = new Date(a.expenseDate)
+    if (Number.isNaN(d.getTime())) continue
+    if (d.getFullYear() !== year) continue
+    const month = d.getMonth() + 1
+
+    const { code, key } = resolveActualKey(a.department, a.category)
+    const amount = a.actualAmount || 0
+
+    actualByKey[key] = (actualByKey[key] || 0) + amount
+    actualMonthlyByKey[key] ??= {}
+    actualMonthlyByKey[key][month] = (actualMonthlyByKey[key][month] || 0) + amount
+
+    // Section aggregation mirrors the code-prefix rules used in the view.
+    if (code.startsWith("601") || code.startsWith("611")) {
+      sectionActuals.revenue += amount
+      monthlyActualRevenue[month] += amount
+    } else if (code.startsWith("602") || code.startsWith("603")) {
+      sectionActuals.revenue -= amount // contra-revenue
+      monthlyActualRevenue[month] -= amount
+    } else if (code.startsWith("701")) {
+      sectionActuals.cogs += amount
+      monthlyActualCogs[month] += amount
+    } else if (code.startsWith("711") || code.startsWith("721")) {
+      sectionActuals.opex += amount
+    } else if (
+      code.startsWith("731") ||
+      code.startsWith("741") ||
+      code.startsWith("751") ||
+      code.startsWith("761") ||
+      code.startsWith("771") ||
+      code.startsWith("801")
+    ) {
+      sectionActuals.belowEbitda += amount
+    }
+  }
+
   return NextResponse.json({
     sections: PNL_SECTIONS,
     rows: pnlRows,
     monthlyRevenue,
     monthlyCogs,
+    monthlyActualRevenue,
+    monthlyActualCogs,
+    actualByKey,
+    actualMonthlyByKey,
+    sectionActuals,
     year,
+    hasActuals: actuals.length > 0,
   })
 }
