@@ -23,6 +23,15 @@ function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
+/**
+ * % of revenue for a single cost amount. Returns an empty string when the
+ * denominator is zero or the amount is zero — we don't want "0.0%" clutter.
+ */
+function pctOfRev(amount: number, rev: number): string {
+  if (!rev || !amount) return ""
+  return ((Math.abs(amount) / Math.abs(rev)) * 100).toFixed(1) + "%"
+}
+
 interface PnlRow {
   accountCode: string
   accountName: string
@@ -151,7 +160,7 @@ export function BudgetPnlView({ planId }: { planId: string }) {
     })
   }
 
-  const renderSectionRows = (sectionRows: PnlRow[], colorClass: string) => (
+  const renderSectionRows = (sectionRows: PnlRow[], colorClass: string, showPct = true) => (
     sectionRows.map((row: PnlRow) => {
       const isParent = !row.parentCode
       return (
@@ -160,13 +169,23 @@ export function BudgetPnlView({ planId }: { planId: string }) {
             <span className="text-[10px] text-muted-foreground/60 mr-2 font-mono">{row.accountCode}</span>
             {row.accountName}
           </td>
-          {Array.from({ length: 12 }, (_, i) => (
-            <td key={i} className={`px-2 py-1.5 text-right text-xs tabular-nums ${colorClass}`}>
-              {row.monthly[i + 1] ? fmtNum(row.monthly[i + 1]) : "—"}
-            </td>
-          ))}
-          <td className={`px-3 py-1.5 text-right text-xs font-medium bg-muted/50 tabular-nums ${colorClass}`}>
-            {fmtNum(row.total)}
+          {Array.from({ length: 12 }, (_, i) => {
+            const val = row.monthly[i + 1] || 0
+            const monthRev = monthlyRevenue?.[i + 1] || 0
+            return (
+              <td key={i} className={`px-2 py-1.5 text-right text-xs tabular-nums leading-tight ${colorClass}`}>
+                <div>{val ? fmtNum(val) : "—"}</div>
+                {showPct && val !== 0 && monthRev > 0 && (
+                  <div className="text-[10px] text-muted-foreground/60 font-normal">{pctOfRev(val, monthRev)}</div>
+                )}
+              </td>
+            )
+          })}
+          <td className={`px-3 py-1.5 text-right text-xs font-medium bg-muted/50 tabular-nums leading-tight ${colorClass}`}>
+            <div>{fmtNum(row.total)}</div>
+            {showPct && row.total !== 0 && totalRevenue > 0 && (
+              <div className="text-[10px] text-muted-foreground/60 font-normal">{pctOfRev(row.total, totalRevenue)}</div>
+            )}
           </td>
         </tr>
       )
@@ -346,7 +365,7 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                   {fmtNum(totalRevenue)}
                 </td>
               </tr>
-              {expandedSections.has("revenue") && renderSectionRows(revenueRows, "text-emerald-600")}
+              {expandedSections.has("revenue") && renderSectionRows(revenueRows, "text-emerald-600", false)}
 
               {/* COGS */}
               <tr
@@ -357,13 +376,23 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                   {expandedSections.has("cogs") ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                   COGS
                 </td>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <td key={i} className="px-2 py-2 text-right text-red-700 dark:text-red-400 tabular-nums">
-                    ({fmtNum(Math.abs(monthlyCogs?.[i + 1] || 0))})
-                  </td>
-                ))}
-                <td className="px-3 py-2 text-right font-bold bg-muted text-red-700 dark:text-red-400 tabular-nums">
-                  ({fmtNum(totalCogs)})
+                {Array.from({ length: 12 }, (_, i) => {
+                  const val = Math.abs(monthlyCogs?.[i + 1] || 0)
+                  const rev = monthlyRevenue?.[i + 1] || 0
+                  return (
+                    <td key={i} className="px-2 py-2 text-right text-red-700 dark:text-red-400 tabular-nums leading-tight">
+                      <div>({fmtNum(val)})</div>
+                      {val > 0 && rev > 0 && (
+                        <div className="text-[10px] text-red-600/70 dark:text-red-400/60 font-normal">{pctOfRev(val, rev)}</div>
+                      )}
+                    </td>
+                  )
+                })}
+                <td className="px-3 py-2 text-right font-bold bg-muted text-red-700 dark:text-red-400 tabular-nums leading-tight">
+                  <div>({fmtNum(totalCogs)})</div>
+                  {totalCogs > 0 && totalRevenue > 0 && (
+                    <div className="text-[10px] text-red-600/70 dark:text-red-400/60 font-normal">{pctOfRev(totalCogs, totalRevenue)}</div>
+                  )}
                 </td>
               </tr>
               {expandedSections.has("cogs") && renderSectionRows(cogsRows, "text-red-600")}
@@ -372,15 +401,26 @@ export function BudgetPnlView({ planId }: { planId: string }) {
               <tr className="bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800">
                 <td className="sticky left-0 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 pl-6">Gross Profit</td>
                 {Array.from({ length: 12 }, (_, i) => {
-                  const gp = (monthlyRevenue?.[i + 1] || 0) + (monthlyCogs?.[i + 1] || 0)
+                  const rev = monthlyRevenue?.[i + 1] || 0
+                  const gp = rev + (monthlyCogs?.[i + 1] || 0)
                   return (
-                    <td key={i} className="px-2 py-2.5 text-right text-blue-700 dark:text-blue-400 tabular-nums">
-                      {fmtNum(gp)}
+                    <td key={i} className="px-2 py-2.5 text-right text-blue-700 dark:text-blue-400 tabular-nums leading-tight">
+                      <div>{fmtNum(gp)}</div>
+                      {rev > 0 && (
+                        <div className="text-[10px] text-blue-600/70 dark:text-blue-400/60 font-normal">
+                          {((gp / rev) * 100).toFixed(1)}%
+                        </div>
+                      )}
                     </td>
                   )
                 })}
-                <td className="px-3 py-2.5 text-right font-bold bg-muted text-blue-700 dark:text-blue-400 tabular-nums">
-                  {fmtNum(grossProfit)}
+                <td className="px-3 py-2.5 text-right font-bold bg-muted text-blue-700 dark:text-blue-400 tabular-nums leading-tight">
+                  <div>{fmtNum(grossProfit)}</div>
+                  {totalRevenue > 0 && (
+                    <div className="text-[10px] text-blue-600/70 dark:text-blue-400/60 font-normal">
+                      {grossMargin.toFixed(1)}%
+                    </div>
+                  )}
                 </td>
               </tr>
 
@@ -394,11 +434,22 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                   Operating Expenses
                 </td>
                 {Array.from({ length: 12 }, (_, i) => {
-                  const monthOpex = opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                  return <td key={i} className="px-2 py-2 text-right text-amber-700 dark:text-amber-400 tabular-nums">({fmtNum(Math.abs(monthOpex))})</td>
+                  const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                  const rev = monthlyRevenue?.[i + 1] || 0
+                  return (
+                    <td key={i} className="px-2 py-2 text-right text-amber-700 dark:text-amber-400 tabular-nums leading-tight">
+                      <div>({fmtNum(monthOpex)})</div>
+                      {monthOpex > 0 && rev > 0 && (
+                        <div className="text-[10px] text-amber-600/70 dark:text-amber-400/60 font-normal">{pctOfRev(monthOpex, rev)}</div>
+                      )}
+                    </td>
+                  )
                 })}
-                <td className="px-3 py-2 text-right font-bold bg-muted text-amber-700 dark:text-amber-400 tabular-nums">
-                  ({fmtNum(totalOpex)})
+                <td className="px-3 py-2 text-right font-bold bg-muted text-amber-700 dark:text-amber-400 tabular-nums leading-tight">
+                  <div>({fmtNum(totalOpex)})</div>
+                  {totalOpex > 0 && totalRevenue > 0 && (
+                    <div className="text-[10px] text-amber-600/70 dark:text-amber-400/60 font-normal">{pctOfRev(totalOpex, totalRevenue)}</div>
+                  )}
                 </td>
               </tr>
               {expandedSections.has("opex") && renderSectionRows(opexRows, "text-amber-600")}
@@ -460,11 +511,22 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                     D&A, Finance & Tax
                   </td>
                   {Array.from({ length: 12 }, (_, i) => {
-                    const val = belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0)
-                    return <td key={i} className="px-2 py-2 text-right text-slate-600 dark:text-slate-400 tabular-nums">({fmtNum(Math.abs(val))})</td>
+                    const val = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
+                    const rev = monthlyRevenue?.[i + 1] || 0
+                    return (
+                      <td key={i} className="px-2 py-2 text-right text-slate-600 dark:text-slate-400 tabular-nums leading-tight">
+                        <div>({fmtNum(val)})</div>
+                        {val > 0 && rev > 0 && (
+                          <div className="text-[10px] text-slate-500/80 dark:text-slate-400/60 font-normal">{pctOfRev(val, rev)}</div>
+                        )}
+                      </td>
+                    )
                   })}
-                  <td className="px-3 py-2 text-right font-bold bg-muted text-slate-600 dark:text-slate-400 tabular-nums">
-                    ({fmtNum(totalBelowEbitda)})
+                  <td className="px-3 py-2 text-right font-bold bg-muted text-slate-600 dark:text-slate-400 tabular-nums leading-tight">
+                    <div>({fmtNum(totalBelowEbitda)})</div>
+                    {totalBelowEbitda > 0 && totalRevenue > 0 && (
+                      <div className="text-[10px] text-slate-500/80 dark:text-slate-400/60 font-normal">{pctOfRev(totalBelowEbitda, totalRevenue)}</div>
+                    )}
                   </td>
                 </tr>
               )}
@@ -481,14 +543,21 @@ export function BudgetPnlView({ planId }: { planId: string }) {
                   const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
                   const monthBelow = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
                   const np = rev + cogs - monthOpex - monthBelow
+                  const pct = rev > 0 ? ((np / rev) * 100).toFixed(1) + "%" : ""
                   return (
-                    <td key={i} className={`px-2 py-3 text-right tabular-nums ${np >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-                      {np < 0 ? `(${fmtNum(Math.abs(np))})` : fmtNum(np)}
+                    <td key={i} className={`px-2 py-3 text-right tabular-nums leading-tight ${np >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                      <div>{np < 0 ? `(${fmtNum(Math.abs(np))})` : fmtNum(np)}</div>
+                      {pct && (
+                        <div className={`text-[10px] font-normal ${np >= 0 ? "text-emerald-600/70 dark:text-emerald-400/60" : "text-red-600/70 dark:text-red-400/60"}`}>{pct}</div>
+                      )}
                     </td>
                   )
                 })}
-                <td className={`px-3 py-3 text-right font-bold text-sm bg-muted tabular-nums ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
-                  {netProfit < 0 ? `(${fmtNum(Math.abs(netProfit))})` : fmtNum(netProfit)}
+                <td className={`px-3 py-3 text-right font-bold text-sm bg-muted tabular-nums leading-tight ${netProfit >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                  <div>{netProfit < 0 ? `(${fmtNum(Math.abs(netProfit))})` : fmtNum(netProfit)}</div>
+                  {totalRevenue > 0 && (
+                    <div className={`text-[10px] font-normal ${netProfit >= 0 ? "text-emerald-600/70 dark:text-emerald-400/60" : "text-red-600/70 dark:text-red-400/60"}`}>{netMargin.toFixed(1)}%</div>
+                  )}
                 </td>
               </tr>
             </tbody>
