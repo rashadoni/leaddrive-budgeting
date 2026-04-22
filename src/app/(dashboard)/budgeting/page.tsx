@@ -87,6 +87,8 @@ import { BudgetDepartmentAccess } from "@/components/budget-department-access"
 import { BudgetApprovalWorkflow } from "@/components/budget-approval-workflow"
 import { BudgetApprovalHistory } from "@/components/budget-approval-history"
 import { BudgetVersionHistory } from "@/components/budget-version-history"
+import { AIAnalyticsPanel } from "@/components/ai-analytics-panel"
+import { SECTION_LABELS, type Section } from "@/lib/ai/section-context"
 import { BudgetVersionDiff } from "@/components/budget-version-diff"
 import { BudgetFxSummary } from "@/components/budget-fx-summary"
 import { BudgetCsvImport } from "@/components/budget-csv-import"
@@ -5049,6 +5051,7 @@ export default function BudgetingPage() {
   const { data: plans = [], isLoading: plansLoading } = useBudgetPlans()
   const [activePlanId, setActivePlanId] = useState<string>("")
   const [showCreate, setShowCreate] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   React.useEffect(() => setMounted(true), [])
   const activeTab = searchParams.get("tab") || "workspace"
@@ -5146,6 +5149,31 @@ export default function BudgetingPage() {
       )}
 
       {showCreate && <CreatePlanDialog onClose={() => setShowCreate(false)} />}
+
+      {/* AI Analysis — floating button + side panel */}
+      {resolvedPlanId && SECTION_LABELS[activeTab as Section] && (
+        <>
+          <button
+            type="button"
+            onClick={() => setAiOpen(true)}
+            className="fixed bottom-6 right-6 z-40 flex items-center gap-2 px-4 py-3 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all"
+            title="AI analysis of this section"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>
+            </svg>
+            <span className="text-sm font-medium">AI Analysis</span>
+          </button>
+          <AIAnalyticsPanel
+            open={aiOpen}
+            onClose={() => setAiOpen(false)}
+            section={activeTab}
+            sectionLabel={SECTION_LABELS[activeTab as Section]}
+            planId={resolvedPlanId}
+            planName={plans.find((p: { id: string; name?: string }) => p.id === resolvedPlanId)?.name ?? null}
+          />
+        </>
+      )}
     </div>
   )
 }
