@@ -23,6 +23,14 @@ type Message = {
   toolChips?: ToolChip[]
 }
 
+type Language = "en" | "ru" | "az"
+
+const LANGUAGES: { code: Language; label: string; fullName: string }[] = [
+  { code: "en", label: "EN", fullName: "English" },
+  { code: "ru", label: "RU", fullName: "Русский" },
+  { code: "az", label: "AZ", fullName: "Azərbaycan" },
+]
+
 function chipLabel(chip: ToolChip): string {
   if (chip.name === "web_search") return chip.query ? `Searching: "${chip.query}"` : "Searching the web…"
   if (chip.name === "get_monthly_breakdown") return "Fetching monthly breakdown…"
@@ -46,6 +54,7 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [language, setLanguage] = useState<Language>("en")
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   // Clear chat when section changes or panel closes
@@ -54,15 +63,6 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
     setMessages([])
     setError(null)
   }, [open, section, planId])
-
-  // Auto-kick-off the first analysis on open
-  useEffect(() => {
-    if (!open || !planId) return
-    if (messages.length > 0) return
-    if (streaming) return
-    void runTurn([])
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, planId, section])
 
   // Autoscroll
   useEffect(() => {
@@ -85,6 +85,7 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
           body: JSON.stringify({
             section,
             planId,
+            language,
             messages: history.map(m => ({ role: m.role, content: m.content })),
           }),
         })
@@ -166,8 +167,13 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
         setStreaming(false)
       }
     },
-    [planId, section],
+    [planId, section, language],
   )
+
+  const handleStart = useCallback(() => {
+    if (!planId || streaming) return
+    void runTurn([])
+  }, [planId, streaming, runTurn])
 
   const handleSend = useCallback(() => {
     const text = input.trim()
@@ -201,6 +207,30 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
             </SheetDescription>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <div
+              role="radiogroup"
+              aria-label="Analysis language"
+              className="flex items-center gap-0.5 bg-muted/60 rounded-md p-0.5 mr-1"
+            >
+              {LANGUAGES.map((l) => (
+                <button
+                  key={l.code}
+                  type="button"
+                  role="radio"
+                  aria-checked={language === l.code}
+                  title={l.fullName}
+                  onClick={() => setLanguage(l.code)}
+                  disabled={streaming}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide transition-colors ${
+                    language === l.code
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  } disabled:opacity-50`}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
             {messages.length > 0 && (
               <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleClear} disabled={streaming}>
                 <Eraser className="h-3.5 w-3.5 mr-1" />Clear
@@ -212,15 +242,26 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
           </div>
         </SheetHeader>
 
-        {/* Privacy notice banner */}
-        <div className="px-4 py-2 text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-800">
-          ⚠ Section data is sent to Anthropic (US) for analysis. Not used for model training.
-        </div>
-
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
           {messages.length === 0 && !streaming && !error && (
-            <div className="text-xs text-muted-foreground text-center py-12">
-              {planId ? "Starting analysis..." : "Select a plan to analyze."}
+            <div className="flex flex-col items-center justify-center text-center py-10 gap-3">
+              {planId ? (
+                <>
+                  <div className="text-xs text-muted-foreground max-w-[320px]">
+                    Analysis will run in{" "}
+                    <span className="font-medium text-foreground">
+                      {LANGUAGES.find((l) => l.code === language)?.fullName}
+                    </span>
+                    . Change the language above if needed.
+                  </div>
+                  <Button size="sm" onClick={handleStart} disabled={!planId}>
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                    Start analysis
+                  </Button>
+                </>
+              ) : (
+                <div className="text-xs text-muted-foreground">Select a plan to analyze.</div>
+              )}
             </div>
           )}
           {messages.map((m, i) => (

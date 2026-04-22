@@ -23,6 +23,7 @@ const requestSchema = z.object({
     "forecast",
   ]),
   planId: z.string().min(1),
+  language: z.enum(["en", "ru", "az"]).default("en"),
   messages: z
     .array(
       z.object({
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Validation failed", details: parsed.error.flatten() }, { status: 400 })
   }
-  const { section, planId, messages } = parsed.data
+  const { section, planId, language, messages } = parsed.data
 
   // Confirm plan ownership — section-context.ts re-verifies but this gives a
   // clean 404 before we load a large context blob or hit the LLM.
@@ -73,10 +74,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message || "Failed to collect section data" }, { status: 500 })
   }
 
-  const systemPrompt = buildSystemPrompt(section as Section, sectionData)
+  const systemPrompt = buildSystemPrompt(section as Section, sectionData, language)
   const initialMessages: Anthropic.Messages.MessageParam[] = messages.length > 0
     ? messages
-    : [{ role: "user", content: buildKickoffUserMessage(section as Section) }]
+    : [{ role: "user", content: buildKickoffUserMessage(section as Section, language) }]
 
   const client = getAnthropicClient()
 

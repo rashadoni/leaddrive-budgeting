@@ -1,5 +1,19 @@
 import type { Section } from "./section-context"
 
+export type Language = "en" | "ru" | "az"
+
+const LANGUAGE_INSTRUCTIONS: Record<Language, string> = {
+  en: "Respond in English.",
+  ru: "Respond in Russian (Русский). All prose — headings, bullets, and recommendations — must be in Russian. Keep numbers, currency codes (AZN), and account codes unchanged.",
+  az: "Respond in Azerbaijani (Azərbaycan dili). All prose — headings, bullets, and recommendations — must be in Azerbaijani. Keep numbers, currency codes (AZN), and account codes unchanged.",
+}
+
+const KICKOFF_PHRASES: Record<Language, string> = {
+  en: "Please analyze the current $SECTION data now. Start with a headline verdict, list key findings, compare to industry benchmarks via web search, and close with recommendations.",
+  ru: "Проанализируй текущие данные раздела «$SECTION». Начни с короткого вердикта, перечисли ключевые выводы, сравни с отраслевыми бенчмарками через web_search и заверши рекомендациями.",
+  az: "Cari «$SECTION» bölməsinin məlumatlarını indi təhlil et. Qısa ümumi nəticə ilə başla, əsas müşahidələri sadala, sənaye benchmarkları ilə web_search vasitəsilə müqayisə et və tövsiyələrlə yekunlaşdır.",
+}
+
 const BASE_SYSTEM = `You are a senior finance analyst helping a CFO understand their budget and P&L.
 
 Your style:
@@ -73,18 +87,24 @@ const SECTION_INSTRUCTIONS: Record<Section, string> = {
 - Believability vs historical trend`,
 }
 
-export function buildSystemPrompt(section: Section, sectionData: unknown): string {
+export function buildSystemPrompt(
+  section: Section,
+  sectionData: unknown,
+  language: Language = "en",
+): string {
   return `${BASE_SYSTEM}
 
 ${SECTION_INSTRUCTIONS[section]}
+
+Output language: ${LANGUAGE_INSTRUCTIONS[language]}
 
 <section_data>
 ${JSON.stringify(sectionData, null, 2)}
 </section_data>`
 }
 
-export function buildKickoffUserMessage(section: Section): string {
+export function buildKickoffUserMessage(section: Section, language: Language = "en"): string {
   // The first user message sent when the panel opens — asks Claude to produce
   // an initial analysis without requiring the user to type anything.
-  return `Please analyze the current ${section} data now. Start with a headline verdict, list key findings, compare to industry benchmarks via web search, and close with recommendations.`
+  return KICKOFF_PHRASES[language].replace("$SECTION", section)
 }
