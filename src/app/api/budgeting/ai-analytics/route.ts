@@ -107,7 +107,12 @@ export async function POST(req: NextRequest) {
         for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
           const streamResp = client.messages.stream({
             model: AI_MODEL,
-            max_tokens: 2048,
+            // Finance analysis on Russian / Azerbaijani uses ~2-3x more
+            // tokens per word than English, and a detailed answer with
+            // section headings + bullets + recommendations hits the old
+            // 2048 cap mid-sentence. 8K gives plenty of headroom while
+            // staying well under Sonnet 4.5's per-turn ceiling.
+            max_tokens: 8192,
             system: [
               {
                 type: "text",
@@ -149,6 +154,13 @@ export async function POST(req: NextRequest) {
           }
 
           const final = await streamResp.finalMessage()
+
+          if (final.stop_reason === "max_tokens") {
+            // Answer was cut off at the output-token limit. Surface a
+            // structured notice so the UI can explain the truncation
+            // instead of silently rendering a half-sentence.
+            send({ type: "truncated", reason: "max_tokens" })
+          }
 
           if (final.stop_reason !== "tool_use") break
 

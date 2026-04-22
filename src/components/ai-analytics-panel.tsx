@@ -21,6 +21,8 @@ type Message = {
   content: string
   /** Appended tool-use chips the assistant emitted during this turn. */
   toolChips?: ToolChip[]
+  /** Set when the server told us the response hit the max_tokens ceiling. */
+  truncated?: boolean
 }
 
 type Language = "en" | "ru" | "az"
@@ -154,6 +156,15 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
                       : c,
                   )
                   copy[copy.length - 1] = { ...last, toolChips: chips }
+                }
+                return copy
+              })
+            } else if (parsed.type === "truncated") {
+              setMessages(h => {
+                const copy = [...h]
+                const last = copy[copy.length - 1]
+                if (last?.role === "assistant") {
+                  copy[copy.length - 1] = { ...last, truncated: true }
                 }
                 return copy
               })
@@ -357,6 +368,12 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
                     <div className="prose prose-sm dark:prose-invert max-w-none prose-p:my-2 prose-ul:my-2 prose-headings:mt-4 prose-headings:mb-2">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content || (streaming && i === messages.length - 1 ? "…" : "")}</ReactMarkdown>
                     </div>
+                    {m.truncated && (
+                      <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-700 dark:text-amber-400">
+                        <AlertTriangle className="h-3 w-3" />
+                        Response hit the output limit. Ask a follow-up to continue.
+                      </div>
+                    )}
                   </>
                 )}
               </div>
