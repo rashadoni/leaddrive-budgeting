@@ -1,19 +1,25 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
-// GET: Fetch available scenarios for the holding
-export async function GET(request: Request) {
+// GET: Fetch available scenarios for the caller's organization.
+//
+// SECURITY (Phase A audit fix, 2026-04-26): the previous implementation
+// accepted `organizationId` as a query-string parameter with no auth
+// check at all — any unauthenticated caller could read scenarios from
+// any org by guessing the orgId. Now `requireAuth` resolves the orgId
+// from the session; query-string `organizationId` is ignored.
+export async function GET(request: NextRequest) {
+  const session = await requireAuth(request);
+  if (isAuthError(session)) return session;
+  if (!session.orgId) {
+    return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
+  }
+
   try {
-    const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('organizationId');
-
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
-    }
-
     const scenarios = await prisma.scenario.findMany({
       where: {
-        organizationId: orgId,
+        organizationId: session.orgId,
         isActive: true,
       },
       orderBy: { createdAt: 'desc' }
@@ -26,30 +32,43 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Apply a scenario (Trigger computation with overrides)
-export async function POST(request: Request) {
+// POST: Apply a scenario (Trigger computation with overrides).
+//
+// SECURITY (Phase A audit fix, 2026-04-26): the previous implementation
+// fetched the scenario via `findUnique({ where: { id } })` with no org
+// scoping AND accepted `organizationId` from the body — letting any
+// authenticated user trigger a scenario run against any other org's
+// scenario by passing both ids. Now: orgId comes from the session;
+// scenario lookup is tenant-scoped via `findFirst`.
+export async function POST(request: NextRequest) {
+  const session = await requireAuth(request);
+  if (isAuthError(session)) return session;
+  if (!session.orgId) {
+    return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
-    const { organizationId, scenarioId, period } = body;
+    const { scenarioId, period } = body;
 
-    if (!organizationId || !scenarioId || !period) {
+    if (!scenarioId || !period) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    // Fetch the scenario to get the overrides
-    const scenario = await prisma.scenario.findUnique({
-      where: { id: scenarioId }
+    const scenario = await prisma.scenario.findFirst({
+      where: { id: scenarioId, organizationId: session.orgId }
     });
 
     if (!scenario) {
+      // 404 (not 403) on cross-tenant id — don't leak existence in another org.
       return NextResponse.json({ error: 'Scenario not found' }, { status: 404 });
     }
 
     // Here we would push a job to the queue, passing the scenario.overrides
     // For now, return accepted status.
-    console.log(`[Queue] Added scenario ${scenario.code} run for org ${organizationId}`);
+    console.log(`[Queue] Added scenario ${scenario.code} run for org ${session.orgId}`);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       message: 'Scenario execution queued',
       scenarioCode: scenario.code,
       overrides: scenario.overrides

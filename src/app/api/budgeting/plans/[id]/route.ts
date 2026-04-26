@@ -151,8 +151,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ])
         for (const line of autoLines) {
           const computed = computePlannedForLine(line, cm, forecasts, count, months, expForecasts)
-          await prisma.budgetLine.update({
-            where: { id: line.id },
+          // Defense-in-depth: scope the UPDATE itself by `(id, organizationId)`.
+          // `line.id` came from `autoLines` which was already org-scoped above,
+          // but a future refactor that reorders or removes that filter would
+          // silently allow cross-tenant writes during plan approval. `updateMany`
+          // returns count=0 silently for cross-tenant — desired no-leak behavior.
+          await prisma.budgetLine.updateMany({
+            where: { id: line.id, organizationId: orgId },
             data: { plannedAmount: Math.round(computed * 100) / 100, isAutoPlanned: false },
           })
         }

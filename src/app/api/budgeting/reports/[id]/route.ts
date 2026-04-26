@@ -95,11 +95,15 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
-  const existing = await prisma.savedBudgetReport.findFirst({
+  // Defense-in-depth: scope the DELETE itself by `(id, organizationId)` so
+  // even if the prior `findFirst` guard is removed/refactored a future
+  // attacker can't delete another org's report by id alone. `deleteMany`
+  // returns count=0 silently for cross-tenant — desired no-leak behavior.
+  const result = await prisma.savedBudgetReport.deleteMany({
     where: { id, organizationId: orgId },
   })
-  if (!existing) return NextResponse.json({ error: "Report not found" }, { status: 404 })
-
-  await prisma.savedBudgetReport.delete({ where: { id } })
+  if (result.count === 0) {
+    return NextResponse.json({ error: "Report not found" }, { status: 404 })
+  }
   return NextResponse.json({ success: true })
 }
