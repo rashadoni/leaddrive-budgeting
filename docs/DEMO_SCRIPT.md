@@ -39,27 +39,34 @@
 
 ---
 
-### 2. AI Analytics chat (1.5 min)
+### 2. AI Variance Explainer (Risk Terminal Panel 4) — 1.5 min
 
-**Click:** AI Analytics chat panel (right side or modal).
+> ⚠️ **Turn-32 reframe (Bug #5 close):** Original Step 2 described a "free-form AI Analytics chat panel" on `/budgeting`. That UI doesn't exist (verified via Turn-27 audit). The Risk Terminal **AI Variance Explainer** (Panel 4) is the closest shipped product surface — narrates indicator value with EN/RU re-run button. Pivot Step 2 here.
 
-**Type query (EN):** "Summarize Q1 variance for AZMADE — what are the top 3 concerns?"
+**Click:** Sidebar → Risk Terminal → `/budgeting/terminal`
 
-**Wait:** ~5-10 sec for LLM stream.
+**Click:** A red HeatMap cell (e.g. `AAC IND_NET_MARGIN` red — drill down).
+
+> Panel 3 (Indicator Detail) populates with the cell — formula, resolved variables, aggregates.
+
+**Click:** **`EXPLAIN →`** button at the bottom of Panel 3.
+
+**Wait:** ~5-10 sec for AI Variance Explainer LLM stream.
 
 **Say (while waiting):**
-> "Behind every number we have an AI layer that can interpret the data in plain language. Это для CFO who doesn't want to dig into spreadsheets."
+> "Behind every cell we have an AI layer that interprets the data in plain language — narrates what's driving the variance + 3 actionable recommendations. Это для CFO who doesn't want to dig into 90 BudgetLine rows."
 
-**Show:** response renders в EN.
+**Show:** Panel 4 (Variance Explainer) renders English narrative explanation:
+> "Net margin -9.46%. Below 3% — a single input-cost spike or FX move erases profit. Two main drivers: ..."
 
-**Click:** Language picker → switch to RU → re-send same query.
+**Click:** **`RUN FOR RU`** button in Panel 4 → re-fetch same explanation in Russian.
 
-**Show:** response now renders в Russian.
+**Show:** Same indicator now in Russian (~5-10 sec second LLM call).
 
 **Say:**
-> "Multilingual из коробки — EN, RU, AZ. Поскольку holdings often work cross-language."
+> "Multilingual из коробки — EN + RU shipped today, AZ in Q3 sector-pack expansion. Holdings often work cross-language so the narrative isn't locked to one."
 
-**Fallback:** if LLM call >15 sec wait or errors → cancel and say "production version будет с streaming + fallback to cached answer; в demo environment we use direct API calls to show the round-trip."
+**Fallback:** if LLM call >15 sec wait or errors → close Panel 4, say "production version будет с streaming + fallback to cached answer; в demo environment we use direct API calls to show the round-trip." Continue to Step 3.
 
 ---
 
@@ -120,23 +127,27 @@
 **Say:**
 > "Click any cell — get the full computation chain. Every number is traceable to source BudgetLines."
 
-**Type:** `CMP SPARK-MAIN GO` in command bar.
+**Type:** `SPARK-MAIN CO GO` in command bar.
 
-**Show:** CompanyTree filters to SPARK-MAIN; HeatMap focuses on its row.
+> ⚠️ Command-bar syntax is **target-FIRST, function-LAST, GO terminator** (per `src/features/terminal/lib/command-parser.ts:151-152` — last body token is the function). Placeholder hints `IND_OPEX_RATIO IND GO`. Function whitelist: `HOLD, GRP, CO, IND, SEC, CMP, ALT, SCN, BRF, AUD` (no `VAR`, no `LAY` — those are panel/menu UIs reachable other ways).
+
+**Show:** CompanyTree highlights SPARK-MAIN; HeatMap focuses on its row.
 
 **Say:**
 > "Bloomberg-style command bar — keyboard-driven for speed. Every action has a verb."
 
-**Type:** `IND BEV_GROSS_MARGIN GO` (or whichever indicator is colored red).
+**Click:** A red HeatMap cell for SPARK-MAIN (e.g. `IND_GROSS_MARGIN`).
 
-**Show:** Indicator-detail panel highlights that specific indicator.
+> ⚠️ Note: `<code> IND GO` command is currently a no-op (Bug #2 in CARRYOVER Turn-27 — case 'ind' in `CommandBar.tsx:76` doesn't wire indicator to store). HeatMap cell click is the working path until that ships. After fix, demo can substitute `BEV_GROSS_MARGIN IND GO` for keyboard-driven story.
 
-**Type:** `VAR GO` in command bar.
+**Show:** Indicator-detail panel populates. Then **click `EXPLAIN →`** button at the bottom of Panel 3.
 
 **Wait:** ~5-8 sec for AI Variance Explainer LLM call.
 
-**Show:** VarianceExplainerPanel populates with Russian/English narrative explanation:
+**Show:** VarianceExplainerPanel (F4) populates with Russian/English narrative explanation:
 > "Gross margin dropped from 28% to 24% in Q1 because cost of goods rose 12% while revenue rose only 4%. Two main drivers: ..."
+
+> ⚠️ AI Variance Explainer triggered by **`EXPLAIN →` button** in Panel 3 (post-cell-click), NOT by command. Re-run-for-RU/EN button lives in Panel 4 itself.
 
 **Say:**
 > "Это и есть AI-augmented FP&A. Не replacing analyst — augmenting them. CFO gets the variance story in 5 seconds, not 5 hours."
@@ -145,7 +156,9 @@
 
 **Drag:** A panel separator — show smooth resize.
 
-**Type:** `LAY GO` → LayoutMenu opens → save current layout as "demo-layout" → reload page → load "demo-layout" → restored.
+**Click:** `▢ Layouts` button in the terminal top bar → LayoutMenu opens → save current layout as "demo-layout" → reload page → load "demo-layout" → restored.
+
+> ⚠️ Layouts opens via top-bar button (no `LAY GO` command — that function code doesn't exist).
 
 **Say:**
 > "Persistent named layouts — каждый user can save их preferred view. Per-user, не per-org."
