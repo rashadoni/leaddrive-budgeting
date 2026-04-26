@@ -62,6 +62,10 @@ interface CompareRow {
   revDiff: number;
   cogsDiff: number;
   expDiff: number;
+  // Turn-34 monthly cross-check: per-month xlsx total vs DB total
+  monthlyXlsx: number[]; // 12 values
+  monthlyDb: number[]; // 12 values
+  monthlyMaxDiff: number; // largest absolute diff across 12 months
   // warnings from parser
   parentRollupsDropped: number;
   parentRollupsUnallocated: number;
@@ -76,11 +80,13 @@ async function compareJob(job: JobSpec): Promise<CompareRow> {
       : parseSummaryRollupSheet(wb, job.sheet, job.rollupColumnHeader!, XLSX);
 
   let xlsxRevenue = 0, xlsxCogs = 0, xlsxExpense = 0;
+  const monthlyXlsx: number[] = Array.from({ length: 12 }, () => 0);
   for (const line of parsed.lines) {
     const annual = line.plannedAnnual;
     if (line.accountType === "revenue") xlsxRevenue += annual;
     else if (line.accountType === "cogs") xlsxCogs += annual;
     else xlsxExpense += annual;
+    for (let m = 0; m < 12; m += 1) monthlyXlsx[m] += line.perMonth[m] ?? 0;
   }
 
   // Query DB
@@ -91,14 +97,22 @@ async function compareJob(job: JobSpec): Promise<CompareRow> {
 
   const dbLines = await prisma.budgetLine.findMany({
     where: { companyId: company.id },
-    select: { lineType: true, plannedAmount: true },
+    select: { lineType: true, plannedAmount: true, sortOrder: true },
   });
 
   let dbRevenue = 0, dbCogs = 0, dbExpense = 0;
+  const monthlyDb: number[] = Array.from({ length: 12 }, () => 0);
   for (const line of dbLines) {
     if (line.lineType === "revenue") dbRevenue += line.plannedAmount;
     else if (line.lineType === "cogs") dbCogs += line.plannedAmount;
     else dbExpense += line.plannedAmount;
+    const m = (line.sortOrder ?? 0) % 100;
+    if (m >= 0 && m < 12) monthlyDb[m] += line.plannedAmount;
+  }
+  let monthlyMaxDiff = 0;
+  for (let m = 0; m < 12; m += 1) {
+    const d = Math.abs(monthlyXlsx[m] - monthlyDb[m]);
+    if (d > monthlyMaxDiff) monthlyMaxDiff = d;
   }
 
   return {
@@ -115,6 +129,9 @@ async function compareJob(job: JobSpec): Promise<CompareRow> {
     revDiff: xlsxRevenue - dbRevenue,
     cogsDiff: xlsxCogs - dbCogs,
     expDiff: xlsxExpense - dbExpense,
+    monthlyXlsx,
+    monthlyDb,
+    monthlyMaxDiff,
     parentRollupsDropped: parsed.parentRollupsDropped.length,
     parentRollupsUnallocated: parsed.parentRollupsUnallocated.length,
   };
@@ -149,6 +166,15 @@ async function main() {
     if (!ok) {
       console.log(`   diff: rev=${fmt(r.revDiff)} cogs=${fmt(r.cogsDiff)} exp=${fmt(r.expDiff)}`);
     }
+    // Turn-34 monthly check: per-month totals
+    const monthLabels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const monthlyOk = r.monthlyMaxDiff < 1;
+    const mMarker = monthlyOk ? "✅" : "⚠️ ";
+    console.log(`   ${mMarker} monthly (xlsx vs db, max-diff=${r.monthlyMaxDiff.toFixed(2)}):`);
+    const xRow = r.monthlyXlsx.map((v, i) => `${monthLabels[i]}=${fmt(v)}`).join(" ");
+    const dRow = r.monthlyDb.map((v, i) => `${monthLabels[i]}=${fmt(v)}`).join(" ");
+    console.log(`     xlsx: ${xRow}`);
+    if (!monthlyOk) console.log(`     db:   ${dRow}`);
     if (r.parentRollupsDropped > 0) console.log(`   parser: ${r.parentRollupsDropped} parent rollups dropped`);
     if (r.parentRollupsUnallocated > 0) console.log(`   parser: ${r.parentRollupsUnallocated} parents unallocated`);
     console.log("");
@@ -156,8 +182,11 @@ async function main() {
 
   // Summary
   const okCount = results.filter((r) => Math.abs(r.revDiff) < 1 && Math.abs(r.cogsDiff) < 1 && Math.abs(r.expDiff) < 1).length;
+  const monthlyOkCount = results.filter((r) => r.monthlyMaxDiff < 1).length;
   console.log(`${"=".repeat(80)}`);
-  console.log(`Summary: ${okCount}/${results.length} companies match xlsx ↔ DB exactly`);
+  console.log(`Summary:`);
+  console.log(`  Annual sums:  ${okCount}/${results.length} companies match xlsx ↔ DB exactly`);
+  console.log(`  Monthly sums: ${monthlyOkCount}/${results.length} companies match xlsx ↔ DB per-month exactly`);
   console.log(`${"=".repeat(80)}`);
 }
 
