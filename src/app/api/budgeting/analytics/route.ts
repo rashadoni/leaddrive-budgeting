@@ -179,6 +179,9 @@ export async function GET(req: NextRequest) {
     bucket.add(code)
   }
   const isParentCodeFor = (code: string, companyId: string | null | undefined): boolean => {
+    // Turn 36 fix: skip parent-detection for synthetic ROLLUP-* codes (same
+    // rationale as pnl/route.ts) — flat semantic categories, not hierarchy.
+    if (code.startsWith("ROLLUP-")) return false
     const bucket = codesByCompany.get(companyId ?? "")
     if (!bucket) return false
     for (const c of bucket) {

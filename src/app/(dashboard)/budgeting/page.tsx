@@ -1169,10 +1169,8 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
 
   // Section renderer (used for revenue; expenses use renderGroupedExpenses below)
   const renderSection = (title: string, sectionLines: BudgetLine[], totPlanned: number, _totForecast: number) => {
-    const totActual = sectionLines.reduce((s: number, l: BudgetLine) => {
-      const fact = l.isAutoActual ? (autoActualMap.get(l.category) ?? 0) : (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
-      return s + fact
-    }, 0)
+    // Turn 36 fix: dedupe by (category, lineType) — see sumActualUniqueCategories jsdoc
+    const totActual = sumActualUniqueCategories(sectionLines)
     return (
       <>
         <tr className="bg-muted/40">
@@ -1201,9 +1199,29 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
     return actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0
   }
 
+  // Turn 36 (Workspace actuals 12× over-count fix): post-Turn-34 BudgetLines
+  // expanded to 12 rows per (category, lineType) — one per month. Naive
+  // `lines.reduce((s,l) => s + getLineActual(l), 0)` reads `actualsByCat.get(key).total`
+  // (per-category aggregate) for EACH of the 12 rows → 12× over-count.
+  // This helper dedupes by (category, lineType) before summing — each
+  // unique tuple contributes its full actual exactly once. Plan side is
+  // unaffected (each row carries its own monthly plannedAmount; sum across
+  // 12 rows = annual = correct).
+  const sumActualUniqueCategories = (sectionLines: BudgetLine[]): number => {
+    const seen = new Set<string>()
+    let sum = 0
+    for (const l of sectionLines) {
+      const key = `${l.category}||${l.lineType}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      sum += getLineActual(l)
+    }
+    return sum
+  }
+
   // Universal grouped section renderer with per-section add form
   const renderGroupedSection = (title: string, sectionLines: BudgetLine[], totPlanned: number, sectionHintKey?: string, sectionLineType?: string) => {
-    const totActual = sectionLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
+    const totActual = sumActualUniqueCategories(sectionLines)
     const sectionKey = sectionLineType || title.toLowerCase()
     const isCollapsed = collapsedSections.has(sectionKey)
 
@@ -1229,7 +1247,10 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
             {totPlanned > 0 ? `${(((totPlanned - totActual) / totPlanned) * 100).toFixed(1)}%` : "—"}
           </td>
           <td className="pt-2 pb-1.5">
-            <span className="text-[10px] text-muted-foreground">{sectionLines.length}</span>
+            <span className="text-[10px] text-muted-foreground">
+              {/* Turn 36 fix: dedupe by (category, lineType) — post-Turn-34 expansion has 12 rows per category, not 1 */}
+              {new Set(sectionLines.map((l) => `${l.category}||${l.lineType}`)).size}
+            </span>
           </td>
         </tr>
         {/* Detail rows — only when expanded */}
@@ -1257,7 +1278,18 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
               <>
                 {Array.from(groups.entries()).map(([prefix, groupLines]) => {
                   const grpPlanned = groupLines.reduce((s, l) => s + l.plannedAmount, 0)
-                  const grpActual = groupLines.reduce((s, l) => s + getLineActual(l), 0)
+                  // Turn 36 fix: dedupe by (category, lineType) to avoid 12× over-count post-Turn-34 expansion
+                  const grpActual = (() => {
+                    const seen = new Set<string>()
+                    let sum = 0
+                    for (const l of groupLines) {
+                      const key = `${l.category}||${l.lineType}`
+                      if (seen.has(key)) continue
+                      seen.add(key)
+                      sum += getLineActual(l)
+                    }
+                    return sum
+                  })()
                   const grpVar = grpPlanned > 0 ? ((grpPlanned - grpActual) / grpPlanned * 100).toFixed(1) + "%" : "—"
                   return (
                     <React.Fragment key={`grp-${prefix}`}>
@@ -1439,9 +1471,10 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
   const budgetExecEmoji = !hasAnyActuals ? "⏳" : budgetExecPct >= 80 ? "🟢" : budgetExecPct >= 50 ? "🟡" : "🔴"
   const budgetExecLabel = hasAnyActuals ? `${budgetExecPct}% composite score` : "No actuals yet"
 
-  const totExpActual = expenseLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
-  const totRevActual = revenueLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
-  const totCOGSActual = cogsLines.reduce((s: number, l: BudgetLine) => s + getLineActual(l), 0)
+  // Turn 36 fix: dedupe by (category, lineType) — see sumActualUniqueCategories jsdoc
+  const totExpActual = sumActualUniqueCategories(expenseLines)
+  const totRevActual = sumActualUniqueCategories(revenueLines)
+  const totCOGSActual = sumActualUniqueCategories(cogsLines)
 
   return (
     <div className="space-y-6">
@@ -1465,7 +1498,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                 </div>
               </div>
               <div className="text-2xl font-bold tabular-nums text-indigo-700 dark:text-indigo-300">{fmtK(totalRevenuePlanned)} ₼</div>
-              <div className="text-xs text-muted-foreground mt-1">{revenueLines.length} {t("colCategory").toLowerCase()} · {revExecPct}% {t("kpiExecution").toLowerCase()}</div>
+              <div className="text-xs text-muted-foreground mt-1">{new Set(revenueLines.map((l: BudgetLine) => `${l.category}||${l.lineType}`)).size} {t("colCategory").toLowerCase()} · {revExecPct}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* COGS Budget */}
             <div className="rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-5">
@@ -1487,7 +1520,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                 </div>
               </div>
               <div className="text-2xl font-bold tabular-nums text-orange-700 dark:text-orange-300">{fmtK(totalCostPlanned)} ₼</div>
-              <div className="text-xs text-muted-foreground mt-1">{expenseLines.length} {t("colCategory").toLowerCase()} · {Math.round(expExecPct)}% {t("kpiExecution").toLowerCase()}</div>
+              <div className="text-xs text-muted-foreground mt-1">{new Set(expenseLines.map((l: BudgetLine) => `${l.category}||${l.lineType}`)).size} {t("colCategory").toLowerCase()} · {Math.round(expExecPct)}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* Net Budget Position */}
             <div className={`rounded-xl p-5 ${netPosition >= 0 ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800" : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"}`}>

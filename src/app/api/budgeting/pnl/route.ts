@@ -142,7 +142,16 @@ export async function GET(req: NextRequest) {
     if (!accountMap.has(mapKey)) {
       let accountType = bl.account?.accountType ?? "expense"
       if (!bl.account) {
-        if (code.startsWith("601") || code.startsWith("611")) accountType = "revenue"
+        // Turn 36 fix: prefer bl.lineType when explicitly set (parser-provided
+        // source-of-truth), fall back to code-prefix heuristic only if lineType
+        // is the default "expense" (legacy rows). This fixes ATL-MRKZ rollup
+        // codes (ROLLUP-REVENUE / ROLLUP-COGS / ROLLUP-OPEX-*) that don't
+        // match SAP 601/611/602/603/701 prefixes — pre-fix they were silently
+        // classified as "expense" → ATL-MRKZ revenue undercounted as 0.05M
+        // YTD vs expected ~3.6M (10.8M annual / 12 × 4 months).
+        if (bl.lineType === "revenue") accountType = "revenue"
+        else if (bl.lineType === "cogs") accountType = "cogs"
+        else if (code.startsWith("601") || code.startsWith("611")) accountType = "revenue"
         else if (code.startsWith("602") || code.startsWith("603")) accountType = "revenue"
         else if (code.startsWith("701")) accountType = "cogs"
       }
@@ -186,6 +195,16 @@ export async function GET(req: NextRequest) {
     bucket.add(code)
   }
   const isParentCode = (code: string) => {
+    // Turn 36 fix: skip parent-detection for synthetic ROLLUP-* codes.
+    // The rollup parser produces flat semantic categories (ROLLUP-REVENUE,
+    // ROLLUP-REVENUE-OTHER, ROLLUP-COGS, ROLLUP-OPEX-GA, etc.) that use
+    // dashes as separators NOT hierarchy markers — so ROLLUP-REVENUE is
+    // NOT a parent of ROLLUP-REVENUE-OTHER. Pre-fix, dedup logic dropped
+    // ROLLUP-REVENUE (10.65M) as "parent" of ROLLUP-REVENUE-OTHER (150k),
+    // making ATL-MRKZ revenue YTD plan show as 0.05M instead of ~3.55M.
+    // Same opt-out is documented in the rollup parser's `dedupeParentRollups`
+    // call (azmade-sopl.ts:482 — `enabled: false`).
+    if (code.startsWith("ROLLUP-")) return false
     for (const bucket of codesByCompanyPnl.values()) {
       if (!bucket.has(code)) continue
       for (const c of bucket) {
