@@ -167,22 +167,38 @@ async function insertBudgetLineTx(
       ? parsed.accountType
       : 'expense';
 
-  await tx.budgetLine.create({
-    data: {
-      organizationId,
-      planId,
-      companyId,
-      accountId,
-      category: parsed.code, // legacy column — keep in sync with account.code
-      department: null,
-      lineType,
-      plannedAmount: parsed.plannedAnnual,
-      // Turn 29 (Bug #1b): xlsx-sourced lines have explicit plannedAmount
-      // values; they are NOT auto-planned. Schema default is now false too.
-      isAutoPlanned: false,
-      isAutoActual: false,
-    },
-  });
+  // Turn 34 (monthly distribution fix): write 12 rows per parsed line —
+  // one per month (Jan..Dec) — with `plannedAmount` = perMonth value and
+  // `sortOrder` = month-index encoded as `sortOrder % 100` per
+  // `pnl/route.ts:144-149` aggregation logic. Single-row pre-Turn-34
+  // imports collapsed all 12 months into Jan (sortOrder=0), so PNL chart
+  // showed annual revenue spike in January only and zero across Feb-Dec.
+  // Now PNL `monthlyAmounts[1..12]` populates correctly from monthly
+  // values the parser already extracts but persistence used to drop.
+  // The `perMonth` array is guaranteed length=12 (parser contract); for
+  // rollup-sourced lines it's `annual/12` even split (parser doesn't have
+  // monthly granularity for those — same as pre-fix behavior, but at
+  // least distributed across all 12 months instead of crammed in Jan).
+  for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
+    const monthlyAmount = parsed.perMonth[monthIdx] ?? 0;
+    await tx.budgetLine.create({
+      data: {
+        organizationId,
+        planId,
+        companyId,
+        accountId,
+        category: parsed.code, // legacy column — keep in sync with account.code
+        department: null,
+        lineType,
+        plannedAmount: monthlyAmount,
+        sortOrder: monthIdx, // % 100 → month - 1 in PNL aggregation
+        // Turn 29 (Bug #1b): xlsx-sourced lines have explicit plannedAmount
+        // values; they are NOT auto-planned. Schema default is now false too.
+        isAutoPlanned: false,
+        isAutoActual: false,
+      },
+    });
+  }
 }
 
 async function runJob(
