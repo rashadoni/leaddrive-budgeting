@@ -26,6 +26,8 @@ Single source of truth for open `🔄` items across substantive turns.
 
 ## OPEN
 
+**Last processed: 2026-04-26** (Turn 25 cont'd Day 1 PARALLEL post-health-check: Phase C batch 1 — handler tests for /api/budgeting/plans POST + [id] PUT. Closes Phase B runtime-proof gap: budget_plan_create + budget_plan_approve audit emissions now handler-tested (16 new cases). 858/858 vitest, tsc clean, full live-route smoke verified (Phase A guards + rate-limit fires at 21st request burst). DB integrity confirmed: 12 azmade companies / 568 BudgetLines / 12g/15a/9r=36 matrix baseline / 20 audit_events / ATL-MRKZ admin role intact.)
+
 **Last processed: 2026-04-26** (Turn 25 cont'd Day 1: PLAN PIVOT to customer demo Friday 2026-05-01. Plan rewritten as 5-day × 12h sprint; production-launch plan preserved as Appendix in plan file. Day-1 deliverables: `docs/DEMO_SCRIPT.md` (272 lines) + `docs/DEMO_ROADMAP.md` (145 lines). Browser walkthrough deferred to user availability. 842/842 vitest unchanged, tsc clean. See ROADMAP Turn 25 cont'd.)
 
 **Last processed: 2026-04-26** (Turn 25: Phase A + Phase B landed in single turn. Phase A: 2 P0 + 1 P1 fixed inline (scenarios cross-tenant auth, reports DELETE missing orgId, plans approval auto-line UPDATE missing orgId); 2 P1 + 3 P2 escalated. Phase B: 2 of 5 unwired audit enum members wired (`budget_plan_create` into POST /api/budgeting/plans; `budget_plan_approve` into PUT /api/budgeting/plans/[id]); 3 indicator_override_* + import_staging_discarded deferred 🔄 (admin-UI routes don't exist). 2 new helpers + 5 unit tests. 842/842 vitest, tsc clean. See ROADMAP Turn 25.)
