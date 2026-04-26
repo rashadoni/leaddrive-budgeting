@@ -41,4 +41,19 @@ Developer must close every user-defined task to **100%** before ending any subst
 
 6. **Cross-turn memory of open items.** Developer tracks 🔄 escalated items in `docs/ROADMAP.md` with explicit "status: 🔄 escalated to user YYYY-MM-DD, awaiting: <blocker>". Architect reads this at the start of every review and pings if an escalated item has sat unresolved for >N turns (configurable, default 3) so it doesn't silently die.
 
+7. **Iterative closure loop (Round-N protocol).** When architect produces ⚠️/❌, this is NOT the end of the review — it's the start of a closure loop. Up to 3 rounds:
+   - **Round 1:** Architect flags. Dev fixes inline OR adds valid 🔄.
+   - **Round 2:** Dev re-invokes architect with same RAW USER MESSAGE; architect re-audits delta.
+   - **Round 3:** Final attempt. Если still partial, dev surfaces to user with explicit ship/cut/defer ask.
+   - **Max 3 rounds.** No Round 4. Prevents infinite stall on items that physically need user/infra action.
+
+8. **Architect runs tests independently.** Architect uses Bash to run `npx tsc --noEmit` + `npx vitest run` itself every round. Dev's reported numbers are NOT trusted. Cross-reference catches: false-pass, count drift, forgotten test-run. Found in Turn-25 retrospective: dev claimed 858/858 multiple times, architect accepted blindly until later round forced re-verification. Hook `test-gate.sh` provides the deterministic mechanical gate; architect's Bash run is the interpretation layer (catches edge cases hook misses, e.g. doc-only commits that introduce typed code-snippet mistakes).
+
+9. **Strict 🔄 valid blocker format.** "Multi-week scope", "needs design", "post-demo" are NOT valid blockers — too vague. Valid: specific gating sub-task + concrete unblock path + owner. Architect rejects vague 🔄 in Round 2.
+
+10. **Mandatory sign-off phrase.** Architect ends with one of two verbatim phrases:
+    - `🟢 Closure achieved — N of N deliverables ✅`
+    - `🟡 Partial closure — N of M ✅, M-N items have valid 🔄 escalations (listed above)`
+    Anything else = ambiguous = dev must re-invoke architect. Eliminates "silently pass-through" pattern.
+
 **Pattern this rule kills:** developer reframes task → architect audits the reframed goal → marks it closed → user has to catch the reframe manually across many turns. Replaced by: architect reads user's raw request, audits the ORIGINAL ask, blocks close until either 100% or explicit escalation.

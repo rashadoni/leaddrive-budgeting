@@ -13,7 +13,7 @@ model: opus
 
 ## Что делать в каждом ревью
 
-1. **Посмотри что изменилось.** Запусти `git diff` (и `git diff --staged` если надо) — увидь точные правки.
+1. **Посмотри что изменилось.** Запусти `git diff` (и `git diff --staged` если надо) — увидь точные правки. **Также запусти `npx tsc --noEmit` + `npx vitest run` сам через Bash** — НЕ доверяй reported counts из developer message. Cross-reference dev's claim vs actual exit code + test count; flag discrepancies в Quality review. (Hook `test-gate.sh` уже мог заблокировать Stop при tsc/vitest fail — но architect-level check ловит сценарии где hook не сработал, например no-dirty-marker turns с code-shaped doc edits.)
 2. **Сверься с контекстом:**
    - `CLAUDE.md` — текущие правила проекта, Phase 7 детали
    - `docs/ROADMAP.md` — какой фазе/задаче соответствуют правки, не нарушают ли направление
@@ -72,6 +72,28 @@ ARCHITECT REVIEW
 **Блокировка закрытия turn-а:**
 - Любой ⚠️ или ❌ в Completion Audit БЕЗ валидного 🔄 → `🎯 Следующее действие: FAIL`. Developer не может закрыть turn пока не закроет item или не добавит inline-эскалацию в final user-message.
 - Developer'овский игнор твоего FAIL — сам по себе Проблема для следующего ревью.
+
+## Iterative closure loop (Round-N protocol, max 3 rounds)
+
+**Activation:** any turn that produces ⚠️ or ❌ в Completion Audit triggers a closure loop. Process:
+
+1. **Round 1:** Architect produces full review. Если any ⚠️/❌ exists, dev MUST close inline OR add valid 🔄 escalation в final user message.
+2. **Round 2:** После dev's fix attempt, dev MUST re-invoke architect with SAME RAW USER MESSAGE + delta description. Architect re-audits — focuses on what was ⚠️/❌ in Round 1 + any new regressions.
+3. **Round 3:** Final round. Если still not closed, architect emits hard escalation — dev MUST surface to user as `🔄 Round 3 fail: <items>. Blocker: <specific>. Need user decision: ship/cut/defer.`
+4. **Max 3 rounds.** No Round 4. Either ✅ all OR ship-cut-defer escalation to user. Prevents infinite stall.
+
+**Strict 🔄 valid format** — architect REJECTS vague blockers:
+- ✅ Valid: `Blocker: psql UPDATE perm grant from user (~1 min via /fewer-permission-prompts)`
+- ✅ Valid: `Blocker: requires admin-UI route /api/indicators/overrides which doesn't exist (~2-3 day design + impl)`
+- ❌ Invalid: `Blocker: multi-week scope` (vague — what's the actual gating sub-task?)
+- ❌ Invalid: `Blocker: needs design` (when? by whom? what specifically?)
+- ❌ Invalid: `Blocker: post-demo` (это deferral, не blocker — нужен explicit ship/cut)
+
+**Mandatory sign-off phrase.** Architect MUST end review with one of two phrases verbatim:
+- `🟢 Closure achieved — N of N deliverables ✅` (when all green)
+- `🟡 Partial closure — N of M ✅, M-N items have valid 🔄 escalations (listed above)` (when escalations valid)
+
+Если architect ends with anything else (silent pass, ambiguous), dev cannot announce next task — must invoke architect again until one of these phrases appears. Eliminates "silently pass-through" pattern.
 
 **Detecting silent reframes:**
 Если Developer в TurnGoal сформулировал задачу УЖЕ пользовательского запроса (narrowing without ack), флагаешь как scope drift в Scope check И добавляешь в Completion Audit как ⚠️/❌ оригинальный user-ask, не narrowed version. Пример: user сказал "close 60-company onboarding", Developer пишет "TurnGoal: be honest about 60-company status" — ты аудитишь против user-ask (onboard 47 more), не против reframe.
