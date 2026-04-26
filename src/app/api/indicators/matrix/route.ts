@@ -186,11 +186,81 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Turn 33.5 (Item 5 / Bug #7 slim rollup): include level=1 sub-groups
+    // as additional rows with synthetic cells. Aggregation rules:
+    //   - value: AVERAGE of children's cell values (rough but visually
+    //     meaningful for ratio indicators which dominate the catalog)
+    //   - status: worst-of (any red → red; else any amber → amber; else
+    //     all-green → green) — matches "weakest-link" risk semantics
+    //   - indicatorValueId: null (no persisted IV; click = drill-down NOT
+    //     supported, IndicatorDetail handles null gracefully — see comment
+    //     in IndicatorDetail.tsx)
+    //   - isSubgroup: true (frontend can style differently)
+    // Limitations documented in CARRYOVER row "sub-group rollup is slim"
+    // — proper weighted aggregation by indicator type lands Phase G.
+    const subgroups = companiesRaw.filter((c: CompanyRawShape) => c.level === 1 && c.role === 'operational');
+    const subgroupCompanies = subgroups.map((sg: CompanyRawShape) => ({
+      id: sg.id,
+      code: sg.code,
+      name: sg.name,
+      industry: sg.industry,
+      role: sg.role,
+      isSubgroup: true,
+    }));
+
+    // Build child-id → sub-group-id map. Children are operational level=2
+    // companies whose parentCompanyId points to a sub-group's id.
+    const childToSubgroup = new Map<string, string>();
+    const subgroupIds = new Set(subgroups.map((s: CompanyRawShape) => s.id));
+    const fullCompaniesRaw = await prisma.company.findMany({
+      where: { organizationId: session.orgId, isActive: true, parentCompanyId: { in: Array.from(subgroupIds) } },
+      select: { id: true, parentCompanyId: true },
+    });
+    for (const c of fullCompaniesRaw) {
+      if (c.parentCompanyId) childToSubgroup.set(c.id, c.parentCompanyId);
+    }
+
+    // Aggregate cells per (subgroupId, indicatorId)
+    type AggBucket = { sum: number; count: number; statuses: Set<IndicatorStatus> };
+    const aggMap = new Map<string, AggBucket>(); // key: `${sgId}::${indId}`
+    for (const cell of cells) {
+      const sgId = childToSubgroup.get(cell.companyId);
+      if (!sgId) continue;
+      const key = `${sgId}::${cell.indicatorId}`;
+      let bucket = aggMap.get(key);
+      if (!bucket) {
+        bucket = { sum: 0, count: 0, statuses: new Set() };
+        aggMap.set(key, bucket);
+      }
+      bucket.sum += cell.value;
+      bucket.count += 1;
+      bucket.statuses.add(cell.status);
+    }
+
+    const worstStatus = (statuses: Set<IndicatorStatus>): IndicatorStatus => {
+      if (statuses.has('red')) return 'red';
+      if (statuses.has('amber')) return 'amber';
+      if (statuses.has('green')) return 'green';
+      return 'unknown';
+    };
+
+    const subgroupCells = Array.from(aggMap.entries()).map(([key, bucket]) => {
+      const [sgId, indId] = key.split('::');
+      return {
+        indicatorValueId: null, // no persisted IV — synthetic rollup
+        companyId: sgId,
+        indicatorId: indId,
+        value: bucket.sum / bucket.count, // simple average
+        status: worstStatus(bucket.statuses),
+        isSubgroupRollup: true,
+      };
+    });
+
     return NextResponse.json({
       period,
-      companies,
+      companies: [...companies, ...subgroupCompanies],
       indicators,
-      cells,
+      cells: [...cells, ...subgroupCells],
     });
   } catch (error) {
     console.error('Error building indicator matrix:', error);
