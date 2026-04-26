@@ -3,6 +3,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
+import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -11,10 +12,35 @@ export async function GET(req: NextRequest) {
   const planId = req.nextUrl.searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
+  // Turn 30: per-daughter-company filter. Sub-group level=1 expands to
+  // children's operational ids; op-co level=2 is single-element filter.
+  // null/undefined → no filter (org-wide consolidated, pre-Turn-30 behavior).
+  const companyIdParam = req.nextUrl.searchParams.get("companyId")
+  const companyFilter = await resolveCompanyFilter(prisma, orgId, companyIdParam)
+  if (companyFilter.kind === "not_found") {
+    return NextResponse.json({ error: "Company not found" }, { status: 404 })
+  }
+
+  const lineWhere: { planId: string; organizationId: string; companyId?: { in: string[] } } = {
+    planId,
+    organizationId: orgId,
+  }
+  if (companyFilter.kind === "single") {
+    if (companyFilter.companyIds.length === 0) {
+      // Sub-group with no children — no data to aggregate. Return empty
+      // sentinel that the page can render as "no data for this branch".
+      return NextResponse.json({
+        success: true,
+        data: { totalPlanned: 0, totalRevenuePlanned: 0, totalExpensePlanned: 0, totalCOGSPlanned: 0, byCategory: [], _emptyReason: "subgroup_no_children" },
+      })
+    }
+    lineWhere.companyId = { in: companyFilter.companyIds }
+  }
+
   const [plan, lines, manualActuals, costTypes, departments] = await Promise.all([
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
     prisma.budgetLine.findMany({
-      where: { planId, organizationId: orgId },
+      where: lineWhere,
       // account is added in Phase 2.1 — prefer it for display/grouping when set
       include: { costType: true, budgetDept: true, account: { select: { code: true, name: true } } },
     }),
@@ -43,10 +69,33 @@ export async function GET(req: NextRequest) {
       ])
     : [[], []]
 
-  // Helper: get effective planned amount (dynamic or stored)
+  // Helper: get effective planned amount (dynamic or stored).
+  //
+  // Turn 29 (Bug #1b defensive fallback): if line.isAutoPlanned is true but
+  // computePlannedForLine returns 0 AND line.plannedAmount > 0, use the stored
+  // value. This prevents silent zeroing when an org has been flagged auto-
+  // planned but lacks sales/expense forecasts + cost model — the original
+  // sin was AZMADE imports persisting `isAutoPlanned: true` while never
+  // populating SalesForecast / ExpenseForecast / cost model, which made the
+  // entire /budgeting hub show 0 ₼ despite 492M ₼ of literal plannedAmount
+  // values in budget_lines. Schema default + CLI now persist `false`, but
+  // this fallback handles legacy rows + any future misconfiguration.
   function getEffectivePlanned(line: any): number {
     if (line.isAutoPlanned) {
-      return computePlannedForLine(line, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
+      const computed = computePlannedForLine(line, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
+      if (computed === 0 && line.plannedAmount > 0) {
+        // Observability: this branch fires only on misconfiguration (auto-
+        // planned flag persisted but no upstream data to compute from). Log
+        // so future regressions don't silently mask data-pipeline gaps.
+        // Cheap: ~once per affected line per request; fine for analytics
+        // route which is not on a hot loop. Switch to a counter/metric if
+        // log volume becomes noisy.
+        console.warn(
+          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${line.id} category=${line.category} stored=${line.plannedAmount}`
+        )
+        return line.plannedAmount
+      }
+      return computed
     }
     return line.plannedAmount
   }
@@ -105,20 +154,40 @@ export async function GET(req: NextRequest) {
   // when another code starts with "<code>-" (e.g. 601-01 is a parent of 601-01-02).
   // The imported P&L sheet contains both totals and sub-totals, so without this
   // filter `Revenue` on Workspace was ~2x what the P&L Report shows.
-  const allCodes = new Set<string>(
-    lines
-      .map((l: any) => (l.account?.code ?? l.department ?? "").toString())
-      .filter((c: string) => Boolean(c)),
-  )
-  const isParentCode = (code: string): boolean => {
-    for (const c of allCodes) {
+  //
+  // Turn 30 (org-wide consolidation under-count fix): parent detection is
+  // scoped PER-COMPANY. Multiple companies share the same SAP-style account
+  // codespace (60x revenue / 70x COGS / 72x OpEx etc.); without per-company
+  // scoping, company A's "601" total looked like a parent of company B's
+  // "601-04-99" leaf and got dropped, dramatically under-counting the org-
+  // wide aggregate. The original assumption (one company's xlsx contains
+  // both totals + sub-totals → dedup the totals) is preserved within each
+  // company, but cross-company aliasing no longer fires. Lines without a
+  // companyId (legacy / unassigned) all share an empty-string bucket so
+  // their dedup behaviour is unchanged from the pre-Turn-30 era.
+  const codesByCompany = new Map<string, Set<string>>()
+  for (const l of lines as any[]) {
+    const code = (l.account?.code ?? l.department ?? "").toString()
+    if (!code) continue
+    const cid = l.companyId ?? ""
+    let bucket = codesByCompany.get(cid)
+    if (!bucket) {
+      bucket = new Set<string>()
+      codesByCompany.set(cid, bucket)
+    }
+    bucket.add(code)
+  }
+  const isParentCodeFor = (code: string, companyId: string | null | undefined): boolean => {
+    const bucket = codesByCompany.get(companyId ?? "")
+    if (!bucket) return false
+    for (const c of bucket) {
       if (c !== code && c.startsWith(code + "-")) return true
     }
     return false
   }
   const isLeaf = (l: any): boolean => {
     const code = l.account?.code ?? l.department ?? ""
-    return !code || !isParentCode(code)
+    return !code || !isParentCodeFor(code, l.companyId)
   }
 
   // Totals — split by expense vs revenue vs cogs (leaves only)

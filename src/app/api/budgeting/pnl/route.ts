@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 
 // P&L structure sections
 const PNL_SECTIONS = [
@@ -37,10 +38,35 @@ export async function GET(req: NextRequest) {
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
   const year = yearOverride ? parseInt(yearOverride) : plan.year
 
+  // Turn 30: per-daughter-company filter (mirrors analytics route).
+  // null/undefined → org-wide consolidated; level=2 → single op-co;
+  // level=1 → expand to children. Cross-tenant id → 404.
+  const companyIdParam = searchParams.get("companyId")
+  const companyFilter = await resolveCompanyFilter(prisma, orgId, companyIdParam)
+  if (companyFilter.kind === "not_found") {
+    return NextResponse.json({ error: "Company not found" }, { status: 404 })
+  }
+  const blWhere: { organizationId: string; planId: string; companyId?: { in: string[] } } = {
+    organizationId: orgId,
+    planId,
+  }
+  if (companyFilter.kind === "single") {
+    if (companyFilter.companyIds.length === 0) {
+      // Sub-group with no children — return empty rows; year stays correct.
+      return NextResponse.json({
+        sections: [], rows: [], monthlyRevenue: {}, monthlyCogs: {},
+        monthlyActualRevenue: {}, monthlyActualCogs: {}, actualByKey: {},
+        actualMonthlyByKey: {}, sectionActuals: {}, year, hasActuals: false,
+        _emptyReason: "subgroup_no_children",
+      })
+    }
+    blWhere.companyId = { in: companyFilter.companyIds }
+  }
+
   // Get all budget lines + sales + COGS data + actuals
   const [budgetLines, salesLines, cogsLines, actuals] = await Promise.all([
     prisma.budgetLine.findMany({
-      where: { organizationId: orgId, planId },
+      where: blWhere,
       // Include the FK'd account so reads prefer canonical code/name from
       // the Chart of Accounts over the denormalised category/department strings
       include: { account: { select: { code: true, name: true, accountType: true } } },
@@ -126,10 +152,31 @@ export async function GET(req: NextRequest) {
 
   // Filter out parent summary accounts to avoid double-counting
   // A parent code is one that has child codes (e.g. 601-01 has child 601-01-02)
-  const allCodes = new Set(Array.from(accountMap.values()).map((a) => a.code))
+  //
+  // Turn 30: parent detection scoped per-company. Multiple companies share
+  // the SAP-style codespace; without per-company scoping, cross-company
+  // aliasing dropped real revenue (company A's "601" total looked like
+  // parent of company B's "601-04-99" leaf). Build (companyId → Set<code>)
+  // map from raw budgetLines, then `isParentCode(code)` returns true only
+  // if SOME company has both `code` AND a descendant starting with `code-`.
+  const codesByCompanyPnl = new Map<string, Set<string>>()
+  for (const bl of budgetLines as any[]) {
+    const code = bl.account?.code ?? bl.department ?? ""
+    if (!code) continue
+    const cid = bl.companyId ?? ""
+    let bucket = codesByCompanyPnl.get(cid)
+    if (!bucket) {
+      bucket = new Set<string>()
+      codesByCompanyPnl.set(cid, bucket)
+    }
+    bucket.add(code)
+  }
   const isParentCode = (code: string) => {
-    for (const c of allCodes) {
-      if (c !== code && c.startsWith(code + "-")) return true
+    for (const bucket of codesByCompanyPnl.values()) {
+      if (!bucket.has(code)) continue
+      for (const c of bucket) {
+        if (c !== code && c.startsWith(code + "-")) return true
+      }
     }
     return false
   }
