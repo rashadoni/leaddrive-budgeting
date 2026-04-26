@@ -102,7 +102,7 @@
 
 ### Enterprise features
 - SSO via SAML / OIDC
-- SOC 2 Type II audit (track for late 2026)
+- SOC 2 Type II audit (track for 2027 — needs 6+ months operational evidence)
 - ISO 27001 certification
 - Annual penetration test
 

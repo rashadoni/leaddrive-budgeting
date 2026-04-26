@@ -105,7 +105,7 @@
 **Say:**
 > "This is our risk-monitoring terminal — Bloomberg-style для FP&A teams. Каждая ячейка — это indicator at the intersection of company × KPI."
 
-**Show:** HeatMap renders 12g/15a/9r=36 colored cells (now +DEMO-CO row → ~10g+15a+9r more = ~46 cells).
+**Show:** HeatMap renders 36+ colored cells (AZMADE baseline 12g/15a/9r=36; if DEMO-CO seeded by Day 4, expect 40-50 cells total — verify exact count Day-5 dry-run and update this script before demo).
 
 **Point:**
 > "Зелёный = within healthy band. Amber = warning. Red = needs attention. Сразу видно где проблемы — без открытия 50 spreadsheets."
@@ -152,7 +152,7 @@
 
 **Type:** `AUD GO`.
 
-**Show:** AuditModal opens with ~22 audit events DESC:
+**Show:** AuditModal opens with 20+ audit events DESC (exact count drifts with intervening dev actions — verify Day-5 dry-run; the visible-on-screen ordering is what matters, not the count):
 - Most recent: `import_staging_apply` for DEMO-CO from Step 3 above
 - Then: `import_budget_create` × 8 (CLI imports)
 - Then: `company_role_change` × 3 (ATL-MRKZ flips)
