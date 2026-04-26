@@ -1,0 +1,80 @@
+# BudgetPro — production stack (app + Postgres + Nginx)
+# Target: FO Holding VM at PASHA Technology.
+# Usage on the VM:
+#   cp .env.production.example .env.production
+#   # edit .env.production with real secrets
+#   docker compose --env-file .env.production up -d --build
+# See deploy/README.md for the full runbook.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: budgetpro-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Explicit initdb args avoid locale-mismatch surprises on minimal hosts.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    # DB is NOT published to the host — only reachable via the internal Docker
+    # network. If you need direct access for backups/admin, exec into the
+    # container or tunnel over SSH.
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: budgetpro-app:latest
+    container_name: budgetpro-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public"
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      # NextAuth v5 refuses to start behind a reverse proxy unless the host is
+      # explicitly trusted — nginx forwards the original Host header but Auth.js
+      # can't verify it from inside the container. Safe behind our nginx config.
+      AUTH_TRUST_HOST: "true"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      NODE_ENV: production
+    expose:
+      - "3000"
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: budgetpro-nginx
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/budgetpro.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
