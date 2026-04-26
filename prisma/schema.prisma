@@ -428,7 +428,13 @@ model BudgetLine {
   unitCost       Float?
   quantity       Int?
   costModelKey   String?
-  isAutoPlanned  Boolean             @default(true)
+  // Turn 29 (Bug #1b): default reverted from true → false. Auto-planning
+  // requires a populated cost model + sales/expense forecasts; defaulting
+  // every line to "compute me dynamically" was wrong for the dominant case
+  // of literal imports (xlsx-sourced AZMADE BudgetLines have explicit
+  // plannedAmount values that were silently zeroed by getEffectivePlanned
+  // when the dynamic-source side returned 0).
+  isAutoPlanned  Boolean             @default(false)
   isAutoActual   Boolean             @default(false)
   costTypeId     String?
   costType       BudgetCostType?     @relation(fields: [costTypeId], references: [id], onDelete: SetNull)

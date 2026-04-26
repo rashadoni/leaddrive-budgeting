@@ -54,13 +54,26 @@ type CompanySeed = {
 
 // Sub-groups (level=1) — siblings directly under the Organization.
 //
-// Turn 14 reframing: AAC is NOT a sub-group — per user, AAC is a single
-// operational company that belongs DIRECTLY to AZMADE (no intermediate
-// sub-group wrapper). The AAC entry was promoted to level=2 in
-// PLACEHOLDER_OPERATIONAL below, parentCode unset. Other groups (ATL,
-// LLS, SPARK, ZTP) genuinely have or will have their own sub-companies,
-// so they keep their level=1 sub-group rows.
+// Turn 29 reframing: AAC is RESTORED as a sub-group at level=1 with a single
+// AAC-MAIN level=2 child (symmetric with SPARK/ZTP/LLS structure — each is a
+// level=1 wrapper with one or more level=2 operational entities). The Turn-14
+// "single op-co directly under org" interpretation was reverted per user
+// clarification "AAC тоже входит в этот список [sub-groups]". The xlsx data
+// (S-1..S-6 sheets) confirms AAC has 6 PRODUCT lines (MHB / burnt lime /
+// slaked lime / glue / U-block / waste lime), not company subsidiaries — so
+// AAC-MAIN remains the single operational entity that owns the BudgetLines;
+// the level=1 wrapper exists for visual consistency with the other holding
+// sub-groups in the company tree + future expansion if AAC adds entities.
 const SUB_GROUPS: CompanySeed[] = [
+  {
+    code: 'AAC',
+    name: 'AAC',
+    nameEn: 'AAC',
+    level: 1,
+    country: 'AZ',
+    baseCurrencyCode: 'AZN',
+    sortOrder: 10,
+  },
   {
     code: 'ATL',
     name: 'Azertexnolayn',
@@ -105,16 +118,17 @@ const SUB_GROUPS: CompanySeed[] = [
 // Each sub-group gets one `-MAIN` entity so its budget file has an
 // import target. Rename / split / restructure once real children are known.
 //
-// Turn 14: AAC is the exception — it's a single operational company,
-// NOT a sub-group with a placeholder child. Promoted to level=2 with
-// `parentCode` omitted so it sits directly under the Organization.
+// Turn 29: AAC follows the same pattern — single AAC-MAIN level=2 child
+// of the AAC level=1 wrapper. xlsx S-1..S-6 are PRODUCT lines, not
+// subsidiaries, so AAC-MAIN owns the imported BudgetLines.
 const PLACEHOLDER_OPERATIONAL: CompanySeed[] = [
   {
-    code: 'AAC',
-    name: 'AAC',
-    nameEn: 'AAC',
+    code: 'AAC-MAIN',
+    name: 'AAC Main',
+    nameEn: 'AAC Main',
     industry: 'industrial',
     level: 2,
+    parentCode: 'AAC',
     country: 'AZ',
     baseCurrencyCode: 'AZN',
     sortOrder: 11,

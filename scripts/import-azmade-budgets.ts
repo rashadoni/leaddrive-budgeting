@@ -73,12 +73,15 @@ const JOBS: ImportJob[] = [
   // Uses the `P&L` sheet with KOD in col A, AZ label in col B, source hint
   // in col C, then **English month abbreviations** Jan..Dec in cols D..O.
   // Parser handles both AZ and EN month headers via `MONTH_ALIASES`.
-  // Turn 14: companyCode `AAC-MAIN` → `AAC` per user reframing — AAC is a
-  // single operational company directly under AZMADE, not a sub-group.
+  // Turn 29: companyCode reverted to `AAC-MAIN` — AAC restored to level=1
+  // sub-group wrapper with AAC-MAIN level=2 operational child. xlsx S-1..S-6
+  // are PRODUCT lines (MHB / burnt lime / slaked lime / glue / U-block /
+  // waste lime sales forecasts), not company subsidiaries — so AAC-MAIN
+  // remains the single op entity owning the imported BudgetLines.
   {
     file: '/Users/rashadrahimov/Downloads/2026 Budget - AAC.xlsx',
     sheet: 'P&L',
-    companyCode: 'AAC',
+    companyCode: 'AAC-MAIN',
     year: 2026,
   },
 ];
@@ -174,7 +177,9 @@ async function insertBudgetLineTx(
       department: null,
       lineType,
       plannedAmount: parsed.plannedAnnual,
-      isAutoPlanned: true,
+      // Turn 29 (Bug #1b): xlsx-sourced lines have explicit plannedAmount
+      // values; they are NOT auto-planned. Schema default is now false too.
+      isAutoPlanned: false,
       isAutoActual: false,
     },
   });
