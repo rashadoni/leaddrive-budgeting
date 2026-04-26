@@ -1,0 +1,237 @@
+"use client";
+
+/**
+ * Phase 7.D — saveable named-layouts menu.
+ *
+ * Sits in the top-right corner of PanelGrid. Two paths:
+ *   • Save current — names the current splitter sizes; persists to
+ *     `/api/terminal/layouts` (upsert by name).
+ *   • Load — replays sizes via the imperative `setLayout` on each Group.
+ *   • Delete — removes a named layout. Idempotent UI: name disappears
+ *     from the dropdown immediately on success.
+ *
+ * The user's last-used sizes are independently saved to localStorage
+ * by `useDefaultLayout` integration in PanelGrid — named layouts are
+ * the explicit "remembered presets" layer on top of that baseline.
+ */
+
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  validateLayoutName,
+  validateLayoutSizes,
+  type LayoutSizes,
+} from "../lib/layout-sizes";
+
+interface LayoutListItem {
+  id: string;
+  name: string;
+  sizes: unknown; // validated client-side via validateLayoutSizes
+  updatedAt: string;
+}
+
+interface Props {
+  /** Read the current splitter percentages from PanelGrid's groupRefs. */
+  readCurrent: () => LayoutSizes;
+  /** Push a layout into the live UI (used by Load). */
+  applyLayout: (sizes: LayoutSizes) => void;
+}
+
+export function LayoutMenu({ readCurrent, applyLayout }: Props) {
+  const [open, setOpen] = useState(false);
+  const [layouts, setLayouts] = useState<LayoutListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/terminal/layouts");
+      if (!res.ok) {
+        // 401 = not signed in; 403 = no org. Either way, the menu is
+        // useless — surface a quiet error.
+        setLayouts([]);
+        if (res.status !== 401 && res.status !== 403) {
+          setError(`Failed to load layouts (HTTP ${res.status})`);
+        }
+        return;
+      }
+      const body = await res.json();
+      setLayouts(Array.isArray(body.layouts) ? body.layouts : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) void refresh();
+  }, [open, refresh]);
+
+  const handleSave = async () => {
+    const name = validateLayoutName(saveName);
+    if (!name) {
+      setError("Name must be 1-40 chars, no leading/trailing whitespace, no control chars.");
+      return;
+    }
+    const sizes = readCurrent();
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/terminal/layouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, sizes }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      setSaveName("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoad = (item: LayoutListItem) => {
+    const sizes = validateLayoutSizes(item.sizes);
+    if (!sizes) {
+      setError(
+        `Layout "${item.name}" has invalid sizes — likely from an older panel structure. Delete + re-save.`,
+      );
+      return;
+    }
+    applyLayout(sizes);
+    setOpen(false);
+  };
+
+  const handleDelete = async (item: LayoutListItem) => {
+    if (!confirm(`Delete layout "${item.name}"?`)) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/terminal/layouts/${encodeURIComponent(item.name)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="absolute top-2 right-2 z-30 font-mono text-[10px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="px-2 py-0.5 rounded border border-gray-800 bg-[#0A0E27] text-gray-400 hover:text-white hover:border-[#00D4AA]/60"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Save / load named pane layouts"
+      >
+        ▢ Layouts
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Layout menu"
+          className="absolute top-full right-0 mt-1 w-72 bg-[#050814] border border-gray-800 rounded shadow-xl p-2 space-y-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <header className="flex items-center justify-between gap-2">
+            <span className="text-gray-500 uppercase tracking-wider">Layouts</span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-gray-600 hover:text-gray-300"
+              aria-label="Close menu"
+            >
+              ×
+            </button>
+          </header>
+
+          {/* Save current */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSave();
+            }}
+            className="flex items-center gap-1"
+          >
+            <input
+              type="text"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              placeholder="name this layout…"
+              maxLength={50}
+              disabled={loading}
+              className="flex-1 bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none"
+              spellCheck={false}
+            />
+            <button
+              type="submit"
+              disabled={loading || saveName.trim() === ""}
+              className="px-2 py-0.5 rounded bg-[#00D4AA] text-[#050814] font-semibold uppercase tracking-wider disabled:bg-gray-800 disabled:text-gray-600"
+            >
+              Save
+            </button>
+          </form>
+
+          {error && (
+            <div className="text-[#FF4757] text-[10px]">{error}</div>
+          )}
+
+          {/* Saved layouts list */}
+          <div className="border-t border-gray-800/60 pt-1">
+            {loading && layouts.length === 0 ? (
+              <div className="text-gray-700">Loading…</div>
+            ) : layouts.length === 0 ? (
+              <div className="text-gray-700">No saved layouts.</div>
+            ) : (
+              <ul className="space-y-0.5 max-h-48 overflow-auto">
+                {layouts.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-2 px-1 py-0.5 hover:bg-gray-800/40 rounded"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleLoad(item)}
+                      className="flex-1 text-left text-gray-300 hover:text-[#00D4AA] truncate"
+                      title={`Load "${item.name}" (saved ${new Date(item.updatedAt).toLocaleString()})`}
+                    >
+                      {item.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(item)}
+                      className="text-gray-700 hover:text-[#FF4757]"
+                      aria-label={`Delete ${item.name}`}
+                      title="Delete"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

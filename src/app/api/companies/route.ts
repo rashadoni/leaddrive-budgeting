@@ -1,0 +1,112 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
+
+// GET: Companies for the caller's organization (roots + 1 level of children)
+export async function GET(request: NextRequest) {
+  const session = await requireAuth(request);
+  if (isAuthError(session)) return session;
+  // defense-in-depth; getSession already filters empty orgId → null → 401
+  if (!session.orgId) {
+    return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
+  }
+
+  try {
+    const companies = await prisma.company.findMany({
+      where: {
+        organizationId: session.orgId,
+        parentCompanyId: null,
+      },
+      include: {
+        children: { orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    return NextResponse.json(companies);
+  } catch (error) {
+    console.error('Error fetching companies:', error);
+    return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });
+  }
+}
+
+// POST: Create a company or sub-group in the caller's organization (manager+)
+export async function POST(request: NextRequest) {
+  const session = await requireRole(request, 'manager');
+  if (isAuthError(session)) return session;
+  // defense-in-depth; getSession already filters empty orgId → null → 401
+  if (!session.orgId) {
+    return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const {
+      parentCompanyId,
+      code,
+      name,
+      industry,
+      level,
+      country,
+      baseCurrencyCode,
+    } = body;
+
+    if (!code || !name) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // Guard: level (if supplied) must be 1 or 2 and consistent with parent presence.
+    // Turn 14 reframe: level=2 + parent=null is now legitimate (e.g. AAC is a
+    // single operational company directly under AZMADE org, not under any
+    // sub-group). The old "level=2 requires parentCompanyId" invariant was
+    // dropped — operational entities can sit directly under the org when
+    // there's no meaningful intermediate sub-group.
+    if (level !== undefined) {
+      if (typeof level !== 'number' || (level !== 1 && level !== 2)) {
+        return NextResponse.json(
+          { error: 'level must be 1 or 2' },
+          { status: 400 },
+        );
+      }
+      if (level === 1 && parentCompanyId) {
+        return NextResponse.json(
+          { error: 'level=1 cannot have a parentCompanyId' },
+          { status: 400 },
+        );
+      }
+      // level=2 with parentCompanyId=null is allowed (direct-org-child).
+      // level=2 with parentCompanyId set still requires the parent to be
+      // resolvable and same-org — checked below.
+    }
+
+    // If a parent is specified, ensure it belongs to the caller's org
+    if (parentCompanyId) {
+      const parent = await prisma.company.findFirst({
+        where: { id: parentCompanyId, organizationId: session.orgId },
+        select: { id: true },
+      });
+      if (!parent) {
+        return NextResponse.json({ error: 'Invalid parentCompanyId' }, { status: 400 });
+      }
+    }
+
+    const company = await prisma.company.create({
+      data: {
+        organizationId: session.orgId,
+        parentCompanyId: parentCompanyId || null,
+        code,
+        name,
+        industry: industry || null,
+        level: level ?? (parentCompanyId ? 2 : 1),
+        country: country || null,
+        baseCurrencyCode: baseCurrencyCode || null,
+        isActive: true,
+      },
+    });
+
+    return NextResponse.json(company, { status: 201 });
+  } catch (error) {
+    console.error('Error creating company:', error);
+    return NextResponse.json({ error: 'Failed to create company' }, { status: 500 });
+  }
+}

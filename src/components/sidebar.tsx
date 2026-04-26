@@ -3,6 +3,8 @@
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { useSession } from "next-auth/react"
+import { hasRole, type Role } from "@/lib/api-auth"
 import {
   Calculator,
   Settings,
@@ -21,12 +23,35 @@ import {
   CalendarRange,
   Settings2,
   BarChart3,
+  Activity,
+  Upload,
+  ScrollText,
 } from "lucide-react"
 import { useState, useCallback } from "react"
 import { cn } from "@/lib/utils"
 
-const navItems = [
+type NavItem = {
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  labelKey?: string
+  label?: string
+  /**
+   * Minimum role required to see this entry. Items without `minRole`
+   * are visible to every authenticated user. Phase 7.F audit log is
+   * gated to manager+ both server-side (`requireRole` on the page +
+   * API) and client-side here — viewer-tier users shouldn't see a link
+   * they'll get a 403 on.
+   */
+  minRole?: Role
+}
+
+// Risk Terminal entries (Phase 7) sit alongside the legacy /budgeting page
+// so the sidebar shows holding-level work without burying it under tabs.
+const navItems: NavItem[] = [
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
+  { href: "/budgeting/terminal", icon: Activity, label: "Risk Terminal" },
+  { href: "/budgeting/onboarding", icon: Upload, label: "Onboarding" },
+  { href: "/budgeting/audit", icon: ScrollText, label: "Audit Log", minRole: "manager" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
@@ -81,8 +106,26 @@ export function Sidebar() {
   const searchParams = useSearchParams()
   const t = useTranslations("nav")
   const [collapsed, setCollapsed] = useState(false)
+  const { data: session } = useSession()
+  // Cast: next-auth's `Session.user` type is augmented in this project to
+  // include `role` (see `src/lib/api-auth.ts`); the cast keeps the
+  // sidebar from depending on the augmentation file directly.
+  const userRole = (session?.user as { role?: string } | undefined)?.role
 
-  const isBudgeting = pathname === "/budgeting" || pathname.startsWith("/budgeting/")
+  // Filter navItems by `minRole`. Items without `minRole` are visible
+  // to every authenticated user (matches pre-Phase-7.F convention).
+  // Server-side defense in depth: `/budgeting/audit/page.tsx` ALSO
+  // calls `requireRole('manager')` and redirects on fail — sidebar
+  // gating is purely UX (don't show a link the user will 403 on).
+  const visibleNavItems = navItems.filter(
+    (item) => !item.minRole || hasRole(userRole, item.minRole),
+  )
+
+  // Legacy /budgeting tab-based page only — Risk Terminal + Onboarding live
+  // at /budgeting/terminal and /budgeting/onboarding and have their own
+  // top-level entries; we don't want the budget tabs sub-nav to leak in.
+  const isBudgetingLegacy =
+    pathname === "/budgeting" || pathname === "/budgeting/reports"
   const activeTab = searchParams.get("tab") || "workspace"
 
   return (
@@ -112,8 +155,14 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 sidebar-scroll overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+        {visibleNavItems.map((item) => {
+          // Exact-match for /budgeting (so Risk Terminal at /budgeting/terminal
+          // doesn't also light up the legacy Calculator entry); prefix match
+          // for everything else.
+          const isActive =
+            item.href === "/budgeting"
+              ? isBudgetingLegacy
+              : pathname === item.href || pathname.startsWith(item.href + "/")
           return (
             <div key={item.href}>
               <Link
@@ -126,11 +175,11 @@ export function Sidebar() {
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>{t(item.labelKey)}</span>}
+                {!collapsed && <span>{item.label ?? (item.labelKey ? t(item.labelKey) : item.href)}</span>}
               </Link>
 
-              {/* Budget sub-navigation */}
-              {item.href === "/budgeting" && isBudgeting && !collapsed && (
+              {/* Budget sub-navigation — only on legacy tab-based URL */}
+              {item.href === "/budgeting" && isBudgetingLegacy && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav.map((group) => (
                     <div key={group.group}>

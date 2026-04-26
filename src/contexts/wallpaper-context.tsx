@@ -58,6 +58,14 @@ export const WallpaperContext = createContext<WallpaperContextValue>({
 })
 
 export function WallpaperProvider({ children }: { children: ReactNode }) {
+  // Hydration safety (Turn 15 audit): initial state MUST be `null` so SSR
+  // and first client paint produce identical React trees. The localStorage
+  // read happens in useEffect — strictly post-hydration. After the read
+  // fires, React re-renders cleanly via the normal state-update path; the
+  // visual "wallpaper appears" transition is NOT a hydration mismatch.
+  // Do NOT change to `useState(() => localStorage.getItem(...))` lazy
+  // initializer — that would diverge SSR (no localStorage → null) from
+  // first client paint (saved value → not null) and break hydration.
   const [wallpaper, setWallpaperState] = useState<string | null>(null)
 
   // Read from localStorage on mount (don't set data-wallpaper — DashboardWallpaper handles that)

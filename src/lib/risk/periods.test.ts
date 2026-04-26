@@ -1,0 +1,113 @@
+import { describe, it, expect } from 'vitest';
+import {
+  parsePeriod,
+  daysInPeriod,
+  expandToMonths,
+  PeriodParseError,
+} from './periods';
+
+describe('parsePeriod', () => {
+  it('parses monthly period (UTC)', () => {
+    const p = parsePeriod('2026-04');
+    expect(p.kind).toBe('month');
+    expect(p.year).toBe(2026);
+    expect(p.start.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    expect(p.end.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  it('parses quarterly period', () => {
+    const p = parsePeriod('2026-Q2');
+    expect(p.kind).toBe('quarter');
+    expect(p.start.toISOString()).toBe('2026-04-01T00:00:00.000Z');
+    expect(p.end.toISOString()).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('parses yearly period', () => {
+    const p = parsePeriod('2026');
+    expect(p.kind).toBe('year');
+    expect(p.start.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+    expect(p.end.toISOString()).toBe('2027-01-01T00:00:00.000Z');
+  });
+
+  it('rejects invalid month 00 / 13', () => {
+    expect(() => parsePeriod('2026-00')).toThrow(PeriodParseError);
+    expect(() => parsePeriod('2026-13')).toThrow(PeriodParseError);
+  });
+
+  it('rejects invalid quarter 0 / 5', () => {
+    expect(() => parsePeriod('2026-Q0')).toThrow(PeriodParseError);
+    expect(() => parsePeriod('2026-Q5')).toThrow(PeriodParseError);
+  });
+
+  it('rejects garbage', () => {
+    expect(() => parsePeriod('')).toThrow(PeriodParseError);
+    expect(() => parsePeriod('2026/04')).toThrow(PeriodParseError);
+    expect(() => parsePeriod('April 2026')).toThrow(PeriodParseError);
+    expect(() => parsePeriod('2026-4')).toThrow(PeriodParseError); // not zero-padded
+  });
+});
+
+describe('daysInPeriod', () => {
+  it('handles 30-day months', () => {
+    expect(daysInPeriod(parsePeriod('2026-04'))).toBe(30);
+  });
+
+  it('handles 31-day months', () => {
+    expect(daysInPeriod(parsePeriod('2026-01'))).toBe(31);
+  });
+
+  it('handles February in a non-leap year', () => {
+    expect(daysInPeriod(parsePeriod('2026-02'))).toBe(28);
+  });
+
+  it('handles February in a leap year', () => {
+    expect(daysInPeriod(parsePeriod('2024-02'))).toBe(29);
+  });
+
+  it('handles Q1 (Jan-Mar)', () => {
+    // 31 + 28 + 31 = 90 (non-leap)
+    expect(daysInPeriod(parsePeriod('2026-Q1'))).toBe(90);
+  });
+
+  it('handles Q2 (Apr-Jun)', () => {
+    // 30 + 31 + 30 = 91
+    expect(daysInPeriod(parsePeriod('2026-Q2'))).toBe(91);
+  });
+
+  it('handles full non-leap year', () => {
+    expect(daysInPeriod(parsePeriod('2026'))).toBe(365);
+  });
+
+  it('handles full leap year', () => {
+    expect(daysInPeriod(parsePeriod('2024'))).toBe(366);
+  });
+});
+
+describe('expandToMonths', () => {
+  it('returns the same month for a monthly period', () => {
+    expect(expandToMonths(parsePeriod('2026-04'))).toEqual(['2026-04']);
+  });
+
+  it('expands Q2 to [Apr, May, Jun]', () => {
+    expect(expandToMonths(parsePeriod('2026-Q2'))).toEqual([
+      '2026-04',
+      '2026-05',
+      '2026-06',
+    ]);
+  });
+
+  it('expands Q4 to [Oct, Nov, Dec]', () => {
+    expect(expandToMonths(parsePeriod('2026-Q4'))).toEqual([
+      '2026-10',
+      '2026-11',
+      '2026-12',
+    ]);
+  });
+
+  it('expands yearly period to all 12 months, zero-padded', () => {
+    expect(expandToMonths(parsePeriod('2026'))).toEqual([
+      '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06',
+      '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12',
+    ]);
+  });
+});
