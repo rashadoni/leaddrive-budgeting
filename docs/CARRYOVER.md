@@ -24,6 +24,59 @@ Single source of truth for open `🔄` items across substantive turns.
 
 ---
 
+## ⚡ SESSION HANDOFF (read first, then delete this section per step 9)
+
+**Previous session ended at Turn 26 close (2026-04-26).** User requested fresh-session start with **all configuration + rules preserved**. This block contains the pickup-point.
+
+### What's live + how to verify on session start
+
+1. **All in-repo infra committed + git-tracked** — fresh session sees:
+   - `.claude/agents/architect.md` — architect subagent prompt incl. NEW iterative closure loop (Round-N protocol max 3, strict 🔄 format, mandatory sign-off `🟢`/`🟡`)
+   - `.claude/hooks/{architect-gate.sh, mark-dirty.sh, bootstrap.sh, test-gate.sh}` — Stop chain runs test-gate FIRST then architect-gate
+   - `.claude/hooks/tests/architect-gate.test.sh` — sibling self-test ✅; **`test-gate.test.sh` MISSING** (CARRYOVER row tracks this — 30 min next-turn write)
+   - `.claude/memory/` — 10 protocol/feedback/project files including UPDATED `feedback_100_percent_closure.md` (steps 7-10 added Turn 26)
+   - `.claude/settings.json` — Stop hooks chain registered, permissions allowlist incl. psql SELECT pattern
+   - `.claude/settings.local.json` — local perms (verification commands, etc.)
+   - `.claude/launch.json` — port-marker entry for `:3000` LaunchAgent dev server
+   - `CLAUDE.md` — project rules (4-role workflow, Turn flow, CARRYOVER protocol, Phase 7 context)
+   - `~/.claude/CLAUDE.md` — global user rules (graphify skill, skill visibility marker)
+   - `~/.claude/plans/iridescent-wiggling-pinwheel.md` — **active plan** (3 sections: protocol patches DONE, demo plan ACTIVE, production-launch hardening Appendix preserved)
+
+2. **SessionStart hook auto-loads memory:** `.claude/hooks/bootstrap.sh` runs first, mirrors `.claude/memory/` → `~/.claude/projects/-Users-rashadrahimov-Documents-leaddrive-budgeting/memory/` (idempotent). Verify: `ls ~/.claude/projects/*leaddrive-budgeting/memory/` should show 10+ feedback/project files.
+
+3. **State-of-the-world snapshot at session-start:**
+   - Git ref: latest commit `e8b077f` on `main` branch (working tree clean, no remote configured — local-only). If `git rev-parse HEAD` shows different SHA → check what changed.
+   - `npx tsc --noEmit` clean
+   - `npx vitest run` → 858 passed (37 files)
+   - DB state: 12 AZMADE companies, 568 BudgetLines, 20 audit_events (3 role_change + 16 import_budget_create + 1 import_staging_apply), HeatMap 12g/15a/9r=36 operational cells, ATL-MRKZ admin role
+   - Dev server: LaunchAgent `com.budgetpro.dev` PID 27265 on `:3000`
+   - Audit-emission coverage: 6/9 enum members handler-tested; 4/9 runtime-proven via live HTTP/CLI
+   - 12 commits today (Turn 25 + 26 batches): Phase A (security re-audit + 2 P0 + 1 P1) + Phase B (audit-wiring 2 of 5) + Round-2 fixes + plan pivot to demo + Day-1 demo docs + Round-2 doc fixes + Phase A leftover + Phase D non-perm + Phase C batch 1 (plans POST + [id] PUT, 16 tests) + protocol patches + protocol Round-1 ⚠️ closures
+
+4. **Active plan:** `~/.claude/plans/iridescent-wiggling-pinwheel.md` — read top-to-bottom. Three sections in order:
+   - **Protocol patches section** — landed Turn 26 (commit d7cb858 + e8b077f); skip
+   - **Demo plan** (`# Plan: Customer demo Friday 2026-05-01`) — **ACTIVE, Day 2 starts on next session pickup**
+   - **Appendix: Production-launch hardening** — paused; resumes post-demo via "Resume Appendix Phase X" command
+
+### Pending user actions (gating items — needed for Day 2 progress)
+
+1. **Browser walkthrough** ~30-45 min in fresh-incognito at `http://localhost:3000`. Use `docs/DEMO_SCRIPT.md` 7-step flow as walkthrough basis. Document every visible bug as new "demo-blocker" 🔄 row for Day-2 fix sprint.
+2. **psql UPDATE perm grant** (~1 min via `/fewer-permission-prompts` or manual edit `.claude/settings.json`): add `Bash(psql "$DATABASE_URL" -t -c UPDATE import_staging SET*)` rule. Gates Phase D `import_staging_expired` live trigger (closes 5/5 audit enum runtime coverage).
+
+### What new Claude should do on pickup
+
+1. Read this SESSION HANDOFF section (you are doing this now).
+2. Read `docs/CARRYOVER.md` OPEN section (~30 rows) for full backlog state.
+3. Read `docs/ROADMAP.md` Changelog last 5 entries for narrative.
+4. Read `~/.claude/plans/iridescent-wiggling-pinwheel.md` (ACTIVE demo plan + Appendix).
+5. Verify state matches snapshot above (`git log --oneline -3`, `npx tsc --noEmit`, `psql ... SELECT COUNT(*) FROM audit_events`).
+6. Acknowledge to user: "Session resumed. Phase 7 demo prep on Day 2; awaiting browser walkthrough OR Phase D perm grant from you OR continue pull-from-Appendix."
+7. Use **NEW iterative architect closure loop** for any substantive turn — max 3 rounds, mandatory 🟢/🟡 sign-off phrase from architect, strict 🔄 format (gating sub-task + estimate + concrete unblock path).
+8. Test-gate Stop hook runs automatically; on tsc/vitest fail, fix before turn-close.
+9. **Last step: delete this `## ⚡ SESSION HANDOFF` section** (entire block from header to this line) before announcing next task. Per CLAUDE.md §2.6: section is OPTIONAL — most sessions won't have one — and must NOT accumulate.
+
+---
+
 ## OPEN
 
 **Last processed: 2026-04-26** (Turn 26: Protocol patches commit d7cb858 — `.claude/hooks/test-gate.sh` (mechanical Stop hook, tsc+vitest, blocks on fail, ANSI-strip + vitest-4.x reporter fix during synthetic test), settings.json registration BEFORE architect-gate.sh, architect.md +24 lines (iterative closure loop max-3-rounds + strict 🔄 format + mandatory sign-off phrase + step-1 independent test-run requirement), memory rule steps 7-10 formalising the protocol. **First turn under new protocol** — architect Round 1 passed all 5 declared deliverables ✅ + flagged 2 ⚠️ closed inline this very loop iteration: (a) this CARRYOVER entry; (b) 10 stale 🔄 rows re-blockered with concrete gating sub-tasks per Turn-25 user clarification "all in scope, none cut" → reframed as queue-ordered post-Phase-F. New 🔄 added for test-gate self-test (deferred next turn). 858/858 vitest, tsc clean, hook smoke-tested 3 scenarios.)
