@@ -354,7 +354,7 @@ billing and i18n plumbing are out of scope).
   - Other flagged files (`plans/route.ts`, `rolling/route.ts`, `[id]/route.ts` family) use safe "check-then-act with server-derived IDs" pattern. Not critical; defense-in-depth hardening (explicit `orgId` on every `update`/`delete`) deferred to later phase.
 - **2026-04-21** — Phase 0.3 ✅ Added in-memory sliding-window rate limiter at `src/lib/rate-limit.ts` (per-process, to be swapped for Redis in Phase 6). Applied to `/api/budgeting/import-excel`: 2 requests/min per org, 20 MB file-size cap to prevent memory DoS. Returns 429 with `Retry-After` header when exceeded. Verified: direct unit test shows 3rd request in window blocked with 60s wait; different orgs keep independent buckets.
 - **2026-04-21** — Phase 0.4 ✅ Added centralised per-org rate limiting in `src/middleware.ts` with tiered config — one change covers all 46 mutation endpoints:
-  - **Heavy ops** (cash-flow/generate, rolling/auto-forecast, matrix-seed, templates/seed, snapshot-actuals, sync-actuals, resolve-costs, ai-narrative, reports/export, create-version, apply-templates) → 5/min per org.
+  - **Heavy ops** (cash-flow/generate, rolling/auto-forecast, matrix-seed, templates/seed, snapshot-actuals, sync-actuals, resolve-costs, ~~ai-narrative~~ [route removed Turn 37], reports/export, create-version, apply-templates) → 5/min per org.
   - **Destructive plan ops** (DELETE `/plans/*`) → 5/min per org.
   - **Normal CRUD** (all other POST/PUT/PATCH/DELETE under `/api/budgeting/*`) → 120/min per org — generous enough for bulk UI edits.
   - Returns 429 with `Retry-After` / `X-RateLimit-*` headers. Import-excel keeps its own stricter in-handler limit (2/min).
