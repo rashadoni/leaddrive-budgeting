@@ -3,13 +3,13 @@
 **Target wall-time:** 15-20 minutes live + 5-min Q&A buffer.
 **Format:** Live в браузере, developer drives, customer watches (in-room or Zoom screenshare).
 **Audience:** AZMADE-like multi-sector holding decision-maker (CFO / Owner / COO).
-**Anchor case study:** AZMADE Group MMC — 12 companies (4 sub-groups + 8 operational), 568 BudgetLines, 41 IndicatorValues across 14 sector packs.
+**Anchor case study:** AZMADE Group MMC — 13 companies (5 sub-groups + 8 operational op-cos including AAC-MAIN under AAC), 568 distinct line-items × 12 monthly rows = **6,816 BudgetLines** (Turn-34 monthly fix), 41 IndicatorValues across 14 sector packs.
 
 ## Pre-demo checklist (Day 5 Thursday + 30 min before)
 
 - [ ] Dev server uptime: `tail -20 ~/Library/Logs/budgetpro.log` shows recent activity, no crashes
 - [ ] LaunchAgent loaded: `launchctl list com.budgetpro.dev` returns valid PID
-- [ ] DB state: `audit_events` ≥ 20 rows, `companies` = 12 (AZMADE) + 1 DEMO-CO = 13, `budget_lines` = 568 + DEMO-CO lines
+- [ ] DB state: `audit_events` ≥ 20 rows, `companies` = 13 (5 sub-groups AAC/ATL/SPARK/ZTP/LLS at level=1 + 8 ops at level=2 including AAC-MAIN) + 1 DEMO-CO = 14, `budget_lines` = 6,816 (568 distinct × 12 months) + any DEMO-CO post-import rows
 - [ ] Anthropic API key live: `curl -s -H "x-api-key: $ANTHROPIC_API_KEY" https://api.anthropic.com/v1/messages` returns non-error
 - [ ] Fresh-incognito browser window open at `http://localhost:3000`
 - [ ] Sign in as `admin@budgetpro.com` (org=AZMADE Group MMC) — confirm via `/api/auth/session`

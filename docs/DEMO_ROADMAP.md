@@ -21,7 +21,7 @@
 **Visual:** screenshot grid of 4 surfaces — P&L, Risk Terminal HeatMap, AuditModal, Onboarding wizard step 2.
 
 **Talking point:**
-> "За 6 недель мы построили full FP&A platform с AI augmentation. AZMADE использует это для real-world holding management — 568 budget lines across 12 companies."
+> "За 6 недель мы построили full FP&A platform с AI augmentation. AZMADE использует это для real-world holding management — 568 budget line-items × 12 months = ~6,800 BudgetLines across 13 companies (5 sub-groups + 8 operational), real seasonal distribution per source xlsx."
 
 ---
 
