@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
+import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
+
+// Scenario apply queues a compute run — moderate rate-limit to prevent
+// abuse while keeping room for legitimate "what-if" exploration.
+// Phase A P2 (Turn 25 cont'd Day 1).
+const SCENARIO_APPLY_RATE_LIMIT = { name: 'scenarios-apply', max: 20, windowMs: 60_000 };
 
 // GET: Fetch available scenarios for the caller's organization.
 //
@@ -52,6 +58,12 @@ export async function POST(request: NextRequest) {
   if (!session.orgId) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
   }
+
+  const rateLimitError = enforceRateLimit(
+    `${session.orgId}:${getClientIp(request)}`,
+    SCENARIO_APPLY_RATE_LIMIT,
+  );
+  if (rateLimitError) return rateLimitError;
 
   try {
     const body = await request.json();

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 
@@ -170,10 +170,19 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ success: true, data: plan }, { status: 201 })
 }
 
-// PATCH — close or reopen a rolling forecast month
+// PATCH — close or reopen a rolling forecast month.
+//
+// SECURITY (Phase A leftover, Turn 25 cont'd Day 1): tightened from
+// `getOrgId` (any authenticated user) to `requireRole("manager")`.
+// Closing a month locks forecast data into actuals (status='actual',
+// lockedAt=now); reopening rolls back the lock. Both change the org's
+// view of historical data — viewers/editors should not flip these
+// flags. Same-class action as `plans/[id]` PUT approve/reject which
+// already requires manager+.
 export async function PATCH(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await requireRole(req, "manager")
+  if (isAuthError(session)) return session
+  const { orgId } = session
 
   let patchBody
   try {

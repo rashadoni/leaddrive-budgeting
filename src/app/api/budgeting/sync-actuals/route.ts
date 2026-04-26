@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
@@ -9,9 +9,15 @@ const syncActualsSchema = z.object({
   planId: z.string().min(1).max(100),
 }).strict()
 
+// SECURITY (Phase A leftover, Turn 25 cont'd Day 1): tightened from
+// `getOrgId` (any authenticated user) to `requireRole("editor")`.
+// POST writes external actuals into the org's plan — viewers should
+// not be able to mutate financial data, even read-only roles
+// shouldn't trigger writes accidentally.
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await requireRole(req, "editor")
+  if (isAuthError(session)) return session
+  const { orgId } = session
 
   let body
   try {
