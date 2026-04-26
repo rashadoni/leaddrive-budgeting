@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql \"$DATABASE_URL\" -t -c SELECT*)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vitest run *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {"type": "command", "command": ".claude/hooks/bootstrap.sh"}
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {"type": "command", "command": ".claude/hooks/mark-dirty.sh"}
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {"type": "command", "command": ".claude/hooks/architect-gate.sh"}
+        ]
+      }
+    ]
+  }
+}

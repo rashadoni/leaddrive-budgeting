@@ -1,0 +1,10 @@
+- [Don't frighten enterprise customers with privacy banners](feedback_customer_facing_language.md) — no persistent "data sent to US" strips in AI UI; disclose via modal/settings instead
+- [AI Analytics output language is user-selectable](project_ai_output_language.md) — EN/RU/AZ picker in panel; UI stays English, only LLM output switches
+- [Set generous max_tokens on every LLM call — 8K+, not 2K](feedback_llm_max_tokens.md) — RU/AZ finance prose needs headroom; always detect max_tokens stop and show it
+- [User is not a finance expert](user_not_finance_expert.md) — wants opinionated finance/FP&A recommendations, not menus of options
+- [FO Holding — ~60 companies across 14 sectors](project_aac_holding_structure.md) — AAC is ONE sub-group under FO (not the holding); 2-level hierarchy; CoA strategy = per-industry templates
+- [Fix before build — always close open issues before new features](feedback_fix_before_build.md) — no "defer to ROADMAP" while review findings/regressions are still open; finish fixes first, then build
+- [Decide next step autonomously — don't ask "what's next"](feedback_decide_next_step.md) — when tasks are obvious from context, pick highest-leverage next and start; announce, don't vote
+- [Architect does scope audit, not just quality review](feedback_architect_scope_audit.md) — declare TurnGoal up front; architect audits scope + quality; gaps = fix-before-build
+- [Close tasks to 100% — architect enforces](feedback_100_percent_closure.md) — pass RAW user message to architect; architect runs Completion Audit per-deliverable vs user's words (not developer's reframe); ⚠️/❌ without valid 🔄 escalation blocks turn-close
+- [Carryover enforcement — docs/CARRYOVER.md tracked across turns](feedback_carryover_enforcement.md) — every substantive turn must process the tracker; architect + hook enforce freshness; prevents partial items from evaporating between turns

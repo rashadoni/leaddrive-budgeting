@@ -62,3 +62,7 @@ tmp/
 # Backup files
 *.bak
 *.backup
+
+# Scratch / one-off artifacts
+graphify-out/
+budgetpro-backup-*.sql
