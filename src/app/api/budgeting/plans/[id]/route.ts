@@ -99,6 +99,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
+  // Capture priorStatus BEFORE the update — needed for the
+  // `budget_plan_approve` audit event's `priorStatus` field so consumers
+  // can distinguish first-approval vs approve-after-reject vs re-approval-
+  // after-revert-to-draft. Single extra read is cheap; alternative would
+  // be a transactional read-then-update which adds tx overhead.
+  const priorPlan =
+    status === "approved"
+      ? await prisma.budgetPlan.findFirst({
+          where: { id, organizationId: orgId },
+          select: { status: true, name: true },
+        })
+      : null
+
   const plan = await prisma.budgetPlan.updateMany({
     where: { id, organizationId: orgId },
     data: updateData,
@@ -107,6 +120,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (plan.count === 0) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
   const updated = await prisma.budgetPlan.findFirst({ where: { id, organizationId: orgId } })
+
+  // Phase 7.F (Turn 25) — emit `budget_plan_approve` on the approve
+  // transition. Non-blocking: logger failure surfaces as `auditStale`
+  // alongside the successful approval rather than rolling it back.
+  let auditStale = false
+  if (status === "approved" && updated && priorPlan) {
+    const { logBudgetPlanApprove } = await import("@/lib/audit/import-helpers")
+    const auditResult = await logBudgetPlanApprove(prisma, {
+      organizationId: orgId,
+      actorUserId: userId || null,
+      planId: updated.id,
+      planName: priorPlan.name,
+      approvedBy: userId || "system",
+      priorStatus: priorPlan.status ?? "unknown",
+      context: {
+        route: "/api/budgeting/plans/[id]",
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      },
+    })
+    if (!auditResult.ok) auditStale = true
+  }
 
   // ── Auto-create approval comment on status transitions ──
   if (status && updated) {
@@ -200,7 +234,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  return NextResponse.json({ success: true, data: updated })
+  return NextResponse.json({ success: true, data: updated, auditStale })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

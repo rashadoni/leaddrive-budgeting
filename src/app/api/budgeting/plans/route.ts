@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
+import { logBudgetPlanCreate } from "@/lib/audit/import-helpers"
 
 const createPlanSchema = z.object({
   name: z.string().min(1).max(500),
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await requireRole(req, "manager")
   if (session instanceof NextResponse) return session
-  const { orgId } = session
+  const { orgId, userId } = session
 
   let body
   try {
@@ -301,7 +302,23 @@ export async function POST(req: NextRequest) {
     console.error("Auto-populate plan error:", e)
   }
 
-  return NextResponse.json({ success: true, data: plan }, { status: 201 })
+  // Phase 7.F (Turn 25) — emit audit. Non-blocking; logger failure
+  // surfaces as `auditStale: true` rather than aborting the create.
+  const auditResult = await logBudgetPlanCreate(prisma, {
+    organizationId: orgId,
+    actorUserId: userId || null,
+    planId: plan.id,
+    planName: plan.name,
+    year: plan.year,
+    scope: plan.periodType,
+    context: {
+      route: "/api/budgeting/plans",
+      userAgent: req.headers.get("user-agent") ?? undefined,
+    },
+  })
+  const auditStale = !auditResult.ok
+
+  return NextResponse.json({ success: true, data: plan, auditStale }, { status: 201 })
 }
 
 export async function DELETE(req: NextRequest) {

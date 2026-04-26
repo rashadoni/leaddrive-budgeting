@@ -13,7 +13,11 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { logImportBudgetCreate } from './import-helpers';
+import {
+  logImportBudgetCreate,
+  logBudgetPlanCreate,
+  logBudgetPlanApprove,
+} from './import-helpers';
 
 type FakePrisma = {
   auditEvent: {
@@ -113,5 +117,96 @@ describe('logImportBudgetCreate', () => {
     });
     const call = prisma.auditEvent.create.mock.calls[0][0];
     expect(call.data.metadata.parser).toBe('rollup');
+  });
+});
+
+describe('logBudgetPlanCreate', () => {
+  it('emits budget_plan_create with required metadata + optional scope', async () => {
+    const prisma = makePrisma();
+    const result = await logBudgetPlanCreate(prisma as never, {
+      organizationId: 'org_az',
+      actorUserId: 'u_mgr',
+      planId: 'plan_2026_a',
+      planName: 'AZMADE 2026 Q1',
+      year: 2026,
+      scope: 'quarterly',
+      context: { route: '/api/budgeting/plans' },
+    });
+    expect(result).toEqual({ ok: true, id: 'audit_1' });
+    const call = prisma.auditEvent.create.mock.calls[0][0];
+    expect(call.data.action).toBe('budget_plan_create');
+    expect(call.data.entityType).toBe('BudgetPlan');
+    expect(call.data.entityId).toBe('plan_2026_a');
+    expect(call.data.actorUserId).toBe('u_mgr');
+    expect(call.data.metadata).toEqual({
+      planName: 'AZMADE 2026 Q1',
+      year: 2026,
+      scope: 'quarterly',
+    });
+  });
+
+  it('omits scope from metadata when not provided', async () => {
+    const prisma = makePrisma();
+    await logBudgetPlanCreate(prisma as never, {
+      organizationId: 'org_az',
+      actorUserId: null,
+      planId: 'plan_2026_b',
+      planName: 'AZMADE 2026',
+      year: 2026,
+    });
+    const call = prisma.auditEvent.create.mock.calls[0][0];
+    expect(call.data.metadata).toEqual({ planName: 'AZMADE 2026', year: 2026 });
+    expect(call.data.actorUserId).toBeNull();
+  });
+
+  it('returns ok:false on DB failure rather than throwing', async () => {
+    const prisma = makePrisma(async () => {
+      throw new Error('audit DB down');
+    });
+    const result = await logBudgetPlanCreate(prisma as never, {
+      organizationId: 'org_az',
+      actorUserId: 'u_mgr',
+      planId: 'plan_x',
+      planName: 'X',
+      year: 2026,
+    });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('logBudgetPlanApprove', () => {
+  it('emits budget_plan_approve with priorStatus + approvedBy', async () => {
+    const prisma = makePrisma();
+    await logBudgetPlanApprove(prisma as never, {
+      organizationId: 'org_az',
+      actorUserId: 'u_admin',
+      planId: 'plan_2026',
+      planName: 'AZMADE 2026',
+      approvedBy: 'u_admin',
+      priorStatus: 'pending_approval',
+      context: { route: '/api/budgeting/plans/[id]' },
+    });
+    const call = prisma.auditEvent.create.mock.calls[0][0];
+    expect(call.data.action).toBe('budget_plan_approve');
+    expect(call.data.entityType).toBe('BudgetPlan');
+    expect(call.data.metadata).toEqual({
+      planName: 'AZMADE 2026',
+      approvedBy: 'u_admin',
+      priorStatus: 'pending_approval',
+    });
+  });
+
+  it('preserves priorStatus across non-pending transitions (approve-after-reject)', async () => {
+    const prisma = makePrisma();
+    await logBudgetPlanApprove(prisma as never, {
+      organizationId: 'org_az',
+      actorUserId: 'u_admin',
+      planId: 'plan_2026',
+      planName: 'AZMADE 2026',
+      approvedBy: 'u_admin',
+      priorStatus: 'rejected',
+    });
+    const call = prisma.auditEvent.create.mock.calls[0][0];
+    expect(call.data.metadata.priorStatus).toBe('rejected');
   });
 });

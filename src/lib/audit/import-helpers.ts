@@ -50,6 +50,79 @@ export interface ImportBudgetCreateArgs {
   context?: Partial<AuditEventContext>;
 }
 
+/**
+ * Phase B Turn-25 — emit `budget_plan_create` from `POST /api/budgeting/plans`.
+ *
+ * Wraps `logAuditEvent` with the discriminated event so call-sites
+ * don't have to reach for the raw logger. Same never-throws contract.
+ *
+ * `scope` carries the periodicity hint (`yearly` / `quarterly` / `monthly`)
+ * so the audit row reproduces the exact period a user picked. Optional
+ * because legacy plans pre-Turn-25 didn't always have it.
+ */
+export async function logBudgetPlanCreate(
+  prisma: PrismaClient,
+  args: {
+    organizationId: string;
+    actorUserId: string | null;
+    planId: string;
+    planName: string;
+    year: number;
+    scope?: string;
+    context?: Partial<AuditEventContext>;
+  },
+): Promise<LogAuditEventResult> {
+  return logAuditEvent(prisma, {
+    organizationId: args.organizationId,
+    actorUserId: args.actorUserId || null,
+    event: {
+      action: 'budget_plan_create',
+      entityType: 'BudgetPlan',
+      entityId: args.planId,
+      metadata: {
+        planName: args.planName,
+        year: args.year,
+        ...(args.scope ? { scope: args.scope } : {}),
+      },
+    },
+    context: args.context ? buildAuditContext(args.context) : null,
+  });
+}
+
+/**
+ * Phase B Turn-25 — emit `budget_plan_approve` from `PUT /api/budgeting/plans/[id]`
+ * approve/reject branch. `priorStatus` records the transition source so
+ * audit consumers can distinguish first-approval vs approve-after-reject.
+ */
+export async function logBudgetPlanApprove(
+  prisma: PrismaClient,
+  args: {
+    organizationId: string;
+    actorUserId: string | null;
+    planId: string;
+    planName: string;
+    approvedBy: string;
+    priorStatus: string;
+    context?: Partial<AuditEventContext>;
+  },
+): Promise<LogAuditEventResult> {
+  return logAuditEvent(prisma, {
+    organizationId: args.organizationId,
+    actorUserId: args.actorUserId || null,
+    event: {
+      action: 'budget_plan_approve',
+      entityType: 'BudgetPlan',
+      entityId: args.planId,
+      metadata: {
+        planName: args.planName,
+        approvedBy: args.approvedBy,
+        priorStatus: args.priorStatus,
+      },
+    },
+    context: args.context ? buildAuditContext(args.context) : null,
+  });
+}
+
 export async function logImportBudgetCreate(
   prisma: PrismaClient,
   args: ImportBudgetCreateArgs,
