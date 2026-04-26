@@ -11,7 +11,7 @@ const publicPaths = ["/login", "/api/auth"]
 const RATE_RULES: Array<{ pattern: RegExp; methods: string[]; cfg: RateLimitConfig }> = [
   // Heavy operations — small bucket (5/min)
   {
-    pattern: /^\/api\/budgeting\/(cash-flow\/generate|rolling\/auto-forecast|matrix-seed|templates\/seed|snapshot-actuals|sync-actuals|resolve-costs|ai-narrative|reports\/export|plans\/[^/]+\/create-version|plans\/[^/]+\/apply-templates)(\/|$)/,
+    pattern: /^\/api\/budgeting\/(cash-flow\/generate|rolling\/auto-forecast|matrix-seed|templates\/seed|snapshot-actuals|sync-actuals|resolve-costs|reports\/export|plans\/[^/]+\/create-version|plans\/[^/]+\/apply-templates)(\/|$)/,
     methods: ["POST"],
     cfg: { name: "budget-heavy", windowMs: 60_000, max: 5 },
   },

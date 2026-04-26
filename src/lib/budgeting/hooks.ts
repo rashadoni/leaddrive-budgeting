@@ -315,19 +315,6 @@ export function useBudgetAnalytics(planId: string, companyId?: string | null) {
   })
 }
 
-// ─── AI Narrative ────────────────────────────────────────────────────────────
-
-export function useAINarrative() {
-  const orgId = useOrgId()
-  return useMutation({
-    mutationFn: ({ planId, threshold }: { planId: string; threshold?: number }) =>
-      apiFetch<{ narrative: string }>("/api/budgeting/ai-narrative", orgId, {
-        method: "POST",
-        body: JSON.stringify({ planId, threshold }),
-      }),
-  })
-}
-
 // ─── Sync Actuals ────────────────────────────────────────────────────────────
 
 export function useSyncActuals() {

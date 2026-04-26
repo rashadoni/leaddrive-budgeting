@@ -48,7 +48,6 @@ import {
   useDeleteBudgetSection,
   useBudgetForecastEntries,
   useUpsertBudgetForecast,
-  useAINarrative,
   useSyncActuals,
   useBudgetTemplates,
   useCreateBudgetTemplate,
@@ -642,7 +641,6 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
   const deleteLine = useDeleteBudgetLine()
   const createActual = useCreateBudgetActual()
   const deleteActual = useDeleteBudgetActual()
-  const aiNarrative = useAINarrative()
   const syncActuals = useSyncActuals()
   // Edit state
   const [editCell, setEditCell] = useState<{ id: string; field: string } | null>(null)
@@ -661,8 +659,6 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
   const [showMaterialOnly, setShowMaterialOnly] = useState(false)
   const [materialityPct, setMaterialityPct] = useState(5)
   const [materialityAbs, setMaterialityAbs] = useState(500)
-  const [narrative, setNarrative] = useState<string | null>(null)
-  const [showNarrative, setShowNarrative] = useState(false)
   // Drill-down sheet for fact values
   const [drillDownLine, setDrillDownLine] = useState<BudgetLine | null>(null)
   // Variance note dialog
@@ -826,17 +822,6 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
       expenseDate: newActual.date || undefined,
     })
     setNewActual({ amount: "", description: "", date: "" })
-  }
-
-  // Da Vinci narrative
-  const handleAINarrative = async () => {
-    setShowNarrative(true)
-    try {
-      const result = await aiNarrative.mutateAsync({ planId })
-      setNarrative(result.narrative)
-    } catch {
-      setNarrative(t("errorAiGeneration"))
-    }
   }
 
   // Sync actuals
@@ -1630,22 +1615,6 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
 
       {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          title={t("hintBtnAiAnalysis")}
-          onClick={handleAINarrative}
-          disabled={aiNarrative.isPending}
-          className="relative overflow-hidden bg-gradient-to-r from-[hsl(var(--ai-from))] to-[hsl(var(--ai-to))] hover:opacity-90 text-white border-0 shadow-md shadow-[hsl(var(--ai-from))]/25 hover:shadow-lg hover:shadow-[hsl(var(--ai-from))]/40 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97]"
-        >
-          {aiNarrative.isPending ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <span className="relative mr-1.5 flex h-4 w-4 items-center justify-center">
-              <Sparkles className="h-4 w-4 animate-pulse" />
-            </span>
-          )}
-          {t("btnAiAnalysis")}
-        </Button>
         {autoActualTotal > 0 && (
           <Button size="sm" variant="outline" title={t("hintBtnSyncActuals")} onClick={handleSync} disabled={syncActuals.isPending}>
             {syncActuals.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
@@ -1692,22 +1661,6 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
           {compactNumbers ? "1.2M" : "1,234"}
         </Button>
       </div>
-
-      {/* Da Vinci Narrative */}
-      {showNarrative && (
-        <Card className="border-[hsl(var(--ai-from))]/20 ai-gradient-border">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm flex items-center gap-2"><AlertCircle className="h-4 w-4 text-[hsl(var(--ai-from))]" /> {t("aiAnalysisTitle")}</CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => { setShowNarrative(false); setNarrative(null) }}>✕</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {narrative ? <div className="text-sm whitespace-pre-wrap leading-relaxed">{narrative}</div>
-              : <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> {t("generating")}</div>}
-          </CardContent>
-        </Card>
-      )}
 
       {/* === MATRIX VIEW === */}
       {workspaceView === "matrix" && analytics?.matrix && analytics.matrix.cells.length > 0 && (
@@ -1903,10 +1856,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
 function OverviewTab({ planId }: { planId: string }) {
   const t = useTranslations("budgeting")
   const { data: analytics, isLoading, error } = useBudgetAnalytics(planId)
-  const aiNarrative = useAINarrative()
   const syncActuals = useSyncActuals()
-  const [narrative, setNarrative] = useState<string | null>(null)
-  const [showNarrative, setShowNarrative] = useState(false)
 
   if (isLoading) return (
     <div className="flex items-center justify-center py-20">
@@ -1935,16 +1885,6 @@ function OverviewTab({ planId }: { planId: string }) {
   const expExecPct = totalCostPlanned > 0 ? (totalCostActual / totalCostPlanned) * 100 : 0
   const revExecPct = revenueExecutionPct || (totalRevenuePlanned > 0 ? (totalRevenueActual / totalRevenuePlanned) * 100 : 0)
   const marginForecast = totalRevenueForecast - totalExpenseForecast
-
-  const handleAINarrative = async () => {
-    setShowNarrative(true)
-    try {
-      const result = await aiNarrative.mutateAsync({ planId })
-      setNarrative(result.narrative)
-    } catch {
-      setNarrative(t("errorAiGenerationNarrative"))
-    }
-  }
 
   const handleSyncActuals = async () => {
     try {
@@ -1993,23 +1933,8 @@ function OverviewTab({ planId }: { planId: string }) {
         />
       </div>
 
-      {/* Action buttons: Da Vinci narrative + sync actuals + export */}
+      {/* Action buttons: sync actuals + export */}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          onClick={handleAINarrative}
-          disabled={aiNarrative.isPending}
-          className="relative overflow-hidden bg-gradient-to-r from-[hsl(var(--ai-from))] to-[hsl(var(--ai-to))] hover:opacity-90 text-white border-0 shadow-md shadow-[hsl(var(--ai-from))]/25 hover:shadow-lg hover:shadow-[hsl(var(--ai-from))]/40 transition-all duration-300 hover:scale-[1.03] active:scale-[0.97]"
-        >
-          {aiNarrative.isPending ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <span className="relative mr-1.5 flex h-4 w-4 items-center justify-center">
-              <Sparkles className="h-4 w-4 animate-pulse" />
-            </span>
-          )}
-          {t("btnExplainVariances")}
-        </Button>
         {autoActualTotal > 0 && (
           <Button size="sm" variant="outline" onClick={handleSyncActuals} disabled={syncActuals.isPending}>
             {syncActuals.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Link2 className="h-4 w-4 mr-1" />}
@@ -2021,28 +1946,6 @@ function OverviewTab({ planId }: { planId: string }) {
         </a>
       </div>
 
-      {/* Da Vinci Narrative Card */}
-      {showNarrative && (
-        <Card className="border-[hsl(var(--ai-from))]/20 ai-gradient-border">
-          <CardHeader className="pb-2">
-            <div className="flex justify-between items-center">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-[hsl(var(--ai-from))]" /> {t("aiAnalysisTitle")}
-              </CardTitle>
-              <Button size="sm" variant="ghost" onClick={() => { setShowNarrative(false); setNarrative(null) }}>✕</Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {narrative ? (
-              <div className="text-sm whitespace-pre-wrap leading-relaxed">{narrative}</div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> {t("generatingNarrative")}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* ROW 2: Waterfall Chart (full width) */}
       {byCategory.length > 0 && (
