@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 
 // GET: Fetch available scenarios for the caller's organization.
 //
@@ -40,8 +40,14 @@ export async function GET(request: NextRequest) {
 // authenticated user trigger a scenario run against any other org's
 // scenario by passing both ids. Now: orgId comes from the session;
 // scenario lookup is tenant-scoped via `findFirst`.
+//
+// SECURITY (Phase A architect Round-2, 2026-04-26): tightened gate from
+// `requireAuth` to `requireRole("editor")` — POST queues a compute run
+// that consumes resources; viewers should not trigger arbitrary scenario
+// execution. Mirror of `plans/route.ts:59` POST guard for write-class
+// actions.
 export async function POST(request: NextRequest) {
-  const session = await requireAuth(request);
+  const session = await requireRole(request, "editor");
   if (isAuthError(session)) return session;
   if (!session.orgId) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 });

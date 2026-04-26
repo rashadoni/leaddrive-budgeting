@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { createNotification } from "@/lib/notifications"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { computePlannedForLine, getPeriodMonths } from "@/lib/budgeting/cost-model-map"
+import { logBudgetPlanApprove } from "@/lib/audit/import-helpers"
 
 const updatePlanSchema = z.object({
   name: z.string().min(1).max(500).optional(),
@@ -124,9 +125,22 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Phase 7.F (Turn 25) — emit `budget_plan_approve` on the approve
   // transition. Non-blocking: logger failure surfaces as `auditStale`
   // alongside the successful approval rather than rolling it back.
+  // Phase A architect Round-2 (Turn-25): use top-level import — sibling
+  // route `plans/route.ts` already eagerly imports the same module so
+  // there's no cold-path bundle benefit to lazy-loading here.
+  //
+  // Known race (architect Round-2): `findFirst` (line above) +
+  // `updateMany` (line above that) is two statements outside a
+  // transaction. Two concurrent approvers can both read `priorStatus=
+  // "pending_approval"` and both succeed at updateMany (idempotent on
+  // already-approved), producing two `budget_plan_approve` audit rows
+  // with identical priorStatus. Accepted as low-priority race —
+  // double-emission is observable in audit feed (no data loss; just
+  // slight noise) and the UI prevents double-click via `isApproving`
+  // state. Wrap in `prisma.$transaction([find, updateMany])` with
+  // serializable isolation if real-world double-emit is observed.
   let auditStale = false
   if (status === "approved" && updated && priorPlan) {
-    const { logBudgetPlanApprove } = await import("@/lib/audit/import-helpers")
     const auditResult = await logBudgetPlanApprove(prisma, {
       organizationId: orgId,
       actorUserId: userId || null,
