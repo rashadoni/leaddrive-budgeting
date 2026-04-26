@@ -15,7 +15,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CommandBar } from './CommandBar';
 import {
   getTerminalSnapshot,
@@ -146,10 +146,12 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     submit('IND_NONEXISTENT IND GO');
     expect(getTerminalSnapshot().activePanelId).toBe(3); // panel switch is sync
     expect(getTerminalSnapshot().activeIndicatorValueId).toBeNull();
-    await new Promise((r) => setTimeout(r, 0));
-    // After async resolve, feedback should be alert with "IND partial"
-    const alert = screen.queryByRole('alert');
-    expect(alert?.textContent ?? '').toMatch(/IND partial/);
+    // Async resolve goes through fetch → .then → setFeedback. A single
+    // microtask flush isn't enough; waitFor polls until the alert appears.
+    await waitFor(() => {
+      const alert = screen.queryByRole('alert');
+      expect(alert?.textContent ?? '').toMatch(/IND partial/);
+    });
   });
 
   it('IND activeCompany preference: 2 cells, one for active co → that one chosen', async () => {
