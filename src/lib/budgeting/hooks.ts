@@ -287,12 +287,31 @@ export function useUpsertBudgetForecast() {
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
 
-export function useBudgetAnalytics(planId: string) {
+export function useBudgetAnalytics(planId: string, companyId?: string | null) {
   const orgId = useOrgId()
+  // Turn 30: per-daughter-company drilldown. companyId is optional —
+  // null/undefined → org-wide consolidated. queryKey includes companyId
+  // so React Query caches per-selection separately (switching companies
+  // re-fetches instead of returning stale aggregate).
+  //
+  // Turn 30 architect ⚠️: route returns 404 when companyId stale/cross-
+  // tenant (e.g. URL bookmark to a deleted company). `apiFetch` treats
+  // non-OK as throw → React Query surfaces as `error` (not silent data
+  // gap). This is the existing apiFetch contract; we rely on it instead
+  // of bypassing it. If consumers need to handle 404 specifically,
+  // they can inspect `error?.message` for "Company not found".
+  const query = companyId ? `?planId=${planId}&companyId=${companyId}` : `?planId=${planId}`
   return useQuery({
-    queryKey: ["budgeting", "analytics", planId, orgId],
-    queryFn: () => apiFetch<BudgetAnalytics>(`/api/budgeting/analytics?planId=${planId}`, orgId),
+    queryKey: ["budgeting", "analytics", planId, companyId ?? null, orgId],
+    queryFn: () => apiFetch<BudgetAnalytics>(`/api/budgeting/analytics${query}`, orgId),
     enabled: !!orgId && !!planId,
+    // Don't retry 4xx — 404 from cross-tenant/deleted id is terminal,
+    // retrying just hammers the route + delays the visible error state.
+    retry: (failureCount, error: any) => {
+      const msg = error?.message ?? ""
+      if (msg.includes("404") || msg.includes("not found")) return false
+      return failureCount < 3
+    },
   })
 }
 

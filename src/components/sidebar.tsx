@@ -27,7 +27,7 @@ import {
   Upload,
   ScrollText,
 } from "lucide-react"
-import { useState, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 
 type NavItem = {
@@ -101,12 +101,38 @@ const budgetSubNav = [
   },
 ]
 
+// Hook: fetch per-org tab availability map. Sidebar uses this to hide
+// budget sub-nav entries pointing at empty data domains (Bug #6 demo
+// polish — customer demo Friday 2026-05-01). Endpoint is `GET /api/
+// budgeting/availability` which returns a flat `{ [tabValue]: boolean }`.
+// Tabs missing from the map (e.g. fetch in flight) default to TRUE so we
+// don't blink-hide-blink while loading.
+function useTabAvailability(): Record<string, boolean> {
+  const [map, setMap] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/budgeting/availability")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled && body && typeof body === "object") setMap(body)
+      })
+      .catch(() => {
+        // Silent fail — sidebar shows all tabs (existing behavior) on error.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return map
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const t = useTranslations("nav")
   const [collapsed, setCollapsed] = useState(false)
   const { data: session } = useSession()
+  const availability = useTabAvailability()
   // Cast: next-auth's `Session.user` type is augmented in this project to
   // include `role` (see `src/lib/api-auth.ts`); the cast keeps the
   // sidebar from depending on the augmentation file directly.
@@ -181,34 +207,46 @@ export function Sidebar() {
               {/* Budget sub-navigation — only on legacy tab-based URL */}
               {item.href === "/budgeting" && isBudgetingLegacy && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
-                  {budgetSubNav.map((group) => (
-                    <div key={group.group}>
-                      <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
-                        {group.group}
-                      </p>
-                      {group.items.map((sub) => {
-                        const href = (sub as any).isPage ? "/budgeting/reports" : `/budgeting?tab=${sub.value}`
-                        const isSubActive = (sub as any).isPage
-                          ? pathname === "/budgeting/reports"
-                          : activeTab === sub.value
-                        return (
-                          <Link
-                            key={sub.value}
-                            href={href}
-                            className={cn(
-                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
-                              isSubActive
-                                ? "bg-white/15 text-white font-medium"
-                                : "text-white/60 hover:bg-white/10 hover:text-white"
-                            )}
-                          >
-                            <sub.icon className="h-3.5 w-3.5 shrink-0" />
-                            {sub.label}
-                          </Link>
-                        )
-                      })}
-                    </div>
-                  ))}
+                  {budgetSubNav
+                    .map((group) => ({
+                      ...group,
+                      // Bug #6: filter sub-items to those whose backing data
+                      // exists for this org. `availability` may be empty
+                      // (loading) — in that case treat unknown as visible
+                      // so we don't blink-hide on first paint. The flag
+                      // explicitly being `false` is what hides the entry.
+                      items: group.items.filter((sub) => availability[sub.value] !== false),
+                    }))
+                    // Drop entire group if all its items are hidden.
+                    .filter((group) => group.items.length > 0)
+                    .map((group) => (
+                      <div key={group.group}>
+                        <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                          {group.group}
+                        </p>
+                        {group.items.map((sub) => {
+                          const href = (sub as any).isPage ? "/budgeting/reports" : `/budgeting?tab=${sub.value}`
+                          const isSubActive = (sub as any).isPage
+                            ? pathname === "/budgeting/reports"
+                            : activeTab === sub.value
+                          return (
+                            <Link
+                              key={sub.value}
+                              href={href}
+                              className={cn(
+                                "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+                                isSubActive
+                                  ? "bg-white/15 text-white font-medium"
+                                  : "text-white/60 hover:bg-white/10 hover:text-white"
+                              )}
+                            >
+                              <sub.icon className="h-3.5 w-3.5 shrink-0" />
+                              {sub.label}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    ))}
                 </div>
               )}
             </div>

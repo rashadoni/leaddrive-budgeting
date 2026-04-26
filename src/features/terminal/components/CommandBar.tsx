@@ -20,6 +20,7 @@ export function CommandBar() {
   const activeCompany = useTerminalStore((s) => s.activeCompanyCode);
   const setCompany = useTerminalStore((s) => s.setCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
+  const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -39,11 +40,56 @@ export function CommandBar() {
   }, []);
 
   /**
-   * Dispatch a parsed command. Returns either the success message OR a
-   * "partial" notice describing what the user typed but the dispatch
-   * couldn't yet honour (e.g. CMP's right target lands in the parser but
-   * the side-by-side panel doesn't exist yet — surfacing that explicitly
-   * beats silent capability gaps).
+   * Resolve indicator code → IndicatorValue id by fetching the current
+   * matrix and finding a cell with the matching indicator.code. Prefers
+   * the active company if one is selected (so `IND IND_GROSS_MARGIN GO`
+   * after `AAC CO GO` shows AAC's indicator, not a random company's).
+   * Returns null if no matching cell exists (no data for that indicator
+   * in current org / period).
+   *
+   * Turn 32 (Bug #2 fix): closes the silent "IND command no-op" gap that
+   * was visible in DEMO_SCRIPT Step 4. Original CommandBar.tsx case 'ind'
+   * was bare `break` — only switched activePanel to 3 without populating
+   * any indicator. Now resolves via fetch + populates `activeIndicatorValueId`
+   * so Panel 3 (IndicatorDetail) renders the same drill-down a HeatMap
+   * cell click would.
+   */
+  const resolveIndicatorByCode = async (code: string): Promise<string | null> => {
+    try {
+      const res = await fetch('/api/indicators/matrix');
+      if (!res.ok) return null;
+      const matrix = await res.json();
+      const cells: Array<{ indicatorValueId: string; companyId: string; indicatorId: string }> =
+        matrix.cells ?? [];
+      const indicators: Array<{ id: string; code: string }> = matrix.indicators ?? [];
+      const companies: Array<{ id: string; code: string }> = matrix.companies ?? [];
+      const targetIndicator = indicators.find((i) => i.code === code);
+      if (!targetIndicator) return null;
+
+      // Prefer cell for activeCompany if one is selected; else any cell
+      // with the matching indicator (first match by company sort order).
+      let matchingCell = cells.find((c) => c.indicatorId === targetIndicator.id);
+      if (activeCompany) {
+        const activeCo = companies.find((co) => co.code === activeCompany);
+        if (activeCo) {
+          const cellForActive = cells.find(
+            (c) => c.indicatorId === targetIndicator.id && c.companyId === activeCo.id,
+          );
+          if (cellForActive) matchingCell = cellForActive;
+        }
+      }
+      return matchingCell?.indicatorValueId ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
+   * Dispatch a parsed command. Returns synchronously with the success
+   * message OR a "partial" notice describing what the user typed but the
+   * dispatch couldn't yet honour. IND command kicks off async indicator-
+   * code resolution in the background — feedback may be UPDATED later via
+   * post-resolve `setFeedback` if no matching IV exists.
    */
   const dispatch = (
     cmd: ParsedCommand,
@@ -70,10 +116,29 @@ export function CommandBar() {
         // modal itself (see `AuditModal.tsx`).
         window.dispatchEvent(new CustomEvent('terminal:open-audit'));
         return { message: 'AUD →' };
+      case 'ind': {
+        // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
+        // async resolve of indicator code → IV id. Fire-and-forget — when
+        // resolve completes, `setActiveIndicatorValue` updates the store
+        // and IndicatorDetail re-renders. If no matching IV (no data for
+        // current period / indicator not in catalog), show partial feedback
+        // post-async so user sees what happened instead of empty Panel 3.
+        setActivePanel(panelForCommand(cmd) ?? 3);
+        void resolveIndicatorByCode(cmd.indicatorCode).then((ivId) => {
+          if (ivId) {
+            setActiveIndicatorValue(ivId);
+          } else {
+            setFeedback({
+              kind: 'err',
+              message: `IND partial — no IndicatorValue found for "${cmd.indicatorCode}" in current period (cell may be missing or indicator not seeded)`,
+            });
+          }
+        });
+        return { message: `IND ${cmd.indicatorCode} →` };
+      }
       case 'hold':
       case 'grp':
       case 'sec':
-      case 'ind':
       case 'scn':
       case 'alt':
       case 'brf':

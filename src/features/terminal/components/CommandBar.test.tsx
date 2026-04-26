@@ -14,7 +14,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CommandBar } from './CommandBar';
 import {
@@ -43,6 +43,22 @@ function submit(value: string): void {
 }
 
 beforeEach(() => {
+  // Turn 32: mock global fetch — IND command (Bug #2 fix) does an async
+  // matrix fetch for indicator-code → IV-id resolution via fire-and-forget
+  // `void resolveIndicatorByCode(...).then(...)`. Without a mock, the
+  // fetch hangs past test teardown, the deferred React work touches
+  // `window` after happy-dom is closed, and vitest reports an Unhandled
+  // ReferenceError. Returning empty matrix → IND resolves null → triggers
+  // `setFeedback` partial branch (which is a no-op on an unmounted
+  // component but doesn't crash since the promise resolves promptly).
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ cells: [], indicators: [], companies: [] }),
+    }),
+  );
+
   // Reset the module-level store so each test starts with a clean
   // snapshot. The hand-rolled `useTerminalStore` (see store/terminalStore.ts)
   // doesn't expose a static `getState` helper — actions are only reachable
@@ -57,6 +73,12 @@ beforeEach(() => {
   render(<Probe />);
   action?.();
   document.body.innerHTML = '';
+});
+
+afterEach(() => {
+  // Restore real `globalThis.fetch` so test-leak detectors don't flag it
+  // + subsequent test files (e.g. AuditFeed.test) get a clean slate.
+  vi.unstubAllGlobals();
 });
 
 describe('CommandBar (Phase 7.D smoke)', () => {

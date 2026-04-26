@@ -60,15 +60,18 @@ interface PnlRow {
   total: number
 }
 
-export function BudgetPnlView({ planId }: { planId: string }) {
+export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()
   const orgId = (session?.user as any)?.organizationId
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
 
+  // Turn 30: per-daughter-company drilldown. queryKey includes companyId
+  // so switching companies re-fetches; URL query string carries it through.
+  const queryString = companyId ? `?planId=${planId}&companyId=${companyId}` : `?planId=${planId}`
   const { data, isLoading } = useQuery({
-    queryKey: ["pnl", planId],
+    queryKey: ["pnl", planId, companyId ?? null],
     queryFn: async () => {
-      const res = await fetch(`/api/budgeting/pnl?planId=${planId}`, {
+      const res = await fetch(`/api/budgeting/pnl${queryString}`, {
         headers: { "x-organization-id": orgId || "" },
       })
       return res.json()

@@ -631,9 +631,9 @@ function AddActualForm({ planId, existingCategories }: { planId: string; existin
 
 // ─── Workspace Tab (G-01 through G-09) ───────────────────────────────────────
 
-function WorkspaceTab({ planId, onNavigateTab }: { planId: string; onNavigateTab?: (tab: string) => void }) {
+function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; companyId?: string | null; onNavigateTab?: (tab: string) => void }) {
   const t = useTranslations("budgeting")
-  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId)
+  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId, companyId)
   const { data: lines = [], isLoading: linesLoading } = useBudgetLines(planId)
   const { data: actuals = [] } = useBudgetActuals(planId)
 
@@ -3100,9 +3100,9 @@ function ComparisonTab() {
 
 // ─── P&L Tab ──────────────────────────────────────────────────────────────────
 
-function PLTab({ planId }: { planId: string }) {
+function PLTab({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const t = useTranslations("budgeting")
-  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId)
+  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId, companyId)
   const { data: sections = [], isLoading: sectionsLoading } = useBudgetSections(planId)
   const createSection = useCreateBudgetSection()
   const deleteSection = useDeleteBudgetSection()
@@ -3995,9 +3995,9 @@ function PLTab({ planId }: { planId: string }) {
 
 // ─── Forecast Tab (Monthly Matrix) ───────────────────────────────────────────
 
-function ForecastTab({ planId }: { planId: string }) {
+function ForecastTab({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const t = useTranslations("budgeting")
-  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId)
+  const { data: analytics, isLoading: analyticsLoading } = useBudgetAnalytics(planId, companyId)
   const { data: forecastEntries = [] } = useBudgetForecastEntries(planId)
   const { data: budgetLines = [], isLoading: linesLoading } = useBudgetLines(planId)
   const upsertForecast = useUpsertBudgetForecast()
@@ -5060,6 +5060,41 @@ export default function BudgetingPage() {
   // Auto-select first plan
   const resolvedPlanId = activePlanId || (plans[0]?.id ?? "")
 
+  // Turn 30: per-daughter-company filter. Reads from URL `?company=X` so
+  // selection survives navigation; null = org-wide consolidated view (the
+  // pre-Turn-30 default). Companies fetched org-scoped from /api/companies.
+  const selectedCompanyId = searchParams.get("company")
+  const setSelectedCompanyId = (id: string | null) => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (id) params.set("company", id)
+    else params.delete("company")
+    router.push(`/budgeting?${params.toString()}`)
+  }
+  const [companies, setCompanies] = useState<Array<{ id: string; code: string; name: string; level: number; parentCompanyId: string | null }>>([])
+  React.useEffect(() => {
+    fetch("/api/companies")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        const list = body?.data || body
+        if (Array.isArray(list)) {
+          // Flatten: top-level companies + their embedded children. /api/companies
+          // returns level=1 with `children` arrays; we want a flat list for the
+          // dropdown (preserving level so we can indent children visually).
+          const flat: Array<{ id: string; code: string; name: string; level: number; parentCompanyId: string | null }> = []
+          for (const c of list) {
+            flat.push({ id: c.id, code: c.code, name: c.name, level: c.level, parentCompanyId: c.parentCompanyId })
+            if (Array.isArray(c.children)) {
+              for (const child of c.children) {
+                flat.push({ id: child.id, code: child.code, name: child.name, level: child.level, parentCompanyId: child.parentCompanyId })
+              }
+            }
+          }
+          setCompanies(flat)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Header */}
@@ -5088,6 +5123,24 @@ export default function BudgetingPage() {
               ))}
             </select>
           ) : null}
+          {/* Turn 30: per-daughter-company drilldown selector. Org-wide default;
+              level-1 sub-groups indented with — prefix; level-2 ops indented
+              with —— prefix. Selecting a sub-group rolls up its children. */}
+          {companies.length > 0 && (
+            <select
+              value={selectedCompanyId ?? ""}
+              onChange={(e) => setSelectedCompanyId(e.target.value || null)}
+              className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[200px]"
+              title="Filter by daughter company (sub-groups roll up children)"
+            >
+              <option value="">All companies (consolidated)</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.level === 1 ? "— " : "—— "}{c.code} {c.name && c.name !== c.code ? `· ${c.name}` : ""}
+                </option>
+              ))}
+            </select>
+          )}
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4 mr-1" /> {t("createPlan")}
           </Button>
@@ -5123,15 +5176,15 @@ export default function BudgetingPage() {
             <TemplateSeedButton planId={resolvedPlanId} />
           </div>
 
-          {activeTab === "pnl-report" && <BudgetPnlView planId={resolvedPlanId} />}
+          {activeTab === "pnl-report" && <BudgetPnlView planId={resolvedPlanId} companyId={selectedCompanyId} />}
           {activeTab === "sales-budget" && <SalesBudgetTable planId={resolvedPlanId} />}
           {activeTab === "cogs" && <COGSCalculator planId={resolvedPlanId} />}
           {activeTab === "balance-sheet" && <BudgetBalanceSheet planId={resolvedPlanId} />}
           {activeTab === "cash-flow" && <CashFlowTab />}
           {activeTab === "assumptions" && <BudgetAssumptions planId={resolvedPlanId} />}
-          {activeTab === "workspace" && <WorkspaceTab planId={resolvedPlanId} onNavigateTab={setActiveTab} />}
-          {activeTab === "pl" && <PLTab planId={resolvedPlanId} />}
-          {activeTab === "forecast" && <ForecastTab planId={resolvedPlanId} />}
+          {activeTab === "workspace" && <WorkspaceTab planId={resolvedPlanId} companyId={selectedCompanyId} onNavigateTab={setActiveTab} />}
+          {activeTab === "pl" && <PLTab planId={resolvedPlanId} companyId={selectedCompanyId} />}
+          {activeTab === "forecast" && <ForecastTab planId={resolvedPlanId} companyId={selectedCompanyId} />}
           {activeTab === "comparison" && <ComparisonTab />}
           {activeTab === "plans" && <PlansTab activePlanId={resolvedPlanId} onSelect={id => { setActivePlanId(id); setActiveTab("workspace") }} onShowCreate={() => setShowCreate(true)} />}
           {activeTab === "sales-forecast" && <SalesForecastTab />}
