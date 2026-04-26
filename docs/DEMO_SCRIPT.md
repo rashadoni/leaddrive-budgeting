@@ -43,6 +43,8 @@
 
 > ⚠️ **Turn-32 reframe (Bug #5 close):** Original Step 2 described a "free-form AI Analytics chat panel" on `/budgeting`. That UI doesn't exist (verified via Turn-27 audit). The Risk Terminal **AI Variance Explainer** (Panel 4) is the closest shipped product surface — narrates indicator value with EN/RU re-run button. Pivot Step 2 here.
 
+> ⚠️ **Turn-33 reframe (architect Round-1 ⚠️ Step 2/4 collision close):** Step 2 + Step 4 both live on `/budgeting/terminal`. Treat Step 2 as a **focused 90-sec preview** of one specific AI surface (Variance Explainer narrative) — get in, click EXPLAIN + Russian re-run, get out. Step 4 (the main 6-min Risk Terminal showcase) opens with HeatMap framing + drill-down narrative again, but expands into command bar (CO/IND/AUD), F1-F4, layouts, multi-cell flow. The repeat is intentional: Step 2 sells "AI inside" in 90 sec; Step 4 sells "Bloomberg-grade UX" with 6 min of room. Customer should leave Step 2 thinking "оно умное"; Step 4 thinking "оно мощное". Don't dwell on HeatMap mechanics in Step 2 — save that hook for Step 4.
+
 **Click:** Sidebar → Risk Terminal → `/budgeting/terminal`
 
 **Click:** A red HeatMap cell (e.g. `AAC IND_NET_MARGIN` red — drill down).

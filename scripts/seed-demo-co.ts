@@ -130,9 +130,27 @@ async function main() {
     companyId = created.id;
   }
 
-  // Generate xlsx file
-  const downloadsDir = path.join(os.homedir(), "Downloads");
-  const xlsxPath = path.join(downloadsDir, "DEMO-CO.xlsx");
+  // Generate xlsx file. Default: ~/Downloads (matches DEMO_SCRIPT Step 3
+  // expectation `~/Downloads/DEMO-CO.xlsx`). Override via `--out <path>`
+  // CLI arg for CI / Linux servers / non-Downloads-having machines.
+  // Falls back to `./tmp/DEMO-CO.xlsx` if Downloads doesn't exist.
+  const fs = await import("node:fs");
+  const outArgIdx = process.argv.indexOf("--out");
+  let xlsxPath: string;
+  if (outArgIdx !== -1 && process.argv[outArgIdx + 1]) {
+    xlsxPath = process.argv[outArgIdx + 1]!;
+    fs.mkdirSync(path.dirname(xlsxPath), { recursive: true });
+  } else {
+    const downloadsDir = path.join(os.homedir(), "Downloads");
+    if (fs.existsSync(downloadsDir)) {
+      xlsxPath = path.join(downloadsDir, "DEMO-CO.xlsx");
+    } else {
+      const tmpDir = path.resolve("./tmp");
+      fs.mkdirSync(tmpDir, { recursive: true });
+      xlsxPath = path.join(tmpDir, "DEMO-CO.xlsx");
+      console.log(`[seed-demo-co] ~/Downloads not found, falling back to ${xlsxPath}`);
+    }
+  }
 
   const wb = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet(buildXlsxRows());

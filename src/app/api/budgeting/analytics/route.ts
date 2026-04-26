@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
+import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -70,34 +71,27 @@ export async function GET(req: NextRequest) {
     : [[], []]
 
   // Helper: get effective planned amount (dynamic or stored).
-  //
-  // Turn 29 (Bug #1b defensive fallback): if line.isAutoPlanned is true but
-  // computePlannedForLine returns 0 AND line.plannedAmount > 0, use the stored
-  // value. This prevents silent zeroing when an org has been flagged auto-
-  // planned but lacks sales/expense forecasts + cost model — the original
-  // sin was AZMADE imports persisting `isAutoPlanned: true` while never
-  // populating SalesForecast / ExpenseForecast / cost model, which made the
-  // entire /budgeting hub show 0 ₼ despite 492M ₼ of literal plannedAmount
-  // values in budget_lines. Schema default + CLI now persist `false`, but
-  // this fallback handles legacy rows + any future misconfiguration.
+  // Pure logic extracted to `src/lib/budgeting/effective-planned.ts` for
+  // unit-testability. This wrapper binds the route's prisma-loaded context
+  // (cost model, sales/expense forecasts, period months) into a thin
+  // computeFn closure + adds the observability log on the fallback branch.
+  // See effective-planned.test.ts for the 7 cases covering Bug #1b
+  // semantics (Turn 33 architect ⚠️ test-coverage closure).
   function getEffectivePlanned(line: any): number {
-    if (line.isAutoPlanned) {
-      const computed = computePlannedForLine(line, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
-      if (computed === 0 && line.plannedAmount > 0) {
+    return getEffectivePlannedPure(line, (l) => {
+      const computed = computePlannedForLine(l, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
+      if (computed === 0 && l.plannedAmount > 0) {
         // Observability: this branch fires only on misconfiguration (auto-
-        // planned flag persisted but no upstream data to compute from). Log
-        // so future regressions don't silently mask data-pipeline gaps.
-        // Cheap: ~once per affected line per request; fine for analytics
-        // route which is not on a hot loop. Switch to a counter/metric if
-        // log volume becomes noisy.
+        // planned flag persisted but no upstream data). Log so future
+        // regressions don't silently mask data-pipeline gaps. Note: the
+        // pure helper handles the FALLBACK return; we just log here BEFORE
+        // it does so there's a 1:1 log:fallback correspondence.
         console.warn(
-          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${line.id} category=${line.category} stored=${line.plannedAmount}`
+          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} category=${l.category} stored=${l.plannedAmount}`
         )
-        return line.plannedAmount
       }
       return computed
-    }
-    return line.plannedAmount
+    })
   }
 
   // Build effective actuals for auto-actual lines.

@@ -53,7 +53,13 @@ export async function GET(req: NextRequest) {
   if (companyFilter.kind === "single") {
     if (companyFilter.companyIds.length === 0) {
       // Sub-group with no children — return empty rows; year stays correct.
+      // Turn 33 (architect Round-1 ⚠️ envelope asymmetry close): include
+      // `success: true` so consumers can shape-check uniformly with
+      // analytics route which uses the {success, data} wrapper. Pnl
+      // non-empty path returns bare body (project legacy); the `success`
+      // key here is additive — non-Turn-33 consumers ignore it.
       return NextResponse.json({
+        success: true,
         sections: [], rows: [], monthlyRevenue: {}, monthlyCogs: {},
         monthlyActualRevenue: {}, monthlyActualCogs: {}, actualByKey: {},
         actualMonthlyByKey: {}, sectionActuals: {}, year, hasActuals: false,

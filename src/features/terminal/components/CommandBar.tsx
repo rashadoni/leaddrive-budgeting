@@ -53,6 +53,20 @@ export function CommandBar() {
    * any indicator. Now resolves via fetch + populates `activeIndicatorValueId`
    * so Panel 3 (IndicatorDetail) renders the same drill-down a HeatMap
    * cell click would.
+   *
+   * Turn 33 (architect Round-1 ⚠️ accepted-low-impact): the calling pattern
+   * `void resolveIndicatorByCode(...).then(setActiveIndicatorValue OR
+   * setFeedback)` is fire-and-forget. If the user navigates away from
+   * /budgeting/terminal between IND keystroke and matrix-fetch resolve,
+   * the `.then` callback fires AFTER CommandBar unmounts. Effects:
+   *   - `setActiveIndicatorValue(id)` → mutates module-level zustand store
+   *     (no React-DOM warning — store doesn't depend on mount); next
+   *     /budgeting/terminal mount sees the value pre-populated. Benign.
+   *   - `setFeedback({...})` → calls a useState setter on an unmounted
+   *     component; React 18 silently no-ops (warning was removed). Benign.
+   * No AbortController wired since both effects are inert post-unmount.
+   * If future store work makes activeIndicatorValueId a side-effect
+   * (e.g. auto-fires API calls), revisit this with proper cleanup.
    */
   const resolveIndicatorByCode = async (code: string): Promise<string | null> => {
     try {
