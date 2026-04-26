@@ -113,6 +113,74 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(getTerminalSnapshot().activePanelId).toBe(3);
   });
 
+  // Turn 32 (Bug #2 fix): IND command now does async resolveIndicatorByCode
+  // → fetches matrix, finds cell, sets activeIndicatorValueId. The 3 cases
+  // below cover happy-path, no-data partial, and activeCompany preference.
+  // Each test re-stubs fetch with a specific matrix payload BEFORE the
+  // submit so resolveIndicatorByCode sees the right shape.
+
+  it('IND happy path: matrix has matching cell → setActiveIndicatorValue called', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            cells: [{ indicatorValueId: 'iv-123', companyId: 'co-1', indicatorId: 'ind-1' }],
+            indicators: [{ id: 'ind-1', code: 'IND_GROSS_MARGIN' }],
+            companies: [{ id: 'co-1', code: 'AAC' }],
+          }),
+      }),
+    );
+    render(<CommandBar />);
+    submit('IND_GROSS_MARGIN IND GO');
+    expect(getTerminalSnapshot().activePanelId).toBe(3);
+    // Async resolve happens after dispatch returns; flush microtasks.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv-123');
+  });
+
+  it('IND no-cell partial: empty matrix → setFeedback err with partial msg', async () => {
+    // Default beforeEach mock returns empty matrix; reuse that.
+    render(<CommandBar />);
+    submit('IND_NONEXISTENT IND GO');
+    expect(getTerminalSnapshot().activePanelId).toBe(3); // panel switch is sync
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    // After async resolve, feedback should be alert with "IND partial"
+    const alert = screen.queryByRole('alert');
+    expect(alert?.textContent ?? '').toMatch(/IND partial/);
+  });
+
+  it('IND activeCompany preference: 2 cells, one for active co → that one chosen', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            cells: [
+              { indicatorValueId: 'iv-aac', companyId: 'co-aac', indicatorId: 'ind-1' },
+              { indicatorValueId: 'iv-spark', companyId: 'co-spark', indicatorId: 'ind-1' },
+            ],
+            indicators: [{ id: 'ind-1', code: 'IND_GROSS_MARGIN' }],
+            companies: [
+              { id: 'co-aac', code: 'AAC' },
+              { id: 'co-spark', code: 'SPARK-MAIN' },
+            ],
+          }),
+      }),
+    );
+    render(<CommandBar />);
+    // First select SPARK-MAIN as active company.
+    submit('SPARK-MAIN CO GO');
+    expect(getTerminalSnapshot().activeCompanyCode).toBe('SPARK-MAIN');
+    // Now IND command should pick the SPARK cell, not AAC's.
+    submit('IND_GROSS_MARGIN IND GO');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv-spark');
+  });
+
   it('BRF GO → activates panel 4 (narrative panel), no target needed', () => {
     render(<CommandBar />);
     submit('BRF GO');

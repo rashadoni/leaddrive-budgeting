@@ -44,23 +44,35 @@ export async function GET(req: NextRequest) {
     prisma.rollingForecastMonth.count({ where: { organizationId: orgId } }),
   ])
 
-  return NextResponse.json({
-    "pnl-report": budgetLines > 0,
-    "sales-budget": salesBudget > 0,
-    cogs: cogsBudget > 0,
-    "balance-sheet": balanceSheet > 0,
-    "cash-flow": cashFlow > 0,
-    assumptions: assumptions > 0,
-    workspace: budgetLines > 0,
-    pl: budgetLines > 0,
-    forecast: budgetLines > 0,
-    comparison: true,
-    plans: true,
-    "sales-forecast": salesForecast > 0,
-    "expense-forecast": expenseForecast > 0,
-    rolling: rolling > 0,
-    "report-builder": budgetLines > 0,
-    integrations: true,
-    config: true,
-  })
+  return NextResponse.json(
+    {
+      "pnl-report": budgetLines > 0,
+      "sales-budget": salesBudget > 0,
+      cogs: cogsBudget > 0,
+      "balance-sheet": balanceSheet > 0,
+      "cash-flow": cashFlow > 0,
+      assumptions: assumptions > 0,
+      workspace: budgetLines > 0,
+      pl: budgetLines > 0,
+      forecast: budgetLines > 0,
+      comparison: true,
+      plans: true,
+      "sales-forecast": salesForecast > 0,
+      "expense-forecast": expenseForecast > 0,
+      rolling: rolling > 0,
+      "report-builder": budgetLines > 0,
+      integrations: true,
+      config: true,
+    },
+    {
+      // Turn 32: 30s private cache. Sidebar mounts on every page navigation;
+      // without this header each mount triggered 9 parallel prisma.count
+      // queries (architect Round-1 ⚠️). 30s TTL means table changes (e.g.
+      // first BudgetLine import for a domain) take up to 30s to surface in
+      // the nav — acceptable since the URL still works direct.
+      headers: {
+        "Cache-Control": "private, max-age=30",
+      },
+    },
+  )
 }
