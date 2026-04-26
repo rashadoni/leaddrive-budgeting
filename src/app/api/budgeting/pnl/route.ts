@@ -293,7 +293,11 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Turn 33.5 architect ⚠️: `success: true` here too (mirrors empty
+  // short-circuit) — eliminates pnl-INTERNAL envelope asymmetry. Both
+  // empty + non-empty paths now share the additive key.
   return NextResponse.json({
+    success: true,
     sections: PNL_SECTIONS,
     rows: pnlRows,
     monthlyRevenue,
