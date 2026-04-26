@@ -27,6 +27,29 @@ if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = basePrisma
 
 export const prisma = basePrisma
 
+// Phase 7.F (Turn 13) — dev-only stale-Prisma-client detector. Fires once
+// per Node process, async, never throws. Catches the Turn 12 class of
+// bug where a `prisma migrate` left the dev-server's @prisma/client
+// out of sync (new models 500 silently). Lazy-import keeps the
+// production bundle clean — `dev-prisma-check.ts` references DMMF
+// metadata that's server-only.
+//
+// `typeof window === 'undefined'` guard: Next.js bundles `@/lib/prisma`
+// imports for both server and client (because legacy code uses
+// `prisma` symbol from this module in places that get tree-shaken on
+// the client). Without the window check, the module loads in the
+// browser too and `Prisma.dmmf` is undefined → spurious console warnings.
+if (
+  process.env.NODE_ENV !== "production" &&
+  typeof window === "undefined"
+) {
+  void import("./dev-prisma-check")
+    .then(({ startDevPrismaCheck }) => startDevPrismaCheck(basePrisma))
+    .catch(() => {
+      // Stub PrismaClient (build-time without `prisma generate`) — silently skip.
+    })
+}
+
 /**
  * Create a tenant-scoped prisma client.
  * All queries automatically filter by organizationId.

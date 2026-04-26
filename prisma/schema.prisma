@@ -45,6 +45,16 @@ model Organization {
   cogsCostDetails        COGSCostDetail[]
   balanceSheetLines      BalanceSheetLine[]
   budgetAssumptions      BudgetAssumption[]
+
+  // Phase 7 — Risk & Performance Indicators (FO Holding foundation)
+  companies              Company[]
+  indicatorDefinitions   IndicatorDefinition[]
+  alerts                 Alert[]
+  alertRules             AlertRule[]
+  scenarios              Scenario[]
+  importStaging          ImportStaging[]
+  terminalLayouts        UserLayoutPreference[]
+  auditEvents            AuditEvent[]
 }
 
 model User {
@@ -65,9 +75,48 @@ model User {
 
   budgetDeptOwnership BudgetDepartmentOwner[]
   accounts            Account[]
+  importStagingCreated ImportStaging[]        @relation("ImportStagingCreator")
+  terminalLayouts     UserLayoutPreference[]
+  auditEvents         AuditEvent[]           @relation("AuditEventActor")
 
   @@unique([organizationId, email])
   @@map("users")
+}
+
+// Phase 7.D — saved Bloomberg-terminal pane sizes per user. Stored
+// independently from the localStorage `onLayoutChanged` autosave (the
+// "remember last session" baseline) so users can keep multiple named
+// workspaces (e.g. "morning brief", "audit", "FX scan") and switch
+// between them.
+//
+// `sizes` shape (matches `LayoutSizes` in
+// `src/features/terminal/lib/layout-sizes.ts`):
+//   {
+//     outer:  { "row-top": pct, "row-bottom": pct },
+//     top:    { "p1": pct, "p2": pct },
+//     bottom: { "p3": pct, "p4": pct },
+//   }
+// Each panel-id map sums to ~100 (within 0.5pt FP tolerance). Panel
+// ids match the `PANEL_IDS` const + the `id` props on Panels in
+// PanelGrid; if structure changes (e.g. adding Panel 5), older saved
+// rows fall back to defaults via `validateLayoutSizes` rather than
+// rendering a half-broken layout.
+model UserLayoutPreference {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String   // "morning brief", "audit", etc.
+  sizes          Json     // see jsdoc above
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Per-user uniqueness on (userId, name) — overwriting an existing
+  // name is the upsert path the API uses.
+  @@unique([userId, name])
+  @@index([organizationId, userId])
+  @@map("user_layout_preferences")
 }
 
 model Account {
@@ -391,6 +440,11 @@ model BudgetLine {
   // the backfill script runs.
   accountId      String?
   account        ChartOfAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  // Phase 7 — Risk & Performance Indicators: every BudgetLine belongs to an
+  // operational Company (level 2) under a sub-group (level 1) under FO Holding
+  // (Organization). Nullable for backward compat; backfilled at 7.A end.
+  companyId      String?
+  company        Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
   vatIncluded    Boolean             @default(false)
   vatRate        Float?
   amountExVat    Float?
@@ -409,6 +463,7 @@ model BudgetLine {
   @@index([costTypeId])
   @@index([departmentId])
   @@index([accountId])
+  @@index([companyId])
   @@map("budget_lines")
 }
 
@@ -833,4 +888,393 @@ model SavedBudgetReport {
   @@index([organizationId])
   @@index([organizationId, planId])
   @@map("saved_budget_reports")
+}
+
+// ═══════════════════════════════════════════════════
+// PHASE 7: RISK & PERFORMANCE INDICATORS
+// Enterprise Holding Risk Terminal — foundation models.
+// See docs/ROADMAP.md § Phase 7 and .claude/plans/dreamy-leaping-manatee.md
+// ═══════════════════════════════════════════════════
+
+// Company — 2-level hierarchy within a holding (Organization).
+// Level 1 (parentCompanyId = null) = sub-group (Tabia, AFI, Azmade, PMD, Novex, Azersheker, Separated).
+// Level 2 (parentCompanyId set)    = operational entity (HILTON GARDEN AGHDAM MMC, etc.).
+model Company {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parentCompanyId  String?
+  parent           Company?     @relation("CompanyHierarchy", fields: [parentCompanyId], references: [id], onDelete: SetNull)
+  children         Company[]    @relation("CompanyHierarchy")
+  code             String       // short mnemonic for command bar: "HLTN", "TABIA", "AAC"
+  name             String
+  nameAz           String?
+  nameRu           String?
+  nameEn           String?
+  industry         String?      // FK on Industry.code when set; application layer enforces "null for level=1, required for level=2"
+  industryRef      Industry?    @relation(fields: [industry], references: [code], onDelete: Restrict, onUpdate: Cascade)
+  level            Int          @default(2) // 1 = sub-group, 2 = operational
+  // Phase 7.E foundation — cost-centre role taxonomy.
+  //   operational — line-of-business with revenue + cost; full
+  //                 indicator-pack scoring applies.
+  //   admin       — pure cost-centre (e.g. holding HQ, ATL-MRKZ);
+  //                 exempt from operational-threshold scoring (would
+  //                 false-red on OpEx ratios since they have no
+  //                 revenue base).
+  //   holding     — top-level holding entity; aggregated views only.
+  // Default `operational` keeps existing Phase 7 behavior unchanged.
+  // Set explicitly via UI / seed when an entity is admin-only.
+  // Phase 7.E hardening (Turn 10): String → enum so typos like "Admin"
+  // can't silently bypass the operational filter.
+  role             CompanyRole  @default(operational)
+  country          String?      // ISO-2
+  baseCurrencyCode String?
+  settings         Json?        // per-industry config: { totalRooms?, feedSpecies?, ... }
+  isActive         Boolean      @default(true)
+  sortOrder        Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  budgetLines       BudgetLine[]
+  bookings          Booking[]
+  operationalFacts  OperationalFact[]
+  indicatorValues   IndicatorValue[]
+  companyIndicators CompanyIndicator[]
+  importStaging     ImportStaging[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, parentCompanyId, industry])
+  @@index([organizationId, level])
+  @@map("companies")
+}
+
+// Phase 7.E hardening (Turn 10) — typed cost-centre role.
+// String column hardened to enum so typos like "Admin" / "Operational"
+// can't silently bypass `filterOperationalCompanies` and false-red
+// the holding view.
+enum CompanyRole {
+  operational
+  admin
+  holding
+}
+
+// Industry — seed taxonomy (hospitality, agro_crops, poultry, ...).
+// Shared catalog, not org-scoped. Seeded at 7.A via scripts/seed-industries.ts.
+model Industry {
+  code      String   @id          // "hospitality" | "food_processing" | "agro_crops" | ...
+  companies Company[]
+  nameEn    String
+  nameAz    String?
+  nameRu    String?
+  category  String?              // optional UI grouping ("agro_umbrella", etc.)
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("industries")
+}
+
+// IndicatorDefinition — formula-as-data. Each indicator stores an expression
+// string evaluated by src/lib/risk/formula-engine.ts (expr-eval, sandboxed).
+// organizationId = null  → global seed (shipped with the product)
+// organizationId = set   → org-specific override
+model IndicatorDefinition {
+  id               String        @id @default(cuid())
+  organizationId   String?
+  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code             String                 // "HOSP_FX_EXPOSURE"
+  nameEn           String
+  nameAz           String?
+  nameRu           String?
+  category         String                 // "fx"|"commodity"|"operational"|"geopolitical"|"macro"|"regulatory"|"composite"
+  industries       String[]               // which industries this indicator applies to (Postgres text[])
+  unit             String                 // "AZN"|"%"|"ratio"|"nights"|...
+  direction        String                 // "higher_better"|"lower_better"|"band"
+  formula          String                 // expr-eval expression (see src/lib/risk/formula-engine.ts)
+  sparklineFormula String?                // optional variant evaluated per period for sparkline
+  thresholds       Json                   // { green:{op,value}, amber:{op,value}, red:{op,value} }
+  hintTemplateEn   String?
+  hintTemplateAz   String?
+  hintTemplateRu   String?
+  requiredInputs   String[]               // ["budgetLine","booking","currencyRate","operationalFact",...]
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  values            IndicatorValue[]
+  companyIndicators CompanyIndicator[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("indicator_definitions")
+}
+
+// CompanyIndicator — which indicators are enabled for which companies, with
+// per-company threshold override. If no row exists, the default is "enabled
+// when definition.industries contains company.industry".
+model CompanyIndicator {
+  id              String              @id @default(cuid())
+  companyId       String
+  company         Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  indicatorId     String
+  indicator       IndicatorDefinition @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  enabled         Boolean             @default(true)
+  customThreshold Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([companyId, indicatorId])
+  @@index([indicatorId])
+  @@map("company_indicators")
+}
+
+// IndicatorValue — computed cache. Populated on-demand by src/lib/risk/compute.ts
+// (dedicated cron scheduling comes later, Phase 6 infra).
+model IndicatorValue {
+  id             String              @id @default(cuid())
+  organizationId String
+  companyId      String
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  indicatorId    String
+  indicator      IndicatorDefinition @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  period         String                              // "2026-04" | "2026-Q2" | "2026"
+  value          Float
+  status         String                              // "green"|"amber"|"red"|"unknown"
+  sparkline      Json                                // number[]
+  inputs         Json                                // snapshot of resolved vars (for audit/drill-down)
+  computedAt     DateTime            @default(now())
+
+  @@unique([companyId, indicatorId, period])
+  @@index([organizationId, companyId, period])
+  @@index([indicatorId])
+  @@map("indicator_values")
+}
+
+// Booking — hospitality operational data. Feeds RevPAR, source-country HHI, etc.
+// Manual entry in Phase 7.A–B; CSV import deferred to 7.2+.
+model Booking {
+  id             String   @id @default(cuid())
+  organizationId String
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  arrivalDate    DateTime
+  departureDate  DateTime
+  nights         Int
+  revenue        Float
+  currencyCode   String?
+  exchangeRate   Float?
+  sourceCountry  String                  // ISO-2 country code
+  roomsBooked    Int?
+  channel        String?                 // "direct"|"ota"|"corporate"|...
+  isCancelled    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([companyId, arrivalDate])
+  @@index([organizationId])
+  @@map("bookings")
+}
+
+// OperationalFact — generic metric storage for non-hospitality sectors.
+// Avoids a separate table per industry (broiler weight, feed consumption,
+// yield/hectare, milk yield, etc.).
+model OperationalFact {
+  id             String   @id @default(cuid())
+  organizationId String
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  metric         String                  // "broiler_weight_avg_kg", "yield_per_hectare", ...
+  date           DateTime
+  value          Float
+  unit           String?
+  source         String?                 // "manual" | "import" | "api"
+  createdAt      DateTime @default(now())
+
+  @@index([companyId, date, metric])
+  @@index([organizationId])
+  @@map("operational_facts")
+}
+
+// Alert — triggered events from indicator thresholds, composite rules, or AI briefs.
+model Alert {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           String                       // "indicator"|"composite"|"scenario"|"brief"
+  sourceRef      Json                         // { companyId?, indicatorId?, ruleId? }
+  severity       String                       // "info"|"warn"|"critical"
+  title          String
+  message        String
+  triggeredAt    DateTime     @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+
+  @@index([organizationId, triggeredAt])
+  @@index([organizationId, acknowledgedAt])
+  @@map("alerts")
+}
+
+// AlertRule — user-defined composite conditions evaluated after recompute.
+// Example condition: { op:"count_in_status", industry:"hospitality", status:"amber", threshold:3 }
+model AlertRule {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  condition      Json                         // rule DSL
+  severity       String       @default("warn")
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@map("alert_rules")
+}
+
+// Scenario — preset / ad-hoc stress tests. When an active Scenario is applied,
+// the formula engine overlays its overrides onto resolver inputs before eval.
+model Scenario {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String                       // "IRAN_HIGH", "AZN_DEVAL_20", ...
+  nameEn         String
+  nameAz         String?
+  nameRu         String?
+  description    String?
+  overrides      Json                         // { fx_rates:{USD:1.9}, booking_drop_pct:{IR:80}, ... }
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@map("scenarios")
+}
+
+// Phase 7.B AI Data Mapper — staging table for proposed xlsx-to-CoA mappings.
+// Workflow: user uploads xlsx → /analyze runs the AI mapper → row created here
+// with proposal JSON → user reviews in wizard UI → /apply consumes the staging
+// row, writes BudgetLine rows transactionally, marks staging.status='applied'.
+//
+// Status lifecycle:
+//   pending   — proposal saved, awaiting user review
+//   applied   — user confirmed; BudgetLine rows written
+//   discarded — user rejected the proposal
+//   expired   — auto-cleaned by cron after `expiresAt` (24h default)
+//
+// Why this exists rather than re-running the mapper at apply time: (1) LLM
+// non-determinism — re-running could yield a different mapping; (2) cost —
+// each call burns tokens; (3) auditability — staging is the snapshot of what
+// the user actually saw and confirmed.
+enum ImportStagingStatus {
+  pending
+  applied
+  discarded
+  expired
+}
+
+model ImportStaging {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId      String
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status         ImportStagingStatus @default(pending)
+  sourceFile     String       // original filename for audit trail
+  sourceSheet    String       // sheet name within workbook
+  // Snapshot of the AI mapper proposal (MappingProposal shape from
+  // src/lib/onboarding/ai-mapper/types.ts). Never mutate after creation —
+  // user overrides are stored separately in `userOverrides`.
+  proposal       Json
+  // User-applied overrides on top of proposal — same shape as proposal but
+  // only the fields the user changed. Empty if user accepted as-is.
+  userOverrides  Json?
+  // Raw xlsx bytes are NOT stored here (could be huge). Instead, the path
+  // to a temp upload that /apply re-reads. Caller is responsible for
+  // cleanup. Enables re-running with overrides without re-uploading.
+  xlsxTempPath   String?
+  // Audit fields. createdBy is the User.id who triggered /analyze.
+  createdBy      String
+  creator        User         @relation("ImportStagingCreator", fields: [createdBy], references: [id])
+  createdAt      DateTime     @default(now())
+  expiresAt      DateTime     // /apply rejects when now() > expiresAt
+  appliedAt      DateTime?    // null until /apply succeeds
+  errorMessage   String?      // populated when status transitions to discarded with error
+
+  @@index([organizationId, status])
+  @@index([companyId])
+  @@index([expiresAt])
+  @@map("import_staging")
+}
+
+// Phase 7.F — audit log of high-business-impact writes on the holding tree.
+//
+// What we log: financial governance actions (budget plan create/approve),
+// data ingestion (xlsx imports, AI-mapper staging applies), and Phase 7.E
+// scoring-impact toggles (company role changes — admin↔operational changes
+// which entities count toward holding-level KPIs). Read-only events are
+// NOT logged — querying the heatmap or opening a panel doesn't constitute
+// a meaningful audit trail signal at this layer.
+//
+// What we DON'T log: per-cell value reads, panel-layout changes, login
+// events (handled separately by next-auth). Writes that are pure
+// derived-data refresh (recompute fan-out) are also unlogged — the
+// triggering action is logged, the cascade is implicit.
+//
+// Retention policy: 365 days in the primary table. Auto-prune is
+// deferred to Phase 6 (BullMQ) — until then the table grows monotonically
+// and is safe to truncate manually for dev environments.
+//
+// `metadata` shape varies per action; per-action contracts are documented
+// in `src/lib/audit/log.ts` and enforced via TypeScript discriminated
+// unions at the call site. Never include secrets / raw user input
+// payloads — only structured diffs (e.g. role-change `{from, to}`).
+//
+// `context` is a defensive bag for incident-response forensics: which
+// API route the event originated from, a hashed IP fragment if present.
+// Optional + nullable so non-HTTP call-sites (CLI scripts) can omit it.
+enum AuditAction {
+  company_role_change            // Phase 7.E scoring toggle
+  budget_plan_create
+  budget_plan_approve
+  import_budget_create           // /api/onboarding/import/budget
+  import_staging_apply           // /api/onboarding/import/staging/[id]/apply
+  import_staging_expired         // lazy-flip pending → expired on read
+  indicator_override_create
+  indicator_override_update
+  indicator_override_delete
+}
+
+// Retention: 365 days from `createdAt`. Auto-prune is deferred to
+// Phase 6 (BullMQ); until that lands the table grows monotonically and
+// is safe to truncate manually for dev environments. The 365d window is
+// a product decision (sufficient for annual-cycle compliance reviews
+// without unbounded storage growth) — narrow it via a follow-up if
+// regulators demand longer or if storage cost becomes the bottleneck.
+model AuditEvent {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // null when the action originated from a CLI script / cron / system
+  // — keep cascade-on-delete distinct from the main org cascade so
+  // deleting a user doesn't wipe their audit trail.
+  actorUserId    String?
+  actor          User?        @relation("AuditEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  action         AuditAction
+  // Free-form so adding a new logged entity doesn't require a schema
+  // migration; convention is the Prisma model name ("Company",
+  // "BudgetPlan", "ImportStaging", ...). Lowercase-first variants
+  // ("company") are also accepted but discouraged.
+  entityType     String
+  entityId       String?      // null for bulk operations (e.g. multi-row import)
+  metadata       Json
+  context        Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, action, createdAt])
+  @@map("audit_events")
 }

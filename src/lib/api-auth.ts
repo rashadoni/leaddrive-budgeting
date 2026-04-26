@@ -13,9 +13,13 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
   try {
     const session = await auth()
     if (!session?.user) return null
+    // Treat an authenticated user without an organization as unauthenticated
+    // for org-scoped endpoints — otherwise all such users would share an
+    // implicit `organizationId = ""` scope.
+    if (!session.user.organizationId) return null
 
     return {
-      orgId: session.user.organizationId || "",
+      orgId: session.user.organizationId,
       userId: session.user.id || "",
       role: session.user.role || "viewer",
       email: session.user.email || "",
