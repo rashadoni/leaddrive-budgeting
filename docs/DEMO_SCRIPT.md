@@ -22,20 +22,34 @@
 
 ## Step-by-step (target 15-20 min)
 
-### 1. Hub overview (1 min)
+### 1. Hub overview — P&L Report (1.5 min)
 
-**Click:** Land on `/budgeting` after sign-in.
+**Click:** Land on `/budgeting` after sign-in → click **P&L** in sidebar (lands at `?tab=pnl-report`).
+
+> ⚠️ **Turn-35 reframe:** Default landing tab is Workspace (annual category breakdown). The professional FP&A view is **P&L Report tab** — full Plan vs Actual vs Variance grid (rows × Jan-Dec), color-coded favorability. Start here, not Workspace.
 
 **Say:**
-> "This is the main budgeting hub. AZMADE имеет 8 операционных компаний across 4 sub-groups. Здесь — full P&L consolidated view across the holding."
+> "This is AZMADE's main P&L. 13 companies — 5 sub-groups containing 8 operational op-cos. Q1 closed, April partial — typical April-end controller view. Future months stay plan-only — that's how live FP&A works against real-time accounting integration."
 
 **Show:**
-- P&L rendered with AZMADE numbers
-- Plan vs Actual columns + variance %
-- % coverage cells under each cost line
-- Sidebar: Risk Terminal, Onboarding, Audit Log links visible
+- KPI cards: Net Revenue 240.2M plan / Q1+Apr actual ~60.9M; COGS 187.9M / actual ~45.5M; Gross Profit; EBITDA; Net Profit
+- "Revenue vs COGS — Monthly" chart: Jan-Apr actual overlay on plan bars; May-Dec plan-only
+- Margin Trends: % bars per period
+- P&L Waterfall: full Revenue → COGS → GP → OpEx → EBITDA → D&A/Tax → Net Profit cascade
 
-**Fallback:** if P&L render is broken → skip directly to Step 4 (Risk Terminal). Say: "Today let me focus on the risk-monitoring side which is the unique part of the platform."
+**Click:** Company selector dropdown → select **AAC-MAIN**:
+
+**Say (pointing at Variance %):**
+> "AAC-MAIN — наш underperformer Q1. Revenue down ~16% vs plan, costs up 8-15%. Система мгновенно highlights это в Variance column. CFO видит проблему за секунды, не за часы."
+
+**Click:** dropdown → switch to **ATL-DBZ**:
+
+**Say:**
+> "ATL-DBZ — лучший performer. Steel pipe demand Q1 drove revenue +14% over plan. Строится cash buffer для Q3-Q4 expansion."
+
+**Click:** dropdown → switch back to **All companies (consolidated)** для общего overview перед Step 2.
+
+**Fallback:** if P&L Report render is broken → switch to Workspace tab `?tab=workspace` (annual cards still work). Say: "Today let me focus on the risk-monitoring side which is the unique part of the platform" → skip to Step 4.
 
 ---
 

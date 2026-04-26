@@ -491,12 +491,20 @@ model BudgetActual {
   costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
   departmentId   String?
   budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  // Turn 35: per-company filter for /api/budgeting/pnl + analytics. Without
+  // companyId, actuals couldn't be filtered to a single op-co — the per-
+  // daughter-company drilldown showed org-wide actuals against per-company
+  // plan, producing nonsense variance %. Nullable for legacy rows (any
+  // pre-Turn-35 actuals stay null and fall through global aggregation).
+  companyId      String?
+  company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
   createdAt      DateTime          @default(now())
 
   @@index([organizationId])
   @@index([planId])
   @@index([costTypeId])
   @@index([departmentId])
+  @@index([companyId])
   @@map("budget_actuals")
 }
 
@@ -942,6 +950,7 @@ model Company {
   updatedAt        DateTime     @updatedAt
 
   budgetLines       BudgetLine[]
+  budgetActuals     BudgetActual[]
   bookings          Booking[]
   operationalFacts  OperationalFact[]
   indicatorValues   IndicatorValue[]

@@ -86,7 +86,15 @@ export async function GET(req: NextRequest) {
       include: { productLine: true },
     }),
     prisma.budgetActual.findMany({
-      where: { organizationId: orgId, planId },
+      // Turn 35: per-company filter applies to actuals too. Pre-Turn-35
+      // actuals lacked companyId column → filter was silently global,
+      // making per-daughter-company drilldown show org-wide actuals
+      // against per-company plan (nonsense variance %). companyId
+      // populated by Turn-35+ seed/import paths; legacy nullable
+      // actuals fall through global aggregation.
+      where: companyFilter.kind === "single"
+        ? { organizationId: orgId, planId, companyId: { in: companyFilter.companyIds } }
+        : { organizationId: orgId, planId },
       select: {
         category: true,
         department: true,

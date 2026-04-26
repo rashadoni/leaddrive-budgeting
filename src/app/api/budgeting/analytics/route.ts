@@ -45,7 +45,14 @@ export async function GET(req: NextRequest) {
       // account is added in Phase 2.1 — prefer it for display/grouping when set
       include: { costType: true, budgetDept: true, account: { select: { code: true, name: true } } },
     }),
-    prisma.budgetActual.findMany({ where: { planId, organizationId: orgId } }),
+    // Turn 35: per-company filter for actuals (mirrors pnl/route.ts).
+    // Without this, per-daughter drilldown analytics aggregated org-wide
+    // actuals against per-company plan → nonsense Workspace KPI cards.
+    prisma.budgetActual.findMany({
+      where: companyFilter.kind === "single"
+        ? { planId, organizationId: orgId, companyId: { in: companyFilter.companyIds } }
+        : { planId, organizationId: orgId },
+    }),
     prisma.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
     prisma.budgetDepartment.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
   ])
