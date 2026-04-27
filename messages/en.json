@@ -548,7 +548,7 @@
     "hintSectionCOGS": "Direct costs: goods purchased, direct service delivery costs",
     "hintSectionExpenses": "Operating expenses: salaries, rent, infrastructure, licenses",
     "hintGrossProfit": "Gross Profit = Revenue − COGS. Shows margin before operating expenses",
-    "hintOperatingProfit": "Operating Profit (EBITDA) = Gross Profit − Operating Expenses",
+    "hintOperatingProfit": "Operating Profit (EBIT) = Revenue − COGS − Operating Expenses. Add D&A back for EBITDA.",
     "hintScenarioBase": "Base scenario: no adjustments, as planned",
     "hintScenarioOptimistic": "Optimistic: revenue +10%, COGS −8%, expenses −10%",
     "hintScenarioPessimistic": "Pessimistic: revenue −10%, COGS +10%, expenses +15%",

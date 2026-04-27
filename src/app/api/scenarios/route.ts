@@ -83,8 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Here we would push a job to the queue, passing the scenario.overrides
-    // For now, return accepted status.
-    console.log(`[Queue] Added scenario ${scenario.code} run for org ${session.orgId}`);
+    // For now, return accepted status. (Phase 6 BullMQ scheduler ships the queue.)
 
     return NextResponse.json({
       message: 'Scenario execution queued',

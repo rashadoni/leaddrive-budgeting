@@ -546,7 +546,7 @@
     "hintSectionCOGS": "Birbaşa maya dəyəri: malların alışı, xidmət göstərmə xərcləri",
     "hintSectionExpenses": "Əməliyyat xərcləri: maaşlar, icarə, infrastruktur, lisenziyalar",
     "hintGrossProfit": "Ümumi mənfəət = Gəlir − Maya. OpEx-dən əvvəl marjinallığı göstərir",
-    "hintOperatingProfit": "Əməliyyat mənfəəti (EBITDA) = Ümumi mənfəət − Əməliyyat xərcləri",
+    "hintOperatingProfit": "Əməliyyat mənfəəti (EBIT) = Gəlir − COGS − Əməliyyat xərcləri. EBITDA üçün D&A əlavə edin.",
     "hintScenarioBase": "Baza ssenarisi: düzəlişsiz, planlaşdırıldığı kimi",
     "hintScenarioOptimistic": "Optimist: gəlir +10%, maya −8%, xərclər −10%",
     "hintScenarioPessimistic": "Pessimist: gəlir −10%, maya +10%, xərclər +15%",

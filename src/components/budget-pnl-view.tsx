@@ -221,7 +221,6 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     const cogsRaw = Math.abs(monthlyCogs?.[i + 1] || 0)
     const cogsExclDa = cogsRaw - monthlyDaInCogsRaw[i] + monthlyDaInCogs[i]
     const opexExclDa = monthlyOpexNonDa[i]
-    const monthDa = monthlyDaInCogs[i] + monthlyDaInOpex[i]
     const monthBelowEbitda = monthlyBelowEbitda[i]
     const gm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i]) / rev) * 100 : 0
     // True EBITDA: revenue − COGS_exclDA − OpEx_exclDA = current EBIT + D&A
@@ -232,7 +231,6 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       "Gross Margin": Math.round(gm * 10) / 10,
       "EBITDA Margin": Math.round(em * 10) / 10,
       "Net Margin": Math.round(nm * 10) / 10,
-      _monthDa: monthDa, // exposed for tooltip if needed
     }
   })
 
@@ -400,7 +398,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         {/* Revenue vs COGS */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Revenue vs COGS — Monthly</h3>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={280} minWidth={0}>
             <ComposedChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
@@ -446,7 +444,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               </div>
             )}
           </div>
-          <ResponsiveContainer width="100%" height={280}>
+          <ResponsiveContainer width="100%" height={280} minWidth={0}>
             <AreaChart data={marginData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
@@ -474,7 +472,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       {/* Waterfall Chart */}
       <div className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground mb-3">P&L Waterfall</h3>
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={220} minWidth={0}>
           <BarChart data={waterfallData} margin={{ top: 10, right: 30, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" vertical={false} />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
