@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
+import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import {
   runExplainer,
   type ExplainableStatus,
@@ -111,6 +112,7 @@ export async function POST(
       status: true,
       period: true,
       inputs: true,
+      companyId: true,
       indicator: {
         select: {
           code: true,
@@ -210,7 +212,41 @@ export async function POST(
   }
 
   try {
+    const startedAt = Date.now()
     const output = await runExplainer(explainerInput)
+    const durationMs = Date.now() - startedAt
+
+    // Phase 7.E AI-suite audit emission. Records WHAT indicator + WHO
+    // (via session.userId) + LANGUAGE + token cost — sufficient for
+    // CFO/compliance attestation without storing the LLM prompt or
+    // narrative body. Failure is non-blocking: explanation still
+    // returned to the caller, audit gap surfaces via background scan.
+    void logAuditEvent(prisma, {
+      organizationId: orgId,
+      actorUserId: session.userId || null,
+      event: {
+        action: "ai_variance_explainer_run",
+        entityType: "IndicatorValue",
+        entityId: iv.id,
+        metadata: {
+          indicatorCode: iv.indicator.code,
+          companyId: iv.companyId,
+          period: iv.period,
+          status: iv.status as "amber" | "red" | "unknown",
+          language,
+          tokensIn: output.usage?.inputTokens ?? 0,
+          tokensOut: output.usage?.outputTokens ?? 0,
+          durationMs,
+        },
+      },
+      context: buildAuditContext({
+        route: "/api/indicators/values/[id]/explain",
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      }),
+    }).catch((err) => {
+      console.error("[explain] audit emission failed (non-blocking):", err)
+    })
+
     return NextResponse.json({
       indicatorValueId: iv.id,
       ...output,

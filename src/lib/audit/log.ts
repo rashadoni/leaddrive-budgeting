@@ -123,6 +123,25 @@ export type AuditEventInput =
         formulaChanged?: boolean;
         thresholdsChanged?: boolean;
       };
+    }
+  | {
+      // Phase 7.E AI-suite — POST /api/indicators/values/[id]/explain.
+      // Compliance/audit will ask "what AI calls were made on what data";
+      // recording indicator id + language + token usage gives a complete
+      // attestation trail without storing the LLM prompt or response body.
+      action: 'ai_variance_explainer_run';
+      entityType: 'IndicatorValue';
+      entityId: string; // IndicatorValue.id
+      metadata: {
+        indicatorCode: string;
+        companyId: string;
+        period: string;
+        status: 'amber' | 'red' | 'unknown';
+        language: 'en' | 'ru' | 'az';
+        tokensIn: number;
+        tokensOut: number;
+        durationMs: number;
+      };
     };
 
 /**
