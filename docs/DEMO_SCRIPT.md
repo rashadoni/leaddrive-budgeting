@@ -310,6 +310,29 @@ Demo will feel snappy. /availability cache hits in 1-3ms (Turn-33 Cache-Control:
 
 If demo machine is slower than dev box, expect 2-3× these timings — still well under 2 sec everywhere.
 
+## Day-5 morning checklist (run BEFORE customer arrives)
+
+```bash
+bash scripts/pre-demo-check.sh
+```
+
+Expected: 13/13 ✓ "DEMO GO". Exit non-zero = P0 fix before demo. Re-run after each fix until green.
+
+**ADDITIONALLY before live demo (DEMO-CO state):**
+
+If Loom backup was recorded Day-4 (which uploads to DEMO-CO), the live
+demo Step 3 will re-upload to the same DEMO-CO. The `/apply` route
+uses REPLACE semantics (deleteMany before insert, scoped to plan+
+company), so the second upload overwrites cleanly — but to be safe, the
+checklist below regenerates a fresh xlsx fixture:
+
+```bash
+npx tsx scripts/seed-demo-co.ts  # regenerates ~/Downloads/DEMO-CO.xlsx + resets DB co
+```
+
+This avoids a stale-state surprise if the recompute or audit-event
+counts shift between Day-4 recording and Friday demo.
+
 ## Day-5 dry-run rubric
 
 Mark each step pass/fail:

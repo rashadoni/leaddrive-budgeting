@@ -1,5 +1,10 @@
 # Loom backup script — happy-path 5-minute narration
 
+> **Numbers in this script verified Apr 27 (Turn 38 sub-7).** Re-verify
+> Day-4 evening before recording — if live data drifted (new import,
+> recompute, schema change), update the narration counts before take.
+> Check via `bash scripts/pre-demo-check.sh` (13 checks, exit 0 = green).
+>
 > **Purpose:** if live demo fails (network down, server crash, unexpected
 > red flash), the speaker pivots to this pre-recorded Loom showing the
 > exact same flow without any infrastructure dependency. Record Day-4
@@ -13,7 +18,12 @@
 > **Narration language:** EN with one RU/AZ flourish on Variance
 > Explainer (matches live demo Step 2 multilingual point).
 >
-> **Total target:** 5 min ± 30 sec.
+> **Total target:** 5:30 ± 30 sec (5:00 only achievable with idealistic LLM tail; 5:30 has slack for Variance Explainer 18s + /apply 7s slow case).
+
+> **Recording flow note:** if EXPLAIN > 18 sec on first take, skip the
+> Russian re-run beat (saves 30 sec) and add a verbal "multilingual
+> shipped, see Step 6 slide" cue. Better to land 5:00 EN-only than
+> miss 5:30 with a stretched RU pause.
 
 ---
 
