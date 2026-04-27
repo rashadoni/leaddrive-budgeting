@@ -302,7 +302,7 @@ Measured via Chrome DevTools `performance.timing` API on dev server (LaunchAgent
 
 | Page | pageTotal | DCL | slowest API |
 |---|---|---|---|
-| `/budgeting?tab=pnl-report` | 504ms | 386ms | /lines = 520ms / 4.3 MB (prefetch, non-blocking) |
+| `/budgeting?tab=pnl-report` | **264ms** | **161ms** | /lines/count = 25ms / 0 KB (Turn-38-sub12 perf fix; was 504/386 with 4.3 MB prefetch) |
 | `/budgeting/terminal` | 228ms | 173ms | /matrix = 67ms / 21 KB |
 | `/budgeting/audit` | 335ms | 281ms | /audit/events?limit=50 = 67ms / 15 KB |
 
