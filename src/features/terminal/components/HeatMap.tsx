@@ -50,6 +50,7 @@ export function HeatMap({ period }: Props) {
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
+  const setAlertsCount = useTerminalStore((s) => s.setAlertsCount);
 
   const [data, setData] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -125,6 +126,23 @@ export function HeatMap({ period }: Props) {
       ),
     );
   }, [data, filteredCompanies]);
+
+  // Publish org-wide alert count (red+amber across the FULL matrix, not the
+  // search-filtered view) so the CommandBar `[alerts 🔔 N]` strip reflects
+  // total org alerts independent of Panel-2 search input. Direct iteration
+  // over `data.cells` — avoids re-running `summarizeMatrix` (which builds
+  // its own cellMap) when we only need a count.
+  useEffect(() => {
+    if (!data) {
+      setAlertsCount(null);
+      return;
+    }
+    let count = 0;
+    for (const c of data.cells) {
+      if (c.status === 'amber' || c.status === 'red') count++;
+    }
+    setAlertsCount(count);
+  }, [data, setAlertsCount]);
 
   if (!mounted) {
     return (

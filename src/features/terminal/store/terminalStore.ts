@@ -23,6 +23,12 @@ export interface TerminalState {
    * focus + per-panel input.
    */
   searchByPanel: Partial<Record<number, string>>;
+  /**
+   * Live count of red+amber HeatMap cells — published by HeatMap after
+   * matrix fetch resolves; consumed by CommandBar's `[alerts 🔔 N]` strip.
+   * `null` until first matrix fetch lands (CommandBar shows `—`).
+   */
+  alertsCount: number | null;
 }
 
 export interface TerminalActions {
@@ -31,6 +37,7 @@ export interface TerminalActions {
   setActiveIndicatorValue: (id: string | null) => void;
   setSearchForPanel: (panelId: number, query: string) => void;
   clearSearchForPanel: (panelId: number) => void;
+  setAlertsCount: (count: number | null) => void;
   clearState: () => void;
 }
 
@@ -42,6 +49,7 @@ let globalState: TerminalState = {
   activePanelId: 1,
   activeIndicatorValueId: null,
   searchByPanel: {},
+  alertsCount: null,
 };
 
 let listeners: Array<React.Dispatch<React.SetStateAction<TerminalState>>> = [];
@@ -67,6 +75,7 @@ const actions: TerminalActions = {
     delete next[panelId];
     setGlobalState({ searchByPanel: next });
   },
+  setAlertsCount: (count) => setGlobalState({ alertsCount: count }),
   clearState: () =>
     setGlobalState({
       activeCompanyCode: null,
@@ -74,6 +83,7 @@ const actions: TerminalActions = {
       activePanelId: 1,
       activeIndicatorValueId: null,
       searchByPanel: {},
+      alertsCount: null,
     }),
 };
 

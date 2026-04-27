@@ -18,6 +18,7 @@ export function CommandBar() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeCompany = useTerminalStore((s) => s.activeCompanyCode);
+  const alertsCount = useTerminalStore((s) => s.alertsCount);
   const setCompany = useTerminalStore((s) => s.setCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue);
@@ -240,10 +241,17 @@ export function CommandBar() {
         <div className="flex items-center cursor-pointer hover:text-white transition-colors">
           <span className="mr-1">[user]</span>
         </div>
-        <div className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors">
+        <div
+          className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors"
+          title={
+            alertsCount === null
+              ? 'Alerts: loading…'
+              : `${alertsCount} red+amber indicator${alertsCount === 1 ? '' : 's'} across the org`
+          }
+        >
           <span className="mr-1">[alerts</span>
           <span className="mx-1 text-[#FFB800]">🔔</span>
-          <span className="text-[#FFB800]">3]</span>
+          <span className="text-[#FFB800]">{alertsCount === null ? '—' : alertsCount}]</span>
         </div>
       </div>
     </div>
