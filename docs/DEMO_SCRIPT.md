@@ -34,7 +34,7 @@
 **Show:**
 - KPI cards: Net Revenue 240.2M plan / Q1+Apr actual ~60.9M; COGS 187.9M / actual ~45.5M; Gross Profit; EBITDA; Net Profit
 - "Revenue vs COGS — Monthly" chart: Jan-Apr actual overlay on plan bars; May-Dec plan-only
-- Margin Trends: % bars per period
+- Margin Trends: % bars per period — **note December cliff:** Net Margin drops to ~−30% in Dec because ZTP-MAIN's accountant books the full annual non-operating loss + extraordinary expenses (codes 731-01 + 761-01 ≈ 4M ₼) in December as one entry per AZ SAP practice; system reproduces xlsx 1:1 без сглаживания. Run `npx tsx scripts/audit-dec-lumps.ts` to show the evidence chain if customer asks.
 - P&L Waterfall: full Revenue → COGS → GP → OpEx → EBITDA → D&A/Tax → Net Profit cascade
 
 **Click:** Company selector dropdown → select **AAC-MAIN**:
