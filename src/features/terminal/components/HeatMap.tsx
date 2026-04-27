@@ -324,33 +324,16 @@ type HeatMapCellTdProps = {
   onCellClick: () => void;
 };
 
-// Lazy-mount Radix Tooltip on first pointerenter — avoids 600+ eager Tooltip
-// component instances on initial render. `defaultOpen` makes the first-hover
-// tooltip appear instantly (cursor is already over the trigger when Tooltip
-// mounts); subsequent hovers behave as normal Radix delay-driven open/close.
+// Eager Radix Tooltip per cell — at idle, no DOM portals exist (Radix only
+// renders the floating content via Presence + Portal when the trigger is
+// hovered, after provider's 300ms `delayDuration`). 676 wrappers therefore
+// cost only React component instances + context subscriptions, not DOM
+// nodes. Earlier `defaultOpen` lazy-mount caused tooltip pile-up on cursor
+// sweep (each cell's Tooltip initialized to open=true and Radix did not
+// transition to closed on pointerleave from the forced-open initial state).
 function HeatMapCellTd({ co, ind, cell, onCellClick }: HeatMapCellTdProps) {
-  const [everHovered, setEverHovered] = useState(false);
   const status = cell?.status ?? 'missing';
   const color = statusColor(status);
-  const inner = <div style={{ width: 54, height: 18 }} />;
-
-  const tdProps = {
-    onClick: onCellClick,
-    onPointerEnter: () => {
-      if (!everHovered) setEverHovered(true);
-    },
-    className: 'cursor-pointer border-b border-gray-800/40 p-0',
-    style: {
-      backgroundColor: color,
-      opacity: status === 'missing' ? 0.25 : 0.85,
-    },
-    'aria-label': `${co.code} ${ind.code} ${status}`,
-  };
-
-  if (!everHovered) {
-    return <td {...tdProps}>{inner}</td>;
-  }
-
   const statusColorClass =
     status === 'red'
       ? 'text-[#FF4757]'
@@ -361,11 +344,19 @@ function HeatMapCellTd({ co, ind, cell, onCellClick }: HeatMapCellTdProps) {
       : 'text-muted-foreground';
 
   return (
-    <td {...tdProps}>
-      {/* No local `delayDuration` — inherits provider's 300ms (set in commit
-          0b4d239 to prevent flash on sweep; cells must match headers). */}
-      <Tooltip defaultOpen>
-        <TooltipTrigger asChild>{inner}</TooltipTrigger>
+    <td
+      onClick={onCellClick}
+      className="cursor-pointer border-b border-gray-800/40 p-0"
+      style={{
+        backgroundColor: color,
+        opacity: status === 'missing' ? 0.25 : 0.85,
+      }}
+      aria-label={`${co.code} ${ind.code} ${status}`}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div style={{ width: 54, height: 18 }} />
+        </TooltipTrigger>
         <TooltipContent
           side="top"
           className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
