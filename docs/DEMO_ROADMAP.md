@@ -10,12 +10,12 @@
 
 | Capability | Status | What it does |
 |---|---|---|
-| Multi-company holding budgeting | ✅ Live | 8 ops + 4 sub-groups, P&L consolidated across 14 sector packs |
+| Multi-company holding budgeting | ✅ Live | 8 ops + 5 sub-groups + DEMO-CO scratch = 14 companies, P&L consolidated across 14 sector packs |
 | AI Data Mapper (xlsx import) | ✅ Live | Anthropic Claude proposes column mapping; user reviews; apply commits transactionally |
-| Risk Indicator Terminal | ✅ Live | Bloomberg-style HeatMap, 36+ live indicators, drill-down to source BudgetLines |
-| AI Variance Explainer | ✅ Live | Plain-language narrative for any threshold breach, EN / RU / AZ |
-| AI Analytics chat | ✅ Live | Natural-language Q&A over your financials, multilingual |
-| Audit log + compliance trail | ✅ Live | Append-only event log, 365-day retention, full forensic drill |
+| Risk Indicator Terminal | ✅ Live | Bloomberg-style HeatMap, 67 active indicators (24 green / 25 amber / 18 red), sub-group rollups, drill-down to source BudgetLines |
+| AI Variance Explainer | ✅ Live | Plain-language narrative for any threshold breach, EN / RU / AZ; per-call audit attestation (model + token usage) |
+| AI Analytics (per-section panel) | ✅ Live | Floating side-drawer per /budgeting tab — multi-turn chat with tool-use (DB queries) + web search + PDF export |
+| Audit log + compliance trail | ✅ Live | Append-only event log, 365-day retention, full forensic drill — now includes Phase 7.E AI-suite calls |
 | Per-user named layouts | ✅ Live | Save/load Risk Terminal panel arrangements |
 
 **Visual:** screenshot grid of 4 surfaces — P&L, Risk Terminal HeatMap, AuditModal, Onboarding wizard step 2.

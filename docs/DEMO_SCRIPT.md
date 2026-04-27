@@ -255,7 +255,7 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 | Question | Answer |
 |---|---|
-| "Сколько компаний система выдержит?" | "AZMADE = 12 ops, demo also showed scaling to 30. Architecture supports 60-100 sync; beyond that we have BullMQ scheduler in the pipeline (slide 3). Hard limit будет per Postgres instance — multi-tenant SaaS solves that." |
+| "Сколько компаний система выдержит?" | "AZMADE = 14 entities (8 operational + 5 sub-groups + DEMO-CO scratch sandbox). Architecture supports 60-100 sync today; beyond that we have BullMQ scheduler in the pipeline (slide 3). Hard limit будет per Postgres instance — multi-tenant SaaS solves that." |
 | "Cколько стоит per company?" | "Pricing будет per-holding (group of companies), не per-company. Estimated $X/month для типичной 10-30 company group. Pilot — discounted." |
 | "Что если у нас нестандартный COA?" | "AI Mapper handles unknown shapes — это что вы видели в Step 3. После 1-2 imports AI calibrates на ваших column patterns. Manual override always available." |
 | "GDPR / data residency?" | "Self-hosted в вашем Azure/AWS tenant — данные never leave your infrastructure. SaaS option launches Q3, EU + Azerbaijan regions." |
@@ -280,7 +280,7 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 | What breaks | Fallback action |
 |---|---|
 | Dev server crash mid-demo | Open new terminal, `launchctl kickstart -k gui/501/com.budgetpro.dev`, refresh browser (~5 sec recovery) |
-| Anthropic API down | Skip Step 2 (chat) и Step 4 VAR GO; lean harder on HeatMap visual + AuditModal |
+| Anthropic API down | Skip Step 2 (Variance Explainer EXPLAIN) и Step 3 /analyze upload; lean harder on HeatMap visual + AuditModal which work without LLM |
 | Browser tab freezes | Cmd+R refresh; if persists, switch to backup Loom recording |
 | AZMADE data looks wrong | Have screenshots from Day-5 dry-run в second tab as truth-of-record |
 | Customer interrupts with "show me X feature" | "Great — let me note that and we'll cover it after the structured tour. Continuing..." |
@@ -299,10 +299,10 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 ## Day-5 dry-run rubric
 
 Mark each step pass/fail:
-- [ ] Step 1: P&L renders, sidebar visible, no console errors
-- [ ] Step 2: chat responds EN + RU/AZ within 15s
-- [ ] Step 3: analyze 201 + apply 200 + DEMO-CO appears in HeatMap
-- [ ] Step 4: HeatMap colored, IndicatorDetail populates, all 6 verbs dispatch, F1-F4 snappy, drag smooth, AUD GO opens modal
+- [ ] Step 1: P&L renders, EBITDA card 25.0M, Management/Bookkeeping toggle works, AAC-MAIN drill = 19M Net Rev / 17% margin / 1.5M EBITDA
+- [ ] Step 2: Variance Explainer EXPLAIN responds EN within 12-15 sec; RU tab + Re-run within 15-18 sec
+- [ ] Step 3: analyze ~35 sec → 14-column mapping → Apply → "INSERTED 27 / 5 indicators" + audit_event fires
+- [ ] Step 4: HeatMap 24g/25a/18r=67 colored, IndicatorDetail populates, 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD), F1-F4 snappy, drag smooth, AUD GO opens modal with ai_variance_explainer_run rows visible
 - [ ] Step 5: AuditFeed paginates, expand row works
 - [ ] Step 6: roadmap slides render
 - [ ] Total wall-time: 15-22 min
