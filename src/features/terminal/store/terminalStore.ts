@@ -37,7 +37,36 @@ export interface TerminalState {
    * or `setCompactMode(true|false)` programmatically.
    */
   compactMode: boolean;
+  /**
+   * Phase B4 — CompanyTree watchlist filter. Drives which companies the
+   * tree shows: 'all' (every operational), 'starred' (user pin-list),
+   * 'alerted' (any red/amber cell on HeatMap), 'recent' (last 10 viewed).
+   * Default 'all' on first session. Persisted to localStorage so the
+   * tab choice survives reload — same UX contract as compactMode.
+   */
+  watchlistTab: WatchlistTab;
+  /**
+   * User-starred company codes (set semantics, JSON-serialized as array
+   * to localStorage). Toggle via `toggleStarredCompany(code)`. Cross-
+   * device sync via `UserCompanyPreferences` table is deferred (🔄 row).
+   */
+  starredCompanyCodes: ReadonlySet<string>;
+  /**
+   * LRU stack of recently-selected company codes, most recent first.
+   * Capped at RECENT_LIMIT (10). Updated automatically by `setCompany`.
+   * Survives reload via localStorage.
+   */
+  recentCompanyCodes: readonly string[];
+  /**
+   * Set of company codes that have at least one non-green HeatMap cell
+   * — published by HeatMap after matrix fetch resolves. Consumed by the
+   * CompanyTree 'alerted' tab filter. `null` until first matrix lands.
+   */
+  alertedCompanyCodes: ReadonlySet<string> | null;
 }
+
+export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent';
+export const RECENT_LIMIT = 10;
 
 export interface TerminalActions {
   setActivePanel: (id: number) => void;
@@ -48,12 +77,18 @@ export interface TerminalActions {
   setAlertsCount: (count: number | null) => void;
   setCompactMode: (mode: boolean) => void;
   toggleCompactMode: () => void;
+  setWatchlistTab: (tab: WatchlistTab) => void;
+  toggleStarredCompany: (code: string) => void;
+  setAlertedCompanyCodes: (codes: ReadonlySet<string> | null) => void;
   clearState: () => void;
 }
 
 export type TerminalStore = TerminalState & TerminalActions;
 
 const COMPACT_MODE_LS_KEY = 'terminal-compact-mode-v1';
+const WATCHLIST_TAB_LS_KEY = 'terminal-watchlist-tab-v1';
+const STARRED_LS_KEY = 'terminal-starred-companies-v1';
+const RECENT_LS_KEY = 'terminal-recent-companies-v1';
 
 function readCompactModeFromStorage(): boolean {
   if (typeof window === 'undefined') return false;
@@ -73,6 +108,35 @@ function writeCompactModeToStorage(mode: boolean): void {
   }
 }
 
+function readJsonFromStorage<T>(key: string, fallback: T, validate: (v: unknown) => v is T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw);
+    return validate(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonToStorage(key: string, value: unknown): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // private-mode / quota — non-fatal.
+  }
+}
+
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+function isWatchlistTab(v: unknown): v is WatchlistTab {
+  return v === 'all' || v === 'starred' || v === 'alerted' || v === 'recent';
+}
+
 let globalState: TerminalState = {
   activeCompanyCode: null,
   activeScenarioCode: null,
@@ -83,6 +147,12 @@ let globalState: TerminalState = {
   // SSR renders with `false`; mounted-effect hook in PanelGrid hydrates
   // from localStorage on first client paint to avoid mismatch.
   compactMode: false,
+  // Phase B4 — watchlist defaults; same SSR-then-hydrate pattern as
+  // compactMode. PanelGrid's mounted-effect calls hydrateWatchlistFromStorage().
+  watchlistTab: 'all',
+  starredCompanyCodes: new Set(),
+  recentCompanyCodes: [],
+  alertedCompanyCodes: null,
 };
 
 /**
@@ -94,6 +164,34 @@ export function hydrateCompactModeFromStorage(): void {
   if (stored !== globalState.compactMode) {
     setGlobalState({ compactMode: stored });
   }
+}
+
+/**
+ * Hydrate watchlist state (tab + starred + recent) from localStorage on
+ * first client mount. Called alongside hydrateCompactModeFromStorage by
+ * PanelGrid's mounted-effect. Idempotent.
+ */
+export function hydrateWatchlistFromStorage(): void {
+  const tab = readJsonFromStorage<WatchlistTab>(
+    WATCHLIST_TAB_LS_KEY,
+    'all',
+    isWatchlistTab,
+  );
+  const starredArr = readJsonFromStorage<string[]>(
+    STARRED_LS_KEY,
+    [],
+    isStringArray,
+  );
+  const recentArr = readJsonFromStorage<string[]>(
+    RECENT_LS_KEY,
+    [],
+    isStringArray,
+  );
+  setGlobalState({
+    watchlistTab: tab,
+    starredCompanyCodes: new Set(starredArr),
+    recentCompanyCodes: recentArr.slice(0, RECENT_LIMIT),
+  });
 }
 
 let listeners: Array<React.Dispatch<React.SetStateAction<TerminalState>>> = [];
@@ -108,7 +206,14 @@ const setGlobalState = (patch: Partial<TerminalState>): void => {
 // without triggering loops.
 const actions: TerminalActions = {
   setActivePanel: (id) => setGlobalState({ activePanelId: id }),
-  setCompany: (code) => setGlobalState({ activeCompanyCode: code }),
+  setCompany: (code) => {
+    // Push to LRU recent stack — most-recent-first, dedupe, cap.
+    const prev = globalState.recentCompanyCodes;
+    const filtered = prev.filter((c) => c !== code);
+    const next = [code, ...filtered].slice(0, RECENT_LIMIT);
+    setGlobalState({ activeCompanyCode: code, recentCompanyCodes: next });
+    writeJsonToStorage(RECENT_LS_KEY, next);
+  },
   setActiveIndicatorValue: (id) => setGlobalState({ activeIndicatorValueId: id }),
   setSearchForPanel: (panelId, query) =>
     setGlobalState({
@@ -120,6 +225,19 @@ const actions: TerminalActions = {
     setGlobalState({ searchByPanel: next });
   },
   setAlertsCount: (count) => setGlobalState({ alertsCount: count }),
+  setWatchlistTab: (tab) => {
+    setGlobalState({ watchlistTab: tab });
+    writeJsonToStorage(WATCHLIST_TAB_LS_KEY, tab);
+  },
+  toggleStarredCompany: (code) => {
+    const next = new Set(globalState.starredCompanyCodes);
+    if (next.has(code)) next.delete(code);
+    else next.add(code);
+    setGlobalState({ starredCompanyCodes: next });
+    writeJsonToStorage(STARRED_LS_KEY, Array.from(next));
+  },
+  setAlertedCompanyCodes: (codes) =>
+    setGlobalState({ alertedCompanyCodes: codes }),
   setCompactMode: (mode) => {
     setGlobalState({ compactMode: mode });
     writeCompactModeToStorage(mode);
@@ -129,8 +247,11 @@ const actions: TerminalActions = {
     setGlobalState({ compactMode: next });
     writeCompactModeToStorage(next);
   },
-  // `compactMode` deliberately NOT reset by clearState — user-preference,
-  // not session state; should survive logout / org-switch.
+  // `compactMode` + watchlist preferences (tab/starred) deliberately NOT
+  // reset by clearState — they're user-preferences, not session state;
+  // survive logout / org-switch. `recentCompanyCodes` IS reset because
+  // the LRU is per-org (a code from azmade is meaningless in a new org).
+  // `alertedCompanyCodes` IS reset (it's published per-fetch by HeatMap).
   clearState: () =>
     setGlobalState({
       activeCompanyCode: null,
@@ -139,6 +260,8 @@ const actions: TerminalActions = {
       activeIndicatorValueId: null,
       searchByPanel: {},
       alertsCount: null,
+      recentCompanyCodes: [],
+      alertedCompanyCodes: null,
     }),
 };
 

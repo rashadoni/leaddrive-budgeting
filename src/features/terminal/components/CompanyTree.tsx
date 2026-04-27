@@ -28,6 +28,13 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
+  // Phase B4 — watchlist tab + starred + recent + alerted slices.
+  const watchlistTab = useTerminalStore((s) => s.watchlistTab);
+  const setWatchlistTab = useTerminalStore((s) => s.setWatchlistTab);
+  const starredCompanyCodes = useTerminalStore((s) => s.starredCompanyCodes);
+  const toggleStarredCompany = useTerminalStore((s) => s.toggleStarredCompany);
+  const recentCompanyCodes = useTerminalStore((s) => s.recentCompanyCodes);
+  const alertedCompanyCodes = useTerminalStore((s) => s.alertedCompanyCodes);
   const select = onSelect ?? storeSetCompany;
   const searchInputRef = useRef<HTMLInputElement>(null);
   // `mounted` flips to true after first client commit; until then we
@@ -68,21 +75,59 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     );
   };
 
-  const filteredRoots = useMemo(() => {
+  /**
+   * Phase B4 — apply the active watchlist tab as a code-set filter on
+   * top of the existing search filter. 'all' = pass-through. 'starred'
+   * / 'alerted' / 'recent' produce a Set<code>; companies (and their
+   * children) outside that set are dropped. Sub-group rows whose own
+   * code is NOT in the set but whose children include matches stay
+   * rendered as a header for context (same shape as search filtering).
+   */
+  const watchlistCodeFilter = useMemo<Set<string> | null>(() => {
+    if (watchlistTab === 'all') return null;
+    if (watchlistTab === 'starred') return new Set(starredCompanyCodes);
+    if (watchlistTab === 'alerted')
+      return alertedCompanyCodes ? new Set(alertedCompanyCodes) : new Set();
+    if (watchlistTab === 'recent') return new Set(recentCompanyCodes);
+    return null;
+  }, [watchlistTab, starredCompanyCodes, alertedCompanyCodes, recentCompanyCodes]);
+
+  const passesWatchlist = (c: CompanyNode): boolean => {
+    if (!watchlistCodeFilter) return true;
+    return watchlistCodeFilter.has(c.code);
+  };
+
+  const filteredRoots = useMemo<CompanyNode[]>(() => {
     const q = search.trim().toUpperCase();
     const allRoots = companies.filter((c) => !c.parentCompanyId);
-    if (q === '') return allRoots;
-    return allRoots
-      .map((root) => {
-        const matchedChildren = (root.children ?? []).filter((child) =>
-          matchesQuery(child, q),
-        );
-        if (matchesQuery(root, q)) return root; // include all children
-        if (matchedChildren.length > 0) return { ...root, children: matchedChildren };
-        return null;
-      })
-      .filter((r): r is CompanyNode => r !== null);
-  }, [companies, search]);
+    const result: CompanyNode[] = [];
+    for (const root of allRoots) {
+      const allChildren = root.children ?? [];
+      const childrenAfterWatchlist = allChildren.filter(passesWatchlist);
+      const childrenAfterSearch = childrenAfterWatchlist.filter((c) =>
+        matchesQuery(c, q),
+      );
+
+      const rootPassesWatchlist = passesWatchlist(root);
+      const rootMatchesSearch = matchesQuery(root, q);
+
+      if (rootPassesWatchlist && rootMatchesSearch) {
+        // Root visible: render with watchlist-passing children
+        // (regardless of search) so a starred sub-group still shows
+        // its operationals when 'starred' tab is active. If a search
+        // query is set, narrow children to search-matching too.
+        result.push({
+          ...root,
+          children: q === '' ? childrenAfterWatchlist : childrenAfterSearch,
+        });
+      } else if (childrenAfterSearch.length > 0) {
+        // Root itself doesn't pass — but a child does. Keep the root as
+        // a header for context with only the matching children.
+        result.push({ ...root, children: childrenAfterSearch });
+      }
+    }
+    return result;
+  }, [companies, search, watchlistCodeFilter]);
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (id: string) =>
@@ -113,6 +158,16 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
 
   return (
     <div className="font-mono text-xs text-gray-300 w-full flex flex-col gap-1">
+      {/* Phase B4 — watchlist tabs. Sits above the search input so the
+          tab choice scopes the search results, not the other way round.
+          'Alerted' badge shows count when alertedCompanyCodes is non-empty. */}
+      <WatchlistTabs
+        active={watchlistTab}
+        onSelect={setWatchlistTab}
+        starredCount={starredCompanyCodes.size}
+        recentCount={recentCompanyCodes.length}
+        alertedCount={alertedCompanyCodes ? alertedCompanyCodes.size : null}
+      />
       {/* Search input renders unconditionally (even on empty state) so
           the `/`-search keyboard shortcut always lands on a visible
           target — UX consistency over hiding-when-useless. */}
@@ -187,6 +242,11 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                   {' '}
                 </span>
               )}
+              <StarToggle
+                code={root.code}
+                starred={starredCompanyCodes.has(root.code)}
+                onToggle={toggleStarredCompany}
+              />
               <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
                 {root.code}
               </span>
@@ -216,6 +276,11 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                         childActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
                       }`}
                     >
+                      <StarToggle
+                        code={child.code}
+                        starred={starredCompanyCodes.has(child.code)}
+                        onToggle={toggleStarredCompany}
+                      />
                       <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
                         {child.code}
                       </span>
@@ -236,5 +301,97 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         </ul>
       )}
     </div>
+  );
+}
+
+/**
+ * Phase B4 — watchlist tab strip. 4 tabs: ALL / STARRED / ALERTED / RECENT.
+ * Counter badges show populated counts where available; ALERTED is null
+ * until HeatMap publishes (e.g. first matrix fetch hasn't landed yet).
+ */
+type WatchlistTabKey = 'all' | 'starred' | 'alerted' | 'recent';
+
+function WatchlistTabs(props: {
+  active: WatchlistTabKey;
+  onSelect: (tab: WatchlistTabKey) => void;
+  starredCount: number;
+  recentCount: number;
+  alertedCount: number | null;
+}) {
+  const tabs: Array<{ key: WatchlistTabKey; label: string; badge: number | null }> = [
+    { key: 'all', label: 'ALL', badge: null },
+    { key: 'starred', label: '★', badge: props.starredCount || null },
+    { key: 'alerted', label: '🔔', badge: props.alertedCount },
+    { key: 'recent', label: 'RECENT', badge: props.recentCount || null },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Company watchlist filter"
+      className="flex items-center gap-1 px-1 pt-1 text-[10px] font-mono shrink-0"
+    >
+      {tabs.map((t) => {
+        const isActive = props.active === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => props.onSelect(t.key)}
+            className={`px-1.5 py-0.5 rounded border transition-colors flex items-center gap-1 ${
+              isActive
+                ? 'border-[#00D4AA]/60 bg-[#00D4AA]/10 text-[#00D4AA]'
+                : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
+            }`}
+          >
+            <span>{t.label}</span>
+            {t.badge !== null && t.badge > 0 && (
+              <span className="text-[9px] tabular-nums opacity-75">
+                {t.badge}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Star toggle button — sits at the start of each company row. Click
+ * stops propagation so the row's click-to-select doesn't fire. Filled
+ * star = starred; outlined = not.
+ */
+function StarToggle(props: {
+  code: string;
+  starred: boolean;
+  onToggle: (code: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        props.onToggle(props.code);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onToggle(props.code);
+        }
+      }}
+      aria-pressed={props.starred}
+      aria-label={props.starred ? `Unstar ${props.code}` : `Star ${props.code}`}
+      title={props.starred ? 'Starred' : 'Star this company'}
+      className={`w-3 text-center text-[11px] focus:outline-none transition-colors ${
+        props.starred
+          ? 'text-[#FFB020] hover:text-[#FFA502]'
+          : 'text-gray-700 hover:text-gray-400'
+      }`}
+    >
+      {props.starred ? '★' : '☆'}
+    </button>
   );
 }

@@ -12,6 +12,7 @@ import {
 import {
   getTerminalSnapshot,
   hydrateCompactModeFromStorage,
+  hydrateWatchlistFromStorage,
   useTerminalStore,
 } from '../store/terminalStore';
 import { CompanyTree, type CompanyNode } from './CompanyTree';
@@ -133,10 +134,12 @@ export function PanelGrid() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
-    // Hydrate compactMode from localStorage on first client paint —
-    // SSR renders with `false` and we flip post-mount to avoid hydration
-    // mismatch (same pattern as the saved-layout `defaults` lazy-init).
+    // Hydrate compactMode + watchlist (tab/starred/recent) from
+    // localStorage on first client paint — SSR renders with defaults
+    // and we flip post-mount to avoid hydration mismatch (same pattern
+    // as the saved-layout `defaults` lazy-init).
     hydrateCompactModeFromStorage();
+    hydrateWatchlistFromStorage();
   }, []);
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
 

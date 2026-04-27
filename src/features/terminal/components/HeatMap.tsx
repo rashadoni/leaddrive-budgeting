@@ -53,6 +53,7 @@ export function HeatMap({ period }: Props) {
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
   const setAlertsCount = useTerminalStore((s) => s.setAlertsCount);
+  const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
   const compactMode = useTerminalStore((s) => s.compactMode);
 
   const [data, setData] = useState<MatrixResponse | null>(null);
@@ -143,22 +144,33 @@ export function HeatMap({ period }: Props) {
     );
   }, [data, filteredCompanies]);
 
-  // Publish org-wide alert count (red+amber across the FULL matrix, not the
-  // search-filtered view) so the CommandBar `[alerts 🔔 N]` strip reflects
-  // total org alerts independent of Panel-2 search input. Direct iteration
-  // over `data.cells` — avoids re-running `summarizeMatrix` (which builds
-  // its own cellMap) when we only need a count.
+  // Publish org-wide alert count (red+amber across the FULL matrix, not
+  // the search-filtered view) so the CommandBar `[alerts 🔔 N]` strip
+  // reflects total org alerts independent of Panel-2 search input.
+  // Phase B4 — also publish the SET of alerted company codes (not just
+  // the count) so CompanyTree's 'alerted' watchlist tab can filter rows.
   useEffect(() => {
     if (!data) {
       setAlertsCount(null);
+      setAlertedCompanyCodes(null);
       return;
     }
     let count = 0;
+    const alertedCompanyIds = new Set<string>();
     for (const c of data.cells) {
-      if (c.status === 'amber' || c.status === 'red') count++;
+      if (c.status === 'amber' || c.status === 'red') {
+        count++;
+        alertedCompanyIds.add(c.companyId);
+      }
     }
     setAlertsCount(count);
-  }, [data, setAlertsCount]);
+    // Map company-id → company-code (CompanyTree filter is code-based).
+    const alertedCodes = new Set<string>();
+    for (const co of data.companies) {
+      if (alertedCompanyIds.has(co.id)) alertedCodes.add(co.code);
+    }
+    setAlertedCompanyCodes(alertedCodes);
+  }, [data, setAlertsCount, setAlertedCompanyCodes]);
 
   if (!mounted) {
     return (
