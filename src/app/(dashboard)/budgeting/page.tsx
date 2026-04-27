@@ -1726,19 +1726,24 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                 )}
                 {renderGroupedSection(t("sectionCOGS"), cogsLines, totCOGSPlanned, "hintSectionCOGS", "cogs")}
 
-                {/* Gross Profit row */}
+                {/* Gross Profit row = Revenue − COGS */}
                 {(revenueLines.length > 0 || cogsLines.length > 0) && (() => {
+                  const gpPlanned = totRevPlanned - totCOGSPlanned
                   const gpActual = totRevActual - totCOGSActual
                   const gpNeg = gpActual < 0
+                  const gpVarPct = gpPlanned !== 0 ? ((gpActual - gpPlanned) / Math.abs(gpPlanned)) * 100 : 0
                   return (
                   <tr className={`border-y-2 ${gpNeg ? "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/10" : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/10"}`}>
                     <td className="px-3 py-2" colSpan={2}>
                       <div className="font-bold text-sm">{t("grossProfit")}</div>
                       <div className="text-[10px] text-muted-foreground/60 font-normal">{t("hintGrossProfit")}</div>
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={totRevPlanned - totCOGSPlanned} duration={500} formatter={fmt} /></td>
+                    <td className="px-2 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={gpPlanned} duration={500} formatter={fmt} /></td>
                     <td className={`px-2 py-2 text-right font-mono text-sm font-bold ${gpNeg ? "text-red-600 dark:text-red-400" : "text-[#065f46] dark:text-[#6ee7b7]"}`}><AnimatedNumber value={gpActual} duration={500} formatter={fmt} /></td>
-                    <td colSpan={2} />
+                    <td className={`px-2 py-2 text-right font-mono text-sm font-bold ${gpVarPct >= 0 ? "text-[#065f46] dark:text-[#6ee7b7]" : "text-red-600 dark:text-red-400"}`}>
+                      {gpPlanned !== 0 ? `${gpVarPct >= 0 ? "+" : ""}${gpVarPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="w-10" />
                   </tr>
                   )
                 })()}
@@ -1750,6 +1755,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                   const opPlanned = computeOperatingProfit(totRevPlanned, totCOGSPlanned, totExpPlanned)
                   const opActual = computeOperatingProfit(totRevActual, totCOGSActual, totExpActual)
                   const opNeg = opActual < 0
+                  const opVarPct = opPlanned !== 0 ? ((opActual - opPlanned) / Math.abs(opPlanned)) * 100 : 0
                   return (
                   <tr className={`border-y-2 ${opNeg ? "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/10" : "border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10"}`}>
                     <td className="px-3 py-2" colSpan={2}>
@@ -1758,7 +1764,10 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                     </td>
                     <td className="px-2 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={opPlanned} duration={500} formatter={fmt} /></td>
                     <td className={`px-2 py-2 text-right font-mono text-sm font-bold ${opNeg ? "text-red-600 dark:text-red-400" : "text-[#065f46] dark:text-[#6ee7b7]"}`}><AnimatedNumber value={opActual} duration={500} formatter={fmt} /></td>
-                    <td colSpan={2} />
+                    <td className={`px-2 py-2 text-right font-mono text-sm font-bold ${opVarPct >= 0 ? "text-[#065f46] dark:text-[#6ee7b7]" : "text-red-600 dark:text-red-400"}`}>
+                      {opPlanned !== 0 ? `${opVarPct >= 0 ? "+" : ""}${opVarPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="w-10" />
                   </tr>
                   )
                 })()}
