@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import ExcelJS from "exceljs"
 
-export const config = { api: { bodyParser: false } }
+// App Router handles body parsing via request.formData() — no Pages-era
+// `config = { api: { bodyParser: false } }` needed (deprecated in Next 16).
 export const maxDuration = 120
 
 // Excel import is expensive (file parsing + many DB writes). Limit to 2 imports/min per org.

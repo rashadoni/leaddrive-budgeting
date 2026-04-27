@@ -36,7 +36,10 @@ function matchRule(pathname: string, method: string) {
   return null
 }
 
-export async function middleware(req: NextRequest) {
+// Renamed from `middleware()` to `proxy()` for Next 16 file-convention
+// transition (was `src/middleware.ts`). Same body, same matcher; only
+// the file + function name changed per the migration.
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Allow public paths

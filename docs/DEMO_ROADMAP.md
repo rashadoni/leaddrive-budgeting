@@ -25,9 +25,13 @@
 
 ---
 
-## Slide 2 — Coming next quarter (Q2 2026)
+## Slide 2 — Coming next quarter (Q3 2026)
 
 **Title:** _Three AI features that change how the C-suite uses финансы_
+
+> Note: framing is **Q3** (Jul-Sep 2026), not Q2. Demo is end of Q2; these
+> 3 items are 0% started today, each multi-week design + implementation.
+> Avoid Q2 framing on slide — overpromise risk.
 
 ### 🔍 AI Web Crawler
 - **What:** Auto-pull industry benchmark data per sector (Damodaran-class margins, working-capital ratios, sector-specific KPIs)
@@ -49,9 +53,14 @@
 
 ---
 
-## Slide 3 — Coming next 6 months (Q3 2026)
+## Slide 3 — Coming next 6 months (Q4 2026)
 
 **Title:** _Advanced analytics + scale_
+
+> Note: shifted from Q3→Q4 to honor the Slide-2 reframe. Sparkline +
+> fact()/rollup() + BullMQ scheduler are queue-sequenced (each blocks
+> the next; ROADMAP Phase G estimates ~10 weeks total). Q4 (Oct-Dec)
+> realistic if Phase F (post-demo) starts immediately.
 
 ### Sparkline trends in every cell
 - 12-month mini-chart inside each HeatMap cell
@@ -94,7 +103,7 @@
 - Partner gets sector-pack customization rights for their vertical specialty
 
 ### Integration ecosystem
-- 1C connector (Q3 priority for CIS market)
+- 1C connector (highest CIS-market priority)
 - SAP / Oracle / NetSuite connectors (on-request)
 - Excel live-link для transition customers
 - Webhook + REST API для custom integrations
