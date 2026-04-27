@@ -7,6 +7,7 @@ import {
   panelForCommand,
   type ParsedCommand,
 } from '../lib/command-parser';
+import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 
 export function CommandBar() {
   const [command, setCommand] = useState('');
@@ -234,9 +235,10 @@ export function CommandBar() {
       </div>
 
       <div className="flex items-center space-x-6 text-gray-400">
-        <div className="flex items-center">
-          <span className="text-gray-500 mr-1">CO:</span>
+        <div className="flex items-center gap-1">
+          <span className="text-gray-500">CO:</span>
           <span className={activeCompany ? 'text-[#FFB800]' : ''}>{activeCompany || 'NONE'}</span>
+          <RelatedFunctionsMenu />
         </div>
         <div className="flex items-center cursor-pointer hover:text-white transition-colors">
           <span className="mr-1">[user]</span>
