@@ -9,7 +9,11 @@ import {
   type Layout,
   type GroupImperativeHandle,
 } from 'react-resizable-panels';
-import { getTerminalSnapshot, useTerminalStore } from '../store/terminalStore';
+import {
+  getTerminalSnapshot,
+  hydrateCompactModeFromStorage,
+  useTerminalStore,
+} from '../store/terminalStore';
 import { CompanyTree, type CompanyNode } from './CompanyTree';
 import { HeatMap } from './HeatMap';
 import { IndicatorDetail } from './IndicatorDetail';
@@ -129,7 +133,12 @@ export function PanelGrid() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
+    // Hydrate compactMode from localStorage on first client paint —
+    // SSR renders with `false` and we flip post-mount to avoid hydration
+    // mismatch (same pattern as the saved-layout `defaults` lazy-init).
+    hydrateCompactModeFromStorage();
   }, []);
+  const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
 
   // Snapshot saved layout once on mount so SSR/CSR pass the same value.
   // Subsequent resizes flow through `onLayoutChanged` → localStorage.
@@ -171,6 +180,19 @@ export function PanelGrid() {
         switchPanel(parseInt(e.key, 10), setActivePanel);
         return;
       }
+      // Phase A5: Ctrl+/ (or Cmd+/) toggles compact mode globally.
+      // `/` alone focuses panel search — we hijack only when modifier is
+      // held and the target is NOT a text-entry surface (so users typing
+      // a `/` in CompanyTree/HeatMap search inputs aren't disturbed).
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.key === '/' &&
+        !isTypingTarget(e.target)
+      ) {
+        e.preventDefault();
+        toggleCompactMode();
+        return;
+      }
       if (!e.ctrlKey && !e.metaKey && !e.altKey && /^F[1-4]$/.test(e.key)) {
         e.preventDefault();
         switchPanel(parseInt(e.key.slice(1), 10), setActivePanel);
@@ -189,7 +211,7 @@ export function PanelGrid() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [setActivePanel]);
+  }, [setActivePanel, toggleCompactMode]);
 
   const readSizesFromGroups = (): LayoutSizes => ({
     outer: outerRef.current?.getLayout() ?? DEFAULT_LAYOUT_SIZES.outer,
@@ -216,6 +238,7 @@ export function PanelGrid() {
 
   return (
     <div className="flex-1 bg-gray-800 relative flex flex-col">
+      <CompactModeToggle />
       <LayoutMenu
         readCurrent={readSizesFromGroups}
         applyLayout={applySizesToGroups}
@@ -295,6 +318,39 @@ export function PanelGrid() {
       </Group>
       </div>
       <AuditTicker />
+    </div>
+  );
+}
+
+/**
+ * Phase A5 — top-right toggle button for compact mode. Sits to the LEFT
+ * of the Layouts button (LayoutMenu owns top-2 right-2; we sit at right-24
+ * so the two never overlap). Keyboard shortcut Ctrl+/ does the same thing
+ * via PanelGrid's keydown effect — this button just makes the affordance
+ * discoverable to users who didn't read the help.
+ */
+function CompactModeToggle() {
+  const compactMode = useTerminalStore((s) => s.compactMode);
+  const toggle = useTerminalStore((s) => s.toggleCompactMode);
+  return (
+    <div className="absolute top-2 right-24 z-30 font-mono text-[10px]">
+      <button
+        type="button"
+        onClick={toggle}
+        className={`px-2 py-0.5 rounded border bg-[#0A0E27] hover:text-white hover:border-[#00D4AA]/60 ${
+          compactMode
+            ? 'border-[#00D4AA]/60 text-[#00D4AA]'
+            : 'border-gray-800 text-gray-400'
+        }`}
+        title={
+          compactMode
+            ? 'Compact mode ON — Ctrl+/ to expand'
+            : 'Compact mode OFF — Ctrl+/ to densify'
+        }
+        aria-pressed={compactMode}
+      >
+        ▦ {compactMode ? 'Compact' : 'Normal'}
+      </button>
     </div>
   );
 }

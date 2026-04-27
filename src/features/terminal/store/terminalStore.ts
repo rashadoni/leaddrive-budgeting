@@ -29,6 +29,14 @@ export interface TerminalState {
    * `null` until first matrix fetch lands (CommandBar shows `—`).
    */
   alertsCount: number | null;
+  /**
+   * Compact-mode toggle (Phase A5) — when true, dense surfaces (HeatMap
+   * cells, AuditTicker font) shrink ~30-40% so power users can fit more
+   * data on screen without resizing panels. Persisted to localStorage so
+   * the choice survives reload. Toggle via `Ctrl+/` (or `Cmd+/` on Mac)
+   * or `setCompactMode(true|false)` programmatically.
+   */
+  compactMode: boolean;
 }
 
 export interface TerminalActions {
@@ -38,10 +46,32 @@ export interface TerminalActions {
   setSearchForPanel: (panelId: number, query: string) => void;
   clearSearchForPanel: (panelId: number) => void;
   setAlertsCount: (count: number | null) => void;
+  setCompactMode: (mode: boolean) => void;
+  toggleCompactMode: () => void;
   clearState: () => void;
 }
 
 export type TerminalStore = TerminalState & TerminalActions;
+
+const COMPACT_MODE_LS_KEY = 'terminal-compact-mode-v1';
+
+function readCompactModeFromStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(COMPACT_MODE_LS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCompactModeToStorage(mode: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(COMPACT_MODE_LS_KEY, mode ? '1' : '0');
+  } catch {
+    // localStorage can throw in private mode / quota — non-fatal.
+  }
+}
 
 let globalState: TerminalState = {
   activeCompanyCode: null,
@@ -50,7 +80,21 @@ let globalState: TerminalState = {
   activeIndicatorValueId: null,
   searchByPanel: {},
   alertsCount: null,
+  // SSR renders with `false`; mounted-effect hook in PanelGrid hydrates
+  // from localStorage on first client paint to avoid mismatch.
+  compactMode: false,
 };
+
+/**
+ * Hydrate `compactMode` from localStorage on first client mount. Called
+ * by PanelGrid's mounted-effect; safe to call repeatedly (idempotent).
+ */
+export function hydrateCompactModeFromStorage(): void {
+  const stored = readCompactModeFromStorage();
+  if (stored !== globalState.compactMode) {
+    setGlobalState({ compactMode: stored });
+  }
+}
 
 let listeners: Array<React.Dispatch<React.SetStateAction<TerminalState>>> = [];
 
@@ -76,6 +120,17 @@ const actions: TerminalActions = {
     setGlobalState({ searchByPanel: next });
   },
   setAlertsCount: (count) => setGlobalState({ alertsCount: count }),
+  setCompactMode: (mode) => {
+    setGlobalState({ compactMode: mode });
+    writeCompactModeToStorage(mode);
+  },
+  toggleCompactMode: () => {
+    const next = !globalState.compactMode;
+    setGlobalState({ compactMode: next });
+    writeCompactModeToStorage(next);
+  },
+  // `compactMode` deliberately NOT reset by clearState — user-preference,
+  // not session state; should survive logout / org-switch.
   clearState: () =>
     setGlobalState({
       activeCompanyCode: null,

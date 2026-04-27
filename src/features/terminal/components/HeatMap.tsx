@@ -51,6 +51,7 @@ export function HeatMap({ period }: Props) {
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
   const setAlertsCount = useTerminalStore((s) => s.setAlertsCount);
+  const compactMode = useTerminalStore((s) => s.compactMode);
 
   const [data, setData] = useState<MatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -231,7 +232,10 @@ export function HeatMap({ period }: Props) {
                 <th
                   key={ind.id}
                   className="sticky top-0 z-10 bg-[#0A0E27] px-1 py-1 border-b border-gray-800/60 text-gray-500 uppercase tracking-wider text-[9px]"
-                  style={{ minWidth: 54, maxWidth: 54 }}
+                  style={{
+                    minWidth: compactMode ? 40 : 54,
+                    maxWidth: compactMode ? 40 : 54,
+                  }}
                 >
                   {/* Turn-38-sub14 — Radix Tooltip replaces native `title=` (slow + browser-flaky on Mac).
                       Shows full indicator name + unit + direction on hover (~150ms delay). */}
@@ -301,6 +305,7 @@ export function HeatMap({ period }: Props) {
                           co={co}
                           ind={ind}
                           cell={c}
+                          compactMode={compactMode}
                           onCellClick={() => {
                             // Cell click selects company AND opens drill-down.
                             setCompany(co.code);
@@ -339,6 +344,7 @@ type HeatMapCellTdProps = {
   co: CompanyRow;
   ind: IndicatorCol;
   cell: HeatMapCell | undefined;
+  compactMode: boolean;
   onCellClick: () => void;
 };
 
@@ -349,7 +355,7 @@ type HeatMapCellTdProps = {
 // nodes. Earlier `defaultOpen` lazy-mount caused tooltip pile-up on cursor
 // sweep (each cell's Tooltip initialized to open=true and Radix did not
 // transition to closed on pointerleave from the forced-open initial state).
-function HeatMapCellTd({ co, ind, cell, onCellClick }: HeatMapCellTdProps) {
+function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellTdProps) {
   const status = cell?.status ?? 'missing';
   const color = statusColor(status);
   const statusColorClass =
@@ -373,7 +379,12 @@ function HeatMapCellTd({ co, ind, cell, onCellClick }: HeatMapCellTdProps) {
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <div style={{ width: 54, height: 18 }} />
+          <div
+            style={{
+              width: compactMode ? 40 : 54,
+              height: compactMode ? 12 : 18,
+            }}
+          />
         </TooltipTrigger>
         <TooltipContent
           side="top"

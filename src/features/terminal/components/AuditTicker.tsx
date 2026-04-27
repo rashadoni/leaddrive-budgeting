@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTerminalStore } from "../store/terminalStore";
 
 /**
  * Bloomberg-style bottom event ticker — 1-line strip surfacing the most
@@ -31,6 +32,7 @@ const TICKER_LIMIT = 5;
 
 export function AuditTicker() {
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
+  const compactMode = useTerminalStore((s) => s.compactMode);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +65,9 @@ export function AuditTicker() {
           handleClick();
         }
       }}
-      className="flex items-center gap-3 bg-[#050814] border-t border-gray-800 px-4 py-1.5 text-[10px] font-mono text-gray-400 cursor-pointer hover:text-gray-200 transition-colors overflow-x-auto whitespace-nowrap shrink-0"
+      className={`flex items-center gap-3 bg-[#050814] border-t border-gray-800 px-4 font-mono text-gray-400 cursor-pointer hover:text-gray-200 transition-colors overflow-x-auto whitespace-nowrap shrink-0 ${
+        compactMode ? 'py-0.5 text-[9px]' : 'py-1.5 text-[10px]'
+      }`}
       aria-label="Recent audit events — click to open full audit log"
       title="Click for full audit log"
     >
