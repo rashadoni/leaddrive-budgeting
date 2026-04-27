@@ -15,6 +15,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { useTerminalStore } from "../store/terminalStore";
+import { CompanySnapshot } from "./CompanySnapshot";
 
 type Language = "en" | "ru" | "az";
 
@@ -35,6 +36,7 @@ const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
 
 export function VarianceExplainerPanel() {
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
+  const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
   const [language, setLanguage] = useState<Language>("en");
   /** Mirrors `language` so the global Explain-trigger handler reads the
@@ -168,6 +170,24 @@ export function VarianceExplainerPanel() {
   }, [run]);
 
   if (!ivId) {
+    // Phase B7 — when an active company IS set but no IV drilled down,
+    // show a 3-card P&L margin snapshot (Gross / Net / OpEx) instead
+    // of the bare instruction. Falls back to the original instruction
+    // when no company is active.
+    if (activeCompanyCode) {
+      return (
+        <div className="font-mono text-xs flex flex-col gap-2">
+          <CompanySnapshot companyCode={activeCompanyCode} />
+          <div className="text-[10px] text-gray-700 leading-snug pt-1 border-t border-gray-800/40">
+            <span className="text-gray-600">
+              AI Variance Explainer — narrates what's driving an indicator + 3
+              actionable recommendations. Click any HeatMap cell, then{" "}
+              <span className="text-[#FFB800]">Explain →</span>.
+            </span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="text-gray-700 font-mono text-xs leading-relaxed">
         Pick a HeatMap cell, then click <span className="text-[#FFB800]">Explain →</span>
