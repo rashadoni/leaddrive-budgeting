@@ -53,12 +53,20 @@ function makeInput(
 function fakeResponse(
   text: string,
   stopReason: "end_turn" | "max_tokens" = "end_turn",
+  model?: string,
 ) {
-  return {
+  const out: {
+    content: { type: string; text: string }[]
+    stop_reason: string
+    usage: { input_tokens: number; output_tokens: number }
+    model?: string
+  } = {
     content: [{ type: "text", text }],
     stop_reason: stopReason,
     usage: { input_tokens: 200, output_tokens: 80 },
   }
+  if (model !== undefined) out.model = model
+  return out
 }
 
 function installFakeClient(response: unknown) {
@@ -227,6 +235,38 @@ describe("runExplainer — happy path", () => {
     installFakeClient(fakeResponse(json))
     const out = await runExplainer(makeInput())
     expect(out.topDrivers).toHaveLength(5)
+  })
+
+  // Turn 38 sub-turn 9 — composer test for modelName + promptVersion
+  // (compliance audit attestation). Without these the audit row's
+  // modelName/promptVersion fields would silently default and the
+  // sub-turn-8 fix would be undetectable.
+  it("composer: forwards Anthropic SDK model echo into out.modelName", async () => {
+    const json = JSON.stringify({
+      narrative: "ok",
+      recommendations: ["a"],
+      confidence: 0.5,
+      topDrivers: [],
+    })
+    installFakeClient(fakeResponse(json, "end_turn", "claude-sonnet-4-5-20250929"))
+    const out = await runExplainer(makeInput())
+    expect(out.modelName).toBe("claude-sonnet-4-5-20250929")
+    expect(out.promptVersion).toBe("v1")
+  })
+
+  it("composer: falls back to request-time AI_MODEL constant when SDK omits model field", async () => {
+    const json = JSON.stringify({
+      narrative: "ok",
+      recommendations: ["a"],
+      confidence: 0.5,
+      topDrivers: [],
+    })
+    // fakeResponse without 3rd arg → no model field on response envelope.
+    installFakeClient(fakeResponse(json))
+    const out = await runExplainer(makeInput())
+    // AI_MODEL is mocked to "mock-model" at top of this test file.
+    expect(out.modelName).toBe("mock-model")
+    expect(out.promptVersion).toBe("v1")
   })
 })
 
