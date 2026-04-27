@@ -45,7 +45,8 @@ type Props = {
 const PANEL_ID = 2;
 
 export function HeatMap({ period }: Props) {
-  const setCompany = useTerminalStore((s) => s.setCompany);
+  // User-driven HeatMap row/cell clicks → selectCompany (tracks LRU recent).
+  const setCompany = useTerminalStore((s) => s.selectCompany);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const setActiveIv = useTerminalStore((s) => s.setActiveIndicatorValue);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);

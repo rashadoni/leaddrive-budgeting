@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Bell, Star } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 
 const PANEL_ID = 1;
@@ -24,7 +25,8 @@ type Props = {
 
 export function CompanyTree({ companies, loading, onSelect }: Props) {
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
-  const storeSetCompany = useTerminalStore((s) => s.setCompany);
+  // User-driven row clicks → selectCompany (tracks LRU recent).
+  const storeSetCompany = useTerminalStore((s) => s.selectCompany);
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
@@ -203,7 +205,13 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           aria-label="Filter company tree"
         />
       </div>
-      {loading ? (
+      {watchlistTab === 'alerted' && alertedCompanyCodes === null ? (
+        // Architect Round-1 closure (sub-4 💡): distinguished loading
+        // state for ALERTED tab during the 1-2 sec window before HeatMap
+        // matrix publishes alertedCompanyCodes (was: empty Set → looked
+        // like "no matches").
+        <span className="text-gray-600 px-1 py-2">Loading alerts…</span>
+      ) : loading ? (
         <span className="text-gray-700 px-1 py-2">Loading…</span>
       ) : isEmpty ? (
         <span className="text-gray-700 px-1 py-2">
@@ -330,10 +338,28 @@ function WatchlistTabs(props: {
   recentCount: number;
   alertedCount: number | null;
 }) {
-  const tabs: Array<{ key: WatchlistTabKey; label: string; badge: number | null }> = [
+  // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
+  // icons for cross-platform parity (Linux/Windows often miss color
+  // emoji fonts, rendering ★🔔 as monochrome boxes).
+  const tabs: Array<{
+    key: WatchlistTabKey;
+    label: string;
+    icon?: React.ReactNode;
+    badge: number | null;
+  }> = [
     { key: 'all', label: 'ALL', badge: null },
-    { key: 'starred', label: '★', badge: props.starredCount || null },
-    { key: 'alerted', label: '🔔', badge: props.alertedCount },
+    {
+      key: 'starred',
+      label: '',
+      icon: <Star size={11} />,
+      badge: props.starredCount || null,
+    },
+    {
+      key: 'alerted',
+      label: '',
+      icon: <Bell size={11} />,
+      badge: props.alertedCount,
+    },
     { key: 'recent', label: 'RECENT', badge: props.recentCount || null },
   ];
   return (
@@ -350,6 +376,13 @@ function WatchlistTabs(props: {
             type="button"
             role="tab"
             aria-selected={isActive}
+            aria-label={
+              t.key === 'starred'
+                ? 'Starred companies'
+                : t.key === 'alerted'
+                  ? 'Alerted companies'
+                  : undefined
+            }
             onClick={() => props.onSelect(t.key)}
             className={`px-1.5 py-0.5 rounded border transition-colors flex items-center gap-1 ${
               isActive
@@ -357,7 +390,8 @@ function WatchlistTabs(props: {
                 : 'border-gray-800 text-gray-500 hover:text-gray-300 hover:border-gray-700'
             }`}
           >
-            <span>{t.label}</span>
+            {t.icon}
+            {t.label && <span>{t.label}</span>}
             {t.badge !== null && t.badge > 0 && (
               <span className="text-[9px] tabular-nums opacity-75">
                 {t.badge}

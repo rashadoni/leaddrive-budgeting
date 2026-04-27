@@ -32,6 +32,7 @@ function useActions() {
     setWatchlistTab: s.setWatchlistTab,
     toggleStarredCompany: s.toggleStarredCompany,
     setCompany: s.setCompany,
+    selectCompany: s.selectCompany,
     setAlertedCompanyCodes: s.setAlertedCompanyCodes,
     clearState: s.clearState,
   }));
@@ -88,23 +89,34 @@ describe('terminalStore watchlist (Phase B4)', () => {
     expect(window.localStorage.getItem(STARRED_KEY)).toBe('["ATL-DBZ"]');
   });
 
-  it('setCompany pushes to LRU recent (most-recent-first, dedupe, capped)', () => {
+  it('selectCompany pushes to LRU recent (most-recent-first, dedupe, capped)', () => {
     const { result } = renderHook(() => useActions());
     act(() => {
-      result.current.setCompany('A');
-      result.current.setCompany('B');
-      result.current.setCompany('C');
-      result.current.setCompany('A'); // dedupe: A moves to front
+      result.current.selectCompany('A');
+      result.current.selectCompany('B');
+      result.current.selectCompany('C');
+      result.current.selectCompany('A'); // dedupe: A moves to front
     });
     expect(getTerminalSnapshot().recentCompanyCodes).toEqual(['A', 'C', 'B']);
     expect(window.localStorage.getItem(RECENT_KEY)).toBe('["A","C","B"]');
+  });
+
+  it('setCompany (no-track variant) does NOT push to recent (architect Round-1 ⚠️ closure)', () => {
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setCompany('PROGRAMMATIC');
+    });
+    // active changed but recent stays empty
+    expect(getTerminalSnapshot().activeCompanyCode).toBe('PROGRAMMATIC');
+    expect(getTerminalSnapshot().recentCompanyCodes).toEqual([]);
+    expect(window.localStorage.getItem(RECENT_KEY)).toBeNull();
   });
 
   it(`recent stack capped at RECENT_LIMIT (${RECENT_LIMIT})`, () => {
     const { result } = renderHook(() => useActions());
     act(() => {
       for (let i = 0; i < RECENT_LIMIT + 5; i++) {
-        result.current.setCompany(`C${i}`);
+        result.current.selectCompany(`C${i}`);
       }
     });
     const recent = getTerminalSnapshot().recentCompanyCodes;
@@ -165,7 +177,7 @@ describe('terminalStore watchlist (Phase B4)', () => {
     act(() => {
       result.current.setWatchlistTab('starred');
       result.current.toggleStarredCompany('AAC-MAIN');
-      result.current.setCompany('R1');
+      result.current.selectCompany('R1');
       result.current.setAlertedCompanyCodes(new Set(['X']));
       result.current.clearState();
     });
@@ -181,8 +193,8 @@ describe('terminalStore watchlist (Phase B4)', () => {
   it('REGRESSION (Round-1 ⚠️ closure): clearState ALSO clears LS recent key (no resurface on reload)', () => {
     const { result } = renderHook(() => useActions());
     act(() => {
-      result.current.setCompany('R1');
-      result.current.setCompany('R2');
+      result.current.selectCompany('R1');
+      result.current.selectCompany('R2');
     });
     expect(window.localStorage.getItem(RECENT_KEY)).toBe('["R2","R1"]');
     act(() => {

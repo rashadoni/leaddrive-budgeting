@@ -20,7 +20,8 @@ export function CommandBar() {
 
   const activeCompany = useTerminalStore((s) => s.activeCompanyCode);
   const alertsCount = useTerminalStore((s) => s.alertsCount);
-  const setCompany = useTerminalStore((s) => s.setCompany);
+  // User-typed CO/CMP verbs are user-driven → selectCompany (tracks LRU recent).
+  const setCompany = useTerminalStore((s) => s.selectCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue);
 

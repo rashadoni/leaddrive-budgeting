@@ -70,7 +70,20 @@ export const RECENT_LIMIT = 10;
 
 export interface TerminalActions {
   setActivePanel: (id: number) => void;
+  /**
+   * Set the active company WITHOUT tracking it in the LRU recent stack.
+   * Use for programmatic dispatch (e.g. URL hydration, scenario auto-
+   * switch, future Compare-panel `lhs/rhs` toggling that shouldn't
+   * pollute the user's recent list with every flip).
+   */
   setCompany: (code: string) => void;
+  /**
+   * User-driven company selection — sets active AND pushes to recent.
+   * Use from row clicks, CMP/CO command-bar verbs, RelatedFunctionsMenu,
+   * any "user explicitly chose this company" path. Phase B4 split from
+   * setCompany so programmatic callers don't pollute recent.
+   */
+  selectCompany: (code: string) => void;
   setActiveIndicatorValue: (id: string | null) => void;
   setSearchForPanel: (panelId: number, query: string) => void;
   clearSearchForPanel: (panelId: number) => void;
@@ -207,7 +220,14 @@ const setGlobalState = (patch: Partial<TerminalState>): void => {
 const actions: TerminalActions = {
   setActivePanel: (id) => setGlobalState({ activePanelId: id }),
   setCompany: (code) => {
-    // Push to LRU recent stack — most-recent-first, dedupe, cap.
+    // No-track variant — sets active without LRU side-effect. Use for
+    // programmatic dispatch (URL hydration, panel-switch hooks, future
+    // Compare-panel lhs/rhs toggling).
+    setGlobalState({ activeCompanyCode: code });
+  },
+  selectCompany: (code) => {
+    // User-driven variant — sets active AND pushes to LRU recent stack
+    // (most-recent-first, dedupe, capped at RECENT_LIMIT).
     const prev = globalState.recentCompanyCodes;
     const filtered = prev.filter((c) => c !== code);
     const next = [code, ...filtered].slice(0, RECENT_LIMIT);
