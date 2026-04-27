@@ -28,10 +28,10 @@ Single source of truth for open `🔄` items across substantive turns.
 
 > **For the next Claude session.** Read this BEFORE declaring TurnGoal. Overrides default "pick from OPEN" flow.
 
-### State at session-end (2026-04-27 ~20:30 local)
+### State at session-end (2026-04-27 ~21:00 local)
 
 - **Demo:** Friday 2026-05-01 (3 days + ~3h away). State: 🟢 fully ready.
-- **Latest commit:** `519d0b2` (Risk Terminal verb-strip cleanup — hide stub ALT/SCN/BRF labels, add "type in command bar ↑" lead-in)
+- **Latest commit:** `24f566d` (HeatMap tooltips swap native title → Radix Tooltip — instant rich popovers, fixes Mac Sequoia hover-not-appearing complaint)
 - **Working tree:** clean
 - **Tests:** 928/928 vitest, tsc clean, `npm run build` warning-free, `npm run demo:check` 15/15 ✓ "DEMO GO"
 
