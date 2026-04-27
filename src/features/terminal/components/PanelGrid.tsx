@@ -16,6 +16,7 @@ import { IndicatorDetail } from './IndicatorDetail';
 import { VarianceExplainerPanel } from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
 import { AuditModal } from './AuditModal';
+import { AuditTicker } from './AuditTicker';
 import {
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
@@ -214,15 +215,19 @@ export function PanelGrid() {
   }
 
   return (
-    <div className="flex-1 bg-gray-800 relative">
+    <div className="flex-1 bg-gray-800 relative flex flex-col">
       <LayoutMenu
         readCurrent={readSizesFromGroups}
         applyLayout={applySizesToGroups}
       />
       {/* Phase 7.F (Turn 13) — opens on `terminal:open-audit` event
-          fired by CommandBar's `AUD GO` dispatch. Renders nothing when
-          closed; Escape / backdrop click / Close button all dismiss. */}
+          fired by CommandBar's `AUD GO` dispatch + AuditTicker click.
+          Renders nothing when closed; Escape / backdrop / Close all dismiss. */}
       <AuditModal />
+      {/* Phase A3 (Bloomberg uplift plan) — Group wrapped in flex-1 + min-h-0
+          so AuditTicker can claim a fixed bottom strip without breaking the
+          resizable-panels height calculation. */}
+      <div className="flex-1 min-h-0">
       <Group
         groupRef={outerRef}
         orientation="vertical"
@@ -288,6 +293,8 @@ export function PanelGrid() {
           </Group>
         </Panel>
       </Group>
+      </div>
+      <AuditTicker />
     </div>
   );
 }

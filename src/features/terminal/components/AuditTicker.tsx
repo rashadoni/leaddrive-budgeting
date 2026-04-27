@@ -1,0 +1,141 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+/**
+ * Bloomberg-style bottom event ticker — 1-line strip surfacing the most
+ * recent ~5 audit events. Click anywhere on the strip fires
+ * `terminal:open-audit` (the same event CommandBar's `AUD GO` dispatch
+ * fires) to open the full AuditModal.
+ *
+ * Reads `/api/audit/events?limit=5`. Fetched once on mount; live updates
+ * land in Phase B1 (SSE infra). Shows `—` while loading and "no events"
+ * if the org has no audit history yet.
+ *
+ * Manager+ role gating happens server-side; viewers get a 403, which
+ * surfaces as the "no events" state (intentionally silent — non-managers
+ * shouldn't see "permission denied" pollution in the always-visible
+ * status bar).
+ */
+
+interface AuditEvent {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+const TICKER_LIMIT = 5;
+
+export function AuditTicker() {
+  const [events, setEvents] = useState<AuditEvent[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/audit/events?limit=${TICKER_LIMIT}`)
+      .then((r) => (r.ok ? r.json() : { events: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        setEvents(Array.isArray(data.events) ? data.events : []);
+      })
+      .catch(() => {
+        if (!cancelled) setEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleClick = () => {
+    window.dispatchEvent(new Event("terminal:open-audit"));
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      className="flex items-center gap-3 bg-[#050814] border-t border-gray-800 px-4 py-1.5 text-[10px] font-mono text-gray-400 cursor-pointer hover:text-gray-200 transition-colors overflow-x-auto whitespace-nowrap shrink-0"
+      aria-label="Recent audit events — click to open full audit log"
+      title="Click for full audit log"
+    >
+      <span className="text-gray-600 shrink-0">EVENTS</span>
+      {events === null && <span className="text-gray-700">loading…</span>}
+      {events !== null && events.length === 0 && (
+        <span className="text-gray-700">no events yet</span>
+      )}
+      {events !== null && events.length > 0 && (
+        <div className="flex items-center gap-3 min-w-0">
+          {events.map((e, i) => (
+            <span key={e.id} className="flex items-center gap-1.5 shrink-0">
+              {i > 0 && <span className="text-gray-700">·</span>}
+              <span className="text-gray-500">{formatTime(e.createdAt)}</span>
+              <span className="text-[#00D4AA]">{e.action}</span>
+              <span className="text-gray-300">{compactSummary(e)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/**
+ * Per-action one-liner — derived shape from the AuditFeed `summarizeMetadata`
+ * helper but tighter (skips IDs, keeps human-readable codes/labels). Kept
+ * local to avoid pulling AuditFeed's table-row dependencies into the strip.
+ */
+function compactSummary(e: AuditEvent): string {
+  const m = e.metadata;
+  switch (e.action) {
+    case "ai_variance_explainer_run": {
+      // Most-frequent action in current production data; uses indicatorCode
+      // (per src/lib/audit/log.ts:136) — falling through to entityType
+      // literal "IndicatorValue" produces unreadable strip noise.
+      const code = stringField(m, "indicatorCode");
+      const lang = stringField(m, "language");
+      if (code) return lang ? `${code} · ${lang.toUpperCase()}` : code;
+      break;
+    }
+    case "import_staging_apply": {
+      const year = numberField(m, "year");
+      return year !== null ? String(year) : e.entityType;
+    }
+    case "budget_plan_create":
+    case "budget_plan_approve": {
+      const name = stringField(m, "planName");
+      return name ?? e.entityType;
+    }
+  }
+  // Generic fallbacks — companyCode wins if present (most actions emit it),
+  // else `code` (indicator overrides), else entityType literal as last resort.
+  const code = stringField(m, "companyCode") ?? stringField(m, "code");
+  return code ?? e.entityType;
+}
+
+function stringField(m: Record<string, unknown>, key: string): string | null {
+  const v = m[key];
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+function numberField(m: Record<string, unknown>, key: string): number | null {
+  const v = m[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
