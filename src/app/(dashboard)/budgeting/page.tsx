@@ -3218,6 +3218,12 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
     }
     return Math.min(Math.round((actual / planned) * 100), 200)
   }
+  // NOTE: thresholds assume planned > 0. Behavior is undefined for the
+  // (planned < 0, isExpense=true) edge case (e.g. budget for net refund −100,
+  // actual −50 = under-recovery — execPct=150 reads "overrun" red here, but
+  // semantically it's "less recovery than expected"). Not hit on AZMADE today;
+  // revisit Phase 7.G if a customer chart of accounts produces negative-cost
+  // rows.
   const execColor = (pct: number, isExpense: boolean) => {
     if (isExpense) return pct > 110 ? "bg-red-500" : pct > 90 ? "bg-amber-500" : "bg-emerald-500"
     return pct >= 90 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500"
