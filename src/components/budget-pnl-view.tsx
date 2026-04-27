@@ -9,7 +9,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area, ComposedChart, Line, Cell,
 } from "recharts"
-import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info } from "lucide-react"
+import { isDaCode } from "@/lib/budgeting/da-codes"
+import { isLumpyMonthly, smoothLumpyMonthly } from "@/lib/budgeting/margin-smoothing"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -64,6 +66,13 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const { data: session } = useSession()
   const orgId = (session?.user as any)?.organizationId
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  // Turn 38 sub-turn 4: Margin Trends chart toggle. "management" smooths
+  // year-end accounting lumps (FX losses, interest, tax, D&A true-ups
+  // booked 100% in one month per AZ SAP practice) by spreading them
+  // across 12 months for a meaningful monthly margin trend. YTD totals
+  // unchanged. Default = "management" because the demo audience is
+  // finance professionals; "bookkeeping" available for verbatim view.
+  const [marginViewMode, setMarginViewMode] = useState<"management" | "bookkeeping">("management")
 
   // Turn 30: per-daughter-company drilldown. queryKey includes companyId
   // so switching companies re-fetches; URL query string carries it through.
@@ -135,9 +144,24 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       code.startsWith("761") || code.startsWith("771") || code.startsWith("801")
   })
 
+  // Turn 38 sub-turn 4: D&A is buried inside OpEx (721-11) and COGS
+  // (703-11). True EBITDA must add D&A back. Without this the chart
+  // line labelled "EBITDA Margin" was actually EBIT — a label finance
+  // audience spots in 30 seconds.
+  const daRowsInOpex = opexRows.filter((r: PnlRow) => isDaCode(r.accountCode))
+  const daRowsInCogs = (rows as PnlRow[]).filter(
+    (r) => r.accountType === "cogs" && r.total !== 0 && isDaCode(r.accountCode),
+  )
+  const totalDaInOpex = Math.abs(daRowsInOpex.reduce((s: number, r: PnlRow) => s + r.total, 0))
+  const totalDaInCogs = Math.abs(daRowsInCogs.reduce((s: number, r: PnlRow) => s + r.total, 0))
+  const totalDa = totalDaInOpex + totalDaInCogs
+
   const totalOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + r.total, 0))
   const totalBelowEbitda = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + r.total, 0))
-  const ebitda = grossProfit - totalOpex
+  // EBIT = Rev − COGS − OpEx (D&A still inside both)
+  const ebit = grossProfit - totalOpex
+  // EBITDA = EBIT + D&A (correct definition)
+  const ebitda = ebit + totalDa
   const ebitdaMargin = totalRevenue > 0 ? (ebitda / totalRevenue) * 100 : 0
   const netProfit = grossProfit - totalOpex - totalBelowEbitda
   const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
@@ -156,17 +180,63 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     return { month: m, Revenue: rev, COGS: cogs, "Gross Profit": gp }
   })
 
-  // Margin trend data (gross + EBITDA + net)
+  // Margin trend data (gross + EBITDA + net) — Turn 38 sub-turn 4:
+  // - Correct EBITDA: add D&A back (D&A in OpEx 721-11 + D&A in COGS 703-11).
+  // - Management view (default): smooth lumpy non-operating + D&A PER ROW
+  //   (NOT on the aggregated sum — at consolidated view multiple rows
+  //   wash each other out so the agg ratio drops below threshold even
+  //   when one constituent row IS a Dec lump). YTD totals preserved.
+  const rowMonthlyAbs = (r: PnlRow): number[] =>
+    Array.from({ length: 12 }, (_, i) => Math.abs(r.monthly[i + 1] || 0))
+  const sumPerRowSmoothed = (rs: PnlRow[]): number[] => {
+    const out = Array(12).fill(0)
+    for (const r of rs) {
+      const raw = rowMonthlyAbs(r)
+      const series = marginViewMode === "management" ? smoothLumpyMonthly(raw) : raw
+      for (let i = 0; i < 12; i += 1) out[i] += series[i]
+    }
+    return out
+  }
+  const opexNonDaRows = opexRows.filter((r: PnlRow) => !isDaCode(r.accountCode))
+  // For lumpiness detection (does the toggle make sense to show?), check
+  // raw rows individually — even one lumpy row in the section justifies
+  // exposing the toggle.
+  const anyLumpyRow = (rs: PnlRow[]): boolean =>
+    rs.some((r) => isLumpyMonthly(rowMonthlyAbs(r)))
+
+  const monthlyOpexNonDa = sumPerRowSmoothed(opexNonDaRows)
+  const monthlyDaInOpex = sumPerRowSmoothed(daRowsInOpex)
+  const monthlyDaInCogs = sumPerRowSmoothed(daRowsInCogs)
+  const monthlyBelowEbitda = sumPerRowSmoothed(belowEbitdaRows)
+  // Raw versions (no smoothing) for the cogsRaw bridge below.
+  const monthlyDaInCogsRaw = Array.from({ length: 12 }, (_, i) =>
+    daRowsInCogs.reduce((s, r) => s + Math.abs(r.monthly[i + 1] || 0), 0),
+  )
+
   const marginData = MONTHS.map((m, i) => {
     const rev = monthlyRevenue?.[i + 1] || 0
-    const cogs = Math.abs(monthlyCogs?.[i + 1] || 0)
-    const monthOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
-    const monthBelowEbitda = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + (r.monthly[i + 1] || 0), 0))
-    const gm = rev > 0 ? ((rev - cogs) / rev) * 100 : 0
-    const em = rev > 0 ? ((rev - cogs - monthOpex) / rev) * 100 : 0
-    const nm = rev > 0 ? ((rev - cogs - monthOpex - monthBelowEbitda) / rev) * 100 : 0
-    return { month: m, "Gross Margin": Math.round(gm * 10) / 10, "EBITDA Margin": Math.round(em * 10) / 10, "Net Margin": Math.round(nm * 10) / 10 }
+    const cogsRaw = Math.abs(monthlyCogs?.[i + 1] || 0)
+    const cogsExclDa = cogsRaw - monthlyDaInCogsRaw[i] + monthlyDaInCogs[i]
+    const opexExclDa = monthlyOpexNonDa[i]
+    const monthDa = monthlyDaInCogs[i] + monthlyDaInOpex[i]
+    const monthBelowEbitda = monthlyBelowEbitda[i]
+    const gm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i]) / rev) * 100 : 0
+    // True EBITDA: revenue − COGS_exclDA − OpEx_exclDA = current EBIT + D&A
+    const em = rev > 0 ? ((rev - cogsExclDa - opexExclDa) / rev) * 100 : 0
+    const nm = rev > 0 ? ((rev - cogsExclDa - monthlyDaInCogs[i] - opexExclDa - monthlyDaInOpex[i] - monthBelowEbitda) / rev) * 100 : 0
+    return {
+      month: m,
+      "Gross Margin": Math.round(gm * 10) / 10,
+      "EBITDA Margin": Math.round(em * 10) / 10,
+      "Net Margin": Math.round(nm * 10) / 10,
+      _monthDa: monthDa, // exposed for tooltip if needed
+    }
   })
+
+  // Detect whether the underlying data has lumps — surfaces the toggle's
+  // value to the user (no point showing toggle if everything's already smooth).
+  const hasLumpyNonOp = anyLumpyRow(belowEbitdaRows) ||
+    anyLumpyRow(daRowsInOpex) || anyLumpyRow(daRowsInCogs)
 
   // Waterfall data
   const waterfallData = [
@@ -341,9 +411,38 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           </ResponsiveContainer>
         </div>
 
-        {/* Margin Trends — now with both Gross and Net */}
+        {/* Margin Trends — Turn 38 sub-turn 4: management/bookkeeping toggle */}
         <div className="rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Margin Trends</h3>
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <h3 className="text-sm font-semibold text-foreground">Margin Trends</h3>
+            {hasLumpyNonOp && (
+              <div
+                role="radiogroup"
+                aria-label="Margin view mode"
+                className="flex items-center gap-0 bg-muted/60 rounded-md p-0.5 text-[10px] font-semibold"
+                title="Toggle between bookkeeping (raw monthly) and management (smoothed) views"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={marginViewMode === "management"}
+                  onClick={() => setMarginViewMode("management")}
+                  className={`px-2 py-1 rounded ${marginViewMode === "management" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Management
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={marginViewMode === "bookkeeping"}
+                  onClick={() => setMarginViewMode("bookkeeping")}
+                  className={`px-2 py-1 rounded ${marginViewMode === "bookkeeping" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Bookkeeping
+                </button>
+              </div>
+            )}
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={marginData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -356,6 +455,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <Area type="monotone" dataKey="Net Margin" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.1} strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
+          {hasLumpyNonOp && (
+            <div className="mt-2 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+              <Info className="h-3 w-3 mt-0.5 shrink-0" />
+              <span>
+                {marginViewMode === "management"
+                  ? "Management view: year-end accruals (FX losses, interest, tax, D&A) spread evenly across 12 months. YTD totals unchanged."
+                  : "Bookkeeping view: raw monthly bookings as recorded — single-month spikes reflect AZ SAP year-end true-ups."}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
