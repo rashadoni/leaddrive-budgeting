@@ -24,6 +24,11 @@ export interface HeatMapCell {
    *  WHY to finance users (formula failure, missing data, out-of-range
    *  plausibility clamp). Passed through verbatim from the matrix API. */
   error?: { code: string; reason: string };
+  /** Phase B2/B3 — 12-slot trailing-month sparkline series. `null` slots
+   *  signal evaluation gaps (Bloomberg "no-tick" semantic). Optional —
+   *  IVs predating B2 batch run have no sparkline; UI renders neutral
+   *  baseline in that case. */
+  sparkline?: (number | null)[];
 }
 
 /** `${companyId}:${indicatorId}` — deterministic, safe for Map keys. */

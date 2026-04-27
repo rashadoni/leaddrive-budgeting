@@ -12,6 +12,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useTerminalStore } from "../store/terminalStore";
 
 interface IndicatorMeta {
@@ -44,6 +45,8 @@ interface IndicatorValueDetail {
     aggregates?: Record<string, unknown>;
     error?: { code: string; reason: string };
   } | null;
+  /** Phase B2/B3 — 12-slot trailing-month series; nulls = evaluation gap. */
+  sparkline: (number | null)[] | null;
   indicator: IndicatorMeta;
   company: CompanyMeta;
 }
@@ -159,6 +162,37 @@ export function IndicatorDetail() {
 
       {hint && (
         <p className="text-gray-300 leading-snug">{hint}</p>
+      )}
+
+      {/* Phase B3 — trailing 12-month sparkline. Renders empty baseline
+          when sparkline is null/empty (IV pre-dates B2 batch run); user
+          sees the column slot reserved without misleading "0" data. */}
+      {detail.sparkline && detail.sparkline.length > 0 && (
+        <div className="flex items-center gap-2 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+            12mo trend
+          </span>
+          <Sparkline
+            data={detail.sparkline}
+            status={status as SparklineStatus}
+            ariaLabel={`${ind.code} 12-month trend for ${co.code}`}
+          />
+          {(() => {
+            const numeric = detail.sparkline.filter(
+              (v): v is number => typeof v === "number",
+            );
+            if (numeric.length < 2) return null;
+            const first = numeric[0];
+            const last = numeric[numeric.length - 1];
+            const delta = last - first;
+            const sign = delta > 0 ? "+" : "";
+            return (
+              <span className="text-[10px] text-gray-500 ml-auto tabular-nums">
+                {numeric.length}/12 pts · Δ {sign}{formatValue(delta)}
+              </span>
+            );
+          })()}
+        </div>
       )}
 
       {/* Phase 7.E (Turn 16) — services thresholds calibrated against

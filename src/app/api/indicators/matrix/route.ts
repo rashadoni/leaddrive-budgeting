@@ -156,6 +156,10 @@ export async function GET(request: NextRequest) {
               // into the cell payload so a gray cell's tooltip can explain
               // the reason without a second API round-trip.
               inputs: true,
+              // Phase B2 — 12-slot trailing-month sparkline series.
+              // Populated by `scripts/compute-sparklines.ts`. Phase B3
+              // renders this in HeatMap cell tooltip + IndicatorDetail.
+              sparkline: true,
             },
           });
 
@@ -176,12 +180,20 @@ export async function GET(request: NextRequest) {
     const cells = values.map((v: ValueShape) => {
       const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
       const error = inputs?.error;
+      // sparkline column is `Json`; runtime shape is `(number | null)[]`
+      // (per `prisma/schema.prisma:1059`). Treat anything non-array as
+      // missing — IVs that pre-date Phase B2 have raw JSON `null` here.
+      const sparklineRaw = v.sparkline;
+      const sparkline = Array.isArray(sparklineRaw)
+        ? (sparklineRaw as (number | null)[])
+        : null;
       return {
         indicatorValueId: v.id,
         companyId: v.companyId,
         indicatorId: v.indicatorId,
         value: v.value,
         status: v.status as IndicatorStatus,
+        ...(sparkline ? { sparkline } : {}),
         ...(error ? { error } : {}),
       };
     });

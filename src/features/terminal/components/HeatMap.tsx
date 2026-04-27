@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useEventStream } from '@/lib/events/use-event-stream';
+import { Sparkline, type SparklineStatus } from './Sparkline';
 
 type CompanyRow = {
   id: string;
@@ -381,10 +382,28 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
       ? 'text-[#00D4AA]'
       : 'text-muted-foreground';
 
+  // Phase B3 — flash animation on B1 SSE-driven update. We compare the
+  // current value against the previously-rendered one; on change, briefly
+  // toggle a CSS class that pulses opacity. Useful both for indicator-
+  // value-changed signals AND organic refetches (matrix re-fired by other
+  // SSE events). 600ms decay matches Bloomberg's quote-tick highlighting.
+  const prevValueRef = useRef<number | undefined>(undefined);
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (cell && prevValueRef.current !== undefined && prevValueRef.current !== cell.value) {
+      setFlashing(true);
+      const t = setTimeout(() => setFlashing(false), 600);
+      return () => clearTimeout(t);
+    }
+    if (cell) prevValueRef.current = cell.value;
+  }, [cell?.value]);
+
   return (
     <td
       onClick={onCellClick}
-      className="cursor-pointer border-b border-gray-800/40 p-0"
+      className={`cursor-pointer border-b border-gray-800/40 p-0 transition-shadow ${
+        flashing ? 'shadow-[inset_0_0_0_2px_#00D4AA]' : ''
+      }`}
       style={{
         backgroundColor: color,
         opacity: status === 'missing' ? 0.25 : 0.85,
@@ -415,6 +434,18 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 {' @ '}
                 <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
               </div>
+              {cell.sparkline && cell.sparkline.length > 0 && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <Sparkline
+                    data={cell.sparkline}
+                    status={status as SparklineStatus}
+                    ariaLabel={`${ind.code} 12-month trend for ${co.code}`}
+                  />
+                  <span className="text-[9px] text-muted-foreground/70">
+                    12mo
+                  </span>
+                </div>
+              )}
               {cell.error && (
                 <div className="text-[11px] text-[#FF4757] mt-1">
                   ⚠ {cell.error.code}: {cell.error.reason}
