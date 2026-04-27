@@ -17,6 +17,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  BUILT_IN_PRESETS,
   validateLayoutName,
   validateLayoutSizes,
   type LayoutSizes,
@@ -195,8 +196,37 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
             <div className="text-[#FF4757] text-[10px]">{error}</div>
           )}
 
+          {/* Phase B8 — built-in presets section. Sits between Save form
+              and user-saved list so preset application doesn't require
+              scrolling past saved names. */}
+          <div className="border-t border-gray-800/60 pt-1">
+            <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
+              Presets
+            </div>
+            <ul className="space-y-0.5">
+              {Object.entries(BUILT_IN_PRESETS).map(([key, preset]) => (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyLayout(preset.sizes);
+                      setOpen(false);
+                    }}
+                    className="w-full text-left text-gray-300 hover:text-[#00D4AA] hover:bg-gray-800/40 rounded px-1 py-0.5"
+                    title={`Apply ${preset.label} preset`}
+                  >
+                    {preset.label}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Saved layouts list */}
           <div className="border-t border-gray-800/60 pt-1">
+            <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
+              Saved
+            </div>
             {loading && layouts.length === 0 ? (
               <div className="text-gray-700">Loading…</div>
             ) : layouts.length === 0 ? (

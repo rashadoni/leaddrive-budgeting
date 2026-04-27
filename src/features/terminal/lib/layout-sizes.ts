@@ -37,6 +37,43 @@ export const DEFAULT_LAYOUT_SIZES: LayoutSizes = {
   bottom: { [PANEL_IDS.panel3]: 50, [PANEL_IDS.panel4]: 50 },
 }
 
+/**
+ * Phase B8 — built-in layout presets shown in LayoutMenu's dropdown
+ * alongside user-saved layouts. Each preset is a complete LayoutSizes
+ * shape (validated through `validateLayoutSizes` on apply).
+ *
+ * - `default`: 2×2 balanced grid (matches DEFAULT_LAYOUT_SIZES).
+ * - `bloomberg`: HeatMap-dominant — minimal CompanyTree, large HeatMap,
+ *   thin IndicatorDetail, thin VarianceExplainer. Mirrors Bloomberg's
+ *   "data is king, panels are tabs" feel where the matrix gets the
+ *   bulk of the screen.
+ * - `analyst`: drill-down-heavy — equal CompanyTree+HeatMap top, fat
+ *   IndicatorDetail bottom (60%) for formula + variables inspection,
+ *   thin VarianceExplainer (40%) for narrative.
+ */
+export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSizes }> = {
+  default: {
+    label: "Default 2×2",
+    sizes: DEFAULT_LAYOUT_SIZES,
+  },
+  bloomberg: {
+    label: "Bloomberg",
+    sizes: {
+      outer: { [PANEL_IDS.outerTop]: 70, [PANEL_IDS.outerBottom]: 30 },
+      top: { [PANEL_IDS.panel1]: 20, [PANEL_IDS.panel2]: 80 },
+      bottom: { [PANEL_IDS.panel3]: 45, [PANEL_IDS.panel4]: 55 },
+    },
+  },
+  analyst: {
+    label: "Analyst Drill-down",
+    sizes: {
+      outer: { [PANEL_IDS.outerTop]: 40, [PANEL_IDS.outerBottom]: 60 },
+      top: { [PANEL_IDS.panel1]: 50, [PANEL_IDS.panel2]: 50 },
+      bottom: { [PANEL_IDS.panel3]: 60, [PANEL_IDS.panel4]: 40 },
+    },
+  },
+}
+
 const SUM_TOLERANCE = 0.5 // pct points; lib emits floats
 
 function validatePctMap(

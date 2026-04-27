@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
+  BUILT_IN_PRESETS,
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
   validateLayoutSizes,
@@ -130,5 +131,55 @@ describe("validateLayoutName", () => {
     expect(validateLayoutName(null)).toBeNull()
     expect(validateLayoutName(undefined)).toBeNull()
     expect(validateLayoutName({})).toBeNull()
+  })
+})
+
+describe("BUILT_IN_PRESETS (Phase B8)", () => {
+  it("has at least 3 presets (default / bloomberg / analyst)", () => {
+    expect(Object.keys(BUILT_IN_PRESETS).length).toBeGreaterThanOrEqual(3)
+    expect(BUILT_IN_PRESETS.default).toBeTruthy()
+    expect(BUILT_IN_PRESETS.bloomberg).toBeTruthy()
+    expect(BUILT_IN_PRESETS.analyst).toBeTruthy()
+  })
+
+  it("every preset's sizes pass validateLayoutSizes", () => {
+    for (const [key, preset] of Object.entries(BUILT_IN_PRESETS)) {
+      const validated = validateLayoutSizes(preset.sizes)
+      expect(validated, `preset "${key}" failed validation`).not.toBeNull()
+    }
+  })
+
+  it("every preset has a non-empty label", () => {
+    for (const preset of Object.values(BUILT_IN_PRESETS)) {
+      expect(preset.label.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  it("'default' preset matches DEFAULT_LAYOUT_SIZES", () => {
+    expect(BUILT_IN_PRESETS.default.sizes).toEqual(DEFAULT_LAYOUT_SIZES)
+  })
+
+  it("'bloomberg' preset is heatmap-dominant (Panel 2 width >= 70%)", () => {
+    expect(
+      BUILT_IN_PRESETS.bloomberg.sizes.top[PANEL_IDS.panel2],
+    ).toBeGreaterThanOrEqual(70)
+  })
+
+  it("'analyst' preset has fat IndicatorDetail bottom (Panel 3 >= 55%)", () => {
+    expect(
+      BUILT_IN_PRESETS.analyst.sizes.bottom[PANEL_IDS.panel3],
+    ).toBeGreaterThanOrEqual(55)
+  })
+
+  it("all presets keep total = 100% per group", () => {
+    for (const [key, preset] of Object.entries(BUILT_IN_PRESETS)) {
+      for (const group of ["outer", "top", "bottom"] as const) {
+        const sum = Object.values(preset.sizes[group]).reduce(
+          (a, b) => a + b,
+          0,
+        )
+        expect(sum, `preset ${key} group ${group} sum`).toBeCloseTo(100, 0)
+      }
+    }
   })
 })
