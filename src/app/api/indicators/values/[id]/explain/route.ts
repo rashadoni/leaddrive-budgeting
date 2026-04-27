@@ -237,6 +237,8 @@ export async function POST(
           tokensIn: output.usage?.inputTokens ?? 0,
           tokensOut: output.usage?.outputTokens ?? 0,
           durationMs,
+          modelName: output.modelName,
+          promptVersion: output.promptVersion,
         },
       },
       context: buildAuditContext({

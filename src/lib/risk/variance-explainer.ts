@@ -89,6 +89,14 @@ export interface VarianceExplainerOutput {
   topDrivers: string[]
   /** Tokens consumed — for budget tracking. Optional. */
   usage?: { inputTokens: number; outputTokens: number }
+  /** Model id from Anthropic SDK response (e.g. "claude-sonnet-4-5-20250929").
+   *  Captured for compliance / audit attestation: future model swap must
+   *  not silently erase the trail of what answered the CFO's question. */
+  modelName: string
+  /** Hand-bumped version of the SYSTEM_PROMPT + buildExplainerPrompt
+   *  template. Bump when prompt semantics change so audit shows which
+   *  variant produced a given narrative. v1 = initial Phase 7.E ship. */
+  promptVersion: string
 }
 
 const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
@@ -96,6 +104,10 @@ const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
   ru: "Russian (Русский)",
   az: "Azerbaijani (Azərbaycan dili)",
 }
+
+/** Bump on any change to SYSTEM_PROMPT or buildExplainerPrompt structure.
+ *  v1 = initial Phase 7.E ship (Turn 38 sub-turn 9 backfill). */
+export const EXPLAINER_PROMPT_VERSION = "v1"
 
 const SYSTEM_PROMPT = `You are a senior financial analyst producing variance explanations for a CFO at an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
@@ -184,7 +196,15 @@ Return STRICT JSON in this exact shape (no markdown):
  * the caller can return 502 (LLM produced garbage) rather than 200 with
  * unsafe content.
  */
-function validateAndShape(parsed: unknown): VarianceExplainerOutput {
+/** Validation output excludes the LLM-response-side fields (modelName,
+ *  promptVersion, usage) which `runExplainer` fills in after the SDK
+ *  call returns. The split keeps validateAndShape pure (only depends on
+ *  the parsed JSON body, not the SDK response envelope). */
+type ValidatedExplainerBody = Omit<
+  VarianceExplainerOutput,
+  "modelName" | "promptVersion" | "usage"
+>
+function validateAndShape(parsed: unknown): ValidatedExplainerBody {
   if (parsed == null || typeof parsed !== "object") {
     throw new Error("Variance explainer: response is not a JSON object")
   }
@@ -298,12 +318,20 @@ export async function runExplainer(
     )
   }
 
-  const shaped = validateAndShape(parsed)
+  const shapedBody = validateAndShape(parsed)
+  // Compose the final output with response-side metadata. Anthropic SDK
+  // echoes the resolved model id (preserves alias resolution, e.g.
+  // "claude-sonnet-4-5-20250929" not just "sonnet").
+  const out: VarianceExplainerOutput = {
+    ...shapedBody,
+    modelName: response.model ?? model,
+    promptVersion: EXPLAINER_PROMPT_VERSION,
+  }
   if (response.usage) {
-    shaped.usage = {
+    out.usage = {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
     }
   }
-  return shaped
+  return out
 }

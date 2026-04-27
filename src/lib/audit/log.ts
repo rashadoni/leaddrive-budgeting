@@ -141,6 +141,13 @@ export type AuditEventInput =
         tokensIn: number;
         tokensOut: number;
         durationMs: number;
+        /** Resolved Anthropic model id (e.g. "claude-sonnet-4-5-20250929").
+         *  Without this, a future model swap silently erases the audit
+         *  trail of which engine answered the CFO. */
+        modelName: string;
+        /** Hand-bumped EXPLAINER_PROMPT_VERSION; identifies the prompt
+         *  template variant that produced the narrative. v1 = initial. */
+        promptVersion: string;
       };
     };
 
