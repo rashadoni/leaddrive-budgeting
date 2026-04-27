@@ -1743,9 +1743,9 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
 
                 {renderGroupedSection(t("sectionExpenses"), expenseLines, totExpPlanned, "hintSectionExpenses", "expense")}
 
-                {/* Operating Profit row */}
+                {/* Operating Profit row = Revenue − COGS − OpEx */}
                 {(expenseLines.length > 0 || revenueLines.length > 0 || cogsLines.length > 0) && (() => {
-                  const opActual = totRevActual - totExpActual
+                  const opActual = totRevActual - totCOGSActual - totExpActual
                   const opNeg = opActual < 0
                   return (
                   <tr className={`border-y-2 ${opNeg ? "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/10" : "border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10"}`}>
@@ -1753,7 +1753,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                       <div className="font-bold text-sm">{t("operatingProfit")}</div>
                       <div className="text-[10px] text-muted-foreground/60 font-normal">{t("hintOperatingProfit")}</div>
                     </td>
-                    <td className="px-2 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={totRevPlanned - totExpPlanned} duration={500} formatter={fmt} /></td>
+                    <td className="px-2 py-2 text-right font-mono text-sm font-bold"><AnimatedNumber value={totRevPlanned - totCOGSPlanned - totExpPlanned} duration={500} formatter={fmt} /></td>
                     <td className={`px-2 py-2 text-right font-mono text-sm font-bold ${opNeg ? "text-red-600 dark:text-red-400" : "text-[#065f46] dark:text-[#6ee7b7]"}`}><AnimatedNumber value={opActual} duration={500} formatter={fmt} /></td>
                     <td colSpan={2} />
                   </tr>
@@ -3204,8 +3204,20 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
   const opProfitPlanned = grossProfitPlanned - totalIndirectPlanned
   const opProfitActual = grossProfitActual - totalIndirectActual
 
-  // Helpers for execution bars
-  const execPct = (actual: number, planned: number) => planned > 0 ? Math.min(Math.round((actual / planned) * 100), 200) : 0
+  // Helpers for execution bars.
+  // Negative-planned (loss expected, e.g. EBITDA at -2M): favorable when
+  // actual is closer to zero / less negative. 100% = on plan; >100% = better
+  // (smaller loss); <100% = worse (bigger loss). Without this branch a worse
+  // loss (-2.7M vs -2M plan) showed 135% via Math.abs ratio, falsely reading
+  // as "over-achieved."
+  const execPct = (actual: number, planned: number): number => {
+    if (planned === 0) return 0
+    if (planned < 0) {
+      const favorable = actual - planned
+      return Math.max(0, Math.min(Math.round(100 + (favorable / Math.abs(planned)) * 100), 200))
+    }
+    return Math.min(Math.round((actual / planned) * 100), 200)
+  }
   const execColor = (pct: number, isExpense: boolean) => {
     if (isExpense) return pct > 110 ? "bg-red-500" : pct > 90 ? "bg-amber-500" : "bg-emerald-500"
     return pct >= 90 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-500" : "bg-red-500"
@@ -3213,7 +3225,7 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
 
   // Mini execution bar component
   const ExecBar = ({ actual, planned, isExpense = false, className = "" }: { actual: number; planned: number; isExpense?: boolean; className?: string }) => {
-    const pct = execPct(Math.abs(actual), Math.abs(planned))
+    const pct = execPct(actual, planned)
     const color = execColor(pct, isExpense)
     return (
       <div className={`flex items-center gap-2 ${className}`}>
@@ -3230,7 +3242,7 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
     title: string; planned: number; actual: number; iconEl: React.ReactNode; accentClass: string; isExpense?: boolean; marginPct?: string; conditionalBg?: string; valueColorClass?: string
   }) => {
     const variance = isExpense ? planned - actual : actual - planned
-    const pct = execPct(Math.abs(actual), Math.abs(planned))
+    const pct = execPct(actual, planned)
     const bgClass = conditionalBg || "bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800"
     const valColor = valueColorClass || "text-blue-700 dark:text-blue-300"
     return (
@@ -3265,7 +3277,7 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
     const secPlanned = isCalculated ? calcPlanned : rows.reduce((s, r) => s + r.planned, 0)
     const secActual = isCalculated ? calcActual : rows.reduce((s, r) => s + r.actual, 0)
     const secVariance = isExpense ? secPlanned - secActual : secActual - secPlanned
-    const secExecPct = execPct(Math.abs(secActual), Math.abs(secPlanned))
+    const secExecPct = execPct(secActual, secPlanned)
     const sectionTotal = secPlanned // for % of total per row
 
     return (
