@@ -205,20 +205,23 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(screen.getByRole('alert').textContent).toMatch(/GO/);
   });
 
-  it('CMP partial: focuses LEFT target + shows partial warning chip', () => {
+  it('CMP GO (Phase B5): focuses LEFT, fires terminal:open-compare with {lhs, rhs}', () => {
     render(<CommandBar />);
+    let received: { lhs?: string; rhs?: string } | null = null;
+    const handler = (e: Event) => {
+      received = (e as CustomEvent<{ lhs: string; rhs: string }>).detail;
+    };
+    window.addEventListener('terminal:open-compare', handler);
     submit('AAC LLS CMP GO');
+    window.removeEventListener('terminal:open-compare', handler);
+
     const snap = getTerminalSnapshot();
-    // CommandBar.tsx sets the LEFT target via setCompany and routes to
-    // panelForCommand which is panel 2 for cmp.
+    // LEFT target becomes activeCompanyCode (so other panels reflect it)
     expect(snap.activeCompanyCode).toBe('AAC');
-    expect(snap.activePanelId).toBe(2);
-    // The partial-dispatch contract surfaces a warning, not a green chip,
-    // so the user sees that RIGHT was parsed but the side-by-side panel
-    // is pending.
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent).toMatch(/CMP partial/);
-    expect(alert.textContent).toMatch(/LLS/);
+    // No partial alert anymore — fully wired to ComparePanel modal
+    expect(screen.queryByRole('alert')).toBeNull();
+    // Event fired with both targets
+    expect(received).toEqual({ lhs: 'AAC', rhs: 'LLS' });
   });
 
   it('clears the input + resets feedback on every successful submit', () => {

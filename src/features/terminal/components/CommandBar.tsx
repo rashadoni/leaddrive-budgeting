@@ -116,15 +116,18 @@ export function CommandBar() {
         setCompany(cmd.companyCode);
         break;
       case 'cmp':
-        // CMP parses both targets but the side-by-side panel is a
-        // separate item in CARRYOVER. Today we focus the LEFT and tell
-        // the user explicitly that the RIGHT was parsed but is pending.
+        // Phase B5 — fully wired: CMP <LHS> <RHS> GO opens the
+        // ComparePanel modal which fetches the matrix once and renders
+        // a 2-column side-by-side indicator view with row-level deltas.
+        // The active CO is set to LHS (so other panels reflect the
+        // primary company); RHS is forwarded via the event detail.
         setCompany(cmd.left);
-        setActivePanel(panelForCommand(cmd) ?? 2);
-        return {
-          message: `CO ${cmd.left} →`,
-          partial: `CMP partial — right=${cmd.right} parsed, side-by-side panel pending`,
-        };
+        window.dispatchEvent(
+          new CustomEvent('terminal:open-compare', {
+            detail: { lhs: cmd.left, rhs: cmd.right },
+          }),
+        );
+        return { message: `CMP ${cmd.left} vs ${cmd.right} →` };
       case 'aud':
         // Phase 7.F (Turn 13) — audit log opens as a modal overlay.
         // The destination is NOT a panel; we fire a custom event the
