@@ -31,7 +31,7 @@ Single source of truth for open `🔄` items across substantive turns.
 ### State at session-end (2026-04-27 ~21:00 local)
 
 - **Demo:** Friday 2026-05-01 (3 days + ~3h away). State: 🟢 fully ready.
-- **Latest commit:** `24f566d` (HeatMap tooltips swap native title → Radix Tooltip — instant rich popovers, fixes Mac Sequoia hover-not-appearing complaint)
+- **Latest commit:** `0b4d239` (HeatMap tooltip polish: dropped `direction: higher_better` jargon → "higher = better"; bumped delayDuration 150→300ms to prevent flash on sweep)
 - **Working tree:** clean
 - **Tests:** 928/928 vitest, tsc clean, `npm run build` warning-free, `npm run demo:check` 15/15 ✓ "DEMO GO"
 
@@ -133,6 +133,8 @@ Reviewed both `519d0b2` (verb-strip) + `3b59fd5` (this handoff). Verdict: 5 of 7
 
 | status | opened | turns-open | owner | blocker | item |
 |---|---|---|---|---|---|
+| 🔄 | 2026-04-27 | 0 | developer | **Turn-38-sub15 architect Round-1 ⚠️:** Counter-bump policy ambiguity: sub-15 came AFTER sub-14 was claimed final-close. "Final" undefinable when user keeps shipping new prompts. Patch `memory/feedback_carryover_enforcement.md`: explicit "new user-prompt theme = new Turn N+1 automatically". ~10 min | Counter-bump policy ambiguity (sub-15-after-final-sub-14) |
+| 🔄 | 2026-04-27 | 0 | developer | **Turn-38-sub15 architect Round-1 ⚠️:** 676 HeatMap cells still use native `title=` (Mac Sequoia hover-flaky bug uncured for cells). Headers fixed in `24f566d` to Radix; cells deferred for perf reason (676 portals). UX inconsistency: header tooltips snappy, cell tooltips slow. Migration option: lazy-mount Radix Portal per-cell on first pointerenter. ~30-45 min if pre-demo | HeatMap cell tooltips — Mac Sequoia bug uncured for cells |
 | 🔄 | 2026-04-27 | 0 | developer | **Turn-38-sub13 architect Round-1 ⚠️:** Counter-bump policy codified in `memory/feedback_carryover_enforcement.md` (sub-turn-13 §) but NOT enforced by any hook. Hook check #5 still fires per sub-turn (mtime check). Bumps themselves are now memory-only protocol; through 2-3 rapid Turns the counters could stick at "8 turns open" perpetually. Add hook check that detects "final sub-turn close" (heuristic: `## CLOSED` got a new row this turn) and asserts bumps happened, OR add explicit reminder TODO at Turn 38 final preamble. ~30 min hook OR ~5 min reminder | Counter-bump policy enforcement gap (memory-only, no hook) |
 | 🔄 | 2026-04-27 | 2 | developer | **[deferred to post-demo per Turn-38-sub9]** Turn-38-sub8 architect Round-1 ⚠️: Audit-emission pattern inconsistency — 3 patterns for same primitive across 3 routes: `companies/[id]/route.ts:117` `await logAuditEvent` + `auditStale: true` in response on failure; `staging/[id]/apply/route.ts:399-400` `await`s; new `/explain/route.ts:224` is fire-and-forget `void ... .catch(console.error)`. Pick one or document the contract jsdoc. ~15 min jsdoc OR ~1h refactor | Audit-emission await-vs-fire-and-forget pattern inconsistency (3 routes, 3 styles) |
 | 🔄 | 2026-04-27 | 2 | developer | **[deferred to post-demo per Turn-38-sub9]** Turn-38-sub8 architect Round-1 ⚠️: `session.userId \|\| null` at `/explain/route.ts:226` + `companies/[id]/route.ts:119` — `requireRole('manager+')` guarantees userId is set; the `\|\| null` fallback is dead. Either remove or jsdoc the defensive intent. ~5 min | Dead `\|\| null` fallback on session.userId in audit emission call sites |
