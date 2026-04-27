@@ -19,20 +19,25 @@ export default function TerminalPage() {
       {/* 2. Multi-pane Workspace (Center) */}
       <PanelGrid />
 
-      {/* 3. Function Bar (Bottom) */}
+      {/* 3. Function Bar (Bottom) — legend of typeable verbs in command bar above.
+          Stub verbs (ALT/SCN/BRF) hidden post-Turn-38-sub14 audit: they parsed
+          correctly but had no real panel content; advertising them as
+          "clickable" with cursor-pointer was misleading customers. Keep
+          only the verbs that actually do something visible.
+       */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#050814] border-t border-gray-800 font-mono text-xs text-gray-500">
-        <div className="flex space-x-6">
-          <span className="hover:text-white cursor-pointer transition-colors">HOLD</span>
-          <span className="hover:text-white cursor-pointer transition-colors">GRP</span>
-          <span className="hover:text-white cursor-pointer transition-colors">CO</span>
-          <span className="hover:text-white cursor-pointer transition-colors">IND</span>
-          <span className="hover:text-[#FFB800] cursor-pointer transition-colors">ALT</span>
-          <span className="hover:text-white cursor-pointer transition-colors">SCN</span>
-          <span className="hover:text-[#00D4AA] cursor-pointer transition-colors">BRF</span>
+        <div className="flex items-center space-x-6">
+          <span className="text-gray-600">type in command bar ↑</span>
+          <span>HOLD</span>
+          <span>GRP</span>
+          <span>CO</span>
+          <span>IND</span>
+          <span>CMP</span>
+          <span>AUD</span>
         </div>
         <div className="flex space-x-4">
-          <span className="hover:text-white cursor-pointer transition-colors">[?]</span>
-          <span className="hover:text-white cursor-pointer transition-colors">[theme]</span>
+          <span>[?]</span>
+          <span>[theme]</span>
         </div>
       </div>
     </div>
