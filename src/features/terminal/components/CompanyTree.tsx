@@ -83,21 +83,33 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
    * code is NOT in the set but whose children include matches stay
    * rendered as a header for context (same shape as search filtering).
    */
-  const watchlistCodeFilter = useMemo<Set<string> | null>(() => {
+  // Use the source set/array directly — wrapping in `new Set(...)` would
+  // re-allocate on every render-trigger and defeat the source's reference
+  // equality (architect Round-1 ⚠️ closure). For 'recent' the array is
+  // small (≤RECENT_LIMIT=10) so a per-call `.includes()` is fine; for
+  // 'starred'/'alerted' the source is already a Set with O(1) `.has()`.
+  const watchlistCodeFilter = useMemo<
+    ReadonlySet<string> | readonly string[] | null
+  >(() => {
     if (watchlistTab === 'all') return null;
-    if (watchlistTab === 'starred') return new Set(starredCompanyCodes);
-    if (watchlistTab === 'alerted')
-      return alertedCompanyCodes ? new Set(alertedCompanyCodes) : new Set();
-    if (watchlistTab === 'recent') return new Set(recentCompanyCodes);
+    if (watchlistTab === 'starred') return starredCompanyCodes;
+    if (watchlistTab === 'alerted') return alertedCompanyCodes ?? new Set();
+    if (watchlistTab === 'recent') return recentCompanyCodes;
     return null;
   }, [watchlistTab, starredCompanyCodes, alertedCompanyCodes, recentCompanyCodes]);
 
-  const passesWatchlist = (c: CompanyNode): boolean => {
-    if (!watchlistCodeFilter) return true;
-    return watchlistCodeFilter.has(c.code);
-  };
-
   const filteredRoots = useMemo<CompanyNode[]>(() => {
+    const passesWatchlist = (c: CompanyNode): boolean => {
+      const filter = watchlistCodeFilter;
+      if (!filter) return true;
+      // Discriminate on shape — Set has .has, array uses .includes.
+      // TypeScript's `Array.isArray` doesn't narrow `readonly string[]`
+      // out of the union here, so we hint via `as`.
+      if (Array.isArray(filter)) {
+        return (filter as readonly string[]).includes(c.code);
+      }
+      return (filter as ReadonlySet<string>).has(c.code);
+    };
     const q = search.trim().toUpperCase();
     const allRoots = companies.filter((c) => !c.parentCompanyId);
     const result: CompanyNode[] = [];
@@ -359,9 +371,20 @@ function WatchlistTabs(props: {
 }
 
 /**
- * Star toggle button — sits at the start of each company row. Click
- * stops propagation so the row's click-to-select doesn't fire. Filled
- * star = starred; outlined = not.
+ * Star toggle button — sits at the start of each company row, BOTH at
+ * sub-group (level=1 container) AND operational (level=2 leaf) rows.
+ *
+ * Sub-group starring is intentional unit-pin semantic (architect
+ * Round-1 jsdoc closure): starring AAC pins the sub-group itself for
+ * the STARRED tab filter. It does NOT auto-pin children. If a customer
+ * wants to track all of AAC, they can star both the AAC sub-group AND
+ * AAC-MAIN (or any specific operational under it). The STARRED filter
+ * passes a row through if its OWN code is in the starred set; sub-
+ * group children appear when their parent passes (header) OR when
+ * their own code is starred.
+ *
+ * Click stops propagation so the row's click-to-select doesn't fire.
+ * Filled star = starred; outlined = not.
  */
 function StarToggle(props: {
   code: string;

@@ -250,9 +250,11 @@ const actions: TerminalActions = {
   // `compactMode` + watchlist preferences (tab/starred) deliberately NOT
   // reset by clearState — they're user-preferences, not session state;
   // survive logout / org-switch. `recentCompanyCodes` IS reset because
-  // the LRU is per-org (a code from azmade is meaningless in a new org).
-  // `alertedCompanyCodes` IS reset (it's published per-fetch by HeatMap).
-  clearState: () =>
+  // the LRU is per-org (a code from azmade is meaningless in a new org)
+  // — we ALSO clear the LS key (architect Round-1 ⚠️ closure: prior
+  // implementation reset memory but left LS, so reload re-hydrated the
+  // stale recent list). `alertedCompanyCodes` IS reset (per-fetch).
+  clearState: () => {
     setGlobalState({
       activeCompanyCode: null,
       activeScenarioCode: null,
@@ -262,7 +264,15 @@ const actions: TerminalActions = {
       alertsCount: null,
       recentCompanyCodes: [],
       alertedCompanyCodes: null,
-    }),
+    });
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(RECENT_LS_KEY);
+      } catch {
+        // private-mode / quota — non-fatal.
+      }
+    }
+  },
 };
 
 /**

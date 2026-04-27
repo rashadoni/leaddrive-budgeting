@@ -177,4 +177,22 @@ describe('terminalStore watchlist (Phase B4)', () => {
     expect(snap.recentCompanyCodes).toEqual([]);
     expect(snap.alertedCompanyCodes).toBeNull();
   });
+
+  it('REGRESSION (Round-1 ⚠️ closure): clearState ALSO clears LS recent key (no resurface on reload)', () => {
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setCompany('R1');
+      result.current.setCompany('R2');
+    });
+    expect(window.localStorage.getItem(RECENT_KEY)).toBe('["R2","R1"]');
+    act(() => {
+      result.current.clearState();
+    });
+    expect(window.localStorage.getItem(RECENT_KEY)).toBeNull();
+    // Re-hydrate as if reload — recent should stay empty
+    act(() => {
+      hydrateWatchlistFromStorage();
+    });
+    expect(getTerminalSnapshot().recentCompanyCodes).toEqual([]);
+  });
 });
