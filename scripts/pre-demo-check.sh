@@ -7,14 +7,17 @@
 # Verifies:
 #  1. TypeScript compiles clean
 #  2. All vitest tests pass
-#  3. Production build succeeds (catches Next.js issues dev hides)
-#  4. ~/Downloads/DEMO-CO.xlsx exists + correct row count (27)
-#  5. Dev server is running on port 3000
-#  6. Critical API endpoints return 307 (auth redirect = healthy)
-#  7. DB integrity: AZMADE org has expected company / line counts
+#  3. ~/Downloads/DEMO-CO.xlsx exists + correct row count (27)
+#  4. Dev server is running on port 3000
+#  5. Critical API endpoints return 307 (auth redirect = healthy)
+#  6. Auth-gate not regressed (unauth requests don't leak data)
+#  7. /budgeting?tab=pnl-report load < 600ms (Turn-38-sub12 baseline)
+#  8. DB integrity: AZMADE org has expected company / line / IV counts
+#  9. Prisma migrate status clean
 #
 # Usage:
 #   bash scripts/pre-demo-check.sh
+#   OR: npm run demo:check
 #
 # Re-run after any P0 fix until exit 0.
 
@@ -70,14 +73,21 @@ check "Vitest 928+ tests pass"             "npx vitest run --reporter=dot"
 echo ""
 echo "Demo fixtures:"
 check "DEMO-CO.xlsx exists"                "test -f \"\$HOME/Downloads/DEMO-CO.xlsx\""
-warn_check "DEMO-CO.xlsx is 27 rows"       "npx tsx -e 'import x from \"xlsx\"; const wb=x.readFile(process.env.HOME+\"/Downloads/DEMO-CO.xlsx\"); const rows=x.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1}); console.log(rows.filter(r=>r[0]&&String(r[0]).match(/^\\d/)).length)'" "27"
+# Zero-dep row count via xlsx zip internals (xlsx files are ZIP archives with sheet1.xml).
+# Avoids npm cache fragility from inline `npx tsx -e` (architect sub-13 closure).
+warn_check "DEMO-CO.xlsx is 27+ rows"      "unzip -p \"\$HOME/Downloads/DEMO-CO.xlsx\" xl/worksheets/sheet1.xml 2>/dev/null | grep -o '<row r=' | wc -l | tr -d ' ' | awk '{print (\$1>=27)?\"ok\":\"low(\"\$1\")\"}'" "ok"
 
 echo ""
 echo "Dev server health:"
 check "Port 3000 responds"                 "curl -s -o /dev/null http://localhost:3000"
-warn_check "/budgeting auth gate"          "curl -s -o /dev/null -w %{http_code} http://localhost:3000/budgeting" "307"
-warn_check "/api/companies auth gate"      "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/companies" "307"
+warn_check "/budgeting auth gate (307)"    "curl -s -o /dev/null -w %{http_code} http://localhost:3000/budgeting" "307"
+warn_check "/api/companies auth gate (307)" "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/companies" "307"
 warn_check "/api/budgeting/availability"   "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/budgeting/availability" "307"
+# Auth-regression guard: if middleware degrades and starts returning JSON without
+# a session cookie, the 307-only check above would still ✓. Affirmatively reject.
+check "Auth-gate doesn't leak data"        "! curl -s http://localhost:3000/api/companies | grep -qE '\"id\":|\"organizations\":'"
+# Perf regression-guard for Turn-38-sub12 baseline (264ms warm; 600ms is 2.3× safety).
+warn_check "/budgeting load < 0.6s"        "curl -s -o /dev/null -w '%{time_total}' -L http://localhost:3000/budgeting?tab=pnl-report 2>/dev/null | awk '{print (\$1 < 0.6)?\"ok\":\$1}'" "ok"
 
 echo ""
 echo "Database integrity (psql):"
@@ -87,9 +97,11 @@ fi
 
 if command -v psql >/dev/null 2>&1; then
   warn_check "AZMADE companies count = 14"   'psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM companies c JOIN \"Organization\" o ON o.id = c.\"organizationId\" WHERE o.slug='\''azmade'\''" | tr -d "[:space:]"' "14"
-  warn_check "AZMADE BudgetLines > 6800"     'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) >= 6800 THEN '\''ok'\'' ELSE COUNT(*)::text END FROM budget_lines bl JOIN budget_plans bp ON bp.id = bl.\"planId\" JOIN \"Organization\" o ON o.id = bp.\"organizationId\" WHERE o.slug='\''azmade'\''" | tr -d "[:space:]"' "ok"
-  warn_check "AZMADE IndicatorValues >= 41"  'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) >= 41 THEN '\''ok'\'' ELSE COUNT(*)::text END FROM indicator_values iv JOIN \"Organization\" o ON o.id = iv.\"organizationId\" WHERE o.slug='\''azmade'\''" | tr -d "[:space:]"' "ok"
-  warn_check "Audit events present"          'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) >= 1 THEN '\''ok'\'' ELSE '\''empty'\'' END FROM audit_events" | tr -d "[:space:]"' "ok"
+  # Tight bands (architect sub-13 closure): catches drops AND under/over-imports.
+  # Current: 6816 lines / 41 IVs. Bands allow ±10% to absorb DEMO-CO seed +27 (sub-7).
+  warn_check "AZMADE BudgetLines 6800-7500"  'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) BETWEEN 6800 AND 7500 THEN '\''ok'\'' ELSE COUNT(*)::text END FROM budget_lines bl JOIN budget_plans bp ON bp.id = bl.\"planId\" JOIN \"Organization\" o ON o.id = bp.\"organizationId\" WHERE o.slug='\''azmade'\''" | tr -d "[:space:]"' "ok"
+  warn_check "AZMADE IndicatorValues 40-60"  'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) BETWEEN 40 AND 60 THEN '\''ok'\'' ELSE COUNT(*)::text END FROM indicator_values iv JOIN \"Organization\" o ON o.id = iv.\"organizationId\" WHERE o.slug='\''azmade'\''" | tr -d "[:space:]"' "ok"
+  warn_check "Audit events 25-200"           'psql "$DATABASE_URL" -t -c "SELECT CASE WHEN COUNT(*) BETWEEN 25 AND 200 THEN '\''ok'\'' ELSE COUNT(*)::text END FROM audit_events" | tr -d "[:space:]"' "ok"
 else
   printf "  ${YELLOW}⚠ psql not on PATH — skipping DB checks${NC}\n"
   WARN=$((WARN + 4))

@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "demo:check": "bash scripts/pre-demo-check.sh"
   },
   "keywords": [],
   "author": "",
