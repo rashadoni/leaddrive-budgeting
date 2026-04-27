@@ -296,6 +296,20 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 - ❌ Don't disclose customer names from other deals
 - ❌ Don't show terminal logs / SQL / migrations to customer
 
+## Performance baseline (Turn 38 sub-12, Apr 27)
+
+Measured via Chrome DevTools `performance.timing` API on dev server (LaunchAgent Next 16). All pages **< 600ms total load**:
+
+| Page | pageTotal | DCL | slowest API |
+|---|---|---|---|
+| `/budgeting?tab=pnl-report` | 504ms | 386ms | /lines = 520ms / 4.3 MB (prefetch, non-blocking) |
+| `/budgeting/terminal` | 228ms | 173ms | /matrix = 67ms / 21 KB |
+| `/budgeting/audit` | 335ms | 281ms | /audit/events?limit=50 = 67ms / 15 KB |
+
+Demo will feel snappy. /availability cache hits in 1-3ms (Turn-33 Cache-Control: max-age=30 working). /matrix fires twice on terminal (Turn-32 IND fire-and-forget; non-blocking, both <100ms).
+
+If demo machine is slower than dev box, expect 2-3× these timings — still well under 2 sec everywhere.
+
 ## Day-5 dry-run rubric
 
 Mark each step pass/fail:
