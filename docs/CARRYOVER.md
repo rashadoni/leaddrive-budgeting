@@ -24,6 +24,47 @@ Single source of truth for open `🔄` items across substantive turns.
 
 ---
 
+## ⚡ SESSION HANDOFF
+
+> **For the next Claude session.** Read this BEFORE declaring TurnGoal. Overrides default "pick from OPEN" flow.
+
+### State at session-end (2026-04-27 ~20:30 local)
+
+- **Demo:** Friday 2026-05-01 (3 days + ~3h away). State: 🟢 fully ready.
+- **Latest commit:** `519d0b2` (Risk Terminal verb-strip cleanup — hide stub ALT/SCN/BRF labels, add "type in command bar ↑" lead-in)
+- **Working tree:** clean
+- **Tests:** 928/928 vitest, tsc clean, `npm run build` warning-free, `npm run demo:check` 15/15 ✓ "DEMO GO"
+
+### What just happened (Turn 38, 39 commits over the day)
+
+User noticed Risk Terminal's bottom verb strip (HOLD GRP CO IND ALT SCN BRF) **looked clickable** but wasn't, AND 3 of 7 verbs (ALT/SCN/BRF) were stubs — would mislead customer on demo. Asked "исправь". Shipped `519d0b2`: dropped 3 stub labels, removed cursor-pointer affordance, added `type in command bar ↑` legend lead-in. Verbs still parse end-to-end via command-parser if typed (HOLD/GRP/CO/IND/CMP/AUD all work; ALT/SCN/BRF parse but stub UI per Phase 7.E backlog).
+
+Browser-verified strip now reads: `type in command bar ↑ HOLD GRP CO IND CMP AUD [?] [theme]`.
+
+### Architect Round-1 NOT YET INVOKED for `519d0b2`
+
+Sub-turn 14 commit landed but architect Round-1 review skipped due to user's question "как начать с новой сесси". **First action next session:** invoke architect for `519d0b2` review (RAW user message: "исправь"). Expected scope: scope + quality + completion audit on the verb-strip fix.
+
+### Highest-leverage next moves (post-architect)
+
+1. **Counter-bump policy enforcement gap** (sub-13 🔄) — codified in memory but no hook check. ~30 min hook OR ~5 min explicit reminder.
+2. **Final Turn 38 close = bump turns-open counters** across all OPEN rows (per sub-13 codified policy: bumps happen ONCE per Turn N at final close). Single sed pass.
+3. **3 sub-8 deferred 🔄** (audit-emission pattern, dead `|| null`, stale-tracker sweep) — all post-demo polish, ship after Friday demo.
+
+### Pre-demo gates still standing
+
+- Day-5 morning: `npm run demo:check` must show 15/15 ✓ "DEMO GO"
+- Day-5 morning: regenerate DEMO-CO via `npx tsx scripts/seed-demo-co.ts` (avoids Loom/live state drift)
+- Day-4 evening: record DEMO_LOOM_BACKUP per `docs/DEMO_LOOM_BACKUP.md` script (5:30 ± 30s target)
+
+### How to use this handoff
+
+1. Read it before TurnGoal.
+2. Pick highest-leverage item from "next moves" list OR continue user's prompt if they gave one.
+3. Delete this `## ⚡ SESSION HANDOFF` block (this entire section between `---` markers) once acted on, so handoffs don't accumulate.
+
+---
+
 ## OPEN
 
 **Last processed: 2026-04-27** (Turn 38 sub-turn 13 cont'd — closed 5 architect ⚠️ on pre-demo-check.sh inline (commit `110d46d`): docstring drift removed, fragile xlsx replaced with zero-dep `unzip+grep -o '<row r='`, auth-gate false-negative caught via affirmative `! grep '"id":'`, lax DB thresholds tightened to BETWEEN bands (BudgetLines 6800-7500, IVs 40-60, audit 25-200), perf regression-guard added (/budgeting < 0.6s vs sub-12 264ms baseline). Plus `npm run demo:check` alias. Re-run **15/15 ✓ "DEMO GO"** (was 13/13 + 2 new tighter checks). 1 new 🔄 added: counter-bump policy enforcement gap (memory-only, no hook). 928/928 vitest, tsc clean.
