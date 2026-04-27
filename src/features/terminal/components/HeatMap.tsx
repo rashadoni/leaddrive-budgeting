@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTerminalStore } from '../store/terminalStore';
 import {
   buildCellMap,
@@ -15,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useEventStream } from '@/lib/events/use-event-stream';
 
 type CompanyRow = {
   id: string;
@@ -63,26 +64,39 @@ export function HeatMap({ period }: Props) {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refetchMatrix = useCallback(() => {
     setLoading(true);
     setError(null);
     const qs = period ? `?period=${encodeURIComponent(period)}` : '';
-    fetch(`/api/indicators/matrix${qs}`)
+    return fetch(`/api/indicators/matrix${qs}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((json) => {
-        if (!cancelled) setData(json);
+        setData(json);
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || 'Failed to load');
+        setError(err.message || 'Failed to load');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       });
+  }, [period]);
+
+  useEffect(() => {
+    let cancelled = false;
+    refetchMatrix().then(() => {
+      if (cancelled) return;
+    });
     return () => {
       cancelled = true;
     };
-  }, [period]);
+  }, [refetchMatrix]);
+
+  // Phase B1 — refetch when SSE stream signals an indicator change.
+  useEventStream({
+    onIndicatorChanged: () => {
+      refetchMatrix();
+    },
+  });
 
   // `/`-search bridge: when CommandBar dispatches focus to the active panel
   // and panel 2 is active, focus our search box. Custom event keeps the

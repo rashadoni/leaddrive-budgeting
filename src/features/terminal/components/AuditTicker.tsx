@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTerminalStore } from "../store/terminalStore";
+import { useEventStream } from "@/lib/events/use-event-stream";
 
 /**
  * Bloomberg-style bottom event ticker — 1-line strip surfacing the most
@@ -34,21 +35,25 @@ export function AuditTicker() {
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const compactMode = useTerminalStore((s) => s.compactMode);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refetch = useCallback(() => {
     fetch(`/api/audit/events?limit=${TICKER_LIMIT}`)
       .then((r) => (r.ok ? r.json() : { events: [] }))
       .then((data) => {
-        if (cancelled) return;
         setEvents(Array.isArray(data.events) ? data.events : []);
       })
       .catch(() => {
-        if (!cancelled) setEvents([]);
+        setEvents((prev) => prev ?? []);
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  // Phase B1 — refetch when SSE stream signals a new audit event.
+  useEventStream({
+    onAuditChanged: refetch,
+  });
 
   const handleClick = () => {
     window.dispatchEvent(new Event("terminal:open-audit"));
