@@ -32,15 +32,17 @@
 > "This is AZMADE's main P&L. 13 companies — 5 sub-groups containing 8 operational op-cos. Q1 closed, April partial — typical April-end controller view. Future months stay plan-only — that's how live FP&A works against real-time accounting integration."
 
 **Show:**
-- KPI cards: Net Revenue 240.2M plan / Q1+Apr actual ~60.9M; COGS 187.9M / actual ~45.5M; Gross Profit; EBITDA; Net Profit
-- "Revenue vs COGS — Monthly" chart: Jan-Apr actual overlay on plan bars; May-Dec plan-only
-- Margin Trends: % bars per period — **note December cliff:** Net Margin drops to ~−30% in Dec because ZTP-MAIN's accountant books the full annual non-operating loss + extraordinary expenses (codes 731-01 + 761-01 ≈ 4M ₼) in December as one entry per AZ SAP practice; system reproduces xlsx 1:1 без сглаживания. Run `npx tsx scripts/audit-dec-lumps.ts` to show the evidence chain if customer asks.
-- P&L Waterfall: full Revenue → COGS → GP → OpEx → EBITDA → D&A/Tax → Net Profit cascade
+- KPI cards: Net Revenue 250.8M plan / Q1+Apr actual ~60.9M; COGS 187.9M / actual ~45.5M; Gross Profit 63.0M (25.1%); **EBITDA 25.0M (10.0%) — true EBITDA, D&A added back from OpEx 721-11 + COGS 703-11**; Net Profit 8.5M (3.4%).
+- "Revenue vs COGS — Monthly" chart: Jan-Apr actual overlay on plan bars; May-Dec plan-only.
+- Margin Trends chart with **Management/Bookkeeping toggle** (default Management, finance-grade view). Management view spreads year-end accrual lumps (FX losses, interest, extraordinary, tax codes 731/751/761/771/801) evenly across 12 months; YTD totals unchanged. Toggle to Bookkeeping if customer asks "where's the verbatim xlsx data" — chart cliffs to ~−30% Net Margin Dec showing ZTP-MAIN's annual non-op + extraordinary close (codes 731-01 + 761-01 ≈ 4M ₼ in one Dec entry per AZ SAP practice). Toggle back. Run `npx tsx scripts/audit-dec-lumps.ts` to surface the evidence trail if needed.
+- P&L Waterfall: full Revenue → COGS → GP → OpEx → EBITDA → D&A/Tax → Net Profit cascade.
+
+> 💡 **Finance-audience cue (Turn 38 sub-turns 4-5):** if asked "is your EBITDA correct" — yes; D&A is two-namespace in AZ SAP (703-11 in COGS + 721-11 in OpEx) and we add both back. Use the toggle to demonstrate: numbers in Management mode are management-reporting standard; Bookkeeping mode shows the raw xlsx (faithful 1:1 reproduction, no smoothing applied).
 
 **Click:** Company selector dropdown → select **AAC-MAIN**:
 
 **Say (pointing at Variance %):**
-> "AAC-MAIN — наш underperformer Q1. Revenue down ~16% vs plan, costs up 8-15%. Система мгновенно highlights это в Variance column. CFO видит проблему за секунды, не за часы."
+> "AAC-MAIN — наш underperformer Q1. Net Revenue 19.0M plan, COGS 15.8M = Gross Margin 17% (тонкий — для industrial типично 25-30%). EBITDA 1.5M. Revenue down ~16% vs plan, costs up 8-15%. Система мгновенно highlights это в Variance column. CFO видит проблему за секунды, не за часы."
 
 **Click:** dropdown → switch to **ATL-DBZ**:
 
