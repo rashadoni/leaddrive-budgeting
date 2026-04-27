@@ -11,7 +11,7 @@ import {
 } from "recharts"
 import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info } from "lucide-react"
 import { isDaCode } from "@/lib/budgeting/da-codes"
-import { isLumpyMonthly, smoothLumpyMonthly } from "@/lib/budgeting/margin-smoothing"
+import { isLumpyMonthly, sumPerRowSmoothed } from "@/lib/budgeting/margin-smoothing"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -168,9 +168,19 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
   // Derived actual equivalents — match the plan-side formulas so the
   // Actual column keeps meaning for computed rows (Gross Profit, EBITDA, Net).
+  // Turn 38 sub-turn 4 closure: actual D&A summed from actualByKey for
+  // 703-11 + 721-11 accounts so EBITDA actual matches the plan-side
+  // (true-EBITDA = EBIT + D&A) formula. Without this the KPI card showed
+  // EBIT on the actual side while plan showed true EBITDA — apples-to-
+  // oranges variance for finance reviewers.
+  const actualDaTotal = Object.entries(actualByKey).reduce((s, [key, value]) => {
+    const code = key.split("::")[0]
+    return s + (isDaCode(code) ? Math.abs(value) : 0)
+  }, 0)
   const actualGrossProfit = sectionActuals.revenue - sectionActuals.cogs
-  const actualEbitda = actualGrossProfit - sectionActuals.opex
-  const actualNetProfit = actualEbitda - sectionActuals.belowEbitda
+  const actualEbit = actualGrossProfit - sectionActuals.opex
+  const actualEbitda = actualEbit + actualDaTotal
+  const actualNetProfit = actualEbit - sectionActuals.belowEbitda
 
   // Chart data
   const chartData = MONTHS.map((m, i) => {
@@ -188,15 +198,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   //   when one constituent row IS a Dec lump). YTD totals preserved.
   const rowMonthlyAbs = (r: PnlRow): number[] =>
     Array.from({ length: 12 }, (_, i) => Math.abs(r.monthly[i + 1] || 0))
-  const sumPerRowSmoothed = (rs: PnlRow[]): number[] => {
-    const out = Array(12).fill(0)
-    for (const r of rs) {
-      const raw = rowMonthlyAbs(r)
-      const series = marginViewMode === "management" ? smoothLumpyMonthly(raw) : raw
-      for (let i = 0; i < 12; i += 1) out[i] += series[i]
-    }
-    return out
-  }
+  const sumRows = (rs: PnlRow[]): number[] =>
+    sumPerRowSmoothed(rs.map(rowMonthlyAbs), marginViewMode === "management")
   const opexNonDaRows = opexRows.filter((r: PnlRow) => !isDaCode(r.accountCode))
   // For lumpiness detection (does the toggle make sense to show?), check
   // raw rows individually — even one lumpy row in the section justifies
@@ -204,10 +207,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const anyLumpyRow = (rs: PnlRow[]): boolean =>
     rs.some((r) => isLumpyMonthly(rowMonthlyAbs(r)))
 
-  const monthlyOpexNonDa = sumPerRowSmoothed(opexNonDaRows)
-  const monthlyDaInOpex = sumPerRowSmoothed(daRowsInOpex)
-  const monthlyDaInCogs = sumPerRowSmoothed(daRowsInCogs)
-  const monthlyBelowEbitda = sumPerRowSmoothed(belowEbitdaRows)
+  const monthlyOpexNonDa = sumRows(opexNonDaRows)
+  const monthlyDaInOpex = sumRows(daRowsInOpex)
+  const monthlyDaInCogs = sumRows(daRowsInCogs)
+  const monthlyBelowEbitda = sumRows(belowEbitdaRows)
   // Raw versions (no smoothing) for the cogsRaw bridge below.
   const monthlyDaInCogsRaw = Array.from({ length: 12 }, (_, i) =>
     daRowsInCogs.reduce((s, r) => s + Math.abs(r.monthly[i + 1] || 0), 0),
@@ -460,7 +463,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <Info className="h-3 w-3 mt-0.5 shrink-0" />
               <span>
                 {marginViewMode === "management"
-                  ? "Management view: year-end accruals (FX losses, interest, tax, D&A) spread evenly across 12 months. YTD totals unchanged."
+                  ? "Management view: year-end accrual lumps (FX losses, interest, extraordinary, tax) booked as single-month entries are spread evenly across 12 months. YTD totals unchanged."
                   : "Bookkeeping view: raw monthly bookings as recorded — single-month spikes reflect AZ SAP year-end true-ups."}
               </span>
             </div>

@@ -43,3 +43,23 @@ export function smoothLumpyMonthly(monthly: number[]): number[] {
   const annual = monthly.reduce((s, v) => s + v, 0);
   return Array(12).fill(annual / 12);
 }
+
+/**
+ * Sum a list of 12-element monthly series with optional per-row
+ * smoothing. Each row is smoothed independently BEFORE being added to
+ * the aggregate, because aggregation washes out individual lumps when
+ * other smooth rows in the same set carry steady monthly values.
+ *
+ * Used by the Margin Trends chart: at consolidated views (e.g. all
+ * AZMADE companies) one company may have a December lump while seven
+ * others have flat monthlies — the aggregate Dec/annual ratio drops
+ * below the lumpiness threshold even though one constituent IS lumpy.
+ */
+export function sumPerRowSmoothed(rows: number[][], smooth: boolean): number[] {
+  const out = Array(12).fill(0) as number[];
+  for (const row of rows) {
+    const series = smooth ? smoothLumpyMonthly(row) : row;
+    for (let i = 0; i < 12; i += 1) out[i] += series[i] ?? 0;
+  }
+  return out;
+}

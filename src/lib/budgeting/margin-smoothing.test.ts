@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isLumpyMonthly, smoothLumpyMonthly } from "./margin-smoothing";
+import { isLumpyMonthly, smoothLumpyMonthly, sumPerRowSmoothed } from "./margin-smoothing";
 
 describe("isLumpyMonthly (≥80% in one month → lumpy)", () => {
   it("100% in December → lumpy", () => {
@@ -59,5 +59,35 @@ describe("smoothLumpyMonthly", () => {
     const expected = -2_018_525 / 12;
     expect(smoothed.every((v) => Math.abs(v - expected) < 0.01)).toBe(true);
     expect(smoothed.reduce((s, v) => s + v, 0)).toBeCloseTo(-2_018_525, 5);
+  });
+});
+
+describe("sumPerRowSmoothed (per-row smoothing prevents agg wash-out)", () => {
+  it("mixed lumpy + seasonal rows: lumpy is smoothed BEFORE summing, seasonal preserved", () => {
+    // Row 1: 100% in Dec (single-month lump) — should be smoothed to /12.
+    const lumpy = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1200];
+    // Row 2: even monthly with mild summer dip — NOT lumpy, untouched.
+    const seasonal = [100, 100, 100, 100, 80, 80, 80, 100, 100, 100, 100, 100];
+    const summed = sumPerRowSmoothed([lumpy, seasonal], true);
+    // Expected: row1 smoothed → 100 each; row2 untouched.
+    // Dec: lumpy_smoothed[11]=100 + seasonal[11]=100 = 200.
+    expect(summed[11]).toBe(200);
+    // Jan: lumpy_smoothed[0]=100 + seasonal[0]=100 = 200.
+    expect(summed[0]).toBe(200);
+    // YTD sum preserved: lumpy 1200 + seasonal sum = 1200 + 1140 = 2340.
+    const total = summed.reduce((s, v) => s + v, 0);
+    expect(total).toBeCloseTo(2340, 5);
+  });
+
+  it("smoothing OFF: returns raw aggregate (Bookkeeping mode)", () => {
+    const lumpy = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1200];
+    const seasonal = [100, 100, 100, 100, 80, 80, 80, 100, 100, 100, 100, 100];
+    const summed = sumPerRowSmoothed([lumpy, seasonal], false);
+    expect(summed[11]).toBe(1300); // Dec = lumpy(1200) + seasonal(100), no smoothing
+    expect(summed[0]).toBe(100); // Jan = 0 + 100
+  });
+
+  it("empty rows array → all-zero 12 elements", () => {
+    expect(sumPerRowSmoothed([], true)).toEqual(Array(12).fill(0));
   });
 });
