@@ -1,6 +1,7 @@
 import React from 'react';
 import { CommandBar } from '@/features/terminal/components/CommandBar';
 import { PanelGrid } from '@/features/terminal/components/PanelGrid';
+import { HotkeyToolbar } from '@/features/terminal/components/HotkeyToolbar';
 
 // Import Google Font for Terminal UI
 import { JetBrains_Mono } from 'next/font/google';
@@ -13,7 +14,11 @@ const jetbrainsMono = JetBrains_Mono({
 export default function TerminalPage() {
   return (
     <div className={`flex flex-col h-screen w-full bg-[#050814] overflow-hidden ${jetbrainsMono.className}`}>
-      {/* 1. Command Bar (Top) */}
+      {/* Phase B6 — top hotkey toolbar (8 quick-actions). Sits above
+          CommandBar; user-configurability is v2 (🔄). */}
+      <HotkeyToolbar />
+
+      {/* 1. Command Bar */}
       <CommandBar />
 
       {/* 2. Multi-pane Workspace (Center) */}
