@@ -53,8 +53,10 @@ export interface TerminalState {
   starredCompanyCodes: ReadonlySet<string>;
   /**
    * LRU stack of recently-selected company codes, most recent first.
-   * Capped at RECENT_LIMIT (10). Updated automatically by `setCompany`.
-   * Survives reload via localStorage.
+   * Capped at RECENT_LIMIT (10). Updated automatically by `selectCompany`
+   * (user-driven path). `setCompany` (programmatic path) does NOT touch
+   * recent — see action jsdoc for the split rationale. Survives reload
+   * via localStorage; cleared by `clearState` on logout/org-switch.
    */
   recentCompanyCodes: readonly string[];
   /**

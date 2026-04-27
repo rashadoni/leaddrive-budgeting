@@ -448,7 +448,12 @@ function StarToggle(props: {
           : 'text-gray-700 hover:text-gray-400'
       }`}
     >
-      {props.starred ? '★' : '☆'}
+      <Star
+        size={11}
+        fill={props.starred ? 'currentColor' : 'none'}
+        strokeWidth={props.starred ? 0 : 1.5}
+        aria-hidden="true"
+      />
     </button>
   );
 }

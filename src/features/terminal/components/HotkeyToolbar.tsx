@@ -7,10 +7,12 @@
  * drag-reorder + custom-action mapping deferred to v2 (🔄 in CARRYOVER).
  *
  * Each button either:
- *   - Fires a window event consumed elsewhere (terminal:open-audit /
- *     terminal:open-compare-picker / terminal:focus-search)
+ *   - Fires a window event consumed elsewhere (terminal:open-audit,
+ *     terminal:focus-search)
+ *   - Focuses the CommandBar input directly (COMPARE: prefills "CMP ")
  *   - Calls a store action (toggle compactMode, set watchlistTab)
- *   - Navigates via location.href (P&L tabs / plans tab)
+ *   - Navigates via location.href (Plans tab, Onboarding)
+ *   - POSTs to /api/indicators for RECOMPUTE (with disabled-while-pending UX)
  *
  * Bloomberg shops on Linux/Windows: lucide icons (no emoji) for parity.
  *
@@ -20,7 +22,7 @@
  * disabled with an explanatory title.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Bell,
   FilePlus2,
@@ -47,9 +49,22 @@ export function HotkeyToolbar() {
   const setWatchlistTab = useTerminalStore((s) => s.setWatchlistTab);
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
   const activePanelId = useTerminalStore((s) => s.activePanelId);
+  const [recomputing, setRecomputing] = useState(false);
 
   const fireWindowEvent = (name: string, detail?: unknown) => {
     window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
+    return true;
+  };
+
+  const triggerRecompute = () => {
+    if (recomputing) return false;
+    setRecomputing(true);
+    fetch("/api/indicators", { method: "POST" })
+      .catch(() => {})
+      .finally(() => {
+        // Brief delay so the user sees the feedback even on fast servers.
+        setTimeout(() => setRecomputing(false), 800);
+      });
     return true;
   };
 
@@ -68,10 +83,26 @@ export function HotkeyToolbar() {
       key: "compare",
       label: "COMPARE",
       icon: GitCompare,
-      title: "Type CMP <CO1> <CO2> GO in the command bar to open Compare panel",
+      title: "Focus command bar with 'CMP ' prefilled — type 2 codes + GO",
       action: () => {
-        // No companies pre-selected → bring user to CMD bar with hint.
-        fireWindowEvent("terminal:focus-search", { panelId: 0 });
+        // Prefill CMD-bar with "CMP " so the user just types 2 company
+        // codes + GO. Uses data-cmd-bar marker that PanelGrid switchPanel
+        // also matches; here we both focus AND prefill the value.
+        const input = document.querySelector(
+          'input[data-cmd-bar]',
+        ) as HTMLInputElement | null;
+        if (input) {
+          input.focus();
+          // React-controlled input: set via native setter so React picks it up.
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            'value',
+          )?.set;
+          if (setter) {
+            setter.call(input, 'CMP ');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }
         return true;
       },
     },
@@ -104,14 +135,13 @@ export function HotkeyToolbar() {
     },
     {
       key: "recompute",
-      label: "RECOMPUTE",
+      label: recomputing ? "RUNNING…" : "RECOMPUTE",
       icon: RefreshCw,
-      title: "Trigger indicator-matrix recompute (POST /api/indicators)",
-      action: () => {
-        // Fire-and-forget; SSE will refresh HeatMap when finished.
-        void fetch("/api/indicators", { method: "POST" }).catch(() => {});
-        return true;
-      },
+      title: recomputing
+        ? "Recompute in progress…"
+        : "Trigger indicator-matrix recompute (POST /api/indicators); SSE refreshes when done",
+      action: triggerRecompute,
+      disabled: recomputing,
     },
     {
       key: "search",

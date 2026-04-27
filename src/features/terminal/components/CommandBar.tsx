@@ -7,6 +7,7 @@ import {
   panelForCommand,
   type ParsedCommand,
 } from '../lib/command-parser';
+import { Bell } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 
 export function CommandBar() {
@@ -256,7 +257,7 @@ export function CommandBar() {
           }
         >
           <span className="mr-1">[alerts</span>
-          <span className="mx-1 text-[#FFB800]">🔔</span>
+          <Bell size={11} className="mx-1 text-[#FFB800]" aria-hidden="true" />
           <span className="text-[#FFB800]">{alertsCount === null ? '—' : alertsCount}]</span>
         </div>
       </div>

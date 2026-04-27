@@ -222,18 +222,31 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
             </ul>
           </div>
 
-          {/* Saved layouts list */}
+          {/* Saved layouts list. Filter out any user-saved layouts whose
+              name collides with a built-in preset label so the dropdown
+              never shows two "Bloomberg" entries (architect Round-1 ⚠️
+              closure: name-collision guard). API-side reservation is
+              tracked as a separate 🔄 — for now, hide on read. */}
           <div className="border-t border-gray-800/60 pt-1">
             <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
               Saved
             </div>
-            {loading && layouts.length === 0 ? (
-              <div className="text-gray-700">Loading…</div>
-            ) : layouts.length === 0 ? (
-              <div className="text-gray-700">No saved layouts.</div>
-            ) : (
-              <ul className="space-y-0.5 max-h-48 overflow-auto">
-                {layouts.map((item) => (
+            {(() => {
+              const presetLabels = new Set(
+                Object.values(BUILT_IN_PRESETS).map((p) => p.label),
+              );
+              const visibleSaved = layouts.filter(
+                (l) => !presetLabels.has(l.name),
+              );
+              if (loading && visibleSaved.length === 0) {
+                return <div className="text-gray-700">Loading…</div>;
+              }
+              if (visibleSaved.length === 0) {
+                return <div className="text-gray-700">No saved layouts.</div>;
+              }
+              return (
+                <ul className="space-y-0.5 max-h-48 overflow-auto">
+                  {visibleSaved.map((item) => (
                   <li
                     key={item.id}
                     className="flex items-center justify-between gap-2 px-1 py-0.5 hover:bg-gray-800/40 rounded"
@@ -258,7 +271,8 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
                   </li>
                 ))}
               </ul>
-            )}
+              );
+            })()}
           </div>
         </div>
       )}
