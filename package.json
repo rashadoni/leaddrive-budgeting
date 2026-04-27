@@ -12,7 +12,8 @@
     "db:studio": "prisma studio",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo:check": "bash scripts/pre-demo-check.sh"
+    "demo:check": "bash scripts/pre-demo-check.sh",
+    "sparklines:refresh": "tsx scripts/compute-sparklines.ts"
   },
   "keywords": [],
   "author": "",
