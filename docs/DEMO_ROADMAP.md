@@ -59,8 +59,10 @@
 
 > Note: shifted from Q3→Q4 to honor the Slide-2 reframe. Sparkline +
 > fact()/rollup() + BullMQ scheduler are queue-sequenced (each blocks
-> the next; ROADMAP Phase G estimates ~10 weeks total). Q4 (Oct-Dec)
-> realistic if Phase F (post-demo) starts immediately.
+> the next; ~10 weeks total = developer estimate of 3-4 weeks/item × 3
+> items, not an explicit ROADMAP commitment). Q4 (Oct-Dec) realistic
+> if Phase F (post-demo) starts immediately. Speaker should treat the
+> 10-week number as estimate-not-promise if customer asks.
 
 ### Sparkline trends in every cell
 - 12-month mini-chart inside each HeatMap cell
