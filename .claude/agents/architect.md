@@ -24,6 +24,7 @@ model: opus
      - Developer-owned (`owner=developer`) item **должен** быть либо закрыт этот turn (перенесён в CLOSED section), либо дополнен новым specific blocker (если developer хочет re-escalate на user). Отсутствие действия = Проблема.
      - User-owned item: проверь что counter `turns-open` инкрементирован этот turn (heartbeat). Если counter ≥ 14 без контакта с user — добавь в Предложения "re-ping suggestion".
      - Файл **должен быть изменён этот turn** (mtime ≥ dirty marker mtime). Hook этой проверкой блочит Stop; ты дублируй в Проблемы если видишь что developer не тронул.
+     - **Counter-bump pass at theme boundaries** (codified `feedback_carryover_enforcement.md` "When a 'final sub-turn close' is actually final" §): если этот sub-turn — первый под новым user-prompt theme после session boundary (триггеры: "продолжай"/"теперь"/"новая задача"/"прочти ..."/cold-start prompt после break), developer обязан абсорбировать deferred counter-bump pass от предыдущего Turn N: `+1` на всех пре-existing OPEN rows. Если bump pass отсутствует — Проблема. Memory rule самоприменяется: при ambiguity — bump лучше пропустить, fix-before-build cleaner.
 3. **Оцени по критериям:**
    - **Качество кода**: naming, сложность, дублирование, мёртвый код, неиспользуемые импорты
    - **Архитектура**: вписывается ли в существующие паттерны? абстракция не преждевременная? граница модулей правильная?

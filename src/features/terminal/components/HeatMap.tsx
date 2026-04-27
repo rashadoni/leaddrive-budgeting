@@ -277,47 +277,21 @@ export function HeatMap({ period }: Props) {
                     </th>
                     {indicators.map((ind) => {
                       const c = cellMap.get(cellKey(co.id, ind.id));
-                      const status = c?.status ?? 'missing';
-                      const color = statusColor(status);
-                      const titleParts: string[] = [
-                        `${co.code} · ${ind.code} — ${ind.nameEn}`,
-                      ];
-                      if (c) {
-                        titleParts.push(
-                          `${c.status.toUpperCase()} @ ${formatValue(c.value, ind.unit)}`,
-                        );
-                        if (c.error) {
-                          titleParts.push('');
-                          titleParts.push(`⚠ ${c.error.code}: ${c.error.reason}`);
-                        }
-                        titleParts.push('');
-                        titleParts.push('Click → drill-down (Panel 3)');
-                      } else {
-                        titleParts.push('no value computed');
-                      }
                       return (
-                        <td
+                        <HeatMapCellTd
                           key={ind.id}
-                          onClick={() => {
+                          co={co}
+                          ind={ind}
+                          cell={c}
+                          onCellClick={() => {
                             // Cell click selects company AND opens drill-down.
-                            // Pre-Phase-7.D this only set company; the new
-                            // contract is "click a coloured cell, see why".
                             setCompany(co.code);
                             if (c?.indicatorValueId) {
                               setActiveIv(c.indicatorValueId);
                               setActivePanel(3);
                             }
                           }}
-                          title={titleParts.join('\n')}
-                          className="cursor-pointer border-b border-gray-800/40 p-0"
-                          style={{
-                            backgroundColor: color,
-                            opacity: status === 'missing' ? 0.25 : 0.85,
-                          }}
-                          aria-label={`${co.code} ${ind.code} ${status}`}
-                        >
-                          <div style={{ width: 54, height: 18 }} />
-                        </td>
+                        />
                       );
                     })}
                   </tr>
@@ -341,4 +315,88 @@ function formatValue(value: number, unit: string): string {
       ? value.toFixed(1)
       : value.toFixed(2);
   return `${rounded} ${unit}`;
+}
+
+type HeatMapCellTdProps = {
+  co: CompanyRow;
+  ind: IndicatorCol;
+  cell: HeatMapCell | undefined;
+  onCellClick: () => void;
+};
+
+// Lazy-mount Radix Tooltip on first pointerenter — avoids 600+ eager Tooltip
+// component instances on initial render. `defaultOpen` makes the first-hover
+// tooltip appear instantly (cursor is already over the trigger when Tooltip
+// mounts); subsequent hovers behave as normal Radix delay-driven open/close.
+function HeatMapCellTd({ co, ind, cell, onCellClick }: HeatMapCellTdProps) {
+  const [everHovered, setEverHovered] = useState(false);
+  const status = cell?.status ?? 'missing';
+  const color = statusColor(status);
+  const inner = <div style={{ width: 54, height: 18 }} />;
+
+  const tdProps = {
+    onClick: onCellClick,
+    onPointerEnter: () => {
+      if (!everHovered) setEverHovered(true);
+    },
+    className: 'cursor-pointer border-b border-gray-800/40 p-0',
+    style: {
+      backgroundColor: color,
+      opacity: status === 'missing' ? 0.25 : 0.85,
+    },
+    'aria-label': `${co.code} ${ind.code} ${status}`,
+  };
+
+  if (!everHovered) {
+    return <td {...tdProps}>{inner}</td>;
+  }
+
+  const statusColorClass =
+    status === 'red'
+      ? 'text-[#FF4757]'
+      : status === 'amber'
+      ? 'text-[#FFA502]'
+      : status === 'green'
+      ? 'text-[#00D4AA]'
+      : 'text-muted-foreground';
+
+  return (
+    <td {...tdProps}>
+      {/* No local `delayDuration` — inherits provider's 300ms (set in commit
+          0b4d239 to prevent flash on sweep; cells must match headers). */}
+      <Tooltip defaultOpen>
+        <TooltipTrigger asChild>{inner}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
+        >
+          <div className="font-mono font-semibold">
+            {co.code} · {ind.code}
+          </div>
+          <div className="text-muted-foreground">{ind.nameEn}</div>
+          {cell ? (
+            <>
+              <div className="text-[11px] mt-1">
+                <span className={statusColorClass}>{status.toUpperCase()}</span>
+                {' @ '}
+                <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
+              </div>
+              {cell.error && (
+                <div className="text-[11px] text-[#FF4757] mt-1">
+                  ⚠ {cell.error.code}: {cell.error.reason}
+                </div>
+              )}
+              <div className="text-[10px] text-muted-foreground/70 mt-1">
+                Click → drill-down (Panel 3)
+              </div>
+            </>
+          ) : (
+            <div className="text-[11px] text-muted-foreground mt-1">
+              no value computed
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </td>
+  );
 }
