@@ -199,7 +199,7 @@ export function HeatMap({ period }: Props) {
       )}
 
       <div className={`flex-1 overflow-auto ${isEmpty || loading ? 'hidden' : ''}`}>
-        <TooltipProvider delayDuration={150}>
+        <TooltipProvider delayDuration={300}>
         <table className="border-collapse" aria-label="Risk heatmap">
           <thead>
             <tr>
@@ -228,7 +228,7 @@ export function HeatMap({ period }: Props) {
                       <div className="font-mono font-semibold">{ind.code}</div>
                       <div className="text-muted-foreground">{ind.nameEn}</div>
                       <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-                        unit: {ind.unit} · direction: {ind.direction}
+                        unit: {ind.unit} · {ind.direction === 'higher_better' ? 'higher = better' : ind.direction === 'lower_better' ? 'lower = better' : 'in band'}
                       </div>
                     </TooltipContent>
                   </Tooltip>
