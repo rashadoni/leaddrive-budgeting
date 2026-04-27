@@ -9,6 +9,12 @@ import {
   summarizeMatrix,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type CompanyRow = {
   id: string;
@@ -193,6 +199,7 @@ export function HeatMap({ period }: Props) {
       )}
 
       <div className={`flex-1 overflow-auto ${isEmpty || loading ? 'hidden' : ''}`}>
+        <TooltipProvider delayDuration={150}>
         <table className="border-collapse" aria-label="Risk heatmap">
           <thead>
             <tr>
@@ -206,10 +213,25 @@ export function HeatMap({ period }: Props) {
                 <th
                   key={ind.id}
                   className="sticky top-0 z-10 bg-[#0A0E27] px-1 py-1 border-b border-gray-800/60 text-gray-500 uppercase tracking-wider text-[9px]"
-                  title={`${ind.code} — ${ind.nameEn} (${ind.unit}, ${ind.direction})`}
                   style={{ minWidth: 54, maxWidth: 54 }}
                 >
-                  <div className="truncate">{ind.code}</div>
+                  {/* Turn-38-sub14 — Radix Tooltip replaces native `title=` (slow + browser-flaky on Mac).
+                      Shows full indicator name + unit + direction on hover (~150ms delay). */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="truncate cursor-help">{ind.code}</div>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
+                    >
+                      <div className="font-mono font-semibold">{ind.code}</div>
+                      <div className="text-muted-foreground">{ind.nameEn}</div>
+                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                        unit: {ind.unit} · direction: {ind.direction}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 </th>
               ))}
             </tr>
@@ -231,13 +253,27 @@ export function HeatMap({ period }: Props) {
                   <tr key={co.id}>
                     <th
                       scope="row"
-                      onClick={() => setCompany(co.code)}
-                      className={`sticky left-0 bg-[#0A0E27] text-left px-1.5 py-0.5 border-b border-gray-800/40 cursor-pointer hover:bg-gray-800/40 ${
+                      className={`sticky left-0 bg-[#0A0E27] text-left px-1.5 py-0.5 border-b border-gray-800/40 ${
                         rowActive ? 'text-[#00D4AA]' : 'text-gray-400'
                       }`}
-                      title={co.name}
                     >
-                      {co.code}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={() => setCompany(co.code)}
+                            className="cursor-pointer hover:bg-gray-800/40 px-1 py-0.5 rounded text-left w-full"
+                          >
+                            {co.code}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="right"
+                          className="bg-popover text-popover-foreground border border-border shadow-lg text-xs"
+                        >
+                          {co.name}{co.industry ? ` · ${co.industry}` : ''}
+                        </TooltipContent>
+                      </Tooltip>
                     </th>
                     {indicators.map((ind) => {
                       const c = cellMap.get(cellKey(co.id, ind.id));
@@ -290,6 +326,7 @@ export function HeatMap({ period }: Props) {
             )}
           </tbody>
         </table>
+        </TooltipProvider>
       </div>
     </div>
   );
