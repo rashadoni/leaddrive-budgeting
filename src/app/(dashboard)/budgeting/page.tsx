@@ -35,6 +35,7 @@ import {
   useUpdateBudgetPlan,
   useDeleteBudgetPlan,
   useBudgetLines,
+  useBudgetLineCount,
   useCreateBudgetLine,
   useUpdateBudgetLine,
   useDeleteBudgetLine,
@@ -4927,10 +4928,14 @@ function ApplyTemplatesButton({ planId }: { planId: string }) {
 function TemplateSeedButton({ planId }: { planId: string }) {
   const t = useTranslations("budgeting")
   const createLine = useCreateBudgetLine()
-  const { data: lines = [] } = useBudgetLines(planId)
+  // Count-only hook avoids prefetching 4.3 MB of BudgetLines just to
+  // evaluate `if (lines.length > 0)`. Mounted in page header so fires
+  // on every /budgeting tab. Turn-38-sub12 architect Round-1 closure.
+  const { data: countData } = useBudgetLineCount(planId)
+  const lineCount = countData?.count ?? 0
   const [seeding, setSeeding] = useState(false)
 
-  if (lines.length > 0) return null
+  if (lineCount > 0) return null
 
   const seed = async () => {
     setSeeding(true)

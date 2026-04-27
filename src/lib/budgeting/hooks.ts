@@ -104,6 +104,18 @@ export function useBudgetLines(planId: string) {
   })
 }
 
+// Lightweight count-only hook — use when caller only needs `lines.length`
+// (e.g. `if (count > 0) hide-button`). Avoids the 4.3 MB BudgetLine
+// payload that `useBudgetLines` carries.
+export function useBudgetLineCount(planId: string) {
+  const orgId = useOrgId()
+  return useQuery({
+    queryKey: ["budgeting", "lines", "count", planId, orgId],
+    queryFn: () => apiFetch<{ count: number }>(`/api/budgeting/lines/count?planId=${planId}`, orgId),
+    enabled: !!orgId && !!planId,
+  })
+}
+
 export function useCreateBudgetLine() {
   const orgId = useOrgId()
   const qc = useQueryClient()
