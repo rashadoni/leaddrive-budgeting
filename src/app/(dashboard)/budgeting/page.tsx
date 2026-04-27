@@ -1470,7 +1470,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
 
       {/* ROW 1: 4 Dark KPI Scorecards (Power BI style) */}
       {(() => {
-        const netPosition = totalRevenuePlanned - totalCostPlanned - totalCOGSPlanned
+        const netPosition = computeOperatingProfit(totalRevenuePlanned, totalCOGSPlanned, totalCostPlanned)
         const grossMarginPct = totalRevenuePlanned > 0 ? ((totalRevenuePlanned - totalCOGSPlanned) / totalRevenuePlanned * 100) : 0
         const revExecPct = totalRevenuePlanned > 0 ? Math.round((totalRevenueActual / totalRevenuePlanned) * 100) : 0
         const lineCount = lines.length
@@ -2914,7 +2914,8 @@ function ComparisonTab() {
                 <div className="space-y-4 mt-2">
                   {planSummaries.map((ps, i) => {
                     const barW = maxPlanned > 0 ? (ps.planned / maxPlanned * 100) : 0
-                    const execPct = ps.planned > 0 ? Math.round((ps.actual / ps.planned) * 100) : 0
+                    // Budget-fill bar: planned is always positive here (plan total).
+                    const pctOfPlan = execPct(ps.actual, ps.planned)
                     return (
                       <div key={ps.id}>
                         <div className="flex items-center justify-between mb-1">
@@ -2930,7 +2931,7 @@ function ComparisonTab() {
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground">
                           <span>Actual: {ps.actual > 0 ? `${fmtK(ps.actual)} ₼` : "—"}</span>
-                          <span>{execPct > 0 ? `${execPct}% execution` : "No actuals"}</span>
+                          <span>{pctOfPlan > 0 ? `${pctOfPlan}% execution` : "No actuals"}</span>
                         </div>
                       </div>
                     )
