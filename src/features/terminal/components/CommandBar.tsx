@@ -172,11 +172,20 @@ export function CommandBar() {
           }),
         );
         return { message: `SCN ${cmd.scenarioCode} →` };
+      case 'brf':
+        // Phase C3 v1 — `BRF GO` opens the Board Deck Generator in a
+        // new browser tab so the user can keep the live terminal open
+        // while inspecting / printing the snapshot. Mirror of the
+        // existing AUD/SCN dispatch pattern: no panel-switch, route
+        // navigation instead. v2 may add intra-panel preview iframe.
+        if (typeof window !== 'undefined') {
+          window.open('/budgeting/board-deck', '_blank');
+        }
+        return { message: 'BRF →' };
       case 'hold':
       case 'grp':
       case 'sec':
       case 'alt':
-      case 'brf':
         // Pure panel-switch (no company change). The destination panel
         // reads the relevant store slice and re-renders.
         break;

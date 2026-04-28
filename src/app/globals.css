@@ -259,3 +259,49 @@ html[data-wallpaper] textarea {
 @media (prefers-reduced-motion: reduce) {
   .wallpaper-abstract-gradient { animation: none; }
 }
+
+/* Phase C3 v1 — Board Deck print stylesheet.
+ *
+ * Scoped via the `.board-deck` ancestor class so the rules don't leak
+ * into other dashboard pages a user might happen to print. The page-
+ * level component sets `className="board-deck …"` on its root div.
+ *
+ * Strategy: hide the dashboard chrome (sidebar + header) so the deck
+ * occupies the full A4 portrait. Black-on-white color overrides are
+ * applied via `print:` Tailwind utilities at the component level; this
+ * sheet handles the layout-level reset.
+ */
+@media print {
+  /* Dashboard chrome — sidebar + header from app/(dashboard)/layout.tsx. */
+  body div.flex.h-screen > aside,
+  body div.flex.h-screen > div > header {
+    display: none !important;
+  }
+  /* Strip the dashboard <main> padding so the deck owns the page. */
+  body main {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  /* Force light theme for print regardless of dark-mode wallpaper. */
+  html, body {
+    background: white !important;
+    color: black !important;
+  }
+  /* A4 portrait page; comfortable margins for binder punching. */
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm;
+  }
+  /* Status-grid cells must keep their backgrounds (browsers strip
+   * `background-color` on print by default to save ink — opt back in
+   * with a global setting on the board-deck subtree). */
+  .board-deck * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Print-friendly link styling. */
+  .board-deck a[href]:not([class*="print:hidden"]) {
+    color: black !important;
+    text-decoration: underline;
+  }
+}

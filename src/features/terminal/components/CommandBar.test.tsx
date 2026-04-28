@@ -183,11 +183,10 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv-spark');
   });
 
-  it('BRF GO → activates panel 4 (narrative panel), no target needed', () => {
-    render(<CommandBar />);
-    submit('BRF GO');
-    expect(getTerminalSnapshot().activePanelId).toBe(4);
-  });
+  // Phase C3 v1 (Turn 42 sub-12): BRF dispatch was repurposed from a
+  // panel-4 switch to a route navigation (opens /budgeting/board-deck
+  // in a new tab). The dedicated test for the new behavior lives in
+  // the "Phase C3 v1 — BRF dispatch" describe block below.
 
   it('unknown verb → renders error feedback, no store change', () => {
     render(<CommandBar />);
@@ -304,5 +303,38 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(openCount).toBe(1);
     expect(afterPanel).toBe(beforePanel);
     expect(screen.getByRole('status').textContent).toMatch(/AUD/);
+  });
+
+  describe('Phase C3 v1 — BRF dispatch', () => {
+    it('BRF GO → opens /budgeting/board-deck in a new tab; activePanel unchanged', () => {
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+      render(<CommandBar />);
+      const beforePanel = getTerminalSnapshot().activePanelId;
+      submit('BRF GO');
+      const afterPanel = getTerminalSnapshot().activePanelId;
+      expect(openSpy).toHaveBeenCalledWith('/budgeting/board-deck', '_blank');
+      expect(afterPanel).toBe(beforePanel);
+      expect(screen.getByRole('status').textContent).toMatch(/BRF/);
+      openSpy.mockRestore();
+    });
+  });
+
+  describe('Phase C4 v1 — SCN dispatch', () => {
+    it('<code> SCN GO → fires terminal:open-scenario with detail.scenarioCode', () => {
+      render(<CommandBar />);
+      let received: string | null = null;
+      const handler = (e: Event) => {
+        const detail = (e as CustomEvent<{ scenarioCode: string }>).detail;
+        received = detail?.scenarioCode ?? null;
+      };
+      window.addEventListener('terminal:open-scenario', handler);
+      // Bloomberg convention: <TARGET> <FUNCTION> GO. SCN takes a
+      // required scenario-code target before the verb.
+      submit('AZN_DEVAL_20 SCN GO');
+      window.removeEventListener('terminal:open-scenario', handler);
+      expect(received).toBe('AZN_DEVAL_20');
+      expect(getTerminalSnapshot().activeScenarioCode).toBe('AZN_DEVAL_20');
+      expect(screen.getByRole('status').textContent).toMatch(/SCN/);
+    });
   });
 });
