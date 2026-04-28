@@ -122,13 +122,25 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
   it("walks hierarchical children to resolve nested company codes", async () => {
     setActiveCompany("ATL-MAIN");
     render(<RelatedFunctionsMenu />);
+    // Open the menu first.
     await waitFor(() => {
       const button = screen.getByRole("button", { name: /Related functions/i });
       fireEvent.click(button);
       expect(screen.queryByText("For ATL-MAIN")).toBeTruthy();
     });
-    const pnlLink = screen.getByText("P&L").closest("a");
-    expect(pnlLink?.getAttribute("href")).toContain("company=atl_main_id");
+    // Architect Round-1 sub-17 closure: wait for the /api/companies
+    // fetch to resolve AND companyMap to populate AND href to rebuild
+    // before asserting. Prior version asserted synchronously after
+    // `waitFor(menu open)` which raced against the companyMap fetch
+    // — passed under default reporter timing, failed under
+    // --reporter=dot due to faster worker scheduling that exposed
+    // the race. The href correctly absent during the loading window
+    // (activeCompanyId === null) and gains `?company=<id>` only AFTER
+    // map resolves.
+    await waitFor(() => {
+      const pnlLink = screen.getByText("P&L").closest("a");
+      expect(pnlLink?.getAttribute("href")).toContain("company=atl_main_id");
+    });
   });
 
   it("Escape closes the menu (Round-1 ⚠️ closure)", async () => {
