@@ -213,7 +213,7 @@ describe("HotkeyToolbar (Phase B6)", () => {
       expect(runningBtn!.disabled).toBe(true);
     });
 
-    it("ignores a second click while pending (no second fetch)", () => {
+    it("ignores a second click while pending (no second fetch) — verifies in-component guard, not just disabled UI", () => {
       const fetchSpy = vi.fn(() => new Promise(() => {}));
       global.fetch = fetchSpy as never;
 
@@ -223,15 +223,22 @@ describe("HotkeyToolbar (Phase B6)", () => {
       });
       expect(fetchSpy).toHaveBeenCalledTimes(1);
 
-      // Second click on the now-RUNNING… (disabled) button.
-      // fireEvent.click on a disabled button doesn't fire onClick in
-      // happy-dom either, but exercise the early-return guard anyway by
-      // bypassing disabled state via the underlying button element.
+      // The button is now disabled at the DOM level (UI feedback). But
+      // a vacuous "click on disabled button does nothing" test would
+      // green-pass even if the in-component `if (recomputing) return false`
+      // stampede guard were deleted — happy-dom (and browsers) drop
+      // click events on disabled buttons before React's synthetic handler
+      // runs. We need to actually deliver the click to the handler so
+      // the in-component guard is exercised.
+      //
+      // Workaround: temporarily strip `disabled` from the DOM node so the
+      // click reaches React. React's onClick still has `recomputing=true`
+      // closed over (state hasn't changed), so the in-component guard
+      // must early-return → fetch counter stays at 1.
       const btn = screen.getByText("RUNNING…").closest("button")!;
-      // Manually fire — the in-component `if (recomputing) return false`
-      // is the actual stampede guard; disabled-on-button is just UI.
+      btn.removeAttribute("disabled");
       act(() => {
-        btn.click();
+        fireEvent.click(btn);
       });
       expect(fetchSpy).toHaveBeenCalledTimes(1);
     });

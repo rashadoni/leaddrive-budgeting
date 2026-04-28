@@ -237,25 +237,38 @@ describe('CommandBar (Phase 7.D smoke)', () => {
   // Locks the lucide-SVG rendering shape so a future emoji regression
   // (or removal of the icon entirely) is caught immediately.
   describe('regression: [alerts] strip uses lucide <Bell/> (e66263a fix #4)', () => {
+    // Locate the strip by its structural anchor: it's the parent of the
+    // visible "[alerts" prefix span. Selecting via `[title^="Alerts"]`
+    // (prefix-match, not exact) keeps the test robust to typography
+    // changes in the title-attribute branches (loading vs populated vs
+    // count text).
+    function getAlertsStrip(): HTMLElement {
+      const anchor = Array.from(
+        document.querySelectorAll('span'),
+      ).find((s) => s.textContent === '[alerts');
+      if (!anchor) throw new Error('alerts strip prefix span not found');
+      const strip = anchor.parentElement;
+      if (!strip) throw new Error('alerts strip parent not found');
+      return strip;
+    }
+
     it('renders an SVG icon and no 🔔 emoji in the alerts strip', () => {
       render(<CommandBar />);
-      // The strip is identifiable by its `title="Alerts: loading…"` (when
-      // alertsCount is null, the default state in a fresh store).
-      const stripWithTitle = document.querySelector(
-        '[title="Alerts: loading…"]',
-      );
-      expect(stripWithTitle).toBeTruthy();
-      const strip = stripWithTitle as HTMLElement;
+      const strip = getAlertsStrip();
       // Bell SVG present — lucide-react renders an <svg> element.
       const svg = strip.querySelector('svg');
       expect(svg).toBeTruthy();
       // Sanity: the bell emoji codepoint must NOT appear anywhere in
       // the strip's text content.
       expect(strip.textContent ?? '').not.toContain('🔔');
-      // The visible "[alerts" prefix + "—]" suffix must still render
+      // The visible "[alerts" prefix + "]" suffix must still render
       // (the icon swap shouldn't have nuked surrounding text).
       expect(strip.textContent ?? '').toContain('[alerts');
       expect(strip.textContent ?? '').toContain(']');
+      // And the strip should still have an Alerts-related title for
+      // screen-reader announcement (whichever branch — loading/populated/
+      // zero — fired). Prefix-match defends against typography drift.
+      expect(strip.getAttribute('title') ?? '').toMatch(/^Alerts/i);
     });
 
     it('SVG is hidden from screen readers (aria-hidden) — strip relies on title attr', () => {
@@ -263,9 +276,7 @@ describe('CommandBar (Phase 7.D smoke)', () => {
       // strip's `title` attribute, not the icon glyph. Locking
       // aria-hidden prevents an a11y regression.
       render(<CommandBar />);
-      const strip = document.querySelector(
-        '[title="Alerts: loading…"]',
-      ) as HTMLElement;
+      const strip = getAlertsStrip();
       const svg = strip.querySelector('svg');
       expect(svg!.getAttribute('aria-hidden')).toBe('true');
     });

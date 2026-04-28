@@ -241,9 +241,13 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
       // The button should contain a real <svg> (lucide-react renders SVG).
       const svg = button.querySelector("svg");
       expect(svg).toBeTruthy();
-      // Filled state: fill="currentColor", strokeWidth="0".
+      // Filled state: fill="currentColor". Stroke-width parsed as a
+      // number (lucide-react impl detail: today emits "0" string, but a
+      // future minor bump emitting "0px" or omitting the attr at zero
+      // would flip an exact-string assertion red without a real
+      // regression). Symmetric with the false-branch assertion below.
       expect(svg!.getAttribute("fill")).toBe("currentColor");
-      expect(svg!.getAttribute("stroke-width")).toBe("0");
+      expect(parseFloat(svg!.getAttribute("stroke-width") ?? "1")).toBe(0);
     });
 
     it("starred=false → SVG rendered with fill='none' and non-zero stroke", () => {
