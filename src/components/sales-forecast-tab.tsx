@@ -263,7 +263,7 @@ export function SalesForecastTab() {
         {/* Total Revenue */}
         <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total Revenue</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastTotalRevenue")}</span>
             <div className="h-8 w-8 rounded-full bg-indigo-200 dark:bg-indigo-800 flex items-center justify-center">
               <TrendingUp className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
             </div>
@@ -275,7 +275,7 @@ export function SalesForecastTab() {
         {/* Avg Monthly */}
         <div className="rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Avg Monthly</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastAvgMonthly")}</span>
             <div className="h-8 w-8 rounded-full bg-blue-200 dark:bg-blue-800 flex items-center justify-center">
               <span className="text-xs font-bold text-blue-600 dark:text-blue-400">μ</span>
             </div>
@@ -287,7 +287,7 @@ export function SalesForecastTab() {
         {/* Top Service */}
         <div className="rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Top Service</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastTopService")}</span>
             <div className="h-8 w-8 rounded-full bg-amber-200 dark:bg-amber-800 flex items-center justify-center">
               <span className="text-xs font-bold text-amber-600 dark:text-amber-400">★</span>
             </div>
@@ -299,7 +299,7 @@ export function SalesForecastTab() {
         {/* Services Count */}
         <div className="rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Coverage</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastCoverage")}</span>
             <div className="h-8 w-8 rounded-full bg-violet-200 dark:bg-violet-800 flex items-center justify-center">
               <span className="text-xs font-bold text-violet-600 dark:text-violet-400">#</span>
             </div>
@@ -350,7 +350,7 @@ export function SalesForecastTab() {
           {/* Monthly Revenue Trend */}
           <Card className="lg:col-span-3">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Monthly Revenue Trend</CardTitle>
+              <CardTitle className="text-sm">{t("forecastMonthlyRevenueTrend")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -374,7 +374,7 @@ export function SalesForecastTab() {
           {/* Revenue Mix Donut */}
           <Card className="lg:col-span-2">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Revenue Mix</CardTitle>
+              <CardTitle className="text-sm">{t("forecastRevenueMix")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>

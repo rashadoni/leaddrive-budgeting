@@ -301,7 +301,7 @@ export function ExpenseForecastTab() {
         {/* Total Expenses */}
         <div className="rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Total Expenses</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastTotalExpenses")}</span>
             <div className="h-8 w-8 rounded-full bg-orange-200 dark:bg-orange-800 flex items-center justify-center">
               <TrendingDown className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             </div>
@@ -313,7 +313,7 @@ export function ExpenseForecastTab() {
         {/* Avg Monthly */}
         <div className="rounded-xl bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Avg Monthly</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastAvgMonthly")}</span>
             <div className="h-8 w-8 rounded-full bg-red-200 dark:bg-red-800 flex items-center justify-center">
               <span className="text-xs font-bold text-red-600 dark:text-red-400">μ</span>
             </div>
@@ -325,7 +325,7 @@ export function ExpenseForecastTab() {
         {/* Top Cost Type */}
         <div className="rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 dark:from-amber-950/30 dark:to-amber-900/20 dark:border-amber-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Top Cost Type</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastTopCostType")}</span>
             <div className="h-8 w-8 rounded-full bg-amber-200 dark:bg-amber-800 flex items-center justify-center">
               <span className="text-xs font-bold text-amber-600 dark:text-amber-400">★</span>
             </div>
@@ -337,7 +337,7 @@ export function ExpenseForecastTab() {
         {/* Categories */}
         <div className="rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 border border-violet-200 dark:from-violet-950/30 dark:to-violet-900/20 dark:border-violet-800 p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Categories</span>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{t("forecastCategories")}</span>
             <div className="h-8 w-8 rounded-full bg-violet-200 dark:bg-violet-800 flex items-center justify-center">
               <span className="text-xs font-bold text-violet-600 dark:text-violet-400">#</span>
             </div>
@@ -401,7 +401,7 @@ export function ExpenseForecastTab() {
           {/* Monthly Expense Trend */}
           <Card className="lg:col-span-3">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Monthly Expense Trend</CardTitle>
+              <CardTitle className="text-sm">{t("forecastMonthlyExpenseTrend")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
@@ -425,7 +425,7 @@ export function ExpenseForecastTab() {
           {/* Expense Breakdown Donut */}
           <Card className="lg:col-span-2">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Expense Breakdown</CardTitle>
+              <CardTitle className="text-sm">{t("forecastExpenseBreakdown")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>

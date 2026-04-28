@@ -2558,7 +2558,7 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
                         onBlur={() => saveRename()}
                         onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenamingId(null) }} />
                     ) : (
-                      <button onClick={() => startRename(plan)} className="text-left group" title="Click to rename">
+                      <button onClick={() => startRename(plan)} className="text-left group" title={t("plansClickToRename")}>
                         <h3 className="text-sm font-bold leading-tight text-violet-700 dark:text-violet-300 group-hover:text-purple-500 dark:group-hover:text-purple-300 transition-colors">{plan.name}</h3>
                       </button>
                     )}
@@ -2574,18 +2574,18 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
                       <span>{plan.year}</span>
                     </div>
                     <span>·</span>
-                    <span>{plan.periodType === "annual" || !plan.periodType ? "Annual" : plan.periodType === "quarterly" && plan.quarter ? `Q${plan.quarter}` : plan.periodType === "monthly" && plan.month ? `Month ${plan.month}` : "Annual"}</span>
+                    <span>{plan.periodType === "annual" || !plan.periodType ? t("plansPeriodAnnual") : plan.periodType === "quarterly" && plan.quarter ? `Q${plan.quarter}` : plan.periodType === "monthly" && plan.month ? t("plansPeriodMonth", { month: plan.month }) : t("plansPeriodAnnual")}</span>
                     {isImported && (
                       <>
                         <span>·</span>
-                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-indigo-200 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border-0">Imported</Badge>
+                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0 bg-indigo-200 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 border-0">{t("plansImportedBadge")}</Badge>
                       </>
                     )}
                   </div>
                   {/* Approval dates */}
                   {plan.approvedAt && (
                     <div className="text-[10px] text-emerald-400 mt-1.5 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3" /> Approved {new Date(plan.approvedAt).toLocaleDateString()}
+                      <CheckCircle className="h-3 w-3" /> {t("plansApprovedDate", { date: new Date(plan.approvedAt).toLocaleDateString() })}
                     </div>
                   )}
                   {plan.submittedAt && !plan.approvedAt && (
@@ -2643,8 +2643,8 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
             <BudgetVersionDiff
               data={diffData}
               isLoading={diffLoading}
-              versionLabelA={versions.find(v => v.id === diffPlanIds?.a)?.versionLabel || "Plan A"}
-              versionLabelB={versions.find(v => v.id === diffPlanIds?.b)?.versionLabel || "Plan B"}
+              versionLabelA={versions.find(v => v.id === diffPlanIds?.a)?.versionLabel || t("plansVersionFallbackA")}
+              versionLabelB={versions.find(v => v.id === diffPlanIds?.b)?.versionLabel || t("plansVersionFallbackB")}
             />
           )}
         </div>
@@ -2660,7 +2660,7 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
             disabled={createVersion.isPending}
           >
             {createVersion.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-            Create Version (snapshot current plan)
+            {t("plansCreateVersionButton")}
           </Button>
         </div>
       )}

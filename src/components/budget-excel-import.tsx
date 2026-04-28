@@ -364,7 +364,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
               {importMutation.isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
               ) : (
-                <><Upload className="h-4 w-4 mr-2" />Import Budget</>
+                <><Upload className="h-4 w-4 mr-2" />{t("importBudgetButton")}</>
               )}
             </Button>
           </div>
@@ -426,10 +426,10 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                     <table className="w-full text-[11px]">
                       <thead className="bg-amber-100/50 dark:bg-amber-900/30 sticky top-0">
                         <tr>
-                          <th className="px-2 py-1 text-left font-semibold w-16">Sheet</th>
-                          <th className="px-2 py-1 text-left font-semibold w-12">Row</th>
-                          <th className="px-2 py-1 text-left font-semibold">Reason</th>
-                          <th className="px-2 py-1 text-left font-semibold">Value</th>
+                          <th className="px-2 py-1 text-left font-semibold w-16">{t("importErrorSheet")}</th>
+                          <th className="px-2 py-1 text-left font-semibold w-12">{t("importErrorRow")}</th>
+                          <th className="px-2 py-1 text-left font-semibold">{t("importErrorReason")}</th>
+                          <th className="px-2 py-1 text-left font-semibold">{t("importErrorValue")}</th>
                         </tr>
                       </thead>
                       <tbody>
