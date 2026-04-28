@@ -5,10 +5,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterOperationalCompanies } from "@/lib/risk/targets";
 import {
-  computeCompositeScore,
+  computeCompositeByCompany,
   scoreToBand,
-  type CompositeScore,
 } from "@/lib/risk/composite-score";
+import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   evaluateAlertRules,
   DEFAULT_ALERT_RULES,
@@ -60,7 +60,21 @@ export default async function BoardDeckPage({
   }
 
   const params = await searchParams;
-  const period = params.period ?? String(new Date().getUTCFullYear());
+  const rawPeriod = params.period ?? String(new Date().getUTCFullYear());
+  // Architect Round-1 sub-12 ⚠️ closure: validate the period regex
+  // before passing into the Prisma where-clause. Mirrors the matrix
+  // endpoint's defense-in-depth at /api/indicators/matrix/route.ts:64-72.
+  // Garbage input (`?period=foo`) returns the user to the budgeting hub
+  // instead of silently rendering an empty page.
+  try {
+    parsePeriod(rawPeriod);
+  } catch (err) {
+    if (err instanceof PeriodParseError) {
+      redirect("/budgeting");
+    }
+    throw err;
+  }
+  const period = rawPeriod;
 
   const [org, companiesRaw, indicators] = await Promise.all([
     prisma.organization.findUnique({
@@ -144,19 +158,14 @@ export default async function BoardDeckPage({
     status: v.status,
   }));
 
-  // Composite score per company.
-  const cellsByCompany = new Map<string, HeatMapCell[]>();
-  for (const c of cells) {
-    if (c.isSubgroupRollup) continue;
-    const list = cellsByCompany.get(c.companyId);
-    if (list) list.push(c);
-    else cellsByCompany.set(c.companyId, [c]);
-  }
-  const compositeByCompany = new Map<string, CompositeScore>();
-  for (const co of operational) {
-    const list = cellsByCompany.get(co.id) ?? [];
-    compositeByCompany.set(co.id, computeCompositeScore(list));
-  }
+  // Composite score per company. Shared helper (see composite-score.ts)
+  // — identical contract used by HeatMap. `companyIds` arg requested so
+  // EVERY operational sub-co gets a row even with no IndicatorValues
+  // (board-deck table renders one row per sub-co).
+  const compositeByCompany = computeCompositeByCompany(
+    cells,
+    operational.map((c) => c.id),
+  );
 
   // Status counts per company.
   type StatusCounts = { green: number; amber: number; red: number; unknown: number };

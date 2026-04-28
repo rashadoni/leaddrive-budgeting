@@ -15,6 +15,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeCompositeScore,
+  computeCompositeByCompany,
   scoreToBand,
 } from './composite-score';
 import type { HeatMapCell } from './heatmap-matrix';
@@ -138,6 +139,74 @@ describe('REGRESSION: sub-group rollup-cell exclusion (architect Round-1 ⚠️ 
     // 4 green + 0 red = 100 (NOT 80 from including the rollup cell)
     expect(result.score).toBe(100);
     expect(result.band).toBe('green');
+  });
+});
+
+describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator', () => {
+  // Architect Round-1 sub-12 ⚠️ closure: this helper consolidates the
+  // composite-by-company loop that was duplicated across HeatMap.tsx
+  // and board-deck/page.tsx. Tests lock both modes (sparse vs dense).
+  function cellWith(companyId: string, status: HeatMapCell['status']): HeatMapCell {
+    return {
+      companyId,
+      indicatorId: `ind-${Math.random()}`,
+      value: 0,
+      status,
+    };
+  }
+
+  it('sparse mode (no companyIds): only companies with cells appear', () => {
+    const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'red'),
+      cellWith('co_b', 'amber'),
+    ];
+    const result = computeCompositeByCompany(cells);
+    expect(result.size).toBe(2);
+    expect(result.get('co_a')?.score).toBe(50);
+    expect(result.get('co_b')?.score).toBe(50);
+    expect(result.has('co_c')).toBe(false);
+  });
+
+  it('dense mode (companyIds arg): every listed id appears, missing → null score', () => {
+    const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
+    ];
+    const result = computeCompositeByCompany(cells, ['co_a', 'co_b', 'co_c']);
+    expect(result.size).toBe(3);
+    expect(result.get('co_a')?.score).toBe(100);
+    // co_b + co_c had no cells → null score, unknown band.
+    expect(result.get('co_b')?.score).toBeNull();
+    expect(result.get('co_b')?.band).toBe('unknown');
+    expect(result.get('co_c')?.score).toBeNull();
+  });
+
+  it('skips isSubgroupRollup cells before grouping (sub-8 invariant)', () => {
+    const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
+      // Synthetic rollup row that should NOT contribute to the average.
+      { ...cellWith('co_a', 'red'), isSubgroupRollup: true },
+    ];
+    const result = computeCompositeByCompany(cells);
+    // 2 green + 0 red (rollup skipped) = 100, NOT 67 (which would be
+    // (100+100+0)/3 if rollup leaked through).
+    expect(result.get('co_a')?.score).toBe(100);
+  });
+
+  it('dense mode + sub-group: rollup-only sub-group → empty cells → null score', () => {
+    // Sub-group row only has `isSubgroupRollup: true` cells (the matrix
+    // endpoint emits these for level=1 wrappers). After filter the
+    // sub-group has zero cells; dense mode returns score=null.
+    const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      { ...cellWith('subgroup_x', 'amber'), isSubgroupRollup: true },
+    ];
+    const result = computeCompositeByCompany(cells, ['co_a', 'subgroup_x']);
+    expect(result.get('co_a')?.score).toBe(100);
+    expect(result.get('subgroup_x')?.score).toBeNull();
+    expect(result.get('subgroup_x')?.band).toBe('unknown');
   });
 });
 

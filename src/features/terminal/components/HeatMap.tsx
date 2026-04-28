@@ -18,7 +18,7 @@ import {
 import { useEventStream } from '@/lib/events/use-event-stream';
 import { Sparkline, type SparklineStatus } from './Sparkline';
 import {
-  computeCompositeScore,
+  computeCompositeByCompany,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
 import {
@@ -145,19 +145,11 @@ export function HeatMap({ period }: Props) {
   // with no scoreable cells → composite null → "—" badge — honest
   // "this is a navigation rollup, not a measurable entity" UX.
   const compositeByCompany = useMemo(() => {
-    const out = new Map<string, CompositeScore>();
-    if (!data) return out;
-    const byCo = new Map<string, HeatMapCell[]>();
-    for (const c of data.cells) {
-      if (c.isSubgroupRollup) continue;
-      const list = byCo.get(c.companyId);
-      if (list) list.push(c);
-      else byCo.set(c.companyId, [c]);
-    }
-    for (const [companyId, cells] of byCo) {
-      out.set(companyId, computeCompositeScore(cells));
-    }
-    return out;
+    if (!data) return new Map<string, CompositeScore>();
+    // Sparse-map mode (no companyIds arg) — rows without scoreable cells
+    // are absent from the result; HeatMap's fallback for missing entries
+    // shows "—" via `compositeByCompany.get(co.id) ?? null` consumer.
+    return computeCompositeByCompany(data.cells);
   }, [data]);
 
   const filteredCompanies = useMemo(() => {

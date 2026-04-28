@@ -93,3 +93,45 @@ export function scoreToBand(score: number): CompositeBand {
   if (score >= 34) return 'amber';
   return 'red';
 }
+
+/**
+ * Phase C5 (architect Round-1 sub-12 closure) — shared aggregator for
+ * HeatMap.tsx + board-deck/page.tsx.
+ *
+ * Groups cells by `companyId` (skipping `isSubgroupRollup` rollup rows
+ * — caller-filter contract from sub-8) and computes the composite per
+ * company. Two modes via the `companyIds` arg:
+ *   - omitted: result includes only companies that have at least one
+ *     non-rollup cell (HeatMap pattern — sparse map)
+ *   - provided: result includes EVERY listed id, with empty-cell
+ *     companies getting a `score: null` "no data" composite (board-deck
+ *     pattern — table renders one row per operational sub-co even
+ *     when missing IndicatorValues)
+ *
+ * Locks the rollup-skip invariant in one place — divergent skip logic
+ * across call-sites would silently shift sub-group composites between
+ * the Terminal and Board Deck (architect Round-1 sub-12 ⚠️ closure).
+ */
+export function computeCompositeByCompany(
+  cells: readonly HeatMapCell[],
+  companyIds?: readonly string[],
+): Map<string, CompositeScore> {
+  const byCo = new Map<string, HeatMapCell[]>();
+  for (const c of cells) {
+    if (c.isSubgroupRollup) continue;
+    const list = byCo.get(c.companyId);
+    if (list) list.push(c);
+    else byCo.set(c.companyId, [c]);
+  }
+  const out = new Map<string, CompositeScore>();
+  if (companyIds) {
+    for (const id of companyIds) {
+      out.set(id, computeCompositeScore(byCo.get(id) ?? []));
+    }
+  } else {
+    for (const [id, list] of byCo) {
+      out.set(id, computeCompositeScore(list));
+    }
+  }
+  return out;
+}
