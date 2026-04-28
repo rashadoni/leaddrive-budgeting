@@ -23,6 +23,12 @@ export interface AuditChangedEvent {
   id: string;
   action: string;
   organizationId: string;
+  /**
+   * User who performed the action. `null` for CLI / cron / system-
+   * originated events. Added by migration
+   * `20260428220000_audit_events_notify_actoruserid`.
+   */
+  actorUserId: string | null;
   createdAt: string;
 }
 

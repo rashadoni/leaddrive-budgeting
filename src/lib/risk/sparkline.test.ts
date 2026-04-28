@@ -212,3 +212,118 @@ describe('computeSparkline', () => {
     expect(result).toHaveLength(4);
   });
 });
+
+// Phase B2 architect Round-1 sub-3 closure (Turn 42 sub-15): end-to-end
+// integration test exercising the full resolver→sparkline→evaluator
+// chain. Prior tests stubbed `buildContext` directly, which left the
+// resolver→sparkline boundary untested — a Turn-34/Turn-42-sub3-style
+// regression where `listBudgetLines` ignores `period.kind` and returns
+// the SAME annual aggregate for every monthly anchor would silently
+// pass all unit tests but produce flat-line sparklines in production.
+// This test pipes the REAL `recompute.buildContext` + REAL
+// `budgetLineResolver` through computeSparkline with a mock DS that
+// returns month-specific values.
+describe('computeSparkline — e2e via real recompute.buildContext', () => {
+  it('produces 12 distinct slots when DS returns month-specific budget lines', async () => {
+    // Lazy-import to keep this describe block isolated (no recompute
+    // module evaluation at top of file). Uses dynamic import inside
+    // the `it` body so the unit-test blocks above don't pull recompute
+    // semantics into their bundle.
+    const { buildContext } = await import('./recompute');
+    const { parsePeriod } = await import('./periods');
+
+    // Mock DS — listBudgetLines returns ONE row whose plannedAmount
+    // varies by period.kind month index. Other resolvers return empty.
+    const mockDs = {
+      listBookings: async () => [],
+      listOperationalFacts: async () => [],
+      getCompanySettings: async () => null,
+      listCurrencyRates: async () => [],
+      listBudgetLines: async ({ period }: { period: { kind: string; start: Date; end: Date; year: number } }) => {
+        // For monthly periods, derive the UTC month index and return a
+        // distinct plannedAmount per month. Other kinds (year/quarter)
+        // sum a fake "all months" total.
+        if (period.kind === 'month') {
+          const monthIdx = period.start.getUTCMonth(); // 0..11
+          return [
+            {
+              plannedAmount: 100 + monthIdx * 10, // Jan=100, Feb=110, ..., Dec=210
+              currencyCode: null,
+              exchangeRate: null,
+              accountType: 'revenue',
+              accountCode: '601-01',
+              accountCategory: 'sales',
+              accountName: 'Revenue',
+            },
+          ];
+        }
+        // Annual / quarterly: sum of distinct values (not exercised here).
+        return [
+          {
+            plannedAmount: 1860, // 100+110+...+210 = 1860
+            currencyCode: null,
+            exchangeRate: null,
+            accountType: 'revenue',
+            accountCode: '601-01',
+            accountCategory: 'sales',
+            accountName: 'Revenue',
+          },
+        ];
+      },
+      upsertIndicatorValue: async () => {},
+    };
+
+    // Wrapper bridges the string `period` from sparkline-land to the
+    // `Period` shape that real buildContext expects.
+    const realBuildContextWrapper = async (args: {
+      ds: typeof mockDs;
+      organizationId: string;
+      companyId: string;
+      period: string;
+      requiredInputs: string[];
+    }) => {
+      const parsed = parsePeriod(args.period);
+      return await buildContext(args.ds as never, {
+        organizationId: args.organizationId,
+        companyId: args.companyId,
+        period: parsed,
+        requiredInputs: args.requiredInputs,
+      });
+    };
+
+    const result = await computeSparkline(mockDs as never, {
+      organizationId: 'o',
+      companyId: 'c',
+      definition: {
+        id: 'i',
+        // Formula reads the bare `revenue` context var that
+        // budgetLineResolver populates from `accountType='revenue'`
+        // BudgetLineRows. `requiredInputs: ['budgetLine']` triggers the
+        // resolver — `budgetLine.<sub>` would request a sub-aggregation
+        // (rd_spend, debt_service, etc.) which we don't need here.
+        formula: 'revenue',
+        requiredInputs: ['budgetLine'],
+      },
+      anchorPeriod: '2026', // year anchor → 12 trailing months
+      buildContext: realBuildContextWrapper as never,
+    });
+
+    expect(result).toHaveLength(SPARKLINE_LENGTH);
+    // All 12 slots must be distinct numbers (not null, not all-equal).
+    const numeric = result.filter((v): v is number => typeof v === 'number');
+    expect(numeric).toHaveLength(SPARKLINE_LENGTH);
+    expect(new Set(numeric).size).toBe(SPARKLINE_LENGTH);
+    // First slot is 12 months before anchor — for anchor 2026 the
+    // trailing window ends at Dec 2025 (the last full month INSIDE
+    // the year period; trailingMonthPeriods walks back from period.end−1).
+    // So sparkline = [Jan-2025, Feb-2025, ..., Dec-2025] which maps to
+    // monthIdx 0..11 → plannedAmounts 100..210. Verify monotone increase.
+    for (let i = 1; i < numeric.length; i++) {
+      expect(numeric[i]).toBeGreaterThan(numeric[i - 1]);
+    }
+    // Locks the contract: a regression where listBudgetLines ignores
+    // period.kind and returns the annual sum (1860) for every period
+    // would produce 12 identical slots → `new Set(numeric).size === 1`
+    // → this test fails loudly.
+  });
+});

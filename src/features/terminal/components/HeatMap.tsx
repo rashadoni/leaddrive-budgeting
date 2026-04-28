@@ -106,11 +106,28 @@ export function HeatMap({ period }: Props) {
   }, [refetchMatrix]);
 
   // Phase B1 — refetch when SSE stream signals an indicator change.
+  // Architect Round-1 sub-1 closure: debounce 150ms so a bulk-import
+  // storm (10s of indicator updates fired back-to-back) coalesces to a
+  // single refetch instead of N. At Phase F (60×80 = 4800-cell payload)
+  // this matters; even at v1 scale (13×17) it prevents UI thrash on
+  // RECOMPUTE-all flows. v2 follow-up: server-side `partial:cell`
+  // event type that updates only the affected cell, no full refetch.
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEventStream({
     onIndicatorChanged: () => {
-      refetchMatrix();
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = setTimeout(() => {
+        refetchTimerRef.current = null;
+        refetchMatrix();
+      }, 150);
     },
   });
+  // Cleanup pending debounce timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    };
+  }, []);
 
   // `/`-search bridge: when CommandBar dispatches focus to the active panel
   // and panel 2 is active, focus our search box. Custom event keeps the
