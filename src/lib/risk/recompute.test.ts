@@ -66,8 +66,11 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
       state.orgReads.push(`rates:${organizationId}`);
       return state.currencyRates;
     },
-    listBudgetLines: async ({ organizationId, year }) => {
-      state.orgReads.push(`budgetlines:${organizationId}:${year}`);
+    listBudgetLines: async ({ organizationId, period }) => {
+      // Record the period.kind alongside year so tests can assert
+      // monthly-vs-annual scoping. Format: `budgetlines:<org>:<year>:<kind>`
+      // — backward-compat the year-only assertions via prefix match.
+      state.orgReads.push(`budgetlines:${organizationId}:${period.year}:${period.kind}`);
       return state.budgetLines;
     },
     upsertIndicatorValue: async (args) => {
@@ -520,7 +523,30 @@ describe('buildContext — budgetLine namespace', () => {
       period: parsePeriod('2026-Q2'),
       requiredInputs: ['budgetLine'],
     });
-    expect(ds.state.orgReads).toContain('budgetlines:org_1:2026');
+    expect(ds.state.orgReads).toContain('budgetlines:org_1:2026:quarter');
+  });
+
+  it('threads period.kind (month/quarter/year) into the DS read so resolver can scope by sortOrder', async () => {
+    // Round-trip locks the contract: resolver must NOT collapse to year-only.
+    // Sparkline anchors at 12 trailing months; without this, every monthly
+    // anchor reads the same annual aggregate → IND_NET_MARGIN renders as a
+    // flat horizontal line (Δ 0.00) regardless of seasonality.
+    const ds = mockDs({ budgetLines: [] });
+    await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['budgetLine'],
+    });
+    expect(ds.state.orgReads).toContain('budgetlines:org_1:2026:month');
+
+    // Yearly recompute still works — no sortOrder filter, sums all 12 months.
+    const ds2 = mockDs({ budgetLines: [] });
+    await buildContext(ds2, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine'],
+    });
+    expect(ds2.state.orgReads).toContain('budgetlines:org_1:2026:year');
   });
 
   it('ignores asset/liability/equity lines for P&L vars', async () => {

@@ -135,13 +135,23 @@ export interface RecomputeDataSource {
    *  Used by the `budgetLine` namespace to aggregate revenue / cogs / opex
    *  and detect imported (foreign-currency) lines.
    *
-   *  `year` is used to filter by `BudgetPlan.year` — otherwise a 2026-04
-   *  recompute would aggregate every year of plans the company has ever
-   *  had, producing silent skew in P&L ratios (AGRO_FX_RISK et al.). */
+   *  Filter contract — both year AND month-range matter:
+   *   - `period.year` filters by `BudgetPlan.year` so a 2026-04 recompute
+   *     doesn't aggregate every year of plans the company has ever had,
+   *     producing silent skew in P&L ratios (AGRO_FX_RISK et al.).
+   *   - `period.kind` further narrows by `BudgetLine.sortOrder` (= month
+   *     index 0..11 per Turn-34 monthly-distribution contract):
+   *       month   → sortOrder = period.start.month  (single slice)
+   *       quarter → sortOrder ∈ [startMonth..startMonth+2]
+   *       year    → no sortOrder filter (sums all 12 months)
+   *     Without this, sparklines anchor at "2026-04" but read the SAME
+   *     annual aggregate for all 12 trailing-month evaluations →
+   *     IND_NET_MARGIN, IND_OPEX_RATIO, etc. render as flat horizontal
+   *     lines (Δ 0.00) regardless of real monthly seasonality. */
   listBudgetLines(args: {
     organizationId: string;
     companyId: string;
-    year: number;
+    period: Period;
   }): Promise<BudgetLineRow[]>;
 
   upsertIndicatorValue(args: {
@@ -361,15 +371,34 @@ export function createPrismaDataSource(
       );
     },
 
-    async listBudgetLines({ organizationId, companyId, year }) {
-      // Scope to plans of the requested year. Without this a 2026-04
-      // recompute would aggregate every year of plans the company has ever
-      // had, making P&L denominators year-agnostic and skewing ratios.
+    async listBudgetLines({ organizationId, companyId, period }) {
+      // Year scope: without `plan.year` a 2026-04 recompute would aggregate
+      // every year of plans the company has ever had, making P&L
+      // denominators year-agnostic and skewing ratios.
+      //
+      // Month scope (Turn-42-sub3 fix): post-Turn-34 each parsed line is
+      // 12 BudgetLine rows with `sortOrder` = month index 0..11 +
+      // `plannedAmount` = perMonth slice. When period.kind is monthly /
+      // quarterly, narrow by sortOrder so sparkline trailing-month
+      // evaluations actually see different data per anchor — the whole
+      // point of a sparkline is varying-by-period, defeated by an
+      // unfiltered annual sum.
+      let sortOrderFilter: { gte: number; lte: number } | undefined;
+      if (period.kind === 'month') {
+        const m = period.start.getUTCMonth();
+        sortOrderFilter = { gte: m, lte: m };
+      } else if (period.kind === 'quarter') {
+        const startMonth = period.start.getUTCMonth();
+        sortOrderFilter = { gte: startMonth, lte: startMonth + 2 };
+      }
+      // year — no sortOrder filter; aggregate across all 12 months.
+
       const rows = await prisma.budgetLine.findMany({
         where: {
           organizationId,
           companyId,
-          plan: { year },
+          plan: { year: period.year },
+          ...(sortOrderFilter ? { sortOrder: sortOrderFilter } : {}),
         },
         select: {
           plannedAmount: true,
@@ -692,7 +721,7 @@ const budgetLineResolver: NamespaceResolver = {
     const lines = await ctx.ds.listBudgetLines({
       organizationId: ctx.organizationId,
       companyId: ctx.companyId,
-      year: ctx.period.year,
+      period: ctx.period,
     });
 
     let revenue = 0;
