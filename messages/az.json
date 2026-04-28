@@ -801,6 +801,8 @@
     "pnlNetMarginLine": "Xalis marja: {planPct}% (plan)",
     "aiFabTooltip": "Bu bölmənin AI təhlili",
     "aiFabLabel": "AI Təhlil",
+    "ebitdaMarginPct": "EBITDA marjası %",
+    "btnOk": "OK",
     "plansResetButton": "Sıfırla",
     "plansRollingPlanButton": "Sürüşkən plan",
     "plansResetDialogTitle": "Bütün məlumatları sıfırla",

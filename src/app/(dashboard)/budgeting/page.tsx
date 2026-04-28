@@ -4601,7 +4601,7 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
                 <td className={`px-3 py-1.5 text-right font-bold ${totalMargin < 0 ? "text-red-500" : ""}`}>{fmtK(totalMargin)}</td>
               </tr>
               <tr className="bg-purple-50/30 dark:bg-purple-950/5">
-                <td className="px-3 py-1 text-[11px] font-medium text-purple-600 dark:text-purple-400 sticky left-0 z-10 bg-purple-50/30 dark:bg-purple-950/5">EBITDA Margin %</td>
+                <td className="px-3 py-1 text-[11px] font-medium text-purple-600 dark:text-purple-400 sticky left-0 z-10 bg-purple-50/30 dark:bg-purple-950/5">{t("ebitdaMarginPct")}</td>
                 {months.map(m => {
                   const rev = getColTotal(revenueLines, m)
                   const ebitda = rev - getColTotal(cogsLines, m) - getColTotal(expenseLines, m)
@@ -4662,9 +4662,9 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
                   })}
                   <td className={`px-3 py-2 text-right font-mono text-sm font-bold ${totalMargin < 0 ? "text-red-600 dark:text-red-400" : ""}`}><AnimatedNumber value={totalMargin} duration={600} /></td>
                 </tr>
-                {/* EBITDA Margin % row */}
+                {/* {t("ebitdaMarginPct")} row */}
                 <tr className={`${totalMargin < 0 ? "bg-red-50/50 dark:bg-red-900/5" : "bg-purple-50/50 dark:bg-purple-900/5"}`}>
-                  <td className={`px-3 py-1 text-[11px] font-medium sticky left-0 z-10 ${totalMargin < 0 ? "text-red-500 bg-red-50/50 dark:bg-red-900/5" : "text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-900/5"}`}>EBITDA Margin %</td>
+                  <td className={`px-3 py-1 text-[11px] font-medium sticky left-0 z-10 ${totalMargin < 0 ? "text-red-500 bg-red-50/50 dark:bg-red-900/5" : "text-purple-600 dark:text-purple-400 bg-purple-50/50 dark:bg-purple-900/5"}`}>{t("ebitdaMarginPct")}</td>
                   {months.map(m => {
                     const rev = getColTotal(revenueLines, m)
                     const ebitda = rev - getColTotal(expenseLines, m)
@@ -4830,7 +4830,7 @@ function TemplatesTab() {
                       {confirmDelete === tpl.id ? (
                         <div className="flex gap-1 justify-center">
                           <Button size="sm" variant="destructive" className="h-6 text-[10px] px-2" onClick={() => handleDelete(tpl.id)}>
-                            {deleteTemplate.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Trash2 className="h-3 w-3 mr-0.5" /> OK</>}
+                            {deleteTemplate.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Trash2 className="h-3 w-3 mr-0.5" /> {t("btnOk")}</>}
                           </Button>
                           <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setConfirmDelete(null)}>{t("btnCancel")}</Button>
                         </div>
