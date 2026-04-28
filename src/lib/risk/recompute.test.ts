@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildContext,
+  createPrismaDataSource,
   recomputeIndicator,
   applyOutOfRangeClamp,
   RATIO_PLAUSIBILITY_CAP_PCT,
@@ -539,6 +540,16 @@ describe('buildContext — budgetLine namespace', () => {
     });
     expect(ds.state.orgReads).toContain('budgetlines:org_1:2026:month');
 
+    // Quarterly recompute (rarer but contracted) — locks the
+    // [startMonth..startMonth+2] sortOrder math via the kind tag.
+    const ds3 = mockDs({ budgetLines: [] });
+    await buildContext(ds3, {
+      ...orgArgs,
+      period: parsePeriod('2026-Q3'),
+      requiredInputs: ['budgetLine'],
+    });
+    expect(ds3.state.orgReads).toContain('budgetlines:org_1:2026:quarter');
+
     // Yearly recompute still works — no sortOrder filter, sums all 12 months.
     const ds2 = mockDs({ budgetLines: [] });
     await buildContext(ds2, {
@@ -577,6 +588,89 @@ describe('buildContext — budgetLine namespace', () => {
     expect(context.cogs).toBe(0);
     expect(context.opex).toBe(0);
     expect(inputs.aggregates.budget_line?.line_count).toBe(0);
+  });
+});
+
+describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () => {
+  // The mock-level tests above verify period.kind flows through, but the
+  // actual `[startMonth..startMonth+2]` sortOrder math for quarter and
+  // `{gte:m, lte:m}` for month live INSIDE createPrismaDataSource. Lock
+  // them by capturing the prisma.budgetLine.findMany where clause.
+  // Stubbing prisma is acceptable because the function under test is pure
+  // plumbing — month-index math + Prisma filter shape.
+  function makePrismaSpy() {
+    const findMany = vi.fn().mockResolvedValue([]);
+    // Cast to PrismaClient — only `budgetLine.findMany` is exercised by
+    // this test path.
+    const prisma = {
+      budgetLine: { findMany },
+    } as unknown as Parameters<typeof createPrismaDataSource>[0];
+    return { prisma, findMany };
+  }
+
+  it('month period (Apr) → sortOrder filter {gte: 3, lte: 3}', async () => {
+    const { prisma, findMany } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026-04'),
+    });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.plan).toEqual({ year: 2026 });
+    expect(where.sortOrder).toEqual({ gte: 3, lte: 3 });
+  });
+
+  it('quarter period (Q3 = Jul-Sep) → sortOrder filter {gte: 6, lte: 8}', async () => {
+    const { prisma, findMany } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026-Q3'),
+    });
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.sortOrder).toEqual({ gte: 6, lte: 8 });
+  });
+
+  it('quarter period (Q1) → sortOrder filter {gte: 0, lte: 2}', async () => {
+    const { prisma, findMany } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026-Q1'),
+    });
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.sortOrder).toEqual({ gte: 0, lte: 2 });
+  });
+
+  it('year period → no sortOrder filter (sums all 12 months)', async () => {
+    const { prisma, findMany } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026'),
+    });
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.plan).toEqual({ year: 2026 });
+    expect(where.sortOrder).toBeUndefined();
+  });
+
+  it('month period (Dec) → sortOrder filter {gte: 11, lte: 11}', async () => {
+    // Locks the boundary case (December = month index 11). A bug like
+    // `{gte: m, lte: m + 1}` would silently include January next year here.
+    const { prisma, findMany } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026-12'),
+    });
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.sortOrder).toEqual({ gte: 11, lte: 11 });
   });
 });
 

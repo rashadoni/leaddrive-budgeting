@@ -35,12 +35,15 @@
  * derived here lines up with what the `budgetLine` recompute resolver
  * expects to read from `ChartOfAccount.accountType`.
  *
- * --- MVP simplifications (documented openly, not hidden) ---
+ * --- Adapter contract notes ---
  *
- * 1. Monthly values are summed into a single annual `plannedAmount`. No
- *    per-month BudgetLine yet — the recompute pipeline's `listBudgetLines`
- *    already aggregates per-year, so this produces correct totals for
- *    yearly indicators. Monthly drill-down (sparkline) is a later pass.
+ * 1. Each parsed line carries BOTH `plannedAnnual` (sum across the 12
+ *    monthly columns) AND `perMonth: number[]` (length 12, index 0=Jan).
+ *    Persistence (CLI `import-azmade-budgets.ts` + Onboarding `/apply`
+ *    routes) writes 12 BudgetLine rows per parsed line at sortOrder=0..11
+ *    (Turn 34 monthly-distribution contract). The `budgetLine` recompute
+ *    resolver scopes by sortOrder for monthly/quarterly anchors (Turn-42-
+ *    sub-3) so sparklines reflect real per-month variation.
  * 2. Only `Yanvar`..`Dekabr` columns are read. Annual-total columns like
  *    "Toplam" are ignored to prevent double-counting if the workbook's
  *    formula is broken.
