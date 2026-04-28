@@ -243,9 +243,12 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     // changes in the title-attribute branches (loading vs populated vs
     // count text).
     function getAlertsStrip(): HTMLElement {
+      // startsWith — not strict equality — so a future copy-edit
+      // appending a space, trailing punctuation, etc. doesn't break the
+      // anchor. The "[alerts" prefix is the stable identifier.
       const anchor = Array.from(
         document.querySelectorAll('span'),
-      ).find((s) => s.textContent === '[alerts');
+      ).find((s) => (s.textContent ?? '').startsWith('[alerts'));
       if (!anchor) throw new Error('alerts strip prefix span not found');
       const strip = anchor.parentElement;
       if (!strip) throw new Error('alerts strip parent not found');
