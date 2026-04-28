@@ -25,6 +25,7 @@ export function CommandBar() {
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue);
+  const setActiveScenario = useTerminalStore((s) => s.setActiveScenarioCode);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -157,10 +158,23 @@ export function CommandBar() {
         });
         return { message: `IND ${cmd.indicatorCode} →` };
       }
+      case 'scn':
+        // Phase C4 v1 — `SCN <code> GO` opens the ScenarioPanel modal
+        // with the scenario pre-selected. Sets `activeScenarioCode`
+        // store slice (so other surfaces can react), then fires the
+        // event the modal listens for. Same dispatch pattern as
+        // `CMP`/`AUD` — no panel-switch needed since the modal floats
+        // above the panel grid.
+        setActiveScenario(cmd.scenarioCode);
+        window.dispatchEvent(
+          new CustomEvent('terminal:open-scenario', {
+            detail: { scenarioCode: cmd.scenarioCode },
+          }),
+        );
+        return { message: `SCN ${cmd.scenarioCode} →` };
       case 'hold':
       case 'grp':
       case 'sec':
-      case 'scn':
       case 'alt':
       case 'brf':
         // Pure panel-switch (no company change). The destination panel

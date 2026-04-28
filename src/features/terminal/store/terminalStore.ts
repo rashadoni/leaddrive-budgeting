@@ -97,6 +97,12 @@ export interface TerminalActions {
    */
   selectCompany: (code: string) => void;
   setActiveIndicatorValue: (id: string | null) => void;
+  /**
+   * Phase C4 v1 — pin the user's chosen scenario for the runner. Set by
+   * `SCN <code> GO` dispatch in CommandBar; consumed by `<ScenarioPanel/>`
+   * to pre-select the matching row when the modal opens.
+   */
+  setActiveScenarioCode: (code: string | null) => void;
   setSearchForPanel: (panelId: number, query: string) => void;
   clearSearchForPanel: (panelId: number) => void;
   setAlertsCount: (count: number | null) => void;
@@ -249,6 +255,7 @@ const actions: TerminalActions = {
     writeJsonToStorage(RECENT_LS_KEY, next);
   },
   setActiveIndicatorValue: (id) => setGlobalState({ activeIndicatorValueId: id }),
+  setActiveScenarioCode: (code) => setGlobalState({ activeScenarioCode: code }),
   setSearchForPanel: (panelId, query) =>
     setGlobalState({
       searchByPanel: { ...globalState.searchByPanel, [panelId]: query },

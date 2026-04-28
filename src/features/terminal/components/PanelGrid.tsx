@@ -24,6 +24,7 @@ import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
 import { ComparePanel } from './ComparePanel';
 import { AlertsPanel } from './AlertsPanel';
+import { ScenarioPanel } from './ScenarioPanel';
 import {
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
@@ -260,6 +261,10 @@ export function PanelGrid() {
           CommandBar's `[alerts]` strip click. Lists rule-engine matches
           grouped by severity. Same dismiss pattern as AuditModal. */}
       <AlertsPanel />
+      {/* Phase C4 v1 — opens on `terminal:open-scenario` event fired by
+          CommandBar's `SCN <code> GO` dispatch. What-if scenario inspector
+          + queue-apply. Same dismiss pattern as AuditModal. */}
+      <ScenarioPanel />
       {/* Phase A3 (Bloomberg uplift plan) — Group wrapped in flex-1 + min-h-0
           so AuditTicker can claim a fixed bottom strip without breaking the
           resizable-panels height calculation. */}
