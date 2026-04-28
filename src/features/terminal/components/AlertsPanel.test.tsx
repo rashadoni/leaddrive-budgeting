@@ -132,9 +132,6 @@ describe("AlertsPanel (Phase C6 v2)", () => {
     ];
     render(<AlertsPanel />);
     fireOpen();
-    const sections = screen.getAllByRole("region", { hidden: true });
-    // happy-dom may not assign 'region' role to <section> by default —
-    // fall back to label-based query.
     const critSection = screen.getByLabelText("Critical alerts");
     const warnSection = screen.getByLabelText("Warning alerts");
     expect(critSection).toBeTruthy();
@@ -146,8 +143,6 @@ describe("AlertsPanel (Phase C6 v2)", () => {
     expect(critPos).toBeGreaterThan(-1);
     expect(warnPos).toBeGreaterThan(-1);
     expect(critPos).toBeLessThan(warnPos);
-    // Quiet the unused-binding lint — `sections` is the broad query attempt.
-    void sections;
   });
 
   it("clicking a company chip calls selectCompany(code) and closes modal", async () => {
