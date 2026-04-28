@@ -143,15 +143,16 @@ function periodLabel(plan: any, t: (key: string) => string): string {
 // ─── Combined Import Tab ─────────────────────────────────────────────────────
 
 function ImportTab({ planId, onImported }: { planId: string; onImported: (planId: string) => void }) {
+  const t = useTranslations("budgeting")
   const [importMode, setImportMode] = useState<"csv" | "excel">("csv")
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
         <Button size="sm" variant={importMode === "csv" ? "default" : "outline"} onClick={() => setImportMode("csv")}>
-          <FileSpreadsheet className="h-4 w-4 mr-1" /> CSV Import
+          <FileSpreadsheet className="h-4 w-4 mr-1" /> {t("wsImportTabCsv")}
         </Button>
         <Button size="sm" variant={importMode === "excel" ? "default" : "outline"} onClick={() => setImportMode("excel")}>
-          <FileSpreadsheet className="h-4 w-4 mr-1" /> Excel Import
+          <FileSpreadsheet className="h-4 w-4 mr-1" /> {t("wsImportTabExcel")}
         </Button>
       </div>
       {importMode === "csv" ? (
@@ -893,7 +894,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                   factValue > 0 ? "text-[#065f46] dark:text-[#6ee7b7]" : "text-muted-foreground"
                 }`}
                 onClick={() => setExpandId(isExpanded ? null : line.id)}
-                title="Click to add actual">
+                title={t("wsAddActualTitle")}>
                 {fmt(factValue)}
                 <Pencil className="h-2.5 w-2.5 inline ml-1 opacity-0 group-hover:opacity-40" />
               </button>
@@ -1378,7 +1379,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                   <td className="px-2 py-1.5"><Input type="number" placeholder="0" className="h-7 text-xs text-right" value={newRow.plannedAmount} onChange={e => setNewRow(d => ({ ...d, plannedAmount: e.target.value }))} /></td>
                 </>
               ) : (
-                <td colSpan={2} className="px-2 py-1 text-[10px] text-muted-foreground align-middle">Amount = 0, add subcategories via "+"</td>
+                <td colSpan={2} className="px-2 py-1 text-[10px] text-muted-foreground align-middle">{t("wsAddSubcategoryHint")}</td>
               )}
               <td />
               <td className="px-2 py-1.5 text-center">
@@ -1534,7 +1535,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
           <Card className="lg:col-span-2 border-0 shadow-md">
             <CardHeader className="pb-1">
               <CardTitle className="text-sm font-semibold">{t("chartWaterfall") || "Budget Waterfall"}</CardTitle>
-              <p className="text-[10px] text-muted-foreground">Budget → Forecast → Actual → Variance → Projection</p>
+              <p className="text-[10px] text-muted-foreground">{t("chartWaterfallSubtitle") || "Budget → Forecast → Actual → Variance → Projection"}</p>
             </CardHeader>
             <CardContent className="pb-3">
               <BudgetWaterfallChart
@@ -1633,11 +1634,11 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
         </a>
         <div className="flex items-center border rounded-md overflow-hidden">
           <Button size="sm" variant={workspaceView === "list" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
-            onClick={() => setWorkspaceView("list")} title="List">
+            onClick={() => setWorkspaceView("list")} title={t("wsViewList")}>
             <List className="h-4 w-4" />
           </Button>
           <Button size="sm" variant={workspaceView === "matrix" ? "default" : "ghost"} className="h-8 text-xs rounded-none px-2"
-            onClick={() => setWorkspaceView("matrix")} title="Matrix (Department x Cost Type)">
+            onClick={() => setWorkspaceView("matrix")} title={t("wsViewMatrix")}>
             <LayoutGrid className="h-4 w-4" />
           </Button>
         </div>
@@ -1663,7 +1664,7 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
           </div>
         )}
         <Button size="sm" variant={compactNumbers ? "default" : "outline"} className="h-8 text-xs font-mono"
-          onClick={() => setCompactNumbers(!compactNumbers)} title="Compact number format (K/M)">
+          onClick={() => setCompactNumbers(!compactNumbers)} title={t("wsCompactNumbersTitle")}>
           {compactNumbers ? "1.2M" : "1,234"}
         </Button>
       </div>
@@ -1688,12 +1689,12 @@ function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: string; co
                   })
                   const json = await res.json()
                   if (!res.ok) {
-                    alert(json.error || "Failed to generate matrix")
+                    alert(json.error || t("wsGenMatrixFailed"))
                     return
                   }
                   window.location.reload()
                 } catch (err) {
-                  alert("Network error")
+                  alert(t("wsNetworkError"))
                 }
               }}
             >
@@ -2868,7 +2869,7 @@ function ComparisonTab() {
                   {/* Budget share bar */}
                   <div className="mt-3 space-y-1">
                     <div className="flex justify-between text-[10px] text-muted-foreground">
-                      <span>Relative size</span>
+                      <span>{t("compRelativeSize")}</span>
                       <span>{budgetShare.toFixed(0)}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-violet-200 dark:bg-violet-800 rounded-full overflow-hidden">
@@ -2889,7 +2890,7 @@ function ComparisonTab() {
                   <BarChart2 className="h-4 w-4 text-indigo-500" />
                   {t("chartComparisonByCategory")}
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">Budget allocation by category across plans</p>
+                <p className="text-xs text-muted-foreground">{t("compChartCategorySubtitle")}</p>
               </CardHeader>
               <CardContent className="pt-0">
                 <ResponsiveContainer width="100%" height={320}>
@@ -2923,9 +2924,9 @@ function ComparisonTab() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-emerald-500" />
-                  Plan Totals Overview
+                  {t("compPlanTotalsTitle")}
                 </CardTitle>
-                <p className="text-xs text-muted-foreground">Budget size comparison across selected plans</p>
+                <p className="text-xs text-muted-foreground">{t("compPlanTotalsSubtitle")}</p>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="space-y-4 mt-2">
@@ -2947,8 +2948,8 @@ function ComparisonTab() {
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barW}%`, backgroundColor: ps.color, opacity: 0.8 }} />
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>Actual: {ps.actual > 0 ? `${fmtK(ps.actual)} ₼` : "—"}</span>
-                          <span>{pctOfPlan > 0 ? `${pctOfPlan}% execution` : "No actuals"}</span>
+                          <span>{t("compActualLabel")}: {ps.actual > 0 ? `${fmtK(ps.actual)} ₼` : "—"}</span>
+                          <span>{pctOfPlan > 0 ? `${pctOfPlan}% ${t("compExecutionSuffix")}` : t("compNoActuals")}</span>
                         </div>
                       </div>
                     )
@@ -2958,7 +2959,7 @@ function ComparisonTab() {
                 {/* Delta between first two plans */}
                 {planSummaries.length >= 2 && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-semibold">Delta: {planSummaries[0].name} vs {planSummaries[1].name}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-semibold">{t("compDeltaLabel")}: {planSummaries[0].name} vs {planSummaries[1].name}</div>
                     {(() => {
                       const delta = planSummaries[0].planned - planSummaries[1].planned
                       const deltaPct = planSummaries[1].planned > 0 ? ((delta / planSummaries[1].planned) * 100) : 0
@@ -3514,18 +3515,18 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart2 className="h-4 w-4 text-indigo-500" />
-              P&L Waterfall
+              {t("pnlWaterfallTitle")}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Revenue → Direct Costs → Gross Profit → Overhead → EBITDA (plan)</p>
+            <p className="text-xs text-muted-foreground">{t("pnlWaterfallSubtitle")}</p>
           </CardHeader>
           <CardContent className="pt-0">
             {(() => {
               const waterfallData = [
-                { name: "Revenue", value: totalRevenuePlanned, base: 0, isStart: true, color: BUDGET_COLORS.planIndigo },
-                { name: "Direct Costs", value: totalDirectPlanned, base: totalRevenuePlanned - totalDirectPlanned, positive: false, color: BUDGET_COLORS.negative },
-                { name: "Gross Profit", value: grossProfitPlanned, base: 0, isTotal: true, color: grossProfitPlanned >= 0 ? BUDGET_COLORS.actualGreen : BUDGET_COLORS.negative },
-                { name: "Overhead", value: totalIndirectPlanned, base: grossProfitPlanned - totalIndirectPlanned, positive: false, color: BUDGET_COLORS.warning },
-                { name: "EBITDA", value: opProfitPlanned, base: 0, isTotal: true, color: opProfitPlanned >= 0 ? BUDGET_COLORS.planViolet : BUDGET_COLORS.negative },
+                { key: "Revenue", name: t("pnlWfRevenue"), value: totalRevenuePlanned, base: 0, isStart: true, color: BUDGET_COLORS.planIndigo },
+                { key: "Direct Costs", name: t("pnlWfDirectCosts"), value: totalDirectPlanned, base: totalRevenuePlanned - totalDirectPlanned, positive: false, color: BUDGET_COLORS.negative },
+                { key: "Gross Profit", name: t("pnlWfGrossProfit"), value: grossProfitPlanned, base: 0, isTotal: true, color: grossProfitPlanned >= 0 ? BUDGET_COLORS.actualGreen : BUDGET_COLORS.negative },
+                { key: "Overhead", name: t("pnlWfOverhead"), value: totalIndirectPlanned, base: grossProfitPlanned - totalIndirectPlanned, positive: false, color: BUDGET_COLORS.warning },
+                { key: "EBITDA", name: t("pnlWfEbitda"), value: opProfitPlanned, base: 0, isTotal: true, color: opProfitPlanned >= 0 ? BUDGET_COLORS.planViolet : BUDGET_COLORS.negative },
               ]
               const gpMargin = totalRevenuePlanned > 0 ? ((grossProfitPlanned / totalRevenuePlanned) * 100).toFixed(1) : "0"
               const ebitdaMargin = totalRevenuePlanned > 0 ? ((opProfitPlanned / totalRevenuePlanned) * 100).toFixed(1) : "0"
@@ -3540,14 +3541,14 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
                       <span className="font-semibold text-popover-foreground">{d.name}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground text-xs">Amount</span>
+                      <span className="text-muted-foreground text-xs">{t("pnlAmountLabel")}</span>
                       <span className="font-mono font-bold text-popover-foreground">{fmtK(Math.abs(d.value))} ₼</span>
                     </div>
-                    {d.name === "Gross Profit" && (
-                      <div className="text-[10px] text-muted-foreground mt-1">Margin: {gpMargin}%</div>
+                    {d.key === "Gross Profit" && (
+                      <div className="text-[10px] text-muted-foreground mt-1">{t("pnlMarginLabel")}: {gpMargin}%</div>
                     )}
-                    {d.name === "EBITDA" && (
-                      <div className="text-[10px] text-muted-foreground mt-1">Margin: {ebitdaMargin}%</div>
+                    {d.key === "EBITDA" && (
+                      <div className="text-[10px] text-muted-foreground mt-1">{t("pnlMarginLabel")}: {ebitdaMargin}%</div>
                     )}
                   </div>
                 )
@@ -3599,9 +3600,9 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <PiggyBank className="h-4 w-4 text-amber-500" />
-              Expense Breakdown
+              {t("pnlExpenseBreakdownTitle")}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Cost structure by category (plan)</p>
+            <p className="text-xs text-muted-foreground">{t("pnlExpenseBreakdownSubtitle")}</p>
           </CardHeader>
           <CardContent className="pt-0">
             {(() => {
@@ -3631,7 +3632,7 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
               const totalExp = expenseItems.reduce((s, e) => s + e.value, 0)
 
               if (expenseItems.length === 0) {
-                return <div className="flex items-center justify-center h-[240px] text-sm text-muted-foreground">No expense data</div>
+                return <div className="flex items-center justify-center h-[240px] text-sm text-muted-foreground">{t("pnlNoExpenseData")}</div>
               }
 
               const DonutTooltip = ({ active, payload }: any) => {
@@ -3844,7 +3845,7 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
                       {netActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
                     </div>
                     <div>
-                      <div className="font-bold text-base">Net Profit / (Loss)</div>
+                      <div className="font-bold text-base">{t("pnlNetProfitLoss")}</div>
                       {totalRevenuePlanned > 0 && (
                         <div className="text-xs text-muted-foreground mt-0.5">
                           Net Margin: {((netPlanned / totalRevenuePlanned) * 100).toFixed(1)}% (plan)
@@ -3933,13 +3934,13 @@ function PLTab({ planId, companyId }: { planId: string; companyId?: string | nul
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deviation</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("pnlDeviation")}</p>
                       <p className={`font-bold font-mono text-sm ${row.variancePct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
                         {row.variancePct >= 0 ? "+" : ""}{row.variancePct.toFixed(1)}%
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Execution</p>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("pnlExecution")}</p>
                       <p className="font-bold font-mono text-sm">
                         {row.planned > 0 ? Math.round((row.actual / row.planned) * 100) : 0}%
                       </p>
@@ -4354,9 +4355,9 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <BarChart2 className="h-4 w-4 text-indigo-500" />
-              Monthly Forecast Trend
+              {t("fcMonthlyTrend")}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Revenue vs Expenses by month ({scenario})</p>
+            <p className="text-xs text-muted-foreground">{t("fcMonthlyTrendSubtitle", { scenario })}</p>
           </CardHeader>
           <CardContent className="pt-0">
             {(() => {
@@ -4418,9 +4419,9 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-purple-500" />
-              Scenario Comparison
+              {t("fcScenarioComparison")}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Operating profit across scenarios</p>
+            <p className="text-xs text-muted-foreground">{t("fcScenarioComparisonSubtitle")}</p>
           </CardHeader>
           <CardContent className="pt-0">
             {(() => {
@@ -4483,8 +4484,8 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
                           <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barW}%`, backgroundColor: s.color, opacity: 0.7 }} />
                         </div>
                         <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
-                          <span>Rev: {fmtK(s.revenue)} ₼</span>
-                          <span>Costs: {fmtK(s.costs)} ₼</span>
+                          <span>{t("fcRevAbbrev")}: {fmtK(s.revenue)} ₼</span>
+                          <span>{t("fcCostsAbbrev")}: {fmtK(s.costs)} ₼</span>
                         </div>
                       </div>
                     )
@@ -4502,9 +4503,9 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Settings2 className="h-4 w-4 text-slate-500" />
-              Scenario Multipliers (%)
+              {t("fcScenarioMultipliersTitle")}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">Adjust how each scenario affects revenue, COGS, and expenses</p>
+            <p className="text-xs text-muted-foreground">{t("fcScenarioMultipliersSubtitle")}</p>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -4516,17 +4517,17 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">Revenue %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcRevenuePct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.optimistic.revenue}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, optimistic: { ...prev.optimistic, revenue: Number(e.target.value) } }))} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">COGS %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcCogsPct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.optimistic.cogs}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, optimistic: { ...prev.optimistic, cogs: Number(e.target.value) } }))} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">Expenses %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcExpensesPct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.optimistic.expense}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, optimistic: { ...prev.optimistic, expense: Number(e.target.value) } }))} />
                   </div>
@@ -4540,24 +4541,24 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">Revenue %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcRevenuePct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.pessimistic.revenue}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, pessimistic: { ...prev.pessimistic, revenue: Number(e.target.value) } }))} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">COGS %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcCogsPct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.pessimistic.cogs}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, pessimistic: { ...prev.pessimistic, cogs: Number(e.target.value) } }))} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">Expenses %</label>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">{t("fcExpensesPct")}</label>
                     <Input type="number" className="h-8 text-sm text-center" value={scenarioMultipliers.pessimistic.expense}
                       onChange={e => setScenarioMultipliers(prev => ({ ...prev, pessimistic: { ...prev.pessimistic, expense: Number(e.target.value) } }))} />
                   </div>
                 </div>
               </div>
             </div>
-            <p className="text-[10px] text-muted-foreground mt-3">100% = no change. Revenue 110% = +10% growth. Expenses 90% = 10% savings.</p>
+            <p className="text-[10px] text-muted-foreground mt-3">{t("fcMultipliersHelpText")}</p>
           </CardContent>
         </Card>
       )}
@@ -4568,7 +4569,7 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-[#1a3050]">
-                <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-white/80 sticky left-0 bg-[#1a3050] z-10 min-w-[120px]">P&L Summary</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-white/80 sticky left-0 bg-[#1a3050] z-10 min-w-[120px]">{t("fcPnlSummaryHeader")}</th>
                 {monthLabels.map((label, i) => (
                   <th key={i} className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-sky-300/70 min-w-[80px]">{label}</th>
                 ))}
@@ -4577,14 +4578,14 @@ function ForecastTab({ planId, companyId }: { planId: string; companyId?: string
             </thead>
             <tbody className="text-xs font-mono">
               <tr className="border-b border-border/30 bg-emerald-50/50 dark:bg-emerald-950/10">
-                <td className="px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-400 sticky left-0 bg-emerald-50/50 dark:bg-emerald-950/10 z-10">Revenue</td>
+                <td className="px-3 py-1.5 font-semibold text-emerald-700 dark:text-emerald-400 sticky left-0 bg-emerald-50/50 dark:bg-emerald-950/10 z-10">{t("fcPnlRowRevenue")}</td>
                 {months.map(m => (
                   <td key={m} className="px-2 py-1.5 text-right">{fmtK(getColTotal(revenueLines, m))}</td>
                 ))}
                 <td className="px-3 py-1.5 text-right font-bold">{fmtK(totalRevenue)}</td>
               </tr>
               <tr className="border-b border-border/30">
-                <td className="px-3 py-1.5 font-semibold text-muted-foreground sticky left-0 bg-background z-10">Costs</td>
+                <td className="px-3 py-1.5 font-semibold text-muted-foreground sticky left-0 bg-background z-10">{t("fcPnlRowCosts")}</td>
                 {months.map(m => {
                   const costs = getColTotal(cogsLines, m) + getColTotal(expenseLines, m)
                   return <td key={m} className="px-2 py-1.5 text-right">{fmtK(costs)}</td>
@@ -5097,9 +5098,9 @@ export default function BudgetingPage() {
               value={selectedCompanyId ?? ""}
               onChange={(e) => setSelectedCompanyId(e.target.value || null)}
               className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[200px]"
-              title="Filter by daughter company (sub-groups roll up children)"
+              title={t("companyFilterTitle")}
             >
-              <option value="">All companies (consolidated)</option>
+              <option value="">{t("companyFilterAllConsolidated")}</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.level === 1 ? "— " : "—— "}{c.code} {c.name && c.name !== c.code ? `· ${c.name}` : ""}
@@ -5122,11 +5123,11 @@ export default function BudgetingPage() {
         ) : (
           <div className="text-center py-20 text-muted-foreground">
             <FileSpreadsheet className="h-12 w-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No budget plans yet</p>
-            <p className="text-sm mt-1">Import an Excel file or create a new plan to get started.</p>
+            <p className="font-medium">{t("noPlansEmptyTitle")}</p>
+            <p className="text-sm mt-1">{t("noPlansEmptyHint")}</p>
             <div className="flex gap-2 justify-center mt-4">
-              <Button onClick={() => setActiveTab("integrations")}><Upload className="h-4 w-4 mr-1" /> Import Excel</Button>
-              <Button variant="outline" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-1" /> Create Plan</Button>
+              <Button onClick={() => setActiveTab("integrations")}><Upload className="h-4 w-4 mr-1" /> {t("noPlansImportButton")}</Button>
+              <Button variant="outline" onClick={() => setShowCreate(true)}><Plus className="h-4 w-4 mr-1" /> {t("noPlansCreateButton")}</Button>
             </div>
           </div>
         )
