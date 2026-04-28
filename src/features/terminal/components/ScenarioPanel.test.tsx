@@ -257,4 +257,56 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
       expect(screen.getByTestId("scenarios-fetch-error")).toBeTruthy();
     });
   });
+
+  // REGRESSION: architect Round-1 ⚠️ closure — empty-state copy must NOT
+  // render when fetchError is set (previously: setScenarios([]) on error
+  // collided with the empty-state branch, producing contradictory copy).
+  it("fetch-error path does NOT render empty-state copy", async () => {
+    global.fetch = vi.fn(
+      async () => new Response("nope", { status: 500 }),
+    ) as never;
+    render(<ScenarioPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.getByTestId("scenarios-fetch-error")).toBeTruthy();
+    });
+    // Empty-state testid must be absent.
+    expect(screen.queryByTestId("scenarios-empty")).toBeNull();
+  });
+
+  // REGRESSION: architect Round-1 ⚠️ closure — auto-select must NOT
+  // clobber a user's manual row click when the effect re-fires due to
+  // scenarios memo change (or any non-activeScenarioCode dep change).
+  // The effect re-syncs ONLY when activeScenarioCode itself changes
+  // post-mount. (Tested by clicking row B after auto-select picked A,
+  // then forcing a re-render via an unrelated state change.)
+  it("auto-select does not clobber manual row click on incidental re-render", async () => {
+    mockActiveScenarioCode = "AZN_DEVAL_20";
+    render(<ScenarioPanel />);
+    fireOpen();
+    // First open: auto-selects AZN_DEVAL_20.
+    await waitFor(() => {
+      const overrides = screen.getByTestId("scenario-overrides");
+      expect(overrides.textContent).toContain("USD");
+    });
+    // User clicks the OTHER row.
+    const otherRow = screen.getByTestId("scenario-row-OIL_DROP_30");
+    fireEvent.click(otherRow);
+    // Detail switches to OIL_DROP_30.
+    expect(screen.getByTestId("scenario-overrides").textContent).toContain(
+      "brent",
+    );
+    // Force a re-render that would re-fire the effect: trigger a no-op
+    // event. activeScenarioCode unchanged → auto-select must NOT re-fire.
+    act(() => {
+      window.dispatchEvent(new Event("terminal:open-scenario"));
+    });
+    // Manual selection (OIL_DROP_30) preserved — overrides still show brent.
+    expect(screen.getByTestId("scenario-overrides").textContent).toContain(
+      "brent",
+    );
+    expect(screen.getByTestId("scenario-overrides").textContent).not.toContain(
+      "USD",
+    );
+  });
 });

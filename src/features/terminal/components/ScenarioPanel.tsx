@@ -29,7 +29,7 @@
  *  - Side-by-side baseline vs scenario indicator delta view.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Beaker, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 
@@ -100,8 +100,12 @@ export function ScenarioPanel() {
       })
       .catch((e: unknown) => {
         if (aborted) return;
+        // Architect Round-1 ⚠️ closure: leave `scenarios=null` on error
+        // so the empty-state copy ("No scenarios seeded") doesn't render
+        // alongside the red fetchError chip — empty + error were
+        // contradictory. Render now treats null+error as the error
+        // branch; loading-state suppressed when fetchError set.
         setFetchError(e instanceof Error ? e.message : String(e));
-        setScenarios([]); // unblock UI from loading state
       });
     return () => {
       aborted = true;
@@ -109,12 +113,26 @@ export function ScenarioPanel() {
   }, [open, scenarios]);
 
   // When scenarios list lands AND the SCN dispatch pinned a code, auto-
-  // select that scenario by code → id.
+  // select that scenario by code → id. Architect Round-1 ⚠️ closure:
+  // tracks `lastSyncedCode` ref so re-firing the effect (scenarios memo
+  // change) doesn't clobber the user's manual row click. The effect
+  // RE-syncs only when `activeScenarioCode` itself changes (e.g. user
+  // types another `SCN OTHER GO` mid-open) — that's the desired re-pin.
+  // Modal close resets the ref so the next open auto-syncs again.
+  const lastSyncedCode = useRef<string | null>(null);
   useEffect(() => {
+    if (!open) {
+      lastSyncedCode.current = null;
+      return;
+    }
     if (!scenarios || !activeScenarioCode) return;
+    if (lastSyncedCode.current === activeScenarioCode) return;
     const match = scenarios.find((s) => s.code === activeScenarioCode);
-    if (match) setSelectedId(match.id);
-  }, [scenarios, activeScenarioCode]);
+    if (match) {
+      setSelectedId(match.id);
+      lastSyncedCode.current = activeScenarioCode;
+    }
+  }, [open, scenarios, activeScenarioCode]);
 
   const selectedScenario = useMemo(
     () => scenarios?.find((s) => s.id === selectedId) ?? null,
@@ -195,21 +213,26 @@ export function ScenarioPanel() {
             <h3 className="text-xs font-mono uppercase tracking-wider text-gray-500 mb-2">
               Available ({scenarios?.length ?? 0})
             </h3>
-            {scenarios === null ? (
+            {scenarios === null && !fetchError ? (
               <p
                 className="text-sm text-muted-foreground"
                 data-testid="scenarios-loading"
               >
                 Loading…
               </p>
-            ) : scenarios.length === 0 ? (
+            ) : scenarios !== null && scenarios.length === 0 ? (
               <p
                 className="text-sm text-muted-foreground"
                 data-testid="scenarios-empty"
               >
                 No scenarios seeded for this org.
               </p>
-            ) : (
+            ) : scenarios === null && fetchError ? (
+              // Error path: scenarios stayed null on fetch fail; the
+              // fetchError chip below carries the message. Render
+              // nothing here so empty + error don't both show.
+              null
+            ) : scenarios !== null && scenarios.length > 0 ? (
               <ul className="space-y-1">
                 {scenarios.map((s) => {
                   const isSelected = s.id === selectedId;
@@ -237,7 +260,7 @@ export function ScenarioPanel() {
                   );
                 })}
               </ul>
-            )}
+            ) : null}
             {fetchError && (
               <p
                 role="alert"
