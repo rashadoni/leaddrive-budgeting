@@ -638,15 +638,31 @@ describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
     return { companies, indicators, cells };
   }
 
-  it('multi-trigger company appears in multiple rule matches', () => {
+  it('multi-trigger company co_a appears in exactly 5 rule matches (4 critical + 1 warning)', () => {
     const ctx = buildFixture();
     const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
-    // co_a triggers: company-mostly-red (4 reds ≥ 3), company-critical-
-    // composite (4 red + 8 amber → score (0+0+0+0+50·8)/12 ≈ 33),
-    // critical-indicator-org-wide (red IND_NET_MARGIN), sector-red-spread
-    // (Industrial has co_a red + co_b/co_d red).
+    // co_a triggers 5 rules (4 critical + 1 warning):
+    //   critical:
+    //     - company-mostly-red (4 reds ≥ 3)
+    //     - company-critical-composite (4 red + 8 amber → 33 < 40)
+    //     - critical-indicator-org-wide (red IND_NET_MARGIN, 3 cos)
+    //     - sector-red-spread (Industrial has 7 reds across 3 cos)
+    //   warning:
+    //     - sector-amber-cluster (Industrial has 12 amber across 2 cos)
+    // Architect Round-1 sub-14 closure: was loose `≥3`; tightened to
+    // `=5` so a silent regression breaks the test instead of passing
+    // on N-of-5.
     const aMatches = matches.filter((m) => m.affectedCompanyIds.includes('co_a'));
-    expect(aMatches.length).toBeGreaterThanOrEqual(3);
+    expect(aMatches).toHaveLength(5);
+    // Each expected rule represented exactly once for co_a.
+    const aRuleIds = aMatches.map((m) => m.ruleId).sort();
+    expect(aRuleIds).toEqual([
+      'company-critical-composite',
+      'company-mostly-red',
+      'critical-indicator-org-wide',
+      'sector-amber-cluster',
+      'sector-red-spread',
+    ]);
   });
 
   it('sort order: critical → warning → info, sector-contagion (priority 10) before org-wide (20) before single-co (30+)', () => {
@@ -702,11 +718,19 @@ describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
     expect(observedIndex!.get('co_e')?.length).toBe(4);
   });
 
-  it('engine respects caller-provided cellsByCompany (no double-build)', () => {
+  it('engine respects caller-provided cellsByCompany (no double-build) + behavioral lock', () => {
     const ctx = buildFixture();
+    // Bogus index: only contains 'co_only', NOT any of the rule-pack's
+    // co_a..co_e. If the engine builds its own index from `ctx.cells`
+    // (ignoring the caller-provided one), DEFAULT_ALERT_RULES would
+    // still trigger for co_a/b/c/d. With caller-wins semantics, every
+    // rule's `cellsForCompany('co_a')` reads `customIndex.get('co_a')`
+    // = undefined → empty list → no rule fires.
     const customIndex = new Map<string, HeatMapCell[]>();
     customIndex.set('co_only', [cell('co_only', 'ind_gross', 'red')]);
     const ctxWithIndex: AlertContext = { ...ctx, cellsByCompany: customIndex };
+
+    // (a) Reference-equality probe — engine passes the SAME map through.
     let observed: ReadonlyMap<string, readonly HeatMapCell[]> | undefined;
     const probe = {
       id: 'probe',
@@ -720,7 +744,31 @@ describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
       },
     };
     evaluateAlertRules([probe], ctxWithIndex);
-    // Engine passed the SAME map through — caller wins.
     expect(observed).toBe(customIndex);
+
+    // (b) Behavioral assertion — DEFAULT_ALERT_RULES against the bogus
+    // index. Only the rules that READ THE INDEX via `cellsForCompany`
+    // honor caller-wins (mostly-red, composite, sector-amber-cluster,
+    // sector-red-spread — they all use the per-company helper). The
+    // org-wide indicator rule reads `ctx.cells` directly (filters by
+    // indicatorId across the whole matrix) and so isn't blocked by a
+    // bogus per-company index. Lock both contracts: per-company-rules
+    // produce ZERO matches; org-wide still fires from ctx.cells.
+    // (Architect Round-1 sub-14 closure: prior version checked only
+    // reference equality; this strengthens to behavioral end-to-end.)
+    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctxWithIndex);
+    const perCompanyRuleIds = new Set([
+      'company-mostly-red',
+      'company-critical-composite',
+      'sector-amber-cluster',
+      'sector-red-spread',
+    ]);
+    const perCompanyMatches = matches.filter((m) => perCompanyRuleIds.has(m.ruleId));
+    expect(perCompanyMatches).toHaveLength(0);
+    // Org-wide rule reads ctx.cells (NOT the index) so it still fires.
+    // This is the documented exception — index covers per-company
+    // queries only; org-wide / per-indicator queries walk ctx.cells.
+    const orgWideMatches = matches.filter((m) => m.ruleId === 'critical-indicator-org-wide');
+    expect(orgWideMatches).toHaveLength(1);
   });
 });
