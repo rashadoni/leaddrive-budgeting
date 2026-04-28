@@ -191,6 +191,7 @@ function IntegrationsTab({ planId }: { planId: string }) {
 // ─── F4: Rolling Forecast Tab ─────────────────────────────────────────────────
 
 function RollingTab() {
+  const t = useTranslations("budgeting")
   const { data: plans = [] } = useBudgetPlans()
   const rollingPlan = (plans as any[]).find((p) => p.isRolling)
   const rollingPlanId = rollingPlan?.id || null
@@ -204,9 +205,9 @@ function RollingTab() {
       <Card>
         <CardContent className="py-12 text-center text-muted-foreground">
           <CalendarRange className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-lg mb-2">Rolling Forecast</p>
-          <p className="text-sm">No rolling plan has been created yet.</p>
-          <p className="text-sm mt-1">Import an Excel budget file — a rolling plan will be created automatically. Or create one manually on the &quot;Plans&quot; tab.</p>
+          <p className="font-medium text-lg mb-2">{t("rollingForecastTitle")}</p>
+          <p className="text-sm">{t("rollingNoPlanDesc")}</p>
+          <p className="text-sm mt-1">{t("rollingNoPlanHint")}</p>
         </CardContent>
       </Card>
     )
@@ -217,7 +218,7 @@ function RollingTab() {
       <Card>
         <CardContent className="py-12 text-center text-muted-foreground">
           <CalendarRange className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-lg mb-2">Loading data...</p>
+          <p className="font-medium text-lg mb-2">{t("rollingLoading")}</p>
         </CardContent>
       </Card>
     )
@@ -244,6 +245,7 @@ function RollingTab() {
 // ─── F6: Cash Flow Tab ────────────────────────────────────────────────────────
 
 function CashFlowTab() {
+  const t = useTranslations("budgeting")
   const [year] = useState(new Date().getFullYear())
   const [subView, setSubView] = useState<"overview" | "odds" | "plan-fact">("overview")
   const { data: cashFlowData } = useCashFlow(year)
@@ -257,9 +259,9 @@ function CashFlowTab() {
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           {[
-            { key: "overview" as const, label: "Cash Flow" },
-            { key: "odds" as const, label: "CFS" },
-            { key: "plan-fact" as const, label: "Plan vs Actual" },
+            { key: "overview" as const, label: t("cashFlowSubviewOverview") },
+            { key: "odds" as const, label: t("cashFlowSubviewOdds") },
+            { key: "plan-fact" as const, label: t("cashFlowSubviewPlanFact") },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -282,7 +284,7 @@ function CashFlowTab() {
             disabled={generateCashFlow.isPending}
           >
             {generateCashFlow.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-            Generate from budget
+            {t("cashFlowGenerateFromBudget")}
           </Button>
         )}
       </div>
@@ -311,9 +313,9 @@ function CashFlowTab() {
             <Card>
               <CardContent className="py-12 text-center text-muted-foreground">
                 <Banknote className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="font-medium text-lg mb-2">Cash Flow Forecast</p>
-                <p className="text-sm">No cash flow data for {year}.</p>
-                <p className="text-sm mt-1">Click "Generate from Budget" to create entries from your budget plan.</p>
+                <p className="font-medium text-lg mb-2">{t("cashFlowEmptyTitle")}</p>
+                <p className="text-sm">{t("cashFlowEmptyDesc", { year })}</p>
+                <p className="text-sm mt-1">{t("cashFlowEmptyHint")}</p>
               </CardContent>
             </Card>
           )}
@@ -2407,6 +2409,7 @@ function ActualsTab({ planId }: { planId: string }) {
 
 function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: string; onSelect: (id: string) => void; onShowCreate: () => void }) {
   const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
   const { data: plans = [], isLoading } = useBudgetPlans()
   const updatePlan = useUpdateBudgetPlan()
   const deletePlan = useDeleteBudgetPlan()
@@ -2484,14 +2487,14 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
       <Dialog open={showRollingDialog} onOpenChange={setShowRollingDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Rolling Plan</DialogTitle>
+            <DialogTitle>{t("rollingDialogTitle")}</DialogTitle>
             <DialogDescription>
-              A 12-month rolling forecast with automatic extension. Close actuals each month, and the system adds a new month at the end.
+              {t("rollingDialogDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Input
-              placeholder="Plan name"
+              placeholder={t("rollingDialogPlanName")}
               value={rollingForm.name}
               onChange={e => setRollingForm(f => ({ ...f, name: e.target.value }))}
               onKeyDown={e => e.key === "Enter" && handleCreateRolling()}
@@ -2499,7 +2502,7 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
             />
             <div className="flex gap-3">
               <div className="flex-1">
-                <label className="text-xs text-muted-foreground mb-1 block">Start: year</label>
+                <label className="text-xs text-muted-foreground mb-1 block">{t("rollingDialogStartYear")}</label>
                 <Input
                   type="number"
                   value={rollingForm.startYear}
@@ -2507,24 +2510,24 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
                 />
               </div>
               <div className="flex-1">
-                <label className="text-xs text-muted-foreground mb-1 block">Start: month</label>
+                <label className="text-xs text-muted-foreground mb-1 block">{t("rollingDialogStartMonth")}</label>
                 <select
                   value={rollingForm.startMonth}
                   onChange={e => setRollingForm(f => ({ ...f, startMonth: Number(e.target.value) }))}
                   className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
-                  {["January","February","March","April","May","June","July","August","September","October","November","December"].map((m, i) => (
-                    <option key={i} value={i + 1}>{m}</option>
+                  {(["monthJan","monthFeb","monthMar","monthApr","monthMay","monthJun","monthJul","monthAug","monthSep","monthOct","monthNov","monthDec"] as const).map((mKey, i) => (
+                    <option key={i} value={i + 1}>{t(mKey)}</option>
                   ))}
                 </select>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRollingDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowRollingDialog(false)}>{tCommon("cancel")}</Button>
             <Button onClick={handleCreateRolling} disabled={!rollingForm.name || createRolling.isPending}>
               {createRolling.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
-              Create
+              {t("rollingDialogCreate")}
             </Button>
           </DialogFooter>
         </DialogContent>

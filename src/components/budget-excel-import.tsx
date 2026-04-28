@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +45,8 @@ const RESULT_LABELS: Record<string, string> = {
 }
 
 export function BudgetExcelImport({ onImported }: { onImported?: (planId: string) => void }) {
+  const t = useTranslations("budgeting")
+  const tCommon = useTranslations("common")
   const { data: session } = useSession()
   const orgId = (session?.user as any)?.organizationId
   const queryClient = useQueryClient()
@@ -209,9 +212,9 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                         disabled={purgeMutation.isPending}
                         onClick={() => { purgeMutation.mutate(p.id); setPurgeConfirm(null) }}
                       >
-                        {purgeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes"}
+                        {purgeMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("purgeConfirmYes")}
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setPurgeConfirm(null)}>Cancel</Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setPurgeConfirm(null)}>{tCommon("cancel")}</Button>
                     </>
                   ) : (
                     <Button

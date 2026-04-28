@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -60,6 +61,7 @@ function rowKey(costTypeId: string, departmentId: string | null): string {
 }
 
 export function ExpenseForecastTab() {
+  const t = useTranslations("budgeting")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
 
@@ -289,7 +291,7 @@ export function ExpenseForecastTab() {
           </Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-            {saved ? "Saved ✓" : "Save"}
+            {saved ? t("forecastSaved") : t("forecastSave")}
           </Button>
         </div>
       </div>
