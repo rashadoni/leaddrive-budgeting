@@ -287,8 +287,14 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     });
     applierMocks.detectProposalYear.mockReturnValue(2026);
 
-    // Capture every tx.budgetLine.create call.
+    // Capture every tx.budgetLine.create call + the coa-cache spies so we
+    // can also assert the cache prevents 12× redundant findUnique calls
+    // per parsed line (architect Round-2 💡 closure).
     const budgetLineCreates: Array<Record<string, unknown>> = [];
+    const coaFindUnique = vi.fn().mockResolvedValue(null);
+    const coaCreate = vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
+      id: `coa-${data.code}`,
+    }));
     prismaMock.$transaction.mockImplementation(
       async (cb: (tx: unknown) => Promise<unknown>) => {
         const tx = {
@@ -304,8 +310,8 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
             }),
           },
           chartOfAccount: {
-            findUnique: vi.fn().mockResolvedValue(null),
-            create: vi.fn().mockResolvedValue({ id: 'coa-fresh' }),
+            findUnique: coaFindUnique,
+            create: coaCreate,
           },
           importStaging: {
             update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
@@ -349,13 +355,29 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
 
     // Second parsed line — flat (codes 701-*, sign-flipped at applier
     // level; here the mock returned positive perMonth for simplicity).
+    // Symmetric assertions with the seasonal block above (architect Round-2
+    // ⚠️ closure: missing sortOrder-distinct + sum invariant for cogs).
     const cogsRows = budgetLineCreates.filter((d) => d.category === '701-01-01');
     expect(cogsRows).toHaveLength(12);
+    const cogsSortOrders = cogsRows
+      .map((r) => r.sortOrder)
+      .sort((a: unknown, b: unknown) => (a as number) - (b as number));
+    expect(cogsSortOrders).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     cogsRows.forEach((r) => {
       expect(r.plannedAmount).toBe(50);
       expect(r.lineType).toBe('cogs');
       expect(r.isAutoPlanned).toBe(false);
     });
+    const cogsSum = cogsRows.reduce((s, r) => s + (r.plannedAmount as number), 0);
+    expect(cogsSum).toBe(600);
+
+    // ── Coa cache contract (architect Round-2 💡 closure) ───────────
+    // The route's `coaCache` MUST prevent 12× redundant chartOfAccount
+    // lookups per parsed line. With 2 distinct codes, findUnique should
+    // fire exactly 2 times (once per code), not 24 (once per row).
+    expect(coaFindUnique).toHaveBeenCalledTimes(2);
+    // Both codes were missing → both went to create branch.
+    expect(coaCreate).toHaveBeenCalledTimes(2);
   });
 
   it('already-applied row → 409 without audit', async () => {
