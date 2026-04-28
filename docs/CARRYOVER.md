@@ -24,6 +24,87 @@ Single source of truth for open `🔄` items across substantive turns.
 
 ---
 
+## ⚡ SESSION HANDOFF
+
+> **For the next Claude session.** Read this BEFORE declaring TurnGoal. Overrides default "pick from OPEN" flow.
+
+### State at session-end (2026-04-28 ~02:35 local)
+
+- **Demo:** Friday 2026-05-01 (~3 days + ~11h away). State: 🟢 fully ready.
+- **Latest commit:** `e66263a` (final architect Round-1 closures — 5 inline fixes from autonomous run)
+- **Working tree:** clean
+- **Tests:** 1045/1045 vitest, tsc clean, `npm run demo:check` should still pass (re-run morning of Day-5)
+
+### What just happened (Turn 41 autonomous run, 7 commits)
+
+User authorized full autonomy (~2h step-away). Shipped Phase B end-to-end:
+- `2d9824e` setCompany split + ALERTED loading + emoji→lucide (closes 3 sub-4 🔄)
+- `389b61a` **B5** Compare panel (CMP verb wired)
+- `2534623` **B6** Hotkey toolbar (8 defaults)
+- `2bcb4df` **B7** Multi-chart company snapshot (Panel 4)
+- `a9056a1` **B8** Bloomberg layout preset (Phase B COMPLETE)
+- `5b55f51` CARRYOVER doc update
+- `e66263a` Round-1 closures (5 inline fixes + 3 OPEN→CLOSED migrations)
+
+Phase A (5 commits) + Phase B (8 items / 7 commits) = **all 13 plan items shipped**. Plan file: `~/.claude/plans/vast-chasing-gosling.md` — Phase C (AI suite) is the next chunk per plan.
+
+### 🎯 USER'S EXPLICIT NEXT-SESSION INSTRUCTION
+
+> "в новой сессии хочу чтоб ты начал с теста на баги а потом перешел дальше по задачам"
+
+**Step 1 — write regression tests for the 5 inline fixes shipped in `e66263a`:**
+
+| Fix | What to test |
+|---|---|
+| HotkeyToolbar COMPARE button | Click → CommandBar input is focused AND its value is `'CMP '` (was: dead — `panelId:0` matched no listener) |
+| HotkeyToolbar RECOMPUTE | (a) Click → fetch fired with `POST /api/indicators`. (b) 2nd click while pending → no second fetch. (c) Label changes `RECOMPUTE` → `RUNNING…` while pending. (d) After ~800ms minimum → label resets |
+| Per-row StarToggle uses lucide `<Star/>` | (a) `starred=true` → SVG with `fill="currentColor"`. (b) `starred=false` → SVG with `fill="none"` + non-zero stroke. Test in `CompanyTree.watchlist.test.tsx` (extend existing file) |
+| CommandBar `[alerts]` strip uses lucide `<Bell/>` | Render snapshot: `<Bell>` SVG present in alerts strip; emoji `🔔` absent. New test in `CommandBar.test.tsx` |
+| LayoutMenu PRESET/SAVED name collision | Mock `/api/terminal/layouts` to return a layout literally named `"Bloomberg"`. Open menu. Assert: dropdown shows ONLY ONE row labeled `"Bloomberg"` (the preset), NOT two |
+
+Ship as one commit `test(terminal): regression tests for e66263a bug fixes`. Run `npx vitest run + tsc` per usual; expect 1045 → ~1050.
+
+If any test reveals a bug → fix inline before moving on (per user's instruction "если будут обнаружены баги пофикси их").
+
+**Step 2 — proceed to Phase C per plan:**
+
+Plan §C (`~/.claude/plans/vast-chasing-gosling.md` lines ~258-280) lists 6 items:
+- C1 AI Web Crawler (~2-3w)
+- C2 Predictive Analytics (~2-3w)
+- C3 Board Deck Generator (~2w)
+- C4 Scenario runner (SCN verb wired) (~1-2w)
+- C5 Composite risk score (~1w)
+- C6 Alert rules engine (~1-2w)
+
+Recommended starting order: **C5 (composite risk score)** — small, foundational, weighted aggregation of indicator statuses → 0-100 per company. Then C6 (alert rules) — both unblock the AI suite items C1/C2/C3.
+
+Alternatively: tackle **architect's deferred 🔄** first if time/scope feels right:
+- Shared `useMatrix()` hook (4 self-fetch sites consolidate)
+- CompanySnapshot grid-cols-3 overflow at narrow Panel 4
+- HeatMap debounce on SSE refetch (Phase F scale concern)
+- Rollup-sourced sparkline flat-line (Phase 7.A.0 resolver fix — DEMO-IMPACT)
+
+Last one (rollup flat-line) is now visible in B3 sparklines for IND_NET_MARGIN etc. Worth fixing before demo if scope permits.
+
+### Pre-demo gates still standing (Day-5 morning)
+
+- `npm run demo:check` must show 15/15 ✓ "DEMO GO"
+- regenerate DEMO-CO via `npx tsx scripts/seed-demo-co.ts`
+- record/refresh DEMO_LOOM_BACKUP per `docs/DEMO_LOOM_BACKUP.md` (Day-4 evening)
+
+### Auto mode preference (per user's last session)
+
+User explicitly authorized full autonomy mid-Turn-41 ("надеюсь на твою полную автономность"). If user opens new session with auto-mode flag OR says `продолжай`/`начинай`, follow the same pattern: ship → architect → fix Round-1 inline → commit → next item. Per-commit architect SHOULD run if scope is non-trivial (autonomous-run final review caught 5 ⚠️ that per-commit reviews would have caught earlier — see `Per-commit architect protocol vs batched final` 🔄).
+
+### How to use this handoff
+
+1. Read it before TurnGoal.
+2. Execute Step 1 (write 5 regression tests) — this is the user's explicit ask.
+3. Continue Step 2 (Phase C OR architect 🔄s) per recommendations above.
+4. Delete this `## ⚡ SESSION HANDOFF` block (this entire section between `---` markers) once acted on, so handoffs don't accumulate.
+
+---
+
 ## OPEN
 
 **Last processed: 2026-04-28** (Turn 41 autonomous run — user "сначала реши проблемы потом сделай тесты по последней задачи по багам после окончания теста если будут обнаружены баги пофикси их а потом сразу же начни следующие задачи без моего подстверждения и управления исполняй задачи. мне нужно отойти от мака на пару часов надеюсь на твою полную автономность". **PHASE B COMPLETE — 4 commits in autonomous run:** (1) `2d9824e` — fixed 3 deferred 🔄 from sub-4 architect Round-1: setCompany split (selectCompany tracks LRU recent vs setCompany no-track for programmatic); ALERTED tab loading state; emoji→lucide icons. NEW `CompanyTree.watchlist.test.tsx` (11 tests). 1011/1011. (2) `389b61a` — **B5 Compare panel:** CMP verb fully wired (was stub); fires `terminal:open-compare` event; new ComparePanel modal renders 3-column table (LHS/RHS/Δ) with direction-aware Δ coloring; filters out indicators where neither company has data (5/65 rows for AAC-MAIN vs ATL-DBZ). NEW ComparePanel.test.tsx (11 tests). 1022/1022. (3) `2534623` — **B6 hotkey toolbar:** 8 default shortcuts above CommandBar (NEW PLAN/COMPARE/ALERTS/STARRED/RECENT/RECOMPUTE/SEARCH/IMPORT) + COMPACT toggle; lucide icons. NEW HotkeyToolbar.test.tsx (9 tests). 1031/1031. (4) `2bcb4df` — **B7 multi-chart snapshot:** new CompanySnapshot renders 3 P&L margin cards (Gross/Net/OpEx) when activeCompanyCode set but no IV drilled down; SSE auto-refresh; replaces the bare empty-state hint. Plan §B7 listed "revenue/margin/FCF" but margin-trio shipped because revenue/FCF level indicators not yet seeded (🔄). NEW CompanySnapshot.test.tsx (7 tests). 1038/1038. (5) `a9056a1` — **B8 Bloomberg layout preset:** new BUILT_IN_PRESETS in layout-sizes.ts (default 2×2, Bloomberg heatmap-dominant 70/30 outer + 20/80 top, analyst drill-down-heavy 40/60 outer + 60/40 bottom); LayoutMenu dropdown shows PRESETS section above SAVED. 7 new tests in layout-sizes.test.ts. 1045/1045. **Browser-verified live for every B item.** Bloomberg preset confirmed: Panel 1 shrinks 35%→20% (205px), HeatMap expands 65%→80% (2898px), 13 companies × 16+ indicator columns visible. Demo Friday 2026-05-01 remains 🟢 ready. **3 deferred 🔄 added** below: revenue/FCF indicators (B7 plan-deviation), customizable hotkey actions (B6 v2), drag-reorder hotkeys (B6 v2). 1045/1045 vitest, tsc clean.)
