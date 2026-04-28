@@ -84,12 +84,16 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  // Architect Round-1 sub-13 ⚠️ closure: defensive module-registry
-  // reset after every test so the file-scoped `vi.mock("../store/...")`
-  // can't conceivably leak into a parallel-worker file. (Pattern is
-  // identical to AlertsPanel/ScenarioPanel tests which have shipped
-  // clean, but the architect once observed a transient flake — this
-  // hardening is cheap insurance.)
+  // Belt-and-braces module-registry reset. Originally added in sub-13
+  // on a wrong diagnosis (suspected vi.mock cross-file leak from this
+  // file polluting RelatedFunctionsMenu.test.tsx). Sub-18 root-caused
+  // the actual flake to a same-file race in the consumer test (async
+  // /api/companies fetch landing after `waitFor(menu open)`); fix
+  // shipped in `RelatedFunctionsMenu.test.tsx` race-condition wrap.
+  // resetModules retained as cheap insurance — the file-scoped
+  // `vi.mock("../store/...")` is hoisted per-file so leak SHOULDN'T
+  // happen, but the cleanup costs ~0ms and prevents future regression
+  // if vitest's worker-pool isolation ever changes.
   vi.resetModules();
 });
 
