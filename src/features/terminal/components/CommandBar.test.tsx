@@ -231,6 +231,46 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(input.value).toBe('');
   });
 
+  // Regression test for bug fix #4 shipped in commit e66263a:
+  //   "CommandBar.tsx [alerts 🔔 N] strip — was emoji 🔔. Now lucide
+  //    <Bell/>. Completes the cross-platform parity sweep across 4 sites."
+  // Locks the lucide-SVG rendering shape so a future emoji regression
+  // (or removal of the icon entirely) is caught immediately.
+  describe('regression: [alerts] strip uses lucide <Bell/> (e66263a fix #4)', () => {
+    it('renders an SVG icon and no 🔔 emoji in the alerts strip', () => {
+      render(<CommandBar />);
+      // The strip is identifiable by its `title="Alerts: loading…"` (when
+      // alertsCount is null, the default state in a fresh store).
+      const stripWithTitle = document.querySelector(
+        '[title="Alerts: loading…"]',
+      );
+      expect(stripWithTitle).toBeTruthy();
+      const strip = stripWithTitle as HTMLElement;
+      // Bell SVG present — lucide-react renders an <svg> element.
+      const svg = strip.querySelector('svg');
+      expect(svg).toBeTruthy();
+      // Sanity: the bell emoji codepoint must NOT appear anywhere in
+      // the strip's text content.
+      expect(strip.textContent ?? '').not.toContain('🔔');
+      // The visible "[alerts" prefix + "—]" suffix must still render
+      // (the icon swap shouldn't have nuked surrounding text).
+      expect(strip.textContent ?? '').toContain('[alerts');
+      expect(strip.textContent ?? '').toContain(']');
+    });
+
+    it('SVG is hidden from screen readers (aria-hidden) — strip relies on title attr', () => {
+      // The Bell is decorative; screen readers should announce the
+      // strip's `title` attribute, not the icon glyph. Locking
+      // aria-hidden prevents an a11y regression.
+      render(<CommandBar />);
+      const strip = document.querySelector(
+        '[title="Alerts: loading…"]',
+      ) as HTMLElement;
+      const svg = strip.querySelector('svg');
+      expect(svg!.getAttribute('aria-hidden')).toBe('true');
+    });
+  });
+
   it('AUD GO → fires terminal:open-audit window event, leaves activePanel untouched', () => {
     render(<CommandBar />);
     let openCount = 0;

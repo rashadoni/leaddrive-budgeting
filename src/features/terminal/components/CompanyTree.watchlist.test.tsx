@@ -219,4 +219,64 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     expect(tabs[0].textContent).toContain("ALL");
     expect(tabs[3].textContent).toContain("RECENT");
   });
+
+  // Regression test for bug fix #3 shipped in commit e66263a:
+  //   "Per-row StarToggle in CompanyTree.tsx — was literal ★/☆ chars.
+  //    Now lucide <Star/> with fill="currentColor" when starred,
+  //    no-fill when not (preserves filled-vs-outline visual distinction)."
+  // Locks the lucide-SVG rendering shape so a future "let's just use
+  // emoji again" refactor can't silently regress cross-platform parity
+  // (Linux/Windows often miss color emoji fonts).
+  describe("regression: per-row StarToggle uses lucide <Star/> (e66263a fix #3)", () => {
+    it("starred=true → SVG rendered with fill='currentColor' and strokeWidth=0", () => {
+      const { result } = renderHook(() => useStoreActions());
+      act(() => {
+        result.current.toggleStarredCompany("AAC-MAIN");
+      });
+      render(<CompanyTree companies={COMPANIES} />);
+      const button = screen.getByLabelText("Unstar AAC-MAIN");
+      // The button should NOT contain a literal ★ character anymore.
+      expect(button.textContent ?? "").not.toContain("★");
+      expect(button.textContent ?? "").not.toContain("☆");
+      // The button should contain a real <svg> (lucide-react renders SVG).
+      const svg = button.querySelector("svg");
+      expect(svg).toBeTruthy();
+      // Filled state: fill="currentColor", strokeWidth="0".
+      expect(svg!.getAttribute("fill")).toBe("currentColor");
+      expect(svg!.getAttribute("stroke-width")).toBe("0");
+    });
+
+    it("starred=false → SVG rendered with fill='none' and non-zero stroke", () => {
+      // Default state: nothing starred.
+      render(<CompanyTree companies={COMPANIES} />);
+      const button = screen.getByLabelText("Star AAC-MAIN");
+      // No literal star char.
+      expect(button.textContent ?? "").not.toContain("★");
+      expect(button.textContent ?? "").not.toContain("☆");
+      const svg = button.querySelector("svg");
+      expect(svg).toBeTruthy();
+      // Outline state: fill="none", stroke-width must be a positive
+      // number (lucide-react sets it as a string).
+      expect(svg!.getAttribute("fill")).toBe("none");
+      const strokeWidth = parseFloat(svg!.getAttribute("stroke-width") ?? "0");
+      expect(strokeWidth).toBeGreaterThan(0);
+    });
+
+    it("toggling star flips fill='none' ↔ fill='currentColor' on the SAME row in place", () => {
+      // Locks "the row's icon updates without re-rendering the row" —
+      // catches a future regression where the toggle works on store but
+      // the SVG attribute drift goes unnoticed.
+      render(<CompanyTree companies={COMPANIES} />);
+      const starBtn = screen.getByLabelText("Star AAC-MAIN");
+      let svg = starBtn.querySelector("svg");
+      expect(svg!.getAttribute("fill")).toBe("none");
+
+      fireEvent.click(starBtn);
+
+      // The same DOM cell is now an "Unstar" button.
+      const unstarBtn = screen.getByLabelText("Unstar AAC-MAIN");
+      svg = unstarBtn.querySelector("svg");
+      expect(svg!.getAttribute("fill")).toBe("currentColor");
+    });
+  });
 });

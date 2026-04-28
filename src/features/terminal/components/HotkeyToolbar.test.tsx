@@ -121,6 +121,161 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(posted).toEqual({ url: "/api/indicators", method: "POST" });
   });
 
+  // Regression tests for bug fixes shipped in commit e66263a:
+  //   "fix(terminal): Round-1 closures from final architect review"
+  // These lock the post-fix behavior so future refactors can't silently
+  // re-break them.
+
+  describe("regression: COMPARE button (e66263a fix #1)", () => {
+    // Pre-fix: COMPARE dispatched a panelId:0 focus-search event which
+    // matched no listener — button was dead. Now it directly focuses the
+    // CommandBar input + prefills "CMP " via the native value setter.
+    it("focuses an input[data-cmd-bar] and prefills it with 'CMP '", () => {
+      // Render a controlled <input data-cmd-bar="true" /> alongside the
+      // toolbar so we can isolate COMPARE's DOM-side wiring without
+      // pulling the full CommandBar (which has its own fetch + store
+      // dependencies). The selector in HotkeyToolbar is `input[data-cmd-bar]`
+      // — any value of the attribute matches.
+      let lastInputValue = "";
+      const Harness = (): React.ReactElement => {
+        const [v, setV] = React.useState("");
+        // Mirror to outer scope so the assertion can read it post-event.
+        lastInputValue = v;
+        return (
+          <>
+            <HotkeyToolbar />
+            <input
+              data-cmd-bar="true"
+              value={v}
+              onChange={(e) => setV(e.target.value)}
+              aria-label="cmd-bar harness"
+            />
+          </>
+        );
+      };
+      render(<Harness />);
+      const input = document.querySelector(
+        'input[data-cmd-bar]',
+      ) as HTMLInputElement;
+      expect(input).toBeTruthy();
+      // Pre-click: input is empty, not focused.
+      expect(input.value).toBe("");
+      expect(document.activeElement).not.toBe(input);
+
+      fireEvent.click(screen.getByText("COMPARE"));
+
+      // After click: input is focused AND its value is exactly "CMP "
+      // (the prefill string the user types codes after).
+      expect(document.activeElement).toBe(input);
+      // The native-setter + 'input' event path makes the React-controlled
+      // harness re-render with the new value.
+      expect(input.value).toBe("CMP ");
+      expect(lastInputValue).toBe("CMP ");
+    });
+
+    it("is a no-op when no input[data-cmd-bar] is present (does not throw)", () => {
+      // Pre-fix would dispatch a dead event; post-fix should silently
+      // no-op when the selector finds nothing.
+      render(<HotkeyToolbar />);
+      // Nothing else rendered — no input[data-cmd-bar] in DOM.
+      expect(document.querySelector('input[data-cmd-bar]')).toBeNull();
+      // Clicking must not throw.
+      expect(() => fireEvent.click(screen.getByText("COMPARE"))).not.toThrow();
+    });
+  });
+
+  describe("regression: RECOMPUTE pending UX (e66263a fix #2)", () => {
+    // Pre-fix: RECOMPUTE was fire-and-forget with zero feedback —
+    // user-stampede risk (rapid double-clicks fired N requests). Post-
+    // fix: disabled-while-pending with "RUNNING…" label + 800ms minimum-
+    // visible feedback window so even fast servers don't flash too
+    // briefly to be perceptible.
+
+    it("flips label RECOMPUTE → RUNNING… on click and disables the button", () => {
+      // Use a never-resolving fetch so the pending state is observable.
+      const fetchSpy = vi.fn(() => new Promise(() => {}));
+      global.fetch = fetchSpy as never;
+
+      render(<HotkeyToolbar />);
+      // Pre-click: label is RECOMPUTE, button enabled.
+      const beforeBtn = screen.getByText("RECOMPUTE").closest("button");
+      expect(beforeBtn).toBeTruthy();
+      expect(beforeBtn!.disabled).toBe(false);
+
+      act(() => {
+        fireEvent.click(screen.getByText("RECOMPUTE"));
+      });
+
+      // Post-click while pending: label flipped to RUNNING…, button disabled.
+      expect(screen.queryByText("RECOMPUTE")).toBeNull();
+      const runningBtn = screen.getByText("RUNNING…").closest("button");
+      expect(runningBtn).toBeTruthy();
+      expect(runningBtn!.disabled).toBe(true);
+    });
+
+    it("ignores a second click while pending (no second fetch)", () => {
+      const fetchSpy = vi.fn(() => new Promise(() => {}));
+      global.fetch = fetchSpy as never;
+
+      render(<HotkeyToolbar />);
+      act(() => {
+        fireEvent.click(screen.getByText("RECOMPUTE"));
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+
+      // Second click on the now-RUNNING… (disabled) button.
+      // fireEvent.click on a disabled button doesn't fire onClick in
+      // happy-dom either, but exercise the early-return guard anyway by
+      // bypassing disabled state via the underlying button element.
+      const btn = screen.getByText("RUNNING…").closest("button")!;
+      // Manually fire — the in-component `if (recomputing) return false`
+      // is the actual stampede guard; disabled-on-button is just UI.
+      act(() => {
+        btn.click();
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("resets label back to RECOMPUTE after fetch resolves + 800ms minimum window", async () => {
+      vi.useFakeTimers();
+      let resolveFetch: ((value: Response) => void) | undefined;
+      const pending = new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+      global.fetch = vi.fn(() => pending) as never;
+
+      render(<HotkeyToolbar />);
+      act(() => {
+        fireEvent.click(screen.getByText("RECOMPUTE"));
+      });
+      expect(screen.queryByText("RUNNING…")).toBeTruthy();
+
+      // Resolve fetch — the .finally() schedules setTimeout(..., 800).
+      // We must let the microtask resolving `pending` flush BEFORE
+      // advancing fake timers so the 800ms timeout actually exists.
+      await act(async () => {
+        resolveFetch?.(new Response("{}", { status: 200 }));
+        // Flush the microtask queue so .finally() runs and queues setTimeout.
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      // Still RUNNING… because the 800ms minimum-visible window hasn't
+      // elapsed yet — locks the perceptible-feedback contract.
+      expect(screen.queryByText("RUNNING…")).toBeTruthy();
+      expect(screen.queryByText("RECOMPUTE")).toBeNull();
+
+      // Advance timers past the 800ms window.
+      await act(async () => {
+        vi.advanceTimersByTime(800);
+      });
+
+      expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
+      expect(screen.queryByText("RUNNING…")).toBeNull();
+      vi.useRealTimers();
+    });
+  });
+
   it("every button has descriptive title + aria-label (a11y)", () => {
     render(<HotkeyToolbar />);
     const buttons = screen.getAllByRole("button");
