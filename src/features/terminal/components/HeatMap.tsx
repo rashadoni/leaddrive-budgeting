@@ -17,6 +17,10 @@ import {
 } from '@/components/ui/tooltip';
 import { useEventStream } from '@/lib/events/use-event-stream';
 import { Sparkline, type SparklineStatus } from './Sparkline';
+import {
+  computeCompositeScore,
+  type CompositeScore,
+} from '@/lib/risk/composite-score';
 
 type CompanyRow = {
   id: string;
@@ -121,6 +125,25 @@ export function HeatMap({ period }: Props) {
     () => (data ? buildCellMap(data.cells) : new Map<string, HeatMapCell>()),
     [data],
   );
+
+  // Phase C5 — composite risk score per company. Pre-computed once per
+  // matrix fetch so each row header renders in O(1) (rather than re-
+  // filtering cells N times). Keyed by companyId.
+  const compositeByCompany = useMemo(() => {
+    const out = new Map<string, CompositeScore>();
+    if (!data) return out;
+    // Group cells by companyId in one pass (avoids N×M filter cost).
+    const byCo = new Map<string, HeatMapCell[]>();
+    for (const c of data.cells) {
+      const list = byCo.get(c.companyId);
+      if (list) list.push(c);
+      else byCo.set(c.companyId, [c]);
+    }
+    for (const [companyId, cells] of byCo) {
+      out.set(companyId, computeCompositeScore(cells));
+    }
+    return out;
+  }, [data]);
 
   const filteredCompanies = useMemo(() => {
     if (!data) return [];
@@ -312,16 +335,52 @@ export function HeatMap({ period }: Props) {
                           <button
                             type="button"
                             onClick={() => setCompany(co.code)}
-                            className="cursor-pointer hover:bg-gray-800/40 px-1 py-0.5 rounded text-left w-full"
+                            className="cursor-pointer hover:bg-gray-800/40 px-1 py-0.5 rounded text-left w-full flex items-center justify-between gap-1.5"
                           >
-                            {co.code}
+                            <span className="truncate">{co.code}</span>
+                            <CompositeBadge
+                              score={compositeByCompany.get(co.id) ?? null}
+                            />
                           </button>
                         </TooltipTrigger>
                         <TooltipContent
                           side="right"
                           className="bg-popover text-popover-foreground border border-border shadow-lg text-xs"
                         >
-                          {co.name}{co.industry ? ` · ${co.industry}` : ''}
+                          <div className="font-mono font-semibold">
+                            {co.code}
+                          </div>
+                          <div className="text-muted-foreground">
+                            {co.name}{co.industry ? ` · ${co.industry}` : ''}
+                          </div>
+                          {(() => {
+                            const cs = compositeByCompany.get(co.id);
+                            if (!cs) return null;
+                            return (
+                              <div className="text-[11px] mt-1">
+                                <span className="text-muted-foreground">
+                                  Composite score:{' '}
+                                </span>
+                                <span
+                                  className={
+                                    cs.band === 'green'
+                                      ? 'text-[#00D4AA]'
+                                      : cs.band === 'amber'
+                                      ? 'text-[#FFA502]'
+                                      : cs.band === 'red'
+                                      ? 'text-[#FF4757]'
+                                      : 'text-muted-foreground'
+                                  }
+                                >
+                                  {cs.score === null ? '— no data' : `${cs.score} / 100`}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {' · '}
+                                  {cs.contributingCount}/{cs.totalCount} indicators
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </TooltipContent>
                       </Tooltip>
                     </th>
@@ -354,6 +413,40 @@ export function HeatMap({ period }: Props) {
         </TooltipProvider>
       </div>
     </div>
+  );
+}
+
+/**
+ * Phase C5 — small badge showing composite risk score (0-100) next to
+ * the company code in HeatMap row headers. Color-coded by band; null
+ * score renders a neutral "—" (no data, NOT a 0/red signal).
+ */
+function CompositeBadge({ score }: { score: CompositeScore | null }) {
+  if (!score || score.score === null) {
+    return (
+      <span
+        className="text-[9px] tabular-nums text-gray-500 shrink-0"
+        title="No scoreable indicators"
+      >
+        —
+      </span>
+    );
+  }
+  const colorClass =
+    score.band === 'green'
+      ? 'text-[#00D4AA]'
+      : score.band === 'amber'
+      ? 'text-[#FFA502]'
+      : score.band === 'red'
+      ? 'text-[#FF4757]'
+      : 'text-gray-500';
+  return (
+    <span
+      className={`text-[9px] tabular-nums font-semibold shrink-0 ${colorClass}`}
+      title={`Composite ${score.score}/100 · ${score.contributingCount}/${score.totalCount} indicators`}
+    >
+      {score.score}
+    </span>
   );
 }
 
