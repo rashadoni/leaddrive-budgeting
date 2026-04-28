@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { useCompanies } from '../hooks/use-companies';
 import {
   Group,
   Panel,
@@ -114,8 +115,12 @@ export function PanelGrid() {
   const activePanelId = useTerminalStore((s) => s.activePanelId);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
 
-  const [companies, setCompanies] = useState<CompanyNode[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Sub-19: shared `useCompanies()` hook replaces inline fetch +
+  // useState. Module-level cache means PanelGrid + RelatedFunctionsMenu
+  // + AlertsPanel all subscribe to ONE in-flight request on session
+  // start instead of N races.
+  const { companies: companiesFromHook, loading } = useCompanies();
+  const companies: CompanyNode[] = (companiesFromHook ?? []) as CompanyNode[];
 
   // Imperative refs to each Group — LayoutMenu uses these to read
   // current sizes (Save) + push restored sizes (Load) without forcing a
@@ -158,26 +163,6 @@ export function PanelGrid() {
     bottom:
       readSavedLayout(STORAGE_KEY_BOTTOM) ?? DEFAULT_LAYOUT_SIZES.bottom,
   }));
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetch('/api/companies')
-      .then((res) => res.json())
-      .then((data) => {
-        if (cancelled) return;
-        setCompanies(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        if (!cancelled) setCompanies([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

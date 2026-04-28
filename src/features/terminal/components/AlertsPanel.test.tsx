@@ -31,6 +31,7 @@ import {
   act,
 } from "@testing-library/react";
 import { AlertsPanel } from "./AlertsPanel";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
 
 // Mock the store so we can control alertMatches + capture selectCompany.
 const selectCompanyMock = vi.fn();
@@ -57,6 +58,10 @@ vi.mock("../store/terminalStore", () => ({
 beforeEach(() => {
   mockMatches = null;
   selectCompanyMock.mockReset();
+  // Sub-19: reset useCompanies module cache between tests so each
+  // test's fetch mock controls the resolved data (without this the
+  // first test's payload sticks for the rest of the file).
+  __resetCompaniesCacheForTests();
   // Mock /api/companies fetch — flat array shape with id+code.
   global.fetch = vi.fn(async (url: RequestInfo | URL) => {
     if (String(url).includes("/api/companies")) {
@@ -220,6 +225,7 @@ describe("AlertsPanel (Phase C6 v2)", () => {
   // the loading pill stuck on. `companiesFetched` boolean now tracks
   // resolution separately from idToCode.size.
   it("loading pill clears when /api/companies resolves with empty array (zero-co tenant)", async () => {
+    __resetCompaniesCacheForTests();
     global.fetch = vi.fn(async () =>
       new Response("[]", {
         status: 200,
@@ -253,6 +259,7 @@ describe("AlertsPanel (Phase C6 v2)", () => {
   // disabled `unknown_xxx…` chips flashing for 50-200ms.
   it("shows 'Loading codes…' pill before /api/companies resolves", () => {
     // Block fetch — never resolves during this test.
+    __resetCompaniesCacheForTests();
     global.fetch = vi.fn(() => new Promise(() => {})) as never;
     mockMatches = [
       {

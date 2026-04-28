@@ -25,6 +25,7 @@ import {
 } from "@testing-library/react";
 import { RelatedFunctionsMenu } from "./RelatedFunctionsMenu";
 import { useTerminalStore } from "../store/terminalStore";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
 
 const COMPANIES = [
   { id: "atl_id_root", code: "ATL", name: "Azertexnolayn", children: [
@@ -41,6 +42,8 @@ function useStoreActions() {
 }
 
 beforeEach(() => {
+  // Sub-19: reset useCompanies module cache between tests.
+  __resetCompaniesCacheForTests();
   global.fetch = vi.fn(async () =>
     new Response(JSON.stringify(COMPANIES), {
       status: 200,
@@ -172,6 +175,11 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
   });
 
   it("falls back to no-company when fetch fails", async () => {
+    // Sub-19: per-test fetch override needs cache reset since the
+    // beforeEach success mock would have already cached the resolved
+    // promise — reset BEFORE override + re-mock so the failure path
+    // is what useCompanies sees.
+    __resetCompaniesCacheForTests();
     global.fetch = vi.fn(async () =>
       new Response("error", { status: 500 }),
     ) as never;
@@ -181,9 +189,11 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
       const button = screen.getByRole("button", { name: /Related functions/i });
       fireEvent.click(button);
     });
-    // Menu still renders; AAC-MAIN active but companyMap empty so
-    // resolved id = null, links omit company param
-    const pnlLink = screen.getByText("P&L").closest("a");
-    expect(pnlLink?.getAttribute("href")).toBe("/budgeting?tab=pnl-report");
+    // Menu still renders; AAC-MAIN active but codeToId empty so
+    // resolved id = null, links omit company param.
+    await waitFor(() => {
+      const pnlLink = screen.getByText("P&L").closest("a");
+      expect(pnlLink?.getAttribute("href")).toBe("/budgeting?tab=pnl-report");
+    });
   });
 });

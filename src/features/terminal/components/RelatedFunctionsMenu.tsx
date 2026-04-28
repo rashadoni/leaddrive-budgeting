@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTerminalStore } from "../store/terminalStore";
+import { useCompanies } from "../hooks/use-companies";
 
 /**
  * Bloomberg-style "Related Functions Menu" — context-aware dropdown next
@@ -40,7 +41,11 @@ const FUNCTIONS = [
 export function RelatedFunctionsMenu() {
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const [open, setOpen] = useState(false);
-  const [companyMap, setCompanyMap] = useState<Map<string, string> | null>(null);
+  // Sub-19 architect 🔄 closure: was inline `/api/companies` fetch +
+  // hand-rolled tree-walking. Swapped to shared `useCompanies()` hook
+  // — single fetch shared across PanelGrid, AlertsPanel,
+  // RelatedFunctionsMenu (and future consumers).
+  const { codeToId } = useCompanies();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape OR document mousedown outside the menu wrapper.
@@ -71,37 +76,8 @@ export function RelatedFunctionsMenu() {
     };
   }, [open]);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/companies")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => {
-        if (cancelled) return;
-        // /api/companies returns either a flat array or hierarchical tree
-        // (per CompanyTree's CompanyNode shape with optional children).
-        // Walk both forms to pick up every code→id pair.
-        const map = new Map<string, string>();
-        const walk = (node: { id?: string; code?: string; children?: unknown[] }) => {
-          if (node.id && node.code) map.set(node.code, node.id);
-          if (Array.isArray(node.children)) {
-            for (const c of node.children) walk(c as Parameters<typeof walk>[0]);
-          }
-        };
-        if (Array.isArray(data)) {
-          for (const c of data) walk(c as Parameters<typeof walk>[0]);
-        }
-        setCompanyMap(map);
-      })
-      .catch(() => {
-        if (!cancelled) setCompanyMap(new Map());
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const activeCompanyId = activeCompanyCode
-    ? companyMap?.get(activeCompanyCode) ?? null
+    ? codeToId.get(activeCompanyCode) ?? null
     : null;
 
   const buildHref = (tab: string, isPage: boolean) => {

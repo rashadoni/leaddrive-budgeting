@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
+import { useCompanies } from "../hooks/use-companies";
 import type { AlertMatch, AlertSeverity } from "@/lib/risk/alert-rules";
 
 const SEVERITY_LABEL: Record<AlertSeverity, string> = {
@@ -45,25 +46,13 @@ export function AlertsPanel() {
   const [open, setOpen] = useState(false);
   const matches = useTerminalStore((s) => s.alertMatches);
   const selectCompany = useTerminalStore((s) => s.selectCompany);
-  // Companies map for code-rendering — taken from store-published
-  // alertedCompanyCodes/setCompany pattern. AlertMatch carries
-  // `affectedCompanyIds` (UUIDs) — to render `AAC-MAIN` instead of
-  // raw UUID we'd need an id→code map. HeatMap already has the matrix;
-  // store doesn't currently expose `companies`. Workaround: AlertsPanel
-  // fetches `/api/companies` once on first open (same pattern
-  // RelatedFunctionsMenu uses).
-  const [idToCode, setIdToCode] = useState<Map<string, string>>(
-    () => new Map(),
-  );
-  const [companyFetchError, setCompanyFetchError] = useState<string | null>(
-    null,
-  );
-  // Architect Round-1 sub-16 ⚠️ closure: track `companiesFetched`
-  // separately so the "Loading codes…" pill clears even when
-  // /api/companies resolves with an empty array (org has 0 companies
-  // — newly-onboarded tenant). Without this, idToCode.size stays 0
-  // AND companyFetchError stays null → pill stuck on indefinitely.
-  const [companiesFetched, setCompaniesFetched] = useState(false);
+  // Sub-19 architect 🔄 closure: was inline `/api/companies` fetch
+  // duplicated across 4 panels. Swapped to shared `useCompanies()`
+  // hook — single fetch shared via module cache; same loading-state
+  // semantics (companiesFetched derived from `loading` flag).
+  const { idToCode, loading: companiesLoading, error: companyFetchError } =
+    useCompanies();
+  const companiesFetched = !companiesLoading;
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -82,54 +71,6 @@ export function AlertsPanel() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
-
-  // Fetch companies once on first modal open to build id→code map.
-  useEffect(() => {
-    if (!open || idToCode.size > 0) return;
-    let aborted = false;
-    fetch("/api/companies")
-      .then((r) => r.json())
-      .then((data) => {
-        if (aborted) return;
-        const map = new Map<string, string>();
-        const visit = (
-          arr: Array<{
-            id: string;
-            code: string;
-            children?: Array<{ id: string; code: string; children?: unknown[] }>;
-          }>,
-        ) => {
-          for (const c of arr) {
-            map.set(c.id, c.code);
-            if (Array.isArray(c.children)) {
-              visit(
-                c.children as Array<{
-                  id: string;
-                  code: string;
-                  children?: Array<{
-                    id: string;
-                    code: string;
-                    children?: unknown[];
-                  }>;
-                }>,
-              );
-            }
-          }
-        };
-        if (Array.isArray(data)) visit(data);
-        else if (Array.isArray(data?.companies)) visit(data.companies);
-        setIdToCode(map);
-        setCompaniesFetched(true);
-      })
-      .catch((e: unknown) => {
-        if (aborted) return;
-        setCompanyFetchError(e instanceof Error ? e.message : String(e));
-        setCompaniesFetched(true);
-      });
-    return () => {
-      aborted = true;
-    };
-  }, [open, idToCode.size]);
 
   const grouped = useMemo(() => {
     const out: Record<AlertSeverity, AlertMatch[]> = {
