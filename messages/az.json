@@ -103,6 +103,8 @@
     "export": "İxrac",
     "import": "İdxal",
     "refresh": "Yenilə",
+    "wallpaper": "Fon",
+    "off": "Söndür",
     "view": "Bax",
     "details": "Detallar",
     "pageOf": "Səhifə {current}/{total}",
