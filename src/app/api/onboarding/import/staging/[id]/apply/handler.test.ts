@@ -227,6 +227,137 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     });
   });
 
+  // Turn 42 sub-2 closure: the prior happy-path test uses
+  // `prismaMock.$transaction.mockResolvedValue(...)` which bypasses the
+  // route's inner-callback path entirely (existing FIXTURE-SUPPLIED
+  // coverage limit, comment at line 183-191). The Turn-42-sub-2 audit fix
+  // changed the inner-callback's BudgetLine insert from 1 row at
+  // sortOrder=0 → 12 rows at sortOrder=monthIdx with plannedAmount=
+  // perMonth[idx]. Without exercising the inner callback, the prior
+  // tests would silently green-pass even if a future regression
+  // re-introduced the 1-row-at-sortOrder=0 bug.
+  //
+  // This test invokes `$transaction` via `mockImplementation` so the
+  // callback ACTUALLY runs against a captured tx-spy. Then asserts the
+  // 12-row contract: 12 calls, sortOrder 0..11 distinct, plannedAmount
+  // mirrors perMonth[idx], isAutoPlanned=false (xlsx-sourced — Turn 29
+  // Bug #1b), and per-month sum equals plannedAnnual.
+  it('inner-callback: writes 12 BudgetLine rows per parsed line with sortOrder=monthIdx + plannedAmount=perMonth[idx]', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: {
+        columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
+        mappings: [],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+    // 2 parsed lines × 12 months = 24 expected create calls.
+    // Distinct perMonth shapes (seasonal + flat) so we can verify the
+    // mapping isn't being collapsed via averaging.
+    const seasonalPerMonth = [
+      100, 110, 130, 140, 160, 80, 70, 60, 90, 120, 150, 170,
+    ]; // sums to 1380
+    const flatPerMonth = Array.from({ length: 12 }, () => 50); // sums to 600
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [
+        {
+          code: '601-01-01',
+          label: 'Revenue A',
+          plannedAnnual: 1380,
+          accountType: 'revenue',
+          perMonth: seasonalPerMonth,
+        },
+        {
+          code: '701-01-01',
+          label: 'COGS A',
+          plannedAnnual: 600,
+          accountType: 'cogs',
+          perMonth: flatPerMonth,
+        },
+      ],
+      warnings: [],
+      parentRollupsDropped: [],
+      parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+
+    // Capture every tx.budgetLine.create call.
+    const budgetLineCreates: Array<Record<string, unknown>> = [];
+    prismaMock.$transaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          budgetPlan: {
+            findFirst: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'plan-fresh' }),
+          },
+          budgetLine: {
+            deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+            create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+              budgetLineCreates.push(data);
+              return { id: `bl-${budgetLineCreates.length}` };
+            }),
+          },
+          chartOfAccount: {
+            findUnique: vi.fn().mockResolvedValue(null),
+            create: vi.fn().mockResolvedValue({ id: 'coa-fresh' }),
+          },
+          importStaging: {
+            update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
+          },
+        };
+        return await cb(tx);
+      },
+    );
+
+    const req = await makeMultipartApplyRequest();
+    const res = await POST(req, paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+
+    // ── 12-row contract per parsed line ────────────────────────────
+    expect(budgetLineCreates).toHaveLength(24); // 2 lines × 12 months
+
+    // First parsed line — seasonal (codes 601-*).
+    const seasonalRows = budgetLineCreates.filter(
+      (d) => d.category === '601-01-01',
+    );
+    expect(seasonalRows).toHaveLength(12);
+    // sortOrder 0..11 distinct.
+    const seasonalSortOrders = seasonalRows
+      .map((r) => r.sortOrder)
+      .sort((a: unknown, b: unknown) => (a as number) - (b as number));
+    expect(seasonalSortOrders).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // plannedAmount mirrors perMonth[idx] exactly (no averaging).
+    seasonalRows
+      .sort((a, b) => (a.sortOrder as number) - (b.sortOrder as number))
+      .forEach((r, idx) => {
+        expect(r.plannedAmount).toBe(seasonalPerMonth[idx]);
+        expect(r.isAutoPlanned).toBe(false); // xlsx-sourced (Turn 29 Bug #1b)
+        expect(r.lineType).toBe('revenue');
+      });
+    // Sum invariant: ∑perMonth == plannedAnnual.
+    const seasonalSum = seasonalRows.reduce(
+      (s, r) => s + (r.plannedAmount as number),
+      0,
+    );
+    expect(seasonalSum).toBe(1380);
+
+    // Second parsed line — flat (codes 701-*, sign-flipped at applier
+    // level; here the mock returned positive perMonth for simplicity).
+    const cogsRows = budgetLineCreates.filter((d) => d.category === '701-01-01');
+    expect(cogsRows).toHaveLength(12);
+    cogsRows.forEach((r) => {
+      expect(r.plannedAmount).toBe(50);
+      expect(r.lineType).toBe('cogs');
+      expect(r.isAutoPlanned).toBe(false);
+    });
+  });
+
   it('already-applied row → 409 without audit', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
     prismaMock.importStaging.findFirst.mockResolvedValue({

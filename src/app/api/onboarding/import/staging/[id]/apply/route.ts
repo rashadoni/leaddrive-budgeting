@@ -347,8 +347,12 @@ export async function POST(
               isAutoActual: false,
             };
             await tx.budgetLine.create({ data });
-            inserted += 1;
           }
+          // `inserted` counts parsed LINES (not DB rows) so audit metadata
+          // stays consistent with CLI's `import-azmade-budgets.ts:295` and
+          // `budget/route.ts:277`. Previously this was inside the month-loop,
+          // which 12× over-counted vs both reference paths.
+          inserted += 1;
         }
 
         // Mark staging applied. Same transaction = atomic with the
