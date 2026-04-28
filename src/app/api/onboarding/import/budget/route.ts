@@ -412,19 +412,30 @@ async function insertBudgetLineTx(
     parsed.accountType === "revenue" || parsed.accountType === "cogs"
       ? parsed.accountType
       : "expense"
-  await tx.budgetLine.create({
-    data: {
-      organizationId,
-      planId,
-      companyId,
-      accountId,
-      category: parsed.code,
-      department: null,
-      lineType,
-      plannedAmount: parsed.plannedAnnual,
-      isAutoPlanned: true,
-      isAutoActual: false,
-    },
-  })
+  // Turn 34 monthly-distribution contract: 12 rows per parsed line
+  // (sortOrder=monthIdx, plannedAmount=perMonth[idx]). Mirrors the CLI
+  // importer at `scripts/import-azmade-budgets.ts:182-201`. Pre-fix
+  // single-row inserts at sortOrder=0 collapsed all 12 months into Jan
+  // → P&L charts showed a January spike + zero across Feb-Dec.
+  // Turn 29 Bug #1b: xlsx-sourced lines have explicit plannedAmount
+  // values; they are NOT auto-planned.
+  for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
+    const monthlyAmount = parsed.perMonth[monthIdx] ?? 0
+    await tx.budgetLine.create({
+      data: {
+        organizationId,
+        planId,
+        companyId,
+        accountId,
+        category: parsed.code,
+        department: null,
+        lineType,
+        plannedAmount: monthlyAmount,
+        sortOrder: monthIdx,
+        isAutoPlanned: false,
+        isAutoActual: false,
+      },
+    })
+  }
 }
 

@@ -318,20 +318,37 @@ export async function POST(
           if (!coaId) {
             throw new Error(`Internal: coaId not resolved for code ${line.code}`);
           }
-          const data: Prisma.BudgetLineUncheckedCreateInput = {
-            organizationId: orgIdLocal,
-            planId: plan.id,
-            companyId,
-            accountId: coaId,
-            category: line.code,
-            department: null,
-            lineType,
-            plannedAmount: line.plannedAnnual,
-            isAutoPlanned: true,
-            isAutoActual: false,
-          };
-          await tx.budgetLine.create({ data });
-          inserted += 1;
+
+          // Turn 34 monthly-distribution contract: write 12 rows per parsed
+          // line (one per month) with `plannedAmount=perMonth[idx]` +
+          // `sortOrder=monthIdx`. The CLI importer was rewritten in Turn 34
+          // (`scripts/import-azmade-budgets.ts:182-201`) but the Onboarding
+          // /apply route was missed — single-row inserts at sortOrder=0
+          // collapsed all 12 months into Jan, so post-/apply P&L charts
+          // showed a January spike + zero across Feb-Dec. `perMonth` length
+          // is guaranteed 12 by the parser/applier contract; rollup-sourced
+          // lines get an even annual/12 split (parser doesn't have monthly
+          // granularity for those — same fallback as the CLI path).
+          // Turn 29 (Bug #1b) idiom: xlsx-sourced lines have explicit
+          // plannedAmount values; they are NOT auto-planned.
+          for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
+            const monthlyAmount = line.perMonth[monthIdx] ?? 0;
+            const data: Prisma.BudgetLineUncheckedCreateInput = {
+              organizationId: orgIdLocal,
+              planId: plan.id,
+              companyId,
+              accountId: coaId,
+              category: line.code,
+              department: null,
+              lineType,
+              plannedAmount: monthlyAmount,
+              sortOrder: monthIdx,
+              isAutoPlanned: false,
+              isAutoActual: false,
+            };
+            await tx.budgetLine.create({ data });
+            inserted += 1;
+          }
         }
 
         // Mark staging applied. Same transaction = atomic with the
