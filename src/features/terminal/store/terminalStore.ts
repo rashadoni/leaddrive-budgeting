@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { AlertMatch } from '@/lib/risk/alert-rules';
 
 // Typed reactive global state — a hand-rolled Zustand stand-in while
 // `zustand` stays out of the bundle. Selectors pick a slice; components
@@ -65,6 +66,15 @@ export interface TerminalState {
    * CompanyTree 'alerted' tab filter. `null` until first matrix lands.
    */
   alertedCompanyCodes: ReadonlySet<string> | null;
+  /**
+   * Phase C6 v2 — full alert matches list (ordered critical→warning→info,
+   * priority within severity, alphabetic tiebreak). Published by HeatMap
+   * after running `evaluateAlertRules(DEFAULT_ALERT_RULES, ctx)` on the
+   * matrix; consumed by `<AlertsPanel/>` modal that opens on
+   * `terminal:open-alerts` event (CommandBar `[alerts]` strip click).
+   * `null` until first matrix lands; empty array = no alerts triggered.
+   */
+  alertMatches: readonly AlertMatch[] | null;
 }
 
 export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent';
@@ -95,6 +105,7 @@ export interface TerminalActions {
   setWatchlistTab: (tab: WatchlistTab) => void;
   toggleStarredCompany: (code: string) => void;
   setAlertedCompanyCodes: (codes: ReadonlySet<string> | null) => void;
+  setAlertMatches: (matches: readonly AlertMatch[] | null) => void;
   clearState: () => void;
 }
 
@@ -168,6 +179,7 @@ let globalState: TerminalState = {
   starredCompanyCodes: new Set(),
   recentCompanyCodes: [],
   alertedCompanyCodes: null,
+  alertMatches: null,
 };
 
 /**
@@ -260,6 +272,7 @@ const actions: TerminalActions = {
   },
   setAlertedCompanyCodes: (codes) =>
     setGlobalState({ alertedCompanyCodes: codes }),
+  setAlertMatches: (matches) => setGlobalState({ alertMatches: matches }),
   setCompactMode: (mode) => {
     setGlobalState({ compactMode: mode });
     writeCompactModeToStorage(mode);
@@ -286,6 +299,7 @@ const actions: TerminalActions = {
       alertsCount: null,
       recentCompanyCodes: [],
       alertedCompanyCodes: null,
+      alertMatches: null,
     });
     if (typeof window !== 'undefined') {
       try {

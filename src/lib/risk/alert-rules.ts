@@ -67,6 +67,14 @@ export interface AlertRule {
   description: string;
   severity: AlertSeverity;
   /**
+   * In-severity sort tiebreaker. Lower = more urgent within the same
+   * severity tier. CRO-mental-model priority: sector contagion (10)
+   * runs ahead of org-wide-indicator (20) ahead of single-company
+   * problems (30+) within `critical`. Engine falls back to alphabetic
+   * `ruleName` when priorities tie. Default 100 — set explicitly per rule.
+   */
+  priority: number;
+  /**
    * Returns zero or more matches. Pure function — caller treats output
    * as immutable. Returning an empty array means "rule did not trigger".
    */
@@ -76,12 +84,15 @@ export interface AlertRule {
 /**
  * Evaluate every rule against the given context, return the flat union
  * of all matches sorted by severity (critical → warning → info), then
- * by rule name (alphabetic) for determinism.
+ * by `priority` (lower first) within severity, then by `ruleName`
+ * (alphabetic) for stable determinism on tied priorities.
  */
 export function evaluateAlertRules(
   rules: readonly AlertRule[],
   ctx: AlertContext,
 ): AlertMatch[] {
+  const ruleMeta = new Map<string, { priority: number }>();
+  for (const r of rules) ruleMeta.set(r.id, { priority: r.priority });
   const out: AlertMatch[] = [];
   for (const rule of rules) {
     const matches = rule.match(ctx);
@@ -92,6 +103,9 @@ export function evaluateAlertRules(
       s === 'critical' ? 0 : s === 'warning' ? 1 : 2;
     const sd = severityRank(a.severity) - severityRank(b.severity);
     if (sd !== 0) return sd;
+    const pa = ruleMeta.get(a.ruleId)?.priority ?? 100;
+    const pb = ruleMeta.get(b.ruleId)?.priority ?? 100;
+    if (pa !== pb) return pa - pb;
     return a.ruleName.localeCompare(b.ruleName);
   });
 }
@@ -119,6 +133,7 @@ export const RULE_COMPANY_MOSTLY_RED: AlertRule = {
   description:
     'Flags companies with three or more red indicators — typical signal of a struggling sub-co needing executive attention.',
   severity: 'critical',
+  priority: 30,
   match(ctx) {
     const out: AlertMatch[] = [];
     for (const co of ctx.companies) {
@@ -152,6 +167,7 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
   description:
     'Flags companies whose composite risk score (Phase C5) is below 40 — overall poor health regardless of which specific indicators are red.',
   severity: 'critical',
+  priority: 40,
   match(ctx) {
     const out: AlertMatch[] = [];
     for (const co of ctx.companies) {
@@ -178,6 +194,7 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
   description:
     'Flags industries where amber cells aggregate across multiple companies — suggests sector-wide stress (FX, commodity, regulatory) rather than single-company issues.',
   severity: 'warning',
+  priority: 10,
   match(ctx) {
     const out: AlertMatch[] = [];
     const byIndustry = new Map<string, { companyIds: Set<string>; amberCount: number }>();
@@ -216,6 +233,7 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
   description:
     'Flags industries where red cells appear in 2+ companies — suggests sector contagion rather than isolated company problem.',
   severity: 'critical',
+  priority: 10,
   match(ctx) {
     const out: AlertMatch[] = [];
     const byIndustry = new Map<string, { companyIds: Set<string>; redCount: number }>();
@@ -254,6 +272,7 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
   description:
     'Flags org-wide net-margin pressure: if 3+ companies have IND_NET_MARGIN red, the holding has a profitability problem at the consolidated level.',
   severity: 'critical',
+  priority: 20,
   match(ctx) {
     const target = ctx.indicators.find((i) => i.code === 'IND_NET_MARGIN');
     if (!target) return [];
@@ -264,13 +283,16 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
         !c.isSubgroupRollup,
     );
     if (redCells.length < 3) return [];
+    const uniqueCompanyIds = Array.from(
+      new Set(redCells.map((c) => c.companyId)),
+    );
     return [
       {
         ruleId: this.id,
         ruleName: this.name,
         severity: this.severity,
-        message: `IND_NET_MARGIN red for ${redCells.length} companies — consolidated profitability under pressure`,
-        affectedCompanyIds: redCells.map((c) => c.companyId),
+        message: `IND_NET_MARGIN red for ${uniqueCompanyIds.length} companies — consolidated profitability under pressure`,
+        affectedCompanyIds: uniqueCompanyIds,
         affectedIndicatorCodes: ['IND_NET_MARGIN'],
       },
     ];

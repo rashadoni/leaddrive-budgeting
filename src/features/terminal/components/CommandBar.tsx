@@ -248,18 +248,23 @@ export function CommandBar() {
         <div className="flex items-center cursor-pointer hover:text-white transition-colors">
           <span className="mr-1">[user]</span>
         </div>
-        <div
+        <button
+          type="button"
           className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors"
           title={
             alertsCount === null
               ? 'Alerts: loading…'
-              : `${alertsCount} red+amber indicator${alertsCount === 1 ? '' : 's'} across the org`
+              : `${alertsCount} red+amber indicator${alertsCount === 1 ? '' : 's'} across the org — click to open alerts panel`
           }
+          aria-label="Open alerts panel"
+          onClick={() => {
+            window.dispatchEvent(new Event('terminal:open-alerts'));
+          }}
         >
           <span className="mr-1">[alerts</span>
           <Bell size={11} className="mx-1 text-[#FFB800]" aria-hidden="true" />
           <span className="text-[#FFB800]">{alertsCount === null ? '—' : alertsCount}]</span>
-        </div>
+        </button>
       </div>
     </div>
   );

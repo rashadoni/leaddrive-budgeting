@@ -23,6 +23,7 @@ import { LayoutMenu } from './LayoutMenu';
 import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
 import { ComparePanel } from './ComparePanel';
+import { AlertsPanel } from './AlertsPanel';
 import {
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
@@ -255,6 +256,10 @@ export function PanelGrid() {
           CommandBar's `CMP <LHS> <RHS> GO` dispatch. Side-by-side
           indicator view + Δ column. Same dismiss pattern as AuditModal. */}
       <ComparePanel />
+      {/* Phase C6 v2 — opens on `terminal:open-alerts` event fired by
+          CommandBar's `[alerts]` strip click. Lists rule-engine matches
+          grouped by severity. Same dismiss pattern as AuditModal. */}
+      <AlertsPanel />
       {/* Phase A3 (Bloomberg uplift plan) — Group wrapped in flex-1 + min-h-0
           so AuditTicker can claim a fixed bottom strip without breaking the
           resizable-panels height calculation. */}

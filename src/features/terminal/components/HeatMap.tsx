@@ -21,12 +21,18 @@ import {
   computeCompositeScore,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
+import {
+  evaluateAlertRules,
+  DEFAULT_ALERT_RULES,
+} from '@/lib/risk/alert-rules';
 
 type CompanyRow = {
   id: string;
   code: string;
   name: string;
   industry: string;
+  /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
+  isSubgroup?: boolean;
 };
 type IndicatorCol = {
   id: string;
@@ -59,6 +65,7 @@ export function HeatMap({ period }: Props) {
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
   const setAlertsCount = useTerminalStore((s) => s.setAlertsCount);
   const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
+  const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
   const compactMode = useTerminalStore((s) => s.compactMode);
 
   const [data, setData] = useState<MatrixResponse | null>(null);
@@ -185,6 +192,7 @@ export function HeatMap({ period }: Props) {
     if (!data) {
       setAlertsCount(null);
       setAlertedCompanyCodes(null);
+      setAlertMatches(null);
       return;
     }
     let count = 0;
@@ -202,7 +210,16 @@ export function HeatMap({ period }: Props) {
       if (alertedCompanyIds.has(co.id)) alertedCodes.add(co.code);
     }
     setAlertedCompanyCodes(alertedCodes);
-  }, [data, setAlertsCount, setAlertedCompanyCodes]);
+    // Phase C6 v2 — run rule engine against full matrix; publish flat
+    // sorted match list for AlertsPanel modal. `companies`/`indicators`
+    // shapes match AlertCompany/AlertIndicator structurally.
+    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, {
+      companies: data.companies,
+      indicators: data.indicators,
+      cells: data.cells,
+    });
+    setAlertMatches(matches);
+  }, [data, setAlertsCount, setAlertedCompanyCodes, setAlertMatches]);
 
   if (!mounted) {
     return (

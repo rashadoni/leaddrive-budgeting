@@ -373,12 +373,13 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
     expect(matches[1].severity).toBe('warning');
   });
 
-  it('sorts alphabetically within same severity', () => {
+  it('sorts alphabetically within same severity (when priority ties)', () => {
     const r1 = {
       id: 'r1',
       name: 'r1',
       description: '',
       severity: 'critical' as const,
+      priority: 50,
       match: () =>
         [
           {
@@ -395,6 +396,7 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
       name: 'r2',
       description: '',
       severity: 'critical' as const,
+      priority: 50,
       match: () =>
         [
           {
@@ -414,6 +416,98 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
     expect(matches[0].ruleName).toBe('A-rule');
     expect(matches[1].ruleName).toBe('Z-rule');
   });
+
+  it('sorts by priority within same severity (lower priority wins)', () => {
+    const lowPriority = {
+      id: 'low',
+      name: 'low',
+      description: '',
+      severity: 'critical' as const,
+      priority: 99,
+      match: () =>
+        [
+          {
+            ruleId: 'low',
+            ruleName: 'A-low-priority',
+            severity: 'critical' as const,
+            message: '',
+            affectedCompanyIds: [],
+          },
+        ],
+    };
+    const highPriority = {
+      id: 'high',
+      name: 'high',
+      description: '',
+      severity: 'critical' as const,
+      priority: 1,
+      match: () =>
+        [
+          {
+            ruleId: 'high',
+            ruleName: 'Z-high-priority',
+            severity: 'critical' as const,
+            message: '',
+            affectedCompanyIds: [],
+          },
+        ],
+    };
+    const matches = evaluateAlertRules([lowPriority, highPriority], {
+      companies: [],
+      indicators: [],
+      cells: [],
+    });
+    // Despite alphabetic order putting "A-low-priority" first,
+    // priority=1 wins over priority=99 within the critical tier.
+    expect(matches[0].ruleId).toBe('high');
+    expect(matches[1].ruleId).toBe('low');
+  });
+
+  it('severity rank dominates priority across tiers', () => {
+    // High-priority warning (priority=1) must NOT outrank low-priority
+    // critical (priority=99) — severity is the primary key.
+    const warnHighPri = {
+      id: 'warn-hp',
+      name: 'warn-hp',
+      description: '',
+      severity: 'warning' as const,
+      priority: 1,
+      match: () =>
+        [
+          {
+            ruleId: 'warn-hp',
+            ruleName: 'warn-hp',
+            severity: 'warning' as const,
+            message: '',
+            affectedCompanyIds: [],
+          },
+        ],
+    };
+    const critLowPri = {
+      id: 'crit-lp',
+      name: 'crit-lp',
+      description: '',
+      severity: 'critical' as const,
+      priority: 99,
+      match: () =>
+        [
+          {
+            ruleId: 'crit-lp',
+            ruleName: 'crit-lp',
+            severity: 'critical' as const,
+            message: '',
+            affectedCompanyIds: [],
+          },
+        ],
+    };
+    const matches = evaluateAlertRules([warnHighPri, critLowPri], {
+      companies: [],
+      indicators: [],
+      cells: [],
+    });
+    expect(matches[0].severity).toBe('critical');
+    expect(matches[1].severity).toBe('warning');
+  });
 });
 
 describe('DEFAULT_ALERT_RULES (Phase C6)', () => {
@@ -431,5 +525,57 @@ describe('DEFAULT_ALERT_RULES (Phase C6)', () => {
       expect(rule.name.trim().length).toBeGreaterThan(0);
       expect(rule.description.trim().length).toBeGreaterThan(0);
     }
+  });
+
+  it('each default rule has explicit priority (no fallback)', () => {
+    for (const rule of DEFAULT_ALERT_RULES) {
+      expect(typeof rule.priority).toBe('number');
+      expect(Number.isFinite(rule.priority)).toBe(true);
+    }
+  });
+
+  it('default-pack priority order: sector contagion (10) < org-wide-indicator (20) < single-co problem (30+)', () => {
+    const byId = new Map(DEFAULT_ALERT_RULES.map((r) => [r.id, r.priority]));
+    expect(byId.get('sector-red-spread')).toBeLessThan(
+      byId.get('critical-indicator-org-wide')!,
+    );
+    expect(byId.get('critical-indicator-org-wide')).toBeLessThan(
+      byId.get('company-mostly-red')!,
+    );
+    expect(byId.get('company-mostly-red')).toBeLessThan(
+      byId.get('company-critical-composite')!,
+    );
+  });
+});
+
+describe('RULE_CRITICAL_INDICATOR_ORG_WIDE — affectedCompanyIds dedup contract', () => {
+  it('deduplicates company ids when same indicator+company appears multiple times', () => {
+    // Synthetic edge case: same company has 2 red cells for the same
+    // indicator (shouldn't happen in production, but matrix could
+    // theoretically emit duplicates — sub-group rollup pass + leaf
+    // both red). Engine must dedup so AlertsPanel doesn't show
+    // "AAC-MAIN" listed twice for the same alert.
+    const ctx: AlertContext = {
+      companies: [
+        company('co_a', 'A', 'Industrial'),
+        company('co_b', 'B', 'Industrial'),
+        company('co_c', 'C', 'Industrial'),
+      ],
+      indicators: [{ id: 'ind_net', code: 'IND_NET_MARGIN' }],
+      cells: [
+        cell('co_a', 'ind_net', 'red'),
+        cell('co_a', 'ind_net', 'red'), // synthetic duplicate
+        cell('co_b', 'ind_net', 'red'),
+        cell('co_c', 'ind_net', 'red'),
+      ],
+    };
+    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx);
+    expect(matches).toHaveLength(1);
+    const ids = matches[0].affectedCompanyIds;
+    // 4 cells but only 3 distinct companies.
+    expect(ids).toHaveLength(3);
+    expect(new Set(ids).size).toBe(3);
+    // Message uses unique-company count, not raw cell count.
+    expect(matches[0].message).toContain('3 companies');
   });
 });
