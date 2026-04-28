@@ -37,7 +37,7 @@
  * update in lockstep — single point of truth.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 /**
  * Sub-19: shape mirrors `CompanyTree`'s `CompanyNode` so PanelGrid can
@@ -192,8 +192,18 @@ export function useCompanies(): UseCompaniesResult {
     };
   }, []);
 
-  const idToCode = companies ? buildIdToCode(companies) : EMPTY_MAP;
-  const codeToId = companies ? buildCodeToId(companies) : EMPTY_MAP;
+  // Architect Round-1 sub-19 closure: memoize per `companies` change.
+  // Without this, every render rebuilds the full id↔code maps via tree
+  // walks. At 13 cos negligible; at 60 cos × multi-consumer subscribe
+  // pattern this compounds wasted work.
+  const idToCode = useMemo<ReadonlyMap<string, string>>(
+    () => (companies ? buildIdToCode(companies) : EMPTY_MAP),
+    [companies],
+  );
+  const codeToId = useMemo<ReadonlyMap<string, string>>(
+    () => (companies ? buildCodeToId(companies) : EMPTY_MAP),
+    [companies],
+  );
 
   const refresh = async (): Promise<void> => {
     cache = null;
@@ -215,8 +225,16 @@ export function useCompanies(): UseCompaniesResult {
 
 /**
  * Test-only: clear the module-level cache between test runs so
- * `vi.fn(fetch)` mocks aren't shared across files. Call from
- * `beforeEach` in any test that mocks `/api/companies`.
+ * `vi.fn(fetch)` mocks aren't shared across files.
+ *
+ * **Convention (architect sub-19 💡 closure):** call from `beforeEach`
+ * in EVERY test file that mocks `/api/companies` AT MODULE LEVEL.
+ * Additionally, call again INSIDE any test that overrides `global.fetch`
+ * mid-suite — beforeEach reset alone is insufficient because the first
+ * `it()` would have already populated the cache from the success-path
+ * mock; per-test fetch overrides need their own reset to make the new
+ * mock visible. See `RelatedFunctionsMenu.test.tsx:182` and
+ * `AlertsPanel.test.tsx:228,262` for examples.
  */
 export function __resetCompaniesCacheForTests(): void {
   cache = null;

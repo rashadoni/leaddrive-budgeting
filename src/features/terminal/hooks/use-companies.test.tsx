@@ -115,6 +115,31 @@ describe("useCompanies (sub-19)", () => {
     expect(result.current.codeToId.size).toBe(0);
   });
 
+  // REGRESSION: architect Round-1 sub-19 ⚠️ closure — sticky-error
+  // contract. After fetch fails, cache.promise stays rejected; a 2nd
+  // mount during the same session subscribes to the rejected promise
+  // and lands in error state with NO retry. Caller must explicitly
+  // call refresh() to retry. Locks the documented behavior.
+  it("sticky error: 2nd mount after failed fetch sees same error, no retry", async () => {
+    const fetchSpy = vi.fn(async () =>
+      new Response("nope", { status: 500 }),
+    );
+    global.fetch = fetchSpy as never;
+    const { result: r1 } = renderHook(() => useCompanies());
+    await waitFor(() => {
+      expect(r1.current.loading).toBe(false);
+    });
+    expect(r1.current.error).toContain("500");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    // Second mount after error — should NOT retry, should see same error.
+    const { result: r2 } = renderHook(() => useCompanies());
+    await waitFor(() => {
+      expect(r2.current.loading).toBe(false);
+    });
+    expect(r2.current.error).toContain("500");
+    expect(fetchSpy).toHaveBeenCalledTimes(1); // still 1, no retry
+  });
+
   it("empty array response: idToCode/codeToId empty + loading=false (zero-co tenant)", async () => {
     global.fetch = vi.fn(async () =>
       new Response("[]", {

@@ -118,9 +118,14 @@ export function PanelGrid() {
   // Sub-19: shared `useCompanies()` hook replaces inline fetch +
   // useState. Module-level cache means PanelGrid + RelatedFunctionsMenu
   // + AlertsPanel all subscribe to ONE in-flight request on session
-  // start instead of N races.
+  // start instead of N races. CompanyNode type is now an alias for the
+  // hook's CompanyTreeNode (canonical), so no cast needed — null fallback
+  // converts via `?? []` to a typed empty array.
   const { companies: companiesFromHook, loading } = useCompanies();
-  const companies: CompanyNode[] = (companiesFromHook ?? []) as CompanyNode[];
+  // Hook returns ReadonlyArray; CompanyTree's prop is mutable array
+  // (legacy). Spread to a fresh mutable array — cheap O(N) copy at v1
+  // (13 cos), still trivial at Phase F.
+  const companies: CompanyNode[] = companiesFromHook ? [...companiesFromHook] : [];
 
   // Imperative refs to each Group — LayoutMenu uses these to read
   // current sizes (Save) + push restored sizes (Load) without forcing a

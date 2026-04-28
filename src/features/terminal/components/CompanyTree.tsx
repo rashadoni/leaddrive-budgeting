@@ -6,16 +6,13 @@ import { useTerminalStore } from '../store/terminalStore';
 
 const PANEL_ID = 1;
 
-export type CompanyNode = {
-  id: string;
-  code: string;
-  name: string;
-  industry?: string | null;
-  country?: string | null;
-  level?: number;
-  parentCompanyId?: string | null;
-  children?: CompanyNode[];
-};
+// Sub-19 architect ⚠️ closure: canonical type lives in the hook
+// (`useCompanies` returns `CompanyTreeNode[]`). Import + re-export
+// here as `CompanyNode` to preserve existing public API of this file
+// (other modules import `CompanyNode` from here) without duplicating
+// the shape — drift is now compile-checked at the import boundary.
+import type { CompanyTreeNode } from "../hooks/use-companies";
+export type CompanyNode = CompanyTreeNode;
 
 type Props = {
   companies: CompanyNode[];
