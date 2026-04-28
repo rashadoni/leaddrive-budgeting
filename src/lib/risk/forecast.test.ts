@@ -41,18 +41,18 @@ describe('forecastNextPeriod (Phase C2 v1)', () => {
     expect(r!.confidence).toBe('high');
   });
 
-  it('flat series (all identical) → slope=0, r²=0, low confidence', () => {
+  it('flat series (all identical) → slope=0, r²=0, LOW confidence', () => {
     const series = [5, 5, 5, 5, 5, 5];
     const r = forecastNextPeriod(series);
     expect(r).not.toBeNull();
     expect(r!.slope).toBe(0);
     expect(r!.r2).toBe(0);
     expect(r!.predicted).toBeCloseTo(5, 9);
-    // Confidence = 'medium' because n=6 → ≥5 (the medium-or fallback);
-    // r² is 0 (NOT ≥ 0.7) so doesn't hit 'high'. Caller should detect
-    // slope=0 and render "no change expected" rather than treating
-    // medium-confidence-zero-slope as a meaningful signal.
-    expect(r!.confidence).toBe('medium');
+    // Architect Round-1 sub-13 closure: flat series (ssTot=0) forces
+    // confidence='low' regardless of n. The n≥5 medium-OR-fallback
+    // shouldn't apply when there's literally no signal — caller should
+    // ALSO detect slope=0 and render "no change expected" copy.
+    expect(r!.confidence).toBe('low');
     expect(r!.contributingCount).toBe(6);
   });
 
@@ -128,20 +128,21 @@ describe('forecastNextPeriod (Phase C2 v1)', () => {
     expect(r4!.confidence).toBe('medium');
   });
 
-  it('confidence threshold: low when both r²<0.4 and n<5', () => {
-    // 3 noisy points: r² will be variable. Use values that don't fit well.
+  it('confidence threshold: low when both r²<0.4 and n<5 (deterministic)', () => {
+    // 3 points (0,0), (1,5), (2,1). Compute by hand:
+    //   meanX=1, meanY=2; slope=Σ(x−mx)(y−my)/Σ(x−mx)² = (1+0+−1)/2 = 0.5
+    //   intercept = 2 − 0.5·1 = 1.5
+    //   y_hat at x=0,1,2: 1.5, 2.0, 2.5
+    //   ssRes = (0−1.5)² + (5−2)² + (1−2.5)² = 2.25 + 9 + 2.25 = 13.5
+    //   ssTot = (0−2)² + (5−2)² + (1−2)² = 4 + 9 + 1 = 14
+    //   r² = 1 − 13.5/14 ≈ 0.0357
+    // Architect Round-1 sub-13 closure: was hedged if/else; now
+    // deterministic — r²≈0.036 is unambiguously <0.4 + n=3<5 → 'low'.
     const r = forecastNextPeriod([0, 5, 1]);
     expect(r).not.toBeNull();
     expect(r!.contributingCount).toBe(3);
-    // Linear fit through (0,0), (1,5), (2,1) — slope is non-zero but
-    // r² is moderate. n=3 + r²<0.4 → 'low'. Verify r² is in fact low.
-    if (r!.r2 < 0.4) {
-      expect(r!.confidence).toBe('low');
-    } else {
-      // If the synthetic data happens to fit, re-check: r²≥0.4 would
-      // satisfy medium-OR clause.
-      expect(r!.confidence).toBe('medium');
-    }
+    expect(r!.r2).toBeLessThan(0.1); // ≈0.036 — well below 0.4 threshold
+    expect(r!.confidence).toBe('low');
   });
 
   it('exact ascending series 1..6 → high confidence (n=6 + r²=1)', () => {

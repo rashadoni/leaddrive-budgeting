@@ -207,11 +207,17 @@ export function IndicatorDetail() {
         const forecast = forecastNextPeriod(detail.sparkline);
         if (!forecast) return null;
         // Treat near-zero slopes as "no change expected" — caller
-        // semantic from forecast.ts jsdoc; avoids "high-confidence
-        // flat" being interpreted as a meaningful directional signal.
+        // semantic from forecast.ts jsdoc; avoids low-confidence-flat
+        // outputs being interpreted as directional signals.
         const isFlat = Math.abs(forecast.slope) < 1e-9;
-        const sign =
-          isFlat ? "" : forecast.predicted > 0 && forecast.slope > 0 ? "+" : "";
+        // Sign mirrors the 12mo trend Δ rendering above (line ~192):
+        // "+" prefix on positive predicted, no prefix on zero/negative
+        // (the "↓" arrow conveys descending direction; native "-" sign
+        // from formatValue conveys negative value). Architect Round-1
+        // sub-13 closure: was `predicted>0 AND slope>0` — convoluted,
+        // and missed the case of positive predicted from a descending
+        // series (e.g. [10,9,8] → forecast 7, ↓, want "+7" not "7").
+        const sign = forecast.predicted > 0 ? "+" : "";
         const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
         return (
           <div

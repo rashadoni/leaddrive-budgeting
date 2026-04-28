@@ -59,9 +59,13 @@ const MIN_POINTS = 3;
  * expected", but caller should render that branch differently from
  * "real prediction with high confidence").
  *
- * `flat` outcomes return predicted = mean, slope = 0, r2 = 0,
- * confidence = 'low' so callers can choose to render as "no change
- * expected" rather than "high-confidence flat".
+ * `flat` outcomes (all-identical y values) return predicted = mean,
+ * slope = 0, r2 = 0, confidence = 'low' regardless of n. Without this
+ * override the n≥5 medium-fallback would label a no-signal flat series
+ * as "medium confidence", contradicting the semantic ("we have no
+ * directional information"). Caller should still detect slope ≈ 0 and
+ * render "no change expected" copy rather than treating the predicted
+ * mean as a low-confidence directional signal.
  */
 export function forecastNextPeriod(
   series: ReadonlyArray<number | null>,
@@ -92,9 +96,10 @@ export function forecastNextPeriod(
   const meanX = sumX / n;
   const meanY = sumY / n;
   const denom = sumXX - n * meanX * meanX;
-  // Perfectly vertical (impossible with index-based x) OR all-x-equal
-  // (impossible too) — defensive guard; means slope undefined.
-  if (denom === 0) return null;
+  // For n≥3 with distinct integer x indices, denom > 0 always
+  // (denom = Σ(xᵢ − meanX)² and the points filter at line 87 enforces
+  // n≥3 from a non-empty set of distinct indices). Architect sub-13
+  // closure: dead guard removed; the math is safe.
 
   const slope = (sumXY - n * meanX * meanY) / denom;
   const intercept = meanY - slope * meanX;
@@ -119,8 +124,13 @@ export function forecastNextPeriod(
   const nextX = series.length;
   const predicted = slope * nextX + intercept;
 
+  // Flat-series override: when ssTot=0 (all y values identical), the
+  // helper has no directional signal regardless of n. Force 'low' so
+  // callers don't treat n≥5 medium-OR-fallback as meaningful for a
+  // line that says "no change". (Architect Round-1 sub-13 closure.)
   let confidence: ForecastConfidence;
-  if (r2 >= 0.7 && n >= 6) confidence = 'high';
+  if (ssTot === 0) confidence = 'low';
+  else if (r2 >= 0.7 && n >= 6) confidence = 'high';
   else if (r2 >= 0.4 || n >= 5) confidence = 'medium';
   else confidence = 'low';
 
