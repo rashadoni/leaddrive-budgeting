@@ -2467,7 +2467,7 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            {plans.length === 1 ? t("plansCountSingular", { count: plans.length }) : t("plansCountPlural", { count: plans.length })}
+            {t("plansCount", { count: plans.length })}
           </h2>
           <Button size="sm" variant="ghost" className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 h-7"
             disabled={plans.length === 0 || deletePlan.isPending}
@@ -2589,10 +2589,10 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
                     </div>
                   )}
                   {plan.submittedAt && !plan.approvedAt && (
-                    <div className="text-[10px] text-amber-400 mt-1.5">Pending since {new Date(plan.submittedAt).toLocaleDateString()}</div>
+                    <div className="text-[10px] text-amber-400 mt-1.5">{t("plansPendingSince", { date: new Date(plan.submittedAt).toLocaleDateString() })}</div>
                   )}
                   {plan.status === "rejected" && plan.rejectedReason && (
-                    <div className="text-[10px] text-red-400 mt-1.5 truncate" title={plan.rejectedReason}>Rejected: {plan.rejectedReason}</div>
+                    <div className="text-[10px] text-red-400 mt-1.5 truncate" title={plan.rejectedReason}>{t("plansRejectedLabel", { reason: plan.rejectedReason })}</div>
                   )}
                 </div>
                 {/* Light actions footer */}
@@ -2600,17 +2600,17 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
                   <Button size="sm" variant={isActive ? "default" : "outline"} onClick={() => onSelect(plan.id)} className="flex-1 text-xs h-8">
                     {isActive ? <><CheckCircle className="h-3 w-3 mr-1" /> {t("btnActive")}</> : t("btnSelect")}
                   </Button>
-                  <button onClick={() => clonePlan(plan)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors" title="Clone plan">
+                  <button onClick={() => clonePlan(plan)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors" title={t("plansClonePlan")}>
                     <Plus className="h-3.5 w-3.5" />
                   </button>
                   <button onClick={() => {
                     const msg = isImported
-                      ? `Delete "${plan.name}" and ALL imported data?`
-                      : `Delete "${plan.name}" and all its budget lines?`
+                      ? t("plansDeleteImportedConfirm", { name: plan.name })
+                      : t("plansDeleteRegularConfirm", { name: plan.name })
                     if (confirm(msg)) deletePlan.mutate({ id: plan.id, deleteAll: isImported })
                   }}
                     className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 border border-border transition-colors"
-                    title="Delete plan">
+                    title={t("plansDeletePlan")}>
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -2675,6 +2675,8 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            {/* translator: keep <strong>...</strong> tags around the
+                emphasized phrases — they render bold via dangerouslySetInnerHTML */}
             <p
               className="text-sm text-muted-foreground"
               dangerouslySetInnerHTML={{ __html: t.raw("plansResetDialogDesc") as string }}
