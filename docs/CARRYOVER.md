@@ -28,10 +28,10 @@ Single source of truth for open `🔄` items across substantive turns.
 
 > **For the next Claude session.** Read this BEFORE declaring TurnGoal. Overrides default "pick from OPEN" flow.
 
-### State at session-end (2026-04-28 ~02:35 local)
+### State at session-end (2026-04-28 ~02:40 local)
 
 - **Demo:** Friday 2026-05-01 (~3 days + ~11h away). State: 🟢 fully ready.
-- **Latest commit:** `e66263a` (final architect Round-1 closures — 5 inline fixes from autonomous run)
+- **Latest commit:** check `git log -1` (handoff is self-amending; pointer not maintained inline to avoid stale-pointer drift across follow-up commits — last known: handoff itself is the most recent doc-only commit, code-frozen at `e66263a` "Round-1 closures from final architect review of autonomous run")
 - **Working tree:** clean
 - **Tests:** 1045/1045 vitest, tsc clean, `npm run demo:check` should still pass (re-run morning of Day-5)
 
@@ -66,9 +66,17 @@ Ship as one commit `test(terminal): regression tests for e66263a bug fixes`. Run
 
 If any test reveals a bug → fix inline before moving on (per user's instruction "если будут обнаружены баги пофикси их").
 
-**Step 2 — proceed to Phase C per plan:**
+**Step 1.5 (DEMO-BLOCKER, before Phase C) — fix rollup-sourced sparkline flat-line:**
 
-Plan §C (`~/.claude/plans/vast-chasing-gosling.md` lines ~258-280) lists 6 items:
+Demo is in ~3 days. Post-B3 the visible flat-line bug (sparklines render as `Δ 0.00` for IND_NET_MARGIN / IND_OPEX_RATIO / IND_COGS_INTENSITY etc. because indicator formulas use ANNUAL-aggregate context vars even at monthly anchors) is now **user-visible** when a customer hovers a HeatMap cell during the demo. Pre-B3 it was cosmetic-only; post-B3 it's a "why are all my charts flat?" question waiting to happen.
+
+Root cause: `budgetLineResolver` in `src/lib/risk/recompute.ts` evaluates aggregates over `period.start..period.end` window, but the existing budget_lines table HAS monthly granularity post-Turn-34 (12 rows per parsed line, sortOrder=monthIdx, plannedAmount=perMonth[idx]). When period is monthly, the resolver SHOULD return only that month's slice — verify it does, fix if not.
+
+Estimate: 1-2 days resolver-level work (Phase 7.A.0 budget). If scope tight, ship a SHORTER 1-period rolling-window aggregate that varies month-to-month (visible motion), even if not perfectly accurate yet — better than flat. Then re-run `npx tsx scripts/compute-sparklines.ts --orgSlug=azmade` to repopulate.
+
+**Step 2 — proceed to Phase C per plan (after 1.5):**
+
+Plan §C in `~/.claude/plans/vast-chasing-gosling.md` (search `## Phase C`) lists 6 items:
 - C1 AI Web Crawler (~2-3w)
 - C2 Predictive Analytics (~2-3w)
 - C3 Board Deck Generator (~2w)
@@ -78,13 +86,7 @@ Plan §C (`~/.claude/plans/vast-chasing-gosling.md` lines ~258-280) lists 6 item
 
 Recommended starting order: **C5 (composite risk score)** — small, foundational, weighted aggregation of indicator statuses → 0-100 per company. Then C6 (alert rules) — both unblock the AI suite items C1/C2/C3.
 
-Alternatively: tackle **architect's deferred 🔄** first if time/scope feels right:
-- Shared `useMatrix()` hook (4 self-fetch sites consolidate)
-- CompanySnapshot grid-cols-3 overflow at narrow Panel 4
-- HeatMap debounce on SSE refetch (Phase F scale concern)
-- Rollup-sourced sparkline flat-line (Phase 7.A.0 resolver fix — DEMO-IMPACT)
-
-Last one (rollup flat-line) is now visible in B3 sparklines for IND_NET_MARGIN etc. Worth fixing before demo if scope permits.
+If user's session is short and Phase C feels too big a lift, fall-back priorities (in order): shared `useMatrix()` hook (4-site refactor, 2-3h, closes 3 existing 🔄 in one shot); CompanySnapshot grid-cols-3 narrow-Panel overflow (5 LOC); HeatMap debounce on SSE refetch (Phase F scale).
 
 ### Pre-demo gates still standing (Day-5 morning)
 
@@ -99,9 +101,11 @@ User explicitly authorized full autonomy mid-Turn-41 ("надеюсь на тв�
 ### How to use this handoff
 
 1. Read it before TurnGoal.
-2. Execute Step 1 (write 5 regression tests) — this is the user's explicit ask.
-3. Continue Step 2 (Phase C OR architect 🔄s) per recommendations above.
-4. Delete this `## ⚡ SESSION HANDOFF` block (this entire section between `---` markers) once acted on, so handoffs don't accumulate.
+2. **Apply Turn-41 final-close counter-bump pass** to all OPEN rows: this handoff opens at a session boundary = new theme = Turn 42 sub-1 per `feedback_carryover_enforcement.md`; absorb Turn 41's deferred bump pass (`+1` reverse-numeric sed across all OPEN rows) BEFORE doing other work.
+3. Execute Step 1 (write 5 regression tests) — explicit user ask.
+4. Execute Step 1.5 (rollup flat-line fix) — DEMO-BLOCKER given Friday demo proximity.
+5. Continue Step 2 (Phase C, C5 first) per recommendations above.
+6. Delete this `## ⚡ SESSION HANDOFF` block (this entire section between `---` markers) once acted on, so handoffs don't accumulate.
 
 ---
 
