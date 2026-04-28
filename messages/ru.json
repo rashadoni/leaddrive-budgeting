@@ -800,6 +800,7 @@
     "pnlEbitdaMarginLine": "EBITDA маржа: {planPct}% (план) / {actualPct}% (факт)",
     "pnlNetMarginLine": "Чистая маржа: {planPct}% (план)",
     "aiFabTooltip": "AI-анализ этого раздела",
+    "aiFabLabel": "AI-анализ",
     "plansResetButton": "Сбросить",
     "plansRollingPlanButton": "Скользящий план",
     "plansResetDialogTitle": "Сбросить все данные",

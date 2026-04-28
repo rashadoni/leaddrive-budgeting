@@ -800,6 +800,7 @@
     "pnlEbitdaMarginLine": "EBITDA margin: {planPct}% (plan) / {actualPct}% (actual)",
     "pnlNetMarginLine": "Net margin: {planPct}% (plan)",
     "aiFabTooltip": "AI analysis of this section",
+    "aiFabLabel": "AI Analysis",
     "plansResetButton": "Reset",
     "plansRollingPlanButton": "Rolling plan",
     "plansResetDialogTitle": "Reset all data",
