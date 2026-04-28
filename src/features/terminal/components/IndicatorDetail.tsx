@@ -14,6 +14,10 @@
 import React, { useEffect, useState } from "react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useTerminalStore } from "../store/terminalStore";
+import {
+  forecastNextPeriod,
+  type ForecastConfidence,
+} from "@/lib/risk/forecast";
 
 interface IndicatorMeta {
   id: string;
@@ -195,6 +199,43 @@ export function IndicatorDetail() {
         </div>
       )}
 
+      {/* Phase C2 v1 — predictive forecast for the next period. Pulls
+          from the same sparkline series; rendered only when the
+          forecast helper has ≥3 contributing points. Confidence drives
+          the color tone (high=green, medium=amber, low=gray). */}
+      {detail.sparkline && detail.sparkline.length > 0 && (() => {
+        const forecast = forecastNextPeriod(detail.sparkline);
+        if (!forecast) return null;
+        // Treat near-zero slopes as "no change expected" — caller
+        // semantic from forecast.ts jsdoc; avoids "high-confidence
+        // flat" being interpreted as a meaningful directional signal.
+        const isFlat = Math.abs(forecast.slope) < 1e-9;
+        const sign =
+          isFlat ? "" : forecast.predicted > 0 && forecast.slope > 0 ? "+" : "";
+        const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
+        return (
+          <div
+            className="flex items-center gap-2 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5"
+            data-testid="indicator-forecast"
+          >
+            <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+              Next-period forecast
+            </span>
+            <span
+              className={`text-[11px] font-mono tabular-nums ${forecastColor(forecast.confidence)}`}
+            >
+              {trendArrow} {sign}
+              {formatValue(forecast.predicted)}
+            </span>
+            <span className="text-[9px] text-gray-500 ml-auto">
+              {isFlat
+                ? "no change expected"
+                : `${forecast.confidence} confidence · R² ${(forecast.r2).toFixed(2)} · ${forecast.contributingCount}/12 pts`}
+            </span>
+          </div>
+        );
+      })()}
+
       {/* Phase 7.E (Turn 16) — services thresholds calibrated against
           Damodaran US-market ballpark; AZ-market reality may differ. Banner
           shows for any SVC_* indicator until enough AZ services-companies
@@ -311,4 +352,10 @@ function formatValue(v: number): string {
     : Math.abs(v) >= 10
     ? v.toFixed(1)
     : v.toFixed(2);
+}
+
+function forecastColor(confidence: ForecastConfidence): string {
+  if (confidence === "high") return "text-[#00D4AA]";
+  if (confidence === "medium") return "text-[#FFB800]";
+  return "text-gray-400";
 }
