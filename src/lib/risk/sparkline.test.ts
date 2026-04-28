@@ -314,10 +314,11 @@ describe('computeSparkline — e2e via real recompute.buildContext', () => {
     expect(numeric).toHaveLength(SPARKLINE_LENGTH);
     expect(new Set(numeric).size).toBe(SPARKLINE_LENGTH);
     // First slot is 12 months before anchor — for anchor 2026 the
-    // trailing window ends at Dec 2025 (the last full month INSIDE
-    // the year period; trailingMonthPeriods walks back from period.end−1).
-    // So sparkline = [Jan-2025, Feb-2025, ..., Dec-2025] which maps to
-    // monthIdx 0..11 → plannedAmounts 100..210. Verify monotone increase.
+    // trailing window ends at Dec 2026 (the last full month INSIDE
+    // the year period; trailingMonthPeriods walks back from period.end−1
+    // = 2027-01-01 minus 1 month = 2026-12-01). So sparkline =
+    // [Jan-2026, Feb-2026, ..., Dec-2026] which maps to monthIdx 0..11
+    // → plannedAmounts 100..210. Verify monotone increase.
     for (let i = 1; i < numeric.length; i++) {
       expect(numeric[i]).toBeGreaterThan(numeric[i - 1]);
     }
