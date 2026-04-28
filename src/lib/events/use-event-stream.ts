@@ -67,6 +67,14 @@ export function useEventStream(handlers: UseEventStreamHandlers): void {
     const open = () => {
       if (cancelled) return;
       // Skip while document is hidden — reconnect on visibility change.
+      // CONTRACT (architect Round-1 sub-1 closure): the early-return
+      // does NOT schedule a retry timer. Resumption is event-driven —
+      // the `visibilitychange` listener below (`document.visibilityState
+      // === 'visible' && !source`) re-invokes `open()` when the tab
+      // becomes active. So a connect attempt during a hidden tab is
+      // genuinely deferred, not silently dropped — without this jsdoc
+      // a future reader could mistake the early-return for a bug and
+      // add a redundant `setTimeout`.
       if (document.visibilityState === 'hidden') return;
       source = new EventSource('/api/events/stream');
       source.addEventListener('open', () => {

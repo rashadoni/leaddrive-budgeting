@@ -579,3 +579,148 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE — affectedCompanyIds dedup contract
     expect(matches[0].message).toContain('3 companies');
   });
 });
+
+describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
+  // Architect Round-1 sub-9 closure: realistic 5-company × 12-indicator
+  // fixture exercises rule INTERACTION (one company hits multiple
+  // rules; engine sort returns them in CRO-priority order). Locks the
+  // contract that v1 unit tests cover only in isolation.
+  function buildFixture(): AlertContext {
+    const companies: AlertCompany[] = [
+      company('co_a', 'AAC-MAIN', 'Industrial'),
+      company('co_b', 'ATL-DBZ', 'Industrial'),
+      company('co_c', 'SPARK-MAIN', 'Hospitality'),
+      company('co_d', 'ZTP-MAIN', 'Industrial'),
+      company('co_e', 'LLS-MAIN', 'Hospitality'),
+    ];
+    const indicators: AlertIndicator[] = [
+      indicator('ind_gross', 'IND_GROSS_MARGIN'),
+      indicator('ind_net', 'IND_NET_MARGIN'),
+      indicator('ind_opex', 'IND_OPEX_RATIO'),
+      indicator('ind_curr', 'IND_CURRENT_RATIO'),
+      indicator('ind_quick', 'IND_QUICK_RATIO'),
+      indicator('ind_dso', 'IND_DSO'),
+      indicator('ind_dpo', 'IND_DPO'),
+      indicator('ind_ccc', 'IND_CCC'),
+      indicator('ind_roe', 'IND_ROE'),
+      indicator('ind_roa', 'IND_ROA'),
+      indicator('ind_ebitda', 'IND_EBITDA_MARGIN'),
+      indicator('ind_lev', 'IND_DEBT_TO_EBITDA'),
+    ];
+    const cells: HeatMapCell[] = [];
+    // co_a: 4 reds (3+ trips company-mostly-red) — composite very low,
+    // includes IND_NET_MARGIN red (org-wide trigger #1).
+    for (const ind of ['ind_gross', 'ind_net', 'ind_opex', 'ind_curr']) {
+      cells.push(cell('co_a', ind, 'red'));
+    }
+    for (const ind of ['ind_quick', 'ind_dso', 'ind_dpo', 'ind_ccc', 'ind_roe', 'ind_roa', 'ind_ebitda', 'ind_lev']) {
+      cells.push(cell('co_a', ind, 'amber'));
+    }
+    // co_b: 1 red on IND_NET_MARGIN (org-wide trigger #2) + 4 amber
+    // (sector amber cluster contributor — Industrial).
+    cells.push(cell('co_b', 'ind_net', 'red'));
+    for (const ind of ['ind_gross', 'ind_opex', 'ind_curr', 'ind_quick']) {
+      cells.push(cell('co_b', ind, 'amber'));
+    }
+    // co_c: 1 red on IND_NET_MARGIN (org-wide trigger #3 → 3+ → fires).
+    cells.push(cell('co_c', 'ind_net', 'red'));
+    for (const ind of ['ind_gross', 'ind_opex']) {
+      cells.push(cell('co_c', ind, 'amber'));
+    }
+    // co_d: 2 reds Industrial (sector-red-spread: 2+ Industrial cos with
+    // red, 3+ red cells total → fires "contagion" rule).
+    cells.push(cell('co_d', 'ind_opex', 'red'));
+    cells.push(cell('co_d', 'ind_curr', 'red'));
+    // co_e: clean (all green) — should NOT trigger any rule.
+    for (const ind of ['ind_gross', 'ind_net', 'ind_opex', 'ind_curr']) {
+      cells.push(cell('co_e', ind, 'green'));
+    }
+    return { companies, indicators, cells };
+  }
+
+  it('multi-trigger company appears in multiple rule matches', () => {
+    const ctx = buildFixture();
+    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
+    // co_a triggers: company-mostly-red (4 reds ≥ 3), company-critical-
+    // composite (4 red + 8 amber → score (0+0+0+0+50·8)/12 ≈ 33),
+    // critical-indicator-org-wide (red IND_NET_MARGIN), sector-red-spread
+    // (Industrial has co_a red + co_b/co_d red).
+    const aMatches = matches.filter((m) => m.affectedCompanyIds.includes('co_a'));
+    expect(aMatches.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('sort order: critical → warning → info, sector-contagion (priority 10) before org-wide (20) before single-co (30+)', () => {
+    const ctx = buildFixture();
+    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
+    // Find indices of each rule kind.
+    const sectorRedIdx = matches.findIndex((m) => m.ruleId === 'sector-red-spread');
+    const orgWideIdx = matches.findIndex((m) => m.ruleId === 'critical-indicator-org-wide');
+    const mostlyRedIdx = matches.findIndex((m) => m.ruleId === 'company-mostly-red');
+    const compositeIdx = matches.findIndex((m) => m.ruleId === 'company-critical-composite');
+    // All four critical-tier rules fire in this fixture.
+    expect(sectorRedIdx).toBeGreaterThanOrEqual(0);
+    expect(orgWideIdx).toBeGreaterThanOrEqual(0);
+    expect(mostlyRedIdx).toBeGreaterThanOrEqual(0);
+    expect(compositeIdx).toBeGreaterThanOrEqual(0);
+    // Priority chain: 10 < 20 < 30 < 40.
+    expect(sectorRedIdx).toBeLessThan(orgWideIdx);
+    expect(orgWideIdx).toBeLessThan(mostlyRedIdx);
+    expect(mostlyRedIdx).toBeLessThan(compositeIdx);
+  });
+
+  it('clean company never appears in any match', () => {
+    const ctx = buildFixture();
+    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
+    for (const m of matches) {
+      expect(m.affectedCompanyIds).not.toContain('co_e');
+    }
+  });
+
+  it('engine populates cellsByCompany when caller omits it (perf hint to rules)', () => {
+    const ctx = buildFixture();
+    expect(ctx.cellsByCompany).toBeUndefined();
+    // Drive the engine and assert via a synthetic rule that sees the
+    // pre-indexed map (architect Round-1 sub-9 closure: index built
+    // once per evaluateAlertRules call, not once per rule).
+    let observedIndex: ReadonlyMap<string, readonly HeatMapCell[]> | undefined;
+    const probe = {
+      id: 'probe',
+      name: 'probe',
+      description: '',
+      severity: 'info' as const,
+      priority: 1,
+      match: (c: AlertContext) => {
+        observedIndex = c.cellsByCompany;
+        return [];
+      },
+    };
+    evaluateAlertRules([probe], ctx);
+    expect(observedIndex).toBeDefined();
+    // Index should exclude co_e cells from any rollup-only entry, and
+    // co_a should have its non-rollup cells aggregated.
+    expect(observedIndex!.get('co_a')?.length).toBe(12);
+    expect(observedIndex!.get('co_e')?.length).toBe(4);
+  });
+
+  it('engine respects caller-provided cellsByCompany (no double-build)', () => {
+    const ctx = buildFixture();
+    const customIndex = new Map<string, HeatMapCell[]>();
+    customIndex.set('co_only', [cell('co_only', 'ind_gross', 'red')]);
+    const ctxWithIndex: AlertContext = { ...ctx, cellsByCompany: customIndex };
+    let observed: ReadonlyMap<string, readonly HeatMapCell[]> | undefined;
+    const probe = {
+      id: 'probe',
+      name: 'probe',
+      description: '',
+      severity: 'info' as const,
+      priority: 1,
+      match: (c: AlertContext) => {
+        observed = c.cellsByCompany;
+        return [];
+      },
+    };
+    evaluateAlertRules([probe], ctxWithIndex);
+    // Engine passed the SAME map through — caller wins.
+    expect(observed).toBe(customIndex);
+  });
+});

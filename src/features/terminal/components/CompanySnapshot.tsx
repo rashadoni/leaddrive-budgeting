@@ -158,9 +158,16 @@ export function CompanySnapshot({ companyCode }: Props) {
         </span>
         <span className="text-gray-600">12mo trend</span>
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      {/* Architect Round-1 sub-10 closure: was `grid grid-cols-3` which
+          overflowed at narrow Panel 4 widths (Analyst preset 40% × 40%
+          = 16% of viewport). Switched to flex-wrap with min-width per
+          card so cards stack to 1 or 2 columns when Panel 4 narrows
+          and fan out to 3 when there's room. */}
+      <div className="flex flex-wrap gap-2">
         {cards.map(({ indicator, cell }) => (
-          <SnapshotCard key={indicator.id} indicator={indicator} cell={cell} />
+          <div key={indicator.id} className="flex-1 min-w-[120px]">
+            <SnapshotCard indicator={indicator} cell={cell} />
+          </div>
         ))}
       </div>
       <p className="text-[10px] text-gray-600 mt-1">

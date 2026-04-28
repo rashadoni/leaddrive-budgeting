@@ -47,6 +47,17 @@ export interface AlertContext {
   companies: readonly AlertCompany[];
   indicators: readonly AlertIndicator[];
   cells: readonly HeatMapCell[];
+  /**
+   * Optional pre-built index from `companyId` → that company's non-rollup
+   * cells. Populated by `evaluateAlertRules` exactly once per call (so
+   * each rule's `match` doesn't re-walk the full cells array). Callers
+   * who construct an `AlertContext` manually can omit this — the
+   * `cellsForCompany` helper falls back to a linear filter. Phase F
+   * matters here: 60 cos × 80 inds × 5 rules = 24K filter passes per
+   * evaluation without the index, vs 5 × 4800 + 1 × 4800 = 28K ops
+   * with it. Architect Round-1 sub-9 flag.
+   */
+  cellsByCompany?: ReadonlyMap<string, readonly HeatMapCell[]>;
 }
 
 export interface AlertMatch {
@@ -93,9 +104,17 @@ export function evaluateAlertRules(
 ): AlertMatch[] {
   const ruleMeta = new Map<string, { priority: number }>();
   for (const r of rules) ruleMeta.set(r.id, { priority: r.priority });
+  // Pre-index cells by companyId once (filtering rollup rows) so each
+  // rule's `match(ctx)` can read company-scoped cells in O(1) lookups
+  // instead of O(N) per call. Architect Round-1 sub-9 closure: at
+  // Phase F (60 cos × 80 inds × 5 rules) the index saves ~1.4M ops
+  // per evaluation vs the per-rule filter pattern.
+  const indexed: AlertContext = ctx.cellsByCompany
+    ? ctx
+    : { ...ctx, cellsByCompany: buildCellsByCompany(ctx.cells) };
   const out: AlertMatch[] = [];
   for (const rule of rules) {
-    const matches = rule.match(ctx);
+    const matches = rule.match(indexed);
     out.push(...matches);
   }
   return out.sort((a, b) => {
@@ -111,13 +130,37 @@ export function evaluateAlertRules(
 }
 
 /**
- * Helper: filter cells to those belonging to a given company id.
- * Excludes sub-group rollup cells (same rationale as Phase C5 composite).
+ * Build a `companyId → non-rollup cells` index in a single linear pass.
+ * Used by `evaluateAlertRules` to amortize the filter across every rule
+ * that reads the same context (architect Round-1 sub-9 closure).
+ */
+function buildCellsByCompany(
+  cells: readonly HeatMapCell[],
+): ReadonlyMap<string, readonly HeatMapCell[]> {
+  const out = new Map<string, HeatMapCell[]>();
+  for (const c of cells) {
+    if (c.isSubgroupRollup) continue;
+    const list = out.get(c.companyId);
+    if (list) list.push(c);
+    else out.set(c.companyId, [c]);
+  }
+  return out;
+}
+
+/**
+ * Helper: get cells belonging to a given company id, excluding rollup
+ * rows (Phase C5 composite contract). Reads the pre-built index when
+ * present (engine populates it once per `evaluateAlertRules` call) and
+ * falls back to a linear filter for direct callers (e.g. unit tests
+ * exercising a single rule's `match`).
  */
 function cellsForCompany(
   ctx: AlertContext,
   companyId: string,
-): HeatMapCell[] {
+): readonly HeatMapCell[] {
+  if (ctx.cellsByCompany) {
+    return ctx.cellsByCompany.get(companyId) ?? [];
+  }
   return ctx.cells.filter(
     (c) => c.companyId === companyId && !c.isSubgroupRollup,
   );
