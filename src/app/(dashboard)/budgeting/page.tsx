@@ -2467,17 +2467,17 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            {plans.length} {plans.length === 1 ? "plan" : "plans"}
+            {plans.length === 1 ? t("plansCountSingular", { count: plans.length }) : t("plansCountPlural", { count: plans.length })}
           </h2>
           <Button size="sm" variant="ghost" className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 h-7"
             disabled={plans.length === 0 || deletePlan.isPending}
             onClick={() => setShowResetConfirm(true)}>
-            <Trash2 className="h-3 w-3 mr-1" /> Reset
+            <Trash2 className="h-3 w-3 mr-1" /> {t("plansResetButton")}
           </Button>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" className="h-8" onClick={() => setShowRollingDialog(true)}>
-            <CalendarRange className="h-3.5 w-3.5 mr-1" /> Rolling Plan
+            <CalendarRange className="h-3.5 w-3.5 mr-1" /> {t("plansRollingPlanButton")}
           </Button>
           <Button size="sm" className="h-8" onClick={onShowCreate}><Plus className="h-3.5 w-3.5 mr-1" /> {t("btnNewPlan")}</Button>
         </div>
@@ -2671,20 +2671,21 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <Trash2 className="h-5 w-5" />
-              Reset All Data
+              {t("plansResetDialogTitle")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">
-              This will permanently delete <span className="font-semibold text-foreground">ALL plans</span> and <span className="font-semibold text-foreground">ALL budget data</span> for this organization.
-            </p>
+            <p
+              className="text-sm text-muted-foreground"
+              dangerouslySetInnerHTML={{ __html: t.raw("plansResetDialogDesc") as string }}
+            />
             <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-3 text-xs text-red-700 dark:text-red-300">
-              ⚠️ This action cannot be undone. All budget lines, actuals, forecasts, reports, and imported data will be permanently removed.
+              {t("plansResetDialogWarning")}
             </div>
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowResetConfirm(false)} disabled={resetPending}>
-              Cancel
+              {tCommon("cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -2704,7 +2705,7 @@ function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanId: stri
               }}
             >
               {resetPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Trash2 className="h-4 w-4 mr-1" />}
-              {resetPending ? "Deleting..." : "Delete Everything"}
+              {resetPending ? t("plansResetDialogDeleting") : t("plansResetDialogDelete")}
             </Button>
           </DialogFooter>
         </DialogContent>

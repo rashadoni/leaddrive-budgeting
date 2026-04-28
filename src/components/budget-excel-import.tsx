@@ -179,7 +179,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Undo2 className="h-4 w-4 text-sky-600" />
-              Recently Deleted — Restore Within 30 Days
+              {t("restoreSectionTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -200,11 +200,11 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                     disabled={restoreMutation.isPending}
                     onClick={() => restoreMutation.mutate(p.id)}
                   >
-                    {restoreMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : (<><Undo2 className="h-3.5 w-3.5 mr-1" />Restore</>)}
+                    {restoreMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : (<><Undo2 className="h-3.5 w-3.5 mr-1" />{t("restoreButton")}</>)}
                   </Button>
                   {purgeConfirm === p.id ? (
                     <>
-                      <span className="text-[10px] text-destructive">Forever?</span>
+                      <span className="text-[10px] text-destructive">{t("purgeForeverPrompt")}</span>
                       <Button
                         size="sm"
                         variant="destructive"
@@ -222,7 +222,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                       variant="ghost"
                       className="h-7 text-xs text-destructive hover:text-destructive"
                       onClick={() => setPurgeConfirm(p.id)}
-                      title="Remove permanently (skip 30-day retention)"
+                      title={t("purgeRemoveTitle")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -246,7 +246,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <FileSpreadsheet className="h-4 w-4 text-amber-600" />
-              Existing Imported Plans
+              {t("existingPlansTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -258,7 +258,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                 </div>
                 {deleteConfirm === p.id ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-destructive">Delete all data?</span>
+                    <span className="text-xs text-destructive">{t("deleteAllPrompt")}</span>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -266,10 +266,10 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                       disabled={deleteMutation.isPending}
                       onClick={() => deleteMutation.mutate(p.id)}
                     >
-                      {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Yes, Delete"}
+                      {deleteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("deleteYesButton")}
                     </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setDeleteConfirm(null)}>
-                      Cancel
+                      {tCommon("cancel")}
                     </Button>
                   </div>
                 ) : (
@@ -280,7 +280,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
                     onClick={() => setDeleteConfirm(p.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5 mr-1" />
-                    Delete & Re-import
+                    {t("deleteReimportButton")}
                   </Button>
                 )}
               </div>

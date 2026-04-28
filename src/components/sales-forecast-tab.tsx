@@ -317,28 +317,28 @@ export function SalesForecastTab() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
               <Zap className="h-4 w-4 text-indigo-500 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">Quick Fill:</span>
+              <span className="text-sm font-medium whitespace-nowrap">{t("forecastQuickFillLabel")}</span>
               <select
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[180px]"
                 value={quickFillDept}
                 onChange={(e) => setQuickFillDept(e.target.value)}
               >
-                <option value="">Select service...</option>
+                <option value="">{t("forecastSelectService")}</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>{d.label}</option>
                 ))}
               </select>
               <Input
                 type="number"
-                placeholder="Annual amount"
+                placeholder={t("forecastQuickFillAmount")}
                 className="h-9 w-[160px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={quickFillAmount}
                 onChange={(e) => setQuickFillAmount(e.target.value)}
               />
               <Button size="sm" onClick={applyQuickFill} disabled={!quickFillDept || !quickFillAmount}>
-                Distribute ÷12
+                {t("forecastQuickFillDistribute")}
               </Button>
-              <span className="text-xs text-muted-foreground">Splits evenly across all months</span>
+              <span className="text-xs text-muted-foreground">{t("forecastQuickFillSplits")}</span>
             </div>
           </CardContent>
         </Card>

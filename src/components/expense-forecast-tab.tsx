@@ -365,13 +365,13 @@ export function ExpenseForecastTab() {
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
               <Zap className="h-4 w-4 text-orange-500 shrink-0" />
-              <span className="text-sm font-medium whitespace-nowrap">Quick Fill:</span>
+              <span className="text-sm font-medium whitespace-nowrap">{t("forecastQuickFillLabel")}</span>
               <select
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[220px]"
                 value={quickFillRow}
                 onChange={(e) => setQuickFillRow(e.target.value)}
               >
-                <option value="">Select category...</option>
+                <option value="">{t("forecastSelectCategory")}</option>
                 {gridRows.map((r) => {
                   const rk = rowKey(r.costTypeId, r.departmentId)
                   return (
@@ -381,15 +381,15 @@ export function ExpenseForecastTab() {
               </select>
               <Input
                 type="number"
-                placeholder="Annual amount"
+                placeholder={t("forecastQuickFillAmount")}
                 className="h-9 w-[160px] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={quickFillAmount}
                 onChange={(e) => setQuickFillAmount(e.target.value)}
               />
               <Button size="sm" onClick={applyQuickFill} disabled={!quickFillRow || !quickFillAmount}>
-                Distribute ÷12
+                {t("forecastQuickFillDistribute")}
               </Button>
-              <span className="text-xs text-muted-foreground">Splits evenly across all months</span>
+              <span className="text-xs text-muted-foreground">{t("forecastQuickFillSplits")}</span>
             </div>
           </CardContent>
         </Card>
