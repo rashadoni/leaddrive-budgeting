@@ -203,30 +203,45 @@ export function AlertsPanel() {
                         <div className="text-sm mt-0.5">{m.message}</div>
                         {m.affectedCompanyIds.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
-                            {m.affectedCompanyIds.map((id) => {
-                              const code = idToCode.get(id);
-                              return (
-                                <button
-                                  key={id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (code) {
-                                      selectCompany(code);
-                                      setOpen(false);
+                            {/* Architect Round-1 sub-10 closure
+                                (sub-16): until /api/companies resolves
+                                idToCode is empty + companyFetchError null
+                                — show a single "Loading codes…" pill
+                                instead of N disabled `unknown_xxx…` pills
+                                that flash for ~50-200ms on first open. */}
+                            {idToCode.size === 0 && !companyFetchError ? (
+                              <span
+                                className="text-[10px] text-gray-500 italic"
+                                data-testid="alerts-codes-loading"
+                              >
+                                Loading codes…
+                              </span>
+                            ) : (
+                              m.affectedCompanyIds.map((id) => {
+                                const code = idToCode.get(id);
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (code) {
+                                        selectCompany(code);
+                                        setOpen(false);
+                                      }
+                                    }}
+                                    disabled={!code}
+                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title={
+                                      code
+                                        ? `Jump to ${code}`
+                                        : "Company code not loaded — try reopening"
                                     }
-                                  }}
-                                  disabled={!code}
-                                  className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                  title={
-                                    code
-                                      ? `Jump to ${code}`
-                                      : "Company code not loaded — try reopening"
-                                  }
-                                >
-                                  {code ?? id.slice(0, 8) + "…"}
-                                </button>
-                              );
-                            })}
+                                  >
+                                    {code ?? id.slice(0, 8) + "…"}
+                                  </button>
+                                );
+                              })
+                            )}
                           </div>
                         )}
                       </li>

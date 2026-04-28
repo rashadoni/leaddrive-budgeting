@@ -77,7 +77,7 @@ export interface TerminalState {
   alertMatches: readonly AlertMatch[] | null;
 }
 
-export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent';
+export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent' | 'sector';
 export const RECENT_LIMIT = 10;
 
 export interface TerminalActions {
@@ -166,7 +166,13 @@ function isStringArray(v: unknown): v is string[] {
 }
 
 function isWatchlistTab(v: unknown): v is WatchlistTab {
-  return v === 'all' || v === 'starred' || v === 'alerted' || v === 'recent';
+  return (
+    v === 'all' ||
+    v === 'starred' ||
+    v === 'alerted' ||
+    v === 'recent' ||
+    v === 'sector'
+  );
 }
 
 let globalState: TerminalState = {

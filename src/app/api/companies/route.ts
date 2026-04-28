@@ -23,7 +23,19 @@ export async function GET(request: NextRequest) {
       orderBy: { sortOrder: 'asc' },
     });
 
-    return NextResponse.json(companies);
+    // Architect Round-1 closure (Turn 40-sub5 / Turn 42-sub10) —
+    // multiple terminal panels self-fetch /api/companies on mount
+    // (PanelGrid, RelatedFunctionsMenu, AlertsPanel, ScenarioPanel).
+    // Until a shared `useCompanies()` hook lands (separate 🔄), serve
+    // a 10s private cache so the browser short-circuits the dup
+    // requests within a single user-session burst. Tenant-scoped
+    // (per session) so `private` (NOT `public`) — the response body
+    // is org-specific and mustn't leak to a shared CDN.
+    return NextResponse.json(companies, {
+      headers: {
+        'Cache-Control': 'private, max-age=10',
+      },
+    });
   } catch (error) {
     console.error('Error fetching companies:', error);
     return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });

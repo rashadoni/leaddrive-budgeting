@@ -210,14 +210,65 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     expect(screen.queryByText("AAC-MAIN")).toBeNull();
   });
 
-  it("WatchlistTabs renders 4 tabs with correct ARIA roles", () => {
+  it("WatchlistTabs renders 5 tabs with correct ARIA roles", () => {
+    // Phase B4 v2 (sub-16) — added 5th tab SECTOR for industry grouping.
     render(<CompanyTree companies={COMPANIES} />);
     const tablist = screen.getByRole("tablist");
     expect(tablist.getAttribute("aria-label")).toMatch(/watchlist/i);
     const tabs = screen.getAllByRole("tab");
-    expect(tabs).toHaveLength(4);
+    expect(tabs).toHaveLength(5);
     expect(tabs[0].textContent).toContain("ALL");
     expect(tabs[3].textContent).toContain("RECENT");
+    expect(tabs[4].textContent).toContain("SECTOR");
+  });
+
+  // Phase B4 v2 (sub-16) — SECTOR tab regroups roots by `industry`.
+  // Locks the contract: clicking SECTOR tab swaps the flat tree for
+  // a grouped layout with one section per distinct industry; "Other"
+  // bucket pinned last; section header counts root membership.
+  describe("Phase B4 v2 — SECTOR tab grouping", () => {
+    it("clicking SECTOR tab renders grouped layout with industry headers", () => {
+      render(<CompanyTree companies={COMPANIES} />);
+      const sectorTab = screen.getByRole("tab", { name: /sector/i });
+      act(() => {
+        sectorTab.click();
+      });
+      // Tree switches to sector-mode container.
+      expect(screen.getByTestId("company-tree-sector-mode")).toBeTruthy();
+      // COMPANIES fixture has industries "Industrial" and "Hospitality";
+      // sub-groups (level=1) may have no industry → "Other" bucket.
+      // At minimum the grouped tree must have ≥1 sector header.
+      const headers = document.querySelectorAll('[data-testid^="sector-header-"]');
+      expect(headers.length).toBeGreaterThan(0);
+    });
+
+    it('"Other" bucket sorts last when present', () => {
+      render(<CompanyTree companies={COMPANIES} />);
+      act(() => {
+        screen.getByRole("tab", { name: /sector/i }).click();
+      });
+      const headers = Array.from(
+        document.querySelectorAll('[data-testid^="sector-header-"]'),
+      ).map((h) => h.getAttribute("data-testid")?.replace("sector-header-", ""));
+      const otherIdx = headers.indexOf("Other");
+      if (otherIdx >= 0) {
+        // "Other" must be the LAST header.
+        expect(otherIdx).toBe(headers.length - 1);
+      }
+      // Otherwise no "Other" present (all roots have explicit industry) — pass.
+    });
+
+    it("switching back to ALL tab restores flat layout", () => {
+      render(<CompanyTree companies={COMPANIES} />);
+      act(() => {
+        screen.getByRole("tab", { name: /sector/i }).click();
+      });
+      expect(screen.getByTestId("company-tree-sector-mode")).toBeTruthy();
+      act(() => {
+        screen.getByRole("tab", { name: /^ALL$/ }).click();
+      });
+      expect(screen.queryByTestId("company-tree-sector-mode")).toBeNull();
+    });
   });
 
   // Regression test for bug fix #3 shipped in commit e66263a:

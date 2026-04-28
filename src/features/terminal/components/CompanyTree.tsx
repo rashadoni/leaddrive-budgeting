@@ -97,6 +97,9 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     if (watchlistTab === 'starred') return starredCompanyCodes;
     if (watchlistTab === 'alerted') return alertedCompanyCodes ?? new Set();
     if (watchlistTab === 'recent') return recentCompanyCodes;
+    // 'sector' tab does NOT narrow the company list — it regroups
+    // filteredRoots into industry sections (rendered below).
+    if (watchlistTab === 'sector') return null;
     return null;
   }, [watchlistTab, starredCompanyCodes, alertedCompanyCodes, recentCompanyCodes]);
 
@@ -143,6 +146,30 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     return result;
   }, [companies, search, watchlistCodeFilter]);
 
+  /**
+   * Phase B4 v2 — sector grouping for the SECTOR tab. Groups
+   * filteredRoots (level=1 sub-groups + level=2 ops cos with no
+   * parent) by `industry` field; companies with no industry land in
+   * "Other". Sorted by industry name alphabetically; "Other" pinned
+   * last so the user sees explicit industries first. Used both for
+   * the `sectorCount` badge and the alternative render branch.
+   */
+  const sectorGroups = useMemo<Array<{ industry: string; roots: CompanyNode[] }>>(() => {
+    const map = new Map<string, CompanyNode[]>();
+    for (const root of filteredRoots) {
+      const key = (root.industry?.trim() || 'Other');
+      const list = map.get(key);
+      if (list) list.push(root);
+      else map.set(key, [root]);
+    }
+    const sorted = Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      return a.localeCompare(b);
+    });
+    return sorted.map(([industry, roots]) => ({ industry, roots }));
+  }, [filteredRoots]);
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (id: string) =>
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -181,6 +208,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         starredCount={starredCompanyCodes.size}
         recentCount={recentCompanyCodes.length}
         alertedCount={alertedCompanyCodes ? alertedCompanyCodes.size : null}
+        sectorCount={sectorGroups.length}
       />
       {/* Search input renders unconditionally (even on empty state) so
           the `/`-search keyboard shortcut always lands on a visible
@@ -219,117 +247,150 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         </span>
       ) : filteredRoots.length === 0 ? (
         <span className="text-gray-600 px-1 py-2">No match for "{search}"</span>
+      ) : watchlistTab === 'sector' ? (
+        // Phase B4 v2 — SECTOR view groups roots by industry. Each
+        // group gets a sticky-uppercase header; rows under it use the
+        // same row-render logic as flat mode (extracted below).
+        <ul
+          role="tree"
+          aria-label="Companies grouped by sector"
+          className="self-start space-y-0.5 w-full"
+          data-testid="company-tree-sector-mode"
+        >
+          {sectorGroups.map(({ industry, roots }) => (
+            <li key={industry} role="presentation">
+              <div
+                className="text-[9px] uppercase tracking-widest text-gray-500 px-1 py-1 mt-1 first:mt-0 border-b border-gray-800/40"
+                data-testid={`sector-header-${industry}`}
+              >
+                {industry} <span className="text-gray-600">({roots.length})</span>
+              </div>
+              <ul role="group" className="space-y-0.5">
+                {roots.map((root) => renderRoot(root))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       ) : (
         <ul
           role="tree"
           aria-label="Companies"
           className="self-start space-y-0.5 w-full"
         >
-          {filteredRoots.map((root) => {
-        const children = root.children ?? [];
-        const isCollapsed = !!collapsed[root.id];
-        const hasChildren = children.length > 0;
-        const isActive = root.code === activeCompanyCode;
-
-        return (
-          <li
-            key={root.id}
-            role="treeitem"
-            aria-expanded={hasChildren ? !isCollapsed : undefined}
-          >
-            <div
-              tabIndex={0}
-              onClick={() => select(root.code)}
-              onKeyDown={(e) => onRowKeyDown(e, root.code)}
-              className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
-                isActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
-              }`}
-            >
-              {hasChildren ? (
-                <button
-                  type="button"
-                  aria-label={isCollapsed ? 'Expand' : 'Collapse'}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle(root.id);
-                  }}
-                  className="text-gray-600 w-3 text-center hover:text-gray-300 focus:outline-none"
-                >
-                  {isCollapsed ? '▸' : '▾'}
-                </button>
-              ) : (
-                <span className="w-3 text-center" aria-hidden="true">
-                  {' '}
-                </span>
-              )}
-              <StarToggle
-                code={root.code}
-                starred={starredCompanyCodes.has(root.code)}
-                onToggle={toggleStarredCompany}
-              />
-              <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
-                {root.code}
-              </span>
-              <span className="flex-1 truncate">{root.name}</span>
-              {hasChildren && (
-                <span className="text-gray-600 tabular-nums" aria-label={`${children.length} companies`}>
-                  {children.length}
-                </span>
-              )}
-            </div>
-
-            {hasChildren && !isCollapsed && (
-              <ul
-                role="group"
-                className="ml-4 border-l border-gray-800/60 pl-2 mt-0.5 space-y-0.5"
-              >
-                {children.map((child) => {
-                  const childActive = child.code === activeCompanyCode;
-                  return (
-                    <li
-                      key={child.id}
-                      role="treeitem"
-                      tabIndex={0}
-                      onClick={() => select(child.code)}
-                      onKeyDown={(e) => onRowKeyDown(e, child.code)}
-                      className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
-                        childActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
-                      }`}
-                    >
-                      <StarToggle
-                        code={child.code}
-                        starred={starredCompanyCodes.has(child.code)}
-                        onToggle={toggleStarredCompany}
-                      />
-                      <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
-                        {child.code}
-                      </span>
-                      <span className="flex-1 truncate">{child.name}</span>
-                      {child.industry && (
-                        <span className="text-gray-600 text-[10px] uppercase">
-                          {child.industry}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </li>
-        );
-      })}
+          {filteredRoots.map((root) => renderRoot(root))}
         </ul>
       )}
     </div>
   );
+
+  // Local helper — extracted so the SECTOR-grouped branch and the flat
+  // tree branch share one row-render path. Closes over the component's
+  // `collapsed`/`toggle`/`select`/`activeCompanyCode`/StarToggle state.
+  function renderRoot(root: CompanyNode): React.ReactNode {
+    const children = root.children ?? [];
+    const isCollapsed = !!collapsed[root.id];
+    const hasChildren = children.length > 0;
+    const isActive = root.code === activeCompanyCode;
+    return (
+      <li
+        key={root.id}
+        role="treeitem"
+        aria-expanded={hasChildren ? !isCollapsed : undefined}
+      >
+        <div
+          tabIndex={0}
+          onClick={() => select(root.code)}
+          onKeyDown={(e) => onRowKeyDown(e, root.code)}
+          className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
+            isActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
+          }`}
+        >
+          {hasChildren ? (
+            <button
+              type="button"
+              aria-label={isCollapsed ? 'Expand' : 'Collapse'}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle(root.id);
+              }}
+              className="text-gray-600 w-3 text-center hover:text-gray-300 focus:outline-none"
+            >
+              {isCollapsed ? '▸' : '▾'}
+            </button>
+          ) : (
+            <span className="w-3 text-center" aria-hidden="true">
+              {' '}
+            </span>
+          )}
+          <StarToggle
+            code={root.code}
+            starred={starredCompanyCodes.has(root.code)}
+            onToggle={toggleStarredCompany}
+          />
+          <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
+            {root.code}
+          </span>
+          <span className="flex-1 truncate">{root.name}</span>
+          {hasChildren && (
+            <span
+              className="text-gray-600 tabular-nums"
+              aria-label={`${children.length} companies`}
+            >
+              {children.length}
+            </span>
+          )}
+        </div>
+        {hasChildren && !isCollapsed && (
+          <ul
+            role="group"
+            className="ml-4 border-l border-gray-800/60 pl-2 mt-0.5 space-y-0.5"
+          >
+            {children.map((child) => {
+              const childActive = child.code === activeCompanyCode;
+              return (
+                <li
+                  key={child.id}
+                  role="treeitem"
+                  tabIndex={0}
+                  onClick={() => select(child.code)}
+                  onKeyDown={(e) => onRowKeyDown(e, child.code)}
+                  className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
+                    childActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
+                  }`}
+                >
+                  <StarToggle
+                    code={child.code}
+                    starred={starredCompanyCodes.has(child.code)}
+                    onToggle={toggleStarredCompany}
+                  />
+                  <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
+                    {child.code}
+                  </span>
+                  <span className="flex-1 truncate">{child.name}</span>
+                  {child.industry && (
+                    <span className="text-gray-600 text-[10px] uppercase">
+                      {child.industry}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </li>
+    );
+  }
 }
 
 /**
- * Phase B4 — watchlist tab strip. 4 tabs: ALL / STARRED / ALERTED / RECENT.
- * Counter badges show populated counts where available; ALERTED is null
- * until HeatMap publishes (e.g. first matrix fetch hasn't landed yet).
+ * Phase B4 — watchlist tab strip. 5 tabs: ALL / STARRED / ALERTED /
+ * RECENT / SECTOR. Counter badges show populated counts where
+ * available; ALERTED is null until HeatMap publishes (first matrix
+ * fetch hasn't landed yet). Phase B4 v2 added SECTOR — regroups the
+ * full tree by industry instead of narrowing it (architect Round-1
+ * sub-4 plan deviation closure).
  */
-type WatchlistTabKey = 'all' | 'starred' | 'alerted' | 'recent';
+type WatchlistTabKey = 'all' | 'starred' | 'alerted' | 'recent' | 'sector';
 
 function WatchlistTabs(props: {
   active: WatchlistTabKey;
@@ -337,6 +398,7 @@ function WatchlistTabs(props: {
   starredCount: number;
   recentCount: number;
   alertedCount: number | null;
+  sectorCount: number;
 }) {
   // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
   // icons for cross-platform parity (Linux/Windows often miss color
@@ -361,6 +423,7 @@ function WatchlistTabs(props: {
       badge: props.alertedCount,
     },
     { key: 'recent', label: 'RECENT', badge: props.recentCount || null },
+    { key: 'sector', label: 'SECTOR', badge: props.sectorCount || null },
   ];
   return (
     <div

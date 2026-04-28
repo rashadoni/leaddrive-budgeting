@@ -215,6 +215,30 @@ describe("AlertsPanel (Phase C6 v2)", () => {
     expect(removed).toBe(true);
   });
 
+  // REGRESSION: architect Round-1 sub-10 closure (sub-16) — chips show
+  // "Loading codes…" pill BEFORE /api/companies resolves, NOT N
+  // disabled `unknown_xxx…` chips flashing for 50-200ms.
+  it("shows 'Loading codes…' pill before /api/companies resolves", () => {
+    // Block fetch — never resolves during this test.
+    global.fetch = vi.fn(() => new Promise(() => {})) as never;
+    mockMatches = [
+      {
+        ruleId: "crit-rule",
+        ruleName: "Critical Rule",
+        severity: "critical",
+        message: "msg",
+        affectedCompanyIds: ["co_a_id", "co_b_id", "co_c_id"],
+      },
+    ];
+    render(<AlertsPanel />);
+    fireOpen();
+    // Loading pill present, no chip buttons rendered for the affected ids.
+    expect(screen.getByTestId("alerts-codes-loading")).toBeTruthy();
+    // None of the codes appear yet (would be `unknown_xxx…` mid-flash
+    // pre-fix; now they're absent until fetch resolves).
+    expect(screen.queryByText(/^unknown_/)).toBeNull();
+  });
+
   it("renders truncated id with ellipsis if company code lookup fails", async () => {
     // /api/companies returns NO match for the given id.
     mockMatches = [
