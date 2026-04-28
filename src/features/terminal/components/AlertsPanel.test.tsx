@@ -215,6 +215,39 @@ describe("AlertsPanel (Phase C6 v2)", () => {
     expect(removed).toBe(true);
   });
 
+  // REGRESSION: architect Round-1 sub-16 ⚠️ closure — empty-companies
+  // tenant (newly-onboarded, /api/companies returns []) must NOT leave
+  // the loading pill stuck on. `companiesFetched` boolean now tracks
+  // resolution separately from idToCode.size.
+  it("loading pill clears when /api/companies resolves with empty array (zero-co tenant)", async () => {
+    global.fetch = vi.fn(async () =>
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ) as never;
+    mockMatches = [
+      {
+        ruleId: "crit-rule",
+        ruleName: "Critical Rule",
+        severity: "critical",
+        message: "msg",
+        affectedCompanyIds: ["co_a_id"],
+      },
+    ];
+    render(<AlertsPanel />);
+    fireOpen();
+    // Wait for fetch resolution + companiesFetched flip.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Loading pill must be gone (was: stuck-on permanently pre-fix).
+    expect(screen.queryByTestId("alerts-codes-loading")).toBeNull();
+    // Chip renders with truncated id (no code in empty map).
+    expect(screen.getByText(/^co_a_id/)).toBeTruthy();
+  });
+
   // REGRESSION: architect Round-1 sub-10 closure (sub-16) — chips show
   // "Loading codes…" pill BEFORE /api/companies resolves, NOT N
   // disabled `unknown_xxx…` chips flashing for 50-200ms.

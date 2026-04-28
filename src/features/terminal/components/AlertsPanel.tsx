@@ -58,6 +58,12 @@ export function AlertsPanel() {
   const [companyFetchError, setCompanyFetchError] = useState<string | null>(
     null,
   );
+  // Architect Round-1 sub-16 ⚠️ closure: track `companiesFetched`
+  // separately so the "Loading codes…" pill clears even when
+  // /api/companies resolves with an empty array (org has 0 companies
+  // — newly-onboarded tenant). Without this, idToCode.size stays 0
+  // AND companyFetchError stays null → pill stuck on indefinitely.
+  const [companiesFetched, setCompaniesFetched] = useState(false);
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -113,10 +119,12 @@ export function AlertsPanel() {
         if (Array.isArray(data)) visit(data);
         else if (Array.isArray(data?.companies)) visit(data.companies);
         setIdToCode(map);
+        setCompaniesFetched(true);
       })
       .catch((e: unknown) => {
         if (aborted) return;
         setCompanyFetchError(e instanceof Error ? e.message : String(e));
+        setCompaniesFetched(true);
       });
     return () => {
       aborted = true;
@@ -209,7 +217,7 @@ export function AlertsPanel() {
                                 — show a single "Loading codes…" pill
                                 instead of N disabled `unknown_xxx…` pills
                                 that flash for ~50-200ms on first open. */}
-                            {idToCode.size === 0 && !companyFetchError ? (
+                            {!companiesFetched && !companyFetchError ? (
                               <span
                                 className="text-[10px] text-gray-500 italic"
                                 data-testid="alerts-codes-loading"
