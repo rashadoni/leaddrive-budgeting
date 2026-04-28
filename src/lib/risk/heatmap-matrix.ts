@@ -29,6 +29,14 @@ export interface HeatMapCell {
    *  IVs predating B2 batch run have no sparkline; UI renders neutral
    *  baseline in that case. */
   sparkline?: (number | null)[];
+  /** Phase 7.B (Turn 33.5) — synthetic sub-group rollup cell. When `true`,
+   *  this cell's `value` is an average of children's values + `status` is
+   *  worst-of-children. Composite score (Phase C5) excludes these to
+   *  avoid double-aggregation: rollup cells already encode children's
+   *  worst-status, so averaging them again would underestimate sub-group
+   *  health (e.g. 4 green + 1 red children → all-red rollup → composite
+   *  ≈ 0, but true signal is 80% green). */
+  isSubgroupRollup?: boolean;
 }
 
 /** `${companyId}:${indicatorId}` — deterministic, safe for Map keys. */

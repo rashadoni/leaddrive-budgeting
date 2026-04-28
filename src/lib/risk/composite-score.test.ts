@@ -108,6 +108,39 @@ describe('computeCompositeScore (Phase C5)', () => {
   });
 });
 
+describe('REGRESSION: sub-group rollup-cell exclusion (architect Round-1 ⚠️ closure)', () => {
+  // The HeatMap-level useMemo `compositeByCompany` is responsible for
+  // filtering out rollup cells before calling computeCompositeScore.
+  // This test documents the contract: the helper itself does NOT
+  // filter — it averages whatever cells it gets. Caller must pre-filter.
+  it('helper averages all input cells regardless of isSubgroupRollup flag (caller responsibility)', () => {
+    const cells: HeatMapCell[] = [
+      { ...cell('green') },
+      { ...cell('red'), isSubgroupRollup: true }, // would skew avg if not pre-filtered
+    ];
+    const result = computeCompositeScore(cells);
+    // Helper sees both → avg = 50, NOT 100. This proves caller filtering
+    // is the contract — composite-score.ts stays a pure averager.
+    expect(result.score).toBe(50);
+  });
+
+  it('caller filtering pattern: passing only non-rollup cells gives accurate score', () => {
+    const allCells: HeatMapCell[] = [
+      { ...cell('green') },
+      { ...cell('green') },
+      { ...cell('green') },
+      { ...cell('green') },
+      { ...cell('red'), isSubgroupRollup: true }, // pretend this is sub-group worst-of
+    ];
+    // Caller filter — what HeatMap.compositeByCompany does:
+    const filtered = allCells.filter((c) => !c.isSubgroupRollup);
+    const result = computeCompositeScore(filtered);
+    // 4 green + 0 red = 100 (NOT 80 from including the rollup cell)
+    expect(result.score).toBe(100);
+    expect(result.band).toBe('green');
+  });
+});
+
 describe('scoreToBand (Phase C5)', () => {
   it('100 → green', () => {
     expect(scoreToBand(100)).toBe('green');

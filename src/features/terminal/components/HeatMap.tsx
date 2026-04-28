@@ -129,12 +129,20 @@ export function HeatMap({ period }: Props) {
   // Phase C5 — composite risk score per company. Pre-computed once per
   // matrix fetch so each row header renders in O(1) (rather than re-
   // filtering cells N times). Keyed by companyId.
+  //
+  // Sub-group rollup cells (Turn-33.5 synthetic worst-of-children) are
+  // EXCLUDED to prevent double-aggregation: the rollup already encodes
+  // children's worst status, and averaging worst-of-children would
+  // dramatically underestimate sub-group health (4g+1r → all-red rollup
+  // → composite ≈ 0, but true signal is 80% green). Sub-groups end up
+  // with no scoreable cells → composite null → "—" badge — honest
+  // "this is a navigation rollup, not a measurable entity" UX.
   const compositeByCompany = useMemo(() => {
     const out = new Map<string, CompositeScore>();
     if (!data) return out;
-    // Group cells by companyId in one pass (avoids N×M filter cost).
     const byCo = new Map<string, HeatMapCell[]>();
     for (const c of data.cells) {
+      if (c.isSubgroupRollup) continue;
       const list = byCo.get(c.companyId);
       if (list) list.push(c);
       else byCo.set(c.companyId, [c]);
