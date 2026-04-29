@@ -1382,7 +1382,9 @@
       "loadingHeatmap": "Загрузка карты рисков…",
       "noCompaniesYet": "Компаний или индикаторов ещё нет. Импортируйте через /budgeting/onboarding и запустите seed индикаторов (scripts/seed-indicators.ts).",
       "companyColumn": "Компания",
-      "noCompaniesMatch": "Нет совпадений для"
+      "noCompaniesMatch": "Нет совпадений для",
+      "aiSummaryGenerating": "💬 Генерирую AI-сводку…",
+      "cellClickHint": "Клик → drill-down (Панель 3)"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",

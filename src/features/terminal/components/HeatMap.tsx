@@ -559,6 +559,93 @@ type HeatMapCellTdProps = {
   onCellClick: () => void;
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// Sub-27 cont'd Round-7 M3 — inline AI commentary on red/amber cells.
+//
+// Module-level cache keyed by IndicatorValue.id × locale so a user who
+// sweeps the matrix scanning red cells reuses prior fetches across cell
+// remounts (PanelGrid re-renders, locale switches, SSE refetches that
+// rebuild rows). Cap at 200 entries — older drops on overflow.
+//
+// Hover-debounce 500ms ensures we only fire when the user genuinely
+// paused on a cell, not during a sweep. Single in-flight per ivId so
+// rapid hover→leave→re-hover doesn't double-fire.
+// ─────────────────────────────────────────────────────────────────────────
+type AISummaryEntry =
+  | { kind: 'pending' }
+  | { kind: 'ok'; sentence: string }
+  | { kind: 'error' };
+
+const AI_SUMMARY_CACHE = new Map<string, AISummaryEntry>();
+const AI_SUMMARY_INFLIGHT = new Set<string>();
+const AI_SUMMARY_LIMIT = 200;
+type AISummaryListener = (key: string, entry: AISummaryEntry) => void;
+const AI_SUMMARY_LISTENERS = new Set<AISummaryListener>();
+
+function notifyAiSummary(key: string, entry: AISummaryEntry) {
+  AI_SUMMARY_CACHE.set(key, entry);
+  if (AI_SUMMARY_CACHE.size > AI_SUMMARY_LIMIT) {
+    // FIFO eviction — Map iterates insertion-order; drop oldest.
+    const first = AI_SUMMARY_CACHE.keys().next().value;
+    if (first !== undefined) AI_SUMMARY_CACHE.delete(first);
+  }
+  for (const listener of AI_SUMMARY_LISTENERS) listener(key, entry);
+}
+
+function extractFirstSentence(narrative: string): string {
+  // Split on `.`/`!`/`?` followed by space or end-of-string. Stop at
+  // first hit; keep the trailing punctuation. Truncate at 180 chars
+  // safety (LLM occasionally emits run-on first sentence).
+  const trimmed = narrative.trim();
+  const match = trimmed.match(/^[^.!?]+[.!?]/);
+  const first = match ? match[0] : trimmed.split('\n')[0];
+  return first.length > 180 ? first.slice(0, 177) + '…' : first;
+}
+
+async function fetchAISummary(ivId: string, locale: string): Promise<void> {
+  const key = `${ivId}:${locale}`;
+  if (AI_SUMMARY_CACHE.has(key) || AI_SUMMARY_INFLIGHT.has(key)) return;
+  AI_SUMMARY_INFLIGHT.add(key);
+  notifyAiSummary(key, { kind: 'pending' });
+  try {
+    const res = await fetch(`/api/indicators/values/${ivId}/explain`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language: locale }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    const sentence = extractFirstSentence(body.narrative ?? '');
+    notifyAiSummary(key, sentence ? { kind: 'ok', sentence } : { kind: 'error' });
+  } catch {
+    notifyAiSummary(key, { kind: 'error' });
+  } finally {
+    AI_SUMMARY_INFLIGHT.delete(key);
+  }
+}
+
+function useAISummary(ivId: string | undefined, locale: string): AISummaryEntry | null {
+  const key = ivId ? `${ivId}:${locale}` : null;
+  const [entry, setEntry] = useState<AISummaryEntry | null>(() =>
+    key ? AI_SUMMARY_CACHE.get(key) ?? null : null,
+  );
+  useEffect(() => {
+    if (!key) {
+      setEntry(null);
+      return;
+    }
+    setEntry(AI_SUMMARY_CACHE.get(key) ?? null);
+    const listener: AISummaryListener = (k, e) => {
+      if (k === key) setEntry(e);
+    };
+    AI_SUMMARY_LISTENERS.add(listener);
+    return () => {
+      AI_SUMMARY_LISTENERS.delete(listener);
+    };
+  }, [key]);
+  return entry;
+}
+
 // Eager Radix Tooltip per cell — at idle, no DOM portals exist (Radix only
 // renders the floating content via Presence + Portal when the trigger is
 // hovered, after provider's 300ms `delayDuration`). 676 wrappers therefore
@@ -568,6 +655,32 @@ type HeatMapCellTdProps = {
 // transition to closed on pointerleave from the forced-open initial state).
 function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellTdProps) {
   const status = cell?.status ?? 'missing';
+  // M3 — only red/amber cells trigger LLM hover-summary. Green/missing
+  // are noise; unknown often errors at LLM (no narrative to extract).
+  const ivId = cell?.indicatorValueId;
+  const eligible = ivId && (status === 'red' || status === 'amber');
+  const t = useTranslations('terminal');
+  const locale = useLocale();
+  const aiSummary = useAISummary(eligible ? ivId : undefined, locale);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handlePointerEnter = useCallback(() => {
+    if (!eligible || !ivId) return;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      void fetchAISummary(ivId, locale);
+    }, 500);
+  }, [eligible, ivId, locale]);
+  const handlePointerLeave = useCallback(() => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    };
+  }, []);
   const color = statusColor(status);
   const statusColorClass =
     status === 'red'
@@ -597,6 +710,8 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
   return (
     <td
       onClick={onCellClick}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
       className={`cursor-pointer border-b border-gray-800/40 p-0 transition-shadow ${
         flashing ? 'shadow-[inset_0_0_0_2px_#00D4AA]' : ''
       }`}
@@ -647,8 +762,22 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                   ⚠ {cell.error.code}: {cell.error.reason}
                 </div>
               )}
+              {/* M3 inline AI commentary — pending → spinner; ok → first
+                  sentence in cyan accent; error → silent (don't pollute
+                  tooltip with infrastructure noise). Only renders for
+                  red/amber per `eligible` gate. */}
+              {eligible && aiSummary && aiSummary.kind === 'pending' && (
+                <div className="text-[10px] text-[#00D4AA]/70 mt-1.5 italic">
+                  {t('heatMap.aiSummaryGenerating')}
+                </div>
+              )}
+              {eligible && aiSummary && aiSummary.kind === 'ok' && (
+                <div className="text-[11px] text-[#00D4AA] mt-1.5 leading-snug border-l-2 border-[#00D4AA]/40 pl-1.5">
+                  {aiSummary.sentence}
+                </div>
+              )}
               <div className="text-[10px] text-muted-foreground/70 mt-1">
-                Click → drill-down (Panel 3)
+                {t('heatMap.cellClickHint')}
               </div>
             </>
           ) : (

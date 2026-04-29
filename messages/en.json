@@ -1382,7 +1382,9 @@
       "loadingHeatmap": "Loading heatmap…",
       "noCompaniesYet": "No companies or indicators yet. Import via /budgeting/onboarding and seed indicators (scripts/seed-indicators.ts).",
       "companyColumn": "Company",
-      "noCompaniesMatch": "No companies match"
+      "noCompaniesMatch": "No companies match",
+      "aiSummaryGenerating": "💬 Generating AI summary…",
+      "cellClickHint": "Click → drill-down (Panel 3)"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",

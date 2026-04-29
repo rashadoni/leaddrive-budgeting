@@ -1382,7 +1382,9 @@
       "loadingHeatmap": "Risk xəritəsi yüklənir…",
       "noCompaniesYet": "Şirkət və ya göstərici hələ yoxdur. /budgeting/onboarding ilə idxal et və göstərici seed-i işə sal (scripts/seed-indicators.ts).",
       "companyColumn": "Şirkət",
-      "noCompaniesMatch": "Uyğunluq yoxdur:"
+      "noCompaniesMatch": "Uyğunluq yoxdur:",
+      "aiSummaryGenerating": "💬 AI xülasəsi yaradılır…",
+      "cellClickHint": "Klik → ətraflı (Panel 3)"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",

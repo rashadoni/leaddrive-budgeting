@@ -75,6 +75,8 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'compare.indicatorColumn': 'Indicator',
   'compare.loadingMatrix': 'Loading matrix…',
   'compare.closeAriaLabel': 'Close compare panel',
+  'heatMap.aiSummaryGenerating': '💬 Generating AI summary…',
+  'heatMap.cellClickHint': 'Click → drill-down (Panel 3)',
   'commandBar.placeholder': 'HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)',
   'commandBar.alertsAriaLabel': 'Open alerts panel',
   'layoutMenu.label': 'Layouts',
