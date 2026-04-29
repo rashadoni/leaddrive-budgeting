@@ -22,9 +22,11 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import { AuditFeed } from "@/features/audit/components/AuditFeed"
 
 export function AuditModal() {
+  const t = useTranslations("terminal")
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export function AuditModal() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Audit Log"
+      aria-label={t("auditModal.title")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         // Backdrop click (target === currentTarget) closes; clicks
@@ -63,18 +65,18 @@ export function AuditModal() {
       <div className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight">Audit Log</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{t("auditModal.title")}</h2>
             <p className="text-xs text-muted-foreground">
-              High-business-impact writes. Press Esc to close.
+              {t("auditModal.subtitle")}
             </p>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close audit log"
+            aria-label={t("auditModal.closeAriaLabel")}
             className="rounded border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800"
           >
-            Close
+            {t("auditModal.close")}
           </button>
         </header>
         <div className="px-6 py-4">

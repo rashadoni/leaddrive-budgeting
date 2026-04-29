@@ -22,6 +22,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 
 interface CompareEvent {
@@ -60,6 +61,7 @@ interface MatrixResponse {
 }
 
 export function ComparePanel() {
+  const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const [pair, setPair] = useState<CompareEvent | null>(null);
   // Sub-20: shared `useMatrix()` hook. Module cache means an open
@@ -126,25 +128,25 @@ export function ComparePanel() {
               <span className="font-mono text-[#00D4AA]">{pair.rhs}</span>
             </h2>
             <p className="text-xs text-muted-foreground">
-              Side-by-side indicators · Δ = RHS − LHS · Esc to close
+              {t("compare.subtitle")}
             </p>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close compare panel"
+            aria-label={t("compare.closeAriaLabel")}
             className="rounded border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800"
           >
-            Close
+            {t("compare.close")}
           </button>
         </header>
         <div className="px-6 py-4">
           {loading && (
-            <div className="text-sm text-muted-foreground">Loading matrix…</div>
+            <div className="text-sm text-muted-foreground">{t("compare.loadingMatrix")}</div>
           )}
           {error && (
             <div className="text-sm text-[#FF4757]" role="alert">
-              Error: {error}
+              {t("compare.error")}: {error}
             </div>
           )}
           {data && <CompareTable data={data} pair={pair} />}
@@ -161,6 +163,7 @@ function CompareTable({
   data: MatrixResponse;
   pair: CompareEvent;
 }) {
+  const t = useTranslations("terminal");
   const lhsCo = data.companies.find((c) => c.code === pair.lhs);
   const rhsCo = data.companies.find((c) => c.code === pair.rhs);
   if (!lhsCo || !rhsCo) {
@@ -200,7 +203,7 @@ function CompareTable({
     <table className="w-full text-sm font-mono border-collapse">
       <thead>
         <tr className="border-b border-gray-800/60 text-[10px] uppercase tracking-wider text-gray-500">
-          <th className="text-left px-2 py-2">Indicator</th>
+          <th className="text-left px-2 py-2">{t("compare.indicatorColumn")}</th>
           <th className="text-right px-2 py-2 w-32">{lhsCo.code}</th>
           <th className="text-right px-2 py-2 w-32">{rhsCo.code}</th>
           <th className="text-right px-2 py-2 w-24">Δ</th>

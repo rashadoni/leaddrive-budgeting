@@ -30,6 +30,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Beaker, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 
@@ -51,6 +52,7 @@ type ApplyState =
   | { kind: "error"; message: string };
 
 export function ScenarioPanel() {
+  const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -191,10 +193,10 @@ export function ScenarioPanel() {
             <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                Scenario Runner
+                {t("scenario.title")}
               </h2>
               <p className="text-xs text-muted-foreground">
-                What-if overrides on the org&apos;s indicator pipeline. Press Esc to close.
+                {t("scenario.subtitle")}
               </p>
             </div>
           </div>
@@ -211,21 +213,21 @@ export function ScenarioPanel() {
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
           <aside aria-label="Scenario list">
             <h3 className="text-xs font-mono uppercase tracking-wider text-gray-500 mb-2">
-              Available ({scenarios?.length ?? 0})
+              {t("scenario.available")} ({scenarios?.length ?? 0})
             </h3>
             {scenarios === null && !fetchError ? (
               <p
                 className="text-sm text-muted-foreground"
                 data-testid="scenarios-loading"
               >
-                Loading…
+                {t("scenario.loading")}
               </p>
             ) : scenarios !== null && scenarios.length === 0 ? (
               <p
                 className="text-sm text-muted-foreground"
                 data-testid="scenarios-empty"
               >
-                No scenarios seeded for this org.
+                {t("scenario.noScenarios")}
               </p>
             ) : scenarios === null && fetchError ? (
               // Error path: scenarios stayed null on fetch fail; the
@@ -276,8 +278,8 @@ export function ScenarioPanel() {
             {selectedScenario === null ? (
               <p className="text-sm text-muted-foreground">
                 {scenarios && scenarios.length > 0
-                  ? "Select a scenario from the list to inspect overrides."
-                  : "No scenario selected."}
+                  ? t("scenario.selectFromList")
+                  : t("scenario.noSelected")}
               </p>
             ) : (
               <div className="space-y-3">
@@ -296,7 +298,7 @@ export function ScenarioPanel() {
                 )}
                 <div>
                   <h4 className="text-xs uppercase tracking-wider text-gray-500 mb-1">
-                    Overrides
+                    {t("scenario.overrides")}
                   </h4>
                   <pre
                     className="text-xs font-mono bg-black/30 border border-gray-800 rounded p-3 overflow-x-auto"
@@ -313,10 +315,10 @@ export function ScenarioPanel() {
                     className="rounded border border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800] px-3 py-1.5 text-sm hover:bg-[#FFB800]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="scenario-apply-button"
                   >
-                    {applyState.kind === "applying" ? "Applying…" : "Apply"}
+                    {applyState.kind === "applying" ? t("scenario.applying") : t("scenario.apply")}
                   </button>
                   <span className="text-xs text-gray-500">
-                    Period: <span className="font-mono">{period}</span>
+                    {t("scenario.period")}: <span className="font-mono">{period}</span>
                   </span>
                 </div>
                 {applyState.kind === "queued" && (
@@ -335,7 +337,7 @@ export function ScenarioPanel() {
                     className="text-sm text-[#FF4757]"
                     data-testid="scenario-apply-error"
                   >
-                    Apply failed: {applyState.message}
+                    {t("scenario.applyFailed")}: {applyState.message}
                   </p>
                 )}
               </div>

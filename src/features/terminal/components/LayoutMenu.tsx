@@ -16,6 +16,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   BUILT_IN_PRESETS,
   validateLayoutName,
@@ -38,6 +39,7 @@ interface Props {
 }
 
 export function LayoutMenu({ readCurrent, applyLayout }: Props) {
+  const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const [layouts, setLayouts] = useState<LayoutListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -142,9 +144,9 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
         className="px-2 py-0.5 rounded border border-gray-800 bg-[#0A0E27] text-gray-400 hover:text-white hover:border-[#00D4AA]/60"
         aria-haspopup="dialog"
         aria-expanded={open}
-        title="Save / load named pane layouts"
+        title={t("layoutMenu.title")}
       >
-        ▢ Layouts
+        ▢ {t("layoutMenu.label")}
       </button>
       {open && (
         <div
@@ -154,7 +156,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           <header className="flex items-center justify-between gap-2">
-            <span className="text-gray-500 uppercase tracking-wider">Layouts</span>
+            <span className="text-gray-500 uppercase tracking-wider">{t("layoutMenu.label")}</span>
             <button
               type="button"
               onClick={() => setOpen(false)}
@@ -177,7 +179,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               type="text"
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="name this layout…"
+              placeholder={t("layoutMenu.namePlaceholder")}
               maxLength={50}
               disabled={loading}
               className="flex-1 bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none"
@@ -188,7 +190,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               disabled={loading || saveName.trim() === ""}
               className="px-2 py-0.5 rounded bg-[#00D4AA] text-[#050814] font-semibold uppercase tracking-wider disabled:bg-gray-800 disabled:text-gray-600"
             >
-              Save
+              {t("layoutMenu.save")}
             </button>
           </form>
 
@@ -201,7 +203,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               scrolling past saved names. */}
           <div className="border-t border-gray-800/60 pt-1">
             <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
-              Presets
+              {t("layoutMenu.presets")}
             </div>
             <ul className="space-y-0.5">
               {Object.entries(BUILT_IN_PRESETS).map(([key, preset]) => (
@@ -229,7 +231,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               tracked as a separate 🔄 — for now, hide on read. */}
           <div className="border-t border-gray-800/60 pt-1">
             <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
-              Saved
+              {t("layoutMenu.saved")}
             </div>
             {(() => {
               const presetLabels = new Set(
@@ -239,10 +241,10 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
                 (l) => !presetLabels.has(l.name),
               );
               if (loading && visibleSaved.length === 0) {
-                return <div className="text-gray-700">Loading…</div>;
+                return <div className="text-gray-700">{t("layoutMenu.loading")}</div>;
               }
               if (visibleSaved.length === 0) {
-                return <div className="text-gray-700">No saved layouts.</div>;
+                return <div className="text-gray-700">{t("layoutMenu.noSaved")}</div>;
               }
               return (
                 <ul className="space-y-0.5 max-h-48 overflow-auto">

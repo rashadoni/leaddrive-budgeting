@@ -1407,6 +1407,55 @@
       "llmConfidence": "Уверенность LLM",
       "forecastExplainFailed": "Объяснение прогноза не удалось"
     },
+    "auditTicker": {
+      "events": "СОБЫТИЯ",
+      "loading": "загрузка…",
+      "noEvents": "событий пока нет",
+      "ariaLabel": "Недавние события аудита — клик откроет полный журнал",
+      "title": "Кликните для полного журнала аудита"
+    },
+    "auditModal": {
+      "title": "Журнал аудита",
+      "subtitle": "Записи с высоким бизнес-эффектом. Esc для закрытия.",
+      "close": "Закрыть",
+      "closeAriaLabel": "Закрыть журнал аудита"
+    },
+    "scenario": {
+      "title": "Симулятор сценариев",
+      "subtitle": "What-if изменения для индикаторного pipeline org. Esc для закрытия.",
+      "available": "Доступно",
+      "loading": "Загрузка…",
+      "noScenarios": "Сценарии для этой org не засеяны.",
+      "selectFromList": "Выберите сценарий из списка чтобы посмотреть overrides.",
+      "noSelected": "Сценарий не выбран.",
+      "overrides": "Overrides",
+      "apply": "Применить",
+      "applying": "Применяется…",
+      "applyFailed": "Применить не удалось",
+      "period": "Период"
+    },
+    "compare": {
+      "subtitle": "Side-by-side индикаторы · Δ = правая − левая · Esc для закрытия",
+      "close": "Закрыть",
+      "closeAriaLabel": "Закрыть панель сравнения",
+      "loadingMatrix": "Загрузка матрицы…",
+      "error": "Ошибка",
+      "indicatorColumn": "Индикатор"
+    },
+    "layoutMenu": {
+      "label": "Layouts",
+      "title": "Сохранить / загрузить именованные раскладки панелей",
+      "namePlaceholder": "имя раскладки…",
+      "save": "Сохранить",
+      "presets": "Пресеты",
+      "saved": "Сохранённые",
+      "loading": "Загрузка…",
+      "noSaved": "Сохранённых раскладок нет."
+    },
+    "commandBar": {
+      "placeholder": "HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)",
+      "alertsAriaLabel": "Открыть панель алертов"
+    },
     "varianceExplainer": {
       "title": "Анализ отклонений",
       "explainArrow": "Объяснить →",

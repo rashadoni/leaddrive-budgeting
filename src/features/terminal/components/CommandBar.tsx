@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
 import {
   parseCommand,
@@ -12,6 +13,7 @@ import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 import { ensureMatrix } from '../hooks/use-matrix';
 
 export function CommandBar() {
+  const t = useTranslations('terminal');
   const [command, setCommand] = useState('');
   const [feedback, setFeedback] = useState<
     | { kind: 'idle' }
@@ -240,7 +242,7 @@ export function CommandBar() {
               setCommand(e.target.value.toUpperCase());
               if (feedback.kind !== 'idle') setFeedback({ kind: 'idle' });
             }}
-            placeholder="HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)"
+            placeholder={t('commandBar.placeholder')}
             className="bg-transparent border-none outline-none text-[#E8EDF5] w-full placeholder-gray-600 uppercase"
             autoComplete="off"
             spellCheck={false}
@@ -279,7 +281,7 @@ export function CommandBar() {
               ? 'Alerts: loading…'
               : `${alertsCount} red+amber indicator${alertsCount === 1 ? '' : 's'} across the org — click to open alerts panel`
           }
-          aria-label="Open alerts panel"
+          aria-label={t('commandBar.alertsAriaLabel')}
           onClick={() => {
             window.dispatchEvent(new Event('terminal:open-alerts'));
           }}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { useEventStream } from "@/lib/events/use-event-stream";
 
@@ -32,6 +33,7 @@ interface AuditEvent {
 const TICKER_LIMIT = 5;
 
 export function AuditTicker() {
+  const t = useTranslations("terminal");
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
   const compactMode = useTerminalStore((s) => s.compactMode);
 
@@ -73,13 +75,13 @@ export function AuditTicker() {
       className={`flex items-center gap-3 bg-[#050814] border-t border-gray-800 px-4 font-mono text-gray-400 cursor-pointer hover:text-gray-200 transition-colors overflow-x-auto whitespace-nowrap shrink-0 ${
         compactMode ? 'py-0.5 text-[9px]' : 'py-1.5 text-[10px]'
       }`}
-      aria-label="Recent audit events — click to open full audit log"
-      title="Click for full audit log"
+      aria-label={t("auditTicker.ariaLabel")}
+      title={t("auditTicker.title")}
     >
-      <span className="text-gray-600 shrink-0">EVENTS</span>
-      {events === null && <span className="text-gray-700">loading…</span>}
+      <span className="text-gray-600 shrink-0">{t("auditTicker.events")}</span>
+      {events === null && <span className="text-gray-700">{t("auditTicker.loading")}</span>}
       {events !== null && events.length === 0 && (
-        <span className="text-gray-700">no events yet</span>
+        <span className="text-gray-700">{t("auditTicker.noEvents")}</span>
       )}
       {events !== null && events.length > 0 && (
         <div className="flex items-center gap-3 min-w-0">
