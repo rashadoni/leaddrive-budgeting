@@ -7,6 +7,7 @@ import {
   buildCellMap,
   cellKey,
   statusColor,
+  statusShape,
   summarizeMatrix,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
@@ -319,13 +320,21 @@ export function HeatMap({ period }: Props) {
         </div>
         {summary && (
           <span className="tabular-nums shrink-0">
-            <span style={{ color: statusColor('green') }}>{summary.green}G</span>
+            <span style={{ color: statusColor('green') }}>
+              {statusShape('green')} {summary.green}G
+            </span>
             {' / '}
-            <span style={{ color: statusColor('amber') }}>{summary.amber}A</span>
+            <span style={{ color: statusColor('amber') }}>
+              {statusShape('amber')} {summary.amber}A
+            </span>
             {' / '}
-            <span style={{ color: statusColor('red') }}>{summary.red}R</span>
+            <span style={{ color: statusColor('red') }}>
+              {statusShape('red')} {summary.red}R
+            </span>
             {' / '}
-            <span className="text-gray-500">{summary.unknown}?</span>
+            <span className="text-gray-500">
+              {statusShape('unknown')} {summary.unknown}?
+            </span>
             {' / '}
             <span className="text-gray-600">{summary.missing}·</span>
           </span>
@@ -537,6 +546,11 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
       : score.band === 'red'
       ? 'text-[#FF4757]'
       : 'text-gray-500';
+  // Tier-3 sub-29 M7 — shape glyph alongside score for color-blind parity.
+  const bandStatus =
+    score.band === 'green' || score.band === 'amber' || score.band === 'red'
+      ? score.band
+      : 'unknown';
   return (
     <span
       className={`text-[9px] tabular-nums font-semibold shrink-0 ${colorClass}`}
@@ -546,6 +560,9 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
         total: score.totalCount,
       })}
     >
+      <span aria-hidden="true" className="mr-0.5 opacity-70">
+        {statusShape(bandStatus)}
+      </span>
       {score.score}
     </span>
   );
@@ -748,16 +765,34 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
         backgroundColor: color,
         opacity: status === 'missing' ? 0.25 : 0.85,
       }}
-      aria-label={`${co.code} ${ind.code} ${status}`}
+      aria-label={`${co.code} ${ind.code} ${status} ${statusShape(status)}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            className="relative"
             style={{
               width: compactMode ? 40 : 54,
               height: compactMode ? 12 : 18,
             }}
-          />
+          >
+            {/* Tier-3 sub-29 M7 — color-blind safe redundant signal.
+                Tiny shape glyph at top-right of each cell (≈25% opacity)
+                so color-sighted users barely notice; deuteranopia /
+                protanopia users get the redundant cue. */}
+            <span
+              aria-hidden="true"
+              className="absolute top-0 right-0.5 leading-none"
+              style={{
+                fontSize: compactMode ? 7 : 9,
+                opacity: 0.35,
+                color: '#000',
+                pointerEvents: 'none',
+              }}
+            >
+              {statusShape(status)}
+            </span>
+          </div>
         </TooltipTrigger>
         <TooltipContent
           side="top"

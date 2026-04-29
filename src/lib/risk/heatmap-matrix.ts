@@ -117,3 +117,33 @@ export function statusColor(status: IndicatorStatus | 'missing'): string {
       return '#1F2937'; // slate-800 — no row at all
   }
 }
+
+/**
+ * Tier-3 sub-29 M7 — color-blind safe palette companion. Returns a
+ * single-glyph shape paired with each status so users with deuteranopia
+ * / protanopia (≈8% of males) can still distinguish red from amber from
+ * green without relying on color alone. Shapes chosen for positional /
+ * stroke-density distinctness:
+ *
+ *   green   → ● (filled circle, low visual weight — "all good")
+ *   amber   → ▲ (triangle — caution sign association)
+ *   red     → ■ (square — heaviest visual weight — "stop")
+ *   unknown → ◇ (open diamond — outline-only, "no signal")
+ *   missing → · (mid-dot — barely visible, "not present")
+ *
+ * Pure, deterministic; safe to call in render loops without memoization.
+ */
+export function statusShape(status: IndicatorStatus | 'missing'): string {
+  switch (status) {
+    case 'green':
+      return '●';
+    case 'amber':
+      return '▲';
+    case 'red':
+      return '■';
+    case 'unknown':
+      return '◇';
+    case 'missing':
+      return '·';
+  }
+}

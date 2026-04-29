@@ -4,6 +4,7 @@ import {
   buildCellMap,
   summarizeMatrix,
   statusColor,
+  statusShape,
   type HeatMapCell,
 } from './heatmap-matrix';
 
@@ -109,5 +110,37 @@ describe('statusColor', () => {
       statusColor('missing'),
     ]);
     expect(colors.size).toBe(5);
+  });
+});
+
+describe('statusShape (Tier-3 M7 — color-blind redundant signal)', () => {
+  it('maps every status to a distinct single-glyph shape', () => {
+    const shapes = new Set([
+      statusShape('green'),
+      statusShape('amber'),
+      statusShape('red'),
+      statusShape('unknown'),
+      statusShape('missing'),
+    ]);
+    expect(shapes.size).toBe(5);
+  });
+
+  it('returns a single-codepoint glyph (one visible char) for each status', () => {
+    const statuses = ['green', 'amber', 'red', 'unknown', 'missing'] as const;
+    for (const s of statuses) {
+      const shape = statusShape(s);
+      // Each shape is a single Unicode code point (length 1).
+      expect(shape.length).toBe(1);
+      // Glyph is non-empty + not a control char.
+      expect(shape.charCodeAt(0)).toBeGreaterThan(0x20);
+    }
+  });
+
+  it('matches the M7 spec: green=●, amber=▲, red=■, unknown=◇, missing=·', () => {
+    expect(statusShape('green')).toBe('●');
+    expect(statusShape('amber')).toBe('▲');
+    expect(statusShape('red')).toBe('■');
+    expect(statusShape('unknown')).toBe('◇');
+    expect(statusShape('missing')).toBe('·');
   });
 });

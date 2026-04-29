@@ -528,6 +528,9 @@ function CompositeMini({ score }: { score: number | null }) {
   }
   const tone =
     score >= 67 ? '#00D4AA' : score >= 34 ? '#FFB020' : '#FF4757';
+  // Tier-3 sub-29 M7 — color-blind safe redundant signal. Shape glyph
+  // matches statusShape() mapping in heatmap-matrix.ts (●/▲/■).
+  const shape = score >= 67 ? '●' : score >= 34 ? '▲' : '■';
   return (
     <span
       className="font-mono tabular-nums text-[9px] px-1 py-0 rounded shrink-0 font-bold"
@@ -539,6 +542,9 @@ function CompositeMini({ score }: { score: number | null }) {
       title={`Composite ${score}/100`}
       aria-label={`Composite score ${score}`}
     >
+      <span aria-hidden="true" className="mr-0.5 opacity-70">
+        {shape}
+      </span>
       {score}
     </span>
   );

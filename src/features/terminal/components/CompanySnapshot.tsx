@@ -155,11 +155,11 @@ export function CompanySnapshot({ companyCode }: Props) {
         <CompositeBadgeBig score={composite?.score ?? null} />
         {statusCounts && statusCounts.total > 0 && (
           <div className="flex items-center gap-1 text-[9px] tabular-nums">
-            <StatusChip count={statusCounts.green} color="#00D4AA" label="G" />
-            <StatusChip count={statusCounts.amber} color="#FFB020" label="A" />
-            <StatusChip count={statusCounts.red} color="#FF4757" label="R" />
+            <StatusChip count={statusCounts.green} color="#00D4AA" label="G" shape="●" />
+            <StatusChip count={statusCounts.amber} color="#FFB020" label="A" shape="▲" />
+            <StatusChip count={statusCounts.red} color="#FF4757" label="R" shape="■" />
             {statusCounts.unknown > 0 && (
-              <StatusChip count={statusCounts.unknown} color="#6B7280" label="?" />
+              <StatusChip count={statusCounts.unknown} color="#6B7280" label="?" shape="◇" />
             )}
           </div>
         )}
@@ -235,6 +235,9 @@ function CompositeBadgeBig({ score }: { score: number | null }) {
   }
   const tone =
     score >= 67 ? "#00D4AA" : score >= 34 ? "#FFB020" : "#FF4757";
+  // Tier-3 sub-29 M7 — shape glyph alongside score for color-blind parity.
+  // Score band: ≥67 green / ≥34 amber / else red.
+  const shape = score >= 67 ? "●" : score >= 34 ? "▲" : "■";
   return (
     <div
       className="flex flex-col items-center px-2 py-0.5 rounded border bg-[#050814]"
@@ -244,9 +247,12 @@ function CompositeBadgeBig({ score }: { score: number | null }) {
         {t("snapshot.scoreLabel")}
       </span>
       <span
-        className="font-mono text-base font-bold tabular-nums"
+        className="font-mono text-base font-bold tabular-nums flex items-center gap-1"
         style={{ color: tone }}
       >
+        <span aria-hidden="true" className="text-[10px] opacity-70">
+          {shape}
+        </span>
         {score}
       </span>
     </div>
@@ -257,10 +263,15 @@ function StatusChip({
   count,
   color,
   label,
+  shape,
 }: {
   count: number;
   color: string;
   label: string;
+  /** Tier-3 sub-29 M7 — single-glyph shape paired with status for
+   *  color-blind redundancy. Optional for back-compat with any future
+   *  caller that doesn't supply one. */
+  shape?: string;
 }) {
   return (
     <span
@@ -272,6 +283,11 @@ function StatusChip({
       }}
       title={`${count} ${label}`}
     >
+      {shape && (
+        <span aria-hidden="true" className="mr-0.5 opacity-70">
+          {shape}
+        </span>
+      )}
       {count}
       <span className="ml-0.5 opacity-70">{label}</span>
     </span>
