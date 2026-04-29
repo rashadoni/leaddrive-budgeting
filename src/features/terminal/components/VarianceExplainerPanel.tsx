@@ -205,9 +205,11 @@ export function VarianceExplainerPanel() {
   if (!data && !loading && !error) {
     return (
       <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        Click <span className="text-[#FFB800]">Explain →</span> in Panel 3 (or hit{" "}
-        <span className="text-[#FFB800]">Re-run</span> below) to fetch the AI
-        narrative for this cell.
+        {t("varianceExplainer.clickPrefix")}{" "}
+        <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>{" "}
+        {t("varianceExplainer.clickInfix")}{" "}
+        <span className="text-[#FFB800]">{t("varianceExplainer.reRun")}</span>{" "}
+        {t("varianceExplainer.clickSuffix")}
         <br />
         <br />
         <button
@@ -215,7 +217,7 @@ export function VarianceExplainerPanel() {
           onClick={() => ivId && run(ivId, language)}
           className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#00D4AA] text-[#050814] hover:bg-[#00E5BB]"
         >
-          Run for {language.toUpperCase()}
+          {t("varianceExplainer.runFor")} {language.toUpperCase()}
         </button>
       </div>
     );
@@ -234,13 +236,13 @@ export function VarianceExplainerPanel() {
       <header className="shrink-0 flex items-center justify-between gap-2 pb-1.5 border-b border-gray-800/60">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 uppercase tracking-wider text-[9px]">
-            Variance Explainer
+            {t("varianceExplainer.title")}
           </span>
           {confidencePct !== null && (
             <span
               className="text-[10px] tabular-nums"
               style={{ color: confidenceTone }}
-              title="LLM self-rated confidence (0-100%)"
+              title={t("varianceExplainer.confidenceTitle")}
             >
               {confidencePct}%
             </span>
@@ -273,21 +275,21 @@ export function VarianceExplainerPanel() {
             onClick={() => ivId && run(ivId, language, { force: true })}
             disabled={loading || !ivId}
             className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-            title="Force a fresh LLM call (bypasses cache)"
+            title={t("varianceExplainer.reRunTitle")}
           >
-            {loading ? "…" : "Re-run"}
+            {loading ? "…" : t("varianceExplainer.reRun")}
           </button>
         </div>
       </header>
 
       {loading && !data && (
-        <span className="text-gray-700 text-[11px]">Asking the model…</span>
+        <span className="text-gray-700 text-[11px]">{t("varianceExplainer.askingModel")}</span>
       )}
 
       {error && (
         <div className="rounded border border-[#FF4757]/40 bg-[#FF4757]/10 px-2 py-1.5">
           <div className="text-[#FF4757] text-[10px] uppercase tracking-wider mb-0.5">
-            Error
+            {t("varianceExplainer.error")}
           </div>
           <div className="text-gray-200 text-[11px]">{error}</div>
         </div>
@@ -297,7 +299,7 @@ export function VarianceExplainerPanel() {
         <>
           <section>
             <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-              Narrative
+              {t("varianceExplainer.narrative")}
             </div>
             <p className="text-gray-200 text-[12px] leading-snug">
               {data.narrative}
@@ -306,7 +308,7 @@ export function VarianceExplainerPanel() {
 
           <section>
             <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-              Recommendations
+              {t("varianceExplainer.recommendations")}
             </div>
             <ol className="list-none space-y-1.5">
               {data.recommendations.map((r, i) => (
@@ -326,7 +328,7 @@ export function VarianceExplainerPanel() {
           {data.topDrivers.length > 0 && (
             <section>
               <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-                Top drivers
+                {t("varianceExplainer.topDrivers")}
               </div>
               <div className="flex flex-wrap gap-1">
                 {data.topDrivers.map((d) => (
@@ -343,7 +345,7 @@ export function VarianceExplainerPanel() {
 
           {data.usage && (
             <p className="text-gray-700 text-[9px] mt-auto pt-1">
-              tokens: {data.usage.inputTokens} in / {data.usage.outputTokens} out
+              {t("varianceExplainer.tokens")}: {data.usage.inputTokens} {t("varianceExplainer.tokensIn")} / {data.usage.outputTokens} {t("varianceExplainer.tokensOut")}
             </p>
           )}
         </>

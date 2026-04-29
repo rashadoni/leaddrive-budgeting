@@ -120,10 +120,10 @@ export function IndicatorDetail() {
     );
   }
   if (loading) {
-    return <span className="text-gray-700 font-mono text-xs">Loading...</span>;
+    return <span className="text-gray-700 font-mono text-xs">{t('indicatorDetail.loading')}</span>;
   }
   if (error) {
-    return <span className="text-[#FF4757] font-mono text-xs">Error: {error}</span>;
+    return <span className="text-[#FF4757] font-mono text-xs">{t('indicatorDetail.error')} {error}</span>;
   }
   if (!detail) return null;
 
@@ -237,15 +237,14 @@ export function IndicatorDetail() {
           className="text-[10px] leading-snug rounded border border-yellow-500/30 bg-yellow-500/5 px-2 py-1.5 text-yellow-200"
           role="note"
         >
-          ⚠ Calibrated against US benchmark (Damodaran). AZ-market data
-          pending — treat as directional signal only.
+          {t('indicatorDetail.damodaranBanner')}
         </p>
       )}
 
       {errPayload && (
         <div className="rounded border border-[#6B7280]/40 bg-[#6B7280]/10 px-2 py-1.5">
           <div className="text-[#FFB020] text-[10px] uppercase tracking-wider mb-0.5">
-            Pipeline note
+            {t('indicatorDetail.pipelineNote')}
           </div>
           <div className="text-gray-300 text-[11px]">
             <span className="text-gray-500">{errPayload.code}:</span> {errPayload.reason}
@@ -255,7 +254,7 @@ export function IndicatorDetail() {
 
       <section>
         <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-          Formula
+          {t('indicatorDetail.formula')}
         </div>
         <code className="block bg-[#050814] rounded border border-gray-800 px-2 py-1 text-[#00D4AA] text-[11px] whitespace-pre-wrap break-all">
           {ind.formula}
@@ -264,11 +263,11 @@ export function IndicatorDetail() {
 
       <section>
         <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-          Resolved variables
+          {t('indicatorDetail.resolvedVariables')}
         </div>
         {Object.keys(resolved).length === 0 ? (
           <p className="text-gray-700 text-[11px]">
-            (none — likely missing-data / unknown status)
+            {t('indicatorDetail.noneMissingData')}
           </p>
         ) : (
           <table className="text-[11px] tabular-nums w-full">
@@ -288,10 +287,10 @@ export function IndicatorDetail() {
 
       <section>
         <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
-          Aggregates
+          {t('indicatorDetail.aggregates')}
         </div>
         {Object.keys(aggregates).length === 0 ? (
-          <p className="text-gray-700 text-[11px]">(none)</p>
+          <p className="text-gray-700 text-[11px]">{t('indicatorDetail.none')}</p>
         ) : (
           <ul className="space-y-1">
             {Object.entries(aggregates).map(([ns, data]) => (
@@ -325,11 +324,11 @@ export function IndicatorDetail() {
           className="bg-[#00D4AA] text-[#050814] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed hover:bg-[#00E5BB]"
           title={
             status === "green"
-              ? "Variance explainer is for amber / red / unknown only"
-              : "Open AI Variance Explainer in Panel 4 + run for current cell"
+              ? t('indicatorDetail.explainGreenDisabled')
+              : t('indicatorDetail.explainTitle')
           }
         >
-          Explain →
+          {t('indicatorDetail.explainButton')}
         </button>
       </section>
     </div>
@@ -394,6 +393,7 @@ function ForecastSection(props: {
   ivId: string;
   sparkline: (number | null)[];
 }) {
+  const t = useTranslations('terminal');
   const forecast = forecastNextPeriod(props.sparkline);
   const [language, setLanguage] = React.useState<ForecastLanguage>("en");
   const [explain, setExplain] = React.useState<ExplainState>({ kind: "idle" });
@@ -458,7 +458,7 @@ function ForecastSection(props: {
       {/* Row 1 — always-visible badge (sub-13 v1 contract). */}
       <div className="flex items-center gap-2">
         <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
-          Next-period forecast
+          {t('indicatorDetail.forecastNextPeriod')}
         </span>
         <span
           className={`text-[11px] font-mono tabular-nums ${forecastColor(forecast.confidence)}`}
@@ -473,15 +473,15 @@ function ForecastSection(props: {
           <span
             className="text-[10px] font-mono tabular-nums text-gray-500"
             data-testid="forecast-ci"
-            title={`95% prediction interval (n=${forecast.contributingCount}, df=${ci.degreesOfFreedom})`}
+            title={`${t('indicatorDetail.forecastCITitle')} (n=${forecast.contributingCount}, df=${ci.degreesOfFreedom})`}
           >
             ±{formatValue(ci.marginOfError)}
           </span>
         )}
         <span className="text-[9px] text-gray-500 ml-auto">
           {isFlat
-            ? "no change expected"
-            : `${forecast.confidence} confidence · R² ${forecast.r2.toFixed(2)} · ${forecast.contributingCount}/12 pts`}
+            ? t('indicatorDetail.forecastNoChange')
+            : `${forecast.confidence} ${t('indicatorDetail.forecastConfidence')} · R² ${forecast.r2.toFixed(2)} · ${forecast.contributingCount}/12 ${t('indicatorDetail.forecastPts')}`}
         </span>
       </div>
 
@@ -526,8 +526,8 @@ function ForecastSection(props: {
             {explain.kind === "loading"
               ? "Explaining…"
               : explain.kind === "ok"
-                ? "Re-run"
-                : "Explain →"}
+                ? t('indicatorDetail.reRun')
+                : t('indicatorDetail.explainButton')}
           </button>
         </div>
       )}
@@ -548,7 +548,7 @@ function ForecastSection(props: {
               data-testid="forecast-horizon"
             >
               <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
-                Horizon
+                {t('indicatorDetail.forecastHorizon')}
               </span>
               {explain.data.horizon.map((h) => (
                 <span
@@ -574,7 +574,7 @@ function ForecastSection(props: {
           {explain.data.driverHypotheses.length > 0 && (
             <div>
               <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
-                Likely drivers
+                {t('indicatorDetail.likelyDrivers')}
               </div>
               <ul className="text-[10px] text-gray-300 space-y-0.5 list-disc pl-4">
                 {explain.data.driverHypotheses.map((h, i) => (
@@ -586,7 +586,7 @@ function ForecastSection(props: {
           {explain.data.riskFactors.length > 0 && (
             <div>
               <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
-                Risk factors
+                {t('indicatorDetail.riskFactors')}
               </div>
               <ul className="text-[10px] text-[#FFB800] space-y-0.5 list-disc pl-4">
                 {explain.data.riskFactors.map((r, i) => (
@@ -597,7 +597,7 @@ function ForecastSection(props: {
           )}
           <div className="text-[9px] text-gray-500 mt-1 flex items-center gap-2">
             <span>
-              LLM confidence: {(explain.data.confidence * 100).toFixed(0)}%
+              {t('indicatorDetail.llmConfidence')}: {(explain.data.confidence * 100).toFixed(0)}%
             </span>
             <span className="opacity-60">·</span>
             <span className="font-mono">{explain.data.modelName}</span>
@@ -620,7 +620,7 @@ function ForecastSection(props: {
           className="text-[10px] text-[#FF4757] mt-1"
           data-testid="forecast-explain-error"
         >
-          Forecast explain failed: {explain.message}
+          {t('indicatorDetail.forecastExplainFailed')}: {explain.message}
         </p>
       )}
     </div>

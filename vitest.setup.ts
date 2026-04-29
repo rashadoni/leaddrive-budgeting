@@ -34,6 +34,13 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'hotkeys.running': 'RUNNING…',
   'hotkeys.compactTitle': 'Toggle compact mode (Ctrl+/)',
   'hotkeys.compactAriaLabel': 'Toggle compact mode',
+  // IndicatorDetail keys with non-pattern labels (lowercase phrases / hyphens)
+  'indicatorDetail.forecastConfidence': 'confidence',
+  'indicatorDetail.forecastPts': 'pts',
+  'indicatorDetail.forecastNoChange': 'no change expected',
+  'indicatorDetail.forecastCITitle': '95% prediction interval',
+  'indicatorDetail.reRun': 'Re-run',
+  'indicatorDetail.explainButton': 'Explain →',
 };
 
 function fallbackLabel(key: string): string {
