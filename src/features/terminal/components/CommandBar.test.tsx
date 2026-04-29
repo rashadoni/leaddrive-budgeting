@@ -15,6 +15,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { __resetMatrixCacheForTests } from '../hooks/use-matrix';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CommandBar } from './CommandBar';
 import {
@@ -43,6 +44,11 @@ function submit(value: string): void {
 }
 
 beforeEach(() => {
+  // Sub-20: reset useMatrix module cache between tests so each test's
+  // fetch mock controls what `ensureMatrix()` (called by IND command)
+  // resolves to. Without this the first test's empty matrix sticks
+  // and subsequent tests with populated fixtures fail.
+  __resetMatrixCacheForTests();
   // Turn 32: mock global fetch — IND command (Bug #2 fix) does an async
   // matrix fetch for indicator-code → IV-id resolution via fire-and-forget
   // `void resolveIndicatorByCode(...).then(...)`. Without a mock, the
@@ -120,6 +126,7 @@ describe('CommandBar (Phase 7.D smoke)', () => {
   // submit so resolveIndicatorByCode sees the right shape.
 
   it('IND happy path: matrix has matching cell → setActiveIndicatorValue called', async () => {
+    __resetMatrixCacheForTests();
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -155,6 +162,7 @@ describe('CommandBar (Phase 7.D smoke)', () => {
   });
 
   it('IND activeCompany preference: 2 cells, one for active co → that one chosen', async () => {
+    __resetMatrixCacheForTests();
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({

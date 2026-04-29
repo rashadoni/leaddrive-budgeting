@@ -9,6 +9,7 @@ import {
 } from '../lib/command-parser';
 import { Bell } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
+import { ensureMatrix } from '../hooks/use-matrix';
 
 export function CommandBar() {
   const [command, setCommand] = useState('');
@@ -75,13 +76,15 @@ export function CommandBar() {
    */
   const resolveIndicatorByCode = async (code: string): Promise<string | null> => {
     try {
-      const res = await fetch('/api/indicators/matrix');
-      if (!res.ok) return null;
-      const matrix = await res.json();
-      const cells: Array<{ indicatorValueId: string; companyId: string; indicatorId: string }> =
+      // Sub-20: shared `ensureMatrix()` accessor reads the cached
+      // matrix HeatMap already fetched (or kicks off the shared fetch
+      // if no consumer has populated cache yet). One-shot read; no
+      // subscription needed for this fire-and-forget IND-resolve path.
+      const matrix = await ensureMatrix();
+      const cells: Array<{ indicatorValueId?: string; companyId: string; indicatorId: string }> =
         matrix.cells ?? [];
-      const indicators: Array<{ id: string; code: string }> = matrix.indicators ?? [];
-      const companies: Array<{ id: string; code: string }> = matrix.companies ?? [];
+      const indicators = matrix.indicators ?? [];
+      const companies = matrix.companies ?? [];
       const targetIndicator = indicators.find((i) => i.code === code);
       if (!targetIndicator) return null;
 

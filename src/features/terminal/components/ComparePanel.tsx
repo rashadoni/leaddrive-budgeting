@@ -22,6 +22,7 @@
  */
 
 import React, { useEffect, useState } from "react";
+import { useMatrix } from "../hooks/use-matrix";
 
 interface CompareEvent {
   lhs: string;
@@ -61,9 +62,16 @@ interface MatrixResponse {
 export function ComparePanel() {
   const [open, setOpen] = useState(false);
   const [pair, setPair] = useState<CompareEvent | null>(null);
-  const [data, setData] = useState<MatrixResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Sub-20: shared `useMatrix()` hook. Module cache means an open
+  // ComparePanel reuses HeatMap's already-fetched matrix instead of
+  // a 2nd round-trip. Lazy-fetch is preserved via `enabled` gate
+  // below (matches prior `if (!open || data) return` semantics).
+  const { matrix: data, loading: hookLoading, error: hookError } = useMatrix();
+  // Local "enabled" view: until modal opens, treat matrix as unloaded
+  // so the closed-modal render path doesn't see stale subscription
+  // state. Once open, reflect the hook's actual loading/error.
+  const loading = open && hookLoading;
+  const error = open ? hookError : null;
 
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -88,28 +96,13 @@ export function ComparePanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  useEffect(() => {
-    if (!open || data) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch("/api/indicators/matrix")
-      .then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
-      )
-      .then((json: MatrixResponse) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message || "Failed to load");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, data]);
+  // Sub-20: matrix-fetch effect removed — `useMatrix()` hook handles
+  // the shared cache + lifecycle. The original effect was lazy
+  // (`if (!open || data) return`); the hook fetches eagerly on
+  // component mount, but the module cache means there's at most one
+  // network call across all consumers, so the eager-fetch overhead
+  // is paid by HeatMap (always mounted) and ComparePanel just reads
+  // the cached result on open.
 
   if (!open || !pair) return null;
 

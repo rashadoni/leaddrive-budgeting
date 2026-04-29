@@ -16,6 +16,7 @@ import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import { CompanySnapshot } from "./CompanySnapshot";
+import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
 
 const FULL_FIXTURE = {
   period: "2026",
@@ -74,6 +75,10 @@ const FULL_FIXTURE = {
 };
 
 beforeEach(() => {
+  // Sub-20: reset useMatrix module cache between tests so each test's
+  // fetch mock controls the resolved data (without this the first
+  // test's payload sticks for the rest of the file).
+  __resetMatrixCacheForTests();
   global.fetch = vi.fn(async () =>
     new Response(JSON.stringify(FULL_FIXTURE), {
       status: 200,
@@ -89,6 +94,7 @@ afterEach(() => {
 
 describe("CompanySnapshot (Phase B7)", () => {
   it("renders Loading state during fetch", () => {
+    __resetMatrixCacheForTests();
     let resolveFetch!: (value: Response) => void;
     global.fetch = vi.fn(
       () => new Promise<Response>((r) => { resolveFetch = r; }),
@@ -146,6 +152,7 @@ describe("CompanySnapshot (Phase B7)", () => {
       ],
       cells: [],
     };
+    __resetMatrixCacheForTests();
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify(noMatchFixture), { status: 200 }),
     ) as never;
@@ -163,6 +170,7 @@ describe("CompanySnapshot (Phase B7)", () => {
   });
 
   it("Renders error state on fetch failure", async () => {
+    __resetMatrixCacheForTests();
     global.fetch = vi.fn(async () =>
       new Response("server error", { status: 500 }),
     ) as never;

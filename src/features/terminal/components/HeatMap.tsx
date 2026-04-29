@@ -25,6 +25,7 @@ import {
   evaluateAlertRules,
   DEFAULT_ALERT_RULES,
 } from '@/lib/risk/alert-rules';
+import { useMatrix } from '../hooks/use-matrix';
 
 type CompanyRow = {
   id: string;
@@ -68,42 +69,19 @@ export function HeatMap({ period }: Props) {
   const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
   const compactMode = useTerminalStore((s) => s.compactMode);
 
-  const [data, setData] = useState<MatrixResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Sub-20: shared `useMatrix()` hook. Module-level cache means
+  // HeatMap + ComparePanel + CompanySnapshot all subscribe to ONE
+  // in-flight matrix fetch when they mount concurrently. SSE-driven
+  // refetch goes through `refresh()` so the cache is invalidated and
+  // every subscribing panel re-renders with fresh data.
+  const { matrix: data, loading, error, refresh: refetchMatrix } =
+    useMatrix(period);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // SSR/CSR hydration guard — see CompanyTree for rationale.
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const refetchMatrix = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    const qs = period ? `?period=${encodeURIComponent(period)}` : '';
-    return fetch(`/api/indicators/matrix${qs}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
-      .then((json) => {
-        setData(json);
-      })
-      .catch((err) => {
-        setError(err.message || 'Failed to load');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [period]);
-
-  useEffect(() => {
-    let cancelled = false;
-    refetchMatrix().then(() => {
-      if (cancelled) return;
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [refetchMatrix]);
 
   // Phase B1 — refetch when SSE stream signals an indicator change.
   // Architect Round-1 sub-1 closure: debounce 150ms so a bulk-import

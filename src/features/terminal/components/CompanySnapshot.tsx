@@ -23,39 +23,22 @@
  * via `useEventStream` on indicator:changed for live update.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
+import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
 
-interface MatrixCell {
-  indicatorValueId?: string;
-  companyId: string;
-  indicatorId: string;
-  value: number;
-  status: "green" | "amber" | "red" | "unknown" | "missing";
-  sparkline?: (number | null)[];
-}
-
-interface MatrixCompany {
-  id: string;
-  code: string;
-  name: string;
-}
-
-interface MatrixIndicator {
-  id: string;
-  code: string;
-  nameEn: string;
-  unit: string;
-  direction: "higher_better" | "lower_better" | "band";
-}
-
-interface MatrixResponse {
-  period: string;
-  companies: MatrixCompany[];
-  indicators: MatrixIndicator[];
-  cells: MatrixCell[];
-}
+// Sub-20: local MatrixCell/Company/Indicator types removed in favor of
+// the canonical shapes exported by `useMatrix` hook (HeatMapCell from
+// composite-score.ts + MatrixCompanyRow/MatrixIndicatorCol from the
+// hook). Local `'missing'` literal was a UI fiction — endpoint emits
+// only 4 IndicatorStatus values (green/amber/red/unknown).
+import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import type {
+  MatrixCompanyRow as MatrixCompany,
+  MatrixIndicatorCol as MatrixIndicator,
+} from "../hooks/use-matrix";
+type MatrixCell = HeatMapCell;
 
 const SNAPSHOT_INDICATOR_CODES = [
   "IND_GROSS_MARGIN",
@@ -68,40 +51,17 @@ interface Props {
 }
 
 export function CompanySnapshot({ companyCode }: Props) {
-  const [data, setData] = useState<MatrixResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch("/api/indicators/matrix")
-      .then((r) =>
-        r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)),
-      )
-      .then((json: MatrixResponse) => {
-        if (!cancelled) setData(json);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message || "Failed to load");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    return refetch();
-  }, [refetch]);
+  // Sub-20: shared `useMatrix()` hook. Module cache means CompanySnapshot
+  // mounts (one per active company drilldown) reuse HeatMap's already-
+  // fetched matrix instead of N round-trips. SSE-driven refetch goes
+  // through `refresh()` so the cache invalidates and HeatMap +
+  // ComparePanel + this snapshot all see fresh data.
+  const { matrix: data, loading, error, refresh } = useMatrix();
 
   // SSE live-update on indicator changes (B1).
   useEventStream({
     onIndicatorChanged: () => {
-      refetch();
+      refresh();
     },
   });
 
