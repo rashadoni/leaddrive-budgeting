@@ -112,10 +112,17 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
       fireEvent.click(button);
       expect(screen.queryByText("For AAC-MAIN")).toBeTruthy();
     });
-    const pnlLink = screen.getByText("P&L").closest("a");
-    expect(pnlLink?.getAttribute("href")).toBe(
-      "/budgeting?tab=pnl-report&company=aac_main_id",
-    );
+    // Race-fix mirror of sub-18 `walks hierarchical children` test: href is
+    // built from `companyMap` which hydrates via async `/api/companies` fetch;
+    // even after menu opens (waitFor above) the map may still be empty
+    // → activeCompanyId resolves null → href omits `?company=`. Wrap href
+    // assertion in waitFor so the test polls until the map hydrates.
+    await waitFor(() => {
+      const pnlLink = screen.getByText("P&L").closest("a");
+      expect(pnlLink?.getAttribute("href")).toBe(
+        "/budgeting?tab=pnl-report&company=aac_main_id",
+      );
+    });
     const auditLink = screen.getByText("Audit").closest("a");
     expect(auditLink?.getAttribute("href")).toBe(
       "/budgeting/audit?company=aac_main_id",
