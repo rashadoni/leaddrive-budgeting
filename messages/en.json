@@ -1327,7 +1327,12 @@
       "topAlerts": "Top alerts",
       "lastAudit": "Last audit",
       "forecastConfidence": "Forecast confidence",
-      "noScoreableIndicators": "No scoreable indicators (rollup row)"
+      "noScoreableIndicators": "No scoreable indicators (rollup row)",
+      "loading": "Loading snapshot…",
+      "error": "Snapshot error",
+      "companyNotInMatrix": "Company not in current matrix:",
+      "noPlIndicators": "No P&L margin indicators available for",
+      "indicators": "indicators"
     },
     "hints": {
       "tree": "Click any company to focus drill-down panels",

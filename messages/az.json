@@ -1327,7 +1327,12 @@
       "topAlerts": "Əsas xəbərdarlıqlar",
       "lastAudit": "Son audit",
       "forecastConfidence": "Proqnoz inamı",
-      "noScoreableIndicators": "Qiymətləndirilə bilən göstərici yoxdur (yığma sətr)"
+      "noScoreableIndicators": "Qiymətləndirilə bilən göstərici yoxdur (yığma sətr)",
+      "loading": "Snapshot yüklənir…",
+      "error": "Snapshot xətası",
+      "companyNotInMatrix": "Şirkət cari matrisdə yoxdur:",
+      "noPlIndicators": "P&L margin göstəriciləri əlçatan deyil:",
+      "indicators": "göstərici"
     },
     "hints": {
       "tree": "Digər panelləri fokuslamaq üçün şirkətə klikləyin",

@@ -23,11 +23,13 @@
  * via `useEventStream` on indicator:changed for live update.
  */
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
+import { useTerminalStore } from "../store/terminalStore";
+import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 // Sub-20: local MatrixCell/Company/Indicator types removed in favor of
 // the canonical shapes exported by `useMatrix` hook (HeatMapCell from
@@ -59,6 +61,9 @@ export function CompanySnapshot({ companyCode }: Props) {
   // through `refresh()` so the cache invalidates and HeatMap +
   // ComparePanel + this snapshot all see fresh data.
   const { matrix: data, loading, error, refresh } = useMatrix();
+  // Sub-27 cont'd Round-5 — extend snapshot toward GU-equivalent
+  // CompanyOverview per plan §1: composite + status chips + top alerts.
+  const alertMatches = useTerminalStore((s) => s.alertMatches);
 
   // SSE live-update on indicator changes (B1).
   useEventStream({
@@ -67,26 +72,52 @@ export function CompanySnapshot({ companyCode }: Props) {
     },
   });
 
+  // computed before early returns so React hook order stays stable
+  const company = data?.companies.find((c) => c.code === companyCode);
+  const compositeByCo = useMemo(() => {
+    if (!data) return new Map();
+    return computeCompositeByCompany(data.cells);
+  }, [data]);
+  const composite = company ? compositeByCo.get(company.id) : null;
+  const statusCounts = useMemo(() => {
+    if (!data || !company) return null;
+    const cells = data.cells.filter(
+      (c) => c.companyId === company.id && !c.isSubgroupRollup,
+    );
+    return {
+      green: cells.filter((c) => c.status === "green").length,
+      amber: cells.filter((c) => c.status === "amber").length,
+      red: cells.filter((c) => c.status === "red").length,
+      unknown: cells.filter((c) => c.status === "unknown").length,
+      total: cells.length,
+    };
+  }, [data, company]);
+  const companyAlerts = useMemo(() => {
+    if (!alertMatches || !company) return [];
+    return alertMatches
+      .filter((m) => m.affectedCompanyIds.includes(company.id))
+      .slice(0, 3);
+  }, [alertMatches, company]);
+
   if (loading && !data) {
     return (
       <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        Loading snapshot…
+        {t("snapshot.loading")}
       </div>
     );
   }
   if (error || !data) {
     return (
       <div className="text-[#FF4757] font-mono text-xs">
-        Snapshot error: {error ?? "no data"}
+        {t("snapshot.error")}: {error ?? "no data"}
       </div>
     );
   }
 
-  const company = data.companies.find((c) => c.code === companyCode);
   if (!company) {
     return (
       <div className="text-gray-700 font-mono text-xs">
-        Company <code>{companyCode}</code> not in current matrix.
+        {t("snapshot.companyNotInMatrix")} <code>{companyCode}</code>.
       </div>
     );
   }
@@ -101,41 +132,142 @@ export function CompanySnapshot({ companyCode }: Props) {
   }).filter((x): x is { indicator: MatrixIndicator; cell: MatrixCell | undefined } => x !== null);
 
   // No matching indicators at all (sector mismatch) → fall back gracefully.
-  if (cards.length === 0) {
-    return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        No P&L margin indicators available for{" "}
-        <span className="text-[#FFB020]">{companyCode}</span>.
-        <br />
-        Pick a HeatMap cell to drill into this company's data.
-      </div>
-    );
-  }
+  const noPLIndicators = cards.length === 0;
 
   return (
     <div className="font-mono text-xs flex flex-col gap-2">
       <div className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between">
         <span>
           {t("snapshot.title")} · <span className="text-[#FFB020]">{company.code}</span>
+          {company.industry && (
+            <span className="text-gray-600 ml-1.5 normal-case font-sans text-[9px]">
+              {company.industry}
+            </span>
+          )}
         </span>
         <span className="text-gray-600">{t("snapshot.trend12mo")}</span>
       </div>
-      {/* Architect Round-1 sub-10 closure: was `grid grid-cols-3` which
-          overflowed at narrow Panel 4 widths (Analyst preset 40% × 40%
-          = 16% of viewport). Switched to flex-wrap with min-width per
-          card so cards stack to 1 or 2 columns when Panel 4 narrows
-          and fan out to 3 when there's room. */}
-      <div className="flex flex-wrap gap-2">
-        {cards.map(({ indicator, cell }) => (
-          <div key={indicator.id} className="flex-1 min-w-[120px]">
-            <SnapshotCard indicator={indicator} cell={cell} />
+
+      {/* Sub-27 cont'd Round-5 GU-equivalent overview: composite badge +
+          status chip strip. Density punch — one row of 4 chips covering
+          Bloomberg's "everything at a glance" pattern. */}
+      <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-800/60 bg-[#0A0E27]/60">
+        <CompositeBadgeBig score={composite?.score ?? null} />
+        {statusCounts && statusCounts.total > 0 && (
+          <div className="flex items-center gap-1 text-[9px] tabular-nums">
+            <StatusChip count={statusCounts.green} color="#00D4AA" label="G" />
+            <StatusChip count={statusCounts.amber} color="#FFB020" label="A" />
+            <StatusChip count={statusCounts.red} color="#FF4757" label="R" />
+            {statusCounts.unknown > 0 && (
+              <StatusChip count={statusCounts.unknown} color="#6B7280" label="?" />
+            )}
           </div>
-        ))}
+        )}
+        <span className="text-[9px] text-gray-600 ml-auto">
+          {statusCounts?.total ?? 0} {t("snapshot.indicators")}
+        </span>
       </div>
+
+      {/* Top alerts for this company — Bloomberg-grade "what needs my
+          attention RIGHT NOW" surface. Pulls from terminalStore.alertMatches
+          (populated by HeatMap's evaluateAlertRules). Empty-state suppressed
+          (no chip = no alerts = good news). */}
+      {companyAlerts.length > 0 && (
+        <div className="flex flex-col gap-1 px-2 py-1.5 rounded border border-[#FFB020]/30 bg-[#FFB020]/5">
+          <div className="text-[9px] uppercase tracking-wider text-[#FFB020]">
+            {t("snapshot.topAlerts")} · {companyAlerts.length}
+          </div>
+          <ul className="text-[10px] space-y-0.5">
+            {companyAlerts.map((m, i) => {
+              const dotColor =
+                m.severity === "critical"
+                  ? "bg-[#FF4757]"
+                  : m.severity === "warning"
+                    ? "bg-[#FFB020]"
+                    : "bg-gray-500";
+              return (
+                <li key={i} className="flex items-start gap-1.5 leading-tight">
+                  <span className={`w-1 h-1 rounded-full mt-1 shrink-0 ${dotColor}`} />
+                  <span className="text-gray-300 truncate">{m.message}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {/* Margin trio cards (existing) */}
+      {!noPLIndicators ? (
+        <div className="flex flex-wrap gap-2">
+          {cards.map(({ indicator, cell }) => (
+            <div key={indicator.id} className="flex-1 min-w-[120px]">
+              <SnapshotCard indicator={indicator} cell={cell} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-gray-700 text-[11px] leading-relaxed">
+          {t("snapshot.noPlIndicators")}{" "}
+          <span className="text-[#FFB020]">{companyCode}</span>.
+        </div>
+      )}
+
       <p className="text-[10px] text-gray-600 mt-1">
         {t("snapshot.footerHint")}
       </p>
     </div>
+  );
+}
+
+function CompositeBadgeBig({ score }: { score: number | null }) {
+  if (score === null) {
+    return (
+      <div className="flex flex-col items-center px-2 py-0.5 rounded border border-gray-800 bg-[#050814]">
+        <span className="text-[9px] text-gray-600 uppercase tracking-wider">Score</span>
+        <span className="text-gray-700 font-mono text-base font-bold">—</span>
+      </div>
+    );
+  }
+  const tone =
+    score >= 67 ? "#00D4AA" : score >= 34 ? "#FFB020" : "#FF4757";
+  return (
+    <div
+      className="flex flex-col items-center px-2 py-0.5 rounded border bg-[#050814]"
+      style={{ borderColor: `${tone}66` }}
+    >
+      <span className="text-[9px] text-gray-500 uppercase tracking-wider">Score</span>
+      <span
+        className="font-mono text-base font-bold tabular-nums"
+        style={{ color: tone }}
+      >
+        {score}
+      </span>
+    </div>
+  );
+}
+
+function StatusChip({
+  count,
+  color,
+  label,
+}: {
+  count: number;
+  color: string;
+  label: string;
+}) {
+  return (
+    <span
+      className="px-1 py-0.5 rounded font-bold tabular-nums"
+      style={{
+        color,
+        backgroundColor: `${color}1A`,
+        opacity: count > 0 ? 1 : 0.4,
+      }}
+      title={`${count} ${label}`}
+    >
+      {count}
+      <span className="ml-0.5 opacity-70">{label}</span>
+    </span>
   );
 }
 
