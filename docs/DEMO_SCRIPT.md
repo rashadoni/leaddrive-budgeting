@@ -203,6 +203,11 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 **Say (Phase C6):**
 > "Multi-indicator alert engine. Composite + sector contagion + org-wide signals. CFO sees one consolidated 'what needs attention' view, не один-за-другим cell scan."
 
+**Say (verbal beat — Phase C6 sub-25, admin-tunable thresholds shipped 2026-04-29):**
+> "And every threshold — '3+ red indicators', composite floor 40, sector contagion counts, the org-wide critical-indicator picklist — per-org tunable on `/settings`. Industrial holding wants 5 reds instead of 3? Admin opens settings, edits, saves. Audit log captures before/after — full compliance trail."
+
+> ⚠️ **No click in v2 demo** — the /settings page is fully wired but adding a navigation beat costs ~20 sec of wall-time and the AlertRulesEditor has 5 cards × 7 fields which doesn't read in 2-3 sec. Mention verbally; if the customer probes ("can we tune?"), navigate to `/settings` as a follow-up after Step 4 completes (Q&A buffer).
+
 **Press Escape.** _(Or click backdrop.)_
 
 **Type:** `IRAN_HIGH SCN GO`. _(Phase C4 v1, sub-11. Seeded scenarios: `IRAN_HIGH` / `AZN_DEVAL_20` / `OIL_DROP_30` — see `scripts/seed-scenarios.ts`. Run `npx tsx scripts/seed-scenarios.ts` if SCN modal appears empty.)_
@@ -300,6 +305,7 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 | "Integration с 1C / SAP?" | "CSV / Excel import works today. 1C connector в Q3 backlog. SAP — на request." |
 | "Кто видит чьи данные?" | "Per-org isolation enforced at app + (coming) database (RLS) layer. Within org — role-based: admin / manager / editor / viewer with audit trail of every access." |
 | "А если интернет пропадёт?" | "Self-hosted — works offline-LAN. SaaS — same Anthropic dependency для AI features (graceful degradation: matrix + audit work без AI; chat + variance explainer require connectivity)." |
+| "Можем ли мы настроить пороги для алертов?" / "Can we tune the alert thresholds?" | "Yes — `/settings` page (admin-only). Each rule has its threshold editable: minimum red count, composite floor, sector-cluster cutoffs, the org-wide critical-indicator picklist. Save → audit log captures before/after. Per-sector overrides + email digest scheduling — v3, в backlog. _(Phase C6 sub-25, shipped 2026-04-29.)_" |
 
 **If they ask anything off-script** → "Great question — let me check if we have it in the roadmap" → reference slide 4 or "this lives in our backlog, can dive deeper после demo."
 
@@ -377,7 +383,7 @@ Mark each step pass/fail:
 - [ ] Step 1: P&L renders, EBITDA card 25.0M, Management/Bookkeeping toggle works, AAC-MAIN drill = 19M Net Rev / 17% margin / 1.5M EBITDA
 - [ ] Step 2: Variance Explainer EXPLAIN responds EN within 12-15 sec; RU tab + Re-run within 15-18 sec
 - [ ] Step 3: analyze ~35 sec → 14-column mapping → Apply → "INSERTED 27 / 5 indicators" + audit_event fires
-- [ ] Step 4: HeatMap 24g/25a/18r=67 colored + composite badges per row (Phase C5); IndicatorDetail populates with sparkline + forecast (Phase C2); 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD); SCN GO opens ScenarioPanel (C4); BRF GO opens /budgeting/board-deck (C3); `[alerts N]` strip click opens AlertsPanel (C6); F1-F4 snappy, drag smooth; AUD GO opens modal with ai_variance_explainer_run rows visible
+- [ ] Step 4: HeatMap 24g/25a/18r=67 colored + composite badges per row (Phase C5); IndicatorDetail populates with sparkline + forecast (Phase C2); 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD); SCN GO opens ScenarioPanel (C4); BRF GO opens /budgeting/board-deck (C3); `[alerts N]` strip click opens AlertsPanel (C6 v1) + verbal mention of `/settings` admin-tunable thresholds (C6 sub-25); F1-F4 snappy, drag smooth; AUD GO opens modal with ai_variance_explainer_run rows visible
 - [ ] Step 5: AuditFeed paginates, expand row works
 - [ ] Step 6: roadmap slides render
 - [ ] Total wall-time: 16-22 min (Step 4 grew 6 → 7-7.5 min for Phase C v1 beats; on slow takes apply cut-priority: BRF → SCN → AlertsPanel)
