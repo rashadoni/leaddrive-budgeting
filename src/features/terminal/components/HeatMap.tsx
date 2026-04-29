@@ -357,21 +357,38 @@ export function HeatMap({ period }: Props) {
                     maxWidth: compactMode ? 40 : 54,
                   }}
                 >
-                  {/* Turn-38-sub14 — Radix Tooltip replaces native `title=` (slow + browser-flaky on Mac).
-                      Shows full indicator name + unit + direction on hover (~150ms delay). */}
+                  {/* Sub-27 cont'd Round-5 M1 — plain-language column headers.
+                      CFO-friendly primary label (locale-aware nameRu/nameAz/nameEn);
+                      technical code surfaced in tooltip + as small dim secondary line.
+                      Compact-mode (40px width) hides secondary line to preserve density. */}
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="truncate cursor-help">{ind.code}</div>
+                      <div className="cursor-help leading-tight">
+                        <div className="truncate font-sans normal-case text-gray-300 text-[10px]">
+                          {(locale === 'ru' && ind.nameRu) ||
+                            (locale === 'az' && ind.nameAz) ||
+                            ind.nameEn ||
+                            ind.code}
+                        </div>
+                        {!compactMode && (
+                          <div className="truncate font-mono text-gray-600 text-[8px] mt-px">
+                            {ind.code}
+                          </div>
+                        )}
+                      </div>
                     </TooltipTrigger>
                     <TooltipContent
                       side="bottom"
                       className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
                     >
-                      <div className="font-mono font-semibold">{ind.code}</div>
-                      <div className="text-muted-foreground">
+                      <div className="font-sans font-semibold">
                         {(locale === 'ru' && ind.nameRu) ||
                           (locale === 'az' && ind.nameAz) ||
-                          ind.nameEn}
+                          ind.nameEn ||
+                          ind.code}
+                      </div>
+                      <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
+                        {ind.code}
                       </div>
                       <div className="text-[10px] text-muted-foreground/70 mt-0.5">
                         unit: {ind.unit} · {ind.direction === 'higher_better' ? 'higher = better' : ind.direction === 'lower_better' ? 'lower = better' : 'in band'}
