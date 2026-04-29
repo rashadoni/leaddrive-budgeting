@@ -38,6 +38,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'snapshot.topAlerts': 'Top alerts',
   'snapshot.indicators': 'indicators',
   'snapshot.footerHint': 'Click any HeatMap cell for the full Variance Explainer narrative.',
+  'snapshot.scoreLabel': 'Score',
   'hotkeys.running': 'RUNNING…',
   'hotkeys.compactTitle': 'Toggle compact mode (Ctrl+/)',
   'hotkeys.compactAriaLabel': 'Toggle compact mode',

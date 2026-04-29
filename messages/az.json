@@ -1331,6 +1331,7 @@
       "loading": "Snapshot yüklənir…",
       "error": "Snapshot xətası",
       "companyNotInMatrix": "Şirkət cari matrisdə yoxdur:",
+      "scoreLabel": "Bal",
       "noPlIndicators": "P&L margin göstəriciləri əlçatan deyil:",
       "indicators": "göstərici"
     },

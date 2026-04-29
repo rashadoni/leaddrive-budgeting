@@ -1332,7 +1332,8 @@
       "error": "Snapshot error",
       "companyNotInMatrix": "Company not in current matrix:",
       "noPlIndicators": "No P&L margin indicators available for",
-      "indicators": "indicators"
+      "indicators": "indicators",
+      "scoreLabel": "Score"
     },
     "hints": {
       "tree": "Click any company to focus drill-down panels",

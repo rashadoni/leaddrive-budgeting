@@ -220,10 +220,15 @@ export function CompanySnapshot({ companyCode }: Props) {
 }
 
 function CompositeBadgeBig({ score }: { score: number | null }) {
+  // Round-11 architect closure — locale-aware label. Was hardcoded
+  // English "Score" regardless of selected locale.
+  const t = useTranslations("terminal");
   if (score === null) {
     return (
       <div className="flex flex-col items-center px-2 py-0.5 rounded border border-gray-800 bg-[#050814]">
-        <span className="text-[9px] text-gray-600 uppercase tracking-wider">Score</span>
+        <span className="text-[9px] text-gray-600 uppercase tracking-wider">
+          {t("snapshot.scoreLabel")}
+        </span>
         <span className="text-gray-700 font-mono text-base font-bold">—</span>
       </div>
     );
@@ -235,7 +240,9 @@ function CompositeBadgeBig({ score }: { score: number | null }) {
       className="flex flex-col items-center px-2 py-0.5 rounded border bg-[#050814]"
       style={{ borderColor: `${tone}66` }}
     >
-      <span className="text-[9px] text-gray-500 uppercase tracking-wider">Score</span>
+      <span className="text-[9px] text-gray-500 uppercase tracking-wider">
+        {t("snapshot.scoreLabel")}
+      </span>
       <span
         className="font-mono text-base font-bold tabular-nums"
         style={{ color: tone }}
