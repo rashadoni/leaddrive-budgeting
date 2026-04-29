@@ -225,65 +225,120 @@ function shapeFor(industry: string): number[] {
 // Operational fact recipes — sector-specific metrics.
 // ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * Returns the OperationalFact rows to emit per month for the given
+ * (industry, severity). CRITICAL: metric names MUST match the
+ * `requiredInputs: ["operationalFact:<metric>"]` entries in
+ * `src/lib/risk/indicator-seeds.ts`. Indicator formulas read the AVG of
+ * each metric over the period, so we emit raw input pairs (e.g.
+ * harvest_tons + area_hectares for AGRO_YIELD), NOT pre-computed ratios.
+ *
+ * Pairs that produce target ratios:
+ *   AGRO_YIELD     = harvest_tons / area_hectares
+ *   POULTRY_FCR    = feed_consumed_kg / weight_gain_kg
+ *   POULTRY_MORTALITY = deaths / starting_flock
+ *   RE_OCCUPANCY   = leased_area / total_area
+ *   RE_RENT_COLL   = rent_collected / rent_billed
+ *   ENT_ATTEND_UTIL= attendees / capacity
+ *   EDU_FILL       = enrolled_students / target_enrollment
+ *   EDU_TUITION    = tuition_collected / tuition_billed
+ *   EDU_STR        = enrolled_students / teachers
+ *   FP_YIELD_LOSS  = (raw_input - finished_output) / raw_input
+ *   AGRO_DROUGHT   = drought_index (single metric)
+ *   AGRO_COMM_VOL  = stdev(commodity_price) / mean(commodity_price)
+ *   ENT_REV_PER_VST= revenue / attendees (revenue from budgetLine; emit attendees)
+ */
 function opFactsFor(industry: string, severity: Severity): Array<{ metric: string; baseValue: number; unit?: string }> {
   switch (industry) {
     case 'agro_crops': {
-      // AGRO_YIELD wants harvest_tons / area_hectares (resolver averages
-      // per metric in window; we encode the ratio directly).
-      const yieldVal = { green: 4.2, amber: 3.0, red: 2.1 }[severity];
-      const droughtVal = { green: 18, amber: 45, red: 75 }[severity];
+      // AGRO_YIELD: harvest_tons / area_hectares. Hold area constant at
+      // 1000 ha; vary harvest to produce target yields (4.2/3.0/2.1 t/ha).
+      const harvestTons = { green: 4200, amber: 3000, red: 2100 }[severity];
+      const droughtIdx = { green: 18, amber: 45, red: 75 }[severity];
       // Commodity price stdev/mean ratio drives AGRO_COMMODITY_VOL.
+      // Variance is applied below in seed loop based on (severity, metric).
       const commodityBase = { green: 250, amber: 240, red: 220 }[severity];
       return [
-        { metric: 'yield_per_hectare', baseValue: yieldVal, unit: 'ton/ha' },
-        { metric: 'drought_index', baseValue: droughtVal, unit: 'idx' },
+        { metric: 'harvest_tons', baseValue: harvestTons, unit: 'ton' },
+        { metric: 'area_hectares', baseValue: 1000, unit: 'ha' },
+        { metric: 'drought_index', baseValue: droughtIdx, unit: 'idx' },
         { metric: 'commodity_price', baseValue: commodityBase, unit: 'AZN/ton' },
       ];
     }
     case 'poultry': {
-      const fcr = { green: 1.65, amber: 1.85, red: 2.05 }[severity];
-      const mortality = { green: 0.03, amber: 0.06, red: 0.09 }[severity];
+      // POULTRY_FCR: feed_consumed_kg / weight_gain_kg. Hold weight gain
+      // constant at 50000 kg/month; vary feed to produce 1.65/1.85/2.05.
+      const feedKg = { green: 82500, amber: 92500, red: 102500 }[severity];
+      // POULTRY_MORTALITY: deaths / starting_flock × 100. Hold flock at
+      // 100000 birds; vary deaths to produce 3%/6%/9%.
+      const deaths = { green: 3000, amber: 6000, red: 9000 }[severity];
       return [
-        { metric: 'fcr', baseValue: fcr, unit: 'kg/kg' },
-        { metric: 'mortality_rate', baseValue: mortality, unit: 'pct' },
+        { metric: 'feed_consumed_kg', baseValue: feedKg, unit: 'kg' },
+        { metric: 'weight_gain_kg', baseValue: 50000, unit: 'kg' },
+        { metric: 'deaths', baseValue: deaths, unit: 'birds' },
+        { metric: 'starting_flock', baseValue: 100000, unit: 'birds' },
       ];
     }
     case 'real_estate': {
-      const occ = { green: 0.92, amber: 0.8, red: 0.65 }[severity];
-      const rentColl = { green: 0.99, amber: 0.94, red: 0.85 }[severity];
+      // RE_OCCUPANCY: leased_area / total_area × 100. Hold total at
+      // 25000 sqm; vary leased to produce 92%/80%/65%.
+      const total = 25000;
+      const leased = { green: 23000, amber: 20000, red: 16250 }[severity];
+      // RE_RENT_COLLECTION: rent_collected / rent_billed × 100. Hold
+      // billed at 100000 AZN/month; vary collected to produce 99%/94%/85%.
+      const billed = 100000;
+      const collected = { green: 99000, amber: 94000, red: 85000 }[severity];
       return [
-        { metric: 'occupancy_rate', baseValue: occ, unit: 'pct' },
-        { metric: 'rent_collection_rate', baseValue: rentColl, unit: 'pct' },
+        { metric: 'leased_area', baseValue: leased, unit: 'sqm' },
+        { metric: 'total_area', baseValue: total, unit: 'sqm' },
+        { metric: 'rent_collected', baseValue: collected, unit: 'AZN' },
+        { metric: 'rent_billed', baseValue: billed, unit: 'AZN' },
       ];
     }
     case 'entertainment': {
-      const utilization = { green: 0.75, amber: 0.55, red: 0.35 }[severity];
-      const revPerVisit = { green: 28, amber: 18, red: 11 }[severity];
+      // ENT_ATTENDANCE_UTIL: attendees / capacity × 100. Hold capacity
+      // at 2400 seats; vary attendees to produce 75%/55%/35%.
+      const capacity = 2400;
+      const attendees = { green: 1800, amber: 1320, red: 840 }[severity];
       return [
-        { metric: 'attendance_utilization', baseValue: utilization, unit: 'pct' },
-        { metric: 'revenue_per_visit', baseValue: revPerVisit, unit: 'AZN' },
+        { metric: 'attendees', baseValue: attendees, unit: 'visits' },
+        { metric: 'capacity', baseValue: capacity, unit: 'seats' },
       ];
     }
     case 'education': {
-      const fillRate = { green: 0.95, amber: 0.78, red: 0.55 }[severity];
-      const collection = { green: 0.97, amber: 0.85, red: 0.7 }[severity];
+      // EDU_ENROLLMENT_FILL: enrolled_students / target_enrollment × 100.
+      // EDU_STUDENT_TEACHER_RATIO: enrolled_students / teachers (band 10-20).
+      // Hold target=1200, teachers=80; vary enrolled to produce
+      // green: 1140 (95% fill, 14.25 ratio — both green).
+      // amber: 950 (79% fill, 11.9 ratio — green ratio still).
+      // red: 600 (50% fill, 7.5 ratio — amber ratio).
+      const target = 1200;
+      const enrolled = { green: 1140, amber: 950, red: 600 }[severity];
+      // EDU_TUITION_COLLECTION: tuition_collected / tuition_billed × 100.
+      const billed = 200000;
+      const collected = { green: 194000, amber: 170000, red: 140000 }[severity];
       return [
-        { metric: 'enrollment_fill_rate', baseValue: fillRate, unit: 'pct' },
-        { metric: 'tuition_collection_rate', baseValue: collection, unit: 'pct' },
+        { metric: 'enrolled_students', baseValue: enrolled, unit: 'students' },
+        { metric: 'target_enrollment', baseValue: target, unit: 'students' },
+        { metric: 'teachers', baseValue: 80, unit: 'staff' },
+        { metric: 'tuition_collected', baseValue: collected, unit: 'AZN' },
+        { metric: 'tuition_billed', baseValue: billed, unit: 'AZN' },
       ];
     }
     case 'food_processing': {
-      const yieldLoss = { green: 0.04, amber: 0.09, red: 0.16 }[severity];
-      const inventoryTurns = { green: 12, amber: 7, red: 4 }[severity];
+      // FP_YIELD_LOSS: (raw_input - finished_output) / raw_input × 100.
+      // Hold raw_input at 100000 kg/month; vary finished to produce
+      // 4%/9%/16% loss.
+      const rawInput = 100000;
+      const finished = { green: 96000, amber: 91000, red: 84000 }[severity];
       return [
-        { metric: 'yield_loss_rate', baseValue: yieldLoss, unit: 'pct' },
-        { metric: 'inventory_turns', baseValue: inventoryTurns, unit: 'times' },
+        { metric: 'raw_input', baseValue: rawInput, unit: 'kg' },
+        { metric: 'finished_output', baseValue: finished, unit: 'kg' },
       ];
     }
-    case 'retail': {
-      const turns = { green: 14, amber: 8, red: 4 }[severity];
-      return [{ metric: 'inventory_turns', baseValue: turns, unit: 'times' }];
-    }
+    // retail: RETAIL_INVENTORY_TURNS uses budgetLine.inventory (sub-aggregator),
+    // not operationalFact. Skipping — RETAIL_GROSS_MARGIN is driven by
+    // budgetLine alone via the recipe in recipeFor().
     default:
       return [];
   }
@@ -301,44 +356,61 @@ interface HotelRecipe {
 }
 
 function hotelRecipeFor(severity: Severity): HotelRecipe {
+  // CALIBRATION (cross-checked against indicator-seeds.ts thresholds):
+  //   HOSP_OCC      ≥70 green, ≥50 amber, <50 red       → adjust occupancyTarget
+  //   HOSP_REVPAR   ≥80 green, ≥50 amber, <50 red       → ADR × occ ≈ revenue/avail
+  //   HOSP_ADR      ≥120 green, ≥80 amber, <80 red      → adrAzn directly
+  //   HOSP_FX_EXPOSURE ≤20 green, ≤50 amber, >50 red    → AZN-denominated weight
+  //   HOSP_SOURCE_HHI  ≤1500 green, ≤2500 amber, >2500 red → diversify country mix
   if (severity === 'green') {
+    // 6-country AZN-heavy mix (85% AZN, FX 15%) so HOSP_FX_EXPOSURE lands ≤20.
+    // HHI: 0.0625 + 0.0225 + 0.0225 + 0.0144 + 0.0169 + 0.0025 + 0.0025 +
+    //      0.0025 + 0.0009 + 0.0004 = 0.1476 = 1476 → ≤1500 (green band).
     return {
       occupancyTarget: 0.78,
       adrAzn: 145,
-      fxShare: 0.25,
+      fxShare: 0.15,
       countryMix: [
-        { code: 'AZ', weight: 0.45, currency: 'AZN' },
+        { code: 'AZ', weight: 0.25, currency: 'AZN' },
         { code: 'TR', weight: 0.15, currency: 'AZN' },
-        { code: 'RU', weight: 0.12, currency: 'AZN' },
-        { code: 'AE', weight: 0.10, currency: 'USD' },
-        { code: 'DE', weight: 0.08, currency: 'EUR' },
-        { code: 'GB', weight: 0.05, currency: 'EUR' },
-        { code: 'IR', weight: 0.05, currency: 'USD' },
+        { code: 'RU', weight: 0.15, currency: 'AZN' },
+        { code: 'KZ', weight: 0.13, currency: 'AZN' },
+        { code: 'GE', weight: 0.12, currency: 'AZN' },
+        { code: 'UZ', weight: 0.05, currency: 'AZN' },
+        { code: 'AE', weight: 0.05, currency: 'USD' },
+        { code: 'DE', weight: 0.05, currency: 'EUR' },
+        { code: 'IT', weight: 0.03, currency: 'EUR' },
+        { code: 'GB', weight: 0.02, currency: 'EUR' },
       ],
     };
   }
   if (severity === 'amber') {
+    // 6-country mix, FX 40% (amber band ≤50). HHI: 0.0625 + 0.0625 +
+    // 0.04 + 0.01 + 0.01 + 0.01 = 0.195 = 1950 → ≤2500 (amber band).
     return {
       occupancyTarget: 0.58,
       adrAzn: 105,
-      fxShare: 0.5,
+      fxShare: 0.40,
       countryMix: [
-        { code: 'AZ', weight: 0.35, currency: 'AZN' },
-        { code: 'RU', weight: 0.30, currency: 'AZN' },
+        { code: 'AZ', weight: 0.25, currency: 'AZN' },
+        { code: 'RU', weight: 0.25, currency: 'AZN' },
         { code: 'IR', weight: 0.20, currency: 'USD' },
-        { code: 'TR', weight: 0.15, currency: 'AZN' },
+        { code: 'TR', weight: 0.10, currency: 'AZN' },
+        { code: 'AE', weight: 0.10, currency: 'USD' },
+        { code: 'DE', weight: 0.10, currency: 'EUR' },
       ],
     };
   }
-  // red
+  // red — Iran-dominated mix; HHI 0.4225 + 0.0625 + 0.01 = 0.495 = 4950
+  // (clearly red band >2500); FX 65% > 50 → red.
   return {
     occupancyTarget: 0.38,
     adrAzn: 72,
-    fxShare: 0.8,
+    fxShare: 0.65,
     countryMix: [
       { code: 'IR', weight: 0.65, currency: 'USD' },
-      { code: 'AZ', weight: 0.30, currency: 'AZN' },
-      { code: 'GE', weight: 0.05, currency: 'AZN' },
+      { code: 'AZ', weight: 0.25, currency: 'AZN' },
+      { code: 'GE', weight: 0.10, currency: 'AZN' },
     ],
   };
 }
@@ -481,6 +553,11 @@ async function upsertCompany(
     isActive: true,
     sortOrder: seed.sortOrder,
     settings: settingsValue,
+    // Architect Round-1 sub-27 closure: L1 sub-groups are navigation
+    // wrappers, not measurable entities — set role='admin' so Phase 7.E
+    // operational scoring + alert engine skip them. L2 ops keep schema
+    // default 'operational'.
+    role: (seed.level === 1 ? 'admin' : 'operational') as 'admin' | 'operational',
   };
   if (existing) {
     await prisma.company.update({ where: { id: existing.id }, data: shared });
@@ -625,10 +702,20 @@ async function seedBookingsForHotel(
       const rows: Prisma.BookingCreateManyInput[] = [];
       for (let m = 0; m < 12; m++) {
         const monthShape = SHAPE.summer[m];
-        const seasonalOcc = recipe.occupancyTarget * (0.6 + 1.2 * monthShape * 12); // amplify around mean
-        const targetRoomNights = Math.round(totalRooms * 30 * Math.min(seasonalOcc, 0.95));
-        const avgNightsPerBooking = 3;
-        const bookingsThisMonth = Math.max(Math.round(targetRoomNights / avgNightsPerBooking / 4), 8); // ~1 booking covers 4 room-nights typical mix
+        // monthShape sums to 1.0 over 12 months (avg ≈0.083). Map to a
+        // multiplier that varies smoothly around 1.0: 0.5 + 6×monthShape
+        // ranges roughly 0.77 → 1.34 across the summer-shape vector,
+        // giving ~25% seasonal swing instead of every-month-clamped-to-95%.
+        // Architect Round-1 sub-27 closure (was: `0.6 + 1.2 * monthShape * 12`
+        // which produced ≥1.0 every month → green hotel flat at 0.95 occ).
+        const seasonalMultiplier = 0.5 + monthShape * 6;
+        const seasonalOcc = Math.min(recipe.occupancyTarget * seasonalMultiplier, 0.95);
+        const targetRoomNights = Math.round(totalRooms * 30 * seasonalOcc);
+        // Each booking averages ~5 room-nights (1-2 rooms × 2-4 nights).
+        // Keeps booking volume manageable (~600-1200/month for a 180-room
+        // hotel) while still hitting target rooms_sold for HOSP_OCC.
+        const avgRoomNightsPerBooking = 5;
+        const bookingsThisMonth = Math.max(Math.round(targetRoomNights / avgRoomNightsPerBooking), 8);
         for (let b = 0; b < bookingsThisMonth; b++) {
           // Pick country deterministically by booking index → country mix weights.
           const pickIdx = (b * 17) % 100; // deterministic spread
@@ -643,17 +730,17 @@ async function seedBookingsForHotel(
           }
           const day = Math.min(((b * 7) % 28) + 1, 28);
           const arrivalDate = new Date(Date.UTC(year, m, day));
-          const nights = avgNightsPerBooking + ((b % 3) - 1); // 2/3/4 spread
+          // 2/3/4 nights × 1/2 rooms = 2,3,4,4,6,8 room-nights (avg ≈4.5).
+          const nights = 2 + (b % 3); // 2/3/4
+          const roomsBooked = 1 + (b % 2); // 1 or 2
           const departureDate = new Date(arrivalDate);
           departureDate.setUTCDate(departureDate.getUTCDate() + nights);
-          // Revenue per night: USD/EUR bookings are quoted in their currency
-          // at AZN-equivalent ADR (resolver applies exchangeRate to base).
+          // Revenue: USD/EUR bookings stored in foreign currency; resolver
+          // applies exchangeRate to convert to base. Per-room-per-night ADR.
           const adr = recipe.adrAzn;
           const fxRate = country.currency === 'USD' ? 1.7 : country.currency === 'EUR' ? 1.85 : null;
-          const revenue =
-            fxRate != null
-              ? +(((adr / fxRate) * nights * 1) ).toFixed(2) // revenue in foreign currency
-              : +(adr * nights * 1).toFixed(2);
+          const revenueAzn = adr * nights * roomsBooked;
+          const revenue = fxRate != null ? +(revenueAzn / fxRate).toFixed(2) : +revenueAzn.toFixed(2);
           rows.push({
             organizationId: orgId,
             companyId,
@@ -664,7 +751,7 @@ async function seedBookingsForHotel(
             currencyCode: country.currency,
             exchangeRate: fxRate,
             sourceCountry: country.code,
-            roomsBooked: 1,
+            roomsBooked,
             channel: country.code === 'AZ' ? 'direct' : 'ota',
             isCancelled: false,
           });
