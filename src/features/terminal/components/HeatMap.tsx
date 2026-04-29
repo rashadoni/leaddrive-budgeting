@@ -143,6 +143,10 @@ export function HeatMap({ period }: Props) {
       if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
       refetchTimerRef.current = setTimeout(() => {
         refetchTimerRef.current = null;
+        // Round-7 architect closure: clear M3 narrative cache too, so a
+        // period switch / data-refresh doesn't leave stale AI summaries
+        // attached to ivIds whose underlying values have moved.
+        clearAISummaryCache();
         refetchMatrix();
       }, 150);
     },
@@ -621,6 +625,24 @@ async function fetchAISummary(ivId: string, locale: string): Promise<void> {
     notifyAiSummary(key, { kind: 'error' });
   } finally {
     AI_SUMMARY_INFLIGHT.delete(key);
+  }
+}
+
+/**
+ * Round-7 architect closure: clear all cached narratives. Called by SSE
+ * `onIndicatorChanged` so a period switch / data refresh doesn't leave
+ * stale narratives attached to ivIds whose underlying values have moved.
+ * IndicatorValue.id is stable across recompute (upserted by composite
+ * key), so without this clear, hovering a cell after data change would
+ * show the prior period's narrative.
+ */
+export function clearAISummaryCache(): void {
+  AI_SUMMARY_CACHE.clear();
+  AI_SUMMARY_INFLIGHT.clear();
+  for (const listener of AI_SUMMARY_LISTENERS) {
+    // Notify all live cells so they drop their stale entry. Pass empty
+    // string as key + a synthetic 'error' to force re-fetch on next hover.
+    listener('', { kind: 'error' });
   }
 }
 

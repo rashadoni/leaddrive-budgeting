@@ -83,7 +83,8 @@ export function WelcomeHint() {
             type="button"
             onClick={dismiss}
             aria-label={t("welcome.dismissAriaLabel")}
-            className="text-gray-500 hover:text-gray-200 transition-colors"
+            autoFocus
+            className="text-gray-500 hover:text-gray-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4AA] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0A0E27] rounded"
           >
             <X size={12} aria-hidden="true" />
           </button>
