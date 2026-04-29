@@ -28,6 +28,7 @@ import { ComparePanel } from './ComparePanel';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { WelcomeHint } from './WelcomeHint';
+import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
   DEFAULT_LAYOUT_SIZES,
   PANEL_IDS,
@@ -265,6 +266,9 @@ export function PanelGrid() {
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}
       <WelcomeHint />
+      {/* Round-8 M6 — `?` keypress opens keyboard cheatsheet. Discovers
+          F-keys + search shortcuts + command-bar verbs in one modal. */}
+      <KeyboardShortcutsModal />
       {/* Phase A3 (Bloomberg uplift plan) — Group wrapped in flex-1 + min-h-0
           so AuditTicker can claim a fixed bottom strip without breaking the
           resizable-panels height calculation. */}
@@ -411,7 +415,19 @@ function PanelShell(props: {
     >
       <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-gray-800/50 shrink-0">
         <h3 className="text-gray-400 font-mono text-[10px] uppercase tracking-wider flex items-center gap-2">
-          <span className="text-gray-600">F{id}</span>
+          {/* Round-7 M6 — Linear-style kbd badge for the F-key shortcut.
+              Visible affordance vs the prior bare `F1`/`F2` text — CFO
+              learns "the keyboard works here" without reading docs. */}
+          <kbd
+            className={`font-sans inline-flex items-center justify-center min-w-[18px] h-[16px] px-1 rounded border text-[9px] font-semibold ${
+              isActive
+                ? 'border-[#00D4AA]/60 bg-[#00D4AA]/10 text-[#00D4AA]'
+                : 'border-gray-700 bg-gray-800/40 text-gray-500'
+            }`}
+            title={`Press F${id} to focus this panel`}
+          >
+            F{id}
+          </kbd>
           <span>{panelLabel}</span>
           <span className="text-gray-700">·</span>
           <span>{panelTitle}</span>
