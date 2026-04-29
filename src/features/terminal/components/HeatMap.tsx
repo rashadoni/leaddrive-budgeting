@@ -25,6 +25,11 @@ import {
   evaluateAlertRules,
   DEFAULT_ALERT_RULES,
 } from '@/lib/risk/alert-rules';
+import {
+  DEFAULT_ALERT_THRESHOLDS,
+  type ResolvedAlertThresholds,
+  readAlertThresholdsFromOrgSettings,
+} from '@/lib/risk/alert-thresholds-config';
 import { useMatrix } from '../hooks/use-matrix';
 
 type CompanyRow = {
@@ -81,6 +86,43 @@ export function HeatMap({ period }: Props) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  // Phase 7.E C6 v2 — pull org-tuned alert thresholds. Falls back to
+  // DEFAULT_ALERT_THRESHOLDS while the fetch is in-flight or if it fails;
+  // either way the engine sees a fully-resolved config so alert output is
+  // never blocked by a settings hiccup. Architect Round-1 sub-25 closure:
+  // log a one-time console.warn on unexpected response shape so a future
+  // API contract change ("returns bare settings, not {settings: ...}")
+  // surfaces visibly rather than silently degrading to defaults.
+  const [alertThresholds, setAlertThresholds] = useState<ResolvedAlertThresholds>(
+    DEFAULT_ALERT_THRESHOLDS,
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/organizations/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (cancelled || !body) return;
+        if (typeof body !== 'object' || !('settings' in body)) {
+          console.warn(
+            '[HeatMap] /api/organizations/settings returned unexpected shape; falling back to default alert thresholds',
+            body,
+          );
+          return;
+        }
+        setAlertThresholds(
+          readAlertThresholdsFromOrgSettings(
+            (body as { settings?: unknown }).settings,
+          ),
+        );
+      })
+      .catch(() => {
+        // Non-blocking — defaults remain in effect.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Phase B1 — refetch when SSE stream signals an indicator change.
@@ -199,14 +241,25 @@ export function HeatMap({ period }: Props) {
     setAlertedCompanyCodes(alertedCodes);
     // Phase C6 v2 — run rule engine against full matrix; publish flat
     // sorted match list for AlertsPanel modal. `companies`/`indicators`
-    // shapes match AlertCompany/AlertIndicator structurally.
-    const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, {
-      companies: data.companies,
-      indicators: data.indicators,
-      cells: data.cells,
-    });
+    // shapes match AlertCompany/AlertIndicator structurally. Threshold
+    // config flows from `/api/organizations/settings` (sub-9 closure).
+    const matches = evaluateAlertRules(
+      DEFAULT_ALERT_RULES,
+      {
+        companies: data.companies,
+        indicators: data.indicators,
+        cells: data.cells,
+      },
+      alertThresholds,
+    );
     setAlertMatches(matches);
-  }, [data, setAlertsCount, setAlertedCompanyCodes, setAlertMatches]);
+  }, [
+    data,
+    alertThresholds,
+    setAlertsCount,
+    setAlertedCompanyCodes,
+    setAlertMatches,
+  ]);
 
   if (!mounted) {
     return (

@@ -176,6 +176,24 @@ export type AuditEventInput =
         modelName: string;
         promptVersion: string;
       };
+    }
+  | {
+      // Phase 7.E C6 v2 (sub-9 closure) — PATCH /api/organizations/settings.
+      // Captures admin-driven alert-rule threshold tuning. Storing the
+      // full before/after config gives auditors a complete trail
+      // ("what was company-mostly-red threshold on 2026-04-29?")
+      // without any join. `before` is null when the org sets thresholds
+      // for the first time (settings.alertThresholds was undefined).
+      // Threshold structures stay decoupled from this module — audit
+      // accepts the shape the caller passes (Zod-validated upstream at
+      // the API boundary).
+      action: 'alert_thresholds_update';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown>;
+      };
     };
 
 /**

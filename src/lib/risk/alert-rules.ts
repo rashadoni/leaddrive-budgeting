@@ -9,9 +9,9 @@
  *
  * Plan §C6 quote: "≥3 amber in a sector → red rollup". This module
  * generalises that pattern: a rule is data + predicate, the engine is
- * a stateless `evaluateAlertRules(rules, ctx) → AlertMatch[]` that
- * runs every rule against every (company, sector) cross-section and
- * returns the union of matches.
+ * a stateless `evaluateAlertRules(rules, ctx, config?) → AlertMatch[]`
+ * that runs every rule against every (company, sector) cross-section
+ * and returns the union of matches.
  *
  * v1 ships 5 default rules covering the common Bloomberg-style patterns:
  *   - companyMostlyRed: company has N+ red indicators
@@ -20,6 +20,12 @@
  *   - sectorRedSpread: industry has N+ red cells (more urgent)
  *   - criticalIndicatorOrgWide: a key indicator is red for N+ companies
  *
+ * v2 (Phase 7.E sub-9 closure) externalises every threshold to the
+ * `ResolvedAlertThresholds` config object passed through `evaluateAlertRules`.
+ * Each rule's `match(ctx, config)` reads its own slice; defaults from
+ * `alert-thresholds-config.ts` reproduce v1 behavior exactly when callers
+ * pass `undefined`.
+ *
  * UI integration is a separate concern — this module is pure data + logic.
  * Tests lock the rule semantics so future calibration tweaks don't drift
  * silently.
@@ -27,6 +33,11 @@
 
 import type { HeatMapCell } from './heatmap-matrix';
 import { computeCompositeScore } from './composite-score';
+import {
+  mergeWithDefaults,
+  type AlertThresholdsConfig,
+  type ResolvedAlertThresholds,
+} from './alert-thresholds-config';
 
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 
@@ -88,8 +99,10 @@ export interface AlertRule {
   /**
    * Returns zero or more matches. Pure function — caller treats output
    * as immutable. Returning an empty array means "rule did not trigger".
+   * `config` is the fully-resolved threshold config; the engine merges
+   * defaults before passing it in, so each rule reads concrete numbers.
    */
-  match: (ctx: AlertContext) => AlertMatch[];
+  match: (ctx: AlertContext, config: ResolvedAlertThresholds) => AlertMatch[];
 }
 
 /**
@@ -97,11 +110,18 @@ export interface AlertRule {
  * of all matches sorted by severity (critical → warning → info), then
  * by `priority` (lower first) within severity, then by `ruleName`
  * (alphabetic) for stable determinism on tied priorities.
+ *
+ * `config` may be undefined (uses defaults) or a partial
+ * `AlertThresholdsConfig` (missing keys filled with defaults). Engine
+ * resolves it once before iterating rules so every `match()` reads the
+ * same fully-populated object.
  */
 export function evaluateAlertRules(
   rules: readonly AlertRule[],
   ctx: AlertContext,
+  config?: AlertThresholdsConfig | null,
 ): AlertMatch[] {
+  const resolved = mergeWithDefaults(config ?? undefined);
   const ruleMeta = new Map<string, { priority: number }>();
   for (const r of rules) ruleMeta.set(r.id, { priority: r.priority });
   // Pre-index cells by companyId once (filtering rollup rows) so each
@@ -114,7 +134,7 @@ export function evaluateAlertRules(
     : { ...ctx, cellsByCompany: buildCellsByCompany(ctx.cells) };
   const out: AlertMatch[] = [];
   for (const rule of rules) {
-    const matches = rule.match(indexed);
+    const matches = rule.match(indexed, resolved);
     out.push(...matches);
   }
   return out.sort((a, b) => {
@@ -172,19 +192,20 @@ function cellsForCompany(
 
 export const RULE_COMPANY_MOSTLY_RED: AlertRule = {
   id: 'company-mostly-red',
-  name: 'Company has 3+ red indicators',
+  name: 'Company has many red indicators',
   description:
-    'Flags companies with three or more red indicators — typical signal of a struggling sub-co needing executive attention.',
+    'Flags companies with N or more red indicators — typical signal of a struggling sub-co needing executive attention. Threshold N is configurable per org.',
   severity: 'critical',
   priority: 30,
-  match(ctx) {
+  match(ctx, config) {
     const out: AlertMatch[] = [];
+    const threshold = config.mostlyRed.redCountMin;
     for (const co of ctx.companies) {
       if (co.isSubgroup) continue;
       const redCells = cellsForCompany(ctx, co.id).filter(
         (c) => c.status === 'red',
       );
-      if (redCells.length >= 3) {
+      if (redCells.length >= threshold) {
         const indicatorIdToCode = new Map(
           ctx.indicators.map((i) => [i.id, i.code]),
         );
@@ -206,18 +227,19 @@ export const RULE_COMPANY_MOSTLY_RED: AlertRule = {
 
 export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
   id: 'company-critical-composite',
-  name: 'Composite score below 40',
+  name: 'Composite score below threshold',
   description:
-    'Flags companies whose composite risk score (Phase C5) is below 40 — overall poor health regardless of which specific indicators are red.',
+    'Flags companies whose composite risk score (Phase C5) is below the configured floor — overall poor health regardless of which specific indicators are red.',
   severity: 'critical',
   priority: 40,
-  match(ctx) {
+  match(ctx, config) {
     const out: AlertMatch[] = [];
+    const threshold = config.criticalComposite.scoreMax;
     for (const co of ctx.companies) {
       if (co.isSubgroup) continue;
       const cells = cellsForCompany(ctx, co.id);
       const composite = computeCompositeScore(cells);
-      if (composite.score !== null && composite.score < 40) {
+      if (composite.score !== null && composite.score < threshold) {
         out.push({
           ruleId: this.id,
           ruleName: this.name,
@@ -233,13 +255,14 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
 
 export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
   id: 'sector-amber-cluster',
-  name: 'Sector has 5+ amber cells',
+  name: 'Sector amber cluster',
   description:
     'Flags industries where amber cells aggregate across multiple companies — suggests sector-wide stress (FX, commodity, regulatory) rather than single-company issues.',
   severity: 'warning',
   priority: 10,
-  match(ctx) {
+  match(ctx, config) {
     const out: AlertMatch[] = [];
+    const threshold = config.sectorAmber.amberCountMin;
     const byIndustry = new Map<string, { companyIds: Set<string>; amberCount: number }>();
     for (const co of ctx.companies) {
       if (co.isSubgroup || !co.industry) continue;
@@ -256,7 +279,7 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
       bucket.amberCount += amberCells.length;
     }
     for (const [industry, bucket] of byIndustry) {
-      if (bucket.amberCount >= 5) {
+      if (bucket.amberCount >= threshold) {
         out.push({
           ruleId: this.id,
           ruleName: this.name,
@@ -272,13 +295,15 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
 
 export const RULE_SECTOR_RED_SPREAD: AlertRule = {
   id: 'sector-red-spread',
-  name: 'Sector has 3+ red cells across multiple companies',
+  name: 'Sector red contagion',
   description:
-    'Flags industries where red cells appear in 2+ companies — suggests sector contagion rather than isolated company problem.',
+    'Flags industries where red cells appear across multiple companies — suggests sector contagion rather than isolated company problem.',
   severity: 'critical',
   priority: 10,
-  match(ctx) {
+  match(ctx, config) {
     const out: AlertMatch[] = [];
+    const redThreshold = config.sectorRedSpread.redCountMin;
+    const coThreshold = config.sectorRedSpread.companyCountMin;
     const byIndustry = new Map<string, { companyIds: Set<string>; redCount: number }>();
     for (const co of ctx.companies) {
       if (co.isSubgroup || !co.industry) continue;
@@ -295,7 +320,7 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
       bucket.redCount += redCells.length;
     }
     for (const [industry, bucket] of byIndustry) {
-      if (bucket.redCount >= 3 && bucket.companyIds.size >= 2) {
+      if (bucket.redCount >= redThreshold && bucket.companyIds.size >= coThreshold) {
         out.push({
           ruleId: this.id,
           ruleName: this.name,
@@ -311,13 +336,15 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
 
 export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
   id: 'critical-indicator-org-wide',
-  name: 'Net margin red for 3+ companies',
+  name: 'Critical indicator org-wide',
   description:
-    'Flags org-wide net-margin pressure: if 3+ companies have IND_NET_MARGIN red, the holding has a profitability problem at the consolidated level.',
+    'Flags org-wide pressure on a designated critical indicator: if N+ companies have it red, the holding has a consolidated-level problem on that metric. Indicator code + threshold are configurable.',
   severity: 'critical',
   priority: 20,
-  match(ctx) {
-    const target = ctx.indicators.find((i) => i.code === 'IND_NET_MARGIN');
+  match(ctx, config) {
+    const code = config.criticalIndicator.indicatorCode;
+    const threshold = config.criticalIndicator.redCountMin;
+    const target = ctx.indicators.find((i) => i.code === code);
     if (!target) return [];
     const redCells = ctx.cells.filter(
       (c) =>
@@ -325,7 +352,7 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
         c.status === 'red' &&
         !c.isSubgroupRollup,
     );
-    if (redCells.length < 3) return [];
+    if (redCells.length < threshold) return [];
     const uniqueCompanyIds = Array.from(
       new Set(redCells.map((c) => c.companyId)),
     );
@@ -334,9 +361,9 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
         ruleId: this.id,
         ruleName: this.name,
         severity: this.severity,
-        message: `IND_NET_MARGIN red for ${uniqueCompanyIds.length} companies — consolidated profitability under pressure`,
+        message: `${code} red for ${uniqueCompanyIds.length} companies — consolidated pressure on critical metric`,
         affectedCompanyIds: uniqueCompanyIds,
-        affectedIndicatorCodes: ['IND_NET_MARGIN'],
+        affectedIndicatorCodes: [code],
       },
     ];
   },

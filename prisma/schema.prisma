@@ -1262,6 +1262,7 @@ enum AuditAction {
   indicator_override_delete
   ai_variance_explainer_run      // Phase 7.E AI-suite — POST /api/indicators/values/[id]/explain
   ai_forecast_explainer_run      // Phase C2 v2 — POST /api/indicators/values/[id]/forecast/explain
+  alert_thresholds_update        // Phase 7.E C6 v2 — PATCH /api/organizations/settings (alertThresholds)
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

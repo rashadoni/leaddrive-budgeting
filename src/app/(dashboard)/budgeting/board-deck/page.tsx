@@ -15,6 +15,7 @@ import {
   type AlertMatch,
   type AlertSeverity,
 } from "@/lib/risk/alert-rules";
+import { readAlertThresholdsFromOrgSettings } from "@/lib/risk/alert-thresholds-config";
 import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { PrintButton } from "./PrintButton";
 
@@ -79,7 +80,7 @@ export default async function BoardDeckPage({
   const [org, companiesRaw, indicators] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
-      select: { name: true, slug: true },
+      select: { name: true, slug: true, settings: true },
     }),
     prisma.company.findMany({
       where: { organizationId: orgId, isActive: true },
@@ -179,17 +180,23 @@ export default async function BoardDeckPage({
     if (counts) counts[c.status] += 1;
   }
 
-  // Alert matches.
-  const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, {
-    companies: operational.map((c) => ({
-      id: c.id,
-      code: c.code,
-      name: c.name,
-      industry: c.industry,
-    })),
-    indicators: indicators.map((i: IndicatorShape) => ({ id: i.id, code: i.code })),
-    cells,
-  });
+  // Alert matches — Phase 7.E C6 v2 reads org-tuned thresholds from
+  // `settings.alertThresholds`; defaults match v1 behavior when unset.
+  const alertThresholds = readAlertThresholdsFromOrgSettings(org.settings);
+  const matches = evaluateAlertRules(
+    DEFAULT_ALERT_RULES,
+    {
+      companies: operational.map((c) => ({
+        id: c.id,
+        code: c.code,
+        name: c.name,
+        industry: c.industry,
+      })),
+      indicators: indicators.map((i: IndicatorShape) => ({ id: i.id, code: i.code })),
+      cells,
+    },
+    alertThresholds,
+  );
   const matchesBySeverity: Record<AlertSeverity, AlertMatch[]> = {
     critical: [],
     warning: [],
