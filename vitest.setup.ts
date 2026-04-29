@@ -50,6 +50,17 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'indicatorDetail.explainButton': 'Explain →',
   'indicatorDetail.explaining': 'Explaining…',
   'indicatorDetail.extrapolationCaveat': 'linear extrapolation; uncertainty grows with horizon',
+  // VarianceExplainer keys — these have hyphenated / phrasal labels that
+  // tests assert on via getByText / regex. Without explicit mappings the
+  // camelCase fallback turns "reRun" → "RE RUN" which breaks `/Re-run/i`
+  // matchers.
+  'varianceExplainer.reRun': 'Re-run',
+  'varianceExplainer.reRunTitle': 'Force a fresh LLM call (bypasses cache)',
+  'varianceExplainer.explainArrow': 'Explain →',
+  'varianceExplainer.askingModel': 'Asking the model…',
+  'varianceExplainer.runFor': 'Run for',
+  'varianceExplainer.tokensIn': 'in',
+  'varianceExplainer.tokensOut': 'out',
   // Wave 3 i18n — visible labels tests check literally
   'auditModal.title': 'Audit Log',
   'auditModal.close': 'Close',
@@ -77,8 +88,12 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'compare.closeAriaLabel': 'Close compare panel',
   'heatMap.aiSummaryGenerating': '💬 Generating AI summary…',
   'heatMap.cellClickHint': 'Click → drill-down (Panel 3)',
+  'heatMap.noScoreableIndicators': 'No scoreable indicators',
+  'heatMap.compositeScoreTitle': 'Composite {score}/100 · {contributing}/{total} indicators',
   'commandBar.placeholder': 'HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)',
   'commandBar.alertsAriaLabel': 'Open alerts panel',
+  'commandBar.alertsLoading': 'Alerts: loading…',
+  'commandBar.alertsTitle': '{count} red+amber indicators across the org — click to open alerts panel',
   'layoutMenu.label': 'Layouts',
   'layoutMenu.save': 'Save',
   'layoutMenu.presets': 'Presets',
@@ -87,10 +102,57 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'layoutMenu.title': 'Save / load named pane layouts',
   'layoutMenu.loading': 'Loading…',
   'layoutMenu.noSaved': 'No saved layouts.',
+  'layoutMenu.deleteTitle': 'Delete',
+  'layoutMenu.deleteAriaLabel': 'Delete {name}',
+  'layoutMenu.applyPresetTitle': 'Apply {label} preset',
+  'layoutMenu.loadTitle': 'Load "{name}" (saved {time})',
+  'layoutMenu.closeMenuAriaLabel': 'Close menu',
+  'layoutMenu.confirmDeleteTitle': 'Delete layout?',
+  'layoutMenu.confirmDeleteBody': 'Delete layout "{name}"? This cannot be undone.',
+  'layoutMenu.confirmDeleteConfirm': 'Delete',
+  'layoutMenu.confirmDeleteCancel': 'Cancel',
+  'layoutMenu.errorInvalidLayout': 'Layout "{name}" has invalid sizes — likely from an older panel structure. Delete + re-save.',
+  'layoutMenu.errorInvalidName': 'Name must be 1-40 chars, no leading/trailing whitespace, no control chars.',
+  // Preset labels — keep English source-of-truth so getByText("Bloomberg")
+  // continues to find the rendered preset row in tests.
+  'layoutMenu.presetLabel.default': 'Default 2×2',
+  'layoutMenu.presetLabel.bloomberg': 'Bloomberg',
+  'layoutMenu.presetLabel.analyst': 'Analyst Drill-down',
+  'layoutMenu.presetLabel.morningBrief': 'Morning Brief',
+  'layoutMenu.presetLabel.investorMode': 'Investor Mode',
+  'layoutMenu.presetLabel.auditMode': 'Audit Mode',
+  // AlertsPanel keys
+  'alertsPanel.title': 'Alerts ({count})',
+  'alertsPanel.subtitle': 'Multi-indicator rule matches across the holding. Press Esc to close.',
+  'alertsPanel.dialogAriaLabel': 'Alerts panel',
+  'alertsPanel.closeAriaLabel': 'Close alerts panel',
+  'alertsPanel.matrixLoading': 'Matrix loading… alerts populate after first refresh.',
+  'alertsPanel.noAlerts': '✓ No alerts triggered — all systems green.',
+  'alertsPanel.severityCritical': 'Critical',
+  'alertsPanel.severityWarning': 'Warning',
+  'alertsPanel.severityInfo': 'Info',
+  'alertsPanel.severitySectionAriaLabel': '{severity} alerts',
+  'alertsPanel.loadingCodes': 'Loading codes…',
+  'alertsPanel.jumpToCompany': 'Jump to {code}',
+  'alertsPanel.companyCodeNotLoaded': 'Company code not loaded — try reopening',
+  'alertsPanel.couldNotLoadCodes': 'Could not load company codes — chips show ids: {error}',
 };
 
-function fallbackLabel(key: string): string {
-  if (EXPLICIT_LABELS[key]) return EXPLICIT_LABELS[key];
+/**
+ * Apply ICU-ish placeholder substitution: replaces `{key}` with values[key].
+ * Real next-intl handles plural / select / number formatting too; the test
+ * mock only needs the simplest variable substitution to keep
+ * fixture-equivalence between test/runtime strings.
+ */
+function applyPlaceholders(template: string, values?: Record<string, unknown>): string {
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (_, key) => {
+    return key in values ? String(values[key]) : `{${key}}`;
+  });
+}
+
+function fallbackLabel(key: string, values?: Record<string, unknown>): string {
+  if (EXPLICIT_LABELS[key]) return applyPlaceholders(EXPLICIT_LABELS[key], values);
   const last = key.split('.').pop() ?? key;
   // camelCase → "Camel Case" (split on uppercase) → uppercase
   const spaced = last.replace(/([A-Z])/g, ' $1').trim();
@@ -98,7 +160,8 @@ function fallbackLabel(key: string): string {
 }
 
 vi.mock('next-intl', () => ({
-  useTranslations: (_namespace?: string) => (key: string) => fallbackLabel(key),
+  useTranslations: (_namespace?: string) =>
+    (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values),
   useLocale: () => 'en',
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
   useMessages: () => ({}),

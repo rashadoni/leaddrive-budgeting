@@ -1384,7 +1384,9 @@
       "companyColumn": "Şirkət",
       "noCompaniesMatch": "Uyğunluq yoxdur:",
       "aiSummaryGenerating": "💬 AI xülasəsi yaradılır…",
-      "cellClickHint": "Klik → ətraflı (Panel 3)"
+      "cellClickHint": "Klik → ətraflı (Panel 3)",
+      "noScoreableIndicators": "Qiymətləndiriləcək göstərici yoxdur",
+      "compositeScoreTitle": "Kompozit {score}/100 · {contributing}/{total} göstərici"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
@@ -1459,11 +1461,48 @@
       "presets": "Hazır şablonlar",
       "saved": "Saxlanmış",
       "loading": "Yüklənir…",
-      "noSaved": "Saxlanmış layout yoxdur."
+      "noSaved": "Saxlanmış layout yoxdur.",
+      "deleteTitle": "Sil",
+      "deleteAriaLabel": "{name} sil",
+      "applyPresetTitle": "«{label}» şablonunu tətbiq et",
+      "loadTitle": "«{name}» yüklə (saxlanma vaxtı {time})",
+      "closeMenuAriaLabel": "Menyunu bağla",
+      "confirmDeleteTitle": "Layout silinsin?",
+      "confirmDeleteBody": "«{name}» layoutu silinsin? Əməliyyat geri alınmır.",
+      "confirmDeleteConfirm": "Sil",
+      "confirmDeleteCancel": "Ləğv et",
+      "errorInvalidLayout": "«{name}» layoutu yanlış ölçülərə malikdir — köhnə panel strukturundan ola bilər. Sil və yenidən saxla.",
+      "errorInvalidName": "Ad 1–40 simvol olmalıdır, başında/sonunda boşluq və idarə simvolları olmamalıdır.",
+      "presetLabel": {
+        "default": "Default 2×2",
+        "bloomberg": "Bloomberg",
+        "analyst": "Analitik — detallaşdırma",
+        "morningBrief": "Səhər brifinqi",
+        "investorMode": "İnvestor rejimi",
+        "auditMode": "Audit rejimi"
+      }
     },
     "commandBar": {
       "placeholder": "HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)",
-      "alertsAriaLabel": "Xəbərdarlıq panelini aç"
+      "alertsAriaLabel": "Xəbərdarlıq panelini aç",
+      "alertsLoading": "Xəbərdarlıqlar: yüklənir…",
+      "alertsTitle": "Holdinqdə {count} red+amber göstərici — xəbərdarlıq panelini açmaq üçün klik"
+    },
+    "alertsPanel": {
+      "title": "Xəbərdarlıqlar ({count})",
+      "subtitle": "Holdinq üzrə çox-göstəricili qayda uyğunluqları. Bağlamaq üçün Esc.",
+      "dialogAriaLabel": "Xəbərdarlıq paneli",
+      "closeAriaLabel": "Xəbərdarlıq panelini bağla",
+      "matrixLoading": "Matris yüklənir… xəbərdarlıqlar ilk yenilənmədən sonra görünəcək.",
+      "noAlerts": "✓ Xəbərdarlıq yoxdur — bütün sistemlər yaşıl.",
+      "severityCritical": "Kritik",
+      "severityWarning": "Xəbərdarlıq",
+      "severityInfo": "İnfo",
+      "severitySectionAriaLabel": "{severity} xəbərdarlıqları",
+      "loadingCodes": "Kodlar yüklənir…",
+      "jumpToCompany": "{code}-a keç",
+      "companyCodeNotLoaded": "Şirkət kodu yüklənmədi — yenidən açmağa cəhd et",
+      "couldNotLoadCodes": "Şirkət kodları yüklənmədi — çiplər id-ləri göstərir: {error}"
     },
     "shortcuts": {
       "title": "Klaviatura qısayolları",

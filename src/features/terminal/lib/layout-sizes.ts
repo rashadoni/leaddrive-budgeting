@@ -51,13 +51,27 @@ export const DEFAULT_LAYOUT_SIZES: LayoutSizes = {
  *   IndicatorDetail bottom (60%) for formula + variables inspection,
  *   thin VarianceExplainer (40%) for narrative.
  */
-export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSizes }> = {
+/**
+ * Sub-27 cont'd Round-9 i18n closure — each preset carries a `labelKey`
+ * matching `messages.json:terminal.layoutMenu.presetLabel.<key>`. The
+ * static `label` field is kept as the English fallback (also used by
+ * client-side de-dup — name-collision filter compares saved-layout names
+ * against this string set; pre-fix labels were hardcoded English so the
+ * filter is invariant under locale switch). Display label is read via
+ * `t(`layoutMenu.presetLabel.${labelKey}`)` in LayoutMenu.
+ */
+export const BUILT_IN_PRESETS: Record<
+  string,
+  { label: string; labelKey: string; sizes: LayoutSizes }
+> = {
   default: {
     label: "Default 2×2",
+    labelKey: "default",
     sizes: DEFAULT_LAYOUT_SIZES,
   },
   bloomberg: {
     label: "Bloomberg",
+    labelKey: "bloomberg",
     sizes: {
       outer: { [PANEL_IDS.outerTop]: 70, [PANEL_IDS.outerBottom]: 30 },
       top: { [PANEL_IDS.panel1]: 20, [PANEL_IDS.panel2]: 80 },
@@ -66,6 +80,7 @@ export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSize
   },
   analyst: {
     label: "Analyst Drill-down",
+    labelKey: "analyst",
     sizes: {
       outer: { [PANEL_IDS.outerTop]: 40, [PANEL_IDS.outerBottom]: 60 },
       top: { [PANEL_IDS.panel1]: 50, [PANEL_IDS.panel2]: 50 },
@@ -77,6 +92,7 @@ export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSize
     // Morning routine: scan matrix wide; tree thin nav; CompanyOverview
     // snapshot dominates the bottom row for quick "what changed overnight".
     label: "Morning Brief",
+    labelKey: "morningBrief",
     sizes: {
       outer: { [PANEL_IDS.outerTop]: 65, [PANEL_IDS.outerBottom]: 35 },
       top: { [PANEL_IDS.panel1]: 22, [PANEL_IDS.panel2]: 78 },
@@ -87,6 +103,7 @@ export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSize
     // Show-the-board: HeatMap maximised (88% top); tree thin nav strip;
     // bottom split CompanyOverview + IndicatorDetail for quick drill if asked.
     label: "Investor Mode",
+    labelKey: "investorMode",
     sizes: {
       outer: { [PANEL_IDS.outerTop]: 70, [PANEL_IDS.outerBottom]: 30 },
       top: { [PANEL_IDS.panel1]: 12, [PANEL_IDS.panel2]: 88 },
@@ -97,6 +114,7 @@ export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSize
     // Audit/forensics: matrix + IndicatorDetail dominate; tree mid; snapshot small.
     // Designed for "click cell → read formula + resolved variables + aggregates".
     label: "Audit Mode",
+    labelKey: "auditMode",
     sizes: {
       outer: { [PANEL_IDS.outerTop]: 50, [PANEL_IDS.outerBottom]: 50 },
       top: { [PANEL_IDS.panel1]: 25, [PANEL_IDS.panel2]: 75 },

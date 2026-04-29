@@ -18,6 +18,10 @@
  * Click an `affectedCompanyId` chip → `selectCompany(code)` (tracks LRU
  * recent) + closes modal so user lands on the offending company.
  *
+ * Sub-27 cont'd Round-9 — full i18n coverage. Severity labels now
+ * resolved via `t(`alertsPanel.severity${Capitalized}`)` so the modal
+ * speaks RU/AZ end-to-end (was hardcoded English regardless of locale).
+ *
  * v2 follow-ups (already 🔄'd in CARRYOVER):
  *  - Per-rule "mute for N hours" (alert acknowledgement / suppression)
  *  - Click-through to specific indicator drilldown when affectedIndicatorCodes set
@@ -31,10 +35,10 @@ import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
 import type { AlertMatch, AlertSeverity } from "@/lib/risk/alert-rules";
 
-const SEVERITY_LABEL: Record<AlertSeverity, string> = {
-  critical: "Critical",
-  warning: "Warning",
-  info: "Info",
+const SEVERITY_KEY: Record<AlertSeverity, string> = {
+  critical: "severityCritical",
+  warning: "severityWarning",
+  info: "severityInfo",
 };
 
 const SEVERITY_TONE: Record<AlertSeverity, string> = {
@@ -92,7 +96,7 @@ export function AlertsPanel() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Alerts panel"
+      aria-label={t("alertsPanel.dialogAriaLabel")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
@@ -104,17 +108,17 @@ export function AlertsPanel() {
             <AlertTriangle size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                Alerts ({matches?.length ?? 0})
+                {t("alertsPanel.title", { count: matches?.length ?? 0 })}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Multi-indicator rule matches across the holding. Press Esc to close.
+                {t("alertsPanel.subtitle")}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close alerts panel"
+            aria-label={t("alertsPanel.closeAriaLabel")}
             className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
           >
             <X size={14} aria-hidden="true" />
@@ -124,22 +128,28 @@ export function AlertsPanel() {
         <div className="px-6 py-4 space-y-4">
           {matches === null ? (
             <p className="text-sm text-muted-foreground" data-testid="alerts-loading">
-              Matrix loading… alerts populate after first refresh.
+              {t("alertsPanel.matrixLoading")}
             </p>
           ) : matches.length === 0 ? (
             <p className="text-sm text-[#00D4AA]" data-testid="alerts-empty">
-              ✓ No alerts triggered — all systems green.
+              {t("alertsPanel.noAlerts")}
             </p>
           ) : (
             (Object.keys(grouped) as AlertSeverity[]).map((sev) => {
               const list = grouped[sev];
               if (list.length === 0) return null;
+              const sevLabel = t(`alertsPanel.${SEVERITY_KEY[sev]}` as never);
               return (
-                <section key={sev} aria-label={`${SEVERITY_LABEL[sev]} alerts`}>
+                <section
+                  key={sev}
+                  aria-label={t("alertsPanel.severitySectionAriaLabel", {
+                    severity: sevLabel,
+                  })}
+                >
                   <h3
                     className={`text-xs font-mono uppercase tracking-wider mb-2 ${SEVERITY_TONE[sev].split(" ")[0]}`}
                   >
-                    {SEVERITY_LABEL[sev]} ({list.length})
+                    {sevLabel} ({list.length})
                   </h3>
                   <ul className="space-y-2">
                     {list.map((m, i) => (
@@ -186,7 +196,7 @@ export function AlertsPanel() {
                                 className="text-[10px] text-gray-500 italic"
                                 data-testid="alerts-codes-loading"
                               >
-                                Loading codes…
+                                {t("alertsPanel.loadingCodes")}
                               </span>
                             ) : (
                               m.affectedCompanyIds.map((id) => {
@@ -205,8 +215,8 @@ export function AlertsPanel() {
                                     className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title={
                                       code
-                                        ? `Jump to ${code}`
-                                        : "Company code not loaded — try reopening"
+                                        ? t("alertsPanel.jumpToCompany", { code })
+                                        : t("alertsPanel.companyCodeNotLoaded")
                                     }
                                   >
                                     {code ?? id.slice(0, 8) + "…"}
@@ -230,7 +240,7 @@ export function AlertsPanel() {
               className="text-xs text-[#FF4757]"
               data-testid="alerts-fetch-error"
             >
-              Could not load company codes — chips show ids: {companyFetchError}
+              {t("alertsPanel.couldNotLoadCodes", { error: companyFetchError })}
             </p>
           )}
         </div>

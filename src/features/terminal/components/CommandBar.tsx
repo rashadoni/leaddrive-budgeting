@@ -472,8 +472,8 @@ export function CommandBar() {
           className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors"
           title={
             alertsCount === null
-              ? 'Alerts: loading…'
-              : `${alertsCount} red+amber indicator${alertsCount === 1 ? '' : 's'} across the org — click to open alerts panel`
+              ? t('commandBar.alertsLoading')
+              : t('commandBar.alertsTitle', { count: alertsCount })
           }
           aria-label={t('commandBar.alertsAriaLabel')}
           onClick={() => {

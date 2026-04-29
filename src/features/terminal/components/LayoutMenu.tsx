@@ -45,6 +45,11 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
   const [loading, setLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Sub-27 cont'd Round-9 — replace native confirm() with a locale-aware
+  // inline confirmation row. Storing the pending-delete item in state
+  // means the dropdown stays open while the user reads the warning;
+  // also blocks accidental double-confirm via repeated × clicks.
+  const [pendingDelete, setPendingDelete] = useState<LayoutListItem | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -76,7 +81,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
   const handleSave = async () => {
     const name = validateLayoutName(saveName);
     if (!name) {
-      setError("Name must be 1-40 chars, no leading/trailing whitespace, no control chars.");
+      setError(t("layoutMenu.errorInvalidName"));
       return;
     }
     const sizes = readCurrent();
@@ -105,17 +110,27 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
   const handleLoad = (item: LayoutListItem) => {
     const sizes = validateLayoutSizes(item.sizes);
     if (!sizes) {
-      setError(
-        `Layout "${item.name}" has invalid sizes — likely from an older panel structure. Delete + re-save.`,
-      );
+      setError(t("layoutMenu.errorInvalidLayout", { name: item.name }));
       return;
     }
     applyLayout(sizes);
     setOpen(false);
   };
 
-  const handleDelete = async (item: LayoutListItem) => {
-    if (!confirm(`Delete layout "${item.name}"?`)) return;
+  const handleDeleteRequest = (item: LayoutListItem) => {
+    // Two-stage delete: first click stages the item, second click confirms.
+    // No native confirm() — that dialog is OS-locale only and bypasses our
+    // i18n. Architect Round-9 closure.
+    setPendingDelete(item);
+  };
+
+  const handleDeleteCancel = () => {
+    setPendingDelete(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!pendingDelete) return;
+    const item = pendingDelete;
     setLoading(true);
     setError(null);
     try {
@@ -128,6 +143,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
         setError(body.error || `HTTP ${res.status}`);
         return;
       }
+      setPendingDelete(null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -151,7 +167,7 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
       {open && (
         <div
           role="dialog"
-          aria-label="Layout menu"
+          aria-label={t("layoutMenu.label")}
           className="absolute top-full right-0 mt-1 w-72 bg-[#050814] border border-gray-800 rounded shadow-xl p-2 space-y-2"
           onClick={(e) => e.stopPropagation()}
         >
@@ -161,11 +177,47 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               type="button"
               onClick={() => setOpen(false)}
               className="text-gray-600 hover:text-gray-300"
-              aria-label="Close menu"
+              aria-label={t("layoutMenu.closeMenuAriaLabel")}
             >
               ×
             </button>
           </header>
+
+          {/* Pending delete confirmation banner — sits at top of dropdown
+              so user sees it before any other content. Replaces native
+              confirm() for full locale awareness. */}
+          {pendingDelete && (
+            <div
+              role="alertdialog"
+              aria-label={t("layoutMenu.confirmDeleteTitle")}
+              className="border border-[#FF4757]/40 bg-[#FF4757]/10 rounded p-2 space-y-1"
+            >
+              <div className="text-[#FF4757] uppercase tracking-wider text-[9px] font-semibold">
+                {t("layoutMenu.confirmDeleteTitle")}
+              </div>
+              <div className="text-gray-200 text-[10px]">
+                {t("layoutMenu.confirmDeleteBody", { name: pendingDelete.name })}
+              </div>
+              <div className="flex items-center justify-end gap-1 pt-1">
+                <button
+                  type="button"
+                  onClick={handleDeleteCancel}
+                  disabled={loading}
+                  className="px-2 py-0.5 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500"
+                >
+                  {t("layoutMenu.confirmDeleteCancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteConfirm}
+                  disabled={loading}
+                  className="px-2 py-0.5 rounded bg-[#FF4757] text-white font-semibold uppercase tracking-wider disabled:bg-gray-800 disabled:text-gray-600"
+                >
+                  {t("layoutMenu.confirmDeleteConfirm")}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Save current */}
           <form
@@ -206,21 +258,30 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               {t("layoutMenu.presets")}
             </div>
             <ul className="space-y-0.5">
-              {Object.entries(BUILT_IN_PRESETS).map(([key, preset]) => (
-                <li key={key}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      applyLayout(preset.sizes);
-                      setOpen(false);
-                    }}
-                    className="w-full text-left text-gray-300 hover:text-[#00D4AA] hover:bg-gray-800/40 rounded px-1 py-0.5"
-                    title={`Apply ${preset.label} preset`}
-                  >
-                    {preset.label}
-                  </button>
-                </li>
-              ))}
+              {Object.entries(BUILT_IN_PRESETS).map(([key, preset]) => {
+                // Locale-aware label via i18n; English fallback baked into
+                // preset.label for backward-compat with collision filter.
+                const localizedLabel = t(
+                  `layoutMenu.presetLabel.${preset.labelKey}` as never,
+                );
+                return (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyLayout(preset.sizes);
+                        setOpen(false);
+                      }}
+                      className="w-full text-left text-gray-300 hover:text-[#00D4AA] hover:bg-gray-800/40 rounded px-1 py-0.5"
+                      title={t("layoutMenu.applyPresetTitle", {
+                        label: localizedLabel,
+                      })}
+                    >
+                      {localizedLabel}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
@@ -228,7 +289,11 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
               name collides with a built-in preset label so the dropdown
               never shows two "Bloomberg" entries (architect Round-1 ⚠️
               closure: name-collision guard). API-side reservation is
-              tracked as a separate 🔄 — for now, hide on read. */}
+              tracked as a separate 🔄 — for now, hide on read.
+              The collision filter uses preset.label (English) since
+              the API stores layout names verbatim and the user can save
+              "Bloomberg" in any locale; comparing to the canonical English
+              label prevents locale-dependent dedup behavior. */}
           <div className="border-t border-gray-800/60 pt-1">
             <div className="text-gray-600 uppercase tracking-wider text-[9px] mb-0.5">
               {t("layoutMenu.saved")}
@@ -257,16 +322,19 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
                       type="button"
                       onClick={() => handleLoad(item)}
                       className="flex-1 text-left text-gray-300 hover:text-[#00D4AA] truncate"
-                      title={`Load "${item.name}" (saved ${new Date(item.updatedAt).toLocaleString()})`}
+                      title={t("layoutMenu.loadTitle", {
+                        name: item.name,
+                        time: new Date(item.updatedAt).toLocaleString(),
+                      })}
                     >
                       {item.name}
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(item)}
+                      onClick={() => handleDeleteRequest(item)}
                       className="text-gray-700 hover:text-[#FF4757]"
-                      aria-label={`Delete ${item.name}`}
-                      title="Delete"
+                      aria-label={t("layoutMenu.deleteAriaLabel", { name: item.name })}
+                      title={t("layoutMenu.deleteTitle")}
                     >
                       ×
                     </button>

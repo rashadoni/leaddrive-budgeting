@@ -1384,7 +1384,9 @@
       "companyColumn": "Company",
       "noCompaniesMatch": "No companies match",
       "aiSummaryGenerating": "💬 Generating AI summary…",
-      "cellClickHint": "Click → drill-down (Panel 3)"
+      "cellClickHint": "Click → drill-down (Panel 3)",
+      "noScoreableIndicators": "No scoreable indicators",
+      "compositeScoreTitle": "Composite {score}/100 · {contributing}/{total} indicators"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
@@ -1459,11 +1461,48 @@
       "presets": "Presets",
       "saved": "Saved",
       "loading": "Loading…",
-      "noSaved": "No saved layouts."
+      "noSaved": "No saved layouts.",
+      "deleteTitle": "Delete",
+      "deleteAriaLabel": "Delete {name}",
+      "applyPresetTitle": "Apply {label} preset",
+      "loadTitle": "Load \"{name}\" (saved {time})",
+      "closeMenuAriaLabel": "Close menu",
+      "confirmDeleteTitle": "Delete layout?",
+      "confirmDeleteBody": "Delete layout \"{name}\"? This cannot be undone.",
+      "confirmDeleteConfirm": "Delete",
+      "confirmDeleteCancel": "Cancel",
+      "errorInvalidLayout": "Layout \"{name}\" has invalid sizes — likely from an older panel structure. Delete + re-save.",
+      "errorInvalidName": "Name must be 1-40 chars, no leading/trailing whitespace, no control chars.",
+      "presetLabel": {
+        "default": "Default 2×2",
+        "bloomberg": "Bloomberg",
+        "analyst": "Analyst Drill-down",
+        "morningBrief": "Morning Brief",
+        "investorMode": "Investor Mode",
+        "auditMode": "Audit Mode"
+      }
     },
     "commandBar": {
       "placeholder": "HOLD GO · AAC CO GO · IND_OPEX_RATIO IND GO (Cmd+K)",
-      "alertsAriaLabel": "Open alerts panel"
+      "alertsAriaLabel": "Open alerts panel",
+      "alertsLoading": "Alerts: loading…",
+      "alertsTitle": "{count} red+amber indicators across the org — click to open alerts panel"
+    },
+    "alertsPanel": {
+      "title": "Alerts ({count})",
+      "subtitle": "Multi-indicator rule matches across the holding. Press Esc to close.",
+      "dialogAriaLabel": "Alerts panel",
+      "closeAriaLabel": "Close alerts panel",
+      "matrixLoading": "Matrix loading… alerts populate after first refresh.",
+      "noAlerts": "✓ No alerts triggered — all systems green.",
+      "severityCritical": "Critical",
+      "severityWarning": "Warning",
+      "severityInfo": "Info",
+      "severitySectionAriaLabel": "{severity} alerts",
+      "loadingCodes": "Loading codes…",
+      "jumpToCompany": "Jump to {code}",
+      "companyCodeNotLoaded": "Company code not loaded — try reopening",
+      "couldNotLoadCodes": "Could not load company codes — chips show ids: {error}"
     },
     "shortcuts": {
       "title": "Keyboard shortcuts",

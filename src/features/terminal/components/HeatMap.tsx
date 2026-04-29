@@ -514,13 +514,16 @@ export function HeatMap({ period }: Props) {
  * Phase C5 — small badge showing composite risk score (0-100) next to
  * the company code in HeatMap row headers. Color-coded by band; null
  * score renders a neutral "—" (no data, NOT a 0/red signal).
+ *
+ * Sub-27 cont'd Round-9 — locale-aware tooltips via i18n placeholders.
  */
 function CompositeBadge({ score }: { score: CompositeScore | null }) {
+  const t = useTranslations('terminal');
   if (!score || score.score === null) {
     return (
       <span
         className="text-[9px] tabular-nums text-gray-500 shrink-0"
-        title="No scoreable indicators"
+        title={t('heatMap.noScoreableIndicators')}
       >
         —
       </span>
@@ -537,7 +540,11 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
   return (
     <span
       className={`text-[9px] tabular-nums font-semibold shrink-0 ${colorClass}`}
-      title={`Composite ${score.score}/100 · ${score.contributingCount}/${score.totalCount} indicators`}
+      title={t('heatMap.compositeScoreTitle', {
+        score: score.score,
+        contributing: score.contributingCount,
+        total: score.totalCount,
+      })}
     >
       {score.score}
     </span>
