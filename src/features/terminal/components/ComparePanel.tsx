@@ -24,6 +24,7 @@
 import React, { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
+import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 interface CompareEvent {
   lhs: string;
@@ -263,12 +264,21 @@ function CompareRow({
         className="text-right px-2 py-1.5 tabular-nums"
         style={{ color: statusHex(lhs?.status) }}
       >
+        {/* Tier-3 sub-29 Round-20 closure — shape glyph next to the
+            colored value text. Round-20 architect scanner v4 caught
+            this LHS/RHS column leak that prior rounds missed. */}
+        <span aria-hidden="true" className="mr-0.5 opacity-70">
+          {statusShape(lhs?.status ?? "missing")}
+        </span>
         {formatValue(lhsValue, indicator.unit)}
       </td>
       <td
         className="text-right px-2 py-1.5 tabular-nums"
         style={{ color: statusHex(rhs?.status) }}
       >
+        <span aria-hidden="true" className="mr-0.5 opacity-70">
+          {statusShape(rhs?.status ?? "missing")}
+        </span>
         {formatValue(rhsValue, indicator.unit)}
       </td>
       <td

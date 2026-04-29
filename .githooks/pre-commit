@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+#
+# Tier-3 sub-29 Round-19/20 closure — pre-commit gate for the M7
+# regression scanner. Runs ONLY the scanner test (~150ms) — fast enough
+# to gate every commit without slowing the developer feedback loop.
+#
+# Activation (one-time per clone):
+#
+#   git config core.hooksPath .githooks
+#
+# After that, every `git commit` runs this hook automatically. To bypass
+# in an emergency:
+#
+#   git commit --no-verify
+#
+# (Don't make a habit of bypassing — the scanner exists because four
+# rounds of by-eye M7 sweeps each missed at least one leak.)
+#
+# Hook contract:
+#   exit 0 → commit proceeds
+#   exit 1 → commit aborted, scanner prints offender list + fix guide
+#
+# This hook does NOT run the full vitest suite — that's the Stop hook's
+# job (`.claude/hooks/test-gate.sh`). Pre-commit deliberately scopes to
+# the M7 scanner only so it stays under the developer-tolerance threshold
+# for per-commit gating (~200ms).
+
+set -euo pipefail
+
+SCANNER_TEST_PATH="src/features/terminal/components/m7-status-band-shape.test.ts"
+
+# Only run if package.json + vitest exist (e.g. skip on hook fired
+# outside the project root).
+if [ ! -f "package.json" ] || ! command -v npx >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Run scanner; on failure, vitest writes diagnostics to stderr and
+# returns non-zero. We forward that as the hook exit code.
+echo "[pre-commit] Running M7 status-band-shape regression scanner…"
+if npx vitest run "$SCANNER_TEST_PATH" --reporter=basic; then
+  echo "[pre-commit] M7 scanner ✓ passed"
+  exit 0
+else
+  echo ""
+  echo "[pre-commit] ❌ M7 scanner FAILED — commit aborted."
+  echo "  Fix the offenders above, then re-stage and commit again."
+  echo "  In an emergency, use \`git commit --no-verify\` to bypass."
+  exit 1
+fi

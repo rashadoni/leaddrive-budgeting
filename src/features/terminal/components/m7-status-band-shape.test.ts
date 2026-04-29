@@ -148,13 +148,34 @@ const SHAPE_HELPER_CALL_PATTERNS = [
   /\bSEVERITY_SHAPE\s*\[/,
 ];
 
-/** Patterns we EXCLUDE from "shape call" detection — function
- *  definitions (the helper itself) and ES imports (mere availability)
- *  must not satisfy the contract for any band-key region. */
+/**
+ * Patterns we EXCLUDE from "shape call" detection. Round-20 architect
+ * closure — symmetric to color-side exclusion. Three categories:
+ *
+ *  1. Function DEFINITIONS — `function statusShape(...)`, `function
+ *     forecastShape(...)`. The helper definition is not a render.
+ *  2. Variable ASSIGNMENTS — `const deltaShape = shapeForDelta(...)`.
+ *     The helper output is captured for later use; the actual glyph
+ *     render happens wherever the captured var is consumed (typically
+ *     in JSX as `{deltaShape}`). Without this exclusion, the assignment
+ *     line satisfied the contract on its own — symmetric to the
+ *     color-side blindspot. Architect demonstrated by deleting the
+ *     `{deltaShape}` consumer in ComparePanel and watching the scanner
+ *     pass silently.
+ *  3. ES imports — `import { statusShape } from ...`. Mere availability,
+ *     not a render.
+ */
 const SHAPE_HELPER_EXCLUSION_PATTERNS = [
+  // Definitions
   /\bfunction\s+statusShape\s*\(/,
   /\bfunction\s+forecastShape\s*\(/,
   /\bfunction\s+shapeForDelta\s*\(/,
+  /\bexport\s+function\s+(statusShape|forecastShape|shapeForDelta)\s*\(/,
+  // Variable assignments — capture-for-later, not glyph render
+  /\b(?:const|let|var|return)\s+\w+(?:\s*:\s*[^=]+)?\s*=\s*(?:statusShape|forecastShape|shapeForDelta)\s*\(/,
+  /\b(?:const|let|var|return)\s+\w+(?:\s*:\s*[^=]+)?\s*=\s*SEVERITY_SHAPE\s*\[/,
+  // ES imports
+  /\bimport\b[^;]*\b(?:statusShape|forecastShape|shapeForDelta|SEVERITY_SHAPE)\b/,
 ];
 
 /** Window in lines for "near a band-key region". 35 spans a typical
@@ -224,27 +245,81 @@ function lineMatchesAny(line: string, patterns: readonly RegExp[]): boolean {
 const BAND_RENDER_WINDOW = 6;
 
 /**
- * Find every line that constitutes a "status-band render". Two paths:
+ * Captured-color-variable detector. Round-20 architect closure —
+ * v3 had a structural false-negative: `const statusColor = STATUS_HEX[
+ * status]` (excluded as assignment) + `style={{ color: statusColor }}`
+ * consumer (no Tailwind hex literal on that line, no direct helper
+ * call). Both paths missed this indirection. Path C below tracks
+ * captured var names + flags consumer JSX as render sites.
+ *
+ * Returns the SET of variable names that are captures of band-encoded
+ * color values — i.e. variables a developer might subsequently consume
+ * via `style={{ color: <var> }}` or `className={... ${<var>}}`.
+ */
+function findCapturedColorVars(lines: readonly string[]): Set<string> {
+  const captures = new Set<string>();
+  // const|let|var X = (statusColor|forecastColor|colorForDelta|statusHex)( …
+  // const|let|var X = (STATUS_HEX|SEVERITY_TONE)[ …
+  // const|let|var X = m.severity === … ? "#hex" : "#hex"   (band-key ternary into raw hex)
+  const HELPER_CAPTURE = /\b(?:const|let|var)\s+(\w+)(?:\s*:\s*[^=]+)?\s*=\s*(?:statusColor|forecastColor|colorForDelta|statusHex)\s*\(/;
+  const MAP_CAPTURE = /\b(?:const|let|var)\s+(\w+)(?:\s*:\s*[^=]+)?\s*=\s*(?:STATUS_HEX|SEVERITY_TONE)\s*\[/;
+  const TERNARY_CAPTURE_HEX = new RegExp(
+    `\\b(?:const|let|var)\\s+(\\w+)(?:\\s*:\\s*[^=]+)?\\s*=\\s*\\b(?:m\\.severity|cs\\.band|score\\.band|forecast\\.confidence|sev|severity|s\\.severity|status|confidence)\\s*===\\b`,
+  );
+
+  // Some captures span multiple lines (the ternary continues on next
+  // lines). We accept the assignment line as the trigger; the rest of
+  // the multi-line ternary is just style.
+  for (const line of lines) {
+    let m: RegExpExecArray | null;
+    if ((m = HELPER_CAPTURE.exec(line))) captures.add(m[1]);
+    if ((m = MAP_CAPTURE.exec(line))) captures.add(m[1]);
+    if ((m = TERNARY_CAPTURE_HEX.exec(line))) captures.add(m[1]);
+  }
+  return captures;
+}
+
+/**
+ * Build a regex that matches any consumer of a captured color var in
+ * a JSX rendering context — i.e. inside `style={{ color: <var> }}`,
+ * `style={{ backgroundColor: <var> }}`, `style={{ borderColor: <var>
+ * }}`, OR a className template-literal interpolation `${<var>}`.
+ *
+ * Returns null if there are no captured vars (no Path C lookups
+ * needed). Otherwise returns a single regex for fast scanning.
+ */
+function buildConsumerPattern(captures: ReadonlySet<string>): RegExp | null {
+  if (captures.size === 0) return null;
+  const alt = [...captures].map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  // Two consumer forms (combined into one alternation):
+  //   1. style={{ color|backgroundColor|borderColor : <var> }}
+  //   2. className={... ${<var>} ...}    (template-literal interp)
+  return new RegExp(
+    `style\\s*=\\s*\\{\\s*\\{[^}]*\\b(?:color|backgroundColor|borderColor)\\s*:\\s*(?:${alt})\\b` +
+      `|\\$\\{(?:${alt})\\}`,
+  );
+}
+
+/**
+ * Find every line that constitutes a "status-band render". Three paths:
  *
  *  Path A — DIRECT: the line carries a Tailwind status-color literal
  *           AND a band-key pattern is within ±BAND_RENDER_WINDOW lines.
- *           Catches inline ternaries like
- *             `m.severity === "critical" ? "bg-[#FF4757]" : "bg-[#FFB020]"`.
+ *           Catches inline ternaries.
+ *  Path B — HELPER-CALL: invocation of a color-rendering helper
+ *           (statusColor / forecastColor / etc.) at the JSX render
+ *           site. Excludes definitions, captures, imports.
+ *  Path C — CONSUMER (Round-20): the line consumes a captured color
+ *           variable in a JSX render position (`style={{color: var}}`
+ *           or className template-literal `${var}`). The capture
+ *           itself was excluded from Path B; the consumer is the
+ *           actual render site.
  *
- *  Path B — HELPER-CALL: the line invokes a known color-rendering
- *           helper (statusColor / forecastColor / etc.). Every such
- *           call is by definition a band-render — even when the helper
- *           definition lives 100 lines away. Excludes the helper's own
- *           definition lines.
- *
- * Returns 1-based line numbers (the render-site line itself). Two
- * paths give the scanner coverage on (a) inline ternary renders AND
- * (b) helper-call renders — the latter being the failure mode that
- * caught Round-19 architect's `forecastShape` deletion demo.
+ * Returns 1-based line numbers.
  */
 function findStatusBandRenderLines(lines: readonly string[]): number[] {
   const out = new Set<number>();
-  // Path A — direct hex + band-key proximity.
+  // Path A
   const colorLines: number[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (STATUS_COLOR_PATTERN.test(lines[i])) colorLines.push(i + 1);
@@ -259,12 +334,20 @@ function findStatusBandRenderLines(lines: readonly string[]): number[] {
       }
     }
   }
-  // Path B — color-helper call sites. Excludes the helper's own
-  // definition / declaration line (those don't render anything).
+  // Path B
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (lineMatchesAny(line, COLOR_HELPER_EXCLUSION_PATTERNS)) continue;
     if (lineMatchesAny(line, COLOR_HELPER_CALL_PATTERNS)) out.add(i + 1);
+  }
+  // Path C — consumer pattern. Only built if there are any captured
+  // color vars in this file (cheap pre-filter).
+  const captures = findCapturedColorVars(lines);
+  const consumerRe = buildConsumerPattern(captures);
+  if (consumerRe) {
+    for (let i = 0; i < lines.length; i++) {
+      if (consumerRe.test(lines[i])) out.add(i + 1);
+    }
   }
   return Array.from(out).sort((a, b) => a - b);
 }
@@ -397,5 +480,52 @@ describe("M7 status-band-without-shape regression guard", () => {
     const renders = findStatusBandRenderLines(fakeLines);
     expect(renders).toContain(1);
     expect(renders).not.toContain(2);
+  });
+
+  it("findStatusBandRenderLines (Path C — Round-20) — captured-var consumer in style={{}}", () => {
+    const fakeLines = [
+      // Line 1: capture from STATUS_HEX (excluded from Path B)
+      "const statusColor = STATUS_HEX[status];",
+      "// padding",
+      "// padding",
+      // Line 4: consumer in style={{}} — Path C must flag this
+      "<div style={{ color: statusColor }}>x</div>",
+      // Line 5: consumer of backgroundColor — also flag
+      "<div style={{ backgroundColor: statusColor }}>y</div>",
+    ];
+    const renders = findStatusBandRenderLines(fakeLines);
+    expect(renders).toContain(4);
+    expect(renders).toContain(5);
+    // Capture line itself is NOT a render (it's an assignment)
+    expect(renders).not.toContain(1);
+  });
+
+  it("findStatusBandRenderLines (Path C — Round-20) — captured-var consumer in className template-literal", () => {
+    const fakeLines = [
+      // Line 1: capture from helper
+      "const colorClass = forecastColor(forecast.confidence);",
+      "// padding",
+      // Line 3: consumer via template-literal interp — Path C flags
+      "<span className={`text-sm ${colorClass}`}>x</span>",
+    ];
+    const renders = findStatusBandRenderLines(fakeLines);
+    expect(renders).toContain(3);
+    expect(renders).not.toContain(1);
+  });
+
+  it("hasShapeCallNearLine excludes shape-helper assignments (Round-20 symmetric closure)", () => {
+    const fakeLines = [
+      // Line 1: shape-helper ASSIGNMENT — must NOT count as glyph render
+      "const deltaShape = shapeForDelta(delta, direction);",
+      "// padding",
+      "// padding",
+      // Line 4: band-keyed render
+      'style={{ color: m.severity === "critical" ? "#FF4757" : "#FFB020" }}',
+      "// no JSX consumer of {deltaShape} present",
+    ];
+    // The assignment at line 1 is within ±35 of band-key at line 4,
+    // but it must NOT satisfy the contract since it's a capture, not
+    // a render. Result: no shape call within ±35 of line 4 → false.
+    expect(hasShapeCallNearLine(fakeLines, 4, 35)).toBe(false);
   });
 });
