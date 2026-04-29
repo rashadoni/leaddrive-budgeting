@@ -37,8 +37,13 @@ fi
 
 # Run scanner; on failure, vitest writes diagnostics to stderr and
 # returns non-zero. We forward that as the hook exit code.
+# Note: `--reporter=dot` is preferred over `--reporter=basic` because
+# vitest 4.x removed `basic` as a valid reporter name (architect
+# Round-21 closure — initial draft of this hook used --reporter=basic
+# and aborted every commit with "Failed to load url basic"). `dot`
+# emits one char per test and is the smallest valid option.
 echo "[pre-commit] Running M7 status-band-shape regression scanner…"
-if npx vitest run "$SCANNER_TEST_PATH" --reporter=basic; then
+if npx vitest run "$SCANNER_TEST_PATH" --reporter=dot; then
   echo "[pre-commit] M7 scanner ✓ passed"
   exit 0
 else
