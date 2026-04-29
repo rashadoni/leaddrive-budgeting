@@ -112,7 +112,10 @@ export function ComparePanel() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Compare ${pair.lhs} vs ${pair.rhs}`}
+      aria-label={t("compare.dialogAriaLabel", {
+        lhs: pair.lhs,
+        rhs: pair.rhs,
+      })}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
@@ -122,9 +125,9 @@ export function ComparePanel() {
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">
-              Compare:{" "}
+              {t("compare.headerTitle")}{" "}
               <span className="font-mono text-[#FFB020]">{pair.lhs}</span>{" "}
-              vs{" "}
+              {t("compare.headerVs")}{" "}
               <span className="font-mono text-[#00D4AA]">{pair.rhs}</span>
             </h2>
             <p className="text-xs text-muted-foreground">

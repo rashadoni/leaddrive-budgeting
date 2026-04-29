@@ -1395,7 +1395,9 @@
       "noScoreableIndicators": "No scoreable indicators",
       "compositeScoreTitle": "Composite {score}/100 · {contributing}/{total} indicators",
       "filterAriaLabel": "Filter heatmap rows",
-      "tableAriaLabel": "Risk heatmap"
+      "tableAriaLabel": "Risk heatmap",
+      "loading": "Loading…",
+      "errorPrefix": "Error:"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
@@ -1475,7 +1477,10 @@
       "closeAriaLabel": "Close compare panel",
       "loadingMatrix": "Loading matrix…",
       "error": "Error",
-      "indicatorColumn": "Indicator"
+      "indicatorColumn": "Indicator",
+      "dialogAriaLabel": "Compare {lhs} vs {rhs}",
+      "headerTitle": "Compare:",
+      "headerVs": "vs"
     },
     "layoutMenu": {
       "label": "Layouts",

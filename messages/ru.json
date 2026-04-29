@@ -1395,7 +1395,9 @@
       "noScoreableIndicators": "Нет индикаторов для оценки",
       "compositeScoreTitle": "Композитный {score}/100 · {contributing}/{total} индикаторов",
       "filterAriaLabel": "Фильтр строк карты рисков",
-      "tableAriaLabel": "Карта рисков"
+      "tableAriaLabel": "Карта рисков",
+      "loading": "Загрузка…",
+      "errorPrefix": "Ошибка:"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",
@@ -1475,7 +1477,10 @@
       "closeAriaLabel": "Закрыть панель сравнения",
       "loadingMatrix": "Загрузка матрицы…",
       "error": "Ошибка",
-      "indicatorColumn": "Индикатор"
+      "indicatorColumn": "Индикатор",
+      "dialogAriaLabel": "Сравнение {lhs} и {rhs}",
+      "headerTitle": "Сравнение:",
+      "headerVs": "vs"
     },
     "layoutMenu": {
       "label": "Layouts",

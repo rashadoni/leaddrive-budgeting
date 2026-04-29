@@ -1395,7 +1395,9 @@
       "noScoreableIndicators": "Qiymətləndiriləcək göstərici yoxdur",
       "compositeScoreTitle": "Kompozit {score}/100 · {contributing}/{total} göstərici",
       "filterAriaLabel": "Risk xəritəsi sətr filtri",
-      "tableAriaLabel": "Risk xəritəsi"
+      "tableAriaLabel": "Risk xəritəsi",
+      "loading": "Yüklənir…",
+      "errorPrefix": "Xəta:"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
@@ -1475,7 +1477,10 @@
       "closeAriaLabel": "Müqayisə panelini bağla",
       "loadingMatrix": "Matris yüklənir…",
       "error": "Xəta",
-      "indicatorColumn": "Göstərici"
+      "indicatorColumn": "Göstərici",
+      "dialogAriaLabel": "{lhs} ilə {rhs} müqayisəsi",
+      "headerTitle": "Müqayisə:",
+      "headerVs": "vs"
     },
     "layoutMenu": {
       "label": "Layoutlar",

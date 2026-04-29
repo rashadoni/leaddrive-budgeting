@@ -272,13 +272,13 @@ export function HeatMap({ period }: Props) {
 
   if (!mounted) {
     return (
-      <span className="text-gray-700 font-mono text-[10px]">Loading…</span>
+      <span className="text-gray-700 font-mono text-[10px]">{t('heatMap.loading')}</span>
     );
   }
 
   if (error) {
     return (
-      <span className="text-[#FF4757] font-mono text-xs">Error: {error}</span>
+      <span className="text-[#FF4757] font-mono text-xs">{t('heatMap.errorPrefix')} {error}</span>
     );
   }
 
