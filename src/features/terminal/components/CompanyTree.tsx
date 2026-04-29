@@ -213,7 +213,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   if (!mounted) {
     return (
       <div className="font-mono text-xs text-gray-700 w-full">
-        Loading…
+        {t('companyTree.loading')}
       </div>
     );
   }

@@ -1410,7 +1410,9 @@
       "likelyDrivers": "Mümkün sürücülər",
       "riskFactors": "Risk faktorları",
       "llmConfidence": "LLM inamı",
-      "forecastExplainFailed": "Proqnoz izahı uğursuz oldu"
+      "forecastExplainFailed": "Proqnoz izahı uğursuz oldu",
+      "explaining": "İzah edirəm…",
+      "extrapolationCaveat": "xətti ekstrapolyasiya; üfüq artdıqca qeyri-müəyyənlik artır"
     },
     "auditTicker": {
       "events": "HADİSƏLƏR",

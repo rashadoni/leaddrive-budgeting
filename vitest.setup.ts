@@ -48,6 +48,8 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'indicatorDetail.forecastCITitle': '95% prediction interval',
   'indicatorDetail.reRun': 'Re-run',
   'indicatorDetail.explainButton': 'Explain →',
+  'indicatorDetail.explaining': 'Explaining…',
+  'indicatorDetail.extrapolationCaveat': 'linear extrapolation; uncertainty grows with horizon',
   // Wave 3 i18n — visible labels tests check literally
   'auditModal.title': 'Audit Log',
   'auditModal.close': 'Close',

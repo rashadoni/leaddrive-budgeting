@@ -1410,7 +1410,9 @@
       "likelyDrivers": "Likely drivers",
       "riskFactors": "Risk factors",
       "llmConfidence": "LLM confidence",
-      "forecastExplainFailed": "Forecast explain failed"
+      "forecastExplainFailed": "Forecast explain failed",
+      "explaining": "Explaining…",
+      "extrapolationCaveat": "linear extrapolation; uncertainty grows with horizon"
     },
     "auditTicker": {
       "events": "EVENTS",

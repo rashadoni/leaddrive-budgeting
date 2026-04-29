@@ -34,13 +34,9 @@ import {
 } from '../lib/layout-sizes';
 
 type PanelId = 1 | 2 | 3 | 4;
-
-const PANEL_TITLES: Record<PanelId, string> = {
-  1: 'Companies',
-  2: 'Heatmap',
-  3: 'Indicator Detail',
-  4: 'Variance Explainer',
-};
+// Sub-27 cont'd Round-5 architect closure: prior `PANEL_TITLES` const
+// (English-only) was made dead-code by the i18n wave-2 wiring of
+// `PANEL_TITLES_T` inside PanelGrid which reads `t('panels.<id>')`. Removed.
 
 /** localStorage key for `useDefaultLayout` autosave. Bumping this on a
  *  panel-structure change forces every user back to defaults rather

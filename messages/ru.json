@@ -1410,7 +1410,9 @@
       "likelyDrivers": "Возможные драйверы",
       "riskFactors": "Факторы риска",
       "llmConfidence": "Уверенность LLM",
-      "forecastExplainFailed": "Объяснение прогноза не удалось"
+      "forecastExplainFailed": "Объяснение прогноза не удалось",
+      "explaining": "Объясняю…",
+      "extrapolationCaveat": "линейная экстраполяция; неопределённость растёт с горизонтом"
     },
     "auditTicker": {
       "events": "СОБЫТИЯ",

@@ -524,7 +524,7 @@ function ForecastSection(props: {
             className="text-[10px] font-mono px-2 py-0.5 rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 text-[#00D4AA] hover:bg-[#00D4AA]/15 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
           >
             {explain.kind === "loading"
-              ? "Explaining…"
+              ? t('indicatorDetail.explaining')
               : explain.kind === "ok"
                 ? t('indicatorDetail.reRun')
                 : t('indicatorDetail.explainButton')}
@@ -564,7 +564,7 @@ function ForecastSection(props: {
                 </span>
               ))}
               <span className="text-[9px] text-gray-600 ml-auto">
-                linear extrapolation; uncertainty grows with horizon
+                {t('indicatorDetail.extrapolationCaveat')}
               </span>
             </div>
           )}
