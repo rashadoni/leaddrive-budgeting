@@ -151,10 +151,16 @@ export function AlertsPanel() {
                         <div className="font-mono text-[11px] opacity-70">
                           {(() => {
                             // Architect sub-27 cont'd multi-lingual MVP:
-                            // try translated rule name first, fall back to
-                            // server-side ruleName if no translation key.
+                            // try translated rule name first; fall back to
+                            // server-side ruleName if translation returns
+                            // the key itself (= missing in messages json
+                            // OR test mock returning key) or throws.
+                            const key = `alerts.rules.${m.ruleId}`;
                             try {
-                              return t(`alerts.rules.${m.ruleId}` as never);
+                              const translated = t(key as never);
+                              return translated && translated !== key
+                                ? translated
+                                : m.ruleName;
                             } catch {
                               return m.ruleName;
                             }
