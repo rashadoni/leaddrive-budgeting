@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("52 active indicator seeds (matches sector pack tally — Phase 7.C 44→52 closed)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(52)
+  it("56 active indicator seeds (sub-27 cont'd Round-5 + 4 industrial real-data saturation: IND_OPERATING_LEVERAGE / IND_FX_INPUT_RISK / IND_REVENUE_HHI / IND_OPEX_TO_COGS)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(56)
   })
 
   it("every indicator has a unique code", () => {

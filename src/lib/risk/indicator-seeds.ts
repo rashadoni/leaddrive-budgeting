@@ -316,6 +316,93 @@ export const industrialIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine"],
     sortOrder: 40,
   },
+  // ── Real-data saturation extension (sub-27 cont'd) ──────────────────
+  // 4 new industrial indicators that consume context vars already
+  // exposed by `budgetLineResolver` (gross_profit / opex / total_input_cost
+  // / imported_input_cost / revenue_line_hhi). No new resolver work or
+  // new data import required — pure formula additions that turn the
+  // existing AZMADE BudgetLine import into 4 more lit cells per
+  // industrial company on the HeatMap.
+  {
+    code: "IND_OPERATING_LEVERAGE",
+    nameEn: "Operating Leverage",
+    nameAz: "Əməliyyat Leverajı",
+    nameRu: "Операционный леверидж",
+    category: "operational",
+    industries: ["industrial"],
+    unit: "ratio",
+    direction: "higher_better",
+    formula: "gross_profit / opex",
+    thresholds: {
+      green: { op: ">=", value: 2 },
+      amber: { op: ">=", value: 1 },
+      red: { op: "<", value: 1 },
+    },
+    hintTemplateEn:
+      "Operating leverage = {value}. Above 2.0 means gross profit comfortably covers fixed-cost overhead; below 1.0 every revenue dip eats payroll/rent/admin.",
+    requiredInputs: ["budgetLine"],
+    sortOrder: 50,
+  },
+  {
+    code: "IND_FX_INPUT_RISK",
+    nameEn: "FX Input-Cost Exposure",
+    nameAz: "Valyuta Giriş Riski",
+    nameRu: "Валютный риск входящих затрат",
+    category: "fx",
+    industries: ["industrial"],
+    unit: "%",
+    direction: "lower_better",
+    formula: "imported_input_cost / total_input_cost * 100",
+    thresholds: {
+      green: { op: "<=", value: 30 },
+      amber: { op: "<=", value: 60 },
+      red: { op: ">", value: 60 },
+    },
+    hintTemplateEn:
+      "Imported share of input cost = {value}%. Above 60% — a 10% AZN devaluation moves COGS by ~6%; consider FX hedging or alternate domestic sourcing.",
+    requiredInputs: ["budgetLine"],
+    sortOrder: 60,
+  },
+  {
+    code: "IND_REVENUE_HHI",
+    nameEn: "Revenue Concentration (HHI)",
+    nameAz: "Gəlir Konsentrasiyası (HHI)",
+    nameRu: "Концентрация выручки (HHI)",
+    category: "geopolitical",
+    industries: ["industrial"],
+    unit: "index",
+    direction: "lower_better",
+    formula: "revenue_line_hhi",
+    thresholds: {
+      green: { op: "<=", value: 1500 },
+      amber: { op: "<=", value: 3000 },
+      red: { op: ">", value: 3000 },
+    },
+    hintTemplateEn:
+      "Revenue HHI = {value}. Above 3000 means a single product/customer dominates — diversify the pipeline before regulatory or demand shock.",
+    requiredInputs: ["budgetLine.revenue_line_hhi"],
+    sortOrder: 70,
+  },
+  {
+    code: "IND_OPEX_TO_COGS",
+    nameEn: "OpEx-to-COGS Balance",
+    nameAz: "OpEx/COGS Balansı",
+    nameRu: "OpEx к себестоимости",
+    category: "operational",
+    industries: ["industrial"],
+    unit: "%",
+    direction: "lower_better",
+    formula: "opex / cogs * 100",
+    thresholds: {
+      green: { op: "<=", value: 25 },
+      amber: { op: "<=", value: 50 },
+      red: { op: ">", value: 50 },
+    },
+    hintTemplateEn:
+      "OpEx is {value}% of COGS. Industrial baseline 15-30%; above 50% means non-production costs are too heavy relative to direct production — restructure or reclassify.",
+    requiredInputs: ["budgetLine"],
+    sortOrder: 80,
+  },
 ]
 
 // ─── Services pack (5) ─────────────────────────────────────────────────────
