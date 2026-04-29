@@ -610,16 +610,28 @@ async function seedBudgetLinesForCompany(
       currency?: 'USD' | null;
       exchangeRate?: number | null;
     };
+    // FX storage convention: `annual` for USD-tagged lines is the
+    // FOREIGN-currency amount; the resolver multiplies by exchangeRate
+    // to convert to AZN base. To make the AZN-equivalent match the
+    // intent (e.g. "15% of AZN revenue is FX"), divide the AZN-intent
+    // by exchangeRate. Architect Round-1 sub-27-cont'd: original code
+    // stored AZN-intent directly as the USD amount, inflating
+    // AZN-equivalent revenue/cogs by ×exchangeRate (1.7 → +70%) and
+    // pushing every amber company into red gross-margin band.
+    const FX_RATE = 1.7;
+    const fxRevenueIntentAzn = annualRevenue * 0.15;
+    const fxRevenueUsd = fxRevenueIntentAzn / FX_RATE;
+    const importedCogsUsd = importedCogs / FX_RATE;
     const specs: LineSpec[] = [
       { coaCode: '601-REV', annual: annualRevenue * 0.85 },
-      { coaCode: '602-REV-FX', annual: annualRevenue * 0.15, currency: 'USD', exchangeRate: 1.7 },
+      { coaCode: '602-REV-FX', annual: fxRevenueUsd, currency: 'USD', exchangeRate: FX_RATE },
       ...(industry === 'poultry'
         ? [
             { coaCode: '703-COGS-FEED', annual: feedCogs },
             { coaCode: '701-COGS', annual: nonFeedCogs },
           ]
         : [{ coaCode: '701-COGS', annual: domesticCogs }]),
-      { coaCode: '702-COGS-IMPORTED', annual: importedCogs, currency: 'USD' as const, exchangeRate: 1.7 },
+      { coaCode: '702-COGS-IMPORTED', annual: importedCogsUsd, currency: 'USD' as const, exchangeRate: FX_RATE },
       { coaCode: '711-OPEX-SALES', annual: annualSalesOpex },
       { coaCode: '721-OPEX-ADMIN', annual: annualAdminOpex },
       { coaCode: '731-DEPR', annual: annualDepr },
@@ -710,12 +722,23 @@ async function seedBookingsForHotel(
         // which produced ≥1.0 every month → green hotel flat at 0.95 occ).
         const seasonalMultiplier = 0.5 + monthShape * 6;
         const seasonalOcc = Math.min(recipe.occupancyTarget * seasonalMultiplier, 0.95);
-        const targetRoomNights = Math.round(totalRooms * 30 * seasonalOcc);
-        // Each booking averages ~5 room-nights (1-2 rooms × 2-4 nights).
-        // Keeps booking volume manageable (~600-1200/month for a 180-room
-        // hotel) while still hitting target rooms_sold for HOSP_OCC.
-        const avgRoomNightsPerBooking = 5;
-        const bookingsThisMonth = Math.max(Math.round(targetRoomNights / avgRoomNightsPerBooking), 8);
+        const daysInMonth = 30;
+        // CRITICAL: bookingResolver semantics are
+        // `rooms_sold = sum(roomsBooked)` (each Booking row counts its
+        // roomsBooked once, regardless of nights). So to hit a target
+        // monthly occupancy:
+        //   target rooms_sold = totalRooms × daysInMonth × seasonalOcc
+        //   bookingsThisMonth × avgRoomsPerBooking ≈ target rooms_sold
+        // Using avg roomsBooked=3 (range 2-4 below) → divisor=3.
+        // This is "block reservations" — each booking represents a
+        // multi-room family/group stay rather than a single-room walk-in.
+        // Architect sub-27 cont'd: prior version divided by `5`
+        // (avgRoomNightsPerBooking) treating roomsBooked × nights as the
+        // resolver semantic — which it isn't. HOSP_OCC landed at ~22%
+        // for green hotels post-fix-1 because of this misinterpretation.
+        const targetRoomsSold = Math.round(totalRooms * daysInMonth * seasonalOcc);
+        const avgRoomsPerBooking = 3;
+        const bookingsThisMonth = Math.max(Math.round(targetRoomsSold / avgRoomsPerBooking), 8);
         for (let b = 0; b < bookingsThisMonth; b++) {
           // Pick country deterministically by booking index → country mix weights.
           const pickIdx = (b * 17) % 100; // deterministic spread
@@ -730,17 +753,19 @@ async function seedBookingsForHotel(
           }
           const day = Math.min(((b * 7) % 28) + 1, 28);
           const arrivalDate = new Date(Date.UTC(year, m, day));
-          // 2/3/4 nights × 1/2 rooms = 2,3,4,4,6,8 room-nights (avg ≈4.5).
+          // 2/3/4 nights × 2/3/4 rooms = "block reservations" with avg
+          // 3 rooms × 3 nights ≈ 9 room-nights per Booking row.
           const nights = 2 + (b % 3); // 2/3/4
-          const roomsBooked = 1 + (b % 2); // 1 or 2
+          const roomsBooked = 2 + (b % 3); // 2/3/4
           const departureDate = new Date(arrivalDate);
           departureDate.setUTCDate(departureDate.getUTCDate() + nights);
           // Revenue: USD/EUR bookings stored in foreign currency; resolver
           // applies exchangeRate to convert to base. Per-room-per-night ADR.
           const adr = recipe.adrAzn;
+          const isFx = country.currency !== 'AZN';
           const fxRate = country.currency === 'USD' ? 1.7 : country.currency === 'EUR' ? 1.85 : null;
           const revenueAzn = adr * nights * roomsBooked;
-          const revenue = fxRate != null ? +(revenueAzn / fxRate).toFixed(2) : +revenueAzn.toFixed(2);
+          const revenue = isFx && fxRate != null ? +(revenueAzn / fxRate).toFixed(2) : +revenueAzn.toFixed(2);
           rows.push({
             organizationId: orgId,
             companyId,
@@ -748,8 +773,13 @@ async function seedBookingsForHotel(
             departureDate,
             nights,
             revenue,
-            currencyCode: country.currency,
-            exchangeRate: fxRate,
+            // CRITICAL: bookingResolver counts ANY booking with
+            // currencyCode != null as FX revenue (recompute.ts:562).
+            // To prevent AZN bookings from inflating HOSP_FX_EXPOSURE
+            // to 100%, leave currencyCode null for the base currency.
+            // Architect sub-27 cont'd closure.
+            currencyCode: isFx ? country.currency : null,
+            exchangeRate: isFx ? fxRate : null,
             sourceCountry: country.code,
             roomsBooked,
             channel: country.code === 'AZ' ? 'direct' : 'ota',
