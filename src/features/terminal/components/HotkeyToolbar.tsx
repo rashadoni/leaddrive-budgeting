@@ -23,6 +23,7 @@
  */
 
 import React, { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Bell,
   FilePlus2,
@@ -46,6 +47,7 @@ interface HotkeyDef {
 }
 
 export function HotkeyToolbar() {
+  const t = useTranslations("terminal");
   const setWatchlistTab = useTerminalStore((s) => s.setWatchlistTab);
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
   const activePanelId = useTerminalStore((s) => s.activePanelId);
@@ -71,9 +73,9 @@ export function HotkeyToolbar() {
   const hotkeys: HotkeyDef[] = [
     {
       key: "new-plan",
-      label: "NEW PLAN",
+      label: t("hotkeys.newPlan"),
       icon: FilePlus2,
-      title: "Open Plans tab in /budgeting (create / approve plans)",
+      title: t("hotkeys.newPlanTitle"),
       action: () => {
         window.location.href = "/budgeting?tab=plans";
         return true;
@@ -81,9 +83,9 @@ export function HotkeyToolbar() {
     },
     {
       key: "compare",
-      label: "COMPARE",
+      label: t("hotkeys.compare"),
       icon: GitCompare,
-      title: "Focus command bar with 'CMP ' prefilled — type 2 codes + GO",
+      title: t("hotkeys.compareTitle"),
       action: () => {
         // Prefill CMD-bar with "CMP " so the user just types 2 company
         // codes + GO. Uses data-cmd-bar marker that PanelGrid switchPanel
@@ -108,16 +110,16 @@ export function HotkeyToolbar() {
     },
     {
       key: "alerts",
-      label: "ALERTS",
+      label: t("hotkeys.alerts"),
       icon: Bell,
-      title: "Open Audit Log overlay (AUD GO equivalent)",
+      title: t("hotkeys.alertsTitle"),
       action: () => fireWindowEvent("terminal:open-audit"),
     },
     {
       key: "favorites",
-      label: "STARRED",
+      label: t("hotkeys.starred"),
       icon: Star,
-      title: "Filter CompanyTree to starred companies",
+      title: t("hotkeys.starredTitle"),
       action: () => {
         setWatchlistTab("starred");
         return true;
@@ -125,9 +127,9 @@ export function HotkeyToolbar() {
     },
     {
       key: "recent",
-      label: "RECENT",
+      label: t("hotkeys.recent"),
       icon: History,
-      title: "Filter CompanyTree to recently-viewed companies",
+      title: t("hotkeys.recentTitle"),
       action: () => {
         setWatchlistTab("recent");
         return true;
@@ -135,27 +137,27 @@ export function HotkeyToolbar() {
     },
     {
       key: "recompute",
-      label: recomputing ? "RUNNING…" : "RECOMPUTE",
+      label: recomputing ? t("hotkeys.running") : t("hotkeys.recompute"),
       icon: RefreshCw,
       title: recomputing
-        ? "Recompute in progress…"
-        : "Trigger indicator-matrix recompute (POST /api/indicators); SSE refreshes when done",
+        ? t("hotkeys.recomputeRunning")
+        : t("hotkeys.recomputeTitle"),
       action: triggerRecompute,
       disabled: recomputing,
     },
     {
       key: "search",
-      label: "SEARCH",
+      label: t("hotkeys.search"),
       icon: Search,
-      title: `Focus the search input in active panel ${activePanelId} (same as /)`,
+      title: t("hotkeys.searchTitle"),
       action: () =>
         fireWindowEvent("terminal:focus-search", { panelId: activePanelId }),
     },
     {
       key: "import",
-      label: "IMPORT",
+      label: t("hotkeys.import"),
       icon: Upload,
-      title: "Upload a budget xlsx via Onboarding wizard",
+      title: t("hotkeys.importTitle"),
       action: () => {
         window.location.href = "/budgeting/onboarding";
         return true;
@@ -169,7 +171,7 @@ export function HotkeyToolbar() {
       aria-label="Terminal hotkeys"
       className="flex items-center gap-1 px-2 py-1 bg-[#050814] border-b border-gray-800 font-mono text-[10px] text-gray-500 overflow-x-auto whitespace-nowrap shrink-0"
     >
-      <span className="text-gray-700 shrink-0 mr-1">⌘ HOTKEYS</span>
+      <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>
       {hotkeys.map((h) => {
         const Icon = h.icon;
         return (

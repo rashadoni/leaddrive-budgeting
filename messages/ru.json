@@ -1334,6 +1334,54 @@
       "heatMap": "Кликните на ячейку для деталей · Нажмите / для поиска",
       "detail": "Нажмите F3 для фокуса · Кликните EXPLAIN для AI-объяснения",
       "snapshot": "Наведите на спарклайн для месячных значений · Клик для сравнения"
+    },
+    "panelGrid": {
+      "panel": "ПАНЕЛЬ"
+    },
+    "hotkeys": {
+      "label": "ХОТКЕИ",
+      "newPlan": "НОВЫЙ ПЛАН",
+      "newPlanTitle": "Открыть вкладку Планов в /budgeting (создание / утверждение)",
+      "compare": "СРАВНИТЬ",
+      "compareTitle": "Фокус командной строки с префиксом 'CMP ' — введите 2 кода + GO",
+      "alerts": "АЛЕРТЫ",
+      "alertsTitle": "Открыть журнал аудита (эквивалент AUD GO)",
+      "starred": "ИЗБРАННОЕ",
+      "starredTitle": "Фильтр дерева компаний по избранным",
+      "recent": "НЕДАВНИЕ",
+      "recentTitle": "Фильтр дерева компаний по недавно открытым",
+      "recompute": "ПЕРЕРАСЧЁТ",
+      "running": "ВЫПОЛНЯЕТСЯ…",
+      "recomputeTitle": "Запустить перерасчёт матрицы индикаторов (POST /api/indicators); SSE обновит когда готово",
+      "recomputeRunning": "Перерасчёт в процессе…",
+      "search": "ПОИСК",
+      "searchTitle": "Сфокусировать поиск в активной панели (то же что /)",
+      "import": "ИМПОРТ",
+      "importTitle": "Загрузить xlsx бюджета через мастер онбординга"
+    },
+    "companyTree": {
+      "filterPlaceholder": "фильтр компаний…",
+      "loadingAlerts": "Загрузка алертов…",
+      "loading": "Загрузка…",
+      "noCompanies": "Компаний нет. Импортируйте через /budgeting/onboarding.",
+      "noMatchPrefix": "Нет совпадений для",
+      "tabAll": "ВСЕ",
+      "tabRecent": "НЕДАВНИЕ",
+      "tabSector": "СЕКТОР"
+    },
+    "heatMap": {
+      "filterRowsPlaceholder": "фильтр строк…"
+    },
+    "indicatorDetail": {
+      "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",
+      "emptyOrTypePrefix": "Или введите",
+      "emptyOrTypeSuffix": "в командной строке."
+    },
+    "varianceExplainer": {
+      "explainArrow": "Объяснить →",
+      "pickCellPrefix": "Выберите ячейку HeatMap, затем кликните",
+      "fullHint": "AI Variance Explainer — объясняет что движет индикатором + 3 actionable рекомендации. LLM-вызовы запускаются пользователем (Explain / Re-run) — никогда не срабатывают автоматически при клике на ячейку.",
+      "shortHint": "AI Variance Explainer — объясняет что движет индикатором + 3 actionable рекомендации. Кликните на ячейку HeatMap, затем"
     }
   }
 }

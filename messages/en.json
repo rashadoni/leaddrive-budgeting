@@ -1334,6 +1334,54 @@
       "heatMap": "Click any cell for indicator detail · Press / to search",
       "detail": "Press F3 to focus this panel · Click EXPLAIN for AI narrative",
       "snapshot": "Hover sparklines for monthly values · Click cards to compare"
+    },
+    "panelGrid": {
+      "panel": "PANEL"
+    },
+    "hotkeys": {
+      "label": "HOTKEYS",
+      "newPlan": "NEW PLAN",
+      "newPlanTitle": "Open Plans tab in /budgeting (create / approve plans)",
+      "compare": "COMPARE",
+      "compareTitle": "Focus command bar with 'CMP ' prefilled — type 2 codes + GO",
+      "alerts": "ALERTS",
+      "alertsTitle": "Open Audit Log overlay (AUD GO equivalent)",
+      "starred": "STARRED",
+      "starredTitle": "Filter Company Tree to starred companies",
+      "recent": "RECENT",
+      "recentTitle": "Filter Company Tree to recently-viewed companies",
+      "recompute": "RECOMPUTE",
+      "running": "RUNNING…",
+      "recomputeTitle": "Trigger indicator-matrix recompute (POST /api/indicators); SSE refreshes when done",
+      "recomputeRunning": "Recompute in progress…",
+      "search": "SEARCH",
+      "searchTitle": "Focus the search input in the active panel (same as /)",
+      "import": "IMPORT",
+      "importTitle": "Upload a budget xlsx via Onboarding wizard"
+    },
+    "companyTree": {
+      "filterPlaceholder": "filter companies…",
+      "loadingAlerts": "Loading alerts…",
+      "loading": "Loading…",
+      "noCompanies": "No companies. Import via /budgeting/onboarding.",
+      "noMatchPrefix": "No match for",
+      "tabAll": "ALL",
+      "tabRecent": "RECENT",
+      "tabSector": "SECTOR"
+    },
+    "heatMap": {
+      "filterRowsPlaceholder": "filter rows…"
+    },
+    "indicatorDetail": {
+      "emptyDrillDown": "Click any HeatMap cell to drill down.",
+      "emptyOrTypePrefix": "Or type",
+      "emptyOrTypeSuffix": "in the command bar."
+    },
+    "varianceExplainer": {
+      "explainArrow": "Explain →",
+      "pickCellPrefix": "Pick a HeatMap cell, then click",
+      "fullHint": "AI Variance Explainer — narrates what's driving the indicator + 3 actionable recommendations. LLM calls are user-triggered (Explain / Re-run) — never auto-fired on cell-click navigation.",
+      "shortHint": "AI Variance Explainer — narrates what's driving an indicator + 3 actionable recommendations. Click any HeatMap cell, then"
     }
   }
 }

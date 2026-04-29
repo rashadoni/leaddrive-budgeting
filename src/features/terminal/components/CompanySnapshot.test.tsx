@@ -134,11 +134,11 @@ describe("CompanySnapshot (Phase B7)", () => {
       expect(screen.queryByText("Gross Margin")).toBeTruthy();
     });
     expect(screen.queryByText("AAC-MAIN")).toBeTruthy();
-    // Sub-27 cont'd multi-lingual: header label + "12mo trend" now flow
-    // through next-intl `t()`. Vitest mock returns the key itself, so we
-    // assert on the key string. Production renders translated label.
-    expect(screen.queryByText(/snapshot\.title/)).toBeTruthy();
-    expect(screen.queryByText(/snapshot\.trend12mo/)).toBeTruthy();
+    // Sub-27 cont'd Round-3 i18n wave 2: vitest.setup.ts EXPLICIT_LABELS
+    // now maps `snapshot.title` → "Snapshot" + `snapshot.trend12mo` →
+    // "12mo trend" so existing assertions match without component rewrite.
+    expect(screen.queryByText(/Snapshot/)).toBeTruthy();
+    expect(screen.queryByText(/12mo trend/)).toBeTruthy();
   });
 
   it("Falls back to no-data text when company has 0 of 3 indicators", async () => {

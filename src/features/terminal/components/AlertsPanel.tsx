@@ -150,17 +150,23 @@ export function AlertsPanel() {
                       >
                         <div className="font-mono text-[11px] opacity-70">
                           {(() => {
-                            // Architect sub-27 cont'd multi-lingual MVP:
-                            // try translated rule name first; fall back to
-                            // server-side ruleName if translation returns
-                            // the key itself (= missing in messages json
-                            // OR test mock returning key) or throws.
-                            const key = `alerts.rules.${m.ruleId}`;
+                            // Sub-27 cont'd multi-lingual MVP: only the 5
+                            // built-in default rule IDs have translation
+                            // entries in messages.json — custom user rules
+                            // (or test fixtures with synthetic IDs) flow
+                            // through to server-side ruleName. Hard-coded
+                            // allowlist instead of try/catch + key-equals
+                            // heuristic which is brittle under test mocks.
+                            const KNOWN: ReadonlySet<string> = new Set([
+                              'company-mostly-red',
+                              'company-critical-composite',
+                              'sector-amber-cluster',
+                              'sector-red-spread',
+                              'critical-indicator-org-wide',
+                            ]);
+                            if (!KNOWN.has(m.ruleId)) return m.ruleName;
                             try {
-                              const translated = t(key as never);
-                              return translated && translated !== key
-                                ? translated
-                                : m.ruleName;
+                              return t(`alerts.rules.${m.ruleId}` as never);
                             } catch {
                               return m.ruleName;
                             }

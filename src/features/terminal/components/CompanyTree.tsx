@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Bell, Star } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 
@@ -21,6 +22,7 @@ type Props = {
 };
 
 export function CompanyTree({ companies, loading, onSelect }: Props) {
+  const t = useTranslations('terminal');
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   // User-driven row clicks → selectCompany (tracks LRU recent).
   const storeSetCompany = useTerminalStore((s) => s.selectCompany);
@@ -206,6 +208,9 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         recentCount={recentCompanyCodes.length}
         alertedCount={alertedCompanyCodes ? alertedCompanyCodes.size : null}
         sectorCount={sectorGroups.length}
+        tAll={t('companyTree.tabAll')}
+        tRecent={t('companyTree.tabRecent')}
+        tSector={t('companyTree.tabSector')}
       />
       {/* Search input renders unconditionally (even on empty state) so
           the `/`-search keyboard shortcut always lands on a visible
@@ -224,7 +229,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
               e.stopPropagation();
             }
           }}
-          placeholder="filter companies…"
+          placeholder={t('companyTree.filterPlaceholder')}
           className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none flex-1"
           spellCheck={false}
           aria-label="Filter company tree"
@@ -235,15 +240,15 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         // state for ALERTED tab during the 1-2 sec window before HeatMap
         // matrix publishes alertedCompanyCodes (was: empty Set → looked
         // like "no matches").
-        <span className="text-gray-600 px-1 py-2">Loading alerts…</span>
+        <span className="text-gray-600 px-1 py-2">{t('companyTree.loadingAlerts')}</span>
       ) : loading ? (
-        <span className="text-gray-700 px-1 py-2">Loading…</span>
+        <span className="text-gray-700 px-1 py-2">{t('companyTree.loading')}</span>
       ) : isEmpty ? (
         <span className="text-gray-700 px-1 py-2">
-          No companies. Import via /budgeting/onboarding.
+          {t('companyTree.noCompanies')}
         </span>
       ) : filteredRoots.length === 0 ? (
-        <span className="text-gray-600 px-1 py-2">No match for "{search}"</span>
+        <span className="text-gray-600 px-1 py-2">{t('companyTree.noMatchPrefix')} "{search}"</span>
       ) : watchlistTab === 'sector' ? (
         // Phase B4 v2 — SECTOR view groups roots by industry. Each
         // group gets a sticky-uppercase header; rows under it use the
@@ -396,6 +401,9 @@ function WatchlistTabs(props: {
   recentCount: number;
   alertedCount: number | null;
   sectorCount: number;
+  tAll: string;
+  tRecent: string;
+  tSector: string;
 }) {
   // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
   // icons for cross-platform parity (Linux/Windows often miss color
@@ -406,7 +414,7 @@ function WatchlistTabs(props: {
     icon?: React.ReactNode;
     badge: number | null;
   }> = [
-    { key: 'all', label: 'ALL', badge: null },
+    { key: 'all', label: props.tAll, badge: null },
     {
       key: 'starred',
       label: '',
@@ -419,8 +427,8 @@ function WatchlistTabs(props: {
       icon: <Bell size={11} />,
       badge: props.alertedCount,
     },
-    { key: 'recent', label: 'RECENT', badge: props.recentCount || null },
-    { key: 'sector', label: 'SECTOR', badge: props.sectorCount || null },
+    { key: 'recent', label: props.tRecent, badge: props.recentCount || null },
+    { key: 'sector', label: props.tSector, badge: props.sectorCount || null },
   ];
   return (
     <div

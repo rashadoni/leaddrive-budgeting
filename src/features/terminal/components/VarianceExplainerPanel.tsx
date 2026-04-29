@@ -14,6 +14,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
 
@@ -35,6 +36,7 @@ const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
 ];
 
 export function VarianceExplainerPanel() {
+  const t = useTranslations("terminal");
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
@@ -180,9 +182,8 @@ export function VarianceExplainerPanel() {
           <CompanySnapshot companyCode={activeCompanyCode} />
           <div className="text-[10px] text-gray-700 leading-snug pt-1 border-t border-gray-800/40">
             <span className="text-gray-600">
-              AI Variance Explainer — narrates what's driving an indicator + 3
-              actionable recommendations. Click any HeatMap cell, then{" "}
-              <span className="text-[#FFB800]">Explain →</span>.
+              {t("varianceExplainer.shortHint")}{" "}
+              <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>.
             </span>
           </div>
         </div>
@@ -190,13 +191,11 @@ export function VarianceExplainerPanel() {
     }
     return (
       <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        Pick a HeatMap cell, then click <span className="text-[#FFB800]">Explain →</span>
+        {t("varianceExplainer.pickCellPrefix")} <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>
         <br />
         <br />
         <span className="text-gray-600">
-          AI Variance Explainer — narrates what's driving the indicator + 3
-          actionable recommendations. LLM calls are user-triggered (Explain /
-          Re-run) — never auto-fired on cell-click navigation.
+          {t("varianceExplainer.fullHint")}
         </span>
       </div>
     );

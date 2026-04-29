@@ -1334,6 +1334,54 @@
       "heatMap": "Detallar üçün xanaya klikləyin · Axtarış üçün / basın",
       "detail": "F3 ilə fokuslayın · AI izahı üçün EXPLAIN klikləyin",
       "snapshot": "Aylıq dəyərlər üçün spark üzərinə gətirin · Klik müqayisə üçün"
+    },
+    "panelGrid": {
+      "panel": "PANEL"
+    },
+    "hotkeys": {
+      "label": "QISA YOLLAR",
+      "newPlan": "YENİ PLAN",
+      "newPlanTitle": "Planlar bölməsini aç (/budgeting — yaratma / təsdiq)",
+      "compare": "MÜQAYİSƏ",
+      "compareTitle": "Komanda sətrinə 'CMP ' prefiksi — 2 kod + GO yazın",
+      "alerts": "XƏBƏRDARLIQLAR",
+      "alertsTitle": "Audit jurnalı modal pəncərəsi (AUD GO ekvivalenti)",
+      "starred": "SEÇİLMİŞLƏR",
+      "starredTitle": "Şirkət ağacını seçilmişlərə filtrlə",
+      "recent": "SON",
+      "recentTitle": "Şirkət ağacını yaxınlarda baxılanlara filtrlə",
+      "recompute": "YENİDƏN HESABLAMA",
+      "running": "İCRA OLUNUR…",
+      "recomputeTitle": "Göstərici matrisini yenidən hesabla (POST /api/indicators); hazır olduqda SSE yeniləyir",
+      "recomputeRunning": "Yenidən hesablama prosesdədir…",
+      "search": "AXTAR",
+      "searchTitle": "Aktiv paneldə axtarışı fokuslayır (/ kimi)",
+      "import": "İDXAL",
+      "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə"
+    },
+    "companyTree": {
+      "filterPlaceholder": "şirkət filtri…",
+      "loadingAlerts": "Xəbərdarlıqlar yüklənir…",
+      "loading": "Yüklənir…",
+      "noCompanies": "Şirkət yoxdur. /budgeting/onboarding ilə idxal et.",
+      "noMatchPrefix": "Uyğunluq yoxdur:",
+      "tabAll": "HAMISI",
+      "tabRecent": "SON",
+      "tabSector": "SEKTOR"
+    },
+    "heatMap": {
+      "filterRowsPlaceholder": "sətr filtri…"
+    },
+    "indicatorDetail": {
+      "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
+      "emptyOrTypePrefix": "Yaxud yazın",
+      "emptyOrTypeSuffix": "komanda sətrində."
+    },
+    "varianceExplainer": {
+      "explainArrow": "İzah et →",
+      "pickCellPrefix": "Xəritədən xana seçin, sonra klikləyin",
+      "fullHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. LLM çağırışları istifadəçi tərəfindən tetiklənir (Explain / Re-run) — xanaya klikdə avtomatik baş vermir.",
+      "shortHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. Xəritə xanasına klikləyin, sonra"
     }
   }
 }

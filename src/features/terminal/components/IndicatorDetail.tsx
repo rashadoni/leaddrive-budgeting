@@ -108,12 +108,13 @@ export function IndicatorDetail() {
   if (!ivId) {
     return (
       <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        Click any HeatMap cell to drill down.
+        {t('indicatorDetail.emptyDrillDown')}
         <br />
         <br />
         <span className="text-gray-600">
-          Or type <span className="text-[#FFB800]">IND_OPEX_RATIO IND GO</span> in the
-          command bar.
+          {t('indicatorDetail.emptyOrTypePrefix')}{' '}
+          <span className="text-[#FFB800]">IND_OPEX_RATIO IND GO</span>{' '}
+          {t('indicatorDetail.emptyOrTypeSuffix')}
         </span>
       </div>
     );

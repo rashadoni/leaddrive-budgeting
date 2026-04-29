@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useCompanies } from '../hooks/use-companies';
 import {
   Group,
@@ -112,8 +113,16 @@ function readSavedLayout(storageKey: string): Layout | undefined {
 }
 
 export function PanelGrid() {
+  const t = useTranslations('terminal');
   const activePanelId = useTerminalStore((s) => s.activePanelId);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
+  const PANEL_LABEL = t('panelGrid.panel');
+  const PANEL_TITLES_T: Record<PanelId, string> = {
+    1: t('panels.companyTree'),
+    2: t('panels.heatMap'),
+    3: t('panels.indicatorDetail'),
+    4: t('panels.snapshot'),
+  };
 
   // Sub-19: shared `useCompanies()` hook replaces inline fetch +
   // useState. Module-level cache means PanelGrid + RelatedFunctionsMenu
@@ -278,6 +287,8 @@ export function PanelGrid() {
                 id={1}
                 isActive={activePanelId === 1}
                 onActivate={setActivePanel}
+                panelLabel={`${PANEL_LABEL} 1`}
+                panelTitle={PANEL_TITLES_T[1]}
               >
                 <CompanyTree companies={companies} loading={loading} />
               </PanelShell>
@@ -288,6 +299,8 @@ export function PanelGrid() {
                 id={2}
                 isActive={activePanelId === 2}
                 onActivate={setActivePanel}
+                panelLabel={`${PANEL_LABEL} 2`}
+                panelTitle={PANEL_TITLES_T[2]}
               >
                 <HeatMap />
               </PanelShell>
@@ -307,6 +320,8 @@ export function PanelGrid() {
                 id={3}
                 isActive={activePanelId === 3}
                 onActivate={setActivePanel}
+                panelLabel={`${PANEL_LABEL} 3`}
+                panelTitle={PANEL_TITLES_T[3]}
               >
                 <IndicatorDetail />
               </PanelShell>
@@ -317,6 +332,8 @@ export function PanelGrid() {
                 id={4}
                 isActive={activePanelId === 4}
                 onActivate={setActivePanel}
+                panelLabel={`${PANEL_LABEL} 4`}
+                panelTitle={PANEL_TITLES_T[4]}
               >
                 <VarianceExplainerPanel />
               </PanelShell>
@@ -379,9 +396,11 @@ function PanelShell(props: {
   id: PanelId;
   isActive: boolean;
   onActivate: (id: number) => void;
+  panelLabel: string;
+  panelTitle: string;
   children: React.ReactNode;
 }) {
-  const { id, isActive, onActivate, children } = props;
+  const { id, isActive, onActivate, panelLabel, panelTitle, children } = props;
   return (
     <div
       onClick={() => onActivate(id)}
@@ -392,9 +411,9 @@ function PanelShell(props: {
       <div className="flex justify-between items-center mb-2 pb-1.5 border-b border-gray-800/50 shrink-0">
         <h3 className="text-gray-400 font-mono text-[10px] uppercase tracking-wider flex items-center gap-2">
           <span className="text-gray-600">F{id}</span>
-          <span>Panel {id}</span>
+          <span>{panelLabel}</span>
           <span className="text-gray-700">·</span>
-          <span>{PANEL_TITLES[id]}</span>
+          <span>{panelTitle}</span>
         </h3>
         {isActive && <span className="w-2 h-2 rounded-full bg-[#00D4AA]" />}
       </div>

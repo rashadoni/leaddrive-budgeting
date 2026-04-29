@@ -307,7 +307,7 @@ export function HeatMap({ period }: Props) {
                 e.stopPropagation();
               }
             }}
-            placeholder="filter rows…"
+            placeholder={t('heatMap.filterRowsPlaceholder')}
             className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none w-full"
             spellCheck={false}
             aria-label="Filter heatmap rows"
