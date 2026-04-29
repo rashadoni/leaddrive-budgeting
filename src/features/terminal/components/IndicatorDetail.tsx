@@ -391,6 +391,11 @@ function ForecastSection(props: {
   // zero/negative. Architect sub-13 closure.
   const sign = forecast.predicted > 0 ? "+" : "";
   const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
+  // Sub-24 — 95% prediction interval. Surfaces in v1 badge as
+  // `±marginOfError` text. Hidden when interval collapses to ±0
+  // (perfect-fit edge case — would clutter badge with redundant "±0").
+  const ci = forecast.predictionInterval;
+  const showCi = ci && ci.marginOfError > 1e-6;
 
   // Architect sub-22 ⚠️ closure: loosened UI gate to permit low-
   // confidence callers — system prompt has an explicit "LEAD WITH THE
@@ -445,6 +450,18 @@ function ForecastSection(props: {
           {trendArrow} {sign}
           {formatValue(forecast.predicted)}
         </span>
+        {/* Sub-24 — 95% prediction interval as ±range. Tabular-nums to
+            keep the badge stable when CI value swaps width on
+            re-render (different IV with different residuals). */}
+        {showCi && (
+          <span
+            className="text-[10px] font-mono tabular-nums text-gray-500"
+            data-testid="forecast-ci"
+            title={`95% prediction interval (n=${forecast.contributingCount}, df=${ci.degreesOfFreedom})`}
+          >
+            ±{formatValue(ci.marginOfError)}
+          </span>
+        )}
         <span className="text-[9px] text-gray-500 ml-auto">
           {isFlat
             ? "no change expected"

@@ -298,6 +298,10 @@ export async function POST(
       // Sub-23 — return the multi-step horizon so the UI can render
       // step+1/+2/+3 badges alongside the LLM narrative.
       horizon: horizonResult?.horizon,
+      // Sub-24 — return 95% prediction interval for the next-period
+      // estimate so UI can render `predicted ±marginOfError` numeric
+      // band alongside the categorical confidence label.
+      predictionInterval: forecast.predictionInterval,
     });
   } catch (err) {
     console.error("[forecast/explain] runForecastExplainer failed:", err);

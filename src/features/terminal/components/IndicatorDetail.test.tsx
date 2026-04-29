@@ -386,6 +386,36 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     );
   });
 
+  it("renders 95% CI ±range alongside predicted value (sub-24)", async () => {
+    // Sub-24 — noisy ascending series → forecastNextPeriod auto-computes
+    // predictionInterval; UI surfaces it as ±marginOfError text in v1
+    // badge. Title attribute carries df + n for accessibility.
+    global.fetch = detailFetchMock({
+      sparkline: [0, 3, 3, 7, 7, 11, 11, 15], // ±1 noise around slope-2
+    });
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-ci")).toBeTruthy();
+    });
+    const ciSpan = screen.getByTestId("forecast-ci");
+    // CI text starts with ±, followed by formatted margin.
+    expect(ciSpan.textContent?.startsWith("±")).toBe(true);
+    // Title carries df + n metadata.
+    expect(ciSpan.getAttribute("title")).toContain("95% prediction interval");
+    expect(ciSpan.getAttribute("title")).toContain("n=8");
+    expect(ciSpan.getAttribute("title")).toContain("df=6");
+  });
+
+  it("hides ±range when forecast is perfect-fit (CI collapses to ±0)", async () => {
+    // Perfect ascending line → ssRes=0 → marginOfError=0 → CI hidden.
+    global.fetch = detailFetchMock({ sparkline: [0, 1, 2, 3, 4, 5, 6, 7] });
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByTestId("indicator-forecast")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("forecast-ci")).toBeNull();
+  });
+
   it("hides horizon strip when response omits horizon or has only 1 step", async () => {
     global.fetch = vi.fn(async (url: RequestInfo | URL) => {
       const u = String(url);

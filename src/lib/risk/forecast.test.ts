@@ -15,7 +15,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { forecastNextPeriod, forecastHorizon } from './forecast';
+import {
+  forecastNextPeriod,
+  forecastHorizon,
+  forecastConfidenceInterval,
+} from './forecast';
 
 describe('forecastNextPeriod (Phase C2 v1)', () => {
   it('perfect ascending line → R²=1, high confidence, slope=1', () => {
@@ -265,5 +269,82 @@ describe('forecastHorizon (Phase C2 v2 sub-23)', () => {
     expect(() => forecastHorizon([1, 2, 3, 4], 12)).not.toThrow();
     const r = forecastHorizon([1, 2, 3, 4], 12);
     expect(r!.horizon).toHaveLength(12);
+  });
+});
+
+describe('forecastConfidenceInterval (Phase C2 v2 sub-24)', () => {
+  it('perfect-line series → CI collapses to ±0 (no model error)', () => {
+    // Perfect slope-1 line: ssRes = 0 → sigma = 0 → margin = 0.
+    const ci = forecastConfidenceInterval([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(ci).not.toBeNull();
+    expect(ci!.marginOfError).toBeCloseTo(0, 9);
+    expect(ci!.lower).toBeCloseTo(ci!.upper, 9);
+    expect(ci!.level).toBe(0.95);
+  });
+
+  it('noisy ascending line → wider CI than perfect-line', () => {
+    // ±1 noise around slope-2 line: residuals nonzero → margin > 0.
+    const ci = forecastConfidenceInterval([0, 3, 3, 7, 7, 11, 11, 15]);
+    expect(ci).not.toBeNull();
+    expect(ci!.marginOfError).toBeGreaterThan(0);
+    // CI should bracket the predicted value: lower < predicted < upper.
+    const single = forecastNextPeriod([0, 3, 3, 7, 7, 11, 11, 15])!;
+    expect(ci!.lower).toBeLessThanOrEqual(single.predicted);
+    expect(ci!.upper).toBeGreaterThanOrEqual(single.predicted);
+  });
+
+  it('returns null when series has <3 non-null points', () => {
+    expect(forecastConfidenceInterval([1, 2])).toBeNull();
+    expect(forecastConfidenceInterval([null, null, null])).toBeNull();
+    expect(forecastConfidenceInterval([])).toBeNull();
+  });
+
+  it('df = n − 2; at n=3 df=1 → t_crit=12.706 → very wide CI', () => {
+    // Slight noise so ssRes > 0 (perfect fit collapses CI to 0).
+    const ci = forecastConfidenceInterval([0, 5, 1]);
+    expect(ci).not.toBeNull();
+    expect(ci!.degreesOfFreedom).toBe(1);
+    // Margin should reflect the t=12.706 multiplier on small df.
+    // Standard error sePred at this size dwarfs everything; just
+    // assert margin is large (not <1).
+    expect(ci!.marginOfError).toBeGreaterThan(1);
+  });
+
+  it('larger n + tighter fit → tighter CI (qualitative)', () => {
+    // Same slope, different sample sizes / noise levels.
+    const tight = forecastConfidenceInterval([
+      0, 2, 4, 6, 8, 10, 12, 14, 16, 18,
+    ])!; // perfect fit n=10
+    const noisy = forecastConfidenceInterval([0, 5, 1])!; // n=3 noisy
+    expect(tight.marginOfError).toBeLessThan(noisy.marginOfError);
+  });
+
+  it('CI integrated into ForecastResult.predictionInterval (single-pass contract)', () => {
+    // Sub-24 — forecastNextPeriod auto-attaches CI without 2nd OLS pass.
+    const r = forecastNextPeriod([0, 3, 3, 7, 7, 11, 11, 15]);
+    expect(r).not.toBeNull();
+    expect(r!.predictionInterval).toBeDefined();
+    expect(r!.predictionInterval!.level).toBe(0.95);
+    expect(r!.predictionInterval!.degreesOfFreedom).toBe(6); // n=8 - 2
+    // Standalone helper produces identical numbers (single source of truth).
+    const standalone = forecastConfidenceInterval([
+      0, 3, 3, 7, 7, 11, 11, 15,
+    ])!;
+    expect(r!.predictionInterval!.marginOfError).toBeCloseTo(
+      standalone.marginOfError,
+      9,
+    );
+    expect(r!.predictionInterval!.lower).toBeCloseTo(standalone.lower, 9);
+    expect(r!.predictionInterval!.upper).toBeCloseTo(standalone.upper, 9);
+  });
+
+  it('df > 30 clamps to t_crit ≈ 1.96 (z-distribution limit)', () => {
+    // Build a 33-point series (df = 31).
+    const series = Array.from({ length: 33 }, (_, i) => i * 2 + 0.1 * (i % 2));
+    const ci = forecastConfidenceInterval(series)!;
+    expect(ci.degreesOfFreedom).toBe(31);
+    // Margin / SE should be ~1.96 (clamped). Compute t_crit empirically.
+    const tEmpirical = ci.marginOfError / ci.standardError;
+    expect(tEmpirical).toBeCloseTo(1.96, 3);
   });
 });

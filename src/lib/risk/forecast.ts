@@ -48,31 +48,44 @@ export interface ForecastResult {
   contributingCount: number;
   /** Method tag for UX ("linear-regression-v1"). */
   method: 'linear-regression-v1';
+  /**
+   * Phase C2 v2 sub-24 — 95% prediction interval for the next-period
+   * estimate. Optional because the helper falls back to null on
+   * underlying-fit failures; when present, surfaces numeric ±range
+   * alongside the categorical confidence band. UI may render as
+   * `predicted ±marginOfError` text or as a translucent band.
+   */
+  predictionInterval?: ForecastConfidenceInterval;
 }
 
 const MIN_POINTS = 3;
 
 /**
- * Forecast the next slot for a given sparkline series. Returns `null`
- * if the series has fewer than 3 non-null points, OR if the series is
- * perfectly flat (no slope to project — semantically "no change
- * expected", but caller should render that branch differently from
- * "real prediction with high confidence").
+ * Internal: shared OLS linear-regression fit. All public helpers
+ * (`forecastNextPeriod`, `forecastHorizon`, `forecastConfidenceInterval`)
+ * consume this so the OLS pass runs ONCE per series, not 2-3× — closes
+ * architect sub-23 💡 about redundant compute.
  *
- * `flat` outcomes (all-identical y values) return predicted = mean,
- * slope = 0, r2 = 0, confidence = 'low' regardless of n. Without this
- * override the n≥5 medium-fallback would label a no-signal flat series
- * as "medium confidence", contradicting the semantic ("we have no
- * directional information"). Caller should still detect slope ≈ 0 and
- * render "no change expected" copy rather than treating the predicted
- * mean as a low-confidence directional signal.
+ * Returns null when fewer than `MIN_POINTS` non-null finite slots OR
+ * when `Sxx` collapses to 0 (degenerate; impossible for n≥3 distinct
+ * integer x but kept as defensive guard).
  */
-export function forecastNextPeriod(
+interface InternalFit {
+  points: Array<{ x: number; y: number }>;
+  n: number;
+  slope: number;
+  intercept: number;
+  meanX: number;
+  meanY: number;
+  sxx: number; // Σ(xᵢ − meanX)²
+  ssRes: number; // Σ(yᵢ − ŷᵢ)²
+  ssTot: number; // Σ(yᵢ − meanY)²
+  r2: number;
+}
+
+function fitLinearRegression(
   series: ReadonlyArray<number | null>,
-): ForecastResult | null {
-  // Collect (x, y) pairs from non-null slots, preserving the original
-  // index as x so a series like [10, null, 12, null, 14] still gets a
-  // slope estimate that respects the actual time spacing.
+): InternalFit | null {
   const points: Array<{ x: number; y: number }> = [];
   for (let i = 0; i < series.length; i++) {
     const v = series[i];
@@ -95,16 +108,12 @@ export function forecastNextPeriod(
   }
   const meanX = sumX / n;
   const meanY = sumY / n;
-  const denom = sumXX - n * meanX * meanX;
-  // For n≥3 with distinct integer x indices, denom > 0 always
-  // (denom = Σ(xᵢ − meanX)² and the points filter at line 87 enforces
-  // n≥3 from a non-empty set of distinct indices). Architect sub-13
-  // closure: dead guard removed; the math is safe.
+  const sxx = sumXX - n * meanX * meanX;
+  if (sxx === 0) return null;
 
-  const slope = (sumXY - n * meanX * meanY) / denom;
+  const slope = (sumXY - n * meanX * meanY) / sxx;
   const intercept = meanY - slope * meanX;
 
-  // R² = 1 - SS_res / SS_tot
   let ssRes = 0;
   let ssTot = 0;
   for (const p of points) {
@@ -112,36 +121,99 @@ export function forecastNextPeriod(
     ssRes += (p.y - yHat) ** 2;
     ssTot += (p.y - meanY) ** 2;
   }
-  // Perfectly flat series → ssTot = 0; division would NaN. Treat as
-  // r2 = 0 + slope = 0 (already 0 from the formula since sumXY -
-  // n·meanX·meanY = 0 when all y's identical). Predicted = mean.
   const r2 = ssTot === 0 ? 0 : Math.max(0, Math.min(1, 1 - ssRes / ssTot));
+
+  return {
+    points,
+    n,
+    slope,
+    intercept,
+    meanX,
+    meanY,
+    sxx,
+    ssRes,
+    ssTot,
+    r2,
+  };
+}
+
+/**
+ * Forecast the next slot for a given sparkline series. Returns `null`
+ * if the series has fewer than 3 non-null points, OR if the series is
+ * perfectly flat (no slope to project — semantically "no change
+ * expected", but caller should render that branch differently from
+ * "real prediction with high confidence").
+ *
+ * `flat` outcomes (all-identical y values) return predicted = mean,
+ * slope = 0, r2 = 0, confidence = 'low' regardless of n. Without this
+ * override the n≥5 medium-fallback would label a no-signal flat series
+ * as "medium confidence", contradicting the semantic ("we have no
+ * directional information"). Caller should still detect slope ≈ 0 and
+ * render "no change expected" copy rather than treating the predicted
+ * mean as a low-confidence directional signal.
+ */
+export function forecastNextPeriod(
+  series: ReadonlyArray<number | null>,
+): ForecastResult | null {
+  // Sub-24 — share OLS fit with horizon + CI helpers (single pass).
+  // Architect sub-23 💡 closure: 2× redundant compute eliminated.
+  const fit = fitLinearRegression(series);
+  if (!fit) return null;
 
   // Predicted = next index after the LAST observed slot. We use
   // series.length (not points.length) so a [10, null, 12, null, 14]
-  // series with last index 4 forecasts index 5, not index 5 (5 = 5
-  // here but matters when series ends with nulls).
+  // series with last index 4 forecasts index 5.
   const nextX = series.length;
-  const predicted = slope * nextX + intercept;
+  const predicted = fit.slope * nextX + fit.intercept;
 
   // Flat-series override: when ssTot=0 (all y values identical), the
   // helper has no directional signal regardless of n. Force 'low' so
   // callers don't treat n≥5 medium-OR-fallback as meaningful for a
   // line that says "no change". (Architect Round-1 sub-13 closure.)
   let confidence: ForecastConfidence;
-  if (ssTot === 0) confidence = 'low';
-  else if (r2 >= 0.7 && n >= 6) confidence = 'high';
-  else if (r2 >= 0.4 || n >= 5) confidence = 'medium';
+  if (fit.ssTot === 0) confidence = 'low';
+  else if (fit.r2 >= 0.7 && fit.n >= 6) confidence = 'high';
+  else if (fit.r2 >= 0.4 || fit.n >= 5) confidence = 'medium';
   else confidence = 'low';
+
+  // Sub-24 — also compute 95% prediction interval at x*. Reuses
+  // already-computed sxx + ssRes from the shared fit (no double-pass).
+  const predictionInterval = predictionIntervalFromFit(fit, nextX);
 
   return {
     predicted,
     confidence,
-    slope,
-    intercept,
-    r2,
-    contributingCount: n,
+    slope: fit.slope,
+    intercept: fit.intercept,
+    r2: fit.r2,
+    contributingCount: fit.n,
     method: 'linear-regression-v1',
+    predictionInterval,
+  };
+}
+
+/**
+ * Internal — compute 95% prediction interval at a given x* using
+ * already-computed fit residuals + Sxx. No additional OLS pass.
+ */
+function predictionIntervalFromFit(
+  fit: InternalFit,
+  xStar: number,
+): ForecastConfidenceInterval {
+  const df = fit.n - 2;
+  const sigma = df > 0 ? Math.sqrt(fit.ssRes / df) : 0;
+  const sePred =
+    sigma * Math.sqrt(1 + 1 / fit.n + (xStar - fit.meanX) ** 2 / fit.sxx);
+  const tCrit = tCritical95(df);
+  const margin = tCrit * sePred;
+  const predicted = fit.slope * xStar + fit.intercept;
+  return {
+    lower: predicted - margin,
+    upper: predicted + margin,
+    marginOfError: margin,
+    level: 0.95,
+    standardError: sePred,
+    degreesOfFreedom: df,
   };
 }
 
@@ -192,6 +264,107 @@ export interface ForecastHorizonResult {
 const DEFAULT_HORIZON_STEPS = 3;
 const MAX_HORIZON_STEPS = 12;
 
+/**
+ * Phase C2 v2 (sub-24) — confidence interval helper.
+ *
+ * For OLS linear regression, the prediction interval at a future x* is
+ *   ŷ(x*) ± t_(α/2, n-2) · SE_pred(x*)
+ * where:
+ *   SE_pred(x*) = σ_residual · sqrt(1 + 1/n + (x* − x̄)² / Σ(xᵢ − x̄)²)
+ *   σ_residual = sqrt(Σ(yᵢ − ŷᵢ)² / (n − 2))     ← residual std-error
+ *
+ * v1 ships **95% CI** by default (α=0.05). Approximation choices:
+ *   - n − 2 degrees of freedom (n = contributing points). At n=3 → df=1
+ *     → t_(.025,1) = 12.706; CI very wide, reflects huge uncertainty.
+ *   - For n ≥ 30, t→z ≈ 1.96. We use a hardcoded table for df 1..30
+ *     and clamp to 1.96 above 30 (sparkline rarely exceeds 30 points).
+ *
+ * Returns `null` only when the underlying fit fails (<3 non-null
+ * points) — same gate as `forecastNextPeriod`. When the series is
+ * perfectly linear (r²=1, ssRes=0) the CI collapses to ±0; UI should
+ * detect this and either hide the band OR display "no model error".
+ */
+export interface ForecastConfidenceInterval {
+  /** Lower bound of the prediction interval (level α). */
+  lower: number;
+  /** Upper bound. */
+  upper: number;
+  /** Half-width of the interval (predicted ± marginOfError). */
+  marginOfError: number;
+  /** Confidence level (0 < level < 1). v1 default 0.95 = 95% CI. */
+  level: number;
+  /** Standard error of the prediction at this x*. */
+  standardError: number;
+  /** Degrees of freedom used (n − 2). */
+  degreesOfFreedom: number;
+}
+
+/**
+ * Critical t-values for α=0.025 (95% two-sided CI). Indexed by df,
+ * df=1..30. Above df=30 we clamp to 1.96 (z-distribution limit).
+ * Source: standard t-distribution table; values pinned to 3 decimals.
+ */
+const T_CRIT_95: Record<number, number> = {
+  1: 12.706,
+  2: 4.303,
+  3: 3.182,
+  4: 2.776,
+  5: 2.571,
+  6: 2.447,
+  7: 2.365,
+  8: 2.306,
+  9: 2.262,
+  10: 2.228,
+  11: 2.201,
+  12: 2.179,
+  13: 2.160,
+  14: 2.145,
+  15: 2.131,
+  16: 2.120,
+  17: 2.110,
+  18: 2.101,
+  19: 2.093,
+  20: 2.086,
+  21: 2.080,
+  22: 2.074,
+  23: 2.069,
+  24: 2.064,
+  25: 2.060,
+  26: 2.056,
+  27: 2.052,
+  28: 2.048,
+  29: 2.045,
+  30: 2.042,
+};
+
+function tCritical95(df: number): number {
+  if (df <= 0) return Number.POSITIVE_INFINITY;
+  if (df <= 30) return T_CRIT_95[df];
+  return 1.96;
+}
+
+/**
+ * Compute prediction CI for `forecastNextPeriod`'s next-slot estimate
+ * at `x* = series.length`. Returns null on insufficient data.
+ *
+ * Math: residual std-error from the same OLS fit, then prediction-
+ * interval formula above. The "1 + 1/n + (x*−x̄)²/Sxx" factor is the
+ * key piece — without the leading "1", we'd be giving a CONFIDENCE
+ * interval (uncertainty about the line itself) instead of a PREDICTION
+ * interval (uncertainty about a single future observation). For
+ * forecasting we want the latter.
+ */
+export function forecastConfidenceInterval(
+  series: ReadonlyArray<number | null>,
+): ForecastConfidenceInterval | null {
+  // Sub-24 — uses shared `fitLinearRegression` so caller gets identical
+  // numbers as `forecastNextPeriod().predictionInterval`. Single OLS
+  // pass per call.
+  const fit = fitLinearRegression(series);
+  if (!fit) return null;
+  return predictionIntervalFromFit(fit, series.length);
+}
+
 export function forecastHorizon(
   series: ReadonlyArray<number | null>,
   steps: number = DEFAULT_HORIZON_STEPS,
@@ -206,25 +379,33 @@ export function forecastHorizon(
       `forecastHorizon: steps capped at ${MAX_HORIZON_STEPS} (got ${steps}). Beyond that linear extrapolation produces meaningless numbers.`,
     );
   }
-  // Reuse single-step helper for the underlying fit + minimum-data
-  // gate. If the fit succeeds we know the math is safe to extrapolate.
-  const single = forecastNextPeriod(series);
-  if (!single) return null;
+  // Sub-24 — use shared OLS fit directly (was: called forecastNextPeriod
+  // which redundantly computed CI we don't need here). Single pass.
+  const fit = fitLinearRegression(series);
+  if (!fit) return null;
+
+  // Compute confidence band using the same rules as forecastNextPeriod
+  // — single-fit semantic means horizon shares this band across steps.
+  let confidence: ForecastConfidence;
+  if (fit.ssTot === 0) confidence = 'low';
+  else if (fit.r2 >= 0.7 && fit.n >= 6) confidence = 'high';
+  else if (fit.r2 >= 0.4 || fit.n >= 5) confidence = 'medium';
+  else confidence = 'low';
 
   const startX = series.length;
   const horizon: ForecastHorizonStep[] = [];
   for (let k = 1; k <= steps; k++) {
     const xAtStep = startX + (k - 1);
-    const predicted = single.slope * xAtStep + single.intercept;
+    const predicted = fit.slope * xAtStep + fit.intercept;
     horizon.push({ step: k, predicted });
   }
   return {
     horizon,
-    slope: single.slope,
-    intercept: single.intercept,
-    r2: single.r2,
-    contributingCount: single.contributingCount,
-    confidence: single.confidence,
-    method: single.method,
+    slope: fit.slope,
+    intercept: fit.intercept,
+    r2: fit.r2,
+    contributingCount: fit.n,
+    confidence,
+    method: 'linear-regression-v1',
   };
 }
