@@ -4,6 +4,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Bell, Star } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
+import { useMatrix } from '../hooks/use-matrix';
+import {
+  computeCompositeByCompany,
+  type CompositeScore,
+} from '@/lib/risk/composite-score';
 
 const PANEL_ID = 1;
 
@@ -24,6 +29,23 @@ type Props = {
 export function CompanyTree({ companies, loading, onSelect }: Props) {
   const t = useTranslations('terminal');
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
+
+  // Sub-27 cont'd Round-5 — composite score per company on tree node.
+  // Same shared module-cache hook HeatMap uses; one source of truth for
+  // matrix data across panels. Lookup by company.code (CompanyNode shape)
+  // → company.id via the matrix; fallback null for unmatched (e.g. before
+  // matrix lands).
+  const { matrix } = useMatrix();
+  const compositeByCode = useMemo(() => {
+    if (!matrix) return new Map<string, CompositeScore>();
+    const byId = computeCompositeByCompany(matrix.cells);
+    const out = new Map<string, CompositeScore>();
+    for (const co of matrix.companies) {
+      const score = byId.get(co.id);
+      if (score) out.set(co.code, score);
+    }
+    return out;
+  }, [matrix]);
   // User-driven row clicks → selectCompany (tracks LRU recent).
   const storeSetCompany = useTerminalStore((s) => s.selectCompany);
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
@@ -332,6 +354,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
             {root.code}
           </span>
+          <CompositeMini score={compositeByCode.get(root.code)?.score ?? null} />
           <span className="flex-1 truncate">{root.name}</span>
           {hasChildren && (
             <span
@@ -368,6 +391,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                   <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
                     {child.code}
                   </span>
+                  <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
                   <span className="flex-1 truncate">{child.name}</span>
                   {child.industry && (
                     <span className="text-gray-600 text-[10px] uppercase">
@@ -488,6 +512,34 @@ function WatchlistTabs(props: {
  * Click stops propagation so the row's click-to-select doesn't fire.
  * Filled star = starred; outlined = not.
  */
+/**
+ * Sub-27 cont'd Round-5 — tiny composite-score chip for tree rows.
+ * Mirrors the HeatMap row-header CompositeBadge but smaller (suited to
+ * tree-row density). Suppresses zero-state visual when no score (rollup
+ * rows + sub-groups without scoreable cells render the badge dimmed).
+ */
+function CompositeMini({ score }: { score: number | null }) {
+  if (score === null) {
+    return null;
+  }
+  const tone =
+    score >= 67 ? '#00D4AA' : score >= 34 ? '#FFB020' : '#FF4757';
+  return (
+    <span
+      className="font-mono tabular-nums text-[9px] px-1 py-0 rounded shrink-0 font-bold"
+      style={{
+        color: tone,
+        backgroundColor: `${tone}1A`,
+        border: `1px solid ${tone}33`,
+      }}
+      title={`Composite ${score}/100`}
+      aria-label={`Composite score ${score}`}
+    >
+      {score}
+    </span>
+  );
+}
+
 function StarToggle(props: {
   code: string;
   starred: boolean;
