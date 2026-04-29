@@ -252,6 +252,51 @@ describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => 
     expect(body.narrative).toBe(explainerOutput.narrative);
   });
 
+  it("response surfaces predictionInterval (sub-24 CI contract)", async () => {
+    // Architect sub-24 ⚠️ closure: lock the wire-format contract so a
+    // future refactor can't silently drop the predictionInterval field.
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow); // 12-pt clean descending series
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.predictionInterval).toBeDefined();
+    expect(body.predictionInterval.level).toBe(0.95);
+    expect(typeof body.predictionInterval.lower).toBe("number");
+    expect(typeof body.predictionInterval.upper).toBe("number");
+    expect(typeof body.predictionInterval.marginOfError).toBe("number");
+    expect(typeof body.predictionInterval.standardError).toBe("number");
+    // df = n - 2 = 12 - 2 = 10 for the 12-point ivRow sparkline.
+    expect(body.predictionInterval.degreesOfFreedom).toBe(10);
+    // Lower < upper invariant.
+    expect(body.predictionInterval.lower).toBeLessThanOrEqual(
+      body.predictionInterval.upper,
+    );
+  });
+
+  it("response surfaces multi-step horizon (sub-23 contract)", async () => {
+    // Lock horizon wire-format alongside CI — both shipped this week,
+    // both surfaced via the same JSON response.
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    const body = await res.json();
+    expect(Array.isArray(body.horizon)).toBe(true);
+    expect(body.horizon).toHaveLength(3); // default 3 steps from sub-23
+    expect(body.horizon[0]).toMatchObject({ step: 1 });
+    expect(body.horizon[2]).toMatchObject({ step: 3 });
+  });
+
   it("default language is 'en' when body omits language", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
     prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);

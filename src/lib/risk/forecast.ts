@@ -303,6 +303,13 @@ export interface ForecastConfidenceInterval {
  * Critical t-values for α=0.025 (95% two-sided CI). Indexed by df,
  * df=1..30. Above df=30 we clamp to 1.96 (z-distribution limit).
  * Source: standard t-distribution table; values pinned to 3 decimals.
+ *
+ * **Caveat (architect sub-24 💡):** the df>30 → 1.96 clamp introduces
+ * a small over-confidence bias for series longer than 32 points. For
+ * sparkline (≤12 slots) this is unreachable; for longer ranges the
+ * true t-values are: df=40→2.021, df=60→2.000, df=120→1.980,
+ * df=∞→1.960. If/when this helper is reused on quarterly histories
+ * (40+ points), extend the table or compute t-critical analytically.
  */
 const T_CRIT_95: Record<number, number> = {
   1: 12.706,
