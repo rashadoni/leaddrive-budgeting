@@ -149,6 +149,33 @@ export type AuditEventInput =
          *  template variant that produced the narrative. v1 = initial. */
         promptVersion: string;
       };
+    }
+  | {
+      // Phase C2 v2 (sub-22) — POST /api/indicators/values/[id]/forecast/explain.
+      // Mirror of ai_variance_explainer_run for forecast narration:
+      // captures the indicator + forecast confidence + token usage so
+      // compliance can attest "this CFO action was based on a forecast
+      // with R²=X confidence, narrated by model Y on prompt v Z".
+      action: 'ai_forecast_explainer_run';
+      entityType: 'IndicatorValue';
+      entityId: string; // IndicatorValue.id
+      metadata: {
+        indicatorCode: string;
+        companyId: string;
+        period: string;
+        language: 'en' | 'ru' | 'az';
+        /** Forecast confidence band (sub-13 v1 categorical: high/medium/low). */
+        forecastConfidence: 'high' | 'medium' | 'low';
+        /** R² 0-1 from the linear-regression fit. */
+        forecastR2: number;
+        /** Number of non-null sparkline points used in the fit. */
+        contributingCount: number;
+        tokensIn: number;
+        tokensOut: number;
+        durationMs: number;
+        modelName: string;
+        promptVersion: string;
+      };
     };
 
 /**

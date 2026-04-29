@@ -1,0 +1,312 @@
+/**
+ * Phase C2 v2 (sub-22) — handler test for
+ * `POST /api/indicators/values/[id]/forecast/explain`.
+ *
+ * Mirror of `/explain/handler.test.ts` (Variance Explainer audit-coverage
+ * pattern). Verifies:
+ *  1. `runForecastExplainer()` mocked — no real LLM call.
+ *  2. Audit emission: every successful run produces exactly one
+ *     `ai_forecast_explainer_run` audit_event with the new metadata
+ *     shape (forecastConfidence + forecastR2 + contributingCount).
+ *  3. Audit emission non-blocking even when the insert throws.
+ *  4. ANTHROPIC_API_KEY missing → 503 short-circuit before DB read.
+ *  5. 400 when sparkline has <3 non-null points (insufficient data).
+ *  6. 400 when sparkline missing entirely.
+ *  7. Cross-tenant 404 (no leak).
+ */
+
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: {
+    indicatorValue: { findFirst: vi.fn() },
+    auditEvent: { create: vi.fn() },
+  },
+}));
+
+vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
+
+const { aiClientMock } = vi.hoisted(() => ({
+  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
+}));
+vi.mock("@/lib/ai/client", () => aiClientMock);
+
+const { runForecastExplainerMock } = vi.hoisted(() => ({
+  runForecastExplainerMock: vi.fn(),
+}));
+vi.mock("@/lib/risk/forecast-explainer", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/lib/risk/forecast-explainer")
+  >("@/lib/risk/forecast-explainer");
+  return { ...actual, runForecastExplainer: runForecastExplainerMock };
+});
+
+const { rateLimitMock } = vi.hoisted(() => ({
+  rateLimitMock: {
+    enforceRateLimit: vi.fn().mockReturnValue(null),
+    getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+  },
+}));
+vi.mock("@/lib/rate-limit", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/rate-limit")>(
+    "@/lib/rate-limit",
+  );
+  return { ...actual, ...rateLimitMock };
+});
+
+import { mockSession, makeRequest } from "@/test/api-harness";
+import { POST } from "./route";
+
+const IV_ID = "iv_aac_net_margin";
+const ORG_ID = "org_az";
+const COMPANY_ID = "co_aac_main";
+
+function paramsFor(id: string) {
+  return { params: Promise.resolve({ id }) };
+}
+
+const ivRow = {
+  id: IV_ID,
+  value: 12.5,
+  status: "green" as const,
+  period: "2026",
+  // 12 trailing-month sparkline with clear downward slope.
+  sparkline: [13, 12.6, 12.2, 11.8, 11.4, 11, 10.7, 10.3, 10, 9.8, 9.6, 9.5],
+  companyId: COMPANY_ID,
+  indicator: {
+    code: "IND_NET_MARGIN",
+    nameEn: "Net Margin",
+    unit: "%",
+    direction: "higher_better",
+    hintTemplateEn: "Net margin {value}%",
+  },
+  company: { name: "AAC Main", industry: "industrial" },
+};
+
+const explainerOutput = {
+  narrative:
+    "Net margin trending from 13% to forecast 9.5% — a 3.5pp compression over 12 months driven by COGS inflation.",
+  driverHypotheses: [
+    "COGS inflation +18% YoY",
+    "Revenue ramp slower than cost ramp",
+  ],
+  riskFactors: [
+    "Iran sanctions tightening would push feedstock cost +20%",
+    "AZN devaluation 15% would compress import margins further",
+  ],
+  confidence: 0.78,
+  usage: { inputTokens: 220, outputTokens: 95 },
+  modelName: "claude-sonnet-4-5-20250929",
+  promptVersion: "v1",
+};
+
+beforeEach(() => {
+  prismaMock.indicatorValue.findFirst.mockReset();
+  prismaMock.auditEvent.create
+    .mockReset()
+    .mockResolvedValue({ id: "audit_1" });
+  runForecastExplainerMock.mockReset();
+  aiClientMock.hasAnthropicKey.mockReturnValue(true);
+  rateLimitMock.enforceRateLimit.mockReset().mockReturnValue(null);
+});
+
+describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => {
+  it("returns 503 when ANTHROPIC_API_KEY is missing — short-circuit before DB read", async () => {
+    aiClientMock.hasAnthropicKey.mockReturnValue(false);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(503);
+    expect(prismaMock.indicatorValue.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 when unauthenticated", async () => {
+    await mockSession(null);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(401);
+    expect(prismaMock.indicatorValue.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 (not 403) when IV belongs to a different org", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(null);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(404);
+    const call = prismaMock.indicatorValue.findFirst.mock.calls[0][0];
+    expect(call.where).toEqual({ id: IV_ID, organizationId: ORG_ID });
+  });
+
+  it("returns 400 when sparkline missing — insufficient data for forecast", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      sparkline: null,
+    });
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Insufficient sparkline data");
+    expect(runForecastExplainerMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when sparkline has <3 non-null points", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      sparkline: [10, null, null, null, null, 12, null, null, null, null, null, null],
+    });
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(400);
+    expect(runForecastExplainerMock).not.toHaveBeenCalled();
+  });
+
+  it("emits ai_forecast_explainer_run audit_event on successful run", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      {
+        method: "POST",
+        json: { language: "ru" },
+        headers: { "user-agent": "TestRunner/1.0" },
+      },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.indicatorValueId).toBe(IV_ID);
+    expect(body.narrative).toBe(explainerOutput.narrative);
+    expect(body.driverHypotheses).toEqual(explainerOutput.driverHypotheses);
+    expect(body.riskFactors).toEqual(explainerOutput.riskFactors);
+
+    // Audit emission happens via .catch; flush microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
+    const auditCall = prismaMock.auditEvent.create.mock.calls[0][0];
+    expect(auditCall.data.action).toBe("ai_forecast_explainer_run");
+    expect(auditCall.data.entityType).toBe("IndicatorValue");
+    expect(auditCall.data.entityId).toBe(IV_ID);
+    expect(auditCall.data.organizationId).toBe(ORG_ID);
+    expect(auditCall.data.actorUserId).toBe("u_cfo");
+    expect(auditCall.data.metadata).toMatchObject({
+      indicatorCode: "IND_NET_MARGIN",
+      companyId: COMPANY_ID,
+      period: "2026",
+      language: "ru",
+      forecastConfidence: "high", // perfect-line slope-(-0.4) → high
+      tokensIn: 220,
+      tokensOut: 95,
+      modelName: "claude-sonnet-4-5-20250929",
+      promptVersion: "v1",
+    });
+    expect(typeof auditCall.data.metadata.durationMs).toBe("number");
+    expect(typeof auditCall.data.metadata.forecastR2).toBe("number");
+    expect(auditCall.data.metadata.contributingCount).toBe(12);
+    expect(auditCall.data.context).toMatchObject({
+      route: "/api/indicators/values/[id]/forecast/explain",
+      userAgent: "TestRunner/1.0",
+    });
+  });
+
+  it("non-blocking: forecast response still 200 even when audit insert throws", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    prismaMock.auditEvent.create.mockRejectedValue(new Error("audit DB down"));
+
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.narrative).toBe(explainerOutput.narrative);
+  });
+
+  it("default language is 'en' when body omits language", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    await POST(req, paramsFor(IV_ID));
+
+    const callInput = runForecastExplainerMock.mock.calls[0][0];
+    expect(callInput.language).toBe("en");
+  });
+
+  it("invalid language falls back to 'en'", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: { language: "fr" } },
+    );
+    await POST(req, paramsFor(IV_ID));
+
+    const callInput = runForecastExplainerMock.mock.calls[0][0];
+    expect(callInput.language).toBe("en");
+  });
+
+  it("returns 502 when runForecastExplainer throws (LLM-side failure)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);
+    runForecastExplainerMock.mockRejectedValue(
+      new Error("max_tokens exceeded"),
+    );
+
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(502);
+    const body = await res.json();
+    expect(body.error).toContain("Forecast explainer failed");
+  });
+
+  it("returns 400 on malformed JSON body", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    const req = new Request(
+      `http://localhost/api/indicators/values/${IV_ID}/forecast/explain`,
+      {
+        method: "POST",
+        body: "not json",
+        headers: { "content-type": "application/json" },
+      },
+    ) as never;
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("Invalid JSON body");
+  });
+});

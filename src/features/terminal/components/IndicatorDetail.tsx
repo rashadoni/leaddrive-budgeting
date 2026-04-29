@@ -199,48 +199,17 @@ export function IndicatorDetail() {
         </div>
       )}
 
-      {/* Phase C2 v1 — predictive forecast for the next period. Pulls
-          from the same sparkline series; rendered only when the
-          forecast helper has ≥3 contributing points. Confidence drives
-          the color tone (high=green, medium=amber, low=gray). */}
-      {detail.sparkline && detail.sparkline.length > 0 && (() => {
-        const forecast = forecastNextPeriod(detail.sparkline);
-        if (!forecast) return null;
-        // Treat near-zero slopes as "no change expected" — caller
-        // semantic from forecast.ts jsdoc; avoids low-confidence-flat
-        // outputs being interpreted as directional signals.
-        const isFlat = Math.abs(forecast.slope) < 1e-9;
-        // Sign mirrors the 12mo trend Δ rendering above (line ~192):
-        // "+" prefix on positive predicted, no prefix on zero/negative
-        // (the "↓" arrow conveys descending direction; native "-" sign
-        // from formatValue conveys negative value). Architect Round-1
-        // sub-13 closure: was `predicted>0 AND slope>0` — convoluted,
-        // and missed the case of positive predicted from a descending
-        // series (e.g. [10,9,8] → forecast 7, ↓, want "+7" not "7").
-        const sign = forecast.predicted > 0 ? "+" : "";
-        const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
-        return (
-          <div
-            className="flex items-center gap-2 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5"
-            data-testid="indicator-forecast"
-          >
-            <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
-              Next-period forecast
-            </span>
-            <span
-              className={`text-[11px] font-mono tabular-nums ${forecastColor(forecast.confidence)}`}
-            >
-              {trendArrow} {sign}
-              {formatValue(forecast.predicted)}
-            </span>
-            <span className="text-[9px] text-gray-500 ml-auto">
-              {isFlat
-                ? "no change expected"
-                : `${forecast.confidence} confidence · R² ${(forecast.r2).toFixed(2)} · ${forecast.contributingCount}/12 pts`}
-            </span>
-          </div>
-        );
-      })()}
+      {/* Phase C2 v1 — predictive forecast badge.
+          Phase C2 v2 (sub-22) — extended with LLM-narrated "Explain"
+          button + EN/RU/AZ language picker + narrative panel. Pure
+          v1 badge kept above the explain panel for at-a-glance
+          reading; LLM call only fires on explicit click. */}
+      {detail.sparkline && detail.sparkline.length > 0 && (
+        <ForecastSection
+          ivId={detail.id}
+          sparkline={detail.sparkline}
+        />
+      )}
 
       {/* Phase 7.E (Turn 16) — services thresholds calibrated against
           Damodaran US-market ballpark; AZ-market reality may differ. Banner
@@ -364,4 +333,227 @@ function forecastColor(confidence: ForecastConfidence): string {
   if (confidence === "high") return "text-[#00D4AA]";
   if (confidence === "medium") return "text-[#FFB800]";
   return "text-gray-400";
+}
+
+/**
+ * Phase C2 v2 (sub-22) — forecast badge + LLM-narrated explain panel.
+ *
+ * Layered UX:
+ *   1. Always-visible badge (sub-13 v1 contract preserved): trend arrow,
+ *      predicted value, confidence band + R² + n/12 pts.
+ *   2. "Explain forecast" button — POSTs to
+ *      `/api/indicators/values/[id]/forecast/explain`; transitions
+ *      through loading → narrative card with 3 driver hypotheses + 3
+ *      risk factors + LLM self-rated confidence. Auto-emits
+ *      `ai_forecast_explainer_run` audit_event server-side.
+ *   3. EN/RU/AZ language tabs (per `project_ai_output_language.md` —
+ *      UI stays English, only LLM narrative switches).
+ *
+ * Mirror of the Variance Explainer panel UX from Phase 7.E (`/explain`
+ * endpoint + Panel 4 narrative). Both exist because they answer
+ * different CFO questions:
+ *   - Variance: "this cell is red — why?" (reactive)
+ *   - Forecast: "this cell is green but trajectory points down — what's coming?" (proactive)
+ */
+type ForecastLanguage = "en" | "ru" | "az";
+interface ForecastExplainResponse {
+  indicatorValueId: string;
+  narrative: string;
+  driverHypotheses: string[];
+  riskFactors: string[];
+  confidence: number;
+  modelName: string;
+  promptVersion: string;
+  usage?: { inputTokens: number; outputTokens: number };
+}
+type ExplainState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ok"; data: ForecastExplainResponse }
+  | { kind: "error"; message: string };
+
+function ForecastSection(props: {
+  ivId: string;
+  sparkline: (number | null)[];
+}) {
+  const forecast = forecastNextPeriod(props.sparkline);
+  const [language, setLanguage] = React.useState<ForecastLanguage>("en");
+  const [explain, setExplain] = React.useState<ExplainState>({ kind: "idle" });
+
+  if (!forecast) return null;
+  // Treat near-zero slopes as "no change expected" — caller semantic
+  // from forecast.ts jsdoc; avoids low-confidence-flat outputs being
+  // interpreted as directional signals.
+  const isFlat = Math.abs(forecast.slope) < 1e-9;
+  // Sign mirrors 12mo trend Δ pattern: "+" on positive, none on
+  // zero/negative. Architect sub-13 closure.
+  const sign = forecast.predicted > 0 ? "+" : "";
+  const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
+
+  // Low-confidence forecasts (flat OR r²<0.4 + n<5) are unworth
+  // narrating — the linear-regression itself says "no signal", and
+  // the LLM would just echo that. Hide the explain affordance.
+  const explainable = !isFlat && forecast.confidence !== "low";
+
+  const runExplain = async () => {
+    if (!explainable || explain.kind === "loading") return;
+    setExplain({ kind: "loading" });
+    try {
+      const res = await fetch(
+        `/api/indicators/values/${encodeURIComponent(props.ivId)}/forecast/explain`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ language }),
+        },
+      );
+      if (!res.ok) {
+        const errBody = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(errBody.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as ForecastExplainResponse;
+      setExplain({ kind: "ok", data });
+    } catch (err: unknown) {
+      setExplain({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-1 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5"
+      data-testid="indicator-forecast"
+    >
+      {/* Row 1 — always-visible badge (sub-13 v1 contract). */}
+      <div className="flex items-center gap-2">
+        <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+          Next-period forecast
+        </span>
+        <span
+          className={`text-[11px] font-mono tabular-nums ${forecastColor(forecast.confidence)}`}
+        >
+          {trendArrow} {sign}
+          {formatValue(forecast.predicted)}
+        </span>
+        <span className="text-[9px] text-gray-500 ml-auto">
+          {isFlat
+            ? "no change expected"
+            : `${forecast.confidence} confidence · R² ${forecast.r2.toFixed(2)} · ${forecast.contributingCount}/12 pts`}
+        </span>
+      </div>
+
+      {/* Row 2 — explain affordance (Phase C2 v2). Hidden when
+          forecast.confidence='low' or slope is flat (LLM has nothing
+          meaningful to add). */}
+      {explainable && (
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {/* Language tabs — EN default; user can flip to RU/AZ before
+              clicking Explain. Disabled while a request is in-flight. */}
+          {(["en", "ru", "az"] as const).map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              onClick={() => {
+                if (explain.kind === "loading") return;
+                setLanguage(lang);
+                // If a narrative is already shown, clear it — clicking a
+                // different language tab telegraphs intent to re-run.
+                if (explain.kind === "ok" || explain.kind === "error") {
+                  setExplain({ kind: "idle" });
+                }
+              }}
+              disabled={explain.kind === "loading"}
+              data-testid={`forecast-lang-${lang}`}
+              className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                language === lang
+                  ? "border-[#00D4AA] text-[#00D4AA] bg-[#00D4AA]/10"
+                  : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-400"
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
+            >
+              {lang}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={runExplain}
+            disabled={explain.kind === "loading"}
+            data-testid="forecast-explain-button"
+            className="text-[10px] font-mono px-2 py-0.5 rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 text-[#00D4AA] hover:bg-[#00D4AA]/15 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+          >
+            {explain.kind === "loading"
+              ? "Explaining…"
+              : explain.kind === "ok"
+                ? "Re-run"
+                : "Explain →"}
+          </button>
+        </div>
+      )}
+
+      {/* Row 3 — narrative card (only after successful response). */}
+      {explain.kind === "ok" && (
+        <div
+          className="mt-1 border-t border-gray-800/40 pt-1.5 space-y-1.5"
+          data-testid="forecast-narrative"
+        >
+          <p className="text-[11px] text-gray-200 leading-snug">
+            {explain.data.narrative}
+          </p>
+          {explain.data.driverHypotheses.length > 0 && (
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
+                Likely drivers
+              </div>
+              <ul className="text-[10px] text-gray-300 space-y-0.5 list-disc pl-4">
+                {explain.data.driverHypotheses.map((h, i) => (
+                  <li key={i}>{h}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {explain.data.riskFactors.length > 0 && (
+            <div>
+              <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
+                Risk factors
+              </div>
+              <ul className="text-[10px] text-[#FFB800] space-y-0.5 list-disc pl-4">
+                {explain.data.riskFactors.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="text-[9px] text-gray-500 mt-1 flex items-center gap-2">
+            <span>
+              LLM confidence: {(explain.data.confidence * 100).toFixed(0)}%
+            </span>
+            <span className="opacity-60">·</span>
+            <span className="font-mono">{explain.data.modelName}</span>
+            {explain.data.usage && (
+              <>
+                <span className="opacity-60">·</span>
+                <span className="font-mono">
+                  {explain.data.usage.inputTokens}/{explain.data.usage.outputTokens} tok
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Error state. */}
+      {explain.kind === "error" && (
+        <p
+          role="alert"
+          className="text-[10px] text-[#FF4757] mt-1"
+          data-testid="forecast-explain-error"
+        >
+          Forecast explain failed: {explain.message}
+        </p>
+      )}
+    </div>
+  );
 }

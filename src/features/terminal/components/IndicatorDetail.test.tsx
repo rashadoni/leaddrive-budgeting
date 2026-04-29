@@ -240,3 +240,217 @@ describe("IndicatorDetail forecast surface (Phase C2 v1)", () => {
     expect(valueSpan?.className).toContain("text-gray-400");
   });
 });
+
+// Phase C2 v2 (sub-22) — LLM-narrated forecast explain panel.
+describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
+  // Default fixture: high-confidence ascending series so explain panel is
+  // shown (low-confidence + flat-series hide the affordance per UX gate).
+  const HIGH_CONF_SPARKLINE = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32];
+
+  function detailFetchMock(initial: { sparkline: (number | null)[] | null }) {
+    return vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      // /api/indicators/values/[id] — initial detail load.
+      if (
+        u.includes("/api/indicators/values/iv_test") &&
+        !u.includes("forecast/explain")
+      ) {
+        return new Response(
+          JSON.stringify(fixture({ sparkline: initial.sparkline })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // /api/indicators/values/iv_test/forecast/explain — POST endpoint.
+      if (u.includes("forecast/explain")) {
+        return new Response(
+          JSON.stringify({
+            indicatorValueId: "iv_test",
+            narrative:
+              "Strong upward trend — net margin trajectory points from current 32% toward forecast 34% next period.",
+            driverHypotheses: [
+              "Q4 seasonal uplift in industrial demand",
+              "Operating leverage from prior cost-restructuring",
+            ],
+            riskFactors: [
+              "Iran sanctions tightening would push feedstock cost +20%",
+              "AZN devaluation 15% could compress import margins",
+            ],
+            confidence: 0.78,
+            modelName: "claude-sonnet-4-5-20250929",
+            promptVersion: "v1",
+            usage: { inputTokens: 220, outputTokens: 95 },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  }
+
+  it("renders 'Explain' button + EN/RU/AZ language tabs when forecast confidence > low", async () => {
+    global.fetch = detailFetchMock({ sparkline: HIGH_CONF_SPARKLINE });
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-explain-button")).toBeTruthy();
+    });
+    expect(screen.getByTestId("forecast-lang-en")).toBeTruthy();
+    expect(screen.getByTestId("forecast-lang-ru")).toBeTruthy();
+    expect(screen.getByTestId("forecast-lang-az")).toBeTruthy();
+  });
+
+  it("hides explain affordance for flat-series (low confidence)", async () => {
+    global.fetch = detailFetchMock({
+      sparkline: [5, 5, 5, 5, 5, 5],
+    });
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByTestId("indicator-forecast")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("forecast-explain-button")).toBeNull();
+  });
+
+  it("clicking Explain → POST /forecast/explain → narrative + drivers + risks render", async () => {
+    global.fetch = detailFetchMock({ sparkline: HIGH_CONF_SPARKLINE });
+    const user = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    const btn = await screen.findByTestId("forecast-explain-button");
+    user.click(btn);
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-narrative")).toBeTruthy();
+    });
+    const card = screen.getByTestId("forecast-narrative");
+    expect(card.textContent).toContain("Strong upward trend");
+    expect(card.textContent).toContain("Q4 seasonal uplift");
+    expect(card.textContent).toContain("Iran sanctions");
+    // LLM confidence rendered as percent.
+    expect(card.textContent).toContain("78%");
+    // Token-usage line.
+    expect(card.textContent).toContain("220/95 tok");
+  });
+
+  it("language tab click clears stale narrative (re-run signal)", async () => {
+    global.fetch = detailFetchMock({ sparkline: HIGH_CONF_SPARKLINE });
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-explain-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-narrative")).toBeTruthy();
+    });
+    // Switch to RU — narrative card disappears (stale; user must
+    // explicitly re-click Explain to fetch the RU version).
+    fe.click(screen.getByTestId("forecast-lang-ru"));
+    expect(screen.queryByTestId("forecast-narrative")).toBeNull();
+    // Active tab visually flips.
+    expect(screen.getByTestId("forecast-lang-ru").className).toContain(
+      "text-[#00D4AA]",
+    );
+  });
+
+  it("Explain POST sends selected language in body", async () => {
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url);
+      if (u.includes("forecast/explain")) {
+        return new Response(
+          JSON.stringify({
+            indicatorValueId: "iv_test",
+            narrative: "ru narrative",
+            driverHypotheses: [],
+            riskFactors: [],
+            confidence: 0.6,
+            modelName: "m",
+            promptVersion: "v1",
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify(fixture({ sparkline: HIGH_CONF_SPARKLINE })),
+        { status: 200 },
+      );
+    });
+    global.fetch = fetchSpy as never;
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-lang-ru"));
+    fe.click(screen.getByTestId("forecast-explain-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-narrative")).toBeTruthy();
+    });
+    // Find the POST call to forecast/explain.
+    const postCall = fetchSpy.mock.calls.find(
+      ([u, init]) =>
+        String(u).includes("forecast/explain") &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCall).toBeDefined();
+    const body = JSON.parse(String((postCall![1] as RequestInit).body));
+    expect(body.language).toBe("ru");
+  });
+
+  it("error response renders error message", async () => {
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("forecast/explain")) {
+        return new Response(
+          JSON.stringify({ error: "max_tokens exceeded" }),
+          { status: 502 },
+        );
+      }
+      return new Response(
+        JSON.stringify(fixture({ sparkline: HIGH_CONF_SPARKLINE })),
+        { status: 200 },
+      );
+    }) as never;
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-explain-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-explain-error")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("forecast-explain-error").textContent,
+    ).toContain("max_tokens");
+  });
+
+  it("button shows 'Explaining…' during in-flight request", async () => {
+    let resolveExplain!: (value: Response) => void;
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("forecast/explain")) {
+        return new Promise<Response>((r) => {
+          resolveExplain = r;
+        });
+      }
+      return new Response(
+        JSON.stringify(fixture({ sparkline: HIGH_CONF_SPARKLINE })),
+        { status: 200 },
+      );
+    }) as never;
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-explain-button"));
+    expect(
+      screen.getByTestId("forecast-explain-button").textContent,
+    ).toBe("Explaining…");
+    // Resolve to clean up.
+    resolveExplain!(
+      new Response(
+        JSON.stringify({
+          indicatorValueId: "iv_test",
+          narrative: "x",
+          driverHypotheses: [],
+          riskFactors: [],
+          confidence: 0.5,
+          modelName: "m",
+          promptVersion: "v1",
+        }),
+        { status: 200 },
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("forecast-explain-button").textContent,
+      ).toBe("Re-run");
+    });
+  });
+});
