@@ -32,12 +32,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import { useSession } from "next-auth/react";
 import { MessageSquare, X, Send } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 
 interface Comment {
   id: string;
-  /** Display name; v1 hardcoded current user (no auth-derived identity yet). */
+  /** Display name; populated from `session.user.name || session.user.email`
+   *  at submit time. Falls back to "cfo" if no auth session (e.g. dev mode
+   *  without NextAuth provider mounted). */
   author: string;
   /** Unix epoch ms; rendered via Intl.DateTimeFormat in user's locale. */
   timestamp: number;
@@ -49,19 +52,36 @@ interface Comment {
 type CommentStore = Record<string, Comment[]>;
 
 const STORAGE_KEY = "terminal-comments-v1";
-const CURRENT_USER_PLACEHOLDER = "cfo"; // v2: derive from session/auth
+const STORAGE_VERSION = 1;
+const ANONYMOUS_FALLBACK = "anon"; // when no auth session
 
-/** Read comments from localStorage with defensive shape check. */
+interface StorageEnvelope<T> {
+  v: number;
+  data: T;
+}
+
+function isEnvelope(x: unknown): x is StorageEnvelope<unknown> {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as StorageEnvelope<unknown>).v === "number" &&
+    "data" in (x as StorageEnvelope<unknown>)
+  );
+}
+
+/** Read comments from localStorage with defensive shape check + v:1
+ *  envelope acceptance (legacy bare-object also accepted). */
 function readStore(): CommentStore {
   if (typeof window === "undefined") return {};
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
+    const data: unknown = isEnvelope(parsed) ? parsed.data : parsed;
+    if (!data || typeof data !== "object") return {};
     // Filter shape: each entry must be an array of {id, author, timestamp, text}
     const out: CommentStore = {};
-    for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [key, val] of Object.entries(data as Record<string, unknown>)) {
       if (!Array.isArray(val)) continue;
       const filtered = val.filter(
         (c): c is Comment =>
@@ -83,7 +103,11 @@ function readStore(): CommentStore {
 function writeStore(store: CommentStore): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    const envelope: StorageEnvelope<CommentStore> = {
+      v: STORAGE_VERSION,
+      data: store,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
   } catch {
     // localStorage full or disabled — silent fail.
   }
@@ -121,11 +145,27 @@ function renderWithMentions(text: string): React.ReactNode[] {
 export function CommentsLayer() {
   const t = useTranslations("terminal");
   const locale = useLocale();
+  const { data: session } = useSession();
   const [open, setOpen] = useState(false);
   const [store, setStore] = useState<CommentStore>({});
   const [draft, setDraft] = useState("");
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const activeIvId = useTerminalStore((s) => s.activeIndicatorValueId);
+  /** Resolved current-user identity for new comments. Round-24 audit
+   *  closure — replaces the hardcoded "cfo" placeholder so every
+   *  comment carries the actual signed-in user's name/email. Falls
+   *  back to "anon" only when no NextAuth provider is mounted (e.g.
+   *  rendering outside the app shell — possible in tests but not in
+   *  production where SessionProvider wraps the dashboard). */
+  const currentAuthor = useMemo(() => {
+    if (session?.user?.name && session.user.name.trim().length > 0) {
+      return session.user.name;
+    }
+    if (session?.user?.email && session.user.email.trim().length > 0) {
+      return session.user.email;
+    }
+    return ANONYMOUS_FALLBACK;
+  }, [session]);
 
   // Hydrate from localStorage after mount (SSR-safe).
   useEffect(() => {
@@ -169,7 +209,7 @@ export function CommentsLayer() {
       if (!trimmed || !cellKey) return;
       const next: Comment = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        author: CURRENT_USER_PLACEHOLDER,
+        author: currentAuthor,
         timestamp: Date.now(),
         text: trimmed,
       };
@@ -181,7 +221,7 @@ export function CommentsLayer() {
       writeStore(newStore);
       setDraft("");
     },
-    [draft, cellKey, store, thread],
+    [draft, cellKey, store, thread, currentAuthor],
   );
 
   if (!open) return null;

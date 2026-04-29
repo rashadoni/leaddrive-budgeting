@@ -110,13 +110,14 @@ describe("SubCoFinanceChat (Tier-3 sub-30)", () => {
     fireEvent.click(screen.getByTestId("subco-chat-send"));
     // Message rendered
     expect(screen.getByText(/Why is gross margin 8% red\?/)).toBeTruthy();
-    // Persisted
+    // Persisted as v:1 envelope (Round-24 Stage 3)
     const raw = window.localStorage.getItem(STORAGE_KEY);
     expect(raw).toBeTruthy();
-    const parsed = JSON.parse(raw!);
-    expect(parsed["AAC-MAIN"]).toHaveLength(1);
-    expect(parsed["AAC-MAIN"][0].direction).toBe("outgoing");
-    expect(parsed["AAC-MAIN"][0].text).toBe("Why is gross margin 8% red?");
+    const env = JSON.parse(raw!);
+    expect(env.v).toBe(1);
+    expect(env.data["AAC-MAIN"]).toHaveLength(1);
+    expect(env.data["AAC-MAIN"][0].direction).toBe("outgoing");
+    expect(env.data["AAC-MAIN"][0].text).toBe("Why is gross margin 8% red?");
   });
 
   it("Esc closes the modal", async () => {
@@ -194,5 +195,86 @@ describe("SubCoFinanceChat (Tier-3 sub-30)", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("subco-chat-channel-GHOST-CO")).toBeTruthy();
     });
+  });
+
+  // Round-24 Stage 3 fix-before-close coverage:
+
+  it("v:1 envelope persists with versioning on write", async () => {
+    render(<SubCoFinanceChat />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("subco-chat-channel-AAC-MAIN"));
+    const draft = screen.getByTestId("subco-chat-draft") as HTMLInputElement;
+    fireEvent.change(draft, { target: { value: "hi" } });
+    fireEvent.click(screen.getByTestId("subco-chat-send"));
+    const envelope = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
+    expect(envelope.v).toBe(1);
+    expect(envelope.data).toBeDefined();
+    expect(envelope.data["AAC-MAIN"]).toHaveLength(1);
+  });
+
+  it("read path accepts legacy bare-object shape AND v:1 envelope", async () => {
+    // Legacy bare-object shape (pre-Round-24)
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        "AAC-MAIN": [
+          {
+            id: "legacy",
+            direction: "outgoing",
+            timestamp: Date.now(),
+            text: "Legacy message",
+          },
+        ],
+      }),
+    );
+    render(<SubCoFinanceChat />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("subco-chat-channel-AAC-MAIN"));
+    expect(screen.getByText("Legacy message")).toBeTruthy();
+  });
+
+  it("defensive filter rejects malformed direction values", async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        data: {
+          "AAC-MAIN": [
+            {
+              id: "valid",
+              direction: "outgoing",
+              timestamp: 1,
+              text: "ok",
+            },
+            { id: "bad", direction: "sideways", timestamp: 2, text: "bad" },
+          ],
+        },
+      }),
+    );
+    render(<SubCoFinanceChat />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("subco-chat-channel-AAC-MAIN"));
+    expect(screen.getByText("ok")).toBeTruthy();
+    expect(screen.queryByText("bad")).toBeNull();
+  });
+
+  it("defensive filter on entirely malformed JSON gracefully returns empty", async () => {
+    window.localStorage.setItem(STORAGE_KEY, "not-valid-json{{");
+    expect(() => render(<SubCoFinanceChat />)).not.toThrow();
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeTruthy();
+    });
+    // No legacy threads → only API-derived channels visible.
+    expect(screen.getByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
   });
 });

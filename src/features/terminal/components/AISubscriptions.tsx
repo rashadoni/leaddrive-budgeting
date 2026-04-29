@@ -36,6 +36,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { Bell, X, Trash2, Pause, Play } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { useMatrix, type MatrixResponse } from "../hooks/use-matrix";
+import {
+  computeCompositeByCompany,
+  type CompositeScore,
+} from "@/lib/risk/composite-score";
 
 type Scope = "company" | "indicator" | "any";
 type Metric = "composite" | "indicator-status";
@@ -62,14 +67,38 @@ interface Subscription {
 
 const STORAGE_KEY = "terminal-subscriptions-v1";
 
+/**
+ * Architect Round-24 Stage 3 — versioned localStorage envelope.
+ * v=1 prevents silent-discard of legitimate rows when v2 adds new
+ * fields. Read path: accept both legacy bare-array shape AND the
+ * `{ v: 1, data: [...] }` envelope. Write path: always envelope.
+ */
+const STORAGE_VERSION = 1;
+
+interface StorageEnvelope<T> {
+  v: number;
+  data: T;
+}
+
+function isEnvelope(x: unknown): x is StorageEnvelope<unknown> {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as StorageEnvelope<unknown>).v === "number" &&
+    "data" in (x as StorageEnvelope<unknown>)
+  );
+}
+
 function readStore(): Subscription[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
+    // Accept legacy bare-array shape (v=0 implicit) OR v=1 envelope.
+    const data: unknown = isEnvelope(parsed) ? parsed.data : parsed;
+    if (!Array.isArray(data)) return [];
+    return data.filter(
       (s): s is Subscription =>
         typeof s === "object" &&
         s !== null &&
@@ -86,11 +115,73 @@ function readStore(): Subscription[] {
 function writeStore(list: Subscription[]): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    const envelope: StorageEnvelope<Subscription[]> = {
+      v: STORAGE_VERSION,
+      data: list,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
   } catch {
     // localStorage full / disabled — silent fail.
   }
 }
+
+/**
+ * Architect Round-24 Stage 3 — pure subscription matcher. Returns true
+ * iff the subscription's condition is currently satisfied by the
+ * supplied matrix + composites snapshot.
+ *
+ * v1 contract: only `metric === 'composite'` is evaluated. Indicator-
+ * status metric (e.g. "fire when AAC IND_NET_MARGIN goes red") is
+ * defined in the type but unimplemented — tracked as 🔄 for v2.
+ *
+ * Exported for unit testing — pure, side-effect-free.
+ */
+export function evaluateSubscription(
+  sub: Subscription,
+  composites: ReadonlyMap<string, CompositeScore>,
+  matrix: MatrixResponse,
+): boolean {
+  if (sub.status !== "active") return false;
+  if (sub.metric !== "composite") return false;
+  if (sub.threshold === null || !Number.isFinite(sub.threshold)) return false;
+  const compare = (score: number): boolean => {
+    switch (sub.comparator) {
+      case "<":
+        return score < sub.threshold!;
+      case "<=":
+        return score <= sub.threshold!;
+      case ">":
+        return score > sub.threshold!;
+      case ">=":
+        return score >= sub.threshold!;
+      case "==":
+        return score === sub.threshold!;
+    }
+  };
+  if (sub.scope === "any") {
+    for (const c of composites.values()) {
+      if (c.score !== null && compare(c.score)) return true;
+    }
+    return false;
+  }
+  if (sub.scope === "company" && sub.scopeValue) {
+    const co = matrix.companies.find((c) => c.code === sub.scopeValue);
+    if (!co) return false;
+    const composite = composites.get(co.id);
+    if (!composite || composite.score === null) return false;
+    return compare(composite.score);
+  }
+  // scope=indicator: composite metric doesn't apply per-indicator; v2.
+  return false;
+}
+
+/**
+ * Debounce window between consecutive `lastFiredAt` updates for the
+ * same subscription. 1 hour balances "give the CFO a useful signal
+ * when conditions persist" vs "don't spam the same firing on every
+ * matrix re-fetch within the same session".
+ */
+const FIRE_DEBOUNCE_MS = 60 * 60 * 1000;
 
 export function AISubscriptions() {
   const t = useTranslations("terminal");
@@ -114,6 +205,55 @@ export function AISubscriptions() {
     return () =>
       window.removeEventListener("terminal:open-subscriptions", onOpen);
   }, []);
+
+  /**
+   * Architect Round-24 Stage 3 — matcher engine. Subscribes to live
+   * matrix changes via useMatrix() and evaluates each active sub on
+   * every matrix-fetch resolve. Updates `lastFiredAt` for matches,
+   * debounced by FIRE_DEBOUNCE_MS to avoid spam-firing on cell-click
+   * navigation that re-emits matrix state. Component stays mounted
+   * by PanelGrid even when modal is closed, so the matcher runs
+   * across the entire session.
+   *
+   * Match-firing path is purely localStorage-side-effect; UI surface
+   * is the `lastFiredAt` badge in the list rendered when modal opens.
+   * v2 will fan-out to in-app toast / email / Slack — this is the
+   * v1 plumbing those v2 channels will subscribe to.
+   */
+  const { matrix } = useMatrix();
+  const composites = useMemo(() => {
+    if (!matrix) return new Map<string, CompositeScore>();
+    return computeCompositeByCompany(
+      matrix.cells,
+      matrix.companies.map((c) => c.id),
+    );
+  }, [matrix]);
+
+  useEffect(() => {
+    if (!matrix || subs.length === 0) return;
+    const now = Date.now();
+    let changed = false;
+    const updated = subs.map((sub) => {
+      if (sub.status !== "active") return sub;
+      const fires = evaluateSubscription(sub, composites, matrix);
+      if (!fires) return sub;
+      // Debounce: skip if last fire was less than FIRE_DEBOUNCE_MS ago.
+      if (sub.lastFiredAt && now - sub.lastFiredAt < FIRE_DEBOUNCE_MS) {
+        return sub;
+      }
+      changed = true;
+      return { ...sub, lastFiredAt: now };
+    });
+    if (changed) {
+      setSubs(updated);
+      writeStore(updated);
+    }
+    // subs intentionally omitted from deps — using setSubs(updated)
+    // would cause re-evaluation loop. We re-evaluate only when matrix
+    // / composites change (the inputs to the rule), not when we update
+    // lastFiredAt (the output).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matrix, composites]);
 
   useEffect(() => {
     if (!open) return;

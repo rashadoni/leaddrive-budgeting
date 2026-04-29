@@ -32,6 +32,7 @@ import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
 import { statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
 import type { IndicatorStatus } from "@/lib/risk/formula-engine";
+import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 /** A single row in the queue — derived from one HeatMapCell. */
 interface WorkItem {
@@ -116,13 +117,9 @@ export function ActionCenterPanel() {
       const co = compById.get(cell.companyId);
       const ind = indById.get(cell.indicatorId);
       if (!co || !ind) continue;
-      // Locale-aware indicator label — matches the HeatMap column header
-      // resolution chain so the same label appears in both surfaces.
-      const indicatorLabel =
-        (locale === "ru" && ind.nameRu) ||
-        (locale === "az" && ind.nameAz) ||
-        ind.nameEn ||
-        ind.code;
+      // Round-24 Stage 3 — single-source-of-truth resolver shared with
+      // HeatMap, IndicatorDetail, CommentsLayer, SubCoFinanceChat.
+      const indicatorLabel = resolveIndicatorLabel(ind, locale);
       out.push({
         key: `${cell.companyId}:${cell.indicatorId}`,
         severity: cell.status,

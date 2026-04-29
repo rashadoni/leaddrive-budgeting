@@ -11,6 +11,7 @@ import {
   summarizeMatrix,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
+import { resolveIndicatorLabel } from '../lib/resolve-indicator-label';
 import {
   Tooltip,
   TooltipContent,
@@ -378,10 +379,8 @@ export function HeatMap({ period }: Props) {
                     <TooltipTrigger asChild>
                       <div className="cursor-help leading-tight">
                         <div className="truncate font-sans normal-case text-gray-300 text-[10px]">
-                          {(locale === 'ru' && ind.nameRu) ||
-                            (locale === 'az' && ind.nameAz) ||
-                            ind.nameEn ||
-                            ind.code}
+                          {/* Round-24 Stage 3 — shared resolver. */}
+                          {resolveIndicatorLabel(ind, locale)}
                         </div>
                         {!compactMode && (
                           <div className="truncate font-mono text-gray-600 text-[8px] mt-px">
@@ -395,10 +394,7 @@ export function HeatMap({ period }: Props) {
                       className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
                     >
                       <div className="font-sans font-semibold">
-                        {(locale === 'ru' && ind.nameRu) ||
-                          (locale === 'az' && ind.nameAz) ||
-                          ind.nameEn ||
-                          ind.code}
+                        {resolveIndicatorLabel(ind, locale)}
                       </div>
                       <div className="font-mono text-muted-foreground text-[10px] mt-0.5">
                         {ind.code}

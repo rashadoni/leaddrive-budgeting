@@ -150,6 +150,10 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'layoutMenu.presetLabel.morningBrief': 'Morning Brief',
   'layoutMenu.presetLabel.investorMode': 'Investor Mode',
   'layoutMenu.presetLabel.auditMode': 'Audit Mode',
+  // M8-lite mobile viewport banner (Tier-3 sub-30 Stage 3f)
+  'mobileBanner.text': 'Risk Terminal is optimized for ≥1024px viewports. Some panels may not display fully on this screen — switch to a wider monitor for the full experience.',
+  'mobileBanner.ariaLabel': 'Mobile viewport advisory',
+  'mobileBanner.dismissAriaLabel': 'Dismiss mobile viewport advisory',
   // CommentsLayer keys (Tier-3 sub-30)
   'comments.title': 'Comments ({count} threads)',
   'comments.subtitle': 'Per-cell @mention threads. Tag a teammate (@cfo, @aac-finance) to discuss a specific data point. Press Esc to close.',
@@ -270,4 +274,22 @@ vi.mock('next-intl', () => ({
     dateTime: (date: Date) => String(date),
     number: (n: number) => String(n),
   }),
+}));
+
+// Tier-3 sub-30 Stage 3 — next-auth/react mock so components reading
+// `useSession()` (e.g. CommentsLayer for comment authorship) don't
+// crash without a SessionProvider in the test tree. Tests that need
+// a specific session shape can override per-file via vi.mock().
+vi.mock('next-auth/react', () => ({
+  useSession: () => ({
+    data: {
+      user: { name: 'Test User', email: 'test@example.com' },
+      expires: '2099-01-01',
+    },
+    status: 'authenticated',
+    update: async () => null,
+  }),
+  signIn: async () => undefined,
+  signOut: async () => undefined,
+  SessionProvider: ({ children }: { children: React.ReactNode }) => children,
 }));

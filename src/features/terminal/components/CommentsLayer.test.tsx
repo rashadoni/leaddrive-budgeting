@@ -107,12 +107,13 @@ describe("CommentsLayer (Tier-3 sub-30)", () => {
     fireEvent.click(sendBtn);
     // Comment appears in thread
     expect(screen.getByText(/Why is this red\?/)).toBeTruthy();
-    // Persisted to localStorage
+    // Persisted to localStorage as v:1 envelope (Round-24 Stage 3)
     const raw = window.localStorage.getItem(STORAGE_KEY);
     expect(raw).toBeTruthy();
-    const parsed = JSON.parse(raw!);
-    expect(parsed["AAC-MAIN:iv1"]).toBeTruthy();
-    expect(parsed["AAC-MAIN:iv1"][0].text).toBe("Why is this red?");
+    const env = JSON.parse(raw!);
+    expect(env.v).toBe(1);
+    expect(env.data["AAC-MAIN:iv1"]).toBeTruthy();
+    expect(env.data["AAC-MAIN:iv1"][0].text).toBe("Why is this red?");
   });
 
   it("renders @mention syntax with highlight spans", () => {
@@ -195,5 +196,105 @@ describe("CommentsLayer (Tier-3 sub-30)", () => {
     expect(sendBtn.disabled).toBe(true);
     fireEvent.change(draft, { target: { value: "real text" } });
     expect(sendBtn.disabled).toBe(false);
+  });
+
+  // Round-24 Stage 3 fix-before-close coverage:
+
+  it("uses session.user.name as comment author (not hardcoded 'cfo')", () => {
+    // vitest.setup.ts mock returns session.user.name = "Test User"
+    mockState = {
+      activeCompanyCode: "AAC-MAIN",
+      activeIndicatorValueId: "iv1",
+    };
+    render(<CommentsLayer />);
+    fireOpen();
+    const draft = screen.getByTestId("comments-draft") as HTMLInputElement;
+    fireEvent.change(draft, { target: { value: "test message" } });
+    fireEvent.click(screen.getByTestId("comments-send"));
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const envelope = JSON.parse(raw!);
+    // v:1 envelope shape
+    expect(envelope.v).toBe(1);
+    expect(envelope.data["AAC-MAIN:iv1"][0].author).toBe("Test User");
+  });
+
+  it("v:1 envelope persists with versioning on write", () => {
+    mockState = {
+      activeCompanyCode: "AAC-MAIN",
+      activeIndicatorValueId: "iv1",
+    };
+    render(<CommentsLayer />);
+    fireOpen();
+    const draft = screen.getByTestId("comments-draft") as HTMLInputElement;
+    fireEvent.change(draft, { target: { value: "hi" } });
+    fireEvent.click(screen.getByTestId("comments-send"));
+    const envelope = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
+    expect(envelope.v).toBe(1);
+    expect(envelope.data).toBeDefined();
+    expect(typeof envelope.data).toBe("object");
+  });
+
+  it("read path accepts legacy bare-object shape (pre-v1) AND v:1 envelope", () => {
+    mockState = {
+      activeCompanyCode: "AAC-MAIN",
+      activeIndicatorValueId: "iv1",
+    };
+    // Legacy bare-object shape (pre-Round-24).
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        "AAC-MAIN:iv1": [
+          {
+            id: "legacy",
+            author: "old-user",
+            timestamp: Date.now(),
+            text: "Legacy comment",
+          },
+        ],
+      }),
+    );
+    render(<CommentsLayer />);
+    fireOpen();
+    expect(screen.getByText("Legacy comment")).toBeTruthy();
+  });
+
+  it("defensive filter rejects malformed JSON entries (shape-mismatch)", () => {
+    mockState = {
+      activeCompanyCode: "AAC-MAIN",
+      activeIndicatorValueId: "iv1",
+    };
+    // Malformed: missing required fields (no `text`)
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        v: 1,
+        data: {
+          "AAC-MAIN:iv1": [
+            { id: "valid", author: "x", timestamp: 1, text: "valid" },
+            { id: "invalid", author: "x" }, // missing timestamp + text
+            null, // not an object
+            "string-not-object",
+          ],
+        },
+      }),
+    );
+    render(<CommentsLayer />);
+    fireOpen();
+    expect(screen.getByText("valid")).toBeTruthy();
+    // Malformed entries silently dropped — only 1 row visible.
+    const dialog = screen.getByRole("dialog");
+    const items = dialog.querySelectorAll("[data-testid^='comment-row-']");
+    expect(items.length).toBe(1);
+  });
+
+  it("defensive filter on entirely malformed JSON gracefully returns empty", () => {
+    mockState = {
+      activeCompanyCode: "AAC-MAIN",
+      activeIndicatorValueId: "iv1",
+    };
+    window.localStorage.setItem(STORAGE_KEY, "not-valid-json{{{");
+    expect(() => render(<CommentsLayer />)).not.toThrow();
+    fireOpen();
+    expect(screen.getByTestId("comments-empty")).toBeTruthy();
   });
 });

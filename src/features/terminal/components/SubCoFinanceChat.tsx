@@ -48,6 +48,21 @@ interface ChatMessage {
 type ChatStore = Record<string, ChatMessage[]>;
 
 const STORAGE_KEY = "terminal-subco-chat-v1";
+const STORAGE_VERSION = 1;
+
+interface StorageEnvelope<T> {
+  v: number;
+  data: T;
+}
+
+function isEnvelope(x: unknown): x is StorageEnvelope<unknown> {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as StorageEnvelope<unknown>).v === "number" &&
+    "data" in (x as StorageEnvelope<unknown>)
+  );
+}
 
 function readStore(): ChatStore {
   if (typeof window === "undefined") return {};
@@ -55,9 +70,10 @@ function readStore(): ChatStore {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
+    const data: unknown = isEnvelope(parsed) ? parsed.data : parsed;
+    if (!data || typeof data !== "object") return {};
     const out: ChatStore = {};
-    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       if (!Array.isArray(v)) continue;
       const filtered = v.filter(
         (m): m is ChatMessage =>
@@ -80,7 +96,11 @@ function readStore(): ChatStore {
 function writeStore(store: ChatStore): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+    const envelope: StorageEnvelope<ChatStore> = {
+      v: STORAGE_VERSION,
+      data: store,
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
   } catch {
     // localStorage full / disabled — silent fail.
   }

@@ -1518,6 +1518,11 @@
       "alertsLoading": "Alerts: loading…",
       "alertsTitle": "{count} red+amber indicators across the org — click to open alerts panel"
     },
+    "mobileBanner": {
+      "text": "Risk Terminal is optimized for ≥1024px viewports. Some panels may not display fully on this screen — switch to a wider monitor for the full experience.",
+      "ariaLabel": "Mobile viewport advisory",
+      "dismissAriaLabel": "Dismiss mobile viewport advisory"
+    },
     "comments": {
       "title": "Comments ({count} threads)",
       "subtitle": "Per-cell @mention threads. Tag a teammate (@cfo, @aac-finance) to discuss a specific data point. Press Esc to close.",

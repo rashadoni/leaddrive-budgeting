@@ -21,6 +21,7 @@ import {
   type ForecastConfidence,
 } from "@/lib/risk/forecast";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 interface IndicatorMeta {
   id: string;
@@ -156,9 +157,8 @@ export function IndicatorDetail() {
               {ind.code}
             </span>{' '}
             <span className="text-[#E8EDF5]">
-              {(locale === 'ru' && ind.nameRu) ||
-                (locale === 'az' && ind.nameAz) ||
-                ind.nameEn}
+              {/* Round-24 Stage 3 — shared resolver. */}
+              {resolveIndicatorLabel(ind, locale)}
             </span>
           </div>
           <div className="text-gray-600 text-[10px] mt-0.5">

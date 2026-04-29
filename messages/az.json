@@ -1518,6 +1518,11 @@
       "alertsLoading": "Xəbərdarlıqlar: yüklənir…",
       "alertsTitle": "Holdinqdə {count} red+amber göstərici — xəbərdarlıq panelini açmaq üçün klik"
     },
+    "mobileBanner": {
+      "text": "Risk Terminal ≥1024px ekranlar üçün optimallaşdırılıb. Bu ekranda bəzi panellər tam görünməyə bilər — tam təcrübə üçün daha geniş monitor istifadə edin.",
+      "ariaLabel": "Dar pəncərə xəbərdarlığı",
+      "dismissAriaLabel": "Dar pəncərə xəbərdarlığını bağla"
+    },
     "comments": {
       "title": "Şərhlər ({count} tred)",
       "subtitle": "Hər xana üçün @mention tred. Konkret məlumat nöqtəsini müzakirə etmək üçün komanda yoldaşını tag edin (@cfo, @aac-finance). Bağlamaq üçün Esc.",

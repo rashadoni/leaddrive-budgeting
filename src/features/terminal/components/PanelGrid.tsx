@@ -31,6 +31,7 @@ import { ActionCenterPanel } from './ActionCenterPanel';
 import { CommentsLayer } from './CommentsLayer';
 import { SubCoFinanceChat } from './SubCoFinanceChat';
 import { AISubscriptions } from './AISubscriptions';
+import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
@@ -283,6 +284,10 @@ export function PanelGrid() {
           Opens on `terminal:open-subscriptions` (CommandBar `SUB GO`).
           v1 in-memory + localStorage; v2 backend persistence + email. */}
       <AISubscriptions />
+      {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
+          CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
+          ≥1024px viewports. Dismissable + localStorage-persisted. */}
+      <MobileViewportBanner />
       {/* Round-7 M2 — first-run welcome hint. Renders only on first
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}
