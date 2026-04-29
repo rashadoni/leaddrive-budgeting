@@ -95,11 +95,36 @@ function buildUrl(period: string | undefined): string {
     : `/api/indicators/matrix`;
 }
 
+function isMatrixResponseShape(v: unknown): v is MatrixResponse {
+  // Defensive shape check — endpoint returns an object with `period`
+  // string + `companies`, `indicators`, `cells` arrays. Mirror of
+  // sub-19 useCompanies's `isCompanyNode` pattern (architect sub-20
+  // 💡 closure: harmonize defensive filtering between two hooks of
+  // the same architectural shape).
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as { period: unknown }).period === "string" &&
+    Array.isArray((v as { companies: unknown }).companies) &&
+    Array.isArray((v as { indicators: unknown }).indicators) &&
+    Array.isArray((v as { cells: unknown }).cells)
+  );
+}
+
 function fetchMatrix(period: string | undefined): Promise<MatrixResponse> {
-  return fetch(buildUrl(period)).then((r) => {
-    if (!r.ok) throw new Error(`/api/indicators/matrix ${r.status}`);
-    return r.json() as Promise<MatrixResponse>;
-  });
+  return fetch(buildUrl(period))
+    .then((r) => {
+      if (!r.ok) throw new Error(`/api/indicators/matrix ${r.status}`);
+      return r.json() as Promise<unknown>;
+    })
+    .then((data) => {
+      if (!isMatrixResponseShape(data)) {
+        throw new Error(
+          `/api/indicators/matrix returned malformed payload (missing period/companies/indicators/cells)`,
+        );
+      }
+      return data;
+    });
 }
 
 function cacheKey(period: string | undefined): string {
@@ -179,7 +204,9 @@ export function useMatrix(period?: string): UseMatrixResult {
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
-      cacheByPeriod.delete(key);
+      // `key` is derived from `period` via cacheKey() — single dep
+      // suffices (architect sub-20 💡 closure).
+      cacheByPeriod.delete(cacheKey(period));
       setLoading(true);
       setError(null);
       try {
@@ -191,7 +218,7 @@ export function useMatrix(period?: string): UseMatrixResult {
         setLoading(false);
       }
     },
-    [key, period],
+    [period],
   );
 
   return { matrix, loading, error, refresh };

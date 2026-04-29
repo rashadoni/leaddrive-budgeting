@@ -216,6 +216,22 @@ describe("useMatrix (sub-20)", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("malformed payload (missing companies/indicators/cells) → error path", async () => {
+    // Architect sub-20 💡 closure: defensive shape check rejects
+    // payloads that don't match MatrixResponse contract. Locks the
+    // contract: caller sees `error` instead of crashing later when
+    // some consumer reads `.cells.map` on undefined.
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ period: "2026" }), { status: 200 }),
+    ) as never;
+    const { result } = renderHook(() => useMatrix());
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.error).toContain("malformed");
+    expect(result.current.matrix).toBeNull();
+  });
+
   it("getMatrixSync() returns null for periods not in cache", async () => {
     global.fetch = vi.fn(async () =>
       new Response(JSON.stringify(SAMPLE_2026), { status: 200 }),

@@ -61,7 +61,7 @@ beforeEach(() => {
     'fetch',
     vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ cells: [], indicators: [], companies: [] }),
+      json: () => Promise.resolve({ period: '2026', cells: [], indicators: [], companies: [] }),
     }),
   );
 
@@ -133,6 +133,7 @@ describe('CommandBar (Phase 7.D smoke)', () => {
         ok: true,
         json: () =>
           Promise.resolve({
+            period: '2026',
             cells: [{ indicatorValueId: 'iv-123', companyId: 'co-1', indicatorId: 'ind-1' }],
             indicators: [{ id: 'ind-1', code: 'IND_GROSS_MARGIN' }],
             companies: [{ id: 'co-1', code: 'AAC' }],
@@ -169,6 +170,7 @@ describe('CommandBar (Phase 7.D smoke)', () => {
         ok: true,
         json: () =>
           Promise.resolve({
+            period: '2026',
             cells: [
               { indicatorValueId: 'iv-aac', companyId: 'co-aac', indicatorId: 'ind-1' },
               { indicatorValueId: 'iv-spark', companyId: 'co-spark', indicatorId: 'ind-1' },
