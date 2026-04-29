@@ -72,6 +72,37 @@ export const BUILT_IN_PRESETS: Record<string, { label: string; sizes: LayoutSize
       bottom: { [PANEL_IDS.panel3]: 60, [PANEL_IDS.panel4]: 40 },
     },
   },
+  // Sub-27 cont'd Round-5 M5 — task-oriented presets per plan §M5.
+  morningBrief: {
+    // Morning routine: scan matrix wide; tree thin nav; CompanyOverview
+    // snapshot dominates the bottom row for quick "what changed overnight".
+    label: "Morning Brief",
+    sizes: {
+      outer: { [PANEL_IDS.outerTop]: 65, [PANEL_IDS.outerBottom]: 35 },
+      top: { [PANEL_IDS.panel1]: 22, [PANEL_IDS.panel2]: 78 },
+      bottom: { [PANEL_IDS.panel3]: 30, [PANEL_IDS.panel4]: 70 },
+    },
+  },
+  investorMode: {
+    // Show-the-board: HeatMap maximised (88% top); tree thin nav strip;
+    // bottom split CompanyOverview + IndicatorDetail for quick drill if asked.
+    label: "Investor Mode",
+    sizes: {
+      outer: { [PANEL_IDS.outerTop]: 70, [PANEL_IDS.outerBottom]: 30 },
+      top: { [PANEL_IDS.panel1]: 12, [PANEL_IDS.panel2]: 88 },
+      bottom: { [PANEL_IDS.panel3]: 50, [PANEL_IDS.panel4]: 50 },
+    },
+  },
+  auditMode: {
+    // Audit/forensics: matrix + IndicatorDetail dominate; tree mid; snapshot small.
+    // Designed for "click cell → read formula + resolved variables + aggregates".
+    label: "Audit Mode",
+    sizes: {
+      outer: { [PANEL_IDS.outerTop]: 50, [PANEL_IDS.outerBottom]: 50 },
+      top: { [PANEL_IDS.panel1]: 25, [PANEL_IDS.panel2]: 75 },
+      bottom: { [PANEL_IDS.panel3]: 75, [PANEL_IDS.panel4]: 25 },
+    },
+  },
 }
 
 const SUM_TOLERANCE = 0.5 // pct points; lib emits floats
