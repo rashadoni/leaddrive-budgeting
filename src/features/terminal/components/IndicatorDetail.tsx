@@ -20,6 +20,7 @@ import {
   forecastNextPeriod,
   type ForecastConfidence,
 } from "@/lib/risk/forecast";
+import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 interface IndicatorMeta {
   id: string;
@@ -175,6 +176,12 @@ export function IndicatorDetail() {
             className="text-[10px] uppercase tracking-wider"
             style={{ color: statusColor }}
           >
+            {/* Tier-3 sub-29 M7 sweep — shape glyph next to status word.
+                Decorative (status word already conveys meaning to screen
+                readers); shape adds visual redundancy for color-blind users. */}
+            <span aria-hidden="true" className="mr-0.5 opacity-80">
+              {statusShape(status)}
+            </span>
             {status}
           </div>
         </div>

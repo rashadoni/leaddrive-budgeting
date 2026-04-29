@@ -30,7 +30,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { ListChecks, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
-import { statusColor } from "@/lib/risk/heatmap-matrix";
+import { statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
 import type { IndicatorStatus } from "@/lib/risk/formula-engine";
 
 /** A single row in the queue — derived from one HeatMapCell. */
@@ -237,6 +237,9 @@ export function ActionCenterPanel() {
                   <h3
                     className={`text-xs font-mono uppercase tracking-wider mb-2 ${SEVERITY_TONE[sev].split(" ")[0]}`}
                   >
+                    <span aria-hidden="true" className="mr-1 opacity-80">
+                      {statusShape(sev)}
+                    </span>
                     {sevHeader}
                   </h3>
                   <ul className="space-y-2">
@@ -266,6 +269,9 @@ export function ActionCenterPanel() {
                               className="font-mono text-[10px] tabular-nums"
                               style={{ color: statusColor(it.status) }}
                             >
+                              <span aria-hidden="true" className="mr-1 opacity-70">
+                                {statusShape(it.status)}
+                              </span>
                               {t("actionCenter.currentValue")}:{" "}
                               {Number.isFinite(it.value)
                                 ? it.value.toFixed(2)

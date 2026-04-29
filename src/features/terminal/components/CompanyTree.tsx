@@ -9,6 +9,7 @@ import {
   computeCompositeByCompany,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
+import { statusShape } from '@/lib/risk/heatmap-matrix';
 
 const PANEL_ID = 1;
 
@@ -528,9 +529,11 @@ function CompositeMini({ score }: { score: number | null }) {
   }
   const tone =
     score >= 67 ? '#00D4AA' : score >= 34 ? '#FFB020' : '#FF4757';
-  // Tier-3 sub-29 M7 — color-blind safe redundant signal. Shape glyph
-  // matches statusShape() mapping in heatmap-matrix.ts (●/▲/■).
-  const shape = score >= 67 ? '●' : score >= 34 ? '▲' : '■';
+  // Tier-3 sub-29 M7 — color-blind safe redundant signal. Round-15
+  // architect 💡 closure — DRY: route band → statusShape() so glyph
+  // mapping stays single-source-of-truth in heatmap-matrix.ts.
+  const band = score >= 67 ? 'green' : score >= 34 ? 'amber' : 'red';
+  const shape = statusShape(band);
   return (
     <span
       className="font-mono tabular-nums text-[9px] px-1 py-0 rounded shrink-0 font-bold"

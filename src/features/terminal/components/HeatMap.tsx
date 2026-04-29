@@ -777,16 +777,22 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
             }}
           >
             {/* Tier-3 sub-29 M7 — color-blind safe redundant signal.
-                Tiny shape glyph at top-right of each cell (≈25% opacity)
-                so color-sighted users barely notice; deuteranopia /
-                protanopia users get the redundant cue. */}
+                Round-15 architect 💡 closure — Tiny shape glyph at
+                top-right of each cell. Uses `mix-blend-mode: difference`
+                with white text so the glyph stays visible on BOTH light
+                cells (#00D4AA green / #FFB020 amber) and dark cells
+                (#FF4757 red / #1F2937 missing) without per-status color
+                logic. Slight opacity dampens the glyph so the value
+                text inside the cell remains primary; color-blind users
+                still get the redundant cue. */}
             <span
               aria-hidden="true"
               className="absolute top-0 right-0.5 leading-none"
               style={{
                 fontSize: compactMode ? 7 : 9,
-                opacity: 0.35,
-                color: '#000',
+                opacity: 0.7,
+                color: '#FFFFFF',
+                mixBlendMode: 'difference',
                 pointerEvents: 'none',
               }}
             >

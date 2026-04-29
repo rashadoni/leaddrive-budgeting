@@ -248,6 +248,7 @@ function CompareRow({
   }
 
   const deltaColor = colorForDelta(delta, indicator.direction);
+  const deltaShape = shapeForDelta(delta, indicator.direction);
 
   return (
     <tr className="hover:bg-muted/20">
@@ -274,6 +275,11 @@ function CompareRow({
         className="text-right px-2 py-1.5 tabular-nums font-semibold"
         style={{ color: deltaColor }}
       >
+        {/* Tier-3 sub-29 M7 sweep — shape glyph encodes direction in
+            addition to color (●=better, ▲=worse, ◇=neutral/no-data). */}
+        <span aria-hidden="true" className="mr-0.5 opacity-80">
+          {deltaShape}
+        </span>
         {delta === null ? "—" : formatDelta(delta, indicator.unit)}
       </td>
     </tr>
@@ -293,6 +299,25 @@ function colorForDelta(
   }
   // lower_better
   return isPositive ? "#FF4757" : "#00D4AA";
+}
+
+/** Tier-3 sub-29 M7 sweep — color-blind safe redundant signal for delta
+ *  direction. Maps to statusShape glyphs: ●=improvement (green),
+ *  ▲=regression (amber/red — pick the heavier ▲ for any negative move
+ *  to draw the eye), ◇=neutral or no-data. Better-vs-worse is judged
+ *  against `direction` (higher_better / lower_better / band). */
+function shapeForDelta(
+  delta: number | null,
+  direction: MatrixIndicator["direction"],
+): string {
+  if (delta === null || !Number.isFinite(delta)) return "◇";
+  if (direction === "band" || delta === 0) return "◇";
+  const isPositive = delta > 0;
+  if (direction === "higher_better") {
+    return isPositive ? "●" : "▲";
+  }
+  // lower_better — positive delta is a regression
+  return isPositive ? "▲" : "●";
 }
 
 function statusHex(status: MatrixCell["status"] | undefined): string {

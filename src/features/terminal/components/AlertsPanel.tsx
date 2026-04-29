@@ -34,6 +34,7 @@ import { AlertTriangle, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
 import type { AlertMatch, AlertSeverity } from "@/lib/risk/alert-rules";
+import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 const SEVERITY_KEY: Record<AlertSeverity, string> = {
   critical: "severityCritical",
@@ -45,6 +46,15 @@ const SEVERITY_TONE: Record<AlertSeverity, string> = {
   critical: "text-[#FF4757] border-[#FF4757]/40 bg-[#FF4757]/10",
   warning: "text-[#FFB800] border-[#FFB800]/40 bg-[#FFB800]/10",
   info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
+};
+
+/** Tier-3 sub-29 M7 sweep — color-blind safe redundant signal for
+ *  severity headers. critical→red→■ / warning→amber→▲ / info→green→●
+ *  via statusShape() helper. */
+const SEVERITY_SHAPE: Record<AlertSeverity, string> = {
+  critical: statusShape("red"),
+  warning: statusShape("amber"),
+  info: statusShape("green"),
 };
 
 export function AlertsPanel() {
@@ -149,6 +159,9 @@ export function AlertsPanel() {
                   <h3
                     className={`text-xs font-mono uppercase tracking-wider mb-2 ${SEVERITY_TONE[sev].split(" ")[0]}`}
                   >
+                    <span aria-hidden="true" className="mr-1 opacity-80">
+                      {SEVERITY_SHAPE[sev]}
+                    </span>
                     {sevLabel} ({list.length})
                   </h3>
                   <ul className="space-y-2">

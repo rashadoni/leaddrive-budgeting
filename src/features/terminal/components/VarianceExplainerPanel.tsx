@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
+import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 type Language = "en" | "ru" | "az";
 
@@ -230,6 +231,14 @@ export function VarianceExplainerPanel() {
       : data && data.confidence >= 0.5
       ? "#FFB020"
       : "#FF4757";
+  // Tier-3 sub-29 M7 sweep — color-blind safe redundant signal for
+  // confidence band. ≥0.7 → green ●; ≥0.5 → amber ▲; else red ■.
+  const confidenceShape =
+    data && data.confidence >= 0.7
+      ? statusShape("green")
+      : data && data.confidence >= 0.5
+      ? statusShape("amber")
+      : statusShape("red");
 
   return (
     <div className="font-mono text-[11px] text-gray-300 w-full h-full flex flex-col gap-2 overflow-auto">
@@ -244,6 +253,9 @@ export function VarianceExplainerPanel() {
               style={{ color: confidenceTone }}
               title={t("varianceExplainer.confidenceTitle")}
             >
+              <span aria-hidden="true" className="mr-0.5 opacity-70">
+                {confidenceShape}
+              </span>
               {confidencePct}%
             </span>
           )}

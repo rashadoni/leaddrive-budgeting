@@ -36,7 +36,7 @@ import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 // composite-score.ts + MatrixCompanyRow/MatrixIndicatorCol from the
 // hook). Local `'missing'` literal was a UI fiction — endpoint emits
 // only 4 IndicatorStatus values (green/amber/red/unknown).
-import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { statusShape, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import type {
   MatrixCompanyRow as MatrixCompany,
   MatrixIndicatorCol as MatrixIndicator,
@@ -155,11 +155,11 @@ export function CompanySnapshot({ companyCode }: Props) {
         <CompositeBadgeBig score={composite?.score ?? null} />
         {statusCounts && statusCounts.total > 0 && (
           <div className="flex items-center gap-1 text-[9px] tabular-nums">
-            <StatusChip count={statusCounts.green} color="#00D4AA" label="G" shape="●" />
-            <StatusChip count={statusCounts.amber} color="#FFB020" label="A" shape="▲" />
-            <StatusChip count={statusCounts.red} color="#FF4757" label="R" shape="■" />
+            <StatusChip count={statusCounts.green} color="#00D4AA" label="G" shape={statusShape("green")} />
+            <StatusChip count={statusCounts.amber} color="#FFB020" label="A" shape={statusShape("amber")} />
+            <StatusChip count={statusCounts.red} color="#FF4757" label="R" shape={statusShape("red")} />
             {statusCounts.unknown > 0 && (
-              <StatusChip count={statusCounts.unknown} color="#6B7280" label="?" shape="◇" />
+              <StatusChip count={statusCounts.unknown} color="#6B7280" label="?" shape={statusShape("unknown")} />
             )}
           </div>
         )}
@@ -236,8 +236,10 @@ function CompositeBadgeBig({ score }: { score: number | null }) {
   const tone =
     score >= 67 ? "#00D4AA" : score >= 34 ? "#FFB020" : "#FF4757";
   // Tier-3 sub-29 M7 — shape glyph alongside score for color-blind parity.
-  // Score band: ≥67 green / ≥34 amber / else red.
-  const shape = score >= 67 ? "●" : score >= 34 ? "▲" : "■";
+  // Round-15 architect 💡 closure — DRY: route band → statusShape() so
+  // glyph mapping stays single-source-of-truth in heatmap-matrix.ts.
+  const band = score >= 67 ? "green" : score >= 34 ? "amber" : "red";
+  const shape = statusShape(band);
   return (
     <div
       className="flex flex-col items-center px-2 py-0.5 rounded border bg-[#050814]"
