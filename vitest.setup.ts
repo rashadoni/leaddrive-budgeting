@@ -32,6 +32,8 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'snapshot.title': 'Snapshot',
   'snapshot.trend12mo': '12mo trend',
   'hotkeys.running': 'RUNNING…',
+  'hotkeys.compactTitle': 'Toggle compact mode (Ctrl+/)',
+  'hotkeys.compactAriaLabel': 'Toggle compact mode',
 };
 
 function fallbackLabel(key: string): string {

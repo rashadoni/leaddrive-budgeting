@@ -1357,7 +1357,10 @@
       "search": "ПОИСК",
       "searchTitle": "Сфокусировать поиск в активной панели (то же что /)",
       "import": "ИМПОРТ",
-      "importTitle": "Загрузить xlsx бюджета через мастер онбординга"
+      "importTitle": "Загрузить xlsx бюджета через мастер онбординга",
+      "compact": "КОМПАКТ",
+      "compactTitle": "Переключить компактный режим (Ctrl+/)",
+      "compactAriaLabel": "Переключить компактный режим"
     },
     "companyTree": {
       "filterPlaceholder": "фильтр компаний…",
@@ -1370,7 +1373,11 @@
       "tabSector": "СЕКТОР"
     },
     "heatMap": {
-      "filterRowsPlaceholder": "фильтр строк…"
+      "filterRowsPlaceholder": "фильтр строк…",
+      "loadingHeatmap": "Загрузка карты рисков…",
+      "noCompaniesYet": "Компаний или индикаторов ещё нет. Импортируйте через /budgeting/onboarding и запустите seed индикаторов (scripts/seed-indicators.ts).",
+      "companyColumn": "Компания",
+      "noCompaniesMatch": "Нет совпадений для"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",

@@ -329,12 +329,11 @@ export function HeatMap({ period }: Props) {
       </div>
 
       {loading && (
-        <span className="text-gray-700 text-[11px] py-2">Loading heatmap…</span>
+        <span className="text-gray-700 text-[11px] py-2">{t('heatMap.loadingHeatmap')}</span>
       )}
       {isEmpty && (
         <span className="text-gray-700 text-[11px] py-2">
-          No companies or indicators yet. Import via /budgeting/onboarding and seed
-          indicators (scripts/seed-indicators.ts).
+          {t('heatMap.noCompaniesYet')}
         </span>
       )}
 
@@ -347,7 +346,7 @@ export function HeatMap({ period }: Props) {
                 className="sticky left-0 top-0 z-20 bg-[#0A0E27] text-left px-1.5 py-1 border-b border-gray-800/60 text-gray-500 uppercase tracking-wider"
                 style={{ minWidth: 90 }}
               >
-                Company
+                {t('heatMap.companyColumn')}
               </th>
               {indicators.map((ind) => (
                 <th
@@ -390,7 +389,7 @@ export function HeatMap({ period }: Props) {
                   colSpan={indicators.length + 1}
                   className="text-gray-600 px-2 py-3 text-center"
                 >
-                  No companies match "{search}"
+                  {t('heatMap.noCompaniesMatch')} "{search}"
                 </td>
               </tr>
             ) : (

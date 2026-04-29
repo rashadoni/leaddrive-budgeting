@@ -1357,7 +1357,10 @@
       "search": "AXTAR",
       "searchTitle": "Aktiv paneldə axtarışı fokuslayır (/ kimi)",
       "import": "İDXAL",
-      "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə"
+      "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə",
+      "compact": "KOMPAKT",
+      "compactTitle": "Kompakt rejimi açıb-bağla (Ctrl+/)",
+      "compactAriaLabel": "Kompakt rejimi açıb-bağla"
     },
     "companyTree": {
       "filterPlaceholder": "şirkət filtri…",
@@ -1370,7 +1373,11 @@
       "tabSector": "SEKTOR"
     },
     "heatMap": {
-      "filterRowsPlaceholder": "sətr filtri…"
+      "filterRowsPlaceholder": "sətr filtri…",
+      "loadingHeatmap": "Risk xəritəsi yüklənir…",
+      "noCompaniesYet": "Şirkət və ya göstərici hələ yoxdur. /budgeting/onboarding ilə idxal et və göstərici seed-i işə sal (scripts/seed-indicators.ts).",
+      "companyColumn": "Şirkət",
+      "noCompaniesMatch": "Uyğunluq yoxdur:"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",

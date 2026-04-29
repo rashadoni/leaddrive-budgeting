@@ -1357,7 +1357,10 @@
       "search": "SEARCH",
       "searchTitle": "Focus the search input in the active panel (same as /)",
       "import": "IMPORT",
-      "importTitle": "Upload a budget xlsx via Onboarding wizard"
+      "importTitle": "Upload a budget xlsx via Onboarding wizard",
+      "compact": "COMPACT",
+      "compactTitle": "Toggle compact mode (Ctrl+/)",
+      "compactAriaLabel": "Toggle compact mode"
     },
     "companyTree": {
       "filterPlaceholder": "filter companies…",
@@ -1370,7 +1373,11 @@
       "tabSector": "SECTOR"
     },
     "heatMap": {
-      "filterRowsPlaceholder": "filter rows…"
+      "filterRowsPlaceholder": "filter rows…",
+      "loadingHeatmap": "Loading heatmap…",
+      "noCompaniesYet": "No companies or indicators yet. Import via /budgeting/onboarding and seed indicators (scripts/seed-indicators.ts).",
+      "companyColumn": "Company",
+      "noCompaniesMatch": "No companies match"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",

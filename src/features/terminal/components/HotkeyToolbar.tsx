@@ -193,11 +193,11 @@ export function HotkeyToolbar() {
       <button
         type="button"
         onClick={() => toggleCompactMode()}
-        title="Toggle compact mode (Ctrl+/)"
-        aria-label="Toggle compact mode"
+        title={t("hotkeys.compactTitle")}
+        aria-label={t("hotkeys.compactAriaLabel")}
         className="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 transition-colors shrink-0 ml-auto"
       >
-        ▦ COMPACT
+        ▦ {t("hotkeys.compact")}
       </button>
     </div>
   );
