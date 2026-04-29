@@ -343,6 +343,82 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     expect(card.textContent).toContain("220/95 tok");
   });
 
+  it("renders multi-step horizon strip when response includes horizon (sub-23)", async () => {
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("forecast/explain")) {
+        return new Response(
+          JSON.stringify({
+            indicatorValueId: "iv_test",
+            narrative: "trajectory narrative",
+            driverHypotheses: [],
+            riskFactors: [],
+            confidence: 0.7,
+            modelName: "m",
+            promptVersion: "v1",
+            horizon: [
+              { step: 1, predicted: 34 },
+              { step: 2, predicted: 36 },
+              { step: 3, predicted: 38 },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify(fixture({ sparkline: HIGH_CONF_SPARKLINE })),
+        { status: 200 },
+      );
+    }) as never;
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-explain-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-horizon")).toBeTruthy();
+    });
+    // 3 step badges rendered with predicted values.
+    expect(screen.getByTestId("forecast-horizon-step-1").textContent).toContain("+34");
+    expect(screen.getByTestId("forecast-horizon-step-2").textContent).toContain("+36");
+    expect(screen.getByTestId("forecast-horizon-step-3").textContent).toContain("+38");
+    // Extrapolation caveat surfaced.
+    expect(screen.getByTestId("forecast-horizon").textContent).toContain(
+      "uncertainty grows",
+    );
+  });
+
+  it("hides horizon strip when response omits horizon or has only 1 step", async () => {
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("forecast/explain")) {
+        return new Response(
+          JSON.stringify({
+            indicatorValueId: "iv_test",
+            narrative: "single-step",
+            driverHypotheses: [],
+            riskFactors: [],
+            confidence: 0.5,
+            modelName: "m",
+            promptVersion: "v1",
+            horizon: [{ step: 1, predicted: 34 }],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify(fixture({ sparkline: HIGH_CONF_SPARKLINE })),
+        { status: 200 },
+      );
+    }) as never;
+    const fe = (await import("@testing-library/react")).fireEvent;
+    render(<IndicatorDetail />);
+    fe.click(await screen.findByTestId("forecast-explain-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-narrative")).toBeTruthy();
+    });
+    // 1-step horizon hidden — strip would be redundant with v1 badge above.
+    expect(screen.queryByTestId("forecast-horizon")).toBeNull();
+  });
+
   it("language tab click clears stale narrative (re-run signal)", async () => {
     global.fetch = detailFetchMock({ sparkline: HIGH_CONF_SPARKLINE });
     const fe = (await import("@testing-library/react")).fireEvent;

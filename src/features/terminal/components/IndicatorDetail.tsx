@@ -365,6 +365,8 @@ interface ForecastExplainResponse {
   modelName: string;
   promptVersion: string;
   usage?: { inputTokens: number; outputTokens: number };
+  /** Sub-23 — multi-step horizon (typically 3 steps: t+1, t+2, t+3). */
+  horizon?: Array<{ step: number; predicted: number }>;
 }
 type ExplainState =
   | { kind: "idle" }
@@ -503,6 +505,36 @@ function ForecastSection(props: {
           className="mt-1 border-t border-gray-800/40 pt-1.5 space-y-1.5"
           data-testid="forecast-narrative"
         >
+          {/* Sub-23 — multi-step horizon strip (3 future steps).
+              Renders as a sequence of step+N badges so the customer
+              sees trajectory across the next quarter, not just one
+              period. Hidden when horizon absent (single-step v2). */}
+          {explain.data.horizon && explain.data.horizon.length > 1 && (
+            <div
+              className="flex items-center gap-1.5 flex-wrap"
+              data-testid="forecast-horizon"
+            >
+              <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+                Horizon
+              </span>
+              {explain.data.horizon.map((h) => (
+                <span
+                  key={h.step}
+                  className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-800/60 bg-[#0A0E27]/60 text-gray-300"
+                  data-testid={`forecast-horizon-step-${h.step}`}
+                >
+                  <span className="text-gray-500">t+{h.step}</span>{" "}
+                  <span className="tabular-nums">
+                    {h.predicted > 0 ? "+" : ""}
+                    {formatValue(h.predicted)}
+                  </span>
+                </span>
+              ))}
+              <span className="text-[9px] text-gray-600 ml-auto">
+                linear extrapolation; uncertainty grows with horizon
+              </span>
+            </div>
+          )}
           <p className="text-[11px] text-gray-200 leading-snug">
             {explain.data.narrative}
           </p>

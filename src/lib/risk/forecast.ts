@@ -144,3 +144,87 @@ export function forecastNextPeriod(
     method: 'linear-regression-v1',
   };
 }
+
+/**
+ * Phase C2 v2 (sub-23) — multi-step forecast horizon. Projects `steps`
+ * future periods along the SAME linear fit computed by
+ * `forecastNextPeriod`. Returns one row per step (step=1..steps) with
+ * the predicted value at each future index.
+ *
+ * **Why single-fit-multi-step (not re-fit per step):**
+ * Re-fit-per-step requires new data points at each future index — we
+ * don't have them. Pure extrapolation along the regression line is
+ * the honest "this is what the line predicts" estimate; the LLM
+ * narrator (forecast-explainer) is told to lead with limitation when
+ * the horizon distance erodes the predictive signal.
+ *
+ * **Why not exponential smoothing or seasonal:** Both would require
+ * a different model + more data. v2 ships the conservative linear
+ * extrapolation; seasonality + exponential smoothing tracked as
+ * separate v3 🔄 in CARRYOVER.
+ *
+ * Returns null with the same conditions as `forecastNextPeriod` (<3
+ * non-null points). Confidence band is shared across the horizon
+ * (single fit) — UI / LLM can degrade per-step if needed.
+ */
+export interface ForecastHorizonStep {
+  /** 1-indexed step ahead (step=1 → next period, step=2 → +1, ...). */
+  step: number;
+  /** Predicted value at this step's x-index. */
+  predicted: number;
+}
+
+export interface ForecastHorizonResult {
+  /** Per-step predictions, ordered ascending step. */
+  horizon: ForecastHorizonStep[];
+  /** Slope of the underlying linear fit (shared across all steps). */
+  slope: number;
+  intercept: number;
+  r2: number;
+  contributingCount: number;
+  /** Confidence band of the fit itself — same value for every step.
+   *  Caller may degrade per-step (e.g. step≥3 → medium, step≥6 → low)
+   *  but the underlying model confidence is invariant of horizon. */
+  confidence: ForecastConfidence;
+  method: 'linear-regression-v1';
+}
+
+const DEFAULT_HORIZON_STEPS = 3;
+const MAX_HORIZON_STEPS = 12;
+
+export function forecastHorizon(
+  series: ReadonlyArray<number | null>,
+  steps: number = DEFAULT_HORIZON_STEPS,
+): ForecastHorizonResult | null {
+  if (steps < 1 || !Number.isInteger(steps)) {
+    throw new Error(
+      `forecastHorizon: steps must be a positive integer (got ${steps})`,
+    );
+  }
+  if (steps > MAX_HORIZON_STEPS) {
+    throw new Error(
+      `forecastHorizon: steps capped at ${MAX_HORIZON_STEPS} (got ${steps}). Beyond that linear extrapolation produces meaningless numbers.`,
+    );
+  }
+  // Reuse single-step helper for the underlying fit + minimum-data
+  // gate. If the fit succeeds we know the math is safe to extrapolate.
+  const single = forecastNextPeriod(series);
+  if (!single) return null;
+
+  const startX = series.length;
+  const horizon: ForecastHorizonStep[] = [];
+  for (let k = 1; k <= steps; k++) {
+    const xAtStep = startX + (k - 1);
+    const predicted = single.slope * xAtStep + single.intercept;
+    horizon.push({ step: k, predicted });
+  }
+  return {
+    horizon,
+    slope: single.slope,
+    intercept: single.intercept,
+    r2: single.r2,
+    contributingCount: single.contributingCount,
+    confidence: single.confidence,
+    method: single.method,
+  };
+}

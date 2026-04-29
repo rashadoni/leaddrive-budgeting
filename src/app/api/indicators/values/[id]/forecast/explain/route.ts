@@ -32,7 +32,7 @@ import {
   type ForecastExplainerInput,
   type ForecastExplainerLanguage,
 } from "@/lib/risk/forecast-explainer";
-import { forecastNextPeriod } from "@/lib/risk/forecast";
+import { forecastNextPeriod, forecastHorizon } from "@/lib/risk/forecast";
 
 const DIRECTIONS = ["higher_better", "lower_better", "band"] as const;
 type Direction = (typeof DIRECTIONS)[number];
@@ -198,6 +198,12 @@ export async function POST(
     );
   }
 
+  // Phase C2 v2 sub-23 — also compute 3-step horizon so the LLM
+  // narrates trajectory across the next quarter, not just one period.
+  // `forecastHorizon` returns null only if the underlying fit fails;
+  // since `forecastNextPeriod` succeeded, horizon will too.
+  const horizonResult = forecastHorizon(sparkline, 3);
+
   // Status type assertion: schema column is unconstrained string but
   // matrix endpoint emits only 4 IndicatorStatus values. Defensive
   // cast for the LLM input.
@@ -231,6 +237,7 @@ export async function POST(
       contributingCount: forecast.contributingCount,
       method: forecast.method,
     },
+    horizon: horizonResult?.horizon,
     series: sparkline,
     company: {
       name: iv.company.name,
@@ -288,6 +295,9 @@ export async function POST(
     return NextResponse.json({
       indicatorValueId: iv.id,
       ...output,
+      // Sub-23 — return the multi-step horizon so the UI can render
+      // step+1/+2/+3 badges alongside the LLM narrative.
+      horizon: horizonResult?.horizon,
     });
   } catch (err) {
     console.error("[forecast/explain] runForecastExplainer failed:", err);

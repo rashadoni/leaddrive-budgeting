@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { forecastNextPeriod } from './forecast';
+import { forecastNextPeriod, forecastHorizon } from './forecast';
 
 describe('forecastNextPeriod (Phase C2 v1)', () => {
   it('perfect ascending line → R²=1, high confidence, slope=1', () => {
@@ -163,5 +163,107 @@ describe('forecastNextPeriod (Phase C2 v1)', () => {
     // n=5 fails high (n<6) but satisfies medium (n≥5 OR r²≥0.4).
     expect(r!.confidence).toBe('medium');
     expect(r!.predicted).toBeCloseTo(60, 9);
+  });
+});
+
+describe('forecastHorizon (Phase C2 v2 sub-23)', () => {
+  it('default 3 steps with perfect ascending line', () => {
+    const series = [0, 1, 2, 3, 4, 5, 6, 7];
+    const r = forecastHorizon(series);
+    expect(r).not.toBeNull();
+    expect(r!.horizon).toHaveLength(3);
+    // slope=1, intercept=0; series.length=8 → step1=8, step2=9, step3=10.
+    expect(r!.horizon[0]).toEqual({ step: 1, predicted: 8 });
+    expect(r!.horizon[1]).toEqual({ step: 2, predicted: 9 });
+    expect(r!.horizon[2]).toEqual({ step: 3, predicted: 10 });
+    expect(r!.confidence).toBe('high');
+  });
+
+  it('step=1 result equals forecastNextPeriod (backward compat contract)', () => {
+    const series = [0, 1, 2, 3, 4, 5, 6, 7];
+    const single = forecastNextPeriod(series);
+    const horizon = forecastHorizon(series, 1);
+    expect(horizon).not.toBeNull();
+    expect(horizon!.horizon).toHaveLength(1);
+    expect(horizon!.horizon[0].predicted).toBeCloseTo(single!.predicted, 9);
+    expect(horizon!.slope).toBeCloseTo(single!.slope, 9);
+    expect(horizon!.r2).toBeCloseTo(single!.r2, 9);
+    expect(horizon!.confidence).toBe(single!.confidence);
+  });
+
+  it('descending line — multi-step projection respects negative slope', () => {
+    const series = [20, 18, 16, 14, 12, 10, 8];
+    const r = forecastHorizon(series, 4);
+    expect(r).not.toBeNull();
+    expect(r!.horizon).toHaveLength(4);
+    // slope=-2, intercept=20; series.length=7 → step1=20-2·7=6, step2=4, step3=2, step4=0.
+    expect(r!.horizon[0].predicted).toBeCloseTo(6, 9);
+    expect(r!.horizon[1].predicted).toBeCloseTo(4, 9);
+    expect(r!.horizon[2].predicted).toBeCloseTo(2, 9);
+    expect(r!.horizon[3].predicted).toBeCloseTo(0, 9);
+  });
+
+  it('returns null when series has <3 non-null points (mirrors forecastNextPeriod)', () => {
+    expect(forecastHorizon([1, 2])).toBeNull();
+    expect(forecastHorizon([null, null, null])).toBeNull();
+    expect(forecastHorizon([])).toBeNull();
+  });
+
+  it('throws on invalid steps (zero, negative, fractional)', () => {
+    expect(() => forecastHorizon([1, 2, 3], 0)).toThrow(
+      /steps must be a positive integer/,
+    );
+    expect(() => forecastHorizon([1, 2, 3], -1)).toThrow(
+      /steps must be a positive integer/,
+    );
+    expect(() => forecastHorizon([1, 2, 3], 1.5)).toThrow(
+      /steps must be a positive integer/,
+    );
+  });
+
+  it('throws on excessive horizon (steps > 12 cap)', () => {
+    expect(() => forecastHorizon([1, 2, 3, 4], 13)).toThrow(
+      /capped at 12/,
+    );
+  });
+
+  it('horizon shares confidence band across steps (single-fit semantic)', () => {
+    // n=5 + perfect fit → 'medium' (n<6 caps below 'high').
+    const r = forecastHorizon([10, 20, 30, 40, 50], 4);
+    expect(r).not.toBeNull();
+    // All steps share the same confidence — UI/LLM can degrade per-step
+    // if needed but the model itself doesn't change with horizon distance.
+    expect(r!.confidence).toBe('medium');
+    expect(r!.r2).toBeCloseTo(1, 9);
+  });
+
+  it('respects null gaps via underlying forecastNextPeriod fit', () => {
+    // [10, null, 14, null, 18] — slope 2 over indices 0,2,4.
+    // series.length=5 → step1 at x=5 → 10+2·5=20, step2=22, step3=24.
+    const r = forecastHorizon([10, null, 14, null, 18]);
+    expect(r).not.toBeNull();
+    expect(r!.horizon[0].predicted).toBeCloseTo(20, 9);
+    expect(r!.horizon[1].predicted).toBeCloseTo(22, 9);
+    expect(r!.horizon[2].predicted).toBeCloseTo(24, 9);
+    expect(r!.contributingCount).toBe(3);
+  });
+
+  it('flat series (slope=0) produces N copies of the mean', () => {
+    const r = forecastHorizon([7, 7, 7, 7, 7], 3);
+    expect(r).not.toBeNull();
+    expect(r!.slope).toBe(0);
+    expect(r!.horizon[0].predicted).toBeCloseTo(7, 9);
+    expect(r!.horizon[1].predicted).toBeCloseTo(7, 9);
+    expect(r!.horizon[2].predicted).toBeCloseTo(7, 9);
+    // Caller should detect slope≈0 and surface "no change expected"
+    // copy rather than parading 3 identical "+7" badges.
+    expect(r!.confidence).toBe('low');
+  });
+
+  it('boundary: exactly 12 steps is permitted', () => {
+    // Don't throw at the boundary.
+    expect(() => forecastHorizon([1, 2, 3, 4], 12)).not.toThrow();
+    const r = forecastHorizon([1, 2, 3, 4], 12);
+    expect(r!.horizon).toHaveLength(12);
   });
 });

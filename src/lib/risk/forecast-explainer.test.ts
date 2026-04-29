@@ -140,6 +140,45 @@ describe("buildForecastPrompt — pure shape", () => {
     expect(out).toContain("n=12 of 12 slots");
   });
 
+  it("multi-step horizon prompt: renders step+N values + extrapolation caveat", () => {
+    // Sub-23 — when input.horizon has >1 step, prompt switches to
+    // horizon-mode: lists each step + caveat about extrapolation
+    // uncertainty. Single-step horizon falls back to plain "Forecast
+    // (next period)" format.
+    const out = buildForecastPrompt(
+      makeInput({
+        horizon: [
+          { step: 1, predicted: 9.5 },
+          { step: 2, predicted: 9.1 },
+          { step: 3, predicted: 8.7 },
+        ],
+      }),
+    );
+    expect(out).toContain("Forecast horizon (3 steps)");
+    expect(out).toContain("step+1: 9.50");
+    expect(out).toContain("step+2: 9.10");
+    expect(out).toContain("step+3: 8.70");
+    expect(out).toContain(
+      "extrapolation uncertainty grows with horizon",
+    );
+    // Single-step "predicted: X" format absent in horizon mode.
+    expect(out).not.toContain("Forecast (next period):");
+  });
+
+  it("single-step horizon uses plain 'Forecast (next period)' format (back-compat)", () => {
+    const out = buildForecastPrompt(
+      makeInput({ horizon: [{ step: 1, predicted: 9.5 }] }),
+    );
+    expect(out).toContain("Forecast (next period):");
+    expect(out).not.toContain("Forecast horizon");
+  });
+
+  it("omitted horizon also uses plain single-step format", () => {
+    const out = buildForecastPrompt(makeInput()); // no horizon
+    expect(out).toContain("Forecast (next period):");
+    expect(out).not.toContain("Forecast horizon");
+  });
+
   it("forecast slope rendered with 4 decimal precision", () => {
     const out = buildForecastPrompt(
       makeInput({

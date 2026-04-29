@@ -66,6 +66,14 @@ export interface ForecastExplainerInput {
     contributingCount: number;
     method: "linear-regression-v1";
   };
+  /**
+   * Phase C2 v2 sub-23 — optional multi-step horizon. When present,
+   * the LLM narrates trajectory across N future periods (typically 3:
+   * step+1, step+2, step+3) instead of just the next slot. Caller
+   * computes via `forecastHorizon(series, steps)`. Empty / omitted →
+   * single-step narration as before.
+   */
+  horizon?: ReadonlyArray<{ step: number; predicted: number }>;
   /** Trailing series the forecast was fit on. May contain nulls. */
   series: ReadonlyArray<number | null>;
   /** Company context — sector + tags shape risk-factor relevance. */
@@ -178,14 +186,33 @@ export function buildForecastPrompt(input: ForecastExplainerInput): string {
     `Current period (${input.current.period}): ${input.current.value.toFixed(2)} [${input.current.status}]`,
   );
   lines.push("");
-  lines.push("Forecast (next period):");
-  lines.push(`  predicted: ${input.forecast.predicted.toFixed(2)}`);
-  lines.push(`  slope: ${input.forecast.slope.toFixed(4)} per period`);
-  lines.push(
-    `  R²: ${input.forecast.r2.toFixed(3)} (n=${input.forecast.contributingCount} of ${input.series.length} slots)`,
-  );
-  lines.push(`  confidence band: ${input.forecast.confidence}`);
-  lines.push(`  method: ${input.forecast.method}`);
+  if (input.horizon && input.horizon.length > 1) {
+    // Multi-step horizon (sub-23). LLM narrates trajectory across N
+    // future steps; "predicted" line shows step-1 for continuity with
+    // single-step prompt format.
+    lines.push(`Forecast horizon (${input.horizon.length} steps):`);
+    for (const h of input.horizon) {
+      lines.push(`  step+${h.step}: ${h.predicted.toFixed(2)}`);
+    }
+    lines.push(`  slope: ${input.forecast.slope.toFixed(4)} per period`);
+    lines.push(
+      `  R²: ${input.forecast.r2.toFixed(3)} (n=${input.forecast.contributingCount} of ${input.series.length} slots)`,
+    );
+    lines.push(`  confidence band: ${input.forecast.confidence}`);
+    lines.push(
+      `  caveat: extrapolation uncertainty grows with horizon — narrate trajectory direction; do NOT cite step+3 value as a precise prediction.`,
+    );
+    lines.push(`  method: ${input.forecast.method}`);
+  } else {
+    lines.push("Forecast (next period):");
+    lines.push(`  predicted: ${input.forecast.predicted.toFixed(2)}`);
+    lines.push(`  slope: ${input.forecast.slope.toFixed(4)} per period`);
+    lines.push(
+      `  R²: ${input.forecast.r2.toFixed(3)} (n=${input.forecast.contributingCount} of ${input.series.length} slots)`,
+    );
+    lines.push(`  confidence band: ${input.forecast.confidence}`);
+    lines.push(`  method: ${input.forecast.method}`);
+  }
   lines.push("");
   lines.push(`Trailing series: [${summarizeSeries(input.series)}]`);
   lines.push("");
