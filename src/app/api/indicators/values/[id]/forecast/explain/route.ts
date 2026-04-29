@@ -40,6 +40,33 @@ function isDirection(s: string): s is Direction {
   return (DIRECTIONS as readonly string[]).includes(s);
 }
 
+/**
+ * Map `Company.role` + `level` to the tag set the forecast-explainer
+ * SYSTEM_PROMPT recognizes (`admin`, `cost_centre`, `rollup_sourced`).
+ * Architect sub-22 closure — was hard-coded `[]` previously.
+ *
+ * Mapping rationale:
+ *  - role='admin' → tag 'admin' + 'cost_centre' (pure cost-centre,
+ *    no revenue base; LLM should NOT recommend revenue growth).
+ *  - role='holding' → tag 'admin' (top-level aggregator; same
+ *    revenue-skip semantic).
+ *  - level=1 → tag 'rollup_sourced' (sub-group rollup; numbers come
+ *    from worst-of-children synthesis, not direct line-items).
+ *  - role='operational' → no tags (default LLM behavior applies).
+ */
+function companyTags(role: string, level: number): string[] {
+  const tags: string[] = [];
+  if (role === "admin") {
+    tags.push("admin", "cost_centre");
+  } else if (role === "holding") {
+    tags.push("admin");
+  }
+  if (level === 1 && !tags.includes("rollup_sourced")) {
+    tags.push("rollup_sourced");
+  }
+  return tags;
+}
+
 export const maxDuration = 30;
 
 const RATE_LIMIT = {
@@ -131,6 +158,12 @@ export async function POST(
         select: {
           name: true,
           industry: true,
+          // Architect sub-22 💡 closure: role + level feed the
+          // tag-aware branch in forecast-explainer's SYSTEM_PROMPT
+          // ('admin' / 'cost_centre' / 'rollup_sourced'). Without
+          // these, the prompt branch was dead code today.
+          role: true,
+          level: true,
         },
       },
     },
@@ -202,7 +235,10 @@ export async function POST(
     company: {
       name: iv.company.name,
       industry: iv.company.industry,
-      tags: [],
+      // Architect sub-22 💡 closure: derive tags from role + level so
+      // the SYSTEM_PROMPT's tag-aware branches (skip-revenue-side for
+      // admin entities) actually fire on real holding-tree data.
+      tags: companyTags(iv.company.role, iv.company.level),
     },
     language,
   };

@@ -390,10 +390,14 @@ function ForecastSection(props: {
   const sign = forecast.predicted > 0 ? "+" : "";
   const trendArrow = isFlat ? "→" : forecast.slope > 0 ? "↑" : "↓";
 
-  // Low-confidence forecasts (flat OR r²<0.4 + n<5) are unworth
-  // narrating — the linear-regression itself says "no signal", and
-  // the LLM would just echo that. Hide the explain affordance.
-  const explainable = !isFlat && forecast.confidence !== "low";
+  // Architect sub-22 ⚠️ closure: loosened UI gate to permit low-
+  // confidence callers — system prompt has an explicit "LEAD WITH THE
+  // LIMITATION" branch when r²<0.4 + n<5, so the LLM surfaces the
+  // caveat rather than producing false-precision narration. Only
+  // truly-flat slopes (no directional signal at all) hide the
+  // affordance — those produce zero useful narration even with the
+  // limitation caveat.
+  const explainable = !isFlat;
 
   const runExplain = async () => {
     if (!explainable || explain.kind === "loading") return;

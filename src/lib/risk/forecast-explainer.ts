@@ -275,8 +275,12 @@ export async function runForecastExplainer(
 ): Promise<ForecastExplainerOutput> {
   const client = opts.client ?? getAnthropicClient();
   const model = opts.model ?? AI_MODEL;
-  // Generous budget — RU/AZ + 3 hypotheses + 3 risks at full length.
-  // Per `feedback_llm_max_tokens.md` always 8K+ for non-EN.
+  // 8192 vs variance-explainer's 4096 — forecast output carries 3
+  // hypotheses + 3 risk factors (≤25 words each) + narrative + LLM
+  // confidence vs variance's 3 recommendations + topDrivers + narrative.
+  // Net ~50% more prose, plus RU/AZ tokenization is ~2× English per
+  // `feedback_llm_max_tokens.md`. 8K covers worst case (RU at full
+  // verbosity); architect sub-22 closure on the asymmetry.
   const maxTokens = opts.maxTokens ?? 8192;
 
   const userMessage = buildForecastPrompt(input);

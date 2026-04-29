@@ -81,7 +81,12 @@ const ivRow = {
     direction: "higher_better",
     hintTemplateEn: "Net margin {value}%",
   },
-  company: { name: "AAC Main", industry: "industrial" },
+  company: {
+    name: "AAC Main",
+    industry: "industrial",
+    role: "operational",
+    level: 2,
+  },
 };
 
 const explainerOutput = {
@@ -275,6 +280,59 @@ describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => 
 
     const callInput = runForecastExplainerMock.mock.calls[0][0];
     expect(callInput.language).toBe("en");
+  });
+
+  it("derives tags from Company.role='admin' → ['admin','cost_centre']", async () => {
+    // Architect sub-22 💡 closure: tags previously hard-coded `[]`,
+    // making prompt's tag-aware branch dead. Verify role='admin'
+    // produces the expected tag set fed into ForecastExplainerInput.
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      company: { name: "ATL-MRKZ", industry: null, role: "admin", level: 2 },
+    });
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    await POST(req, paramsFor(IV_ID));
+    const callInput = runForecastExplainerMock.mock.calls[0][0];
+    expect(callInput.company.tags).toEqual(["admin", "cost_centre"]);
+  });
+
+  it("derives tags from level=1 sub-group → ['rollup_sourced']", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      company: {
+        name: "AAC Group",
+        industry: "Industrial",
+        role: "operational",
+        level: 1,
+      },
+    });
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    await POST(req, paramsFor(IV_ID));
+    const callInput = runForecastExplainerMock.mock.calls[0][0];
+    expect(callInput.company.tags).toEqual(["rollup_sourced"]);
+  });
+
+  it("operational level=2 (default) gets empty tags", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow); // role=operational, level=2
+    runForecastExplainerMock.mockResolvedValue(explainerOutput);
+    const req = makeRequest(
+      `/api/indicators/values/${IV_ID}/forecast/explain`,
+      { method: "POST", json: {} },
+    );
+    await POST(req, paramsFor(IV_ID));
+    const callInput = runForecastExplainerMock.mock.calls[0][0];
+    expect(callInput.company.tags).toEqual([]);
   });
 
   it("returns 502 when runForecastExplainer throws (LLM-side failure)", async () => {

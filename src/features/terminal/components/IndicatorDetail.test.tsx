@@ -298,7 +298,11 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     expect(screen.getByTestId("forecast-lang-az")).toBeTruthy();
   });
 
-  it("hides explain affordance for flat-series (low confidence)", async () => {
+  it("hides explain affordance for flat-series (no slope at all)", async () => {
+    // Architect sub-22 ⚠️ closure: UI now gates ONLY on isFlat — low-
+    // confidence callers ARE permitted (LLM surfaces "lead with the
+    // limitation" caveat in narrative). Flat series still hide because
+    // a zero-slope projection has nothing meaningful to narrate.
     global.fetch = detailFetchMock({
       sparkline: [5, 5, 5, 5, 5, 5],
     });
@@ -307,6 +311,17 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
       expect(screen.getByTestId("indicator-forecast")).toBeTruthy();
     });
     expect(screen.queryByTestId("forecast-explain-button")).toBeNull();
+  });
+
+  it("SHOWS explain affordance for low-confidence (non-flat) series — LLM caveat handles it", async () => {
+    // 3 points with weak fit: r²~0.04 + n=3 → 'low' confidence band.
+    // Pre-sub-22 the affordance was hidden; post-sub-22 it's visible
+    // because the LLM is instructed to lead with the limitation.
+    global.fetch = detailFetchMock({ sparkline: [0, 5, 1] });
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByTestId("forecast-explain-button")).toBeTruthy();
+    });
   });
 
   it("clicking Explain → POST /forecast/explain → narrative + drivers + risks render", async () => {
@@ -412,7 +427,7 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     ).toContain("max_tokens");
   });
 
-  it("button shows 'Explaining…' during in-flight request", async () => {
+  it("button is disabled + shows 'Explaining…' during in-flight request", async () => {
     let resolveExplain!: (value: Response) => void;
     global.fetch = vi.fn(async (url: RequestInfo | URL) => {
       const u = String(url);
@@ -429,9 +444,17 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     const fe = (await import("@testing-library/react")).fireEvent;
     render(<IndicatorDetail />);
     fe.click(await screen.findByTestId("forecast-explain-button"));
+    const btn = screen.getByTestId("forecast-explain-button");
+    expect(btn.textContent).toBe("Explaining…");
+    // Architect sub-22 💡 closure: lock disabled-while-loading
+    // contract — text-only check missed the case where button stays
+    // clickable mid-flight (would allow stampeding refetches).
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    // Language tabs also disabled mid-flight (UX: can't change lang
+    // while a request is in-flight; would race against pending response).
     expect(
-      screen.getByTestId("forecast-explain-button").textContent,
-    ).toBe("Explaining…");
+      (screen.getByTestId("forecast-lang-en") as HTMLButtonElement).disabled,
+    ).toBe(true);
     // Resolve to clean up.
     resolveExplain!(
       new Response(
