@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
 import {
@@ -10,7 +10,48 @@ import {
 } from '../lib/command-parser';
 import { Bell } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
-import { ensureMatrix } from '../hooks/use-matrix';
+import { ensureMatrix, useMatrix } from '../hooks/use-matrix';
+
+// Round-8 M4 — verbs the parser recognises. Matched fuzzily against
+// the user's current word; suggestions append " GO" implicitly when
+// the verb expects a terminator.
+const VERBS = [
+  'HOLD',
+  'GRP',
+  'CO',
+  'IND',
+  'CMP',
+  'SCN',
+  'BRF',
+  'AUD',
+  'ALT',
+  'SEC',
+  'GO',
+] as const;
+
+interface Suggestion {
+  kind: 'verb' | 'company' | 'indicator';
+  value: string;
+  label: string;
+  hint?: string;
+}
+
+/** Score = how well `query` fuzzy-matches `target`. 0 = no match,
+ *  higher is better. Prefers prefix matches over substring. */
+function fuzzyScore(query: string, target: string): number {
+  if (!query) return 1; // empty query matches everything (lowest priority)
+  const q = query.toUpperCase();
+  const t = target.toUpperCase();
+  if (t === q) return 1000;
+  if (t.startsWith(q)) return 100 + q.length;
+  if (t.includes(q)) return 50 + q.length;
+  // Char-by-char drift fallback (typing IDx → matches "INDEX")
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length ? 10 + q.length : 0;
+}
 
 export function CommandBar() {
   const t = useTranslations('terminal');
@@ -21,6 +62,10 @@ export function CommandBar() {
     | { kind: 'err'; message: string }
   >({ kind: 'idle' });
   const inputRef = useRef<HTMLInputElement>(null);
+  // Round-8 M4 — fuzzy autocomplete state.
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(0);
+  const { matrix } = useMatrix();
 
   const activeCompany = useTerminalStore((s) => s.activeCompanyCode);
   const alertsCount = useTerminalStore((s) => s.alertsCount);
@@ -219,13 +264,89 @@ export function CommandBar() {
     setCommand('');
   };
 
+  // Round-8 M4 — derive suggestions from current command's last word.
+  const suggestions = useMemo<Suggestion[]>(() => {
+    const tokens = command.trim().split(/\s+/);
+    const lastWord = tokens.length > 0 ? tokens[tokens.length - 1] : '';
+    if (!lastWord) return [];
+    const out: Array<Suggestion & { score: number }> = [];
+    // Verbs
+    for (const v of VERBS) {
+      const score = fuzzyScore(lastWord, v);
+      if (score > 0) {
+        out.push({
+          kind: 'verb',
+          value: v,
+          label: v,
+          hint: 'verb',
+          score,
+        });
+      }
+    }
+    // Companies (from matrix)
+    const companies = matrix?.companies ?? [];
+    for (const c of companies) {
+      const codeScore = fuzzyScore(lastWord, c.code);
+      const nameScore = fuzzyScore(lastWord, c.name) * 0.8;
+      const score = Math.max(codeScore, nameScore);
+      if (score > 0) {
+        out.push({
+          kind: 'company',
+          value: c.code,
+          label: c.code,
+          hint: c.name,
+          score,
+        });
+      }
+    }
+    // Indicators
+    const indicators = matrix?.indicators ?? [];
+    for (const ind of indicators) {
+      const codeScore = fuzzyScore(lastWord, ind.code);
+      const nameScore = fuzzyScore(lastWord, ind.nameEn) * 0.8;
+      const score = Math.max(codeScore, nameScore);
+      if (score > 0) {
+        out.push({
+          kind: 'indicator',
+          value: ind.code,
+          label: ind.code,
+          hint: ind.nameEn,
+          score,
+        });
+      }
+    }
+    out.sort((a, b) => b.score - a.score);
+    return out.slice(0, 7).map(({ score: _, ...rest }) => rest);
+  }, [command, matrix]);
+
+  // Reset highlight when suggestions change.
+  useEffect(() => {
+    setHighlightIdx(0);
+  }, [suggestions.length, command]);
+
+  const applySuggestion = (s: Suggestion) => {
+    const tokens = command.trim().split(/\s+/);
+    if (tokens.length > 0) {
+      tokens[tokens.length - 1] = s.value;
+    } else {
+      tokens.push(s.value);
+    }
+    // For verbs that complete a phrase, append a space so the user
+    // can keep typing (e.g. "AAC CO" → user adds " GO" themselves).
+    const next = tokens.join(' ') + ' ';
+    setCommand(next.toUpperCase());
+    setShowSuggestions(false);
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="flex items-center justify-between px-4 py-2 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
       <div className="flex items-center flex-1 gap-2">
         <span className="text-gray-500 shrink-0">[cmd]</span>
+        <div className="flex-1 max-w-xl relative">
         <form
           onSubmit={handleCommandSubmit}
-          className="flex-1 max-w-xl flex items-center bg-[#0A0E27] px-2 py-1 rounded border border-gray-700 focus-within:border-[#00D4AA] transition-colors"
+          className="flex items-center bg-[#0A0E27] px-2 py-1 rounded border border-gray-700 focus-within:border-[#00D4AA] transition-colors"
         >
           <span className="text-gray-400 mr-2">›</span>
           <input
@@ -241,13 +362,86 @@ export function CommandBar() {
             onChange={(e) => {
               setCommand(e.target.value.toUpperCase());
               if (feedback.kind !== 'idle') setFeedback({ kind: 'idle' });
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => {
+              // Defer to next tick so click on suggestion fires before blur.
+              setTimeout(() => setShowSuggestions(false), 150);
+            }}
+            onKeyDown={(e) => {
+              if (!showSuggestions || suggestions.length === 0) return;
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setHighlightIdx((i) => (i + 1) % suggestions.length);
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setHighlightIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
+              } else if (e.key === 'Tab') {
+                e.preventDefault();
+                applySuggestion(suggestions[highlightIdx] ?? suggestions[0]);
+              } else if (e.key === 'Escape') {
+                setShowSuggestions(false);
+              }
             }}
             placeholder={t('commandBar.placeholder')}
             className="bg-transparent border-none outline-none text-[#E8EDF5] w-full placeholder-gray-600 uppercase"
             autoComplete="off"
             spellCheck={false}
+            aria-autocomplete="list"
+            aria-expanded={showSuggestions && suggestions.length > 0}
+            aria-controls="cmdbar-suggestions"
           />
         </form>
+        {/* Round-8 M4 — fuzzy suggestions dropdown.
+            Shows only when input focused + has matches. ↑↓ to navigate,
+            Enter/Tab to apply, Esc to close. Click also applies. */}
+        {showSuggestions && suggestions.length > 0 && (
+          <ul
+            id="cmdbar-suggestions"
+            role="listbox"
+            className="absolute top-full left-0 right-0 mt-1 z-30 bg-[#050814] border border-gray-700 rounded shadow-2xl overflow-hidden text-[11px]"
+          >
+            {suggestions.map((s, i) => {
+              const active = i === highlightIdx;
+              const kindColor =
+                s.kind === 'verb'
+                  ? 'text-[#FFB020]'
+                  : s.kind === 'company'
+                    ? 'text-[#00D4AA]'
+                    : 'text-[#FFB800]';
+              return (
+                <li
+                  key={`${s.kind}:${s.value}`}
+                  role="option"
+                  aria-selected={active}
+                  onMouseDown={(e) => {
+                    // mousedown fires before blur — preserves click-to-select.
+                    e.preventDefault();
+                    applySuggestion(s);
+                  }}
+                  onMouseEnter={() => setHighlightIdx(i)}
+                  className={`flex items-baseline gap-2 px-2 py-1 cursor-pointer ${
+                    active ? 'bg-[#00D4AA]/15' : 'hover:bg-gray-800/40'
+                  }`}
+                >
+                  <span className={`shrink-0 w-16 text-[9px] uppercase tracking-wider ${kindColor}`}>
+                    {s.kind}
+                  </span>
+                  <span className={`shrink-0 font-semibold ${active ? 'text-white' : 'text-gray-200'}`}>
+                    {s.label}
+                  </span>
+                  {s.hint && (
+                    <span className="text-gray-500 truncate flex-1">
+                      {s.hint}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        </div>
         {feedback.kind === 'ok' && (
           <span className="text-[#00D4AA] text-xs shrink-0" role="status">
             {feedback.message}
