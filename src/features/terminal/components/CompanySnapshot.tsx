@@ -185,9 +185,33 @@ export function CompanySnapshot({ companyCode }: Props) {
                   : m.severity === "warning"
                     ? "bg-[#FFB020]"
                     : "bg-gray-500";
+              // Tier-3 sub-29 Round-18 closure — color-blind safe redundant
+              // signal for top-alert severity dots. Map alert-severity
+              // (critical/warning/info) → IndicatorStatus (red/amber/unknown)
+              // → statusShape glyph (■/▲/◇). Glyph sits next to the dot at
+              // matching color; for color-blind users the shape is the
+              // primary cue, dot becomes secondary.
+              const dotShapeStatus =
+                m.severity === "critical"
+                  ? "red"
+                  : m.severity === "warning"
+                    ? "amber"
+                    : "unknown";
+              const dotTextColor =
+                m.severity === "critical"
+                  ? "text-[#FF4757]"
+                  : m.severity === "warning"
+                    ? "text-[#FFB020]"
+                    : "text-gray-500";
               return (
                 <li key={i} className="flex items-start gap-1.5 leading-tight">
                   <span className={`w-1 h-1 rounded-full mt-1 shrink-0 ${dotColor}`} />
+                  <span
+                    aria-hidden="true"
+                    className={`text-[8px] leading-none mt-0.5 shrink-0 ${dotTextColor}`}
+                  >
+                    {statusShape(dotShapeStatus)}
+                  </span>
                   <span className="text-gray-300 truncate">{m.message}</span>
                 </li>
               );
