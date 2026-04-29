@@ -1,6 +1,6 @@
 # Customer demo script — Friday 2026-05-01
 
-**Target wall-time:** 15-20 minutes live + 5-min Q&A buffer.
+**Target wall-time:** 16-22 minutes live + 5-min Q&A buffer (Step 4 grew 6 min → 7-7.5 min after Phase C v1 add-ons; cut-priority guidance in Step 4 lets presenter scale back to 16 min on slow takes).
 **Format:** Live в браузере, developer drives, customer watches (in-room or Zoom screenshare).
 **Audience:** AZMADE-like multi-sector holding decision-maker (CFO / Owner / COO).
 **Anchor case study:** AZMADE Group MMC — 13 companies (5 sub-groups + 8 operational op-cos including AAC-MAIN under AAC), 568 distinct line-items × 12 monthly rows = **6,816 BudgetLines** (Turn-34 monthly fix), 41 IndicatorValues across 14 sector packs.
@@ -20,7 +20,7 @@
 - [ ] Roadmap slides (`docs/DEMO_ROADMAP.md`) open in second tab
 - [ ] Phone on Do Not Disturb
 
-## Step-by-step (target 15-20 min)
+## Step-by-step (target 16-22 min post Phase C v1)
 
 ### 1. Hub overview — P&L Report (1.5 min)
 
@@ -129,7 +129,9 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 ---
 
-### 4. Risk Terminal (`/budgeting/terminal`) — MAIN SHOWCASE (6 min)
+### 4. Risk Terminal (`/budgeting/terminal`) — MAIN SHOWCASE (7-7.5 min post Phase C v1)
+
+> **Cut-priority on slow takes (architect sub-21 closure):** if running long, drop in this order: BRF GO board-deck (most isolated, 30 sec) → SCN GO scenario panel (45 sec) → AlertsPanel beat (45 sec). Keep composite-badge framing + EXPLAIN drill + AUD modal as the irreducible core (Bloomberg-grade UX hook + AI inside + audit trail).
 
 **Click:** Sidebar → Risk Terminal → `/budgeting/terminal`
 
@@ -203,7 +205,7 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 **Press Escape.** _(Or click backdrop.)_
 
-**Type:** `IRAN_HIGH SCN GO` _(or any seeded scenario code)_. _(Phase C4 v1, sub-11)_
+**Type:** `IRAN_HIGH SCN GO`. _(Phase C4 v1, sub-11. Seeded scenarios: `IRAN_HIGH` / `AZN_DEVAL_20` / `OIL_DROP_30` — see `scripts/seed-scenarios.ts`. Run `npx tsx scripts/seed-scenarios.ts` if SCN modal appears empty.)_
 
 **Show:** ScenarioPanel modal opens, listing org's `Scenario` rows. Selected scenario shows JSON-pretty `overrides` blob (FX rates, commodity drops, regulatory shifts). `Apply` button POSTs → 202 queued response surfaces inline.
 
@@ -378,6 +380,6 @@ Mark each step pass/fail:
 - [ ] Step 4: HeatMap 24g/25a/18r=67 colored + composite badges per row (Phase C5); IndicatorDetail populates with sparkline + forecast (Phase C2); 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD); SCN GO opens ScenarioPanel (C4); BRF GO opens /budgeting/board-deck (C3); `[alerts N]` strip click opens AlertsPanel (C6); F1-F4 snappy, drag smooth; AUD GO opens modal with ai_variance_explainer_run rows visible
 - [ ] Step 5: AuditFeed paginates, expand row works
 - [ ] Step 6: roadmap slides render
-- [ ] Total wall-time: 15-22 min
+- [ ] Total wall-time: 16-22 min (Step 4 grew 6 → 7-7.5 min for Phase C v1 beats; on slow takes apply cut-priority: BRF → SCN → AlertsPanel)
 
 If any step fails Day-5 morning → P0 fix that day → re-run dry-run afternoon. If still failing Thursday evening → trigger fallback plan (skip that step in demo OR use Loom segment).
