@@ -343,26 +343,19 @@ export const industrialIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine"],
     sortOrder: 50,
   },
-  {
-    code: "IND_FX_INPUT_RISK",
-    nameEn: "FX Input-Cost Exposure",
-    nameAz: "Valyuta Giriş Riski",
-    nameRu: "Валютный риск входящих затрат",
-    category: "fx",
-    industries: ["industrial"],
-    unit: "%",
-    direction: "lower_better",
-    formula: "imported_input_cost / total_input_cost * 100",
-    thresholds: {
-      green: { op: "<=", value: 30 },
-      amber: { op: "<=", value: 60 },
-      red: { op: ">", value: 60 },
-    },
-    hintTemplateEn:
-      "Imported share of input cost = {value}%. Above 60% — a 10% AZN devaluation moves COGS by ~6%; consider FX hedging or alternate domestic sourcing.",
-    requiredInputs: ["budgetLine"],
-    sortOrder: 60,
-  },
+  // ── IND_FX_INPUT_RISK retired (sub-27 cont'd Round-7 closure) ──────
+  // Architect Round-6 flagged: AZMADE xlsx import doesn't tag
+  // `currencyCode` on BudgetLines (10169/10169 NULL), so the formula
+  // structurally returned 0% across all op-cos — a fake green that
+  // would mislead demo. Re-enable AFTER `scripts/import-azmade-budgets.ts`
+  // is extended to detect and persist xlsx FX columns. Definition
+  // preserved here as a comment block so a future contributor doesn't
+  // re-derive thresholds from scratch:
+  //
+  //   formula: "imported_input_cost / total_input_cost * 100"
+  //   green: <=30 / amber: <=60 / red: >60
+  //   requiredInputs: ["budgetLine"]
+  //   sortOrder: 60
   {
     code: "IND_REVENUE_HHI",
     nameEn: "Revenue Concentration (HHI)",
@@ -1309,6 +1302,12 @@ export const RETIRED_CODES: readonly string[] = [
   "AGRO_FX_RISK",
   // 2026-04-24 — merged into FX_IMPORTED_INPUT (identical formula).
   "IND_IMPORTED_INPUT",
+  // 2026-04-29 sub-27 cont'd Round-7 — architect Round-6 flagged: AZMADE
+  // xlsx import doesn't tag `currencyCode` on BudgetLines (10169/10169
+  // NULL), so the formula structurally returns 0% across all op-cos —
+  // a fake green that misleads demo. Re-enable AFTER
+  // `scripts/import-azmade-budgets.ts` is extended to detect FX columns.
+  "IND_FX_INPUT_RISK",
 ]
 
 /**
