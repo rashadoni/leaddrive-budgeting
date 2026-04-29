@@ -1365,7 +1365,8 @@
       "importTitle": "Upload a budget xlsx via Onboarding wizard",
       "compact": "COMPACT",
       "compactTitle": "Toggle compact mode (Ctrl+/)",
-      "compactAriaLabel": "Toggle compact mode"
+      "compactAriaLabel": "Toggle compact mode",
+      "toolbarAriaLabel": "Terminal hotkeys"
     },
     "companyTree": {
       "filterPlaceholder": "filter companies…",
@@ -1375,7 +1376,13 @@
       "noMatchPrefix": "No match for",
       "tabAll": "ALL",
       "tabRecent": "RECENT",
-      "tabSector": "SECTOR"
+      "tabSector": "SECTOR",
+      "filterAriaLabel": "Filter company tree",
+      "treeAriaLabel": "Companies",
+      "sectorTreeAriaLabel": "Companies grouped by sector",
+      "tabsAriaLabel": "Company watchlist filter",
+      "starredAriaLabel": "Starred companies",
+      "alertedAriaLabel": "Alerted companies"
     },
     "heatMap": {
       "filterRowsPlaceholder": "filter rows…",
@@ -1386,7 +1393,9 @@
       "aiSummaryGenerating": "💬 Generating AI summary…",
       "cellClickHint": "Click → drill-down (Panel 3)",
       "noScoreableIndicators": "No scoreable indicators",
-      "compositeScoreTitle": "Composite {score}/100 · {contributing}/{total} indicators"
+      "compositeScoreTitle": "Composite {score}/100 · {contributing}/{total} indicators",
+      "filterAriaLabel": "Filter heatmap rows",
+      "tableAriaLabel": "Risk heatmap"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
@@ -1443,7 +1452,22 @@
       "apply": "Apply",
       "applying": "Applying…",
       "applyFailed": "Apply failed",
-      "period": "Period"
+      "period": "Period",
+      "dialogAriaLabel": "Scenario runner",
+      "closeAriaLabel": "Close scenario panel",
+      "listAriaLabel": "Scenario list",
+      "detailAriaLabel": "Scenario detail"
+    },
+    "relatedFunctions": {
+      "ariaLabel": "Related functions",
+      "titleForCompany": "Open {code} in P&L / Compare / Forecast / Audit",
+      "titleOrgWide": "Open holding-wide P&L / Compare / Forecast / Audit",
+      "forCompany": "For {code}",
+      "orgWide": "Org-wide",
+      "pnl": "P&L",
+      "compare": "Compare",
+      "forecast": "Forecast",
+      "audit": "Audit"
     },
     "compare": {
       "subtitle": "Side-by-side indicators · Δ = RHS − LHS · Esc to close",

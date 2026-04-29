@@ -58,6 +58,15 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
 export function KeyboardShortcutsModal() {
   const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
+  // Round-9 architect closure (M6 micro-perf): keep keydown listener
+  // attached ONCE for the component lifetime instead of re-attaching on
+  // every modal toggle. Read latest `open` via ref so functional setter
+  // doesn't have to read stale state. Net behavior unchanged; saves an
+  // add/remove pair on every `?`/Esc keypress.
+  const openRef = React.useRef(open);
+  React.useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -72,14 +81,14 @@ export function KeyboardShortcutsModal() {
         if (isTyping) return;
         e.preventDefault();
         setOpen((v) => !v);
-      } else if (e.key === "Escape" && open) {
+      } else if (e.key === "Escape" && openRef.current) {
         e.preventDefault();
         setOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, []);
 
   // Also expose a `terminal:open-shortcuts` window event so a future
   // help-icon button can dispatch without re-implementing the toggle.

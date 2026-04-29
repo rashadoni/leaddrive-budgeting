@@ -314,7 +314,7 @@ export function HeatMap({ period }: Props) {
             placeholder={t('heatMap.filterRowsPlaceholder')}
             className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none w-full"
             spellCheck={false}
-            aria-label="Filter heatmap rows"
+            aria-label={t('heatMap.filterAriaLabel')}
           />
         </div>
         {summary && (
@@ -343,7 +343,7 @@ export function HeatMap({ period }: Props) {
 
       <div className={`flex-1 overflow-auto ${isEmpty || loading ? 'hidden' : ''}`}>
         <TooltipProvider delayDuration={300}>
-        <table className="border-collapse" aria-label="Risk heatmap">
+        <table className="border-collapse" aria-label={t('heatMap.tableAriaLabel')}>
           <thead>
             <tr>
               <th

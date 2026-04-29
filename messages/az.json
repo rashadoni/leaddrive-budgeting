@@ -1365,7 +1365,8 @@
       "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə",
       "compact": "KOMPAKT",
       "compactTitle": "Kompakt rejimi açıb-bağla (Ctrl+/)",
-      "compactAriaLabel": "Kompakt rejimi açıb-bağla"
+      "compactAriaLabel": "Kompakt rejimi açıb-bağla",
+      "toolbarAriaLabel": "Terminal qısayolları"
     },
     "companyTree": {
       "filterPlaceholder": "şirkət filtri…",
@@ -1375,7 +1376,13 @@
       "noMatchPrefix": "Uyğunluq yoxdur:",
       "tabAll": "HAMISI",
       "tabRecent": "SON",
-      "tabSector": "SEKTOR"
+      "tabSector": "SEKTOR",
+      "filterAriaLabel": "Şirkət ağacı filtri",
+      "treeAriaLabel": "Şirkətlər",
+      "sectorTreeAriaLabel": "Sektor üzrə qruplaşdırılmış şirkətlər",
+      "tabsAriaLabel": "Şirkət izləmə filtri",
+      "starredAriaLabel": "Seçilmiş şirkətlər",
+      "alertedAriaLabel": "Xəbərdarlıq olan şirkətlər"
     },
     "heatMap": {
       "filterRowsPlaceholder": "sətr filtri…",
@@ -1386,7 +1393,9 @@
       "aiSummaryGenerating": "💬 AI xülasəsi yaradılır…",
       "cellClickHint": "Klik → ətraflı (Panel 3)",
       "noScoreableIndicators": "Qiymətləndiriləcək göstərici yoxdur",
-      "compositeScoreTitle": "Kompozit {score}/100 · {contributing}/{total} göstərici"
+      "compositeScoreTitle": "Kompozit {score}/100 · {contributing}/{total} göstərici",
+      "filterAriaLabel": "Risk xəritəsi sətr filtri",
+      "tableAriaLabel": "Risk xəritəsi"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
@@ -1443,7 +1452,22 @@
       "apply": "Tətbiq et",
       "applying": "Tətbiq edilir…",
       "applyFailed": "Tətbiq alınmadı",
-      "period": "Dövr"
+      "period": "Dövr",
+      "dialogAriaLabel": "Ssenari Runner",
+      "closeAriaLabel": "Ssenari panelini bağla",
+      "listAriaLabel": "Ssenari siyahısı",
+      "detailAriaLabel": "Ssenari detalları"
+    },
+    "relatedFunctions": {
+      "ariaLabel": "Əlaqəli funksiyalar",
+      "titleForCompany": "{code} üçün P&L / Müqayisə / Proqnoz / Audit aç",
+      "titleOrgWide": "Bütün holdinq üçün P&L / Müqayisə / Proqnoz / Audit aç",
+      "forCompany": "{code} üçün",
+      "orgWide": "Bütün holdinq",
+      "pnl": "P&L",
+      "compare": "Müqayisə",
+      "forecast": "Proqnoz",
+      "audit": "Audit"
     },
     "compare": {
       "subtitle": "Yan-yana göstəricilər · Δ = sağ − sol · Esc bağlamaq",

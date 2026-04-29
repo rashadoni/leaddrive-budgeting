@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
 
@@ -24,6 +25,10 @@ import { useCompanies } from "../hooks/use-companies";
  * The closest existing surface is `?tab=comparison` (Plans-vs-Actuals
  * variance view), so the menu uses that. A real variance tab is a
  * Phase B item.
+ *
+ * Round-9 i18n closure — labels + section header + aria + title now
+ * read through `useTranslations('terminal')` so RU/AZ users see the
+ * primary-nav menu in their locale (was English-only).
  */
 
 interface CompanyLite {
@@ -31,14 +36,18 @@ interface CompanyLite {
   code: string;
 }
 
+/** Static catalog: each entry pairs a query-tab/route with the i18n key
+ *  that resolves its display label. The labelKey path is relative to
+ *  the `relatedFunctions.*` namespace. */
 const FUNCTIONS = [
-  { tab: "pnl-report", label: "P&L" },
-  { tab: "comparison", label: "Compare" },
-  { tab: "forecast", label: "Forecast" },
-  { tab: "audit", label: "Audit", isPage: true },
+  { tab: "pnl-report", labelKey: "pnl" },
+  { tab: "comparison", labelKey: "compare" },
+  { tab: "forecast", labelKey: "forecast" },
+  { tab: "audit", labelKey: "audit", isPage: true },
 ] as const;
 
 export function RelatedFunctionsMenu() {
+  const t = useTranslations("terminal");
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const [open, setOpen] = useState(false);
   // Sub-19 architect 🔄 closure: was inline `/api/companies` fetch +
@@ -94,11 +103,11 @@ export function RelatedFunctionsMenu() {
         className="flex items-center text-gray-400 hover:text-[#FFB800] transition-colors text-xs"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Related functions"
+        aria-label={t("relatedFunctions.ariaLabel")}
         title={
           activeCompanyCode
-            ? `Open ${activeCompanyCode} in P&L / Compare / Forecast / Audit`
-            : "Open holding-wide P&L / Compare / Forecast / Audit"
+            ? t("relatedFunctions.titleForCompany", { code: activeCompanyCode })
+            : t("relatedFunctions.titleOrgWide")
         }
       >
         ⋯
@@ -109,7 +118,9 @@ export function RelatedFunctionsMenu() {
           className="absolute right-0 top-full mt-1 w-44 bg-[#050814] border border-gray-800 rounded shadow-xl py-1 z-40"
         >
           <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-gray-600 border-b border-gray-800/60 mb-1">
-            {activeCompanyCode ? `For ${activeCompanyCode}` : "Org-wide"}
+            {activeCompanyCode
+              ? t("relatedFunctions.forCompany", { code: activeCompanyCode })
+              : t("relatedFunctions.orgWide")}
           </div>
           {FUNCTIONS.map((fn) => (
             <a
@@ -119,7 +130,7 @@ export function RelatedFunctionsMenu() {
               className="block px-3 py-1 text-xs text-gray-300 hover:bg-gray-800 hover:text-[#FFB800] transition-colors"
               onClick={() => setOpen(false)}
             >
-              {fn.label}
+              {t(`relatedFunctions.${fn.labelKey}` as never)}
             </a>
           ))}
         </div>

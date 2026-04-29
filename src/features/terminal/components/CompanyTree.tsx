@@ -254,7 +254,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           placeholder={t('companyTree.filterPlaceholder')}
           className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none flex-1"
           spellCheck={false}
-          aria-label="Filter company tree"
+          aria-label={t('companyTree.filterAriaLabel')}
         />
       </div>
       {watchlistTab === 'alerted' && alertedCompanyCodes === null ? (
@@ -277,7 +277,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         // same row-render logic as flat mode (extracted below).
         <ul
           role="tree"
-          aria-label="Companies grouped by sector"
+          aria-label={t('companyTree.sectorTreeAriaLabel')}
           className="self-start space-y-0.5 w-full"
           data-testid="company-tree-sector-mode"
         >
@@ -298,7 +298,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       ) : (
         <ul
           role="tree"
-          aria-label="Companies"
+          aria-label={t('companyTree.treeAriaLabel')}
           className="self-start space-y-0.5 w-full"
         >
           {filteredRoots.map((root) => renderRoot(root))}
@@ -429,6 +429,10 @@ function WatchlistTabs(props: {
   tRecent: string;
   tSector: string;
 }) {
+  // Round-9 architect closure: hooked t() inline so aria-labels are
+  // locale-aware (was hardcoded English regardless of locale, breaking
+  // RU/AZ screen-reader UX).
+  const tt = useTranslations('terminal');
   // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
   // icons for cross-platform parity (Linux/Windows often miss color
   // emoji fonts, rendering ★🔔 as monochrome boxes).
@@ -457,7 +461,7 @@ function WatchlistTabs(props: {
   return (
     <div
       role="tablist"
-      aria-label="Company watchlist filter"
+      aria-label={tt('companyTree.tabsAriaLabel')}
       className="flex items-center gap-1 px-1 pt-1 text-[10px] font-mono shrink-0"
     >
       {tabs.map((t) => {
@@ -470,9 +474,9 @@ function WatchlistTabs(props: {
             aria-selected={isActive}
             aria-label={
               t.key === 'starred'
-                ? 'Starred companies'
+                ? tt('companyTree.starredAriaLabel')
                 : t.key === 'alerted'
-                  ? 'Alerted companies'
+                  ? tt('companyTree.alertedAriaLabel')
                   : undefined
             }
             onClick={() => props.onSelect(t.key)}

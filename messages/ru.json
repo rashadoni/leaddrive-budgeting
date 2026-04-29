@@ -1365,7 +1365,8 @@
       "importTitle": "Загрузить xlsx бюджета через мастер онбординга",
       "compact": "КОМПАКТ",
       "compactTitle": "Переключить компактный режим (Ctrl+/)",
-      "compactAriaLabel": "Переключить компактный режим"
+      "compactAriaLabel": "Переключить компактный режим",
+      "toolbarAriaLabel": "Горячие клавиши терминала"
     },
     "companyTree": {
       "filterPlaceholder": "фильтр компаний…",
@@ -1375,7 +1376,13 @@
       "noMatchPrefix": "Нет совпадений для",
       "tabAll": "ВСЕ",
       "tabRecent": "НЕДАВНИЕ",
-      "tabSector": "СЕКТОР"
+      "tabSector": "СЕКТОР",
+      "filterAriaLabel": "Фильтр дерева компаний",
+      "treeAriaLabel": "Компании",
+      "sectorTreeAriaLabel": "Компании, сгруппированные по сектору",
+      "tabsAriaLabel": "Фильтр списка наблюдения компаний",
+      "starredAriaLabel": "Избранные компании",
+      "alertedAriaLabel": "Компании с алертами"
     },
     "heatMap": {
       "filterRowsPlaceholder": "фильтр строк…",
@@ -1386,7 +1393,9 @@
       "aiSummaryGenerating": "💬 Генерирую AI-сводку…",
       "cellClickHint": "Клик → drill-down (Панель 3)",
       "noScoreableIndicators": "Нет индикаторов для оценки",
-      "compositeScoreTitle": "Композитный {score}/100 · {contributing}/{total} индикаторов"
+      "compositeScoreTitle": "Композитный {score}/100 · {contributing}/{total} индикаторов",
+      "filterAriaLabel": "Фильтр строк карты рисков",
+      "tableAriaLabel": "Карта рисков"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",
@@ -1443,7 +1452,22 @@
       "apply": "Применить",
       "applying": "Применяется…",
       "applyFailed": "Применить не удалось",
-      "period": "Период"
+      "period": "Период",
+      "dialogAriaLabel": "Симулятор сценариев",
+      "closeAriaLabel": "Закрыть панель сценариев",
+      "listAriaLabel": "Список сценариев",
+      "detailAriaLabel": "Детали сценария"
+    },
+    "relatedFunctions": {
+      "ariaLabel": "Связанные функции",
+      "titleForCompany": "Открыть {code} в P&L / Compare / Forecast / Audit",
+      "titleOrgWide": "Открыть P&L / Compare / Forecast / Audit для всего холдинга",
+      "forCompany": "Для {code}",
+      "orgWide": "По всему холдингу",
+      "pnl": "P&L",
+      "compare": "Сравнение",
+      "forecast": "Прогноз",
+      "audit": "Аудит"
     },
     "compare": {
       "subtitle": "Side-by-side индикаторы · Δ = правая − левая · Esc для закрытия",

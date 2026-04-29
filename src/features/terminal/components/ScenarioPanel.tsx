@@ -181,7 +181,7 @@ export function ScenarioPanel() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Scenario runner"
+      aria-label={t("scenario.dialogAriaLabel")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
@@ -203,7 +203,7 @@ export function ScenarioPanel() {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="Close scenario panel"
+            aria-label={t("scenario.closeAriaLabel")}
             className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
           >
             <X size={14} aria-hidden="true" />
@@ -211,7 +211,7 @@ export function ScenarioPanel() {
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
-          <aside aria-label="Scenario list">
+          <aside aria-label={t("scenario.listAriaLabel")}>
             <h3 className="text-xs font-mono uppercase tracking-wider text-gray-500 mb-2">
               {t("scenario.available")} ({scenarios?.length ?? 0})
             </h3>
@@ -274,7 +274,7 @@ export function ScenarioPanel() {
             )}
           </aside>
 
-          <section aria-label="Scenario detail">
+          <section aria-label={t("scenario.detailAriaLabel")}>
             {selectedScenario === null ? (
               <p className="text-sm text-muted-foreground">
                 {scenarios && scenarios.length > 0

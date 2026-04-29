@@ -168,7 +168,7 @@ export function HotkeyToolbar() {
   return (
     <div
       role="toolbar"
-      aria-label="Terminal hotkeys"
+      aria-label={t("hotkeys.toolbarAriaLabel")}
       className="flex items-center gap-1 px-2 py-1 bg-[#050814] border-b border-gray-800 font-mono text-[10px] text-gray-500 overflow-x-auto whitespace-nowrap shrink-0"
     >
       <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>

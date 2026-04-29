@@ -45,7 +45,12 @@ function fuzzyScore(query: string, target: string): number {
   if (t === q) return 1000;
   if (t.startsWith(q)) return 100 + q.length;
   if (t.includes(q)) return 50 + q.length;
-  // Char-by-char drift fallback (typing IDx → matches "INDEX")
+  // Char-by-char drift fallback (typing IDx → matches "INDEX").
+  // Round-9 architect closure: require ≥2 chars to engage drift, otherwise
+  // typing "I" matches every "i"-containing word in the suggestion pool
+  // and the dropdown becomes noise. Exact / prefix / substring tiers above
+  // still match single chars; the noisy tier is the only one we mute.
+  if (q.length < 2) return 0;
   let qi = 0;
   for (let ti = 0; ti < t.length && qi < q.length; ti++) {
     if (t[ti] === q[qi]) qi++;
