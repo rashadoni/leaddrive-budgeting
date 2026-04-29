@@ -322,6 +322,13 @@ function SnapshotCard({
         {indicator.nameEn}
       </div>
       <div className="flex items-baseline gap-1">
+        {/* Tier-3 sub-29 Round-16 closure — shape glyph alongside
+            colored value text. Same status→shape mapping as HeatMap
+            cells; aria-hidden because the surrounding context already
+            conveys status semantically. */}
+        <span aria-hidden="true" className={`text-[10px] opacity-70 ${statusColor}`}>
+          {statusShape(status)}
+        </span>
         <span className={`tabular-nums font-semibold text-sm ${statusColor}`}>
           {cell ? formatValue(cell.value, indicator.unit) : "—"}
         </span>

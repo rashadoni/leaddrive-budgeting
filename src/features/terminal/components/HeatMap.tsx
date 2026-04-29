@@ -459,6 +459,16 @@ export function HeatMap({ period }: Props) {
                           {(() => {
                             const cs = compositeByCompany.get(co.id);
                             if (!cs) return null;
+                            // Round-16 closure — shape glyph next to the
+                            // band-colored composite score in row-header
+                            // tooltip. Maps band→IndicatorStatus for the
+                            // statusShape() helper.
+                            const tooltipBandStatus =
+                              cs.band === 'green' ||
+                              cs.band === 'amber' ||
+                              cs.band === 'red'
+                                ? cs.band
+                                : 'unknown';
                             return (
                               <div className="text-[11px] mt-1">
                                 <span className="text-muted-foreground">
@@ -475,6 +485,11 @@ export function HeatMap({ period }: Props) {
                                       : 'text-muted-foreground'
                                   }
                                 >
+                                  {cs.score !== null && (
+                                    <span aria-hidden="true" className="mr-0.5 opacity-70">
+                                      {statusShape(tooltipBandStatus)}
+                                    </span>
+                                  )}
                                   {cs.score === null ? '— no data' : `${cs.score} / 100`}
                                 </span>
                                 <span className="text-muted-foreground">
@@ -782,17 +797,20 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 with white text so the glyph stays visible on BOTH light
                 cells (#00D4AA green / #FFB020 amber) and dark cells
                 (#FF4757 red / #1F2937 missing) without per-status color
-                logic. Slight opacity dampens the glyph so the value
-                text inside the cell remains primary; color-blind users
-                still get the redundant cue. */}
+                logic. Round-16 architect ⚠️ closure — `unknown` cells
+                (#6B7280 slate-500) are middle-gray; `255-107=148` and
+                `148` differ by 41 → low-contrast glyph. Bump opacity to
+                full and skip mix-blend on `unknown` so the glyph
+                renders white-on-gray (high contrast). All other
+                statuses keep the difference-blend rule. */}
             <span
               aria-hidden="true"
               className="absolute top-0 right-0.5 leading-none"
               style={{
                 fontSize: compactMode ? 7 : 9,
-                opacity: 0.7,
+                opacity: status === 'unknown' ? 0.95 : 0.7,
                 color: '#FFFFFF',
-                mixBlendMode: 'difference',
+                mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
                 pointerEvents: 'none',
               }}
             >
@@ -811,7 +829,15 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
           {cell ? (
             <>
               <div className="text-[11px] mt-1">
-                <span className={statusColorClass}>{status.toUpperCase()}</span>
+                {/* Round-16 closure — shape glyph next to status word
+                    inside cell tooltip detail. aria-hidden because the
+                    status word itself conveys the same meaning to AT. */}
+                <span className={statusColorClass}>
+                  <span aria-hidden="true" className="mr-0.5 opacity-80">
+                    {statusShape(status)}
+                  </span>
+                  {status.toUpperCase()}
+                </span>
                 {' @ '}
                 <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
               </div>
