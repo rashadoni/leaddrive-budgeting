@@ -197,8 +197,10 @@ export function CommandBar() {
       case 'act':
         // Tier-3 sub-28 — ActionCenterPanel opens on `terminal:open-action-center`.
         // Same overlay-modal pattern as AUD/ALT/CMP/SCN; modal floats above
-        // the 4-panel grid, listing red+amber work-items synthesized from
-        // the live HeatMap matrix + alertMatches.
+        // the 4-panel grid, listing red+amber leaf cells synthesized from
+        // the live `useMatrix()` snapshot. (Round-13 audit: original comment
+        // claimed "+ alertMatches" but the implementation does NOT consume
+        // `terminalStore.alertMatches`. v2 wire-up tracked as 🔄 in CARRYOVER.)
         window.dispatchEvent(new CustomEvent('terminal:open-action-center'));
         return { message: 'ACT →' };
       case 'ind': {
