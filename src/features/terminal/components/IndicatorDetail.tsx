@@ -358,6 +358,19 @@ function forecastColor(confidence: ForecastConfidence): string {
 }
 
 /**
+ * Tier-3 sub-29 Round-17 closure — color-blind safe redundant signal
+ * for forecast confidence band. Mirror of `forecastColor` shape side:
+ *   high    → ● (green-status equivalent)
+ *   medium  → ▲ (amber-status equivalent)
+ *   low     → ◇ (unknown-status equivalent — "no strong signal")
+ */
+function forecastShape(confidence: ForecastConfidence): string {
+  if (confidence === "high") return statusShape("green");
+  if (confidence === "medium") return statusShape("amber");
+  return statusShape("unknown");
+}
+
+/**
  * Phase C2 v2 (sub-22) — forecast badge + LLM-narrated explain panel.
  *
  * Layered UX:
@@ -470,6 +483,11 @@ function ForecastSection(props: {
         <span
           className={`text-[11px] font-mono tabular-nums ${forecastColor(forecast.confidence)}`}
         >
+          {/* Round-17 closure — shape glyph next to predicted value
+              encodes confidence band redundantly (color-blind safe). */}
+          <span aria-hidden="true" className="mr-0.5 opacity-70">
+            {forecastShape(forecast.confidence)}
+          </span>
           {trendArrow} {sign}
           {formatValue(forecast.predicted)}
         </span>
