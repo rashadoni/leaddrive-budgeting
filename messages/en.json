@@ -1518,6 +1518,22 @@
       "alertsLoading": "Alerts: loading…",
       "alertsTitle": "{count} red+amber indicators across the org — click to open alerts panel"
     },
+    "actionCenter": {
+      "title": "Action Center ({count})",
+      "subtitle": "Pending review queue across the holding. Click any row to jump to the offending cell. Press Esc to close.",
+      "dialogAriaLabel": "Action Center",
+      "closeAriaLabel": "Close action center",
+      "matrixLoading": "Matrix loading… work items populate after first refresh.",
+      "noWorkItems": "✓ No pending items — all systems green.",
+      "severityRed": "Red — needs review ({count})",
+      "severityAmber": "Amber — watch closely ({count})",
+      "severitySectionAriaLabel": "{severity} work items",
+      "itemAriaLabel": "Review {company} {indicator}",
+      "itemReviewHint": "Click → jump to {company} · {indicator}",
+      "currentValue": "Value",
+      "openVerb": "ACT",
+      "openVerbHint": "Open Action Center"
+    },
     "alertsPanel": {
       "title": "Alerts ({count})",
       "subtitle": "Multi-indicator rule matches across the holding. Press Esc to close.",
@@ -1557,7 +1573,8 @@
       "cmdCmp": "Compare two companies side-by-side",
       "cmdScn": "Open scenario runner",
       "cmdBrf": "Open Board Deck (PDF-friendly)",
-      "cmdAud": "Open Audit Log overlay"
+      "cmdAud": "Open Audit Log overlay",
+      "cmdAct": "Open Action Center (pending review queue)"
     },
     "welcome": {
       "title": "Welcome to Risk Terminal",

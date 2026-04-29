@@ -40,6 +40,7 @@ export type FunctionCode =
   | "SCN"
   | "BRF"
   | "AUD"
+  | "ACT"
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -52,6 +53,7 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "SCN",
   "BRF",
   "AUD",
+  "ACT",
 ]
 
 /**
@@ -74,6 +76,7 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   SCN: "required",
   BRF: "forbidden",
   AUD: "forbidden", // Phase 7.F audit log overlay — global, no scope
+  ACT: "forbidden", // Tier-3 sub-28 ActionCenter — global queue, no scope
 }
 
 export type ParsedCommand =
@@ -87,6 +90,7 @@ export type ParsedCommand =
   | { kind: "scn"; scenarioCode: string }
   | { kind: "brf" }
   | { kind: "aud" }
+  | { kind: "act" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -234,6 +238,8 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "brf" } }
     case "AUD":
       return { ok: true, command: { kind: "aud" } }
+    case "ACT":
+      return { ok: true, command: { kind: "act" } }
   }
 }
 
@@ -269,6 +275,7 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "brf":
       return 4 // narrative / scenario panel
     case "aud":
+    case "act":
       return null // overlay modal — does not steal focus from any panel
   }
 }

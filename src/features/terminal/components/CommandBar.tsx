@@ -26,6 +26,7 @@ const VERBS = [
   'AUD',
   'ALT',
   'SEC',
+  'ACT',
   'GO',
 ] as const;
 
@@ -193,6 +194,13 @@ export function CommandBar() {
         // modal itself (see `AuditModal.tsx`).
         window.dispatchEvent(new CustomEvent('terminal:open-audit'));
         return { message: 'AUD →' };
+      case 'act':
+        // Tier-3 sub-28 — ActionCenterPanel opens on `terminal:open-action-center`.
+        // Same overlay-modal pattern as AUD/ALT/CMP/SCN; modal floats above
+        // the 4-panel grid, listing red+amber work-items synthesized from
+        // the live HeatMap matrix + alertMatches.
+        window.dispatchEvent(new CustomEvent('terminal:open-action-center'));
+        return { message: 'ACT →' };
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when

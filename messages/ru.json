@@ -1518,6 +1518,22 @@
       "alertsLoading": "Алерты: загрузка…",
       "alertsTitle": "{count} red+amber индикаторов в холдинге — кликните чтобы открыть панель алертов"
     },
+    "actionCenter": {
+      "title": "Очередь действий ({count})",
+      "subtitle": "Очередь требующих внимания строк по холдингу. Кликните строку чтобы перейти к ячейке. Esc для закрытия.",
+      "dialogAriaLabel": "Очередь действий",
+      "closeAriaLabel": "Закрыть очередь действий",
+      "matrixLoading": "Матрица загружается… элементы появятся после первого обновления.",
+      "noWorkItems": "✓ Нет открытых элементов — всё зелёное.",
+      "severityRed": "Red — требует разбора ({count})",
+      "severityAmber": "Amber — наблюдение ({count})",
+      "severitySectionAriaLabel": "Элементы — {severity}",
+      "itemAriaLabel": "Разобрать {company} {indicator}",
+      "itemReviewHint": "Клик → перейти к {company} · {indicator}",
+      "currentValue": "Значение",
+      "openVerb": "ACT",
+      "openVerbHint": "Открыть очередь действий"
+    },
     "alertsPanel": {
       "title": "Алерты ({count})",
       "subtitle": "Совпадения мульти-индикаторных правил по холдингу. Esc для закрытия.",
@@ -1555,6 +1571,7 @@
       "cmdCo": "Активировать компанию по коду",
       "cmdInd": "Открыть детали индикатора по коду",
       "cmdCmp": "Сравнить две компании side-by-side",
+      "cmdAct": "Открыть очередь действий",
       "cmdScn": "Открыть симулятор сценариев",
       "cmdBrf": "Открыть Board Deck (PDF-friendly)",
       "cmdAud": "Открыть журнал аудита"

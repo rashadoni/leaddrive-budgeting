@@ -27,6 +27,7 @@ import { AuditTicker } from './AuditTicker';
 import { ComparePanel } from './ComparePanel';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
+import { ActionCenterPanel } from './ActionCenterPanel';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
@@ -262,6 +263,11 @@ export function PanelGrid() {
           CommandBar's `SCN <code> GO` dispatch. What-if scenario inspector
           + queue-apply. Same dismiss pattern as AuditModal. */}
       <ScenarioPanel />
+      {/* Tier-3 sub-28 — opens on `terminal:open-action-center` event
+          fired by CommandBar's `ACT GO` dispatch. Pending-review queue
+          synthesized from live matrix red+amber cells. Same dismiss
+          pattern as AuditModal / AlertsPanel. */}
+      <ActionCenterPanel />
       {/* Round-7 M2 — first-run welcome hint. Renders only on first
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}

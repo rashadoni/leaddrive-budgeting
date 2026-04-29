@@ -1518,6 +1518,22 @@
       "alertsLoading": "Xəbərdarlıqlar: yüklənir…",
       "alertsTitle": "Holdinqdə {count} red+amber göstərici — xəbərdarlıq panelini açmaq üçün klik"
     },
+    "actionCenter": {
+      "title": "Tədbir Mərkəzi ({count})",
+      "subtitle": "Holdinq üzrə baxılması gözlənilən növbə. Sətrə klikləyin — uyğun xanaya keçin. Bağlamaq üçün Esc.",
+      "dialogAriaLabel": "Tədbir Mərkəzi",
+      "closeAriaLabel": "Tədbir Mərkəzini bağla",
+      "matrixLoading": "Matris yüklənir… elementlər ilk yenilənmədən sonra görünəcək.",
+      "noWorkItems": "✓ Açıq element yoxdur — bütün sistemlər yaşıl.",
+      "severityRed": "Red — baxılmalıdır ({count})",
+      "severityAmber": "Amber — diqqət ({count})",
+      "severitySectionAriaLabel": "{severity} elementlər",
+      "itemAriaLabel": "{company} {indicator} baxılmalıdır",
+      "itemReviewHint": "Klik → {company} · {indicator}-a keç",
+      "currentValue": "Dəyər",
+      "openVerb": "ACT",
+      "openVerbHint": "Tədbir Mərkəzini aç"
+    },
     "alertsPanel": {
       "title": "Xəbərdarlıqlar ({count})",
       "subtitle": "Holdinq üzrə çox-göstəricili qayda uyğunluqları. Bağlamaq üçün Esc.",
@@ -1555,6 +1571,7 @@
       "cmdCo": "Kod ilə şirkəti aktivləşdir",
       "cmdInd": "Kod ilə göstərici detalını aç",
       "cmdCmp": "İki şirkəti yan-yana müqayisə et",
+      "cmdAct": "Tədbir Mərkəzini aç",
       "cmdScn": "Ssenari simulyatorunu aç",
       "cmdBrf": "Board Deck-i aç (PDF-friendly)",
       "cmdAud": "Audit jurnalını aç"
