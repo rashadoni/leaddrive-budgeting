@@ -601,7 +601,14 @@ async function seedBudgetLinesForCompany(
     const annualDepr = annualRevenue * recipe.deprShare;
     const annualDebtService = annualRevenue * recipe.debtServiceShare;
     const annualTax = Math.max(annualRevenue - annualCogs - annualOpexBase - annualDepr - annualDebtService, 0) * recipe.taxShare;
-    const feedCogs = industry === 'poultry' ? annualCogs * 0.55 : 0;
+    // Vary feed-cost share to hit POULTRY_FEED_COST_SHARE bands
+    // (green between 58-72, amber between 50-78, red >78). Architect
+    // sub-27 Round-2 closure: prior constant 0.55 landed below all
+    // bands → unknown.
+    const feedShare = industry === 'poultry'
+      ? { green: 0.65, amber: 0.72, red: 0.85 }[severity]
+      : 0;
+    const feedCogs = industry === 'poultry' ? annualCogs * feedShare : 0;
     const nonFeedCogs = industry === 'poultry' ? annualCogs - feedCogs : 0;
 
     type LineSpec = {
@@ -699,8 +706,15 @@ async function seedBookingsForHotel(
   const recipe = hotelRecipeFor(severity);
   let inserted = 0;
   for (const year of YEARS) {
-    // Replace scope: all bookings for this hotel this year.
-    await prisma.$transaction(async (tx) => {
+    // Replace scope: all bookings for this hotel this year. Transaction
+    // timeout raised to 60s (default 5s) — green hotel produces ~24k
+    // bookings/year (block reservations 2-4 rooms × 2-4 nights) and the
+    // bulk createMany regularly exceeds the default. Architect Round-2
+    // sub-27 cont'd: prior commit had this comment but no actual options
+    // arg, leaving the default 5s active and causing TX timeouts on first
+    // execute. Now passes `{ timeout: 60_000 }` for real.
+    await prisma.$transaction(
+      async (tx) => {
       await tx.booking.deleteMany({
         where: {
           organizationId: orgId,
@@ -791,7 +805,9 @@ async function seedBookingsForHotel(
         await tx.booking.createMany({ data: rows });
         inserted += rows.length;
       }
-    });
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
   }
   return inserted;
 }
