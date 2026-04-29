@@ -27,6 +27,9 @@ const VERBS = [
   'ALT',
   'SEC',
   'ACT',
+  'CMT',
+  'CHT',
+  'SUB',
   'GO',
 ] as const;
 
@@ -203,6 +206,24 @@ export function CommandBar() {
         // `terminalStore.alertMatches`. v2 wire-up tracked as 🔄 in CARRYOVER.)
         window.dispatchEvent(new CustomEvent('terminal:open-action-center'));
         return { message: 'ACT →' };
+      case 'cmt':
+        // Tier-3 sub-30 — CommentsLayer overlay (Bloomberg IB Internal Chat
+        // equivalent). Per-cell @mention threads. v1 in-memory + localStorage;
+        // v2 backend persistence tracked as 🔄.
+        window.dispatchEvent(new CustomEvent('terminal:open-comments'));
+        return { message: 'CMT →' };
+      case 'cht':
+        // Tier-3 sub-30 — SubCoFinanceChat (Bloomberg counterparty chat
+        // equivalent). Holding-CFO ↔ sub-co finance manager threads. v1
+        // in-memory + localStorage; v2 backend persistence tracked as 🔄.
+        window.dispatchEvent(new CustomEvent('terminal:open-subco-chat'));
+        return { message: 'CHT →' };
+      case 'sub':
+        // Tier-3 sub-30 — AISubscriptions ("notify me when X" manager).
+        // User defines composite/indicator threshold conditions; v1 in-app
+        // notifications only + localStorage; v2 email + DB tracked as 🔄.
+        window.dispatchEvent(new CustomEvent('terminal:open-subscriptions'));
+        return { message: 'SUB →' };
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when

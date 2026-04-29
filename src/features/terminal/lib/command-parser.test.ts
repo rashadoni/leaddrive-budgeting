@@ -250,8 +250,8 @@ describe("panelForCommand routing", () => {
 })
 
 describe("FUNCTION_CODES catalog", () => {
-  it("exports exactly 11 reserved function codes (9 panel verbs + AUD + ACT)", () => {
-    expect(FUNCTION_CODES).toHaveLength(11)
+  it("exports exactly 14 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB)", () => {
+    expect(FUNCTION_CODES).toHaveLength(14)
   })
 
   it("each panel-targeting function code has a panel route", () => {
@@ -267,12 +267,16 @@ describe("FUNCTION_CODES catalog", () => {
       BRF: { kind: "brf" },
       AUD: { kind: "aud" },
       ACT: { kind: "act" },
+      CMT: { kind: "cmt" },
+      CHT: { kind: "cht" },
+      SUB: { kind: "sub" },
     }
+    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB"])
     for (const code of FUNCTION_CODES) {
       const route = panelForCommand(sample[code])
-      // AUD + ACT intentionally return null (overlay modals, not panels);
+      // Overlay modals intentionally return null (do not steal panel focus);
       // every other code routes to one of the 4 panels.
-      if (code === "AUD" || code === "ACT") {
+      if (OVERLAY_MODALS.has(code)) {
         expect(route).toBeNull()
       } else {
         expect([1, 2, 3, 4]).toContain(route)

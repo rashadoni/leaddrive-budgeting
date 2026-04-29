@@ -28,6 +28,9 @@ import { ComparePanel } from './ComparePanel';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { ActionCenterPanel } from './ActionCenterPanel';
+import { CommentsLayer } from './CommentsLayer';
+import { SubCoFinanceChat } from './SubCoFinanceChat';
+import { AISubscriptions } from './AISubscriptions';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
 import {
@@ -268,6 +271,18 @@ export function PanelGrid() {
           synthesized from live matrix red+amber cells. Same dismiss
           pattern as AuditModal / AlertsPanel. */}
       <ActionCenterPanel />
+      {/* Tier-3 sub-30 — Bloomberg IB Internal Chat equivalent.
+          Per-cell @mention threads. Opens on `terminal:open-comments`
+          (CommandBar `CMT GO`). v1 in-memory + localStorage. */}
+      <CommentsLayer />
+      {/* Tier-3 sub-30 — Bloomberg counterparty-chat equivalent.
+          Per-sub-co finance threads. Opens on `terminal:open-subco-chat`
+          (CommandBar `CHT GO`). v1 in-memory + localStorage. */}
+      <SubCoFinanceChat />
+      {/* Tier-3 sub-30 — "notify-me-when-X" subscription manager.
+          Opens on `terminal:open-subscriptions` (CommandBar `SUB GO`).
+          v1 in-memory + localStorage; v2 backend persistence + email. */}
+      <AISubscriptions />
       {/* Round-7 M2 — first-run welcome hint. Renders only on first
           terminal visit (localStorage-flagged). Locale-aware copy via
           next-intl. Auto-dismiss 12s OR explicit close. */}

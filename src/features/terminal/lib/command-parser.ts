@@ -41,6 +41,9 @@ export type FunctionCode =
   | "BRF"
   | "AUD"
   | "ACT"
+  | "CMT" // Tier-3 sub-30 — CommentsLayer @mention threads on cells
+  | "CHT" // Tier-3 sub-30 — SubCoFinanceChat holding-CFO ↔ sub-co threads
+  | "SUB" // Tier-3 sub-30 — AISubscriptions user-defined alert subscriptions
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -54,6 +57,9 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "BRF",
   "AUD",
   "ACT",
+  "CMT",
+  "CHT",
+  "SUB",
 ]
 
 /**
@@ -77,6 +83,9 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   BRF: "forbidden",
   AUD: "forbidden", // Phase 7.F audit log overlay — global, no scope
   ACT: "forbidden", // Tier-3 sub-28 ActionCenter — global queue, no scope
+  CMT: "forbidden", // Tier-3 sub-30 CommentsLayer — global thread index
+  CHT: "forbidden", // Tier-3 sub-30 SubCoFinanceChat — global subco thread index
+  SUB: "forbidden", // Tier-3 sub-30 AISubscriptions — global subscription manager
 }
 
 export type ParsedCommand =
@@ -91,6 +100,9 @@ export type ParsedCommand =
   | { kind: "brf" }
   | { kind: "aud" }
   | { kind: "act" }
+  | { kind: "cmt" }
+  | { kind: "cht" }
+  | { kind: "sub" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -240,6 +252,12 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "aud" } }
     case "ACT":
       return { ok: true, command: { kind: "act" } }
+    case "CMT":
+      return { ok: true, command: { kind: "cmt" } }
+    case "CHT":
+      return { ok: true, command: { kind: "cht" } }
+    case "SUB":
+      return { ok: true, command: { kind: "sub" } }
   }
 }
 
@@ -276,6 +294,9 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
       return 4 // narrative / scenario panel
     case "aud":
     case "act":
+    case "cmt":
+    case "cht":
+    case "sub":
       return null // overlay modal — does not steal focus from any panel
   }
 }

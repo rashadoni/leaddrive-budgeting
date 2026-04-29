@@ -52,6 +52,9 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["BRF", "GO"], descKey: "shortcuts.cmdBrf" },
       { keys: ["AUD", "GO"], descKey: "shortcuts.cmdAud" },
       { keys: ["ACT", "GO"], descKey: "shortcuts.cmdAct" },
+      { keys: ["CMT", "GO"], descKey: "shortcuts.cmdCmt" },
+      { keys: ["CHT", "GO"], descKey: "shortcuts.cmdCht" },
+      { keys: ["SUB", "GO"], descKey: "shortcuts.cmdSub" },
     ],
   },
 ];
