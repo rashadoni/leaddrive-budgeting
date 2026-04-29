@@ -138,6 +138,9 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 **Show:** HeatMap renders 14 rows (8 op-cos + 5 sub-group rollups + DEMO-CO) × ~10 indicators = 67 active colored cells (verified Turn 38 sub-7: **24g / 25a / 18r = 67 active**, sub-group rollup synthetic cells included). Each row = company; sub-group rows show worst-of-children status.
 
+**Point (Phase C5 — composite badges, sub-7):**
+> "Each company row shows a 0-100 composite risk score next to the code — green ≥67, amber 34-66, red <34. Sub-group rows show '—' (rollup, not measurable). CFO scans one column to triage which sub-co needs attention."
+
 **Point:**
 > "Зелёный = within healthy band. Amber = warning. Red = needs attention. Сразу видно где проблемы — без открытия 50 spreadsheets."
 
@@ -147,9 +150,11 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 - Indicator name + description
 - Computed value + threshold band
 - Drill-down inputs (which BudgetLines / OperationalFacts feed it)
+- **12mo trend sparkline** (Phase B3, Turn 41) — trailing-month series with Δ stat
+- **Next-period forecast** (Phase C2 v1, sub-13) — linear-regression projection with confidence band ↑/↓/→ trend arrow + R² + n/12 pts
 
 **Say:**
-> "Click any cell — get the full computation chain. Every number is traceable to source BudgetLines."
+> "Click any cell — get the full computation chain. Every number is traceable to source BudgetLines. The forecast box shows where this metric is heading next period — high/medium/low confidence based on R² fit. Multi-step horizons + LLM-narrated explanations come in v2."
 
 **Type:** `SPARK-MAIN CO GO` in command bar.
 
@@ -186,6 +191,35 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 **Say:**
 > "Persistent named layouts — каждый user can save их preferred view. Per-user, не per-org."
+
+**Click:** `[alerts 🔔 N]` strip in command-bar (top-right). _(Phase C6 v2, sub-10)_
+
+**Show:** AlertsPanel modal opens, listing rule-engine matches grouped by severity (critical → warning → info). Each match shows rule name + message + clickable affected-company chips. Default rule pack: 3+ red indicators per company / composite < 40 / sector amber cluster ≥ 5 / sector red spread (contagion) / IND_NET_MARGIN red for 3+ cos org-wide.
+
+**Click:** A company chip in any match → modal closes, terminal pivots to that company.
+
+**Say (Phase C6):**
+> "Multi-indicator alert engine. Composite + sector contagion + org-wide signals. CFO sees one consolidated 'what needs attention' view, не один-за-другим cell scan."
+
+**Press Escape.** _(Or click backdrop.)_
+
+**Type:** `IRAN_HIGH SCN GO` _(or any seeded scenario code)_. _(Phase C4 v1, sub-11)_
+
+**Show:** ScenarioPanel modal opens, listing org's `Scenario` rows. Selected scenario shows JSON-pretty `overrides` blob (FX rates, commodity drops, regulatory shifts). `Apply` button POSTs → 202 queued response surfaces inline.
+
+**Say:**
+> "What-if scenario inspector. Real-time recompute under overrides ships in v2 with the BullMQ scheduler — today the queue acknowledgement validates the contract end-to-end."
+
+**Press Escape.**
+
+**Type:** `BRF GO`. _(Phase C3 v1, sub-12)_
+
+**Navigate to:** `/budgeting/board-deck` opens — print-friendly snapshot for board sharing. Shows org name + period + composite scores table (per sub-co with status counts) + active alerts grouped by severity + status grid (companies × indicators tile-grid). Click "Print to PDF" for native browser save-as-PDF.
+
+**Say:**
+> "Board-ready risk snapshot. One-click PDF for shareholder packet. Server-side PDF render + AI-narrated executive summary + scheduled email delivery come in v2."
+
+**Press:** Browser back / Sidebar → Risk Terminal.
 
 **Type:** `AUD GO`.
 
@@ -227,17 +261,19 @@ Plus 3 русских рекомендации (заморозить OpEx, пе�
 
 **Switch to second tab** with roadmap slides.
 
-**Slide 1 — "Working today":** 5 bullet points (P&L + Risk Terminal + AI Mapper + Audit + AI Variance Explainer). Recap. (Note: standalone "AI Analytics chat" surface was removed Turn 37 — only the floating per-section AIAnalyticsPanel + the per-cell Variance Explainer remain.)
+**Slide 1 — "Working today":** P&L + Risk Terminal + AI Mapper + AI Variance Explainer + full Audit trail. **Phase C v1 (Apr 2026)** added on top: composite risk scores per company (0-100 badge in HeatMap row headers), multi-indicator alerts engine (5-rule default pack, click `[alerts]` strip → grouped severity view), what-if scenario inspector (`SCN <code> GO`), one-click board snapshot (`BRF GO` → print-PDF route), next-period predictive forecast in IndicatorDetail. _(Note: standalone "AI Analytics chat" surface was removed Turn 37 — only the floating per-section AIAnalyticsPanel + the per-cell Variance Explainer remain.)_
 
-**Slide 2 — "Coming next quarter":**
-- AI Web Crawler — auto-pull industry benchmarks (Damodaran-class data) per sector
-- Predictive Analytics — forecast next 4 quarters with confidence intervals
-- Board Deck Generator — one-click executive PDF for board meetings
+**Slide 2 — "Coming next quarter (v2 polish + AI suite expansion)":**
+- AI Web Crawler — auto-pull industry benchmarks (Damodaran-class data) per sector _(C1 — vendor decision pending: NewsAPI / Reuters / RSS)_
+- Predictive Analytics v2 — multi-step horizons (3-6 months) + LLM-narrated explanations + numeric confidence intervals _(C2 v2 — v1 next-period linear regression ships today)_
+- Board Deck Generator v2 — server-side PDF render (puppeteer) + AI-narrated executive summary + scheduled email + PPTX export _(C3 v2 — v1 print-friendly route ships today)_
+- Scenario Runner v2 — live HeatMap recompute under overrides + scenario CRUD UI _(C4 v2 — v1 inspector + queue ack ships today)_
 
-**Slide 3 — "Coming next 6 months":**
-- Sparkline trends per indicator (12-month mini-chart in every cell)
-- Composite indicators via fact()/rollup() formula functions (cross-period analysis)
-- Background recompute scheduler — instant matrix at 60+ companies via job queue
+**Slide 3 — "Coming next 6 months (architectural foundation)":**
+- Composite indicators via fact()/rollup() formula functions (cross-period analysis) — Phase 7.A.0 architectural debt
+- Background recompute scheduler — instant matrix at 60+ companies via BullMQ job queue (Phase 6) — unblocks C4 v2 live-recompute
+- Cross-device starred sync via UserCompanyPreferences (B4 v2; today localStorage-only)
+- User-configurable hotkey toolbar with drag-reorder + per-user persistence (B6 v2; today 8 fixed defaults)
 
 **Slide 4 — "Coming year+":**
 - Multi-tenant SaaS — per-customer org isolation with PostgreSQL RLS
@@ -339,7 +375,7 @@ Mark each step pass/fail:
 - [ ] Step 1: P&L renders, EBITDA card 25.0M, Management/Bookkeeping toggle works, AAC-MAIN drill = 19M Net Rev / 17% margin / 1.5M EBITDA
 - [ ] Step 2: Variance Explainer EXPLAIN responds EN within 12-15 sec; RU tab + Re-run within 15-18 sec
 - [ ] Step 3: analyze ~35 sec → 14-column mapping → Apply → "INSERTED 27 / 5 indicators" + audit_event fires
-- [ ] Step 4: HeatMap 24g/25a/18r=67 colored, IndicatorDetail populates, 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD), F1-F4 snappy, drag smooth, AUD GO opens modal with ai_variance_explainer_run rows visible
+- [ ] Step 4: HeatMap 24g/25a/18r=67 colored + composite badges per row (Phase C5); IndicatorDetail populates with sparkline + forecast (Phase C2); 10 verbs dispatch (HOLD/GRP/CO/IND/SEC/CMP/ALT/SCN/BRF/AUD); SCN GO opens ScenarioPanel (C4); BRF GO opens /budgeting/board-deck (C3); `[alerts N]` strip click opens AlertsPanel (C6); F1-F4 snappy, drag smooth; AUD GO opens modal with ai_variance_explainer_run rows visible
 - [ ] Step 5: AuditFeed paginates, expand row works
 - [ ] Step 6: roadmap slides render
 - [ ] Total wall-time: 15-22 min

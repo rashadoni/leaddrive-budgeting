@@ -1,9 +1,12 @@
 # Loom backup script — happy-path 5-minute narration
 
-> **Numbers in this script verified Apr 27 (Turn 38 sub-7).** Re-verify
-> Day-4 evening before recording — if live data drifted (new import,
-> recompute, schema change), update the narration counts before take.
-> Check via `bash scripts/pre-demo-check.sh` (13 checks, exit 0 = green).
+> **Numbers in this script verified Apr 27 (Turn 38 sub-7); narration
+> beats refreshed Apr 29 (Turn 42 sub-20+) to include Phase C v1
+> shipped between (composite badges, alerts engine, forecast,
+> scenario panel, board-deck route).** Re-verify Day-4 evening before
+> recording — if live data drifted (new import, recompute, schema
+> change), update the narration counts before take. Check via
+> `bash scripts/pre-demo-check.sh` (15 checks, exit 0 = "DEMO GO").
 >
 > **Purpose:** if live demo fails (network down, server crash, unexpected
 > red flash), the speaker pivots to this pre-recorded Loom showing the
@@ -71,8 +74,9 @@
 **Say:**
 > "Bloomberg-style monitoring. 14 rows — companies + sub-group rollups.
 > 67 active indicator cells. Green within healthy band, amber warning,
-> red needs attention. CFO sees the entire holding's risk surface in
-> one glance."
+> red needs attention. Each row shows a 0-100 composite risk score next
+> to the company code — one glance triages which sub-co needs attention.
+> CFO sees the entire holding's risk surface without opening 50 spreadsheets."
 
 **Click:** Red cell on AAC IND_NET_MARGIN.
 
@@ -148,6 +152,15 @@
 
 **Click:** ▢ Layouts button → save current as "demo-cfo".
 
+**Click:** `[alerts 🔔 N]` strip in the command-bar (top-right).
+
+**Say:**
+> "Multi-indicator alert engine — composite risk + sector contagion +
+> org-wide signals. CFO sees one consolidated 'what needs attention' view
+> grouped by severity. Click any company chip to drill in."
+
+**Press Escape.**
+
 **Type:** `AUD GO`.
 
 **Say:**
@@ -197,3 +210,4 @@
 | 3:30 Command bar IND fails | use HeatMap cell click as backup path | keep narrative |
 | 4:00 Layout save fails | skip ▢ Layouts beat; mention "every user has saved layouts" verbally | shave 15 sec |
 | 4:30 AUD GO modal misses ai_variance rows | switch to /budgeting/audit page navigation | keep narrative |
+| 4:15 [alerts] modal renders empty | skip beat, mention "alerts engine surface" verbally + reference Step 6 slide | shave 10 sec |
