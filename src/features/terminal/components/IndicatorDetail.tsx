@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations, useLocale } from 'next-intl';
+
 /**
  * Phase 7.D — Panel 3 drill-down for a clicked HeatMap cell.
  *
@@ -23,11 +25,15 @@ interface IndicatorMeta {
   id: string;
   code: string;
   nameEn: string;
+  nameAz?: string | null;
+  nameRu?: string | null;
   unit: string;
   direction: "higher_better" | "lower_better" | "band";
   formula: string;
   thresholds: unknown;
   hintTemplateEn: string | null;
+  hintTemplateAz?: string | null;
+  hintTemplateRu?: string | null;
   requiredInputs: string[];
 }
 
@@ -63,6 +69,8 @@ const STATUS_HEX: Record<IndicatorValueDetail["status"], string> = {
 };
 
 export function IndicatorDetail() {
+  const t = useTranslations('terminal');
+  const locale = useLocale();
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
 
@@ -142,7 +150,14 @@ export function IndicatorDetail() {
             )}
           </div>
           <div className="text-[#E8EDF5] font-semibold text-sm tracking-tight mt-0.5">
-            {ind.code} <span className="text-gray-500 font-normal">— {ind.nameEn}</span>
+            <span className="text-gray-500 font-normal text-[10px]" title={ind.code}>
+              {ind.code}
+            </span>{' '}
+            <span className="text-[#E8EDF5]">
+              {(locale === 'ru' && ind.nameRu) ||
+                (locale === 'az' && ind.nameAz) ||
+                ind.nameEn}
+            </span>
           </div>
           <div className="text-gray-600 text-[10px] mt-0.5">
             period {period} · direction {ind.direction} · unit {ind.unit}
@@ -174,7 +189,7 @@ export function IndicatorDetail() {
       {detail.sparkline && detail.sparkline.length > 0 && (
         <div className="flex items-center gap-2 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5">
           <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
-            12mo trend
+            {t('snapshot.trend12mo')}
           </span>
           <Sparkline
             data={detail.sparkline}

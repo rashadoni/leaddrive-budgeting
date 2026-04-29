@@ -24,6 +24,7 @@
  */
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
@@ -51,6 +52,7 @@ interface Props {
 }
 
 export function CompanySnapshot({ companyCode }: Props) {
+  const t = useTranslations("terminal");
   // Sub-20: shared `useMatrix()` hook. Module cache means CompanySnapshot
   // mounts (one per active company drilldown) reuse HeatMap's already-
   // fetched matrix instead of N round-trips. SSE-driven refetch goes
@@ -114,9 +116,9 @@ export function CompanySnapshot({ companyCode }: Props) {
     <div className="font-mono text-xs flex flex-col gap-2">
       <div className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between">
         <span>
-          Snapshot · <span className="text-[#FFB020]">{company.code}</span>
+          {t("snapshot.title")} · <span className="text-[#FFB020]">{company.code}</span>
         </span>
-        <span className="text-gray-600">12mo trend</span>
+        <span className="text-gray-600">{t("snapshot.trend12mo")}</span>
       </div>
       {/* Architect Round-1 sub-10 closure: was `grid grid-cols-3` which
           overflowed at narrow Panel 4 widths (Analyst preset 40% × 40%
@@ -131,7 +133,7 @@ export function CompanySnapshot({ companyCode }: Props) {
         ))}
       </div>
       <p className="text-[10px] text-gray-600 mt-1">
-        Click any HeatMap cell for the full Variance Explainer narrative.
+        {t("snapshot.footerHint")}
       </p>
     </div>
   );

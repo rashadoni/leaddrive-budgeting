@@ -107,6 +107,8 @@ export async function GET(request: NextRequest) {
           id: true,
           code: true,
           nameEn: true,
+          nameAz: true,
+          nameRu: true,
           direction: true,
           unit: true,
           sortOrder: true,

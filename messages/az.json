@@ -1262,5 +1262,78 @@
       "forecasts": "Proqnozlar",
       "assumptions": "Fərziyyələr"
     }
+  },
+  "terminal": {
+    "panels": {
+      "companyTree": "Şirkət ağacı",
+      "companyTreeShort": "AĞAC",
+      "heatMap": "Risk istilik xəritəsi",
+      "heatMapShort": "XƏRİTƏ",
+      "indicatorDetail": "Göstərici detalları",
+      "indicatorDetailShort": "DETAL",
+      "snapshot": "Şirkət portreti",
+      "snapshotShort": "PORTRET"
+    },
+    "status": {
+      "green": "Sağlam",
+      "amber": "Diqqət",
+      "red": "Kritik",
+      "unknown": "Məlumat yox"
+    },
+    "severity": {
+      "critical": "Kritik",
+      "warning": "Xəbərdarlıq",
+      "info": "Məlumat"
+    },
+    "verbs": {
+      "HOLD": "Holdinq baxışı (bütün portfel)",
+      "GRP": "Alt-qrup fokusu",
+      "CO": "Bir şirkət",
+      "IND": "Göstərici detalı (Panel 3)",
+      "SEC": "Sektor görünüşü",
+      "CMP": "İki şirkəti müqayisə et",
+      "ALT": "Xəbərdarlıqlar paneli",
+      "SCN": "Ssenari stress-testi",
+      "BRF": "Direktorlar şurası (çap)",
+      "AUD": "Audit modal pəncərəsi"
+    },
+    "alerts": {
+      "title": "Xəbərdarlıqlar",
+      "empty": "Aktiv xəbərdarlıq yoxdur",
+      "loading": "Qaydalar yoxlanılır…",
+      "rules": {
+        "company-mostly-red": "Şirkətin çoxsaylı qırmızı göstəriciləri var",
+        "company-critical-composite": "Kompozit bal həddən aşağıdır",
+        "sector-amber-cluster": "Sektorun sarı klasteri",
+        "sector-red-spread": "Sektorda qırmızının yayılması",
+        "critical-indicator-org-wide": "Holdinq üzrə kritik göstərici"
+      }
+    },
+    "buttons": {
+      "save": "Yadda saxla",
+      "cancel": "Ləğv et",
+      "apply": "Tətbiq et",
+      "reset": "Standartlara qaytar",
+      "close": "Bağla",
+      "drill": "Detalı bax",
+      "compare": "Müqayisə et",
+      "explain": "İzah et"
+    },
+    "snapshot": {
+      "title": "Portret",
+      "trend12mo": "12 aylıq trend",
+      "footerHint": "Tam izah üçün istənilən xəritə xanasına klikləyin.",
+      "compositeScore": "Kompozit risk balı",
+      "topAlerts": "Əsas xəbərdarlıqlar",
+      "lastAudit": "Son audit",
+      "forecastConfidence": "Proqnoz inamı",
+      "noScoreableIndicators": "Qiymətləndirilə bilən göstərici yoxdur (yığma sətr)"
+    },
+    "hints": {
+      "tree": "Digər panelləri fokuslamaq üçün şirkətə klikləyin",
+      "heatMap": "Detallar üçün xanaya klikləyin · Axtarış üçün / basın",
+      "detail": "F3 ilə fokuslayın · AI izahı üçün EXPLAIN klikləyin",
+      "snapshot": "Aylıq dəyərlər üçün spark üzərinə gətirin · Klik müqayisə üçün"
+    }
   }
 }

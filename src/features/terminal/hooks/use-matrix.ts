@@ -54,6 +54,9 @@ export interface MatrixIndicatorCol {
   id: string;
   code: string;
   nameEn: string;
+  /** Optional locale-specific name fields — sub-27 cont'd multi-lingual MVP. */
+  nameAz?: string | null;
+  nameRu?: string | null;
   /**
    * Threshold direction — narrowed to literal union to match consumer
    * shape (ComparePanel, CompanySnapshot). Server-side enum mirror at

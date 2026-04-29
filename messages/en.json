@@ -1262,5 +1262,78 @@
       "forecasts": "Forecasts",
       "assumptions": "Assumptions"
     }
+  },
+  "terminal": {
+    "panels": {
+      "companyTree": "Company Tree",
+      "companyTreeShort": "TREE",
+      "heatMap": "Risk Heat Map",
+      "heatMapShort": "HEATMAP",
+      "indicatorDetail": "Indicator Detail",
+      "indicatorDetailShort": "DETAIL",
+      "snapshot": "Company Snapshot",
+      "snapshotShort": "SNAPSHOT"
+    },
+    "status": {
+      "green": "Healthy",
+      "amber": "Watch",
+      "red": "Critical",
+      "unknown": "No data"
+    },
+    "severity": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "info": "Info"
+    },
+    "verbs": {
+      "HOLD": "Holding view (entire portfolio)",
+      "GRP": "Sub-group focus",
+      "CO": "Single company drill-in",
+      "IND": "Indicator detail (Panel 3)",
+      "SEC": "Sector view",
+      "CMP": "Compare two companies",
+      "ALT": "Alerts panel",
+      "SCN": "Scenario stress-test",
+      "BRF": "Board deck (printable)",
+      "AUD": "Audit log modal"
+    },
+    "alerts": {
+      "title": "Alerts",
+      "empty": "No alerts firing",
+      "loading": "Checking rules…",
+      "rules": {
+        "company-mostly-red": "Company has many red indicators",
+        "company-critical-composite": "Composite score below threshold",
+        "sector-amber-cluster": "Sector amber cluster",
+        "sector-red-spread": "Sector red contagion",
+        "critical-indicator-org-wide": "Critical indicator org-wide"
+      }
+    },
+    "buttons": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "reset": "Reset to defaults",
+      "close": "Close",
+      "drill": "Drill down",
+      "compare": "Compare",
+      "explain": "Explain"
+    },
+    "snapshot": {
+      "title": "Snapshot",
+      "trend12mo": "12-month trend",
+      "footerHint": "Click any HeatMap cell for the full Variance Explainer narrative.",
+      "compositeScore": "Composite Risk Score",
+      "topAlerts": "Top alerts",
+      "lastAudit": "Last audit",
+      "forecastConfidence": "Forecast confidence",
+      "noScoreableIndicators": "No scoreable indicators (rollup row)"
+    },
+    "hints": {
+      "tree": "Click any company to focus drill-down panels",
+      "heatMap": "Click any cell for indicator detail · Press / to search",
+      "detail": "Press F3 to focus this panel · Click EXPLAIN for AI narrative",
+      "snapshot": "Hover sparklines for monthly values · Click cards to compare"
+    }
   }
 }

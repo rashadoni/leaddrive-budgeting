@@ -25,6 +25,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
@@ -43,6 +44,7 @@ const SEVERITY_TONE: Record<AlertSeverity, string> = {
 };
 
 export function AlertsPanel() {
+  const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const matches = useTerminalStore((s) => s.alertMatches);
   const selectCompany = useTerminalStore((s) => s.selectCompany);
@@ -147,7 +149,16 @@ export function AlertsPanel() {
                         data-testid={`alert-row-${m.ruleId}`}
                       >
                         <div className="font-mono text-[11px] opacity-70">
-                          {m.ruleName}
+                          {(() => {
+                            // Architect sub-27 cont'd multi-lingual MVP:
+                            // try translated rule name first, fall back to
+                            // server-side ruleName if no translation key.
+                            try {
+                              return t(`alerts.rules.${m.ruleId}` as never);
+                            } catch {
+                              return m.ruleName;
+                            }
+                          })()}
                         </div>
                         <div className="text-sm mt-0.5">{m.message}</div>
                         {m.affectedCompanyIds.length > 0 && (

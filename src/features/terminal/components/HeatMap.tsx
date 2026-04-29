@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
 import {
   buildCellMap,
@@ -44,6 +45,8 @@ type IndicatorCol = {
   id: string;
   code: string;
   nameEn: string;
+  nameAz?: string | null;
+  nameRu?: string | null;
   direction: string;
   unit: string;
 };
@@ -61,6 +64,8 @@ type Props = {
 const PANEL_ID = 2;
 
 export function HeatMap({ period }: Props) {
+  const t = useTranslations('terminal');
+  const locale = useLocale();
   // User-driven HeatMap row/cell clicks → selectCompany (tracks LRU recent).
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
@@ -285,8 +290,8 @@ export function HeatMap({ period }: Props) {
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
       <div className="flex items-center justify-between mb-2 text-[10px] text-gray-500 shrink-0 gap-2">
-        <span className="shrink-0">
-          HEATMAP · <span className="text-gray-300">{renderedPeriod}</span>
+        <span className="shrink-0" title={t('hints.heatMap')}>
+          {t('panels.heatMapShort')} · <span className="text-gray-300">{renderedPeriod}</span>
         </span>
         <div className="flex items-center gap-1 flex-1 max-w-[220px]">
           <span className="text-gray-600">/</span>
@@ -364,7 +369,11 @@ export function HeatMap({ period }: Props) {
                       className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
                     >
                       <div className="font-mono font-semibold">{ind.code}</div>
-                      <div className="text-muted-foreground">{ind.nameEn}</div>
+                      <div className="text-muted-foreground">
+                        {(locale === 'ru' && ind.nameRu) ||
+                          (locale === 'az' && ind.nameAz) ||
+                          ind.nameEn}
+                      </div>
                       <div className="text-[10px] text-muted-foreground/70 mt-0.5">
                         unit: {ind.unit} · {ind.direction === 'higher_better' ? 'higher = better' : ind.direction === 'lower_better' ? 'lower = better' : 'in band'}
                       </div>
