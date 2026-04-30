@@ -1439,7 +1439,7 @@
       "recomputing": "Пересчёт…",
       "recomputeDone": "Обновлено",
       "recomputeFailed": "Ошибка",
-      "recomputeTitle": "Пересчитать этот индикатор со свежей sparkline (POST /api/indicators с companyId+indicatorCode)",
+      "recomputeTitle": "Пересчитать значение индикатора со свежей sparkline-кривой",
       "forecastNextPeriod": "Прогноз след. периода",
       "forecastNoChange": "изменений не ожидается",
       "forecastConfidence": "уверенность",

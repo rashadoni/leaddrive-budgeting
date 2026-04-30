@@ -251,11 +251,20 @@ export function IndicatorDetail() {
               the only branch that flips withSparkline=true on the API
               route, so this is the user-facing trigger for inline
               sparkline refresh. */}
+          {/* Sub-41 architect Round-1 closure — a11y polish: title attr
+              gives sighted hover users a tooltip; aria-describedby pins
+              the same description to the button's accessible-description
+              slot for screen-reader users (mirror via sr-only span so SR
+              hears it after the visible button name). The text is now
+              user-facing (no internal-tech jargon like "POST
+              /api/indicators"). State-changing visible text remains the
+              accessible name (announced first). */}
           <button
             type="button"
             onClick={triggerRecompute}
             disabled={recomputeState.kind === 'running'}
             title={t('indicatorDetail.recomputeTitle')}
+            aria-describedby="indicator-detail-recompute-desc"
             className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors text-gray-500"
           >
             <RefreshCw
@@ -273,6 +282,9 @@ export function IndicatorDetail() {
                     : t('indicatorDetail.recompute')}
             </span>
           </button>
+          <span id="indicator-detail-recompute-desc" className="sr-only">
+            {t('indicatorDetail.recomputeTitle')}
+          </span>
           {recomputeState.kind === 'error' && (
             <div
               className="text-[9px] text-[#FF4757] max-w-[180px] text-right leading-tight"

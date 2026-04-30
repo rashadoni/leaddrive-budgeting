@@ -1439,7 +1439,7 @@
       "recomputing": "Hesablama…",
       "recomputeDone": "Yeniləndi",
       "recomputeFailed": "Xəta",
-      "recomputeTitle": "Bu göstəricini yeni sparkline ilə yenidən hesabla (POST /api/indicators companyId+indicatorCode ilə)",
+      "recomputeTitle": "Bu göstərici dəyərini yenilənmiş sparkline ilə yenidən hesabla",
       "forecastNextPeriod": "Növbəti dövrə proqnoz",
       "forecastNoChange": "dəyişiklik gözlənilmir",
       "forecastConfidence": "inam",

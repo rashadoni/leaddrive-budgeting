@@ -50,6 +50,7 @@ import {
   tryEvaluateFormula,
   classifyValue,
   type FormulaContext,
+  type FormulaFunction,
   type IndicatorStatus,
   type Thresholds,
 } from './formula-engine';
@@ -189,6 +190,36 @@ export interface RecomputeDataSource {
      */
     sparkline?: (number | null)[];
   }): Promise<void>;
+
+  /**
+   * Phase 7.E phase 3 — cross-period IV read for `fact()` formula function.
+   * Returns the persisted spot `value` of the indicator at the requested
+   * period for the SAME company, or null when:
+   *  - no IV row exists for the (org, co, code, period) tuple
+   *  - the IV row's status is `unknown` (formula failed) — a 0 here would
+   *    silently feed bad data into the parent formula; null is honest.
+   * Pure read — never throws on missing data; callers map null → NaN to
+   * propagate "missing input" through the formula engine.
+   */
+  getIndicatorValue?(args: {
+    organizationId: string;
+    companyId: string;
+    indicatorCode: string;
+    period: string;
+  }): Promise<number | null>;
+
+  /**
+   * Phase 7.E phase 3 — direct-children lookup for `rollup()` formula
+   * function. Returns Company.id values of every active sub-company whose
+   * `parentCompanyId === args.parentId`. Used by `rollupResolver` to fan
+   * out an indicator read across children (default agg = sum). Empty
+   * array when the company has no children (rollup formula sees an empty
+   * sum = 0; formula author can guard via ternary if 0 is misleading).
+   */
+  listChildCompanyIds?(args: {
+    organizationId: string;
+    parentId: string;
+  }): Promise<string[]>;
 }
 
 // --- Inputs snapshot shape stored on IndicatorValue.inputs -------------------
@@ -252,6 +283,39 @@ export interface RecomputeAggregates {
   company_settings?: CompanySettingsAggregate;
   currency_rate?: CurrencyRateAggregate;
   budget_line?: BudgetLineAggregate;
+  /** Phase 7.E phase 3 — `fact()` cross-period reads. */
+  fact?: FactAggregate;
+  /** Phase 7.E phase 3 — `rollup()` cross-company sums. */
+  rollup?: RollupAggregate;
+}
+
+/**
+ * Phase 7.E phase 3 — drill-down snapshot of every (code, period) pair the
+ * `fact()` resolver attempted to read. `value: null` signals the IV row was
+ * missing OR resolved to status='unknown' (resolver discards both alike to
+ * propagate "missing input" through the formula engine).
+ */
+export interface FactAggregate {
+  /** How many distinct (code, period) reads were attempted. */
+  read_count: number;
+  /** How many returned a non-null value. `read_count - hit_count` = missing. */
+  hit_count: number;
+  /** Per-key snapshot keyed by `${indicatorCode}@${period}`. */
+  reads: Record<string, number | null>;
+}
+
+/**
+ * Phase 7.E phase 3 — drill-down snapshot of `rollup()` cross-company sums.
+ * `children_count` is captured BEFORE the per-code fan-out so a parent with
+ * empty children-set surfaces `children_count: 0` even when no codes were
+ * requested. Per-code `matched_count` shows how many children's IVs were
+ * non-null (children_count - matched_count = children with missing IV).
+ */
+export interface RollupAggregate {
+  /** Direct children of the current company. 0 = rollup yields 0 (empty sum). */
+  children_count: number;
+  /** Per-indicator-code sum + match count across children at current period. */
+  sums: Record<string, { sum: number; matched_count: number }>;
 }
 
 export interface RecomputeDerived {
@@ -484,6 +548,47 @@ export function createPrismaDataSource(
       );
     },
 
+    /**
+     * Phase 7.E phase 3 — read peer IV by (org, co, code, period). Returns
+     * null on missing row OR status='unknown' (the latter would otherwise
+     * silently feed a placeholder 0 into a parent formula).
+     */
+    async getIndicatorValue({
+      organizationId,
+      companyId,
+      indicatorCode,
+      period,
+    }) {
+      const row = await prisma.indicatorValue.findFirst({
+        where: {
+          organizationId,
+          companyId,
+          period,
+          indicator: { code: indicatorCode },
+        },
+        select: { value: true, status: true },
+      });
+      if (!row) return null;
+      if (row.status === 'unknown') return null;
+      return row.value;
+    },
+
+    /**
+     * Phase 7.E phase 3 — direct-children lookup for `rollup()`. Active
+     * children only; org-scoped.
+     */
+    async listChildCompanyIds({ organizationId, parentId }) {
+      const rows = await prisma.company.findMany({
+        where: {
+          organizationId,
+          parentCompanyId: parentId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      return rows.map((r) => r.id);
+    },
+
     async upsertIndicatorValue({
       organizationId,
       companyId,
@@ -565,6 +670,14 @@ function computeHhi(
 interface BuildState {
   context: FormulaContext;
   inputs: RecomputeInputs;
+  /**
+   * Phase 7.E phase 3 — formula-engine functions injected by resolvers.
+   * Today populated by `factResolver` + `rollupResolver`; the engine sees
+   * them via the `functions` arg of `tryEvaluateFormula`. Each function
+   * closes over a per-recompute snapshot map (no DB access at eval time
+   * — required because expr-eval is synchronous).
+   */
+  functions: Record<string, FormulaFunction>;
 }
 
 interface ResolverCtx {
@@ -1190,12 +1303,243 @@ function applyBudgetLineSubMatcher(
   };
 }
 
+/**
+ * Phase 7.E phase 3 — `fact(code, period)` formula function.
+ *
+ * Reads the persisted spot value of `IndicatorValue` for the SAME company
+ * at a different period, enabling cross-period composites like
+ * year-over-year deltas, prior-quarter comparisons, etc.
+ *
+ * Pre-fetch model: every (code, period) pair the formula will touch must
+ * be declared in `IndicatorDefinition.requiredInputs` as
+ * `fact:CODE@PERIOD` — the resolver fans out the reads in parallel,
+ * stuffs them into a Map, then exposes a synchronous `fact()` closure
+ * for the formula engine. Required because expr-eval is sync; can't
+ * await DB calls inside `expr.evaluate()`.
+ *
+ * Required-input format: `fact:<INDICATOR_CODE>@<PERIOD>`
+ *   - `<INDICATOR_CODE>` mirrors `IndicatorDefinition.code` (e.g.
+ *     `IND_NET_MARGIN`).
+ *   - `<PERIOD>` is the period string the recompute pipeline uses
+ *     elsewhere (`"2025"`, `"2026-Q2"`, `"2026-04"`). NOT the relative
+ *     "prev_year" syntax — keep it explicit so seed authors can't mis-
+ *     compute the period at indicator level (the same indicator at
+ *     monthly granularity vs annual would resolve "prev_year" to
+ *     different values and that's confusing).
+ *
+ * Lenient parsing: malformed `requiredInputs` entries (missing `@`,
+ * empty code, empty period) are silently skipped. The formula will see
+ * `fact()` return NaN for those keys → propagates to formula failure
+ * → IV status='unknown'. We could throw at parse time but that aborts
+ * the entire indicator over a typo; soft-fail is friendlier.
+ *
+ * Missing IV: returns null in the read map. The exposed `fact()` closure
+ * maps null → NaN so the formula propagates the missing-input failure
+ * naturally. The aggregate snapshot keeps null (drill-down sees the gap).
+ *
+ * Cost: 1 Prisma `findFirst` per (code, period) pair. At Phase F scale
+ * (60 cos × 9 indicators each potentially declaring 2-3 fact reads each
+ * = ~1500 reads per recompute batch) this fits inside the existing 60s
+ * route budget; if it doesn't, the resolver can be batched into a
+ * single `IN (...)` query in v2.
+ */
+const factResolver: NamespaceResolver = {
+  name: 'fact',
+  matches: (r) => r === 'fact' || r.startsWith('fact:'),
+  async resolve(matched, ctx, state) {
+    interface ParsedFactKey {
+      raw: string;
+      code: string;
+      period: string;
+      key: string; // canonical `${code}@${period}`
+    }
+    const parsed: ParsedFactKey[] = [];
+    for (const raw of matched) {
+      // Strip `fact:` prefix; bare `fact` (no colon) is a no-op declaration —
+      // the seed author wanted the function in scope without pre-fetching
+      // any specific (code, period). The function still resolves but every
+      // call returns NaN (no entries pre-fetched).
+      if (raw === 'fact') continue;
+      const body = raw.slice('fact:'.length);
+      const at = body.lastIndexOf('@');
+      if (at < 0) continue; // malformed: no @; skip
+      const code = body.slice(0, at).trim();
+      const period = body.slice(at + 1).trim();
+      if (!code || !period) continue; // malformed: empty side
+      parsed.push({ raw, code, period, key: `${code}@${period}` });
+    }
+    // De-dupe by canonical key — multiple requiredInputs entries that resolve
+    // to the same (code, period) trigger one Prisma read, not N.
+    const seen = new Set<string>();
+    const unique: ParsedFactKey[] = [];
+    for (const p of parsed) {
+      if (seen.has(p.key)) continue;
+      seen.add(p.key);
+      unique.push(p);
+    }
+
+    const reads: Record<string, number | null> = {};
+    if (unique.length > 0 && ctx.ds.getIndicatorValue) {
+      const getIv = ctx.ds.getIndicatorValue.bind(ctx.ds);
+      const values = await Promise.all(
+        unique.map((p) =>
+          getIv({
+            organizationId: ctx.organizationId,
+            companyId: ctx.companyId,
+            indicatorCode: p.code,
+            period: p.period,
+          }),
+        ),
+      );
+      for (let i = 0; i < unique.length; i++) {
+        reads[unique[i].key] = values[i];
+      }
+    } else {
+      // ds doesn't implement getIndicatorValue (test stubs predating phase
+      // 3) — populate the map with nulls so `fact()` returns NaN cleanly
+      // rather than a confusing "function not in scope" error.
+      for (const p of unique) reads[p.key] = null;
+    }
+
+    let hitCount = 0;
+    for (const v of Object.values(reads)) if (v !== null) hitCount++;
+
+    state.inputs.aggregates.fact = {
+      read_count: unique.length,
+      hit_count: hitCount,
+      reads,
+    };
+
+    // Synchronous closure exposed to the formula engine. Captures `reads`
+    // by reference, but the resolver has finished populating it before
+    // the engine runs (resolvers are awaited; eval comes after).
+    state.functions.fact = (code: FormulaFunctionArgLike, period: FormulaFunctionArgLike) => {
+      const key = `${String(code)}@${String(period)}`;
+      const value = reads[key];
+      if (value == null) return Number.NaN;
+      return value;
+    };
+  },
+};
+
+/**
+ * Phase 7.E phase 3 — `rollup(code)` formula function.
+ *
+ * Sums the persisted spot value of `IndicatorValue` for `<code>` across
+ * the current company's DIRECT children at the same period. Use case:
+ * holding-level composites where the parent's metric is the sum of its
+ * sub-companies (e.g. holding-wide revenue = sum of per-sub-co revenue).
+ *
+ * Required-input format: `rollup:<INDICATOR_CODE>`
+ *   - Period is implicit (= current recompute period). Cross-period
+ *     rollup composites can be expressed as `fact(rollup_code, period)`
+ *     IF the rollup IV is itself persisted (separate seed entry). v1 of
+ *     phase 3 doesn't auto-persist rollup outputs.
+ *
+ * Empty children: returns 0 (empty sum). Formula author can guard with
+ * a ternary if 0 would be misleading: `rollup("X") > 0 ? rollup("X") : NaN`.
+ *
+ * Aggregation: today only sum. Avg / min / max / hhi can be added by
+ * extending the format to `rollup:<CODE>:<AGG>` in v2; not done now to
+ * keep the v1 surface minimal.
+ *
+ * Missing child IV: skipped from the sum (treated as 0 contribution).
+ * Symmetric with `fact()`'s null-as-NaN-propagation, but the nature of
+ * sum-aggregation is to ignore missing terms — explicit NaN propagation
+ * here would reject the entire rollup over one missing child, which is
+ * a worse default for holding-level reporting.
+ *
+ * Cost: 1 children-list query + 1 IV read per (child × code) pair.
+ * Symmetric with `fact()` — at Phase F scale O(children × codes) reads
+ * per recompute. Same v2 batched-IN optimization applies.
+ */
+const rollupResolver: NamespaceResolver = {
+  name: 'rollup',
+  matches: (r) => r === 'rollup' || r.startsWith('rollup:'),
+  async resolve(matched, ctx, state) {
+    const codes: string[] = [];
+    for (const raw of matched) {
+      if (raw === 'rollup') continue;
+      const code = raw.slice('rollup:'.length).trim();
+      if (!code) continue;
+      codes.push(code);
+    }
+    const uniqueCodes = Array.from(new Set(codes));
+
+    let childIds: string[] = [];
+    if (ctx.ds.listChildCompanyIds) {
+      childIds = await ctx.ds.listChildCompanyIds({
+        organizationId: ctx.organizationId,
+        parentId: ctx.companyId,
+      });
+    }
+
+    const sums: Record<string, { sum: number; matched_count: number }> = {};
+    if (uniqueCodes.length > 0 && childIds.length > 0 && ctx.ds.getIndicatorValue) {
+      const getIv = ctx.ds.getIndicatorValue.bind(ctx.ds);
+      const periodStr = ctx.period.raw;
+      // Fan out: every (code × child) pair fetched in parallel.
+      const tasks: Array<{ code: string; promise: Promise<number | null> }> = [];
+      for (const code of uniqueCodes) {
+        for (const childId of childIds) {
+          tasks.push({
+            code,
+            promise: getIv({
+              organizationId: ctx.organizationId,
+              companyId: childId,
+              indicatorCode: code,
+              period: periodStr,
+            }),
+          });
+        }
+      }
+      const results = await Promise.all(tasks.map((t) => t.promise));
+      // Aggregate per code.
+      for (const code of uniqueCodes) sums[code] = { sum: 0, matched_count: 0 };
+      for (let i = 0; i < tasks.length; i++) {
+        const t = tasks[i];
+        const v = results[i];
+        if (v == null) continue;
+        sums[t.code].sum += v;
+        sums[t.code].matched_count += 1;
+      }
+    } else {
+      // No children OR ds doesn't implement reads — every code gets a 0 sum
+      // with matched_count=0. The function below returns 0 for those codes;
+      // formula authors who want NaN-on-empty can guard explicitly.
+      for (const code of uniqueCodes) sums[code] = { sum: 0, matched_count: 0 };
+    }
+
+    state.inputs.aggregates.rollup = {
+      children_count: childIds.length,
+      sums,
+    };
+
+    state.functions.rollup = (code: FormulaFunctionArgLike) => {
+      const entry = sums[String(code)];
+      if (!entry) return Number.NaN;
+      return entry.sum;
+    };
+  },
+};
+
+/**
+ * Local alias matching `formula-engine.ts`'s `FormulaFunctionArg` (number |
+ * string). Re-stated here so the resolver bodies don't need the full type
+ * import at use sites — readability over micro-DRY. The real type is the
+ * one above (imported as FormulaFunction signature); callers cast at call
+ * site since expr-eval passes arguments dynamically.
+ */
+type FormulaFunctionArgLike = number | string;
+
 const RESOLVERS: readonly NamespaceResolver[] = [
   bookingResolver,
   companySettingsResolver,
   operationalFactResolver,
   currencyRateResolver,
   budgetLineResolver,
+  factResolver,
+  rollupResolver,
 ];
 
 /**
@@ -1233,10 +1577,15 @@ export async function buildContext(
     period: Period;
     requiredInputs: string[];
   },
-): Promise<{ context: FormulaContext; inputs: RecomputeInputs }> {
+): Promise<{
+  context: FormulaContext;
+  inputs: RecomputeInputs;
+  functions: Record<string, FormulaFunction>;
+}> {
   const state: BuildState = {
     context: {},
     inputs: { resolved: {}, aggregates: {}, derived: {} },
+    functions: {},
   };
   const ctx: ResolverCtx = {
     ds,
@@ -1256,7 +1605,11 @@ export async function buildContext(
 
   await postProcess(ctx, state);
 
-  return { context: state.context, inputs: state.inputs };
+  return {
+    context: state.context,
+    inputs: state.inputs,
+    functions: state.functions,
+  };
 }
 
 // --- Runner ------------------------------------------------------------------
@@ -1347,14 +1700,18 @@ export async function recomputeIndicator(
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
 
-  const { context, inputs } = await buildContext(ds, {
+  const { context, inputs, functions } = await buildContext(ds, {
     organizationId: args.organizationId,
     companyId: args.companyId,
     period,
     requiredInputs: args.definition.requiredInputs,
   });
 
-  const result = tryEvaluateFormula(args.definition.formula, context);
+  const result = tryEvaluateFormula(
+    args.definition.formula,
+    context,
+    functions,
+  );
 
   let status: IndicatorStatus;
   let value: number;

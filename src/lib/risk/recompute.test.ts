@@ -23,6 +23,18 @@ type MockState = {
   settings: Record<string, unknown> | null;
   currencyRates: CurrencyRateRow[];
   budgetLines: BudgetLineRow[];
+  /**
+   * Phase 7.E phase 3 — pre-canned IV reads for `fact()` resolver tests.
+   * Keyed by `${companyId}:${indicatorCode}@${period}`. Returns null
+   * (= missing IV) when the key is absent OR explicitly mapped to null;
+   * the resolver then exposes NaN to the formula.
+   */
+  ivReads: Record<string, number | null>;
+  /**
+   * Phase 7.E phase 3 — pre-canned children for `rollup()` resolver tests.
+   * Keyed by parent companyId. Returns [] when key absent.
+   */
+  children: Record<string, string[]>;
   upserts: Array<{
     organizationId: string;
     companyId: string;
@@ -38,6 +50,10 @@ type MockState = {
   /** Every read logged with the org it was scoped to — used to prove the
    *  data-source enforces tenant scoping at the call site. */
   orgReads: string[];
+  /** Per-call audit of getIndicatorValue / listChildCompanyIds for phase-3
+   *  dedup + cost-shape tests. */
+  ivReadCalls: Array<{ companyId: string; indicatorCode: string; period: string }>;
+  childrenCalls: Array<{ parentId: string }>;
 };
 
 function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
@@ -49,8 +65,12 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     settings: initial.settings ?? null,
     currencyRates: initial.currencyRates ?? [],
     budgetLines: initial.budgetLines ?? [],
+    ivReads: initial.ivReads ?? {},
+    children: initial.children ?? {},
     upserts: [],
     orgReads: [],
+    ivReadCalls: [],
+    childrenCalls: [],
   };
   return {
     state,
@@ -79,6 +99,17 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     },
     upsertIndicatorValue: async (args) => {
       state.upserts.push(args);
+    },
+    getIndicatorValue: async ({ organizationId, companyId, indicatorCode, period }) => {
+      state.orgReads.push(`getIv:${organizationId}:${companyId}:${indicatorCode}@${period}`);
+      state.ivReadCalls.push({ companyId, indicatorCode, period });
+      const key = `${companyId}:${indicatorCode}@${period}`;
+      return state.ivReads[key] ?? null;
+    },
+    listChildCompanyIds: async ({ organizationId, parentId }) => {
+      state.orgReads.push(`children:${organizationId}:${parentId}`);
+      state.childrenCalls.push({ parentId });
+      return state.children[parentId] ?? [];
     },
   };
 }
@@ -1757,5 +1788,330 @@ describe('createPrismaDataSource.upsertIndicatorValue — sparkline write semant
     await ds.upsertIndicatorValue({ ...baseArgs, sparkline: sl });
     const args = upsert.mock.calls[0][0];
     expect(args.update.sparkline).toEqual(sl);
+  });
+});
+
+// --- Phase 7.E phase 3 — fact() / rollup() resolvers ------------------------
+
+describe("buildContext — fact() resolver (Phase 7.E phase 3)", () => {
+  // Indicator definition with year-over-year delta formula. Pre-fetches
+  // 2025's IND_NET_MARGIN value, divides current-period value into delta.
+  const YOY_DELTA: IndicatorDefinitionLike = {
+    id: 'ind_yoy',
+    code: 'IND_YOY_DELTA',
+    formula: 'value_now - fact("IND_NET_MARGIN", "2025")',
+    thresholds: {
+      green: { op: '>=', value: 0 },
+      amber: { op: '>=', value: -50 },
+      red: { op: '<', value: -50 },
+    },
+    requiredInputs: ['fact:IND_NET_MARGIN@2025'],
+  };
+
+  it('resolves fact(code, period) → persisted IV value (happy path)', async () => {
+    const ds = mockDs({
+      ivReads: { 'c1:IND_NET_MARGIN@2025': 12.5 },
+    });
+    const { context, inputs, functions } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: ['fact:IND_NET_MARGIN@2025'],
+    });
+    // The function is exposed via state.functions.
+    expect(typeof functions.fact).toBe('function');
+    expect(functions.fact('IND_NET_MARGIN', '2025')).toBe(12.5);
+    // Aggregate snapshot persists for drill-down.
+    expect(inputs.aggregates.fact).toEqual({
+      read_count: 1,
+      hit_count: 1,
+      reads: { 'IND_NET_MARGIN@2025': 12.5 },
+    });
+    // No formula context vars are added — fact() is a function, not a var.
+    expect(context).toEqual({});
+  });
+
+  it('missing IV (returns null) → fact() exposes NaN → formula fails', async () => {
+    const ds = mockDs({
+      ivReads: { /* no key */ },
+    });
+    // Standalone fact() formula isolates the NaN-propagation path
+    // (vs YOY_DELTA's `value_now - fact(...)` which would fail at
+    // `value_now` resolution before fact() even runs).
+    const r = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: {
+        ...YOY_DELTA,
+        formula: 'fact("IND_NET_MARGIN", "2025")',
+        requiredInputs: ['fact:IND_NET_MARGIN@2025'],
+      },
+      period: '2026',
+    });
+    // Formula = NaN → non_finite → unknown.
+    expect(r.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error?.code).toBe('non_finite');
+    // Snapshot still records the attempted read (for drill-down).
+    expect(ds.state.upserts[0].inputs.aggregates.fact).toMatchObject({
+      read_count: 1,
+      hit_count: 0,
+      reads: { 'IND_NET_MARGIN@2025': null },
+    });
+  });
+
+  it('resolves multiple (code, period) pairs in one batch', async () => {
+    const ds = mockDs({
+      ivReads: {
+        'c1:IND_X@2024': 80,
+        'c1:IND_X@2025': 90,
+        'c1:IND_X@2026': 100,
+      },
+    });
+    const { functions, inputs } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: [
+        'fact:IND_X@2024',
+        'fact:IND_X@2025',
+        'fact:IND_X@2026',
+      ],
+    });
+    expect(functions.fact!('IND_X', '2024')).toBe(80);
+    expect(functions.fact!('IND_X', '2025')).toBe(90);
+    expect(functions.fact!('IND_X', '2026')).toBe(100);
+    expect(inputs.aggregates.fact?.read_count).toBe(3);
+    expect(inputs.aggregates.fact?.hit_count).toBe(3);
+  });
+
+  it('de-duplicates same (code, period) declared multiple times', async () => {
+    // requiredInputs may contain the same fact key twice — author error or
+    // composition. Resolver de-dupes so only ONE Prisma read fires.
+    const ds = mockDs({
+      ivReads: { 'c1:IND_X@2025': 42 },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: ['fact:IND_X@2025', 'fact:IND_X@2025', 'fact:IND_X@2025'],
+    });
+    // Locks the de-dup contract: 3 entries → 1 read call.
+    expect(ds.state.ivReadCalls).toHaveLength(1);
+  });
+
+  it('skips malformed fact entries silently (lenient parse)', async () => {
+    // `fact:bad` (no @), `fact:@2025` (empty code), `fact:CODE@` (empty period),
+    // `fact:` (empty body) are all soft-skipped — only the well-formed
+    // `fact:IND_X@2025` reaches getIndicatorValue.
+    const ds = mockDs({
+      ivReads: { 'c1:IND_X@2025': 42 },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: [
+        'fact:bad',
+        'fact:@2025',
+        'fact:CODE@',
+        'fact:',
+        'fact:IND_X@2025',
+      ],
+    });
+    expect(ds.state.ivReadCalls).toEqual([
+      { companyId: 'c1', indicatorCode: 'IND_X', period: '2025' },
+    ]);
+  });
+
+  it('end-to-end: formula uses fact() for YoY delta', async () => {
+    // value_now = current IV value (set by formula constant for this test).
+    // fact("IND_NET_MARGIN", "2025") = 10 (from IV reads).
+    // formula = 15 - fact("IND_NET_MARGIN", "2025") = 15 - 10 = 5 → green.
+    const ds = mockDs({
+      ivReads: { 'c1:IND_NET_MARGIN@2025': 10 },
+    });
+    const r = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: {
+        ...YOY_DELTA,
+        formula: '15 - fact("IND_NET_MARGIN", "2025")',
+      },
+      period: '2026',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.value).toBe(5);
+    expect(r.status).toBe('green');
+  });
+
+  it('passes current-period orgId + companyId through (tenant scoping)', async () => {
+    const ds = mockDs({
+      ivReads: { 'c1:IND_X@2025': 42 },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_specific',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: ['fact:IND_X@2025'],
+    });
+    expect(ds.state.orgReads).toContain(
+      'getIv:org_specific:c1:IND_X@2025',
+    );
+  });
+});
+
+describe("buildContext — rollup() resolver (Phase 7.E phase 3)", () => {
+  it('sums child IVs at current period (basic happy path)', async () => {
+    const ds = mockDs({
+      children: { parent_co: ['c_child_1', 'c_child_2'] },
+      ivReads: {
+        'c_child_1:IND_REVENUE@2026': 100,
+        'c_child_2:IND_REVENUE@2026': 200,
+      },
+    });
+    const { functions, inputs } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026'),
+      requiredInputs: ['rollup:IND_REVENUE'],
+    });
+    expect(functions.rollup!('IND_REVENUE')).toBe(300);
+    expect(inputs.aggregates.rollup).toEqual({
+      children_count: 2,
+      sums: { IND_REVENUE: { sum: 300, matched_count: 2 } },
+    });
+  });
+
+  it('empty children → rollup() returns 0 (empty sum, not NaN)', async () => {
+    const ds = mockDs({
+      children: { /* parent_co has no entry */ },
+    });
+    const { functions, inputs } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026'),
+      requiredInputs: ['rollup:IND_X'],
+    });
+    expect(functions.rollup!('IND_X')).toBe(0);
+    expect(inputs.aggregates.rollup).toEqual({
+      children_count: 0,
+      sums: { IND_X: { sum: 0, matched_count: 0 } },
+    });
+  });
+
+  it('skips children with missing IV (matched_count reflects gap)', async () => {
+    const ds = mockDs({
+      children: { parent_co: ['c1', 'c2', 'c3'] },
+      ivReads: {
+        'c1:IND_X@2026': 50,
+        // c2 has no IV (missing entirely)
+        'c3:IND_X@2026': 100,
+      },
+    });
+    const { functions, inputs } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026'),
+      requiredInputs: ['rollup:IND_X'],
+    });
+    expect(functions.rollup!('IND_X')).toBe(150); // 50 + 100, c2 skipped
+    expect(inputs.aggregates.rollup).toEqual({
+      children_count: 3,
+      sums: { IND_X: { sum: 150, matched_count: 2 } },
+    });
+  });
+
+  it('passes current-period to getIv (not a hardcoded year)', async () => {
+    // Locks the period.raw plumbing — earlier impl had a custom formatter
+    // that hit a tsc bug on `period.q` / `period.m`. Verify monthly anchor
+    // → "2026-04" is the period sent to children's IV lookups.
+    const ds = mockDs({
+      children: { parent_co: ['c1'] },
+      ivReads: { 'c1:IND_X@2026-04': 42 },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['rollup:IND_X'],
+    });
+    expect(ds.state.ivReadCalls).toEqual([
+      { companyId: 'c1', indicatorCode: 'IND_X', period: '2026-04' },
+    ]);
+  });
+
+  it('end-to-end: formula uses rollup() for parent-co aggregate', async () => {
+    const HOLDING_REVENUE: IndicatorDefinitionLike = {
+      id: 'ind_holding_rev',
+      code: 'IND_HOLDING_REVENUE',
+      formula: 'rollup("IND_REVENUE")',
+      thresholds: {
+        green: { op: '>=', value: 100 },
+        amber: { op: '>=', value: 50 },
+        red: { op: '<', value: 50 },
+      },
+      requiredInputs: ['rollup:IND_REVENUE'],
+    };
+    const ds = mockDs({
+      children: { parent_co: ['child_a', 'child_b', 'child_c'] },
+      ivReads: {
+        'child_a:IND_REVENUE@2026': 100,
+        'child_b:IND_REVENUE@2026': 200,
+        'child_c:IND_REVENUE@2026': 300,
+      },
+    });
+    const r = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      definition: HOLDING_REVENUE,
+      period: '2026',
+    });
+    expect(r.ok).toBe(true);
+    expect(r.value).toBe(600);
+    expect(r.status).toBe('green');
+  });
+
+  it('de-duplicates same code declared multiple times', async () => {
+    const ds = mockDs({
+      children: { parent_co: ['c1'] },
+      ivReads: { 'c1:IND_X@2026': 7 },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026'),
+      requiredInputs: ['rollup:IND_X', 'rollup:IND_X'],
+    });
+    // 1 children call + 1 IV read call (not 2).
+    expect(ds.state.childrenCalls).toHaveLength(1);
+    expect(ds.state.ivReadCalls).toHaveLength(1);
+  });
+
+  it('multiple codes share one children-list query', async () => {
+    // Architectural lock: rollup of [code_a, code_b] must reuse the SAME
+    // children list, not re-fetch it per code. children-list is the
+    // expensive part (DB scan); IV reads fan out per (code × child).
+    const ds = mockDs({
+      children: { parent_co: ['c1', 'c2'] },
+      ivReads: {
+        'c1:CODE_A@2026': 1,
+        'c2:CODE_A@2026': 2,
+        'c1:CODE_B@2026': 10,
+        'c2:CODE_B@2026': 20,
+      },
+    });
+    const { functions } = await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'parent_co',
+      period: parsePeriod('2026'),
+      requiredInputs: ['rollup:CODE_A', 'rollup:CODE_B'],
+    });
+    expect(functions.rollup!('CODE_A')).toBe(3);
+    expect(functions.rollup!('CODE_B')).toBe(30);
+    // The cost-shape lock — children-list called once; IV reads called
+    // 4 times (2 codes × 2 children).
+    expect(ds.state.childrenCalls).toHaveLength(1);
+    expect(ds.state.ivReadCalls).toHaveLength(4);
   });
 });

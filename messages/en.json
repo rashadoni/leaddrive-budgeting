@@ -1439,7 +1439,7 @@
       "recomputing": "Recomputing…",
       "recomputeDone": "Updated",
       "recomputeFailed": "Failed",
-      "recomputeTitle": "Recompute this indicator with fresh sparkline (POST /api/indicators with companyId+indicatorCode)",
+      "recomputeTitle": "Recompute this indicator value with up-to-date sparkline",
       "forecastNextPeriod": "Next-period forecast",
       "forecastNoChange": "no change expected",
       "forecastConfidence": "confidence",

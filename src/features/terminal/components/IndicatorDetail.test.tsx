@@ -603,11 +603,27 @@ describe("IndicatorDetail per-IV recompute (sub-40)", () => {
     ) as never;
   });
 
-  it("renders 'Recompute' button in header with correct title", async () => {
+  it("renders 'Recompute' button in header with user-facing title + sr-only describedby", async () => {
+    // Sub-41 a11y polish — title was originally
+    // "Recompute this indicator with fresh sparkline (POST /api/indicators
+    //  with companyId+indicatorCode)" but the API-mechanic tail leaked
+    // implementation jargon to end-users on hover. Architect 💡 from sub-40
+    // → trim to user-facing only + thread aria-describedby to a sr-only
+    // span so screen-reader users get the same description as the title
+    // tooltip (browsers don't reliably announce title to SR).
     render(<IndicatorDetail />);
     const btn = await screen.findByRole("button", { name: /Recompute/i });
-    expect(btn.getAttribute("title")).toMatch(/POST \/api\/indicators/);
-    expect(btn.getAttribute("title")).toMatch(/companyId\+indicatorCode/);
+    expect(btn.getAttribute("title")).toMatch(/up-to-date sparkline/i);
+    expect(btn.getAttribute("title")).not.toMatch(/POST/);
+    expect(btn.getAttribute("title")).not.toMatch(/companyId/);
+    // aria-describedby points at an sr-only span carrying the same text.
+    expect(btn.getAttribute("aria-describedby")).toBe(
+      "indicator-detail-recompute-desc",
+    );
+    const desc = document.getElementById("indicator-detail-recompute-desc");
+    expect(desc).toBeTruthy();
+    expect(desc!.className).toContain("sr-only");
+    expect(desc!.textContent).toBe(btn.getAttribute("title"));
     expect(btn.hasAttribute("disabled")).toBe(false);
   });
 

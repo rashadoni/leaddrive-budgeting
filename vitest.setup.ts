@@ -56,7 +56,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'indicatorDetail.recomputing': 'Recomputing…',
   'indicatorDetail.recomputeDone': 'Updated',
   'indicatorDetail.recomputeFailed': 'Failed',
-  'indicatorDetail.recomputeTitle': 'Recompute this indicator with fresh sparkline (POST /api/indicators with companyId+indicatorCode)',
+  'indicatorDetail.recomputeTitle': 'Recompute this indicator value with up-to-date sparkline',
   // VarianceExplainer keys — these have hyphenated / phrasal labels that
   // tests assert on via getByText / regex. Without explicit mappings the
   // camelCase fallback turns "reRun" → "RE RUN" which breaks `/Re-run/i`
