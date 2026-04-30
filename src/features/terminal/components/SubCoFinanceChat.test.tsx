@@ -271,8 +271,14 @@ describe("SubCoFinanceChat (Tier-3 sub-30)", () => {
     window.localStorage.setItem(STORAGE_KEY, "not-valid-json{{");
     expect(() => render(<SubCoFinanceChat />)).not.toThrow();
     fireOpen();
+    // Sub-37 hardening — waitFor covers both dialog mount AND
+    // API-fetch-derived channel render. Previous waitFor gated only
+    // on the dialog (synchronous mount); the channel comes from the
+    // companies fetch which races the synchronous getByTestId in the
+    // full vitest run (intermittent failure caught by Stop-hook test-gate).
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeTruthy();
+      expect(screen.queryByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
     });
     // No legacy threads → only API-derived channels visible.
     expect(screen.getByTestId("subco-chat-channel-AAC-MAIN")).toBeTruthy();
