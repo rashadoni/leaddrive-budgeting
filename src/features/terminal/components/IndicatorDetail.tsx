@@ -108,27 +108,31 @@ export function IndicatorDetail() {
   }, [ivId]);
 
   if (!ivId) {
-    // Sub-36 — `h-full w-full` makes the empty state fill the panel
-    // slot (parent is `flex items-stretch`); content sits at the top
-    // so it stays glanceable and doesn't float in the middle.
+    // Sub-36 cont'd Round-33 — empty-state centered both axes so the
+    // placeholder visibly fills the panel slot rather than top-anchoring
+    // and leaving dead space below. User feedback "тяни нижнию часть
+    // не тянется" was about the visual filling, not the underlying
+    // height resolution (which already worked via items-stretch).
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full">
-        {t('indicatorDetail.emptyDrillDown')}
-        <br />
-        <br />
-        <span className="text-gray-600">
-          {t('indicatorDetail.emptyOrTypePrefix')}{' '}
-          <span className="text-[#FFB800]">IND_OPEX_RATIO IND GO</span>{' '}
-          {t('indicatorDetail.emptyOrTypeSuffix')}
-        </span>
+      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4">
+        <div>
+          {t('indicatorDetail.emptyDrillDown')}
+          <br />
+          <br />
+          <span className="text-gray-600">
+            {t('indicatorDetail.emptyOrTypePrefix')}{' '}
+            <span className="text-[#FFB800]">IND_OPEX_RATIO IND GO</span>{' '}
+            {t('indicatorDetail.emptyOrTypeSuffix')}
+          </span>
+        </div>
       </div>
     );
   }
   if (loading) {
-    return <span className="text-gray-700 font-mono text-xs h-full w-full block">{t('indicatorDetail.loading')}</span>;
+    return <div className="text-gray-700 font-mono text-xs h-full w-full flex items-center justify-center">{t('indicatorDetail.loading')}</div>;
   }
   if (error) {
-    return <span className="text-[#FF4757] font-mono text-xs h-full w-full block">{t('indicatorDetail.error')} {error}</span>;
+    return <div className="text-[#FF4757] font-mono text-xs h-full w-full flex items-center justify-center">{t('indicatorDetail.error')} {error}</div>;
   }
   if (!detail) return null;
 

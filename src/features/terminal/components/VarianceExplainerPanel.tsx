@@ -178,10 +178,18 @@ export function VarianceExplainerPanel() {
     // of the bare instruction. Falls back to the original instruction
     // when no company is active.
     if (activeCompanyCode) {
+      // Sub-36 cont'd Round-33 — `h-full w-full` on this wrapper so the
+      // CompanySnapshot inside (which itself does `h-full`) actually
+      // reaches the panel slot height. Without h-full here the wrapper
+      // collapsed to content height, which is why the snapshot panel
+      // had dead space at the bottom even after sub-36's CompanySnapshot
+      // edits — the height-100% chain was broken at this layer.
       return (
-        <div className="font-mono text-xs flex flex-col gap-2">
-          <CompanySnapshot companyCode={activeCompanyCode} />
-          <div className="text-[10px] text-gray-700 leading-snug pt-1 border-t border-gray-800/40">
+        <div className="font-mono text-xs flex flex-col gap-2 h-full w-full">
+          <div className="flex-1 min-h-0">
+            <CompanySnapshot companyCode={activeCompanyCode} />
+          </div>
+          <div className="text-[10px] text-gray-700 leading-snug pt-1 border-t border-gray-800/40 shrink-0">
             <span className="text-gray-600">
               {t("varianceExplainer.shortHint")}{" "}
               <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>.
@@ -190,14 +198,23 @@ export function VarianceExplainerPanel() {
         </div>
       );
     }
+    // Sub-36 cont'd Round-33 — empty-state placeholders now center
+    // vertically + horizontally instead of top-anchoring. Without this
+    // the panel slot has visible dead space below the 4-line text;
+    // user feedback "тяни нижнию часть не тянется" was about content
+    // not visually filling the slot. Centering anchors the text in
+    // the visual center of the panel so the empty state feels
+    // intentional rather than bug-like.
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        {t("varianceExplainer.pickCellPrefix")} <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>
-        <br />
-        <br />
-        <span className="text-gray-600">
-          {t("varianceExplainer.fullHint")}
-        </span>
+      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4">
+        <div>
+          {t("varianceExplainer.pickCellPrefix")} <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>
+          <br />
+          <br />
+          <span className="text-gray-600">
+            {t("varianceExplainer.fullHint")}
+          </span>
+        </div>
       </div>
     );
   }
@@ -205,14 +222,14 @@ export function VarianceExplainerPanel() {
   // hint so the user knows the panel is alive and waiting.
   if (!data && !loading && !error) {
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed">
-        {t("varianceExplainer.clickPrefix")}{" "}
-        <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>{" "}
-        {t("varianceExplainer.clickInfix")}{" "}
-        <span className="text-[#FFB800]">{t("varianceExplainer.reRun")}</span>{" "}
-        {t("varianceExplainer.clickSuffix")}
-        <br />
-        <br />
+      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3">
+        <div>
+          {t("varianceExplainer.clickPrefix")}{" "}
+          <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>{" "}
+          {t("varianceExplainer.clickInfix")}{" "}
+          <span className="text-[#FFB800]">{t("varianceExplainer.reRun")}</span>{" "}
+          {t("varianceExplainer.clickSuffix")}
+        </div>
         <button
           type="button"
           onClick={() => ivId && run(ivId, language)}

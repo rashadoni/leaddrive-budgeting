@@ -237,18 +237,20 @@ export function CompanySnapshot({ companyCode }: Props) {
         </div>
       )}
 
-      {/* Margin trio cards. Sub-36 — `flex-1 min-h-0` absorbs the
-          remaining vertical space; `grid grid-cols-3` (NOT
-          `flex flex-wrap`) ensures each card's `h-full` resolves
-          against the absorbed slot height. Architect closure of
-          flex-wrap fragility: with `flex-wrap` + `align-items:stretch`
-          stretching is per-row, so wrapped cards on narrow panels
-          would only get content-height. Grid `align-items:stretch`
-          (default) propagates absorbed height to every track row. */}
+      {/* Margin trio cards. Sub-36 cont'd — `flex-1 min-h-0` on the
+          row container absorbs all remaining vertical space inside the
+          flex-col panel body; `align-items:stretch` (flex-row default)
+          + `h-full` on each card propagates that height to every card
+          so the sparkline pins to the bottom and there's no dead space.
+          Switched away from `flex flex-wrap` (per-row stretch only,
+          breaks at narrow widths) AND from `grid grid-cols-3` (auto-
+          rows defaults to content-sized, so `h-full` on items resolved
+          against a short track instead of the absorbed slot). Plain
+          flex-row with `flex-1` cards is the simplest robust shape. */}
       {!noPLIndicators ? (
-        <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
+        <div className="flex gap-2 flex-1 min-h-0">
           {cards.map(({ indicator, cell }) => (
-            <div key={indicator.id} className="min-w-0 h-full">
+            <div key={indicator.id} className="flex-1 min-w-0 h-full">
               <SnapshotCard indicator={indicator} cell={cell} locale={locale} />
             </div>
           ))}
