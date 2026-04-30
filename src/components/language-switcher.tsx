@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
+import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 
 const LANGUAGE_CODES = ["ru", "az", "en"] as const
 const LANGUAGE_KEYS: Record<string, string> = {
@@ -18,7 +19,7 @@ function getLocaleFromCookie(): string {
   return (
     document.cookie
       .split("; ")
-      .find((row) => row.startsWith("NEXT_LOCALE="))
+      .find((row) => row.startsWith(`${LOCALE_COOKIE_NAME}=`))
       ?.split("=")[1] || "ru"
   )
 }
@@ -60,7 +61,7 @@ export function LanguageSwitcher() {
   }
 
   function switchLocale(locale: string) {
-    document.cookie = `NEXT_LOCALE=${locale};path=/;max-age=${365 * 24 * 60 * 60}`
+    document.cookie = `${LOCALE_COOKIE_NAME}=${locale};path=/;max-age=${365 * 24 * 60 * 60}`
     window.location.reload()
   }
 

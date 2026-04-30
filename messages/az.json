@@ -1398,7 +1398,15 @@
       "filterAriaLabel": "Risk xəritəsi sətr filtri",
       "tableAriaLabel": "Risk xəritəsi",
       "loading": "Yüklənir…",
-      "errorPrefix": "Xəta:"
+      "errorPrefix": "Xəta:",
+      "tooltipUnit": "vahid:",
+      "tooltipDirHigher": "yüksək = yaxşı",
+      "tooltipDirLower": "aşağı = yaxşı",
+      "tooltipDirBand": "diapazonda",
+      "tooltipCompositeScore": "Kompozit bal:",
+      "tooltipNoData": "— məlumat yoxdur",
+      "tooltipIndicators": "göstərici",
+      "tooltipSparkline12mo": "12 ay"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { auth } from "@/lib/auth"
 import { checkRateLimit, type RateLimitConfig } from "@/lib/rate-limit"
+import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 
 const publicPaths = ["/login", "/api/auth"]
 
@@ -48,7 +49,7 @@ export async function proxy(req: NextRequest) {
     // Inject locale on REQUEST headers so `next-intl/server` `headers()`
     // (in `i18n/request.ts`) can read it during the server render.
     // Cookie name MUST match the LanguageSwitcher writer (`NEXT_LOCALE`).
-    const locale = req.cookies.get("NEXT_LOCALE")?.value || "en"
+    const locale = req.cookies.get(LOCALE_COOKIE_NAME)?.value || "en"
     const requestHeaders = new Headers(req.headers)
     requestHeaders.set("x-locale", locale)
     return NextResponse.next({
@@ -104,7 +105,7 @@ export async function proxy(req: NextRequest) {
   // to the server-render — `useTranslations()` always saw the default
   // locale ("en") regardless of LanguageSwitcher selection.
   // Cookie name MUST match the LanguageSwitcher writer (`NEXT_LOCALE`).
-  const locale = req.cookies.get("NEXT_LOCALE")?.value || "en"
+  const locale = req.cookies.get(LOCALE_COOKIE_NAME)?.value || "en"
   const requestHeaders = new Headers(req.headers)
   requestHeaders.set("x-organization-id", (session.user as any).organizationId || "")
   requestHeaders.set("x-locale", locale)

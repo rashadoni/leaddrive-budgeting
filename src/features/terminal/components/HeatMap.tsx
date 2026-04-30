@@ -400,7 +400,12 @@ export function HeatMap({ period }: Props) {
                         {ind.code}
                       </div>
                       <div className="text-[10px] text-muted-foreground/70 mt-0.5">
-                        unit: {ind.unit} · {ind.direction === 'higher_better' ? 'higher = better' : ind.direction === 'lower_better' ? 'lower = better' : 'in band'}
+                        {t('heatMap.tooltipUnit')} {ind.unit} ·{' '}
+                        {ind.direction === 'higher_better'
+                          ? t('heatMap.tooltipDirHigher')
+                          : ind.direction === 'lower_better'
+                            ? t('heatMap.tooltipDirLower')
+                            : t('heatMap.tooltipDirBand')}
                       </div>
                     </TooltipContent>
                   </Tooltip>
@@ -468,7 +473,7 @@ export function HeatMap({ period }: Props) {
                             return (
                               <div className="text-[11px] mt-1">
                                 <span className="text-muted-foreground">
-                                  Composite score:{' '}
+                                  {t('heatMap.tooltipCompositeScore')}{' '}
                                 </span>
                                 <span
                                   className={
@@ -486,11 +491,14 @@ export function HeatMap({ period }: Props) {
                                       {statusShape(tooltipBandStatus)}
                                     </span>
                                   )}
-                                  {cs.score === null ? '— no data' : `${cs.score} / 100`}
+                                  {cs.score === null
+                                    ? t('heatMap.tooltipNoData')
+                                    : `${cs.score} / 100`}
                                 </span>
                                 <span className="text-muted-foreground">
                                   {' · '}
-                                  {cs.contributingCount}/{cs.totalCount} indicators
+                                  {cs.contributingCount}/{cs.totalCount}{' '}
+                                  {t('heatMap.tooltipIndicators')}
                                 </span>
                               </div>
                             );
@@ -821,7 +829,14 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
           <div className="font-mono font-semibold">
             {co.code} · {ind.code}
           </div>
-          <div className="text-muted-foreground">{ind.nameEn}</div>
+          {/* Sub-33 i18n closure — was hardcoded `ind.nameEn`; switched to
+              shared `resolveIndicatorLabel` helper so the cell tooltip
+              shows the locale-matched indicator name (Russian / Azeri /
+              English fallback chain) consistent with the column header
+              tooltip + IndicatorDetail header. */}
+          <div className="text-muted-foreground">
+            {resolveIndicatorLabel(ind, locale)}
+          </div>
           {cell ? (
             <>
               <div className="text-[11px] mt-1">
@@ -845,7 +860,7 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                     ariaLabel={`${ind.code} 12-month trend for ${co.code}`}
                   />
                   <span className="text-[9px] text-muted-foreground/70">
-                    12mo
+                    {t('heatMap.tooltipSparkline12mo')}
                   </span>
                 </div>
               )}

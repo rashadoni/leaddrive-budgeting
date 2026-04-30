@@ -1398,7 +1398,15 @@
       "filterAriaLabel": "Фильтр строк карты рисков",
       "tableAriaLabel": "Карта рисков",
       "loading": "Загрузка…",
-      "errorPrefix": "Ошибка:"
+      "errorPrefix": "Ошибка:",
+      "tooltipUnit": "ед. изм:",
+      "tooltipDirHigher": "выше = лучше",
+      "tooltipDirLower": "ниже = лучше",
+      "tooltipDirBand": "в диапазоне",
+      "tooltipCompositeScore": "Композитный балл:",
+      "tooltipNoData": "— нет данных",
+      "tooltipIndicators": "индикаторов",
+      "tooltipSparkline12mo": "12 мес"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",

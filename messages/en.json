@@ -1398,7 +1398,15 @@
       "filterAriaLabel": "Filter heatmap rows",
       "tableAriaLabel": "Risk heatmap",
       "loading": "Loading…",
-      "errorPrefix": "Error:"
+      "errorPrefix": "Error:",
+      "tooltipUnit": "unit:",
+      "tooltipDirHigher": "higher = better",
+      "tooltipDirLower": "lower = better",
+      "tooltipDirBand": "in band",
+      "tooltipCompositeScore": "Composite score:",
+      "tooltipNoData": "— no data",
+      "tooltipIndicators": "indicators",
+      "tooltipSparkline12mo": "12mo"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
