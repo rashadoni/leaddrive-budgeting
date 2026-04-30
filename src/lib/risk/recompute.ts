@@ -55,7 +55,7 @@ import {
   type Thresholds,
 } from './formula-engine';
 import { parsePeriod, daysInPeriod, type Period } from './periods';
-import { computeSparkline } from './sparkline';
+import { computeSparkline, bridgeRecomputeBuildContext } from './sparkline';
 
 // --- Narrow row shapes the pipeline consumes ---------------------------------
 
@@ -1873,19 +1873,8 @@ export async function recomputeIndicator(
         requiredInputs: args.definition.requiredInputs,
       },
       anchorPeriod: args.period,
-      // Adapter: sparkline.ts buildContext takes period:string; recompute's
-      // buildContext takes Period — bridge here. Mirrors the same shape used
-      // by `scripts/compute-sparklines.ts:77-92`.
-      buildContext: async (a) => {
-        const p = parsePeriod(a.period);
-        const { context: c } = await buildContext(ds, {
-          organizationId: a.organizationId,
-          companyId: a.companyId,
-          period: p,
-          requiredInputs: a.requiredInputs,
-        });
-        return { context: c };
-      },
+      // Sub-43 closure — extracted period:string→Period bridge.
+      buildContext: bridgeRecomputeBuildContext(ds, buildContext),
     });
   }
 

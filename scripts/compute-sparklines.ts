@@ -46,8 +46,8 @@ import {
   createPrismaDataSource,
   type IndicatorDefinitionLike,
 } from '../src/lib/risk/recompute';
-import { parsePeriod } from '../src/lib/risk/periods';
 import {
+  bridgeRecomputeBuildContext,
   computeSparkline,
   SPARKLINE_LENGTH,
   type IndicatorForSparkline,
@@ -83,24 +83,11 @@ async function main() {
   const prisma = new PrismaClient();
   const ds = createPrismaDataSource(prisma);
 
-  // Adapter: sparkline.ts buildContext takes period:string, recompute's
-  // buildContext takes Period — bridge here.
-  const adaptedBuildContext = async (a: {
-    ds: typeof ds;
-    organizationId: string;
-    companyId: string;
-    period: string;
-    requiredInputs: string[];
-  }) => {
-    const period = parsePeriod(a.period);
-    const { context } = await buildContext(a.ds, {
-      organizationId: a.organizationId,
-      companyId: a.companyId,
-      period,
-      requiredInputs: a.requiredInputs,
-    });
-    return { context };
-  };
+  // Sub-43 closure — period:string→Period bridge extracted to
+  // `bridgeRecomputeBuildContext`. Single source of truth for the
+  // adapter that previously duplicated 8 lines here AND inside
+  // recomputeIndicator.
+  const adaptedBuildContext = bridgeRecomputeBuildContext(ds, buildContext);
 
   // Resolve org filter — IndicatorValue has only `organizationId` scalar,
   // no `organization` relation, so look up the id first if `--orgSlug`

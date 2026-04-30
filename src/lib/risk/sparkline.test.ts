@@ -17,8 +17,10 @@ import {
   evaluateAt,
   computeSparkline,
   SPARKLINE_LENGTH,
+  bridgeRecomputeBuildContext,
 } from './sparkline';
 import type { RecomputeDataSource } from './recompute';
+import { parsePeriod } from './periods';
 
 describe('trailingMonthPeriods', () => {
   it('generates 12 trailing months ending at anchor (inclusive)', () => {
@@ -343,5 +345,119 @@ describe('computeSparkline — e2e via real recompute.buildContext', () => {
     // period.kind and returns the annual sum (1860) for every period
     // would produce 12 identical slots → `new Set(numeric).size === 1`
     // → this test fails loudly.
+  });
+});
+
+// --- Sub-43 — extracted period:string→Period bridge -------------------------
+
+describe('bridgeRecomputeBuildContext (sub-43 dedup)', () => {
+  // Locks the dedup contract — both call sites of computeSparkline
+  // (recomputeIndicator + scripts/compute-sparklines.ts) now consume
+  // this helper. Regressing back to inline would only fail if the
+  // helper went missing, so we directly exercise the helper's contract.
+
+  it('parses the period string and forwards (org, co, period, requiredInputs) to recompute buildContext', async () => {
+    const calls: Array<{ ds: unknown; args: Record<string, unknown> }> = [];
+    const fakeRecomputeBuildContext = async (ds: RecomputeDataSource, args: {
+      organizationId: string;
+      companyId: string;
+      period: { raw: string; kind: string };
+      requiredInputs: string[];
+    }) => {
+      calls.push({ ds, args });
+      return { context: { revenue: 42 } as Record<string, unknown> };
+    };
+    const ds = {} as RecomputeDataSource;
+    const bridged = bridgeRecomputeBuildContext(
+      ds,
+      fakeRecomputeBuildContext as never,
+    );
+    const result = await bridged({
+      ds,
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: '2026-04',
+      requiredInputs: ['budgetLine'],
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].ds).toBe(ds); // first arg threaded through
+    expect(calls[0].args.organizationId).toBe('org_1');
+    expect(calls[0].args.companyId).toBe('c1');
+    expect((calls[0].args.period as { raw: string }).raw).toBe('2026-04');
+    expect((calls[0].args.period as { kind: string }).kind).toBe('month');
+    expect(calls[0].args.requiredInputs).toEqual(['budgetLine']);
+    expect(result).toEqual({ context: { revenue: 42 } });
+  });
+
+  it('forwards the parsed Period for quarterly anchors (kind=quarter)', async () => {
+    let captured: { kind: string; year: number } | null = null;
+    const ds = {} as RecomputeDataSource;
+    const fakeFn: Parameters<typeof bridgeRecomputeBuildContext>[1] = async (
+      _ds,
+      args,
+    ) => {
+      captured = { kind: args.period.kind, year: args.period.year };
+      return { context: {} };
+    };
+    const bridged = bridgeRecomputeBuildContext(ds, fakeFn);
+    await bridged({
+      ds,
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: '2026-Q3',
+      requiredInputs: [],
+    });
+    expect(captured).toEqual({ kind: 'quarter', year: 2026 });
+  });
+
+  it('strips inputs/functions from recompute return — surfaces only {context} to sparkline', async () => {
+    // Recompute's full buildContext returns {context, inputs, functions}.
+    // Bridge passes through only {context} per the sparkline-side
+    // contract (sparkline doesn't need the inputs snapshot).
+    const ds = {} as RecomputeDataSource;
+    const bridged = bridgeRecomputeBuildContext(
+      ds,
+      (async () => ({
+        context: { x: 1 } as Record<string, unknown>,
+        // simulating recompute's extra fields
+        inputs: { resolved: {}, aggregates: {}, derived: {} },
+        functions: { fact: () => 0 },
+      })) as never,
+    );
+    const result = await bridged({
+      ds,
+      organizationId: 'o',
+      companyId: 'c',
+      period: '2026',
+      requiredInputs: [],
+    });
+    expect(result).toEqual({ context: { x: 1 } });
+    expect((result as Record<string, unknown>).inputs).toBeUndefined();
+    expect((result as Record<string, unknown>).functions).toBeUndefined();
+  });
+
+  it('parses period string via parsePeriod (delegates parsing — no custom logic)', async () => {
+    // Defensive lock: bridge must not invent its own parser. Test the
+    // contract by parsing twice (independently + via bridge) and
+    // asserting the bridged Period equals the standalone parse.
+    const standalone = parsePeriod('2026-12');
+    let bridged: unknown = null;
+    const ds = {} as RecomputeDataSource;
+    const captureFn: Parameters<typeof bridgeRecomputeBuildContext>[1] = async (
+      _ds,
+      args,
+    ) => {
+      bridged = args.period;
+      return { context: {} };
+    };
+    const bridge = bridgeRecomputeBuildContext(ds, captureFn);
+    await bridge({
+      ds,
+      organizationId: 'o',
+      companyId: 'c',
+      period: '2026-12',
+      requiredInputs: [],
+    });
+    expect(bridged).toEqual(standalone);
   });
 });

@@ -23,7 +23,7 @@
  */
 
 import { tryEvaluateFormula } from './formula-engine';
-import { parsePeriod } from './periods';
+import { parsePeriod, type Period } from './periods';
 import type { RecomputeDataSource } from './recompute';
 
 export const SPARKLINE_LENGTH = 12;
@@ -157,4 +157,55 @@ export async function computeSparkline(
       }),
     ),
   );
+}
+
+/**
+ * Phase 7.E phase 2 — sparkline pipeline takes a `buildContext` callback
+ * with `period: string` so it can iterate the trailing-12-month period
+ * strings without coupling sparkline.ts to the Period parser. Recompute's
+ * own `buildContext` takes `period: Period`. Both call sites of
+ * `computeSparkline` in this codebase (`recomputeIndicator` inside
+ * `recompute.ts` + the offline `scripts/compute-sparklines.ts` worker)
+ * carry an identical 8-line glue that calls `parsePeriod` then
+ * delegates. This helper hoists that glue into ONE place — sub-39
+ * architect ⚠️ closure (sub-43).
+ *
+ * Usage:
+ * ```ts
+ * import { computeSparkline, bridgeRecomputeBuildContext } from './sparkline';
+ * const sparkline = await computeSparkline(ds, {
+ *   organizationId, companyId, definition, anchorPeriod: period,
+ *   buildContext: bridgeRecomputeBuildContext(ds, recomputeBuildContext),
+ * });
+ * ```
+ *
+ * Generic in the buildContext return shape because recompute's
+ * `buildContext` returns `{context, inputs, functions}` (sub-41 phase 3
+ * extension) but sparkline only needs `{context}`. The helper
+ * structural-types the input to "anything with a `context` field" so
+ * downstream callers (test stubs, future variations) don't have to
+ * shadow the full RecomputeBuildContextResult shape.
+ */
+export function bridgeRecomputeBuildContext(
+  ds: RecomputeDataSource,
+  recomputeBuildContext: (
+    ds: RecomputeDataSource,
+    args: {
+      organizationId: string;
+      companyId: string;
+      period: Period;
+      requiredInputs: string[];
+    },
+  ) => Promise<{ context: Record<string, unknown> }>,
+): NonNullable<Parameters<typeof computeSparkline>[1]['buildContext']> {
+  return async (a) => {
+    const period = parsePeriod(a.period);
+    const { context } = await recomputeBuildContext(ds, {
+      organizationId: a.organizationId,
+      companyId: a.companyId,
+      period,
+      requiredInputs: a.requiredInputs,
+    });
+    return { context };
+  };
 }
