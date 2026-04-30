@@ -42,6 +42,8 @@ let mockMatches:
       ruleName: string;
       severity: "critical" | "warning" | "info";
       message: string;
+      messageKey?: string;
+      messageParams?: Record<string, string | number>;
       affectedCompanyIds: readonly string[];
       affectedIndicatorCodes?: readonly string[];
     }> = null;
@@ -300,5 +302,49 @@ describe("AlertsPanel (Phase C6 v2)", () => {
     const chip = screen.getByText(/^unknown_/);
     expect((chip as HTMLButtonElement).disabled).toBe(true);
     expect(chip.textContent).toContain("unknown_");
+  });
+
+  // Sub-35 — alert message body uses i18n template when ruleId is a
+  // built-in default rule + messageKey is set. Custom ruleIds keep
+  // rendering m.message (BC). The vitest mock maps `alerts.messages.*`
+  // keys to the EN template (vitest.setup.ts), so the rendered text
+  // is the locale-formatted output.
+  it("renders i18n message body for built-in ruleIds (sub-35)", () => {
+    mockMatches = [
+      {
+        ruleId: "company-mostly-red",
+        ruleName: "Company has many red indicators",
+        severity: "critical",
+        message: "ENGINE_FALLBACK_MESSAGE_should_not_appear",
+        messageKey: "alerts.messages.company-mostly-red",
+        messageParams: { code: "AAC-MAIN", redCount: 7 },
+        affectedCompanyIds: ["co_a_id"],
+      },
+    ];
+    render(<AlertsPanel />);
+    fireOpen();
+    // Expect the locale-formatted template, NOT the engine fallback.
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("AAC-MAIN has 7 red indicators — needs review");
+    expect(dialog.textContent).not.toContain("ENGINE_FALLBACK_MESSAGE_should_not_appear");
+  });
+
+  it("falls back to engine `message` for custom (non-default) ruleIds (sub-35)", () => {
+    mockMatches = [
+      {
+        ruleId: "custom-tenant-rule",
+        ruleName: "Custom Rule",
+        severity: "critical",
+        message: "Custom rule fired",
+        messageKey: "alerts.messages.custom-tenant-rule",
+        messageParams: { code: "X" },
+        affectedCompanyIds: ["co_a_id"],
+      },
+    ];
+    render(<AlertsPanel />);
+    fireOpen();
+    const dialog = screen.getByRole("dialog");
+    // Custom rule ids skip the i18n path entirely — engine `message` renders.
+    expect(dialog.textContent).toContain("Custom rule fired");
   });
 });

@@ -1307,6 +1307,13 @@
         "sector-amber-cluster": "Янтарный кластер сектора",
         "sector-red-spread": "Красное распространение в секторе",
         "critical-indicator-org-wide": "Критический индикатор по холдингу"
+      },
+      "messages": {
+        "company-mostly-red": "{code}: {redCount} красных индикаторов — требуется проверка",
+        "company-critical-composite": "{code}: композитный балл {score}/100 ({contributing}/{total} индикаторов)",
+        "sector-amber-cluster": "Сектор {industry}: {amberCount} амбер-ячеек у {companyCount} компаний",
+        "sector-red-spread": "Сектор {industry}: {redCount} красных ячеек у {companyCount} компаний — возможна цепная реакция",
+        "critical-indicator-org-wide": "{code} красный у {companyCount} компаний — консолидированное давление на критическую метрику"
       }
     },
     "buttons": {

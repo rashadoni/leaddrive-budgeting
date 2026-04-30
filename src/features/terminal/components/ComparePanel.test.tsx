@@ -24,6 +24,7 @@ import {
   act,
   waitFor,
 } from "@testing-library/react";
+import * as nextIntl from "next-intl";
 import { ComparePanel } from "./ComparePanel";
 
 const MATRIX_FIXTURE = {
@@ -37,6 +38,8 @@ const MATRIX_FIXTURE = {
       id: "ind_margin",
       code: "IND_NET_MARGIN",
       nameEn: "Net Margin",
+      nameRu: "Чистая маржа",
+      nameAz: "Xalis marja",
       unit: "%",
       direction: "higher_better",
     },
@@ -44,6 +47,8 @@ const MATRIX_FIXTURE = {
       id: "ind_opex",
       code: "IND_OPEX_RATIO",
       nameEn: "OpEx Ratio",
+      nameRu: "Доля операционных расходов",
+      nameAz: "Əməliyyat xərcləri nisbəti",
       unit: "%",
       direction: "lower_better",
     },
@@ -224,5 +229,19 @@ describe("ComparePanel (Phase B5)", () => {
     });
     expect(errSpy).not.toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+
+  // Sub-34 — indicator names render via `resolveIndicatorLabel(ind, locale)`
+  // so locale=ru shows Russian indicator names instead of nameEn.
+  it("renders Russian indicator names when locale=ru", async () => {
+    vi.spyOn(nextIntl, "useLocale").mockReturnValue("ru");
+    render(<ComparePanel />);
+    fireOpenCompare({ lhs: "AAC-MAIN", rhs: "ATL-DBZ" });
+    await waitFor(() => {
+      expect(screen.queryByText("Чистая маржа")).toBeTruthy();
+    });
+    expect(screen.queryByText("Доля операционных расходов")).toBeTruthy();
+    expect(screen.queryByText("Net Margin")).toBeNull();
+    expect(screen.queryByText("OpEx Ratio")).toBeNull();
   });
 });

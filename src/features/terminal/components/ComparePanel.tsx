@@ -22,9 +22,10 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 interface CompareEvent {
   lhs: string;
@@ -50,6 +51,8 @@ interface MatrixIndicator {
   id: string;
   code: string;
   nameEn: string;
+  nameAz?: string | null;
+  nameRu?: string | null;
   unit: string;
   direction: "higher_better" | "lower_better" | "band";
 }
@@ -240,6 +243,7 @@ function CompareRow({
   lhs: MatrixCell | undefined;
   rhs: MatrixCell | undefined;
 }) {
+  const locale = useLocale();
   const lhsValue = lhs?.value;
   const rhsValue = rhs?.value;
 
@@ -256,7 +260,7 @@ function CompareRow({
       <td className="px-2 py-1.5">
         <div className="font-semibold text-gray-200">{indicator.code}</div>
         <div className="text-[10px] text-muted-foreground">
-          {indicator.nameEn}
+          {resolveIndicatorLabel(indicator, locale)}
           <span className="ml-1 text-gray-700">· {indicator.unit}</span>
         </div>
       </td>

@@ -1307,6 +1307,13 @@
         "sector-amber-cluster": "Sector amber cluster",
         "sector-red-spread": "Sector red contagion",
         "critical-indicator-org-wide": "Critical indicator org-wide"
+      },
+      "messages": {
+        "company-mostly-red": "{code} has {redCount} red indicators — needs review",
+        "company-critical-composite": "{code} composite score {score}/100 ({contributing}/{total} indicators)",
+        "sector-amber-cluster": "{industry} sector: {amberCount} amber cells across {companyCount} companies",
+        "sector-red-spread": "{industry} sector: {redCount} red cells across {companyCount} companies — possible contagion",
+        "critical-indicator-org-wide": "{code} red for {companyCount} companies — consolidated pressure on critical metric"
       }
     },
     "buttons": {

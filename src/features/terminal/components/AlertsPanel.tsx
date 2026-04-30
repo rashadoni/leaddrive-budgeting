@@ -33,6 +33,7 @@ import { useTranslations } from "next-intl";
 import { AlertTriangle, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
+import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import type { AlertMatch, AlertSeverity } from "@/lib/risk/alert-rules";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 
@@ -173,21 +174,13 @@ export function AlertsPanel() {
                       >
                         <div className="font-mono text-[11px] opacity-70">
                           {(() => {
-                            // Sub-27 cont'd multi-lingual MVP: only the 5
-                            // built-in default rule IDs have translation
-                            // entries in messages.json — custom user rules
-                            // (or test fixtures with synthetic IDs) flow
-                            // through to server-side ruleName. Hard-coded
-                            // allowlist instead of try/catch + key-equals
-                            // heuristic which is brittle under test mocks.
-                            const KNOWN: ReadonlySet<string> = new Set([
-                              'company-mostly-red',
-                              'company-critical-composite',
-                              'sector-amber-cluster',
-                              'sector-red-spread',
-                              'critical-indicator-org-wide',
-                            ]);
-                            if (!KNOWN.has(m.ruleId)) return m.ruleName;
+                            // Sub-27 cont'd multi-lingual MVP: only built-in
+                            // default rule IDs have translation entries —
+                            // custom rules + synthetic test fixtures fall
+                            // back to server-side `ruleName`. Sub-35 closure:
+                            // allowlist now sourced from the canonical
+                            // `DEFAULT_ALERT_RULE_IDS` engine export.
+                            if (!DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) return m.ruleName;
                             try {
                               return t(`alerts.rules.${m.ruleId}` as never);
                             } catch {
@@ -195,7 +188,28 @@ export function AlertsPanel() {
                             }
                           })()}
                         </div>
-                        <div className="text-sm mt-0.5">{m.message}</div>
+                        <div className="text-sm mt-0.5">
+                          {(() => {
+                            // Sub-35 — alert message i18n. Built-in rules
+                            // render the locale-aware template; custom or
+                            // synthetic ruleIds (and test mocks lacking
+                            // the key) fall back to engine-emitted English.
+                            if (!m.messageKey || !DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
+                              return m.message;
+                            }
+                            try {
+                              // `as never` casts mirror the existing
+                              // dynamic-key pattern at line 192. next-intl's
+                              // strict t() typing doesn't model dynamic keys.
+                              return t(
+                                m.messageKey as never,
+                                m.messageParams as never,
+                              );
+                            } catch {
+                              return m.message;
+                            }
+                          })()}
+                        </div>
                         {m.affectedCompanyIds.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-2">
                             {/* Architect Round-1 sub-10 closure

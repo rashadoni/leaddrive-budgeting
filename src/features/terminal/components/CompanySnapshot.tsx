@@ -24,12 +24,14 @@
  */
 
 import React, { useMemo } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
+import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
+import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 // Sub-20: local MatrixCell/Company/Indicator types removed in favor of
 // the canonical shapes exported by `useMatrix` hook (HeatMapCell from
@@ -55,6 +57,7 @@ interface Props {
 
 export function CompanySnapshot({ companyCode }: Props) {
   const t = useTranslations("terminal");
+  const locale = useLocale();
   // Sub-20: shared `useMatrix()` hook. Module cache means CompanySnapshot
   // mounts (one per active company drilldown) reuse HeatMap's already-
   // fetched matrix instead of N round-trips. SSE-driven refetch goes
@@ -203,6 +206,20 @@ export function CompanySnapshot({ companyCode }: Props) {
                   : m.severity === "warning"
                     ? "text-[#FFB020]"
                     : "text-gray-500";
+              // Sub-35 — locale-aware alert message body. Built-in
+              // rules use the i18n template; custom / synthetic ids fall
+              // back to engine-emitted English `m.message`.
+              let alertBody = m.message;
+              if (m.messageKey && DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
+                try {
+                  alertBody = t(
+                    m.messageKey as never,
+                    m.messageParams as never,
+                  );
+                } catch {
+                  alertBody = m.message;
+                }
+              }
               return (
                 <li key={i} className="flex items-start gap-1.5 leading-tight">
                   <span className={`w-1 h-1 rounded-full mt-1 shrink-0 ${dotColor}`} />
@@ -212,7 +229,7 @@ export function CompanySnapshot({ companyCode }: Props) {
                   >
                     {statusShape(dotShapeStatus)}
                   </span>
-                  <span className="text-gray-300 truncate">{m.message}</span>
+                  <span className="text-gray-300 truncate">{alertBody}</span>
                 </li>
               );
             })}
@@ -225,7 +242,7 @@ export function CompanySnapshot({ companyCode }: Props) {
         <div className="flex flex-wrap gap-2">
           {cards.map(({ indicator, cell }) => (
             <div key={indicator.id} className="flex-1 min-w-[120px]">
-              <SnapshotCard indicator={indicator} cell={cell} />
+              <SnapshotCard indicator={indicator} cell={cell} locale={locale} />
             </div>
           ))}
         </div>
@@ -323,9 +340,11 @@ function StatusChip({
 function SnapshotCard({
   indicator,
   cell,
+  locale,
 }: {
   indicator: MatrixIndicator;
   cell: MatrixCell | undefined;
+  locale: string;
 }) {
   // Sub-33 Round-30 closure — local i18n hook for the sparkline
   // ariaLabel (was hardcoded `${indicator.code} 12-month trend`
@@ -347,7 +366,7 @@ function SnapshotCard({
   return (
     <div className="rounded border border-gray-800/60 bg-[#0A0E27]/60 px-2 py-1.5 flex flex-col gap-1">
       <div className="text-[9px] uppercase tracking-wider text-gray-600 truncate">
-        {indicator.nameEn}
+        {resolveIndicatorLabel(indicator, locale)}
       </div>
       <div className="flex items-baseline gap-1">
         {/* Tier-3 sub-29 Round-16 closure — shape glyph alongside

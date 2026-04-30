@@ -254,6 +254,15 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'alertsPanel.jumpToCompany': 'Jump to {code}',
   'alertsPanel.companyCodeNotLoaded': 'Company code not loaded — try reopening',
   'alertsPanel.couldNotLoadCodes': 'Could not load company codes — chips show ids: {error}',
+  // Sub-35 — alert message i18n. Mirrors `messages/en.json`
+  // `terminal.alerts.messages.*` so component-test render assertions
+  // can match the locale-formatted string. Drift between this map and
+  // the JSON is caught by `alert-rules-i18n.test.ts`.
+  'alerts.messages.company-mostly-red': '{code} has {redCount} red indicators — needs review',
+  'alerts.messages.company-critical-composite': '{code} composite score {score}/100 ({contributing}/{total} indicators)',
+  'alerts.messages.sector-amber-cluster': '{industry} sector: {amberCount} amber cells across {companyCount} companies',
+  'alerts.messages.sector-red-spread': '{industry} sector: {redCount} red cells across {companyCount} companies — possible contagion',
+  'alerts.messages.critical-indicator-org-wide': '{code} red for {companyCount} companies — consolidated pressure on critical metric',
 };
 
 /**

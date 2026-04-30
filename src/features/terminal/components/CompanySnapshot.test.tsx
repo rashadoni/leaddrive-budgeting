@@ -15,8 +15,31 @@
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import * as nextIntl from "next-intl";
 import { CompanySnapshot } from "./CompanySnapshot";
 import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
+
+// Sub-35 — top-alerts section reads `alertMatches` from terminalStore.
+// Module-scope mock with a let-binding so individual tests can swap in
+// fixtures (top-alerts hidden when null/empty — most existing tests keep
+// the default null which suppresses the section).
+let mockAlertMatches:
+  | null
+  | Array<{
+      ruleId: string;
+      ruleName: string;
+      severity: "critical" | "warning" | "info";
+      message: string;
+      messageKey?: string;
+      messageParams?: Record<string, string | number>;
+      affectedCompanyIds: readonly string[];
+    }> = null;
+
+vi.mock("../store/terminalStore", () => ({
+  useTerminalStore: <T,>(
+    selector: (s: { alertMatches: typeof mockAlertMatches }) => T,
+  ) => selector({ alertMatches: mockAlertMatches }),
+}));
 
 const FULL_FIXTURE = {
   period: "2026",
@@ -28,6 +51,8 @@ const FULL_FIXTURE = {
       id: "ind_gross",
       code: "IND_GROSS_MARGIN",
       nameEn: "Gross Margin",
+      nameRu: "Валовая маржа",
+      nameAz: "Ümumi marja",
       unit: "%",
       direction: "higher_better",
     },
@@ -35,6 +60,8 @@ const FULL_FIXTURE = {
       id: "ind_net",
       code: "IND_NET_MARGIN",
       nameEn: "Net Margin",
+      nameRu: "Чистая маржа",
+      nameAz: "Xalis marja",
       unit: "%",
       direction: "higher_better",
     },
@@ -42,6 +69,8 @@ const FULL_FIXTURE = {
       id: "ind_opex",
       code: "IND_OPEX_RATIO",
       nameEn: "OpEx Ratio",
+      nameRu: "Доля операционных расходов",
+      nameAz: "Əməliyyat xərcləri nisbəti",
       unit: "%",
       direction: "lower_better",
     },
@@ -79,6 +108,7 @@ beforeEach(() => {
   // fetch mock controls the resolved data (without this the first
   // test's payload sticks for the rest of the file).
   __resetMatrixCacheForTests();
+  mockAlertMatches = null;
   global.fetch = vi.fn(async () =>
     new Response(JSON.stringify(FULL_FIXTURE), {
       status: 200,
@@ -181,5 +211,48 @@ describe("CompanySnapshot (Phase B7)", () => {
     await waitFor(() => {
       expect(screen.queryByText(/Snapshot error/i)).toBeTruthy();
     });
+  });
+
+  // Sub-35 — top-alerts row uses i18n message body for built-in ruleIds.
+  // Custom ruleIds keep the engine `m.message` fallback (BC). Verifies
+  // the `t(messageKey, messageParams)` wiring at CompanySnapshot.tsx:215.
+  it("renders i18n alert body in top-alerts when ruleId is built-in (sub-35)", async () => {
+    mockAlertMatches = [
+      {
+        ruleId: "company-mostly-red",
+        ruleName: "Company has many red indicators",
+        severity: "critical",
+        message: "ENGINE_FALLBACK_should_not_appear",
+        messageKey: "alerts.messages.company-mostly-red",
+        messageParams: { code: "AAC-MAIN", redCount: 5 },
+        affectedCompanyIds: ["co_aac"],
+      },
+    ];
+    render(<CompanySnapshot companyCode="AAC-MAIN" />);
+    await waitFor(() => {
+      expect(screen.queryByText(/AAC-MAIN has 5 red indicators/)).toBeTruthy();
+    });
+    expect(
+      screen.queryByText(/ENGINE_FALLBACK_should_not_appear/),
+    ).toBeNull();
+  });
+
+  // Sub-34 — KPI labels resolve via `resolveIndicatorLabel(ind, locale)`
+  // rather than `ind.nameEn` directly, so when the user switches the
+  // terminal to Russian the margin cards show "Валовая маржа" / "Чистая
+  // маржа" / "Доля операционных расходов" instead of the English
+  // hardcoded names. Locks in the wiring (resolver call site) — the
+  // resolver itself has full unit-test coverage in
+  // `resolve-indicator-label.test.ts`.
+  it("renders Russian indicator names when locale=ru", async () => {
+    vi.spyOn(nextIntl, "useLocale").mockReturnValue("ru");
+    render(<CompanySnapshot companyCode="AAC-MAIN" />);
+    await waitFor(() => {
+      expect(screen.queryByText("Валовая маржа")).toBeTruthy();
+    });
+    expect(screen.queryByText("Чистая маржа")).toBeTruthy();
+    expect(screen.queryByText("Доля операционных расходов")).toBeTruthy();
+    // English names should NOT be rendered in RU locale.
+    expect(screen.queryByText("Gross Margin")).toBeNull();
   });
 });

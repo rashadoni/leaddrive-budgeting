@@ -1307,6 +1307,13 @@
         "sector-amber-cluster": "Sektorun sarı klasteri",
         "sector-red-spread": "Sektorda qırmızının yayılması",
         "critical-indicator-org-wide": "Holdinq üzrə kritik göstərici"
+      },
+      "messages": {
+        "company-mostly-red": "{code}: {redCount} qırmızı göstərici — yoxlama tələb olunur",
+        "company-critical-composite": "{code}: kompozit bal {score}/100 ({contributing}/{total} göstərici)",
+        "sector-amber-cluster": "{industry} sektoru: {companyCount} şirkətdə {amberCount} sarı xana",
+        "sector-red-spread": "{industry} sektoru: {companyCount} şirkətdə {redCount} qırmızı xana — yayılma riski var",
+        "critical-indicator-org-wide": "{code} {companyCount} şirkətdə qırmızı — kritik metrika üzrə konsolidasiya təzyiqi"
       }
     },
     "buttons": {

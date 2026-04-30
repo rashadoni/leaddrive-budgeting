@@ -39,6 +39,7 @@ import { useMatrix } from "../hooks/use-matrix";
 import { useCompanies } from "../hooks/use-companies";
 import { statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
 import type { IndicatorStatus } from "@/lib/risk/formula-engine";
+import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import type { AlertSeverity } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
@@ -92,17 +93,12 @@ const ALERT_SEVERITY_TONE: Record<AlertSeverity, string> = {
   info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
 };
 
-/** Round-26 closure — hoisted from per-render set construction inside the
- *  alert-row map to module level. Mirrors `ALERT_SEVERITY_TONE` and
- *  `ALERT_SEVERITY_STATUS` patterns above; same semantic as
- *  `AlertsPanel.tsx:155-172` allowlist. */
-const KNOWN_DEFAULT_RULES: ReadonlySet<string> = new Set([
-  "company-mostly-red",
-  "company-critical-composite",
-  "sector-amber-cluster",
-  "sector-red-spread",
-  "critical-indicator-org-wide",
-]);
+/** Round-26 closure — hoisted from per-render set construction.
+ *  Sub-35 closure: now an alias for the canonical `DEFAULT_ALERT_RULE_IDS`
+ *  exported from the engine, replacing the hand-maintained duplicate.
+ *  Adding a new built-in rule to `DEFAULT_ALERT_RULES` automatically
+ *  registers it for the locale path; no third-party update needed. */
+const KNOWN_DEFAULT_RULES = DEFAULT_ALERT_RULE_IDS;
 
 export function ActionCenterPanel() {
   const t = useTranslations("terminal");
@@ -281,6 +277,20 @@ export function ActionCenterPanel() {
                       ruleName = m.ruleName;
                     }
                   }
+                  // Sub-35 — locale-aware message body. Mirror the
+                  // ruleName allowlist + try/catch shape so synthetic
+                  // / custom rules fall back to engine-emitted English.
+                  let messageBody = m.message;
+                  if (m.messageKey && KNOWN_DEFAULT_RULES.has(m.ruleId)) {
+                    try {
+                      messageBody = t(
+                        m.messageKey as never,
+                        m.messageParams as never,
+                      );
+                    } catch {
+                      messageBody = m.message;
+                    }
+                  }
                   return (
                     <li
                       key={`${m.ruleId}-${i}`}
@@ -295,7 +305,7 @@ export function ActionCenterPanel() {
                           {ruleName}
                         </span>
                       </div>
-                      <div className="text-sm mt-0.5">{m.message}</div>
+                      <div className="text-sm mt-0.5">{messageBody}</div>
                       {m.affectedCompanyIds.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {!companiesLoading

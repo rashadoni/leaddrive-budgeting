@@ -20,6 +20,7 @@ import {
 } from './alert-rules';
 import {
   DEFAULT_ALERT_THRESHOLDS,
+  mergeWithDefaults,
   type ResolvedAlertThresholds,
 } from './alert-thresholds-config';
 import type { HeatMapCell } from './heatmap-matrix';
@@ -350,6 +351,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'Z-critical',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -363,6 +366,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'A-warning',
             severity: 'warning' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -391,6 +396,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'Z-rule',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -408,6 +415,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'A-rule',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -435,6 +444,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'A-low-priority',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -452,6 +463,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'Z-high-priority',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -483,6 +496,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'warn-hp',
             severity: 'warning' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -500,6 +515,8 @@ describe('evaluateAlertRules (Phase C6 engine)', () => {
             ruleName: 'crit-lp',
             severity: 'critical' as const,
             message: '',
+            messageKey: '',
+            messageParams: {},
             affectedCompanyIds: [],
           },
         ],
@@ -947,6 +964,119 @@ describe('Phase C6 v2 — externalised thresholds', () => {
     expect(ruleIds).not.toContain('company-mostly-red');
     // composite still uses default 40 — 1 green=0 + 3 red=0 → 0 < 40 → fires
     expect(ruleIds).toContain('company-critical-composite');
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// Sub-35 — messageKey / messageParams i18n contract
+//
+// Each rule now emits a stable `messageKey` (under
+// `terminal.alerts.messages.<ruleId>`) plus an ICU-shaped `messageParams`
+// object. UI render sites prefer t(messageKey, messageParams) and fall
+// back to `message` when the key is missing. The English translation of
+// `messageKey(messageParams)` MUST equal `message` byte-for-byte —
+// locked in `alert-rules-i18n.test.ts`.
+// ────────────────────────────────────────────────────────────────────────
+
+describe('Sub-35 — alert messageKey / messageParams contract', () => {
+  it('RULE_COMPANY_MOSTLY_RED emits {code, redCount}', () => {
+    const ctx: AlertContext = {
+      companies: [{ id: 'c1', code: 'AAC-MAIN', name: 'AAC', industry: 'Industrial' }],
+      indicators: [
+        { id: 'i1', code: 'X1' },
+        { id: 'i2', code: 'X2' },
+        { id: 'i3', code: 'X3' },
+      ],
+      cells: [
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red', isSubgroupRollup: false },
+      ],
+    };
+    const [m] = RULE_COMPANY_MOSTLY_RED.match(ctx, mergeWithDefaults(undefined));
+    expect(m.messageKey).toBe('alerts.messages.company-mostly-red');
+    expect(m.messageParams).toEqual({ code: 'AAC-MAIN', redCount: 3 });
+  });
+
+  it('RULE_COMPANY_CRITICAL_COMPOSITE emits {code, score, contributing, total}', () => {
+    const ctx: AlertContext = {
+      companies: [{ id: 'c1', code: 'BAD-CO', name: 'Bad', industry: 'Industrial' }],
+      indicators: [
+        { id: 'i1', code: 'X1' },
+        { id: 'i2', code: 'X2' },
+        { id: 'i3', code: 'X3' },
+      ],
+      cells: [
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red', isSubgroupRollup: false },
+      ],
+    };
+    const [m] = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, mergeWithDefaults(undefined));
+    expect(m.messageKey).toBe('alerts.messages.company-critical-composite');
+    expect(m.messageParams).toEqual({ code: 'BAD-CO', score: 0, contributing: 3, total: 3 });
+  });
+
+  it('RULE_SECTOR_AMBER_CLUSTER emits {industry, amberCount, companyCount}', () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'A', name: 'A', industry: 'Industrial' },
+        { id: 'c2', code: 'B', name: 'B', industry: 'Industrial' },
+      ],
+      indicators: [
+        { id: 'i1', code: 'X1' },
+        { id: 'i2', code: 'X2' },
+        { id: 'i3', code: 'X3' },
+      ],
+      cells: [
+        // 5 amber cells across 2 companies — meets default sectorAmber.amberCountMin=5.
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'iv4', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'iv5', companyId: 'c2', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+      ],
+    };
+    const [m] = RULE_SECTOR_AMBER_CLUSTER.match(ctx, mergeWithDefaults(undefined));
+    expect(m.messageKey).toBe('alerts.messages.sector-amber-cluster');
+    expect(m.messageParams).toEqual({ industry: 'Industrial', amberCount: 5, companyCount: 2 });
+  });
+
+  it('RULE_SECTOR_RED_SPREAD emits {industry, redCount, companyCount}', () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'A', name: 'A', industry: 'Industrial' },
+        { id: 'c2', code: 'B', name: 'B', industry: 'Industrial' },
+      ],
+      indicators: [{ id: 'i1', code: 'X' }, { id: 'i2', code: 'Y' }],
+      cells: [
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv3', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+      ],
+    };
+    const [m] = RULE_SECTOR_RED_SPREAD.match(ctx, mergeWithDefaults(undefined));
+    expect(m.messageKey).toBe('alerts.messages.sector-red-spread');
+    expect(m.messageParams).toEqual({ industry: 'Industrial', redCount: 3, companyCount: 2 });
+  });
+
+  it('RULE_CRITICAL_INDICATOR_ORG_WIDE emits {code, companyCount}', () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'A', name: 'A', industry: 'Industrial' },
+        { id: 'c2', code: 'B', name: 'B', industry: 'Industrial' },
+        { id: 'c3', code: 'C', name: 'C', industry: 'Industrial' },
+      ],
+      indicators: [{ id: 'i1', code: 'IND_NET_MARGIN' }],
+      cells: [
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv2', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv3', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+      ],
+    };
+    const [m] = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, mergeWithDefaults(undefined));
+    expect(m.messageKey).toBe('alerts.messages.critical-indicator-org-wide');
+    expect(m.messageParams).toEqual({ code: 'IND_NET_MARGIN', companyCount: 3 });
   });
 });
 

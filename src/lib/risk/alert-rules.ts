@@ -75,8 +75,30 @@ export interface AlertMatch {
   ruleId: string;
   ruleName: string;
   severity: AlertSeverity;
-  /** Human-readable message; safe to render directly in UI. */
+  /**
+   * English template-literal output. Kept for: (a) backward-compat with
+   * existing `m.message`-based tests, (b) non-React callers like CLI
+   * scripts and server-side log output, (c) i18n fallback when a
+   * locale file lacks the per-rule `messageKey`. Sub-35 introduced
+   * `messageKey` + `messageParams` for UI rendering — the EN
+   * translation of `messageKey(messageParams)` MUST equal `message`
+   * byte-for-byte (locked in `alert-rules-i18n.test.ts`).
+   */
   message: string;
+  /**
+   * Sub-35 — i18n key under `terminal.alerts.messages.<ruleId>`. UI
+   * render sites (AlertsPanel / ActionCenterPanel / CompanySnapshot /
+   * board-deck) call `t(messageKey, messageParams)` and fall back to
+   * `message` when the key is missing.
+   */
+  messageKey: string;
+  /**
+   * ICU-shaped placeholder values for `messageKey`. Per-rule shape is
+   * fixed but loose-typed at the interface level so future rules can
+   * vary their params without a discriminated-union refactor (deferred
+   * until rule count > 10 — see CARRYOVER).
+   */
+  messageParams: Record<string, string | number>;
   /** Companies the user should drill into to investigate. */
   affectedCompanyIds: readonly string[];
   /** Indicator codes that triggered the alert (when applicable). */
@@ -214,6 +236,8 @@ export const RULE_COMPANY_MOSTLY_RED: AlertRule = {
           ruleName: this.name,
           severity: this.severity,
           message: `${co.code} has ${redCells.length} red indicators — needs review`,
+          messageKey: `alerts.messages.${this.id}`,
+          messageParams: { code: co.code, redCount: redCells.length },
           affectedCompanyIds: [co.id],
           affectedIndicatorCodes: redCells
             .map((c) => indicatorIdToCode.get(c.indicatorId))
@@ -245,6 +269,13 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
           ruleName: this.name,
           severity: this.severity,
           message: `${co.code} composite score ${composite.score}/100 (${composite.contributingCount}/${composite.totalCount} indicators)`,
+          messageKey: `alerts.messages.${this.id}`,
+          messageParams: {
+            code: co.code,
+            score: composite.score,
+            contributing: composite.contributingCount,
+            total: composite.totalCount,
+          },
           affectedCompanyIds: [co.id],
         });
       }
@@ -285,6 +316,12 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
           ruleName: this.name,
           severity: this.severity,
           message: `${industry} sector: ${bucket.amberCount} amber cells across ${bucket.companyIds.size} companies`,
+          messageKey: `alerts.messages.${this.id}`,
+          messageParams: {
+            industry,
+            amberCount: bucket.amberCount,
+            companyCount: bucket.companyIds.size,
+          },
           affectedCompanyIds: Array.from(bucket.companyIds),
         });
       }
@@ -326,6 +363,12 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
           ruleName: this.name,
           severity: this.severity,
           message: `${industry} sector: ${bucket.redCount} red cells across ${bucket.companyIds.size} companies — possible contagion`,
+          messageKey: `alerts.messages.${this.id}`,
+          messageParams: {
+            industry,
+            redCount: bucket.redCount,
+            companyCount: bucket.companyIds.size,
+          },
           affectedCompanyIds: Array.from(bucket.companyIds),
         });
       }
@@ -362,6 +405,11 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
         ruleName: this.name,
         severity: this.severity,
         message: `${code} red for ${uniqueCompanyIds.length} companies — consolidated pressure on critical metric`,
+        messageKey: `alerts.messages.${this.id}`,
+        messageParams: {
+          code,
+          companyCount: uniqueCompanyIds.length,
+        },
         affectedCompanyIds: uniqueCompanyIds,
         affectedIndicatorCodes: [code],
       },
@@ -380,3 +428,18 @@ export const DEFAULT_ALERT_RULES: readonly AlertRule[] = [
   RULE_SECTOR_AMBER_CLUSTER,
   RULE_CRITICAL_INDICATOR_ORG_WIDE,
 ];
+
+/**
+ * Sub-35 — id-set view of `DEFAULT_ALERT_RULES`. UI render sites use it
+ * to gate `t(\`alerts.rules.\${id}\`)` and `t(\`alerts.messages.\${id}\`)`
+ * calls — only built-in rule ids have locale entries; custom user rules
+ * + synthetic test fixtures fall back to engine-emitted English fields.
+ *
+ * Single source of truth — replaces the 3 hand-maintained duplicates
+ * that previously lived in AlertsPanel / ActionCenterPanel /
+ * CompanySnapshot. Adding a new built-in rule to `DEFAULT_ALERT_RULES`
+ * automatically registers it for the locale path.
+ */
+export const DEFAULT_ALERT_RULE_IDS: ReadonlySet<string> = new Set(
+  DEFAULT_ALERT_RULES.map((r) => r.id),
+);

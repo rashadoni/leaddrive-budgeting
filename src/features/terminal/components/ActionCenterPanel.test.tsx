@@ -62,6 +62,8 @@ let mockAlertMatches:
       ruleName: string;
       severity: "critical" | "warning" | "info";
       message: string;
+      messageKey?: string;
+      messageParams?: Record<string, string | number>;
       affectedCompanyIds: readonly string[];
       affectedIndicatorCodes?: readonly string[];
     }> = null;
@@ -498,5 +500,32 @@ describe("ActionCenterPanel (Tier-3 sub-28 v1 + sub-31 v2)", () => {
     expect(
       screen.getByTestId("action-center-row-co_b:ind_opex"),
     ).toBeTruthy();
+  });
+
+  // Sub-35 — alert message body uses i18n template when ruleId is a
+  // built-in default rule + messageKey is set. vitest mock maps
+  // `alerts.messages.<ruleId>` keys to the EN template.
+  it("renders i18n message body for built-in ruleIds (sub-35)", async () => {
+    mockAlertMatches = [
+      {
+        ruleId: "company-mostly-red",
+        ruleName: "Company has many red indicators",
+        severity: "critical",
+        message: "ENGINE_FALLBACK_should_not_appear",
+        messageKey: "alerts.messages.company-mostly-red",
+        messageParams: { code: "AAC-MAIN", redCount: 7 },
+        affectedCompanyIds: ["co_a"],
+      },
+    ];
+    render(<ActionCenterPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("action-center-alert-company-mostly-red"),
+      ).toBeTruthy();
+    });
+    const row = screen.getByTestId("action-center-alert-company-mostly-red");
+    expect(row.textContent).toContain("AAC-MAIN has 7 red indicators — needs review");
+    expect(row.textContent).not.toContain("ENGINE_FALLBACK_should_not_appear");
   });
 });

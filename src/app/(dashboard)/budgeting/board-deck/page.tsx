@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterOperationalCompanies } from "@/lib/risk/targets";
@@ -12,6 +13,7 @@ import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   evaluateAlertRules,
   DEFAULT_ALERT_RULES,
+  DEFAULT_ALERT_RULE_IDS,
   type AlertMatch,
   type AlertSeverity,
 } from "@/lib/risk/alert-rules";
@@ -59,6 +61,15 @@ export default async function BoardDeckPage({
   if (!session?.user || !orgId) {
     redirect("/budgeting");
   }
+
+  // Sub-35 — server-side translator for alert rule names + message
+  // bodies. Server components use `getTranslations` (async) instead of
+  // `useTranslations` (client hook). Locale resolved from cookie/header
+  // by next-intl/server middleware. Scoped at "terminal" (NOT
+  // "terminal.alerts") so the engine-emitted absolute keys
+  // (`alerts.rules.<id>` / `alerts.messages.<id>`) flow through without
+  // string surgery — architect Round-31 closure of fragile prefix-strip.
+  const tTerminal = await getTranslations("terminal");
 
   const params = await searchParams;
   const rawPeriod = params.period ?? String(new Date().getUTCFullYear());
@@ -356,9 +367,34 @@ export default async function BoardDeckPage({
                       className="text-sm border-l-2 pl-2 border-gray-700 print:border-black"
                     >
                       <div className="font-mono text-[10px] text-gray-500 print:text-gray-700">
-                        {m.ruleName}
+                        {(() => {
+                          // Sub-35 — locale-aware rule name (server-side).
+                          // tTerminal is scoped at "terminal" so the engine
+                          // key shape flows through directly.
+                          if (!DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) return m.ruleName;
+                          try {
+                            return tTerminal(`alerts.rules.${m.ruleId}` as never);
+                          } catch {
+                            return m.ruleName;
+                          }
+                        })()}
                       </div>
-                      <div>{m.message}</div>
+                      <div>
+                        {(() => {
+                          // Sub-35 — locale-aware message body.
+                          if (!m.messageKey || !DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
+                            return m.message;
+                          }
+                          try {
+                            return tTerminal(
+                              m.messageKey as never,
+                              m.messageParams as never,
+                            );
+                          } catch {
+                            return m.message;
+                          }
+                        })()}
+                      </div>
                       {m.affectedCompanyIds.length > 0 && (
                         <div className="text-xs text-gray-500 mt-0.5 font-mono print:text-gray-700">
                           {m.affectedCompanyIds
