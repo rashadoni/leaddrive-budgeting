@@ -246,7 +246,12 @@ export function CompanySnapshot({ companyCode }: Props) {
           breaks at narrow widths) AND from `grid grid-cols-3` (auto-
           rows defaults to content-sized, so `h-full` on items resolved
           against a short track instead of the absorbed slot). Plain
-          flex-row with `flex-1` cards is the simplest robust shape. */}
+          flex-row with `flex-1` cards is the simplest robust shape.
+          Equivalent alternative: `grid grid-cols-3 auto-rows-fr` —
+          forces implicit rows to 1fr of absorbed flex height. Either
+          works for current Panel 4 width (≥ ⅓ screen, no wrap risk);
+          flex-row chosen for simplicity. Don't reintroduce `flex-wrap`
+          thinking it's safer — wrap+stretch only stretches per-row. */}
       {!noPLIndicators ? (
         <div className="flex gap-2 flex-1 min-h-0">
           {cards.map(({ indicator, cell }) => (
