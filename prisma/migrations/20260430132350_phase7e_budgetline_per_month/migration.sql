@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "budget_lines" ADD COLUMN     "perMonth" DOUBLE PRECISION[] DEFAULT ARRAY[]::DOUBLE PRECISION[];

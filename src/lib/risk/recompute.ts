@@ -97,6 +97,20 @@ export interface BudgetLineRow {
    *  matching is the last-resort heuristic for sub-aggregations like
    *  feed_cost / debt_service when neither code prefix nor category fire. */
   accountName: string | null;
+  /**
+   * Phase 7.E perMonth chain — month index 0..11 (0 = January) for the
+   * 12-row-per-line monthly persistence strategy. Apply / CLI write 12
+   * BudgetLine rows per parsed line, each carrying one month's value in
+   * `plannedAmount` + the month index in `sortOrder`. `monthIndex` is
+   * surfaced here so resolvers (`revenueBySeason`, `sparkline`) can
+   * group rows by month without reading `sortOrder` directly (the column
+   * has dual semantics: it's also a tie-breaker for non-monthly rows).
+   *
+   * Null = unknown/legacy (pre-monthly-distribution rows); resolvers
+   * that need monthly resolution treat null as "exclude". Number outside
+   * [0, 11] is treated as null.
+   */
+  monthIndex: number | null;
 }
 
 // --- Data source interface ---------------------------------------------------
@@ -404,6 +418,12 @@ export function createPrismaDataSource(
           plannedAmount: true,
           currencyCode: true,
           exchangeRate: true,
+          // Phase 7.E perMonth chain — `sortOrder` doubles as month
+          // index 0..11 for the 12-row-per-line monthly persistence
+          // strategy. Surfaced as `monthIndex` in the Row shape with
+          // null for out-of-range / non-monthly rows so resolvers can
+          // group by month deterministically.
+          sortOrder: true,
           account: {
             select: {
               accountType: true,
@@ -421,6 +441,7 @@ export function createPrismaDataSource(
             plannedAmount: number;
             currencyCode: string | null;
             exchangeRate: number | null;
+            sortOrder: number;
             account: {
               accountType: string;
               code: string;
@@ -440,6 +461,13 @@ export function createPrismaDataSource(
           // (deterministic across locale-mixed CoAs); fall back to the
           // primary name when nameEn was never populated.
           accountName: r.account?.nameEn ?? r.account?.name ?? null,
+          // Month index lives on the row's `sortOrder` field per the
+          // 12-row-per-line monthly persistence contract. Anything
+          // outside [0,11] is non-monthly (rollup-sourced single-row
+          // legacy or hand-edited) — surface as null so resolvers
+          // bypass it instead of bucketing into "month 99".
+          monthIndex:
+            r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null,
         }),
       );
     },
@@ -862,6 +890,16 @@ interface SubMatcher {
   test(line: BudgetLineRow): string | null;
   /** Reduce amounts. Default = sum. Override for HHI / max / etc. */
   reduce?(samples: Array<{ line: BudgetLineRow; amountBase: number }>): number;
+  /**
+   * Optional validity gate AFTER lines have been collected. Used by
+   * `revenueBySeason` to demand ≥ 3 distinct months — otherwise the
+   * "top-3-month share" formula degenerates to 100% trivially. When this
+   * returns false, the driver forces `matched_count=0` so the indicator
+   * cleanly resolves to `unknown` (downstream formula sees missing var).
+   * Skipping `isValid` keeps the existing behavior: matched_count = number
+   * of `test()` accepts.
+   */
+  isValid?(samples: Array<{ line: BudgetLineRow; amountBase: number }>): boolean;
 }
 
 const startsWithCode = (line: BudgetLineRow, prefix: string): boolean =>
@@ -882,10 +920,14 @@ const nameIncludes = (line: BudgetLineRow, needle: string): boolean =>
  * `revenue_line_hhi` is a structural matcher (HHI on per-code revenue),
  * not a content one — implemented inline in `applyBudgetLineSubMatcher`.
  *
- * `revenueBySeason` is **not implemented this turn** — it requires a
- * monthly breakdown on BudgetLine that doesn't exist in the schema yet
- * (only `plannedAmount` annual is persisted). Tracked in CARRYOVER with a
- * specific data-model blocker.
+ * `revenueBySeason` (Phase 7.E perMonth chain phase 1, 2026-04-30) reads
+ * monthly distribution from the existing 12-row-per-line persistence
+ * (apply route + import-azmade-budgets each write 12 BudgetLine rows
+ * carrying one month's value, with `sortOrder` 0..11 = month index).
+ * `monthIndex` on the row shape mirrors `sortOrder`; the matcher
+ * groups revenue by month and uses the optional `isValid` gate to
+ * reject degenerate <3-month plans (would falsely compute as 100% top-3
+ * concentration).
  */
 const SUB_AGGREGATION_MATCHERS: Record<string, SubMatcher> = {
   rd_spend: {
@@ -995,6 +1037,78 @@ const SUB_AGGREGATION_MATCHERS: Record<string, SubMatcher> = {
       return hhi;
     },
   },
+  /**
+   * **`budgetLine.revenueBySeason`** — top-3-month revenue concentration.
+   *
+   * Aggregates revenue lines by `monthIndex` (0..11), then returns the
+   * share of annual revenue that lands in the 3 highest-grossing months
+   * (range 25.0..100.0 since at least 3/12=25% can't be avoided).
+   *
+   * Used by `ENT_SEASONALITY_CONCENTRATION`:
+   *   - Green ≤ 40 — well-diversified across the year
+   *   - Amber ≤ 55 — peak quarter dominates (theme parks, ski resorts)
+   *   - Red  > 55 — single bad season kills the year
+   *
+   * **Skip semantics** — lines without `monthIndex` (legacy single-row
+   * imports / rollup-sourced flat splits) are excluded. If FEWER than 3
+   * distinct months carry revenue, the indicator returns `unknown` (the
+   * resolver wraps null in matched_count=0). Avoids false-100% from a
+   * one-month dataset.
+   */
+  revenueBySeason: {
+    test(line) {
+      if (line.accountType !== 'revenue') return null;
+      // Only monthly-distributed rows participate. Non-monthly rows
+      // (rollup sources, legacy single-row plans) can't say which month
+      // — bucketing them into month 0 would create fake January spikes.
+      if (line.monthIndex === null) return null;
+      return 'monthIndex';
+    },
+    /**
+     * Reject the aggregation entirely if revenue lands in fewer than
+     * 3 distinct months — "top-3-month share" trivially evaluates to
+     * 100% with 1-2 months and a `green` ENT_SEASONALITY_CONCENTRATION
+     * read on a degenerate dataset would be a false-positive. The driver
+     * forces matched_count=0 in this case, which makes the indicator
+     * resolve to `unknown` rather than a misleading green.
+     */
+    isValid(samples) {
+      // Count months that carry NON-ZERO revenue. Edge case the test
+      // exposed: monthlyRevenue helper creates 12 rows even for a single-
+      // month plan (11 zero-amount rows + 1 with the full annual). All 12
+      // pass `test()` because they have monthIndex+revenue accountType,
+      // but the operational reality is "revenue arrives in 1 month" —
+      // top-3-share would falsely compute as 100% (all-rev top 3 = total).
+      // Filter zero-amount rows here so the structural gate matches the
+      // economic intent.
+      const monthsWithRevenue = new Set<number>();
+      let total = 0;
+      for (const s of samples) {
+        if (s.line.monthIndex !== null && s.amountBase > 0) {
+          monthsWithRevenue.add(s.line.monthIndex);
+        }
+        total += s.amountBase;
+      }
+      return monthsWithRevenue.size >= 3 && total > 0;
+    },
+    reduce(samples) {
+      if (samples.length === 0) return 0;
+      const byMonth = new Map<number, number>();
+      let total = 0;
+      for (const s of samples) {
+        const m = s.line.monthIndex!;
+        byMonth.set(m, (byMonth.get(m) ?? 0) + s.amountBase);
+        total += s.amountBase;
+      }
+      // isValid already gated; reduce can assume ≥3 months + total>0.
+      // Belt-and-braces: keep the guards in case isValid is bypassed.
+      if (byMonth.size < 3 || total <= 0) return 0;
+      // Top 3 months by absolute revenue.
+      const sorted = Array.from(byMonth.values()).sort((a, b) => b - a);
+      const top3 = sorted.slice(0, 3).reduce((s, v) => s + v, 0);
+      return (top3 / total) * 100;
+    },
+  },
 };
 
 function applyBudgetLineSubMatcher(
@@ -1010,10 +1124,17 @@ function applyBudgetLineSubMatcher(
     const by = matcher.test(v.line);
     if (by) matchedSamples.push({ ...v, by });
   }
-  const value =
-    matcher.reduce != null
+  // Optional post-collection validity gate. When isValid returns false,
+  // the indicator falls through to `unknown` because matched_count=0
+  // suppresses `state.context.<sub>` set at the resolver level. Used
+  // for sub-aggregations whose math degenerates without a minimum
+  // structural condition (e.g. revenueBySeason needs ≥ 3 months).
+  const valid = matcher.isValid ? matcher.isValid(matchedSamples) : true;
+  const value = valid
+    ? matcher.reduce != null
       ? matcher.reduce(matchedSamples)
-      : matchedSamples.reduce((a, s) => a + s.amountBase, 0);
+      : matchedSamples.reduce((a, s) => a + s.amountBase, 0)
+    : 0;
   // Top-3 by absolute amount for drill-down. Stable sort — preserve input
   // order on ties so identical lines don't shuffle between recomputes.
   const topLines = [...matchedSamples]
@@ -1033,7 +1154,12 @@ function applyBudgetLineSubMatcher(
   const matchedBy = Array.from(matchedByCounts.keys()).sort();
   return {
     value,
-    matched_count: matchedSamples.length,
+    // When isValid rejects, force matched_count=0 so the resolver
+    // doesn't set `state.context[sub]` and the formula resolves to
+    // `unknown` cleanly. Top-lines + matched-by are still surfaced for
+    // drill-down — operators see WHICH lines were collected even when
+    // the structural gate rejected the aggregation.
+    matched_count: valid ? matchedSamples.length : 0,
     top_lines: topLines,
     matched_by: matchedBy,
   };

@@ -117,6 +117,9 @@ function bl(
     accountCode: null,
     accountCategory: null,
     accountName: null,
+    // Default null = "non-monthly / unknown" so existing tests that
+    // don't care about monthIndex aren't bucketed into month 0.
+    monthIndex: null,
     ...overrides,
   };
 }
@@ -1044,6 +1047,168 @@ describe('buildContext — budgetLine sub-aggregations', () => {
       r.startsWith('budgetlines:'),
     );
     expect(blReads).toHaveLength(1);
+  });
+
+  // --- Phase 7.E perMonth chain — revenueBySeason ---------------------------
+
+  /**
+   * Helper: build 12 monthly revenue rows whose values sum to `annual`,
+   * with the requested distribution. `dist` is a 12-element array of
+   * weights; values default to even 1/12 split.
+   */
+  function monthlyRevenue(
+    annual: number,
+    dist: readonly number[] = Array(12).fill(1 / 12),
+  ): BudgetLineRow[] {
+    if (dist.length !== 12) {
+      throw new Error(`monthlyRevenue: dist must have length 12, got ${dist.length}`);
+    }
+    return dist.map((weight, monthIndex) =>
+      bl({
+        plannedAmount: annual * weight,
+        accountType: 'revenue',
+        accountCode: '601',
+        monthIndex,
+      }),
+    );
+  }
+
+  it('revenueBySeason: even 12-month split → top-3 share = 25.0', async () => {
+    const ds = mockDs({
+      budgetLines: monthlyRevenue(120000), // 10k/month × 12
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeCloseTo(25.0, 1);
+    const sub =
+      inputs.aggregates.budget_line?.sub_aggregations?.revenueBySeason;
+    expect(sub?.matched_count).toBe(12);
+    expect(sub?.matched_by).toEqual(['monthIndex']);
+  });
+
+  it('revenueBySeason: peaked summer → top-3 share = 75.0 (red territory)', async () => {
+    // June+July+August = 75% of revenue, 9 other months share 25% evenly.
+    const otherWeight = 0.25 / 9;
+    const dist = [
+      otherWeight, otherWeight, otherWeight, otherWeight, otherWeight, // J-M
+      0.25, 0.25, 0.25, // J-J-A peak
+      otherWeight, otherWeight, otherWeight, otherWeight, // S-D
+    ];
+    const ds = mockDs({ budgetLines: monthlyRevenue(100000, dist) });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeCloseTo(75.0, 1);
+  });
+
+  it('revenueBySeason: only 1 month with revenue → unknown (matched_count=0)', async () => {
+    // Single-month revenue plan — formula would trivially be 100% which
+    // is misleading green → red. Resolver gates with isValid → unknown.
+    const dist = [1.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const ds = mockDs({ budgetLines: monthlyRevenue(50000, dist) });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeUndefined();
+    const sub =
+      inputs.aggregates.budget_line?.sub_aggregations?.revenueBySeason;
+    expect(sub?.matched_count).toBe(0);
+  });
+
+  it('revenueBySeason: 2 months with revenue → unknown (still degenerate)', async () => {
+    const dist = [0.5, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const ds = mockDs({ budgetLines: monthlyRevenue(50000, dist) });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeUndefined();
+  });
+
+  it('revenueBySeason: 3 months exactly → top-3 share = 100', async () => {
+    // Lower bound of validity — exactly 3 distinct months, top-3 share
+    // is the entire revenue (worst case for an entertainment venue with
+    // a 3-month operating window).
+    const dist = [0, 0, 0, 0, 0.4, 0.35, 0.25, 0, 0, 0, 0, 0];
+    const ds = mockDs({ budgetLines: monthlyRevenue(100000, dist) });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeCloseTo(100.0, 1);
+  });
+
+  it('revenueBySeason: ignores cogs/expense rows even with monthIndex', async () => {
+    // Revenue distributed evenly across 12 months PLUS a cogs row with
+    // monthIndex=5. cogs must NOT participate in the calculation.
+    const ds = mockDs({
+      budgetLines: [
+        ...monthlyRevenue(120000),
+        bl({
+          plannedAmount: 50000,
+          accountType: 'cogs',
+          accountCode: '711',
+          monthIndex: 5,
+        }),
+      ],
+    });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    // Pure revenue / 12 even months → 25%. cogs ignored.
+    expect(context.revenueBySeason).toBeCloseTo(25.0, 1);
+  });
+
+  it('revenueBySeason: ignores rows without monthIndex (rollup-source / legacy)', async () => {
+    // 12 monthly rows + one rollup-source row with null monthIndex.
+    // The rollup row has revenue but no month attribution — must be
+    // skipped to avoid bucketing into month 0.
+    const ds = mockDs({
+      budgetLines: [
+        ...monthlyRevenue(120000),
+        bl({
+          plannedAmount: 999999,
+          accountType: 'revenue',
+          accountCode: 'ROLLUP-REVENUE',
+          monthIndex: null,
+        }),
+      ],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeCloseTo(25.0, 1);
+    const sub =
+      inputs.aggregates.budget_line?.sub_aggregations?.revenueBySeason;
+    // 12 monthly rows matched; the rollup-source row was rejected by `test()`.
+    expect(sub?.matched_count).toBe(12);
+  });
+
+  it('revenueBySeason: zero-total revenue → unknown (degenerate division)', async () => {
+    // Edge case: 12 zero-amount monthly rows. Total = 0 → division by
+    // zero would produce NaN. isValid catches this via `total > 0`.
+    const ds = mockDs({
+      budgetLines: monthlyRevenue(0, Array(12).fill(1 / 12)),
+    });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine.revenueBySeason'],
+    });
+    expect(context.revenueBySeason).toBeUndefined();
   });
 });
 

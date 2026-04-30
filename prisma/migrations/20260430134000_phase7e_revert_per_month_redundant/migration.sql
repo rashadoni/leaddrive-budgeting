@@ -1,0 +1,12 @@
+-- Phase 7.E perMonth chain — revert redundant column.
+--
+-- The 20260430132350_phase7e_budgetline_per_month migration added a
+-- `perMonth Float[]` array column intending to hold 12-month splits
+-- per BudgetLine. That conflicted with the existing 12-row-per-line
+-- strategy in apply/route.ts + import-azmade-budgets.ts (each row holds
+-- one month, sortOrder=0..11, plannedAmount=monthly). The array column
+-- duplicated information that already lives in the 12-row layout.
+--
+-- Dropping it cleanly. Existing rows have `perMonth=[]` (default), so no
+-- data is lost — empty arrays carry zero information.
+ALTER TABLE "budget_lines" DROP COLUMN IF EXISTS "perMonth";

@@ -785,7 +785,12 @@ export const entertainmentIndicators: IndicatorSeed[] = [
     industries: ["entertainment"],
     unit: "%",
     direction: "lower_better",
-    formula: "top3_month_revenue_share * 100",
+    // The `revenueBySeason` sub-aggregation already returns the top-3
+    // month share AS A PERCENTAGE (0..100), so the formula passes it
+    // through unchanged. Multiplying by 100 again was a Phase-7.C-era
+    // placeholder when the resolver returned a fraction; flipped to
+    // identity when the actual sub-resolver landed.
+    formula: "revenueBySeason",
     thresholds: {
       green: { op: "<=", value: 40 },
       amber: { op: "<=", value: 55 },
