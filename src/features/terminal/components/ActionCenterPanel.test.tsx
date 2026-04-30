@@ -485,12 +485,21 @@ describe("ActionCenterPanel (Tier-3 sub-28 v1 + sub-31 v2)", () => {
     ];
     render(<ActionCenterPanel />);
     fireOpen();
+    // Sub-35 hardening — waitFor covers BOTH the alerts section AND
+    // the matrix-fetch-driven cell rows. The previous waitFor only
+    // gated on the alerts section (which is mock-fed instantly via
+    // `mockAlertMatches`); the cell rows depend on the async fetch
+    // and were occasionally not yet rendered when the synchronous
+    // `getByTestId` ran. Stop-hook test-gate caught the race in full
+    // suite (passed standalone). Extending waitFor closes the gap.
     await waitFor(() => {
       expect(
         screen.queryByTestId("action-center-alerts-section"),
       ).toBeTruthy();
+      expect(
+        screen.queryByTestId("action-center-row-co_a:ind_gross"),
+      ).toBeTruthy();
     });
-    // Both alerts AND cell-level items render
     expect(
       screen.getByTestId("action-center-alert-sector-red-spread"),
     ).toBeTruthy();
