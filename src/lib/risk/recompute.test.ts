@@ -5,6 +5,7 @@ import {
   recomputeIndicator,
   applyOutOfRangeClamp,
   RATIO_PLAUSIBILITY_CAP_PCT,
+  validateRequiredInputs,
   type BookingRow,
   type FactRow,
   type CurrencyRateRow,
@@ -2113,5 +2114,100 @@ describe("buildContext — rollup() resolver (Phase 7.E phase 3)", () => {
     // 4 times (2 codes × 2 children).
     expect(ds.state.childrenCalls).toHaveLength(1);
     expect(ds.state.ivReadCalls).toHaveLength(4);
+  });
+});
+
+// --- Phase 7.E phase 3 — seed-load-time validateRequiredInputs --------------
+
+describe('validateRequiredInputs (Phase 7.E phase 3, sub-41 architect closure)', () => {
+  // The strict layer-up validator that lives at seed-author time. Resolver
+  // stays lenient at runtime; this guard catches typos BEFORE they ship.
+
+  it('accepts well-formed fact: + rollup: + non-namespace entries', () => {
+    const r = validateRequiredInputs([
+      'fact:IND_NET_MARGIN@2025',
+      'fact:IND_X@2026-Q2',
+      'rollup:IND_REVENUE',
+      'booking',
+      'company.settings.totalRooms',
+      'operationalFact:harvest_tons',
+      'budgetLine.revenue',
+      'currencyRate',
+      // bare fact / rollup are no-op declarations (resolver skips silently)
+      'fact',
+      'rollup',
+    ]);
+    expect(r).toEqual({ ok: true });
+  });
+
+  it('rejects fact: with empty body', () => {
+    const r = validateRequiredInputs(['fact:']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/empty body after "fact:"/);
+      expect(r.reason).toMatch(/requiredInputs\[0\]/);
+    }
+  });
+
+  it('rejects fact: missing @ separator', () => {
+    const r = validateRequiredInputs(['booking', 'fact:bad']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/missing "@" separator/);
+      expect(r.reason).toMatch(/requiredInputs\[1\]/);
+    }
+  });
+
+  it('rejects fact: with empty CODE before @', () => {
+    const r = validateRequiredInputs(['fact:@2025']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/empty INDICATOR_CODE before "@"/);
+  });
+
+  it('rejects fact: with empty PERIOD after @', () => {
+    const r = validateRequiredInputs(['fact:CODE@']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/empty PERIOD after "@"/);
+  });
+
+  it('rejects rollup: with empty CODE', () => {
+    const r = validateRequiredInputs(['rollup:']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/empty INDICATOR_CODE after "rollup:"/);
+    }
+  });
+
+  it('returns first failure (short-circuit) — does not bury later errors', () => {
+    // Position 1 fails first; positions 2/3 (also bad) are not surfaced.
+    // The seed author fixes one at a time; surfacing all at once would
+    // bury the most-actionable error.
+    const r = validateRequiredInputs([
+      'booking',
+      'fact:bad', // bad #1 — surfaced
+      'fact:@', // bad #2 — would also fail, but not surfaced this run
+      'rollup:', // bad #3 — would also fail
+    ]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/requiredInputs\[1\]/);
+      expect(r.reason).not.toMatch(/requiredInputs\[2\]/);
+    }
+  });
+
+  it('empty array → ok', () => {
+    expect(validateRequiredInputs([])).toEqual({ ok: true });
+  });
+
+  it('does not validate non-fact/rollup namespace formats (out of scope)', () => {
+    // booking / company.settings / operationalFact / budgetLine /
+    // currencyRate have their own resolvers + schema-level checks
+    // elsewhere; the validator deliberately skips them.
+    const r = validateRequiredInputs([
+      'booking.<garbage>',
+      'company.settings.deeply.nested.path',
+      'operationalFact:',
+    ]);
+    expect(r).toEqual({ ok: true });
   });
 });

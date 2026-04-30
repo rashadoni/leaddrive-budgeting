@@ -27,6 +27,7 @@ import {
   type Thresholds,
   type Direction,
 } from "@/lib/risk/formula-engine"
+import { validateRequiredInputs } from "@/lib/risk/recompute"
 import {
   type IndicatorSeed,
   hospitalityIndicators,
@@ -81,6 +82,31 @@ function validateAllSeedThresholds(seeds: readonly IndicatorSeed[]): void {
     throw new Error(
       `Threshold validation failed for ${failures.length} indicator(s):\n${lines}\n\n` +
         `Fix the seed before re-running. See src/lib/risk/formula-engine.ts::validateThresholds for the rules.`,
+    )
+  }
+}
+
+/**
+ * Sub-41 architect Round-1 closure — strict seed-time validation of
+ * `requiredInputs` strings (esp. fact:/rollup: phase-3 namespaces).
+ * Resolver is intentionally lenient at runtime so a stray bad entry on
+ * one indicator doesn't abort an entire tenant's recompute; the strict
+ * check lives one layer up — at seed-author time — where a typo SHOULD
+ * halt the import. See `validateRequiredInputs` jsdoc in recompute.ts.
+ */
+function validateAllSeedRequiredInputs(seeds: readonly IndicatorSeed[]): void {
+  const failures: Array<{ code: string; reason: string }> = []
+  for (const s of seeds) {
+    const result = validateRequiredInputs(s.requiredInputs ?? [])
+    if (!result.ok) {
+      failures.push({ code: s.code, reason: result.reason })
+    }
+  }
+  if (failures.length > 0) {
+    const lines = failures.map((f) => `  ✗ ${f.code}: ${f.reason}`).join("\n")
+    throw new Error(
+      `requiredInputs validation failed for ${failures.length} indicator(s):\n${lines}\n\n` +
+        `Fix the seed before re-running. See src/lib/risk/recompute.ts::validateRequiredInputs for the format.`,
     )
   }
 }
@@ -208,6 +234,15 @@ async function main() {
   validateAllSeedThresholds(ALL_INDICATOR_SEEDS)
   console.log(
     `  ✓ All ${ALL_INDICATOR_SEEDS.length} indicators passed threshold validation`,
+  )
+
+  // Sub-41 — strict seed-time validation of `requiredInputs` strings
+  // (especially fact:/rollup: phase-3 namespaces). Catches typos like
+  // `fact:IND_X@` (empty period) or `rollup:` (empty code) before they
+  // become silent NaN at runtime.
+  validateAllSeedRequiredInputs(ALL_INDICATOR_SEEDS)
+  console.log(
+    `  ✓ All ${ALL_INDICATOR_SEEDS.length} indicators passed requiredInputs validation`,
   )
 
   let created = 0

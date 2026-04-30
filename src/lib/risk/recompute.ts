@@ -200,8 +200,16 @@ export interface RecomputeDataSource {
    *    silently feed bad data into the parent formula; null is honest.
    * Pure read — never throws on missing data; callers map null → NaN to
    * propagate "missing input" through the formula engine.
+   *
+   * **Required, not optional** (sub-41 architect Round-1 closure):
+   * keeping this optional with a resolver-level fallback would let an
+   * adapter regression silently produce NaN facts in production, which
+   * is exactly the silent-failure mode `feedback_verify_one_layer_up.md`
+   * warns against. Test stubs that don't exercise fact() can throw or
+   * return null directly — the fail-loud path is preferred to a fall-
+   * through that masks a real adapter bug.
    */
-  getIndicatorValue?(args: {
+  getIndicatorValue(args: {
     organizationId: string;
     companyId: string;
     indicatorCode: string;
@@ -215,8 +223,10 @@ export interface RecomputeDataSource {
    * out an indicator read across children (default agg = sum). Empty
    * array when the company has no children (rollup formula sees an empty
    * sum = 0; formula author can guard via ternary if 0 is misleading).
+   *
+   * **Required, not optional** — same rationale as `getIndicatorValue`.
    */
-  listChildCompanyIds?(args: {
+  listChildCompanyIds(args: {
     organizationId: string;
     parentId: string;
   }): Promise<string[]>;
@@ -1379,11 +1389,10 @@ const factResolver: NamespaceResolver = {
     }
 
     const reads: Record<string, number | null> = {};
-    if (unique.length > 0 && ctx.ds.getIndicatorValue) {
-      const getIv = ctx.ds.getIndicatorValue.bind(ctx.ds);
+    if (unique.length > 0) {
       const values = await Promise.all(
         unique.map((p) =>
-          getIv({
+          ctx.ds.getIndicatorValue({
             organizationId: ctx.organizationId,
             companyId: ctx.companyId,
             indicatorCode: p.code,
@@ -1394,11 +1403,6 @@ const factResolver: NamespaceResolver = {
       for (let i = 0; i < unique.length; i++) {
         reads[unique[i].key] = values[i];
       }
-    } else {
-      // ds doesn't implement getIndicatorValue (test stubs predating phase
-      // 3) — populate the map with nulls so `fact()` returns NaN cleanly
-      // rather than a confusing "function not in scope" error.
-      for (const p of unique) reads[p.key] = null;
     }
 
     let hitCount = 0;
@@ -1410,6 +1414,18 @@ const factResolver: NamespaceResolver = {
       reads,
     };
 
+    // Re-entry guard (sub-41 architect Round-1 closure): resolvers are
+    // invoked once per buildContext today, but a future refactor that
+    // segments the call (e.g. partial recompute) would silently overwrite
+    // the closure's `reads` snapshot. Throw loudly so the regression
+    // surfaces at the regression site, not as a stale-cache mystery
+    // downstream.
+    if (state.functions.fact) {
+      throw new Error(
+        'factResolver re-entry: state.functions.fact already set. ' +
+        'buildContext must invoke each resolver at most once per call.',
+      );
+    }
     // Synchronous closure exposed to the formula engine. Captures `reads`
     // by reference, but the resolver has finished populating it before
     // the engine runs (resolvers are awaited; eval comes after).
@@ -1466,17 +1482,19 @@ const rollupResolver: NamespaceResolver = {
     }
     const uniqueCodes = Array.from(new Set(codes));
 
-    let childIds: string[] = [];
-    if (ctx.ds.listChildCompanyIds) {
-      childIds = await ctx.ds.listChildCompanyIds({
-        organizationId: ctx.organizationId,
-        parentId: ctx.companyId,
-      });
-    }
+    const childIds = await ctx.ds.listChildCompanyIds({
+      organizationId: ctx.organizationId,
+      parentId: ctx.companyId,
+    });
 
     const sums: Record<string, { sum: number; matched_count: number }> = {};
-    if (uniqueCodes.length > 0 && childIds.length > 0 && ctx.ds.getIndicatorValue) {
-      const getIv = ctx.ds.getIndicatorValue.bind(ctx.ds);
+    // Pre-seed every requested code with a zero entry so the snapshot
+    // always lists them — even when childIds is empty or no IV reads
+    // happen. Saves consumers from a "code missing from sums map vs sum
+    // is zero" ambiguity.
+    for (const code of uniqueCodes) sums[code] = { sum: 0, matched_count: 0 };
+
+    if (uniqueCodes.length > 0 && childIds.length > 0) {
       const periodStr = ctx.period.raw;
       // Fan out: every (code × child) pair fetched in parallel.
       const tasks: Array<{ code: string; promise: Promise<number | null> }> = [];
@@ -1484,7 +1502,7 @@ const rollupResolver: NamespaceResolver = {
         for (const childId of childIds) {
           tasks.push({
             code,
-            promise: getIv({
+            promise: ctx.ds.getIndicatorValue({
               organizationId: ctx.organizationId,
               companyId: childId,
               indicatorCode: code,
@@ -1494,8 +1512,6 @@ const rollupResolver: NamespaceResolver = {
         }
       }
       const results = await Promise.all(tasks.map((t) => t.promise));
-      // Aggregate per code.
-      for (const code of uniqueCodes) sums[code] = { sum: 0, matched_count: 0 };
       for (let i = 0; i < tasks.length; i++) {
         const t = tasks[i];
         const v = results[i];
@@ -1503,11 +1519,6 @@ const rollupResolver: NamespaceResolver = {
         sums[t.code].sum += v;
         sums[t.code].matched_count += 1;
       }
-    } else {
-      // No children OR ds doesn't implement reads — every code gets a 0 sum
-      // with matched_count=0. The function below returns 0 for those codes;
-      // formula authors who want NaN-on-empty can guard explicitly.
-      for (const code of uniqueCodes) sums[code] = { sum: 0, matched_count: 0 };
     }
 
     state.inputs.aggregates.rollup = {
@@ -1515,6 +1526,14 @@ const rollupResolver: NamespaceResolver = {
       sums,
     };
 
+    // Re-entry guard (sub-41 architect Round-1 closure) — symmetric with
+    // factResolver above.
+    if (state.functions.rollup) {
+      throw new Error(
+        'rollupResolver re-entry: state.functions.rollup already set. ' +
+        'buildContext must invoke each resolver at most once per call.',
+      );
+    }
     state.functions.rollup = (code: FormulaFunctionArgLike) => {
       const entry = sums[String(code)];
       if (!entry) return Number.NaN;
@@ -1541,6 +1560,94 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   factResolver,
   rollupResolver,
 ];
+
+// --- Seed-load-time requiredInputs validator -------------------------------
+
+/**
+ * Phase 7.E phase 3 — strict validator for `requiredInputs` strings,
+ * intended to run at seed-load time (e.g. inside `seed-indicators.ts`)
+ * so a typo in a seed entry aborts the seed run with a clear error
+ * message instead of silently producing a fact()→NaN at runtime.
+ *
+ * Per `feedback_verify_one_layer_up.md`: the resolver intentionally stays
+ * lenient (skip-malformed) at runtime so a stray bad entry on one
+ * indicator doesn't abort the recompute of unrelated indicators. The
+ * strictness lives one layer up — at seed-author time — where a seed
+ * author typo SHOULD halt the import.
+ *
+ * Returns `{ ok: true }` when every entry parses cleanly.
+ * Returns `{ ok: false, reason }` on first malformed entry, with the
+ * specific bad string + position included.
+ *
+ * Validates:
+ *  - `fact:<CODE>@<PERIOD>` — both sides non-empty, exactly one `@`
+ *    in the body (the body's lastIndexOf('@') splits — but if there's
+ *    no `@` at all, that's a parse error).
+ *  - `rollup:<CODE>` — code non-empty.
+ *  - bare `fact` and `rollup` (no colon) are treated as no-op declarations
+ *    (resolver skips them silently); validator accepts them too.
+ *
+ * Does NOT validate:
+ *  - that the indicator CODE referenced actually exists (would require
+ *    cross-seed lookup; out of scope for v1).
+ *  - that the PERIOD string parses as a valid period (caller may use
+ *    e.g. fiscal-year suffixes the period parser doesn't accept; defer).
+ *  - non-fact/rollup namespaces (booking, company.settings, etc) — those
+ *    have their own resolvers with their own implicit format.
+ */
+export type RequiredInputValidation =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export function validateRequiredInputs(
+  requiredInputs: readonly string[],
+): RequiredInputValidation {
+  for (let i = 0; i < requiredInputs.length; i++) {
+    const r = requiredInputs[i];
+    if (r.startsWith('fact:')) {
+      const body = r.slice('fact:'.length);
+      if (body.length === 0) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — empty body after "fact:". Expected "fact:<INDICATOR_CODE>@<PERIOD>".`,
+        };
+      }
+      const at = body.lastIndexOf('@');
+      if (at < 0) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — missing "@" separator. Expected "fact:<INDICATOR_CODE>@<PERIOD>".`,
+        };
+      }
+      const code = body.slice(0, at).trim();
+      const period = body.slice(at + 1).trim();
+      if (!code) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — empty INDICATOR_CODE before "@".`,
+        };
+      }
+      if (!period) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — empty PERIOD after "@".`,
+        };
+      }
+    } else if (r.startsWith('rollup:')) {
+      const code = r.slice('rollup:'.length).trim();
+      if (!code) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — empty INDICATOR_CODE after "rollup:". Expected "rollup:<INDICATOR_CODE>".`,
+        };
+      }
+    }
+    // Other namespaces (booking, company.settings, operationalFact,
+    // currencyRate, budgetLine, bare "fact"/"rollup") are not validated
+    // here — they have their own resolvers + tests covering shape.
+  }
+  return { ok: true };
+}
 
 /**
  * Cross-namespace derivations that need multiple resolvers' output. Today
