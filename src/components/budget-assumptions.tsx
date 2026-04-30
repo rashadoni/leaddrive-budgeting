@@ -13,6 +13,7 @@ import {
 import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign } from "lucide-react"
 
 const CATEGORY_LABELS: Record<string, string> = {
+  // Original AAC-product-line categories (legacy data shapes)
   returns_transport: "Returns & Transport",
   mhb_transport: "MHB/Lime Transport",
   pallet_export: "Pallets / Export",
@@ -28,9 +29,20 @@ const CATEGORY_LABELS: Record<string, string> = {
   marketing: "Marketing",
   depreciation: "Depreciation",
   other: "Other",
+  // Sub-38 — generic FP&A categories (holding-wide assumption seeds).
+  operations: "Operations",
+  commercial: "Commercial",
+  finance: "Finance",
+  fx: "FX / Currency",
+  hr: "HR / People",
+  pricing: "Pricing",
+  risk: "Risk",
+  tax: "Tax",
+  inflation: "Inflation",
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
+  // Original AAC-product-line categories (legacy data shapes)
   returns_transport: "#3b82f6",
   mhb_transport: "#2563eb",
   pallet_export: "#14b8a6",
@@ -46,6 +58,20 @@ const CATEGORY_COLORS: Record<string, string> = {
   marketing: "#ec4899",
   depreciation: "#06b6d4",
   other: "#9ca3af",
+  // Sub-38 — generic FP&A categories surfaced by AZMADE/holding-wide
+  // assumption seeds. Without these the treemap + donut + ranking
+  // bars all fell back to the gray default ("#9ca3af") because the
+  // data shape changed but the color map did not. Tailwind palette
+  // hexes; semantic association with category meaning.
+  operations: "#3b82f6",   // blue — primary ops backbone
+  commercial: "#f97316",   // orange — sales / commerce
+  finance: "#10b981",      // emerald — money / fin
+  fx: "#a855f7",           // purple — currency / FX
+  hr: "#14b8a6",           // teal — people
+  pricing: "#f59e0b",      // amber — pricing
+  risk: "#ef4444",         // red — risk
+  tax: "#6366f1",          // indigo — formal / regulatory
+  inflation: "#ec4899",    // pink — macro / monetary
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -64,6 +90,16 @@ const CATEGORY_ICONS: Record<string, string> = {
   marketing: "📢",
   depreciation: "📉",
   other: "📋",
+  // Sub-38 — generic FP&A category icons.
+  operations: "⚙️",
+  commercial: "🛒",
+  finance: "💰",
+  fx: "💱",
+  hr: "👥",
+  pricing: "🏷️",
+  risk: "⚠️",
+  tax: "🏛️",
+  inflation: "📈",
 }
 
 function fmtNum(n: number): string {
