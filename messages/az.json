@@ -1406,7 +1406,9 @@
       "tooltipCompositeScore": "Kompozit bal:",
       "tooltipNoData": "— məlumat yoxdur",
       "tooltipIndicators": "göstərici",
-      "tooltipSparkline12mo": "12 ay"
+      "tooltipSparkline12mo": "12 ay",
+      "sparklineTrendAriaLabel": "{indCode} {coCode} üçün 12 aylıq trend",
+      "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",

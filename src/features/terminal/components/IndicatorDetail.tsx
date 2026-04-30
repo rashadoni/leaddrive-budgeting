@@ -202,7 +202,10 @@ export function IndicatorDetail() {
           <Sparkline
             data={detail.sparkline}
             status={status as SparklineStatus}
-            ariaLabel={`${ind.code} 12-month trend for ${co.code}`}
+            ariaLabel={t('heatMap.sparklineTrendAriaLabel', {
+              indCode: ind.code,
+              coCode: co.code,
+            })}
           />
           {(() => {
             const numeric = detail.sparkline.filter(

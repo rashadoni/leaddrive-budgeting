@@ -1406,7 +1406,9 @@
       "tooltipCompositeScore": "Composite score:",
       "tooltipNoData": "— no data",
       "tooltipIndicators": "indicators",
-      "tooltipSparkline12mo": "12mo"
+      "tooltipSparkline12mo": "12mo",
+      "sparklineTrendAriaLabel": "{indCode} 12-month trend for {coCode}",
+      "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",

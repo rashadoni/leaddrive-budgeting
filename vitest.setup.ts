@@ -100,6 +100,8 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'heatMap.tooltipNoData': '— no data',
   'heatMap.tooltipIndicators': 'indicators',
   'heatMap.tooltipSparkline12mo': '12mo',
+  'heatMap.sparklineTrendAriaLabel': '{indCode} 12-month trend for {coCode}',
+  'heatMap.sparklineTrendAriaLabelSelf': '{indCode} 12-month trend',
   'heatMap.aiSummaryGenerating': '💬 Generating AI summary…',
   'heatMap.cellClickHint': 'Click → drill-down (Panel 3)',
   'heatMap.noScoreableIndicators': 'No scoreable indicators',

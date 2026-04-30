@@ -1406,7 +1406,9 @@
       "tooltipCompositeScore": "Композитный балл:",
       "tooltipNoData": "— нет данных",
       "tooltipIndicators": "индикаторов",
-      "tooltipSparkline12mo": "12 мес"
+      "tooltipSparkline12mo": "12 мес",
+      "sparklineTrendAriaLabel": "{indCode} тренд за 12 месяцев для {coCode}",
+      "sparklineTrendAriaLabelSelf": "{indCode} тренд за 12 месяцев"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",

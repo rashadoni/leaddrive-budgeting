@@ -857,7 +857,10 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                   <Sparkline
                     data={cell.sparkline}
                     status={status as SparklineStatus}
-                    ariaLabel={`${ind.code} 12-month trend for ${co.code}`}
+                    ariaLabel={t('heatMap.sparklineTrendAriaLabel', {
+                      indCode: ind.code,
+                      coCode: co.code,
+                    })}
                   />
                   <span className="text-[9px] text-muted-foreground/70">
                     {t('heatMap.tooltipSparkline12mo')}

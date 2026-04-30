@@ -327,6 +327,10 @@ function SnapshotCard({
   indicator: MatrixIndicator;
   cell: MatrixCell | undefined;
 }) {
+  // Sub-33 Round-30 closure — local i18n hook for the sparkline
+  // ariaLabel (was hardcoded `${indicator.code} 12-month trend`
+  // English-only).
+  const t = useTranslations("terminal");
   const status = (cell?.status ?? "missing") as SparklineStatus;
   const statusColor =
     status === "green"
@@ -360,7 +364,9 @@ function SnapshotCard({
       <Sparkline
         data={sparkline ?? Array(12).fill(null)}
         status={status}
-        ariaLabel={`${indicator.code} 12-month trend`}
+        ariaLabel={t('heatMap.sparklineTrendAriaLabelSelf', {
+          indCode: indicator.code,
+        })}
       />
     </div>
   );
