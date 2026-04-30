@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("55 active indicator seeds (sub-27 cont'd Round-7: IND_FX_INPUT_RISK retired pending import FX extension; remaining 3 industrial real-data saturation indicators stay)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(55)
+  it("58 active indicator seeds (sub-42: +3 cross-sector phase-3 building blocks — IND_REVENUE_TOTAL + IND_HOLDING_REVENUE + IND_NET_MARGIN_VS_2025)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(58)
   })
 
   it("every indicator has a unique code", () => {

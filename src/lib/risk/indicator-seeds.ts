@@ -202,7 +202,7 @@ export const agroIndicators: IndicatorSeed[] = [
   },
 ]
 
-// ─── Cross-sector pack (1) ─────────────────────────────────────────────────
+// ─── Cross-sector pack (4) ─────────────────────────────────────────────────
 
 export const crossSectorIndicators: IndicatorSeed[] = [
   {
@@ -230,6 +230,105 @@ export const crossSectorIndicators: IndicatorSeed[] = [
       "{value}% of input costs are imported. AZN weakness hits gross margin directly.",
     requiredInputs: ["budgetLine", "currencyRate"],
     sortOrder: 5,
+  },
+  // ── Phase 7.E phase 3 — building blocks for `rollup()` and `fact()` ────
+  // demonstrations (sub-42, 2026-04-30). These indicators persist raw $$
+  // values + fact()-baseline deltas so the formula engine has cross-period
+  // and cross-company composites to evaluate.
+  //
+  // Operational prerequisites for end-to-end activation (tracked as 🔄):
+  //   1. `IND_HOLDING_REVENUE` requires parent-company recompute support.
+  //      Today `recompute-trigger.ts:filterOperationalCompanies` only feeds
+  //      level=2+role='operational' cos to the recompute loop; parent-cos
+  //      (level=1) are skipped, so their `IND_HOLDING_REVENUE` IV is never
+  //      created. UI affordance "rollup formulas" needs the trigger to also
+  //      walk parent cos with rollup-flagged indicators.
+  //   2. `IND_NET_MARGIN_VS_2025` requires historical 2025 IND_NET_MARGIN
+  //      IVs in DB. v1 runs `IND_NET_MARGIN` only at the current period;
+  //      2025 IVs would have to be either backfilled by a separate
+  //      compute-historical-ivs script OR seeded manually for demo orgs.
+  //
+  // For a Prisma adapter with no historical data + no parent-co recompute,
+  // these indicators resolve to status='unknown' (fact returns null →
+  // formula NaN; rollup on op-co with no children returns 0 which still
+  // hits amber but is misleading). Hint templates document that.
+  {
+    code: "IND_REVENUE_TOTAL",
+    nameEn: "Revenue (Total)",
+    nameAz: "Ümumi Gəlir",
+    nameRu: "Совокупная выручка",
+    category: "operational",
+    industries: [],
+    unit: "AZN",
+    direction: "higher_better",
+    // Persists raw revenue from `budgetLineResolver` as an IV. Building
+    // block for `rollup("IND_REVENUE_TOTAL")` — parent cos sum across
+    // children. Threshold "any positive revenue is green" is intentional:
+    // the indicator's job is to PERSIST the number for cross-co rollup,
+    // not to flag risk. Risk-bearing margin indicators (IND_NET_MARGIN,
+    // IND_GROSS_MARGIN) live separately.
+    formula: "revenue",
+    thresholds: {
+      green: { op: ">=", value: 0 },
+      amber: { op: ">=", value: -1 },
+      red: { op: "<", value: -1 },
+    },
+    hintTemplateEn:
+      "Total revenue {value} AZN. Persists raw $ for rollup() and fact() composites; risk classification lives on margin indicators.",
+    requiredInputs: ["budgetLine"],
+    sortOrder: 1,
+  },
+  {
+    code: "IND_HOLDING_REVENUE",
+    nameEn: "Holding Revenue (rollup)",
+    nameAz: "Holdinq Gəliri (rollup)",
+    nameRu: "Выручка холдинга (rollup)",
+    category: "operational",
+    industries: [],
+    unit: "AZN",
+    direction: "higher_better",
+    // Cross-company sum across direct children's IND_REVENUE_TOTAL.
+    // Empty-children case returns 0 (rollup contract), which falls in
+    // the amber band — useful UX signal at parent-co level ("no children
+    // contributing yet"). Threshold values are demo-level placeholders;
+    // real holdings would tune via the C6 alert-thresholds-config layer.
+    formula: 'rollup("IND_REVENUE_TOTAL")',
+    thresholds: {
+      green: { op: ">=", value: 1000000 },
+      amber: { op: ">=", value: 0 },
+      red: { op: "<", value: 0 },
+    },
+    hintTemplateEn:
+      "Holding-wide revenue {value} AZN, summed across direct children. 0 = no operational sub-cos contributing yet. Most meaningful at parent (level=1) companies.",
+    requiredInputs: ["rollup:IND_REVENUE_TOTAL"],
+    sortOrder: 2,
+  },
+  {
+    code: "IND_NET_MARGIN_VS_2025",
+    nameEn: "Net Margin vs 2025 baseline",
+    nameAz: "Xalis Marja 2025-ə nisbətən",
+    nameRu: "Чистая маржа vs базис 2025",
+    // Industrial-only because it references IND_NET_MARGIN (industrial-
+    // sector indicator). Cross-sector versions would need per-sector
+    // copies of this seed, which is fine but defers v2 — keep the
+    // demonstration narrow to one sector + one historical baseline.
+    category: "operational",
+    industries: ["industrial"],
+    unit: "pp", // percentage points (delta of two %s)
+    direction: "higher_better",
+    // Year-over-year margin delta vs a fixed 2025 baseline. Returns NaN
+    // (→ status='unknown') unless the same company has an IND_NET_MARGIN
+    // IV at period="2025" — backfill required for the indicator to fire.
+    formula: '(net_income / revenue * 100) - fact("IND_NET_MARGIN", "2025")',
+    thresholds: {
+      green: { op: ">=", value: 0 },
+      amber: { op: ">=", value: -3 },
+      red: { op: "<", value: -3 },
+    },
+    hintTemplateEn:
+      "Net margin moved {value}pp vs 2025 baseline. -3pp+ deterioration = red — investigate cost mix or pricing. Requires backfilled 2025 IND_NET_MARGIN to fire.",
+    requiredInputs: ["budgetLine", "fact:IND_NET_MARGIN@2025"],
+    sortOrder: 3,
   },
 ]
 
