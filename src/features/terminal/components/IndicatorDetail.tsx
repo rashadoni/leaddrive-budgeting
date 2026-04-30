@@ -14,6 +14,7 @@ import { useTranslations, useLocale } from 'next-intl';
  */
 
 import React, { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useTerminalStore } from "../store/terminalStore";
 import {
@@ -70,6 +71,21 @@ const STATUS_HEX: Record<IndicatorValueDetail["status"], string> = {
   unknown: "#6B7280",
 };
 
+/**
+ * Phase 7.E phase 2 hardening (sub-40) — per-IV recompute state machine.
+ * The "Recompute" button below the status badge POSTs to /api/indicators
+ * with `{period, companyId, indicatorCode}` — the only path that hits the
+ * route's single-IV branch (`withSparkline=true`), which is in turn the
+ * only path that triggers phase-2's inline `computeSparkline`. Without
+ * this affordance, phase-2 wiring exists in `recomputeIndicator` but no
+ * UI flow ever exercises it.
+ */
+type RecomputeState =
+  | { kind: 'idle' }
+  | { kind: 'running' }
+  | { kind: 'done' }
+  | { kind: 'error'; message: string };
+
 export function IndicatorDetail() {
   const t = useTranslations('terminal');
   const locale = useLocale();
@@ -79,6 +95,12 @@ export function IndicatorDetail() {
   const [detail, setDetail] = useState<IndicatorValueDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recomputeState, setRecomputeState] = useState<RecomputeState>({ kind: 'idle' });
+  // Bumped after a successful recompute to force the IV-fetch effect to
+  // re-run (the existing dep array tracks `ivId` only; without this tick,
+  // the user clicks Recompute, the API persists fresh value+sparkline,
+  // but the panel keeps showing stale data).
+  const [refetchTick, setRefetchTick] = useState(0);
 
   useEffect(() => {
     if (!ivId) {
@@ -105,7 +127,40 @@ export function IndicatorDetail() {
     return () => {
       cancelled = true;
     };
-  }, [ivId]);
+  }, [ivId, refetchTick]);
+
+  const triggerRecompute = async () => {
+    if (recomputeState.kind === 'running' || !detail) return;
+    setRecomputeState({ kind: 'running' });
+    try {
+      const res = await fetch('/api/indicators', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          period: detail.period,
+          companyId: detail.company.id,
+          indicatorCode: detail.indicator.code,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      setRecomputeState({ kind: 'done' });
+      setRefetchTick((tick) => tick + 1);
+      // Auto-clear the "Updated" pill after 1.5s so it doesn't linger.
+      // Uses the functional-set form so a parallel running-state from a
+      // rapid second click can't accidentally roll back to idle.
+      setTimeout(() => {
+        setRecomputeState((s) => (s.kind === 'done' ? { kind: 'idle' } : s));
+      }, 1500);
+    } catch (err) {
+      setRecomputeState({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   if (!ivId) {
     // Sub-36 cont'd Round-33 — empty-state centered both axes so the
@@ -172,7 +227,7 @@ export function IndicatorDetail() {
             period {period} · direction {ind.direction} · unit {ind.unit}
           </div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 flex flex-col items-end gap-1">
           <div
             className="text-2xl tabular-nums font-semibold"
             style={{ color: statusColor }}
@@ -191,6 +246,41 @@ export function IndicatorDetail() {
             </span>
             {status}
           </div>
+          {/* Phase 7.E phase 2 hardening (sub-40) — per-IV recompute
+              affordance. Single-IV path (companyId+indicatorCode) is
+              the only branch that flips withSparkline=true on the API
+              route, so this is the user-facing trigger for inline
+              sparkline refresh. */}
+          <button
+            type="button"
+            onClick={triggerRecompute}
+            disabled={recomputeState.kind === 'running'}
+            title={t('indicatorDetail.recomputeTitle')}
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors text-gray-500"
+          >
+            <RefreshCw
+              size={10}
+              className={recomputeState.kind === 'running' ? 'animate-spin' : ''}
+              aria-hidden="true"
+            />
+            <span>
+              {recomputeState.kind === 'running'
+                ? t('indicatorDetail.recomputing')
+                : recomputeState.kind === 'done'
+                  ? t('indicatorDetail.recomputeDone')
+                  : recomputeState.kind === 'error'
+                    ? t('indicatorDetail.recomputeFailed')
+                    : t('indicatorDetail.recompute')}
+            </span>
+          </button>
+          {recomputeState.kind === 'error' && (
+            <div
+              className="text-[9px] text-[#FF4757] max-w-[180px] text-right leading-tight"
+              role="alert"
+            >
+              {recomputeState.message}
+            </div>
+          )}
         </div>
       </header>
 

@@ -583,3 +583,191 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     });
   });
 });
+
+// --- Sub-40 — per-IV recompute affordance (Phase 7.E phase 2 hardening) -----
+
+describe("IndicatorDetail per-IV recompute (sub-40)", () => {
+  // The recompute button is the only UI flow that hits POST /api/indicators
+  // with both companyId+indicatorCode → only path that flips withSparkline=true
+  // → only path that triggers phase-2's inline computeSparkline. Lock the
+  // contract so the wire-in stays reachable from UI.
+  beforeEach(() => {
+    // Override the file-level beforeEach with a sparkline-bearing fixture
+    // so the IV detail renders the full layout (button is in the header,
+    // visible regardless — but downstream sections need data).
+    global.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify(fixture({ sparkline: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21] })),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    ) as never;
+  });
+
+  it("renders 'Recompute' button in header with correct title", async () => {
+    render(<IndicatorDetail />);
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    expect(btn.getAttribute("title")).toMatch(/POST \/api\/indicators/);
+    expect(btn.getAttribute("title")).toMatch(/companyId\+indicatorCode/);
+    expect(btn.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("click POSTs to /api/indicators with {period, companyId, indicatorCode} (single-IV branch)", async () => {
+    // The first GET /api/indicators/values/iv_test loads the detail; the
+    // second call is the recompute POST. Track all calls and assert the
+    // POST shape.
+    const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
+    global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = typeof url === "string" ? url : url.toString();
+      const method = init?.method ?? "GET";
+      calls.push({
+        url: u,
+        method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
+      });
+      if (method === "GET") {
+        return new Response(
+          JSON.stringify(fixture({ sparkline: [10, 11, 12] })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // POST recompute → 200 OK
+      return new Response(JSON.stringify({ processed: 1, ok: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as never;
+
+    render(<IndicatorDetail />);
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    btn.click();
+    await waitFor(() => {
+      const post = calls.find((c) => c.method === "POST");
+      expect(post).toBeTruthy();
+    });
+    const post = calls.find((c) => c.method === "POST")!;
+    expect(post.url).toBe("/api/indicators");
+    // Locks the load-bearing single-IV body shape — both companyId AND
+    // indicatorCode must be present so the route's
+    // `withSparkline = Boolean(companyId && indicatorCode)` resolves true.
+    expect(post.body).toEqual({
+      period: "2026",
+      companyId: "co_test",
+      indicatorCode: "IND_TEST",
+    });
+  });
+
+  it("flips label Recompute → Recomputing… while pending and disables the button", async () => {
+    // Never-resolving POST so the pending state is observable.
+    let resolveGet: ((res: Response) => void) | undefined;
+    const pendingGet = new Promise<Response>((r) => {
+      resolveGet = r;
+    });
+    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET") {
+        return new Response(
+          JSON.stringify(fixture({ sparkline: [10, 11, 12] })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // POST never resolves → pending forever
+      return pendingGet;
+    }) as never;
+
+    render(<IndicatorDetail />);
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    btn.click();
+    await waitFor(() => {
+      const running = screen.queryByRole("button", { name: /Recomputing/i });
+      expect(running).toBeTruthy();
+    });
+    const running = screen.getByRole("button", { name: /Recomputing/i });
+    expect(running.hasAttribute("disabled")).toBe(true);
+    // Clean up the dangling promise — happy-dom's gc will hold it.
+    resolveGet?.(new Response("{}", { status: 200 }));
+  });
+
+  it("post-recompute success refetches the IV detail (refetchTick bump)", async () => {
+    let getCount = 0;
+    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET") {
+        getCount += 1;
+        return new Response(
+          JSON.stringify(fixture({ sparkline: [10, 11, 12] })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ processed: 1, ok: 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as never;
+
+    render(<IndicatorDetail />);
+    await waitFor(() => expect(getCount).toBe(1));
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    btn.click();
+    // After successful POST, the panel should re-fetch the IV — getCount
+    // must climb to 2. Locks the refetchTick → useEffect dep chain.
+    await waitFor(() => expect(getCount).toBe(2));
+  });
+
+  it("non-2xx POST surfaces inline error state with response text", async () => {
+    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      if (method === "GET") {
+        return new Response(
+          JSON.stringify(fixture({ sparkline: [10, 11, 12] })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // Simulate a 500 from the recompute pipeline.
+      return new Response("Recompute pipeline crashed", { status: 500 });
+    }) as never;
+
+    render(<IndicatorDetail />);
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    btn.click();
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")?.textContent).toMatch(
+        /Recompute pipeline crashed/,
+      );
+    });
+    // Error label visible on the button.
+    expect(screen.queryByRole("button", { name: /Failed/i })).toBeTruthy();
+  });
+
+  it("ignores second click while pending (no second POST)", async () => {
+    const calls: Array<{ method?: string }> = [];
+    global.fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? "GET";
+      calls.push({ method });
+      if (method === "GET") {
+        return new Response(
+          JSON.stringify(fixture({ sparkline: [10, 11, 12] })),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      // POST hangs forever
+      return new Promise<Response>(() => {});
+    }) as never;
+
+    render(<IndicatorDetail />);
+    const btn = await screen.findByRole("button", { name: /Recompute/i });
+    btn.click();
+    await waitFor(() => {
+      const running = screen.queryByRole("button", { name: /Recomputing/i });
+      expect(running).toBeTruthy();
+    });
+    // Strip disabled to deliver the click to React's onClick (mirror of
+    // HotkeyToolbar stampede-guard test).
+    const running = screen.getByRole("button", { name: /Recomputing/i });
+    running.removeAttribute("disabled");
+    running.click();
+    // Allow any pending promise resolutions to flush.
+    await new Promise((r) => setTimeout(r, 0));
+    const postCount = calls.filter((c) => c.method === "POST").length;
+    expect(postCount).toBe(1);
+  });
+});

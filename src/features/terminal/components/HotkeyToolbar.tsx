@@ -35,6 +35,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
+import { useMatrix } from "../hooks/use-matrix";
 
 interface HotkeyDef {
   key: string;
@@ -52,6 +53,15 @@ export function HotkeyToolbar() {
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
   const activePanelId = useTerminalStore((s) => s.activePanelId);
   const [recomputing, setRecomputing] = useState(false);
+  // Phase 7.E phase 2 hardening (sub-40) — the route handler requires
+  // `period` in the POST body. Pre-fix this button sent no body and 400'd
+  // silently behind a swallowed `.catch()`. Read the currently-rendered
+  // period from the matrix hook (no extra fetch — the cache is shared
+  // with HeatMap's mount). Falls back to undefined while matrix is still
+  // loading; the button is disabled in that window so the user never
+  // triggers a 400.
+  const { matrix } = useMatrix();
+  const currentPeriod = matrix?.period;
 
   const fireWindowEvent = (name: string, detail?: unknown) => {
     window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
@@ -59,9 +69,18 @@ export function HotkeyToolbar() {
   };
 
   const triggerRecompute = () => {
-    if (recomputing) return false;
+    if (recomputing || !currentPeriod) return false;
     setRecomputing(true);
-    fetch("/api/indicators", { method: "POST" })
+    // Holding-wide refresh — bulk path, route handler defaults
+    // `withSparkline=false` per Phase 7.E phase 2 cost model. Sparklines
+    // get refreshed via the per-IV button in IndicatorDetail (single-IV
+    // path, withSparkline=true) or the offline `compute-sparklines.ts`
+    // worker.
+    fetch("/api/indicators", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ period: currentPeriod }),
+    })
       .catch(() => {})
       .finally(() => {
         // Brief delay so the user sees the feedback even on fast servers.
@@ -141,9 +160,11 @@ export function HotkeyToolbar() {
       icon: RefreshCw,
       title: recomputing
         ? t("hotkeys.recomputeRunning")
-        : t("hotkeys.recomputeTitle"),
+        : !currentPeriod
+          ? t("hotkeys.recomputeNoPeriod")
+          : t("hotkeys.recomputeTitle"),
       action: triggerRecompute,
-      disabled: recomputing,
+      disabled: recomputing || !currentPeriod,
     },
     {
       key: "search",

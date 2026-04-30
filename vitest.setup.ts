@@ -51,6 +51,12 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'indicatorDetail.explainButton': 'Explain →',
   'indicatorDetail.explaining': 'Explaining…',
   'indicatorDetail.extrapolationCaveat': 'linear extrapolation; uncertainty grows with horizon',
+  // Sub-40 — per-IV recompute affordance state machine.
+  'indicatorDetail.recompute': 'Recompute',
+  'indicatorDetail.recomputing': 'Recomputing…',
+  'indicatorDetail.recomputeDone': 'Updated',
+  'indicatorDetail.recomputeFailed': 'Failed',
+  'indicatorDetail.recomputeTitle': 'Recompute this indicator with fresh sparkline (POST /api/indicators with companyId+indicatorCode)',
   // VarianceExplainer keys — these have hyphenated / phrasal labels that
   // tests assert on via getByText / regex. Without explicit mappings the
   // camelCase fallback turns "reRun" → "RE RUN" which breaks `/Re-run/i`

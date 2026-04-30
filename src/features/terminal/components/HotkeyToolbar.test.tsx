@@ -18,6 +18,30 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import { HotkeyToolbar } from "./HotkeyToolbar";
 import { getTerminalSnapshot, useTerminalStore } from "../store/terminalStore";
+import { useMatrix } from "../hooks/use-matrix";
+
+// Sub-40 (Phase 7.E phase 2 hardening) — HotkeyToolbar now reads the
+// rendered period from the matrix hook so RECOMPUTE can send a valid
+// body. Mock the hook at module level — tests should not transitively
+// hit `/api/indicators/matrix` (that's a use-matrix concern, locked in
+// `use-matrix.test.tsx`). Default mock returns a loaded matrix with
+// `period: "2026-04"`; individual tests override via `vi.mocked(useMatrix)`
+// when they need to exercise the loading / period-undefined branches.
+vi.mock("../hooks/use-matrix", () => ({
+  useMatrix: vi.fn(),
+}));
+
+const DEFAULT_MATRIX_RESULT = {
+  matrix: {
+    period: "2026-04",
+    companies: [],
+    indicators: [],
+    cells: [],
+  },
+  loading: false,
+  error: null as string | null,
+  refresh: vi.fn(),
+};
 
 beforeEach(() => {
   // Reset store
@@ -25,6 +49,9 @@ beforeEach(() => {
   // We can't call hooks here, but compactMode default is false; just
   // make sure LS is clean
   window.localStorage.clear();
+  // Default useMatrix → loaded matrix with a known period. Tests that
+  // need a different state override this AFTER beforeEach runs.
+  vi.mocked(useMatrix).mockReturnValue(DEFAULT_MATRIX_RESULT);
 });
 
 afterEach(() => {
@@ -107,18 +134,49 @@ describe("HotkeyToolbar (Phase B6)", () => {
     });
   });
 
-  it("RECOMPUTE click POSTs to /api/indicators (fire-and-forget)", () => {
-    let posted: { url?: string; method?: string } | null = null;
+  it("RECOMPUTE click POSTs to /api/indicators with {period} from useMatrix (sub-40)", () => {
+    // Sub-40 bug fix: pre-fix this button sent no body and the route
+    // 400'd silently behind a swallowed `.catch()`. Lock the body shape
+    // so the period plumbing through `useMatrix` can't be silently
+    // re-broken.
+    let posted: { url?: string; method?: string; body?: unknown } | null = null;
     global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       posted = {
         url: typeof url === "string" ? url : url.toString(),
         method: init?.method,
+        body: init?.body ? JSON.parse(init.body as string) : undefined,
       };
       return new Response(JSON.stringify({ ok: true }), { status: 200 });
     }) as never;
     render(<HotkeyToolbar />);
     fireEvent.click(screen.getByText("RECOMPUTE"));
-    expect(posted).toEqual({ url: "/api/indicators", method: "POST" });
+    expect(posted).toEqual({
+      url: "/api/indicators",
+      method: "POST",
+      body: { period: "2026-04" },
+    });
+  });
+
+  it("RECOMPUTE button disabled while matrix has no period yet (sub-40)", () => {
+    // Defense-in-depth against the sub-40 bug: even if a future
+    // refactor re-introduces a body-less POST, the button stays
+    // un-clickable in the loading window so users can't trigger a 400.
+    vi.mocked(useMatrix).mockReturnValue({
+      matrix: null,
+      loading: true,
+      error: null,
+      refresh: vi.fn(),
+    });
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as never;
+    render(<HotkeyToolbar />);
+    const btn = screen.getByText("RECOMPUTE").closest("button")!;
+    expect(btn.disabled).toBe(true);
+    // Strip the disabled attr to exercise the in-component guard
+    // (mirror of the stampede-guard test below).
+    btn.removeAttribute("disabled");
+    fireEvent.click(btn);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   // Regression tests for bug fixes shipped in commit e66263a:
