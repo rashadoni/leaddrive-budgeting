@@ -45,11 +45,15 @@ export async function proxy(req: NextRequest) {
 
   // Allow public paths
   if (publicPaths.some((p) => pathname === p || pathname.startsWith(p + "/"))) {
-    // Inject locale header
-    const response = NextResponse.next()
-    const locale = req.cookies.get("locale")?.value || "en"
-    response.headers.set("x-locale", locale)
-    return response
+    // Inject locale on REQUEST headers so `next-intl/server` `headers()`
+    // (in `i18n/request.ts`) can read it during the server render.
+    // Cookie name MUST match the LanguageSwitcher writer (`NEXT_LOCALE`).
+    const locale = req.cookies.get("NEXT_LOCALE")?.value || "en"
+    const requestHeaders = new Headers(req.headers)
+    requestHeaders.set("x-locale", locale)
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    })
   }
 
   // Allow static files
@@ -93,13 +97,21 @@ export async function proxy(req: NextRequest) {
     }
   }
 
-  // Inject org context + locale
-  const response = NextResponse.next()
-  response.headers.set("x-organization-id", (session.user as any).organizationId || "")
-  const locale = req.cookies.get("locale")?.value || "en"
-  response.headers.set("x-locale", locale)
+  // Inject org context + locale on REQUEST headers so server components
+  // (including `next-intl/server` `headers()` in `i18n/request.ts`) can
+  // read them during the render. Setting these on `response.headers`
+  // (the previous bug) made them visible to the BROWSER but invisible
+  // to the server-render — `useTranslations()` always saw the default
+  // locale ("en") regardless of LanguageSwitcher selection.
+  // Cookie name MUST match the LanguageSwitcher writer (`NEXT_LOCALE`).
+  const locale = req.cookies.get("NEXT_LOCALE")?.value || "en"
+  const requestHeaders = new Headers(req.headers)
+  requestHeaders.set("x-organization-id", (session.user as any).organizationId || "")
+  requestHeaders.set("x-locale", locale)
 
-  return response
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  })
 }
 
 export const config = {
