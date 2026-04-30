@@ -237,15 +237,18 @@ export function CompanySnapshot({ companyCode }: Props) {
         </div>
       )}
 
-      {/* Margin trio cards. Sub-36 — `flex-1 min-h-0` makes this row
-          absorb the remaining vertical space inside the panel, and each
-          card's `h-full` stretches the card body so the sparkline +
-          status glyph sit anchored at top and grow with the panel
-          rather than leaving dead space at the bottom. */}
+      {/* Margin trio cards. Sub-36 — `flex-1 min-h-0` absorbs the
+          remaining vertical space; `grid grid-cols-3` (NOT
+          `flex flex-wrap`) ensures each card's `h-full` resolves
+          against the absorbed slot height. Architect closure of
+          flex-wrap fragility: with `flex-wrap` + `align-items:stretch`
+          stretching is per-row, so wrapped cards on narrow panels
+          would only get content-height. Grid `align-items:stretch`
+          (default) propagates absorbed height to every track row. */}
       {!noPLIndicators ? (
-        <div className="flex flex-wrap gap-2 flex-1 min-h-0">
+        <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
           {cards.map(({ indicator, cell }) => (
-            <div key={indicator.id} className="flex-1 min-w-[120px] h-full">
+            <div key={indicator.id} className="min-w-0 h-full">
               <SnapshotCard indicator={indicator} cell={cell} locale={locale} />
             </div>
           ))}
