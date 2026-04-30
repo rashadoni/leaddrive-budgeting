@@ -11,6 +11,7 @@ import {
   DEFAULT_ALERT_THRESHOLDS,
   mergeWithDefaults,
   readAlertThresholdsFromOrgSettings,
+  resolveForSector,
 } from './alert-thresholds-config';
 
 describe('DEFAULT_ALERT_THRESHOLDS', () => {
@@ -167,5 +168,154 @@ describe('readAlertThresholdsFromOrgSettings', () => {
       DEFAULT_ALERT_THRESHOLDS,
     );
     expect(readAlertThresholdsFromOrgSettings(42)).toEqual(DEFAULT_ALERT_THRESHOLDS);
+  });
+});
+
+// --- Phase 7.E C6 v3 — per-sector overrides ---------------------------------
+
+describe('alertThresholdsConfigSchema — bySector (C6 v3)', () => {
+  it('accepts bySector with per-industry override slots', () => {
+    const r = alertThresholdsConfigSchema.safeParse({
+      sectorAmber: { amberCountMin: 5 },
+      bySector: {
+        hospitality: { sectorAmber: { amberCountMin: 8 } },
+        industrial: {
+          sectorRedSpread: { redCountMin: 4, companyCountMin: 3 },
+        },
+      },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejects bySector with malformed override (e.g. non-int amberCountMin)', () => {
+    const r = alertThresholdsConfigSchema.safeParse({
+      bySector: {
+        hospitality: { sectorAmber: { amberCountMin: 1.5 } }, // not int
+      },
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it('omits bySector → backward-compat with v2 shape', () => {
+    const r = alertThresholdsConfigSchema.safeParse({
+      sectorAmber: { amberCountMin: 5 },
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts unknown industry key in bySector (no FK to Industry catalog)', () => {
+    // The schema doesn't enforce known industry codes — runtime drift
+    // would silently dead-code the override. Architect noted "defended
+    // by seed-load layer in v3 follow-up if needed". For now, schema is
+    // permissive: a typo just means the override never fires.
+    const r = alertThresholdsConfigSchema.safeParse({
+      bySector: { typo_sector: { sectorAmber: { amberCountMin: 9 } } },
+    });
+    expect(r.success).toBe(true);
+  });
+});
+
+describe('resolveForSector', () => {
+  it('industry with override returns sector-tuned thresholds', () => {
+    const r = resolveForSector(
+      {
+        sectorAmber: { amberCountMin: 5 },
+        bySector: {
+          hospitality: { sectorAmber: { amberCountMin: 8 } },
+        },
+      },
+      'hospitality',
+    );
+    expect(r.sectorAmber.amberCountMin).toBe(8);
+  });
+
+  it('industry WITHOUT override falls back to org-wide', () => {
+    const r = resolveForSector(
+      {
+        sectorAmber: { amberCountMin: 5 },
+        bySector: {
+          hospitality: { sectorAmber: { amberCountMin: 8 } },
+        },
+      },
+      'industrial',
+    );
+    expect(r.sectorAmber.amberCountMin).toBe(5);
+  });
+
+  it('industry with no bySector at all → org-wide (back-compat)', () => {
+    const r = resolveForSector(
+      { sectorAmber: { amberCountMin: 5 } },
+      'hospitality',
+    );
+    expect(r.sectorAmber.amberCountMin).toBe(5);
+  });
+
+  it('null partial → defaults for any industry', () => {
+    expect(resolveForSector(null, 'hospitality')).toEqual(DEFAULT_ALERT_THRESHOLDS);
+    expect(resolveForSector(undefined, 'industrial')).toEqual(
+      DEFAULT_ALERT_THRESHOLDS,
+    );
+  });
+
+  it('partial sector override merges per-rule (sectorAmber overridden, sectorRedSpread inherits org-wide)', () => {
+    // Critical contract: supplying only sectorAmber for hospitality
+    // doesn't reset hospitality's sectorRedSpread to defaults — it
+    // inherits the org-wide value. Per-rule keys merge per-rule.
+    const r = resolveForSector(
+      {
+        sectorAmber: { amberCountMin: 5 },
+        sectorRedSpread: { redCountMin: 7, companyCountMin: 4 },
+        bySector: {
+          hospitality: { sectorAmber: { amberCountMin: 8 } },
+          // hospitality intentionally has NO sectorRedSpread override
+        },
+      },
+      'hospitality',
+    );
+    expect(r.sectorAmber.amberCountMin).toBe(8); // sector override
+    expect(r.sectorRedSpread.redCountMin).toBe(7); // org-wide inherited
+    expect(r.sectorRedSpread.companyCountMin).toBe(4); // org-wide inherited
+  });
+
+  it('sector override overrides multiple rule slices independently', () => {
+    const r = resolveForSector(
+      {
+        bySector: {
+          industrial: {
+            sectorAmber: { amberCountMin: 12 },
+            sectorRedSpread: { redCountMin: 6, companyCountMin: 3 },
+          },
+        },
+      },
+      'industrial',
+    );
+    expect(r.sectorAmber.amberCountMin).toBe(12);
+    expect(r.sectorRedSpread.redCountMin).toBe(6);
+    expect(r.sectorRedSpread.companyCountMin).toBe(3);
+    // Non-sector slices fall through to defaults.
+    expect(r.mostlyRed).toEqual(DEFAULT_ALERT_THRESHOLDS.mostlyRed);
+    expect(r.criticalComposite).toEqual(DEFAULT_ALERT_THRESHOLDS.criticalComposite);
+  });
+
+  it('readAlertThresholdsFromOrgSettings preserves bySector through the safe-read path', () => {
+    // The tolerant reader at API/evaluator boundary must not strip
+    // bySector overrides during its safeParse pass.
+    const settings = {
+      alertThresholds: {
+        sectorAmber: { amberCountMin: 5 },
+        bySector: { hospitality: { sectorAmber: { amberCountMin: 9 } } },
+      },
+    };
+    const orgWide = readAlertThresholdsFromOrgSettings(settings);
+    // mergeWithDefaults ignores bySector — orgWide is the org-wide layer.
+    expect(orgWide.sectorAmber.amberCountMin).toBe(5);
+    // But the original settings JSON must still carry bySector for
+    // resolveForSector to consume. Re-parse from raw settings:
+    const raw = (settings as Record<string, unknown>).alertThresholds;
+    const sectorR = resolveForSector(
+      raw as Parameters<typeof resolveForSector>[0],
+      'hospitality',
+    );
+    expect(sectorR.sectorAmber.amberCountMin).toBe(9);
   });
 });

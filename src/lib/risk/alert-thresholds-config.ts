@@ -25,12 +25,17 @@
 import { z } from 'zod';
 
 /**
- * Per-rule threshold shape. Every key is OPTIONAL — `undefined` falls
- * back to its default. Adding a new rule = add a new optional key here
- * + add its default to `DEFAULT_ALERT_THRESHOLDS` + read from config in
- * the rule's `match()`. No schema migration ever needed.
+ * Per-rule threshold shape (without per-sector overrides). Every key is
+ * OPTIONAL — `undefined` falls back to its default. Used as the value
+ * type for both org-wide config AND each per-sector override slot under
+ * `bySector` (v3 below). Lifting into a named sub-schema lets v3 nest it
+ * without inadvertent infinite recursion.
+ *
+ * Adding a new rule = add a new optional key here + add its default to
+ * `DEFAULT_ALERT_THRESHOLDS` + read from config in the rule's `match()`.
+ * No DB schema migration ever needed.
  */
-export const alertThresholdsConfigSchema = z.object({
+const alertThresholdsBaseSchema = z.object({
   mostlyRed: z
     .object({
       redCountMin: z.number().int().min(1).max(80),
@@ -60,6 +65,38 @@ export const alertThresholdsConfigSchema = z.object({
     })
     .optional(),
 });
+
+/**
+ * Phase 7.E C6 v3 — full config schema with optional per-sector
+ * overrides. Stored in `Organization.settings.alertThresholds: Json`
+ * (no migration — same field as v2; Zod schema extension is
+ * forward-compatible). Per-sector overrides apply ONLY to sector-aware
+ * rules (`sectorAmber`, `sectorRedSpread`) — see `resolveForSector`
+ * below for the merge contract.
+ *
+ * v3 example shape:
+ * {
+ *   sectorAmber: { amberCountMin: 5 },              // org-wide default
+ *   bySector: {
+ *     hospitality: { sectorAmber: { amberCountMin: 8 } },  // looser
+ *     industrial:  { sectorRedSpread: { redCountMin: 4, companyCountMin: 3 } },
+ *   },
+ * }
+ *
+ * `bySector` keys mirror canonical industry codes (`hospitality`,
+ * `industrial`, `agro_crops`, …); unknown keys are accepted by the schema
+ * (no runtime FK to the Industry catalog) but `resolveForSector` only
+ * surfaces them when an actual industry match fires. Misspelled keys
+ * become silently dead overrides — defended by the seed-load layer in v3
+ * follow-up if/when sector-set drift becomes a real issue.
+ */
+export const alertThresholdsConfigSchema = alertThresholdsBaseSchema.extend({
+  bySector: z.record(z.string(), alertThresholdsBaseSchema).optional(),
+});
+
+/** Just the per-rule shape, without `bySector`. Exported for callers
+ *  that consume the resolved-per-sector view. */
+export type AlertThresholdsBase = z.infer<typeof alertThresholdsBaseSchema>;
 
 export type AlertThresholdsConfig = z.infer<typeof alertThresholdsConfigSchema>;
 
@@ -91,9 +128,14 @@ export const DEFAULT_ALERT_THRESHOLDS: ResolvedAlertThresholds = {
 
 /**
  * Take a partial / undefined config (from `Organization.settings.alertThresholds`)
- * and return a fully-resolved config with defaults filled in for every
- * missing key. Pure function — does NOT validate; pre-validate with
- * `alertThresholdsConfigSchema.parse()` at the API boundary.
+ * and return a fully-resolved org-wide config with defaults filled in
+ * for every missing key. Pure function — does NOT validate; pre-validate
+ * with `alertThresholdsConfigSchema.parse()` at the API boundary.
+ *
+ * Ignores `partial.bySector` — v3 per-sector overrides are surfaced via
+ * `resolveForSector` when a sector-aware rule fires for a specific
+ * industry. The org-wide config is the fallback layer; sector overrides
+ * narrow it.
  */
 export function mergeWithDefaults(
   partial: AlertThresholdsConfig | undefined | null,
@@ -107,6 +149,47 @@ export function mergeWithDefaults(
       partial?.sectorRedSpread ?? DEFAULT_ALERT_THRESHOLDS.sectorRedSpread,
     criticalIndicator:
       partial?.criticalIndicator ?? DEFAULT_ALERT_THRESHOLDS.criticalIndicator,
+  };
+}
+
+/**
+ * Phase 7.E C6 v3 — resolve thresholds for a SPECIFIC sector by layering
+ * `partial.bySector[industry]` over `partial` (org-wide) over
+ * `DEFAULT_ALERT_THRESHOLDS`. Used by sector-aware rules
+ * (`RULE_SECTOR_AMBER_CLUSTER`, `RULE_SECTOR_RED_SPREAD`) so a hospitality
+ * cluster can use a different amber threshold than an industrial one.
+ *
+ * Merge precedence (high → low): sector override → org-wide → default.
+ * Each rule slice merges INDEPENDENTLY — supplying only `sectorAmber`
+ * for hospitality doesn't reset hospitality's `sectorRedSpread` to org-
+ * wide; per-rule keys merge per-rule.
+ *
+ * `industry` is a canonical industry code; unknown / missing keys fall
+ * through to org-wide. Empty `bySector` map = same result as
+ * `mergeWithDefaults`.
+ *
+ * v3 deliberately ONLY exposes per-sector slots for sector-aware rules.
+ * Per-sector `mostlyRed` / `criticalComposite` / `criticalIndicator`
+ * would be meaningless (those rules already iterate per-company; sector
+ * is ambiguous) — but the schema accepts them silently for forward
+ * compatibility. Today they are merged but unused; future v3.1 might
+ * widen rule semantics to consume them.
+ */
+export function resolveForSector(
+  partial: AlertThresholdsConfig | undefined | null,
+  industry: string,
+): ResolvedAlertThresholds {
+  const orgWide = mergeWithDefaults(partial);
+  const sectorOverride = partial?.bySector?.[industry];
+  if (!sectorOverride) return orgWide;
+  return {
+    mostlyRed: sectorOverride.mostlyRed ?? orgWide.mostlyRed,
+    criticalComposite:
+      sectorOverride.criticalComposite ?? orgWide.criticalComposite,
+    sectorAmber: sectorOverride.sectorAmber ?? orgWide.sectorAmber,
+    sectorRedSpread: sectorOverride.sectorRedSpread ?? orgWide.sectorRedSpread,
+    criticalIndicator:
+      sectorOverride.criticalIndicator ?? orgWide.criticalIndicator,
   };
 }
 

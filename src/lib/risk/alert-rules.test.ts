@@ -1080,3 +1080,137 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
   });
 });
 
+// --- Phase 7.E C6 v3 — per-sector overrides via evaluateAlertRules ----------
+
+describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
+  it('hospitality with permissive sector override (amberCountMin=8) does NOT fire at 5 amber cells', () => {
+    // Two industries with same shape; sector-specific threshold gates
+    // hospitality OUT while default-threshold lets industrial in.
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c_hosp', code: 'CO_H', name: 'Hosp', industry: 'hospitality', isSubgroup: false },
+        { id: 'c_ind', code: 'CO_I', name: 'Industrial', industry: 'industrial', isSubgroup: false },
+      ],
+      indicators: [
+        { id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }, { id: 'i3', code: 'X3' },
+        { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
+      ],
+      cells: [
+        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'f', companyId: 'c_ind', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'g', companyId: 'c_ind', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'h', companyId: 'c_ind', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'i', companyId: 'c_ind', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'j', companyId: 'c_ind', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+      ],
+    };
+    const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
+      sectorAmber: { amberCountMin: 5 }, // org-wide → industrial fires
+      bySector: {
+        hospitality: { sectorAmber: { amberCountMin: 8 } }, // gate hospitality out
+      },
+    });
+    expect(matches).toHaveLength(1);
+    expect(matches[0].messageParams.industry).toBe('industrial');
+  });
+
+  it('hospitality with TIGHT sector override (amberCountMin=3) fires at 5 amber cells even when org-wide is 99', () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c_hosp', code: 'CO_H', name: 'Hosp', industry: 'hospitality', isSubgroup: false },
+      ],
+      indicators: [
+        { id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }, { id: 'i3', code: 'X3' },
+        { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
+      ],
+      cells: [
+        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+      ],
+    };
+    const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
+      sectorAmber: { amberCountMin: 99 }, // org-wide impossibly high
+      bySector: {
+        hospitality: { sectorAmber: { amberCountMin: 3 } }, // tight — fires
+      },
+    });
+    expect(matches).toHaveLength(1);
+    expect(matches[0].messageParams.industry).toBe('hospitality');
+    expect(matches[0].messageParams.amberCount).toBe(5);
+  });
+
+  it('sector-red-spread per-industry override applies independently to redCountMin + companyCountMin', () => {
+    // Industrial override raises both thresholds — defaults would have
+    // fired (3 red across 2+ cos), but override demands 5 red across 4+
+    // cos which the fixture doesn't satisfy.
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'C1', name: 'C1', industry: 'industrial', isSubgroup: false },
+        { id: 'c2', code: 'C2', name: 'C2', industry: 'industrial', isSubgroup: false },
+        { id: 'c3', code: 'C3', name: 'C3', industry: 'industrial', isSubgroup: false },
+      ],
+      indicators: [{ id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }],
+      cells: [
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'c', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'd', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+      ],
+    };
+    const matches = evaluateAlertRules([RULE_SECTOR_RED_SPREAD], ctx, {
+      bySector: {
+        industrial: { sectorRedSpread: { redCountMin: 5, companyCountMin: 4 } },
+      },
+    });
+    expect(matches).toHaveLength(0);
+  });
+
+  it('no bySector → engine falls back to org-wide for every industry (back-compat lock)', () => {
+    // v2-shaped config (no bySector) produces identical output to pre-v3.
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'C1', name: 'C1', industry: 'hospitality', isSubgroup: false },
+      ],
+      indicators: [{ id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }, { id: 'i3', code: 'X3' }],
+      cells: [
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+      ],
+    };
+    const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
+      sectorAmber: { amberCountMin: 3 },
+    });
+    expect(matches).toHaveLength(1);
+    expect(matches[0].messageParams.amberCount).toBe(3);
+  });
+
+  it('null config → defaults for every industry; 5-amber cluster fires at default threshold', () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: 'c1', code: 'C1', name: 'C1', industry: 'industrial', isSubgroup: false },
+      ],
+      indicators: [
+        { id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }, { id: 'i3', code: 'X3' },
+        { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
+      ],
+      cells: [
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'd', companyId: 'c1', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'e', companyId: 'c1', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+      ],
+    };
+    // Default amberCountMin=5; 5 amber cells fire.
+    const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, null);
+    expect(matches).toHaveLength(1);
+  });
+});

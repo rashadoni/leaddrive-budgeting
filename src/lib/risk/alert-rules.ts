@@ -35,6 +35,7 @@ import type { HeatMapCell } from './heatmap-matrix';
 import { computeCompositeScore } from './composite-score';
 import {
   mergeWithDefaults,
+  resolveForSector as resolveForSectorImpl,
   type AlertThresholdsConfig,
   type ResolvedAlertThresholds,
 } from './alert-thresholds-config';
@@ -121,10 +122,26 @@ export interface AlertRule {
   /**
    * Returns zero or more matches. Pure function — caller treats output
    * as immutable. Returning an empty array means "rule did not trigger".
-   * `config` is the fully-resolved threshold config; the engine merges
-   * defaults before passing it in, so each rule reads concrete numbers.
+   *
+   * `config` is the fully-resolved org-wide threshold config; the engine
+   * merges defaults before passing it in, so each rule reads concrete
+   * numbers.
+   *
+   * `resolveForSector` (Phase 7.E C6 v3) — optional callable that takes
+   * an industry code and returns the sector-resolved threshold (sector
+   * override layered over org-wide layered over defaults). Sector-aware
+   * rules use this to look up per-industry thresholds; org-wide rules
+   * (mostlyRed / criticalComposite / criticalIndicator) ignore it. The
+   * arg is third (after `config`) so existing call sites that pass only
+   * `(ctx, config)` stay backward-compatible — `resolveForSector` is
+   * absent when the engine has no per-sector overrides to apply, and
+   * sector-aware rules fall back to `config` (the org-wide resolution).
    */
-  match: (ctx: AlertContext, config: ResolvedAlertThresholds) => AlertMatch[];
+  match: (
+    ctx: AlertContext,
+    config: ResolvedAlertThresholds,
+    resolveForSector?: (industry: string) => ResolvedAlertThresholds,
+  ) => AlertMatch[];
 }
 
 /**
@@ -144,6 +161,18 @@ export function evaluateAlertRules(
   config?: AlertThresholdsConfig | null,
 ): AlertMatch[] {
   const resolved = mergeWithDefaults(config ?? undefined);
+  // Phase 7.E C6 v3 — per-sector resolver. Memoized so repeated lookups
+  // for the same industry across a single evaluation reuse the resolved
+  // object. `null` config + no `bySector` → memoized cache empty;
+  // sector-aware rules effectively get the org-wide `resolved`.
+  const sectorCache = new Map<string, ResolvedAlertThresholds>();
+  const resolveForSector = (industry: string): ResolvedAlertThresholds => {
+    const hit = sectorCache.get(industry);
+    if (hit) return hit;
+    const r = resolveForSectorImpl(config ?? undefined, industry);
+    sectorCache.set(industry, r);
+    return r;
+  };
   const ruleMeta = new Map<string, { priority: number }>();
   for (const r of rules) ruleMeta.set(r.id, { priority: r.priority });
   // Pre-index cells by companyId once (filtering rollup rows) so each
@@ -156,7 +185,7 @@ export function evaluateAlertRules(
     : { ...ctx, cellsByCompany: buildCellsByCompany(ctx.cells) };
   const out: AlertMatch[] = [];
   for (const rule of rules) {
-    const matches = rule.match(indexed, resolved);
+    const matches = rule.match(indexed, resolved, resolveForSector);
     out.push(...matches);
   }
   return out.sort((a, b) => {
@@ -291,9 +320,8 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
     'Flags industries where amber cells aggregate across multiple companies — suggests sector-wide stress (FX, commodity, regulatory) rather than single-company issues.',
   severity: 'warning',
   priority: 10,
-  match(ctx, config) {
+  match(ctx, config, resolveForSector) {
     const out: AlertMatch[] = [];
-    const threshold = config.sectorAmber.amberCountMin;
     const byIndustry = new Map<string, { companyIds: Set<string>; amberCount: number }>();
     for (const co of ctx.companies) {
       if (co.isSubgroup || !co.industry) continue;
@@ -310,6 +338,13 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
       bucket.amberCount += amberCells.length;
     }
     for (const [industry, bucket] of byIndustry) {
+      // Phase 7.E C6 v3 — per-industry threshold lookup. Falls back to
+      // org-wide `config` when no resolver supplied (back-compat with
+      // direct `match(ctx, config)` callers in older tests).
+      const sectorConfig = resolveForSector
+        ? resolveForSector(industry)
+        : config;
+      const threshold = sectorConfig.sectorAmber.amberCountMin;
       if (bucket.amberCount >= threshold) {
         out.push({
           ruleId: this.id,
@@ -337,10 +372,8 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
     'Flags industries where red cells appear across multiple companies — suggests sector contagion rather than isolated company problem.',
   severity: 'critical',
   priority: 10,
-  match(ctx, config) {
+  match(ctx, config, resolveForSector) {
     const out: AlertMatch[] = [];
-    const redThreshold = config.sectorRedSpread.redCountMin;
-    const coThreshold = config.sectorRedSpread.companyCountMin;
     const byIndustry = new Map<string, { companyIds: Set<string>; redCount: number }>();
     for (const co of ctx.companies) {
       if (co.isSubgroup || !co.industry) continue;
@@ -357,6 +390,13 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
       bucket.redCount += redCells.length;
     }
     for (const [industry, bucket] of byIndustry) {
+      // Phase 7.E C6 v3 — per-industry threshold lookup; back-compat fall
+      // back to org-wide `config` when no resolver supplied.
+      const sectorConfig = resolveForSector
+        ? resolveForSector(industry)
+        : config;
+      const redThreshold = sectorConfig.sectorRedSpread.redCountMin;
+      const coThreshold = sectorConfig.sectorRedSpread.companyCountMin;
       if (bucket.redCount >= redThreshold && bucket.companyIds.size >= coThreshold) {
         out.push({
           ruleId: this.id,
