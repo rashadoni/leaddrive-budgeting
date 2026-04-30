@@ -325,7 +325,7 @@ export function PanelGrid() {
                 <CompanyTree companies={companies} loading={loading} />
               </PanelShell>
             </Panel>
-            <Separator className="w-[3px] bg-gray-800 hover:bg-[#00D4AA]/40 active:bg-[#00D4AA]/60 transition-colors" />
+            <Separator className="w-[6px] bg-gray-800 hover:bg-[#00D4AA]/50 active:bg-[#00D4AA]/70 transition-colors cursor-col-resize" />
             <Panel id={PANEL_IDS.panel2} defaultSize={65} minSize={20}>
               <PanelShell
                 id={2}
@@ -339,7 +339,7 @@ export function PanelGrid() {
             </Panel>
           </Group>
         </Panel>
-        <Separator className="h-[3px] bg-gray-800 hover:bg-[#00D4AA]/40 active:bg-[#00D4AA]/60 transition-colors" />
+        <Separator className="h-[6px] bg-gray-800 hover:bg-[#00D4AA]/50 active:bg-[#00D4AA]/70 transition-colors cursor-row-resize" />
         <Panel id={PANEL_IDS.outerBottom} defaultSize={45} minSize={20}>
           <Group
             groupRef={bottomRef}
@@ -358,7 +358,7 @@ export function PanelGrid() {
                 <IndicatorDetail />
               </PanelShell>
             </Panel>
-            <Separator className="w-[3px] bg-gray-800 hover:bg-[#00D4AA]/40 active:bg-[#00D4AA]/60 transition-colors" />
+            <Separator className="w-[6px] bg-gray-800 hover:bg-[#00D4AA]/50 active:bg-[#00D4AA]/70 transition-colors cursor-col-resize" />
             <Panel id={PANEL_IDS.panel4} defaultSize={50} minSize={15}>
               <PanelShell
                 id={4}

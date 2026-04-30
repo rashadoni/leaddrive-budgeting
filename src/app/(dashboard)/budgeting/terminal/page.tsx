@@ -13,7 +13,7 @@ const jetbrainsMono = JetBrains_Mono({
 
 export default function TerminalPage() {
   return (
-    <div className={`flex flex-col h-screen w-full bg-[#050814] overflow-hidden ${jetbrainsMono.className}`}>
+    <div className={`flex flex-col h-full w-full bg-[#050814] overflow-hidden ${jetbrainsMono.className}`}>
       {/* Phase B6 — top hotkey toolbar (8 quick-actions). Sits above
           CommandBar; user-configurability is v2 (🔄). */}
       <HotkeyToolbar />
