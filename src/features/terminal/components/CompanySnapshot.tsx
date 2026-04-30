@@ -104,14 +104,14 @@ export function CompanySnapshot({ companyCode }: Props) {
 
   if (loading && !data) {
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed">
+      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full">
         {t("snapshot.loading")}
       </div>
     );
   }
   if (error || !data) {
     return (
-      <div className="text-[#FF4757] font-mono text-xs">
+      <div className="text-[#FF4757] font-mono text-xs h-full w-full">
         {t("snapshot.error")}: {error ?? "no data"}
       </div>
     );
@@ -119,7 +119,7 @@ export function CompanySnapshot({ companyCode }: Props) {
 
   if (!company) {
     return (
-      <div className="text-gray-700 font-mono text-xs">
+      <div className="text-gray-700 font-mono text-xs h-full w-full">
         {t("snapshot.companyNotInMatrix")} <code>{companyCode}</code>.
       </div>
     );
@@ -138,8 +138,8 @@ export function CompanySnapshot({ companyCode }: Props) {
   const noPLIndicators = cards.length === 0;
 
   return (
-    <div className="font-mono text-xs flex flex-col gap-2">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between">
+    <div className="font-mono text-xs flex flex-col gap-2 h-full w-full">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between shrink-0">
         <span>
           {t("snapshot.title")} · <span className="text-[#FFB020]">{company.code}</span>
           {company.industry && (
@@ -237,23 +237,27 @@ export function CompanySnapshot({ companyCode }: Props) {
         </div>
       )}
 
-      {/* Margin trio cards (existing) */}
+      {/* Margin trio cards. Sub-36 — `flex-1 min-h-0` makes this row
+          absorb the remaining vertical space inside the panel, and each
+          card's `h-full` stretches the card body so the sparkline +
+          status glyph sit anchored at top and grow with the panel
+          rather than leaving dead space at the bottom. */}
       {!noPLIndicators ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 flex-1 min-h-0">
           {cards.map(({ indicator, cell }) => (
-            <div key={indicator.id} className="flex-1 min-w-[120px]">
+            <div key={indicator.id} className="flex-1 min-w-[120px] h-full">
               <SnapshotCard indicator={indicator} cell={cell} locale={locale} />
             </div>
           ))}
         </div>
       ) : (
-        <div className="text-gray-700 text-[11px] leading-relaxed">
+        <div className="text-gray-700 text-[11px] leading-relaxed flex-1 min-h-0">
           {t("snapshot.noPlIndicators")}{" "}
           <span className="text-[#FFB020]">{companyCode}</span>.
         </div>
       )}
 
-      <p className="text-[10px] text-gray-600 mt-1">
+      <p className="text-[10px] text-gray-600 mt-1 shrink-0">
         {t("snapshot.footerHint")}
       </p>
     </div>
@@ -364,11 +368,11 @@ function SnapshotCard({
     Array.isArray(cell?.sparkline) ? cell!.sparkline : undefined;
 
   return (
-    <div className="rounded border border-gray-800/60 bg-[#0A0E27]/60 px-2 py-1.5 flex flex-col gap-1">
-      <div className="text-[9px] uppercase tracking-wider text-gray-600 truncate">
+    <div className="rounded border border-gray-800/60 bg-[#0A0E27]/60 px-2 py-1.5 flex flex-col gap-1 h-full">
+      <div className="text-[9px] uppercase tracking-wider text-gray-600 truncate shrink-0">
         {resolveIndicatorLabel(indicator, locale)}
       </div>
-      <div className="flex items-baseline gap-1">
+      <div className="flex items-baseline gap-1 shrink-0">
         {/* Tier-3 sub-29 Round-16 closure — shape glyph alongside
             colored value text. Same status→shape mapping as HeatMap
             cells; aria-hidden because the surrounding context already
@@ -380,6 +384,11 @@ function SnapshotCard({
           {cell ? formatValue(cell.value, indicator.unit) : "—"}
         </span>
       </div>
+      {/* Sub-36 — `flex-1` spacer pushes the sparkline to the bottom of
+          the card so the title + value sit anchored at the top and the
+          card visibly fills its slot. Sparkline keeps its fixed 80×24
+          dims (responsive SVG sizing is a separate enhancement). */}
+      <div className="flex-1 min-h-0" aria-hidden="true" />
       <Sparkline
         data={sparkline ?? Array(12).fill(null)}
         status={status}

@@ -220,7 +220,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   }
 
   return (
-    <div className="font-mono text-xs text-gray-300 w-full flex flex-col gap-1">
+    <div className="font-mono text-xs text-gray-300 w-full h-full flex flex-col gap-1">
       {/* Phase B4 — watchlist tabs. Sits above the search input so the
           tab choice scopes the search results, not the other way round.
           'Alerted' badge shows count when alertedCompanyCodes is non-empty. */}

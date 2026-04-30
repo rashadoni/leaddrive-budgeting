@@ -108,8 +108,11 @@ export function IndicatorDetail() {
   }, [ivId]);
 
   if (!ivId) {
+    // Sub-36 — `h-full w-full` makes the empty state fill the panel
+    // slot (parent is `flex items-stretch`); content sits at the top
+    // so it stays glanceable and doesn't float in the middle.
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed">
+      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full">
         {t('indicatorDetail.emptyDrillDown')}
         <br />
         <br />
@@ -122,10 +125,10 @@ export function IndicatorDetail() {
     );
   }
   if (loading) {
-    return <span className="text-gray-700 font-mono text-xs">{t('indicatorDetail.loading')}</span>;
+    return <span className="text-gray-700 font-mono text-xs h-full w-full block">{t('indicatorDetail.loading')}</span>;
   }
   if (error) {
-    return <span className="text-[#FF4757] font-mono text-xs">{t('indicatorDetail.error')} {error}</span>;
+    return <span className="text-[#FF4757] font-mono text-xs h-full w-full block">{t('indicatorDetail.error')} {error}</span>;
   }
   if (!detail) return null;
 
