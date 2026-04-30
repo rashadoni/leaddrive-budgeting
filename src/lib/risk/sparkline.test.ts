@@ -61,8 +61,25 @@ describe('trailingMonthPeriods', () => {
 });
 
 // Stub data source — `evaluateAt` only uses it via the injected
-// buildContext, so we don't need real implementations here.
-const stubDs = {} as unknown as RecomputeDataSource;
+// buildContext, so we don't need REAL implementations here, but post-
+// sub-41 the `RecomputeDataSource` interface tightened `getIndicatorValue`
+// + `listChildCompanyIds` from optional → required. A `{} as unknown as
+// RecomputeDataSource` cast would bypass the tightening (the same
+// silent-failure mode sub-41 fixed in prod code) and mask the day a
+// future test forgets to inject `buildContext` — runtime would throw
+// `TypeError: ds.getIndicatorValue is not a function` instead of failing
+// loudly at the boundary. Provide minimal no-op implementations so the
+// stub satisfies the interface honestly without `unknown` cast.
+const stubDs: RecomputeDataSource = {
+  listBookings: async () => [],
+  listOperationalFacts: async () => [],
+  getCompanySettings: async () => null,
+  listCurrencyRates: async () => [],
+  listBudgetLines: async () => [],
+  upsertIndicatorValue: async () => {},
+  getIndicatorValue: async () => null,
+  listChildCompanyIds: async () => [],
+};
 
 describe('evaluateAt', () => {
   it('uses sparklineFormula when present (and falls through formula)', async () => {
