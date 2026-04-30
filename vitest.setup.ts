@@ -226,6 +226,9 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'actionCenter.itemAriaLabel': 'Review {company} {indicator}',
   'actionCenter.itemReviewHint': 'Click → jump to {company} · {indicator}',
   'actionCenter.currentValue': 'Value',
+  'actionCenter.alertsSectionTitle': 'Active rule alerts ({count})',
+  'actionCenter.alertsSectionAriaLabel': 'Rule-engine alerts grouped above cell items',
+  'actionCenter.alertChipAriaLabel': 'Jump to {code}',
   // AlertsPanel keys
   'alertsPanel.title': 'Alerts ({count})',
   'alertsPanel.subtitle': 'Multi-indicator rule matches across the holding. Press Esc to close.',

@@ -202,3 +202,4 @@ read that for the current picture, not this file. High-level snapshot:
 - Re-import of Excel requires Reset first (there's no incremental re-import yet — Phase 2.4 goal).
 - Prisma migrations: `npx prisma migrate dev --name <name> --skip-seed` works reliably.
 - Type checking: `npx tsc --noEmit` — there are pre-existing errors (see Phase 1.3), don't panic.
+- **Pre-commit hook (M7 regression gate):** `.githooks/pre-commit` runs the M7 status-band-shape scanner (~150ms) and aborts commits that would regress color-blind-safe shape coding. Activate once per clone with `git config core.hooksPath .githooks`. Bypass in emergencies with `git commit --no-verify`. The scanner also runs in the Stop-hook test gate, so missing pre-commit activation only affects mid-turn commits.

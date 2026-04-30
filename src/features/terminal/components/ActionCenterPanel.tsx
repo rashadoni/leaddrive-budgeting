@@ -9,29 +9,37 @@
  * a "pending review queue" of indicator cells whose state crossed a
  * threshold and now needs human attention before a decision is made.
  *
- * Data source: live `useMatrix()` cells filtered to red+amber, joined
- * with company / indicator metadata for human-readable labels. No
- * backend persistence in v1 — the queue is reconstructed from the
- * current matrix snapshot. Future v2 may add an Acknowledge action
- * (Alert table population per Phase 7.E C6 v3 🔄) so review state
- * survives across sessions.
+ * Data sources (sub-31 v2 — Round-13 architect closure):
+ *  - `useMatrix()` cells filtered to red+amber → cell-level work items
+ *  - `terminalStore.alertMatches` → rule-engine-grouped items above the
+ *    cell list, providing de-duped + rule-context semantics. When the
+ *    sector-red-spread alert fires across 5 sub-cos, instead of 5
+ *    separate cell rows the user sees ONE alert row with 5 affected
+ *    company chips. Cell-level rows remain below for granular drill-in.
  *
- * Click any row → `selectCompany(code)` + `setActiveIndicatorValue(id)`
- * + close modal so user lands on the offending cell with Panel 3 (drill-
- * down) auto-focused.
+ * Click handlers:
+ *  - Cell row → `selectCompany(code)` + `setActiveIndicatorValue(id)`
+ *    + Panel 3 focus + close modal
+ *  - Alert chip → `selectCompany(code)` + close modal (matches
+ *    AlertsPanel chip behavior)
  *
  * Pattern: same as AlertsPanel / ScenarioPanel / ComparePanel — modal
  * overlay opens on `terminal:open-action-center` event (CommandBar `ACT
  * GO` verb). Esc / backdrop / × close. Locale-aware via next-intl.
+ *
+ * Round-13 holdover closed in sub-31: prior versions' jsdoc noted "v2
+ * may merge alertMatches"; v2 has now landed.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
-import { ListChecks, X } from "lucide-react";
+import { ListChecks, X, AlertTriangle } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
+import { useCompanies } from "../hooks/use-companies";
 import { statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
 import type { IndicatorStatus } from "@/lib/risk/formula-engine";
+import type { AlertSeverity } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
 /** A single row in the queue — derived from one HeatMapCell. */
@@ -66,6 +74,24 @@ const SEVERITY_TONE: Record<"red" | "amber", string> = {
   amber: "text-[#FFB020] border-[#FFB020]/40 bg-[#FFB020]/10",
 };
 
+/** Sub-31 — alertMatches → IndicatorStatus mapping for shape glyph
+ *  selection. critical→red→■ / warning→amber→▲ / info→green→●. Mirrors
+ *  AlertsPanel SEVERITY_SHAPE pattern for cross-panel consistency. */
+const ALERT_SEVERITY_STATUS: Record<
+  AlertSeverity,
+  "red" | "amber" | "green"
+> = {
+  critical: "red",
+  warning: "amber",
+  info: "green",
+};
+
+const ALERT_SEVERITY_TONE: Record<AlertSeverity, string> = {
+  critical: "text-[#FF4757] border-[#FF4757]/40 bg-[#FF4757]/10",
+  warning: "text-[#FFB020] border-[#FFB020]/40 bg-[#FFB020]/10",
+  info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
+};
+
 export function ActionCenterPanel() {
   const t = useTranslations("terminal");
   const locale = useLocale();
@@ -75,7 +101,14 @@ export function ActionCenterPanel() {
     (s) => s.setActiveIndicatorValue,
   );
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
+  // Sub-31 v2 — pull rule-engine matches for the de-duped alerts
+  // section. Same store slice AlertsPanel reads from; published by
+  // HeatMap after each matrix fetch via `evaluateAlertRules(...)`.
+  const alertMatches = useTerminalStore((s) => s.alertMatches);
   const { matrix } = useMatrix();
+  // Resolve company codes for alert-chip rendering (id → code lookup);
+  // shared with AlertsPanel via the useCompanies module-cache hook.
+  const { idToCode, loading: companiesLoading } = useCompanies();
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
@@ -199,6 +232,104 @@ export function ActionCenterPanel() {
         </header>
 
         <div className="px-6 py-4 space-y-4">
+          {/* Sub-31 v2 — rule-engine alerts section. Renders ABOVE the
+              cell-level work items so the user sees high-level rule
+              context (e.g. "sector-red-spread fired across 5 sub-cos")
+              first, then drills into individual cells if needed. Same
+              store slice AlertsPanel modal consumes — keeping the two
+              surfaces in sync without a separate fetch. */}
+          {alertMatches !== null && alertMatches.length > 0 && (
+            <section
+              aria-label={t("actionCenter.alertsSectionAriaLabel")}
+              data-testid="action-center-alerts-section"
+            >
+              <h3 className="text-xs font-mono uppercase tracking-wider mb-2 text-[#FFB020] flex items-center gap-1.5">
+                <AlertTriangle
+                  size={12}
+                  className="text-[#FFB020]"
+                  aria-hidden="true"
+                />
+                {t("actionCenter.alertsSectionTitle", {
+                  count: alertMatches.length,
+                })}
+              </h3>
+              <ul className="space-y-2">
+                {alertMatches.map((m, i) => {
+                  const status = ALERT_SEVERITY_STATUS[m.severity];
+                  const tone = ALERT_SEVERITY_TONE[m.severity];
+                  const KNOWN_RULES = new Set([
+                    "company-mostly-red",
+                    "company-critical-composite",
+                    "sector-amber-cluster",
+                    "sector-red-spread",
+                    "critical-indicator-org-wide",
+                  ]);
+                  // Locale-aware rule name (defaults to server-side
+                  // ruleName for synthetic / custom rules — same try/catch
+                  // dance as AlertsPanel:155-172).
+                  let ruleName = m.ruleName;
+                  if (KNOWN_RULES.has(m.ruleId)) {
+                    try {
+                      ruleName = t(`alerts.rules.${m.ruleId}` as never);
+                    } catch {
+                      ruleName = m.ruleName;
+                    }
+                  }
+                  return (
+                    <li
+                      key={`${m.ruleId}-${i}`}
+                      data-testid={`action-center-alert-${m.ruleId}`}
+                      className={`rounded border px-3 py-2 ${tone}`}
+                    >
+                      <div className="flex items-baseline gap-1.5">
+                        <span aria-hidden="true" className="opacity-80">
+                          {statusShape(status)}
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold">
+                          {ruleName}
+                        </span>
+                      </div>
+                      <div className="text-sm mt-0.5">{m.message}</div>
+                      {m.affectedCompanyIds.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {!companiesLoading
+                            ? m.affectedCompanyIds.map((id) => {
+                                const code = idToCode.get(id);
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (code) {
+                                        selectCompany(code);
+                                        setOpen(false);
+                                      }
+                                    }}
+                                    disabled={!code}
+                                    aria-label={
+                                      code
+                                        ? t("actionCenter.alertChipAriaLabel", {
+                                            code,
+                                          })
+                                        : undefined
+                                    }
+                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    data-testid={`action-center-alert-chip-${id}`}
+                                  >
+                                    {code ?? id.slice(0, 8) + "…"}
+                                  </button>
+                                );
+                              })
+                            : null}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
           {matrix === null ? (
             <p
               className="text-sm text-muted-foreground"

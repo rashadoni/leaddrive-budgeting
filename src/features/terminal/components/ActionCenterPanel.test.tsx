@@ -37,11 +37,24 @@ import {
 } from "@testing-library/react";
 import { ActionCenterPanel } from "./ActionCenterPanel";
 import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
 
-// Mock the store: each test sets desired actions.
+// Mock the store: each test sets desired actions + alertMatches slice
+// (sub-31 v2 wiring). Default alertMatches = null so tests that don't
+// care about the alerts section just see cell-level items as before.
 const selectCompanyMock = vi.fn();
 const setActiveIndicatorValueMock = vi.fn();
 const setActivePanelMock = vi.fn();
+let mockAlertMatches:
+  | null
+  | Array<{
+      ruleId: string;
+      ruleName: string;
+      severity: "critical" | "warning" | "info";
+      message: string;
+      affectedCompanyIds: readonly string[];
+      affectedIndicatorCodes?: readonly string[];
+    }> = null;
 
 vi.mock("../store/terminalStore", () => ({
   useTerminalStore: <T,>(
@@ -49,12 +62,14 @@ vi.mock("../store/terminalStore", () => ({
       selectCompany: typeof selectCompanyMock;
       setActiveIndicatorValue: typeof setActiveIndicatorValueMock;
       setActivePanel: typeof setActivePanelMock;
+      alertMatches: typeof mockAlertMatches;
     }) => T,
   ) =>
     selector({
       selectCompany: selectCompanyMock,
       setActiveIndicatorValue: setActiveIndicatorValueMock,
       setActivePanel: setActivePanelMock,
+      alertMatches: mockAlertMatches,
     }),
 }));
 
@@ -153,13 +168,26 @@ beforeEach(() => {
   selectCompanyMock.mockReset();
   setActiveIndicatorValueMock.mockReset();
   setActivePanelMock.mockReset();
+  mockAlertMatches = null;
   __resetMatrixCacheForTests();
-  global.fetch = vi.fn(async () =>
-    new Response(JSON.stringify(MIXED_FIXTURE), {
+  __resetCompaniesCacheForTests();
+  global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+    const u = String(url);
+    // Sub-31 — useCompanies() lookups for alert-chip resolution.
+    if (u.includes("/api/companies")) {
+      return new Response(
+        JSON.stringify([
+          { id: "co_a", code: "AAC-MAIN" },
+          { id: "co_b", code: "ATL-DBZ" },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify(MIXED_FIXTURE), {
       status: 200,
       headers: { "content-type": "application/json" },
-    }),
-  ) as never;
+    });
+  }) as never;
 });
 
 afterEach(() => {
@@ -351,5 +379,114 @@ describe("ActionCenterPanel (Tier-3 sub-28)", () => {
       expect(screen.queryByText("Gross Margin")).toBeTruthy();
     });
     expect(screen.getByText("Gross Margin")).toBeTruthy();
+  });
+
+  // Sub-31 v2 — alertMatches wiring (Round-13 closure)
+
+  it("renders alerts section when alertMatches present", async () => {
+    mockAlertMatches = [
+      {
+        ruleId: "company-mostly-red",
+        ruleName: "Company has many red indicators",
+        severity: "critical",
+        message: "AAC-MAIN has 4 red indicators (threshold: 3)",
+        affectedCompanyIds: ["co_a"],
+      },
+    ];
+    render(<ActionCenterPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("action-center-alerts-section"),
+      ).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("action-center-alert-company-mostly-red"),
+    ).toBeTruthy();
+    // Message rendered
+    expect(screen.getByText(/AAC-MAIN has 4 red indicators/)).toBeTruthy();
+  });
+
+  it("alerts section hidden when alertMatches null OR empty", async () => {
+    // null case (matrix not loaded yet)
+    mockAlertMatches = null;
+    const { unmount } = render(<ActionCenterPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeTruthy();
+    });
+    expect(
+      screen.queryByTestId("action-center-alerts-section"),
+    ).toBeNull();
+    unmount();
+    // empty case (no rules triggered)
+    mockAlertMatches = [];
+    render(<ActionCenterPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeTruthy();
+    });
+    expect(
+      screen.queryByTestId("action-center-alerts-section"),
+    ).toBeNull();
+  });
+
+  it("alert chip click calls selectCompany + closes modal", async () => {
+    mockAlertMatches = [
+      {
+        ruleId: "company-mostly-red",
+        ruleName: "Company has many red indicators",
+        severity: "critical",
+        message: "AAC issue",
+        affectedCompanyIds: ["co_a"],
+      },
+    ];
+    render(<ActionCenterPanel />);
+    fireOpen();
+    // Wait for alerts section + companies-fetch resolve so chip is enabled.
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("action-center-alert-chip-co_a"),
+      ).toBeTruthy();
+    });
+    // Allow companies fetch to resolve and chip to enable.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const chip = screen.getByTestId("action-center-alert-chip-co_a");
+    expect((chip as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(chip);
+    expect(selectCompanyMock).toHaveBeenCalledWith("AAC-MAIN");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("renders both alerts section AND cell items when both present", async () => {
+    mockAlertMatches = [
+      {
+        ruleId: "sector-red-spread",
+        ruleName: "Sector red contagion",
+        severity: "critical",
+        message: "Industrial sector red across 2 cos",
+        affectedCompanyIds: ["co_a", "co_b"],
+      },
+    ];
+    render(<ActionCenterPanel />);
+    fireOpen();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("action-center-alerts-section"),
+      ).toBeTruthy();
+    });
+    // Both alerts AND cell-level items render
+    expect(
+      screen.getByTestId("action-center-alert-sector-red-spread"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("action-center-row-co_a:ind_gross"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("action-center-row-co_b:ind_opex"),
+    ).toBeTruthy();
   });
 });

@@ -1599,7 +1599,10 @@
       "itemReviewHint": "Клик → перейти к {company} · {indicator}",
       "currentValue": "Значение",
       "openVerb": "ACT",
-      "openVerbHint": "Открыть очередь действий"
+      "openVerbHint": "Открыть очередь действий",
+      "alertsSectionTitle": "Активные алерты правил ({count})",
+      "alertsSectionAriaLabel": "Алерты движка правил, сгруппированы над ячейками",
+      "alertChipAriaLabel": "Перейти к {code}"
     },
     "alertsPanel": {
       "title": "Алерты ({count})",

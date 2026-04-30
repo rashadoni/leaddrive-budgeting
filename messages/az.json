@@ -1599,7 +1599,10 @@
       "itemReviewHint": "Klik → {company} · {indicator}-a keç",
       "currentValue": "Dəyər",
       "openVerb": "ACT",
-      "openVerbHint": "Tədbir Mərkəzini aç"
+      "openVerbHint": "Tədbir Mərkəzini aç",
+      "alertsSectionTitle": "Aktiv qayda xəbərdarlıqları ({count})",
+      "alertsSectionAriaLabel": "Qayda mühərriki xəbərdarlıqları, xanaların üstündə qruplaşdırılıb",
+      "alertChipAriaLabel": "{code}-a keç"
     },
     "alertsPanel": {
       "title": "Xəbərdarlıqlar ({count})",

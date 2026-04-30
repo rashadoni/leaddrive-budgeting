@@ -1599,7 +1599,10 @@
       "itemReviewHint": "Click → jump to {company} · {indicator}",
       "currentValue": "Value",
       "openVerb": "ACT",
-      "openVerbHint": "Open Action Center"
+      "openVerbHint": "Open Action Center",
+      "alertsSectionTitle": "Active rule alerts ({count})",
+      "alertsSectionAriaLabel": "Rule-engine alerts grouped above cell items",
+      "alertChipAriaLabel": "Jump to {code}"
     },
     "alertsPanel": {
       "title": "Alerts ({count})",
