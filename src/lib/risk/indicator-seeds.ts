@@ -257,7 +257,15 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     nameEn: "Revenue (Total)",
     nameAz: "Ümumi Gəlir",
     nameRu: "Совокупная выручка",
-    category: "operational",
+    // Sub-42 architect Round-1 closure — `category: "internal"` excludes
+    // this indicator from HeatMap rendering. Its job is to PERSIST raw $
+    // for rollup() / fact() composites, not to be a user-facing risk row.
+    // Without this gate the threshold "any positive revenue is green"
+    // would emit a green-by-default column on every operational co —
+    // signal-free noise polluting the matrix. The matrix endpoint at
+    // `src/app/api/indicators/matrix/route.ts` filters out
+    // `category: 'internal'` rows.
+    category: "internal",
     industries: [],
     unit: "AZN",
     direction: "higher_better",
@@ -283,7 +291,15 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     nameEn: "Holding Revenue (rollup)",
     nameAz: "Holdinq Gəliri (rollup)",
     nameRu: "Выручка холдинга (rollup)",
-    category: "operational",
+    // Sub-42 architect Round-1 closure — `category: "internal"` until
+    // prereq #1 (parent-co recompute) lands. Today this indicator fires
+    // on op-cos with no children → 0 → amber, which is misleading: a
+    // sub-co showing "Holding Revenue 0" is meaningless. Keeping it in
+    // the catalog (so phase-3 rollup() is wired end-to-end + ready to
+    // demonstrate once parent-co recompute ships) but hidden from the
+    // matrix render until then. Flip to "operational" alongside the
+    // recompute-trigger extension.
+    category: "internal",
     industries: [],
     unit: "AZN",
     direction: "higher_better",

@@ -102,6 +102,13 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           OR: [{ organizationId: null }, { organizationId: session.orgId }],
+          // Sub-42 architect Round-1 closure — exclude internal-only
+          // indicators (e.g. raw-$ persistence rows like IND_REVENUE_TOTAL
+          // that exist for fact() / rollup() composition but shouldn't
+          // pollute the user-facing HeatMap). Adding the filter here (vs
+          // a downstream UI filter) keeps the matrix endpoint's wire-shape
+          // honest: clients see what they should render.
+          category: { not: 'internal' },
         },
         select: {
           id: true,
