@@ -54,6 +54,7 @@ import {
   type Thresholds,
 } from './formula-engine';
 import { parsePeriod, daysInPeriod, type Period } from './periods';
+import { computeSparkline } from './sparkline';
 
 // --- Narrow row shapes the pipeline consumes ---------------------------------
 
@@ -176,6 +177,17 @@ export interface RecomputeDataSource {
     value: number;
     status: IndicatorStatus;
     inputs: RecomputeInputs;
+    /**
+     * Phase 7.E perMonth chain phase 2 — optional 12-slot trailing-month
+     * sparkline persisted alongside the spot value. When `undefined`, the
+     * Prisma adapter MUST NOT touch the existing `IndicatorValue.sparkline`
+     * column — bulk recomputes (period-only fan-out) skip sparkline to stay
+     * within the 60s function budget, and clobbering a previously-computed
+     * array with `null` would silently nuke the dedicated worker's output.
+     * On CREATE, `undefined` falls back to `[]` (the original first-write
+     * default that predates phase 2).
+     */
+    sparkline?: (number | null)[];
   }): Promise<void>;
 }
 
@@ -480,7 +492,17 @@ export function createPrismaDataSource(
       value,
       status,
       inputs,
+      sparkline,
     }) {
+      // Phase 7.E phase 2 — sparkline write semantics:
+      //   - CREATE: caller-supplied array OR `[]` (the original first-write
+      //     default). `[]` keeps the schema invariant `sparkline != null` so
+      //     the UI doesn't have to handle null specially.
+      //   - UPDATE: include the column ONLY if the caller supplied a value.
+      //     Bulk recomputes that pass `withSparkline: false` (period-only
+      //     fan-out, xlsx-import follow-up) MUST NOT clobber sparklines
+      //     populated earlier by the offline `compute-sparklines.ts` worker
+      //     OR by an interactive `withSparkline: true` recompute.
       await prisma.indicatorValue.upsert({
         where: {
           companyId_indicatorId_period: { companyId, indicatorId, period },
@@ -492,7 +514,7 @@ export function createPrismaDataSource(
           period,
           value,
           status,
-          sparkline: [] as Prisma.InputJsonValue,
+          sparkline: (sparkline ?? []) as Prisma.InputJsonValue,
           inputs: inputs as unknown as Prisma.InputJsonValue,
         },
         update: {
@@ -500,6 +522,9 @@ export function createPrismaDataSource(
           status,
           inputs: inputs as unknown as Prisma.InputJsonValue,
           computedAt: new Date(),
+          ...(sparkline !== undefined && {
+            sparkline: sparkline as Prisma.InputJsonValue,
+          }),
         },
       });
     },
@@ -1250,6 +1275,16 @@ export interface IndicatorDefinitionLike {
    *  finance users see "verify data" rather than a misleading red alert.
    *  Optional so tests / callers without the unit can skip the cap. */
   unit?: string;
+  /**
+   * Phase 7.E perMonth chain phase 2 — optional formula variant evaluated
+   * at each of the 12 trailing months when `withSparkline=true`. When
+   * absent or null, the sparkline pipeline falls back to `formula` (see
+   * `sparkline.ts:103-105`). Most indicators leave this null; the override
+   * exists for cases where the annual formula doesn't cleanly evaluate at
+   * monthly granularity (e.g. AAC_OCC's daily-aggregate variant).
+   * Optional so tests / callers without sparkline support stay green.
+   */
+  sparklineFormula?: string | null;
 }
 
 /**
@@ -1295,6 +1330,19 @@ export async function recomputeIndicator(
     companyId: string;
     definition: IndicatorDefinitionLike;
     period: string;
+    /**
+     * Phase 7.E perMonth chain phase 2 — when true, also compute and
+     * persist a 12-slot trailing-month sparkline alongside the spot value.
+     *
+     * Cost: +12 buildContext calls per indicator (~13× the no-sparkline
+     * cost). Acceptable for single-IV / single-co interactive recomputes
+     * (UI drill-down → ~91ms). Avoid on bulk-import + holding-wide refresh
+     * paths — those hit `MAX_TARGETS_PER_REQUEST` ceilings or per-pair
+     * fan-out into the thousands. Default `false` preserves the prior
+     * pipeline behavior; the offline `scripts/compute-sparklines.ts`
+     * worker remains the canonical refresher for bulk paths.
+     */
+    withSparkline?: boolean;
   },
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
@@ -1343,6 +1391,40 @@ export async function recomputeIndicator(
     finalInputs.error = { code: result.code, reason: result.reason };
   }
 
+  // Phase 7.E phase 2 — opt-in sparkline. Computed BEFORE upsert so a
+  // sparkline failure (resolver-level throw) abandons the whole recompute
+  // (caller's per-pair try/catch surfaces it). `null` slots inside the
+  // returned array are normal — they signal a single-period evaluation
+  // that failed (missing data / formula error) and must be preserved as
+  // gaps in the rendered chart, NOT collapsed to zero.
+  let sparkline: (number | null)[] | undefined;
+  if (args.withSparkline) {
+    sparkline = await computeSparkline(ds, {
+      organizationId: args.organizationId,
+      companyId: args.companyId,
+      definition: {
+        id: args.definition.id,
+        formula: args.definition.formula,
+        sparklineFormula: args.definition.sparklineFormula ?? null,
+        requiredInputs: args.definition.requiredInputs,
+      },
+      anchorPeriod: args.period,
+      // Adapter: sparkline.ts buildContext takes period:string; recompute's
+      // buildContext takes Period — bridge here. Mirrors the same shape used
+      // by `scripts/compute-sparklines.ts:77-92`.
+      buildContext: async (a) => {
+        const p = parsePeriod(a.period);
+        const { context: c } = await buildContext(ds, {
+          organizationId: a.organizationId,
+          companyId: a.companyId,
+          period: p,
+          requiredInputs: a.requiredInputs,
+        });
+        return { context: c };
+      },
+    });
+  }
+
   await ds.upsertIndicatorValue({
     organizationId: args.organizationId,
     companyId: args.companyId,
@@ -1351,6 +1433,7 @@ export async function recomputeIndicator(
     value,
     status,
     inputs: finalInputs,
+    sparkline,
   });
 
   return { ok: result.ok, status, value };

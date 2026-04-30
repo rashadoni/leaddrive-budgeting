@@ -7,6 +7,17 @@
  * column. Idempotent — re-running produces identical output (modulo
  * underlying budget/booking changes).
  *
+ * --- Phase 7.E phase 2 (2026-04-30) -----------------------------------------
+ * `recomputeIndicator()` now also wires `computeSparkline` inline when called
+ * with `withSparkline:true` (single-IV interactive recomputes via
+ * `POST /api/indicators` with both `companyId` + `indicatorCode`). This
+ * script remains the canonical refresher for two paths:
+ *   1. Backfill of IVs created BEFORE phase 2 (sparkline=[] from the original
+ *      first-write default).
+ *   2. Bulk holding-wide refresh — period-only recomputes + xlsx-import
+ *      follow-up (recompute-trigger.ts) intentionally skip inline sparkline
+ *      to fit the 60s function budget; this script catches them up.
+ *
  * Usage:
  *   npx tsx scripts/compute-sparklines.ts                 # all orgs, current state
  *   npx tsx scripts/compute-sparklines.ts --orgSlug=azmade

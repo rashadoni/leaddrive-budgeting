@@ -135,6 +135,7 @@ export async function runRecomputeForCompanies(
       organizationId: true,
       code: true,
       formula: true,
+      sparklineFormula: true,
       thresholds: true,
       requiredInputs: true,
       industries: true,
@@ -181,11 +182,17 @@ export async function runRecomputeForCompanies(
         id: definition.id,
         code: definition.code,
         formula: definition.formula,
+        sparklineFormula: definition.sparklineFormula,
         thresholds: definition.thresholds,
         requiredInputs: definition.requiredInputs,
         unit: definition.unit,
       };
       try {
+        // Phase 7.E phase 2 — bulk-import follow-up paths intentionally
+        // omit `withSparkline`. At Phase F (60×9×5 = 2700 pairs) inline
+        // sparkline would 13× the runtime — the offline
+        // `scripts/compute-sparklines.ts` worker is the canonical
+        // post-import refresher.
         const result = await recomputeIndicator(ds, {
           organizationId,
           companyId: company.id,

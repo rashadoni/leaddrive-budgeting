@@ -67,6 +67,7 @@ async function resolveTargets(
       organizationId: true,
       code: true,
       formula: true,
+      sparklineFormula: true,
       thresholds: true,
       requiredInputs: true,
       industries: true,
@@ -229,11 +230,19 @@ export async function POST(request: NextRequest) {
   };
   const results: Outcome[] = [];
 
+  // Phase 7.E phase 2 — opt in to inline sparkline computation only when
+  // the request is a single (company, indicator) recompute (UI drill-down,
+  // ~91ms). Bulk paths (period-only fan-out, single-company multi-indicator)
+  // stay sparkline-free to fit the 60s function budget — the offline
+  // `scripts/compute-sparklines.ts` worker is the canonical refresher there.
+  const withSparkline = Boolean(companyId && indicatorCode);
+
   for (const { company, definition } of targets) {
     const defLike: IndicatorDefinitionLike = {
       id: definition.id,
       code: definition.code,
       formula: definition.formula,
+      sparklineFormula: definition.sparklineFormula,
       thresholds: definition.thresholds,
       requiredInputs: definition.requiredInputs,
       unit: definition.unit,
@@ -244,6 +253,7 @@ export async function POST(request: NextRequest) {
         companyId: company.id,
         definition: defLike,
         period,
+        withSparkline,
       });
       results.push({
         companyId: company.id,

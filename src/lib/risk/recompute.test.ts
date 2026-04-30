@@ -31,6 +31,9 @@ type MockState = {
     value: number;
     status: string;
     inputs: RecomputeInputs;
+    /** Phase 7.E phase 2 — captured for sparkline-integration tests; the
+     *  field is optional because non-sparkline call paths leave it absent. */
+    sparkline?: (number | null)[];
   }>;
   /** Every read logged with the org it was scoped to — used to prove the
    *  data-source enforces tenant scoping at the call site. */
@@ -1552,5 +1555,207 @@ describe('recomputeIndicator — tenant scoping', () => {
     expect(ds.state.upserts[0].organizationId).toBe('org_ACME');
     expect(ds.state.orgReads).toContain('bookings:org_ACME');
     expect(ds.state.orgReads).toContain('settings:org_ACME');
+  });
+});
+
+// --- Phase 7.E perMonth chain phase 2 — sparkline integration ----------------
+
+describe('recomputeIndicator — sparkline integration (Phase 7.E phase 2)', () => {
+  // Constant-formula indicator: sparkline = 12 copies of the same value.
+  // Locks the integration chain (length / numeric / idempotency) without
+  // entangling the resolver-level monthly-distribution semantics, which
+  // are already covered by `sparkline.test.ts:217+` against a real
+  // BudgetLine fixture.
+  const IND_CONST: IndicatorDefinitionLike = {
+    id: 'ind_const',
+    code: 'IND_CONST',
+    formula: '42',
+    thresholds: {
+      green: { op: '>=', value: 0 },
+      amber: { op: '>=', value: -100 },
+      red: { op: '<', value: -100 },
+    },
+    requiredInputs: [],
+  };
+
+  it('default (withSparkline omitted) → upsert.sparkline is undefined (back-compat lock)', async () => {
+    const ds = mockDs({});
+    await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: IND_CONST,
+      period: '2026-04',
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    expect(ds.state.upserts[0].sparkline).toBeUndefined();
+  });
+
+  it('withSparkline:false explicit → upsert.sparkline is undefined', async () => {
+    const ds = mockDs({});
+    await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: IND_CONST,
+      period: '2026-04',
+      withSparkline: false,
+    });
+    expect(ds.state.upserts[0].sparkline).toBeUndefined();
+  });
+
+  it('withSparkline:true → upsert.sparkline is 12-slot array of constant', async () => {
+    const ds = mockDs({});
+    await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: IND_CONST,
+      period: '2026-04',
+      withSparkline: true,
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    const sl = ds.state.upserts[0].sparkline;
+    expect(sl).toBeDefined();
+    expect(sl).toHaveLength(12);
+    expect(sl).toEqual(Array(12).fill(42));
+  });
+
+  it('withSparkline:true uses sparklineFormula when present (overrides formula)', async () => {
+    // Spot value reads `formula` (=10); sparkline reads `sparklineFormula`
+    // (=99). Verifies the variant override fires inside `recomputeIndicator`,
+    // not just at the `sparkline.ts` boundary.
+    const ds = mockDs({});
+    const def: IndicatorDefinitionLike = {
+      ...IND_CONST,
+      formula: '10',
+      sparklineFormula: '99',
+    };
+    const r = await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: def,
+      period: '2026-04',
+      withSparkline: true,
+    });
+    expect(r.value).toBe(10); // spot from `formula`
+    expect(ds.state.upserts[0].sparkline).toEqual(Array(12).fill(99));
+  });
+
+  it('withSparkline:true with sparklineFormula:null falls back to formula', async () => {
+    const ds = mockDs({});
+    const def: IndicatorDefinitionLike = {
+      ...IND_CONST,
+      sparklineFormula: null,
+    };
+    await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: def,
+      period: '2026-04',
+      withSparkline: true,
+    });
+    expect(ds.state.upserts[0].sparkline).toEqual(Array(12).fill(42));
+  });
+
+  it('idempotent — same fixtures × 2 recomputes produce identical sparklines', async () => {
+    const ds = mockDs({});
+    for (let i = 0; i < 2; i++) {
+      await recomputeIndicator(ds, {
+        ...orgArgs,
+        definition: IND_CONST,
+        period: '2026-04',
+        withSparkline: true,
+      });
+    }
+    expect(ds.state.upserts).toHaveLength(2);
+    expect(ds.state.upserts[0].sparkline).toEqual(
+      ds.state.upserts[1].sparkline,
+    );
+  });
+
+  it('spot-status independent of sparkline value (classify reads `formula` only)', async () => {
+    // Defensive: spot value uses `formula`; classifier must NOT see the
+    // sparklineFormula output. With formula=10 and thresholds requiring 50
+    // for green, status MUST be amber (not green-from-99).
+    const ds = mockDs({});
+    const def: IndicatorDefinitionLike = {
+      id: 'ind_x',
+      code: 'IND_X',
+      formula: '10',
+      sparklineFormula: '99',
+      thresholds: {
+        green: { op: '>=', value: 50 },
+        amber: { op: '>=', value: 5 },
+        red: { op: '<', value: 5 },
+      },
+      requiredInputs: [],
+    };
+    const r = await recomputeIndicator(ds, {
+      ...orgArgs,
+      definition: def,
+      period: '2026-04',
+      withSparkline: true,
+    });
+    expect(r.value).toBe(10);
+    expect(r.status).toBe('amber');
+    expect(ds.state.upserts[0].sparkline).toEqual(Array(12).fill(99));
+  });
+});
+
+// --- Phase 7.E phase 2 — Prisma adapter sparkline write semantics ------------
+
+describe('createPrismaDataSource.upsertIndicatorValue — sparkline write semantics (Phase 7.E phase 2)', () => {
+  // Critical no-clobber invariant: bulk recomputes that pass `sparkline:
+  // undefined` must NOT include sparkline in the UPDATE payload, otherwise
+  // every period-only fan-out would silently nuke sparklines populated by
+  // the offline `compute-sparklines.ts` worker or by an interactive
+  // single-IV recompute. Lock the Prisma `upsert(...)` arg shape directly.
+  function makePrismaSpy() {
+    const upsert = vi.fn().mockResolvedValue({});
+    const prisma = {
+      indicatorValue: { upsert },
+    } as unknown as Parameters<typeof createPrismaDataSource>[0];
+    return { prisma, upsert };
+  }
+
+  const baseArgs = {
+    organizationId: 'org_1',
+    companyId: 'co_1',
+    indicatorId: 'ind_1',
+    period: '2026-04',
+    value: 80,
+    status: 'green' as const,
+    inputs: { resolved: {}, aggregates: {}, derived: {} },
+  };
+
+  it('CREATE: omits sparkline → writes [] (preserves first-write default)', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.upsertIndicatorValue(baseArgs);
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const args = upsert.mock.calls[0][0];
+    expect(args.create.sparkline).toEqual([]);
+  });
+
+  it('CREATE: caller-supplied sparkline lands in create payload', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    const sl: (number | null)[] = [1, 2, null, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    await ds.upsertIndicatorValue({ ...baseArgs, sparkline: sl });
+    const args = upsert.mock.calls[0][0];
+    expect(args.create.sparkline).toEqual(sl);
+  });
+
+  it('UPDATE: omits sparkline KEY when caller omits (no-clobber invariant)', async () => {
+    // The load-bearing invariant. If `update.sparkline` is set to anything
+    // (including `undefined` / `null` / `[]`) when caller didn't supply one,
+    // bulk period-only recomputes would zero out worker-populated arrays.
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.upsertIndicatorValue(baseArgs);
+    const args = upsert.mock.calls[0][0];
+    expect(args.update).not.toHaveProperty('sparkline');
+  });
+
+  it('UPDATE: caller-supplied sparkline lands in update payload', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    const sl: (number | null)[] = Array(12).fill(42);
+    await ds.upsertIndicatorValue({ ...baseArgs, sparkline: sl });
+    const args = upsert.mock.calls[0][0];
+    expect(args.update.sparkline).toEqual(sl);
   });
 });
