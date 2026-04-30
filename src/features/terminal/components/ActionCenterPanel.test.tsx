@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
 /**
- * Tier-3 sub-28 — ActionCenterPanel behavior tests.
+ * ActionCenterPanel behavior tests.
  *
- * Locks in:
+ * Birth: Tier-3 sub-28 (v1 — cells-only).
+ * v2: sub-31 (rule-engine alerts wiring — Round-13 holdover closed).
+ *
+ * Locks in (sub-28 v1 — cell items):
  *  - Initial render: closed (returns null) until `terminal:open-action-center`.
  *  - Opens on event with role=dialog + aria-label.
  *  - `null` matrix (not loaded yet) → loading message.
@@ -16,6 +19,13 @@
  *    (still navigates without crashing on missing IV).
  *  - Esc / backdrop / close-button all dismiss.
  *  - Listener cleanup on unmount.
+ *
+ * Locks in (sub-31 v2 — alerts wiring):
+ *  - Alerts section renders when alertMatches present.
+ *  - Alerts section hidden when alertMatches null OR empty.
+ *  - Alert chip click → selectCompany(code) + close modal.
+ *  - Both alerts section AND cell items render concurrently when both
+ *    are present (de-duped surfaces, complementary not redundant).
  */
 
 import React from "react";
@@ -201,7 +211,7 @@ function fireOpen(): void {
   });
 }
 
-describe("ActionCenterPanel (Tier-3 sub-28)", () => {
+describe("ActionCenterPanel (Tier-3 sub-28 v1 + sub-31 v2)", () => {
   it("renders nothing initially", () => {
     const { container } = render(<ActionCenterPanel />);
     expect(container.firstChild).toBeNull();

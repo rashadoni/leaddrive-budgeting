@@ -1,21 +1,24 @@
 "use client";
 
 /**
- * Tier-3 sub-28 — Action Center Panel (Bloomberg EMSX-orders equivalent
- * for the CFO use-case).
+ * Action Center Panel (Bloomberg EMSX-orders equivalent for the CFO
+ * use-case).
+ *
+ * Birth: Tier-3 sub-28 (v1 — cells-only).
+ * v2: sub-31 (added rule-engine alerts wiring — Round-13 holdover closed).
  *
  * Bloomberg's EMSX shows the buy-side trader's order lifecycle (pending
  * fills, working bids, rejected orders). Our holding-CFO equivalent is
- * a "pending review queue" of indicator cells whose state crossed a
- * threshold and now needs human attention before a decision is made.
+ * a "pending review queue" of items needing human attention.
  *
- * Data sources (sub-31 v2 — Round-13 architect closure):
+ * Data sources:
+ *  - `terminalStore.alertMatches` → rule-engine-grouped items rendered
+ *    in the TOP section (sub-31 v2). De-duped + rule-context: when
+ *    sector-red-spread fires across 5 sub-cos, the user sees ONE alert
+ *    row with 5 affected-company chips, not 5 separate cell rows.
  *  - `useMatrix()` cells filtered to red+amber → cell-level work items
- *  - `terminalStore.alertMatches` → rule-engine-grouped items above the
- *    cell list, providing de-duped + rule-context semantics. When the
- *    sector-red-spread alert fires across 5 sub-cos, instead of 5
- *    separate cell rows the user sees ONE alert row with 5 affected
- *    company chips. Cell-level rows remain below for granular drill-in.
+ *    in the BOTTOM section (sub-28 v1), grouped by severity for granular
+ *    drill-in.
  *
  * Click handlers:
  *  - Cell row → `selectCompany(code)` + `setActiveIndicatorValue(id)`
@@ -26,9 +29,6 @@
  * Pattern: same as AlertsPanel / ScenarioPanel / ComparePanel — modal
  * overlay opens on `terminal:open-action-center` event (CommandBar `ACT
  * GO` verb). Esc / backdrop / × close. Locale-aware via next-intl.
- *
- * Round-13 holdover closed in sub-31: prior versions' jsdoc noted "v2
- * may merge alertMatches"; v2 has now landed.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -91,6 +91,18 @@ const ALERT_SEVERITY_TONE: Record<AlertSeverity, string> = {
   warning: "text-[#FFB020] border-[#FFB020]/40 bg-[#FFB020]/10",
   info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
 };
+
+/** Round-26 closure — hoisted from per-render set construction inside the
+ *  alert-row map to module level. Mirrors `ALERT_SEVERITY_TONE` and
+ *  `ALERT_SEVERITY_STATUS` patterns above; same semantic as
+ *  `AlertsPanel.tsx:155-172` allowlist. */
+const KNOWN_DEFAULT_RULES: ReadonlySet<string> = new Set([
+  "company-mostly-red",
+  "company-critical-composite",
+  "sector-amber-cluster",
+  "sector-red-spread",
+  "critical-indicator-org-wide",
+]);
 
 export function ActionCenterPanel() {
   const t = useTranslations("terminal");
@@ -257,18 +269,12 @@ export function ActionCenterPanel() {
                 {alertMatches.map((m, i) => {
                   const status = ALERT_SEVERITY_STATUS[m.severity];
                   const tone = ALERT_SEVERITY_TONE[m.severity];
-                  const KNOWN_RULES = new Set([
-                    "company-mostly-red",
-                    "company-critical-composite",
-                    "sector-amber-cluster",
-                    "sector-red-spread",
-                    "critical-indicator-org-wide",
-                  ]);
                   // Locale-aware rule name (defaults to server-side
                   // ruleName for synthetic / custom rules — same try/catch
-                  // dance as AlertsPanel:155-172).
+                  // dance as AlertsPanel:155-172). KNOWN_DEFAULT_RULES is
+                  // a module-level constant (Round-26 hoist).
                   let ruleName = m.ruleName;
-                  if (KNOWN_RULES.has(m.ruleId)) {
+                  if (KNOWN_DEFAULT_RULES.has(m.ruleId)) {
                     try {
                       ruleName = t(`alerts.rules.${m.ruleId}` as never);
                     } catch {

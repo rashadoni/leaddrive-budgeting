@@ -267,9 +267,10 @@ export function PanelGrid() {
           CommandBar's `SCN <code> GO` dispatch. What-if scenario inspector
           + queue-apply. Same dismiss pattern as AuditModal. */}
       <ScenarioPanel />
-      {/* Tier-3 sub-28 — opens on `terminal:open-action-center` event
-          fired by CommandBar's `ACT GO` dispatch. Pending-review queue
-          synthesized from live matrix red+amber cells. Same dismiss
+      {/* Tier-3 sub-28 (v1 cells) + sub-31 (v2 alerts wiring) — opens on
+          `terminal:open-action-center` event fired by CommandBar's `ACT GO`
+          dispatch. Two-section pending-review queue: (a) rule-engine alert
+          matches above, (b) red+amber leaf cells below. Same dismiss
           pattern as AuditModal / AlertsPanel. */}
       <ActionCenterPanel />
       {/* Tier-3 sub-30 — Bloomberg IB Internal Chat equivalent.

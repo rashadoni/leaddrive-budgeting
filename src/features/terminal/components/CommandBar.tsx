@@ -198,12 +198,14 @@ export function CommandBar() {
         window.dispatchEvent(new CustomEvent('terminal:open-audit'));
         return { message: 'AUD →' };
       case 'act':
-        // Tier-3 sub-28 — ActionCenterPanel opens on `terminal:open-action-center`.
-        // Same overlay-modal pattern as AUD/ALT/CMP/SCN; modal floats above
-        // the 4-panel grid, listing red+amber leaf cells synthesized from
-        // the live `useMatrix()` snapshot. (Round-13 audit: original comment
-        // claimed "+ alertMatches" but the implementation does NOT consume
-        // `terminalStore.alertMatches`. v2 wire-up tracked as 🔄 in CARRYOVER.)
+        // Tier-3 sub-28 (v1 cells) + sub-31 (v2 alerts wiring) —
+        // ActionCenterPanel opens on `terminal:open-action-center`. Same
+        // overlay-modal pattern as AUD/ALT/CMP/SCN; modal floats above the
+        // 4-panel grid. v2 surfaces TWO sections: (a) rule-engine alert
+        // matches from `terminalStore.alertMatches` (de-duped by rule,
+        // chips for affected companies), and (b) red+amber leaf cells from
+        // the live `useMatrix()` snapshot, grouped by severity for granular
+        // drill-in.
         window.dispatchEvent(new CustomEvent('terminal:open-action-center'));
         return { message: 'ACT →' };
       case 'cmt':
