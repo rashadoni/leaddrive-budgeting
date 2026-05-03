@@ -33,6 +33,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import {
+  localizeAlertMessageParams,
+  type IndustryTranslator,
+} from "@/lib/risk/alert-message-i18n";
 import { ListChecks, X, AlertTriangle } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
@@ -102,6 +106,10 @@ const KNOWN_DEFAULT_RULES = DEFAULT_ALERT_RULE_IDS;
 
 export function ActionCenterPanel() {
   const t = useTranslations("terminal");
+  // Phase 7.G Turn G — see AlertsPanel.tsx for the same pattern.
+  const tIndustries = useTranslations(
+    "industries",
+  ) as unknown as IndustryTranslator;
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const selectCompany = useTerminalStore((s) => s.selectCompany);
@@ -285,9 +293,14 @@ export function ActionCenterPanel() {
                   let messageBody = m.message;
                   if (m.messageKey && KNOWN_DEFAULT_RULES.has(m.ruleId)) {
                     try {
+                      // Turn G: localize industry code before substitution.
+                      const localizedParams = localizeAlertMessageParams(
+                        m.messageParams,
+                        tIndustries,
+                      );
                       messageBody = t(
                         m.messageKey as never,
-                        m.messageParams as never,
+                        localizedParams as never,
                       );
                     } catch {
                       messageBody = m.message;

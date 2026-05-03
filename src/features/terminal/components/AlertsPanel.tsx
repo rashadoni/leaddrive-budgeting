@@ -30,6 +30,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import {
+  localizeAlertMessageParams,
+  type IndustryTranslator,
+} from "@/lib/risk/alert-message-i18n";
 import { AlertTriangle, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
@@ -60,6 +64,15 @@ const SEVERITY_SHAPE: Record<AlertSeverity, string> = {
 
 export function AlertsPanel() {
   const t = useTranslations("terminal");
+  // Phase 7.G Turn G — separate scoped t for the top-level `industries.*`
+  // namespace. Used by `localizeAlertMessageParams` below to translate the
+  // raw industry-code in sector-alert messageParams (e.g. `"industrial"` →
+  // "промышленность" in RU). Cast to `IndustryTranslator` because next-intl's
+  // typed key narrowing is too strict for the dynamic `code` lookup the
+  // helper does internally; the cast preserves the runtime contract.
+  const tIndustries = useTranslations(
+    "industries",
+  ) as unknown as IndustryTranslator;
   const [open, setOpen] = useState(false);
   const matches = useTerminalStore((s) => s.alertMatches);
   const selectCompany = useTerminalStore((s) => s.selectCompany);
@@ -201,9 +214,16 @@ export function AlertsPanel() {
                               // `as never` casts mirror the existing
                               // dynamic-key pattern at line 192. next-intl's
                               // strict t() typing doesn't model dynamic keys.
+                              // Turn G: localize industry-code in params
+                              // before substitution so RU/AZ users see the
+                              // translated industry label (closes L135).
+                              const localizedParams = localizeAlertMessageParams(
+                                m.messageParams,
+                                tIndustries,
+                              );
                               return t(
                                 m.messageKey as never,
-                                m.messageParams as never,
+                                localizedParams as never,
                               );
                             } catch {
                               return m.message;

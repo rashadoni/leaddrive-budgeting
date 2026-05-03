@@ -2,6 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import {
+  localizeAlertMessageParams,
+  type IndustryTranslator,
+} from "@/lib/risk/alert-message-i18n";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { filterOperationalCompanies } from "@/lib/risk/targets";
@@ -70,6 +74,14 @@ export default async function BoardDeckPage({
   // (`alerts.rules.<id>` / `alerts.messages.<id>`) flow through without
   // string surgery — architect Round-31 closure of fragile prefix-strip.
   const tTerminal = await getTranslations("terminal");
+  // Phase 7.G Turn G — separate scoped translator for `industries.*`. Used
+  // by `localizeAlertMessageParams` to swap raw industry codes (e.g.
+  // `"industrial"`) for their localized labels in sector-alert messages.
+  // Cast to `IndustryTranslator` because next-intl's typed-key narrowing
+  // is too strict for the dynamic-code lookup the helper does internally.
+  const tIndustries = (await getTranslations(
+    "industries",
+  )) as unknown as IndustryTranslator;
 
   const params = await searchParams;
   const rawPeriod = params.period ?? String(new Date().getUTCFullYear());
@@ -387,9 +399,14 @@ export default async function BoardDeckPage({
                             return m.message;
                           }
                           try {
+                            // Turn G: localize industry code before substitution.
+                            const localizedParams = localizeAlertMessageParams(
+                              m.messageParams,
+                              tIndustries,
+                            );
                             return tTerminal(
                               m.messageKey as never,
-                              m.messageParams as never,
+                              localizedParams as never,
                             );
                           } catch {
                             return m.message;

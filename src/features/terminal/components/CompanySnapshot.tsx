@@ -25,6 +25,10 @@
 
 import React, { useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
+import {
+  localizeAlertMessageParams,
+  type IndustryTranslator,
+} from "@/lib/risk/alert-message-i18n";
 import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
@@ -57,6 +61,10 @@ interface Props {
 
 export function CompanySnapshot({ companyCode }: Props) {
   const t = useTranslations("terminal");
+  // Phase 7.G Turn G — see AlertsPanel.tsx for the same pattern.
+  const tIndustries = useTranslations(
+    "industries",
+  ) as unknown as IndustryTranslator;
   const locale = useLocale();
   // Sub-20: shared `useMatrix()` hook. Module cache means CompanySnapshot
   // mounts (one per active company drilldown) reuse HeatMap's already-
@@ -213,9 +221,14 @@ export function CompanySnapshot({ companyCode }: Props) {
               let alertBody = m.message;
               if (m.messageKey && DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
                 try {
+                  // Turn G: localize industry code before substitution.
+                  const localizedParams = localizeAlertMessageParams(
+                    m.messageParams,
+                    tIndustries,
+                  );
                   alertBody = t(
                     m.messageKey as never,
-                    m.messageParams as never,
+                    localizedParams as never,
                   );
                 } catch {
                   alertBody = m.message;

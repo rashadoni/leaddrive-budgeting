@@ -1,4 +1,20 @@
 {
+  "industries": {
+    "agro": "агропром",
+    "beverage": "напитки",
+    "construction": "строительство",
+    "education": "образование",
+    "entertainment": "развлечения",
+    "food_processing": "пищевая промышленность",
+    "hospitality": "гостеприимство",
+    "industrial": "промышленность",
+    "logistics": "логистика",
+    "pharma": "фармацевтика",
+    "poultry": "птицеводство",
+    "real_estate": "недвижимость",
+    "retail": "розница",
+    "services": "услуги"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "companies": "Компании",

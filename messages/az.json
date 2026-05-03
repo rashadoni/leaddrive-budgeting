@@ -1,4 +1,20 @@
 {
+  "industries": {
+    "agro": "aqro",
+    "beverage": "içkilər",
+    "construction": "tikinti",
+    "education": "təhsil",
+    "entertainment": "əyləncə",
+    "food_processing": "qida sənayesi",
+    "hospitality": "qonaqpərvərlik",
+    "industrial": "sənaye",
+    "logistics": "logistika",
+    "pharma": "əczaçılıq",
+    "poultry": "quşçuluq",
+    "real_estate": "daşınmaz əmlak",
+    "retail": "pərakəndə",
+    "services": "xidmətlər"
+  },
   "nav": {
     "dashboard": "İdarə paneli",
     "companies": "Şirkətlər",

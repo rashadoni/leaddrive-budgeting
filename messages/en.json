@@ -1,4 +1,20 @@
 {
+  "industries": {
+    "agro": "agro",
+    "beverage": "beverage",
+    "construction": "construction",
+    "education": "education",
+    "entertainment": "entertainment",
+    "food_processing": "food_processing",
+    "hospitality": "hospitality",
+    "industrial": "industrial",
+    "logistics": "logistics",
+    "pharma": "pharma",
+    "poultry": "poultry",
+    "real_estate": "real_estate",
+    "retail": "retail",
+    "services": "services"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "companies": "Companies",
