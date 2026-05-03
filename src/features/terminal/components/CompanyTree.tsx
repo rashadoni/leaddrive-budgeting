@@ -424,13 +424,7 @@ function WatchlistTabs(props: {
   alertedCount: number | null;
   sectorCount: number;
 }) {
-  // Phase 7.G Turn N — dropped 3 prop-drilled strings (tAll/tRecent/tSector)
-  // in favor of resolving them inline via the existing `tt` hook below.
-  // Closes the 28-turn-old Round-10 architect note "WatchlistTabs prop-
-  // drill + hook hybrid cleanup". The hook was already declared (Round-9
-  // closure for aria-labels), so the cleanup is purely consolidating —
-  // all locale-aware reads now flow through one `useTranslations('terminal')`
-  // call instead of the hybrid prop-drill + hook pattern.
+  // Phase 7.G Turn N — consolidated tab labels onto same hook used for aria-labels (was prop-drilled).
   const tt = useTranslations('terminal');
   // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
   // icons for cross-platform parity (Linux/Windows often miss color
