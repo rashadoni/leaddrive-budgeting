@@ -246,8 +246,10 @@ Main pain points that drive the roadmap:
 - Heat-map perf tuning (target: 60 × 50 = 3k cells, <500ms render)
 
 ### 7.G — Verification + polish (1 week)
-- ⬜ E2E test across all 10 sector packs (Playwright harness pending; CARRYOVER 🔄 #SSE/Playwright)
+- 🟡 **E2E test across all 10 sector packs** — Playwright harness scaffolded 2026-05-03 (Turn D.1: `playwright.config.ts` + `e2e/fixtures/auth.ts` + `e2e/smoke/login-and-terminal.spec.ts` 3 cases covering login form + terminal HeatMap + auth-gate regression + npm scripts + `e2e/README.md`). Turn D.2 (wizard analyze+apply E2E) + Turn D.3 (recompute pipeline + SSE event E2E) pending. 10 sector packs coverage extends post-D.3.
 - ✅ **Admin documentation** — `docs/ADMIN_RUNBOOK.md` v1 shipped 2026-05-03 (740 LOC, 12 sections + glossary + escalation paths). Covers customer onboarding, indicator catalog management, alert tuning, recompute pipeline, historical IV backfill, audit log, top-10 troubleshooting playbook, DB ops, vocabulary glossary, file-path map.
+- ✅ **Deployment readiness** — `docs/DEPLOYMENT_READINESS.md` v1 shipped 2026-05-03 (597 LOC, 9 sections). SRE/DevOps pre-prod gate audience.
+- ✅ **SSE serverless ADR** — `docs/DESIGN_SSE_SERVERLESS.md` v1.1 shipped 2026-05-03 (~570 LOC, 6 options + 12-dim matrix + recommendation + 4 trigger conditions). Implementation gated on user-decision triggers.
 - ⬜ User acceptance sign-off (post-customer-pilot)
 
 **Estimated total: ~20 weeks (~5 months) focused work.**
@@ -319,6 +321,8 @@ billing and i18n plumbing are out of scope).
 ---
 
 ## Changelog
+
+- **2026-05-03** — **Phase 7.G Turn D.1 — Playwright E2E smoke harness shipped.** First smoke + scaffolding for Turn D.2/D.3 expansion. NEW `playwright.config.ts` (chromium-only v1, `testMatch: '**/*.spec.ts'` keeps strict separation from vitest), `e2e/fixtures/auth.ts` (loginAs helper drives real /login form), `e2e/smoke/login-and-terminal.spec.ts` (3 cases: login flow + terminal HeatMap render + auth-gate regression), `e2e/README.md` quick-start, 4 npm scripts (`test:e2e` / `:ui` / `:headed` / `:install`), .gitignore for Playwright artifacts. DEPLOYMENT_READINESS §5.1 + ADMIN_RUNBOOK §0 cross-referenced. Pre-prod gate now `pre-demo-check.sh && npm run test:e2e`. tsc clean; vitest 1677/1677 preserved (zero overlap with Playwright). Turn D.2 (wizard E2E) + D.3 (recompute SSE E2E) next.
 
 - **2026-05-03** — **Phase 7.G Turn C — `docs/DESIGN_SSE_SERVERLESS.md` v1 ADR shipped.** 527 LOC architecture decision record analyzing 5 options for SSE LISTEN/NOTIFY infrastructure when prod target shifts to serverless (Vercel/Lambda). 12-dimension comparison matrix. Recommendation: stay on Option C (long-lived runtime / Docker Compose / VM) until trigger event (multi-tenant SaaS launch / customer procurement requirement / SSE clients > ~80 / BullMQ scheduler ships); at trigger ship Option A (Redis pub/sub bridge) with ~50-LOC bridge worker + per-org Redis channels + step-by-step migration plan + 30-day rollback window. Migrated existing Turn-41-sub1 21-turn-old design 🔄 from "design" to "implementation-trigger" (now owner=user since trigger conditions are user-decision). NO code change yet — pure design doc.
 

@@ -288,9 +288,10 @@ Before any production push, run this sequence:
 
 ```bash
 bash scripts/pre-demo-check.sh
+npm run test:e2e   # Phase 7.G Turn D — Playwright smoke (login + terminal)
 ```
 
-What it covers (per `scripts/pre-demo-check.sh`):
+What `pre-demo-check.sh` covers (per `scripts/pre-demo-check.sh`):
 - TypeScript compiles clean
 - All vitest tests pass
 - `~/Downloads/DEMO-CO.xlsx` present + correct row count
@@ -301,12 +302,21 @@ What it covers (per `scripts/pre-demo-check.sh`):
 - AZMADE DB integrity (company / line / IV counts)
 - `prisma migrate status` clean
 
-What it does NOT cover (production gates — manual checklist below):
+What `npm run test:e2e` covers (per `e2e/smoke/`):
+- Login form renders + accepts credentials + redirects to dashboard
+- Risk Terminal renders the HeatMap component (real browser, real DB)
+- Auth-gate: unauth `/budgeting/terminal` redirects to `/login`
+- (Turn D.2/D.3 will add: wizard analyze+apply, recompute SSE event)
+
+First-time on any machine: `npm run test:e2e:install` (downloads
+Chromium browser binary, ~150MB).
+
+What is NOT covered (production gates — manual checklist below):
 - New env vars vs `.env.production.example` diff
 - Migration risk classification (§3.2)
 - Secrets rotation cadence
 - Backup integrity (last successful run + restoration test)
-- Smoke test against staging environment
+- Smoke test against staging environment (run `E2E_BASE_URL=https://staging.budget.fo.az npm run test:e2e` to extend)
 
 ### 5.2 Production gate checklist (manual, ~15 min)
 

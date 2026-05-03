@@ -33,6 +33,12 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# Playwright (Phase 7.G Turn D — E2E smoke harness)
+test-results/
+playwright-report/
+playwright/.cache/
+.playwright/
+
 # Typescript
 *.tsbuildinfo
 next-env.d.ts

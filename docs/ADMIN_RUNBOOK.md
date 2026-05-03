@@ -31,7 +31,8 @@ The top-10 commands you'll run in a typical week.
 | Historical IV backfill | `npx tsx scripts/backfill-historical-ivs.ts --org=<slug> --years=2025 --dry-run` then drop `--dry-run` |
 | Sparkline batch refresh | `npx tsx scripts/compute-sparklines.ts --orgSlug=<slug>` |
 | Type-check | `npx tsc --noEmit` |
-| Run all tests | `npx vitest run` |
+| Run all unit tests | `npx vitest run` |
+| Run E2E smoke (Phase 7.G Turn D) | `npm run test:e2e` (one-time `npm run test:e2e:install`) |
 | Pre-demo gate | `bash scripts/pre-demo-check.sh` |
 
 UI surfaces (logged in as `admin@budgetpro.com`):
