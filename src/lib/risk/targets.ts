@@ -123,3 +123,60 @@ export function matchCompaniesToIndicators<
   }
   return out;
 }
+
+// ─── Phase 7.E phase 3 follow-up — rollup() parent-co recompute support ───
+// Sub-42 prerequisite #1 closure. Without these, the seed
+// `IND_HOLDING_REVENUE` (formula: rollup("IND_REVENUE_TOTAL")) is
+// structurally inert: parent companies (level=1) never enter the
+// operational filter above, so their rollup IV is never created.
+
+/**
+ * Predicate marking indicators whose formula consumes the rollup()
+ * resolver. The contract is "any entry in `requiredInputs` starts with
+ * the canonical `rollup:` prefix" — symmetric to the engine's resolver
+ * dispatch in `recompute.ts` (sub-41 phase 3) which scans for the same
+ * prefix to decide whether to fetch direct children's IVs.
+ *
+ * Used by `runRecomputeForCompanies` to opt-in parent companies for
+ * these specific indicators only — keeping the legacy operational-only
+ * filter for everything else.
+ *
+ * Lenient on shape: a malformed entry (non-string) is silently skipped
+ * rather than crashing the whole recompute pass — strictness already
+ * lives one layer up at `validateRequiredInputs` (recompute.ts) which
+ * runs at seed-author time per `feedback_verify_one_layer_up.md`.
+ */
+export function isRollupIndicator(
+  def: { requiredInputs?: string[] | null },
+): boolean {
+  const inputs = def.requiredInputs ?? [];
+  return inputs.some(
+    (s) => typeof s === 'string' && s.startsWith('rollup:'),
+  );
+}
+
+/**
+ * Filter to parent (sub-group root) companies that should receive
+ * rollup-bearing indicator IVs.
+ *
+ * Selection rule: `level === 1 && isActive`. Industry is intentionally
+ * NOT required — parent cos aggregate across sectors and typically have
+ * `industry: null`. `role === 'admin'` cost-centres are excluded; their
+ * "rollup" would double-count via sibling op-cos in the same sub-group
+ * since admin cos shouldn't carry operational data anyway.
+ *
+ * `role === 'holding'` entities ARE kept — they're the canonical
+ * top-of-tree aggregator and exactly what rollup() targets. `role ===
+ * 'operational'` parent cos (rare, mostly imported data) also kept for
+ * forward-compat with mixed-mode org structures.
+ *
+ * Generic so Prisma rows keep extra fields (id, code, etc.) at call
+ * sites. Mirrors `filterOperationalCompanies` shape for consistency.
+ */
+export function filterRollupParentCompanies<C extends CompanyForMatch>(
+  companies: C[],
+): C[] {
+  return companies.filter(
+    (c) => c.isActive && c.level === 1 && c.role !== 'admin',
+  );
+}

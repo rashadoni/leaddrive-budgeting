@@ -42,12 +42,26 @@ type IndicatorDefRow = {
 function makePrisma(
   companies: Company[],
   indicators: IndicatorDefRow[],
+  parentCompanies: Company[] = [],
 ): {
   company: { findMany: ReturnType<typeof vi.fn> };
   indicatorDefinition: { findMany: ReturnType<typeof vi.fn> };
 } {
+  // Sub-42 prereq #1 closure (parent-co recompute): findMany may be called
+  // TWICE — once for affected ops (where.id.in is set), once for parents
+  // (where.level === 1). Route by inspecting the where clause; tests that
+  // don't pass parentCompanies get the legacy single-array behavior.
   return {
-    company: { findMany: vi.fn().mockResolvedValue(companies) },
+    company: {
+      findMany: vi.fn().mockImplementation(
+        async (
+          arg: { where?: { level?: number; id?: { in?: string[] } } } = {},
+        ) => {
+          if (arg.where?.level === 1) return parentCompanies;
+          return companies;
+        },
+      ),
+    },
     indicatorDefinition: { findMany: vi.fn().mockResolvedValue(indicators) },
   };
 }
@@ -258,5 +272,261 @@ describe('runRecomputeForCompanies', () => {
     );
     expect(noops).toHaveLength(1);
     expect(noops[0]).toMatch(/no operational/i);
+  });
+
+  // ─── Sub-42 prereq #1 — parent-co recompute for rollup() indicators ──────
+  // Without these tests, the seed `IND_HOLDING_REVENUE` (formula:
+  // `rollup("IND_REVENUE_TOTAL")`) would silently no-op forever — parent
+  // cos (level=1) were excluded by the operational-only filter, so their
+  // rollup IV was never created. This block locks the new opt-in path:
+  // when ANY in-scope indicator carries `requiredInputs: ["rollup:..."]`,
+  // the trigger ALSO fetches parent cos + matches them to the rollup-
+  // bearing indicators only.
+
+  describe('parent-co recompute for rollup() indicators (sub-42 prereq #1)', () => {
+    it('does NOT fetch parent cos when no rollup-bearing indicators are in scope (cost-shape lock)', async () => {
+      // Vanilla operational-only path — orgs without rollup indicators
+      // pay zero extra DB cost. Parent-cos query MUST NOT fire.
+      const prisma = makePrisma([co()], [ind()]); // ind() has no rollup: prefix
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+
+      await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_1', year: 2026 },
+      ]);
+
+      // Exactly ONE company.findMany call — for the affected ops, not
+      // for parents. Locks "rollup-detection precedes parent fetch".
+      expect(prisma.company.findMany).toHaveBeenCalledTimes(1);
+      const arg = prisma.company.findMany.mock.calls[0][0] as {
+        where?: { level?: number };
+      };
+      expect(arg.where?.level).toBeUndefined();
+    });
+
+    it('fetches parent cos AND adds (parent × rollupDef) targets when a rollup indicator is in scope', async () => {
+      const rollupInd = ind({
+        id: 'i_holding_rev',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [], // sector-agnostic, mirrors the seed
+      });
+      const opCo = co({ id: 'co_op', code: 'AAC-MAIN' });
+      const parentCo: Company = {
+        id: 'co_holding',
+        code: 'AAC',
+        industry: null, // parent cos typically have no industry
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+
+      const prisma = makePrisma([opCo], [rollupInd], [parentCo]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1_000_000,
+      });
+
+      const result = await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_op', year: 2026 },
+      ]);
+
+      // 2 pairs: (op-co × rollupInd) + (parent-co × rollupInd). Op-co
+      // gets the rollup too because the indicator's industries=[] makes
+      // it sector-agnostic — that's a sub-42 architect Round-1 design
+      // decision (don't filter rollup defs out of operational pass; they
+      // resolve to 0 on op-cos with no children, which is correct).
+      expect(result.targets).toBe(2);
+      expect(result).toEqual({ ok: 2, unknown: 0, failed: 0, targets: 2 });
+
+      // Parent-co fetch fired exactly once with the right where clause.
+      const findManyCalls = prisma.company.findMany.mock.calls;
+      const parentCall = findManyCalls.find(
+        (c) =>
+          (c[0] as { where?: { level?: number } })?.where?.level === 1,
+      );
+      expect(parentCall).toBeTruthy();
+      expect((parentCall![0] as { where: object }).where).toMatchObject({
+        organizationId: 'org_1',
+        level: 1,
+        isActive: true,
+      });
+
+      // Recompute called for both companies — extract the companyIds
+      // passed to the engine.
+      const recomputeCompanyIds = mockedRecompute.mock.calls.map(
+        (c) => c[1].companyId,
+      );
+      expect(new Set(recomputeCompanyIds)).toEqual(
+        new Set(['co_op', 'co_holding']),
+      );
+    });
+
+    it('parent-cos receive ONLY rollup-bearing indicators, not the wider catalog', async () => {
+      // Mixed catalog: 1 normal indicator + 1 rollup indicator. Parent
+      // co MUST get only the rollup one (no industry → no operational
+      // match either way; explicit lock against future drift).
+      const normalInd = ind({
+        id: 'i_norm',
+        code: 'IND_NET_MARGIN',
+        formula: 'net_income / revenue * 100',
+        requiredInputs: ['budgetLine'],
+        industries: ['industrial'],
+      });
+      const rollupInd = ind({
+        id: 'i_roll',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      const opCo = co({ id: 'co_op', code: 'AAC-MAIN', industry: 'industrial' });
+      const parentCo: Company = {
+        id: 'co_holding',
+        code: 'AAC',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+      const prisma = makePrisma([opCo], [normalInd, rollupInd], [parentCo]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+
+      await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_op', year: 2026 },
+      ]);
+
+      // Catalog: op-co gets BOTH (industrial match for normal + sector-
+      // agnostic match for rollup). Parent-co gets ONLY rollup (industry
+      // is null so industrial-match gate excludes normal even if we
+      // tried to feed it through matchCompaniesToIndicators).
+      const calls = mockedRecompute.mock.calls.map((c) => ({
+        companyId: c[1].companyId,
+        defCode: c[1].definition.code,
+      }));
+      expect(calls.length).toBe(3);
+      const parentCalls = calls.filter((c) => c.companyId === 'co_holding');
+      expect(parentCalls.map((c) => c.defCode)).toEqual([
+        'IND_HOLDING_REVENUE',
+      ]);
+      const opCalls = calls.filter((c) => c.companyId === 'co_op');
+      expect(new Set(opCalls.map((c) => c.defCode))).toEqual(
+        new Set(['IND_NET_MARGIN', 'IND_HOLDING_REVENUE']),
+      );
+    });
+
+    it('parent-co rollup fires for every year a child touched (year-scoping aligns with affected set)', async () => {
+      // Two affected years (2025 + 2026) → parent-co rollup runs twice
+      // (once per year), independent of which sub-cos appeared in the
+      // affected set for that year. Locks the year-scoping invariant.
+      const rollupInd = ind({
+        id: 'i_roll',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      const opA = co({ id: 'co_a', code: 'A', industry: 'industrial' });
+      const opB = co({ id: 'co_b', code: 'B', industry: 'industrial' });
+      const parentCo: Company = {
+        id: 'co_holding',
+        code: 'TOP',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+      const prisma = makePrisma([opA, opB], [rollupInd], [parentCo]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+
+      await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_a', year: 2025 },
+        { companyId: 'co_b', year: 2026 },
+      ]);
+
+      const parentCallPeriods = mockedRecompute.mock.calls
+        .filter((c) => c[1].companyId === 'co_holding')
+        .map((c) => c[1].period)
+        .sort();
+      // Parent fires for BOTH years even though each was triggered by a
+      // different child — the parent's rollup at 2025 is now stale because
+      // co_a wrote 2025; the parent's 2026 is stale because co_b wrote 2026.
+      expect(parentCallPeriods).toEqual(['2025', '2026']);
+    });
+
+    it('parent-co fetch is skipped when rollup indicator exists but parent-co list is empty (no parents in org)', async () => {
+      const rollupInd = ind({
+        id: 'i_roll',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      // Empty parentCompanies — flat-org case (no level=1 cos).
+      const prisma = makePrisma([co()], [rollupInd], []);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+
+      const result = await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_1', year: 2026 },
+      ]);
+
+      // Only the op-co × rollupInd pair. No parent-targets added.
+      expect(result.targets).toBe(1);
+      // Parent-co fetch DID fire (we don't know in advance the org has no
+      // parents) — proves the conditional gates on rollupDefs.length > 0,
+      // not on parent-presence.
+      expect(prisma.company.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('logger.start message includes parent-co + rollup-indicator count when present', async () => {
+      const rollupInd = ind({
+        id: 'i_roll',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      const parentCo: Company = {
+        id: 'co_p',
+        code: 'P',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+      const prisma = makePrisma([co()], [rollupInd], [parentCo]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+      const log: string[] = [];
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        { start: (m) => log.push(m) },
+      );
+
+      // Message surfaces "incl. 1 parent × 1 rollup-bearing indicator"
+      // — operators reading logs can see at a glance that parent-co
+      // recompute fired without grepping for company codes.
+      expect(log).toHaveLength(1);
+      expect(log[0]).toMatch(/incl\. 1 parent × 1 rollup-bearing indicator/);
+    });
   });
 });

@@ -291,14 +291,25 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     nameEn: "Holding Revenue (rollup)",
     nameAz: "Holdinq Gəliri (rollup)",
     nameRu: "Выручка холдинга (rollup)",
-    // Sub-42 architect Round-1 closure — `category: "internal"` until
-    // prereq #1 (parent-co recompute) lands. Today this indicator fires
-    // on op-cos with no children → 0 → amber, which is misleading: a
-    // sub-co showing "Holding Revenue 0" is meaningless. Keeping it in
-    // the catalog (so phase-3 rollup() is wired end-to-end + ready to
-    // demonstrate once parent-co recompute ships) but hidden from the
-    // matrix render until then. Flip to "operational" alongside the
-    // recompute-trigger extension.
+    // Sub-42 architect Round-1 closure + sub-44 prereq-#1 follow-up:
+    //   • Sub-42 set `category: "internal"` because (a) op-cos with no
+    //     children compute rollup as 0 → amber (misleading "Holding
+    //     Revenue 0" on a sub-co), (b) parent cos didn't enter the
+    //     recompute loop so the IV was never created either way.
+    //   • Sub-44 (2026-05-03) landed PREREQ #1 — `recompute-trigger.ts`
+    //     now opts-in level=1 parent cos for any indicator carrying a
+    //     `rollup:` requiredInput. So (b) is closed: parent-co IVs ARE
+    //     created in DB.
+    //   • The seed STAYS `category: "internal"` because (c) the matrix
+    //     endpoint at `src/app/api/indicators/matrix/route.ts` renders
+    //     only level=2 operational rows — parent cos never appear, so
+    //     surfacing this indicator on the heatmap would still produce
+    //     the misleading op-co amber from (a). The follow-up gap is a
+    //     parent-co render path (dedicated HoldingDashboard view OR
+    //     extending HeatMap to render level=1 rows). Tracked as 🔄.
+    //   • Backend rollup IS now firing end-to-end — verify via
+    //     `prisma indicatorvalue.findMany({where: {indicatorDefinitionId,
+    //     companyId: <parent>}})` post-import.
     category: "internal",
     industries: [],
     unit: "AZN",

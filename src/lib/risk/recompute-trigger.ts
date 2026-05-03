@@ -26,6 +26,8 @@ import {
 } from './recompute';
 import {
   filterOperationalCompanies,
+  filterRollupParentCompanies,
+  isRollupIndicator,
   preferOrgScopedDefinitions,
   matchCompaniesToIndicators,
 } from './targets';
@@ -145,7 +147,41 @@ export async function runRecomputeForCompanies(
   });
   const defs = preferOrgScopedDefinitions(allDefs);
 
+  // Phase 7.E phase 3 follow-up — sub-42 prerequisite #1 closure.
+  // Detect rollup-bearing indicators (formula uses rollup() resolver,
+  // signaled by a `rollup:` prefix in requiredInputs). When present,
+  // ALSO fetch parent (level=1, sub-group root) companies for the same
+  // org so their rollup IVs land. Without this, indicators like
+  // `IND_HOLDING_REVENUE` (formula: `rollup("IND_REVENUE_TOTAL")`) are
+  // structurally inert because parent cos never enter the operational
+  // filter above. Conditional fetch — orgs with no rollup indicators
+  // pay zero extra DB cost.
+  const rollupDefs = defs.filter((d) => isRollupIndicator(d));
+  let parentCompanies: typeof companies = [];
+  if (rollupDefs.length > 0) {
+    const parents = await prisma.company.findMany({
+      where: {
+        organizationId,
+        level: 1,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        code: true,
+        industry: true,
+        level: true,
+        isActive: true,
+        role: true,
+      },
+    });
+    parentCompanies = filterRollupParentCompanies(parents);
+  }
+
   // Pre-count total pairs (across all years) so the start message is honest.
+  // Parent-co × rollup-def pairs do NOT depend on `byYear` membership —
+  // the parent rollup needs to refresh for every year a child touched
+  // (an op-co writing 2026 means the parent's 2026 rollup is now stale,
+  // independent of which sub-cos appear in `affected`).
   const years = [...byYear.keys()].sort();
   let totalPairs = 0;
   for (const year of years) {
@@ -154,16 +190,21 @@ export async function runRecomputeForCompanies(
       yearCompanyIds.has(c.id),
     );
     totalPairs += matchCompaniesToIndicators(yearOperational, defs).length;
+    totalPairs += parentCompanies.length * rollupDefs.length;
   }
   if (totalPairs === 0) {
     logger.noop?.('Recompute: no matching indicators for affected companies.');
     return { ...EMPTY_RESULT };
   }
 
+  const parentSummary =
+    parentCompanies.length > 0 && rollupDefs.length > 0
+      ? ` (incl. ${parentCompanies.length} parent × ${rollupDefs.length} rollup-bearing indicator${rollupDefs.length === 1 ? '' : 's'})`
+      : '';
   logger.start?.(
     `Recompute: ${totalPairs} (company × indicator) pair${totalPairs === 1 ? '' : 's'} ` +
       `across ${operational.length} compan${operational.length === 1 ? 'y' : 'ies'} × ${years.length} ` +
-      `year${years.length === 1 ? '' : 's'} (${years.join(', ')}) …`,
+      `year${years.length === 1 ? '' : 's'} (${years.join(', ')})${parentSummary} …`,
   );
 
   const ds = createPrismaDataSource(prisma);
@@ -176,7 +217,16 @@ export async function runRecomputeForCompanies(
       yearCompanyIds.has(c.id),
     );
     const period = String(year);
-    const targets = matchCompaniesToIndicators(yearOperational, defs);
+    const operationalTargets = matchCompaniesToIndicators(yearOperational, defs);
+    // Parent-co × rollup-def cartesian. Industry-match is bypassed
+    // (rollup-bearing indicators are sector-agnostic by design — their
+    // `industries` array is empty so they'd match anyway, but we skip
+    // the matchCompaniesToIndicators call because parent-cos lack the
+    // `industry: string` invariant that helper enforces).
+    const parentTargets = parentCompanies.flatMap((p) =>
+      rollupDefs.map((d) => ({ company: p, definition: d })),
+    );
+    const targets = [...operationalTargets, ...parentTargets];
     for (const { company, definition } of targets) {
       const defLike: IndicatorDefinitionLike = {
         id: definition.id,
