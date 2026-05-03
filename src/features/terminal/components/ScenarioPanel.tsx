@@ -30,7 +30,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
+import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
 import { Beaker, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 
@@ -53,6 +54,13 @@ type ApplyState =
 
 export function ScenarioPanel() {
   const t = useTranslations("terminal");
+  // Phase 7.G Turn K (closes Turn-H' filed Scenario.nameEn migration 🔄)
+  // — locale-aware scenario labels via the new resolveScenarioLabel
+  // helper. Mirrors the resolveIndicatorLabel pattern at HeatMap.tsx /
+  // IndicatorDetail.tsx / CommandBar.tsx etc. Schema + seed already
+  // populate nameRu/nameAz for all named scenarios; this turn wires
+  // the consumers.
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -255,7 +263,7 @@ export function ScenarioPanel() {
                       >
                         <div className="font-semibold">{s.code}</div>
                         <div className="opacity-70 text-[10px] mt-0.5 line-clamp-1">
-                          {s.nameEn}
+                          {resolveScenarioLabel(s, locale)}
                         </div>
                       </button>
                     </li>
@@ -285,7 +293,7 @@ export function ScenarioPanel() {
               <div className="space-y-3">
                 <div>
                   <h3 className="text-base font-semibold">
-                    {selectedScenario.nameEn}
+                    {resolveScenarioLabel(selectedScenario, locale)}
                   </h3>
                   <p className="text-xs text-gray-500 font-mono">
                     {selectedScenario.code}
