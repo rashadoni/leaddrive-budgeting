@@ -246,7 +246,7 @@ Main pain points that drive the roadmap:
 - Heat-map perf tuning (target: 60 × 50 = 3k cells, <500ms render)
 
 ### 7.G — Verification + polish (1 week)
-- 🟡 **E2E test across all 10 sector packs** — Playwright harness scaffolded 2026-05-03 (Turn D.1: `playwright.config.ts` + `e2e/fixtures/auth.ts` + `e2e/smoke/login-and-terminal.spec.ts` 3 cases covering login form + terminal HeatMap + auth-gate regression + npm scripts + `e2e/README.md`). Turn D.2 (wizard analyze+apply E2E) + Turn D.3 (recompute pipeline + SSE event E2E) pending. 10 sector packs coverage extends post-D.3.
+- ✅ **E2E test harness** — Playwright shipped 2026-05-03 across 3 turns (D.1 login+terminal 3 cases / D.2 onboarding wizard 4 cases / D.3 recompute+SSE 3 cases). 10/10 pass empirically against live dev server in 1.0min. Critical-path coverage: auth, dashboard render, wizard state machine, AI Data Mapper happy-path (LLM-gated), API contract, SSE LISTEN/NOTIFY end-to-end. Per-sector pack E2E is a v2 expansion (current 10 cases cover the cross-sector mechanics).
 - ✅ **Admin documentation** — `docs/ADMIN_RUNBOOK.md` v1 shipped 2026-05-03 (740 LOC, 12 sections + glossary + escalation paths). Covers customer onboarding, indicator catalog management, alert tuning, recompute pipeline, historical IV backfill, audit log, top-10 troubleshooting playbook, DB ops, vocabulary glossary, file-path map.
 - ✅ **Deployment readiness** — `docs/DEPLOYMENT_READINESS.md` v1 shipped 2026-05-03 (597 LOC, 9 sections). SRE/DevOps pre-prod gate audience.
 - ✅ **SSE serverless ADR** — `docs/DESIGN_SSE_SERVERLESS.md` v1.1 shipped 2026-05-03 (~570 LOC, 6 options + 12-dim matrix + recommendation + 4 trigger conditions). Implementation gated on user-decision triggers.
@@ -321,6 +321,10 @@ billing and i18n plumbing are out of scope).
 ---
 
 ## Changelog
+
+- **2026-05-03** — **Phase 7.G Turn D.3 — Recompute pipeline + SSE LISTEN/NOTIFY end-to-end E2E shipped.** NEW `e2e/smoke/recompute-and-sse.spec.ts` 3 cases (POST /api/indicators contract / SSE hello event / **load-bearing LISTEN/NOTIFY pipeline E2E** — opens SSE → triggers recompute → asserts indicator:changed event arrives via Postgres trigger → pg_notify → singleton pg.Client → SSE handler → browser EventSource). Phase 7.G Turn D fully done: D.1 (3) + D.2 (4) + D.3 (3) = **10/10 Playwright pass in 1.0min** against live dev server. ROADMAP §7.G E2E item flipped 🟡 → ✅. The DESIGN_SSE_SERVERLESS.md "Option C works on Docker" claim is now empirically verified at runtime (case (c)).
+
+- **2026-05-03** — **Phase 7.G Turn D.2 — Onboarding wizard E2E smoke shipped.** NEW `e2e/fixtures/.gen-fixture.ts` (xlsx generator) + `e2e/fixtures/test-budget.xlsx` (16KB fixture) + `e2e/smoke/onboarding-wizard.spec.ts` 4 cases (auth-gate / wizard render / form gating / LLM-gated full-flow). 4/4 pass; full Playwright suite 7/7 in 48.5s. LLM-gated test runs locally where ANTHROPIC_API_KEY is set; skipped via `E2E_SKIP_LLM=true` for CI mode.
 
 - **2026-05-03** — **Phase 7.G Turn D.1 — Playwright E2E smoke harness shipped.** First smoke + scaffolding for Turn D.2/D.3 expansion. NEW `playwright.config.ts` (chromium-only v1, `testMatch: '**/*.spec.ts'` keeps strict separation from vitest), `e2e/fixtures/auth.ts` (loginAs helper drives real /login form), `e2e/smoke/login-and-terminal.spec.ts` (3 cases: login flow + terminal HeatMap render + auth-gate regression), `e2e/README.md` quick-start, 4 npm scripts (`test:e2e` / `:ui` / `:headed` / `:install`), .gitignore for Playwright artifacts. DEPLOYMENT_READINESS §5.1 + ADMIN_RUNBOOK §0 cross-referenced. Pre-prod gate now `pre-demo-check.sh && npm run test:e2e`. tsc clean; vitest 1677/1677 preserved (zero overlap with Playwright). Turn D.2 (wizard E2E) + D.3 (recompute SSE E2E) next.
 
