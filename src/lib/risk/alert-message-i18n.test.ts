@@ -90,8 +90,12 @@ describe('localizeAlertMessageParams', () => {
   });
 
   it('handles all 14 canonical codes without surprises', () => {
+    // Mirrors `scripts/seed-industries.ts` canonical codes — drift would
+    // surface this test as a fixture mismatch, NOT a silent runtime fall-
+    // through. Architect Round-1 of Turn G caught the prior `agro` →
+    // `agro_crops` mismatch via this exact code-list audit.
     const allCodes = [
-      'agro',
+      'agro_crops',
       'beverage',
       'construction',
       'education',
@@ -161,5 +165,92 @@ describe('localizeAlertMessageParams', () => {
       emptyFn,
     );
     expect(out.industry).toBe('industrial');
+  });
+});
+
+/**
+ * JSON-vs-seed consistency guard (Phase 7.G Turn G architect Round-1
+ * ⚠️ closure). Round-1 caught the developer shipping `industries.agro`
+ * while the canonical seed code in `scripts/seed-industries.ts:46` is
+ * `agro_crops` — meaning the localization helper would silent-pass
+ * through for AZ-AGRO companies. This test would have caught the bug
+ * at commit time.
+ *
+ * The seed file is the source-of-truth; the JSON namespace mirrors it.
+ * If a future seed migration renames a code OR adds a new sector
+ * without updating `messages/{en,ru,az}.json`, the test fails loud.
+ *
+ * Note: there's a separate 🔄 (CARRYOVER) tracking the bigger
+ * architectural fix — eliminate the JSON duplication entirely by
+ * reading from `Industry.nameEn/Ru/Az` at app boot. Until that lands,
+ * this guard catches drift the cheap way.
+ */
+import enJson from '../../../messages/en.json';
+import ruJson from '../../../messages/ru.json';
+import azJson from '../../../messages/az.json';
+
+// Hardcoded set mirrors scripts/seed-industries.ts:30-141 canonical codes.
+// Updating the seed without updating this list is a deliberate test
+// failure — keeps the seed-author in the loop.
+const CANONICAL_INDUSTRY_CODES = [
+  'hospitality',
+  'food_processing',
+  'agro_crops',
+  'poultry',
+  'pharma',
+  'industrial',
+  'real_estate',
+  'entertainment',
+  'education',
+  'services',
+  'beverage',
+  'retail',
+  'logistics',
+  'construction',
+] as const;
+
+describe('industries.* JSON ↔ seed code consistency (Turn G architect Round-1 closure)', () => {
+  for (const locale of [
+    { name: 'en', data: enJson },
+    { name: 'ru', data: ruJson },
+    { name: 'az', data: azJson },
+  ] as const) {
+    it(`${locale.name}.json: every canonical seed code has an industries entry`, () => {
+      const industries = (locale.data as { industries?: Record<string, string> })
+        .industries;
+      expect(industries).toBeDefined();
+      for (const code of CANONICAL_INDUSTRY_CODES) {
+        expect(
+          industries?.[code],
+          `Missing industries.${code} in ${locale.name}.json — sector alerts on this industry would leak the raw code through next-intl substitution. Update messages/${locale.name}.json to include this key.`,
+        ).toBeDefined();
+        expect(typeof industries?.[code]).toBe('string');
+        expect((industries?.[code] ?? '').length).toBeGreaterThan(0);
+      }
+    });
+
+    it(`${locale.name}.json: industries namespace has no extra keys beyond canonical seed`, () => {
+      const industries = (locale.data as { industries?: Record<string, string> })
+        .industries;
+      const extras = Object.keys(industries ?? {}).filter(
+        (k) => !(CANONICAL_INDUSTRY_CODES as readonly string[]).includes(k),
+      );
+      expect(
+        extras,
+        `Extra non-canonical keys in ${locale.name}.json/industries: ${extras.join(', ')}. Either remove them OR add to seed-industries.ts canonical list.`,
+      ).toEqual([]);
+    });
+  }
+
+  it('en industries values are byte-identical to canonical codes (preserves drift-guard)', () => {
+    // Load-bearing invariant: the alert-rules-i18n.test.ts drift-guard
+    // formats messages/en.json[messageKey] with messageParams (where
+    // params.industry is the canonical code from the engine context).
+    // For sector-{amber,red} rules to keep byte-equality with engine
+    // `message`, the localized industry value MUST equal the raw code.
+    const en = (enJson as { industries: Record<string, string> }).industries;
+    for (const code of CANONICAL_INDUSTRY_CODES) {
+      expect(en[code]).toBe(code);
+    }
   });
 });

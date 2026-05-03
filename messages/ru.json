@@ -1,6 +1,6 @@
 {
   "industries": {
-    "agro": "агропром",
+    "agro_crops": "агропром",
     "beverage": "напитки",
     "construction": "строительство",
     "education": "образование",
