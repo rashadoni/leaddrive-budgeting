@@ -1671,6 +1671,57 @@ export function validateRequiredInputs(
 }
 
 /**
+ * Sub-44 cont'd architect 💡 closure — seed-author-time validation that
+ * a rollup-bearing indicator is sector-agnostic (`industries.length === 0`).
+ *
+ * Why: parent-co rollup targets in `recompute-trigger.ts:230` are built
+ * via `parentCompanies.flatMap(p => rollupDefs.map(d => ...))` — bypassing
+ * `matchCompaniesToIndicators` industry-filter because parent cos lack
+ * the `industry: string` invariant. If a future seed declared
+ * `requiredInputs: ['rollup:...']` with non-empty `industries:
+ * ['hospitality']`, the parent pass would silently fire on ALL parent
+ * cos regardless of their (non-existent) industry, violating the
+ * indicator's own sector restriction.
+ *
+ * Strict layer-up belongs HERE — at seed-author time. The trigger has
+ * a runtime defensive filter that drops + warns for the same case
+ * (belt-and-braces if seed validation slipped past).
+ *
+ * Returns `{ ok: true }` when every entry passes.
+ * Returns `{ ok: false, reason }` on the FIRST seed that fails (first-
+ * failure-loud, mirrors `validateRequiredInputs` semantic).
+ */
+export type RollupSeedValidation =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+export function validateRollupSeed(seed: {
+  code: string;
+  industries: readonly string[];
+  requiredInputs?: readonly string[] | null;
+}): RollupSeedValidation {
+  const inputs = seed.requiredInputs ?? [];
+  const isRollup = inputs.some(
+    (s) => typeof s === 'string' && s.startsWith(ROLLUP_INPUT_PREFIX),
+  );
+  if (!isRollup) return { ok: true };
+  if (seed.industries.length > 0) {
+    return {
+      ok: false,
+      reason:
+        `Indicator '${seed.code}' is rollup-bearing (requiredInputs has '${ROLLUP_INPUT_PREFIX}...') ` +
+        `but declares non-empty industries [${seed.industries.join(',')}]. ` +
+        `Rollup-bearing indicators MUST be sector-agnostic (industries: []) ` +
+        `because parent-co recompute targets bypass the industry-match ` +
+        `filter. Either drop the industries restriction OR change the ` +
+        `formula to use a per-sector composition (fact() with explicit ` +
+        `period/code rather than rollup()).`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
  * Cross-namespace derivations that need multiple resolvers' output. Today
  * there's one (`rooms_available`); when this reaches ~5+, lift to a
  * `PostProcessor[]` registry with the same shape as `NamespaceResolver`.

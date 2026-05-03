@@ -6,6 +6,7 @@ import {
   applyOutOfRangeClamp,
   RATIO_PLAUSIBILITY_CAP_PCT,
   validateRequiredInputs,
+  validateRollupSeed,
   type BookingRow,
   type FactRow,
   type CurrencyRateRow,
@@ -2208,6 +2209,85 @@ describe('validateRequiredInputs (Phase 7.E phase 3, sub-41 architect closure)',
       'company.settings.deeply.nested.path',
       'operationalFact:',
     ]);
+    expect(r).toEqual({ ok: true });
+  });
+});
+
+// --- Sub-44 cont'd architect 💡 — validateRollupSeed (industries-empty guard) ─
+
+describe("validateRollupSeed (sub-44 cont'd architect 💡 closure)", () => {
+  it('non-rollup seed with industries → ok (gate only fires on rollup-bearing)', () => {
+    const r = validateRollupSeed({
+      code: 'IND_NET_MARGIN',
+      industries: ['industrial'],
+      requiredInputs: ['budgetLine'],
+    });
+    expect(r).toEqual({ ok: true });
+  });
+
+  it('rollup-bearing seed with empty industries → ok (canonical shape)', () => {
+    const r = validateRollupSeed({
+      code: 'IND_HOLDING_REVENUE',
+      industries: [],
+      requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+    });
+    expect(r).toEqual({ ok: true });
+  });
+
+  it('rollup-bearing seed with non-empty industries → REJECTS with explicit reason', () => {
+    // Load-bearing case: a future seed author writes a sector-restricted
+    // rollup. Without this gate, parent-co recompute targets at
+    // recompute-trigger.ts:230 would silently fire on EVERY parent-co
+    // (industrial, agro, all sectors), violating the indicator's
+    // declared sector restriction.
+    const r = validateRollupSeed({
+      code: 'IND_HOSPITALITY_HOLDING_REVENUE',
+      industries: ['hospitality'],
+      requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toContain('IND_HOSPITALITY_HOLDING_REVENUE');
+      expect(r.reason).toContain('rollup-bearing');
+      expect(r.reason).toContain('hospitality');
+      expect(r.reason).toContain('sector-agnostic');
+      // Names the actionable fix.
+      expect(r.reason).toMatch(/Either drop the industries|change the formula/);
+    }
+  });
+
+  it('mixed requiredInputs (rollup: + others) with non-empty industries → still REJECTED', () => {
+    // Defensive: rollup-bearing-ness is detected by ANY entry with the
+    // prefix, not the only entry. Mixed indicators must obey the same
+    // gate.
+    const r = validateRollupSeed({
+      code: 'IND_MIXED',
+      industries: ['agro'],
+      requiredInputs: [
+        'budgetLine',
+        'fact:IND_X@2025',
+        'rollup:IND_REVENUE_TOTAL',
+      ],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('handles undefined / null / missing requiredInputs (lenient — non-rollup → ok)', () => {
+    expect(validateRollupSeed({ code: 'X', industries: ['hospitality'] })).toEqual({ ok: true });
+    expect(
+      validateRollupSeed({ code: 'X', industries: ['hospitality'], requiredInputs: null }),
+    ).toEqual({ ok: true });
+    expect(
+      validateRollupSeed({ code: 'X', industries: ['hospitality'], requiredInputs: [] }),
+    ).toEqual({ ok: true });
+  });
+
+  it('empty industries on rollup-bearing → ok regardless of other requiredInputs', () => {
+    const r = validateRollupSeed({
+      code: 'IND_X',
+      industries: [],
+      requiredInputs: ['budgetLine', 'rollup:Y', 'fact:Z@2025'],
+    });
     expect(r).toEqual({ ok: true });
   });
 });

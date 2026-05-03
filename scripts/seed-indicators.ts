@@ -27,7 +27,7 @@ import {
   type Thresholds,
   type Direction,
 } from "@/lib/risk/formula-engine"
-import { validateRequiredInputs } from "@/lib/risk/recompute"
+import { validateRequiredInputs, validateRollupSeed } from "@/lib/risk/recompute"
 import {
   type IndicatorSeed,
   hospitalityIndicators,
@@ -107,6 +107,39 @@ function validateAllSeedRequiredInputs(seeds: readonly IndicatorSeed[]): void {
     throw new Error(
       `requiredInputs validation failed for ${failures.length} indicator(s):\n${lines}\n\n` +
         `Fix the seed before re-running. See src/lib/risk/recompute.ts::validateRequiredInputs for the format.`,
+    )
+  }
+}
+
+/**
+ * Sub-44 cont'd architect 💡 closure — seed-author-time strict gate that
+ * rejects rollup-bearing seeds with non-empty industries. Pairs with the
+ * runtime defensive filter at `recompute-trigger.ts:194` (belt-and-braces).
+ *
+ * Without this, a future seed like:
+ *   { code: 'IND_HOSPITALITY_HOLDING_REVENUE', industries: ['hospitality'],
+ *     requiredInputs: ['rollup:IND_REVENUE_TOTAL'], ... }
+ * would silently fire on EVERY parent co (industrial, agro, all sectors),
+ * not just hospitality parents — because parent-co recompute targets
+ * bypass `matchCompaniesToIndicators` industry-filter.
+ */
+function validateAllSeedRollupShape(seeds: readonly IndicatorSeed[]): void {
+  const failures: Array<{ code: string; reason: string }> = []
+  for (const s of seeds) {
+    const result = validateRollupSeed({
+      code: s.code,
+      industries: s.industries,
+      requiredInputs: s.requiredInputs,
+    })
+    if (!result.ok) {
+      failures.push({ code: s.code, reason: result.reason })
+    }
+  }
+  if (failures.length > 0) {
+    const lines = failures.map((f) => `  ✗ ${f.code}: ${f.reason}`).join("\n")
+    throw new Error(
+      `Rollup-seed validation failed for ${failures.length} indicator(s):\n${lines}\n\n` +
+        `Fix the seed before re-running. See src/lib/risk/recompute.ts::validateRollupSeed for the rationale.`,
     )
   }
 }
@@ -243,6 +276,14 @@ async function main() {
   validateAllSeedRequiredInputs(ALL_INDICATOR_SEEDS)
   console.log(
     `  ✓ All ${ALL_INDICATOR_SEEDS.length} indicators passed requiredInputs validation`,
+  )
+
+  // Sub-44 cont'd architect 💡 — reject rollup-bearing seeds with
+  // non-empty industries (would silently fire on all parent-cos because
+  // parent-co recompute targets bypass the industry-match filter).
+  validateAllSeedRollupShape(ALL_INDICATOR_SEEDS)
+  console.log(
+    `  ✓ All ${ALL_INDICATOR_SEEDS.length} indicators passed rollup-shape validation (sector-agnostic gate)`,
   )
 
   let created = 0

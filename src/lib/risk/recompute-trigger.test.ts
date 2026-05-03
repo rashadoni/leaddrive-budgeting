@@ -502,6 +502,71 @@ describe('runRecomputeForCompanies', () => {
       expect(prisma.company.findMany).toHaveBeenCalledTimes(2);
     });
 
+    it("sub-44 cont'd: rollup-bearing def with non-empty industries dropped from parent pass + warns (industries-empty guard)", async () => {
+      // Sub-44 architect 💡 closure runtime layer: rollup-bearing seeds
+      // MUST be sector-agnostic (industries: []). Seed-author validation
+      // (validateRollupSeed) is the strict layer-up; this test locks the
+      // belt-and-braces runtime defense — if a sector-restricted rollup
+      // ever slips past the seed loader, the trigger drops it from the
+      // parent pass + emits a warning so ops can fix the seed.
+      const goodRollup = ind({
+        id: 'i_good',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [], // canonical shape
+      });
+      const badRollup = ind({
+        id: 'i_bad',
+        code: 'IND_BAD_SECTOR_ROLLUP',
+        formula: 'rollup("IND_X")',
+        requiredInputs: ['rollup:IND_X'],
+        industries: ['hospitality'], // ⚠️ sector-restricted rollup
+      });
+      const parentCo: Company = {
+        id: 'co_p',
+        code: 'P',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+      const prisma = makePrisma([co()], [goodRollup, badRollup], [parentCo]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+      const errors: Array<[string, unknown]> = [];
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        { pairError: (label, err) => errors.push([label, err]) },
+      );
+
+      // Bad rollup dropped from parent pass — only good one fires for
+      // the parent.
+      const parentRecomputeCodes = mockedRecompute.mock.calls
+        .filter((c) => c[1].companyId === 'co_p')
+        .map((c) => c[1].definition.code);
+      expect(parentRecomputeCodes).toEqual(['IND_HOLDING_REVENUE']);
+      expect(parentRecomputeCodes).not.toContain('IND_BAD_SECTOR_ROLLUP');
+
+      // Warning surfaced via pairError logger (defensive ops visibility).
+      const warnLabels = errors.map(([label]) => label);
+      expect(warnLabels.some((l) => l.startsWith('rollup-skip/'))).toBe(true);
+      const warnLabel = warnLabels.find((l) => l.startsWith('rollup-skip/'));
+      expect(warnLabel).toContain('IND_BAD_SECTOR_ROLLUP');
+      const warnErr = errors.find(([label]) =>
+        label.startsWith('rollup-skip/'),
+      )?.[1];
+      expect(warnErr).toBeInstanceOf(Error);
+      expect((warnErr as Error).message).toContain('hospitality');
+      expect((warnErr as Error).message).toContain('sector-restricted');
+    });
+
     it('parent-co rollup respects options.codeFilter narrowing (ind catalog filter applies to both branches)', async () => {
       // Sub-44 prereq #2 cont'd — the codeFilter option should apply
       // EQUALLY to operational + parent-co recompute paths. If the

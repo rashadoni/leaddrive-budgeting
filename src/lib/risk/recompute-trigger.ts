@@ -189,7 +189,34 @@ export async function runRecomputeForCompanies(
   // structurally inert because parent cos never enter the operational
   // filter above. Conditional fetch — orgs with no rollup indicators
   // pay zero extra DB cost.
-  const rollupDefs = defs.filter((d) => isRollupIndicator(d));
+  //
+  // Sub-44 architect 💡 closure (industries-empty guard): rollup-bearing
+  // defs MUST be sector-agnostic (`industries.length === 0`). A future
+  // seed declaring `requiredInputs: ['rollup:...']` with non-empty
+  // `industries` would silently fire on ALL parent cos here (parent
+  // targets bypass `matchCompaniesToIndicators` industry-filter at
+  // `:230`), violating the indicator's own sector restriction. Strict
+  // layer-up belongs at seed-author time (`validateRollupSeed` rejects
+  // such seeds in `seed-indicators.ts`); this runtime filter is
+  // belt-and-braces — drops sector-restricted rollups from the parent
+  // pass + logs a warning so any seed that slipped past the loader
+  // surfaces in ops logs rather than silently double-counting.
+  const allRollupCandidates = defs.filter((d) => isRollupIndicator(d));
+  const rollupDefs: typeof allRollupCandidates = [];
+  for (const d of allRollupCandidates) {
+    if (d.industries.length === 0) {
+      rollupDefs.push(d);
+    } else {
+      // Defensive — should never fire in production if seed-author
+      // validation runs at deploy time. Surface if it does.
+      logger.pairError?.(
+        `rollup-skip/${d.code}`,
+        new Error(
+          `Rollup-bearing indicator '${d.code}' has non-empty industries [${d.industries.join(',')}] — sector-restricted rollups are not supported (would silently fire on all parent-cos). Seed validation should reject this; runtime guard dropping from parent pass.`,
+        ),
+      );
+    }
+  }
   let parentCompanies: typeof companies = [];
   if (rollupDefs.length > 0) {
     const parents = await prisma.company.findMany({
