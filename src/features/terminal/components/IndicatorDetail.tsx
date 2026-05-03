@@ -205,7 +205,10 @@ export function IndicatorDetail() {
     // не тянется" was about the visual filling, not the underlying
     // height resolution (which already worked via items-stretch).
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4">
+      <div
+        data-testid="indicator-detail-empty"
+        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4"
+      >
         <div>
           {t('indicatorDetail.emptyDrillDown')}
           <br />
@@ -220,10 +223,24 @@ export function IndicatorDetail() {
     );
   }
   if (loading) {
-    return <div className="text-gray-700 font-mono text-xs h-full w-full flex items-center justify-center">{t('indicatorDetail.loading')}</div>;
+    return (
+      <div
+        data-testid="indicator-detail-loading"
+        className="text-gray-700 font-mono text-xs h-full w-full flex items-center justify-center"
+      >
+        {t('indicatorDetail.loading')}
+      </div>
+    );
   }
   if (error) {
-    return <div className="text-[#FF4757] font-mono text-xs h-full w-full flex items-center justify-center">{t('indicatorDetail.error')} {error}</div>;
+    return (
+      <div
+        data-testid="indicator-detail-error"
+        className="text-[#FF4757] font-mono text-xs h-full w-full flex items-center justify-center"
+      >
+        {t('indicatorDetail.error')} {error}
+      </div>
+    );
   }
   if (!detail) return null;
 

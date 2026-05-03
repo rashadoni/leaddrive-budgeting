@@ -12,94 +12,79 @@ import {
 } from "recharts"
 import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign } from "lucide-react"
 
-const CATEGORY_LABELS: Record<string, string> = {
-  // Original AAC-product-line categories (legacy data shapes)
-  returns_transport: "Returns & Transport",
-  mhb_transport: "MHB/Lime Transport",
-  pallet_export: "Pallets / Export",
-  waste: "Waste & Scrap",
-  food: "Food Costs",
-  prepaid: "Prepaid Expenses",
-  utilities: "Utilities",
-  mining: "Mining",
-  repair: "Repair & Maintenance",
-  mhb_recipe: "Recipe (BOM)",
-  labor_base: "Labor (Base)",
-  labor_summary: "Labor (Summary)",
-  marketing: "Marketing",
-  depreciation: "Depreciation",
-  other: "Other",
-  // Sub-38 — generic FP&A categories (holding-wide assumption seeds).
-  operations: "Operations",
-  commercial: "Commercial",
-  finance: "Finance",
-  fx: "FX / Currency",
-  hr: "HR / People",
-  pricing: "Pricing",
-  risk: "Risk",
-  tax: "Tax",
-  inflation: "Inflation",
+/**
+ * Sub-44 cont'd — collapsed 3 parallel `Record<string, string>` maps
+ * (CATEGORY_LABELS / CATEGORY_COLORS / CATEGORY_ICONS) into a single
+ * `Record<string, CategoryMeta>` to close sub-38 architect ⚠️.
+ *
+ * Why: the 3-map pattern was prone to drift — sub-35 (industry-code
+ * leak) was the first miss; sub-38 (gray-fallback regression) was the
+ * second; pattern would have recurred on every data-shape extension.
+ * Single-entry shape forces every new category to bring all 3 fields
+ * at compile time.
+ *
+ * Use `getCategoryMeta(cat)` for safe lookup (returns `DEFAULT_CATEGORY_META`
+ * with the cat-as-label for unknown codes — keeps the fallback contract
+ * the original maps had via `|| cat` / `|| "#9ca3af"` / `|| "📋"`).
+ */
+export interface CategoryMeta {
+  label: string
+  color: string
+  icon: string
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
+export const DEFAULT_CATEGORY_META: CategoryMeta = {
+  label: "Other", // Caller supplies the cat string when label fallback matters.
+  color: "#9ca3af",
+  icon: "📋",
+}
+
+export const CATEGORY_META: Record<string, CategoryMeta> = {
   // Original AAC-product-line categories (legacy data shapes)
-  returns_transport: "#3b82f6",
-  mhb_transport: "#2563eb",
-  pallet_export: "#14b8a6",
-  waste: "#ef4444",
-  food: "#f59e0b",
-  prepaid: "#84cc16",
-  utilities: "#8b5cf6",
-  mining: "#6b7280",
-  repair: "#f97316",
-  mhb_recipe: "#a855f7",
-  labor_base: "#10b981",
-  labor_summary: "#059669",
-  marketing: "#ec4899",
-  depreciation: "#06b6d4",
-  other: "#9ca3af",
+  returns_transport: { label: "Returns & Transport", color: "#3b82f6", icon: "🚛" },
+  mhb_transport: { label: "MHB/Lime Transport", color: "#2563eb", icon: "🏗️" },
+  pallet_export: { label: "Pallets / Export", color: "#14b8a6", icon: "📦" },
+  waste: { label: "Waste & Scrap", color: "#ef4444", icon: "♻️" },
+  food: { label: "Food Costs", color: "#f59e0b", icon: "🍽️" },
+  prepaid: { label: "Prepaid Expenses", color: "#84cc16", icon: "💳" },
+  utilities: { label: "Utilities", color: "#8b5cf6", icon: "⚡" },
+  mining: { label: "Mining", color: "#6b7280", icon: "⛏️" },
+  repair: { label: "Repair & Maintenance", color: "#f97316", icon: "🔧" },
+  mhb_recipe: { label: "Recipe (BOM)", color: "#a855f7", icon: "🧪" },
+  labor_base: { label: "Labor (Base)", color: "#10b981", icon: "👷" },
+  labor_summary: { label: "Labor (Summary)", color: "#059669", icon: "👥" },
+  marketing: { label: "Marketing", color: "#ec4899", icon: "📢" },
+  depreciation: { label: "Depreciation", color: "#06b6d4", icon: "📉" },
+  other: { label: "Other", color: "#9ca3af", icon: "📋" },
   // Sub-38 — generic FP&A categories surfaced by AZMADE/holding-wide
-  // assumption seeds. Without these the treemap + donut + ranking
-  // bars all fell back to the gray default ("#9ca3af") because the
-  // data shape changed but the color map did not. Tailwind palette
-  // hexes; semantic association with category meaning.
-  operations: "#3b82f6",   // blue — primary ops backbone
-  commercial: "#f97316",   // orange — sales / commerce
-  finance: "#10b981",      // emerald — money / fin
-  fx: "#a855f7",           // purple — currency / FX
-  hr: "#14b8a6",           // teal — people
-  pricing: "#f59e0b",      // amber — pricing
-  risk: "#ef4444",         // red — risk
-  tax: "#6366f1",          // indigo — formal / regulatory
-  inflation: "#ec4899",    // pink — macro / monetary
+  // assumption seeds. Without these the treemap + donut + ranking bars
+  // all fell back to the gray default because the data shape changed but
+  // the color map did not. Tailwind palette hexes with semantic
+  // association.
+  operations: { label: "Operations", color: "#3b82f6", icon: "⚙️" }, // blue — primary ops backbone
+  commercial: { label: "Commercial", color: "#f97316", icon: "🛒" }, // orange — sales / commerce
+  finance: { label: "Finance", color: "#10b981", icon: "💰" },        // emerald — money / fin
+  fx: { label: "FX / Currency", color: "#a855f7", icon: "💱" },       // purple — currency / FX
+  hr: { label: "HR / People", color: "#14b8a6", icon: "👥" },         // teal — people
+  pricing: { label: "Pricing", color: "#f59e0b", icon: "🏷️" },         // amber — pricing
+  risk: { label: "Risk", color: "#ef4444", icon: "⚠️" },               // red — risk
+  tax: { label: "Tax", color: "#6366f1", icon: "🏛️" },                 // indigo — formal / regulatory
+  inflation: { label: "Inflation", color: "#ec4899", icon: "📈" },    // pink — macro / monetary
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  returns_transport: "🚛",
-  mhb_transport: "🏗️",
-  pallet_export: "📦",
-  waste: "♻️",
-  food: "🍽️",
-  prepaid: "💳",
-  utilities: "⚡",
-  mining: "⛏️",
-  repair: "🔧",
-  mhb_recipe: "🧪",
-  labor_base: "👷",
-  labor_summary: "👥",
-  marketing: "📢",
-  depreciation: "📉",
-  other: "📋",
-  // Sub-38 — generic FP&A category icons.
-  operations: "⚙️",
-  commercial: "🛒",
-  finance: "💰",
-  fx: "💱",
-  hr: "👥",
-  pricing: "🏷️",
-  risk: "⚠️",
-  tax: "🏛️",
-  inflation: "📈",
+/**
+ * Safe lookup for a category's display metadata. Returns the
+ * registered entry when present; falls back to a synthesized entry
+ * with the raw cat code as the label and the default gray + 📋 icon
+ * (matches the legacy `CATEGORY_LABELS[cat] || cat` / `... || "#9ca3af"`
+ * / `... || "📋"` semantics from the pre-consolidation maps).
+ *
+ * Pure / no React; testable without rendering the parent component.
+ */
+export function getCategoryMeta(cat: string): CategoryMeta {
+  const entry = CATEGORY_META[cat]
+  if (entry) return entry
+  return { ...DEFAULT_CATEGORY_META, label: cat }
 }
 
 function fmtNum(n: number): string {
@@ -189,10 +174,11 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const allCategoryCounts = Array.from(grouped.entries()).map(([cat, items]) => {
     const aznTotal = items.filter((i: any) => i.unit === "AZN").reduce((s: number, i: any) => s + i.value, 0)
     const totalSum = items.reduce((s: number, i: any) => s + (typeof i.value === "number" ? i.value : 0), 0)
+    const meta = getCategoryMeta(cat)
     return {
-      name: CATEGORY_LABELS[cat] || cat, key: cat, count: items.length,
+      name: meta.label, key: cat, count: items.length,
       aznValue: aznTotal, totalSum,
-      color: CATEGORY_COLORS[cat] || "#9ca3af",
+      color: meta.color,
     }
   }).sort((a, b) => b.count - a.count)
 
@@ -214,7 +200,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const filteredCategories = Array.from(grouped.entries()).filter(([cat, items]) => {
     if (!search) return selectedCategory ? cat === selectedCategory : true
     const q = search.toLowerCase()
-    return (CATEGORY_LABELS[cat] || cat).toLowerCase().includes(q) ||
+    return getCategoryMeta(cat).label.toLowerCase().includes(q) ||
       items.some((i: any) => i.label?.toLowerCase().includes(q))
   })
 
@@ -350,7 +336,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 onClick={() => setSelectedCategory(selectedCategory === item.key ? null : item.key)}
               >
                 <span className="text-xs text-muted-foreground w-5 text-right tabular-nums">{i + 1}</span>
-                <span className="text-[10px] text-muted-foreground mr-1">{CATEGORY_ICONS[item.key] || "📋"}</span>
+                <span className="text-[10px] text-muted-foreground mr-1">{getCategoryMeta(item.key).icon}</span>
                 <span className="text-xs font-medium w-32 truncate">{item.name}</span>
                 <div className="flex-1 h-6 bg-muted/30 rounded-md overflow-hidden relative">
                   <div
@@ -410,11 +396,11 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 <div
                   className="flex items-center gap-2 px-4 py-2.5 border-b cursor-pointer hover:bg-muted/40 transition-colors"
                   onClick={() => toggleCategory(cat)}
-                  style={{ borderLeft: `3px solid ${CATEGORY_COLORS[cat] || "#9ca3af"}` }}
+                  style={{ borderLeft: `3px solid ${getCategoryMeta(cat).color}` }}
                 >
                   {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
-                  <span className="text-sm mr-1">{CATEGORY_ICONS[cat] || "📋"}</span>
-                  <span className="text-xs font-semibold text-foreground">{CATEGORY_LABELS[cat] || cat}</span>
+                  <span className="text-sm mr-1">{getCategoryMeta(cat).icon}</span>
+                  <span className="text-xs font-semibold text-foreground">{getCategoryMeta(cat).label}</span>
                   <Badge variant="secondary" className="text-[9px] ml-1 h-4">{items.length}</Badge>
                   <span className="ml-auto text-xs font-bold tabular-nums text-foreground">
                     {catTotal > 0 ? fmtCurrency(catTotal) + " AZN" : ""}
@@ -437,7 +423,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                         <Badge
                           variant="outline"
                           className="text-[9px] font-normal"
-                          style={{ borderColor: `${CATEGORY_COLORS[cat]}40`, color: CATEGORY_COLORS[cat] }}
+                          style={{ borderColor: `${getCategoryMeta(cat).color}40`, color: getCategoryMeta(cat).color }}
                         >
                           {item.unit}
                         </Badge>

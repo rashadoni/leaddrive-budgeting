@@ -206,7 +206,10 @@ export function VarianceExplainerPanel() {
     // the visual center of the panel so the empty state feels
     // intentional rather than bug-like.
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4">
+      <div
+        data-testid="variance-explainer-empty"
+        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4"
+      >
         <div>
           {t("varianceExplainer.pickCellPrefix")} <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>
           <br />
@@ -222,7 +225,10 @@ export function VarianceExplainerPanel() {
   // hint so the user knows the panel is alive and waiting.
   if (!data && !loading && !error) {
     return (
-      <div className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3">
+      <div
+        data-testid="variance-explainer-no-data"
+        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
+      >
         <div>
           {t("varianceExplainer.clickPrefix")}{" "}
           <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>{" "}

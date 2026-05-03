@@ -300,4 +300,47 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     expect(removed).toBe(true);
     removeSpy.mockRestore();
   });
+
+  // ─── Sub-44 cont'd architectural-debt closure (Round-33 architect ⚠️) ──
+  // DOM-assertion lock for the centered-empty-state Tailwind classes on
+  // VarianceExplainerPanel's 2 placeholder branches. Without these, a
+  // future Tailwind purge or refactor that strips `items-center
+  // justify-center` would silently regress the UX with no failing test.
+  // Architect noted the same complaint TWICE (Round-32 + Round-33) — this
+  // is the regression lock.
+
+  describe("empty-state DOM-class invariants (Round-33 ⚠️ closure)", () => {
+    function expectCenteredClasses(el: HTMLElement): void {
+      const className = el.className;
+      expect(className, `expected items-center on ${el.dataset.testid}`).toMatch(/\bitems-center\b/);
+      expect(className, `expected justify-center on ${el.dataset.testid}`).toMatch(/\bjustify-center\b/);
+      expect(className, `expected flex on ${el.dataset.testid}`).toMatch(/\bflex\b/);
+      expect(className, `expected flex-col on ${el.dataset.testid}`).toMatch(/\bflex-col\b/);
+      // Height + width MUST reach 100% so centering operates against the
+      // full panel slot, not just the content box.
+      expect(className, `expected h-full on ${el.dataset.testid}`).toMatch(/\bh-full\b/);
+      expect(className, `expected w-full on ${el.dataset.testid}`).toMatch(/\bw-full\b/);
+    }
+
+    it("no IV + no active company empty branch — testid + centered classes", () => {
+      // Default beforeEach sets both state fields to null — exercises the
+      // pick-a-cell empty branch.
+      render(<VarianceExplainerPanel />);
+      const el = screen.getByTestId("variance-explainer-empty");
+      expectCenteredClasses(el);
+    });
+
+    it("active IV but no data yet branch — testid + centered classes", () => {
+      // Suppress the explain fetch (test focuses on initial-render shape,
+      // not async narrative arrival).
+      mockExplainResponse();
+      mockState = {
+        activeIndicatorValueId: "iv1",
+        activeCompanyCode: null,
+      };
+      render(<VarianceExplainerPanel />);
+      const el = screen.getByTestId("variance-explainer-no-data");
+      expectCenteredClasses(el);
+    });
+  });
 });
