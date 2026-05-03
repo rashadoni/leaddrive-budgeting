@@ -430,7 +430,8 @@ Then restart the app once migrations are stable.
 
 `runRecomputeForCompanies` has no internal timeout — a stuck formula
 would block the calling endpoint. The Next.js API route timeout is
-the gate (default 60s in `next.config.js`; some routes override).
+the gate, set per-route via `export const maxDuration = 60` (e.g.
+`src/app/api/indicators/route.ts:36`, `src/app/api/onboarding/import/analyze/route.ts:27`).
 At Phase F scale (60×80 = 4800 pairs) bulk recomputes can exceed this.
 Mitigation today: opt-out of inline sparkline; use
 `scripts/compute-sparklines.ts` offline. Long-term: BullMQ background
