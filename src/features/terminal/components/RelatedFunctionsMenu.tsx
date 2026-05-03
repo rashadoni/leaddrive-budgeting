@@ -38,7 +38,19 @@ interface CompanyLite {
 
 /** Static catalog: each entry pairs a query-tab/route with the i18n key
  *  that resolves its display label. The labelKey path is relative to
- *  the `relatedFunctions.*` namespace. */
+ *  the `relatedFunctions.*` namespace.
+ *
+ *  Phase 7.G Turn Q — Turn-40-sub5 architect 💡 closure (intentional-
+ *  split documentation): the `audit` entry uses `isPage: true` to route
+ *  via full-page nav to `/budgeting/audit`, while the `AUD GO` command-
+ *  bar verb dispatches a `terminal:open-audit` modal event (stay-in-
+ *  terminal). This is deliberate UX, not a bug:
+ *    - **menu entry → page nav**: gives the user a full-screen surface
+ *      with audit history, filters, search — context for "I'm investigating
+ *      something specific";
+ *    - **AUD GO verb → modal**: quick-glance of latest events without
+ *      losing the terminal panel state — for "what just changed?".
+ *  Different mental modes warrant different surfaces. Don't unify. */
 const FUNCTIONS = [
   { tab: "pnl-report", labelKey: "pnl" },
   { tab: "comparison", labelKey: "compare" },
@@ -54,6 +66,17 @@ export function RelatedFunctionsMenu() {
   // hand-rolled tree-walking. Swapped to shared `useCompanies()` hook
   // — single fetch shared across PanelGrid, AlertsPanel,
   // RelatedFunctionsMenu (and future consumers).
+  //
+  // Phase 7.G Turn Q — Turn-40-sub5 architect 💡 closure (companyMap
+  // accepted-stale-window): `codeToId` is snapshot-on-mount via the
+  // shared `useCompanies()` hook. Mid-session company add/rename is NOT
+  // reflected here until next mount. **Accepted trade-off:** companies
+  // are administratively-managed entities (added once during onboarding,
+  // rarely renamed); the staleness window is the user's session lifetime
+  // which typically << company-add cadence. Fully closed when SSE Phase
+  // B1 lands (will subscribe to a `companies:changed` channel that
+  // invalidates the shared cache); until then, mid-session admin who
+  // adds a company can refresh-page to see it in this menu.
   const { codeToId } = useCompanies();
   const wrapperRef = useRef<HTMLDivElement>(null);
 

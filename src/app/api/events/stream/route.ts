@@ -44,6 +44,26 @@ export const runtime = 'nodejs';
 const HEARTBEAT_MS = 25_000;
 
 export async function GET(request: NextRequest) {
+  // Phase 7.G Turn Q — closes Turn-41-sub1 architect ⚠️ scope-cut
+  // (SSE always-on without kill-switch). Plan §B1 promised
+  // `NEXT_PUBLIC_TERMINAL_LIVE` build-flag but Turbopack dev wasn't
+  // reliably inlining the env var; fallback is route-level 503 toggled
+  // by `TERMINAL_LIVE_DISABLED` env. Set at the deploy layer (e.g.
+  // `.env.production` or hosting-platform secrets) — when set to a
+  // truthy non-empty value, the route returns 503 and clients fall
+  // back to polling / no-live-updates gracefully.
+  if (process.env.TERMINAL_LIVE_DISABLED) {
+    return new Response(JSON.stringify({ error: 'SSE temporarily disabled' }), {
+      status: 503,
+      headers: {
+        'content-type': 'application/json',
+        // Brief Retry-After so clients don't reconnect-spam during the
+        // disabled window.
+        'retry-after': '60',
+      },
+    });
+  }
+
   const session = await requireRole(request, 'viewer');
   if (isAuthError(session)) return session;
   if (!session.orgId) {

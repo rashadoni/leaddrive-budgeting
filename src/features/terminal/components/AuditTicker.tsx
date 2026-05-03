@@ -11,9 +11,13 @@ import { useEventStream } from "@/lib/events/use-event-stream";
  * `terminal:open-audit` (the same event CommandBar's `AUD GO` dispatch
  * fires) to open the full AuditModal.
  *
- * Reads `/api/audit/events?limit=5`. Fetched once on mount; live updates
- * land in Phase B1 (SSE infra). Shows `—` while loading and "no events"
- * if the org has no audit history yet.
+ * Reads `/api/audit/events?limit=5` on mount AND on every `audit:changed`
+ * SSE event (Phase B1 infra — wired via `useEventStream` below). Shows
+ * `—` while loading and "no events" if the org has no audit history yet.
+ * Phase 7.G Turn Q closure: comment was stale claiming "fetched once on
+ * mount; live updates land in Phase B1" — B1 shipped before this comment
+ * was last updated. Refetch path is live since the `useEventStream`
+ * call at the bottom of the component.
  *
  * Manager+ role gating happens server-side; viewers get a 403, which
  * surfaces as the "no events" state (intentionally silent — non-managers
@@ -65,6 +69,18 @@ export function AuditTicker() {
     <div
       onClick={handleClick}
       role="button"
+      // Phase 7.G Turn Q — Turn-40-sub3 architect 💡 closure (tab-order
+      // semantics): `tabIndex={0}` puts the strip into the keyboard tab
+      // order between primary surfaces (CommandBar / LayoutMenu / panel
+      // search inputs / AuditModal Close). Accepted UX trade-off:
+      // - keeps the always-visible audit strip keyboard-reachable for
+      //   power users who want Enter-to-open-modal without mouse;
+      // - the strip is short-content + clearly labelled (aria-label +
+      //   title below) — not a "noisy" tab stop;
+      // - alternative considered (move to end-of-DOM with tabIndex={-1}
+      //   + global Enter shortcut) would split the discoverability —
+      //   keyboard users would tab past the visible status surface.
+      // Default = stay tabbable. Revisit if user feedback complains.
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
