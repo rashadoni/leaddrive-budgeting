@@ -104,6 +104,50 @@ describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
     expect(RULE_COMPANY_MOSTLY_RED.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
   });
 
+  it("sub-44 cont'd: skips REAL parent-co rollup IVs (isRealParentRollup flag — gate-via-isAggregateRollup)", () => {
+    // Sub-44 cont'd render-path emits parent-co rollup IVs as cells with
+    // `isRealParentRollup: true`. Alert rules MUST skip these — sub-group
+    // (parent) rows are navigation aggregates, not measurable entities.
+    // Without the isAggregateRollup gate, a sub-group with 3 real-rollup
+    // red cells would silently fire RULE_COMPANY_MOSTLY_RED, double-
+    // counting the same risk that already fired on its children.
+    const ctx: AlertContext = {
+      companies: [company('sg', 'AAC', 'Industrial', true)],
+      indicators: [IND_GROSS, IND_NET, IND_OPEX],
+      cells: [
+        // 3 real parent-co rollup cells, all red. WOULD trip
+        // RULE_COMPANY_MOSTLY_RED if not filtered (threshold = 3 reds).
+        {
+          companyId: 'sg',
+          indicatorId: 'ind_gross',
+          value: 0,
+          status: 'red',
+          isRealParentRollup: true,
+          indicatorValueId: 'iv_real_1',
+        },
+        {
+          companyId: 'sg',
+          indicatorId: 'ind_net',
+          value: 0,
+          status: 'red',
+          isRealParentRollup: true,
+          indicatorValueId: 'iv_real_2',
+        },
+        {
+          companyId: 'sg',
+          indicatorId: 'ind_opex',
+          value: 0,
+          status: 'red',
+          isRealParentRollup: true,
+          indicatorValueId: 'iv_real_3',
+        },
+      ],
+    };
+    expect(
+      RULE_COMPANY_MOSTLY_RED.match(ctx, DEFAULT_ALERT_THRESHOLDS),
+    ).toHaveLength(0);
+  });
+
   it('triggers separately for each company over the threshold', () => {
     const ctx: AlertContext = {
       companies: [

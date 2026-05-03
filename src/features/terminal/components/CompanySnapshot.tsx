@@ -38,7 +38,7 @@ import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 // composite-score.ts + MatrixCompanyRow/MatrixIndicatorCol from the
 // hook). Local `'missing'` literal was a UI fiction — endpoint emits
 // only 4 IndicatorStatus values (green/amber/red/unknown).
-import { statusShape, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { isAggregateRollup, statusShape, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import type {
   MatrixCompanyRow as MatrixCompany,
   MatrixIndicatorCol as MatrixIndicator,
@@ -85,7 +85,8 @@ export function CompanySnapshot({ companyCode }: Props) {
   const statusCounts = useMemo(() => {
     if (!data || !company) return null;
     const cells = data.cells.filter(
-      (c) => c.companyId === company.id && !c.isSubgroupRollup,
+      // Sub-44 cont'd architect closure — gate via shared helper.
+      (c) => c.companyId === company.id && !isAggregateRollup(c),
     );
     return {
       green: cells.filter((c) => c.status === "green").length,

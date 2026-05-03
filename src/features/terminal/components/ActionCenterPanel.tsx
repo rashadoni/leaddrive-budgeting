@@ -37,7 +37,7 @@ import { ListChecks, X, AlertTriangle } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
 import { useCompanies } from "../hooks/use-companies";
-import { statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
+import { isAggregateRollup, statusColor, statusShape } from "@/lib/risk/heatmap-matrix";
 import type { IndicatorStatus } from "@/lib/risk/formula-engine";
 import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import type { AlertSeverity } from "@/lib/risk/alert-rules";
@@ -153,7 +153,9 @@ export function ActionCenterPanel() {
     );
     const out: WorkItem[] = [];
     for (const cell of matrix.cells) {
-      if (cell.isSubgroupRollup) continue;
+      // Sub-44 cont'd architect closure — gate via shared helper to
+      // also skip real parent-co rollup IVs (sub-44 cont'd render-path).
+      if (isAggregateRollup(cell)) continue;
       if (cell.status !== "red" && cell.status !== "amber") continue;
       const co = compById.get(cell.companyId);
       const ind = indById.get(cell.indicatorId);

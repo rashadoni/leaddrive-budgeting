@@ -31,7 +31,7 @@
  * silently.
  */
 
-import type { HeatMapCell } from './heatmap-matrix';
+import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 import { computeCompositeScore } from './composite-score';
 import {
   mergeWithDefaults,
@@ -210,7 +210,11 @@ function buildCellsByCompany(
 ): ReadonlyMap<string, readonly HeatMapCell[]> {
   const out = new Map<string, HeatMapCell[]>();
   for (const c of cells) {
-    if (c.isSubgroupRollup) continue;
+    // Sub-44 cont'd architect closure — gate via shared
+    // `isAggregateRollup` helper (covers Turn 33.5 synthetic averages
+    // AND sub-44 real parent-co rollup IVs). Hand-rolled
+    // `isSubgroupRollup` check would silently miss the new variant.
+    if (isAggregateRollup(c)) continue;
     const list = out.get(c.companyId);
     if (list) list.push(c);
     else out.set(c.companyId, [c]);
@@ -233,7 +237,7 @@ function cellsForCompany(
     return ctx.cellsByCompany.get(companyId) ?? [];
   }
   return ctx.cells.filter(
-    (c) => c.companyId === companyId && !c.isSubgroupRollup,
+    (c) => c.companyId === companyId && !isAggregateRollup(c),
   );
 }
 
@@ -433,7 +437,7 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
       (c) =>
         c.indicatorId === target.id &&
         c.status === 'red' &&
-        !c.isSubgroupRollup,
+        !isAggregateRollup(c),
     );
     if (redCells.length < threshold) return [];
     const uniqueCompanyIds = Array.from(

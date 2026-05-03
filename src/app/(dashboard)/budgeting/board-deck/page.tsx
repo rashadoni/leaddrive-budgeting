@@ -18,7 +18,7 @@ import {
   type AlertSeverity,
 } from "@/lib/risk/alert-rules";
 import { readAlertThresholdsFromOrgSettings } from "@/lib/risk/alert-thresholds-config";
-import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { isAggregateRollup, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { PrintButton } from "./PrintButton";
 
 export const metadata = {
@@ -186,7 +186,8 @@ export default async function BoardDeckPage({
     countsByCompany.set(co.id, { green: 0, amber: 0, red: 0, unknown: 0 });
   }
   for (const c of cells) {
-    if (c.isSubgroupRollup) continue;
+    // Sub-44 cont'd architect closure — gate via shared helper.
+    if (isAggregateRollup(c)) continue;
     const counts = countsByCompany.get(c.companyId);
     if (counts) counts[c.status] += 1;
   }

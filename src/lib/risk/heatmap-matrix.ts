@@ -37,6 +37,37 @@ export interface HeatMapCell {
    *  health (e.g. 4 green + 1 red children → all-red rollup → composite
    *  ≈ 0, but true signal is 80% green). */
   isSubgroupRollup?: boolean;
+  /** Sub-44 cont'd render-path — REAL parent-co rollup IV from
+   *  rollup() resolver (e.g. `IND_HOLDING_REVENUE` value summed across
+   *  direct children). Distinguished from `isSubgroupRollup` because:
+   *  - has a persisted `indicatorValueId` (drill-downable)
+   *  - value is the rollup() formula's true output, not a children-cell
+   *    average
+   *  - emitted only for level=1 sub-group cos
+   *  Composite score + alert-rule iteration + UI badge counts MUST skip
+   *  these cells (same rationale as `isSubgroupRollup` — sub-group level
+   *  is a navigation rollup, not a measurable entity). Use the
+   *  `isAggregateRollup(c)` helper to gate uniformly across both flags. */
+  isRealParentRollup?: boolean;
+}
+
+/**
+ * Gate predicate: `true` for any sub-group/parent-co aggregate cell
+ * (synthetic Turn 33.5 average OR real sub-44 rollup IV). Centralizes
+ * the "is this an aggregate row?" check so downstream consumers
+ * (composite-score, alert-rules, UI badge counts) can't silently miss
+ * one of the flags when a new aggregate variant is added.
+ *
+ * Sub-44 architect ⚠️ closure: previously every consumer hand-checked
+ * `isSubgroupRollup`. The render-path's new `isRealParentRollup` would
+ * have leaked through 6 sites silently — gating them all on this
+ * helper closes the class of bug at one site.
+ */
+export function isAggregateRollup(c: {
+  isSubgroupRollup?: boolean;
+  isRealParentRollup?: boolean;
+}): boolean {
+  return c.isSubgroupRollup === true || c.isRealParentRollup === true;
 }
 
 /** `${companyId}:${indicatorId}` — deterministic, safe for Map keys. */

@@ -26,7 +26,7 @@
  * a 🔄 in CARRYOVER if needed.
  */
 
-import type { HeatMapCell } from './heatmap-matrix';
+import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 import type { IndicatorStatus } from './formula-engine';
 
 export type CompositeBand = 'green' | 'amber' | 'red' | 'unknown';
@@ -98,9 +98,11 @@ export function scoreToBand(score: number): CompositeBand {
  * Phase C5 (architect Round-1 sub-12 closure) — shared aggregator for
  * HeatMap.tsx + board-deck/page.tsx.
  *
- * Groups cells by `companyId` (skipping `isSubgroupRollup` rollup rows
- * — caller-filter contract from sub-8) and computes the composite per
- * company. Two modes via the `companyIds` arg:
+
+ * Groups cells by `companyId` (skipping aggregate-rollup rows via the
+ * shared `isAggregateRollup(c)` helper — covers both Turn 33.5 synthetic
+ * averages AND sub-44 cont'd real parent-co rollup IVs) and computes the
+ * composite per company. Two modes via the `companyIds` arg:
  *   - omitted: result includes only companies that have at least one
  *     non-rollup cell (HeatMap pattern — sparse map)
  *   - provided: result includes EVERY listed id, with empty-cell
@@ -111,6 +113,9 @@ export function scoreToBand(score: number): CompositeBand {
  * Locks the rollup-skip invariant in one place — divergent skip logic
  * across call-sites would silently shift sub-group composites between
  * the Terminal and Board Deck (architect Round-1 sub-12 ⚠️ closure).
+ * Sub-44 cont'd architect closure: gate switched from raw
+ * `isSubgroupRollup` field-check to the `isAggregateRollup` helper so
+ * adding a new aggregate variant doesn't require touching every site.
  */
 export function computeCompositeByCompany(
   cells: readonly HeatMapCell[],
@@ -118,7 +123,7 @@ export function computeCompositeByCompany(
 ): Map<string, CompositeScore> {
   const byCo = new Map<string, HeatMapCell[]>();
   for (const c of cells) {
-    if (c.isSubgroupRollup) continue;
+    if (isAggregateRollup(c)) continue;
     const list = byCo.get(c.companyId);
     if (list) list.push(c);
     else byCo.set(c.companyId, [c]);

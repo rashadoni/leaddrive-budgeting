@@ -208,6 +208,52 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     expect(result.get('subgroup_x')?.score).toBeNull();
     expect(result.get('subgroup_x')?.band).toBe('unknown');
   });
+
+  it('sub-44 cont\'d: skips isRealParentRollup cells (gate-via-isAggregateRollup invariant)', () => {
+    // Sub-44 cont'd render-path adds REAL parent-co rollup IVs
+    // (`isRealParentRollup: true`) alongside synthetic Turn 33.5 rollups.
+    // Composite scoring MUST skip BOTH variants — locked via the shared
+    // `isAggregateRollup` helper. Without this gate, a sub-group with a
+    // single real-rollup IV would compute a meaningful composite (e.g.
+    // 100/green) which violates the documented "sub-groups are
+    // navigation rollups, not measurable entities" invariant.
+    const cells: HeatMapCell[] = [
+      cellWith('co_a', 'green'),
+      cellWith('co_a', 'green'),
+      // Real parent IV from sub-44 prereq #1 — would skew the composite
+      // if not filtered. Distinct id so its presence in `byCo` would be
+      // observable.
+      {
+        ...cellWith('subgroup_x', 'green'),
+        indicatorValueId: 'iv_real_holding_revenue',
+        isRealParentRollup: true,
+      },
+    ];
+    const result = computeCompositeByCompany(cells, ['co_a', 'subgroup_x']);
+    expect(result.get('co_a')?.score).toBe(100);
+    // Sub-group's only cell was a real-rollup → filtered → empty → null.
+    // Without the isAggregateRollup gate, this would be 100/green (LEAK).
+    expect(result.get('subgroup_x')?.score).toBeNull();
+    expect(result.get('subgroup_x')?.band).toBe('unknown');
+  });
+
+  it("sub-44 cont'd: BOTH rollup variants on same sub-group both skipped", () => {
+    // Defensive: ensure neither isSubgroupRollup nor isRealParentRollup
+    // contributes to the composite, even when both appear on the same
+    // sub-group row (e.g. one indicator has Turn 33.5 average, another
+    // has a real rollup IV).
+    const cells: HeatMapCell[] = [
+      { ...cellWith('subgroup_x', 'red'), isSubgroupRollup: true },
+      {
+        ...cellWith('subgroup_x', 'green'),
+        indicatorValueId: 'iv_real',
+        isRealParentRollup: true,
+      },
+    ];
+    const result = computeCompositeByCompany(cells, ['subgroup_x']);
+    expect(result.get('subgroup_x')?.score).toBeNull();
+    expect(result.get('subgroup_x')?.band).toBe('unknown');
+  });
 });
 
 describe('scoreToBand (Phase C5)', () => {
