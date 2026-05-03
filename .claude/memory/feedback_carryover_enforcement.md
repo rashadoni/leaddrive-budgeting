@@ -56,6 +56,11 @@ Every substantive turn MUST process `docs/CARRYOVER.md` — the cross-turn track
 
 **Hook fix alternative:** the architect-gate.sh check #5 could be extended to also count `Bash` tool_use entries whose command modifies CARRYOVER (e.g. via heuristic regex for `CARRYOVER.write_text` or `> docs/CARRYOVER.md` patterns). Deferred — convention fix is sub-2-min, hook refactor sub-15-min with broader test surface.
 
+**Hook edge cases worth knowing** (per architect Turn-L Round-1 💡):
+
+- **`cwd` field absent in Stop event input** (`architect-gate.sh:208-211`): the check silently skips when Claude Code doesn't supply `cwd` (non-Claude-Code runners, headless invocations). The hook is best-effort, not authoritative — manual CARRYOVER discipline is still expected even when the hook can't enforce.
+- **Hook trigger counts `🔄` only** (`architect-gate.sh:215` uses `grep -c "^| 🔄 |"`), NOT `⚠️` rows: a CARRYOVER section with only `⚠️` rows would silently bypass check #5 even though the file has unaddressed items. Narratives should specify "X total (Y 🔄 + Z ⚠️)" per Turn-I counting-convention so the hook trigger ≠ narrative total mismatch is visible.
+
 **Why this rule exists:**
 
 User observed 2026-04-24 that across ~15 turns the developer repeatedly treated each turn as fresh — partial items from prior turns evaporated unless user explicitly asked "что осталось?". Developer would announce "next priority: X" without processing the accumulated pile. User: "а кто будет частичные закрытые задачи закрывать?" — exactly right; the answer should be automatic, not user-driven. This rule makes CARRYOVER.md the mechanical tie between turns.
