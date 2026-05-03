@@ -26,9 +26,35 @@ Every substantive turn MUST process `docs/CARRYOVER.md` — the cross-turn track
 - For each OPEN item: verify developer either closed it, heartbeated it, or re-escalated. Missing action = Проблема.
 - In Completion Audit, generates a "Next-turn carryover" section listing every ⚠️/❌/🔄 from THIS turn + every still-open pre-existing item. Developer copies this verbatim into CARRYOVER.md before closing turn.
 
-**Hook obligations** (see `.claude/hooks/architect-gate.sh`):
+**Hook obligations** (see `.claude/hooks/architect-gate.sh:215-251`):
 
-- Check #5: if CARRYOVER.md has any 🔄 rows AND the file's mtime is older than the dirty marker's mtime (i.e. file wasn't touched this turn), block turn-close with message "CARRYOVER has N open items, not updated this turn; process each."
+- Check #5: if CARRYOVER.md has any 🔄 rows AND **no `Edit` / `Write` / `MultiEdit` tool_use entry after `LAST_USER_IDX` modified `docs/CARRYOVER.md`**, block turn-close with message "CARRYOVER has N open items, not updated this turn; process each."
+
+**Important — the check is transcript-based, NOT mtime-based.** The hook scans the conversation transcript for tool_use events and counts only `Edit`, `Write`, and `MultiEdit` calls whose `file_path` ends with `/docs/CARRYOVER.md`. Bash-tool writes (e.g. `python3 bumper.py` that does `CARRYOVER.write_text(...)`) are INVISIBLE to this check — see "Edit-tool requirement" rule below.
+
+## Edit-tool requirement for CARRYOVER updates (codified Turn K' / Phase 7.G)
+
+**Rule:** every CARRYOVER update this turn MUST land via the **Edit** (or Write / MultiEdit) tool. Bash-based file writes (e.g. Python helper scripts that do `CARRYOVER.write_text(...)`) are INVISIBLE to the architect-gate hook check #5 and trigger false-positive Stop-hook complaints.
+
+**Why this rule exists:** observed empirically across Phase 7.G Turns H' / J' / K' (3 occurrences in one session). Hook check #5 (`.claude/hooks/architect-gate.sh:215-251`) is transcript-based — it scans for `Edit` / `Write` / `MultiEdit` tool_use entries after `LAST_USER_IDX` whose `file_path` ends with `/docs/CARRYOVER.md`. A Python helper that bumps 90+ counters via `Bash` shows up in the transcript as a `Bash` tool_use, not `Edit` — so the hook sees zero CARRYOVER edits and blocks turn-close, even though the file was actually modified.
+
+**Workflow** for substantive turns that need bulk CARRYOVER changes:
+
+1. Run the Python bumper helper (e.g. `python3 /tmp/claude/bump_carryover_turnX.py`) for the multi-row counter-bump + OPEN→CLOSED migration. This is fast (~50ms vs 90+ sequential Edits) and is the right tool for the bulk operation.
+
+2. Follow up with **at least one direct Edit-tool call** on `docs/CARRYOVER.md`. Acceptable patterns:
+   - Refine narrative wording (e.g., add a post-architect addendum after the Round-1 verdict)
+   - Fix a typo or counting drift
+   - Insert a 1-line summary clarification
+   - Append a new 🔄 row inline (preferable when filing architect-flagged carry-forwards)
+
+3. Do this BEFORE invoking the architect — preemptive heartbeat eliminates the post-architect Stop-hook race entirely.
+
+4. The architect's Round-1 review is read-only and does NOT register as a CARRYOVER edit, so don't rely on it.
+
+**Tradeoff:** the Edit-tool follow-up is a small extra step (~30s) but eliminates the recurring Stop-hook complaint pattern that has cost ~10 min total across 3 occurrences in Phase 7.G. Net positive.
+
+**Hook fix alternative:** the architect-gate.sh check #5 could be extended to also count `Bash` tool_use entries whose command modifies CARRYOVER (e.g. via heuristic regex for `CARRYOVER.write_text` or `> docs/CARRYOVER.md` patterns). Deferred — convention fix is sub-2-min, hook refactor sub-15-min with broader test surface.
 
 **Why this rule exists:**
 
