@@ -8,10 +8,19 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('./recompute', () => ({
-  createPrismaDataSource: vi.fn(() => ({ __mock: 'datasource' })),
-  recomputeIndicator: vi.fn(),
-}));
+// Sub-44 prereq #2 — partial mock with importOriginal: targets.ts now
+// imports `ROLLUP_INPUT_PREFIX` from ./recompute (sub-44 prereq #1
+// architect closure). A fully-stubbed module would drop the constant
+// and crash isRollupIndicator at runtime. Spread the real exports +
+// override only the two we want to stub.
+vi.mock('./recompute', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./recompute')>();
+  return {
+    ...actual,
+    createPrismaDataSource: vi.fn(() => ({ __mock: 'datasource' })),
+    recomputeIndicator: vi.fn(),
+  };
+});
 
 import { runRecomputeForCompanies } from './recompute-trigger';
 import { recomputeIndicator } from './recompute';

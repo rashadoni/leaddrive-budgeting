@@ -1313,6 +1313,27 @@ function applyBudgetLineSubMatcher(
   };
 }
 
+// ─── Phase 7.E phase 3 — namespace-resolver canonical prefixes ───────────
+// Sub-44 prereq-#1 architect closure (carried into prereq #2 commit). The
+// `fact:` and `rollup:` prefix strings were hardcoded at 8+ sites across
+// `recompute.ts` (resolver `matches`, body slices, validator) AND
+// `targets.ts` (rollup-bearing predicate). A future rename or v2
+// extension (e.g. `rollup:<CODE>:<AGG>` per the comment at the rollup
+// resolver below) would require touching every site with no compile-
+// time guard. Centralizing here gives:
+//
+//   1. Single source of truth — typo on import is a TS error.
+//   2. Future v2 prefix extension migrates by editing one constant.
+//   3. Cross-module discoverability — `targets.ts:isRollupIndicator`
+//      and the validator both reach the SAME constant.
+//
+// Intentionally NOT exported as `const enum` — would inline the value
+// at compile time, defeating the single-source goal during dev hot-
+// reload. Plain `const` ensures every importer reads the same string
+// at runtime.
+export const FACT_INPUT_PREFIX = 'fact:';
+export const ROLLUP_INPUT_PREFIX = 'rollup:';
+
 /**
  * Phase 7.E phase 3 — `fact(code, period)` formula function.
  *
@@ -1355,7 +1376,7 @@ function applyBudgetLineSubMatcher(
  */
 const factResolver: NamespaceResolver = {
   name: 'fact',
-  matches: (r) => r === 'fact' || r.startsWith('fact:'),
+  matches: (r) => r === 'fact' || r.startsWith(FACT_INPUT_PREFIX),
   async resolve(matched, ctx, state) {
     interface ParsedFactKey {
       raw: string;
@@ -1370,7 +1391,7 @@ const factResolver: NamespaceResolver = {
       // any specific (code, period). The function still resolves but every
       // call returns NaN (no entries pre-fetched).
       if (raw === 'fact') continue;
-      const body = raw.slice('fact:'.length);
+      const body = raw.slice(FACT_INPUT_PREFIX.length);
       const at = body.lastIndexOf('@');
       if (at < 0) continue; // malformed: no @; skip
       const code = body.slice(0, at).trim();
@@ -1471,12 +1492,12 @@ const factResolver: NamespaceResolver = {
  */
 const rollupResolver: NamespaceResolver = {
   name: 'rollup',
-  matches: (r) => r === 'rollup' || r.startsWith('rollup:'),
+  matches: (r) => r === 'rollup' || r.startsWith(ROLLUP_INPUT_PREFIX),
   async resolve(matched, ctx, state) {
     const codes: string[] = [];
     for (const raw of matched) {
       if (raw === 'rollup') continue;
-      const code = raw.slice('rollup:'.length).trim();
+      const code = raw.slice(ROLLUP_INPUT_PREFIX.length).trim();
       if (!code) continue;
       codes.push(code);
     }
@@ -1604,8 +1625,8 @@ export function validateRequiredInputs(
 ): RequiredInputValidation {
   for (let i = 0; i < requiredInputs.length; i++) {
     const r = requiredInputs[i];
-    if (r.startsWith('fact:')) {
-      const body = r.slice('fact:'.length);
+    if (r.startsWith(FACT_INPUT_PREFIX)) {
+      const body = r.slice(FACT_INPUT_PREFIX.length);
       if (body.length === 0) {
         return {
           ok: false,
@@ -1633,8 +1654,8 @@ export function validateRequiredInputs(
           reason: `requiredInputs[${i}] = "${r}" — empty PERIOD after "@".`,
         };
       }
-    } else if (r.startsWith('rollup:')) {
-      const code = r.slice('rollup:'.length).trim();
+    } else if (r.startsWith(ROLLUP_INPUT_PREFIX)) {
+      const code = r.slice(ROLLUP_INPUT_PREFIX.length).trim();
       if (!code) {
         return {
           ok: false,

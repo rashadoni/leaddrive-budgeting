@@ -20,6 +20,7 @@
  */
 export type { CompanyRole } from "@prisma/client";
 import type { CompanyRole } from "@prisma/client";
+import { ROLLUP_INPUT_PREFIX } from "./recompute";
 
 export interface CompanyForMatch {
   id: string;
@@ -151,7 +152,7 @@ export function isRollupIndicator(
 ): boolean {
   const inputs = def.requiredInputs ?? [];
   return inputs.some(
-    (s) => typeof s === 'string' && s.startsWith('rollup:'),
+    (s) => typeof s === 'string' && s.startsWith(ROLLUP_INPUT_PREFIX),
   );
 }
 
