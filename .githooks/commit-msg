@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+#
+# Phase 7.G Turn O cont'd — BASELINE UPDATE token enforcement gate.
+# Closes the long-deferred 💡 from Turn-E `feedback_visual_verification_gate.md`.
+#
+# Trigger: any commit that stages a visual-regression baseline PNG (under
+# `e2e/smoke/visual-baseline.spec.ts-snapshots/`) MUST include a line in
+# the commit message of the form:
+#
+#   BASELINE UPDATE: <one-line reason>
+#
+# Why this matters: the visual gate exists because the architect's R15→R21
+# saga proved that "tsc + vitest pass but UI breaks" is a real failure
+# class. Baseline files are committed to git so the gate works on a
+# fresh clone. A baseline change without explicit acknowledgment is
+# indistinguishable from "developer ran --update-snapshots reflexively
+# to silence the gate" — exactly the failure mode the gate is meant to
+# prevent.
+#
+# Activation: same as other hooks via `git config core.hooksPath .githooks`
+# (one-time per clone). This file is the `commit-msg` hook in that path;
+# git invokes it automatically.
+#
+# Bypass: `git commit --no-verify` (don't make a habit — see comment
+# block in `.githooks/pre-commit` for rationale).
+#
+# Exit contract:
+#   0 → commit message acceptable (either no baseline staged, OR token present)
+#   1 → block + helpful diagnostic on stderr
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="${1:-}"
+
+# Sanity: hook MUST be invoked with the commit-msg file path. Without it
+# we can't enforce; fail loud rather than silent-pass.
+if [ -z "$COMMIT_MSG_FILE" ] || [ ! -f "$COMMIT_MSG_FILE" ]; then
+  echo "[commit-msg] ⚠️  Hook invoked without a commit-msg file — skipping (likely a non-standard invocation)." >&2
+  exit 0
+fi
+
+# Determine staged baseline PNGs. `--cached` = the index (staged
+# changes); `--diff-filter=AMD` = Added / Modified / Deleted (catches
+# baseline regeneration AND deletion). Filter to the snapshot directory
+# only — other PNGs (e.g., screenshots in /docs) shouldn't trigger.
+SNAPSHOT_DIR="e2e/smoke/visual-baseline.spec.ts-snapshots"
+STAGED_BASELINES=$(git diff --cached --name-only --diff-filter=AMD 2>/dev/null \
+  | grep "^${SNAPSHOT_DIR}/.*\.png$" || true)
+
+# No baseline change staged → nothing to enforce, exit clean.
+if [ -z "$STAGED_BASELINES" ]; then
+  exit 0
+fi
+
+# Baseline change staged → require BASELINE UPDATE token in message body.
+# Match anchored to start of line so a reference inside another sentence
+# doesn't count (e.g., "fixes the BASELINE UPDATE drift class").
+if ! grep -qE "^BASELINE UPDATE:" "$COMMIT_MSG_FILE"; then
+  cat >&2 <<EOF
+
+[commit-msg] ❌ Visual baseline PNG staged but commit message lacks
+                 the required BASELINE UPDATE token.
+
+Staged baseline file(s):
+$(echo "$STAGED_BASELINES" | sed 's/^/  - /')
+
+Per \`.claude/memory/feedback_visual_verification_gate.md\`, every commit
+that regenerates a visual-regression baseline MUST include a line:
+
+  BASELINE UPDATE: <one-line reason>
+
+This is the architect-auditable signal that the baseline regeneration
+was deliberate, not reflexive — distinguishing "intentional UI change
++ baseline updated to match" from "developer hit \`--update-snapshots\`
+to silence the gate without inspecting the diff".
+
+To fix:
+  1. Open the commit-message editor again (\`git commit --amend\`).
+  2. Add a line at the top: \`BASELINE UPDATE: <why this baseline changed>\`.
+  3. Save + close.
+
+In a documented emergency: bypass with \`git commit --no-verify\` (and
+flag the reason in the PR description so reviewers see the override).
+
+EOF
+  exit 1
+fi
+
+# Token present — commit proceeds.
+exit 0

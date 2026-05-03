@@ -255,6 +255,64 @@ rm -rf "$TMPPROJ"
 rm -f "$DIRTY"
 
 # ──────────────────────────────────────────────────────────────────────────
+# 11c: Phase 7.G Turn O cont'd — Bash tool_use invoking `bump_carryover_*`
+#      Python helper SHOULD count as touching CARRYOVER (closes the chronic
+#      Stop-hook false-positive class observed across Turn-H'/J'/K'/K').
+TMPPROJ="${TMPDIR:-/tmp}/carryover-bash-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'CARRYOVER_EOF'
+# CARRYOVER
+| status | opened | turns-open | owner | blocker | item |
+|---|---|---|---|---|---|
+| 🔄 | 2026-04-24 | 0 | developer | none | Some pending work |
+CARRYOVER_EOF
+cat > "$FAKE" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"real user directive"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"python3 /tmp/claude/bump_carryover_turnX.py"}}]},"timestamp":"2026-01-01T00:00:01Z"}
+{"type":"user","message":{"role":"tool","content":[{"type":"tool_result","content":"OK"}]},"timestamp":"2026-01-01T00:00:02Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"architect","description":"t","prompt":"RAW USER MESSAGE: real directive. Review."}}]},"timestamp":"2026-01-01T00:00:03Z"}
+{"type":"user","message":{"role":"tool","content":[{"type":"tool_result","content":[{"type":"text","text":"ARCHITECT REVIEW — PASS. Proceed."}]}]},"timestamp":"2026-01-01T00:00:04Z"}
+JSONL
+touch "$DIRTY"
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if [ -z "$out" ] && [ ! -f "$DIRTY" ]; then
+  report "Bash invokes bump_carryover_*.py → allow (Turn-O extension)" 1
+else
+  report "Bash bump_carryover_ detection (got: '$out', dirty: $([ -f "$DIRTY" ] && echo YES || echo no))" 0
+fi
+rm -rf "$TMPPROJ"
+rm -f "$DIRTY"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 11d: NEGATIVE — Bash with READ-ONLY command on CARRYOVER (grep / cat /
+#      head) must NOT count as a touch (no write-shape token). Catches
+#      the false-positive class for the Turn-O regex extension.
+TMPPROJ="${TMPDIR:-/tmp}/carryover-bash-readonly-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'CARRYOVER_EOF'
+# CARRYOVER
+| status | opened | turns-open | owner | blocker | item |
+|---|---|---|---|---|---|
+| 🔄 | 2026-04-24 | 0 | developer | none | Some pending work |
+CARRYOVER_EOF
+cat > "$FAKE" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"real user directive"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"grep -c \"^| 🔄 |\" docs/CARRYOVER.md"}}]},"timestamp":"2026-01-01T00:00:01Z"}
+{"type":"user","message":{"role":"tool","content":[{"type":"tool_result","content":"42"}]},"timestamp":"2026-01-01T00:00:02Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"architect","description":"t","prompt":"RAW USER MESSAGE: real directive. Review."}}]},"timestamp":"2026-01-01T00:00:03Z"}
+{"type":"user","message":{"role":"tool","content":[{"type":"tool_result","content":[{"type":"text","text":"ARCHITECT REVIEW — PASS. Proceed."}]}]},"timestamp":"2026-01-01T00:00:04Z"}
+JSONL
+touch "$DIRTY"
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if echo "$out" | grep -q '"decision":"block"' && echo "$out" | grep -q "CARRYOVER"; then
+  report "Bash read-only grep on CARRYOVER → block (no write-shape token)" 1
+else
+  report "Bash read-only grep should NOT count as touch (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+rm -f "$DIRTY"
+
+# ──────────────────────────────────────────────────────────────────────────
 # 12: no CARRYOVER.md at all (project doesn't use the tracker) → allow.
 #     Hook's check #5 must be skipped silently when file doesn't exist;
 #     regression guard against someone deleting CARRYOVER.md and finding

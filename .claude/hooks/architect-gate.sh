@@ -223,6 +223,19 @@ if [ -n "$CWD" ] && [ -f "$CWD/docs/CARRYOVER.md" ]; then
     # tool_use file_paths in Claude Code are absolute, so this never
     # excludes a legitimate edit. Negative-test #13 guards against
     # regression.
+    # Phase 7.G Turn O cont'd — also count Bash tool_use entries that
+    # write CARRYOVER (Python `bump_carryover_*` helpers; shell `>`
+    # redirects to docs/CARRYOVER.md). Pre-Turn-L convention required
+    # an Edit-tool follow-up after Python bumpers; this extension lets
+    # the bulk-bump operation itself satisfy check #5 directly.
+    #
+    # Defensive regex (anchored to write-shape patterns to avoid false
+    # positives on read-only commands like `grep ... docs/CARRYOVER.md`):
+    #   `bump_carryover_`          — Python helper script-name convention
+    #   `> .*docs/CARRYOVER.md`    — shell redirect (write or append)
+    # Pure read-only Bash on the file (grep/cat/head) does NOT match —
+    # those should still be paired with an Edit-tool call to satisfy
+    # the gate.
     CARRYOVER_EDITS=$(jq -sr --argjson startIdx "$LAST_USER_IDX" '
       .[$startIdx+1:]
       | map(
@@ -231,8 +244,13 @@ if [ -n "$CWD" ] && [ -f "$CWD/docs/CARRYOVER.md" ]; then
             then map(
               select(
                 .type == "tool_use"
-                and (.name == "Edit" or .name == "Write" or .name == "MultiEdit")
-                and ((.input.file_path // "") | endswith("/docs/CARRYOVER.md"))
+                and (
+                  ((.name == "Edit" or .name == "Write" or .name == "MultiEdit")
+                    and ((.input.file_path // "") | endswith("/docs/CARRYOVER.md")))
+                  or
+                  (.name == "Bash"
+                    and ((.input.command // "") | test("bump_carryover_|>\\s*[^|]*docs/CARRYOVER\\.md")))
+                )
               )
             )
             else [] end
