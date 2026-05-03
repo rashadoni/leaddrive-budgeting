@@ -1422,6 +1422,8 @@
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
       "emptyOrTypePrefix": "Or type",
       "emptyOrTypeSuffix": "in the command bar.",
+      "missingCellHint": "{indicator} has no computed value for {company} yet.",
+      "missingCellAction": "Onboard data via /budgeting/onboarding or trigger a recompute.",
       "loading": "Loading...",
       "error": "Error:",
       "damodaranBanner": "⚠ Calibrated against US benchmark (Damodaran). AZ-market data pending — treat as directional signal only.",

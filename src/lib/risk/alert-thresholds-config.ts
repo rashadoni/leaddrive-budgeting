@@ -67,6 +67,46 @@ const alertThresholdsBaseSchema = z.object({
 });
 
 /**
+ * Phase 7.E C6 v3 — narrower per-sector slot schema. ONLY sector-aware
+ * rules (`sectorAmber`, `sectorRedSpread`) are permitted inside
+ * `bySector.<industry>`. The org-wide rules (`mostlyRed`,
+ * `criticalComposite`, `criticalIndicator`) iterate per-company and
+ * carry no inherent sector dimension; accepting them inside `bySector`
+ * would be a silent footgun — the engine reads only org-wide slots for
+ * those rules, so admins configuring `bySector.hospitality.criticalIndicator`
+ * would get no effect with no error.
+ *
+ * Sub-43 architect Round-1 closure — earlier iteration accepted the
+ * full base schema inside `bySector` "for forward compat with v3.1".
+ * Architect flagged that as a footgun: forward-compat at the cost of
+ * silent misconfiguration. The right path is strict schema today; when
+ * v3.1 widens an org-wide rule to be sector-aware, add it to this slot.
+ */
+const sectorAwareThresholdsSchema = z
+  .object({
+    sectorAmber: z
+      .object({
+        amberCountMin: z.number().int().min(1).max(200),
+      })
+      .optional(),
+    sectorRedSpread: z
+      .object({
+        redCountMin: z.number().int().min(1).max(200),
+        companyCountMin: z.number().int().min(2).max(60),
+      })
+      .optional(),
+  })
+  // Sub-43 architect Round-1 closure — strict rejection of org-wide-only
+  // rule slots (mostlyRed / criticalComposite / criticalIndicator) inside
+  // `bySector`. Zod's default-permissive mode silently strips unknown
+  // keys, which would let a typo like `bySector.hospitality.mostlyRed`
+  // dead-code itself; admins would think they configured a sector-aware
+  // mostlyRed when in fact the schema discarded it. Strict mode flips
+  // those to validation errors at config-load time. Widen if v3.1 makes
+  // an org-wide rule sector-aware (then add it to this schema first).
+  .strict();
+
+/**
  * Phase 7.E C6 v3 — full config schema with optional per-sector
  * overrides. Stored in `Organization.settings.alertThresholds: Json`
  * (no migration — same field as v2; Zod schema extension is
@@ -91,7 +131,7 @@ const alertThresholdsBaseSchema = z.object({
  * follow-up if/when sector-set drift becomes a real issue.
  */
 export const alertThresholdsConfigSchema = alertThresholdsBaseSchema.extend({
-  bySector: z.record(z.string(), alertThresholdsBaseSchema).optional(),
+  bySector: z.record(z.string(), sectorAwareThresholdsSchema).optional(),
 });
 
 /** Just the per-rule shape, without `bySector`. Exported for callers
@@ -182,14 +222,15 @@ export function resolveForSector(
   const orgWide = mergeWithDefaults(partial);
   const sectorOverride = partial?.bySector?.[industry];
   if (!sectorOverride) return orgWide;
+  // Schema only permits `sectorAmber` + `sectorRedSpread` inside per-
+  // sector slots (sub-43 closure of "inert org-wide slot footgun");
+  // org-wide rules pass through unchanged.
   return {
-    mostlyRed: sectorOverride.mostlyRed ?? orgWide.mostlyRed,
-    criticalComposite:
-      sectorOverride.criticalComposite ?? orgWide.criticalComposite,
+    mostlyRed: orgWide.mostlyRed,
+    criticalComposite: orgWide.criticalComposite,
     sectorAmber: sectorOverride.sectorAmber ?? orgWide.sectorAmber,
     sectorRedSpread: sectorOverride.sectorRedSpread ?? orgWide.sectorRedSpread,
-    criticalIndicator:
-      sectorOverride.criticalIndicator ?? orgWide.criticalIndicator,
+    criticalIndicator: orgWide.criticalIndicator,
   };
 }
 

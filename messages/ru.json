@@ -1422,6 +1422,8 @@
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",
       "emptyOrTypePrefix": "Или введите",
       "emptyOrTypeSuffix": "в командной строке.",
+      "missingCellHint": "{indicator} ещё не вычислен для {company}.",
+      "missingCellAction": "Загрузите данные через /budgeting/onboarding или запустите пересчёт.",
       "loading": "Загрузка...",
       "error": "Ошибка:",
       "damodaranBanner": "⚠ Калиброван по бенчмарку США (Damodaran). Данные по AZ-рынку ожидаются — используйте только как индикативный сигнал.",

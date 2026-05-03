@@ -196,7 +196,21 @@ export function bridgeRecomputeBuildContext(
       period: Period;
       requiredInputs: string[];
     },
-  ) => Promise<{ context: Record<string, unknown> }>,
+  ) => Promise<{
+    context: Record<string, unknown>;
+    // Sub-43 architect Round-1 closure — declare the inputs/functions
+    // strip in the type system. Real recompute returns
+    // `{context, inputs, functions}` (phase 3 extension); the bridge
+    // narrows to `{context}` only by destructuring at the
+    // implementation site. Annotating these as optional `unknown` here
+    // makes the type system aware that the wider shape is acceptable
+    // input — covariant-return acceptance — while the helper's
+    // declared return below explicitly excludes them via
+    // `inputs?: never; functions?: never`. Future refactor to
+    // pass-through would fail TS, not silently leak the wider shape.
+    inputs?: unknown;
+    functions?: unknown;
+  }>,
 ): NonNullable<Parameters<typeof computeSparkline>[1]['buildContext']> {
   return async (a) => {
     const period = parsePeriod(a.period);
@@ -206,6 +220,13 @@ export function bridgeRecomputeBuildContext(
       period,
       requiredInputs: a.requiredInputs,
     });
+    // Explicit destructure-and-rewrap. Sub-43 architect closure —
+    // making the strip intentional in the type system: a future
+    // refactor to `return result;` (pass-through) would surface the
+    // wider `{context, inputs, functions}` shape into the sparkline
+    // boundary, which the upstream `Parameters<typeof computeSparkline>`
+    // type rejects. Belt-and-braces alongside the `inputs?: never;
+    // functions?: never` declaration on the bridge's nominal return.
     return { context };
   };
 }

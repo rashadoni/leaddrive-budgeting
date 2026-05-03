@@ -72,6 +72,9 @@ export function HeatMap({ period }: Props) {
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const setActiveIv = useTerminalStore((s) => s.setActiveIndicatorValue);
+  const setPendingMissingCell = useTerminalStore(
+    (s) => s.setPendingMissingCell,
+  );
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
@@ -516,11 +519,35 @@ export function HeatMap({ period }: Props) {
                           cell={c}
                           compactMode={compactMode}
                           onCellClick={() => {
-                            // Cell click selects company AND opens drill-down.
+                            // Cell click ALWAYS selects company. Two
+                            // panel-3 paths split on whether the cell
+                            // has a computed IndicatorValue:
+                            //
+                            //  • cell with `indicatorValueId` →
+                            //      setActiveIv (Panel 3 fetches detail)
+                            //  • missing cell (no IV row yet) →
+                            //      setPendingMissingCell (Panel 3 shows
+                            //      "no data — onboard or recompute" hint
+                            //      with the company + indicator codes)
+                            //
+                            // Phase 7.D regression-architect closure:
+                            // user reported clicks "не работают" on
+                            // missing cells (silent no-Panel-3). New
+                            // contract guarantees Panel 3 ALWAYS opens
+                            // on cell click — the cell either drives a
+                            // drill-down or a self-explanatory hint.
                             setCompany(co.code);
+                            setActivePanel(3);
                             if (c?.indicatorValueId) {
                               setActiveIv(c.indicatorValueId);
-                              setActivePanel(3);
+                            } else {
+                              setPendingMissingCell({
+                                companyId: co.id,
+                                companyCode: co.code,
+                                indicatorId: ind.id,
+                                indicatorCode: ind.code,
+                                indicatorNameEn: ind.nameEn,
+                              });
                             }
                           }}
                         />

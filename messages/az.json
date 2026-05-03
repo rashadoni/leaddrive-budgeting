@@ -1422,6 +1422,8 @@
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
       "emptyOrTypePrefix": "Yaxud yazın",
       "emptyOrTypeSuffix": "komanda sətrində.",
+      "missingCellHint": "{indicator} hələ {company} üçün hesablanmayıb.",
+      "missingCellAction": "/budgeting/onboarding vasitəsilə məlumat yükləyin və ya yenidən hesablayın.",
       "loading": "Yüklənir...",
       "error": "Xəta:",
       "damodaranBanner": "⚠ ABŞ benchmarkına (Damodaran) görə kalibrlənmiş. AZ bazarına aid məlumat gözlənilir — yalnız istiqamətli siqnal kimi qiymətləndirin.",

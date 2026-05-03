@@ -213,6 +213,41 @@ describe('alertThresholdsConfigSchema — bySector (C6 v3)', () => {
     });
     expect(r.success).toBe(true);
   });
+
+  it('rejects org-wide-only rule slots inside bySector (sub-43 architect closure)', () => {
+    // Sub-43 architect Round-1 closure — earlier iteration accepted the
+    // full base schema inside bySector "for forward compat with v3.1".
+    // Architect flagged: forward-compat at the cost of silent
+    // misconfiguration. Strict schema today; widen when v3.1 makes an
+    // org-wide rule sector-aware.
+    const r1 = alertThresholdsConfigSchema.safeParse({
+      bySector: { hospitality: { mostlyRed: { redCountMin: 5 } } },
+    });
+    expect(r1.success).toBe(false);
+
+    const r2 = alertThresholdsConfigSchema.safeParse({
+      bySector: { hospitality: { criticalComposite: { scoreMax: 50 } } },
+    });
+    expect(r2.success).toBe(false);
+
+    const r3 = alertThresholdsConfigSchema.safeParse({
+      bySector: {
+        hospitality: {
+          criticalIndicator: { indicatorCode: 'IND_X', redCountMin: 3 },
+        },
+      },
+    });
+    expect(r3.success).toBe(false);
+
+    // Sector-aware rules ARE accepted inside bySector.
+    const r4 = alertThresholdsConfigSchema.safeParse({
+      bySector: {
+        hospitality: { sectorAmber: { amberCountMin: 8 } },
+        industrial: { sectorRedSpread: { redCountMin: 4, companyCountMin: 3 } },
+      },
+    });
+    expect(r4.success).toBe(true);
+  });
 });
 
 describe('resolveForSector', () => {

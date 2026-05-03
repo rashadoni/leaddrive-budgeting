@@ -90,6 +90,7 @@ export function IndicatorDetail() {
   const t = useTranslations('terminal');
   const locale = useLocale();
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
+  const pendingMissing = useTerminalStore((s) => s.pendingMissingCell);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
 
   const [detail, setDetail] = useState<IndicatorValueDetail | null>(null);
@@ -163,6 +164,41 @@ export function IndicatorDetail() {
   };
 
   if (!ivId) {
+    // Phase 7.D regression-architect closure — when user clicked a
+    // MISSING HeatMap cell (no IV row yet), HeatMap routed via
+    // `setPendingMissingCell` instead of `setActiveIv`. Render a self-
+    // explanatory hint so the click is never silently swallowed —
+    // user reported "клики не работают" twice; the bug was actually
+    // "clicked a cell that has no computed value, panel stayed empty
+    // showing the welcome state". New contract: missing cells get a
+    // dedicated no-data hint with company + indicator codes.
+    if (pendingMissing) {
+      return (
+        <div
+          data-testid="indicator-detail-no-data"
+          className="font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
+        >
+          <div className="text-gray-400">
+            <span className="text-[#FFB800] font-semibold">
+              {pendingMissing.companyCode}
+            </span>{' '}
+            ×{' '}
+            <span className="text-[#FFB800] font-semibold">
+              {pendingMissing.indicatorCode}
+            </span>
+          </div>
+          <div className="text-gray-500 max-w-md">
+            {t('indicatorDetail.missingCellHint', {
+              indicator: pendingMissing.indicatorNameEn,
+              company: pendingMissing.companyCode,
+            })}
+          </div>
+          <div className="text-gray-700 text-[10px]">
+            {t('indicatorDetail.missingCellAction')}
+          </div>
+        </div>
+      );
+    }
     // Sub-36 cont'd Round-33 — empty-state centered both axes so the
     // placeholder visibly fills the panel slot rather than top-anchoring
     // and leaving dead space below. User feedback "тяни нижнию часть

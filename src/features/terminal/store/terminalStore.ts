@@ -15,9 +15,31 @@ export interface TerminalState {
   activePanelId: number;
   /**
    * Indicator-value id for Panel 3 (drill-down). Set when the user clicks
-   * a HeatMap cell; null = "no cell selected, show empty-state instructions".
+   * a HeatMap cell that HAS a computed IndicatorValue row. null = "no
+   * cell selected" OR "clicked a missing cell" — the latter case is
+   * disambiguated by `pendingMissingCell` below.
    */
   activeIndicatorValueId: string | null;
+  /**
+   * Phase 7.D regression closure (architect Round-1 on cell-click test) —
+   * when user clicks a HeatMap cell with NO computed IndicatorValue
+   * (status='missing', often happens on never-onboarded indicators), the
+   * old contract silently no-op'd Panel 3. User reported this twice as
+   * "клики не работают". New contract: Panel 3 still opens, but renders
+   * a "no data — onboard or recompute" hint with the company + indicator
+   * codes the user clicked, so the click is never silently swallowed.
+   * `null` when activeIndicatorValueId is set OR no cell clicked yet.
+   * Set + activeIndicatorValueId are mutually exclusive — clicking a
+   * computed cell clears pendingMissingCell, clicking a missing cell
+   * clears activeIndicatorValueId.
+   */
+  pendingMissingCell: {
+    companyId: string;
+    companyCode: string;
+    indicatorId: string;
+    indicatorCode: string;
+    indicatorNameEn: string;
+  } | null;
   /**
    * Filter strings per panel. Panel 1 filters CompanyTree by code/name;
    * Panel 2 filters HeatMap rows by company code. Driven by `/`-search
@@ -97,6 +119,15 @@ export interface TerminalActions {
    */
   selectCompany: (code: string) => void;
   setActiveIndicatorValue: (id: string | null) => void;
+  /**
+   * Phase 7.D regression closure — set the Panel 3 no-data hint when user
+   * clicks a missing HeatMap cell. Implementation MUST clear
+   * activeIndicatorValueId (mutual-exclusion invariant). Pass null to
+   * clear the pending state (e.g. when user clicks a computed cell).
+   */
+  setPendingMissingCell: (
+    pending: TerminalState['pendingMissingCell'],
+  ) => void;
   /**
    * Phase C4 v1 — pin the user's chosen scenario for the runner. Set by
    * `SCN <code> GO` dispatch in CommandBar; consumed by `<ScenarioPanel/>`
@@ -180,6 +211,7 @@ let globalState: TerminalState = {
   activeScenarioCode: null,
   activePanelId: 1,
   activeIndicatorValueId: null,
+  pendingMissingCell: null,
   searchByPanel: {},
   alertsCount: null,
   // SSR renders with `false`; mounted-effect hook in PanelGrid hydrates
@@ -260,7 +292,21 @@ const actions: TerminalActions = {
     setGlobalState({ activeCompanyCode: code, recentCompanyCodes: next });
     writeJsonToStorage(RECENT_LS_KEY, next);
   },
-  setActiveIndicatorValue: (id) => setGlobalState({ activeIndicatorValueId: id }),
+  setActiveIndicatorValue: (id) =>
+    // Mutual-exclusion invariant: setting an active IV clears any
+    // pending missing-cell hint. The two states cover disjoint paths
+    // (computed-cell click vs missing-cell click), and Panel 3 reads
+    // them in priority order — keeping pending alive while activeIv
+    // is set would let stale hints leak through into the wrong panel.
+    setGlobalState({ activeIndicatorValueId: id, pendingMissingCell: null }),
+  setPendingMissingCell: (pending) =>
+    // Symmetric to setActiveIndicatorValue — setting a pending hint
+    // clears any active IV. Use null to clear pending without touching
+    // activeIv (e.g. dismiss button on the no-data hint).
+    setGlobalState({
+      pendingMissingCell: pending,
+      activeIndicatorValueId: pending ? null : globalState.activeIndicatorValueId,
+    }),
   setActiveScenarioCode: (code) => setGlobalState({ activeScenarioCode: code }),
   setSearchForPanel: (panelId, query) =>
     setGlobalState({
@@ -308,6 +354,7 @@ const actions: TerminalActions = {
       activeScenarioCode: null,
       activePanelId: 1,
       activeIndicatorValueId: null,
+      pendingMissingCell: null,
       searchByPanel: {},
       alertsCount: null,
       recentCompanyCodes: [],
