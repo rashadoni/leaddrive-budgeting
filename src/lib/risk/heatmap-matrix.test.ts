@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   cellKey,
   buildCellMap,
+  isAggregateRollup,
   summarizeMatrix,
   statusColor,
   statusShape,
@@ -142,5 +143,33 @@ describe('statusShape (Tier-3 M7 — color-blind redundant signal)', () => {
     expect(statusShape('red')).toBe('■');
     expect(statusShape('unknown')).toBe('◇');
     expect(statusShape('missing')).toBe('·');
+  });
+});
+
+// Sub-44 cont'd architect ⚠️ closure (inline this turn) — direct
+// contract test for the gate predicate. Without this, future variants
+// added to the discriminated union would only be caught transitively
+// via composite-score / alert-rules tests; here it's the bottleneck.
+describe("isAggregateRollup (sub-44 cont'd discriminated-union gate)", () => {
+  it("kind === 'op' → false (operational cell, contributes to composite + alerts)", () => {
+    expect(isAggregateRollup({ kind: 'op' })).toBe(false);
+  });
+
+  it("kind === 'synthetic-rollup' → true (Turn 33.5 children-average; sub-group navigation row)", () => {
+    expect(isAggregateRollup({ kind: 'synthetic-rollup' })).toBe(true);
+  });
+
+  it("kind === 'real-rollup' → true (sub-44 real parent-co rollup IV; sub-group navigation row)", () => {
+    expect(isAggregateRollup({ kind: 'real-rollup' })).toBe(true);
+  });
+
+  it('kind undefined → false (back-compat default = op; legacy cells without kind treated as operational)', () => {
+    // Guards back-compat: cells emitted by the route before the
+    // discriminated-union refactor (or by future ad-hoc producers that
+    // don't set kind) MUST be treated as operational, not aggregates.
+    // Otherwise composite + alerts would silently exclude all such
+    // cells (catastrophic).
+    expect(isAggregateRollup({})).toBe(false);
+    expect(isAggregateRollup({ kind: undefined })).toBe(false);
   });
 });
