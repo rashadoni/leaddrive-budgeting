@@ -35,7 +35,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
 import { parsePeriod, PeriodParseError } from '@/lib/risk/periods';
-import { filterOperationalCompanies } from '@/lib/risk/targets';
+import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 
 function defaultPeriodString(): string {
   // Annual period — matches what the recompute pipeline writes
@@ -102,13 +102,14 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           OR: [{ organizationId: null }, { organizationId: session.orgId }],
-          // Sub-42 architect Round-1 closure — exclude internal-only
-          // indicators (e.g. raw-$ persistence rows like IND_REVENUE_TOTAL
-          // that exist for fact() / rollup() composition but shouldn't
-          // pollute the user-facing HeatMap). Adding the filter here (vs
-          // a downstream UI filter) keeps the matrix endpoint's wire-shape
-          // honest: clients see what they should render.
-          category: { not: 'internal' },
+          // Sub-44 cont'd render-path closure: keep internal-only filter
+          // OUT of the SQL where-clause now and apply in JS below. Reason:
+          // we want to ALSO include rollup-bearing internal indicators
+          // (e.g. IND_HOLDING_REVENUE) so their parent-co IVs become a
+          // visible column. Prisma's String[].has matches exact strings
+          // not prefixes, so we can't filter `requiredInputs` containing
+          // `'rollup:...'` at the SQL level — post-fetch JS filter is the
+          // pragmatic alternative (catalog is ~52 rows, perf is non-issue).
         },
         select: {
           id: true,
@@ -119,13 +120,42 @@ export async function GET(request: NextRequest) {
           direction: true,
           unit: true,
           sortOrder: true,
+          // Sub-44 cont'd — needed for the rollup-bearing-internals
+          // post-fetch filter below.
+          category: true,
+          requiredInputs: true,
         },
         orderBy: { sortOrder: 'asc' },
       }),
     ]);
 
+    // Sub-44 cont'd render-path closure: post-fetch filter — keep
+    // (a) all non-internal indicators (the original gate) PLUS
+    // (b) rollup-bearing internal indicators (so their parent-co IVs
+    // surface as visible columns). The two-step filter replaces the
+    // SQL `category: { not: 'internal' }` with a more nuanced predicate.
+    type RawIndicatorShape = (typeof indicators)[number] & {
+      category: string | null;
+      requiredInputs: string[];
+    };
+    const indicatorsTyped = indicators as RawIndicatorShape[];
+    const rollupBearingInternalIds = new Set<string>();
+    const visibleIndicators = indicatorsTyped.filter((ind) => {
+      if (ind.category !== 'internal') return true;
+      // Internal-category — keep ONLY if rollup-bearing (parent-co IVs
+      // give it visible meaning at the holding-level row).
+      if (isRollupIndicator(ind)) {
+        rollupBearingInternalIds.add(ind.id);
+        return true;
+      }
+      return false;
+    });
+    // Re-bind so downstream code uses the filtered list. Original
+    // variable name kept (`indicators`) to minimize churn.
+    const indicatorsForRender = visibleIndicators;
+
     type CompanyRawShape = (typeof companiesRaw)[number];
-    type IndicatorShape = (typeof indicators)[number];
+    type IndicatorShape = (typeof indicatorsForRender)[number];
 
     // Phase 7.E hardening (Turn 10): use the shared
     // `filterOperationalCompanies` helper instead of a hand-rolled
@@ -140,7 +170,7 @@ export async function GET(request: NextRequest) {
     const operational =
       filterOperationalCompanies<CompanyRawShape>(companiesRaw);
     const operationalIds = operational.map((c) => c.id);
-    const indicatorIds = indicators.map((i: IndicatorShape) => i.id);
+    const indicatorIds = indicatorsForRender.map((i: IndicatorShape) => i.id);
 
     const values =
       operationalIds.length === 0 || indicatorIds.length === 0
@@ -186,26 +216,40 @@ export async function GET(request: NextRequest) {
       role: c.role,
     }));
 
-    const cells = values.map((v: ValueShape) => {
-      const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
-      const error = inputs?.error;
-      // sparkline column is `Json`; runtime shape is `(number | null)[]`
-      // (per `prisma/schema.prisma:1059`). Treat anything non-array as
-      // missing — IVs that pre-date Phase B2 have raw JSON `null` here.
-      const sparklineRaw = v.sparkline;
-      const sparkline = Array.isArray(sparklineRaw)
-        ? (sparklineRaw as (number | null)[])
-        : null;
-      return {
-        indicatorValueId: v.id,
-        companyId: v.companyId,
-        indicatorId: v.indicatorId,
-        value: v.value,
-        status: v.status as IndicatorStatus,
-        ...(sparkline ? { sparkline } : {}),
-        ...(error ? { error } : {}),
-      };
-    });
+    const cells = values
+      .filter((v: ValueShape) => {
+        // Sub-44 cont'd render-path closure: suppress op-co cells for
+        // rollup-bearing internals (e.g. IND_HOLDING_REVENUE). On op-cos
+        // the rollup() formula has no children → returns 0 → falls in
+        // amber band. Showing this would give every op-co a misleading
+        // amber column for a holding-level metric. Keep the IV in DB
+        // (recompute pipeline still wrote it; deletion would cause a
+        // re-run on next trigger) but skip emission for the operational
+        // matrix render. Parent-co cells for these indicators ARE
+        // emitted below (real IVs from the rollup() resolver).
+        if (rollupBearingInternalIds.has(v.indicatorId)) return false;
+        return true;
+      })
+      .map((v: ValueShape) => {
+        const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
+        const error = inputs?.error;
+        // sparkline column is `Json`; runtime shape is `(number | null)[]`
+        // (per `prisma/schema.prisma:1059`). Treat anything non-array as
+        // missing — IVs that pre-date Phase B2 have raw JSON `null` here.
+        const sparklineRaw = v.sparkline;
+        const sparkline = Array.isArray(sparklineRaw)
+          ? (sparklineRaw as (number | null)[])
+          : null;
+        return {
+          indicatorValueId: v.id,
+          companyId: v.companyId,
+          indicatorId: v.indicatorId,
+          value: v.value,
+          status: v.status as IndicatorStatus,
+          ...(sparkline ? { sparkline } : {}),
+          ...(error ? { error } : {}),
+        };
+      });
 
     // Turn 33.5 (Item 5 / Bug #7 slim rollup): include level=1 sub-groups
     // as additional rows with synthetic cells. Aggregation rules:
@@ -217,8 +261,13 @@ export async function GET(request: NextRequest) {
     //     supported, IndicatorDetail handles null gracefully — see comment
     //     in IndicatorDetail.tsx)
     //   - isSubgroup: true (frontend can style differently)
-    // Limitations documented in CARRYOVER row "sub-group rollup is slim"
-    // — proper weighted aggregation by indicator type lands Phase G.
+    //
+    // Sub-44 cont'd render-path: parent-co cells for rollup-bearing
+    // indicators (sub-44 prereq #1 IVs) are now emitted as REAL cells
+    // BELOW with `indicatorValueId` set + drill-down enabled. The Turn
+    // 33.5 synthetic-average path stays for everything else; pairs that
+    // get a real cell are excluded via `realParentCellKeys` (priority:
+    // real IV > Turn 33.5 average).
     const subgroups = companiesRaw.filter((c: CompanyRawShape) => c.level === 1 && c.role === 'operational');
     const subgroupCompanies = subgroups.map((sg: CompanyRawShape) => ({
       id: sg.id,
@@ -241,13 +290,71 @@ export async function GET(request: NextRequest) {
       if (c.parentCompanyId) childToSubgroup.set(c.id, c.parentCompanyId);
     }
 
-    // Aggregate cells per (subgroupId, indicatorId)
+    // Sub-44 cont'd render-path closure: fetch parent-co (level=1) IVs
+    // for any indicator (NOT just rollup-bearing — e.g. seed authors may
+    // add operational-category indicators that fire on parent cos via
+    // future formulas). Conditional: only if at least one sub-group exists
+    // AND at least one indicator is in scope. Cost: one extra findMany,
+    // bounded by `subgroupIds.size × indicatorIds.length`.
+    const parentValues =
+      subgroupIds.size === 0 || indicatorIds.length === 0
+        ? []
+        : await prisma.indicatorValue.findMany({
+            where: {
+              organizationId: session.orgId,
+              period,
+              companyId: { in: Array.from(subgroupIds) },
+              indicatorId: { in: indicatorIds },
+            },
+            select: {
+              id: true,
+              companyId: true,
+              indicatorId: true,
+              value: true,
+              status: true,
+              inputs: true,
+              sparkline: true,
+            },
+          });
+
+    type ParentValueShape = (typeof parentValues)[number];
+    const realParentCellKeys = new Set<string>();
+    const parentCells = parentValues.map((v: ParentValueShape) => {
+      realParentCellKeys.add(`${v.companyId}::${v.indicatorId}`);
+      const inputs = v.inputs as { error?: { code: string; reason: string } } | null;
+      const error = inputs?.error;
+      const sparklineRaw = v.sparkline;
+      const sparkline = Array.isArray(sparklineRaw)
+        ? (sparklineRaw as (number | null)[])
+        : null;
+      return {
+        indicatorValueId: v.id,
+        companyId: v.companyId,
+        indicatorId: v.indicatorId,
+        value: v.value,
+        status: v.status as IndicatorStatus,
+        ...(sparkline ? { sparkline } : {}),
+        ...(error ? { error } : {}),
+        // Mark as real-rollup so the client distinguishes from synthetic
+        // averages (different drill-down semantics: real IV is queryable,
+        // average is not).
+        isRealParentRollup: true,
+      };
+    });
+
+    // Aggregate cells per (subgroupId, indicatorId) — Turn 33.5 synthetic
+    // average. Sub-44 cont'd: skip pairs where a REAL parent IV exists
+    // (priority lock: real IV > synthetic average; see `realParentCellKeys`
+    // above). The ops-cell `cells` array already has rollup-bearing
+    // internals filtered out, so they don't enter the average pool either.
     type AggBucket = { sum: number; count: number; statuses: Set<IndicatorStatus> };
     const aggMap = new Map<string, AggBucket>(); // key: `${sgId}::${indId}`
     for (const cell of cells) {
       const sgId = childToSubgroup.get(cell.companyId);
       if (!sgId) continue;
       const key = `${sgId}::${cell.indicatorId}`;
+      // Sub-44 cont'd render-path: real parent IV beats synthetic average.
+      if (realParentCellKeys.has(key)) continue;
       let bucket = aggMap.get(key);
       if (!bucket) {
         bucket = { sum: 0, count: 0, statuses: new Set() };
@@ -280,8 +387,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       period,
       companies: [...companies, ...subgroupCompanies],
-      indicators,
-      cells: [...cells, ...subgroupCells],
+      indicators: indicatorsForRender,
+      cells: [...cells, ...parentCells, ...subgroupCells],
     });
   } catch (error) {
     console.error('Error building indicator matrix:', error);

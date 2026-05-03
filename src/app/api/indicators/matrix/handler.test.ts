@@ -159,6 +159,8 @@ describe('GET /api/indicators/matrix — handler', () => {
         direction: 'higher_is_better',
         unit: '%',
         sortOrder: 1,
+        category: 'operational',
+        requiredInputs: ['budgetLine'],
       },
     ]);
 
@@ -168,5 +170,422 @@ describe('GET /api/indicators/matrix — handler', () => {
     expect(body.companies).toEqual([]);
     expect(body.cells).toEqual([]);
     expect(prismaMock.indicatorValue.findMany).not.toHaveBeenCalled();
+  });
+
+  // ─── Sub-44 cont'd render-path closure ──────────────────────────────────
+  // Surfaces parent-co (level=1) IVs for rollup-bearing indicators in the
+  // matrix. Closes the gap where sub-44 prereq #1's pipeline writes
+  // IND_HOLDING_REVENUE to DB but the UI couldn't see it.
+
+  describe("sub-44 cont'd render-path — parent-co rollup IVs", () => {
+    /**
+     * Mock company.findMany to honor where clauses:
+     *   - 1st call: full company list for the org
+     *   - 2nd call: child cos by parentCompanyId (Turn 33.5 path)
+     */
+    function setupCompaniesMock(allCos: unknown[], childCos: unknown[]): void {
+      prismaMock.company.findMany.mockImplementation(
+        async (
+          arg: { where?: { parentCompanyId?: { in?: string[] } } } = {},
+        ) => {
+          if (arg.where?.parentCompanyId) return childCos;
+          return allCos;
+        },
+      );
+    }
+
+    /**
+     * Mock indicatorValue.findMany to honor where clauses:
+     *   - operational pass: companyId in level=2 ids
+     *   - parent pass (NEW): companyId in level=1 (sub-group) ids
+     */
+    function setupIVMock(opIVs: unknown[], parentIVs: unknown[], parentIds: string[]): void {
+      prismaMock.indicatorValue.findMany.mockImplementation(
+        async (
+          arg: { where?: { companyId?: { in?: string[] } } } = {},
+        ) => {
+          const targetIds = arg.where?.companyId?.in ?? [];
+          // Detect parent-IV pass by intersection with parent ids.
+          if (targetIds.some((id: string) => parentIds.includes(id))) {
+            return parentIVs;
+          }
+          return opIVs;
+        },
+      );
+    }
+
+    it("includes rollup-bearing internal indicators in the indicators list (column visible)", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      setupCompaniesMock(
+        [
+          {
+            id: 'co_op',
+            code: 'AAC-MAIN',
+            name: 'AAC Main',
+            industry: 'industrial',
+            level: 2,
+            isActive: true,
+            role: 'operational',
+            sortOrder: 1,
+          },
+        ],
+        [],
+      );
+      // Three indicators: 1 operational (visible), 1 internal-non-rollup
+      // (hidden), 1 internal-rollup (NEW: visible via the relaxed filter).
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_op',
+          code: 'IND_NET_MARGIN',
+          nameEn: 'Net Margin',
+          direction: 'higher_is_better',
+          unit: '%',
+          sortOrder: 1,
+          category: 'operational',
+          requiredInputs: ['budgetLine'],
+        },
+        {
+          id: 'i_internal_persist',
+          code: 'IND_REVENUE_TOTAL',
+          nameEn: 'Revenue Total',
+          direction: 'higher_is_better',
+          unit: 'AZN',
+          sortOrder: 2,
+          category: 'internal',
+          requiredInputs: ['budgetLine'], // NOT rollup-bearing
+        },
+        {
+          id: 'i_internal_rollup',
+          code: 'IND_HOLDING_REVENUE',
+          nameEn: 'Holding Revenue',
+          direction: 'higher_is_better',
+          unit: 'AZN',
+          sortOrder: 3,
+          category: 'internal',
+          requiredInputs: ['rollup:IND_REVENUE_TOTAL'], // rollup-bearing
+        },
+      ]);
+      setupIVMock([], [], []);
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const codes = body.indicators.map((i: { code: string }) => i.code);
+      expect(codes).toContain('IND_NET_MARGIN');
+      expect(codes).toContain('IND_HOLDING_REVENUE'); // NEW: rollup-bearing internal kept
+      expect(codes).not.toContain('IND_REVENUE_TOTAL'); // non-rollup internal still filtered
+    });
+
+    it("emits real parent-co cells from rollup() IVs with drill-downable indicatorValueId", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      const subgroup = {
+        id: 'co_holding',
+        code: 'AAC',
+        name: 'AAC Holding',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'operational', // Turn 33.5 keeps level=1 only when role=operational
+        sortOrder: 1,
+      };
+      const opChild = {
+        id: 'co_op',
+        code: 'AAC-MAIN',
+        name: 'AAC Main',
+        industry: 'industrial',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 2,
+      };
+      setupCompaniesMock(
+        [subgroup, opChild],
+        [{ id: 'co_op', parentCompanyId: 'co_holding' }],
+      );
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_internal_rollup',
+          code: 'IND_HOLDING_REVENUE',
+          nameEn: 'Holding Revenue',
+          direction: 'higher_is_better',
+          unit: 'AZN',
+          sortOrder: 1,
+          category: 'internal',
+          requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        },
+      ]);
+      // Op-co has an IV (rollup of empty children = 0 amber) — MUST be
+      // suppressed from cells. Parent-co has the real rollup IV — MUST
+      // appear with drill-downable indicatorValueId.
+      setupIVMock(
+        // op pass returns the op-co's misleading IND_HOLDING_REVENUE IV
+        [
+          {
+            id: 'iv_op',
+            companyId: 'co_op',
+            indicatorId: 'i_internal_rollup',
+            value: 0,
+            status: 'amber',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        // parent pass returns the real rollup IV
+        [
+          {
+            id: 'iv_parent',
+            companyId: 'co_holding',
+            indicatorId: 'i_internal_rollup',
+            value: 5_000_000,
+            status: 'green',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        ['co_holding'],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Op-co cell suppressed (load-bearing — closes the "misleading
+      // amber on every op-co" UX issue noted in seed comment).
+      const opCells = body.cells.filter(
+        (c: { companyId: string }) => c.companyId === 'co_op',
+      );
+      expect(opCells).toEqual([]);
+
+      // Parent-co cell present with drill-downable IV.
+      const parentCells = body.cells.filter(
+        (c: { companyId: string }) => c.companyId === 'co_holding',
+      );
+      expect(parentCells).toHaveLength(1);
+      expect(parentCells[0]).toMatchObject({
+        indicatorValueId: 'iv_parent',
+        indicatorId: 'i_internal_rollup',
+        value: 5_000_000,
+        status: 'green',
+        isRealParentRollup: true,
+      });
+    });
+
+    it("real parent IV beats Turn 33.5 synthetic-average when both could apply (priority lock)", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      const subgroup = {
+        id: 'co_holding',
+        code: 'AAC',
+        name: 'AAC Holding',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 1,
+      };
+      const opChild = {
+        id: 'co_op',
+        code: 'AAC-MAIN',
+        name: 'AAC Main',
+        industry: 'industrial',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 2,
+      };
+      setupCompaniesMock(
+        [subgroup, opChild],
+        [{ id: 'co_op', parentCompanyId: 'co_holding' }],
+      );
+      // Operational-category indicator (NOT rollup-bearing, NOT internal).
+      // Op-co has a cell → Turn 33.5 would synthesize a parent average from
+      // it. Parent ALSO has a real IV (e.g. some org seeds an org-scoped
+      // override that fires on parents). Real IV must win.
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_op_kpi',
+          code: 'IND_NET_MARGIN',
+          nameEn: 'Net Margin',
+          direction: 'higher_is_better',
+          unit: '%',
+          sortOrder: 1,
+          category: 'operational',
+          requiredInputs: ['budgetLine'],
+        },
+      ]);
+      setupIVMock(
+        [
+          {
+            id: 'iv_op_real',
+            companyId: 'co_op',
+            indicatorId: 'i_op_kpi',
+            value: 12.5,
+            status: 'amber',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        [
+          {
+            id: 'iv_parent_real',
+            companyId: 'co_holding',
+            indicatorId: 'i_op_kpi',
+            value: 99.9, // distinct from any average of op-cells
+            status: 'green',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        ['co_holding'],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const parentCells = body.cells.filter(
+        (c: { companyId: string }) => c.companyId === 'co_holding',
+      );
+      expect(parentCells).toHaveLength(1);
+      // Real IV (99.9) wins over synthetic average that would have been 12.5.
+      expect(parentCells[0].value).toBe(99.9);
+      expect(parentCells[0].indicatorValueId).toBe('iv_parent_real');
+      expect(parentCells[0].isRealParentRollup).toBe(true);
+      // No isSubgroupRollup synthetic cell for the same pair.
+      expect(parentCells.some((c: { isSubgroupRollup?: boolean }) => c.isSubgroupRollup)).toBe(false);
+    });
+
+    it("Turn 33.5 synthetic-average fallback preserved when no real parent IV exists (back-compat)", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      const subgroup = {
+        id: 'co_holding',
+        code: 'AAC',
+        name: 'AAC Holding',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 1,
+      };
+      const opChild = {
+        id: 'co_op',
+        code: 'AAC-MAIN',
+        name: 'AAC Main',
+        industry: 'industrial',
+        level: 2,
+        isActive: true,
+        role: 'operational',
+        sortOrder: 2,
+      };
+      setupCompaniesMock(
+        [subgroup, opChild],
+        [{ id: 'co_op', parentCompanyId: 'co_holding' }],
+      );
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_op_kpi',
+          code: 'IND_GROSS_MARGIN',
+          nameEn: 'Gross Margin',
+          direction: 'higher_is_better',
+          unit: '%',
+          sortOrder: 1,
+          category: 'operational',
+          requiredInputs: ['budgetLine'],
+        },
+      ]);
+      setupIVMock(
+        [
+          {
+            id: 'iv_op_real',
+            companyId: 'co_op',
+            indicatorId: 'i_op_kpi',
+            value: 25.0,
+            status: 'green',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        [], // no real parent IV
+        ['co_holding'],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      const parentCells = body.cells.filter(
+        (c: { companyId: string }) => c.companyId === 'co_holding',
+      );
+      // Falls back to Turn 33.5 synthetic — single op-co cell, average = 25.
+      expect(parentCells).toHaveLength(1);
+      expect(parentCells[0]).toMatchObject({
+        indicatorValueId: null, // synthetic — not drill-downable
+        value: 25.0,
+        status: 'green',
+        isSubgroupRollup: true,
+      });
+      // Not a real parent rollup.
+      expect(parentCells[0].isRealParentRollup).toBeUndefined();
+    });
+
+    it("non-rollup internal indicators stay filtered (back-compat with sub-42 architect Round-1 closure)", async () => {
+      // IND_REVENUE_TOTAL is internal-but-NOT-rollup-bearing — used as a
+      // building block for IND_HOLDING_REVENUE. Sub-42 architect closure
+      // explicitly hid it from the matrix (see seed comment at
+      // indicator-seeds.ts:260-268). Sub-44 cont'd MUST preserve that.
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      setupCompaniesMock(
+        [
+          {
+            id: 'co_op',
+            code: 'AAC-MAIN',
+            name: 'AAC Main',
+            industry: 'industrial',
+            level: 2,
+            isActive: true,
+            role: 'operational',
+            sortOrder: 1,
+          },
+        ],
+        [],
+      );
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_internal_persist',
+          code: 'IND_REVENUE_TOTAL',
+          nameEn: 'Revenue Total',
+          direction: 'higher_is_better',
+          unit: 'AZN',
+          sortOrder: 1,
+          category: 'internal',
+          requiredInputs: ['budgetLine'], // NOT rollup-bearing
+        },
+      ]);
+      setupIVMock(
+        [
+          // Op-co has an IV for the internal-persist indicator
+          {
+            id: 'iv_persist',
+            companyId: 'co_op',
+            indicatorId: 'i_internal_persist',
+            value: 1_000_000,
+            status: 'green',
+            inputs: null,
+            sparkline: null,
+          },
+        ],
+        [],
+        [],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+
+      // Indicator filtered out → no column.
+      expect(body.indicators).toEqual([]);
+      // Cell filtered out (no indicator → no cell makes it through).
+      expect(body.cells).toEqual([]);
+    });
   });
 });

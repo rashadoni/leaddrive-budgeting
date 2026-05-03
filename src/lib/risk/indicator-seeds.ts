@@ -291,25 +291,28 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     nameEn: "Holding Revenue (rollup)",
     nameAz: "Holdinq Gəliri (rollup)",
     nameRu: "Выручка холдинга (rollup)",
-    // Sub-42 architect Round-1 closure + sub-44 prereq-#1 follow-up:
+    // Sub-42 architect Round-1 closure + sub-44 prereq-#1 + render-path:
     //   • Sub-42 set `category: "internal"` because (a) op-cos with no
     //     children compute rollup as 0 → amber (misleading "Holding
     //     Revenue 0" on a sub-co), (b) parent cos didn't enter the
     //     recompute loop so the IV was never created either way.
-    //   • Sub-44 (2026-05-03) landed PREREQ #1 — `recompute-trigger.ts`
-    //     now opts-in level=1 parent cos for any indicator carrying a
-    //     `rollup:` requiredInput. So (b) is closed: parent-co IVs ARE
-    //     created in DB.
-    //   • The seed STAYS `category: "internal"` because (c) the matrix
-    //     endpoint at `src/app/api/indicators/matrix/route.ts` renders
-    //     only level=2 operational rows — parent cos never appear, so
-    //     surfacing this indicator on the heatmap would still produce
-    //     the misleading op-co amber from (a). The follow-up gap is a
-    //     parent-co render path (dedicated HoldingDashboard view OR
-    //     extending HeatMap to render level=1 rows). Tracked as 🔄.
-    //   • Backend rollup IS now firing end-to-end — verify via
-    //     `prisma indicatorvalue.findMany({where: {indicatorDefinitionId,
-    //     companyId: <parent>}})` post-import.
+    //   • Sub-44 prereq #1 (2026-05-03) closed (b): `recompute-trigger.ts`
+    //     opts-in level=1 parent cos for any indicator carrying a
+    //     `rollup:` requiredInput → parent-co IVs are written to DB.
+    //   • Sub-44 cont'd render-path (2026-05-03) closed (a) + matrix
+    //     visibility: `src/app/api/indicators/matrix/route.ts` now
+    //     (i) keeps rollup-bearing internal indicators in the visible
+    //     indicators list, (ii) emits real parent-co cells with drill-
+    //     downable `indicatorValueId` (priority over Turn 33.5 synthetic
+    //     averages), (iii) suppresses op-co cells for rollup-bearing
+    //     internals so the misleading amber-everywhere is gone.
+    //   • The seed STAYS `category: "internal"` because the relaxed
+    //     matrix-side filter is the correct gate point: "internal"
+    //     remains the seed-author signal for "not user-facing on op-co
+    //     rows", and the matrix endpoint promotes it to visible iff
+    //     rollup-bearing. End-to-end pipeline IS LIVE — visible only
+    //     for orgs that have at least one parent (level=1, sub-group)
+    //     company with the IV in DB.
     category: "internal",
     industries: [],
     unit: "AZN",
