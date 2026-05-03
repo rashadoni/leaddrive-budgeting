@@ -246,9 +246,9 @@ Main pain points that drive the roadmap:
 - Heat-map perf tuning (target: 60 × 50 = 3k cells, <500ms render)
 
 ### 7.G — Verification + polish (1 week)
-- E2E test across all 10 sector packs
-- Admin documentation
-- User acceptance sign-off
+- ⬜ E2E test across all 10 sector packs (Playwright harness pending; CARRYOVER 🔄 #SSE/Playwright)
+- ✅ **Admin documentation** — `docs/ADMIN_RUNBOOK.md` v1 shipped 2026-05-03 (740 LOC, 12 sections + glossary + escalation paths). Covers customer onboarding, indicator catalog management, alert tuning, recompute pipeline, historical IV backfill, audit log, top-10 troubleshooting playbook, DB ops, vocabulary glossary, file-path map.
+- ⬜ User acceptance sign-off (post-customer-pilot)
 
 **Estimated total: ~20 weeks (~5 months) focused work.**
 
@@ -319,6 +319,8 @@ billing and i18n plumbing are out of scope).
 ---
 
 ## Changelog
+
+- **2026-05-03** — **Phase 7.G Turn A — `docs/ADMIN_RUNBOOK.md` v1 shipped.** 740 LOC, 12 sections + glossary + escalation paths covering operational-admin scope (not sysadmin-deploy, not developer). §0 quick-reference cheat sheet, §1-2 customer + company onboarding, §3 indicator catalog (add/tune/retire + cross-period composites), §4 recompute pipeline, §5 historical IV backfill, §6 alert configuration (per-org + per-sector), §7 audit log + retention, §8 top-10 troubleshooting playbook (covers all sub-44-era UX gotchas), §9 DB ops (backup/restore/queries), §10-11 glossaries, §12 escalation. Closes 1 of 3 Phase 7.G deliverables; remaining: E2E across sector packs (Playwright pending) + user acceptance sign-off (post-pilot). Per user "плотностью доработать" — pivoted from architectural-debt cleanup phase to customer-shipping work; this doc + the post-Turn-A deliverables (deployment-readiness audit, SSE serverless infra, pre-prod smoke harness) bring the project to actual customer-shippable state vs internal demo-ware.
 
 - **2026-04-26** — **Phase C batch 1 — handler tests for `/api/budgeting/plans` POST + `[id]` PUT (Turn 25 cont'd Day 1 PARALLEL post-health-check).** Closes the runtime-proof gap from Turn-25 Phase B: `budget_plan_create` + `budget_plan_approve` audit emissions were wired but never tested at handler level. Two new handler-test files: (1) `src/app/api/budgeting/plans/handler.test.ts` — 8 cases covering 401 unauth, 403 below-manager, 400 zod-fail, 409 duplicate-period, 201 happy-path with `budget_plan_create` audit emission asserted with full discriminated metadata (planName/year/scope=quarterly), 201 + `auditStale: true` on logger DB-failure (never-throws contract), GET 401 + GET tenant-scoped findMany. (2) `src/app/api/budgeting/plans/[id]/handler.test.ts` — 8 cases covering 401, 403 editor-without-canApprove, 400 invalid-status enum, 404 cross-tenant existence-leak guard, 200 approve transition with `budget_plan_approve` audit emission asserted (priorStatus="pending_approval", actorUserId, route+userAgent context), priorStatus preservation on approve-after-reject (priorStatus="rejected"), reject-transition does NOT emit (only approve does), 200 + `auditStale: true` on logger failure. Reused: `mockSession` / `makeRequest` from `src/test/api-harness.ts`; hoisted-mock pattern from `companies/[id]/handler.test.ts`. Mocked `@/lib/cost-model/db.loadAndCompute` returns null (skips auto-populate / auto-planned line update — those covered in cost-model-map unit tests). **858/858 vitest** (was 842 → +16: 8 plans + 8 plans/[id]), tsc clean, no migrations. **Audit-emission coverage now 6/9 enum members fully runtime-handler-tested** (4 originally + 2 new this turn = 6; remaining 3+1 deferred to Phase 7.G admin-UI scope).
 
