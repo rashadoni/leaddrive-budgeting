@@ -84,17 +84,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  // Belt-and-braces module-registry reset. Originally added in sub-13
-  // on a wrong diagnosis (suspected vi.mock cross-file leak from this
-  // file polluting RelatedFunctionsMenu.test.tsx). Sub-18 root-caused
-  // the actual flake to a same-file race in the consumer test (async
-  // /api/companies fetch landing after `waitFor(menu open)`); fix
-  // shipped in `RelatedFunctionsMenu.test.tsx` race-condition wrap.
-  // resetModules retained as cheap insurance — the file-scoped
-  // `vi.mock("../store/...")` is hoisted per-file so leak SHOULDN'T
-  // happen, but the cleanup costs ~0ms and prevents future regression
-  // if vitest's worker-pool isolation ever changes.
-  vi.resetModules();
 });
 
 describe("IndicatorDetail forecast surface (Phase C2 v1)", () => {
