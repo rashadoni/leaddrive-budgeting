@@ -198,4 +198,74 @@ describe('GET /api/events/stream (Phase B1)', () => {
     const res = await GET(req);
     expect(res.status).toBe(403);
   });
+
+  // Phase 7.G Turn Q Round-1 ⚠️ closure — TERMINAL_LIVE_DISABLED truthy-check
+  // bug. Naive `if (process.env.X)` accepted string `"false"` as truthy
+  // (silent-failure: sysadmin sets =false intending to enable, route
+  // stays disabled). Tests lock the explicit allow-list parser.
+  describe('TERMINAL_LIVE_DISABLED kill-switch (Turn Q)', () => {
+    const ORIGINAL_ENV = process.env.TERMINAL_LIVE_DISABLED;
+    afterEach(() => {
+      if (ORIGINAL_ENV === undefined) {
+        delete process.env.TERMINAL_LIVE_DISABLED;
+      } else {
+        process.env.TERMINAL_LIVE_DISABLED = ORIGINAL_ENV;
+      }
+    });
+
+    async function callRoute() {
+      const { GET } = await importRoute();
+      const ac = new AbortController();
+      const req = new Request('http://localhost/api/events/stream', {
+        signal: ac.signal,
+      }) as unknown as Parameters<typeof GET>[0];
+      return GET(req);
+    }
+
+    it('returns 503 when TERMINAL_LIVE_DISABLED=1', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = '1';
+      const res = await callRoute();
+      expect(res.status).toBe(503);
+      expect(res.headers.get('retry-after')).toBe('60');
+    });
+
+    it('returns 503 when TERMINAL_LIVE_DISABLED=true (case-insensitive)', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = 'TRUE';
+      const res = await callRoute();
+      expect(res.status).toBe(503);
+    });
+
+    it('does NOT return 503 when TERMINAL_LIVE_DISABLED="false" (silent-failure regression guard)', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = 'false';
+      const res = await callRoute();
+      // Should fall through to the auth/orgId path → 200/streaming
+      // (since SESSION has both userId + orgId set in beforeEach).
+      // Hard-block expectation: status MUST NOT be 503.
+      expect(res.status).not.toBe(503);
+    });
+
+    it('does NOT return 503 when TERMINAL_LIVE_DISABLED="0"', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = '0';
+      const res = await callRoute();
+      expect(res.status).not.toBe(503);
+    });
+
+    it('does NOT return 503 when TERMINAL_LIVE_DISABLED unset (default)', async () => {
+      delete process.env.TERMINAL_LIVE_DISABLED;
+      const res = await callRoute();
+      expect(res.status).not.toBe(503);
+    });
+
+    it('does NOT return 503 when TERMINAL_LIVE_DISABLED is empty string', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = '';
+      const res = await callRoute();
+      expect(res.status).not.toBe(503);
+    });
+
+    it('returns 503 when TERMINAL_LIVE_DISABLED=on (whitespace tolerance)', async () => {
+      process.env.TERMINAL_LIVE_DISABLED = '  on  ';
+      const res = await callRoute();
+      expect(res.status).toBe(503);
+    });
+  });
 });

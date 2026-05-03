@@ -43,6 +43,22 @@ export const runtime = 'nodejs';
 
 const HEARTBEAT_MS = 25_000;
 
+/**
+ * Whitelist of values that disable the SSE stream when set in
+ * `TERMINAL_LIVE_DISABLED`. Phase 7.G Turn Q Round-1 ⚠️ closure: the
+ * naive `if (process.env.X)` check accepted string `"false"` as truthy
+ * (silent-failure-mode — sysadmin sets `TERMINAL_LIVE_DISABLED=false`
+ * intending to ENABLE SSE, route stays disabled). Explicit allow-list
+ * eliminates the trap. Common conventions covered: 1/0, true/false,
+ * yes/no, on/off (case-insensitive). Empty / unset = enabled.
+ */
+const TERMINAL_LIVE_DISABLED_TRUTHY = new Set(['1', 'true', 'yes', 'on']);
+
+function isTerminalLiveDisabled(): boolean {
+  const raw = (process.env.TERMINAL_LIVE_DISABLED ?? '').toLowerCase().trim();
+  return TERMINAL_LIVE_DISABLED_TRUTHY.has(raw);
+}
+
 export async function GET(request: NextRequest) {
   // Phase 7.G Turn Q — closes Turn-41-sub1 architect ⚠️ scope-cut
   // (SSE always-on without kill-switch). Plan §B1 promised
@@ -50,9 +66,17 @@ export async function GET(request: NextRequest) {
   // reliably inlining the env var; fallback is route-level 503 toggled
   // by `TERMINAL_LIVE_DISABLED` env. Set at the deploy layer (e.g.
   // `.env.production` or hosting-platform secrets) — when set to a
-  // truthy non-empty value, the route returns 503 and clients fall
-  // back to polling / no-live-updates gracefully.
-  if (process.env.TERMINAL_LIVE_DISABLED) {
+  // recognized truthy value (1/true/yes/on), the route returns 503 and
+  // clients fall back to polling / no-live-updates gracefully.
+  //
+  // Pre-auth ordering trade-off (Round-1 💡 acknowledgment): kill-switch
+  // fires BEFORE `requireRole(...)` so disabled state surfaces
+  // uniformly to authed AND unauthed clients (503 + Retry-After is the
+  // signal both audiences need). Auth gating returns once SSE re-
+  // enabled. Side-effect: unauth requests during disabled window get
+  // 503 not 401 — accepted (less churn during outages; auth misconfig
+  // is rare during planned disabled windows).
+  if (isTerminalLiveDisabled()) {
     return new Response(JSON.stringify({ error: 'SSE temporarily disabled' }), {
       status: 503,
       headers: {
