@@ -23,13 +23,20 @@ export interface E2ECredentials {
 }
 
 /**
- * Default credentials for local dev — match `scripts/create-admin.ts`
- * fallback. Override via env for any non-local environment.
+ * Default credentials for local dev — match the password documented in
+ * ROADMAP §Changelog (2026-04-21 entry: "Live password temporarily
+ * reverted to `Admin123!`"). Override via env for any non-local
+ * environment.
+ *
+ * IMPORTANT: if you've rotated the dev admin password locally (which
+ * you should, per `Phase 0.1` ROADMAP item), set `E2E_ADMIN_PASSWORD`
+ * to the new value or the `loginAs()` smoke will time out at the
+ * `waitForURL('/budgeting')` step.
  */
 export function getCredentials(): E2ECredentials {
   return {
     email: process.env.E2E_ADMIN_EMAIL ?? 'admin@budgetpro.com',
-    password: process.env.E2E_ADMIN_PASSWORD ?? 'admin123',
+    password: process.env.E2E_ADMIN_PASSWORD ?? 'Admin123!',
   };
 }
 

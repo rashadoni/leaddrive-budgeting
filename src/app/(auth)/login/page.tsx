@@ -77,25 +77,29 @@ export default function LoginPage() {
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Email</label>
+            <label htmlFor="login-email" className="text-sm font-medium text-white/80">Email</label>
             <Input
+              id="login-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@company.com"
               required
+              autoComplete="email"
               className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium text-white/80">Password</label>
             <Input
+              id="login-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="********"
               required
+              autoComplete="current-password"
               className="border-white/20 bg-white/10 text-white placeholder:text-white/40"
             />
           </div>
