@@ -36,7 +36,7 @@ const SAMPLE_PENDING = {
   companyCode: 'AAC-MAIN',
   indicatorId: 'ind_fx',
   indicatorCode: 'IND_FX_EXPOSURE',
-  indicatorNameEn: 'FX Exposure',
+  indicatorName: 'FX Exposure',
 } as const;
 
 function useActions() {

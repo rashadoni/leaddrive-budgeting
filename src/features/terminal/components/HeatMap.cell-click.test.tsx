@@ -229,14 +229,14 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
     // BRANCH (missing cell): pending hint set with ALL the metadata
     // IndicatorDetail needs to render the no-data state without a
     // second fetch (companyId + companyCode + indicatorId +
-    // indicatorCode + indicatorNameEn).
+    // indicatorCode + indicatorName).
     expect(setPendingMissingCellMock).toHaveBeenCalledTimes(1);
     expect(setPendingMissingCellMock).toHaveBeenCalledWith({
       companyId: "co_aac",
       companyCode: "AAC-MAIN",
       indicatorId: "ind_missing",
       indicatorCode: "IND_FX_EXPOSURE",
-      indicatorNameEn: "FX Exposure",
+      indicatorName: "FX Exposure",
     });
 
     // setActiveIv must NOT fire on a missing cell — the mutual-exclusion

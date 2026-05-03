@@ -189,7 +189,7 @@ export function IndicatorDetail() {
           </div>
           <div className="text-gray-500 max-w-md">
             {t('indicatorDetail.missingCellHint', {
-              indicator: pendingMissing.indicatorNameEn,
+              indicator: pendingMissing.indicatorName,
               company: pendingMissing.companyCode,
             })}
           </div>

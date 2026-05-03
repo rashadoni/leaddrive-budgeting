@@ -101,7 +101,7 @@ describe("IndicatorDetail empty-state DOM-class invariants (Round-33 ⚠️ clos
             companyCode: string;
             indicatorId: string;
             indicatorCode: string;
-            indicatorNameEn: string;
+            indicatorName: string;
           } | null;
           setActivePanel: (id: number) => void;
         }) => T,
@@ -113,7 +113,7 @@ describe("IndicatorDetail empty-state DOM-class invariants (Round-33 ⚠️ clos
             companyCode: "X-CO",
             indicatorId: "ind_y",
             indicatorCode: "IND_Y",
-            indicatorNameEn: "Y",
+            indicatorName: "Y",
           },
           setActivePanel: () => {},
         }),

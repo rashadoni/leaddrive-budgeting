@@ -44,7 +44,7 @@ vi.mock("../store/terminalStore", () => ({
         companyCode: string;
         indicatorId: string;
         indicatorCode: string;
-        indicatorNameEn: string;
+        indicatorName: string;
       } | null;
       setActivePanel: (id: number) => void;
     }) => T,
@@ -56,7 +56,7 @@ vi.mock("../store/terminalStore", () => ({
         companyCode: "AAC-MAIN",
         indicatorId: "ind_fx",
         indicatorCode: "IND_FX_EXPOSURE",
-        indicatorNameEn: "FX Exposure",
+        indicatorName: "FX Exposure",
       },
       setActivePanel: () => {},
     }),

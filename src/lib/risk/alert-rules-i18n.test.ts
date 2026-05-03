@@ -80,6 +80,14 @@ const ALL_LOCALES = [
 ] as const;
 
 describe("alert message i18n drift guard (sub-35)", () => {
+  // The 5 byte-equality cases below are by-design EN-only: the engine
+  // emits English template literals via `message: \`...\``, and these
+  // tests assert the locale-formatted EN substitution matches that
+  // engine output byte-for-byte. RU/AZ rendering correctness is covered
+  // separately by the parameterized loop further down (Phase 7.G Turn I
+  // / L142 closure) — that loop verifies every rule has matching
+  // entries in messages/{ru,az}.json without re-running byte-equality
+  // (which is structurally an EN-vs-engine concern).
   it("RULE_COMPANY_MOSTLY_RED — EN template formats to engine `message`", () => {
     const ctx: AlertContext = {
       companies: [

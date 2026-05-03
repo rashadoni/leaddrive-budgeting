@@ -546,7 +546,15 @@ export function HeatMap({ period }: Props) {
                                 companyCode: co.code,
                                 indicatorId: ind.id,
                                 indicatorCode: ind.code,
-                                indicatorNameEn: ind.nameEn,
+                                // Phase 7.G post-Turn-I (HeatMap audit
+                                // 🔄 closure inline) — was `ind.nameEn`;
+                                // audit confirmed single consumer at
+                                // IndicatorDetail.tsx:192 is pure UI
+                                // render (NOT LLM-input), so locale-
+                                // aware resolution is correct. Field
+                                // also renamed `indicatorNameEn → indicatorName`
+                                // since it's no longer EN-canonical.
+                                indicatorName: resolveIndicatorLabel(ind, locale),
                               });
                             }
                           }}

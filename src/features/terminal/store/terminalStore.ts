@@ -38,7 +38,7 @@ export interface TerminalState {
     companyCode: string;
     indicatorId: string;
     indicatorCode: string;
-    indicatorNameEn: string;
+    indicatorName: string;
   } | null;
   /**
    * Filter strings per panel. Panel 1 filters CompanyTree by code/name;
