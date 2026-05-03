@@ -144,6 +144,82 @@ export function buildAffectedFromCartesian(
   return out;
 }
 
+// ─── CLI arg-shape parser (extracted sub-44 prereq #2 cont'd architect ⚠️) ─
+// Keeps the script thin (parse → fetch → delegate) and lets the input-
+// validation surface get unit-test coverage without spawning the script.
+
+/** Parsed CLI arg shape. `companiesRaw` / `codesRaw` are optional (filter
+ *  modes); `dryRun` defaults to false. Raw strings are NOT yet validated —
+ *  they pass through `parseYearArg` / `parseCsvArg` downstream. */
+export interface BackfillCliArgs {
+  orgSlug: string;
+  yearsRaw: string;
+  companiesRaw?: string;
+  codesRaw?: string;
+  dryRun: boolean;
+}
+
+export type BackfillCliParseResult =
+  | { ok: true; args: BackfillCliArgs }
+  | { ok: false; reason: string };
+
+/**
+ * Parse CLI argv (already sliced to drop `node` + script-path entries).
+ *
+ * Recognized flags:
+ *   --org=<slug>            REQUIRED
+ *   --years=<csv>           REQUIRED
+ *   --companies=<csv>       optional
+ *   --codes=<csv>           optional
+ *   --dry-run               optional bool
+ *
+ * Failure modes — each returns `{ ok: false, reason }`:
+ *   - any flag starting with `-` not in the known-flag set → "Unknown flag: ..."
+ *     (catches typos like `--year=2025` instead of `--years=2025`)
+ *   - missing `--org=` → "--org=<slug> is required"
+ *   - missing `--years=` → "--years=<year[,year...]> is required"
+ *
+ * Positional args (no leading `-`) are silently ignored — keeps the parser
+ * tolerant of a future `--` separator usage. Multi-occurrence of the same
+ * flag uses last-wins (the loop overwrites). Empty `--org=` is accepted at
+ * this layer but `.trim()`'d — empty-after-trim falls through to the
+ * required-flag check.
+ */
+export function parseBackfillCli(argv: readonly string[]): BackfillCliParseResult {
+  let orgSlug: string | undefined;
+  let yearsRaw: string | undefined;
+  let companiesRaw: string | undefined;
+  let codesRaw: string | undefined;
+  let dryRun = false;
+
+  for (const arg of argv) {
+    if (arg === '--dry-run') {
+      dryRun = true;
+    } else if (arg.startsWith('--org=')) {
+      orgSlug = arg.slice('--org='.length).trim();
+    } else if (arg.startsWith('--years=')) {
+      yearsRaw = arg.slice('--years='.length);
+    } else if (arg.startsWith('--companies=')) {
+      companiesRaw = arg.slice('--companies='.length);
+    } else if (arg.startsWith('--codes=')) {
+      codesRaw = arg.slice('--codes='.length);
+    } else if (arg.startsWith('-')) {
+      return { ok: false, reason: `Unknown flag: ${arg}` };
+    }
+  }
+  if (!orgSlug) return { ok: false, reason: '--org=<slug> is required' };
+  if (!yearsRaw) {
+    return {
+      ok: false,
+      reason: '--years=<year[,year...]> is required (e.g. --years=2025 or --years=2025,2024)',
+    };
+  }
+  return {
+    ok: true,
+    args: { orgSlug, yearsRaw, companiesRaw, codesRaw, dryRun },
+  };
+}
+
 /**
  * Format a dry-run plan summary for stdout. Shape designed for ops
  * legibility — group counts on top, per-target sample below if the

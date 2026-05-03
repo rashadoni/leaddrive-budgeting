@@ -502,6 +502,72 @@ describe('runRecomputeForCompanies', () => {
       expect(prisma.company.findMany).toHaveBeenCalledTimes(2);
     });
 
+    it('parent-co rollup respects options.codeFilter narrowing (ind catalog filter applies to both branches)', async () => {
+      // Sub-44 prereq #2 cont'd — the codeFilter option should apply
+      // EQUALLY to operational + parent-co recompute paths. If the
+      // filter were applied AFTER rollup-detection, the parent fetch
+      // would silently include codes the user explicitly excluded.
+      const rollupIndA = ind({
+        id: 'i_roll_a',
+        code: 'IND_HOLDING_REVENUE',
+        formula: 'rollup("IND_REVENUE_TOTAL")',
+        requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+        industries: [],
+      });
+      const rollupIndB = ind({
+        id: 'i_roll_b',
+        code: 'IND_HOLDING_OPEX',
+        formula: 'rollup("IND_OPEX_TOTAL")',
+        requiredInputs: ['rollup:IND_OPEX_TOTAL'],
+        industries: [],
+      });
+      const parentCo: Company = {
+        id: 'co_p',
+        code: 'P',
+        industry: null,
+        level: 1,
+        isActive: true,
+        role: 'holding',
+      };
+      const prisma = makePrisma([co()], [rollupIndA, rollupIndB], [parentCo]);
+      // ⚠️ Override the indicatorDefinition mock to honor the where
+      // clause (the default mockResolvedValue ignores it). We need the
+      // filter to actually narrow.
+      prisma.indicatorDefinition.findMany.mockImplementation(
+        async (arg: { where?: { code?: { in?: string[] } } } = {}) => {
+          const codeFilter = arg.where?.code?.in;
+          if (codeFilter && codeFilter.length > 0) {
+            return [rollupIndA, rollupIndB].filter((d) =>
+              codeFilter.includes(d.code),
+            );
+          }
+          return [rollupIndA, rollupIndB];
+        },
+      );
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+
+      // Scope only IND_HOLDING_REVENUE — IND_HOLDING_OPEX must NOT fire.
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { codeFilter: ['IND_HOLDING_REVENUE'] },
+      );
+
+      const recomputedCodes = mockedRecompute.mock.calls.map(
+        (c) => c[1].definition.code,
+      );
+      expect(new Set(recomputedCodes)).toEqual(
+        new Set(['IND_HOLDING_REVENUE']),
+      );
+      expect(recomputedCodes).not.toContain('IND_HOLDING_OPEX');
+    });
+
     it('logger.start message includes parent-co + rollup-indicator count when present', async () => {
       const rollupInd = ind({
         id: 'i_roll',
@@ -536,6 +602,121 @@ describe('runRecomputeForCompanies', () => {
       // recompute fired without grepping for company codes.
       expect(log).toHaveLength(1);
       expect(log[0]).toMatch(/incl\. 1 parent × 1 rollup-bearing indicator/);
+    });
+  });
+
+  // ─── Sub-44 prereq #2 cont'd — options.codeFilter ───────────────────────
+  // Plumbs the script's --codes filter into prisma.indicatorDefinition.
+  // findMany.where.code.in. Empty/undefined = no filter (back-compat).
+  // Validated through the prisma findMany mock to assert the where shape.
+
+  describe('options.codeFilter (sub-44 prereq #2 cont\'d)', () => {
+    it('omitting options.codeFilter does NOT add code filter (back-compat)', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+
+      await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_1', year: 2026 },
+      ]);
+
+      const arg = prisma.indicatorDefinition.findMany.mock.calls[0][0] as {
+        where?: { code?: unknown };
+      };
+      expect(arg.where?.code).toBeUndefined();
+    });
+
+    it('empty codeFilter array does NOT add code filter (treat as no-filter)', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { codeFilter: [] },
+      );
+
+      const arg = prisma.indicatorDefinition.findMany.mock.calls[0][0] as {
+        where?: { code?: unknown };
+      };
+      expect(arg.where?.code).toBeUndefined();
+    });
+
+    it('non-empty codeFilter adds where.code.in with deduped values', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        // Duplicate IND_NET_MARGIN entry should be deduped — Postgres
+        // accepts duplicates in `IN (...)` but it's silly + harmless to
+        // send. Lock the dedupe semantic.
+        { codeFilter: ['IND_NET_MARGIN', 'IND_GROSS_MARGIN', 'IND_NET_MARGIN'] },
+      );
+
+      const arg = prisma.indicatorDefinition.findMany.mock.calls[0][0] as {
+        where?: { code?: { in?: string[] } };
+      };
+      expect(arg.where?.code).toBeDefined();
+      expect(arg.where!.code!.in).toBeDefined();
+      // Sort for deterministic comparison — Set→Array order isn't
+      // guaranteed across Node versions but the filter content is.
+      expect([...arg.where!.code!.in!].sort()).toEqual([
+        'IND_GROSS_MARGIN',
+        'IND_NET_MARGIN',
+      ]);
+    });
+
+    it('codeFilter narrows fetched defs (end-to-end via mock honoring where.code.in)', async () => {
+      const indA = ind({ id: 'a', code: 'IND_A' });
+      const indB = ind({ id: 'b', code: 'IND_B' });
+      const prisma = makePrisma([co()], [indA, indB]);
+      // Override findMany to honor the filter so the test can assert
+      // recompute fires on the narrowed set only.
+      prisma.indicatorDefinition.findMany.mockImplementation(
+        async (arg: { where?: { code?: { in?: string[] } } } = {}) => {
+          const filter = arg.where?.code?.in;
+          if (filter && filter.length > 0) {
+            return [indA, indB].filter((d) => filter.includes(d.code));
+          }
+          return [indA, indB];
+        },
+      );
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 1,
+      });
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {},
+        { codeFilter: ['IND_A'] },
+      );
+
+      const recomputedCodes = mockedRecompute.mock.calls.map(
+        (c) => c[1].definition.code,
+      );
+      expect(recomputedCodes).toEqual(['IND_A']);
+      expect(recomputedCodes).not.toContain('IND_B');
     });
   });
 });

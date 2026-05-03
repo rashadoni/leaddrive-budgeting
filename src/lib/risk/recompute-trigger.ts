@@ -58,6 +58,25 @@ export interface RunRecomputeResult {
   targets: number;
 }
 
+/**
+ * Optional opts for `runRecomputeForCompanies`.
+ *
+ * `codeFilter` (sub-44 prereq #2 cont'd closure): when supplied + non-
+ * empty, narrows the indicator-definition fetch to only the listed
+ * `IndicatorDefinition.code` values via `where.code.in`. Used by
+ * `scripts/backfill-historical-ivs.ts --codes=...` to limit a backfill
+ * to specific indicators (e.g. only IND_NET_MARGIN for a 2025 fact()
+ * baseline). Empty / undefined = no filter (current behavior, pulls
+ * the full per-industry catalog).
+ *
+ * The filter applies BEFORE org-scoping precedence + before parent-co
+ * rollup detection, so it correctly affects both branches of the
+ * trigger's pipeline.
+ */
+export interface RunRecomputeOptions {
+  codeFilter?: readonly string[];
+}
+
 const EMPTY_RESULT: RunRecomputeResult = {
   ok: 0,
   unknown: 0,
@@ -76,6 +95,9 @@ const EMPTY_RESULT: RunRecomputeResult = {
  *   match) so we don't pull rows we'll discard.
  * - Per-year scoping: a company touched only for 2025 is not recomputed
  *   under period='2026'. The script's prior batch shape is preserved.
+ * - `options.codeFilter` (sub-44 prereq #2 cont'd) optionally restricts
+ *   the catalog to specific indicator codes (used by the historical-
+ *   backfill script's `--codes` flag).
  *
  * Returns aggregate counts; individual successes are not enumerated.
  */
@@ -84,6 +106,7 @@ export async function runRecomputeForCompanies(
   organizationId: string,
   affected: RecomputeAffected[],
   logger: RecomputeTriggerLogger = {},
+  options: RunRecomputeOptions = {},
 ): Promise<RunRecomputeResult> {
   if (affected.length === 0) return { ...EMPTY_RESULT };
 
@@ -119,9 +142,19 @@ export async function runRecomputeForCompanies(
   const operationalIndustries = [
     ...new Set(operational.map((c) => c.industry)),
   ];
+  // Sub-44 prereq #2 cont'd — `options.codeFilter` narrows the catalog
+  // to specific indicator codes when supplied + non-empty. Empty /
+  // undefined → no filter (back-compat). De-duped to avoid sending
+  // `code IN (X, X, Y)` to Postgres which is silly but harmless.
+  const codeFilter = options.codeFilter ?? [];
+  const codeFilterDedupe =
+    codeFilter.length > 0 ? Array.from(new Set(codeFilter)) : [];
   const allDefs = await prisma.indicatorDefinition.findMany({
     where: {
       isActive: true,
+      ...(codeFilterDedupe.length > 0 && {
+        code: { in: codeFilterDedupe },
+      }),
       OR: [{ organizationId: null }, { organizationId }],
       AND: [
         {

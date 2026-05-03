@@ -42,59 +42,19 @@
 import { PrismaClient } from '@prisma/client';
 import { runRecomputeForCompanies } from '../src/lib/risk/recompute-trigger';
 import {
+  parseBackfillCli,
   parseYearArg,
   parseCsvArg,
   buildAffectedFromCartesian,
   formatDryRunPlan,
 } from '../src/lib/risk/historical-backfill';
 
-interface CliArgs {
-  orgSlug: string;
-  yearsRaw: string;
-  companiesRaw?: string;
-  codesRaw?: string;
-  dryRun: boolean;
-}
-
-function parseCli(argv: readonly string[]): { ok: true; args: CliArgs } | { ok: false; reason: string } {
-  let orgSlug: string | undefined;
-  let yearsRaw: string | undefined;
-  let companiesRaw: string | undefined;
-  let codesRaw: string | undefined;
-  let dryRun = false;
-
-  for (const arg of argv) {
-    if (arg === '--dry-run') {
-      dryRun = true;
-    } else if (arg.startsWith('--org=')) {
-      orgSlug = arg.slice('--org='.length).trim();
-    } else if (arg.startsWith('--years=')) {
-      yearsRaw = arg.slice('--years='.length);
-    } else if (arg.startsWith('--companies=')) {
-      companiesRaw = arg.slice('--companies='.length);
-    } else if (arg.startsWith('--codes=')) {
-      codesRaw = arg.slice('--codes='.length);
-    } else if (arg.startsWith('-')) {
-      return { ok: false, reason: `Unknown flag: ${arg}` };
-    }
-  }
-  if (!orgSlug) return { ok: false, reason: '--org=<slug> is required' };
-  if (!yearsRaw) {
-    return {
-      ok: false,
-      reason: '--years=<year[,year...]> is required (e.g. --years=2025 or --years=2025,2024)',
-    };
-  }
-  return {
-    ok: true,
-    args: { orgSlug, yearsRaw, companiesRaw, codesRaw, dryRun },
-  };
-}
-
 async function main(): Promise<void> {
   // Drop the `node`+`tsx`+script-path entries — argv[0] = node, argv[1] =
   // script path; pass the rest. Works with both `npx tsx` and `node --loader`.
-  const cliResult = parseCli(process.argv.slice(2));
+  // CLI parser lives in `historical-backfill.ts` — sub-44 prereq #2 cont'd
+  // architect ⚠️ closure (extract pure-fn for unit-test coverage).
+  const cliResult = parseBackfillCli(process.argv.slice(2));
   if (!cliResult.ok) {
     console.error(`✗ ${cliResult.reason}`);
     console.error('');
@@ -163,6 +123,10 @@ async function main(): Promise<void> {
     }
 
     if (dryRun) {
+      // Sub-44 prereq #2 cont'd — `--codes` filter now load-bearing
+      // (plumbed through `runRecomputeForCompanies(options.codeFilter)`),
+      // so the dry-run plan + the live-run header surface it as the
+      // actual filter that will apply, not as an informational note.
       console.log(
         formatDryRunPlan({
           orgSlug: org.slug,
@@ -171,18 +135,6 @@ async function main(): Promise<void> {
           codes: codeFilter,
         }),
       );
-      // The --codes filter is honored by the trigger's
-      // `preferOrgScopedDefinitions` step (selects all defs, then the
-      // engine narrows). Surfacing in the plan is for ops visibility;
-      // the trigger doesn't accept a code-filter arg today, so this is
-      // a future v2 hook (the script could fetch defs + filter manually
-      // and pass via a forthcoming `runRecomputeForCompanies({codes})`
-      // option). Document the limitation:
-      if (codeFilter.length > 0) {
-        console.log(
-          '  ℹ NOTE: --codes filter is informational only in v1 — runRecomputeForCompanies fetches the full per-industry catalog. Future v2 will plumb the filter through.',
-        );
-      }
       return;
     }
 
@@ -195,15 +147,22 @@ async function main(): Promise<void> {
       `Backfill: ${operationalCos.length} cos × ${years.length} year${years.length === 1 ? '' : 's'} = ${affected.length} (co × year) pairs ` +
         `for org=${org.slug}` +
         (companyFilter.length > 0 ? ` (--companies filter: ${companyFilter.join(',')})` : '') +
-        (codeFilter.length > 0 ? ` (--codes informational only in v1)` : ''),
+        (codeFilter.length > 0 ? ` (--codes filter: ${codeFilter.join(',')})` : ''),
     );
 
-    const result = await runRecomputeForCompanies(prisma, org.id, affected, {
-      start: (m) => console.log(`  ${m}`),
-      pairError: (label, err) => console.error(`  ✗ ${label}: ${err instanceof Error ? err.message : String(err)}`),
-      done: (m) => console.log(`  ${m}`),
-      noop: (m) => console.log(`  ⚠ ${m}`),
-    });
+    const result = await runRecomputeForCompanies(
+      prisma,
+      org.id,
+      affected,
+      {
+        start: (m) => console.log(`  ${m}`),
+        pairError: (label, err) => console.error(`  ✗ ${label}: ${err instanceof Error ? err.message : String(err)}`),
+        done: (m) => console.log(`  ${m}`),
+        noop: (m) => console.log(`  ⚠ ${m}`),
+      },
+      // Sub-44 prereq #2 cont'd — `--codes` is load-bearing now.
+      { codeFilter },
+    );
     console.log(
       `✓ Backfill complete: ok=${result.ok} unknown=${result.unknown} failed=${result.failed} (over ${result.targets} targets)`,
     );

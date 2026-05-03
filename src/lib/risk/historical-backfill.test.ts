@@ -18,6 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  parseBackfillCli,
   parseYearArg,
   parseCsvArg,
   buildAffectedFromCartesian,
@@ -224,5 +225,135 @@ describe('formatDryRunPlan (sub-42 prereq #2)', () => {
     expect(plan).not.toContain('1 operational companies');
     expect(plan).not.toContain('× 1 years');
     expect(plan).not.toContain('= 1 (company × year) pairs');
+  });
+});
+
+// ─── Sub-44 prereq #2 cont'd — parseBackfillCli architect ⚠️ closure ─────
+// The CLI parser is a pure fn; previously inlined in the script (uncovered).
+// These tests lock the input-validation surface so a typo in --years vs
+// --year (no s) or a missing required arg fails LOUD at CLI time instead
+// of silently no-op'ing.
+
+describe("parseBackfillCli (sub-44 prereq #2 cont'd)", () => {
+  it('parses minimal required args: --org + --years', () => {
+    const r = parseBackfillCli(['--org=azmade', '--years=2025']);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.args.orgSlug).toBe('azmade');
+      expect(r.args.yearsRaw).toBe('2025');
+      expect(r.args.companiesRaw).toBeUndefined();
+      expect(r.args.codesRaw).toBeUndefined();
+      expect(r.args.dryRun).toBe(false);
+    }
+  });
+
+  it('parses all flags together — --org + --years + --companies + --codes + --dry-run', () => {
+    const r = parseBackfillCli([
+      '--org=azmade',
+      '--years=2025,2024',
+      '--companies=AAC-MAIN,ZTP-MAIN',
+      '--codes=IND_NET_MARGIN,IND_GROSS_MARGIN',
+      '--dry-run',
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.args).toEqual({
+        orgSlug: 'azmade',
+        yearsRaw: '2025,2024',
+        companiesRaw: 'AAC-MAIN,ZTP-MAIN',
+        codesRaw: 'IND_NET_MARGIN,IND_GROSS_MARGIN',
+        dryRun: true,
+      });
+    }
+  });
+
+  it('flag order does not matter (--dry-run can appear before --org)', () => {
+    const r = parseBackfillCli(['--dry-run', '--years=2025', '--org=azmade']);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.args.dryRun).toBe(true);
+  });
+
+  it('rejects missing --org with explicit reason', () => {
+    const r = parseBackfillCli(['--years=2025']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/--org=<slug> is required/);
+  });
+
+  it('rejects missing --years with explicit reason', () => {
+    const r = parseBackfillCli(['--org=azmade']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/--years=/);
+  });
+
+  it('rejects unknown flag — load-bearing typo guard (--year vs --years)', () => {
+    // The architect-flagged case: a caller writing `--year=2025` (no s)
+    // instead of `--years=2025` MUST fail loudly. Without the unknown-
+    // flag check, this would land as silent "missing --years".
+    const r = parseBackfillCli(['--org=azmade', '--year=2025']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/Unknown flag/);
+      expect(r.reason).toContain('--year=2025');
+    }
+  });
+
+  it('rejects unknown flag with leading dash but no value (--frobnicate)', () => {
+    const r = parseBackfillCli(['--org=azmade', '--years=2025', '--frobnicate']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toContain('--frobnicate');
+  });
+
+  it('trims --org= value (whitespace tolerance)', () => {
+    const r = parseBackfillCli(['--org=  azmade  ', '--years=2025']);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.args.orgSlug).toBe('azmade');
+  });
+
+  it('treats empty --org= as missing (whitespace-only after trim)', () => {
+    // Edge case: `--org=` with empty value should be the same as not
+    // providing it at all. Without this, the script could fetch with
+    // slug=='' and silently fail at the org lookup with a less specific
+    // error.
+    const r = parseBackfillCli(['--org=   ', '--years=2025']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/--org=<slug> is required/);
+  });
+
+  it('rejects empty --years= the same as missing --years (no semantic gap)', () => {
+    // `!yearsRaw` catches both `undefined` (flag not present) and `''`
+    // (flag present with empty value). Functionally equivalent — the
+    // user gave no year info either way. Locks the no-semantic-gap
+    // invariant so a future refactor that switches to `yearsRaw ===
+    // undefined` doesn't accidentally let `--years=` slip through to
+    // parseYearArg with a less helpful error message.
+    const r = parseBackfillCli(['--org=azmade', '--years=']);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/--years=/);
+  });
+
+  it('multi-occurrence of same flag uses last-wins (documented behavior)', () => {
+    const r = parseBackfillCli([
+      '--org=first-org',
+      '--years=2025',
+      '--org=last-org',
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.args.orgSlug).toBe('last-org');
+  });
+
+  it('positional args without leading dash are silently ignored', () => {
+    // Tolerant of stray tokens — e.g. shell passing through a space-
+    // separated value after `--years=2025`. They land here as
+    // positional. Silently skip rather than rejecting (no CLI we
+    // forward to today, so positional has no semantic).
+    const r = parseBackfillCli(['--org=azmade', 'random-positional', '--years=2025']);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.args.orgSlug).toBe('azmade');
+  });
+
+  it('empty argv returns missing-org error first (consistent ordering)', () => {
+    const r = parseBackfillCli([]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/--org=/);
   });
 });
