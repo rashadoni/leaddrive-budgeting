@@ -24,6 +24,11 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
     // empty-string userId to flow into 8 audit-emission sites where
     // `|| null` fallbacks mapped it to null at the audit-log layer.
     // Now both the empty-string flow AND those fallbacks are dead.
+    //
+    // Why empty `id` is reachable: `auth.ts:81` casts `token.sub as string`
+    // (NextAuth's `JWT.sub` is typed as `string | undefined`). On a
+    // corrupt-token edge or session-callback misconfig, this guard
+    // catches the resulting empty string before it propagates.
     if (!session.user.id) return null
 
     return {

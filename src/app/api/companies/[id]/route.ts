@@ -27,7 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
-import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
+import { enforceRateLimit } from '@/lib/rate-limit';
 import { logAuditEvent, buildAuditContext } from '@/lib/audit/log';
 import { parsePatchBody, isValidCompanyRole } from './validate';
 

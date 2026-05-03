@@ -322,7 +322,39 @@ billing and i18n plumbing are out of scope).
 
 ## Changelog
 
-- **2026-05-03** — **Phase 7.G Turn O — `session.userId || null` fallback truly removed (closes 34-turn Turn-38-sub8 architect ⚠️ + Turn-M side-discovery).** Architect's CARRYOVER row was stale: claimed "2 sites mechanical removal", actual scope was 8 audit-emission sites + 2 rate-limit sites + upstream type-fix at `api-auth.ts:23`. Option A applied: `getSession()` returns `null` when `session.user.id` is falsy — same defensive shape as the existing falsy-orgId guard. With that upstream fix, all `|| null` (audit) and `|| getClientIp(...)` (rate-limit) fallbacks at consumer sites are truly dead and removed. Net: api-auth.ts gains 1 guard line + drops the `|| ""` default; 7 route files drop 10 dead fallbacks. Direct-trust call sites (terminal/layouts, audit/events, comments, analyze) had been silently miscoded if userId were empty — now structurally impossible. Verification: tsc 0 (TypeScript narrowing on guard verified); vitest **1717/1717 preserved** across 94 files (no regressions); Playwright visual-baseline 1/1 in 4.0s. CARRYOVER 90 → 89 total OPEN.
+- **2026-05-03** — **Phase 7.G Turn O — `session.userId || null` fallback truly removed (closes 34-turn Turn-38-sub8 architect ⚠️ + Turn-M side-discovery).** Architect's CARRYOVER row was stale: claimed "2 sites mechanical removal", actual scope was 8 audit-emission sites + 2 rate-limit sites + upstream type-fix at `api-auth.ts:23`. Option A applied: `getSession()` returns `null` when `session.user.id` is falsy — same defensive shape as the existing falsy-orgId guard. With that upstream fix, all `|| null` (audit) and `|| getClientIp(...)` (rate-limit) fallbacks at consumer sites are truly dead and removed. Net: api-auth.ts gains 1 guard line + drops the `|| ""` default; 7 route files drop 10 dead fallbacks; 2 dead `getClientIp` imports removed in Round-1 closure. Direct-trust call sites (terminal/layouts, audit/events, comments, analyze) had been silently miscoded if userId were empty — now structurally impossible. Verification: tsc 0 (TypeScript narrowing on guard verified); vitest **1717/1717 preserved** across 94 files (no regressions); Playwright visual-baseline 1/1 in 4.0s. CARRYOVER 90 → 89 total OPEN.
+
+  **Phase 7.G session synthesis report (Turns E–O, 21 commits, persisted at user request "сделай отчет всех проблем"):**
+
+  **(A) Critical ⚠️ closed inline within architect Round-1 of their respective turn (6 items):**
+  - Turn E R1: memory-vs-spec drift `networkidle` vs `load` in `feedback_visual_verification_gate.md` → corrected
+  - Turn E R1: 2 ⚠️ rows missed counter-bump (CARRYOVER L349/L356) → manually bumped + lesson into Python regex
+  - Turn E R1: CARRYOVER L27 narrative count drift "91→90+1" vs actual 93→93 → "X total (Y 🔄 + Z ⚠️)" convention codified
+  - Turn E R1: visual baseline dominated by WelcomeHint modal → `addInitScript` localStorage flag dismisses pre-render
+  - Turn G R1: `industries.agro` shipped instead of canonical `agro_crops` (AZ-AGRO sector silent leak in RU/AZ) → renamed in 3 locales + 7-case JSON↔seed consistency-guard added
+  - Turn I R1: EN-only drift-guard coverage (L142 explicitly says {en,ru,az}.json) → `ALL_LOCALES` parameterized 3-locale loop
+
+  **(B) Architect-flagged 🔄 filed for future work (4 items, all with concrete closure paths + estimates):**
+  - Linux baseline + matrix for visual-regression gate (user-owned, trigger = ship CI)
+  - SnapshotCard panel-only visual baseline (developer, ~45 min, extends Turn-E gate scope)
+  - Industry-table source-of-truth refactor (developer, ~3-4h, eliminates JSON↔seed RU translation drift)
+  - Render-site integration test for `industries.*` + CommandBar locale-aware autocomplete (developer, ~45-60 min, locks RU/AZ rendering empirically)
+
+  **(C) Side-discoveries during Turn-M pick selection (1 item, closed THIS turn):**
+  - `session.userId || null` fallback row (Turn-38-sub8 architect ⚠️) — architect's row was stale: said "2 sites, ~5 min mechanical", actual was 8 sites + 2 rate-limit + upstream type-fix at api-auth.ts. Closed in Turn O via Option A (falsy-userId guard mirroring orgId guard).
+
+  **(D) Outstanding non-blocking 💡 advisories (5 items, advisory only, deferred until trigger):**
+  - Narrative ordering at CARRYOVER (Turn L between K and M reverse-chronological-by-substantive-turn) — defer until 4th narrative interleaves
+  - Test-mirror drift risk between indicator + scenario helpers — defer until 3rd locale-resolver lands
+  - HeatMap.tsx breadcrumb comment age-out (~10 turns from Turn J)
+  - Hook fix alternative: extend architect-gate.sh to scan Bash tool_use writes to CARRYOVER (~15 min refactor, deferred per Turn-L convention being faster)
+  - BASELINE UPDATE token enforcement via pre-commit hook (~10 LOC, deferred until drift empirically observed)
+
+  **(E) Process closures shipped this session (2 items):**
+  - Turn L permanent fix for chronic Stop-hook false-positive (3 occurrences Turn-H'/J'/K' before convention codified) → Edit-tool requirement rule in `feedback_carryover_enforcement.md`, mirrored to user-home memory
+  - Counter-bump heartbeat-decay tracking: Turn N closed 4-turn-stale boundary that Turn L (process-fix) + Turn M (sub-cluster) skips opened
+
+  **Session totals:** 9 closures of long-OPEN architect items (E/F/G/H/I/J/K/M/N) + 1 process-fix (Turn L) + 1 side-discovery closure (Turn O) = 11 substantive closures; 21 commits including Round-1 fix-ups; vitest 1677 → 1717/1717 preserved; CARRYOVER 91 → 89 total OPEN; per-turn pattern: Plan → Ship → Architect → inline-close ⚠️ → file 💡 → continue.
 
 - **2026-05-03** — **Phase 7.G Turn N — WatchlistTabs prop-drill + hook hybrid cleanup (closes 28-turn Round-10 architect note).** `CompanyTree.tsx:422+` WatchlistTabs sub-component had hybrid translation pattern: 3 props (`tAll`/`tRecent`/`tSector`) drilled from parent + own `useTranslations('terminal')` hook for aria-labels. Consolidated: dropped prop interface fields, dropped 3 prop-passes at call site, replaced `props.t*` reads with inline `tt('companyTree.tab*')` (existing hook now serves both aria-labels AND tab labels). Net: -3 type fields, -3 prop passes, -3 prop reads, +3 inline `tt()` calls = simpler signature + single source of locale. Also includes counter-bump pass on 90 retained OPEN rows — 4-turn boundary closure per architect's Turn-M heads-up (Turn L process-fix + Turn M sub-cluster + Turn N substantive). Verification: tsc 0; vitest **1717/1717 preserved** across 94 files (no regressions; `CompanyTree.watchlist.test.tsx` exercises the surface and passes); Playwright visual-baseline 1/1 in 3.5s. CARRYOVER 91 total OPEN → 90 total OPEN (−1 WatchlistTabs row migrated). Per Turn-L Edit-tool convention: Python bumper for bulk operation + Edit-tool follow-up for closure-row insert + narrative.
 
