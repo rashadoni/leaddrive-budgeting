@@ -223,7 +223,7 @@ export async function POST(
     // returned to the caller, audit gap surfaces via background scan.
     void logAuditEvent(prisma, {
       organizationId: orgId,
-      actorUserId: session.userId || null,
+      actorUserId: session.userId,
       event: {
         action: "ai_variance_explainer_run",
         entityType: "IndicatorValue",

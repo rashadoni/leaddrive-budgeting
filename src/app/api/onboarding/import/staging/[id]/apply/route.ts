@@ -103,7 +103,7 @@ export async function POST(
     );
     await logExpire(prisma, {
       organizationId: orgId,
-      actorUserId: session.userId || null,
+      actorUserId: session.userId,
       event: {
         action: 'import_staging_expired',
         entityType: 'ImportStaging',
@@ -420,7 +420,7 @@ export async function POST(
   const { logAuditEvent, buildAuditContext } = await import('@/lib/audit/log');
   const auditResult = await logAuditEvent(prisma, {
     organizationId: orgIdLocal,
-    actorUserId: session.userId || null,
+    actorUserId: session.userId,
     event: {
       action: 'import_staging_apply',
       entityType: 'ImportStaging',

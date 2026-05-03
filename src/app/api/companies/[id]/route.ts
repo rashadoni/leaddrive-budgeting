@@ -47,7 +47,7 @@ export async function PATCH(
   }
 
   const rateLimitError = enforceRateLimit(
-    `${RATE_LIMIT.name}:${session.userId || getClientIp(request)}`,
+    `${RATE_LIMIT.name}:${session.userId}`,
     RATE_LIMIT,
   );
   if (rateLimitError) return rateLimitError;
@@ -116,7 +116,7 @@ export async function PATCH(
     } else {
       const auditResult = await logAuditEvent(prisma, {
         organizationId: session.orgId,
-        actorUserId: session.userId || null,
+        actorUserId: session.userId,
         event: {
           action: 'company_role_change',
           entityType: 'Company',

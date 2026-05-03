@@ -87,7 +87,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const rateLimitError = enforceRateLimit(
-    `${RATE_LIMIT.name}:${session.userId || getClientIp(request)}`,
+    `${RATE_LIMIT.name}:${session.userId}`,
     RATE_LIMIT,
   );
   if (rateLimitError) return rateLimitError;
@@ -141,7 +141,7 @@ export async function PATCH(request: NextRequest) {
   if (parsed.data.alertThresholds !== undefined) {
     const auditResult = await logAuditEvent(prisma, {
       organizationId: session.orgId,
-      actorUserId: session.userId || null,
+      actorUserId: session.userId,
       event: {
         action: 'alert_thresholds_update',
         entityType: 'Organization',

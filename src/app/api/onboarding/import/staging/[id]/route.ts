@@ -75,7 +75,7 @@ export async function GET(
       const { logAuditEvent, buildAuditContext } = await import('@/lib/audit/log');
       await logAuditEvent(prisma, {
         organizationId: session.orgId,
-        actorUserId: session.userId || null,
+        actorUserId: session.userId,
         event: {
           action: 'import_staging_expired',
           entityType: 'ImportStaging',

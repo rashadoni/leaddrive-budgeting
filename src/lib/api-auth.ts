@@ -17,10 +17,18 @@ export async function getSession(req: NextRequest): Promise<AuthResult | null> {
     // for org-scoped endpoints — otherwise all such users would share an
     // implicit `organizationId = ""` scope.
     if (!session.user.organizationId) return null
+    // Phase 7.G Turn O — same defensive shape as orgId: empty userId
+    // (NextAuth session-callback misconfig leaving id unset) is treated
+    // as unauthenticated. Closes the side-discovery from Turn-38-sub8
+    // architect ⚠️: previously `userId: session.user.id || ""` allowed
+    // empty-string userId to flow into 8 audit-emission sites where
+    // `|| null` fallbacks mapped it to null at the audit-log layer.
+    // Now both the empty-string flow AND those fallbacks are dead.
+    if (!session.user.id) return null
 
     return {
       orgId: session.user.organizationId,
-      userId: session.user.id || "",
+      userId: session.user.id,
       role: session.user.role || "viewer",
       email: session.user.email || "",
       name: session.user.name || "",

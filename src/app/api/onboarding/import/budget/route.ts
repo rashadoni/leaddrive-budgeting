@@ -323,7 +323,7 @@ export async function POST(request: NextRequest) {
   const { logImportBudgetCreate } = await import("@/lib/audit/import-helpers")
   const auditResult = await logImportBudgetCreate(prisma, {
     organizationId: orgId,
-    actorUserId: session.userId || null,
+    actorUserId: session.userId,
     planId: result.planId,
     companyId: company.id,
     companyCode: company.code,

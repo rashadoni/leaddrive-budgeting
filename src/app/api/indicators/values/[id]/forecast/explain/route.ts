@@ -261,7 +261,7 @@ export async function POST(
     // model + token cost).
     void logAuditEvent(prisma, {
       organizationId: orgId,
-      actorUserId: session.userId || null,
+      actorUserId: session.userId,
       event: {
         action: "ai_forecast_explainer_run",
         entityType: "IndicatorValue",
