@@ -276,6 +276,48 @@ freshness. No server push.
 
 **Effort estimate:** 1-2 days (delete + add polling hooks).
 
+### Option F — SaaS-managed real-time (Pusher / Ably / Pubnub)
+
+**Architecture:** drop in a hosted real-time platform; client SDK
+connects to vendor; server publishes via vendor SDK after every state
+change (or via a Postgres trigger → vendor-publish bridge).
+
+**Strengths:**
+- Turnkey: ~1 day to ship vs 2-3 days for Option A
+- Vendor handles HA, scale, regional fan-out
+- Built-in metrics dashboards
+
+**Weaknesses:**
+- Vendor lock-in (proprietary client SDK + auth model)
+- Cost at scale: ~$49-99/mo at low end, scales aggressively
+  (Pusher $49 = 100 concurrent connections; Ably similar)
+- **Privacy concern**: finance data flows through 3rd-party servers.
+  For FO Holding's internal data this is policy-question; for
+  customer-facing SaaS this triggers DPA review + likely SOC2 vendor
+  audit.
+- Adds external dependency on vendor uptime (no fallback if vendor
+  outage)
+- Ecosystem mismatch: Phase 7's other components (BullMQ, etc.) don't
+  benefit from Pusher
+
+**Verdict:** Dismissed. Privacy + cost + lock-in trade-offs don't
+favor this at FO Holding's scale. If FO Holding ever needs
+multi-region presence (not on roadmap), revisit.
+
+**Effort estimate:** 1-2 days.
+
+### Other rejected options (one-line)
+
+- **WebSocket transport switch (vs SSE)**: doesn't solve the long-lived-
+  connection problem on serverless. WebSocket needs the SAME backend
+  shape (long-lived process holding the LISTEN). Same Options A/B/C apply.
+- **Cloudflare Durable Objects**: long-lived stateful runtime IS the
+  point, but the entire app would need to migrate to Cloudflare Workers
+  (massive Next.js rewrite). Not in scope.
+- **GraphQL Subscriptions over Apollo / Hasura**: same long-lived-
+  connection problem; Hasura provides a managed answer but adds 600MB
+  Docker image + GraphQL surface. Not justified for current footprint.
+
 ### Option E — Vercel Postgres / Neon LISTEN-supported tier
 
 **Architecture:** unchanged client-side; switch DB host to a managed
@@ -323,8 +365,8 @@ deferred unless Vercel ships a documented "long-lived stream" runtime.
 | **Per-event latency** | ~10-50ms | ~5-20ms | ~1-5ms (current) | N/A (poll-stale) | Same as current IF works |
 | **Concurrent SSE ceiling** | 1000s (Redis fan-out) | 1000s (broker resource-bound) | 50-100 / VM | Function-throughput-bound | Doesn't help |
 | **Vercel function-timeout problem** | SOLVED (subscribe per-fn) | SOLVED (browser → broker direct) | N/A (no Vercel) | SOLVED (no long-lived) | NOT SOLVED |
-| **Postgres connection count** | 1 (bridge) | 1 (broker) | 1 (current) | 0 | N (per warm fn) |
-| **Single point of failure** | Bridge OR Redis | Broker | VM (or LB) | None | Managed-PG outage |
+| **Postgres connection count** | 1 (bridge holds LISTEN; Vercel functions consume Redis only) | 1 (broker holds LISTEN) | 1 (current Node process) | 0 (no LISTEN at all) | N (per warm Vercel function — exhausts max_connections) |
+| **Single point of failure** | Bridge OR Redis OR Postgres | Broker OR Postgres | VM (or LB) OR Postgres | None for transport (Postgres still SPOF for state) | Managed-PG outage (Postgres still SPOF) |
 | **Monthly infra cost** | $5-30 | $5-20 | $20-50 | ~$5-15 (function calls) | $20-50 |
 | **Effort to ship** | 2-3 days | 3-4 days | 0 days | 1-2 days | 1-3 days |
 | **Effort to maintain** | Medium (2 services) | Medium (1 service + auth coupling) | Low (current) | Low | Low |
@@ -493,8 +535,12 @@ After 30 days clean: delete the legacy code.
 2. **Bridge HA**: single bridge with health-check restart, or
    active-active with leader election? Single bridge is fine for
    <1000 req/sec NOTIFY rate; HA needed only at scale.
-3. **Per-org channel naming**: `audit_events_changed:org-<id>` vs
-   `events:audit:org-<id>` — purely cosmetic; pick once + lock.
+3. **Per-org channel naming** — **DECIDED**: `audit_events_changed:org-<id>`
+   and `indicator_values_changed:org-<id>` (matches existing Postgres
+   channel naming convention from
+   `prisma/migrations/20260427195305_sse_listen_notify_triggers/migration.sql`,
+   so the bridge worker just appends `:org-<id>` to whatever channel
+   the LISTEN fired on — zero translation logic needed).
 4. **Auth on the bridge → Vercel function path**: bridge has no auth
    (it's behind private network). Vercel function authenticates the
    browser via session cookie as today; no broker-side auth needed
