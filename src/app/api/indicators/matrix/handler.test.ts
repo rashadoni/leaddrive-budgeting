@@ -367,7 +367,7 @@ describe('GET /api/indicators/matrix — handler', () => {
         indicatorId: 'i_internal_rollup',
         value: 5_000_000,
         status: 'green',
-        isRealParentRollup: true,
+        kind: 'real-rollup',
       });
     });
 
@@ -450,9 +450,13 @@ describe('GET /api/indicators/matrix — handler', () => {
       // Real IV (99.9) wins over synthetic average that would have been 12.5.
       expect(parentCells[0].value).toBe(99.9);
       expect(parentCells[0].indicatorValueId).toBe('iv_parent_real');
-      expect(parentCells[0].isRealParentRollup).toBe(true);
-      // No isSubgroupRollup synthetic cell for the same pair.
-      expect(parentCells.some((c: { isSubgroupRollup?: boolean }) => c.isSubgroupRollup)).toBe(false);
+      expect(parentCells[0].kind).toBe('real-rollup');
+      // No synthetic-rollup cell for the same pair (priority lock).
+      expect(
+        parentCells.some(
+          (c: { kind?: string }) => c.kind === 'synthetic-rollup',
+        ),
+      ).toBe(false);
     });
 
     it("Turn 33.5 synthetic-average fallback preserved when no real parent IV exists (back-compat)", async () => {
@@ -522,10 +526,11 @@ describe('GET /api/indicators/matrix — handler', () => {
         indicatorValueId: null, // synthetic — not drill-downable
         value: 25.0,
         status: 'green',
-        isSubgroupRollup: true,
+        kind: 'synthetic-rollup',
       });
-      // Not a real parent rollup.
-      expect(parentCells[0].isRealParentRollup).toBeUndefined();
+      // Not a real parent rollup — discriminated-union variant must be
+      // EXACTLY 'synthetic-rollup', not 'real-rollup'.
+      expect(parentCells[0].kind).not.toBe('real-rollup');
     });
 
     it("non-rollup internal indicators stay filtered (back-compat with sub-42 architect Round-1 closure)", async () => {

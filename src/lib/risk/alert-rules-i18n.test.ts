@@ -65,9 +65,9 @@ describe("alert message i18n drift guard (sub-35)", () => {
         { id: "i3", code: "X3" },
       ],
       cells: [
-        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "red", isSubgroupRollup: false },
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red" },
+        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "red" },
       ],
     };
     const [m] = RULE_COMPANY_MOSTLY_RED.match(ctx, mergeWithDefaults(undefined));
@@ -88,8 +88,8 @@ describe("alert message i18n drift guard (sub-35)", () => {
         { id: "i2", code: "X2" },
       ],
       cells: [
-        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red", isSubgroupRollup: false },
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red" },
       ],
     };
     const [m] = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, mergeWithDefaults(undefined));
@@ -112,11 +112,11 @@ describe("alert message i18n drift guard (sub-35)", () => {
         { id: "i3", code: "X3" },
       ],
       cells: [
-        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "amber", isSubgroupRollup: false },
-        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "amber", isSubgroupRollup: false },
-        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "amber", isSubgroupRollup: false },
-        { indicatorValueId: "iv4", companyId: "c2", indicatorId: "i1", value: 0, status: "amber", isSubgroupRollup: false },
-        { indicatorValueId: "iv5", companyId: "c2", indicatorId: "i2", value: 0, status: "amber", isSubgroupRollup: false },
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "amber" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "amber" },
+        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "amber" },
+        { indicatorValueId: "iv4", companyId: "c2", indicatorId: "i1", value: 0, status: "amber" },
+        { indicatorValueId: "iv5", companyId: "c2", indicatorId: "i2", value: 0, status: "amber" },
       ],
     };
     const [m] = RULE_SECTOR_AMBER_CLUSTER.match(ctx, mergeWithDefaults(undefined));
@@ -135,9 +135,9 @@ describe("alert message i18n drift guard (sub-35)", () => {
       ],
       indicators: [{ id: "i1", code: "X" }, { id: "i2", code: "Y" }],
       cells: [
-        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv3", companyId: "c2", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "red" },
+        { indicatorValueId: "iv3", companyId: "c2", indicatorId: "i1", value: 0, status: "red" },
       ],
     };
     const [m] = RULE_SECTOR_RED_SPREAD.match(ctx, mergeWithDefaults(undefined));
@@ -157,9 +157,9 @@ describe("alert message i18n drift guard (sub-35)", () => {
       ],
       indicators: [{ id: "i1", code: "IND_NET_MARGIN" }],
       cells: [
-        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv2", companyId: "c2", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
-        { indicatorValueId: "iv3", companyId: "c3", indicatorId: "i1", value: 0, status: "red", isSubgroupRollup: false },
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv2", companyId: "c2", indicatorId: "i1", value: 0, status: "red" },
+        { indicatorValueId: "iv3", companyId: "c3", indicatorId: "i1", value: 0, status: "red" },
       ],
     };
     const [m] = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, mergeWithDefaults(undefined));

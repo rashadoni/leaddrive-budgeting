@@ -146,7 +146,7 @@ const MIXED_FIXTURE = {
       indicatorId: "ind_gross",
       value: 5.0,
       status: "red",
-      isSubgroupRollup: true,
+      kind: "synthetic-rollup" as const,
     },
   ],
 };

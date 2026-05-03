@@ -109,13 +109,14 @@ beforeEach(() => {
               })),
             ),
             // Sub-group rollup cells — all amber. MUST be skipped by
-            // compositeByCompany via the isSubgroupRollup flag.
+            // compositeByCompany via `kind === 'synthetic-rollup'`
+            // (sub-44 cont'd discriminated-union refactor).
             ...["ind_a", "ind_b", "ind_c", "ind_d", "ind_e"].map((ind) => ({
               companyId: "sg_aac",
               indicatorId: ind,
               value: 25,
               status: "amber" as const,
-              isSubgroupRollup: true,
+              kind: "synthetic-rollup" as const,
             })),
           ],
         }),

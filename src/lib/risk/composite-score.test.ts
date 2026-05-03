@@ -18,7 +18,7 @@ import {
   computeCompositeByCompany,
   scoreToBand,
 } from './composite-score';
-import type { HeatMapCell } from './heatmap-matrix';
+import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 
 function cell(status: HeatMapCell['status']): HeatMapCell {
   return {
@@ -117,7 +117,7 @@ describe('REGRESSION: sub-group rollup-cell exclusion (architect Round-1 ⚠️ 
   it('helper averages all input cells regardless of isSubgroupRollup flag (caller responsibility)', () => {
     const cells: HeatMapCell[] = [
       { ...cell('green') },
-      { ...cell('red'), isSubgroupRollup: true }, // would skew avg if not pre-filtered
+      { ...cell('red'), kind: 'synthetic-rollup' as const}, // would skew avg if not pre-filtered
     ];
     const result = computeCompositeScore(cells);
     // Helper sees both → avg = 50, NOT 100. This proves caller filtering
@@ -131,10 +131,10 @@ describe('REGRESSION: sub-group rollup-cell exclusion (architect Round-1 ⚠️ 
       { ...cell('green') },
       { ...cell('green') },
       { ...cell('green') },
-      { ...cell('red'), isSubgroupRollup: true }, // pretend this is sub-group worst-of
+      { ...cell('red'), kind: 'synthetic-rollup' as const}, // pretend this is sub-group worst-of
     ];
     // Caller filter — what HeatMap.compositeByCompany does:
-    const filtered = allCells.filter((c) => !c.isSubgroupRollup);
+    const filtered = allCells.filter((c) => !isAggregateRollup(c));
     const result = computeCompositeScore(filtered);
     // 4 green + 0 red = 100 (NOT 80 from including the rollup cell)
     expect(result.score).toBe(100);
@@ -187,7 +187,7 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
       cellWith('co_a', 'green'),
       cellWith('co_a', 'green'),
       // Synthetic rollup row that should NOT contribute to the average.
-      { ...cellWith('co_a', 'red'), isSubgroupRollup: true },
+      { ...cellWith('co_a', 'red'), kind: 'synthetic-rollup' as const},
     ];
     const result = computeCompositeByCompany(cells);
     // 2 green + 0 red (rollup skipped) = 100, NOT 67 (which would be
@@ -201,7 +201,7 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     // sub-group has zero cells; dense mode returns score=null.
     const cells: HeatMapCell[] = [
       cellWith('co_a', 'green'),
-      { ...cellWith('subgroup_x', 'amber'), isSubgroupRollup: true },
+      { ...cellWith('subgroup_x', 'amber'), kind: 'synthetic-rollup' as const},
     ];
     const result = computeCompositeByCompany(cells, ['co_a', 'subgroup_x']);
     expect(result.get('co_a')?.score).toBe(100);
@@ -226,7 +226,7 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
       {
         ...cellWith('subgroup_x', 'green'),
         indicatorValueId: 'iv_real_holding_revenue',
-        isRealParentRollup: true,
+        kind: 'real-rollup' as const,
       },
     ];
     const result = computeCompositeByCompany(cells, ['co_a', 'subgroup_x']);
@@ -243,11 +243,11 @@ describe('computeCompositeByCompany — shared HeatMap + Board Deck aggregator',
     // sub-group row (e.g. one indicator has Turn 33.5 average, another
     // has a real rollup IV).
     const cells: HeatMapCell[] = [
-      { ...cellWith('subgroup_x', 'red'), isSubgroupRollup: true },
+      { ...cellWith('subgroup_x', 'red'), kind: 'synthetic-rollup' as const},
       {
         ...cellWith('subgroup_x', 'green'),
         indicatorValueId: 'iv_real',
-        isRealParentRollup: true,
+        kind: 'real-rollup' as const,
       },
     ];
     const result = computeCompositeByCompany(cells, ['subgroup_x']);

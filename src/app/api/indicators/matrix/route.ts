@@ -335,10 +335,12 @@ export async function GET(request: NextRequest) {
         status: v.status as IndicatorStatus,
         ...(sparkline ? { sparkline } : {}),
         ...(error ? { error } : {}),
-        // Mark as real-rollup so the client distinguishes from synthetic
-        // averages (different drill-down semantics: real IV is queryable,
-        // average is not).
-        isRealParentRollup: true,
+        // Sub-44 cont'd architect 💡 closure — discriminated-union
+        // `kind` field replaces the legacy `isRealParentRollup` boolean.
+        // Distinguishes from synthetic averages (different drill-down
+        // semantics: real IV is queryable, average is not). Gate
+        // downstream via `isAggregateRollup(c)` helper.
+        kind: 'real-rollup' as const,
       };
     });
 
@@ -380,7 +382,10 @@ export async function GET(request: NextRequest) {
         indicatorId: indId,
         value: bucket.sum / bucket.count, // simple average
         status: worstStatus(bucket.statuses),
-        isSubgroupRollup: true,
+        // Sub-44 cont'd architect 💡 closure — discriminated-union
+        // `kind` field replaces the legacy `isSubgroupRollup` boolean.
+        // Gate downstream via `isAggregateRollup(c)` helper.
+        kind: 'synthetic-rollup' as const,
       };
     });
 

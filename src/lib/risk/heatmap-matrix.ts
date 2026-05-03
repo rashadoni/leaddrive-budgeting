@@ -29,45 +29,63 @@ export interface HeatMapCell {
    *  IVs predating B2 batch run have no sparkline; UI renders neutral
    *  baseline in that case. */
   sparkline?: (number | null)[];
-  /** Phase 7.B (Turn 33.5) — synthetic sub-group rollup cell. When `true`,
-   *  this cell's `value` is an average of children's values + `status` is
-   *  worst-of-children. Composite score (Phase C5) excludes these to
-   *  avoid double-aggregation: rollup cells already encode children's
-   *  worst-status, so averaging them again would underestimate sub-group
-   *  health (e.g. 4 green + 1 red children → all-red rollup → composite
-   *  ≈ 0, but true signal is 80% green). */
-  isSubgroupRollup?: boolean;
-  /** Sub-44 cont'd render-path — REAL parent-co rollup IV from
-   *  rollup() resolver (e.g. `IND_HOLDING_REVENUE` value summed across
-   *  direct children). Distinguished from `isSubgroupRollup` because:
-   *  - has a persisted `indicatorValueId` (drill-downable)
-   *  - value is the rollup() formula's true output, not a children-cell
-   *    average
-   *  - emitted only for level=1 sub-group cos
-   *  Composite score + alert-rule iteration + UI badge counts MUST skip
-   *  these cells (same rationale as `isSubgroupRollup` — sub-group level
-   *  is a navigation rollup, not a measurable entity). Use the
-   *  `isAggregateRollup(c)` helper to gate uniformly across both flags. */
-  isRealParentRollup?: boolean;
+  /**
+   * Sub-44 cont'd architect 💡 closure — discriminated-union tag for the
+   * cell's origin. Distinguishes operational cells from sub-group
+   * aggregate variants. Adding a new variant = adding a literal here;
+   * the type system + `isAggregateRollup` helper enforce every consumer
+   * keeps up.
+   *
+   * Variants:
+   *  - `'op'` (default when `kind` absent): Direct IV for an
+   *    operational (level=2) company. Counted in composite + alerts +
+   *    UI badge counts.
+   *  - `'synthetic-rollup'` (Phase 7.B / Turn 33.5): synthetic sub-group
+   *    rollup cell — value is AVERAGE of children's cell values +
+   *    status is worst-of-children. Composite score (Phase C5) excludes
+   *    these to avoid double-aggregation: rollup cells already encode
+   *    children's worst-status, so averaging them again would
+   *    underestimate sub-group health (e.g. 4 green + 1 red children →
+   *    all-red rollup → composite ≈ 0, but true signal is 80% green).
+   *  - `'real-rollup'` (sub-44 cont'd render-path): REAL parent-co
+   *    rollup IV from `rollup()` resolver (e.g. `IND_HOLDING_REVENUE`
+   *    summed across direct children). Has a persisted
+   *    `indicatorValueId` (drill-downable) and value is the rollup()
+   *    formula's true output, not a children-cell average. Emitted only
+   *    for level=1 sub-group cos. Composite + alerts + UI badges MUST
+   *    skip these (sub-group level is a navigation rollup, not a
+   *    measurable entity).
+   *
+   * Use the `isAggregateRollup(c)` helper to gate uniformly across the
+   * non-`'op'` variants — never check `kind` directly in consumer code,
+   * keep all gating funneled through the helper.
+   *
+   * Backward-compat: cells emitted before sub-44 cont'd may omit `kind`;
+   * absent = `'op'`. The helper handles undefined cleanly.
+   */
+  kind?: 'op' | 'synthetic-rollup' | 'real-rollup';
 }
 
 /**
  * Gate predicate: `true` for any sub-group/parent-co aggregate cell
- * (synthetic Turn 33.5 average OR real sub-44 rollup IV). Centralizes
- * the "is this an aggregate row?" check so downstream consumers
- * (composite-score, alert-rules, UI badge counts) can't silently miss
- * one of the flags when a new aggregate variant is added.
+ * (`kind === 'synthetic-rollup'` Turn 33.5 average OR
+ * `kind === 'real-rollup'` sub-44 rollup IV). Centralizes the "is this
+ * an aggregate row?" check so downstream consumers (composite-score,
+ * alert-rules, UI badge counts) can't silently miss one of the variants
+ * when a new aggregate kind is added.
  *
- * Sub-44 architect ⚠️ closure: previously every consumer hand-checked
- * `isSubgroupRollup`. The render-path's new `isRealParentRollup` would
- * have leaked through 6 sites silently — gating them all on this
- * helper closes the class of bug at one site.
+ * Sub-44 architect ⚠️ + 💡 closure: previously every consumer hand-checked
+ * `isSubgroupRollup`. The render-path's `isRealParentRollup` boolean
+ * would have leaked through 6 sites silently. The discriminated-union
+ * `kind` field is now the canonical representation; this helper is the
+ * canonical gate.
+ *
+ * Returns `false` when `kind` is undefined (back-compat default = `'op'`).
  */
 export function isAggregateRollup(c: {
-  isSubgroupRollup?: boolean;
-  isRealParentRollup?: boolean;
+  kind?: 'op' | 'synthetic-rollup' | 'real-rollup';
 }): boolean {
-  return c.isSubgroupRollup === true || c.isRealParentRollup === true;
+  return c.kind === 'synthetic-rollup' || c.kind === 'real-rollup';
 }
 
 /** `${companyId}:${indicatorId}` — deterministic, safe for Map keys. */

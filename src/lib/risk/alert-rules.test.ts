@@ -49,7 +49,11 @@ function cell(
     indicatorId,
     value: 0,
     status,
-    ...(isSubgroupRollup ? { isSubgroupRollup: true } : {}),
+    // Sub-44 cont'd architect 💡 closure — discriminated-union shape
+    // (`kind: 'synthetic-rollup'` replaces the legacy `isSubgroupRollup`
+    // boolean). Helper signature kept for back-compat with existing
+    // tests; bool→kind translation lives here in one site.
+    ...(isSubgroupRollup ? { kind: 'synthetic-rollup' as const } : {}),
   };
 }
 
@@ -122,7 +126,7 @@ describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
           indicatorId: 'ind_gross',
           value: 0,
           status: 'red',
-          isRealParentRollup: true,
+          kind: 'real-rollup' as const,
           indicatorValueId: 'iv_real_1',
         },
         {
@@ -130,7 +134,7 @@ describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
           indicatorId: 'ind_net',
           value: 0,
           status: 'red',
-          isRealParentRollup: true,
+          kind: 'real-rollup' as const,
           indicatorValueId: 'iv_real_2',
         },
         {
@@ -138,7 +142,7 @@ describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
           indicatorId: 'ind_opex',
           value: 0,
           status: 'red',
-          isRealParentRollup: true,
+          kind: 'real-rollup' as const,
           indicatorValueId: 'iv_real_3',
         },
       ],
@@ -1032,9 +1036,9 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
         { id: 'i3', code: 'X3' },
       ],
       cells: [
-        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red' },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red' },
       ],
     };
     const [m] = RULE_COMPANY_MOSTLY_RED.match(ctx, mergeWithDefaults(undefined));
@@ -1051,9 +1055,9 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
         { id: 'i3', code: 'X3' },
       ],
       cells: [
-        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red' },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'red' },
       ],
     };
     const [m] = RULE_COMPANY_CRITICAL_COMPOSITE.match(ctx, mergeWithDefaults(undefined));
@@ -1074,11 +1078,11 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
       ],
       cells: [
         // 5 amber cells across 2 companies — meets default sectorAmber.amberCountMin=5.
-        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'iv4', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'iv5', companyId: 'c2', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'iv3', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber' },
+        { indicatorValueId: 'iv4', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'iv5', companyId: 'c2', indicatorId: 'i2', value: 0, status: 'amber' },
       ],
     };
     const [m] = RULE_SECTOR_AMBER_CLUSTER.match(ctx, mergeWithDefaults(undefined));
@@ -1094,9 +1098,9 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
       ],
       indicators: [{ id: 'i1', code: 'X' }, { id: 'i2', code: 'Y' }],
       cells: [
-        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv3', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'iv2', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red' },
+        { indicatorValueId: 'iv3', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red' },
       ],
     };
     const [m] = RULE_SECTOR_RED_SPREAD.match(ctx, mergeWithDefaults(undefined));
@@ -1113,9 +1117,9 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
       ],
       indicators: [{ id: 'i1', code: 'IND_NET_MARGIN' }],
       cells: [
-        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv2', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'iv3', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'iv2', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'iv3', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red' },
       ],
     };
     const [m] = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, mergeWithDefaults(undefined));
@@ -1140,16 +1144,16 @@ describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
         { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
       ],
       cells: [
-        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'f', companyId: 'c_ind', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'g', companyId: 'c_ind', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'h', companyId: 'c_ind', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'i', companyId: 'c_ind', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'j', companyId: 'c_ind', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber' },
+        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber' },
+        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber' },
+        { indicatorValueId: 'f', companyId: 'c_ind', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'g', companyId: 'c_ind', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'h', companyId: 'c_ind', indicatorId: 'i3', value: 0, status: 'amber' },
+        { indicatorValueId: 'i', companyId: 'c_ind', indicatorId: 'i4', value: 0, status: 'amber' },
+        { indicatorValueId: 'j', companyId: 'c_ind', indicatorId: 'i5', value: 0, status: 'amber' },
       ],
     };
     const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
@@ -1172,11 +1176,11 @@ describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
         { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
       ],
       cells: [
-        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'a', companyId: 'c_hosp', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'b', companyId: 'c_hosp', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'c', companyId: 'c_hosp', indicatorId: 'i3', value: 0, status: 'amber' },
+        { indicatorValueId: 'd', companyId: 'c_hosp', indicatorId: 'i4', value: 0, status: 'amber' },
+        { indicatorValueId: 'e', companyId: 'c_hosp', indicatorId: 'i5', value: 0, status: 'amber' },
       ],
     };
     const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
@@ -1202,10 +1206,10 @@ describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
       ],
       indicators: [{ id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }],
       cells: [
-        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'c', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
-        { indicatorValueId: 'd', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red', isSubgroupRollup: false },
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'red' },
+        { indicatorValueId: 'c', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red' },
+        { indicatorValueId: 'd', companyId: 'c3', indicatorId: 'i1', value: 0, status: 'red' },
       ],
     };
     const matches = evaluateAlertRules([RULE_SECTOR_RED_SPREAD], ctx, {
@@ -1224,9 +1228,9 @@ describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
       ],
       indicators: [{ id: 'i1', code: 'X1' }, { id: 'i2', code: 'X2' }, { id: 'i3', code: 'X3' }],
       cells: [
-        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber' },
       ],
     };
     const matches = evaluateAlertRules([RULE_SECTOR_AMBER_CLUSTER], ctx, {
@@ -1246,11 +1250,11 @@ describe('evaluateAlertRules — per-sector overrides (C6 v3)', () => {
         { id: 'i4', code: 'X4' }, { id: 'i5', code: 'X5' },
       ],
       cells: [
-        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'd', companyId: 'c1', indicatorId: 'i4', value: 0, status: 'amber', isSubgroupRollup: false },
-        { indicatorValueId: 'e', companyId: 'c1', indicatorId: 'i5', value: 0, status: 'amber', isSubgroupRollup: false },
+        { indicatorValueId: 'a', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'amber' },
+        { indicatorValueId: 'b', companyId: 'c1', indicatorId: 'i2', value: 0, status: 'amber' },
+        { indicatorValueId: 'c', companyId: 'c1', indicatorId: 'i3', value: 0, status: 'amber' },
+        { indicatorValueId: 'd', companyId: 'c1', indicatorId: 'i4', value: 0, status: 'amber' },
+        { indicatorValueId: 'e', companyId: 'c1', indicatorId: 'i5', value: 0, status: 'amber' },
       ],
     };
     // Default amberCountMin=5; 5 amber cells fire.
