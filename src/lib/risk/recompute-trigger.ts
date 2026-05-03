@@ -182,6 +182,16 @@ export async function runRecomputeForCompanies(
   // the parent rollup needs to refresh for every year a child touched
   // (an op-co writing 2026 means the parent's 2026 rollup is now stale,
   // independent of which sub-cos appear in `affected`).
+  //
+  // Limitation (sub-44 architect ⚠️): a year NOT in `affected` (i.e. no
+  // child wrote it in this batch) won't refresh the parent rollup at
+  // that year, even if a sibling IV at that year was updated by another
+  // path (e.g. a manual SQL touch, a different /apply call landing
+  // mid-flight). The parent's stale-year IV stays at its old value.
+  // Mitigation today: every BudgetLine write goes through this trigger,
+  // so the only stale paths are out-of-band DB mutation. Future v2
+  // could either (a) widen the parent-rollup pass to ALL existing IV
+  // years per parent, OR (b) adopt an event-bus invalidation model.
   const years = [...byYear.keys()].sort();
   let totalPairs = 0;
   for (const year of years) {
