@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
+import { resolveIndicatorLabel } from '../lib/resolve-indicator-label';
 import { useTerminalStore } from '../store/terminalStore';
 import {
   parseCommand,
@@ -64,6 +65,14 @@ function fuzzyScore(query: string, target: string): number {
 
 export function CommandBar() {
   const t = useTranslations('terminal');
+  // Phase 7.G Turn H — locale-aware autocomplete hint (closes 23-turn
+  // sub-35 follow-up at CARRYOVER L139). Last `nameEn` straggler in
+  // terminal/components/. The fuzzy-score input + the hint string both
+  // need the localized name so RU/AZ users (a) can match against typed
+  // text in their native script, (b) see the localized hint in the
+  // suggestion drop-down. resolveIndicatorLabel falls back to nameEn
+  // → code when locale-specific name is missing.
+  const locale = useLocale();
   const [command, setCommand] = useState('');
   const [feedback, setFeedback] = useState<
     | { kind: 'idle' }
@@ -340,15 +349,16 @@ export function CommandBar() {
     // Indicators
     const indicators = matrix?.indicators ?? [];
     for (const ind of indicators) {
+      const localizedName = resolveIndicatorLabel(ind, locale);
       const codeScore = fuzzyScore(lastWord, ind.code);
-      const nameScore = fuzzyScore(lastWord, ind.nameEn) * 0.8;
+      const nameScore = fuzzyScore(lastWord, localizedName) * 0.8;
       const score = Math.max(codeScore, nameScore);
       if (score > 0) {
         out.push({
           kind: 'indicator',
           value: ind.code,
           label: ind.code,
-          hint: ind.nameEn,
+          hint: localizedName,
           score,
         });
       }
