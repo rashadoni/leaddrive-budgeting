@@ -395,18 +395,24 @@ function SnapshotCard({
           {cell ? formatValue(cell.value, indicator.unit) : "—"}
         </span>
       </div>
-      {/* Sub-36 — `flex-1` spacer pushes the sparkline to the bottom of
-          the card so the title + value sit anchored at the top and the
-          card visibly fills its slot. Sparkline keeps its fixed 80×24
-          dims (responsive SVG sizing is a separate enhancement). */}
-      <div className="flex-1 min-h-0" aria-hidden="true" />
-      <Sparkline
-        data={sparkline ?? Array(12).fill(null)}
-        status={status}
-        ariaLabel={t('heatMap.sparklineTrendAriaLabelSelf', {
-          indCode: indicator.code,
-        })}
-      />
+      {/* L133 closure (sub-36 architect 💡 from Round-32) — Sparkline now
+          opts into `responsive` mode and lives inside a `flex-1` wrapper.
+          The wrapper grows to fill remaining card height and the SVG
+          scales uniformly via viewBox. `min-h-[24px]` preserves the
+          original 24px floor on short cards. Title + value stay anchored
+          at the top (no spacer needed — the wrapper IS the spacer now,
+          and the sparkline visibly fills it instead of sitting dwarfed
+          at the bottom). */}
+      <div className="flex-1 min-h-[24px] flex items-stretch">
+        <Sparkline
+          responsive
+          data={sparkline ?? Array(12).fill(null)}
+          status={status}
+          ariaLabel={t('heatMap.sparklineTrendAriaLabelSelf', {
+            indCode: indicator.code,
+          })}
+        />
+      </div>
     </div>
   );
 }

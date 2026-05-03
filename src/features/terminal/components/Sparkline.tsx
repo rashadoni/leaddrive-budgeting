@@ -29,8 +29,37 @@ interface Props {
   status?: SparklineStatus;
   /** Compact-mode toggle — halves dimensions. */
   compact?: boolean;
+  /**
+   * Responsive sizing toggle — when true, the SVG renders with
+   * `width="100%" height="100%"` + `viewBox` + `preserveAspectRatio`,
+   * letting it grow to fill its parent (e.g. a `flex-1` card slot).
+   * Closes sub-36 architect 💡 (CARRYOVER L133): SnapshotCard's fixed
+   * 80×24 sparkline was dwarfed inside stretched flex cards; opt-in via
+   * this prop keeps HeatMap-cell + IndicatorDetail call-sites byte-for-byte
+   * compatible (they rely on cell-fit fixed dims).
+   */
+  responsive?: boolean;
   /** Optional accessible description for screen readers. */
   ariaLabel?: string;
+}
+
+/**
+ * Build the SVG dimension props. In responsive mode we drop concrete
+ * width/height attributes (parent flex-box drives the size) and emit
+ * a `viewBox` + `preserveAspectRatio` so the path coordinates (which
+ * are still computed in the original `width × height` space below)
+ * scale uniformly without distortion.
+ */
+function svgSizingProps(width: number, height: number, responsive: boolean) {
+  if (responsive) {
+    return {
+      width: '100%' as const,
+      height: '100%' as const,
+      viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: 'xMinYMin meet' as const,
+    };
+  }
+  return { width, height };
 }
 
 const COLORS: Record<SparklineStatus, string> = {
@@ -56,11 +85,13 @@ export function Sparkline({
   data,
   status = "unknown",
   compact = false,
+  responsive = false,
   ariaLabel,
 }: Props) {
   const width = compact ? COMPACT_WIDTH : NORMAL_WIDTH;
   const height = compact ? COMPACT_HEIGHT : NORMAL_HEIGHT;
   const color = COLORS[status];
+  const sizing = svgSizingProps(width, height, responsive);
 
   // No data or all-null → render an empty axis baseline so the column
   // width stays stable; renders at status-tinted opacity 0.2 to indicate
@@ -72,8 +103,7 @@ export function Sparkline({
   if (numericPoints.length === 0) {
     return (
       <svg
-        width={width}
-        height={height}
+        {...sizing}
         role="img"
         aria-label={ariaLabel ?? "Sparkline (no data)"}
       >
@@ -105,8 +135,7 @@ export function Sparkline({
   if (rawRange < FLAT_EPSILON) {
     return (
       <svg
-        width={width}
-        height={height}
+        {...sizing}
         role="img"
         aria-label={
           ariaLabel ?? `Sparkline (flat at ${minV.toFixed(2)})`
@@ -148,8 +177,7 @@ export function Sparkline({
 
   return (
     <svg
-      width={width}
-      height={height}
+      {...sizing}
       role="img"
       aria-label={
         ariaLabel ??

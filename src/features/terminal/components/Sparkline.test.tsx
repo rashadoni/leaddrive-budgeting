@@ -134,3 +134,69 @@ describe("Sparkline (Phase B3)", () => {
     expect(container.querySelector("line")).toBeTruthy();
   });
 });
+
+describe("Sparkline — responsive prop (sub-36 architect 💡 / CARRYOVER L133 closure)", () => {
+  it("responsive=false (default) keeps fixed pixel dims (back-compat lock)", () => {
+    const { container } = render(<Sparkline data={[1, 2, 3]} />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("width")).toBe("80");
+    expect(svg.getAttribute("height")).toBe("24");
+    expect(svg.getAttribute("viewBox")).toBeNull();
+    expect(svg.getAttribute("preserveAspectRatio")).toBeNull();
+  });
+
+  it("responsive=true emits width=100% + height=100% + viewBox + preserveAspectRatio (default size)", () => {
+    const { container } = render(<Sparkline data={[1, 2, 3]} responsive />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("width")).toBe("100%");
+    expect(svg.getAttribute("height")).toBe("100%");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 80 24");
+    // happy-dom serializes camelCase SVG attrs in lowercase form
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMinYMin meet");
+  });
+
+  it("responsive=true with compact=true uses 40×12 viewBox (compact dims preserved)", () => {
+    const { container } = render(
+      <Sparkline data={[1, 2, 3]} compact responsive />,
+    );
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("width")).toBe("100%");
+    expect(svg.getAttribute("height")).toBe("100%");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 40 12");
+  });
+
+  it("responsive=true on empty-data branch (no path) still emits viewBox sizing", () => {
+    const { container } = render(<Sparkline data={[]} responsive />);
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("width")).toBe("100%");
+    expect(svg.getAttribute("height")).toBe("100%");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 80 24");
+    // Baseline-stub <line> coords still in the original 80×24 space
+    const line = container.querySelector("line")!;
+    expect(line.getAttribute("x2")).toBe("80");
+    expect(line.getAttribute("y1")).toBe("12");
+  });
+
+  it("responsive=true on flat-line branch keeps centerline coords in original viewBox space", () => {
+    const { container } = render(
+      <Sparkline data={[5, 5, 5, 5]} responsive />,
+    );
+    const svg = container.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 80 24");
+    const line = container.querySelector("line")!;
+    // Centerline at 24/2 = 12 in viewBox space (NOT in pixel space)
+    expect(line.getAttribute("y1")).toBe("12");
+    expect(line.getAttribute("y2")).toBe("12");
+    expect(line.getAttribute("stroke-opacity")).toBe("0.85");
+  });
+
+  it("responsive path coords match non-responsive (only sizing differs)", () => {
+    const series = [10, 20, 30];
+    const fixed = render(<Sparkline data={series} />);
+    const flexible = render(<Sparkline data={series} responsive />);
+    const dFixed = fixed.container.querySelector("path")!.getAttribute("d");
+    const dFlexible = flexible.container.querySelector("path")!.getAttribute("d");
+    // Path coordinates are byte-identical — viewBox handles the scaling.
+    expect(dFlexible).toBe(dFixed);
+  });
+});
