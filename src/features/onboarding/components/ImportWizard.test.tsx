@@ -571,4 +571,187 @@ describe("ImportWizard — Phase 7.B regression suite", () => {
     ).toBeTruthy();
     expect(screen.getByText(/matrix may be stale/i)).toBeTruthy();
   });
+
+  // --- Architect ⚠️ closure (sub-44 cont'd) — 3 missing branches ----------
+  // Architect re-review surfaced 3 dev-flagged-then-skipped branches:
+  //   - AppliedStep `recompute.failed > 0` rendering at ImportWizard.tsx:767
+  //   - "Import another" reset at ImportWizard.tsx:746-752
+  //   - Anomalies block at ImportWizard.tsx:655-661 (PROPOSAL_PAYLOAD has
+  //     anomalies=[] → branch was dead in cases 1-10)
+
+  it("Step 3: AppliedStep renders recompute breakdown with failed > 0 (locks the X ok · Y unknown · Z failed pattern)", async () => {
+    installFetchMock({
+      apply: async () =>
+        new Response(
+          JSON.stringify({
+            ...APPLY_RESPONSE_OK,
+            // Distinct counts for each slot so we can prove each value
+            // lands in its own position. Dev-flagged branch from architect
+            // re-review of sub-44 main commit.
+            recompute: { ok: 41, unknown: 7, failed: 6, targets: 54 },
+            indicatorsStale: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+
+    render(<ImportWizard />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Target company/i)).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText(/Target company/i), {
+      target: { value: "co_op_a" },
+    });
+    fireEvent.change(screen.getByLabelText(/xlsx file/i), {
+      target: { files: [makeXlsxFile()] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Analyze with AI/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/AI proposal/i)).toBeTruthy();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Apply to BudgetLine/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Applied to BudgetLine/i)).toBeTruthy();
+    });
+
+    // Locks the breakdown copy at ImportWizard.tsx:766-770. Anchor on
+    // the assembled string so a reorder of slots (e.g. "failed first")
+    // would fail loud.
+    const breakdown = screen.getByText(
+      /41 ok · 7 unknown · 6 failed \(over 54 targets\)/,
+    );
+    expect(breakdown).toBeTruthy();
+    // indicatorsStale=false ensures the warning banner DOES NOT render
+    // (separate concern from the breakdown copy itself).
+    expect(
+      screen.queryByText(/Some indicators failed to recompute/i),
+    ).toBeNull();
+  });
+
+  it("Step 3 → 1: 'Import another' resets wizard to step select with empty state (locks resetWizard from applied path)", async () => {
+    render(<ImportWizard />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Target company/i)).toBeTruthy();
+    });
+    // Drive to applied state.
+    fireEvent.change(screen.getByLabelText(/Target company/i), {
+      target: { value: "co_op_a" },
+    });
+    fireEvent.change(screen.getByLabelText(/xlsx file/i), {
+      target: { files: [makeXlsxFile("first.xlsx")] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Analyze with AI/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/AI proposal/i)).toBeTruthy();
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Apply to BudgetLine/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Applied to BudgetLine/i)).toBeTruthy();
+    });
+
+    // "Import another" button (ImportWizard.tsx:746-752) returns to
+    // step "select" via the same resetWizard helper used by Restart-
+    // from-step-1 (case 9). Locks the second of the two reset entry
+    // points.
+    fireEvent.click(screen.getByRole("button", { name: /Import another/i }));
+
+    // Step 1 surfaces — anchor on the Analyze button + the label
+    // "Target company" (only present in SelectStep).
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Analyze with AI/i }),
+      ).toBeTruthy();
+    });
+    expect(screen.getByLabelText(/Target company/i)).toBeTruthy();
+
+    // Applied-step markers gone.
+    expect(screen.queryByText(/Applied to BudgetLine/i)).toBeNull();
+
+    // The file picker MUST be empty (resetWizard sets file=null at
+    // ImportWizard.tsx:252). Without this lock, a future regression that
+    // forgets to clear the file would silently let the user re-Apply
+    // against a stale staging proposal.
+    const fileInput = screen.getByLabelText(/xlsx file/i) as HTMLInputElement;
+    expect(fileInput.files?.length ?? 0).toBe(0);
+  });
+
+  it("Step 2: Anomalies block renders when proposal.anomalies.length > 0 (locks the dev-reviewer warning surface)", async () => {
+    // PROPOSAL_PAYLOAD's empty anomalies leaves the block dead in cases
+    // 1-10. Override the analyze response with a 2-anomaly payload so
+    // the conditional render branch fires; this is the only place
+    // critical/warning data-quality issues surface to the human reviewer
+    // before /apply commits to BudgetLine.
+    const proposalWithAnomalies = {
+      ...PROPOSAL_PAYLOAD,
+      anomalies: [
+        {
+          row: 47,
+          severity: "critical" as const,
+          category: "sign_inversion" as const,
+          description:
+            "Revenue cell 47 is negative (-12,500); expected positive.",
+        },
+        {
+          row: null,
+          severity: "warning" as const,
+          category: "missing_breakdown" as const,
+          description:
+            "Parent code 600 has no children but carries a value.",
+        },
+      ],
+    };
+
+    installFetchMock({
+      analyze: async () =>
+        new Response(
+          JSON.stringify({
+            ...ANALYZE_RESPONSE,
+            proposal: proposalWithAnomalies,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    });
+
+    render(<ImportWizard />);
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Target company/i)).toBeTruthy();
+    });
+    fireEvent.change(screen.getByLabelText(/Target company/i), {
+      target: { value: "co_op_a" },
+    });
+    fireEvent.change(screen.getByLabelText(/xlsx file/i), {
+      target: { files: [makeXlsxFile()] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Analyze with AI/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/AI proposal/i)).toBeTruthy();
+    });
+
+    // Anomalies header with explicit count (locks the proposal.anomalies.length
+    // interpolation at ImportWizard.tsx:658).
+    expect(screen.getByText(/Anomalies \(2\)/)).toBeTruthy();
+
+    // Severity labels (uppercase per ImportWizard.tsx:670).
+    expect(screen.getByText("critical")).toBeTruthy();
+    expect(screen.getByText("warning")).toBeTruthy();
+
+    // Per-anomaly description text + category mnemonic (sign_inversion).
+    expect(
+      screen.getByText(/Revenue cell 47 is negative/i),
+    ).toBeTruthy();
+    expect(screen.getByText("sign_inversion")).toBeTruthy();
+
+    // The first anomaly has row=47 (rendered as "row 47"); the second
+    // has row=null and MUST NOT render the row span (ImportWizard.tsx:673).
+    expect(screen.getByText(/row 47/)).toBeTruthy();
+    // No "row null" or empty row marker for the null-row anomaly.
+    expect(screen.queryByText(/row null/i)).toBeNull();
+  });
 });
