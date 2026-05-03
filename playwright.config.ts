@@ -47,7 +47,29 @@ export default defineConfig({
   // Customer-facing flows (wizard analyze + apply) can legitimately take
   // 5-15s; pad to 30s default.
   timeout: 30_000,
-  expect: { timeout: 5_000 },
+  expect: {
+    timeout: 5_000,
+    // Visual-regression defaults for `toHaveScreenshot()` (Phase 7.G Turn E).
+    // Closes CARRYOVER L132 — see `.claude/memory/feedback_visual_verification_gate.md`
+    // for rationale + cross-machine plan.
+    //
+    // Tolerance values calibrated for v1 (macOS-only, no CI):
+    //   maxDiffPixels: 200      — absorbs subpixel/antialiasing drift
+    //                             (~0.07% of a 1280×800 viewport)
+    //   maxDiffPixelRatio: 0.02 — upper-bound safety net for content-area
+    //                             noise; catches structural shifts (cell
+    //                             repositioning, row missing, > 2px drift)
+    //   animations: 'disabled'  — kills frame-timing flake from CSS
+    //                             transitions / motion tokens
+    //
+    // Linux baseline + matrix lands when CI does (tracked as user-owned 🔄
+    // in CARRYOVER until trigger fires).
+    toHaveScreenshot: {
+      maxDiffPixels: 200,
+      maxDiffPixelRatio: 0.02,
+      animations: 'disabled',
+    },
+  },
 
   // Retry once on CI to absorb network jitter; never retry locally
   // (failures should surface immediately).

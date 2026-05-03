@@ -108,6 +108,17 @@ else
 fi
 
 echo ""
+echo "E2E smoke (Playwright):"
+# Phase 7.G Turn E — closes documented-vs-actual drift. DEPLOYMENT_READINESS.md §5.1
+# + ADMIN_RUNBOOK §0 documented `pre-demo-check.sh && npm run test:e2e` as the
+# pre-prod gate but pre-demo-check.sh did not actually invoke the E2E suite.
+# Now bundled. The visual-baseline spec (Turn E) catches what tsc + vitest can't
+# (layout regressions). Cost: ~22-30s; acceptable for the pre-demo gate.
+# E2E_SKIP_LLM=true skips the LLM-gated wizard case (real Anthropic API round-trip,
+# ~20s + API cost) — that case is for hand-runs, not pre-demo automation.
+check "Playwright smoke (incl. visual)"   "E2E_SKIP_LLM=true npm run test:e2e --silent"
+
+echo ""
 echo "Migration status:"
 warn_check "Prisma migrate status clean"   "npx prisma migrate status 2>&1 | grep -q 'Database schema is up to date' && echo ok || echo drift" "ok"
 

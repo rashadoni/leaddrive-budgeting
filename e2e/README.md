@@ -43,13 +43,45 @@ npm run test:e2e
 e2e/
 ├── README.md                          # this file
 ├── fixtures/
-│   └── auth.ts                        # loginAs() helper + credentials
-├── smoke/                             # critical-path smoke tests
-│   └── login-and-terminal.spec.ts     # Turn D.1 — first smoke
-└── (future Turn D.2/D.3 dirs:)
-    ├── onboarding/                    # wizard analyze + apply E2E
-    └── recompute/                     # recompute pipeline + SSE event
+│   ├── auth.ts                        # loginAs() helper + credentials
+│   ├── .gen-fixture.ts                # one-shot xlsx fixture generator (Turn D.2)
+│   └── test-budget.xlsx               # 16KB BudgetLine fixture (Turn D.2)
+└── smoke/                             # critical-path smoke tests
+    ├── login-and-terminal.spec.ts     # Turn D.1 — login + HeatMap render
+    ├── onboarding-wizard.spec.ts      # Turn D.2 — wizard 3-step state machine
+    ├── recompute-and-sse.spec.ts      # Turn D.3 — POST /api/indicators + SSE LISTEN/NOTIFY
+    └── visual-baseline.spec.ts        # Turn E — HeatMap toHaveScreenshot baseline
 ```
+
+## Updating visual baselines
+
+The `visual-baseline.spec.ts` spec uses Playwright's `toHaveScreenshot()` matcher
+against committed PNG baselines under `visual-baseline.spec.ts-snapshots/`.
+Layout commits MUST run the gate; intentional visual changes regenerate the
+baseline through this workflow:
+
+```bash
+# 1. Run the gate against current code (catches both intended + unintended diffs)
+npm run test:e2e -- visual-baseline
+
+# 2a. If green → no visual change → commit normally
+# 2b. If red:
+#     - Inspect the diff PNG (saved under test-results/)
+#     - Verify the change is what you intended visually
+#     - Regenerate the baseline:
+npm run test:e2e -- --update-snapshots
+
+#     - Stage the regenerated PNG:
+git add e2e/smoke/visual-baseline.spec.ts-snapshots/
+
+#     - Commit message MUST include this token line (architect-auditable):
+#         BASELINE UPDATE: <one-line reason>
+```
+
+The `BASELINE UPDATE:` token in the commit message is the architect-auditable
+signal that a baseline regeneration was deliberate, not reflexive. See
+`.claude/memory/feedback_visual_verification_gate.md` for the full rationale
++ cross-machine plan + tolerance values.
 
 ## Convention vs vitest
 
