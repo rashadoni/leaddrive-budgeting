@@ -231,9 +231,6 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         recentCount={recentCompanyCodes.length}
         alertedCount={alertedCompanyCodes ? alertedCompanyCodes.size : null}
         sectorCount={sectorGroups.length}
-        tAll={t('companyTree.tabAll')}
-        tRecent={t('companyTree.tabRecent')}
-        tSector={t('companyTree.tabSector')}
       />
       {/* Search input renders unconditionally (even on empty state) so
           the `/`-search keyboard shortcut always lands on a visible
@@ -426,13 +423,14 @@ function WatchlistTabs(props: {
   recentCount: number;
   alertedCount: number | null;
   sectorCount: number;
-  tAll: string;
-  tRecent: string;
-  tSector: string;
 }) {
-  // Round-9 architect closure: hooked t() inline so aria-labels are
-  // locale-aware (was hardcoded English regardless of locale, breaking
-  // RU/AZ screen-reader UX).
+  // Phase 7.G Turn N — dropped 3 prop-drilled strings (tAll/tRecent/tSector)
+  // in favor of resolving them inline via the existing `tt` hook below.
+  // Closes the 28-turn-old Round-10 architect note "WatchlistTabs prop-
+  // drill + hook hybrid cleanup". The hook was already declared (Round-9
+  // closure for aria-labels), so the cleanup is purely consolidating —
+  // all locale-aware reads now flow through one `useTranslations('terminal')`
+  // call instead of the hybrid prop-drill + hook pattern.
   const tt = useTranslations('terminal');
   // Architect Round-1 closure (sub-4 💡): emojis swapped to lucide
   // icons for cross-platform parity (Linux/Windows often miss color
@@ -443,7 +441,7 @@ function WatchlistTabs(props: {
     icon?: React.ReactNode;
     badge: number | null;
   }> = [
-    { key: 'all', label: props.tAll, badge: null },
+    { key: 'all', label: tt('companyTree.tabAll'), badge: null },
     {
       key: 'starred',
       label: '',
@@ -456,8 +454,8 @@ function WatchlistTabs(props: {
       icon: <Bell size={11} />,
       badge: props.alertedCount,
     },
-    { key: 'recent', label: props.tRecent, badge: props.recentCount || null },
-    { key: 'sector', label: props.tSector, badge: props.sectorCount || null },
+    { key: 'recent', label: tt('companyTree.tabRecent'), badge: props.recentCount || null },
+    { key: 'sector', label: tt('companyTree.tabSector'), badge: props.sectorCount || null },
   ];
   return (
     <div
