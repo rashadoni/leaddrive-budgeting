@@ -87,7 +87,7 @@ VALUES (
 );
 ```
 
-After this, the user logs in at `/sign-in` with their email + password.
+After this, the user logs in at `/login` with their email + password.
 
 ### 1.3 Industries seed (one-time per environment)
 
