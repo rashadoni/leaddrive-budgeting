@@ -60,7 +60,14 @@ function setupFetchMock(): {
   calls: FetchCall[]
   respond: (body: unknown, status?: number) => void
   fail: (err: Error) => void
-  clear: () => void
+  /** Clear the captured call log only. The pending resolver queue is
+   *  intentionally NOT cleared — outstanding fetches from a previous
+   *  step remain legitimate work for the next step's `respond()` /
+   *  `fail()`. Tests that want to abandon in-flight fetches must call
+   *  `fail()` explicitly. Renamed from the original `clear()` per
+   *  Turn-15 architect ⚠️ — the old name implied reset-everything
+   *  semantics and was a future-test footgun. */
+  clearCalls: () => void
   pending: () => number
 } {
   const calls: FetchCall[] = []
@@ -103,12 +110,8 @@ function setupFetchMock(): {
       }
       slot.reject(err)
     },
-    clear: () => {
+    clearCalls: () => {
       calls.length = 0
-      // Pending resolvers are intentionally NOT cleared — outstanding
-      // fetches left from a previous step are still legitimate work for
-      // the next step's `respond()`. Tests that want to abandon them
-      // should reject explicitly via `fail()`.
     },
     pending: () => queue.length,
   }
@@ -286,7 +289,7 @@ describe("AuditFeed (Phase 7.F smoke + regression)", () => {
       })
     })
     await waitFor(() => expect(screen.queryByText(/p1|AAC/)).toBeTruthy())
-    fetchMock.clear()
+    fetchMock.clearCalls()
 
     // User TYPES in entityType but does NOT click Apply yet.
     const entityInput = screen.getByPlaceholderText(/Company, BudgetPlan/)
@@ -315,7 +318,7 @@ describe("AuditFeed (Phase 7.F smoke + regression)", () => {
         hasMore: false,
       })
     })
-    fetchMock.clear()
+    fetchMock.clearCalls()
 
     const entityInput = screen.getByPlaceholderText(/Company, BudgetPlan/)
     fireEvent.change(entityInput, { target: { value: "BudgetPlan" } })
@@ -381,7 +384,7 @@ describe("AuditFeed (Phase 7.F smoke + regression)", () => {
       })
     })
     await waitFor(() => expect(screen.queryByText("AAC · 2026 · 42 lines")).toBeTruthy())
-    fetchMock.clear()
+    fetchMock.clearCalls()
 
     // Two rapid clicks on Load More — without the inflightRef guard,
     // both promises would resolve and `setEvents((prev) => [...prev, ...])`
@@ -418,7 +421,7 @@ describe("AuditFeed (Phase 7.F smoke + regression)", () => {
       })
     })
     await waitFor(() => expect(screen.queryByText("Alice")).toBeTruthy())
-    fetchMock.clear()
+    fetchMock.clearCalls()
 
     const applyBtn = screen.getByRole("button", { name: /^Apply$/ })
     fireEvent.click(applyBtn)

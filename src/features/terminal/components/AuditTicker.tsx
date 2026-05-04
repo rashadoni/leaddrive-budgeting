@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { useEventStream } from "@/lib/events/use-event-stream";
+import { summarizeAuditEvent } from "@/lib/audit/compact-summary";
+import type { AuditAction } from "@prisma/client";
 
 /**
  * Bloomberg-style bottom event ticker — 1-line strip surfacing the most
@@ -27,7 +29,7 @@ import { useEventStream } from "@/lib/events/use-event-stream";
 
 interface AuditEvent {
   id: string;
-  action: string;
+  action: AuditAction;
   entityType: string;
   entityId: string | null;
   metadata: Record<string, unknown>;
@@ -106,7 +108,13 @@ export function AuditTicker() {
               {i > 0 && <span className="text-gray-700">·</span>}
               <span className="text-gray-500">{formatTime(e.createdAt)}</span>
               <span className="text-[#00D4AA]">{e.action}</span>
-              <span className="text-gray-300">{compactSummary(e)}</span>
+              <span className="text-gray-300">
+                {summarizeAuditEvent({
+                  action: e.action,
+                  entityType: e.entityType,
+                  metadata: e.metadata,
+                }).compact}
+              </span>
             </span>
           ))}
         </div>
@@ -124,45 +132,3 @@ function formatTime(iso: string): string {
   });
 }
 
-/**
- * Per-action one-liner — derived shape from the AuditFeed `summarizeMetadata`
- * helper but tighter (skips IDs, keeps human-readable codes/labels). Kept
- * local to avoid pulling AuditFeed's table-row dependencies into the strip.
- */
-function compactSummary(e: AuditEvent): string {
-  const m = e.metadata;
-  switch (e.action) {
-    case "ai_variance_explainer_run": {
-      // Most-frequent action in current production data; uses indicatorCode
-      // (per src/lib/audit/log.ts:136) — falling through to entityType
-      // literal "IndicatorValue" produces unreadable strip noise.
-      const code = stringField(m, "indicatorCode");
-      const lang = stringField(m, "language");
-      if (code) return lang ? `${code} · ${lang.toUpperCase()}` : code;
-      break;
-    }
-    case "import_staging_apply": {
-      const year = numberField(m, "year");
-      return year !== null ? String(year) : e.entityType;
-    }
-    case "budget_plan_create":
-    case "budget_plan_approve": {
-      const name = stringField(m, "planName");
-      return name ?? e.entityType;
-    }
-  }
-  // Generic fallbacks — companyCode wins if present (most actions emit it),
-  // else `code` (indicator overrides), else entityType literal as last resort.
-  const code = stringField(m, "companyCode") ?? stringField(m, "code");
-  return code ?? e.entityType;
-}
-
-function stringField(m: Record<string, unknown>, key: string): string | null {
-  const v = m[key];
-  return typeof v === "string" && v.length > 0 ? v : null;
-}
-
-function numberField(m: Record<string, unknown>, key: string): number | null {
-  const v = m[key];
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}

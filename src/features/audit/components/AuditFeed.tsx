@@ -1,7 +1,16 @@
 "use client"
 
 import { useEffect, useState, useCallback, useRef } from "react"
+import type { AuditAction } from "@prisma/client"
+import { summarizeAuditEvent } from "@/lib/audit/compact-summary"
 
+// All AuditAction enum members — must include every value emitted by
+// `src/lib/audit/log.ts` so the action-filter dropdown surfaces them.
+// Pre-Turn-X this list was 9 of 12 (missing `ai_variance_explainer_run`,
+// `ai_forecast_explainer_run`, `alert_thresholds_update`) — operators
+// couldn't filter to the most-frequent prod actions. Compile-time
+// bidirectional sync against Prisma's enum below — adding a new enum
+// member fails tsc until it's added here too.
 const ALL_ACTIONS = [
   "company_role_change",
   "budget_plan_create",
@@ -12,8 +21,16 @@ const ALL_ACTIONS = [
   "indicator_override_create",
   "indicator_override_update",
   "indicator_override_delete",
-] as const
-type AuditAction = (typeof ALL_ACTIONS)[number]
+  "ai_variance_explainer_run",
+  "ai_forecast_explainer_run",
+  "alert_thresholds_update",
+] as const satisfies readonly AuditAction[]
+// Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
+// `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.
+type _Coverage =
+  Exclude<AuditAction, (typeof ALL_ACTIONS)[number]> extends never ? true : false
+const _coverage: _Coverage = true
+void _coverage
 
 interface AuditEvent {
   id: string
@@ -304,7 +321,11 @@ export function AuditFeed() {
                       </pre>
                     ) : (
                       <span className="text-muted-foreground">
-                        {summarizeMetadata(e.action, e.metadata)}
+                        {summarizeAuditEvent({
+                          action: e.action,
+                          entityType: e.entityType,
+                          metadata: e.metadata,
+                        }).verbose}
                       </span>
                     )}
                   </td>
@@ -347,89 +368,3 @@ function formatTimestamp(iso: string): string {
   })
 }
 
-function summarizeMetadata(
-  action: AuditAction,
-  metadata: Record<string, unknown>,
-): string {
-  // Per-action branches — each variant in src/lib/audit/log.ts
-  // `AuditEventInput` has its own metadata shape. Falling through to
-  // JSON-truncate is a sign the wiring is missing here, not a healthy
-  // default; keep the fallback only for genuinely unknown actions
-  // (e.g. an enum member added in DB but not yet recognised here).
-  switch (action) {
-    case "company_role_change": {
-      const from = stringField(metadata, "from")
-      const to = stringField(metadata, "to")
-      const code = stringField(metadata, "companyCode")
-      if (from && to) return `${code ? code + " · " : ""}${from} → ${to}`
-      break
-    }
-    case "import_budget_create": {
-      const code = stringField(metadata, "companyCode")
-      const year = numberField(metadata, "year")
-      const inserted = numberField(metadata, "inserted")
-      if (code && year !== null) {
-        return `${code} · ${year}${inserted !== null ? ` · ${inserted} lines` : ""}`
-      }
-      break
-    }
-    case "import_staging_apply": {
-      // Apply payload has no companyCode (only companyId — internal id);
-      // surface year + line count so the row reads as "what got written".
-      const year = numberField(metadata, "year")
-      const inserted = numberField(metadata, "inserted")
-      const deleted = numberField(metadata, "deleted")
-      if (year !== null) {
-        const parts = [`${year}`]
-        if (inserted !== null) parts.push(`${inserted} inserted`)
-        if (deleted !== null) parts.push(`${deleted} deleted`)
-        return parts.join(" · ")
-      }
-      break
-    }
-    case "import_staging_expired": {
-      const triggeredBy = stringField(metadata, "triggeredBy")
-      const expiresAt = stringField(metadata, "expiresAt")
-      if (triggeredBy && expiresAt) {
-        return `via ${triggeredBy} · expired ${formatTimestamp(expiresAt)}`
-      }
-      break
-    }
-    case "budget_plan_create": {
-      const name = stringField(metadata, "planName")
-      const year = numberField(metadata, "year")
-      if (name) return `${name}${year !== null ? ` · ${year}` : ""}`
-      break
-    }
-    case "budget_plan_approve": {
-      const name = stringField(metadata, "planName")
-      const prior = stringField(metadata, "priorStatus")
-      if (name) return `${name}${prior ? ` · was ${prior}` : ""}`
-      break
-    }
-    case "indicator_override_create":
-    case "indicator_override_update":
-    case "indicator_override_delete": {
-      const code = stringField(metadata, "code")
-      if (code) {
-        const tags: string[] = []
-        if (metadata.formulaChanged === true) tags.push("formula")
-        if (metadata.thresholdsChanged === true) tags.push("thresholds")
-        return `${code}${tags.length > 0 ? ` · ${tags.join(", ")}` : ""}`
-      }
-      break
-    }
-  }
-  const preview = JSON.stringify(metadata)
-  return preview.length > 80 ? preview.slice(0, 77) + "…" : preview
-}
-
-function stringField(metadata: Record<string, unknown>, key: string): string | null {
-  const v = metadata[key]
-  return typeof v === "string" && v.length > 0 ? v : null
-}
-
-function numberField(metadata: Record<string, unknown>, key: string): number | null {
-  const v = metadata[key]
-  return typeof v === "number" && Number.isFinite(v) ? v : null
-}
