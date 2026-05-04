@@ -102,6 +102,34 @@ Tolerance values for v1 (Mac-only, no CI):
 Linux baseline trigger event = "ship CI". Tracked as user-owned 🔄 in CARRYOVER
 until that trigger fires; not blocking the v1 Mac-only baseline.
 
+## Test selectors — programmatic company-selection in terminal Playwright specs
+
+When a visual or interaction spec needs to drive company-selection programmatically,
+prefer the CommandBar fill path over CompanyTree row click:
+
+```ts
+// PREFERRED — robust against tree shape, sub-group filtering, and click-target shifts
+await page.locator('input[placeholder*="Command"]').fill('AAC-MAIN CO GO');
+await page.keyboard.press('Enter');
+
+// FALLBACK — only if the test explicitly needs to validate the tree-row click path
+await page.getByTestId('company-tree-row').filter({ has: page.locator('[data-company-code="AAC-MAIN"]') }).click();
+```
+
+Rationale (Phase 7.G post-HH Turn discovery): the `e2e/smoke/visual-baseline-snapshotcard.spec.ts`
+spec failed to drive `CompanyTree` row clicks 3 times via `getByRole('treeitem')`,
+`hasText: 'Composite score'` filter (text is in `aria-label` not rendered DOM),
+and `[role="treeitem"]:not([aria-expanded])` + `[tabindex="0"]` (clicks hung past
+60s timeout even with `force: true`). CommandBar `fill('<code> CO GO')` worked
+first try.
+
+The `data-testid="company-tree-row"` + `data-company-code="<code>"` attributes
+were added on `CompanyTree.tsx:322-329` (root rows) and `:374-382` (child rows)
+to make the fallback path stable when needed — but CommandBar remains the
+recommended path for "select this company" flows because it is one fewer DOM
+shape away from the user's mental model and survives tree-collapse / sector-grouping
+state changes.
+
 ## Enforcement layers
 
 1. **Local dev**: `npm run test:e2e -- visual-baseline` — direct invocation.

@@ -320,6 +320,8 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
         aria-expanded={hasChildren ? !isCollapsed : undefined}
       >
         <div
+          data-testid="company-tree-row"
+          data-company-code={root.code}
           tabIndex={0}
           onClick={() => select(root.code)}
           onKeyDown={(e) => onRowKeyDown(e, root.code)}
@@ -374,6 +376,8 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                 <li
                   key={child.id}
                   role="treeitem"
+                  data-testid="company-tree-row"
+                  data-company-code={child.code}
                   tabIndex={0}
                   onClick={() => select(child.code)}
                   onKeyDown={(e) => onRowKeyDown(e, child.code)}
