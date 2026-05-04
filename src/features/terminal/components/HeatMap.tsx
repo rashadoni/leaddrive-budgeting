@@ -553,6 +553,21 @@ export function HeatMap({ period }: Props) {
                               // clearly-lit cell. Now the panel renders a
                               // dedicated rollup view with the aggregate
                               // + child count.
+                              //
+                              // Direct `c.kind === 'synthetic-rollup'` check
+                              // here (NOT `isAggregateRollup(c)`) is intentional:
+                              // we want ONLY synthetic, not real-rollup. Real-
+                              // rollup cells (kind='real-rollup') have a
+                              // persisted `indicatorValueId` and the canonical
+                              // formula-output-IV path is the right drill-down
+                              // — they short-circuit upstream at the
+                              // `c?.indicatorValueId` gate above. So
+                              // `isAggregateRollup` would semantically over-
+                              // match here. Architect Turn-VI Round-1 ⚠️
+                              // closure — `heatmap-matrix.ts:60` "never check
+                              // kind directly" rule has an exception when
+                              // upstream short-circuits eliminate the other
+                              // variant.
                               setPendingRollupCell({
                                 companyId: co.id,
                                 companyCode: co.code,

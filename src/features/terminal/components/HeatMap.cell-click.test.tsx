@@ -63,6 +63,7 @@ vi.mock("@/lib/events/use-event-stream", () => ({
 const setCompanyMock = vi.fn();
 const setActiveIvMock = vi.fn();
 const setPendingMissingCellMock = vi.fn();
+const setPendingRollupCellMock = vi.fn();
 const setActivePanelMock = vi.fn();
 
 vi.mock("../store/terminalStore", () => ({
@@ -71,11 +72,13 @@ vi.mock("../store/terminalStore", () => ({
       activeCompanyCode: string | null;
       activeIndicatorValueId: string | null;
       pendingMissingCell: null;
+      pendingRollupCell: null;
       searchByPanel: Record<number, string>;
       compactMode: boolean;
       selectCompany: typeof setCompanyMock;
       setActiveIndicatorValue: typeof setActiveIvMock;
       setPendingMissingCell: typeof setPendingMissingCellMock;
+      setPendingRollupCell: typeof setPendingRollupCellMock;
       setActivePanel: typeof setActivePanelMock;
       setSearchForPanel: () => void;
       clearSearchForPanel: () => void;
@@ -88,11 +91,13 @@ vi.mock("../store/terminalStore", () => ({
       activeCompanyCode: null,
       activeIndicatorValueId: null,
       pendingMissingCell: null,
+      pendingRollupCell: null,
       searchByPanel: {},
       compactMode: false,
       selectCompany: setCompanyMock,
       setActiveIndicatorValue: setActiveIvMock,
       setPendingMissingCell: setPendingMissingCellMock,
+      setPendingRollupCell: setPendingRollupCellMock,
       setActivePanel: setActivePanelMock,
       setSearchForPanel: () => {},
       clearSearchForPanel: () => {},
@@ -106,6 +111,7 @@ beforeEach(() => {
   setCompanyMock.mockClear();
   setActiveIvMock.mockClear();
   setPendingMissingCellMock.mockClear();
+  setPendingRollupCellMock.mockClear();
   setActivePanelMock.mockClear();
 
   // Mock matrix endpoint with 1 ops co × 2 indicators:
@@ -122,6 +128,16 @@ beforeEach(() => {
               code: "AAC-MAIN",
               name: "AAC Main",
               industry: "Industrial",
+            },
+            // Phase 7.G Turn VI — sub-group row (level=1) with synthetic-
+            // rollup cell. `isSubgroup` flag mirrors the matrix endpoint
+            // shape; the HeatMap renders this row at the bottom.
+            {
+              id: "co_aac_sg",
+              code: "AAC",
+              name: "AAC",
+              industry: "Industrial",
+              isSubgroup: true,
             },
           ],
           indicators: [
@@ -140,9 +156,12 @@ beforeEach(() => {
               unit: "%",
             },
           ],
-          // Only ind_red has a cell — ind_missing has no entry, so
-          // the HeatMap renders it as a "missing" gray cell with no
-          // indicatorValueId on the (undefined) cell payload.
+          // Only ind_red has a cell on the op-co — ind_missing has no
+          // entry, so HeatMap renders it as a gray "missing" cell with
+          // no indicatorValueId. The sub-group row (co_aac_sg) gets a
+          // synthetic-rollup cell for ind_red — `kind='synthetic-rollup'`,
+          // `indicatorValueId: null`, value+status set, with the new
+          // `contributingChildCount` field from Turn VI.
           cells: [
             {
               indicatorValueId: "iv_red",
@@ -150,6 +169,15 @@ beforeEach(() => {
               indicatorId: "ind_red",
               value: -9.46,
               status: "red" as const,
+            },
+            {
+              indicatorValueId: null,
+              companyId: "co_aac_sg",
+              indicatorId: "ind_red",
+              value: -9.46,
+              status: "red" as const,
+              kind: "synthetic-rollup" as const,
+              contributingChildCount: 1,
             },
           ],
         }),
@@ -268,5 +296,48 @@ describe("HeatMap cell-click → store contract (Phase 7.D regression)", () => {
     expect(setCompanyMock).toHaveBeenCalledTimes(2);
     expect(setActiveIvMock).toHaveBeenCalledTimes(2);
     expect(setActivePanelMock).toHaveBeenCalledTimes(2);
+  });
+
+  // Phase 7.G Turn VI — synthetic-rollup click route. Closes architect
+  // Round-1 ⚠️ (test gap surfaced after IndicatorDetail.rollup.test.tsx
+  // claimed it pairs with this file but no rollup case existed).
+  it("click on a synthetic-rollup cell fires setPendingRollupCell with the aggregate payload (no setActiveIv, no setPendingMissing)", async () => {
+    render(<HeatMap />);
+    await waitFor(() => {
+      expect(screen.getByText("AAC")).toBeTruthy();
+    });
+
+    // Sub-group row label: "AAC IND_NET_MARGIN red <shape>" — same
+    // start-with anchor as the op-co tests above.
+    const cell = screen
+      .getAllByRole("cell")
+      .find((td) =>
+        td.getAttribute("aria-label")?.startsWith("AAC IND_NET_MARGIN"),
+      );
+    expect(cell, "expected synthetic-rollup cell to render").toBeTruthy();
+
+    fireEvent.click(cell!);
+
+    expect(setCompanyMock).toHaveBeenCalledTimes(1);
+    expect(setCompanyMock).toHaveBeenCalledWith("AAC");
+    expect(setActivePanelMock).toHaveBeenCalledWith(3);
+
+    // BRANCH (synthetic-rollup): setPendingRollupCell with aggregate
+    // payload — value, status, child count, indicator metadata. The
+    // OTHER two store actions MUST stay un-called (mutual-exclusion).
+    expect(setPendingRollupCellMock).toHaveBeenCalledTimes(1);
+    expect(setPendingRollupCellMock).toHaveBeenCalledWith({
+      companyId: "co_aac_sg",
+      companyCode: "AAC",
+      indicatorId: "ind_red",
+      indicatorCode: "IND_NET_MARGIN",
+      indicatorName: expect.any(String),
+      indicatorUnit: "%",
+      value: -9.46,
+      status: "red",
+      contributingChildCount: 1,
+    });
+    expect(setActiveIvMock).not.toHaveBeenCalled();
+    expect(setPendingMissingCellMock).not.toHaveBeenCalled();
   });
 });
