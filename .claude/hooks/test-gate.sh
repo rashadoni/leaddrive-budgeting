@@ -42,6 +42,12 @@ cd "$REPO_ROOT"
 # Run tsc first (faster fail). Capture combined output.
 # `|| { ... ; exit 0 }` converts subprocess non-zero into JSON block while
 # keeping the hook's own exit 0 so Claude Code reads the JSON correctly.
+# IMPORTANT: subprocess invocation via `npx` is load-bearing for
+# `.claude/hooks/tests/test-gate.test.sh` — its $TMPDIR fakebin shim
+# intercepts `npx` to mock pass/fail/ANSI scenarios. Switching to a
+# direct call (e.g. `./node_modules/.bin/tsc`) would bypass the mock and
+# silently start running real tsc/vitest during the test. Update the
+# fakebin scaffolding before changing the invocation shape here.
 # Helper: strip ANSI escape sequences + non-newline control chars from
 # stdin. `npx` ANSI-colorizes output (terminal-aware); when we capture
 # via `2>&1` and pass to `jq --arg`, the U+001B (ESC) and other control
