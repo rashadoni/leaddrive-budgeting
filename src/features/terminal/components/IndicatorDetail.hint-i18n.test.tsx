@@ -68,6 +68,13 @@ function buildFixture(ind: IndicatorFixture = {}) {
   };
 }
 
+// Note: this file's t() mock at line ~94 (camelCase-uppercased fallback)
+// diverges from `vitest.setup.ts`'s explicit-labels-first global mock.
+// Current render contract doesn't call t() on the hint-substitution path,
+// so the divergence is harmless — but if a future tweak adds e.g.
+// `t('indicatorDetail.hintPrefix')` here, this file will silently render
+// different text than the canonical IndicatorDetail.test.tsx. Architect
+// Turn-VIII Round-1 closure: documenting the divergence inline.
 async function renderWithLocale(locale: "en" | "ru" | "az", ind: IndicatorFixture) {
   vi.resetModules();
   vi.doMock("../store/terminalStore", () => ({
