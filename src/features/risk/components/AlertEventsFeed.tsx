@@ -50,6 +50,15 @@ const SEVERITY_TONE: Record<string, string> = {
   info: "bg-[#00B4D8]/15 text-[#00B4D8] border-[#00B4D8]/40",
 };
 
+// M7 spirit: severity must convey shape, not just color, for color-blind
+// readers. Glyph distinct per severity (▲ critical / ● warning / ■ info).
+// Architect Turn-V Round-1 ⚠️ #2 closure.
+const SEVERITY_GLYPH: Record<string, string> = {
+  critical: "▲",
+  warning: "●",
+  info: "■",
+};
+
 function buildSearchParams(
   period: string,
   ruleId: string,
@@ -106,18 +115,26 @@ export function AlertEventsFeed({ period }: { period: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
+  // Architect Turn-V Round-1 ⚠️ #3 closure: early-return-if-loading guards.
+  // `setLoading(true)` is async, so a double-click before the next React
+  // render would fire two concurrent fetches → setEvents append duplicates
+  // the row set. Reading from `loading` here is safe because the click
+  // handler runs in React's event queue after the prior render committed.
   function onApply() {
+    if (loading) return;
     setAppliedRuleId(ruleId);
     fetchPage(ruleId, null, false);
   }
 
   function onReset() {
+    if (loading) return;
     setRuleId("");
     setAppliedRuleId("");
     fetchPage("", null, false);
   }
 
   function onLoadMore() {
+    if (loading) return;
     if (!cursor) return;
     fetchPage(appliedRuleId, cursor, true);
   }
@@ -181,6 +198,7 @@ export function AlertEventsFeed({ period }: { period: string }) {
         <ul className="space-y-2" aria-label="Alert events">
           {events.map((ev) => {
             const tone = SEVERITY_TONE[ev.severity] ?? SEVERITY_TONE.info;
+            const glyph = SEVERITY_GLYPH[ev.severity] ?? SEVERITY_GLYPH.info;
             return (
               <li
                 key={ev.id}
@@ -189,8 +207,10 @@ export function AlertEventsFeed({ period }: { period: string }) {
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <span
-                    className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-mono uppercase ${tone}`}
+                    className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-mono uppercase ${tone}`}
+                    aria-label={`Severity: ${ev.severity}`}
                   >
+                    <span aria-hidden="true">{glyph}</span>
                     {ev.severity}
                   </span>
                   <time
