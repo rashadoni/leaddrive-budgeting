@@ -66,6 +66,19 @@ export function WallpaperProvider({ children }: { children: ReactNode }) {
   // Do NOT change to `useState(() => localStorage.getItem(...))` lazy
   // initializer — that would diverge SSR (no localStorage → null) from
   // first client paint (saved value → not null) and break hydration.
+  //
+  // SSR REGRESSION-TEST SCOPE LIMIT (Turn-15 architect ⚠️ closure Turn-BB):
+  // `wallpaper-context.ssr.test.tsx` exercises ONLY this Provider plus
+  // `<DashboardWallpaper/>`. CONSUMER-side render-time `localStorage`
+  // reads in OTHER components (e.g. a child added later via
+  // `useSyncExternalStore`'s server-snapshot path, or any component
+  // reading `window.localStorage` directly during render) are NOT
+  // guarded by that test. Closure path for broader coverage: expand
+  // `wallpaper-context.ssr.test.tsx` to render the full `DashboardLayout`
+  // chain — heavier; needs `next-auth` provider mocks + `next-intl`
+  // setup + Prisma-touching layout sub-trees mocked. Out of scope for
+  // the original Turn-15 ⚠️ which targeted the Provider's own SSR
+  // safety, not the consumer-tree perimeter.
   const [wallpaper, setWallpaperState] = useState<string | null>(null)
 
   // Read from localStorage on mount (don't set data-wallpaper — DashboardWallpaper handles that)

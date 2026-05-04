@@ -231,6 +231,73 @@ export type LogAuditEventResult =
  * response (e.g. `auditStale: true`); the action itself MUST already be
  * committed before this is called — audit logging is a side-effect, not
  * a precondition.
+ *
+ * ## Calling-pattern contract (Turn-38-sub8 architect ⚠️ closed Turn-Z)
+ *
+ * The function returns a Promise that NEVER rejects, only resolves to
+ * `{ok: true|false, ...}`. Two legitimate caller patterns; choose based
+ * on whether audit-write FAILURE should be visible to the user vs
+ * silently swallowed for background observability.
+ *
+ * ### Pattern A1 — `await` + soft-warning surface (CRUD with response body)
+ * ```ts
+ * const auditResult = await logAuditEvent(prisma, { ... });
+ * if (!auditResult.ok) {
+ *   return NextResponse.json({ ...payload, auditStale: true });
+ * }
+ * ```
+ * Use when the action is a user-initiated CRUD mutation (role change,
+ * budget plan create/approve, staging apply, etc.) and an operator
+ * looking at the audit log later would NOTICE the absence of a row.
+ * Surfacing `auditStale: true` lets the UI either retry or warn.
+ * Examples: `src/app/api/companies/[id]/route.ts:117` (role change),
+ * `src/app/api/onboarding/import/staging/[id]/apply/route.ts:421` (budget apply).
+ *
+ * ### Pattern A2 — `await` without surface (status flips on response shapes that have no slot)
+ * ```ts
+ * await logAuditEvent(prisma, { ... });  // result ignored
+ * return NextResponse.json({ error: 'gone' }, { status: 410 });
+ * ```
+ * Use when the response is an HTTP error/sentinel with no body to
+ * attach `auditStale` to (e.g. 410 Gone on lazy-expire of a stale
+ * staging row). Trade-off: blocks the user-facing response on the
+ * audit write, but the action is rare and the audit row is required
+ * for compliance trail. Caller MUST add inline comment ("logging
+ * failure must not block X" — even though `await` does block) or
+ * convert to Pattern B. NOT preferred for new code; only documented
+ * because one site exists today: `src/app/api/onboarding/import/staging/[id]/apply/route.ts:104`.
+ *
+ * ### Pattern B — `void` + `.catch(console.error)` (background observability)
+ * ```ts
+ * void logAuditEvent(prisma, { ... }).catch(console.error);
+ * ```
+ * Use when the action is an AI/analytics side-effect (Variance/Forecast
+ * Explainer, AI suite emissions) where the user expects an immediate
+ * response and audit-write failure should NOT block or warn the user —
+ * the row appearing in the audit log is for compliance/observability,
+ * not for user-visible action confirmation. Examples:
+ * `src/app/api/indicators/values/[id]/explain/route.ts:224` (variance explainer),
+ * `src/app/api/indicators/values/[id]/forecast/explain/route.ts:262` (forecast explainer).
+ *
+ * ### Decision rubric
+ *
+ * | Action class                     | Pattern | Why                                 |
+ * |----------------------------------|---------|-------------------------------------|
+ * | CRUD mutation (POST/PUT/PATCH)   | A1      | Operator audit visibility load-bearing |
+ * | Status flip on response w/ body  | A1      | Same compliance tier as CRUD        |
+ * | Status flip on error/sentinel    | A2      | No body slot for auditStale         |
+ * | Settings change (org thresholds) | A1      | Audited per compliance              |
+ * | AI explainer / non-CRUD telemetry| B       | User UX > audit-failure surface     |
+ * | Background cron (future)         | B       | No user-facing surface at all       |
+ *
+ * (The "background cron" row is a future placeholder — no cron-triggered
+ * audit emissions exist in repo today; Phase 7.F audit-prune cron is a
+ * pending CARRYOVER row, not yet shipped. When it lands, the new caller
+ * pattern is locked in advance by this rubric.)
+ *
+ * Both patterns benefit from the same internal try/catch shape — the
+ * function itself is identical regardless of caller choice. The contract
+ * is purely about how the CALLER handles the resolved result.
  */
 export async function logAuditEvent(
   prisma: PrismaClient,

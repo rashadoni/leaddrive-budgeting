@@ -3,6 +3,27 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 
+/**
+ * GET /api/budgeting/pnl
+ *
+ * Response envelope (accepted-asymmetry per Turn-30 architect ⚠️ closure
+ * Turn-33.5 + Turn-Y retroactive documentation):
+ *   `{success: true, sections, rows, monthlyRevenue, ..., year, ...}`
+ *   — flat shape: `success` flag at root + payload fields at root.
+ *
+ * Sibling route `/api/budgeting/analytics` uses a DIFFERENT envelope:
+ *   `{success: true, data: {plan, totalPlanned, ...}}`
+ *   — wrapped shape: `success` flag at root + payload nested under `data`.
+ *
+ * Both have `success: true` so consumers can distinguish "successful empty"
+ * from "error" (architect's stated concern). Convergence on a single
+ * envelope shape is NOT scheduled — pre-existing convention; pnl pre-dates
+ * analytics; both stable; convergence would be a breaking change for
+ * `/budgeting` page (pnl) and Risk Terminal (analytics) consumers without
+ * customer-visible benefit. If a future cross-route consumer needs unified
+ * shape, file a fresh 🔄 with migration plan.
+ */
+
 // P&L structure sections
 const PNL_SECTIONS = [
   { key: "revenue", label: "Net satış gəlirləri", codes: ["601", "602", "603"] },

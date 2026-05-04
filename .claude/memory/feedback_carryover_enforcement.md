@@ -105,3 +105,63 @@ The sub-13 policy left "final" undefinable: a sub-turn can be claimed-final, the
 - "Final" is now: either (a) explicit "session-end" / "I'm done" cue from user, OR (b) next user prompt opens new theme. Whichever comes first determines when the bump pass fires.
 
 **Why:** Under the old policy, a developer could perpetually claim "this isn't final yet" while burning through 10+ sub-turns — counters never bumped, stale-tracker signal lost. Under the new rule, the bump pass is guaranteed to fire at every theme-boundary, making counter-inflation impossible AND making "Turn N final" a fact established by the conversation, not by developer judgment.
+
+## CLOSED-section retroactive-annotation policy (codified Turn T, closes Turn-15 architect ⚠️)
+
+When a finding from a later turn invalidates or qualifies one or more *already-CLOSED* rows in `docs/CARRYOVER.md`, the developer has two annotation shapes available — pick the one that matches the **scope** of the finding. Don't mix shapes for the same finding, and don't invent a third.
+
+### Shape A — block-level `> **ℹ️ RETROACTIVE NOTE (...)** ...`
+
+Use when the finding is **systemic** and applies to MANY closed rows simultaneously (or to a class of claims that's hard to enumerate row-by-row).
+
+- **Placement:** as a markdown blockquote (`>` prefix) immediately after the `## CLOSED (last 30 days)` heading and the section preamble, BEFORE the table header.
+- **Format:** `> **ℹ️ RETROACTIVE NOTE (Turn N finding, applies to <scope>):** <invalidation detail>. <what still stands>. <where resolution is tracked>.`
+- **Required content:** (1) Turn number that surfaced the finding, (2) explicit scope ("all CLOSED rows below claiming X"), (3) what still stands vs what's invalidated, (4) pointer to the OPEN row tracking the resolution if any.
+- **Existing example:** `docs/CARRYOVER.md` block-level note after `## CLOSED` heading — Turn 14 finding that all browser-smoke verifications from Turn 9+ rendered Demo data, not AZMADE.
+
+### Shape B — per-row `**⚠️ CORRECTION YYYY-MM-DD (Turn N <context>):** ...`
+
+Use when the finding **invalidates a specific narrative claim** in ONE closed row's resolution column (typo, wrong root cause, premature claim, etc.).
+
+- **Placement:** inline inside the row's `resolution` cell, between the original closure narrative and the trailing `|` cell separator. Do NOT create a new row, do NOT modify the original status emoji.
+- **Format:** `**⚠️ CORRECTION YYYY-MM-DD (Turn N <context>):** <what was wrong>. <what the structural fix is, or where it's tracked>. Closure status remains ✅ for <list of OTHER deliverables that DID land>; only <bullet> was wrong.`
+- **Required content:** (1) ISO date of the correction, (2) Turn number + brief context ("re-audit", "post-test", etc.), (3) explicit "remains ✅ for X / wrong on Y" framing so the closure isn't entirely invalidated.
+- **Existing example:** `docs/CARRYOVER.md` ✅ row for "Phase 7.D — browser smoke test (drag-resize + named-layout save/load + cmd bar + F-keys + /-search end-to-end)" — Turn 12 sub-turn re-audit corrected the hydration-fix claim from "kickstart resolved" to "structural mounted-gate fix"; other deliverables in the row stood.
+
+### Decision rubric
+
+| If the finding... | Shape | Why |
+|---|---|---|
+| affects 3+ closed rows OR a hard-to-enumerate class of claims | A (block-level) | scope > row-level; per-row stamping would be repetitive and hard to keep in sync |
+| affects exactly 1 closed row's resolution narrative | B (per-row) | local invalidation; localizing the correction keeps reader-eye attention at the right row |
+| affects 2 closed rows | B (per-row, applied twice) | still local-enough that 2 stamps are cheaper than a block-level note pointing at "those 2 rows below" |
+| would FULLY invalidate a row (closure was wrong, item is actually still open) | NEITHER — re-open instead | move the row from CLOSED back to OPEN with a 🔄 status, document why in a new "Last processed" preamble paragraph; CLOSED-section annotations are for partial / qualifying corrections only |
+
+### Anti-patterns
+
+- ❌ Editing the original closure narrative directly (silently rewriting history).
+- ❌ Mixing shapes for the same finding (block-level note + per-row stamp on each affected row).
+- ❌ Re-opening a row by adding a 🔄 alongside the ✅ in the status column (corrupts the table shape and breaks the architect-gate hook's row-counting regex).
+- ❌ Using `⚠️ CORRECTION` for OPEN-section narratives — the rule is CLOSED-section-only. OPEN-section "Last processed" paragraphs use `ARCHITECT ROUND-N CORRECTION` or similar inline notes per existing convention.
+
+### Why this rule exists
+
+Turn-15 architect ⚠️ flagged drift: Turn 12 used per-row inline `⚠️ CORRECTION` stamps, Turn 15 used a block-level note immediately after `## CLOSED`. Both shapes were locally reasonable but the absence of policy meant a future Claude would guess — and a guess might land on a third shape, fragmenting the convention. This rule pins the choice on scope, not on developer preference, so the same finding always lands in the same shape regardless of who's writing.
+
+## Pre-TurnGoal verification — cross-grep CLOSED before declaring (codified Turn HH, closes architect Turn-GG Round-1 💡)
+
+For any CARRYOVER row with `turns-open ≥ 30` being picked as a TurnGoal closure target, run a quick CLOSED-section grep against the row's distinguishing tokens BEFORE declaring TurnGoal — surfaces the "already-shipped duplicate" drift class instantly without the 3-redeclare cycle that Turn GG hit.
+
+**Workflow:**
+```bash
+# Before declaring "Turn N: close <row at L<N>>" — run:
+grep -i "<2-3 distinctive tokens from row's item-text>" docs/CARRYOVER.md
+# Look for ✅ rows. If any match, the closure may already be shipped —
+# pivot to pure CARRYOVER hygiene migration OR pick a different row.
+```
+
+**Empirical justification:** during Phase 7.G autonomy block (Turns R-GG = 16 turns), the audit-stale-carryover.ts script + manual re-audits surfaced 8 un-migrated duplicates. Most originated from Turn 33.5's multi-closure batch (4 of 8) plus the Turn-26 vague-blocker cohort (3 of 8). The ratio suggests ~12.5% drift rate among `turns-open ≥ 30` developer-owned rows. Pre-TurnGoal grep cost: ~30s. Saved: ~3-15min per duplicate (the redeclare + pivot + narrative work). Net: positive after the first catch.
+
+**When NOT to apply:** rows opened in the last 5-10 turns (low duplication risk) + rows with very generic item-text where grep produces too much noise (defer to architect Round-1 to catch). Pure-hygiene "drift-class sweep" turns (e.g. Turn EE Round-1 sweep) are exempt — they're explicitly closing duplicates.
+
+**Future enhancement (Turn-HH filed 🔄):** `audit-stale-carryover.ts` v3 with marker-extraction matcher (anchored on `Bug #N` / `Turn N` / `Phase X` regex patterns) would automate this check. Until v3 ships, the manual grep is the reliable safety net.

@@ -96,8 +96,11 @@ export async function POST(
       where: { id: staging.id, status: 'pending' },
       data: { status: 'expired' },
     });
-    // Phase 7.F (Turn 11) — log the lazy-expire transition. Best-effort;
-    // a logging failure must not block the user-facing 410 response.
+    // Phase 7.F (Turn 11) — log the lazy-expire transition. Logged
+    // best-effort but currently BLOCKS via `await` (Pattern A2 per
+    // `src/lib/audit/log.ts` Calling-pattern contract; converting to
+    // Pattern B `void logExpire(...).catch(console.error)` deferred
+    // to a scoped future fix per Turn-Z architect Round-2 💡).
     const { logAuditEvent: logExpire, buildAuditContext: ctxFn } = await import(
       '@/lib/audit/log'
     );

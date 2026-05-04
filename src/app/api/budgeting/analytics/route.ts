@@ -6,6 +6,23 @@ import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePla
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 
+/**
+ * GET /api/budgeting/analytics
+ *
+ * Response envelope (accepted-asymmetry per Turn-30 architect ⚠️ closure
+ * Turn-33.5 + Turn-Y retroactive documentation):
+ *   `{success: true, data: {plan, totalPlanned, ...}}`
+ *   — wrapped shape: `success` flag at root + payload nested under `data`.
+ *
+ * Sibling route `/api/budgeting/pnl` uses a DIFFERENT envelope:
+ *   `{success: true, sections, rows, ..., year, ...}`
+ *   — flat shape: `success` flag at root + payload fields at root.
+ *
+ * Both share `success: true` so consumers can distinguish "successful
+ * empty" from "error" (architect's stated concern). Convergence on a
+ * single envelope shape NOT scheduled — see `pnl/route.ts` jsdoc for
+ * full rationale.
+ */
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
