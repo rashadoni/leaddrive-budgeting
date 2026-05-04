@@ -127,7 +127,10 @@ describe('runRecomputeForCompanies', () => {
       { companyId: 'co_1', year: 2026 },
     ]);
 
-    expect(result).toEqual({ ok: 1, unknown: 0, failed: 0, targets: 1 });
+    // Phase 7.E C6 v3.1 — `alertEvents` field added to result post-Turn IV
+    // wire-in; ignore here via objectContaining since this test is about
+    // the recompute-loop happy path, not alert-persistence.
+    expect(result).toMatchObject({ ok: 1, unknown: 0, failed: 0, targets: 1 });
     expect(mockedRecompute).toHaveBeenCalledTimes(1);
     expect(mockedRecompute).toHaveBeenCalledWith(
       { __mock: 'datasource' },
@@ -167,7 +170,7 @@ describe('runRecomputeForCompanies', () => {
     const result = await runRecomputeForCompanies(prisma as never, 'org_1', [
       { companyId: 'co_1', year: 2026 },
     ]);
-    expect(result).toEqual({ ok: 1, unknown: 1, failed: 0, targets: 2 });
+    expect(result).toMatchObject({ ok: 1, unknown: 1, failed: 0, targets: 2 });
   });
 
   it('catches per-pair errors and increments `failed` (does not throw)', async () => {
@@ -185,7 +188,7 @@ describe('runRecomputeForCompanies', () => {
       [{ companyId: 'co_1', year: 2026 }],
       { pairError: (label, err) => errors.push([label, err]) },
     );
-    expect(result).toEqual({ ok: 1, unknown: 0, failed: 1, targets: 2 });
+    expect(result).toMatchObject({ ok: 1, unknown: 0, failed: 1, targets: 2 });
     expect(errors).toHaveLength(1);
     expect(errors[0][0]).toBe('HLTN/BAD [2026]');
   });
@@ -351,7 +354,7 @@ describe('runRecomputeForCompanies', () => {
       // decision (don't filter rollup defs out of operational pass; they
       // resolve to 0 on op-cos with no children, which is correct).
       expect(result.targets).toBe(2);
-      expect(result).toEqual({ ok: 2, unknown: 0, failed: 0, targets: 2 });
+      expect(result).toMatchObject({ ok: 2, unknown: 0, failed: 0, targets: 2 });
 
       // Parent-co fetch fired exactly once with the right where clause.
       const findManyCalls = prisma.company.findMany.mock.calls;
@@ -782,6 +785,75 @@ describe('runRecomputeForCompanies', () => {
       );
       expect(recomputedCodes).toEqual(['IND_A']);
       expect(recomputedCodes).not.toContain('IND_B');
+    });
+  });
+
+  // Phase 7.E C6 v3.1 (Turn IV) — alert-event persistence wire-in.
+  describe('alert-event persistence wire-in', () => {
+    it('result includes alertEvents shape after a successful recompute pass', async () => {
+      const prisma = makePrisma([co()], [ind()]);
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+
+      const result = await runRecomputeForCompanies(prisma as never, 'org_1', [
+        { companyId: 'co_1', year: 2026 },
+      ]);
+
+      expect(result.alertEvents).toBeDefined();
+      // The trigger test mock doesn't stub Organization.findUnique /
+      // IndicatorValue.findMany / $transaction — the helper's per-period
+      // catch fires, surfacing 1 failed period and 0 persisted. The
+      // wire-in IS invoked (proof: alertEvents exists on the result).
+      expect(result.alertEvents).toMatchObject({
+        periodsPersisted: expect.any(Number),
+        totalCreated: 0,
+        failed: expect.any(Number),
+      });
+    });
+
+    it('alertPersistError fires per-period with explicit-reject stub (not mock-incompleteness side-effect)', async () => {
+      // Architect Turn-IV ⚠️ #2 closure: stub a known reject so the test
+      // pins the intended behavior (per-period catch) rather than the
+      // surface of mock-incompleteness fetch ordering.
+      const prisma = makePrisma([co()], [ind()]);
+      // Inject organization.findUnique that throws a controlled error —
+      // helper calls this first (period-independent fetch) so the helper's
+      // outer try/catch fires once per period.
+      const stubError = new Error('test-controlled: org settings unavailable');
+      (prisma as unknown as {
+        organization: { findUnique: ReturnType<typeof vi.fn> };
+      }).organization = {
+        findUnique: vi.fn().mockRejectedValue(stubError),
+      };
+      mockedRecompute.mockResolvedValue({
+        ok: true,
+        status: 'green',
+        value: 75,
+      });
+      const persistErrors: Array<{ period: string; msg: string }> = [];
+
+      await runRecomputeForCompanies(
+        prisma as never,
+        'org_1',
+        [{ companyId: 'co_1', year: 2026 }],
+        {
+          alertPersistError: (period, err) =>
+            persistErrors.push({
+              period,
+              msg: (err as Error).message ?? String(err),
+            }),
+        },
+      );
+
+      // organization.findUnique fires first in the helper (period-
+      // independent), throws -> caught by trigger's outer catch -> emits
+      // ONE init-sentinel error (architect ⚠️ #1 closure: NOT per-year).
+      expect(persistErrors).toEqual([
+        { period: '__init__', msg: 'test-controlled: org settings unavailable' },
+      ]);
     });
   });
 });

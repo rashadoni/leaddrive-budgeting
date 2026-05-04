@@ -31,6 +31,7 @@ import {
   preferOrgScopedDefinitions,
   matchCompaniesToIndicators,
 } from './targets';
+import { evaluateAndPersistAlertsForPeriods } from './alert-eval-and-persist';
 
 export interface RecomputeAffected {
   companyId: string;
@@ -49,6 +50,11 @@ export interface RecomputeTriggerLogger {
   done?: (msg: string) => void;
   /** Called when there is nothing to recompute (no operational companies / no targets). */
   noop?: (msg: string) => void;
+  /** Phase 7.E C6 v3.1 — called per-period if the alert-eval+persist
+   *  step throws. Failure is swallowed (recompute success must not be
+   *  blocked by an alert-log persistence error); the counter shows up
+   *  in the returned result. */
+  alertPersistError?: (period: string, err: unknown) => void;
 }
 
 export interface RunRecomputeResult {
@@ -56,6 +62,13 @@ export interface RunRecomputeResult {
   unknown: number;
   failed: number;
   targets: number;
+  /** Phase 7.E C6 v3.1 — alert-event persistence outcome (post-recompute). */
+  alertEvents?: {
+    periodsPersisted: number;
+    totalCreated: number;
+    totalDeleted: number;
+    failed: number;
+  };
 }
 
 /**
@@ -332,5 +345,55 @@ export async function runRecomputeForCompanies(
   }
   logger.done?.(`Recompute done: ok=${ok} unknown=${unknown} failed=${failed}`);
 
-  return { ok, unknown, failed, targets: totalPairs };
+  // Phase 7.E C6 v3.1 (Turn IV) — wire AlertEvent persistence into the
+  // recompute pipeline. Runs after the IV writes succeed so the AlertEvent
+  // log always reflects the matrix the matrix endpoint surfaces. Belt-
+  // and-braces try/catch: an alert-persist failure must not crash the
+  // import that already wrote IVs successfully. Per-period isolation is
+  // already provided by the helper itself; the outer catch handles a
+  // catastrophic init failure (e.g. org row vanished mid-flight, settings
+  // fetch threw before the per-period loop) and surfaces it via the
+  // sentinel period `__init__` — distinguishes "helper crashed before
+  // touching any period" from "period 2025 specifically failed".
+  let alertEvents: RunRecomputeResult['alertEvents'];
+  try {
+    const periods = years.map((y) => String(y));
+    const out = await evaluateAndPersistAlertsForPeriods(
+      prisma,
+      { organizationId, periods },
+      {
+        periodError: (period, err) =>
+          logger.alertPersistError?.(period, err),
+      },
+    );
+    alertEvents = {
+      periodsPersisted: out.periodsPersisted,
+      totalCreated: out.totalCreated,
+      totalDeleted: out.totalDeleted,
+      failed: out.failed,
+    };
+  } catch (err) {
+    // Catastrophic init failure — surface as ONE error labeled with the
+    // sentinel `__init__` rather than N identical "year=YYYY" calls.
+    // Closes architect Turn-IV ⚠️ #1 (fault-mode conflation): consumers
+    // can dedupe / route differently for init vs per-period failures.
+    logger.alertPersistError?.(ALERT_PERSIST_INIT_LABEL, err);
+    alertEvents = {
+      periodsPersisted: 0,
+      totalCreated: 0,
+      totalDeleted: 0,
+      failed: years.length,
+    };
+  }
+
+  return { ok, unknown, failed, targets: totalPairs, alertEvents };
 }
+
+/**
+ * Sentinel period label emitted on `alertPersistError` when the
+ * post-recompute alert-persist helper throws before reaching its
+ * per-period loop (init failure: settings fetch / company fetch / etc.).
+ * Distinguishes "1 root-cause init failure" from "5 period-specific
+ * failures" in consumer logs (architect Turn-IV ⚠️ #1 closure).
+ */
+export const ALERT_PERSIST_INIT_LABEL = '__init__';
