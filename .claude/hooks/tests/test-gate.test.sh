@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
 # Regression guard for `.claude/hooks/test-gate.sh`.
-# Covers the 5 scenarios specified by Turn-26 architect Round-1 ⚠️
-# (CARRYOVER L367, closed Turn S):
+# Covers the 6 scenarios specified by Turn-26 + Turn-S architect Round-1:
 #   (a) clean state silent exit 0       — dirty + all-green
 #   (b) broken-TS produces valid JSON   — dirty + tsc fails
 #   (c) broken-vitest produces valid JSON — dirty + vitest fails
 #   (d) no-dirty-marker skips           — !dirty + everything green
 #   (e) ANSI color in tsc/vitest output → JSON still valid (control chars stripped)
-# Preflight-jq path (Turn-S architect Round-1 💡) NOT covered — macOS
-# bundles `jq` at `/usr/bin/jq`, so any PATH that includes system-bin
-# resolves jq even without homebrew. Empty PATH breaks `set -euo pipefail`
-# startup (no `cat` for `$(cat)`). Filed as concrete 🔄 with closure path
-# (symlink-essentials-minus-jq scaffold). Architect explicit "не блокирует".
+#   (f) jq missing on PATH → preflight emits JSON block mentioning jq
+#       (Turn-S 💡 #1, closed Turn XIV via $TMPDIR scratch-bin scaffold)
 #
 # Mocks `npx` via a $TMPDIR fakebin on PATH; the hook is invoked with that
 # PATH override so neither real tsc nor real vitest run during the test.
 #
+# Case (f) uses a separate $TMPDIR scratch-bin populated with symlinks to
+# essentials (cat / dirname / tail / sed / tr) from /bin + /usr/bin but
+# NOT jq. Hook runs with PATH=$FAKE_BIN:$SCRATCH_BIN so `command -v jq`
+# returns non-zero → preflight branch fires before any tsc/vitest mock
+# can run. Asserts via grep (no jq available in subshell — the parent
+# shell still has jq for the early `command -v jq` requirement check).
+#
 # Run: bash .claude/hooks/tests/test-gate.test.sh
-# Expected: all 5 tests pass, exit 0.
+# Expected: all 6 tests pass, exit 0.
 
 set -euo pipefail
 
@@ -25,6 +28,7 @@ HOOK="$(cd "$(dirname "$0")/.." && pwd)/test-gate.sh"
 SESSION="test-$$"
 DIRTY="${TMPDIR:-/tmp}/.claude-dirty-${SESSION}"
 FAKE_BIN="${TMPDIR:-/tmp}/test-gate-fakebin-$$"
+SCRATCH_BIN="${TMPDIR:-/tmp}/test-gate-scratchbin-$$"
 
 if ! command -v jq >/dev/null; then
   echo "FAIL: jq not installed — hook requires it" >&2
@@ -90,7 +94,7 @@ report() {
 }
 
 cleanup() {
-  rm -rf "$FAKE_BIN"
+  rm -rf "$FAKE_BIN" "$SCRATCH_BIN"
   rm -f "$DIRTY"
 }
 trap cleanup EXIT
@@ -168,6 +172,42 @@ if echo "$out" | jq -e . >/dev/null 2>&1 \
   report "dirty + ANSI-colored tsc fail → JSON valid, ESC bytes stripped" 1
 else
   report "ANSI test failed (esc_present=$esc_present, got: $out)" 0
+fi
+rm -f "$DIRTY"
+
+# ──────────────────────────────────────────────────────────────────────────
+# (f) jq missing on PATH → preflight emits JSON block mentioning jq.
+# Setup: scratch-bin populated with symlinks to essentials but NOT jq.
+# Run hook with PATH=$FAKE_BIN:$SCRATCH_BIN so the hook subshell has
+# only the essentials + fake npx. Empty PATH would break
+# `set -euo pipefail` startup (no `cat` for `INPUT=$(cat)` at hook L19);
+# essentials-minus-jq is the cleanest expression of "jq specifically
+# missing".
+#
+# IMPORTANT: invoke via absolute `/bin/bash` not `bash` — the parent
+# shell (zsh-or-bash) resolves the `bash` token using its OWN PATH
+# BEFORE applying the `PATH=foo` env-prefix to the spawned process,
+# and `$FAKE_BIN:$SCRATCH_BIN` doesn't contain bash itself. Symlinking
+# bash into $SCRATCH_BIN would also work but adds non-essential weight.
+mkdir -p "$SCRATCH_BIN"
+for util in cat dirname tail sed tr; do
+  src=$(command -v "$util") || src=""
+  if [ -n "$src" ]; then
+    ln -sf "$src" "$SCRATCH_BIN/$util"
+  fi
+done
+touch "$DIRTY"
+out=$(echo '{"session_id":"'"$SESSION"'"}' \
+  | PATH="$FAKE_BIN:$SCRATCH_BIN" /bin/bash "$HOOK" 2>/dev/null \
+  || true)
+# Use grep (not jq) for assertion — closure path explicitly avoids
+# requiring jq in the subshell; parent-shell jq is fine but grep keeps
+# the assertion symmetric with the no-jq subshell environment.
+if echo "$out" | grep -q '"decision":"block"' \
+   && echo "$out" | grep -q 'jq not found in PATH'; then
+  report "no jq on PATH → preflight emits JSON block mentioning jq" 1
+else
+  report "preflight-jq case failed (got: $out)" 0
 fi
 rm -f "$DIRTY"
 
