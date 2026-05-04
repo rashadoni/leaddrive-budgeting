@@ -48,9 +48,10 @@ export interface AuditEventsFilters {
   /** ISO-8601 inclusive upper bound on `createdAt`. */
   to: Date;
   actorUserId?: string;
-  /** Cursor: ISO-8601 of the last seen `createdAt`. Returned rows have
-   *  `createdAt < cursor` (descending order — newest first). */
-  cursor?: Date;
+  /** Composite cursor: `(createdAt, id)` of the last row in the previous
+   *  page. Tuple-comparison keyset pagination — see jsdoc on
+   *  `buildAuditEventsWhere`. Wire format is `<iso>|<id>`. */
+  cursor?: { createdAt: Date; id: string };
   limit: number;
 }
 
@@ -105,9 +106,14 @@ export function parseAuditEventsQuery(
   if (to === 'invalid') {
     return { ok: false, error: '`to` must be an ISO-8601 timestamp.' };
   }
-  const cursor = parseIsoDate(searchParams.get('cursor'));
+  const cursorRaw = searchParams.get('cursor');
+  const cursor = parseCursor(cursorRaw);
   if (cursor === 'invalid') {
-    return { ok: false, error: '`cursor` must be an ISO-8601 timestamp.' };
+    return {
+      ok: false,
+      error:
+        '`cursor` must be `<ISO-8601>|<id>` (composite keyset cursor — see /api/audit/events docs).',
+    };
   }
 
   const resolvedFrom =
@@ -157,18 +163,46 @@ function parseIsoDate(raw: string | null): Date | null | 'invalid' {
   return d;
 }
 
+/** Parse a composite cursor `<iso>|<id>` into `{createdAt, id}`. Returns
+ *  `null` when not supplied; `'invalid'` when present but malformed.
+ *  Uses `indexOf('|')` (not `split('|')`) so an id containing a literal
+ *  `|` would still parse correctly — defensive even though cuid never
+ *  emits `|`. */
+function parseCursor(
+  raw: string | null,
+): { createdAt: Date; id: string } | null | 'invalid' {
+  if (raw === null || raw === '') return null;
+  const sepIdx = raw.indexOf('|');
+  if (sepIdx <= 0) return 'invalid';
+  const isoPart = raw.slice(0, sepIdx);
+  const idPart = raw.slice(sepIdx + 1);
+  if (idPart.length === 0) return 'invalid';
+  const d = new Date(isoPart);
+  if (Number.isNaN(d.getTime())) return 'invalid';
+  return { createdAt: d, id: idPart };
+}
+
 /**
  * Convert validated filters + tenant scope into the Prisma `where`
  * argument for `auditEvent.findMany`. Pure: same input → same output.
  *
- * Cursor semantics: if `cursor` is set, rows must have `createdAt <
- * cursor` (strict). The endpoint orders by createdAt DESC, so this
- * advances backwards through time on every page request. The cursor
- * value the client sees is the `createdAt` of the LAST row in the
- * previous page; passing it back excludes that row from the next page
- * (no double-render). When two events share an exact `createdAt` ms
- * stamp the boundary is fuzzy by 1ms — acceptable for an audit log
- * where exact ordering on identical timestamps is meaningless.
+ * Cursor semantics (Phase 7.G Turn U — composite keyset pagination
+ * closing 53-turn Turn-25 architect ⚠️ on same-ms tie correctness):
+ * when `cursor = {createdAt, id}` is set, rows must satisfy the tuple
+ * comparison `(row.createdAt, row.id) < (cursor.createdAt, cursor.id)`
+ * under DESC ordering — i.e. `row.createdAt < cursor.createdAt` OR
+ * (`row.createdAt = cursor.createdAt` AND `row.id < cursor.id`). This
+ * is emitted as a Prisma `OR` clause AND-ed with the existing
+ * `gte:from / lte:to` range bounds.
+ *
+ * Why composite: a strict `lt: cursor.createdAt` (the prior shape) drops
+ * (limit+1)-th and beyond rows that share the cursor's exact ms. Common
+ * for bulk-commit transactions where multiple audit emissions land at
+ * the same clock-tick (e.g. xlsx import firing `import_budget_create`
+ * + recompute-cascade events inside one `prisma.$transaction`). The
+ * composite cursor breaks the tie deterministically using `id` (cuid,
+ * roughly time-ordered) as a stable secondary key; consumer route
+ * orders by `[{createdAt: 'desc'}, {id: 'desc'}]` to match.
  */
 export function buildAuditEventsWhere(
   filters: AuditEventsFilters,
@@ -185,15 +219,17 @@ export function buildAuditEventsWhere(
   if (filters.entityType) where.entityType = filters.entityType;
   if (filters.actorUserId) where.actorUserId = filters.actorUserId;
   if (filters.cursor) {
-    // Tighten the existing createdAt range by adding `lt: cursor`.
-    // `gte: from` + `lte: to` + `lt: cursor` Prisma allows by merging
-    // into a single object — we rebuild explicitly to keep the shape
-    // obvious to a reader.
-    where.createdAt = {
-      gte: filters.from,
-      lte: filters.to,
-      lt: filters.cursor,
-    };
+    // Composite keyset pagination: rows strictly "after" the cursor
+    // tuple under DESC ordering. The OR is AND-ed with the existing
+    // `createdAt: {gte, lte}` range bounds at the `where` root, so
+    // out-of-range same-ms rows are still excluded.
+    where.OR = [
+      { createdAt: { lt: filters.cursor.createdAt } },
+      {
+        createdAt: filters.cursor.createdAt,
+        id: { lt: filters.cursor.id },
+      },
+    ];
   }
   return where;
 }

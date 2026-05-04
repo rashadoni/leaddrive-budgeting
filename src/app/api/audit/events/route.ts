@@ -9,7 +9,14 @@
  *   actorUserId?  — narrow to a specific actor
  *   from?         — ISO-8601 inclusive lower bound (default: now − 30 days)
  *   to?           — ISO-8601 inclusive upper bound (default: now)
- *   cursor?       — ISO-8601 of the last seen `createdAt` for pagination
+ *   cursor?       — composite `<ISO-8601>|<id>` of the last row in the
+ *                   previous page. Treated as opaque by the client —
+ *                   pass back what the server returned in `nextCursor`.
+ *                   Note: a stale browser-side cursor in bare-ISO format
+ *                   (cached across the Turn-U deploy boundary) yields a
+ *                   transient 400; user clicks "Load more" again and
+ *                   re-paginates from the current top — acceptable and
+ *                   self-healing within one click.
  *   limit?        — page size (default 50, max 200)
  *
  * Auth: `manager` role + same-org. The audit log can leak business-impact
@@ -24,16 +31,16 @@
  *       actor: { id, name, email } | null,
  *       createdAt: ISO-8601
  *     }>,
- *     nextCursor: ISO-8601 string | null,  // null = no more rows
+ *     nextCursor: "<ISO-8601>|<id>" | null,  // null = no more rows
  *     hasMore: boolean,
  *   }
  *
- * Pagination is cursor-based on `createdAt` DESC. The cursor is
- * intentionally "the last row's createdAt" rather than a row id; the
- * audit log is append-only so timestamps are unique-enough at user-
- * facing granularity. Two events sharing the same millisecond are an
- * acceptable boundary fuzziness for an audit feed (see jsdoc on
- * buildAuditEventsWhere).
+ * Pagination is composite-cursor keyset on `(createdAt, id)` DESC (Phase
+ * 7.G Turn U — closes Turn-25 architect ⚠️ on same-ms tie correctness).
+ * Strict `lt: cursor.createdAt` would drop (limit+1)-th and beyond rows
+ * sharing an exact ms; the composite cursor breaks ties via `id` (cuid
+ * is roughly time-ordered) as a stable secondary key. See jsdoc on
+ * `buildAuditEventsWhere` for the OR-clause shape.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -91,7 +98,10 @@ export async function GET(request: NextRequest) {
         select: { id: true, name: true, email: true },
       },
     },
-    orderBy: { createdAt: 'desc' },
+    // Composite-cursor secondary key: `id` DESC ties the order on
+    // same-ms rows so the keyset OR-clause in `buildAuditEventsWhere`
+    // produces deterministic, gap-free pagination.
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take: parsed.filters.limit + 1,
   });
 
@@ -100,7 +110,7 @@ export async function GET(request: NextRequest) {
   const events: Row[] = hasMore ? rows.slice(0, parsed.filters.limit) : rows;
   const nextCursor =
     hasMore && events.length > 0
-      ? events[events.length - 1].createdAt.toISOString()
+      ? `${events[events.length - 1].createdAt.toISOString()}|${events[events.length - 1].id}`
       : null;
 
   return NextResponse.json({

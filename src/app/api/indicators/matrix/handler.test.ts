@@ -593,4 +593,19 @@ describe('GET /api/indicators/matrix — handler', () => {
       expect(body.cells).toEqual([]);
     });
   });
+
+  it('emits Cache-Control: private, max-age=10 on success (Turn-CC perf guard)', async () => {
+    // Phase 7.G Turn CC — closes Turn-32 architect ⚠️ on
+    // CommandBar IND keystroke flurry duplicating /api/indicators/matrix
+    // fetches. The header lets the browser reuse the matrix response for
+    // 10s without re-hitting the server. `private` keeps shared caches
+    // out of the picture (response is org-scoped + auth-gated).
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    prismaMock.company.findMany.mockResolvedValue([]);
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([]);
+
+    const res = await GET(makeRequest('/api/indicators/matrix'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('private, max-age=10');
+  });
 });

@@ -78,8 +78,23 @@ describe('parseAuditEventsQuery', () => {
     expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/to/i) });
   });
 
-  it('rejects malformed cursor ISO', () => {
-    const res = parseAuditEventsQuery(sp({ cursor: 'oops' }), NOW);
+  it('rejects malformed cursor — bare ISO without `|<id>` suffix', () => {
+    const res = parseAuditEventsQuery(sp({ cursor: '2026-04-20T10:30:00.000Z' }), NOW);
+    expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/cursor/i) });
+  });
+
+  it('rejects malformed cursor — non-ISO date part', () => {
+    const res = parseAuditEventsQuery(sp({ cursor: 'oops|cuid_xyz' }), NOW);
+    expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/cursor/i) });
+  });
+
+  it('rejects malformed cursor — empty id after `|`', () => {
+    const res = parseAuditEventsQuery(sp({ cursor: '2026-04-20T10:30:00.000Z|' }), NOW);
+    expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/cursor/i) });
+  });
+
+  it('rejects malformed cursor — leading `|` (empty ISO)', () => {
+    const res = parseAuditEventsQuery(sp({ cursor: '|cuid_xyz' }), NOW);
     expect(res).toMatchObject({ ok: false, error: expect.stringMatching(/cursor/i) });
   });
 
@@ -127,14 +142,29 @@ describe('parseAuditEventsQuery', () => {
     if (res.ok) expect(res.filters.limit).toBe(MAX_LIMIT);
   });
 
-  it('parses cursor as Date', () => {
+  it('parses composite cursor `<iso>|<id>` into {createdAt, id}', () => {
     const res = parseAuditEventsQuery(
-      sp({ cursor: '2026-04-20T10:30:00.000Z' }),
+      sp({ cursor: '2026-04-20T10:30:00.000Z|cuid_abcdef123' }),
       NOW,
     );
     expect(res.ok).toBe(true);
-    if (res.ok)
-      expect(res.filters.cursor?.toISOString()).toBe('2026-04-20T10:30:00.000Z');
+    if (res.ok) {
+      expect(res.filters.cursor?.createdAt.toISOString()).toBe(
+        '2026-04-20T10:30:00.000Z',
+      );
+      expect(res.filters.cursor?.id).toBe('cuid_abcdef123');
+    }
+  });
+
+  it('preserves an id that itself contains `|` (uses indexOf split, not split)', () => {
+    // cuid never emits `|` but the parser shouldn't break if a future id
+    // format includes one — defensive correctness via `indexOf('|')`.
+    const res = parseAuditEventsQuery(
+      sp({ cursor: '2026-04-20T10:30:00.000Z|weird|id|with|pipes' }),
+      NOW,
+    );
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.filters.cursor?.id).toBe('weird|id|with|pipes');
   });
 
   it('actorUserId trim-empty rejected', () => {
@@ -164,17 +194,29 @@ describe('buildAuditEventsWhere', () => {
     });
   });
 
-  it('cursor adds `lt` to createdAt range without dropping gte/lte', () => {
-    const cursor = new Date('2026-04-20T10:30:00.000Z');
+  it('composite cursor emits OR keyset clause (Phase 7.G Turn U same-ms tie fix)', () => {
+    const cursorAt = new Date('2026-04-20T10:30:00.000Z');
     const where = buildAuditEventsWhere(
-      { ...baseFilters, cursor },
+      { ...baseFilters, cursor: { createdAt: cursorAt, id: 'cuid_xyz' } },
       'org_1',
     );
+    // `createdAt` range bounds preserved at root (out-of-window same-ms
+    // rows still excluded by the AND-ed range).
     expect(where.createdAt).toEqual({
       gte: baseFilters.from,
       lte: baseFilters.to,
-      lt: cursor,
     });
+    // OR clause: `(createdAt < cursor.createdAt) OR (createdAt =
+    // cursor.createdAt AND id < cursor.id)`.
+    expect(where.OR).toEqual([
+      { createdAt: { lt: cursorAt } },
+      { createdAt: cursorAt, id: { lt: 'cuid_xyz' } },
+    ]);
+  });
+
+  it('no cursor → no OR clause', () => {
+    const where = buildAuditEventsWhere(baseFilters, 'org_1');
+    expect(where.OR).toBeUndefined();
   });
 
   it('action filter narrows query', () => {
@@ -194,24 +236,28 @@ describe('buildAuditEventsWhere', () => {
     expect(where.actorUserId).toBe('user_1');
   });
 
-  it('all filters combined', () => {
-    const cursor = new Date('2026-04-20T10:30:00.000Z');
+  it('all filters combined preserve range + OR keyset cursor', () => {
+    const cursorAt = new Date('2026-04-20T10:30:00.000Z');
     const where = buildAuditEventsWhere(
       {
         ...baseFilters,
         action: 'import_staging_apply',
         entityType: 'ImportStaging',
         actorUserId: 'user_1',
-        cursor,
+        cursor: { createdAt: cursorAt, id: 'cuid_xyz' },
       },
       'org_1',
     );
     expect(where).toEqual({
       organizationId: 'org_1',
-      createdAt: { gte: baseFilters.from, lte: baseFilters.to, lt: cursor },
+      createdAt: { gte: baseFilters.from, lte: baseFilters.to },
       action: 'import_staging_apply',
       entityType: 'ImportStaging',
       actorUserId: 'user_1',
+      OR: [
+        { createdAt: { lt: cursorAt } },
+        { createdAt: cursorAt, id: { lt: 'cuid_xyz' } },
+      ],
     });
   });
 });

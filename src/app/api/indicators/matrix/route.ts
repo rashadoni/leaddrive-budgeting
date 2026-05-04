@@ -389,12 +389,30 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      period,
-      companies: [...companies, ...subgroupCompanies],
-      indicators: indicatorsForRender,
-      cells: [...cells, ...parentCells, ...subgroupCells],
-    });
+    // Phase 7.G Turn CC — `Cache-Control: private, max-age=10` per
+    // Turn-32 architect ⚠️ spec option (b). Defense-in-depth layer:
+    // the original CommandBar IND-keystroke-flurry problem was already
+    // mitigated client-side in Turn 42 sub-20 via `ensureMatrix()` at
+    // `src/features/terminal/hooks/use-matrix.ts:15-28` — module-level
+    // cache keyed by period, so within a single JS-tab session
+    // duplicate fetches are already foreclosed. This server-side header
+    // adds protection across (a) cross-tab use (each tab has its own
+    // module cache), (b) hard-reloads (module cache reset on full
+    // navigation), (c) any future code path that bypasses ensureMatrix.
+    // `private` keeps the response out of shared/CDN caches (matrix is
+    // org-scoped + auth-gated); 10s window is short enough that a
+    // recompute event >10s later won't be obscured by stale cached
+    // data. At Phase F 60-co × 80-ind scale this header is the
+    // safety-net layer; the load-bearing cache is `ensureMatrix`.
+    return NextResponse.json(
+      {
+        period,
+        companies: [...companies, ...subgroupCompanies],
+        indicators: indicatorsForRender,
+        cells: [...cells, ...parentCells, ...subgroupCells],
+      },
+      { headers: { 'Cache-Control': 'private, max-age=10' } },
+    );
   } catch (error) {
     console.error('Error building indicator matrix:', error);
     return NextResponse.json(
