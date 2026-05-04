@@ -392,7 +392,10 @@ function SnapshotCard({
     Array.isArray(cell?.sparkline) ? cell!.sparkline : undefined;
 
   return (
-    <div className="rounded border border-gray-800/60 bg-[#0A0E27]/60 px-2 py-1.5 flex flex-col gap-1 h-full">
+    <div
+      data-testid="snapshot-card"
+      className="rounded border border-gray-800/60 bg-[#0A0E27]/60 px-2 py-1.5 flex flex-col gap-1 h-full"
+    >
       <div className="text-[9px] uppercase tracking-wider text-gray-600 truncate shrink-0">
         {resolveIndicatorLabel(indicator, locale)}
       </div>
