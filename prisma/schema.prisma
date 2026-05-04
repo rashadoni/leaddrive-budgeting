@@ -50,6 +50,7 @@ model Organization {
   companies              Company[]
   indicatorDefinitions   IndicatorDefinition[]
   alerts                 Alert[]
+  alertEvents            AlertEvent[]
   alertRules             AlertRule[]
   scenarios              Scenario[]
   importStaging          ImportStaging[]
@@ -1127,6 +1128,38 @@ model Alert {
   @@index([organizationId, triggeredAt])
   @@index([organizationId, acknowledgedAt])
   @@map("alerts")
+}
+
+// AlertEvent — Phase 7.E C6 v3 (Turn III) historical record of `evaluateAlertRules`
+// matches. The `Alert` model above is user-acknowledgeable inbox-style; AlertEvent
+// is an immutable per-recompute log for replay / digest emails / audit trail.
+//
+// Persistence semantics: write path is "delete-by-(orgId, period) then insertMany"
+// — current state for a given period is the latest evaluator output. Historical
+// drift is captured via `emittedAt` ordering; same (orgId, period) replayed twice
+// after re-recompute produces a fresh row set with newer emittedAt.
+//
+// `affectedCompanyIds` stored as a `String[]` Postgres array (native Prisma),
+// keeping single-row reads cheap. `messageParams` stored as Json blob to keep
+// the rule-shape contract loose (per AlertRule's deferred discriminated-union).
+model AlertEvent {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period              String                   // matches IndicatorValue.period (e.g. "2025" or "2025-04")
+  ruleId              String                   // matches AlertMatch.ruleId (DEFAULT_ALERT_RULES[].id)
+  ruleName            String
+  severity            String                   // "critical"|"warning"|"info"
+  message             String                   // EN template-output (always populated for non-React/CLI consumers)
+  messageKey          String                   // i18n key (terminal.alerts.messages.<ruleId>)
+  messageParams       Json                     // ICU placeholder values
+  affectedCompanyIds  String[]                 // company IDs in the matched set
+  affectedIndicatorCodes String[] @default([]) // indicator codes (when applicable)
+  emittedAt           DateTime     @default(now())
+
+  @@index([organizationId, period, emittedAt])
+  @@index([organizationId, ruleId, emittedAt])
+  @@map("alert_events")
 }
 
 // AlertRule — user-defined composite conditions evaluated after recompute.
