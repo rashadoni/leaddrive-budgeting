@@ -41,18 +41,22 @@ test.describe('Phase 7.G Turn X — i18n locale-flow smoke', () => {
     await loginAs(page);
     await page.goto('/budgeting/terminal');
 
-    // EN copy from `messages/en.json:terminal.loading` (or any EN-only
-    // anchor). Use a stable structural element instead — Panel labels
-    // exist in every locale; pin the EN-only "Risk Terminal" header
-    // text from `messages/en.json` if available.
-    // Conservative: assert the page DID render (HeatMap presence) and
-    // that no RU/AZ-specific text leaked through.
+    // EN-only negative + positive anchors. Architect Turn-X Round-1
+    // closure: pre-fix positive `/HeatMap|Risk Terminal|Indicator|
+    // Company/` was a tautology — RU + AZ bundles also contain those
+    // words. "Loading..." was too ephemeral (disappears post-mount).
+    // Use the empty-state welcome message which renders persistently
+    // when no company is active, plus negative assertions on RU/AZ
+    // anchors. The "Welcome to Risk Terminal" string is EN-unique
+    // (RU: "Добро пожаловать в Risk Terminal" / AZ: "Risk Terminala
+    // xoş gəlmisiniz" share "Risk Terminal" but lead with locale-
+    // specific welcome verb).
     await expect(
-      page.getByText(/HeatMap|Risk Terminal|Indicator|Company/i).first(),
+      page.getByText(/Welcome to Risk Terminal/).first(),
     ).toBeVisible({ timeout: 15_000 });
-    // Negative assertion: RU/AZ anchors must NOT appear.
-    expect(await page.locator('text=Загрузка').count()).toBe(0);
-    expect(await page.locator('text=Yüklənir').count()).toBe(0);
+    // RU/AZ welcome verbs must NOT appear (locale-distinct).
+    expect(await page.locator('text=Добро пожаловать').count()).toBe(0);
+    expect(await page.locator('text=xoş gəlmisiniz').count()).toBe(0);
   });
 
   test('NEXT_LOCALE=ru cookie → server renders RU strings', async ({
@@ -72,9 +76,10 @@ test.describe('Phase 7.G Turn X — i18n locale-flow smoke', () => {
     ]);
     await page.goto('/budgeting/terminal');
 
-    // RU anchor from `messages/ru.json:terminal.loading` ("Загрузка...").
-    // Use partial-match to tolerate ellipsis variants.
-    await expect(page.getByText(/Загрузка/).first()).toBeVisible({
+    // RU anchor: locale-distinct welcome verb from
+    // `messages/ru.json:terminal.welcome.title` ("Добро пожаловать в
+    // Risk Terminal"). EN says "Welcome to" / AZ says "xoş gəlmisiniz".
+    await expect(page.getByText(/Добро пожаловать/).first()).toBeVisible({
       timeout: 15_000,
     });
   });
@@ -94,8 +99,10 @@ test.describe('Phase 7.G Turn X — i18n locale-flow smoke', () => {
     ]);
     await page.goto('/budgeting/terminal');
 
-    // AZ anchor from `messages/az.json:terminal.loading` ("Yüklənir...").
-    await expect(page.getByText(/Yüklənir/).first()).toBeVisible({
+    // AZ anchor: locale-distinct welcome verb from
+    // `messages/az.json:terminal.welcome.title` ("Risk Terminala xoş
+    // gəlmisiniz"). Anchor on the AZ-unique tail "xoş gəlmisiniz".
+    await expect(page.getByText(/xoş gəlmisiniz/).first()).toBeVisible({
       timeout: 15_000,
     });
   });
