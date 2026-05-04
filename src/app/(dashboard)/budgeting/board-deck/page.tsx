@@ -7,23 +7,16 @@ import {
   type IndustryTranslator,
 } from "@/lib/risk/alert-message-i18n";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { filterOperationalCompanies } from "@/lib/risk/targets";
-import {
-  computeCompositeByCompany,
-  scoreToBand,
-} from "@/lib/risk/composite-score";
+import { scoreToBand } from "@/lib/risk/composite-score";
 import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
-  evaluateAlertRules,
-  DEFAULT_ALERT_RULES,
   DEFAULT_ALERT_RULE_IDS,
-  type AlertMatch,
   type AlertSeverity,
 } from "@/lib/risk/alert-rules";
-import { readAlertThresholdsFromOrgSettings } from "@/lib/risk/alert-thresholds-config";
-import { isAggregateRollup, type HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { type HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
 import { PrintButton } from "./PrintButton";
+import { ExportPptxButton } from "./ExportPptxButton";
 
 export const metadata = {
   title: "Board Deck — Risk Snapshot",
@@ -100,154 +93,31 @@ export default async function BoardDeckPage({
   }
   const period = rawPeriod;
 
-  const [org, companiesRaw, indicators] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { name: true, slug: true, settings: true },
-    }),
-    prisma.company.findMany({
-      where: { organizationId: orgId, isActive: true },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        industry: true,
-        level: true,
-        isActive: true,
-        role: true,
-        sortOrder: true,
-      },
-      orderBy: { sortOrder: "asc" },
-    }),
-    prisma.indicatorDefinition.findMany({
-      where: {
-        isActive: true,
-        OR: [{ organizationId: null }, { organizationId: orgId }],
-      },
-      select: {
-        id: true,
-        code: true,
-        nameEn: true,
-        direction: true,
-        unit: true,
-        sortOrder: true,
-      },
-      orderBy: { sortOrder: "asc" },
-    }),
-  ]);
-
-  if (!org) {
+  // Phase 7.E C3 v2 — single shared helper assembles the snapshot;
+  // `/api/budgeting/board-deck/export-pptx` consumes the same helper so
+  // the page render and PPTX export stay byte-for-byte identical.
+  const snapshot = await buildBoardSnapshot({ orgId, period });
+  if (!snapshot) {
     redirect("/budgeting");
   }
-
-  // Explicit type arg preserves `name`/`sortOrder` on returned rows —
-  // `filterOperationalCompanies` is generic over `CompanyForMatch` and
-  // would otherwise narrow to its base shape (mirror of matrix endpoint
-  // pattern, see route.ts:131-132).
-  type CompanyRawShape = (typeof companiesRaw)[number];
+  const {
+    org,
+    operational,
+    indicators,
+    cellByKey,
+    compositeByCompany,
+    countsByCompany,
+    matches,
+    matchesBySeverity,
+    idToCode,
+    totals,
+    generatedAt,
+  } = snapshot;
   type IndicatorShape = (typeof indicators)[number];
-  const operational =
-    filterOperationalCompanies<CompanyRawShape>(companiesRaw);
-  const operationalIds = operational.map((c) => c.id);
-  const indicatorIds = indicators.map((i: IndicatorShape) => i.id);
-
-  const values =
-    operationalIds.length === 0 || indicatorIds.length === 0
-      ? []
-      : await prisma.indicatorValue.findMany({
-          where: {
-            organizationId: orgId,
-            period,
-            companyId: { in: operationalIds },
-            indicatorId: { in: indicatorIds },
-          },
-          select: {
-            companyId: true,
-            indicatorId: true,
-            value: true,
-            status: true,
-          },
-        });
-
-  type ValueShape = {
-    companyId: string;
-    indicatorId: string;
-    value: number | null;
-    status: HeatMapCell["status"];
-  };
-  const cells: HeatMapCell[] = values.map((v: ValueShape) => ({
-    companyId: v.companyId,
-    indicatorId: v.indicatorId,
-    value: v.value,
-    status: v.status,
-  }));
-
-  // Composite score per company. Shared helper (see composite-score.ts)
-  // — identical contract used by HeatMap. `companyIds` arg requested so
-  // EVERY operational sub-co gets a row even with no IndicatorValues
-  // (board-deck table renders one row per sub-co).
-  const compositeByCompany = computeCompositeByCompany(
-    cells,
-    operational.map((c) => c.id),
-  );
-
-  // Status counts per company.
-  type StatusCounts = { green: number; amber: number; red: number; unknown: number };
-  const countsByCompany = new Map<string, StatusCounts>();
-  for (const co of operational) {
-    countsByCompany.set(co.id, { green: 0, amber: 0, red: 0, unknown: 0 });
-  }
-  for (const c of cells) {
-    // Sub-44 cont'd architect closure — gate via shared helper.
-    if (isAggregateRollup(c)) continue;
-    const counts = countsByCompany.get(c.companyId);
-    if (counts) counts[c.status] += 1;
-  }
-
-  // Alert matches — Phase 7.E C6 v2 reads org-tuned thresholds from
-  // `settings.alertThresholds`; defaults match v1 behavior when unset.
-  const alertThresholds = readAlertThresholdsFromOrgSettings(org.settings);
-  const matches = evaluateAlertRules(
-    DEFAULT_ALERT_RULES,
-    {
-      companies: operational.map((c) => ({
-        id: c.id,
-        code: c.code,
-        name: c.name,
-        industry: c.industry,
-      })),
-      indicators: indicators.map((i: IndicatorShape) => ({ id: i.id, code: i.code })),
-      cells,
-    },
-    alertThresholds,
-  );
-  const matchesBySeverity: Record<AlertSeverity, AlertMatch[]> = {
-    critical: [],
-    warning: [],
-    info: [],
-  };
-  for (const m of matches) matchesBySeverity[m.severity].push(m);
-
-  // Cell lookup for status grid.
-  const cellByKey = new Map<string, HeatMapCell>();
-  for (const c of cells) cellByKey.set(`${c.companyId}|${c.indicatorId}`, c);
-
-  const idToCode = new Map(operational.map((c) => [c.id, c.code]));
-  const totalCells = operational.length * indicators.length;
-  const totalGreen = Array.from(countsByCompany.values()).reduce(
-    (a, b) => a + b.green,
-    0,
-  );
-  const totalAmber = Array.from(countsByCompany.values()).reduce(
-    (a, b) => a + b.amber,
-    0,
-  );
-  const totalRed = Array.from(countsByCompany.values()).reduce(
-    (a, b) => a + b.red,
-    0,
-  );
-
-  const generatedAt = new Date().toISOString();
+  const totalCells = totals.cells;
+  const totalGreen = totals.green;
+  const totalAmber = totals.amber;
+  const totalRed = totals.red;
 
   return (
     <div className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0">
@@ -274,6 +144,7 @@ export default async function BoardDeckPage({
             <ArrowLeft size={14} aria-hidden="true" />
             Terminal
           </Link>
+          <ExportPptxButton period={period} />
           <PrintButton />
         </div>
       </header>

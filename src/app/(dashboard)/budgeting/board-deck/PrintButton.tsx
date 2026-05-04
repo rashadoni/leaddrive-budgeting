@@ -10,10 +10,12 @@ import { Printer } from "lucide-react";
  * the page itself is print-stylesheet-friendly so the browser produces a
  * faithful PDF without an extra render pipeline.
  *
- * v2 (deferred 🔄):
- *  - Server-side PDF render (puppeteer-headless OR @react-pdf/renderer).
- *  - Scheduled email (cron + SMTP queue).
- *  - PPTX export (pptxgenjs).
+ * v2 status:
+ *  - Server-side PDF render (puppeteer-headless OR @react-pdf/renderer)
+ *    — still deferred 🔄.
+ *  - Scheduled email (cron + SMTP queue) — Phase 6 BullMQ-gated 🔄.
+ *  - PPTX export — shipped Phase 7.G (`ExportPptxButton.tsx` →
+ *    `/api/budgeting/board-deck/export-pptx`).
  */
 export function PrintButton() {
   return (
