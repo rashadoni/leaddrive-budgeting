@@ -191,10 +191,11 @@ rm -f "$DIRTY"
 # bash into $SCRATCH_BIN would also work but adds non-essential weight.
 mkdir -p "$SCRATCH_BIN"
 for util in cat dirname tail sed tr; do
-  src=$(command -v "$util") || src=""
-  if [ -n "$src" ]; then
-    ln -sf "$src" "$SCRATCH_BIN/$util"
-  fi
+  # Fail-fast on missing essential — silent-skip would surface later as
+  # a cryptic empty `out` (hook dies on `cat: command not found` etc.).
+  src=$(command -v "$util") \
+    || { echo "FAIL: '$util' not found on PATH at test setup" >&2; exit 1; }
+  ln -sf "$src" "$SCRATCH_BIN/$util"
 done
 touch "$DIRTY"
 out=$(echo '{"session_id":"'"$SESSION"'"}' \
