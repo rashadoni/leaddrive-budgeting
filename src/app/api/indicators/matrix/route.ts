@@ -386,6 +386,11 @@ export async function GET(request: NextRequest) {
         // `kind` field replaces the legacy `isSubgroupRollup` boolean.
         // Gate downstream via `isAggregateRollup(c)` helper.
         kind: 'synthetic-rollup' as const,
+        // Phase 7.G Turn VI — drives IndicatorDetail "averaged from N
+        // children" copy. Closes UX gap where a sub-group cell click
+        // previously rendered "no computed value yet" (panel didn't
+        // know about synthetic rollups; only the matrix builder did).
+        contributingChildCount: bucket.count,
       };
     });
 

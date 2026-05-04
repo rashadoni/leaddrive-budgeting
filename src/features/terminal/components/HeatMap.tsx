@@ -75,6 +75,9 @@ export function HeatMap({ period }: Props) {
   const setPendingMissingCell = useTerminalStore(
     (s) => s.setPendingMissingCell,
   );
+  const setPendingRollupCell = useTerminalStore(
+    (s) => s.setPendingRollupCell,
+  );
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
@@ -540,6 +543,28 @@ export function HeatMap({ period }: Props) {
                             setActivePanel(3);
                             if (c?.indicatorValueId) {
                               setActiveIv(c.indicatorValueId);
+                            } else if (c?.kind === 'synthetic-rollup') {
+                              // Phase 7.G Turn VI — sub-group rollup cell:
+                              // value is averaged + status is worst-of-children
+                              // (computed by /api/indicators/matrix). No
+                              // persisted IV exists. Pre-Turn-VI this routed
+                              // to setPendingMissingCell → "no computed
+                              // value yet" copy, which contradicted the
+                              // clearly-lit cell. Now the panel renders a
+                              // dedicated rollup view with the aggregate
+                              // + child count.
+                              setPendingRollupCell({
+                                companyId: co.id,
+                                companyCode: co.code,
+                                indicatorId: ind.id,
+                                indicatorCode: ind.code,
+                                indicatorName: resolveIndicatorLabel(ind, locale),
+                                indicatorUnit: ind.unit ?? null,
+                                value: c.value,
+                                status: c.status,
+                                contributingChildCount:
+                                  c.contributingChildCount ?? 0,
+                              });
                             } else {
                               setPendingMissingCell({
                                 companyId: co.id,

@@ -64,6 +64,16 @@ export interface HeatMapCell {
    * absent = `'op'`. The helper handles undefined cleanly.
    */
   kind?: 'op' | 'synthetic-rollup' | 'real-rollup';
+  /**
+   * Phase 7.G Turn VI — count of operational child cells contributing to a
+   * `kind: 'synthetic-rollup'` aggregate. Populated only on synthetic-rollup
+   * cells (others omit). Drives the IndicatorDetail "Sub-group rollup —
+   * averaged from N children" hint so a click on a sub-group cell explains
+   * the absence of a single canonical IV row instead of looking like a
+   * stale "no data" state. Optional + back-compat: cells emitted before
+   * Turn VI omit it; consumers fall back to "averaged from children".
+   */
+  contributingChildCount?: number;
 }
 
 /**

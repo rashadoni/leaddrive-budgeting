@@ -41,6 +41,32 @@ export interface TerminalState {
     indicatorName: string;
   } | null;
   /**
+   * Phase 7.G Turn VI — Panel 3 sub-group rollup hint. Set when the user
+   * clicks a synthetic-rollup HeatMap cell (parent sub-group row × indicator,
+   * `kind === 'synthetic-rollup'`, `indicatorValueId === null`). Without this
+   * branch, the click previously routed to `pendingMissingCell` → the panel
+   * said "no computed value yet" even though the cell was clearly lit.
+   * Mutually exclusive with `activeIndicatorValueId` and `pendingMissingCell`
+   * — setters MUST clear the other two on assignment.
+   *
+   * `value` + `status` are the synthetic aggregate emitted by the matrix
+   * endpoint (avg + worst-of-children). `contributingChildCount` flows from
+   * the same payload — drives the "averaged from N children" copy.
+   * `unit` from the indicator definition is required so the rendered value
+   * carries its unit ("%", "days", etc.) without a redundant fetch.
+   */
+  pendingRollupCell: {
+    companyId: string;
+    companyCode: string;
+    indicatorId: string;
+    indicatorCode: string;
+    indicatorName: string;
+    indicatorUnit: string | null;
+    value: number;
+    status: 'green' | 'amber' | 'red' | 'unknown';
+    contributingChildCount: number;
+  } | null;
+  /**
    * Filter strings per panel. Panel 1 filters CompanyTree by code/name;
    * Panel 2 filters HeatMap rows by company code. Driven by `/`-search
    * focus + per-panel input.
@@ -129,6 +155,15 @@ export interface TerminalActions {
     pending: TerminalState['pendingMissingCell'],
   ) => void;
   /**
+   * Phase 7.G Turn VI — set the Panel 3 sub-group rollup hint. MUST clear
+   * activeIndicatorValueId AND pendingMissingCell to preserve the mutual-
+   * exclusion invariant. Pass null to clear (e.g. when user clicks a
+   * computed cell on a level=2 op-co).
+   */
+  setPendingRollupCell: (
+    pending: TerminalState['pendingRollupCell'],
+  ) => void;
+  /**
    * Phase C4 v1 — pin the user's chosen scenario for the runner. Set by
    * `SCN <code> GO` dispatch in CommandBar; consumed by `<ScenarioPanel/>`
    * to pre-select the matching row when the modal opens.
@@ -212,6 +247,7 @@ let globalState: TerminalState = {
   activePanelId: 1,
   activeIndicatorValueId: null,
   pendingMissingCell: null,
+  pendingRollupCell: null,
   searchByPanel: {},
   alertsCount: null,
   // SSR renders with `false`; mounted-effect hook in PanelGrid hydrates
@@ -293,12 +329,15 @@ const actions: TerminalActions = {
     writeJsonToStorage(RECENT_LS_KEY, next);
   },
   setActiveIndicatorValue: (id) =>
-    // Mutual-exclusion invariant: setting an active IV clears any
-    // pending missing-cell hint. The two states cover disjoint paths
-    // (computed-cell click vs missing-cell click), and Panel 3 reads
-    // them in priority order — keeping pending alive while activeIv
-    // is set would let stale hints leak through into the wrong panel.
-    setGlobalState({ activeIndicatorValueId: id, pendingMissingCell: null }),
+    // Mutual-exclusion invariant (Turn VI extends): setting an active IV
+    // clears BOTH pending hints (missing + rollup). Panel 3 reads the
+    // three states in priority order; keeping any pending hint alive
+    // while activeIv is set would leak stale copy across panel paths.
+    setGlobalState({
+      activeIndicatorValueId: id,
+      pendingMissingCell: null,
+      pendingRollupCell: null,
+    }),
   setPendingMissingCell: (pending) =>
     // Symmetric to setActiveIndicatorValue — setting a pending hint
     // clears any active IV. Use null to clear pending without touching
@@ -306,6 +345,16 @@ const actions: TerminalActions = {
     setGlobalState({
       pendingMissingCell: pending,
       activeIndicatorValueId: pending ? null : globalState.activeIndicatorValueId,
+      pendingRollupCell: pending ? null : globalState.pendingRollupCell,
+    }),
+  setPendingRollupCell: (pending) =>
+    // Phase 7.G Turn VI — symmetric to the missing-cell hint. Setting
+    // a rollup hint clears the active IV + any missing-cell hint;
+    // passing null clears the rollup hint alone.
+    setGlobalState({
+      pendingRollupCell: pending,
+      activeIndicatorValueId: pending ? null : globalState.activeIndicatorValueId,
+      pendingMissingCell: pending ? null : globalState.pendingMissingCell,
     }),
   setActiveScenarioCode: (code) => setGlobalState({ activeScenarioCode: code }),
   setSearchForPanel: (panelId, query) =>
@@ -355,6 +404,7 @@ const actions: TerminalActions = {
       activePanelId: 1,
       activeIndicatorValueId: null,
       pendingMissingCell: null,
+      pendingRollupCell: null,
       searchByPanel: {},
       alertsCount: null,
       recentCompanyCodes: [],

@@ -91,6 +91,7 @@ export function IndicatorDetail() {
   const locale = useLocale();
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const pendingMissing = useTerminalStore((s) => s.pendingMissingCell);
+  const pendingRollup = useTerminalStore((s) => s.pendingRollupCell);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
 
   const [detail, setDetail] = useState<IndicatorValueDetail | null>(null);
@@ -164,6 +165,66 @@ export function IndicatorDetail() {
   };
 
   if (!ivId) {
+    // Phase 7.G Turn VI — sub-group rollup cell click. Synthetic-rollup
+    // cells have lit value+status (avg + worst-of-children) but no
+    // persisted IV. Pre-Turn-VI the user got the "no computed value
+    // yet" hint — wrong message: the cell IS computed, just not as a
+    // single canonical IV. Render the aggregate + child count instead
+    // so the user understands they clicked an averaged value.
+    if (pendingRollup) {
+      const statusTone =
+        pendingRollup.status === 'red'
+          ? 'text-[#FF4757]'
+          : pendingRollup.status === 'amber'
+            ? 'text-[#FFB800]'
+            : pendingRollup.status === 'green'
+              ? 'text-[#00D4AA]'
+              : 'text-gray-500';
+      const formattedValue = Number.isFinite(pendingRollup.value)
+        ? pendingRollup.value.toFixed(1)
+        : '—';
+      return (
+        <div
+          data-testid="indicator-detail-rollup"
+          className="font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
+        >
+          <div className="text-gray-400">
+            <span className="text-[#FFB800] font-semibold">
+              {pendingRollup.companyCode}
+            </span>{' '}
+            ×{' '}
+            <span className="text-[#FFB800] font-semibold">
+              {pendingRollup.indicatorCode}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className={`text-2xl font-semibold ${statusTone}`}>
+              {formattedValue}
+              {pendingRollup.indicatorUnit ? (
+                <span className="ml-1 text-sm">
+                  {pendingRollup.indicatorUnit}
+                </span>
+              ) : null}
+            </span>
+            <span
+              className={`uppercase tracking-wider text-[10px] ${statusTone}`}
+            >
+              {pendingRollup.status}
+            </span>
+          </div>
+          <div className="text-gray-500 max-w-md">
+            {t('indicatorDetail.rollupHint', {
+              indicator: pendingRollup.indicatorName,
+              company: pendingRollup.companyCode,
+              count: pendingRollup.contributingChildCount,
+            })}
+          </div>
+          <div className="text-gray-700 text-[10px]">
+            {t('indicatorDetail.rollupAction')}
+          </div>
+        </div>
+      );
+    }
     // Phase 7.D regression-architect closure — when user clicked a
     // MISSING HeatMap cell (no IV row yet), HeatMap routed via
     // `setPendingMissingCell` instead of `setActiveIv`. Render a self-
