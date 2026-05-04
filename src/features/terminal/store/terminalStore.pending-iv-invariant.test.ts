@@ -43,9 +43,25 @@ function useActions() {
   return useTerminalStore((s) => ({
     setActiveIndicatorValue: s.setActiveIndicatorValue,
     setPendingMissingCell: s.setPendingMissingCell,
+    setPendingRollupCell: s.setPendingRollupCell,
     clearState: s.clearState,
   }));
 }
+
+// Phase 7.G Turn VI added a 3rd mutex axis: pendingRollupCell. Sample
+// payload mirrors the rollup-cell click handler in HeatMap.tsx — sub-
+// group cell with averaged value + worst-of-children status.
+const SAMPLE_ROLLUP = {
+  companyId: 'co_aac_sg',
+  companyCode: 'AAC',
+  indicatorId: 'ind_nm',
+  indicatorCode: 'IND_NET_MARGIN',
+  indicatorName: 'Net Margin',
+  indicatorUnit: '%',
+  value: -9.46,
+  status: 'red' as const,
+  contributingChildCount: 1,
+} as const;
 
 beforeEach(() => {
   // Hard-reset the IV/pending slice via clearState so every test starts
@@ -112,6 +128,75 @@ describe('terminalStore — pending/activeIv mutual-exclusion invariant', () => 
     });
     expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv_now_drilled_down');
     expect(getTerminalSnapshot().pendingMissingCell).toBeNull();
+  });
+
+  // Phase 7.G Turn VI added pendingRollupCell as a 3rd mutex axis.
+  // Architect Turn-V Round-1 💡: cover all 6 transitions explicitly so a
+  // future setter regression doesn't slip through (4 cases below).
+
+  it('Turn VI: setPendingRollupCell({...}) CLEARS activeIv AND pendingMissingCell', () => {
+    // Setting the rollup hint must clear BOTH other axes — this is the
+    // load-bearing case when user clicks a synthetic-rollup cell after
+    // a missing-cell click had populated pendingMissingCell.
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setActiveIndicatorValue('iv_drilled_down');
+      result.current.setPendingMissingCell({ ...SAMPLE_PENDING });
+    });
+    // Pre-state: activeIv null (cleared by setPendingMissingCell),
+    // pendingMissing populated.
+    expect(getTerminalSnapshot().pendingMissingCell).toEqual(SAMPLE_PENDING);
+
+    act(() => {
+      result.current.setPendingRollupCell({ ...SAMPLE_ROLLUP });
+    });
+    expect(getTerminalSnapshot().pendingRollupCell).toEqual(SAMPLE_ROLLUP);
+    expect(getTerminalSnapshot().pendingMissingCell).toBeNull();
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBeNull();
+  });
+
+  it('Turn VI: setActiveIndicatorValue(id) CLEARS pendingRollupCell', () => {
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setPendingRollupCell({ ...SAMPLE_ROLLUP });
+    });
+    expect(getTerminalSnapshot().pendingRollupCell).toEqual(SAMPLE_ROLLUP);
+
+    act(() => {
+      result.current.setActiveIndicatorValue('iv_drilled_down');
+    });
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv_drilled_down');
+    expect(getTerminalSnapshot().pendingRollupCell).toBeNull();
+  });
+
+  it('Turn VI: setPendingMissingCell({...}) CLEARS pendingRollupCell', () => {
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setPendingRollupCell({ ...SAMPLE_ROLLUP });
+    });
+    expect(getTerminalSnapshot().pendingRollupCell).toEqual(SAMPLE_ROLLUP);
+
+    act(() => {
+      result.current.setPendingMissingCell({ ...SAMPLE_PENDING });
+    });
+    expect(getTerminalSnapshot().pendingMissingCell).toEqual(SAMPLE_PENDING);
+    expect(getTerminalSnapshot().pendingRollupCell).toBeNull();
+  });
+
+  it('Turn VI: setPendingRollupCell(null) PRESERVES activeIv (dismiss path symmetric to PRIMARY)', () => {
+    // Mirror of the PRIMARY case for the rollup axis. Dismiss button
+    // future-call would pass null; activeIv must survive.
+    const { result } = renderHook(() => useActions());
+    act(() => {
+      result.current.setActiveIndicatorValue('iv_drilled_down');
+    });
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv_drilled_down');
+
+    act(() => {
+      result.current.setPendingRollupCell(null);
+    });
+    expect(getTerminalSnapshot().activeIndicatorValueId).toBe('iv_drilled_down');
+    expect(getTerminalSnapshot().pendingRollupCell).toBeNull();
   });
 
   it('clearState() resets BOTH fields regardless of which one was set first (sanity)', () => {
