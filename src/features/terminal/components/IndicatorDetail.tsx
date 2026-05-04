@@ -88,6 +88,8 @@ type RecomputeState =
 
 export function IndicatorDetail() {
   const t = useTranslations('terminal');
+  const tStatus = useTranslations('terminal.status');
+  const tIndustries = useTranslations('industries');
   const locale = useLocale();
   const ivId = useTerminalStore((s) => s.activeIndicatorValueId);
   const pendingMissing = useTerminalStore((s) => s.pendingMissingCell);
@@ -325,7 +327,19 @@ export function IndicatorDetail() {
           <div className="text-gray-500 uppercase tracking-wider text-[9px]">
             {co.code} · {co.name}
             {co.industry && (
-              <span className="ml-2 text-gray-700">({co.industry})</span>
+              <span className="ml-2 text-gray-700">
+                ({(() => {
+                  // Phase 7.G Turn VII — localize industry code via the
+                  // `industries.*` namespace shipped Turn G. Defensive
+                  // try/catch falls back to raw code when key is missing
+                  // (mirrors the alert-message-i18n.ts helper pattern).
+                  try {
+                    return tIndustries(co.industry as never);
+                  } catch {
+                    return co.industry;
+                  }
+                })()})
+              </span>
             )}
           </div>
           <div className="text-[#E8EDF5] font-semibold text-sm tracking-tight mt-0.5">
@@ -338,7 +352,17 @@ export function IndicatorDetail() {
             </span>
           </div>
           <div className="text-gray-600 text-[10px] mt-0.5">
-            period {period} · direction {ind.direction} · unit {ind.unit}
+            {/* Phase 7.G Turn VII — meta-line labels + direction value
+                localized. Pre-Turn-VII rendered raw "period 2026 · direction
+                higher_better · unit %" — labels and the direction enum
+                value all stayed English regardless of locale. */}
+            {t('indicatorDetail.metaPeriod')} {period} · {t('indicatorDetail.metaDirection')}{' '}
+            {ind.direction === 'higher_better'
+              ? t('indicatorDetail.directionHigherBetter')
+              : ind.direction === 'lower_better'
+                ? t('indicatorDetail.directionLowerBetter')
+                : t('indicatorDetail.directionBand')}
+            {' '}· {t('indicatorDetail.metaUnit')} {ind.unit}
           </div>
         </div>
         <div className="text-right shrink-0 flex flex-col items-end gap-1">
@@ -358,7 +382,19 @@ export function IndicatorDetail() {
             <span aria-hidden="true" className="mr-0.5 opacity-80">
               {statusShape(status)}
             </span>
-            {status}
+            {/* Phase 7.G Turn VII — localize status word via the existing
+                terminal.status.{green,amber,red,unknown} namespace
+                ("Healthy"/"Watch"/"Critical"/"No data" in EN; idiomatic
+                in RU/AZ). Defensive try/catch keeps the raw code as
+                fallback if a future status enum value lands without a
+                matching key. */}
+            {(() => {
+              try {
+                return tStatus(status as never);
+              } catch {
+                return status;
+              }
+            })()}
           </div>
           {/* Phase 7.E phase 2 hardening (sub-40) — per-IV recompute
               affordance. Single-IV path (companyId+indicatorCode) is
@@ -441,7 +477,10 @@ export function IndicatorDetail() {
             const sign = delta > 0 ? "+" : "";
             return (
               <span className="text-[10px] text-gray-500 ml-auto tabular-nums">
-                {numeric.length}/12 pts · Δ {sign}{formatValue(delta)}
+                {/* Phase 7.G Turn VII — reuse forecastPts key for the
+                    trend "pts" label so it tracks RU "точек" / AZ "xal"
+                    instead of staying raw EN. */}
+                {numeric.length}/12 {t('indicatorDetail.forecastPts')} · Δ {sign}{formatValue(delta)}
               </span>
             );
           })()}
@@ -732,7 +771,18 @@ function ForecastSection(props: {
         <span className="text-[9px] text-gray-500 ml-auto">
           {isFlat
             ? t('indicatorDetail.forecastNoChange')
-            : `${forecast.confidence} ${t('indicatorDetail.forecastConfidence')} · R² ${forecast.r2.toFixed(2)} · ${forecast.contributingCount}/12 ${t('indicatorDetail.forecastPts')}`}
+            : (() => {
+                // Phase 7.G Turn VII — localize confidence value
+                // (high/medium/low). Pre-Turn-VII rendered raw EN
+                // alongside the localized "уверенность"/"inam" label.
+                const confidenceKey =
+                  forecast.confidence === 'high'
+                    ? 'indicatorDetail.confidenceHigh'
+                    : forecast.confidence === 'low'
+                      ? 'indicatorDetail.confidenceLow'
+                      : 'indicatorDetail.confidenceMedium';
+                return `${t(confidenceKey)} ${t('indicatorDetail.forecastConfidence')} · R² ${forecast.r2.toFixed(2)} · ${forecast.contributingCount}/12 ${t('indicatorDetail.forecastPts')}`;
+              })()}
         </span>
       </div>
 

@@ -45,6 +45,13 @@ const EXPLICIT_LABELS: Record<string, string> = {
   // IndicatorDetail keys with non-pattern labels (lowercase phrases / hyphens)
   'indicatorDetail.forecastConfidence': 'confidence',
   'indicatorDetail.forecastPts': 'pts',
+  // Phase 7.G Turn VII — confidence-value localization (lowercase
+  // phrases like the surrounding "confidence" label). Keep them
+  // explicit-labels entries so existing tests asserting "high
+  // confidence" / "medium confidence" continue to match.
+  'indicatorDetail.confidenceHigh': 'high',
+  'indicatorDetail.confidenceMedium': 'medium',
+  'indicatorDetail.confidenceLow': 'low',
   'indicatorDetail.forecastNoChange': 'no change expected',
   'indicatorDetail.forecastCITitle': '95% prediction interval',
   'indicatorDetail.reRun': 'Re-run',
