@@ -140,9 +140,11 @@ describe('runRecomputeForCompanies', () => {
       { companyId: 'co_1', year: 2026 },
     ]);
 
-    // Phase 7.E C6 v3.1 — `alertEvents` field added to result post-Turn IV
-    // wire-in; ignore here via objectContaining since this test is about
-    // the recompute-loop happy path, not alert-persistence.
+    // Phase 7.E C6 v3.1 — `alertEvents` field on the result. v3.4 made it
+    // required (Turn IX); this test still uses `toMatchObject` because the
+    // success path computes a non-trivial `alertEvents` shape that this
+    // test isn't asserting. Dedicated alertEvents-shape coverage lives in
+    // the `alert-event persistence wire-in` describe block below.
     expect(result).toMatchObject({ ok: 1, unknown: 0, failed: 0, targets: 1 });
     expect(mockedRecompute).toHaveBeenCalledTimes(1);
     expect(mockedRecompute).toHaveBeenCalledWith(
