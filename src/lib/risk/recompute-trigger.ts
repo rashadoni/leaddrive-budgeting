@@ -62,8 +62,15 @@ export interface RunRecomputeResult {
   unknown: number;
   failed: number;
   targets: number;
-  /** Phase 7.E C6 v3.1 — alert-event persistence outcome (post-recompute). */
-  alertEvents?: {
+  /**
+   * Phase 7.E C6 v3.1 — alert-event persistence outcome (post-recompute).
+   * Phase 7.G Turn IX (v3.4) — required not optional. Short-circuit paths
+   * (empty-affected / no-operational / no-targets) return zero-shape
+   * `{periodsPersisted: 0, totalCreated: 0, totalDeleted: 0, failed: 0}`
+   * instead of omitting the field, so consumers can rely on its presence
+   * without optional-chain noise (architect Turn-IV 💡 #1 closure).
+   */
+  alertEvents: {
     periodsPersisted: number;
     totalCreated: number;
     totalDeleted: number;
@@ -95,6 +102,15 @@ const EMPTY_RESULT: RunRecomputeResult = {
   unknown: 0,
   failed: 0,
   targets: 0,
+  // Phase 7.G Turn IX (v3.4) — alertEvents required (architect Turn-IV
+  // 💡 #1 closure). Short-circuit paths return zero-shape so consumers
+  // can rely on field presence without optional-chain noise.
+  alertEvents: {
+    periodsPersisted: 0,
+    totalCreated: 0,
+    totalDeleted: 0,
+    failed: 0,
+  },
 };
 
 /**

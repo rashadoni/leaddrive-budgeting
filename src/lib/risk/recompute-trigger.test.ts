@@ -114,7 +114,20 @@ describe('runRecomputeForCompanies', () => {
       'org_1',
       [],
     );
-    expect(result).toEqual({ ok: 0, unknown: 0, failed: 0, targets: 0 });
+    // Phase 7.G Turn IX (v3.4) — alertEvents required not optional;
+    // EMPTY_RESULT short-circuit returns zero-shape via spread.
+    expect(result).toEqual({
+      ok: 0,
+      unknown: 0,
+      failed: 0,
+      targets: 0,
+      alertEvents: {
+        periodsPersisted: 0,
+        totalCreated: 0,
+        totalDeleted: 0,
+        failed: 0,
+      },
+    });
     expect(prisma.company.findMany).not.toHaveBeenCalled();
     expect(prisma.indicatorDefinition.findMany).not.toHaveBeenCalled();
   });
@@ -154,7 +167,20 @@ describe('runRecomputeForCompanies', () => {
       { companyId: 'co_1', year: 2026 },
       { companyId: 'co_2', year: 2026 },
     ]);
-    expect(result).toEqual({ ok: 0, unknown: 0, failed: 0, targets: 0 });
+    // Phase 7.G Turn IX (v3.4) — alertEvents required not optional;
+    // EMPTY_RESULT short-circuit returns zero-shape via spread.
+    expect(result).toEqual({
+      ok: 0,
+      unknown: 0,
+      failed: 0,
+      targets: 0,
+      alertEvents: {
+        periodsPersisted: 0,
+        totalCreated: 0,
+        totalDeleted: 0,
+        failed: 0,
+      },
+    });
     expect(prisma.indicatorDefinition.findMany).not.toHaveBeenCalled();
     expect(mockedRecompute).not.toHaveBeenCalled();
   });
