@@ -314,10 +314,32 @@ export function IndicatorDetail() {
   const aggregates = inputs?.aggregates ?? {};
   const errPayload = inputs?.error;
 
-  const hint = ind.hintTemplateEn
-    ? ind.hintTemplateEn
+  // Phase 7.G Turn VIII — locale-aware hint resolution + status-token i18n
+  // (architect Turn-VII Round-1 sub-task closure). Pre-Turn-VIII the hint
+  // paragraph rendered hintTemplateEn regardless of locale and substituted
+  // raw status word ("RED"/"AMBER"/"GREEN"/"UNKNOWN"); both leaked English
+  // into RU/AZ panels even after the surrounding labels were localized.
+  // New contract: pick locale-matching field with EN fallback (idiomatic
+  // when a translation is missing rather than awkward auto-translate);
+  // localize the {status} substitution via tStatus() so the inline word
+  // matches the badge above.
+  const hintTemplate =
+    locale === 'ru'
+      ? ind.hintTemplateRu || ind.hintTemplateEn
+      : locale === 'az'
+        ? ind.hintTemplateAz || ind.hintTemplateEn
+        : ind.hintTemplateEn;
+  const localizedStatusWord = (() => {
+    try {
+      return tStatus(status as never);
+    } catch {
+      return status.toUpperCase();
+    }
+  })();
+  const hint = hintTemplate
+    ? hintTemplate
         .replace("{value}", formatValue(value))
-        .replace("{status}", status.toUpperCase())
+        .replace("{status}", localizedStatusWord)
     : null;
 
   return (

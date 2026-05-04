@@ -243,6 +243,8 @@ async function upsertGlobal(seed: IndicatorSeed) {
     sparklineFormula: seed.sparklineFormula ?? null,
     thresholds: seed.thresholds as unknown as Prisma.InputJsonValue,
     hintTemplateEn: seed.hintTemplateEn ?? null,
+    hintTemplateAz: seed.hintTemplateAz ?? null,
+    hintTemplateRu: seed.hintTemplateRu ?? null,
     requiredInputs: seed.requiredInputs,
     isActive: true,
     sortOrder: seed.sortOrder,

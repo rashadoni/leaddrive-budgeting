@@ -29,6 +29,15 @@ export interface IndicatorSeed {
   sparklineFormula?: string
   thresholds: Thresholds
   hintTemplateEn?: string
+  /**
+   * Phase 7.G Turn VIII — locale-aware hint templates. The render path
+   * at `IndicatorDetail.tsx:315` picks the field matching the user's
+   * locale; falls back to `hintTemplateEn` when the locale-specific
+   * field is null/empty. Status-token substitution `{status}` is localized
+   * via `tStatus()` at render time (architect Turn-VII Round-1 sub-task).
+   */
+  hintTemplateAz?: string
+  hintTemplateRu?: string
   requiredInputs: string[]
   sortOrder: number
 }
@@ -228,6 +237,10 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "{value}% of input costs are imported. AZN weakness hits gross margin directly.",
+    hintTemplateRu:
+      "{value}% затрат на сырьё — импорт. Ослабление AZN бьёт по валовой марже напрямую.",
+    hintTemplateAz:
+      "Giriş xərclərinin {value}%-i idxaldır. AZN-in zəifləməsi ümumi mənfəətə birbaşa təsir edir.",
     requiredInputs: ["budgetLine", "currencyRate"],
     sortOrder: 5,
   },
@@ -382,6 +395,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}% — revenue left after COGS. Industrial benchmark 25–35%; below 15% means pricing or input-cost discipline is broken.",
+    hintTemplateRu:
+      "Валовая маржа {value}% — доход после прямых затрат. Промышленный бенчмарк 25–35%; ниже 15% значит сломан pricing или контроль затрат.",
+    hintTemplateAz:
+      "Ümumi mənfəət {value}% — gəlirin COGS-dan sonrakı qalığı. Sənaye benchmark 25–35%; 15%-dən aşağı qiymətləmə və ya giriş-xərc nizamı pozulub.",
     requiredInputs: ["budgetLine"],
     sortOrder: 10,
   },
@@ -402,6 +419,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Net margin {value}%. Below 3% — a single input-cost spike or FX move erases profit. Fix OpEx or revenue mix.",
+    hintTemplateRu:
+      "Чистая маржа {value}%. Ниже 3% — один скачок цен на сырьё или FX-движение съедает прибыль. Чините OpEx или микс выручки.",
+    hintTemplateAz:
+      "Xalis mənfəət {value}%. 3%-dən aşağı — bir giriş-xərc sıçrayışı və ya FX hərəkəti mənfəəti silir. OpEx-i və ya gəlir miksini düzəltməlisiniz.",
     requiredInputs: ["budgetLine"],
     sortOrder: 20,
   },
@@ -422,6 +443,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Operating expenses are {value}% of revenue. Above 35% suggests overhead bloat — review payroll, rent, SG&A.",
+    hintTemplateRu:
+      "Операционные расходы — {value}% от выручки. Выше 35% — раздутый overhead, проверьте ФОТ, аренду, SG&A.",
+    hintTemplateAz:
+      "Əməliyyat xərcləri gəlirin {value}%-dir. 35%-dən yuxarı şişmiş overhead — əmək haqqı fondu, icarə, SG&A-nı yoxlayın.",
     requiredInputs: ["budgetLine"],
     sortOrder: 30,
   },
@@ -442,6 +467,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "COGS is {value}% of revenue. Above 85% — one bad raw-material cycle flips the company to a loss.",
+    hintTemplateRu:
+      "Себестоимость {value}% от выручки. Выше 85% — один неудачный цикл сырья переводит компанию в убыток.",
+    hintTemplateAz:
+      "COGS gəlirin {value}%-dir. 85%-dən yuxarı — bir uğursuz xammal dövrü şirkəti zərərə keçirir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 40,
   },
@@ -469,6 +498,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Operating leverage = {value}. Above 2.0 means gross profit comfortably covers fixed-cost overhead; below 1.0 every revenue dip eats payroll/rent/admin.",
+    hintTemplateRu:
+      "Операционный рычаг = {value}. Выше 2.0 — валовая прибыль уверенно покрывает постоянные расходы; ниже 1.0 любое падение выручки съедает ФОТ/аренду/админ.",
+    hintTemplateAz:
+      "Əməliyyat leveric = {value}. 2.0-dən yuxarı ümumi mənfəət sabit xərcləri rahat örtür; 1.0-dən aşağı hər gəlir azalması əmək haqqı/icarə/inzibatı yeyir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 50,
   },
@@ -502,6 +535,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Revenue HHI = {value}. Above 3000 means a single product/customer dominates — diversify the pipeline before regulatory or demand shock.",
+    hintTemplateRu:
+      "HHI выручки = {value}. Выше 3000 — один продукт/клиент доминирует; диверсифицируйте pipeline до регуляторного или спросового шока.",
+    hintTemplateAz:
+      "Gəlir HHI = {value}. 3000-dən yuxarı bir məhsul/müştəri üstünlük təşkil edir — tənzimləyici və ya tələb şokundan əvvəl pipeline-ı diversifikasiya edin.",
     requiredInputs: ["budgetLine.revenue_line_hhi"],
     sortOrder: 70,
   },
@@ -522,6 +559,10 @@ export const industrialIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx is {value}% of COGS. Industrial baseline 15-30%; above 50% means non-production costs are too heavy relative to direct production — restructure or reclassify.",
+    hintTemplateRu:
+      "OpEx составляет {value}% от COGS. Промышленный baseline 15–30%; выше 50% — непроизводственные расходы слишком тяжёлые относительно прямого производства, реструктуризируйте или переклассифицируйте.",
+    hintTemplateAz:
+      "OpEx COGS-un {value}%-dir. Sənaye baseline 15–30%; 50%-dən yuxarı — qeyri-istehsal xərcləri birbaşa istehsala nisbətən çox ağırdır, yenidən qurun və ya təsnif edin.",
     requiredInputs: ["budgetLine"],
     sortOrder: 80,
   },
@@ -547,6 +588,10 @@ export const servicesIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Services gross margin {value}%. Healthy benchmarks run 40-60%; below 25% means pricing power is eroding or direct-service-delivery costs are out of line.",
+    hintTemplateRu:
+      "Валовая маржа услуг {value}%. Здоровые бенчмарки 40–60%; ниже 25% — pricing power размывается или прямые затраты на оказание услуг вышли из-под контроля.",
+    hintTemplateAz:
+      "Xidmət ümumi mənfəəti {value}%. Sağlam benchmark 40–60%; 25%-dən aşağı — qiymətləmə gücü aşınır və ya birbaşa xidmət-çatdırılma xərcləri sıradan çıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 110,
   },
@@ -567,6 +612,10 @@ export const servicesIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Net margin {value}%. Services businesses below 0% are losing money on operations — investigate pricing, utilization, and overhead allocation.",
+    hintTemplateRu:
+      "Чистая маржа {value}%. Сервисные бизнесы ниже 0% теряют деньги на операциях — проверьте pricing, утилизацию и распределение overhead.",
+    hintTemplateAz:
+      "Xalis mənfəət {value}%. 0%-dən aşağı xidmət bizneslər əməliyyatlarda pul itirir — qiymətləmə, utilizasiya və overhead bölgüsünü yoxlayın.",
     requiredInputs: ["budgetLine"],
     sortOrder: 120,
   },
@@ -587,6 +636,10 @@ export const servicesIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Services baseline 50-70% (personnel-heavy); above 85% suggests depreciation or overhead is too large for the revenue base.",
+    hintTemplateRu:
+      "OpEx — {value}% от выручки. Сервисный baseline 50–70% (персонал-центричный); выше 85% — амортизация или overhead слишком велики для базы выручки.",
+    hintTemplateAz:
+      "OpEx gəlirin {value}%-dir. Xidmət baseline 50–70% (personalla yüklü); 85%-dən yuxarı — amortizasiya və ya overhead gəlir bazası üçün çox böyükdür.",
     requiredInputs: ["budgetLine"],
     sortOrder: 130,
   },
@@ -607,6 +660,10 @@ export const servicesIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "COGS {value}% of revenue. Services above 60% usually means low-margin re-selling or high third-party pass-through costs.",
+    hintTemplateRu:
+      "COGS {value}% от выручки. Услуги выше 60% — обычно низкомаржинальная перепродажа или высокие сторонние pass-through расходы.",
+    hintTemplateAz:
+      "COGS gəlirin {value}%-dir. Xidmətdə 60%-dən yuxarı — adətən aşağı-marja yenidən-satış və ya yüksək üçüncü-tərəf pass-through xərcləri.",
     requiredInputs: ["budgetLine"],
     sortOrder: 140,
   },
@@ -627,6 +684,10 @@ export const servicesIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Revenue HHI = {value}. Above 3000 means a single client dominates — losing them jeopardises the business. Diversify the pipeline.",
+    hintTemplateRu:
+      "HHI выручки = {value}. Выше 3000 — один клиент доминирует; его потеря угрожает бизнесу. Диверсифицируйте pipeline.",
+    hintTemplateAz:
+      "Gəlir HHI = {value}. 3000-dən yuxarı bir müştəri üstünlük təşkil edir — onu itirmək biznesi təhlükəyə atır. Pipeline-ı diversifikasiya edin.",
     requiredInputs: ["budgetLine.revenue_line_hhi"],
     sortOrder: 150,
   },
