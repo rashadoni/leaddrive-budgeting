@@ -13,22 +13,22 @@
  * `Thresholds` directly.
  */
 
-import type { Direction, Thresholds } from "./formula-engine"
+import type { Direction, Thresholds } from "./formula-engine";
 
 export interface IndicatorSeed {
-  code: string
-  nameEn: string
-  nameAz?: string
-  nameRu?: string
+  code: string;
+  nameEn: string;
+  nameAz?: string;
+  nameRu?: string;
   /** fx | commodity | operational | geopolitical | macro | regulatory | composite */
-  category: string
-  industries: string[]
-  unit: string
-  direction: Direction
-  formula: string
-  sparklineFormula?: string
-  thresholds: Thresholds
-  hintTemplateEn?: string
+  category: string;
+  industries: string[];
+  unit: string;
+  direction: Direction;
+  formula: string;
+  sparklineFormula?: string;
+  thresholds: Thresholds;
+  hintTemplateEn?: string;
   /**
    * Phase 7.G Turn VIII — locale-aware hint templates. The render path
    * at `IndicatorDetail.tsx:315` picks the field matching the user's
@@ -36,10 +36,10 @@ export interface IndicatorSeed {
    * field is null/empty. Status-token substitution `{status}` is localized
    * via `tStatus()` at render time (architect Turn-VII Round-1 sub-task).
    */
-  hintTemplateAz?: string
-  hintTemplateRu?: string
-  requiredInputs: string[]
-  sortOrder: number
+  hintTemplateAz?: string;
+  hintTemplateRu?: string;
+  requiredInputs: string[];
+  sortOrder: number;
 }
 
 // ─── Hospitality pack (5) ──────────────────────────────────────────────────
@@ -63,13 +63,9 @@ export const hospitalityIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Occupancy is {value}% — {status}. Target is 70%+ for stabilised hospitality assets.",
-
     hintTemplateRu:
-
       "Загрузка {value}% — {status}. Целевой ориентир для устойчивого hospitality актива — 70%+.",
-
     hintTemplateAz:
-
       "Doluluq {value}% — {status}. Sabitləşmiş hospitality aktivi üçün hədəf — 70%+.",
     requiredInputs: ["booking", "company.settings.totalRooms"],
     sortOrder: 10,
@@ -91,13 +87,9 @@ export const hospitalityIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "RevPAR of {value} AZN — combines rate and occupancy. Flag if trending below last-year same-month.",
-
     hintTemplateRu:
-
       "RevPAR {value} AZN — комбинирует тариф и загрузку. Сигнал: тренд ниже того же месяца прошлого года.",
-
     hintTemplateAz:
-
       "RevPAR {value} AZN — qiymət və doluluğun birləşməsi. Siqnal: keçən il eyni ayın altında trend.",
     requiredInputs: ["booking", "company.settings.totalRooms"],
     sortOrder: 20,
@@ -137,13 +129,9 @@ export const hospitalityIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "{value}% of revenue is FX-denominated. A 10% AZN devaluation moves EBITDA by roughly the same share.",
-
     hintTemplateRu:
-
       "{value}% выручки в FX. Девальвация AZN на 10% двигает EBITDA примерно на ту же долю.",
-
     hintTemplateAz:
-
       "Gəlirin {value}%-i FX-də. AZN-in 10% devalvasiyası EBITDA-nı təxminən eyni payda hərəkət etdirir.",
     requiredInputs: ["booking", "currencyRate"],
     sortOrder: 40,
@@ -165,18 +153,14 @@ export const hospitalityIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "HHI = {value}. Above 2500 means a single source market dominates — one travel restriction can sink the quarter.",
-
     hintTemplateRu:
-
       "HHI = {value}. Выше 2500 — один source-market доминирует; одно travel-ограничение топит квартал.",
-
     hintTemplateAz:
-
       "HHI = {value}. 2500-dən yuxarı bir mənbə bazar üstünlük təşkil edir; bir səyahət məhdudiyyəti rübü batırır.",
     requiredInputs: ["booking.sourceCountry"],
     sortOrder: 50,
   },
-]
+];
 
 // ─── Agro pack (3 — AGRO_FX_RISK retired) ──────────────────────────────────
 
@@ -198,15 +182,14 @@ export const agroIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Yield is {value} t/ha. Below 2.5 usually signals irrigation, seed-quality, or pest issues — investigate.",
-
     hintTemplateRu:
-
       "Урожайность {value} т/га. Ниже 2.5 — обычно сигнал ирригации, качества семян или вредителей; разбираться.",
-
     hintTemplateAz:
-
       "Məhsuldarlıq {value} t/ha. 2.5-dən aşağı — adətən suvarma, toxum keyfiyyəti və ya zərərvericilər siqnalı; araşdırın.",
-    requiredInputs: ["operationalFact:harvest_tons", "operationalFact:area_hectares"],
+    requiredInputs: [
+      "operationalFact:harvest_tons",
+      "operationalFact:area_hectares",
+    ],
     sortOrder: 10,
   },
   {
@@ -226,13 +209,9 @@ export const agroIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Drought index at {value}/100 — above 60 is the historical threshold for >20% yield loss in the region.",
-
     hintTemplateRu:
-
       "Индекс засухи {value}/100 — выше 60 — исторический порог для >20% потери урожая в регионе.",
-
     hintTemplateAz:
-
       "Quraqlıq indeksi {value}/100 — 60-dan yuxarı bölgə üçün >20% məhsul itkisinin tarixi həddi.",
     requiredInputs: ["operationalFact:drought_index"],
     sortOrder: 20,
@@ -254,18 +233,14 @@ export const agroIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Trailing-12M price volatility is {value}%. Above 25% — consider forward contracts to lock margins.",
-
     hintTemplateRu:
-
       "Скользящая 12-месячная волатильность цены {value}%. Выше 25% — рассмотрите forward-контракты для фиксации маржи.",
-
     hintTemplateAz:
-
       "Sürüşkən 12-aylıq qiymət volatilliyi {value}%. 25%-dən yuxarı — marjanı bağlamaq üçün forvard müqavilələrini nəzərdən keçirin.",
     requiredInputs: ["operationalFact:commodity_price"],
     sortOrder: 40,
   },
-]
+];
 
 // ─── Cross-sector pack (4) ─────────────────────────────────────────────────
 
@@ -352,13 +327,9 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Total revenue {value} AZN. Persists raw $ for rollup() and fact() composites; risk classification lives on margin indicators.",
-
     hintTemplateRu:
-
       "Общая выручка {value} AZN. Сохраняет сырые $ для rollup() и fact() композитов; классификация рисков на других индикаторах.",
-
     hintTemplateAz:
-
       "Ümumi gəlir {value} AZN. Rollup() və fact() kompozitləri üçün xam $ saxlayır; risk təsnifatı digər göstəricilərdə.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1,
@@ -407,13 +378,9 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Holding-wide revenue {value} AZN, summed across direct children. 0 = no operational sub-cos contributing yet. Most meaningful at parent (level=1) companies.",
-
     hintTemplateRu:
-
       "Выручка холдинга {value} AZN, суммарно по прямым дочерним компаниям. 0 = ни одна операционная саб-ко не дала вклад.",
-
     hintTemplateAz:
-
       "Holdinqin gəliri {value} AZN, birbaşa törəmə şirkətlər üzrə cəmi. 0 = heç bir əməliyyat törəməsi töhfə verməyib.",
     requiredInputs: ["rollup:IND_REVENUE_TOTAL"],
     sortOrder: 2,
@@ -445,7 +412,7 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine", "fact:IND_NET_MARGIN@2025"],
     sortOrder: 3,
   },
-]
+];
 
 // ─── Industrial pack (4) ───────────────────────────────────────────────────
 
@@ -638,7 +605,7 @@ export const industrialIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine"],
     sortOrder: 80,
   },
-]
+];
 
 // ─── Services pack (5) ─────────────────────────────────────────────────────
 
@@ -763,7 +730,7 @@ export const servicesIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine.revenue_line_hhi"],
     sortOrder: 150,
   },
-]
+];
 
 // ─── Pharma pack (5) ───────────────────────────────────────────────────────
 
@@ -785,13 +752,9 @@ export const pharmaIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Pharma gross margin {value}%. Branded products run 70-80%, generics 40-55%, pure distribution 10-20%. Below 30% usually means no IP differentiation.",
-
     hintTemplateRu:
-
       "Валовая маржа фармы {value}%. Брендированные 70–80%, generics 40–55%, чистая дистрибуция 10–20%; ниже 8% — обычно дистрибуторская модель давит на цены.",
-
     hintTemplateAz:
-
       "Pharma ümumi mənfəəti {value}%. Brendli 70–80%, generics 40–55%, saf distribusiya 10–20%; 8%-dən aşağı — adətən distribütor modeli qiymətləri sıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 210,
@@ -813,13 +776,9 @@ export const pharmaIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Net margin {value}%. Regulatory + R&D amortisation compress net margin; below 2% is structurally loss-prone.",
-
     hintTemplateRu:
-
       "Чистая маржа {value}%. Регуляторные + R&D амортизация сжимают net margin; ниже 2% — структурно убыточно.",
-
     hintTemplateAz:
-
       "Xalis mənfəət {value}%. Tənzimləyici + R&D amortizasiyası net margin-i sıxır; 2%-dən aşağı — strukturca zərərlidir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 220,
@@ -841,13 +800,9 @@ export const pharmaIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "R&D intensity {value}%. Industry avg 17%; below 5% means no new-product pipeline — revenue cliff risk when patents expire.",
-
     hintTemplateRu:
-
       "Интенсивность R&D {value}%. Среднее по индустрии 17%; ниже 5% — нет new-product pipeline → riск revenue cliff.",
-
     hintTemplateAz:
-
       "R&D intensivliyi {value}%. Sənaye orta göstəricisi 17%; 5%-dən aşağı — yeni-məhsul pipeline yoxdur → gəlir uçurumu riski.",
     requiredInputs: ["budgetLine.rd_spend"],
     sortOrder: 230,
@@ -869,13 +824,9 @@ export const pharmaIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Inventory days = {value}. Above 120 means product is sitting on shelves — check for near-expiry stock or demand overestimation.",
-
     hintTemplateRu:
-
       "Inventory days = {value}. Выше 120 — продукт лежит на складе; проверьте near-expiry и pricing.",
-
     hintTemplateAz:
-
       "Anbar günləri = {value}. 120-dən yuxarı — məhsul rəfdə yatır; istifadə-müddəti yaxınlaşan və qiymətləməni yoxlayın.",
     requiredInputs: ["budgetLine.inventory"],
     sortOrder: 240,
@@ -897,18 +848,14 @@ export const pharmaIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Pharma SG&A runs 25-40% with sales force + reg compliance. Above 45% suggests overhead isn't scaling with revenue.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Pharma SG&A 25–40% (sales force + reg compliance). Выше 45% — sales-force overcapacity или compliance lag.",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Pharma SG&A 25–40% (sales force + reg compliance). 45%-dən yuxarı — sales-force həddən artıq və ya compliance gecikmələri.",
     requiredInputs: ["budgetLine"],
     sortOrder: 250,
   },
-]
+];
 
 // ─── Real Estate pack (5) ──────────────────────────────────────────────────
 
@@ -930,13 +877,9 @@ export const realEstateIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "NOI margin {value}%. Commercial real estate baseline 65-85%; below 45% signals high operating expenses (utilities, property tax, maintenance) relative to rent.",
-
     hintTemplateRu:
-
       "NOI margin {value}%. Коммерческая недвижимость baseline 65–85%; ниже 45% — высокие операционные расходы или ослабление аренды.",
-
     hintTemplateAz:
-
       "NOI marja {value}%. Kommersiya daşınmaz əmlak baseline 65–85%; 45%-dən aşağı — yüksək əməliyyat xərcləri və ya icarənin zəifləməsi.",
     requiredInputs: ["budgetLine"],
     sortOrder: 310,
@@ -958,15 +901,14 @@ export const realEstateIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Occupancy {value}%. Stabilised commercial assets run 90%+; below 75% usually means pricing or product-market fit problem.",
-
     hintTemplateRu:
-
       "Заполняемость {value}%. Стабилизированные коммерческие активы 90%+; ниже 75% — проблемы pricing или продукта.",
-
     hintTemplateAz:
-
       "Doluluq {value}%. Sabitləşmiş kommersiya aktivlər 90%+; 75%-dən aşağı — qiymətləmə və ya məhsul problemləri.",
-    requiredInputs: ["operationalFact:leased_area", "operationalFact:total_area"],
+    requiredInputs: [
+      "operationalFact:leased_area",
+      "operationalFact:total_area",
+    ],
     sortOrder: 320,
   },
   {
@@ -986,13 +928,9 @@ export const realEstateIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "DSCR {value}. Below 1.15 means NOI barely covers interest + principal — any rent drop triggers default risk.",
-
     hintTemplateRu:
-
       "DSCR {value}. Ниже 1.15 — NOI едва покрывает проценты + principal; любое падение аренды триггерит default.",
-
     hintTemplateAz:
-
       "DSCR {value}. 1.15-dən aşağı — NOI faizləri + əsas borcu çətinliklə örtür; istənilən icarə azalması default-u tetikləyir.",
     requiredInputs: ["budgetLine.debt_service"],
     sortOrder: 330,
@@ -1014,15 +952,14 @@ export const realEstateIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Rent collection {value}%. Commercial target 98%+; below 92% means tenants can't pay — recession indicator.",
-
     hintTemplateRu:
-
       "Сбор аренды {value}%. Коммерческий target 98%+; ниже 92% — tenants не платят, индикатор рецессии.",
-
     hintTemplateAz:
-
       "İcarə yığımı {value}%. Kommersiya hədəfi 98%+; 92%-dən aşağı — kirayəçilər ödəyə bilmir, resessiya göstəricisi.",
-    requiredInputs: ["operationalFact:rent_collected", "operationalFact:rent_billed"],
+    requiredInputs: [
+      "operationalFact:rent_collected",
+      "operationalFact:rent_billed",
+    ],
     sortOrder: 340,
   },
   {
@@ -1042,18 +979,14 @@ export const realEstateIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Commercial RE baseline 25-40% (property mgmt + utilities + tax). Above 50% cuts distributable cash flow.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Коммерческая недвижимость baseline 25–40% (property mgmt + utilities + tax). Выше 50% — vacancy growing или maintenance unaddressed.",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Kommersiya daşınmaz əmlak baseline 25–40% (mülkiyyət idarəçiliyi + kommunal + vergi). 50%-dən yuxarı — boşluq artır və ya texniki xidmət həll edilməyib.",
     requiredInputs: ["budgetLine"],
     sortOrder: 350,
   },
-]
+];
 
 // ─── Entertainment pack (4) ────────────────────────────────────────────────
 
@@ -1075,13 +1008,9 @@ export const entertainmentIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Attendance utilization {value}%. Below 50% usually fails to cover fixed costs — pricing or marketing needs rework.",
-
     hintTemplateRu:
-
       "Утилизация посещений {value}%. Ниже 50% — обычно не покрывает фиксированные расходы; pricing или маркетинг misalignment.",
-
     hintTemplateAz:
-
       "İştirak utilizasiyası {value}%. 50%-dən aşağı — adətən sabit xərcləri ödəmir; qiymətləmə və ya marketinq yanlış uyğunlaşması.",
     requiredInputs: ["operationalFact:attendees", "operationalFact:capacity"],
     sortOrder: 410,
@@ -1103,13 +1032,9 @@ export const entertainmentIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Revenue/visit = {value} AZN. Healthy venues drive ancillary revenue (F&B, merch) to 30-50% of total. Below 12 usually means the ancillary channel isn't working.",
-
     hintTemplateRu:
-
       "Выручка/визит = {value} AZN. Здоровые площадки выводят ancillary revenue (F&B, merch) до 30–50% общего.",
-
     hintTemplateAz:
-
       "Gəlir/ziyarət = {value} AZN. Sağlam məkanlar yardımçı gəlirləri (F&B, suvenir) ümuminin 30–50%-nə çıxarır.",
     requiredInputs: ["budgetLine", "operationalFact:attendees"],
     sortOrder: 420,
@@ -1131,13 +1056,9 @@ export const entertainmentIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Entertainment operators run 50-65%; below 30% means costs-of-delivery (content, licensing, staff) are eating the ticket price.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Развлечения 50–65%; ниже 30% — costs-of-delivery (контент, площадка) выходят из-под контроля.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Əyləncə 50–65%; 30%-dən aşağı — çatdırılma xərcləri (kontent, məkan) nəzarətdən çıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 430,
@@ -1164,18 +1085,14 @@ export const entertainmentIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "{value}% of revenue lands in the peak 3 months. Above 55% means a single bad season kills the year — diversify programming.",
-
     hintTemplateRu:
-
       "{value}% выручки в peak 3 месяца. Выше 55% — один плохой сезон убивает год; диверсифицируйте off-season offerings.",
-
     hintTemplateAz:
-
       "Gəlirin {value}%-i pik 3 ayda. 55%-dən yuxarı — bir pis mövsüm ili məhv edir; off-season təklifləri diversifikasiya edin.",
     requiredInputs: ["budgetLine.revenueBySeason"],
     sortOrder: 440,
   },
-]
+];
 
 // ─── Education pack (4) ────────────────────────────────────────────────────
 
@@ -1197,15 +1114,14 @@ export const educationIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Enrollment fill {value}%. Below 80% usually signals a pricing or reputation issue relative to competitors — fixed costs don't scale down.",
-
     hintTemplateRu:
-
       "Заполняемость зачисления {value}%. Ниже 80% — обычно сигнал pricing или репутации относительно конкурентов.",
-
     hintTemplateAz:
-
       "Qeydiyyat doluluğu {value}%. 80%-dən aşağı — adətən rəqiblərlə müqayisədə qiymətləmə və ya reputasiya siqnalıdır.",
-    requiredInputs: ["operationalFact:enrolled_students", "operationalFact:target_enrollment"],
+    requiredInputs: [
+      "operationalFact:enrolled_students",
+      "operationalFact:target_enrollment",
+    ],
     sortOrder: 510,
   },
   {
@@ -1225,15 +1141,14 @@ export const educationIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Tuition collection {value}%. Below 90% means arrears are building — tighten payment terms or risk cash-flow crunch.",
-
     hintTemplateRu:
-
       "Сбор обучения {value}%. Ниже 90% — задолженность растёт; ужесточите payment terms или risk cascade.",
-
     hintTemplateAz:
-
       "Təhsil haqqı yığımı {value}%. 90%-dən aşağı — borclar artır; ödəniş şərtlərini sərtləşdirin və ya risk kaskadı.",
-    requiredInputs: ["operationalFact:tuition_collected", "operationalFact:tuition_billed"],
+    requiredInputs: [
+      "operationalFact:tuition_collected",
+      "operationalFact:tuition_billed",
+    ],
     sortOrder: 520,
   },
   {
@@ -1253,13 +1168,9 @@ export const educationIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Private education baselines 40-55%; below 20% means teacher cost + facility cost nearly equal tuition revenue.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Частное образование baseline 40–55%; ниже 20% — teacher cost + facility перевешивают tuition revenue.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Özəl təhsil baseline 40–55%; 20%-dən aşağı — müəllim xərci + tikili təhsil haqqı gəlirini üstələyir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 530,
@@ -1281,18 +1192,17 @@ export const educationIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Student-teacher ratio {value}. Sweet spot 10-20; above 25 erodes quality, 6-10 suggests over-staffing.",
-
     hintTemplateRu:
-
       "Соотношение студент-учитель {value}. Sweet spot 10–20; выше 25 эродирует качество, 6–10 — over-staffing.",
-
     hintTemplateAz:
-
       "Tələbə-müəllim nisbəti {value}. Sweet spot 10–20; 25-dən yuxarı keyfiyyəti aşır, 6–10 — həddən artıq personal.",
-    requiredInputs: ["operationalFact:enrolled_students", "operationalFact:teachers"],
+    requiredInputs: [
+      "operationalFact:enrolled_students",
+      "operationalFact:teachers",
+    ],
     sortOrder: 540,
   },
-]
+];
 
 // ─── Poultry pack (4) ──────────────────────────────────────────────────────
 
@@ -1314,15 +1224,14 @@ export const poultryIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "FCR = {value}. Best-in-class 1.6-1.7; above 1.9 usually means feed formulation, water quality, or temperature management issues.",
-
     hintTemplateRu:
-
       "FCR = {value}. Best-in-class 1.6–1.7; выше 1.9 — обычно feed formulation, water quality или температура.",
-
     hintTemplateAz:
-
       "FCR = {value}. Best-in-class 1.6–1.7; 1.9-dən yuxarı — adətən yem formulyasiyası, su keyfiyyəti və ya temperatur.",
-    requiredInputs: ["operationalFact:feed_consumed_kg", "operationalFact:weight_gain_kg"],
+    requiredInputs: [
+      "operationalFact:feed_consumed_kg",
+      "operationalFact:weight_gain_kg",
+    ],
     sortOrder: 610,
   },
   {
@@ -1342,15 +1251,14 @@ export const poultryIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Mortality {value}%. Target ≤4%; above 7% is a disease or environmental red flag — inspect ventilation, biosecurity, vaccination schedule.",
-
     hintTemplateRu:
-
       "Смертность {value}%. Цель ≤4%; выше 7% — болезнь или environmental red flag; проверяйте вентиляцию + биобезопасность.",
-
     hintTemplateAz:
-
       "Ölüm {value}%. Hədəf ≤4%; 7%-dən yuxarı — xəstəlik və ya ətraf-mühit qırmızı bayrağı; ventilyasiya + biotəhlükəsizliyi yoxlayın.",
-    requiredInputs: ["operationalFact:deaths", "operationalFact:starting_flock"],
+    requiredInputs: [
+      "operationalFact:deaths",
+      "operationalFact:starting_flock",
+    ],
     sortOrder: 620,
   },
   {
@@ -1370,13 +1278,9 @@ export const poultryIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Poultry is thin-margin commodity (typical 12-20%); below 5% a feed-price spike turns the cycle to a loss.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Поултри — тонкомаржинальный коммодити (типично 12–20%); ниже 5% feed-price скачок флипает в loss.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Quş əti incə-marjalı əmtəədir (tipik 12–20%); 5%-dən aşağı yem-qiymət sıçrayışı zərərə çevirir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 630,
@@ -1398,18 +1302,14 @@ export const poultryIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Feed is {value}% of COGS. Sweet spot 58-72%; above 78% means feed-price exposure is too high — hedge or forward-contract.",
-
     hintTemplateRu:
-
       "Feed = {value}% от COGS. Sweet spot 58–72%; выше 78% — feed-price exposure высокая, хеджируйте grain или закройте feed-mill.",
-
     hintTemplateAz:
-
       "Yem COGS-un {value}%-i. Sweet spot 58–72%; 78%-dən yuxarı — yem-qiymət riski yüksəkdir, dəni hedge edin və ya feed-mill bağlayın.",
     requiredInputs: ["budgetLine.feed_cost"],
     sortOrder: 640,
   },
-]
+];
 
 // ─── Food Processing pack (4) ──────────────────────────────────────────────
 
@@ -1431,15 +1331,14 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Yield loss {value}%. Best-in-class 2-6%; above 10% means raw-material waste — inspect cutting, cooking, packaging lines.",
-
     hintTemplateRu:
-
       "Потеря выхода {value}%. Best-in-class 2–6%; выше 10% — отходы сырья; проверьте резку, варку, упаковку.",
-
     hintTemplateAz:
-
       "Çıxış itkisi {value}%. Best-in-class 2–6%; 10%-dən yuxarı — xammal tullantısı; kəsmə, bişirmə, qablaşdırma yoxlayın.",
-    requiredInputs: ["operationalFact:raw_input", "operationalFact:finished_output"],
+    requiredInputs: [
+      "operationalFact:raw_input",
+      "operationalFact:finished_output",
+    ],
     sortOrder: 710,
   },
   {
@@ -1459,13 +1358,9 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Branded 30-40%, private-label 20-28%, commodity 10-18%. Below 12% means no pricing power.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Брендированный 30–40%, private-label 20–28%, commodity 10–18%. Ниже 12% — нет pricing power, продукт коммодити.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Brendli 30–40%, private-label 20–28%, əmtəə 10–18%. 12%-dən aşağı — qiymətləmə gücü yoxdur, məhsul əmtəədir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 720,
@@ -1487,13 +1382,9 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Inventory turns = {value}/year. Perishable food targets 12-24; below 8 = spoilage risk.",
-
     hintTemplateRu:
-
       "Оборот инвентаря {value}/год. Скоропортящаяся еда target 12–24; ниже 8 = риск порчи.",
-
     hintTemplateAz:
-
       "Anbar dövriyyəsi {value}/il. Tezxarabolan qida hədəfi 12–24; 8-dən aşağı = xarablanma riski.",
     requiredInputs: ["budgetLine.inventory"],
     sortOrder: 730,
@@ -1515,18 +1406,14 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Food processing runs 12-22%; above 28% is structurally heavy for the margin profile.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Food processing 12–22%; выше 28% — структурно тяжело для маржи (логистика + стоимость холода).",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Qida emalı 12–22%; 28%-dən yuxarı — marja üçün strukturca ağır (logistika + soyuq saxlama).",
     requiredInputs: ["budgetLine"],
     sortOrder: 740,
   },
-]
+];
 
 // ─── Beverage pack (2) ────────────────────────────────────────────────────
 // Soft drinks, juice, beer, distilled spirits. Manufacturing-shape but
@@ -1564,13 +1451,9 @@ export const beverageIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Cross-segment floor: branded 50-60%, alcohol 35-50%, commodity 25-35%. Below 15% no sub-segment is sustainable; 15-25% verify against your sub-segment.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Cross-segment floor: брендированный 50–60%, alcohol 35–50%, commodity 25–35%. Ниже 20% — переключение на коммодити-сегмент.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Cross-segment alt həddi: brendli 50–60%, alkoqol 35–50%, əmtəə 25–35%. 20%-dən aşağı — əmtəə-seqmentinə keçid.",
     requiredInputs: ["budgetLine"],
     sortOrder: 810,
@@ -1594,18 +1477,14 @@ export const beverageIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Beverage SG&A is distribution + marketing-heavy; above 35% means brand investment isn't translating to volume.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Beverage SG&A — distribution + marketing-heavy; выше 35% — brand investment overshoots margin.",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Beverage SG&A — distribusiya + marketinq ağırlığı; 35%-dən yuxarı — brend investisiyası marjanı üstələyir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 820,
   },
-]
+];
 
 // ─── Retail pack (2) ──────────────────────────────────────────────────────
 // Grocery, fashion, electronics, specialty stores. Inventory turn velocity
@@ -1633,13 +1512,9 @@ export const retailIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Grocery 20-28%, electronics 18-25%, fashion 45-55%, specialty 35-50%. Below 18% suggests pricing pressure or stale-inventory mark-downs.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Grocery 20–28%, electronics 18–25%, fashion 45–55%, specialty 35–50%. Ниже 12% — pricing pressure или mix shift.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Grocery 20–28%, electronics 18–25%, moda 45–55%, specialty 35–50%. 12%-dən aşağı — qiymətləmə təzyiqi və ya miks dəyişikliyi.",
     requiredInputs: ["budgetLine"],
     sortOrder: 910,
@@ -1674,18 +1549,14 @@ export const retailIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Inventory turns = {value}/year. Cross-segment floor: grocery 14-26, electronics 6-12, fashion 4-8, specialty 3-6. Below 3 no sub-segment is healthy; 3-6 verify against your sub-segment (specialty / slow-moving = OK, fashion = warning).",
-
     hintTemplateRu:
-
       "Оборот инвентаря {value}/год. Cross-segment floor: grocery 14–26, electronics 6–12, fashion 4–8, specialty 3–6. Ниже floor — обычно мёртвый запас.",
-
     hintTemplateAz:
-
       "Anbar dövriyyəsi {value}/il. Cross-segment alt həddi: grocery 14–26, electronics 6–12, moda 4–8, specialty 3–6. Alt həddən aşağı — adətən ölü ehtiyat.",
     requiredInputs: ["budgetLine.inventory"],
     sortOrder: 920,
   },
-]
+];
 
 // ─── Logistics pack (2) ───────────────────────────────────────────────────
 // Trucking, warehousing, freight forwarding, last-mile delivery. Asset
@@ -1715,13 +1586,9 @@ export const logisticsIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Trucking + warehousing run 70-90% structurally (driver pay, fuel, fleet); above 90% means margin is gone.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Trucking + warehousing структурно 70–90% (driver pay, fuel, fleet); выше 92% — fleet underutilized или fuel hedge missing.",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Trucking + warehousing strukturca 70–90% (sürücü əmək haqqı, yanacaq, parkomat); 92%-dən yuxarı — parkomat dolu deyil və ya yanacaq hedge yoxdur.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1010,
@@ -1746,18 +1613,14 @@ export const logisticsIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. 3PL 12-20%, freight forwarding 8-15%, specialty 18-25%. Below 7% likely loss-making post-overhead.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. 3PL 12–20%, freight forwarding 8–15%, specialty 18–25%. Ниже 7% — likely loss-making контракты.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. 3PL 12–20%, freight forwarding 8–15%, specialty 18–25%. 7%-dən aşağı — çox güman ki zərərli müqavilələr.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1020,
   },
-]
+];
 
 // ─── Construction pack (2) ────────────────────────────────────────────────
 // General contracting, project-based revenue. Margin recognition risk
@@ -1786,13 +1649,9 @@ export const constructionIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Gross margin {value}%. Heavy civil 8-14%, building 10-18%, specialty 18-25%. Below 8% means cost overruns are eating contingency.",
-
     hintTemplateRu:
-
       "Валовая маржа {value}%. Heavy civil 8–14%, building 10–18%, specialty 18–25%. Ниже 8% — cost overruns или mispriced bids.",
-
     hintTemplateAz:
-
       "Ümumi mənfəət {value}%. Ağır mülki 8–14%, tikili 10–18%, ixtisaslaşmış 18–25%. 8%-dən aşağı — xərc aşımı və ya yanlış qiymətləndirilmiş təkliflər.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1110,
@@ -1817,18 +1676,14 @@ export const constructionIndicators: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "OpEx {value}% of revenue. Construction SG&A is structurally light (4-12%); above 10% means overhead growing faster than project backlog.",
-
     hintTemplateRu:
-
       "OpEx {value}% от выручки. Construction SG&A структурно лёгкий (4–12%); выше 10% — overhead растёт быстрее backlog.",
-
     hintTemplateAz:
-
       "OpEx gəlirin {value}%-dir. Tikinti SG&A strukturca yüngüldür (4–12%); 10%-dən yuxarı — overhead backlog-dan tez artır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1120,
   },
-]
+];
 
 /**
  * Codes that used to be in the seed but were retired (merged, renamed,
@@ -1847,7 +1702,7 @@ export const RETIRED_CODES: readonly string[] = [
   // a fake green that misleads demo. Re-enable AFTER
   // `scripts/import-azmade-budgets.ts` is extended to detect FX columns.
   "IND_FX_INPUT_RISK",
-]
+];
 
 /**
  * All active indicator seeds, in the order they should be presented
@@ -1869,4 +1724,4 @@ export const ALL_INDICATOR_SEEDS: readonly IndicatorSeed[] = [
   ...logisticsIndicators,
   ...constructionIndicators,
   ...crossSectorIndicators,
-]
+];
