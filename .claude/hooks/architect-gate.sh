@@ -249,7 +249,7 @@ if [ -n "$CWD" ] && [ -f "$CWD/docs/CARRYOVER.md" ]; then
                     and ((.input.file_path // "") | endswith("/docs/CARRYOVER.md")))
                   or
                   (.name == "Bash"
-                    and ((.input.command // "") | test("bump_carryover_|>\\s*[^|]*docs/CARRYOVER\\.md")))
+                    and ((.input.command // "") | test("bump_carryover_|carryover:bump|>\\s*[^|]*docs/CARRYOVER\\.md")))
                 )
               )
             )

@@ -28,3 +28,19 @@ Architect subagent reviews must include a **scope audit** in addition to the usu
 6. **TurnGoal is immutable mid-turn.** Once stated at turn start, goals can't be retro-added to match what was actually built. If scope grows during execution (new blocker surfaces, user redirects), I can append G_n+1 only with an explicit inline note ("Adding [Gk] mid-turn because X — user, ack?").
 
    **If the user doesn't ack before the turn ends:** default is **do not add** — push the new item to the next turn. No silent absorption. Architect's scope check treats unackowledged additions as silent scope creep and flags them as Проблема.
+
+## Speedup conventions (Phase 7.G Turn XXII codification)
+
+When applying `feedback_session_speedup.md` techniques, the architect protocol stays the same shape but takes faster compute paths:
+
+7. **Sonnet/Haiku model for routine reviews.** When the turn matches an established closure pattern (closure-shaped — single 🔄 row migrated, premise verified, verification table standard), specify `model: "sonnet"` per architect call. Reserve Opus for novel architecture / multi-file refactors / cross-cutting concerns. **3-5× faster, same protocol shape.**
+
+8. **Compact prompt + capped output.** For routine reviews, prompt ≤80 lines (TurnGoal verbatim + 1-line shipped + verification table + ≤3 quick-scrutiny questions); request `"≤150 words; only Проблемы + Completion Audit; skip Хорошо/Предложения if 🟢"`. Architect responds 3-5× faster on shorter context. Full 200-500-word reviews reserved for novel patterns.
+
+9. **Skip Round-1 for trivial single-line fixes.** Single-line edits (typo / comment update / import order / docstring tweak) with diff <5 LOC and fixed-shape don't need architect Round-1. Commit straight. Per `feedback_fix_before_build.md` the architect's job is catching scope drift + silent deferrals; trivial fixes have neither shape.
+
+10. **Batch 2-3 closures per architect call.** When 2-3 closures share a theme (companion ⚠️ items, related sub-tasks, mirror patterns), batch into one turn with one consolidated architect review. Halves architect-overhead per closure.
+
+11. **Skip premise re-verify for fresh rows.** `feedback_stale_premise_reverify.md` mandates re-verify on ≥30-turn-old rows specifically. Fresh rows (≤14t) trust the original filing — skip the grep-for-cited-symbol step.
+
+These are speedup conventions, not protocol relaxations. Architect's three blocks (Scope / Quality / Completion Audit) still required. RAW USER MESSAGE marker still required. FAIL still blocks Stop.

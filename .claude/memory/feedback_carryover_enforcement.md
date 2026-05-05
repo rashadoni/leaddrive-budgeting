@@ -165,3 +165,49 @@ grep -i "<2-3 distinctive tokens from row's item-text>" docs/CARRYOVER.md
 **When NOT to apply:** rows opened in the last 5-10 turns (low duplication risk) + rows with very generic item-text where grep produces too much noise (defer to architect Round-1 to catch). Pure-hygiene "drift-class sweep" turns (e.g. Turn EE Round-1 sweep) are exempt — they're explicitly closing duplicates.
 
 **Future enhancement (Turn-HH filed 🔄):** `audit-stale-carryover.ts` v3 with marker-extraction matcher (anchored on `Bug #N` / `Turn N` / `Phase X` regex patterns) would automate this check. Until v3 ships, the manual grep is the reliable safety net.
+
+
+## Q&A heartbeat-only convention (Phase 7.G Turn XXII codification)
+
+For pure Q&A / information-only turns where user asks a question (e.g. "сколько ещё осталось" / "предложи как ускорить") and answer is delivered inline without source delta, the protocol allows **heartbeat-only CARRYOVER touch**:
+
+1. **No counter-bump on Q&A turns.** Bumping `turns-open` for zero-work would inflate counters wrongly (exactly the bloat that drove backlog-bankruptcy concern in Turn XVII). Counter-bump fires ONLY when actual closure or substantive scope-shift happened.
+
+2. **Heartbeat = 1-line preamble add.** Add a short `**Last processed:**` preamble at top of OPEN section noting the Q&A turn + topic. mtime touched, hook satisfied, no row-counter inflation.
+
+3. **Skip ROADMAP §Changelog for Q&A turns.** Changelog is for shipped work. Q&A turn = no shipped work = no changelog entry.
+
+4. **Skip architect Round-1 if hook permits** — currently architect-gate.sh fires regardless. Defer to `feedback_session_speedup.md` infra item #16.
+
+## Compact CARRYOVER CLOSED narrative template
+
+500-word essays per closure are bloat that adds little signal. Use ≤200-word template (saves 1-2min/turn writing):
+
+```
+| ✅ | YYYY-MM-DD | Phase 7.G Turn <N> closure (commit `<hash>`) — closes <Nt>-turn 🔄 (CARRYOVER L<NNN>). Per user "<RAW msg verbatim>". Premise: <verified yes/no, 1 line — "grep'd cited code, still present" or "premise re-checked, scope corrected from X→Y">. **Shipped — <X NEW / Y EDITS / Z schema>:** (1) <file:LOC change>, (2) <file:LOC change>. **Verification:** tsc <0/N>; vitest <pre→post>/<total> across <N> files; visual gate <2/2 GREEN / N/A>; <hook tests if any>. **CARRYOVER:** <pre> → <post> (<delta> net). Counter-bump <N> rows via /tmp/claude/bump_carryover_turnN.py OR `npm run carryover:bump`. <Streak metric line — Nth consecutive feature-shaped commit / 0 ⚠️ across N turns>. | <one-line item summary> |
+```
+
+Drop these from default (only add when load-bearing):
+- Detailed line-by-line implementation prose (commit message body has it)
+- Architect-narrative-style "Хорошо/Проблемы/Предложения" recap (already in Round-1 reply)
+- Multi-paragraph rationale (architect prompt has it)
+- Cross-references to OTHER closure narratives (reader can git log)
+
+Keep these (always):
+- Premise re-verify result (yes/no/scope-correction)
+- Verification line (tsc/vitest/visual gate)
+- CARRYOVER delta (`pre → post (delta net)`)
+- Streak metric (architect-readable signal of momentum)
+
+## Single-canonical-narrative — kill triple duplication
+
+Pre-XXII convention wrote same closure narrative 3×:
+- CARRYOVER CLOSED row (~500 words)
+- commit message body (~300 words)
+- ROADMAP §Changelog entry (~150 words)
+
+**Canonical**: CARRYOVER CLOSED row (compact ≤200 words per template above).
+**Pointer**: commit message body — 5-10 lines, last line `See CARRYOVER L<NNN> for full closure narrative.`
+**Summary**: ROADMAP §Changelog — 1-line `Phase 7.G Turn <N> — <one-line>; CARRYOVER <pre>→<post> (<delta> net); see CARRYOVER L<NNN>.`
+
+Save: 2-3 min/turn writing time. Reader still gets all the detail in the canonical home, doesn't have to read 3 versions to verify they match.
