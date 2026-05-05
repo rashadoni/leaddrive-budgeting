@@ -277,16 +277,19 @@ describe('CommandBar (Phase 7.D smoke)', () => {
       // (the icon swap shouldn't have nuked surrounding text).
       expect(strip.textContent ?? '').toContain('[alerts');
       expect(strip.textContent ?? '').toContain(']');
-      // And the strip should still have an Alerts-related title for
-      // screen-reader announcement (whichever branch — loading/populated/
-      // zero — fired). Prefix-match defends against typography drift.
-      expect(strip.getAttribute('title') ?? '').toMatch(/^Alerts/i);
+      // And the strip should still expose an Alerts-related aria-label
+      // for screen-reader announcement. Phase 7.G Turn XVI swapped the
+      // native `title=` for a Radix Tooltip (mouse-only hover content);
+      // `aria-label` remains the SR-announced contract and survives the
+      // hover-flake fix that motivated the conversion.
+      expect(strip.getAttribute('aria-label') ?? '').toMatch(/alerts/i);
     });
 
-    it('SVG is hidden from screen readers (aria-hidden) — strip relies on title attr', () => {
+    it('SVG is hidden from screen readers (aria-hidden) — strip relies on aria-label', () => {
       // The Bell is decorative; screen readers should announce the
-      // strip's `title` attribute, not the icon glyph. Locking
-      // aria-hidden prevents an a11y regression.
+      // strip's `aria-label` (Turn-XVI Radix conversion replaced the
+      // native `title=`; aria-label is the SR-stable accessor). Locking
+      // aria-hidden on the icon prevents an a11y regression.
       render(<CommandBar />);
       const strip = getAlertsStrip();
       const svg = strip.querySelector('svg');

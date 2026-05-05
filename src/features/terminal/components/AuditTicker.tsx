@@ -6,6 +6,12 @@ import { useTerminalStore } from "../store/terminalStore";
 import { useEventStream } from "@/lib/events/use-event-stream";
 import { summarizeAuditEvent } from "@/lib/audit/compact-summary";
 import type { AuditAction } from "@prisma/client";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /**
  * Bloomberg-style bottom event ticker — 1-line strip surfacing the most
@@ -68,6 +74,9 @@ export function AuditTicker() {
   };
 
   return (
+    <TooltipProvider delayDuration={300}>
+    <Tooltip>
+      <TooltipTrigger asChild>
     <div
       onClick={handleClick}
       role="button"
@@ -78,7 +87,7 @@ export function AuditTicker() {
       // - keeps the always-visible audit strip keyboard-reachable for
       //   power users who want Enter-to-open-modal without mouse;
       // - the strip is short-content + clearly labelled (aria-label +
-      //   title below) — not a "noisy" tab stop;
+      //   tooltip below) — not a "noisy" tab stop;
       // - alternative considered (move to end-of-DOM with tabIndex={-1}
       //   + global Enter shortcut) would split the discoverability —
       //   keyboard users would tab past the visible status surface.
@@ -94,7 +103,6 @@ export function AuditTicker() {
         compactMode ? 'py-0.5 text-[9px]' : 'py-1.5 text-[10px]'
       }`}
       aria-label={t("auditTicker.ariaLabel")}
-      title={t("auditTicker.title")}
     >
       <span className="text-gray-600 shrink-0">{t("auditTicker.events")}</span>
       {events === null && <span className="text-gray-700">{t("auditTicker.loading")}</span>}
@@ -120,6 +128,15 @@ export function AuditTicker() {
         </div>
       )}
     </div>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
+      >
+        {t("auditTicker.title")}
+      </TooltipContent>
+    </Tooltip>
+    </TooltipProvider>
   );
 }
 

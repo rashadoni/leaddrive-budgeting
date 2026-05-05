@@ -12,6 +12,12 @@ import {
 import { Bell } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 import { ensureMatrix, useMatrix } from '../hooks/use-matrix';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 // Round-8 M4 — verbs the parser recognises. Matched fuzzily against
 // the user's current word; suggestions append " GO" implicitly when
@@ -388,6 +394,7 @@ export function CommandBar() {
   };
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex items-center justify-between px-4 py-2 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
       <div className="flex items-center flex-1 gap-2">
         <span className="text-gray-500 shrink-0">[cmd]</span>
@@ -496,13 +503,22 @@ export function CommandBar() {
           </span>
         )}
         {feedback.kind === 'err' && (
-          <span
-            className="text-[#FF4757] text-xs shrink-0 truncate max-w-[280px]"
-            role="alert"
-            title={feedback.message}
-          >
-            ⚠ {feedback.message}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="text-[#FF4757] text-xs shrink-0 truncate max-w-[280px]"
+                role="alert"
+              >
+                ⚠ {feedback.message}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
+            >
+              {feedback.message}
+            </TooltipContent>
+          </Tooltip>
         )}
       </div>
 
@@ -515,24 +531,32 @@ export function CommandBar() {
         <div className="flex items-center cursor-pointer hover:text-white transition-colors">
           <span className="mr-1">[user]</span>
         </div>
-        <button
-          type="button"
-          className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors"
-          title={
-            alertsCount === null
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center cursor-pointer hover:text-[#FFB800] transition-colors"
+              aria-label={t('commandBar.alertsAriaLabel')}
+              onClick={() => {
+                window.dispatchEvent(new Event('terminal:open-alerts'));
+              }}
+            >
+              <span className="mr-1">[alerts</span>
+              <Bell size={11} className="mx-1 text-[#FFB800]" aria-hidden="true" />
+              <span className="text-[#FFB800]">{alertsCount === null ? '—' : alertsCount}]</span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[280px] text-xs"
+          >
+            {alertsCount === null
               ? t('commandBar.alertsLoading')
-              : t('commandBar.alertsTitle', { count: alertsCount })
-          }
-          aria-label={t('commandBar.alertsAriaLabel')}
-          onClick={() => {
-            window.dispatchEvent(new Event('terminal:open-alerts'));
-          }}
-        >
-          <span className="mr-1">[alerts</span>
-          <Bell size={11} className="mx-1 text-[#FFB800]" aria-hidden="true" />
-          <span className="text-[#FFB800]">{alertsCount === null ? '—' : alertsCount}]</span>
-        </button>
+              : t('commandBar.alertsTitle', { count: alertsCount })}
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
+    </TooltipProvider>
   );
 }
