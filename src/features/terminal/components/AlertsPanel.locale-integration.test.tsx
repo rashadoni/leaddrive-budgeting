@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 /**
  * Phase 7.G Turn XXIII — render-site integration test for `industries.*`
- * locale flow (closes 44-turn 🔄, Phase 7.G Turn G architect Round-1 💡).
+ * locale flow (closes 45-turn 🔄, Phase 7.G Turn G architect Round-1 💡).
  *
  * Locks: real `useLocale()` ↔ `useTranslations('industries')` ↔
  * `localizeAlertMessageParams` ↔ AlertsPanel render path produces
