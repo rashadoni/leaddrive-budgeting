@@ -87,7 +87,7 @@ export function AuditTicker() {
       // - keeps the always-visible audit strip keyboard-reachable for
       //   power users who want Enter-to-open-modal without mouse;
       // - the strip is short-content + clearly labelled (aria-label +
-      //   tooltip below) — not a "noisy" tab stop;
+      //   Radix tooltip via TooltipProvider) — not a "noisy" tab stop;
       // - alternative considered (move to end-of-DOM with tabIndex={-1}
       //   + global Enter shortcut) would split the discoverability —
       //   keyboard users would tab past the visible status surface.
