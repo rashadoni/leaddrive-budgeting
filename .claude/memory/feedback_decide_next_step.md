@@ -16,3 +16,9 @@ When there is a well-defined list of remaining tasks (e.g. Phase TODOs, review-s
 - Phrases to avoid at turn end: "Стартую автономно?", "Стартуем X?", "Готов к Y?", "Следующий — Y. Стартуем?". Rephrase as: "Next: Y." or "Moving to Y."
 - Works together with `feedback_fix_before_build.md`: fixes from review first, then pick next feature autonomously.
 - User stated it twice (2026-04-23 + 2026-04-24): "и на будущее не проси меня чтоб давал команду на продолжение." Treat any turn-end question as a policy violation.
+
+## Cross-references
+
+- **`feedback_session_speedup.md`** — when "decide next step" leads to a routine closure-shaped pick (single 🔄 row migration + premise-verified + standard verification table), apply the speedup playbook (Sonnet architect / compact prompts / single-canonical-narrative / etc.). Routine ≠ careless — routine = pattern-matched, predictable, low-risk. Reserve full-quality Opus + verbose architect prompts for novel architecture decisions or multi-file refactors.
+- **`feedback_fix_before_build.md`** — fixes from architect Round-1 close BEFORE next decide-next-step. Pre-condition for autonomous pick.
+- **`feedback_architect_scope_audit.md`** — architect TurnGoal + 3-block review still required for substantive turns even when applying speedup conventions; protocol shape unchanged.
