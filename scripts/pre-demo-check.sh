@@ -13,15 +13,37 @@
 #  6. Auth-gate not regressed (unauth requests don't leak data)
 #  7. /budgeting?tab=pnl-report load < 600ms (Turn-38-sub12 baseline)
 #  8. DB integrity: AZMADE org has expected company / line / IV counts
-#  9. Prisma migrate status clean
+#  9. Prisma migrate status clean (pending migrations → ⚠ by default; with
+#     `--apply-pending` runs `prisma migrate deploy` first then re-checks)
 #
 # Usage:
-#   bash scripts/pre-demo-check.sh
+#   bash scripts/pre-demo-check.sh                     # report-only
+#   bash scripts/pre-demo-check.sh --apply-pending     # auto-apply drift
 #   OR: npm run demo:check
 #
 # Re-run after any P0 fix until exit 0.
 
 set -e
+
+# Phase 7.G Turn XIX (closes 67-turn 🔄, Turn-42-sub-18 architect 💡):
+# `--apply-pending` flag auto-deploys pending migrations before the warn-check
+# fires. Sub-18 lost ~5 min surfacing then manually applying a pending
+# migration; this flag closes that loop. Default behavior (no flag) is
+# back-compat report-only — the gate doesn't unilaterally mutate the DB
+# unless caller explicitly opts in.
+APPLY_PENDING=false
+for arg in "$@"; do
+  case "$arg" in
+    --apply-pending)
+      APPLY_PENDING=true
+      ;;
+    *)
+      echo "Unknown flag: $arg"
+      echo "Usage: $0 [--apply-pending]"
+      exit 2
+      ;;
+  esac
+done
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -120,6 +142,21 @@ check "Playwright smoke (incl. visual)"   "E2E_SKIP_LLM=true npm run test:e2e --
 
 echo ""
 echo "Migration status:"
+if [ "$APPLY_PENDING" = "true" ]; then
+  # Apply any pending migrations FIRST, then run the warn-check on the
+  # post-apply state. `prisma migrate deploy` is idempotent — applies
+  # only pending migrations, no-op if up-to-date. Errors here (DB
+  # unreachable, migration SQL fails) flow to stderr and the warn-check
+  # below will then fire on whatever state remains.
+  printf "  %-50s " "Auto-apply pending migrations"
+  if npx prisma migrate deploy >/dev/null 2>&1; then
+    printf "${GREEN}✓${NC}\n"
+    PASS=$((PASS + 1))
+  else
+    printf "${RED}✗${NC} (prisma migrate deploy failed; see logs)\n"
+    FAIL=$((FAIL + 1))
+  fi
+fi
 warn_check "Prisma migrate status clean"   "npx prisma migrate status 2>&1 | grep -q 'Database schema is up to date' && echo ok || echo drift" "ok"
 
 echo ""
