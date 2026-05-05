@@ -406,9 +406,13 @@ Migrated 2026-05-05 Phase 7.G **Turn XXI** (Tier-2 prune extension).
 - **B4 v2 — cross-device starred sync via UserCompanyPreferences** (originally CARRYOVER, opened 2026-04-28, 69 turns-open). B4 v1 starred-companies persistence is localStorage-only (per-device). Plan §B4 specified `UserCompanyPreferences` table for cross-device sync. Schema migration + GET/POST `/api/user/preferences/companies` + writeJsonToStorage→server-mirror logic = ~3-4h.
 - **B3 column form-factor reframed to tooltip+detail** (originally CARRYOVER, opened 2026-04-28, 69 turns-open). Plan §B3 promised "80px-wide sparkline COLUMN per indicator" (always-visible inline column); developer reframed to tooltip+Panel 3 inline rendering because per-cell column would double matrix grid width and break the dense Bloomberg-grid feel at 60×80 scale. Either ship column form-factor with horizontal-scroll budget (~1-2h) OR record explicit reframe-cut with user ack.
 
-### Forward debt (architectural preventives + trigger-condition deferrals)
+### Forward debt (architectural preventives + trigger-condition deferrals + capacity-deferred)
 
-`#forward-debt` — re-open per-item when trigger fires (Phase F load-test reveals false-positives / 2nd rollup-co lands / rule count >10 / etc.).
+`#forward-debt` — heterogeneous deferrals, **3 re-open categories** (Architect Turn-XXI Round-1 ⚠️ #1 closure):
+
+1. **Trigger-condition preventives** — re-open when external event fires (Phase F load-test reveals false-positives / 2nd rollup-co lands / rule count >10 / etc.). Items: Synthetic ROLLUP-* isolation / Tolerance 1→0.5% / Matrix sparkline payload / AlertMatch.messageParams typing.
+2. **UX/product-decision call** — re-open via user request only, no automated trigger. Items: Rollup-sourced sparkline flat-line fix (hide vs annotate decision needed).
+3. **Capacity-deferred multi-day work** — re-open when developer capacity available OR Tier-3 sprint kicks off. Items: M8 mobile (1-2d) / M7 scanner v5 (2-3h) / Sub-segment split BEV/RETAIL (Phase 7.E v2).
 
 Migrated 2026-05-05 Phase 7.G **Turn XXI** (Tier-2 prune extension).
 
