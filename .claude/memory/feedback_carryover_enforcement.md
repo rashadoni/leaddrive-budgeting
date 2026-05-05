@@ -211,3 +211,31 @@ Pre-XXII convention wrote same closure narrative 3×:
 **Summary**: ROADMAP §Changelog — 1-line `Phase 7.G Turn <N> — <one-line>; CARRYOVER <pre>→<post> (<delta> net); see CARRYOVER L<NNN>.`
 
 Save: 2-3 min/turn writing time. Reader still gets all the detail in the canonical home, doesn't have to read 3 versions to verify they match.
+
+## Memory-only writes MUST also touch CARRYOVER (Phase 7.G Turn XXVI codification)
+
+**Closes 75-turn 🔄** (Turn-42-sub17 architect ⚠️ — `architect-gate.sh` blind spot for memory-only writes). The hook + this memory rule both watch in-repo `docs/CARRYOVER.md`. Memory-only writes — files in `~/.claude/projects/<slug>/memory/*.md` (out-of-repo, per-machine) — bypass both checks because they don't produce a git diff and they don't touch CARRYOVER.
+
+**Empirical incident** (sub-16 cont'd): developer wrote ONLY to user-home memory dir; hook's mtime check passed (DIRTY marker not bumped because the Edit tool path didn't match the in-repo regex), architect review missed entirely; the next turn's Stop hook fired the missed-architect detector — ONE turn late.
+
+**Convention** (closure path option (b) from CARRYOVER row, simplest of 3 alternatives):
+
+> Any substantive memory-write (NEW or content-changing EDIT to `.claude/memory/*.md` OR `~/.claude/projects/<slug>/memory/*.md`) MUST also touch `docs/CARRYOVER.md` in the same turn.
+
+Acceptable forms of "touch":
+- A real CARRYOVER closure (OPEN→CLOSED migration with ✅) when the memory-write closes a 🔄 row.
+- A NEW 🔄 row filed for the memory-write's downstream gap.
+- A heartbeat preamble add at top of OPEN section (Q&A heartbeat-only convention) when the memory-write is purely informational / cross-reference / no associated 🔄.
+- A counter-bump pass via `npm run carryover:bump` when the memory-write is part of a substantive turn that also closes 1+ rows.
+
+**Why convention not hook extension:** options (a) extend hook to check user-home + (c) separate memory-gate.sh both add hook complexity AND fail-open in mode where developer ignores the memory dir. Convention + this rule + sync-via-bootstrap.sh (which DOES touch in-repo `.claude/memory/` mirror, generating a git diff that DOES trip the hook) gives 3 layers of defense:
+1. Bootstrap sync produces in-repo memory-file edit → DIRTY marker + transcript edit → hook fires its existing check #5 if OPEN > 0.
+2. This memory rule reminds developer + architect to verify CARRYOVER touched alongside any memory write.
+3. Architect's RAW USER MESSAGE marker + scope check catches silent memory-only deferrals during Round-1.
+
+**How to apply:**
+- Memory write → bootstrap.sh sync → CARRYOVER touch → architect Round-1 review (standard turn close shape).
+- If memory write is PURE QA/cross-reference (no new 🔄 implication), still add 1-line heartbeat preamble to OPEN section per Q&A heartbeat-only convention above.
+- Future hook extension (architect-gate.sh check on user-home memory dir) is option (a), filed as `#forward-debt` if memory drift becomes empirical signal of failure mode.
+
+**Cross-link to architect protocol:** `feedback_architect_scope_audit.md` § "Speedup conventions" #11 explicitly requires architect's scope-check section to flag silent memory-only writes as Проблема when CARRYOVER wasn't touched in the same turn.
