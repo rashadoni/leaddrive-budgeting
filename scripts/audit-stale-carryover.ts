@@ -42,6 +42,12 @@ const threshold =
 const ownerIdx = args.indexOf("--owner");
 const ownerFilter =
   ownerIdx !== -1 && args[ownerIdx + 1] ? args[ownerIdx + 1] : null;
+// Phase 7.G Turn XXVIII — `--file` override for v3 duplicate-detector
+// fixture testing without mutating the real CARRYOVER. CLI use stays
+// `npx tsx scripts/audit-stale-carryover.ts` (no flag needed).
+const fileIdx = args.indexOf("--file");
+const resolvedPath: string =
+  fileIdx !== -1 && args[fileIdx + 1] ? args[fileIdx + 1] : CARRYOVER_PATH;
 
 if (Number.isNaN(threshold)) {
   console.error(`error: --threshold ${args[threshIdx + 1]} is not a number`);
@@ -54,11 +60,11 @@ if (ownerFilter && !["developer", "user"].includes(ownerFilter)) {
   process.exit(1);
 }
 
-if (!fs.existsSync(CARRYOVER_PATH)) {
-  console.error(`error: CARRYOVER not found at ${CARRYOVER_PATH}`);
+if (!fs.existsSync(resolvedPath)) {
+  console.error(`error: CARRYOVER not found at ${resolvedPath}`);
   process.exit(1);
 }
-const text = fs.readFileSync(CARRYOVER_PATH, "utf8");
+const text = fs.readFileSync(resolvedPath, "utf8");
 
 // Anchor section bounds to start-of-line. Naive `indexOf("## CLOSED")`
 // false-matches inline references inside a row (e.g. row 395 mentions
@@ -160,17 +166,79 @@ interface DuplicateMatch {
   open: OpenRow;
   closedItem: string;
   closedLine: number;
+  /** Detection method: 'substring' (v1 — strict, zero false-positive risk)
+   *  or 'token-similarity' (v3 — catches punctuation-variant duplicates
+   *  like em-dash vs paren). UI groups by method so reviewer can prioritize. */
+  method: "substring" | "token-similarity";
+  /** Coverage ratio for v3 token-similarity (1.0 = all OPEN tokens
+   *  present in CLOSED; meaningless for substring matches). */
+  coverage?: number;
 }
 const duplicates: DuplicateMatch[] = [];
+
+// v3 token-similarity helpers (Phase 7.G Turn XXVIII closure).
+// Tuning constants — set conservatively to avoid Turn-HH-class false
+// positives (50% word-overlap → 4 FPs on production CARRYOVER).
+const TOKEN_MIN_LEN = 5; // length-≥5 filter excludes generic short words
+const MIN_OPEN_TOKENS = 4; // rows with ≤3 distinct ≥5-char tokens skip
+                            // token-similarity (too few signals for
+                            // confident match — defer to substring)
+const COVERAGE_THRESHOLD = 0.8; // 80% of OPEN tokens must appear in CLOSED
+
+function tokenize(s: string): Set<string> {
+  // Lowercase, split on non-word chars (incl. spaces, hyphens, punctuation),
+  // filter ≥TOKEN_MIN_LEN, dedup. Punctuation-stripping is the load-bearing
+  // win over substring matching — `(7 turns)` vs `— 7 turns` differ only in
+  // surrounding punctuation but tokenize identically.
+  return new Set(
+    s
+      .toLowerCase()
+      .split(/[^a-zа-яё0-9]+/i)
+      .filter((t) => t.length >= TOKEN_MIN_LEN),
+  );
+}
+
+function tokenCoverage(open: Set<string>, closed: Set<string>): number {
+  if (open.size === 0) return 0;
+  let hits = 0;
+  for (const t of open) if (closed.has(t)) hits++;
+  return hits / open.size;
+}
+
 for (const r of rows) {
   if (r.item.length < DUPLICATE_MIN_LEN) continue;
-  // Lowercase both sides — catches case-variation drift (e.g. "G/A/R chip
-  // letters" duplicating CLOSED "G/A/R Chip Letters") without false-
-  // positive risk per architect Turn-FF Round-1 💡 #1.
   const rLower = r.item.toLowerCase();
+  // v1 substring check (strict — zero false-positive risk).
+  let matched = false;
   for (const c of closedItems) {
     if (c.item.toLowerCase().includes(rLower)) {
-      duplicates.push({ open: r, closedItem: c.item, closedLine: c.line });
+      duplicates.push({
+        open: r,
+        closedItem: c.item,
+        closedLine: c.line,
+        method: "substring",
+      });
+      matched = true;
+      break;
+    }
+  }
+  if (matched) continue;
+  // v3 token-similarity fallback — catches punctuation-variant duplicates
+  // that substring missed. Conservative thresholds (≥5-char tokens, ≥4
+  // distinct, ≥80% coverage) avoid Turn-HH-class false positives.
+  const openTokens = tokenize(r.item);
+  if (openTokens.size < MIN_OPEN_TOKENS) continue;
+  for (const c of closedItems) {
+    const closedTokens = tokenize(c.item);
+    const coverage = tokenCoverage(openTokens, closedTokens);
+    if (coverage >= COVERAGE_THRESHOLD) {
+      duplicates.push({
+        open: r,
+        closedItem: c.item,
+        closedLine: c.line,
+        method: "token-similarity",
+        coverage,
+      });
       break;
     }
   }
@@ -221,21 +289,49 @@ if (filtered.length === 0) {
 }
 
 if (duplicates.length > 0) {
-  console.log(
-    `DUPLICATE DETECTED — OPEN rows with item-text matching a CLOSED ✅ row (${duplicates.length} found):`,
-  );
-  for (const d of duplicates) {
-    const itemTrunc =
-      d.open.item.length > 70 ? d.open.item.slice(0, 67) + "..." : d.open.item;
-    console.log(`  - "${itemTrunc}"`);
+  // Group by method so reviewer can prioritize: substring matches are
+  // strict zero-FP, token-similarity matches need eyeball confirmation.
+  const substringDups = duplicates.filter((d) => d.method === "substring");
+  const tokenDups = duplicates.filter((d) => d.method === "token-similarity");
+  if (substringDups.length > 0) {
     console.log(
-      `    OPEN turns-open=${d.open.turnsOpen} owner=${d.open.owner} opened=${d.open.opened}`,
+      `LIKELY DUPLICATE (substring match — high confidence): ${substringDups.length} found`,
     );
-    console.log(
-      `    CLOSED ✅ row at line ${d.closedLine} contains the same item-text — likely un-migrated duplicate from a prior closure turn`,
-    );
+    for (const d of substringDups) {
+      const itemTrunc =
+        d.open.item.length > 70 ? d.open.item.slice(0, 67) + "..." : d.open.item;
+      console.log(`  - "${itemTrunc}"`);
+      console.log(
+        `    OPEN turns-open=${d.open.turnsOpen} owner=${d.open.owner} opened=${d.open.opened}`,
+      );
+      console.log(
+        `    CLOSED ✅ row at line ${d.closedLine} contains the same item-text — likely un-migrated duplicate from a prior closure turn`,
+      );
+    }
+    console.log();
   }
-  console.log();
+  if (tokenDups.length > 0) {
+    console.log(
+      `POSSIBLE DUPLICATE (≥${COVERAGE_THRESHOLD * 100}% token coverage; v3 ${TOKEN_MIN_LEN}+char filter): ${tokenDups.length} found`,
+    );
+    for (const d of tokenDups) {
+      const itemTrunc =
+        d.open.item.length > 70 ? d.open.item.slice(0, 67) + "..." : d.open.item;
+      const closedTrunc =
+        d.closedItem.length > 70 ? d.closedItem.slice(0, 67) + "..." : d.closedItem;
+      console.log(`  - "${itemTrunc}"`);
+      console.log(
+        `    OPEN turns-open=${d.open.turnsOpen} owner=${d.open.owner} opened=${d.open.opened}`,
+      );
+      console.log(
+        `    CLOSED ✅ at line ${d.closedLine} (${((d.coverage ?? 0) * 100).toFixed(0)}% token coverage): "${closedTrunc}"`,
+      );
+      console.log(
+        `    Manual confirm: same scope as the CLOSED row? If yes, migrate OPEN→CLOSED.`,
+      );
+    }
+    console.log();
+  }
 }
 
 console.log(
