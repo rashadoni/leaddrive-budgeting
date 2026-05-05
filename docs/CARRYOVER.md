@@ -12,8 +12,9 @@ Single source of truth for open `🔄` items across substantive turns.
 - Items with `owner=developer` that stay OPEN for ≥ 1 turn without developer action = Проблема (fix-before-build).
 - Items with `owner=user` get heartbeat-only bumps from developer; stale (≥ 14 days) triggers architect re-ping suggestion.
 - Closed items move from OPEN → CLOSED section with closure date + resolution note.
+- **Long-term trigger-gated work lives in `docs/ROADMAP.md ## Backlog`**, not here. This tracker is for in-flight items only — items with a clear external trigger condition (Redis ship / multi-tenant SaaS / CI / vendor pick / heartbeat-only) belong in §Backlog with their re-open trigger explicit. Codified Turn XVIII (architect Round-1 ⚠️ #2 closure).
 
-**Never delete OPEN rows silently.** They either close (→ CLOSED section) or stay with a developer-written reason.
+**Never delete OPEN rows silently.** They either close (→ CLOSED section), migrate to ROADMAP §Backlog with leave-behind narrative in this file's CLOSED section, or stay with a developer-written reason.
 
 > **NOTE — file reconstructed 2026-04-25 (Turn 12 sub-turn).** The verbose
 > per-turn closure narratives in this file were accidentally truncated.

@@ -338,6 +338,15 @@ billing and i18n plumbing are out of scope).
 > approaching as a category" — every counter-bump pass inflated turns-open
 > on rows that have a clear external trigger and are not stuck on dev work.
 > Tier-1 migration moves those out without losing institutional memory.
+>
+> **Cross-axis triggers** (architect Turn-XVIII Round-1 ⚠️ #1): some entries
+> list trigger conditions that span axes — e.g. `#saas-trigger` SSE LISTEN/NOTIFY
+> includes "BullMQ scheduler ships separately" as one of 4 trigger events,
+> which is the `#redis-gated` axis. When a cross-axis trigger fires, the
+> entry under whichever sub-section it currently lives moves back to
+> CARRYOVER §OPEN regardless of which axis triggered it. Anchor names denote
+> the **primary** trigger axis (the one that determines re-open priority);
+> secondary triggers are listed inline in the entry text.
 
 ### Phase 6 — Redis/BullMQ scheduler (gated on Redis ship)
 
