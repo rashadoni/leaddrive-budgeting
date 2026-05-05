@@ -321,7 +321,73 @@ billing and i18n plumbing are out of scope).
 
 ---
 
+## Backlog (long-term, non-CARRYOVER)
+
+> Items migrated 2026-05-05 Phase 7.G **Turn XVIII** from `docs/CARRYOVER.md`
+> §OPEN to declutter the active tracker. Rows here are not abandoned — they
+> stay actionable when the named **trigger condition** fires (Redis ships,
+> multi-tenant SaaS launch, vendor pick made, etc.).
+>
+> **Re-open path:** when a trigger fires, the relevant entry moves back to
+> CARRYOVER §OPEN with a fresh `opened=` date AND a 1-line CARRYOVER pointer
+> here is replaced with the full row. Each entry below has a stable anchor
+> name so future CARRYOVER pointers can link unambiguously.
+>
+> **Why declutter:** pre-Turn-XVIII the OPEN tracker was 63 rows with 60 of
+> them ≥30 turns stale (95%). Architect Turn-XVII surfaced "backlog-bankruptcy
+> approaching as a category" — every counter-bump pass inflated turns-open
+> on rows that have a clear external trigger and are not stuck on dev work.
+> Tier-1 migration moves those out without losing institutional memory.
+
+### Phase 6 — Redis/BullMQ scheduler (gated on Redis ship)
+
+`#redis-gated` — moves back to CARRYOVER OPEN when Redis infra lands.
+
+- **BullMQ background scheduler for recompute** (originally CARRYOVER L425, opened 2026-04-24, 99 turns-open at migration). Phase 6 ROADMAP item; current sync `POST /api/indicators` cap is 500 pairs. Needs Redis + worker process. Estimate 1w.
+- **Cron job for ImportStaging.expiresAt → status='expired'** (originally CARRYOVER L424, opened 2026-04-25, 94 turns-open). Single-purpose cron — bundled with BullMQ ship since standalone cron-only doesn't justify scheduler dependency.
+- **Phase 7.F auto-prune audit events past 365-day retention** (originally CARRYOVER L437, opened 2026-04-25, 87 turns-open). Same BullMQ blocker as ImportStaging cron.
+- **C6 v3 — periodic alert re-evaluation** (originally CARRYOVER L420, opened 2026-04-29, 60 turns-open, owner=user). Today alerts re-evaluate only on matrix-fetch / SSE refetch. Periodic re-eval (e.g. hourly) catches threshold-crossing events when no one's looking. Owner=user because Redis decision.
+- **C4 v2 — live HeatMap recompute under scenario overrides** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Plan §C4 v1 ships visible scenario inspector + queue acknowledgement (POST /api/scenarios returns 202). Live HeatMap recompute under scenario overrides needs Phase 6 BullMQ + worker + IndicatorValue overlay layer. Estimate 3-5d incl pipeline + UI + tests.
+
+### Multi-tenant / SaaS-ready (gated on multi-tenant launch path)
+
+`#saas-trigger` — re-opens when ≥3 customers / Vercel procurement / >80 SSE concurrent.
+
+- **Phase 7.G — SSE LISTEN/NOTIFY infra implementation** (originally CARRYOVER, opened 2026-05-03, 45 turns-open, owner=user). Design done sub-44 (`docs/DESIGN_SSE_SERVERLESS.md`). Stay on Option C (long-lived runtime) until trigger event: (1) ≥3 customers; (2) Vercel/cloud-native deploy procurement; (3) SSE clients across all orgs >80; (4) BullMQ scheduler ships separately (Redis becomes "free"). At trigger: ship Option A (Redis pub/sub bridge), 2-3d est, full migration plan in ADR §7.
+- **Phase 7.H — self-serve org + admin user creation UI** (originally CARRYOVER, opened 2026-05-03, 46 turns-open). Today canonical onboarding = direct SQL inserts into Organization+User tables (per `ADMIN_RUNBOOK.md:§1.1-1.2`). Operationally workable for FO Holding internal use; NOT acceptable for any future multi-tenant SaaS path. Closure: NEW `/admin/orgs/create` page (super-admin gated) + `/admin/orgs/[id]/users/invite` flow with email-magic-link OR password-reset-on-first-login. Schema: add `superAdmin` role to `User.role` enum (or separate `SuperAdmin` table). Estimate 1-2d for v1. Not blocking Phase 7.G but blocks any "ship multi-tenant SaaS" path.
+
+### CI / Cross-platform (gated on CI ship)
+
+`#ci-trigger` — re-opens when CI lands.
+
+- **Linux baseline for visual-regression gate** (originally CARRYOVER, opened 2026-05-03, 42 turns-open, owner=user). Today's baseline at `e2e/smoke/visual-baseline.spec.ts-snapshots/terminal-heatmap-chromium-darwin.png` is macOS-only (Playwright auto-suffixes filename with `{platform}-{browser}`). When CI lands, Linux runner would 404. Closure: generate Linux baseline via `npx playwright test --update-snapshots=missing` once on CI runner. Trigger = ship CI for this repo (currently no CI).
+
+### Phase 7.E AI suite v2-v3 (vendor-decision-gated; post-demo polish)
+
+`#phase-7e-v2` — re-opens per-item when vendor decision / spike done / Phase F lands.
+
+- **C1 — AI Web Crawler vendor pick** (originally CARRYOVER, opened 2026-04-28, 67 turns-open, owner=user). Decision: (a) **NewsAPI** $449/mo broad — developer recommendation per `user_not_finance_expert.md`; (b) Reuters $$$ premium per-call enterprise; (c) Bloomberg $$$$ enterprise; (d) RSS scraping free-but-brittle. Once user picks: developer can begin spike (~1d single-source proof) → full scope (~2w incl per-org API key storage + dedup pipeline + AI relevance scoring).
+- **C2 v2 — cross-indicator regression (multivariate)** (originally CARRYOVER, opened 2026-04-28, 66 turns-open). v1 fits each indicator independently. Cross-indicator correlation (e.g. revenue forecast informs OpEx forecast) would improve accuracy. Multivariate regression OR Granger causality test. Phase G+ scope.
+- **C3 v2 — server-side PDF render** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Plan §C3 listed "AI-narrated polished export" + "PDF/PPTX". v1 ships browser-native Print→PDF + pptxgenjs (Turn II). Server-side PDF render needed for emailing without logged-in user / consistent A4 layout / embedded charts. ~2-3d incl puppeteer setup.
+- **C3 v2 — AI-narrated executive summary** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Plan §C3 specifically called out "AI-narrated executive summary". Pattern would mirror Variance Explainer (existing /explain endpoint). ~1-2d incl prompt design + token budget + Russian/Azerbaijani fallback.
+- **C3 v2.1 — composite bar chart on slide 2** (originally CARRYOVER, opened 2026-05-04, 16 turns-open). PPTX slide 2 native pptxgenjs bar-chart of composite scores (one bar per operational sub-co, color-banded). YAGNI'd until user asks. ~30-60min: `addChart(ChartType.bar, [...])` on slide 2 above the table.
+- **C3 v3 — scheduled email** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Bloomberg-style "every Monday 8am, deck to board@...". Needs cron + SMTP queue + recipient list per-org. ~2-3d. Lower priority than v2 server-PDF.
+- **C3 v2 — status grid scale at Phase F (60×80)** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). C3 status grid uses 16×16px cells; at 60-co × 80-ind Phase F = 4800 cells × 64 px² = 19.2k px² (tight on A4 portrait). Decision needed before Phase F migrations land.
+- **C4 v2 — scenario CRUD UI** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). v1 ships read-only inspector — scenarios managed via seed only. Add `<ScenarioFormModal/>` with overrides JSON editor + tenant-scoped POST/PATCH/DELETE. ~1-2d.
+- **C4 v2 — Apply→queued→HeatMap update feedback loop** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Apply 202 + queued message but HeatMap doesn't reflect scenario in cell values (Phase 6 BullMQ worker not shipped). Either banner "Scenario X queued — applying…" with poll, or real-time SSE on scenario job state.
+- **Phase C5 v2 — weighted composite score** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Plan §C5 promised "weighted aggregation"; v1 ships UNWEIGHTED. Needs per-indicator weight scheme — design call (liquidity > efficiency > growth?) plus data work to assign weights to each of 53 indicators across 15 sectors. ~1-2d design + impl.
+
+### Heartbeat-only placeholders (perpetual; user-trigger or never)
+
+`#heartbeat` — no specific trigger; re-open if user surfaces complaint.
+
+- **Onboard remaining holding groups** (originally CARRYOVER, opened 2026-04-25, 80 turns-open, owner=user). AZMADE = sub-group #1 of N. Other groups arrive ad-hoc, no deadline. Heartbeat-only.
+- **G/A/R chip letters — i18n only if user requests** (originally CARRYOVER, opened 2026-04-30, 63 turns-open, owner=user). KPI/API-class abbreviations customarily stay English. Estimate ~10min if requested.
+- **Tier-3 modernization — M7-M11 + 5/6/7-box panels** (originally CARRYOVER, opened 2026-04-29, 64 turns-open). All Tier-1 (M1+M2+M3) and Tier-2 (M4+M5+M6) modernization complete. User authorized Tier-3 (5/6/7-box panels: ActionCenter / CommentsLayer / SubCoFinanceChat / AISubscriptions + M7 color-blind / M8 mobile-responsive / M9-M11 chat) post-demo. Estimate 3-5d separate sprint.
+
 ## Changelog
+
+- **2026-05-05** — **Phase 7.G Turn XVIII — Tier-1 strategic prune (CARRYOVER 63 → 42 OPEN, −21 net).** Per user "2 1 3 последовательность" — execute strategic prune (#2) FIRST before tactical burndown (#1) and pivot forward (#3). Architect Turn-XVII surfaced "backlog-bankruptcy approaching as a category" — 60/63 OPEN ≥30 turns stale (95%); every counter-bump inflated turns-open on rows with clear external triggers. **NEW `## Backlog (long-term, non-CARRYOVER)` section** added between `## Totals` and `## Changelog`, organized into 5 anchored sub-sections: `#redis-gated` (5 rows: BullMQ / ImportStaging cron / audit 365d / C6 v3 / C4 v2 live-recompute), `#saas-trigger` (2 rows: SSE LISTEN/NOTIFY / Phase 7.H org+admin UI), `#ci-trigger` (1 row: Linux baseline), `#phase-7e-v2` (10 rows: C1-C5 AI suite v2-v3), `#heartbeat` (3 rows: Onboard groups / G/A/R chips / Tier-3 modernization). Re-open path: trigger fires → entry moves back to CARRYOVER §OPEN with fresh date. Each entry preserves opened date + turns-open at migration + closure path + estimate. Migration script `/tmp/claude/migrate_to_backlog_turnxviii.py` removed 21/21 rows by item-text fragment matching. **No source delta — pure tracking migration.** `docs(carryover,roadmap):` hygiene-only — feature-commit streak still paused at 15 from Turn XVI. 0 ⚠️ across 10 consecutive turns preserved.
 
 - **2026-05-05** — **Phase 7.G Turn XVII — 2 misfiled stale OPEN rows migrated (CARRYOVER 65 → 63 OPEN, −2 net).** Per user "проодолжай" extended autonomy. Same misfiling class as Turn IX (2 ⚠️ closures): both rows opened 2026-04-24 with same-day blockers (perMonth column / Period registry); both ALREADY SHIPPED by Turn-42-sub-39 (sparkline computation via `recompute.ts:1938 computeSparkline()` + withSparkline:true opt-in; perMonth column was REVERTED, existing 12-row-per-line `sortOrder` 0..11 mapping is canonical) + Turn-42-sub-41 (fact()/rollup() resolvers at `recompute.ts:1334-1453+1470` with `BuildState.functions` engine integration + 14 unit tests) on 2026-04-30 but never migrated from OPEN. Premise re-verified per `feedback_stale_premise_reverify.md` via grep against current code. **No source delta** — pure CARRYOVER hygiene (counts feature-shaped per Turn-IX precedent). **Verification:** tsc 0; vitest 1810/1810 preserved across 105 files; visual gate not exercised. **`docs(carryover):` hygiene-only — streak pauses at 15 from XVI** (architect Round-1 ⚠️: misread of Turn-IX precedent which shipped C6 v3.4 source delta + 2 ⚠️ migrations). Closure commits backfilled: sparkline `bce084f` + fact/rollup `44404c0`. 0 ⚠️ across 9 consecutive turns preserved.
 
