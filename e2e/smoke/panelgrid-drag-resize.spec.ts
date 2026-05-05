@@ -131,10 +131,27 @@ test.describe('Phase 7.G Turn XXXI — PanelGrid drag-resize', () => {
     const startY = box.y + box.height / 2;
     await steppedDrag(page, startX, startY, startX + 150, startY);
 
-    // Layout autosave is synchronous on `onLayoutChanged`, but the lib
-    // commits sizes during the next animation frame — give it a short
-    // settle window before reading.
-    await page.waitForTimeout(200);
+    // Wait for the autosave to land AND p1 to have grown. Using a
+    // condition predicate (not a fixed sleep) keeps the spec stable
+    // against slow CI environments where the next-animation-frame
+    // commit can be later than a hardcoded settle window. Predicate
+    // also acts as the first-line failure detector — if the drag
+    // didn't actually move the panel, this times out fast with a
+    // clear "waitForFunction timeout" signal.
+    await page.waitForFunction(
+      ({ key, baseline }) => {
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) return false;
+          const parsed = JSON.parse(raw) as Record<string, number>;
+          return typeof parsed.p1 === 'number' && parsed.p1 > baseline;
+        } catch {
+          return false;
+        }
+      },
+      { key: STORAGE_KEY_TOP, baseline: initialP1 },
+      { timeout: 5_000 },
+    );
 
     const finalTop = await page.evaluate<LayoutBlob | null, string>(
       (key) => {
@@ -208,7 +225,21 @@ test.describe('Phase 7.G Turn XXXI — PanelGrid drag-resize', () => {
     // keeps us comfortably inside the valid range.
     await steppedDrag(page, startX, startY, startX, startY + 80);
 
-    await page.waitForTimeout(200);
+    // Predicate-based wait (CI-stable) — see horizontal test rationale.
+    await page.waitForFunction(
+      ({ key, baseline }) => {
+        try {
+          const raw = window.localStorage.getItem(key);
+          if (!raw) return false;
+          const parsed = JSON.parse(raw) as Record<string, number>;
+          return typeof parsed['row-top'] === 'number' && parsed['row-top'] > baseline;
+        } catch {
+          return false;
+        }
+      },
+      { key: STORAGE_KEY_OUTER, baseline: initialRowTop },
+      { timeout: 5_000 },
+    );
 
     const finalOuter = await page.evaluate<LayoutBlob | null, string>(
       (key) => {
