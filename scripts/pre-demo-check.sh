@@ -145,15 +145,21 @@ echo "Migration status:"
 if [ "$APPLY_PENDING" = "true" ]; then
   # Apply any pending migrations FIRST, then run the warn-check on the
   # post-apply state. `prisma migrate deploy` is idempotent — applies
-  # only pending migrations, no-op if up-to-date. Errors here (DB
-  # unreachable, migration SQL fails) flow to stderr and the warn-check
-  # below will then fire on whatever state remains.
+  # only pending migrations, no-op if up-to-date.
+  #
+  # stdout+stderr captured to ${TMPDIR}/pre-demo-migrate-$$.log so that
+  # on failure the log path is referenced in the FAIL message — without
+  # this, `>/dev/null 2>&1` would suppress the diagnostic detail (which
+  # migrations applied + why deploy failed). On success the log can
+  # still be consulted for audit (which migrations landed) — we report
+  # ✓ inline either way. Architect Turn-XIX Round-1 ⚠️ #1 closure.
+  MIGRATE_LOG="${TMPDIR:-/tmp}/pre-demo-migrate-$$.log"
   printf "  %-50s " "Auto-apply pending migrations"
-  if npx prisma migrate deploy >/dev/null 2>&1; then
+  if npx prisma migrate deploy >"$MIGRATE_LOG" 2>&1; then
     printf "${GREEN}✓${NC}\n"
     PASS=$((PASS + 1))
   else
-    printf "${RED}✗${NC} (prisma migrate deploy failed; see logs)\n"
+    printf "${RED}✗${NC} (prisma migrate deploy failed; log: $MIGRATE_LOG)\n"
     FAIL=$((FAIL + 1))
   fi
 fi
