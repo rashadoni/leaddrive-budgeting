@@ -254,6 +254,31 @@ else
   report "Stripe test key flagged (got: $captured)" 0
 fi
 
+# ─────────────────────────────────────────────────────────────────────────
+# 17: test-file path → SKIPPED (Turn-XXXVI architect suggestion #1).
+# Test files conventionally carry fake credentials for assertion. A
+# contributor staging a test file with `password = "weak"` shouldn't be
+# blocked; pattern catalog targets prod-shape leaks.
+testpath="$SCRATCH/foo.test.ts"
+cat > "$testpath" <<'EOF'
+const fakePassword = "Hunter2!secret";
+const fakeAws = "AKIAIOSFODNN7EXAMPLE";
+EOF
+out=$(run_scanner "$testpath")
+report "*.test.ts SKIPPED (test fixture allow-list)" \
+  "$([ "$out" = "0" ] && echo 1 || echo 0)"
+
+# ─────────────────────────────────────────────────────────────────────────
+# 18: e2e/fixtures path → SKIPPED
+mkdir -p "$SCRATCH/e2e/fixtures"
+fixpath="$SCRATCH/e2e/fixtures/auth-stub.ts"
+cat > "$fixpath" <<'EOF'
+const adminPassword = "Admin123!";
+EOF
+out=$(run_scanner "$fixpath")
+report "e2e/fixtures path SKIPPED" \
+  "$([ "$out" = "0" ] && echo 1 || echo 0)"
+
 echo ""
 if [ "$fail_count" -eq 0 ]; then
   echo "All $pass_count tests passed."

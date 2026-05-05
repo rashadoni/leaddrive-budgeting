@@ -39,6 +39,18 @@
 #
 # Activation: this hook is called from `.githooks/pre-commit`.
 # Test gate:  `.githooks/tests/pre-commit-secrets.test.sh`.
+#
+# ─── BASH 3.2 COMPATIBILITY (do NOT re-introduce these) ─────────────────
+# macOS ships bash 3.2 at /bin/bash and `#!/usr/bin/env bash` may resolve
+# to it on dev machines without homebrew bash on PATH first. Forbidden
+# bash-4+ idioms in this hook (each was caught + fixed during Turn XXXVI):
+#   ✗ `mapfile -d '' arr < ...`     — not in 3.2; use `while read -r -d ''`
+#   ✗ `declare -A assoc=(...)`      — not in 3.2; use flat string + `case`
+#   ✗ `[[ "$x" =~ [[:char:]]+ ]]`   — POSIX-class inside `[[ =~ ]]` is
+#                                      flaky under 3.2 — prefer grep -E
+# Verify any future change to this file by running on /bin/bash:
+#   /bin/bash .githooks/pre-commit-secrets.sh --scan-files /tmp/clean.txt
+# ────────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
@@ -83,11 +95,21 @@ should_skip_path() {
     # PRISMA generated client (regenerated on `prisma generate`)
     src/generated/*|*/generated/prisma/*) return 0 ;;
     # The scanner's own test gate contains intentional fixture-shaped
-    # API keys to verify each pattern. Tightly-scoped exception — any
-    # OTHER test file is still scanned. Any future scanner test gate
-    # following the `.githooks/tests/pre-commit-secrets.test.sh` name
-    # would need to be added explicitly.
+    # API keys to verify each pattern.
     .githooks/tests/pre-commit-secrets.test.sh) return 0 ;;
+    # Test fixtures (by convention) carry fake / weak credentials for
+    # assertion purposes — `hardcoded_password` is the most likely
+    # false-positive source per architect Turn-XXXVI suggestion. We
+    # exclude unit/spec/e2e test files broadly. Trade-off: real
+    # production secrets in test files slip through, but the convention
+    # is that real secrets never go in tests. If a contributor stages
+    # a test file with intentional fake fixtures, the scanner stays
+    # quiet.
+    *.test.ts|*.test.tsx|*.test.js|*.test.jsx) return 0 ;;
+    *.spec.ts|*.spec.tsx|*.spec.js|*.spec.jsx) return 0 ;;
+    *.test.sh|*.test.py) return 0 ;;
+    */__tests__/*|__tests__/*) return 0 ;;
+    e2e/fixtures/*|*/e2e/fixtures/*) return 0 ;;
   esac
   return 1
 }
