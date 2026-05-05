@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { auth } from "@/lib/auth";
-import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
+import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import { AlertEventsFeed } from "@/features/risk/components/AlertEventsFeed";
 
 export const metadata = {
@@ -34,7 +34,7 @@ export default async function AlertHistoryPage({
   }
 
   const params = await searchParams;
-  const rawPeriod = params.period ?? String(new Date().getUTCFullYear());
+  const rawPeriod = params.period ?? currentBakuYear();
   try {
     parsePeriod(rawPeriod);
   } catch (err) {

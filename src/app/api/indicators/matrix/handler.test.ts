@@ -6,9 +6,11 @@
  * earlier `currentMonthString()` default returned `YYYY-MM` and silently
  * mismatched all pipeline-written rows, surfacing as 15 stale orphan-
  * monthly cells in the HeatMap (real count was 36 annual). The fix at
- * `route.ts:40-44` renames it to `defaultPeriodString()` returning
- * `String(getUTCFullYear())`. This test pins that contract: the request
- * with no `?period=` MUST query Prisma with a 4-digit year string.
+ * `route.ts:40-44` renames it to `defaultPeriodString()` (Phase 7.G Turn
+ * XXXIII switched the body from `String(getUTCFullYear())` to
+ * `currentBakuYear()` — Asia/Baku-anchored — closing the latent off-by-one
+ * footgun documented in L416/L433). This test pins that contract: the
+ * request with no `?period=` MUST query Prisma with a 4-digit year string.
  *
  * Also covers: 401 unauth, 400 invalid period, period override via
  * query string. The auth gate + tenant scoping shape mirrors

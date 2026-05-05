@@ -34,6 +34,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
 import { Beaker, X } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
+import { currentBakuYear } from "@/lib/risk/periods";
 
 interface Scenario {
   id: string;
@@ -68,14 +69,12 @@ export function ScenarioPanel() {
   const [applyState, setApplyState] = useState<ApplyState>({ kind: "idle" });
   const activeScenarioCode = useTerminalStore((s) => s.activeScenarioCode);
 
-  // Default period for apply — matches the existing `defaultPeriodString()`
-  // used by the recompute pipeline. v2 can switch to user-selectable
-  // period / company scope; v1 ships the same default the rest of the
-  // terminal uses.
-  const period = useMemo(
-    () => String(new Date().getUTCFullYear()),
-    [],
-  );
+  // Default period for apply — matches the canonical `currentBakuYear()`
+  // reader used by the matrix endpoint and recompute pipeline (Asia/Baku
+  // anchored; closes Phase 7.G Turn XXXIII paired-row L416/L433). v2 can
+  // switch to user-selectable period / company scope; v1 ships the same
+  // default the rest of the terminal uses.
+  const period = useMemo(() => currentBakuYear(), []);
 
   useEffect(() => {
     const onOpen = () => setOpen(true);

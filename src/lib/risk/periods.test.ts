@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
+  currentBakuYear,
   parsePeriod,
   daysInPeriod,
   expandToMonths,
@@ -109,5 +110,38 @@ describe('expandToMonths', () => {
       '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06',
       '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12',
     ]);
+  });
+});
+
+describe('currentBakuYear', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns a 4-digit YYYY string (sanity)', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(currentBakuYear()).toMatch(/^\d{4}$/);
+  });
+
+  it('returns Baku-local year at mid-day (UTC 12:00 = Baku 16:00, same date)', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(currentBakuYear()).toBe('2026');
+  });
+
+  it('returns NEXT year at year-boundary footgun (UTC 2026-12-31 23:30 = Baku 2027-01-01 03:30)', () => {
+    // This is the exact bug L433 documents — at AZ-local 2027-01-01 03:30,
+    // a UTC reader returns "2026" but the user expects "2027". The
+    // Asia/Baku-anchored reader must return "2027".
+    vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
+    expect(currentBakuYear()).toBe('2027');
+  });
+
+  it('returns CURRENT year just before year-boundary (UTC 2026-12-31 19:30 = Baku 2026-12-31 23:30)', () => {
+    // Mirror case — UTC and Baku still agree before Baku midnight.
+    vi.setSystemTime(new Date('2026-12-31T19:30:00Z'));
+    expect(currentBakuYear()).toBe('2026');
   });
 });

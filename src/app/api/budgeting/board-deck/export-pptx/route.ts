@@ -23,7 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTranslations } from "next-intl/server";
 import PptxGenJS from "pptxgenjs";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
-import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
+import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   DEFAULT_ALERT_RULE_IDS,
   type AlertSeverity,
@@ -64,8 +64,7 @@ export async function GET(req: NextRequest) {
   const { orgId } = auth;
 
   const rawPeriod =
-    req.nextUrl.searchParams.get("period") ??
-    String(new Date().getUTCFullYear());
+    req.nextUrl.searchParams.get("period") ?? currentBakuYear();
   try {
     parsePeriod(rawPeriod);
   } catch (err) {

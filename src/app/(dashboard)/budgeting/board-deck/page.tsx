@@ -8,7 +8,7 @@ import {
 } from "@/lib/risk/alert-message-i18n";
 import { auth } from "@/lib/auth";
 import { scoreToBand } from "@/lib/risk/composite-score";
-import { parsePeriod, PeriodParseError } from "@/lib/risk/periods";
+import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   DEFAULT_ALERT_RULE_IDS,
   type AlertSeverity,
@@ -77,7 +77,7 @@ export default async function BoardDeckPage({
   )) as unknown as IndustryTranslator;
 
   const params = await searchParams;
-  const rawPeriod = params.period ?? String(new Date().getUTCFullYear());
+  const rawPeriod = params.period ?? currentBakuYear();
   // Architect Round-1 sub-12 ⚠️ closure: validate the period regex
   // before passing into the Prisma where-clause. Mirrors the matrix
   // endpoint's defense-in-depth at /api/indicators/matrix/route.ts:64-72.

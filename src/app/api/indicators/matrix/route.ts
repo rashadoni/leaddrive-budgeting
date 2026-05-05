@@ -34,15 +34,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
-import { parsePeriod, PeriodParseError } from '@/lib/risk/periods';
+import { currentBakuYear, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 
-function defaultPeriodString(): string {
-  // Annual period — matches what the recompute pipeline writes
-  // (`period: String(year)` in `recompute-trigger.ts`). Callers wanting
-  // monthly granularity must pass `?period=YYYY-MM` explicitly.
-  return String(new Date().getUTCFullYear());
-}
+// Default period reader — annual, anchored to Asia/Baku (see
+// `currentBakuYear` for rationale). Callers wanting monthly granularity
+// must pass `?period=YYYY-MM` explicitly.
+const defaultPeriodString = currentBakuYear;
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request);

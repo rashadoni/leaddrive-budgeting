@@ -77,6 +77,34 @@ export function parsePeriod(raw: string): Period {
   throw new PeriodParseError(raw, `expected "YYYY-MM", "YYYY-Qn", or "YYYY"`);
 }
 
+/**
+ * Current annual period as a `YYYY` string anchored to Asia/Baku timezone.
+ *
+ * Why Asia/Baku and not UTC: BudgetPro serves Azerbaijan-based holding
+ * companies; users perceive "the current year" relative to their wall
+ * clock in Baku (UTC+4), not UTC. A `getUTCFullYear()` reader produces
+ * an off-by-one near year boundaries — at Baku-local 2027-01-01 03:30,
+ * UTC is still 2026-12-31 23:30 and a UTC reader returns 2026 while the
+ * user expects 2027 (the latent footgun closed in Phase 7.G Turn XXXIII;
+ * pre-existed since Turn 16).
+ *
+ * Why a dedicated helper: this contract is load-bearing across 5+
+ * default-period reader sites (matrix endpoint, board-deck export,
+ * alerts history, board-deck page, ScenarioPanel). Centralising the
+ * timezone choice in one place means future migrations (per-org
+ * timezones for multi-tenant SaaS) flip a single function.
+ *
+ * NOTE: period iteration math in `expandToMonths` and `sparkline.ts`
+ * stays UTC-anchored — that's deterministic-math territory (`Date.UTC`
+ * arithmetic), not user-facing default selection. Don't conflate the two.
+ */
+export function currentBakuYear(): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Baku',
+    year: 'numeric',
+  }).format(new Date());
+}
+
 /** Whole days in a period — useful for rooms_available = totalRooms * days. */
 export function daysInPeriod(period: Period): number {
   return Math.round(
