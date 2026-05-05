@@ -30,6 +30,14 @@
  *     /apply requires `requireRole(request, 'manager')`
  *   - At least one active company in admin's org (FK target)
  *   - Postgres reachable
+ *
+ * Concurrency safety: `playwright.config.ts:81` pins workers=1, so the
+ * fixed plan-name + year=2099 globally unique-key is safe. If workers
+ * is ever bumped > 1 AND another spec also exercises /apply against
+ * the same admin org, this spec must add
+ * `test.describe.configure({mode: 'serial'})` OR randomize the
+ * plan-name suffix per test run to avoid spurious unique-constraint
+ * conflicts on `(orgId, year=2099, name='AI-Imported 2099 Budget')`.
  */
 
 import { expect, test } from '@playwright/test';
@@ -239,12 +247,14 @@ test.describe('Phase 7.G Turn XXXV — /staging/[id]/apply real-DB end-to-end', 
     expect(body.year).toBe(TEST_YEAR);
     // `inserted` counts parsed LINES post-dedupe (not DB rows;
     // route.ts:354-358 + applier `dedupeParentRollups`). The fixture's
-    // 801-01/801-02 share a parent prefix so the dedup may collapse
-    // them — exact count depends on the dedupe heuristic. Contract
-    // proof here is "rows were inserted" + the relationship between
-    // parsed lines and DB rows (1 line → 12 BudgetLine rows at
-    // sortOrder=0..11 per the per-month fan-out at the prisma write).
-    expect(body.inserted).toBeGreaterThan(0);
+    // 801-01/801-02 share a parent prefix so the dedup collapses them
+    // — empirically `inserted=2` (3 prefix groups, one collapsed).
+    // Architect Turn-XXXV review tightening: assert `>= 2` (post-dedupe
+    // floor) instead of `> 0` to catch a future partial-regression
+    // where one of the three groups silently goes missing. The exact
+    // dedupe output for THIS fixture is 2; if a refactor makes it 1
+    // or 0 we want to know.
+    expect(body.inserted).toBeGreaterThanOrEqual(2);
     expect(body.deleted).toBe(0);
     expect(body.auditStale).toBe(false);
 
