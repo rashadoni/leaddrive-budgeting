@@ -53,6 +53,22 @@ PASS=0
 FAIL=0
 WARN=0
 
+# Phase 7.G Turn XX (closes 67-turn 🔄, Turn-42-sub-18 architect 💡 #2):
+# Detect Claude Code sandbox where network connect to localhost is blocked
+# with EPERM. Without this detection, all curl-based dev-server probes
+# (port 3000 / auth-gate / load-time / data-leak) HARD FAIL even when
+# the dev server is healthy — sub-18 hit this on Day-5 morning before
+# `dangerouslyDisableSandbox` was reachable.
+#
+# Primary signal: $OPERON_SANDBOXED_NETWORK=1 set by the Claude harness.
+# When sandboxed, http-shape checks emit `⚠ skipped (sandboxed)` and
+# increment WARN counter (not FAIL). Caller running outside the sandbox
+# (no env var set) gets the existing checks unchanged — back-compat.
+SANDBOXED=false
+if [ "${OPERON_SANDBOXED_NETWORK:-0}" = "1" ]; then
+  SANDBOXED=true
+fi
+
 check() {
   local name="$1"
   local cmd="$2"
@@ -82,6 +98,16 @@ warn_check() {
   fi
 }
 
+# Phase 7.G Turn XX — http-shape checks skip with WARN under sandbox.
+# Soft-skip rather than hard-skip: if the gate is meant to fire on a
+# real demo morning (sandbox disabled), this still surfaces the gap
+# in the summary as a soft mismatch.
+skip_check() {
+  local name="$1"
+  printf "  %-50s ${YELLOW}⚠${NC} skipped (sandboxed)\n" "$name"
+  WARN=$((WARN + 1))
+}
+
 cd "$(dirname "$0")/.."
 
 echo ""
@@ -101,15 +127,27 @@ warn_check "DEMO-CO.xlsx is 27+ rows"      "unzip -p \"\$HOME/Downloads/DEMO-CO.
 
 echo ""
 echo "Dev server health:"
-check "Port 3000 responds"                 "curl -s -o /dev/null http://localhost:3000"
-warn_check "/budgeting auth gate (307)"    "curl -s -o /dev/null -w %{http_code} http://localhost:3000/budgeting" "307"
-warn_check "/api/companies auth gate (307)" "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/companies" "307"
-warn_check "/api/budgeting/availability"   "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/budgeting/availability" "307"
-# Auth-regression guard: if middleware degrades and starts returning JSON without
-# a session cookie, the 307-only check above would still ✓. Affirmatively reject.
-check "Auth-gate doesn't leak data"        "! curl -s http://localhost:3000/api/companies | grep -qE '\"id\":|\"organizations\":'"
-# Perf regression-guard for Turn-38-sub12 baseline (264ms warm; 600ms is 2.3× safety).
-warn_check "/budgeting load < 0.6s"        "curl -s -o /dev/null -w '%{time_total}' -L http://localhost:3000/budgeting?tab=pnl-report 2>/dev/null | awk '{print (\$1 < 0.6)?\"ok\":\$1}'" "ok"
+if [ "$SANDBOXED" = "true" ]; then
+  # Claude harness sandbox blocks TCP connect to localhost with EPERM —
+  # all curl probes here would HARD FAIL even when dev-server healthy.
+  # Skip with WARN so the summary still surfaces the gap.
+  skip_check "Port 3000 responds"
+  skip_check "/budgeting auth gate (307)"
+  skip_check "/api/companies auth gate (307)"
+  skip_check "/api/budgeting/availability"
+  skip_check "Auth-gate doesn't leak data"
+  skip_check "/budgeting load < 0.6s"
+else
+  check "Port 3000 responds"                 "curl -s -o /dev/null http://localhost:3000"
+  warn_check "/budgeting auth gate (307)"    "curl -s -o /dev/null -w %{http_code} http://localhost:3000/budgeting" "307"
+  warn_check "/api/companies auth gate (307)" "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/companies" "307"
+  warn_check "/api/budgeting/availability"   "curl -s -o /dev/null -w %{http_code} http://localhost:3000/api/budgeting/availability" "307"
+  # Auth-regression guard: if middleware degrades and starts returning JSON without
+  # a session cookie, the 307-only check above would still ✓. Affirmatively reject.
+  check "Auth-gate doesn't leak data"        "! curl -s http://localhost:3000/api/companies | grep -qE '\"id\":|\"organizations\":'"
+  # Perf regression-guard for Turn-38-sub12 baseline (264ms warm; 600ms is 2.3× safety).
+  warn_check "/budgeting load < 0.6s"        "curl -s -o /dev/null -w '%{time_total}' -L http://localhost:3000/budgeting?tab=pnl-report 2>/dev/null | awk '{print (\$1 < 0.6)?\"ok\":\$1}'" "ok"
+fi
 
 echo ""
 echo "Database integrity (psql):"

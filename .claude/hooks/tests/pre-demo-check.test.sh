@@ -2,11 +2,13 @@
 # Regression guard for `scripts/pre-demo-check.sh` arg parser + APPLY_PENDING
 # branch (Turn XIX architect Round-1 ⚠️ #2 closure).
 #
-# Covers the 3 control-flow scenarios introduced Turn XIX:
-#   (a) `--bogus-flag` → "Unknown flag: ..." + Usage line + exit-2
-#   (b) `--apply-pending` → APPLY_PENDING=true branch executes
+# Covers the control-flow scenarios introduced by recent turns:
+#   (a) `--bogus-flag` → "Unknown flag: ..." + Usage line + exit-2  [Turn XIX]
+#   (b) `--apply-pending` → APPLY_PENDING=true branch executes        [Turn XIX]
 #       `npx prisma migrate deploy` (mocked) BEFORE the warn-check
-#   (c) no flag → APPLY_PENDING=false → APPLY branch skipped (back-compat)
+#   (c) no flag → APPLY_PENDING=false → APPLY branch skipped          [Turn XIX]
+#   (d) OPERON_SANDBOXED_NETWORK=1 → Dev-server http checks emit       [Turn XX]
+#       "skipped (sandboxed)" lines instead of curl probes
 #
 # Sibling pattern of `architect-gate.test.sh` + `test-gate.test.sh`. Mocks
 # the script's external deps (npx + curl + others) via $TMPDIR fakebin so
@@ -156,6 +158,31 @@ if ! grep -q 'prisma migrate deploy' "$NPX_LOG"; then
   fi
 else
   report "no-flag fired 'prisma migrate deploy' — back-compat broken (calls: $(cat "$NPX_LOG"))" 0
+fi
+
+# ──────────────────────────────────────────────────────────────────────────
+# (d) OPERON_SANDBOXED_NETWORK=1 → dev-server http section emits "skipped
+# (sandboxed)" lines, no curl invocation. Assert by absence of curl call
+# log + presence of skipped-line in output.
+: > "$NPX_LOG"
+: > "$WORK_DIR/curl-calls.log"
+# Wrap fake curl with logging so we can assert no calls were made.
+cat > "$FAKE_BIN/curl" <<'CURL_LOG_EOF'
+#!/bin/bash
+echo "curl $*" >> "${CURL_LOG:-/dev/null}"
+echo "307"
+exit 0
+CURL_LOG_EOF
+chmod +x "$FAKE_BIN/curl"
+out=$(NPX_MOCK_MODE=pass NPX_LOG="$NPX_LOG" CURL_LOG="$WORK_DIR/curl-calls.log" \
+      OPERON_SANDBOXED_NETWORK=1 PATH="$FAKE_BIN" /bin/bash "$SCRIPT" 2>&1 \
+      || echo "EXIT_CODE=$?")
+if echo "$out" | grep -q 'skipped (sandboxed)' \
+   && [ ! -s "$WORK_DIR/curl-calls.log" ]; then
+  report "OPERON_SANDBOXED_NETWORK=1 → http checks skip with 'sandboxed' WARN, no curl invocations" 1
+else
+  curl_calls=$(cat "$WORK_DIR/curl-calls.log" 2>/dev/null | wc -l | tr -d ' ')
+  report "sandbox-skip case failed (curl_calls=$curl_calls; got: $(echo "$out" | head -3 | tr '\n' '|'))" 0
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
