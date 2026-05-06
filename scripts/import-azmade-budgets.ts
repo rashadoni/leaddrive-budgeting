@@ -158,6 +158,11 @@ async function insertBudgetLineTx(
   companyId: string,
   accountId: string,
   parsed: ParsedBudgetLine,
+  // Phase 7.G Turn XXXIX (L1 closure): tag every BudgetLine with the
+  // company's baseCurrencyCode. AZMADE companies are all `AZN`, but
+  // threading the value (with `'AZN'` fallback) keeps the script
+  // future-proof if a non-AZN company is ever onboarded via this path.
+  baseCurrencyCode: string | null,
 ): Promise<void> {
   // lineType tracks accountType — revenue/cogs map 1:1, everything else
   // (expense / asset / liability / equity) falls to "expense" for the
@@ -196,6 +201,10 @@ async function insertBudgetLineTx(
         // values; they are NOT auto-planned. Schema default is now false too.
         isAutoPlanned: false,
         isAutoActual: false,
+        // Phase 7.G Turn XXXIX: tag with the company's base currency so
+        // FX_IMPORTED_INPUT (and any future per-currency indicator) can
+        // distinguish imported lines from base-currency lines.
+        currencyCode: baseCurrencyCode ?? 'AZN',
       },
     });
   }
@@ -220,7 +229,13 @@ async function runJob(
 
   const company = await prisma.company.findUnique({
     where: { organizationId_code: { organizationId: org.id, code: job.companyCode } },
-    select: { id: true },
+    // baseCurrencyCode is the org-level default for the company. Phase 7.G
+    // Turn XXXIX (L1 closure) — pass through to BudgetLine.currencyCode so
+    // FX_IMPORTED_INPUT can detect imported (non-base) cost lines correctly.
+    // Pre-Turn-XXXIX behavior: BudgetLine.currencyCode landed as NULL,
+    // making FX_IMPORTED_INPUT structurally return 0% for AZMADE — the
+    // architect-flagged "fake green" that originally retired IND_FX_INPUT_RISK.
+    select: { id: true, baseCurrencyCode: true },
   });
   if (!company) {
     throw new Error(`Company "${job.companyCode}" not found in org — run seed-azmade-holding first.`);
@@ -291,7 +306,7 @@ async function runJob(
           line.accountType,
           coaCache,
         );
-        await insertBudgetLineTx(tx, org.id, plan.id, company.id, accountId, line);
+        await insertBudgetLineTx(tx, org.id, plan.id, company.id, accountId, line, company.baseCurrencyCode);
         ins += 1;
       }
       return {

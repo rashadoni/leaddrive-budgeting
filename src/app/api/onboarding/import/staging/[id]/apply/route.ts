@@ -307,6 +307,17 @@ export async function POST(
   // ALL changes roll back.
   const orgIdLocal = orgId;
   const companyId = staging.companyId;
+
+  // Phase 7.G Turn XXXIX (L1 closure): tag every inserted BudgetLine with
+  // the company's baseCurrencyCode so FX_IMPORTED_INPUT can detect
+  // imported (non-base-currency) lines correctly. Pre-Turn-XXXIX behavior
+  // landed BudgetLine.currencyCode as NULL, making the indicator
+  // structurally return 0% for any company onboarded via this path.
+  const companyForCurrency = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { baseCurrencyCode: true },
+  });
+  const baseCurrencyCode = companyForCurrency?.baseCurrencyCode ?? 'AZN';
   let diagnostics: ApplyDiagnostics;
   try {
     diagnostics = await prisma.$transaction(
@@ -406,6 +417,12 @@ export async function POST(
               sortOrder: monthIdx,
               isAutoPlanned: false,
               isAutoActual: false,
+              // Phase 7.G Turn XXXIX (L1 closure): tag with the company's
+              // base currency. FX-imported lines (different currency than
+              // base) are not yet auto-detected by the AI mapper —
+              // future-work to extract `amount:<currency-suffix>` semantics
+              // from the proposal columns.
+              currencyCode: baseCurrencyCode,
             };
             await tx.budgetLine.create({ data });
           }

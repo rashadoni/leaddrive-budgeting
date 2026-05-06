@@ -1697,10 +1697,24 @@ export const RETIRED_CODES: readonly string[] = [
   // 2026-04-24 — merged into FX_IMPORTED_INPUT (identical formula).
   "IND_IMPORTED_INPUT",
   // 2026-04-29 sub-27 cont'd Round-7 — architect Round-6 flagged: AZMADE
-  // xlsx import doesn't tag `currencyCode` on BudgetLines (10169/10169
-  // NULL), so the formula structurally returns 0% across all op-cos —
-  // a fake green that misleads demo. Re-enable AFTER
-  // `scripts/import-azmade-budgets.ts` is extended to detect FX columns.
+  // xlsx import doesn't tag `currencyCode` on BudgetLines (then 10169/10169
+  // NULL), so the formula structurally returned 0% across all op-cos —
+  // a fake green that would mislead demo.
+  //
+  // Phase 7.G Turn XXXIX (2026-05-05) — RETIRED PERMANENTLY (architectural
+  // decision, not parser-fix-pending): IND_FX_INPUT_RISK is functionally
+  // identical to the active `FX_IMPORTED_INPUT` cross-sector indicator
+  // (same formula `imported_input_cost / total_input_cost * 100`, same
+  // resolver path, same data shape). The only difference was the
+  // industrial-pack thresholds (green<=30 / amber<=60 / red>60 vs
+  // FX_IMPORTED_INPUT's stricter green<=25 / amber<=50 / red>50).
+  // Re-enabling would clutter the industrial heatmap with two near-
+  // duplicate indicators that always agree on the band — net negative
+  // for users. The underlying data fix (BudgetLine.currencyCode tagging
+  // via `import-azmade-budgets.ts` + AI-mapper /apply route) ships in
+  // this same turn, but BENEFITS the active `FX_IMPORTED_INPUT`
+  // indicator, not this retired one. Definition preserved above
+  // (formula + thresholds) for institutional memory.
   "IND_FX_INPUT_RISK",
 ];
 

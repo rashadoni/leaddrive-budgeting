@@ -31,6 +31,10 @@ const { prismaMock, applierMocks, recomputeMock } = vi.hoisted(() => ({
     // uses the top-level prisma client.
     budgetPlan: { findFirst: vi.fn() },
     budgetLine: { count: vi.fn() },
+    // Phase 7.G L1 closure (Turn XXXIX): the route looks up
+    // `company.baseCurrencyCode` once before the transaction so every
+    // BudgetLine insert can tag `currencyCode = baseCurrencyCode`.
+    company: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -80,6 +84,9 @@ beforeEach(() => {
   prismaMock.importStaging.update.mockReset();
   prismaMock.budgetPlan.findFirst.mockReset();
   prismaMock.budgetLine.count.mockReset();
+  // Default: company.baseCurrencyCode = 'AZN' (matches AZMADE seed). Tests
+  // that rely on a different currency override per-case.
+  prismaMock.company.findUnique.mockReset().mockResolvedValue({ baseCurrencyCode: 'AZN' });
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: 'audit_1' });
   prismaMock.$transaction.mockReset();
   applierMocks.applyProposal.mockReset();
@@ -353,6 +360,10 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
         expect(r.plannedAmount).toBe(seasonalPerMonth[idx]);
         expect(r.isAutoPlanned).toBe(false); // xlsx-sourced (Turn 29 Bug #1b)
         expect(r.lineType).toBe('revenue');
+        // Phase 7.G Turn XXXIX (L1 closure): every inserted line is
+        // tagged with the company's baseCurrencyCode. Default mock
+        // returns 'AZN' for AZMADE companies — see prismaMock at L37.
+        expect(r.currencyCode).toBe('AZN');
       });
     // Sum invariant: ∑perMonth == plannedAnnual.
     const seasonalSum = seasonalRows.reduce(
