@@ -1201,6 +1201,13 @@ model IntelItem {
   publishedAt     DateTime?                           // article publish date if extractable
   fetchedAt       DateTime      @default(now())
   isPinned        Boolean       @default(false)
+  // Architect Turn-XLII Suggestion: `dismissedBy String[]` is fine for
+  // Phase D.1-D.3 volumes (<1K dismissals/org). At Phase D.5+ scale
+  // (thousands of users × thousands of items), migrate to a
+  // `DismissedIntelItem (userId, intelItemId)` join table with a
+  // `(userId, intelItemId)` unique index — enables `WHERE NOT EXISTS(...)`
+  // with a B-tree index instead of GIN array contains. Migration path:
+  // backfill from existing arrays, then drop the column.
   dismissedBy     String[]      @default([])          // user IDs that dismissed this item
 
   @@index([organizationId, fetchedAt(sort: Desc)])

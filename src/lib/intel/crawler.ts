@@ -34,11 +34,16 @@ export function urlHash(rawUrl: string): string {
     const u = new URL(rawUrl);
     u.hash = '';
     // Sort query params for stable hashing.
+    // Architect Turn-XLII Round-1 Проблема fix: `URL.search` setter
+    // accepts both `?foo=bar` and `foo=bar` forms but normalises
+    // inconsistently across Node versions; assigning the bare value
+    // (no leading `?`) mirrors what `URLSearchParams.toString()`
+    // produces and avoids a brittle double-`?` shape on some runtimes.
     const sortedSearch = Array.from(u.searchParams.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}=${v}`)
       .join('&');
-    u.search = sortedSearch ? `?${sortedSearch}` : '';
+    u.search = sortedSearch;
     normalised = u
       .toString()
       .toLowerCase()
