@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 import ExcelJS from "exceljs"
 
 export async function POST(req: NextRequest) {
@@ -9,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   const formData = await req.formData()
   const file = formData.get("file") as File | null
-  const year = Number(formData.get("year") || new Date().getFullYear())
+  const year = Number(formData.get("year") || currentBakuYearNumber())
 
   if (!file) {
     return NextResponse.json({ error: "file required" }, { status: 400 })

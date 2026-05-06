@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 
 const salesForecastSchema = z.object({
   year: z.number().int().min(2020).max(2050),
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const year = Number(req.nextUrl.searchParams.get("year") || new Date().getFullYear())
+  const year = Number(req.nextUrl.searchParams.get("year") || currentBakuYearNumber())
   if (isNaN(year) || year < 2020 || year > 2050) {
     return NextResponse.json({ error: "Invalid year" }, { status: 400 })
   }

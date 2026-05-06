@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYear } from "@/lib/risk/periods"
 
 const resolveAlertSchema = z.object({
   alertId: z.string().min(1).max(100),
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const year = parseInt(req.nextUrl.searchParams.get("year") || new Date().getFullYear().toString())
+  const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
   const alerts = await prisma.cashFlowAlert.findMany({
     where: { organizationId: orgId, year, isResolved: false },

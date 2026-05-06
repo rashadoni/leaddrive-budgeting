@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYear } from "@/lib/risk/periods"
 
 const MONTH_NAMES = ["Yan", "Fev", "Mar", "Apr", "May", "İyn", "İyl", "Avq", "Sen", "Okt", "Noy", "Dek"]
 
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const year = parseInt(req.nextUrl.searchParams.get("year") || new Date().getFullYear().toString())
+  const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
   // Get planned amounts from budget lines
   const budgetLines = await prisma.budgetLine.findMany({

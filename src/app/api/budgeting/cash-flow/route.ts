@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYear } from "@/lib/risk/periods"
 import type { CashFlowEntry } from "@prisma/client"
 
 const createCashFlowSchema = z.object({
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const year = parseInt(req.nextUrl.searchParams.get("year") || new Date().getFullYear().toString())
+  const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
   const entries = await prisma.cashFlowEntry.findMany({
     where: { organizationId: orgId, year },

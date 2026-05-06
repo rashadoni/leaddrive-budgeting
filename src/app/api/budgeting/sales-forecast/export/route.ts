@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { currentBakuYearNumber } from "@/lib/risk/periods"
 import ExcelJS from "exceljs"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -9,7 +10,7 @@ export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-  const year = Number(req.nextUrl.searchParams.get("year") || new Date().getFullYear())
+  const year = Number(req.nextUrl.searchParams.get("year") || currentBakuYearNumber())
 
   const departments = await prisma.budgetDepartment.findMany({
     where: { organizationId: orgId, hasRevenue: true, isActive: true },

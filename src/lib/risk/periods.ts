@@ -105,6 +105,22 @@ export function currentBakuYear(): string {
   }).format(new Date());
 }
 
+/**
+ * Numeric variant of `currentBakuYear()` for callers that immediately
+ * `parseInt`/`Number(...)` the result. Same Asia/Baku timezone semantic
+ * — UTC-server-deploy-safe — but skips the dance of `Number(currentBakuYear())`
+ * at each call site.
+ *
+ * Used by the ~9 budgeting API routes (cash-flow, sales-forecast,
+ * expense-forecast, onboarding /apply) that previously read
+ * `new Date().getFullYear()` (server-local, off-by-one on a UTC
+ * deployment) into a `year: number` query/form param. Closes Turn-XXXIII
+ * "out of L416/L433 scope" follow-up.
+ */
+export function currentBakuYearNumber(): number {
+  return Number(currentBakuYear());
+}
+
 /** Whole days in a period — useful for rooms_available = totalRooms * days. */
 export function daysInPeriod(period: Period): number {
   return Math.round(

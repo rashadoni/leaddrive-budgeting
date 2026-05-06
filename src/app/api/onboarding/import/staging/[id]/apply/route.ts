@@ -33,6 +33,7 @@ import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
 import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
+import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 
 export const maxDuration = 60;
@@ -231,7 +232,7 @@ export async function POST(
   const yearHint = detectProposalYear(proposal.columns);
   let targetYear: number;
   if (yearHint === null) {
-    targetYear = new Date().getFullYear();
+    targetYear = currentBakuYearNumber();
   } else if (typeof yearHint === 'object' && 'conflict' in yearHint) {
     return NextResponse.json(
       {

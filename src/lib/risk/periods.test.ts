@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   currentBakuYear,
+  currentBakuYearNumber,
   parsePeriod,
   daysInPeriod,
   expandToMonths,
@@ -143,5 +144,25 @@ describe('currentBakuYear', () => {
     // Mirror case — UTC and Baku still agree before Baku midnight.
     vi.setSystemTime(new Date('2026-12-31T19:30:00Z'));
     expect(currentBakuYear()).toBe('2026');
+  });
+});
+
+describe('currentBakuYearNumber', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns numeric year (mid-year, agrees with currentBakuYear)', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(currentBakuYearNumber()).toBe(2026);
+    expect(currentBakuYearNumber()).toBe(Number(currentBakuYear()));
+  });
+
+  it('returns NEXT year at year-boundary footgun (UTC 2026-12-31 23:30 = Baku 2027-01-01 03:30)', () => {
+    vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
+    expect(currentBakuYearNumber()).toBe(2027);
   });
 });
