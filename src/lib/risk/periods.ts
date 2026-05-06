@@ -121,6 +121,28 @@ export function currentBakuYearNumber(): number {
   return Number(currentBakuYear());
 }
 
+/**
+ * Current `(year, month)` tuple anchored to Asia/Baku timezone. Month is
+ * 1-indexed (1=January..12=December), matching `now.getMonth() + 1`
+ * convention rather than the JS Date 0-indexed quirk.
+ *
+ * Used by analytics / export / snapshot / sync-actuals routes that
+ * previously did `const now = new Date(); const curYear = now.getFullYear();
+ * const curMonth = now.getMonth() + 1;` — same off-by-one risk on a
+ * UTC-server deploy as the year-only sites Turn XXXVII swapped.
+ */
+export function currentBakuYearMonth(): { year: number; month: number } {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Baku',
+    year: 'numeric',
+    month: 'numeric',
+  });
+  const parts = fmt.formatToParts(new Date());
+  const year = Number(parts.find((p) => p.type === 'year')?.value ?? '0');
+  const month = Number(parts.find((p) => p.type === 'month')?.value ?? '0');
+  return { year, month };
+}
+
 /** Whole days in a period — useful for rooms_available = totalRooms * days. */
 export function daysInPeriod(period: Period): number {
   return Math.round(

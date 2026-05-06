@@ -3,6 +3,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
+import { currentBakuYearMonth } from "@/lib/risk/periods"
 
 /**
  * POST /api/budgeting/snapshot-actuals
@@ -26,8 +27,8 @@ export async function POST(req: NextRequest) {
     const { planId, month } = body as { planId?: string; month?: string }
 
     // Determine target month (default: current)
-    const now = new Date()
-    const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+    const { year: bkuYear, month: bkuMonth } = currentBakuYearMonth()
+    const targetMonth = month || `${bkuYear}-${String(bkuMonth).padStart(2, "0")}`
 
     // Load cost model
     const costModel = await loadAndCompute(orgId).catch(() => null)

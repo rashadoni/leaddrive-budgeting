@@ -3,6 +3,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
+import { currentBakuYearMonth } from "@/lib/risk/periods"
 import ExcelJS from "exceljs"
 
 // ── Color palette ────────────────────────────────────────────────────────────
@@ -152,8 +153,7 @@ export async function GET(req: NextRequest) {
   let autoActualExpense = 0, autoActualRevenue = 0, autoActualCOGS = 0
 
   if (hasAutoActual && costModel && plan) {
-    const now = new Date()
-    const curYear = now.getFullYear(), curMonth = now.getMonth() + 1
+    const { year: curYear, month: curMonth } = currentBakuYearMonth()
     let elapsedMonths = 1
     if (plan.periodType === "monthly") {
       elapsedMonths = 1

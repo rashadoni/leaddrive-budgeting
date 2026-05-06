@@ -5,6 +5,7 @@ import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
+import { currentBakuYearMonth } from "@/lib/risk/periods"
 
 /**
  * GET /api/budgeting/analytics
@@ -125,9 +126,7 @@ export async function GET(req: NextRequest) {
   let autoActualTotal = 0
 
   if (hasAutoActual && costModel && plan) {
-    const now = new Date()
-    const curYear = now.getFullYear()
-    const curMonth = now.getMonth() + 1
+    const { year: curYear, month: curMonth } = currentBakuYearMonth()
 
     let elapsedMonths = 1
     if (plan.periodType === "monthly") {
@@ -468,10 +467,11 @@ export async function GET(req: NextRequest) {
   // Elapsed time % within the plan period (for time-aware execution indicator)
   let elapsedPct = 100
   if (plan.status !== "closed") {
-    const now = new Date()
-    const cy = now.getFullYear()
-    const cm = now.getMonth() + 1
-    const cd = now.getDate()
+    // Year + month anchored to Asia/Baku; day-of-month from local Date is
+    // close-enough (the off-by-one only affects the last ~4 hours of UTC
+    // day-end, where a 1-day-off elapsed-pct is rounding-noise).
+    const { year: cy, month: cm } = currentBakuYearMonth()
+    const cd = new Date().getDate()
     const daysInMonth = (y: number, m: number) => new Date(y, m, 0).getDate()
 
     if (plan.periodType === "monthly" && plan.month) {
@@ -533,9 +533,7 @@ export async function GET(req: NextRequest) {
     const matrixLines = lines.filter((l: any) => l.costTypeId || (l.lineType === "revenue" && l.departmentId))
 
     // Compute auto-actual per matrix cell if cost model available
-    const now2 = new Date()
-    const curYear2 = now2.getFullYear()
-    const curMonth2 = now2.getMonth() + 1
+    const { year: curYear2, month: curMonth2 } = currentBakuYearMonth()
     let elapsedMonths2 = 1
     if (plan) {
       if (plan.periodType === "monthly") elapsedMonths2 = 1

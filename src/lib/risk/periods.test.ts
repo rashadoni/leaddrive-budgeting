@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   currentBakuYear,
+  currentBakuYearMonth,
   currentBakuYearNumber,
   parsePeriod,
   daysInPeriod,
@@ -164,5 +165,30 @@ describe('currentBakuYearNumber', () => {
   it('returns NEXT year at year-boundary footgun (UTC 2026-12-31 23:30 = Baku 2027-01-01 03:30)', () => {
     vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
     expect(currentBakuYearNumber()).toBe(2027);
+  });
+});
+
+describe('currentBakuYearMonth', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns 1-indexed month + Baku-anchored year (mid-day)', () => {
+    // UTC 2026-06-15 12:00 = Baku 2026-06-15 16:00. June = 6.
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(currentBakuYearMonth()).toEqual({ year: 2026, month: 6 });
+  });
+
+  it('flips year + month at year-boundary footgun (UTC 2026-12-31 23:30 = Baku 2027-01-01 03:30)', () => {
+    vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
+    expect(currentBakuYearMonth()).toEqual({ year: 2027, month: 1 });
+  });
+
+  it('flips month at month-boundary (UTC 2026-04-30 21:30 = Baku 2026-05-01 01:30)', () => {
+    vi.setSystemTime(new Date('2026-04-30T21:30:00Z'));
+    expect(currentBakuYearMonth()).toEqual({ year: 2026, month: 5 });
   });
 });

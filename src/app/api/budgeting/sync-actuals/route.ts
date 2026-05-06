@@ -4,6 +4,7 @@ import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
+import { currentBakuYearMonth } from "@/lib/risk/periods"
 
 const syncActualsSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -54,8 +55,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cost model unavailable" }, { status: 503 })
   }
 
-  const now = new Date()
-  const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`
+  const { year, month } = currentBakuYearMonth()
+  const currentDate = `${year}-${String(month).padStart(2, "0")}-01`
   let synced = 0
 
   for (const line of lines) {
