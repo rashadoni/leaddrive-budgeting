@@ -114,6 +114,7 @@ async function main() {
     data: lines.map((l) => ({
       organizationId: clone.organizationId,
       planId: clone.id,
+      companyId: l.companyId,
       accountId: l.accountId,
       category: l.category,
       department: l.department,
@@ -124,6 +125,12 @@ async function main() {
       isAutoActual: l.isAutoActual,
       notes: l.notes,
       sortOrder: l.sortOrder,
+      // Phase 7.G Turn XXXIX architect Suggestion: preserve currencyCode
+      // on clone so re-imports don't revert tagged lines back to NULL.
+      // The clone-plan utility is a dev/test path, not production, but
+      // the convention "every BudgetLine carries currencyCode through
+      // every write" is now uniform across all import + clone paths.
+      currencyCode: l.currencyCode,
     })),
     skipDuplicates: true,
   })
