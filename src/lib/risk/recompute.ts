@@ -217,6 +217,31 @@ export interface RecomputeDataSource {
   }): Promise<number | null>;
 
   /**
+   * Phase 7.G Turn XLI (Phase C) — batched variant of `getIndicatorValue`
+   * for the `fact()` resolver. Reads many `(indicatorCode, period)` pairs
+   * for a single (org, co) in ONE database call instead of N. Returns
+   * a map keyed by canonical `${indicatorCode}@${period}`. Missing rows
+   * (status='unknown' OR no row) map to `null`, mirroring the singular
+   * method's semantic.
+   *
+   * Cost shape: at Phase F (60 cos × 9 indicators × 2-3 fact reads each
+   * = ~1500 reads per recompute), the singular Promise.all path was 1500
+   * concurrent queries; this collapses to ~60 batched queries (one per
+   * recompute target). Indispensable for cross-period composite
+   * indicators that fan out across many quarters.
+   *
+   * **Required, not optional** — same fail-loud rationale as
+   * `getIndicatorValue`. Adapters that return stub data still must
+   * implement this; sub-to-singular fallback is allowed only at the
+   * adapter level if the call shape is identical (rare).
+   */
+  getIndicatorValues(args: {
+    organizationId: string;
+    companyId: string;
+    pairs: Array<{ indicatorCode: string; period: string }>;
+  }): Promise<Record<string, number | null>>;
+
+  /**
    * Phase 7.E phase 3 — direct-children lookup for `rollup()` formula
    * function. Returns Company.id values of every active sub-company whose
    * `parentCompanyId === args.parentId`. Used by `rollupResolver` to fan
@@ -581,6 +606,47 @@ export function createPrismaDataSource(
       if (!row) return null;
       if (row.status === 'unknown') return null;
       return row.value;
+    },
+
+    /**
+     * Phase 7.G Turn XLI (Phase C) — batched read for fact() resolver.
+     * Single Prisma `findMany` with OR clause; missing rows OR
+     * status='unknown' rows map to `null` keyed by `${code}@${period}`.
+     * Empty pairs returns empty object without hitting Prisma.
+     */
+    async getIndicatorValues({ organizationId, companyId, pairs }) {
+      if (pairs.length === 0) return {};
+      const rows = await prisma.indicatorValue.findMany({
+        where: {
+          organizationId,
+          companyId,
+          OR: pairs.map((p) => ({
+            indicator: { code: p.indicatorCode },
+            period: p.period,
+          })),
+        },
+        select: {
+          value: true,
+          status: true,
+          period: true,
+          indicator: { select: { code: true } },
+        },
+      });
+      const result: Record<string, number | null> = {};
+      // Initialise every requested pair to null so callers can rely on
+      // key presence (not the same as `undefined`).
+      for (const p of pairs) {
+        result[`${p.indicatorCode}@${p.period}`] = null;
+      }
+      for (const row of rows) {
+        const key = `${row.indicator.code}@${row.period}`;
+        if (row.status === 'unknown') {
+          result[key] = null;
+        } else {
+          result[key] = row.value;
+        }
+      }
+      return result;
     },
 
     /**
@@ -1368,11 +1434,11 @@ export const ROLLUP_INPUT_PREFIX = 'rollup:';
  * maps null → NaN so the formula propagates the missing-input failure
  * naturally. The aggregate snapshot keeps null (drill-down sees the gap).
  *
- * Cost: 1 Prisma `findFirst` per (code, period) pair. At Phase F scale
- * (60 cos × 9 indicators each potentially declaring 2-3 fact reads each
- * = ~1500 reads per recompute batch) this fits inside the existing 60s
- * route budget; if it doesn't, the resolver can be batched into a
- * single `IN (...)` query in v2.
+ * Cost: Phase 7.G Turn XLI batched the resolver into a single
+ * `getIndicatorValues` call (one `findMany` with OR clause) instead of
+ * N concurrent `findFirst`s. Phase F scale (~1500 reads) → ~60 batched
+ * queries (one per recompute target). Original v1 cost note preserved
+ * in git history.
  */
 const factResolver: NamespaceResolver = {
   name: 'fact',
@@ -1409,22 +1475,22 @@ const factResolver: NamespaceResolver = {
       unique.push(p);
     }
 
-    const reads: Record<string, number | null> = {};
-    if (unique.length > 0) {
-      const values = await Promise.all(
-        unique.map((p) =>
-          ctx.ds.getIndicatorValue({
+    // Phase 7.G Turn XLI (Phase C): batched read replaces the per-pair
+    // Promise.all that was sending N concurrent findFirst queries. At
+    // Phase F scale (60 cos × 9 indicators × 2-3 fact reads each) this
+    // collapses ~1500 queries to ~60. Empty `unique` short-circuits to
+    // `{}` without hitting the DB.
+    const reads: Record<string, number | null> =
+      unique.length > 0
+        ? await ctx.ds.getIndicatorValues({
             organizationId: ctx.organizationId,
             companyId: ctx.companyId,
-            indicatorCode: p.code,
-            period: p.period,
-          }),
-        ),
-      );
-      for (let i = 0; i < unique.length; i++) {
-        reads[unique[i].key] = values[i];
-      }
-    }
+            pairs: unique.map((p) => ({
+              indicatorCode: p.code,
+              period: p.period,
+            })),
+          })
+        : {};
 
     let hitCount = 0;
     for (const v of Object.values(reads)) if (v !== null) hitCount++;

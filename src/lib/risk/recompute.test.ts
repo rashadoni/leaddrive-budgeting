@@ -55,6 +55,14 @@ type MockState = {
   /** Per-call audit of getIndicatorValue / listChildCompanyIds for phase-3
    *  dedup + cost-shape tests. */
   ivReadCalls: Array<{ companyId: string; indicatorCode: string; period: string }>;
+  /** Phase 7.G Turn XLI — batched-call audit for fact() resolver. Each
+   *  entry = ONE getIndicatorValues invocation; the `pairs` array tracks
+   *  every (code, period) requested in that batch. Tests assert
+   *  `ivBatchCalls.length` ≤ 1 to prove batching works. */
+  ivBatchCalls: Array<{
+    companyId: string;
+    pairs: Array<{ indicatorCode: string; period: string }>;
+  }>;
   childrenCalls: Array<{ parentId: string }>;
 };
 
@@ -72,6 +80,7 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     upserts: [],
     orgReads: [],
     ivReadCalls: [],
+    ivBatchCalls: [],
     childrenCalls: [],
   };
   return {
@@ -107,6 +116,22 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
       state.ivReadCalls.push({ companyId, indicatorCode, period });
       const key = `${companyId}:${indicatorCode}@${period}`;
       return state.ivReads[key] ?? null;
+    },
+    // Phase 7.G Turn XLI (Phase C) — batched read mock. Records each call
+    // as ONE entry in `ivBatchCalls` so tests can assert call-count
+    // collapses from N to 1 per recompute. Looks up each pair against
+    // the same `state.ivReads` map as the singular method.
+    getIndicatorValues: async ({ organizationId, companyId, pairs }) => {
+      state.orgReads.push(
+        `getIvs:${organizationId}:${companyId}:${pairs.length}pairs`,
+      );
+      state.ivBatchCalls.push({ companyId, pairs });
+      const result: Record<string, number | null> = {};
+      for (const p of pairs) {
+        const key = `${companyId}:${p.indicatorCode}@${p.period}`;
+        result[`${p.indicatorCode}@${p.period}`] = state.ivReads[key] ?? null;
+      }
+      return result;
     },
     listChildCompanyIds: async ({ organizationId, parentId }) => {
       state.orgReads.push(`children:${organizationId}:${parentId}`);
@@ -1888,7 +1913,8 @@ describe("buildContext — fact() resolver (Phase 7.E phase 3)", () => {
 
   it('de-duplicates same (code, period) declared multiple times', async () => {
     // requiredInputs may contain the same fact key twice — author error or
-    // composition. Resolver de-dupes so only ONE Prisma read fires.
+    // composition. Resolver de-dupes so the batched read fires once with
+    // a SINGLE pair.
     const ds = mockDs({
       ivReads: { 'c1:IND_X@2025': 42 },
     });
@@ -1898,14 +1924,22 @@ describe("buildContext — fact() resolver (Phase 7.E phase 3)", () => {
       period: parsePeriod('2026'),
       requiredInputs: ['fact:IND_X@2025', 'fact:IND_X@2025', 'fact:IND_X@2025'],
     });
-    // Locks the de-dup contract: 3 entries → 1 read call.
-    expect(ds.state.ivReadCalls).toHaveLength(1);
+    // Phase 7.G Turn XLI: post-batching, the dedup contract is "3
+    // requiredInputs → 1 batched call with 1 pair", not "3 → 1 singular
+    // calls". Both invariants together prove the dedup happens BEFORE
+    // the network round-trip (not just at the result-mapping step).
+    expect(ds.state.ivBatchCalls).toHaveLength(1);
+    expect(ds.state.ivBatchCalls[0].pairs).toEqual([
+      { indicatorCode: 'IND_X', period: '2025' },
+    ]);
+    // Singular path is unused for fact() now.
+    expect(ds.state.ivReadCalls).toHaveLength(0);
   });
 
   it('skips malformed fact entries silently (lenient parse)', async () => {
     // `fact:bad` (no @), `fact:@2025` (empty code), `fact:CODE@` (empty period),
     // `fact:` (empty body) are all soft-skipped — only the well-formed
-    // `fact:IND_X@2025` reaches getIndicatorValue.
+    // `fact:IND_X@2025` reaches the batched read.
     const ds = mockDs({
       ivReads: { 'c1:IND_X@2025': 42 },
     });
@@ -1921,9 +1955,46 @@ describe("buildContext — fact() resolver (Phase 7.E phase 3)", () => {
         'fact:IND_X@2025',
       ],
     });
-    expect(ds.state.ivReadCalls).toEqual([
-      { companyId: 'c1', indicatorCode: 'IND_X', period: '2025' },
+    expect(ds.state.ivBatchCalls).toHaveLength(1);
+    expect(ds.state.ivBatchCalls[0].pairs).toEqual([
+      { indicatorCode: 'IND_X', period: '2025' },
     ]);
+  });
+
+  it('Phase 7.G Turn XLI: batching collapses N pair reads into ONE call', async () => {
+    // Pre-Turn-XLI: each fact:CODE@PERIOD entry triggered an independent
+    // `getIndicatorValue` Prisma findFirst (Promise.all of N). At Phase
+    // F scale (~1500 fact reads per recompute batch), this was 1500
+    // concurrent queries.
+    //
+    // Post-Turn-XLI: ONE batched `getIndicatorValues` per buildContext
+    // with N pairs in the OR clause. This test pins the contract: 5
+    // distinct fact:CODE@PERIOD entries → 1 batched call with 5 pairs.
+    const ds = mockDs({
+      ivReads: {
+        'c1:IND_A@2024': 100,
+        'c1:IND_A@2025': 110,
+        'c1:IND_B@2024': 200,
+        'c1:IND_B@2025': 220,
+        'c1:IND_C@2025': 300,
+      },
+    });
+    await buildContext(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      period: parsePeriod('2026'),
+      requiredInputs: [
+        'fact:IND_A@2024',
+        'fact:IND_A@2025',
+        'fact:IND_B@2024',
+        'fact:IND_B@2025',
+        'fact:IND_C@2025',
+      ],
+    });
+    expect(ds.state.ivBatchCalls).toHaveLength(1);
+    expect(ds.state.ivBatchCalls[0].pairs).toHaveLength(5);
+    // Singular path unused.
+    expect(ds.state.ivReadCalls).toHaveLength(0);
   });
 
   it('end-to-end: formula uses fact() for YoY delta', async () => {
@@ -1957,9 +2028,18 @@ describe("buildContext — fact() resolver (Phase 7.E phase 3)", () => {
       period: parsePeriod('2026'),
       requiredInputs: ['fact:IND_X@2025'],
     });
+    // Phase 7.G Turn XLI: tenant scoping is now asserted on the batched
+    // `getIvs:` log entry (org + co + N-pairs marker). The pair details
+    // are checked separately on `ivBatchCalls[0].pairs`.
     expect(ds.state.orgReads).toContain(
-      'getIv:org_specific:c1:IND_X@2025',
+      'getIvs:org_specific:c1:1pairs',
     );
+    expect(ds.state.ivBatchCalls).toEqual([
+      {
+        companyId: 'c1',
+        pairs: [{ indicatorCode: 'IND_X', period: '2025' }],
+      },
+    ]);
   });
 });
 

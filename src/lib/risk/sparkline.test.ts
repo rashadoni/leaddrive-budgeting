@@ -80,6 +80,14 @@ const stubDs: RecomputeDataSource = {
   listBudgetLines: async () => [],
   upsertIndicatorValue: async () => {},
   getIndicatorValue: async () => null,
+  // Phase 7.G Turn XLI (Phase C): batched fact() resolver. Stub returns
+  // `null` for every requested pair — same fail-loud semantic as the
+  // singular variant.
+  getIndicatorValues: async ({ pairs }) => {
+    const out: Record<string, number | null> = {};
+    for (const p of pairs) out[`${p.indicatorCode}@${p.period}`] = null;
+    return out;
+  },
   listChildCompanyIds: async () => [],
 };
 
