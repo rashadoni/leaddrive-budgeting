@@ -432,6 +432,9 @@ async function insertBudgetLineTx(
         lineType,
         plannedAmount: monthlyAmount,
         sortOrder: monthIdx,
+        // Phase 7.G Turn XL (A.1): explicit 0-indexed month for sparkline
+        // + per-month aggregation (replaces sortOrder % 100 heuristic).
+        monthIndex: monthIdx,
         isAutoPlanned: false,
         isAutoActual: false,
       },

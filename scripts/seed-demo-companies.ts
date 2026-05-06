@@ -679,6 +679,9 @@ async function seedBudgetLinesForCompany(
                   : 'expense',
             plannedAmount: Math.round(spec.annual * shape[m] * 100) / 100,
             sortOrder: m,
+            // Phase 7.G Turn XL (A.1): explicit 0-indexed month for
+            // sparkline + per-month aggregation queries.
+            monthIndex: m,
             currencyCode: spec.currency ?? null,
             exchangeRate: spec.exchangeRate ?? null,
           });

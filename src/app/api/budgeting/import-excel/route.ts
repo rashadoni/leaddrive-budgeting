@@ -322,6 +322,11 @@ export async function POST(req: NextRequest) {
                 isAutoActual: false,
                 notes: `Imported from P&L row ${r}, ${MONTHS[m]} (account ${codeStr})`,
                 sortOrder: r * 100 + m,
+                // Phase 7.G Turn XL (A.1): explicit 0-indexed month. The
+                // legacy `sortOrder = r * 100 + m` heuristic packs both
+                // row position and month into one int (mod-100 = month);
+                // monthIndex is the canonical source going forward.
+                monthIndex: m,
               })
             }
           }

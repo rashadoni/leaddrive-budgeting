@@ -415,6 +415,9 @@ export async function POST(
               lineType,
               plannedAmount: monthlyAmount,
               sortOrder: monthIdx,
+              // Phase 7.G Turn XL (A.1): explicit 0-indexed month (Jan=0..Dec=11).
+              // Resolvers prefer this over `sortOrder % 100` when present.
+              monthIndex: monthIdx,
               isAutoPlanned: false,
               isAutoActual: false,
               // Phase 7.G Turn XXXIX (L1 closure): tag with the company's

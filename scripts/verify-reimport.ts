@@ -125,6 +125,11 @@ async function main() {
       isAutoActual: l.isAutoActual,
       notes: l.notes,
       sortOrder: l.sortOrder,
+      // Phase 7.G Turn XL (A.1): preserve monthIndex on clone — same
+      // rationale as currencyCode below (the convention "every BudgetLine
+      // carries monthIndex/currencyCode through every write" is uniform
+      // across all import + clone paths).
+      monthIndex: l.monthIndex,
       // Phase 7.G Turn XXXIX architect Suggestion: preserve currencyCode
       // on clone so re-imports don't revert tagged lines back to NULL.
       // The clone-plan utility is a dev/test path, not production, but

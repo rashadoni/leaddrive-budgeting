@@ -460,6 +460,15 @@ model BudgetLine {
   originalAmount Float?
   notes          String?
   sortOrder      Int                 @default(0)
+  // Phase 7.G Turn XL (Phase A.1) — explicit 0-indexed month for BudgetLine
+  // rows. 0=Jan..11=Dec. Nullable for legacy/annual/rollup-derived rows
+  // (resolvers handle null defensively per `recompute.ts:107`). All NEW
+  // writers (`import-azmade-budgets.ts`, AI-mapper /apply, seed scripts,
+  // verify-reimport clone) tag this on insert. Pre-Phase-A rows derive
+  // `monthIndex` from `sortOrder % 100` per the legacy convention; backfill
+  // ships as a user-owned 🔄 (mass UPDATE on shared DB needs explicit
+  // permission, same boundary as Turn XXXIX currencyCode backfill).
+  monthIndex     Int?
   parentId       String?
   parent         BudgetLine?         @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children       BudgetLine[]        @relation("LineChildren")
@@ -471,6 +480,9 @@ model BudgetLine {
   @@index([departmentId])
   @@index([accountId])
   @@index([companyId])
+  // Phase 7.G Turn XL — query shape for sparkline + monthly aggregations
+  // (resolvers join on (planId, companyId) and bucket by monthIndex).
+  @@index([planId, companyId, monthIndex])
   @@map("budget_lines")
 }
 

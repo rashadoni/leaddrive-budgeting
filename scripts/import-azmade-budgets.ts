@@ -196,7 +196,12 @@ async function insertBudgetLineTx(
         department: null,
         lineType,
         plannedAmount: monthlyAmount,
-        sortOrder: monthIdx, // % 100 → month - 1 in PNL aggregation
+        sortOrder: monthIdx, // % 100 → month - 1 in PNL aggregation (legacy)
+        // Phase 7.G Turn XL (A.1): explicit 0-indexed month. Replaces the
+        // `sortOrder % 100` heuristic resolvers used. Both written for now
+        // — sortOrder stays for back-compat read paths until those are
+        // migrated to monthIndex.
+        monthIndex: monthIdx,
         // Turn 29 (Bug #1b): xlsx-sourced lines have explicit plannedAmount
         // values; they are NOT auto-planned. Schema default is now false too.
         isAutoPlanned: false,
