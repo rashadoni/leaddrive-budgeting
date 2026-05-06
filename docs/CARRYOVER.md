@@ -23,6 +23,76 @@ Single source of truth for open `🔄` items across substantive turns.
 > rows below carry a one-line summary + a pointer to the ROADMAP entry
 > for full context.
 
+## ⚡ SESSION HANDOFF
+
+**For the next continuation signal ("продолжай" / "дальше" / similar) —
+read this BEFORE the OPEN section. This block OVERRIDES the default
+"pick from OPEN" pickup flow per CLAUDE.md §2.6.**
+
+**Where we are:** mid-execution of approved 5-phase plan
+`~/.claude/plans/glistening-wondering-dragonfly.md` (full sparkline
+foundation + remaining AI suite). Plan was approved 2026-05-06 via
+ExitPlanMode after pre-flight Explore caught that 3-of-4 AI features
+were ALREADY shipped (Variance Explainer, Predictive Analytics,
+Board Deck v1+PPTX). Real remaining = AI Web Crawler + monthIndex/P&L
+refactor + BullMQ scheduler + fact() batching + Board Deck v2 polish.
+
+**Phase status snapshot (Turn XLII complete):**
+
+| Phase | Status |
+|---|---|
+| A.1 BudgetLine.monthIndex schema + 8 writers | ✅ Turn XL |
+| A.2 Resolver simplification + P&L god-component refactor | 🔴 BLOCKED on monthIndex backfill (user-owned 🔄) |
+| B BullMQ scheduler + Redis infra | 🟡 needs Redis vendor decision |
+| C fact() resolver batching (1500 → 60 queries) | ✅ Turn XLI |
+| D.1 IntelItem schema + GET /api/intel + crawler stub | ✅ Turn XLII |
+| **D.2 Anthropic `web_search_20250305` LLM call in `runIntelCrawl()`** | ⏳ **NEXT PICKUP** |
+| D.3 POST /api/intel/refresh + pin + dismiss | ⏳ depends on D.2 |
+| D.4 IntelFeedPanel UI + CommandBar `INT GO` | ⏳ depends on D.2 |
+| D.5 BullMQ recurring intel-crawler-worker | ⏳ depends on Phase B |
+| E.1 Puppeteer native PDF render | 🟢 unblocked |
+| E.2 AI-narrated executive summary | 🟢 unblocked |
+| E.3 Scheduled email delivery | ⏳ depends on Phase B |
+
+**Next pickup execution plan (Phase D.2):**
+
+1. Read `~/.claude/plans/glistening-wondering-dragonfly.md` §D for full
+   scope (vendor confirmed: Anthropic `web_search_20250305` already
+   wired in `/api/budgeting/ai-analytics/route.ts`; reuse the SDK
+   pattern from there + `src/lib/ai/client.ts`'s `getAnthropicClient()`).
+2. Implement real `runIntelCrawl()` in `src/lib/intel/crawler.ts`:
+   - Replace the Phase-D.1 stub at `crawler.ts:62-70`
+   - `messages.create` with `web_search_20250305` tool, prompt seeded
+     with `input.industries` + `input.companyCodes`
+   - Tool-use loop: search → parse results → score relevance via a
+     follow-up LLM call → write `IntelItem` rows with `urlHash` dedup
+     (the helper at `crawler.ts:34-58` is already shipped and tested)
+   - Per-org rate limit (in-process counter or Bash-rate-limit pattern;
+     final BullMQ schedule lands in Phase D.5)
+3. NEW `src/app/api/intel/refresh/route.ts` — admin-only POST trigger
+   for on-demand crawl (`requireRole(request, 'admin')` + rate limit).
+4. NEW `crawler.test.ts` cases — mock `getAnthropicClient`, assert
+   prompt shape + tool-use parsing + dedup-write contract. Existing
+   urlHash + stub tests at `src/lib/intel/crawler.test.ts` stay.
+5. Verify tsc + focused vitest + full vitest preserved.
+
+**Permission boundary for D.2:** `ANTHROPIC_API_KEY` (already in `.env`
+per `src/lib/ai/client.ts`). No new permission needed. LLM cost budget
+≤8K input + ≤4K output tokens per crawl per org (~$0.05/org/day on
+Sonnet 4.5).
+
+**User-owned 🔄 still open (separate from plan execution):**
+- monthIndex backfill (~10584 rows) — unblocks Phase A.2
+- currencyCode backfill (~10584 rows) — unblocks accurate FX_IMPORTED_INPUT
+- AZ translations native review (heartbeat-only)
+- Demo / UI smokes (heartbeat-only)
+- architect-gate carve-out for hygiene/Q&A turns (protocol relaxation)
+
+**Last step (REQUIRED per CLAUDE.md §2.6):** delete this `## ⚡ SESSION
+HANDOFF` section from `docs/CARRYOVER.md` after acting on it. Handoffs
+should NOT accumulate across sessions; if Phase D.2 lands cleanly, the
+next handoff (if needed) gets written fresh pointing at D.3.
+
 ## OPEN
 
 **Last processed: 2026-05-06** (Phase 7.G **Turn XLII — Phase D.1: IntelItem schema + API foundation for AI Web Crawler** (per approved 5-phase plan `glistening-wondering-dragonfly.md`, Phase D start). Per user "дальше" auto-mode. Phase A.2 blocked on monthIndex backfill; Phase B blocked on Redis vendor; Phase D unblocked (Anthropic web_search already wired in /api/budgeting/ai-analytics). **Goal:** schema + API contract + crawler skeleton so Phase D.2 (LLM call) and D.4 (UI) can wire to a stable interface. **Shipped — 1 schema migration / 4 NEW files / 1 EDIT:** **(1)** `prisma/schema.prisma` NEW `IntelItem` model — id/orgId/title/summary/url/urlHash/sourceLabel/relevanceScore/industryTags[]/companyTags[]/publishedAt/fetchedAt/isPinned/dismissedBy[]; `@@unique([orgId, urlHash])` for hash-dedup; 2 indexes for query shapes. Org back-relation `intelItems`. Migration `20260506_intel_items` applied. **(2)** NEW `src/lib/intel/types.ts` (~80 LOC) — `IntelCrawlInput`/`IntelCrawlResult`/`IntelItemDTO` types + `intelItemToDTO()` mapper (computes per-caller `isDismissed`). **(3)** NEW `src/lib/intel/crawler.ts` (~85 LOC) — `urlHash()` (sha256 of normalised URL: lowercase + sorted query + stripped fragment + trailing-slash) + `runIntelCrawl()` STUB returning `{itemsFetched:0, ...errors:["Phase D.2 not yet shipped"]}`. **(4)** NEW `src/app/api/intel/route.ts` (~210 LOC) — GET handler: `requireAuth` + 4 optional filters + composite cursor + paginate (default 50, max 200) + `Cache-Control: private, no-store`. **(5)** NEW `src/app/api/intel/handler.test.ts` (~225 LOC, 10 cases). **(6)** NEW `src/lib/intel/crawler.test.ts` (~75 LOC, 9 cases for urlHash + stub). **Out of scope this turn (Phase D.2-D.6):** Anthropic LLM call, POST /api/intel/refresh, POST pin / DELETE dismiss, IntelFeedPanel UI, `INT GO` CommandBar dispatch, BullMQ recurring worker. **Verification:** prisma migrate dev → applied; tsc 0 (1 inline fix: `row` typed as `IntelItem` in map callback); focused 19/19 in 0.2s; full vitest **1834 → 1853/1853** (+19) across 109 → 111 files. **CARRYOVER:** 16 → 16 OPEN (0 net — D.1 is foundation, no closure). Counter-bump 16 retained via `npm run carryover:bump -- --turn XLII`. **35th consecutive feature-shaped commit**. **0 ⚠️ × 35 consecutive turns**. See ROADMAP §Changelog L<NNN>.)
