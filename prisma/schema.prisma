@@ -56,6 +56,7 @@ model Organization {
   importStaging          ImportStaging[]
   terminalLayouts        UserLayoutPreference[]
   auditEvents            AuditEvent[]
+  intelItems             IntelItem[]
 }
 
 model User {
@@ -1172,6 +1173,40 @@ model AlertEvent {
   @@index([organizationId, period, emittedAt])
   @@index([organizationId, ruleId, emittedAt])
   @@map("alert_events")
+}
+
+// Phase 7.G Turn XLII (Phase D.1) — AI Web Crawler intel feed.
+//
+// Per-org news/intel item produced by the daily Anthropic web_search
+// crawl. Indexed by relevanceScore + tags so the Risk Terminal panel
+// can surface high-signal items first and let users filter by
+// industry / company tag. Pinned items survive cleanup runs;
+// dismissed-by-user IDs prevent re-render after explicit hide.
+//
+// Source: Anthropic `messages.create` with `web_search_20250305` tool.
+// Same SDK + auth pattern as `/api/budgeting/ai-analytics` route.
+// No vendor-specific keys — reuses the project's single ANTHROPIC_API_KEY.
+model IntelItem {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title           String
+  summary         String                              // 1-3 sentence LLM-generated summary
+  url             String                              // canonical source URL
+  urlHash         String                              // sha256 of URL for dedup
+  sourceLabel     String                              // human-readable source name (e.g. "Reuters", "Bloomberg")
+  relevanceScore  Float                               // 0..1; LLM-scored relative to org's industry/company tags
+  industryTags    String[]      @default([])          // e.g. ["industrial","hospitality"]
+  companyTags     String[]      @default([])          // company codes mentioned in the article
+  publishedAt     DateTime?                           // article publish date if extractable
+  fetchedAt       DateTime      @default(now())
+  isPinned        Boolean       @default(false)
+  dismissedBy     String[]      @default([])          // user IDs that dismissed this item
+
+  @@index([organizationId, fetchedAt(sort: Desc)])
+  @@index([organizationId, relevanceScore(sort: Desc)])
+  @@unique([organizationId, urlHash])                  // hash-dedup within org × 7-day window enforced at write time
+  @@map("intel_items")
 }
 
 // AlertRule — user-defined composite conditions evaluated after recompute.
