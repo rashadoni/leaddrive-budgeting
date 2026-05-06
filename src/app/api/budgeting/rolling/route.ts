@@ -95,6 +95,12 @@ export async function POST(req: NextRequest) {
           plannedAmount: 0, costModelKey: sl.costModelKey,
           isAutoActual: false, isAutoPlanned: false,
           notes: sl.notes, sortOrder: sl.sortOrder,
+          // Phase 7.G Turn XL architect Suggestion: pass through
+          // monthIndex on rolling-forecast clone so monthly tagging
+          // survives the rolling roll-forward. Without this, a
+          // backfilled source row would lose its monthIndex on clone
+          // and revert to the legacy `sortOrder % 100` resolver path.
+          monthIndex: sl.monthIndex ?? null,
           lineSubtype: sl.lineSubtype, parentId: null,
         },
       })
@@ -110,6 +116,9 @@ export async function POST(req: NextRequest) {
           plannedAmount: sl.plannedAmount, costModelKey: sl.costModelKey,
           isAutoActual: false, isAutoPlanned: false,
           notes: sl.notes, sortOrder: sl.sortOrder,
+          // Phase 7.G Turn XL architect Suggestion: same pass-through
+          // for child rows.
+          monthIndex: sl.monthIndex ?? null,
           lineSubtype: sl.lineSubtype, parentId: newParentId,
         },
       })

@@ -86,6 +86,12 @@ export async function POST(
         departmentId: line.departmentId,
         notes: line.notes,
         sortOrder: line.sortOrder,
+        // Phase 7.G Turn XL architect Suggestion: pass through
+        // monthIndex on plan-version clone so monthly tagging survives
+        // versioning. Without this, a backfilled source row would lose
+        // its monthIndex on version-bump and revert to the legacy
+        // `sortOrder % 100` resolver path.
+        monthIndex: line.monthIndex ?? null,
         // parentId not cloned — hierarchy re-established separately if needed
       },
     })
