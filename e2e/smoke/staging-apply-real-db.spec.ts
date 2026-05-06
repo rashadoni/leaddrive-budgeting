@@ -290,6 +290,122 @@ test.describe('Phase 7.G Turn XXXV — /staging/[id]/apply real-DB end-to-end', 
     expect(lineCount % 12).toBe(0);
   });
 
+  // Phase 7.G L425 — dry-run flag: same setup as the happy-path test
+  // above, but POSTs with `dryRun=true` and asserts the response is a
+  // preview (status='preview', dryRun=true) AND zero state mutation
+  // (staging stays pending, no BudgetPlan created, no BudgetLine
+  // inserted). Closes the L425 row by exercising the runtime contract
+  // end-to-end against real Postgres.
+  test('POST /apply with dryRun=true returns preview without mutating DB', async ({
+    page,
+  }) => {
+    const adminUser = await prisma.user.findFirst({
+      where: { email: 'admin@budgetpro.com' },
+      select: { id: true, organizationId: true },
+    });
+    test.skip(
+      !adminUser?.organizationId,
+      'Admin user not seeded — run scripts/create-admin.ts first',
+    );
+
+    const company = await prisma.company.findFirst({
+      where: { organizationId: adminUser!.organizationId!, isActive: true },
+      select: { id: true },
+    });
+    test.skip(!company, 'No active company in admin org — re-run seed scripts');
+
+    // Defensive: idempotent cleanup of any stale 2099 plan from prior
+    // failed runs. A LOCK on the plan-name uniqueness lets the dry-run
+    // assertion below ("no plan exists post-dry-run") be unambiguous.
+    await prisma.budgetPlan.deleteMany({
+      where: {
+        organizationId: adminUser!.organizationId!,
+        year: TEST_YEAR,
+        name: TEST_PLAN_NAME,
+      },
+    });
+
+    const proposal = buildProposal();
+    proposal.columns.push({
+      sourceIndex: 14,
+      role: 'amount:Plan2099',
+      confidence: 1.0,
+      reasoning: 'year hint only — not present in xlsx',
+    });
+
+    const xlsxBuffer = generateMonthlyXlsx();
+
+    const staging = await prisma.importStaging.create({
+      data: {
+        organizationId: adminUser!.organizationId!,
+        companyId: company!.id,
+        sourceFile: 'turn-xxxviii-dryrun-fixture.xlsx',
+        sourceSheet: 'P&L',
+        proposal: proposal as unknown as object,
+        createdBy: adminUser!.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        status: 'pending',
+      },
+      select: { id: true },
+    });
+    stagingId = staging.id;
+
+    await loginAs(page);
+    const cookies = await page.context().cookies();
+    const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+    const res = await page.request.post(
+      `/api/onboarding/import/staging/${stagingId}/apply`,
+      {
+        headers: { cookie: cookieHeader },
+        multipart: {
+          file: {
+            name: 'turn-xxxviii-dryrun-fixture.xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            buffer: xlsxBuffer,
+          },
+          dryRun: 'true',
+        },
+      },
+    );
+
+    if (res.status() !== 200) {
+      const txt = await res.text();
+      throw new Error(`Expected 200 from /apply (dryRun) but got ${res.status()}: ${txt}`);
+    }
+    const body = (await res.json()) as {
+      status: string;
+      dryRun?: boolean;
+      year: number;
+      inserted: number;
+      deleted: number;
+    };
+    expect(body.status).toBe('preview');
+    expect(body.dryRun).toBe(true);
+    expect(body.year).toBe(TEST_YEAR);
+    expect(body.inserted).toBeGreaterThanOrEqual(2);
+    expect(body.deleted).toBe(0);
+
+    // Critical contract: dry-run does NOT mutate state. Assert via
+    // direct prisma queries on the post-call DB state.
+    //   1. staging.status still 'pending' (no flip).
+    const stagingAfter = await prisma.importStaging.findUnique({
+      where: { id: stagingId },
+      select: { status: true, appliedAt: true },
+    });
+    expect(stagingAfter?.status).toBe('pending');
+    expect(stagingAfter?.appliedAt).toBeNull();
+
+    //   2. NO BudgetPlan was created for year 2099.
+    const planCount = await prisma.budgetPlan.count({
+      where: {
+        organizationId: adminUser!.organizationId!,
+        year: TEST_YEAR,
+        name: TEST_PLAN_NAME,
+      },
+    });
+    expect(planCount).toBe(0);
+  });
+
   test.afterEach(async () => {
     // Cleanup — delete in reverse FK order. afterEach runs even on test
     // failure so a partial-state run doesn't pollute future test passes.

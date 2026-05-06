@@ -189,6 +189,19 @@ export async function POST(
     }
   }
 
+  // Optional dry-run flag — when truthy, run applyProposal() to compute
+  // the diagnostics that the real apply WOULD produce, but skip the
+  // prisma transaction (no BudgetLine inserts, no staging.status flip,
+  // no audit emission, no recompute). Lets the wizard preview the apply
+  // result before the user commits. Closes Phase 7.G L425.
+  // Accepted truthy values: "true", "1", "yes" (case-insensitive). Any
+  // other value (including empty / missing) is treated as false — the
+  // existing real-apply path is the default.
+  const dryRunRaw = form.get('dryRun');
+  const dryRun =
+    typeof dryRunRaw === 'string' &&
+    /^(true|1|yes)$/i.test(dryRunRaw.trim());
+
   let workbook: XLSX.WorkBook;
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -242,6 +255,50 @@ export async function POST(
     );
   } else {
     targetYear = yearHint;
+  }
+
+  // Dry-run early-return — before opening the prisma transaction.
+  // Computes the same diagnostics shape the real apply would emit, plus
+  // a `wouldBeDeleted` count derived from the existing plan (if any),
+  // BUT does not mutate state. Caller can preview the apply before
+  // committing.
+  if (dryRun) {
+    const planName = `AI-Imported ${targetYear} Budget`;
+    const existingPlan = await prisma.budgetPlan.findFirst({
+      where: {
+        organizationId: orgId,
+        year: targetYear,
+        name: planName,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const wouldBeDeleted = existingPlan
+      ? await prisma.budgetLine.count({
+          where: {
+            planId: existingPlan.id,
+            companyId: staging.companyId,
+          },
+        })
+      : 0;
+    // `inserted` counts parsed LINES (matching the real-apply contract;
+    // each line fans out to 12 BudgetLine rows at sortOrder 0..11).
+    const wouldBeInserted = applyResult.lines.length;
+    return NextResponse.json(
+      {
+        stagingId: staging.id,
+        status: 'preview',
+        dryRun: true,
+        year: targetYear,
+        inserted: wouldBeInserted,
+        deleted: wouldBeDeleted,
+        warnings: applyResult.warnings.length,
+        parentRollupsDropped: applyResult.parentRollupsDropped.length,
+        parentRollupsUnallocated:
+          applyResult.parentRollupsUnallocated.length,
+      },
+      { status: 200 },
+    );
   }
 
   // Transactional delete-then-insert. Mirrors `import-azmade-budgets.ts`

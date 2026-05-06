@@ -25,6 +25,12 @@ const { prismaMock, applierMocks, recomputeMock } = vi.hoisted(() => ({
       updateMany: vi.fn(),
       update: vi.fn(),
     },
+    // Phase 7.G L425 dry-run path queries existing plan + line count
+    // before the transaction. Keep these out of the inner-callback
+    // `tx` (which is a fresh per-test object) — the dry-run branch
+    // uses the top-level prisma client.
+    budgetPlan: { findFirst: vi.fn() },
+    budgetLine: { count: vi.fn() },
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -72,6 +78,8 @@ beforeEach(() => {
   prismaMock.importStaging.findFirst.mockReset();
   prismaMock.importStaging.updateMany.mockReset();
   prismaMock.importStaging.update.mockReset();
+  prismaMock.budgetPlan.findFirst.mockReset();
+  prismaMock.budgetLine.count.mockReset();
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: 'audit_1' });
   prismaMock.$transaction.mockReset();
   applierMocks.applyProposal.mockReset();
@@ -399,5 +407,119 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     const res = await POST(req, paramsFor(STAGING_ID));
     expect(res.status).toBe(409);
     expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  // Phase 7.G L425 — dry-run flag returns the same diagnostics shape but
+  // skips the prisma transaction, audit emission, and recompute trigger.
+  // Lets the wizard preview the apply result before the user commits.
+  it('dryRun=true → 200 status="preview", skips $transaction + audit + recompute', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: {
+        columns: [{ sourceIndex: 2, role: 'amount:Plan2026' }],
+        mappings: [],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [
+        { code: '601-01-01', label: 'Revenue A', plannedAnnual: 1000, accountType: 'revenue' },
+        { code: '701-01-01', label: 'COGS A', plannedAnnual: 400, accountType: 'cogs' },
+      ],
+      warnings: [{ row: 5, reason: 'sample warning' }],
+      parentRollupsDropped: [{ code: 'PARENT', plannedAnnual: 1400 }],
+      parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+    // Existing plan with 24 lines that WOULD be deleted on a real apply.
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({ id: 'plan_existing' });
+    prismaMock.budgetLine.count.mockResolvedValue(24);
+
+    const fd = new FormData();
+    fd.set('file', new File(['fake'], 'aac.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }));
+    fd.set('dryRun', 'true');
+    const base = new Request(
+      `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply`,
+      { method: 'POST', body: fd },
+    );
+    const { NextRequest } = await import('next/server');
+    const req = new NextRequest(base);
+
+    const res = await POST(req, paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({
+      stagingId: STAGING_ID,
+      status: 'preview',
+      dryRun: true,
+      year: 2026,
+      inserted: 2,                  // applyResult.lines.length
+      deleted: 24,                  // existing plan's BudgetLine count
+      warnings: 1,                  // applyResult.warnings.length
+      parentRollupsDropped: 1,      // applyResult.parentRollupsDropped.length
+      parentRollupsUnallocated: 0,
+    });
+
+    // Critical contract: dry-run does NOT mutate state.
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled();
+    expect(prismaMock.importStaging.update).not.toHaveBeenCalled();
+    expect(prismaMock.importStaging.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('dryRun=true on a fresh org (no existing plan) → deleted=0', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal: {
+        columns: [{ sourceIndex: 2, role: 'amount:Plan2027' }],
+        mappings: [],
+      },
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [{ code: '601-01-01', label: 'Revenue', plannedAnnual: 1000, accountType: 'revenue' }],
+      warnings: [],
+      parentRollupsDropped: [],
+      parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2027);
+    // No existing plan — fresh org-year combo.
+    prismaMock.budgetPlan.findFirst.mockResolvedValue(null);
+
+    const fd = new FormData();
+    fd.set('file', new File(['fake'], 'aac.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }));
+    fd.set('dryRun', '1'); // alternative truthy value
+    const base = new Request(
+      `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply`,
+      { method: 'POST', body: fd },
+    );
+    const { NextRequest } = await import('next/server');
+    const req = new NextRequest(base);
+
+    const res = await POST(req, paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(0);
+    expect(body.inserted).toBe(1);
+    expect(body.dryRun).toBe(true);
+    // No call to budgetLine.count when no plan exists (skip the lookup).
+    expect(prismaMock.budgetLine.count).not.toHaveBeenCalled();
   });
 });
