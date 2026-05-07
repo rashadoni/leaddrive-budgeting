@@ -1672,6 +1672,21 @@
       "companyCodeNotLoaded": "Код компании не загружен — попробуйте переоткрыть",
       "couldNotLoadCodes": "Не удалось загрузить коды компаний — чипы показывают id: {error}"
     },
+    "intelFeedPanel": {
+      "title": "Лента Intel",
+      "subtitle": "AI-подборка новостей по индустриям и компаниям вашего портфеля.",
+      "dialogAriaLabel": "Лента Intel",
+      "closeAriaLabel": "Закрыть ленту Intel",
+      "refreshAriaLabel": "Обновить ленту Intel",
+      "refreshLabel": "Обновить",
+      "refreshingLabel": "Обновление…",
+      "loading": "Загрузка Intel…",
+      "emptyAdmin": "Нет свежих новостей. Нажмите Обновить, чтобы запустить сбор сейчас.",
+      "emptyViewer": "Нет свежих новостей. Попросите администратора обновить.",
+      "pinAriaLabel": "Закрепить",
+      "unpinAriaLabel": "Открепить",
+      "dismissAriaLabel": "Скрыть"
+    },
     "shortcuts": {
       "title": "Горячие клавиши",
       "subtitle": "Нажмите ? снова или Esc чтобы закрыть.",

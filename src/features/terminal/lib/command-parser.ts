@@ -44,6 +44,7 @@ export type FunctionCode =
   | "CMT" // Tier-3 sub-30 — CommentsLayer @mention threads on cells
   | "CHT" // Tier-3 sub-30 — SubCoFinanceChat holding-CFO ↔ sub-co threads
   | "SUB" // Tier-3 sub-30 — AISubscriptions user-defined alert subscriptions
+  | "INT" // Phase 7.G D.4 — IntelFeedPanel AI Web Crawler results feed
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -60,6 +61,7 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "CMT",
   "CHT",
   "SUB",
+  "INT",
 ]
 
 /**
@@ -86,6 +88,7 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   CMT: "forbidden", // Tier-3 sub-30 CommentsLayer — global thread index
   CHT: "forbidden", // Tier-3 sub-30 SubCoFinanceChat — global subco thread index
   SUB: "forbidden", // Tier-3 sub-30 AISubscriptions — global subscription manager
+  INT: "forbidden", // Phase 7.G D.4 IntelFeedPanel — org-scoped global feed
 }
 
 export type ParsedCommand =
@@ -103,6 +106,7 @@ export type ParsedCommand =
   | { kind: "cmt" }
   | { kind: "cht" }
   | { kind: "sub" }
+  | { kind: "int" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -258,6 +262,8 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "cht" } }
     case "SUB":
       return { ok: true, command: { kind: "sub" } }
+    case "INT":
+      return { ok: true, command: { kind: "int" } }
   }
 }
 
@@ -297,6 +303,7 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "cmt":
     case "cht":
     case "sub":
+    case "int":
       return null // overlay modal — does not steal focus from any panel
   }
 }

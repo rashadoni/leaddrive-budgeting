@@ -31,6 +31,7 @@ import { ActionCenterPanel } from './ActionCenterPanel';
 import { CommentsLayer } from './CommentsLayer';
 import { SubCoFinanceChat } from './SubCoFinanceChat';
 import { AISubscriptions } from './AISubscriptions';
+import { IntelFeedPanel } from './IntelFeedPanel';
 import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -285,6 +286,12 @@ export function PanelGrid() {
           Opens on `terminal:open-subscriptions` (CommandBar `SUB GO`).
           v1 in-memory + localStorage; v2 backend persistence + email. */}
       <AISubscriptions />
+      {/* Phase 7.G D.4 — IntelFeedPanel: AI Web Crawler feed of
+          per-org news items scored by relevance to portfolio
+          industries + companies. Opens on `terminal:open-intel`
+          (CommandBar `INT GO`). Admin-only Refresh button inside the
+          panel triggers a fresh crawl via POST /api/intel/refresh. */}
+      <IntelFeedPanel />
       {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
           CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
           ≥1024px viewports. Dismissable + localStorage-persisted. */}

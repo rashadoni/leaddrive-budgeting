@@ -1672,6 +1672,21 @@
       "companyCodeNotLoaded": "Company code not loaded — try reopening",
       "couldNotLoadCodes": "Could not load company codes — chips show ids: {error}"
     },
+    "intelFeedPanel": {
+      "title": "Intel feed",
+      "subtitle": "AI-curated news on your portfolio's industries + companies.",
+      "dialogAriaLabel": "Intel feed",
+      "closeAriaLabel": "Close intel feed",
+      "refreshAriaLabel": "Refresh intel feed",
+      "refreshLabel": "Refresh",
+      "refreshingLabel": "Refreshing…",
+      "loading": "Loading intel…",
+      "emptyAdmin": "No recent intel. Click Refresh to crawl now.",
+      "emptyViewer": "No recent intel. Ask an admin to refresh.",
+      "pinAriaLabel": "Pin item",
+      "unpinAriaLabel": "Unpin item",
+      "dismissAriaLabel": "Dismiss item"
+    },
     "shortcuts": {
       "title": "Keyboard shortcuts",
       "subtitle": "Press ? again or Esc to close.",

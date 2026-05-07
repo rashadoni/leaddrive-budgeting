@@ -267,6 +267,22 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'alertsPanel.jumpToCompany': 'Jump to {code}',
   'alertsPanel.companyCodeNotLoaded': 'Company code not loaded — try reopening',
   'alertsPanel.couldNotLoadCodes': 'Could not load company codes — chips show ids: {error}',
+  // Phase 7.G D.4 — IntelFeedPanel test fixtures. Mirror messages/en.json
+  // under `terminal.intelFeedPanel.*` so component-test render assertions
+  // can match locale-formatted strings without per-file mock overrides.
+  'intelFeedPanel.title': 'Intel feed',
+  'intelFeedPanel.subtitle': "AI-curated news on your portfolio's industries + companies.",
+  'intelFeedPanel.dialogAriaLabel': 'Intel feed',
+  'intelFeedPanel.closeAriaLabel': 'Close intel feed',
+  'intelFeedPanel.refreshAriaLabel': 'Refresh intel feed',
+  'intelFeedPanel.refreshLabel': 'Refresh',
+  'intelFeedPanel.refreshingLabel': 'Refreshing…',
+  'intelFeedPanel.loading': 'Loading intel…',
+  'intelFeedPanel.emptyAdmin': 'No recent intel. Click Refresh to crawl now.',
+  'intelFeedPanel.emptyViewer': 'No recent intel. Ask an admin to refresh.',
+  'intelFeedPanel.pinAriaLabel': 'Pin item',
+  'intelFeedPanel.unpinAriaLabel': 'Unpin item',
+  'intelFeedPanel.dismissAriaLabel': 'Dismiss item',
   // Sub-35 — alert message i18n. Mirrors `messages/en.json`
   // `terminal.alerts.messages.*` so component-test render assertions
   // can match the locale-formatted string. Drift between this map and

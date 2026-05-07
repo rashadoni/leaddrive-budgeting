@@ -37,6 +37,7 @@ const VERBS = [
   'CMT',
   'CHT',
   'SUB',
+  'INT',
   'GO',
 ] as const;
 
@@ -241,6 +242,15 @@ export function CommandBar() {
         // notifications only + localStorage; v2 email + DB tracked as 🔄.
         window.dispatchEvent(new CustomEvent('terminal:open-subscriptions'));
         return { message: 'SUB →' };
+      case 'int':
+        // Phase 7.G D.4 — IntelFeedPanel opens on `terminal:open-intel`.
+        // Same overlay-modal pattern as ALT/AUD/ACT. Renders the AI Web
+        // Crawler feed (per-org news scored by relevance to the holding's
+        // industries + active company codes). Admin-only Refresh button
+        // inside the panel triggers POST /api/intel/refresh for an
+        // on-demand crawl.
+        window.dispatchEvent(new CustomEvent('terminal:open-intel'));
+        return { message: 'INT →' };
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when

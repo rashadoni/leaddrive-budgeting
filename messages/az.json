@@ -1672,6 +1672,21 @@
       "companyCodeNotLoaded": "Şirkət kodu yüklənmədi — yenidən açmağa cəhd et",
       "couldNotLoadCodes": "Şirkət kodları yüklənmədi — çiplər id-ləri göstərir: {error}"
     },
+    "intelFeedPanel": {
+      "title": "Intel lenti",
+      "subtitle": "Portfelinizin sənayələri və şirkətləri üzrə AI-tərəfindən seçilmiş xəbərlər.",
+      "dialogAriaLabel": "Intel lenti",
+      "closeAriaLabel": "Intel lentini bağla",
+      "refreshAriaLabel": "Intel lentini yenilə",
+      "refreshLabel": "Yenilə",
+      "refreshingLabel": "Yenilənir…",
+      "loading": "Intel yüklənir…",
+      "emptyAdmin": "Son xəbərlər yoxdur. İndi axtarış üçün Yenilə düyməsinə basın.",
+      "emptyViewer": "Son xəbərlər yoxdur. Adminə yeniləməsi üçün müraciət edin.",
+      "pinAriaLabel": "Sabitlə",
+      "unpinAriaLabel": "Sabitlikdən çıxar",
+      "dismissAriaLabel": "Gizlət"
+    },
     "shortcuts": {
       "title": "Klaviatura qısayolları",
       "subtitle": "Bağlamaq üçün ? və ya Esc.",

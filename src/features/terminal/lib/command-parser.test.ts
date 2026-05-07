@@ -229,6 +229,22 @@ describe("AUD verb (Phase 7.F audit log overlay)", () => {
   })
 })
 
+describe("INT verb (Phase 7.G D.4 IntelFeedPanel)", () => {
+  it("`INT GO` parses to `{kind: int}`", () => {
+    expect(parseCommand("INT GO")).toEqual({
+      ok: true,
+      command: { kind: "int" },
+    })
+  })
+
+  it("`AAC INT GO` rejects (target forbidden — org-scoped global feed)", () => {
+    expect(parseCommand("AAC INT GO")).toMatchObject({
+      ok: false,
+      error: { code: "unexpected_target" },
+    })
+  })
+})
+
 describe("panelForCommand routing", () => {
   it.each([
     [{ kind: "hold" } as ParsedCommand, 2],
@@ -250,8 +266,8 @@ describe("panelForCommand routing", () => {
 })
 
 describe("FUNCTION_CODES catalog", () => {
-  it("exports exactly 14 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB)", () => {
-    expect(FUNCTION_CODES).toHaveLength(14)
+  it("exports exactly 15 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT)", () => {
+    expect(FUNCTION_CODES).toHaveLength(15)
   })
 
   it("each panel-targeting function code has a panel route", () => {
@@ -270,8 +286,9 @@ describe("FUNCTION_CODES catalog", () => {
       CMT: { kind: "cmt" },
       CHT: { kind: "cht" },
       SUB: { kind: "sub" },
+      INT: { kind: "int" },
     }
-    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB"])
+    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT"])
     for (const code of FUNCTION_CODES) {
       const route = panelForCommand(sample[code])
       // Overlay modals intentionally return null (do not steal panel focus);
