@@ -158,24 +158,26 @@ describe("AlertsPanel locale-aware industry rendering (Phase 7.G Turn XXIII)", (
     expect(text).toBeTruthy();
   });
 
-  it("RU: industry localized to 'промышленность' in DOM, raw 'industrial' absent", async () => {
+  it("RU: industry localized to 'Промышленность' in DOM (Turn LVIII canonical), raw 'industrial' absent", async () => {
     await mountAlertsPanelInLocale("ru");
     // RU body template: "Сектор {industry}: {amberCount} амбер-ячеек у {companyCount} компаний"
-    // {industry} param replaced via localizeAlertMessageParams: "industrial" → "промышленность".
+    // {industry} param replaced via localizeAlertMessageParams: "industrial" → "Промышленность"
+    // (Turn LVIII: was "промышленность" pre-LVIII, now matches Industry.nameRu).
     const text = await screen.findByText(
-      /Сектор промышленность: 5 амбер-ячеек у 2 компаний/,
+      /Сектор Промышленность: 5 амбер-ячеек у 2 компаний/,
     );
     expect(text).toBeTruthy();
     // Negative assertion: raw EN code MUST NOT leak through.
     expect(screen.queryByText(/industrial sector/i)).toBeNull();
   });
 
-  it("AZ: industry localized to 'sənaye' in DOM", async () => {
+  it("AZ: industry localized to 'Sənaye' in DOM (Turn LVIII canonical)", async () => {
     await mountAlertsPanelInLocale("az");
     // AZ body template: "{industry} sektoru: {companyCount} şirkətdə {amberCount} sarı xana"
-    // {industry} param replaced: "industrial" → "sənaye".
+    // {industry} param replaced: "industrial" → "Sənaye"
+    // (Turn LVIII: was "sənaye" pre-LVIII, now matches Industry.nameAz).
     const text = await screen.findByText(
-      /sənaye sektoru: 2 şirkətdə 5 sarı xana/,
+      /Sənaye sektoru: 2 şirkətdə 5 sarı xana/,
     );
     expect(text).toBeTruthy();
   });

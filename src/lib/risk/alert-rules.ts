@@ -33,6 +33,7 @@
 
 import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 import { computeCompositeScore } from './composite-score';
+import { INDUSTRIES } from '@/lib/industries/data';
 import {
   mergeWithDefaults,
   resolveForSector as resolveForSectorImpl,
@@ -317,6 +318,24 @@ export const RULE_COMPANY_CRITICAL_COMPOSITE: AlertRule = {
   },
 };
 
+/**
+ * Phase 7.G Turn LVIII — resolve raw industry code to its canonical
+ * EN human name (e.g. `"industrial"` → `"Industrial"`). Falls back to
+ * the raw code when unknown so unrecognized industries still render
+ * something rather than blank.
+ *
+ * Used by sector rules so the engine-emitted `m.message` reads cleanly
+ * for fallback consumers (anywhere `match.message` is rendered without
+ * the `messageKey + localizeAlertMessageParams` i18n substitution path).
+ * After Turn LVIII the messages JSON namespace also returns proper-case
+ * names; the engine's `m.message` now matches what the i18n path emits
+ * for EN, restoring the byte-equality contract that
+ * `alert-rules-i18n.test.ts` locks.
+ */
+function industryNameEn(code: string): string {
+  return INDUSTRIES.find((i) => i.code === code)?.nameEn ?? code;
+}
+
 export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
   id: 'sector-amber-cluster',
   name: 'Sector amber cluster',
@@ -354,7 +373,7 @@ export const RULE_SECTOR_AMBER_CLUSTER: AlertRule = {
           ruleId: this.id,
           ruleName: this.name,
           severity: this.severity,
-          message: `${industry} sector: ${bucket.amberCount} amber cells across ${bucket.companyIds.size} companies`,
+          message: `${industryNameEn(industry)} sector: ${bucket.amberCount} amber cells across ${bucket.companyIds.size} companies`,
           messageKey: `alerts.messages.${this.id}`,
           messageParams: {
             industry,
@@ -406,7 +425,7 @@ export const RULE_SECTOR_RED_SPREAD: AlertRule = {
           ruleId: this.id,
           ruleName: this.name,
           severity: this.severity,
-          message: `${industry} sector: ${bucket.redCount} red cells across ${bucket.companyIds.size} companies — possible contagion`,
+          message: `${industryNameEn(industry)} sector: ${bucket.redCount} red cells across ${bucket.companyIds.size} companies — possible contagion`,
           messageKey: `alerts.messages.${this.id}`,
           messageParams: {
             industry,

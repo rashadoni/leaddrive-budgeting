@@ -1,19 +1,19 @@
 {
   "industries": {
-    "agro_crops": "aqro",
-    "beverage": "içkilər",
-    "construction": "tikinti",
-    "education": "təhsil",
-    "entertainment": "əyləncə",
-    "food_processing": "qida sənayesi",
-    "hospitality": "qonaqpərvərlik",
-    "industrial": "sənaye",
-    "logistics": "logistika",
-    "pharma": "əczaçılıq",
-    "poultry": "quşçuluq",
-    "real_estate": "daşınmaz əmlak",
-    "retail": "pərakəndə",
-    "services": "xidmətlər"
+    "agro_crops": "Bitkiçilik",
+    "beverage": "İçki istehsalı",
+    "construction": "Tikinti",
+    "education": "Təhsil",
+    "entertainment": "Əyləncə",
+    "food_processing": "Qida emalı",
+    "hospitality": "Qonaqpərvərlik",
+    "industrial": "Sənaye",
+    "logistics": "Logistika",
+    "pharma": "Əczaçılıq",
+    "poultry": "Quşçuluq",
+    "real_estate": "Daşınmaz əmlak",
+    "retail": "Pərakəndə satış",
+    "services": "Xidmətlər"
   },
   "nav": {
     "dashboard": "İdarə paneli",

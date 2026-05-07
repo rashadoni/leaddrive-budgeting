@@ -188,6 +188,7 @@ describe('localizeAlertMessageParams', () => {
 import enJson from '../../../messages/en.json';
 import ruJson from '../../../messages/ru.json';
 import azJson from '../../../messages/az.json';
+import { INDUSTRIES } from '@/lib/industries/data';
 
 // Hardcoded set mirrors scripts/seed-industries.ts:30-141 canonical codes.
 // Updating the seed without updating this list is a deliberate test
@@ -242,15 +243,25 @@ describe('industries.* JSON ↔ seed code consistency (Turn G architect Round-1 
     });
   }
 
-  it('en industries values are byte-identical to canonical codes (preserves drift-guard)', () => {
+  it('en industries values are byte-identical to canonical INDUSTRIES.nameEn (Turn LVIII drift-guard)', () => {
     // Load-bearing invariant: the alert-rules-i18n.test.ts drift-guard
     // formats messages/en.json[messageKey] with messageParams (where
     // params.industry is the canonical code from the engine context).
     // For sector-{amber,red} rules to keep byte-equality with engine
-    // `message`, the localized industry value MUST equal the raw code.
+    // `message`, the localized industry value MUST equal the engine's
+    // EN substitution of that code.
+    //
+    // Pre-Turn-LVIII: engine emitted raw code in `m.message`, so JSON
+    // had to be `{code: code}` to match. Post-LVIII: engine emits
+    // `industryNameEn(code)` (proper case) in `m.message`, and JSON
+    // is regenerated from `INDUSTRIES.nameEn` via
+    // `scripts/build-industries-i18n.ts`. Both sides now agree on the
+    // human EN name.
     const en = (enJson as { industries: Record<string, string> }).industries;
     for (const code of CANONICAL_INDUSTRY_CODES) {
-      expect(en[code]).toBe(code);
+      const seed = INDUSTRIES.find((i) => i.code === code);
+      expect(seed, `INDUSTRIES missing entry for code=${code}`).toBeDefined();
+      expect(en[code]).toBe(seed!.nameEn);
     }
   });
 });

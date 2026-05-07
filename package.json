@@ -18,7 +18,8 @@
     "test:e2e:install": "playwright install chromium",
     "demo:check": "bash scripts/pre-demo-check.sh",
     "sparklines:refresh": "tsx scripts/compute-sparklines.ts",
-    "carryover:bump": "node scripts/carryover-bump.mjs"
+    "carryover:bump": "node scripts/carryover-bump.mjs",
+    "i18n:industries": "tsx scripts/build-industries-i18n.ts"
   },
   "keywords": [],
   "author": "",

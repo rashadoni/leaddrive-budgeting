@@ -1,19 +1,19 @@
 {
   "industries": {
-    "agro_crops": "agro_crops",
-    "beverage": "beverage",
-    "construction": "construction",
-    "education": "education",
-    "entertainment": "entertainment",
-    "food_processing": "food_processing",
-    "hospitality": "hospitality",
-    "industrial": "industrial",
-    "logistics": "logistics",
-    "pharma": "pharma",
-    "poultry": "poultry",
-    "real_estate": "real_estate",
-    "retail": "retail",
-    "services": "services"
+    "agro_crops": "Agro — Crops",
+    "beverage": "Beverage",
+    "construction": "Construction",
+    "education": "Education",
+    "entertainment": "Entertainment",
+    "food_processing": "Food Processing",
+    "hospitality": "Hospitality",
+    "industrial": "Industrial",
+    "logistics": "Logistics",
+    "pharma": "Pharmaceuticals",
+    "poultry": "Poultry",
+    "real_estate": "Real Estate",
+    "retail": "Retail",
+    "services": "Services"
   },
   "nav": {
     "dashboard": "Dashboard",

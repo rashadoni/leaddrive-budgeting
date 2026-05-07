@@ -1,19 +1,19 @@
 {
   "industries": {
-    "agro_crops": "агропром",
-    "beverage": "напитки",
-    "construction": "строительство",
-    "education": "образование",
-    "entertainment": "развлечения",
-    "food_processing": "пищевая промышленность",
-    "hospitality": "гостеприимство",
-    "industrial": "промышленность",
-    "logistics": "логистика",
-    "pharma": "фармацевтика",
-    "poultry": "птицеводство",
-    "real_estate": "недвижимость",
-    "retail": "розница",
-    "services": "услуги"
+    "agro_crops": "Растениеводство",
+    "beverage": "Производство напитков",
+    "construction": "Строительство",
+    "education": "Образование",
+    "entertainment": "Развлечения",
+    "food_processing": "Пищевая переработка",
+    "hospitality": "Гостиничный бизнес",
+    "industrial": "Промышленность",
+    "logistics": "Логистика",
+    "pharma": "Фармацевтика",
+    "poultry": "Птицеводство",
+    "real_estate": "Недвижимость",
+    "retail": "Розничная торговля",
+    "services": "Услуги"
   },
   "nav": {
     "dashboard": "Dashboard",

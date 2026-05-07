@@ -163,20 +163,20 @@ describe("ActionCenterPanel locale-aware industry rendering (Phase 7.G Turn XXIV
     ).toBeTruthy();
   });
 
-  it("RU: industry localized to 'промышленность'", async () => {
+  it("RU: industry localized to 'Промышленность' (Turn LVIII canonical)", async () => {
     await mountActionCenterPanelInLocale("ru");
     expect(
       await screen.findByText(
-        /Сектор промышленность: 5 амбер-ячеек у 2 компаний/,
+        /Сектор Промышленность: 5 амбер-ячеек у 2 компаний/,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/industrial sector/i)).toBeNull();
   });
 
-  it("AZ: industry localized to 'sənaye'", async () => {
+  it("AZ: industry localized to 'Sənaye' (Turn LVIII canonical)", async () => {
     await mountActionCenterPanelInLocale("az");
     expect(
-      await screen.findByText(/sənaye sektoru: 2 şirkətdə 5 sarı xana/),
+      await screen.findByText(/Sənaye sektoru: 2 şirkətdə 5 sarı xana/),
     ).toBeTruthy();
   });
 });

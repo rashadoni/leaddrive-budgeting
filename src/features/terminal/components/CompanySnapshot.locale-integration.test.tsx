@@ -168,23 +168,23 @@ describe("CompanySnapshot locale-aware industry rendering (Phase 7.G Turn XXIV)"
     });
   });
 
-  it("RU: industry localized to 'промышленность'", async () => {
+  it("RU: industry localized to 'Промышленность' (Turn LVIII canonical)", async () => {
     await mountCompanySnapshotInLocale("ru");
     await waitFor(() => {
       expect(
         screen.queryByText(
-          /Сектор промышленность: 5 амбер-ячеек у 2 компаний/,
+          /Сектор Промышленность: 5 амбер-ячеек у 2 компаний/,
         ),
       ).toBeTruthy();
     });
     expect(screen.queryByText(/industrial sector/i)).toBeNull();
   });
 
-  it("AZ: industry localized to 'sənaye'", async () => {
+  it("AZ: industry localized to 'Sənaye' (Turn LVIII canonical)", async () => {
     await mountCompanySnapshotInLocale("az");
     await waitFor(() => {
       expect(
-        screen.queryByText(/sənaye sektoru: 2 şirkətdə 5 sarı xana/),
+        screen.queryByText(/Sənaye sektoru: 2 şirkətdə 5 sarı xana/),
       ).toBeTruthy();
     });
   });
