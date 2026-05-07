@@ -1681,6 +1681,18 @@
         "contributingCount": "{contributing} / {total} sub-co",
         "cta": "Tam hesabatı oxu",
         "aiAttribution": "AI-yaradıb · {model} · prompt v{version}"
+      },
+      "metrics": {
+        "sectionAriaLabel": "Əlavə göstəricilər",
+        "redCellsLabel": "Qırmızı xanalar",
+        "redCellsContext": "{total} ümumi xanadan",
+        "redSubCosLabel": "Qırmızı zonada sub-co",
+        "redSubCosContext": "{total} əməliyyatdan",
+        "indicatorCoverageLabel": "İzlənən göstəricilər",
+        "indicatorCoverageContext": "{sectors} sektorda",
+        "trendAriaLabel": "12 aylıq mürəkkəb bal trendi",
+        "trendTitle": "Mürəkkəb bal trendi (12 ay)",
+        "trendEmpty": "Hələ aylıq məlumat yoxdur. Qrafik 2+ aylıq snapshot hesablandıqdan sonra dolacaq."
       }
     },
     "intelFeedPanel": {

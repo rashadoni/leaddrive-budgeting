@@ -19,13 +19,15 @@ describe("computeHoldingComposite", () => {
     const composites = new Map<string, CompositeScore>([
       ["co_1", score(60, "amber")],
       ["co_2", score(80, "green")],
-      ["co_3", score(40, "red")],
+      ["co_3", score(40, "amber")],
     ]);
     const result = computeHoldingComposite(composites, ["co_1", "co_2", "co_3"]);
     expect(result.score).toBe(60); // (60+80+40)/3 = 60
     expect(result.contributingCount).toBe(3);
     expect(result.totalCount).toBe(3);
-    expect(result.band).toBe("amber"); // 60 → amber per scoreToBand
+    // canonical scoreToBand: ≥67 green / ≥34 amber / else red.
+    // 60 falls in [34, 67) → amber.
+    expect(result.band).toBe("amber");
   });
 
   it("rounds to nearest integer", () => {
@@ -121,17 +123,21 @@ describe("computeHoldingComposite", () => {
     expect(result.contributingCount).toBe(1);
   });
 
-  describe("band assignment", () => {
-    it("≤40 → red", () => {
-      const c = new Map<string, CompositeScore>([["co_1", score(40, "red")]]);
+  describe("band assignment (canonical scoreToBand: ≥67 green / ≥34 amber / else red)", () => {
+    it("33 → red", () => {
+      const c = new Map<string, CompositeScore>([["co_1", score(33, "red")]]);
       expect(computeHoldingComposite(c, ["co_1"]).band).toBe("red");
     });
-    it("41-60 → amber", () => {
-      const c = new Map<string, CompositeScore>([["co_1", score(50, "amber")]]);
+    it("34 → amber (boundary)", () => {
+      const c = new Map<string, CompositeScore>([["co_1", score(34, "amber")]]);
       expect(computeHoldingComposite(c, ["co_1"]).band).toBe("amber");
     });
-    it(">60 → green", () => {
-      const c = new Map<string, CompositeScore>([["co_1", score(75, "green")]]);
+    it("66 → amber", () => {
+      const c = new Map<string, CompositeScore>([["co_1", score(66, "amber")]]);
+      expect(computeHoldingComposite(c, ["co_1"]).band).toBe("amber");
+    });
+    it("67 → green (boundary)", () => {
+      const c = new Map<string, CompositeScore>([["co_1", score(67, "green")]]);
       expect(computeHoldingComposite(c, ["co_1"]).band).toBe("green");
     });
   });

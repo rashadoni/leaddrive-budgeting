@@ -1681,6 +1681,18 @@
         "contributingCount": "{contributing} of {total} sub-cos scored",
         "cta": "Read full report",
         "aiAttribution": "AI-generated · {model} · prompt v{version}"
+      },
+      "metrics": {
+        "sectionAriaLabel": "Supporting metrics",
+        "redCellsLabel": "Red cells",
+        "redCellsContext": "of {total} total cells",
+        "redSubCosLabel": "Sub-cos in red band",
+        "redSubCosContext": "of {total} operational",
+        "indicatorCoverageLabel": "Indicators tracked",
+        "indicatorCoverageContext": "across {sectors} sectors",
+        "trendAriaLabel": "12-month composite trend",
+        "trendTitle": "Composite trend (12 months)",
+        "trendEmpty": "No monthly data yet for this org. The trend chart populates once 2+ monthly snapshots are recomputed."
       }
     },
     "intelFeedPanel": {

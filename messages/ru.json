@@ -1681,6 +1681,18 @@
         "contributingCount": "{contributing} из {total} суб-компаний",
         "cta": "Полный отчёт",
         "aiAttribution": "AI-сгенерировано · {model} · промпт v{version}"
+      },
+      "metrics": {
+        "sectionAriaLabel": "Дополнительные метрики",
+        "redCellsLabel": "Красные ячейки",
+        "redCellsContext": "из {total} всего",
+        "redSubCosLabel": "Суб-компании в красной зоне",
+        "redSubCosContext": "из {total} операционных",
+        "indicatorCoverageLabel": "Индикаторы под наблюдением",
+        "indicatorCoverageContext": "в {sectors} секторах",
+        "trendAriaLabel": "12-месячный тренд сводного балла",
+        "trendTitle": "Тренд сводного балла (12 месяцев)",
+        "trendEmpty": "Нет месячных данных для этого холдинга. График заполнится после 2+ месячных пересчётов."
       }
     },
     "intelFeedPanel": {

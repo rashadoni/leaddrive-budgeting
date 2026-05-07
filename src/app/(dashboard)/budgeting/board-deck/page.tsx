@@ -23,7 +23,11 @@ import {
 import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
 import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
+import { buildTrendSeries } from "@/features/board-deck/lib/build-trend-series";
 import { HeroSection } from "@/features/board-deck/components/HeroSection";
+import { CompositeTrendChart } from "@/features/board-deck/components/CompositeTrendChart";
+import { MetricCard } from "@/features/board-deck/components/MetricCard";
+import { prisma } from "@/lib/prisma";
 import { PrintButton } from "./PrintButton";
 import { ExportPptxButton } from "./ExportPptxButton";
 
@@ -157,11 +161,9 @@ export default async function BoardDeckPage({
     generatedAt,
   } = snapshot;
   type IndicatorShape = (typeof indicators)[number];
-  // Phase 7.G Turn XLVIII (v2 Turn 2) — `totals.*` was consumed by
-  // the v1 HOLDING TOTALS stat-grid that the Hero section now
-  // replaces. Reads stay accessible via `totals.*` for sections
-  // below until Turn 4 kills the operational tables entirely.
-  void totals;
+  // Phase 7.G Turn XLIX (v2 Turn 3) — `totals.*` consumed by the
+  // supporting-metrics row below (red cells + cell count). Turn 4
+  // kills the v1 operational tables but keeps the totals reads.
 
   // Phase 7.G Turn XLVIII (Board Deck v2 Turn 2) — promote per-company
   // composite scores to a holding-level aggregate for the Hero
@@ -171,6 +173,35 @@ export default async function BoardDeckPage({
     compositeByCompany,
     operational.map((c) => c.id),
   );
+
+  // Phase 7.G Turn XLIX (v2 Turn 3) — trailing 12-month composite
+  // trend. Single Prisma findMany for all 12 months × all sub-cos ×
+  // all indicators; group + average in JS. Renders as the page's
+  // first hero-supporting visual (line chart). Failure mode: empty
+  // series → "no trend yet" placeholder.
+  const trendSeries = await buildTrendSeries(
+    {
+      organizationId: orgId,
+      currentPeriod: period,
+      operationalIds: operational.map((c) => c.id),
+      indicatorIds: indicators.map((i: IndicatorShape) => i.id),
+    },
+    { prisma },
+  ).catch((err) => {
+    console.error("[board-deck] buildTrendSeries failed:", err);
+    return [];
+  });
+
+  // Phase 7.G Turn XLIX (v2 Turn 3) — supporting metric counts. Three
+  // numbers that contextualize the hero composite: (a) red cells
+  // across the holding (where pressure is concentrated), (b)
+  // operational sub-cos in the red band (which sub-cos need attention),
+  // (c) total indicators tracked (tells the board the breadth of the
+  // monitoring surface).
+  const redSubCoCount = Array.from(compositeByCompany.values()).filter(
+    (c) => c.band === "red",
+  ).length;
+  const tMetrics = await getTranslations("terminal");
 
   return (
     <div className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0">
@@ -211,6 +242,50 @@ export default async function BoardDeckPage({
       <section id="full-report" className="sr-only">
         Full report
       </section>
+
+      {/* Phase 7.G Turn XLIX (v2 Turn 3) — supporting-metrics row.
+          Three calm cards beside the hero giving the reader 3 numbers
+          that contextualize the composite without dragging them into
+          the operational dump below. */}
+      <section
+        aria-label={tMetrics("boardDeck.metrics.sectionAriaLabel")}
+        data-testid="board-deck-metrics-row"
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4"
+      >
+        <MetricCard
+          testId="metric-red-cells"
+          label={tMetrics("boardDeck.metrics.redCellsLabel")}
+          value={String(totals.red)}
+          context={tMetrics("boardDeck.metrics.redCellsContext", {
+            total: totals.cells,
+          })}
+          accent={totals.red > 0 ? "red" : null}
+        />
+        <MetricCard
+          testId="metric-red-subcos"
+          label={tMetrics("boardDeck.metrics.redSubCosLabel")}
+          value={String(redSubCoCount)}
+          context={tMetrics("boardDeck.metrics.redSubCosContext", {
+            total: operational.length,
+          })}
+          accent={redSubCoCount > 0 ? "red" : null}
+        />
+        <MetricCard
+          testId="metric-indicator-coverage"
+          label={tMetrics("boardDeck.metrics.indicatorCoverageLabel")}
+          value={String(indicators.length)}
+          context={tMetrics("boardDeck.metrics.indicatorCoverageContext", {
+            sectors: new Set(
+              operational.map((c) => c.industry).filter(Boolean),
+            ).size,
+          })}
+        />
+      </section>
+
+      {/* Phase 7.G Turn XLIX (v2 Turn 3) — 12-month composite trend.
+          Visual storyline: where the holding sits today vs where it
+          was. Honest gaps when monthly data is missing. */}
+      <CompositeTrendChart series={trendSeries} />
 
       <section
         aria-label="Composite scores"

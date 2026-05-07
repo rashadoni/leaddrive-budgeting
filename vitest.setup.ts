@@ -292,6 +292,18 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'boardDeck.hero.contributingCount': '{contributing} of {total} sub-cos scored',
   'boardDeck.hero.cta': 'Read full report',
   'boardDeck.hero.aiAttribution': 'AI-generated · {model} · prompt v{version}',
+  // Phase 7.G Turn XLIX (v2 Turn 3) — supporting-metrics row.
+  'boardDeck.metrics.sectionAriaLabel': 'Supporting metrics',
+  'boardDeck.metrics.redCellsLabel': 'Red cells',
+  'boardDeck.metrics.redCellsContext': 'of {total} total cells',
+  'boardDeck.metrics.redSubCosLabel': 'Sub-cos in red band',
+  'boardDeck.metrics.redSubCosContext': 'of {total} operational',
+  'boardDeck.metrics.indicatorCoverageLabel': 'Indicators tracked',
+  'boardDeck.metrics.indicatorCoverageContext': 'across {sectors} sectors',
+  'boardDeck.metrics.trendAriaLabel': '12-month composite trend',
+  'boardDeck.metrics.trendTitle': 'Composite trend (12 months)',
+  'boardDeck.metrics.trendEmpty':
+    'No monthly data yet for this org. The trend chart populates once 2+ monthly snapshots are recomputed.',
   // Sub-35 — alert message i18n. Mirrors `messages/en.json`
   // `terminal.alerts.messages.*` so component-test render assertions
   // can match the locale-formatted string. Drift between this map and

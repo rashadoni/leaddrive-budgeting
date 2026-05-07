@@ -19,7 +19,11 @@
  * Pure function. No DB. Test-friendly.
  */
 
-import type { CompositeScore } from "@/lib/risk/composite-score";
+import {
+  scoreToBand as canonicalScoreToBand,
+  type CompositeScore,
+  type CompositeBand,
+} from "@/lib/risk/composite-score";
 
 export interface HoldingComposite {
   /** Mean composite (0-100), rounded to nearest integer. `null` when
@@ -30,22 +34,15 @@ export interface HoldingComposite {
   /** Number of operational sub-cos in scope (denominator candidate;
    *  `contributingCount + null-score count`). */
   totalCount: number;
-  /** Aggregate band derived from `score` via the SAME thresholds the
-   *  per-company composite uses (red ≤40, amber ≤60, green >60).
-   *  `null` when score is null. */
-  band: "red" | "amber" | "green" | null;
+  /** Aggregate band derived via the canonical `scoreToBand` (≥67
+   *  green / ≥34 amber / else red). `null` when score is null. */
+  band: CompositeBand | null;
 }
 
-/** Match the per-company `scoreToBand` thresholds. Kept inline so the
- *  helper is self-contained — composite-score's exported helper takes
- *  a `score: number` (non-null) so we wrap it locally to handle null. */
-function scoreToBand(
-  score: number | null,
-): "red" | "amber" | "green" | null {
+/** Wrap canonical `scoreToBand` (non-null input) for nullable scores. */
+function scoreToBand(score: number | null): CompositeBand | null {
   if (score === null) return null;
-  if (score <= 40) return "red";
-  if (score <= 60) return "amber";
-  return "green";
+  return canonicalScoreToBand(score);
 }
 
 /** Average composite scores across operational sub-cos. Skips nulls
