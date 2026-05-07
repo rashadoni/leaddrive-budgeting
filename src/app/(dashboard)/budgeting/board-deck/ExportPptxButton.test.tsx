@@ -26,9 +26,18 @@ import {
 } from "@testing-library/react";
 import { ExportPptxButton } from "./ExportPptxButton";
 
+// Phase 7.G Turn LIV — ExportPptxButton consumes useSearchParams to
+// thread `?lang=` + `?regenerate=` to the export route. Tests drive
+// the picker URL state via mutable module-level string.
+let searchParamsState = "";
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(searchParamsState),
+}));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  searchParamsState = "";
 });
 
 beforeEach(() => {
@@ -131,5 +140,98 @@ describe("ExportPptxButton (Phase C3 v2)", () => {
       .getByLabelText("Export board snapshot to PPTX")
       .closest("div");
     expect(wrapper?.className).toContain("print:hidden");
+  });
+});
+
+describe("ExportPptxButton — Turn LIV URL passthrough", () => {
+  function mockFetchOk() {
+    const blob = new Blob(["mock"], {
+      type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    });
+    const fetchSpy = vi.fn().mockResolvedValue(
+      new Response(blob, {
+        status: 200,
+        headers: {
+          "Content-Type":
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+      }),
+    );
+    Object.defineProperty(window, "fetch", {
+      value: fetchSpy,
+      writable: true,
+      configurable: true,
+    });
+    return fetchSpy;
+  }
+
+  function silenceAnchorClick() {
+    const origCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = origCreate(tag);
+      if (tag === "a") {
+        Object.defineProperty(el, "click", {
+          value: vi.fn(),
+          writable: true,
+          configurable: true,
+        });
+      }
+      return el;
+    });
+  }
+
+  it("threads ?lang=ru from page URL into the export request", async () => {
+    searchParamsState = "lang=ru";
+    const fetchSpy = mockFetchOk();
+    silenceAnchorClick();
+
+    render(<ExportPptxButton period="2025" />);
+    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain("period=2025");
+    expect(url).toContain("lang=ru");
+  });
+
+  it("threads ?regenerate=1 from page URL into the export request", async () => {
+    searchParamsState = "regenerate=1";
+    const fetchSpy = mockFetchOk();
+    silenceAnchorClick();
+
+    render(<ExportPptxButton period="2025" />);
+    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain("regenerate=1");
+  });
+
+  it("rejects unknown lang values (defensive — only en/ru/az pass through)", async () => {
+    searchParamsState = "lang=fr";
+    const fetchSpy = mockFetchOk();
+    silenceAnchorClick();
+
+    render(<ExportPptxButton period="2025" />);
+    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).not.toContain("lang=");
+  });
+
+  it("ignores unrelated page query state (only forwards lang + regenerate)", async () => {
+    searchParamsState = "noise=1&debug=true";
+    const fetchSpy = mockFetchOk();
+    silenceAnchorClick();
+
+    render(<ExportPptxButton period="2025" />);
+    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).not.toContain("noise");
+    expect(url).not.toContain("debug");
+    expect(url).toBe("/api/budgeting/board-deck/export-pptx?period=2025");
   });
 });

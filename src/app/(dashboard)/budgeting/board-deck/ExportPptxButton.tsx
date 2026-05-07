@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { FileDown, Loader2 } from "lucide-react";
 
 /**
@@ -13,19 +14,39 @@ import { FileDown, Loader2 } from "lucide-react";
  * Disabled during the in-flight fetch so a double-click can't fire two
  * generations concurrently. On error a small inline "Export failed"
  * label appears for the user; they can click again to retry.
+ *
+ * Phase 7.G Turn LIV — threads `?lang=` and `?regenerate=` from the
+ * current page URL to the export route. The page narrative respects
+ * these params (Turn LIII NarrativeLanguagePicker pushes `?lang=`); a
+ * download triggered while reading the RU narrative MUST produce a RU
+ * PPTX. Without this passthrough, a user on `?lang=ru` gets the EN
+ * default — broken UX after Turn LIII shipped the picker.
  */
 export function ExportPptxButton({ period }: { period: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   async function handleClick() {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const url = `/api/budgeting/board-deck/export-pptx?period=${encodeURIComponent(
-        period,
-      )}`;
+      const params = new URLSearchParams();
+      params.set("period", period);
+      // Phase 7.G Turn LIV — propagate language + regenerate so the
+      // downloaded PPTX matches what the user is reading on the page.
+      // Only forward keys the route knows about (defensive — page
+      // searchParams may carry unrelated query state).
+      const lang = searchParams.get("lang");
+      if (lang === "en" || lang === "ru" || lang === "az") {
+        params.set("lang", lang);
+      }
+      const regenerate = searchParams.get("regenerate");
+      if (regenerate === "1" || regenerate === "true") {
+        params.set("regenerate", regenerate);
+      }
+      const url = `/api/budgeting/board-deck/export-pptx?${params.toString()}`;
       const res = await fetch(url, { method: "GET", credentials: "include" });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
