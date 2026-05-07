@@ -15,6 +15,13 @@ import {
 } from "@/lib/risk/alert-rules";
 import { type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
+import {
+  runNarration,
+  isNarrationLanguage,
+  type NarrationLanguage,
+  type NarrationOutput,
+} from "@/lib/board-deck/narrate-snapshot";
+import { hasAnthropicKey } from "@/lib/ai/client";
 import { PrintButton } from "./PrintButton";
 import { ExportPptxButton } from "./ExportPptxButton";
 
@@ -48,7 +55,7 @@ export const metadata = {
 export default async function BoardDeckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; lang?: string; narrate?: string }>;
 }) {
   const session = await auth();
   // `auth()` (NextAuth server-side) puts orgId at session.user.organizationId
@@ -100,6 +107,34 @@ export default async function BoardDeckPage({
   if (!snapshot) {
     redirect("/budgeting");
   }
+
+  // Phase 7.G E.2 — optional AI-narrated executive summary.
+  // Off by default (would cost ~$0.05 per page-load otherwise); user
+  // adds `?narrate=1` to request it. Param can also flow from a future
+  // toggle button. Language picker via `?lang=en|ru|az`; defaults to
+  // English. If the LLM call fails (timeout, no key, schema violation)
+  // we render the page WITHOUT the narrative section — the deck is
+  // still useful for the audience.
+  const langParam = params.lang;
+  const narrationLanguage: NarrationLanguage =
+    typeof langParam === "string" && isNarrationLanguage(langParam)
+      ? langParam
+      : "en";
+  const wantNarration =
+    params.narrate === "1" || params.narrate === "true";
+  let narration: NarrationOutput | null = null;
+  if (wantNarration && hasAnthropicKey()) {
+    try {
+      narration = await runNarration({
+        snapshot,
+        language: narrationLanguage,
+      });
+    } catch (err) {
+      // Graceful degradation — log + render without narrative. Operator
+      // sees the failure in server logs; user sees a clean deck.
+      console.error("[board-deck] runNarration failed:", err);
+    }
+  }
   const {
     org,
     operational,
@@ -148,6 +183,29 @@ export default async function BoardDeckPage({
           <PrintButton />
         </div>
       </header>
+
+      {narration !== null && (
+        <section
+          aria-label="Executive summary"
+          data-testid="board-deck-narrative"
+          className="rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 p-4 print:border-black print:bg-white print:break-inside-avoid"
+        >
+          <p className="text-xs uppercase tracking-wider text-[#00D4AA] mb-2 print:text-gray-700">
+            Executive summary
+            <span className="ml-2 text-gray-500 font-mono text-[10px] print:text-gray-500">
+              · AI · {narration.modelName} · v{narration.promptVersion}
+            </span>
+          </p>
+          <h2 className="text-lg font-semibold tracking-tight mb-3 print:text-black">
+            {narration.headline}
+          </h2>
+          <div className="space-y-2 text-sm leading-relaxed text-gray-200 print:text-black">
+            {narration.paragraphs.map((paragraph, idx) => (
+              <p key={idx}>{paragraph}</p>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section
         aria-label="Holding summary"

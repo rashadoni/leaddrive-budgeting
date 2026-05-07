@@ -33,8 +33,18 @@ import {
   type IndustryTranslator,
 } from "@/lib/risk/alert-message-i18n";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
+import {
+  runNarration,
+  isNarrationLanguage,
+  type NarrationLanguage,
+  type NarrationOutput,
+} from "@/lib/board-deck/narrate-snapshot";
+import { hasAnthropicKey } from "@/lib/ai/client";
 
 export const runtime = "nodejs";
+// LLM narration adds ~10-30s on top of the PPTX serialization. Default
+// 10s Vercel limit would cut it off; bump to 90s.
+export const maxDuration = 90;
 
 const STATUS_HEX: Record<string, string> = {
   green: "00D4AA",
@@ -91,7 +101,35 @@ export async function GET(req: NextRequest) {
     "industries",
   )) as unknown as IndustryTranslator;
 
-  const body = await renderBoardDeckPptx(snapshot, tTerminal, tIndustries);
+  // Phase 7.G E.2 — optional AI-narrated executive summary. Off by
+  // default (would add ~$0.05 + 10-30s per export); user opts in via
+  // `?narrate=1`. Language picker via `?lang=en|ru|az`. Failure mode:
+  // log + render PPTX WITHOUT narrative slide (deck still useful).
+  const narrateParam = req.nextUrl.searchParams.get("narrate");
+  const wantNarration = narrateParam === "1" || narrateParam === "true";
+  const langParam = req.nextUrl.searchParams.get("lang");
+  const narrationLanguage: NarrationLanguage =
+    typeof langParam === "string" && isNarrationLanguage(langParam)
+      ? langParam
+      : "en";
+  let narration: NarrationOutput | null = null;
+  if (wantNarration && hasAnthropicKey()) {
+    try {
+      narration = await runNarration({
+        snapshot,
+        language: narrationLanguage,
+      });
+    } catch (err) {
+      console.error("[export-pptx] runNarration failed:", err);
+    }
+  }
+
+  const body = await renderBoardDeckPptx(
+    snapshot,
+    tTerminal,
+    tIndustries,
+    narration,
+  );
 
   const filename = `board-deck-${snapshot.org.slug}-${period}.pptx`;
   return new NextResponse(body, {
@@ -109,6 +147,7 @@ async function renderBoardDeckPptx(
   snap: Awaited<ReturnType<typeof buildBoardSnapshot>> & object,
   tTerminal: Awaited<ReturnType<typeof getTranslations>>,
   tIndustries: IndustryTranslator,
+  narration: NarrationOutput | null,
 ): Promise<ArrayBuffer> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -152,6 +191,22 @@ async function renderBoardDeckPptx(
       color: "9CA3AF",
     },
   );
+
+  // Phase 7.G E.2 — AI-narrated headline below the period line. Only
+  // rendered when narration is non-null (i.e. caller passed
+  // `?narrate=1` AND the LLM call succeeded).
+  if (narration !== null) {
+    cover.addText(narration.headline, {
+      x: 0.5,
+      y: 2.55,
+      w: 12.3,
+      h: 0.7,
+      fontFace: "Inter",
+      fontSize: 18,
+      color: "00D4AA",
+      italic: true,
+    });
+  }
 
   // KPI strip
   const kpis: Array<{ label: string; value: string }> = [
@@ -215,7 +270,72 @@ async function renderBoardDeckPptx(
     },
   );
 
-  // Slide 2 — Composite scores table
+  // Phase 7.G E.2 — Optional Slide 2 = full executive narrative.
+  // Only rendered when `narration` is non-null. Slot index DOES change
+  // when narration is present — composite-scores moves from Slide 2
+  // to Slide 3 — but downstream readers consume slides by content,
+  // not index, so this is back-compat.
+  if (narration !== null) {
+    const narrSlide = pptx.addSlide();
+    narrSlide.background = { color: "0B0F14" };
+    narrSlide.addText("EXECUTIVE SUMMARY", {
+      x: 0.5,
+      y: 0.3,
+      w: 12.3,
+      h: 0.4,
+      fontFace: "Inter",
+      fontSize: 11,
+      color: "00D4AA",
+      bold: true,
+      charSpacing: 4,
+    });
+    narrSlide.addText(narration.headline, {
+      x: 0.5,
+      y: 0.8,
+      w: 12.3,
+      h: 0.9,
+      fontFace: "Inter",
+      fontSize: 22,
+      color: "FFFFFF",
+      bold: true,
+    });
+    // Three-paragraph body — laid out vertically with consistent gaps
+    // so the reader can scan in <60 seconds. Each paragraph gets
+    // ~1.6in vertical; 6.8in total fits comfortably below the headline.
+    const PARA_X = 0.5;
+    const PARA_W = 12.3;
+    const PARA_START_Y = 2.0;
+    const PARA_H = 1.6;
+    const PARA_GAP = 0.1;
+    narration.paragraphs.forEach((paragraph, idx) => {
+      narrSlide.addText(paragraph, {
+        x: PARA_X,
+        y: PARA_START_Y + idx * (PARA_H + PARA_GAP),
+        w: PARA_W,
+        h: PARA_H,
+        fontFace: "Inter",
+        fontSize: 13,
+        color: "E5E7EB",
+        valign: "top",
+      });
+    });
+    narrSlide.addText(
+      `AI-generated · ${narration.modelName} · prompt v${narration.promptVersion}`,
+      {
+        x: 0.5,
+        y: 6.95,
+        w: 12.3,
+        h: 0.3,
+        fontFace: "Inter",
+        fontSize: 9,
+        color: "6B7280",
+        italic: true,
+      },
+    );
+  }
+
+  // Composite scores table — Slide 2 by default; Slide 3 when narration
+  // pre-empts the slot.
   const scoresSlide = pptx.addSlide();
   scoresSlide.background = { color: "0B0F14" };
   scoresSlide.addText(`Composite scores (${snap.totals.operational})`, {
