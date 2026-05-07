@@ -110,9 +110,10 @@ Main pain points that drive the roadmap:
 ### 3.1 Split `budgeting/page.tsx`
 - 🟡 Each tab → separate file in `src/features/budgeting/components/`:
   - ✅ `VarianceTab.tsx` (Turn LX, 2026-05-08; ~280 LOC; first slice + pattern)
-  - ⬜ `PlansTab.tsx`, `PLTab.tsx`, `ForecastTab.tsx`, `BalanceSheetTab.tsx`, `CashFlowTab.tsx`, `ComparisonTab.tsx`, `WorkspaceTab.tsx`, `MatrixTab.tsx`, `RollingTab.tsx`, etc.
+  - ✅ `ComparisonTab.tsx` (Turn LXI, 2026-05-08; ~338 LOC; second slice — multi-plan side-by-side analytics)
+  - ⬜ `PlansTab.tsx`, `PLTab.tsx`, `ForecastTab.tsx`, `BalanceSheetTab.tsx`, `CashFlowTab.tsx`, `WorkspaceTab.tsx`, `MatrixTab.tsx`, `RollingTab.tsx`, etc.
 - ⬜ Shared state → zustand store (`stores/budgetStore.ts`)
-- ⬜ `page.tsx` routes + tab switcher only (<500 lines) — currently 5207 LOC (was 5479 pre-LX, −272 from VarianceTab extraction)
+- ⬜ `page.tsx` routes + tab switcher only (<500 lines) — currently 4875 LOC (was 5479 pre-LX, −604 cumulative across LX+LXI)
 
 ### 3.2 Consistent loading/error states
 - ⬜ Unified `<DataBoundary>` component (skeleton + error fallback + retry)
@@ -436,6 +437,8 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
 - **Hook regex tightening — false-positive escapes + missed write-shape patterns** (originally CARRYOVER, opened 2026-05-03, 78 turns-open). Architect Turn-P Round-1 ⚠️ deferred per architect's own trigger condition: "defer until 4th chronic occurrence (false-positive in same session) triggers root-cause-revisit". Current regex catches the empirically-observed Turn-H'/J'/K' incidents; speculative extension absent further empirical signal would be premature. ~15 min when triggered. Re-open trigger: 4th chronic false-positive in a session.
 
 ## Changelog
+
+- **2026-05-08** — **Phase 7.G Turn LXI — Phase 3.1 second slice: ComparisonTab extracted from `budgeting/page.tsx`.** Per user «продолжи» — continuation of LX pattern. NEW `src/features/budgeting/components/ComparisonTab.tsx` (~380 LOC including imports + private `fmt` helper + doc-block); body extracted verbatim via `awk` line-range + `sed` `function` → `export function`. Page.tsx 5207 → 4875 LOC (−332). 2 mid-turn fixes during tsc check: (a) imported `execPct` from `@/lib/budgeting/exec-pct` (was used via closure to top-level page.tsx import); (b) inlined private `fmt(n: number) => Math.round(n).toLocaleString() + " ₼"` helper (was top-level page.tsx helper, kept untouched in page.tsx since other still-inline tabs use it). ROADMAP §Phase 3.1 second sub-item ✅; remaining tabs still queued. Pure refactor — zero behaviour change. tsc 0; full vitest **2057/2057** preserved across 127 files. 54th consecutive feature commit; 0 ⚠️ × 54 turns (target).
 
 - **2026-05-08** — **Phase 7.G Turn LX — Phase 3.1 first slice: VarianceTab extracted from `budgeting/page.tsx` to its own feature module.** Per user «продолжи пока есть открытые задачи по road map» — picked Phase 3.1 (architect Turn-LIX flag: page.tsx hit 5479 LOC, my LIX-shipped VarianceTab added ~280 LOC inline, deepening CLAUDE.md §debt #2 about budgeting/page.tsx 5000+ LOC). NEW `src/features/budgeting/components/VarianceTab.tsx` (~310 LOC including doc-block) — establishes `src/features/budgeting/components/` namespace + extraction template for future tab moves (ComparisonTab ~1200 LOC, ForecastTab, PLTab, etc.). Page.tsx 5479 → 5207 LOC (−272). Pure refactor — zero behaviour change; existing RelatedFunctionsMenu test asserts `?tab=variance` link presence + tab switch wiring locks contract. ROADMAP §Phase 3.1 first sub-item flipped ⬜ → 🟡 with VarianceTab ✅ entry; remaining tabs queued. tsc 0; full vitest **2057/2057** preserved across 127 files (no test count delta — extraction-only). 53rd consecutive feature commit; 0 ⚠️ × 53 turns (target).
 
