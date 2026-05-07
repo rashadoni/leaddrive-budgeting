@@ -196,15 +196,18 @@ function validateAndShape(parsed: unknown): ValidatedBody {
   if (typeof obj.headline !== "string" || obj.headline.trim() === "") {
     throw new Error("Board narration: missing or empty 'headline'");
   }
-  // Soft cap: trim if model over-delivers slightly (some prompts produce
-  // 130-char headlines). Hard cap at 240 (twice the soft) is shape
-  // violation territory.
+  // SYSTEM_PROMPT contract: headline ≤120 chars. Architect Turn-XLVI
+  // 🔄 closure: enforce the documented contract. Soft trim at 120 if
+  // model over-delivers (some prompts produce 130-char headlines);
+  // hard cap at 240 chars (2× contract) is shape-violation territory
+  // — anything beyond that suggests a malformed response, not a model
+  // exceeding by a few characters.
   if (obj.headline.length > 240) {
     throw new Error(
       `Board narration: 'headline' too long (${obj.headline.length} chars; max 240)`,
     );
   }
-  const headline = obj.headline.trim().slice(0, 200);
+  const headline = obj.headline.trim().slice(0, 120);
 
   if (
     !Array.isArray(obj.paragraphs) ||

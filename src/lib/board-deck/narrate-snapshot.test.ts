@@ -292,7 +292,7 @@ describe("runNarration — happy path", () => {
     expect(out.headline).toBe(VALID_RESPONSE.headline);
   });
 
-  it("trims whitespace + caps headline at 200 chars when soft over", async () => {
+  it("trims headline to 120 chars when model over-delivers (soft cap matches SYSTEM_PROMPT contract)", async () => {
     const longHeadline = "x".repeat(150); // > 120 soft cap, ≤ 240 hard cap
     installFakeClient(
       fakeResponse(
@@ -300,7 +300,20 @@ describe("runNarration — happy path", () => {
       ),
     );
     const out = await runNarration(makeInput());
-    expect(out.headline.length).toBe(150);
+    // Architect Turn-XLVI 🔄 closure: was 200 (mismatch with prompt
+    // contract). The SYSTEM_PROMPT documents headline ≤120 chars; the
+    // soft cap should match.
+    expect(out.headline.length).toBe(120);
+  });
+
+  it("preserves headlines already within the 120-char soft cap", async () => {
+    const headline = "Hospitality recovery offsets industrial drag.";
+    expect(headline.length).toBeLessThanOrEqual(120);
+    installFakeClient(
+      fakeResponse(JSON.stringify({ ...VALID_RESPONSE, headline })),
+    );
+    const out = await runNarration(makeInput());
+    expect(out.headline).toBe(headline);
   });
 
   it("passes language through to the prompt", async () => {
