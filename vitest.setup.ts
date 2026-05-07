@@ -336,6 +336,24 @@ vi.mock('next-intl', () => ({
   }),
 }));
 
+// Phase 7.G Turn XLVIII (Board Deck v2 Turn 2 follow-up) — server-side
+// next-intl mock. Mirrors the client-side mock above so async server
+// components (`await getTranslations(scope)`) resolve labels through
+// the SAME EXPLICIT_LABELS map used by client tests. Architect Turn-
+// XLVIII Quality fix: HeroSection.test.tsx originally inlined a
+// duplicate of these keys, creating a drift surface. Centralizing the
+// server mock here kills the drift class entirely.
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (_namespace?: string) =>
+    (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values),
+  getLocale: async () => 'en',
+  getMessages: async () => ({}),
+  getFormatter: async () => ({
+    dateTime: (date: Date) => String(date),
+    number: (n: number) => String(n),
+  }),
+}));
+
 // Tier-3 sub-30 Stage 3 — next-auth/react mock so components reading
 // `useSession()` (e.g. CommentsLayer for comment authorship) don't
 // crash without a SessionProvider in the test tree. Tests that need

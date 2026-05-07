@@ -203,7 +203,12 @@ export default async function BoardDeckPage({
         narration={narration}
       />
 
-      <section id="full-report" className="sr-only" aria-hidden="true">
+      {/* CTA anchor target. `sr-only` hides it visually but it stays
+          in the accessibility tree so screen-reader users following the
+          hero CTA `#full-report` link land on a labeled landmark.
+          Architect Turn-XLVIII Quality fix: removed `aria-hidden` —
+          can't be both an anchor target AND hidden from AT. */}
+      <section id="full-report" className="sr-only">
         Full report
       </section>
 

@@ -13,51 +13,20 @@
  */
 
 import React from "react";
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
 afterEach(() => {
   cleanup();
 });
+
 import type { NarrationOutput } from "@/lib/board-deck/narrate-snapshot";
 import type { HoldingComposite } from "@/features/board-deck/lib/holding-composite";
-
-// next-intl/server's `getTranslations` is async; vitest setup mocks
-// `next-intl` (client) but we need a separate mock for the server
-// path used by HeroSection. Mirrors `export-pptx/handler.test.ts`'s
-// approach: stub returns key-tail uppercased + EXPLICIT_LABELS look
-// up via the same fallback function.
-vi.mock("next-intl/server", async () => {
-  const setup = await import("../../../../vitest.setup");
-  void setup;
-  // Re-derive the EXPLICIT_LABELS lookup the way client-side mock
-  // does — but since the setup module exports nothing, we inline a
-  // minimal lookup matching what we registered for boardDeck.hero.*.
-  const fallback = (key: string, values?: Record<string, unknown>): string => {
-    const map: Record<string, string> = {
-      "boardDeck.hero.ariaLabel": "Board deck hero",
-      "boardDeck.hero.eyebrowSuffix": "Review",
-      "boardDeck.hero.fallbackHeadline":
-        "{org} · {period} period review",
-      "boardDeck.hero.scoreLabel": "Holding composite score / 100",
-      "boardDeck.hero.contributingCount":
-        "{contributing} of {total} sub-cos scored",
-      "boardDeck.hero.cta": "Read full report",
-      "boardDeck.hero.aiAttribution":
-        "AI-generated · {model} · prompt v{version}",
-    };
-    const tmpl = map[key] ?? key;
-    if (!values) return tmpl;
-    return tmpl.replace(/\{(\w+)\}/g, (_, k) =>
-      k in values ? String(values[k]) : `{${k}}`,
-    );
-  };
-  return {
-    getTranslations: async (_namespace?: string) => fallback,
-    getLocale: async () => "en",
-  };
-});
-
+// next-intl/server is mocked globally in vitest.setup.ts (mirrors the
+// client-side `next-intl` mock and routes through the same
+// EXPLICIT_LABELS fallback). Server-component tests need no per-file
+// override — architect Turn-XLVIII Quality fix removed an inline
+// duplicate that drifted from the canonical map.
 import { HeroSection } from "./HeroSection";
 
 const ORG = { name: "AZMADE Group MMC" };
