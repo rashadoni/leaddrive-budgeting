@@ -28,7 +28,14 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, BarChart2, CheckCircle } from "lucide-react"
+import {
+  Loader2,
+  BarChart2,
+  CheckCircle,
+  AlertTriangle,
+  AlertCircle,
+  CheckCircle2,
+} from "lucide-react"
 import { useBudgetPlans, useBudgetAnalytics } from "@/lib/budgeting/hooks"
 import { fmtK } from "@/lib/budget-chart-theme"
 
@@ -147,10 +154,10 @@ export function VarianceTab() {
                 </div>
                 <div className="text-[10px] mt-1 text-muted-foreground">
                   {p.periodType === "annual"
-                    ? "Annual"
+                    ? t("periodAnnual")
                     : p.periodType === "quarterly"
-                    ? `Q${p.quarter}`
-                    : `M${p.month}`}
+                    ? t("periodQuarterly", { n: p.quarter ?? 0 })
+                    : t("periodMonthly", { n: p.month ?? 0 })}
                   {p.status && ` · ${p.status}`}
                 </div>
               </button>
@@ -292,14 +299,44 @@ export function VarianceTab() {
                     const absPct = Math.abs(row.variancePct ?? 0)
                     const band = varianceBand(absPct)
                     const sign = row.variance >= 0 ? "+" : ""
+                    // Phase 7.G Turn LXII a11y supplement (audit M1 closure):
+                    // color-only severity is invisible to color-blind users + screen
+                    // readers. Icon prepended to category cell + aria-label on the
+                    // row carries the severity verbally.
+                    const SeverityIcon =
+                      band === "red"
+                        ? AlertTriangle
+                        : band === "amber"
+                        ? AlertCircle
+                        : CheckCircle2
+                    const severityLabel = t(
+                      band === "red"
+                        ? "varianceSeverityRed"
+                        : band === "amber"
+                        ? "varianceSeverityAmber"
+                        : "varianceSeverityGreen",
+                    )
                     return (
                       <tr
                         key={row.category}
                         data-testid={`variance-row-${row.category}`}
                         data-band={band}
+                        aria-label={t("varianceRowAriaLabel", {
+                          category: row.category,
+                          severity: severityLabel,
+                        })}
                         className={`${VARIANCE_BAND_CLASS[band]} border-b last:border-b-0`}
                       >
-                        <td className="px-4 py-2 font-medium">{row.category}</td>
+                        <td className="px-4 py-2 font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            <SeverityIcon
+                              size={14}
+                              aria-hidden="true"
+                              className={VARIANCE_BAND_TEXT[band]}
+                            />
+                            {row.category}
+                          </span>
+                        </td>
                         <td className="text-right px-4 py-2 tabular-nums">
                           {fmtK(row.planned)} ₼
                         </td>

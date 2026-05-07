@@ -331,6 +331,14 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'alerts.messages.sector-amber-cluster': '{industry} sector: {amberCount} amber cells across {companyCount} companies',
   'alerts.messages.sector-red-spread': '{industry} sector: {redCount} red cells across {companyCount} companies — possible contagion',
   'alerts.messages.critical-indicator-org-wide': '{code} red for {companyCount} companies — consolidated pressure on critical metric',
+  // Phase 7.G Turn LXII (audit H2 + M1) — period labels + variance row a11y.
+  'periodAnnual': 'Annual',
+  'periodQuarterly': 'Q{n}',
+  'periodMonthly': 'M{n}',
+  'varianceRowAriaLabel': '{category}: {severity} variance',
+  'varianceSeverityRed': 'high',
+  'varianceSeverityAmber': 'moderate',
+  'varianceSeverityGreen': 'low',
 };
 
 /**

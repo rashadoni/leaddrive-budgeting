@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 const updateSectionSchema = z.object({
@@ -10,8 +10,10 @@ const updateSectionSchema = z.object({
 })
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
+  const auth = await requireRole(req, "manager")
+  if (auth instanceof NextResponse) return auth
+  const { orgId } = auth
 
   const { id } = await params
 
@@ -50,8 +52,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
+  const auth = await requireRole(req, "manager")
+  if (auth instanceof NextResponse) return auth
+  const { orgId } = auth
 
   const { id } = await params
   await prisma.budgetSection.deleteMany({ where: { id, organizationId: orgId } })

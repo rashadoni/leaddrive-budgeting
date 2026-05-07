@@ -173,7 +173,11 @@ export function ComparisonTab() {
                 </div>
                 <div className={`text-sm font-bold truncate ${isSelected ? "text-violet-700 dark:text-violet-300" : ""}`}>{p.name}</div>
                 <div className={`text-[10px] mt-1 ${isSelected ? "text-muted-foreground" : "text-muted-foreground"}`}>
-                  {p.periodType === "annual" ? "Annual" : p.periodType === "quarterly" ? `Q${p.quarter}` : `M${p.month}`}
+                  {p.periodType === "annual"
+                    ? t("periodAnnual")
+                    : p.periodType === "quarterly"
+                    ? t("periodQuarterly", { n: p.quarter ?? 0 })
+                    : t("periodMonthly", { n: p.month ?? 0 })}
                   {p.status && ` · ${p.status}`}
                 </div>
               </button>

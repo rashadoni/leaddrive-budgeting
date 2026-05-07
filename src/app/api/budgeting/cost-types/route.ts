@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 
 const createCostTypeSchema = z.object({
@@ -40,8 +40,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Phase 7.G Turn LXII (audit M2 closure) — manager+ required for mutations.
+  const auth = await requireRole(req, "manager")
+  if (auth instanceof NextResponse) return auth
+  const { orgId } = auth
 
   let body
   try {
@@ -86,8 +88,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Phase 7.G Turn LXII (audit M2 closure) — manager+ required for mutations.
+  const auth = await requireRole(req, "manager")
+  if (auth instanceof NextResponse) return auth
+  const { orgId } = auth
 
   let body
   try {
@@ -117,8 +121,10 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
+  const auth = await requireRole(req, "manager")
+  if (auth instanceof NextResponse) return auth
+  const { orgId } = auth
 
   const id = req.nextUrl.searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 })
