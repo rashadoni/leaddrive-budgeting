@@ -57,6 +57,7 @@ model Organization {
   terminalLayouts        UserLayoutPreference[]
   auditEvents            AuditEvent[]
   intelItems             IntelItem[]
+  boardDeckNarrations    BoardDeckNarration[]
 }
 
 model User {
@@ -1216,6 +1217,37 @@ model IntelItem {
   @@map("intel_items")
 }
 
+// Phase 7.G E.2 v2 — Board Deck narration cache.
+// AI narrative shifted from opt-in `?narrate=1` (Turn XLVI) to ON BY
+// DEFAULT in Board Deck v2; without caching, every page-load would
+// burn ~$0.05 + 10-30s per LLM call. Cache key is
+// (organizationId, period, snapshotHash, language) — snapshotHash is
+// a sha256 over the load-bearing fields of `BoardSnapshot` (totals,
+// composite scores, alert counts) deliberately excluding generatedAt
+// so identical snapshots fetched milliseconds apart hit the same
+// cache row. 24h TTL applied at read time (`getOrCreateNarration`
+// regenerates anything older even if hash matches — guards against
+// stale narrative on a slow-changing snapshot).
+model BoardDeckNarration {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period          String                                  // YYYY or YYYY-MM (mirrors IndicatorValue.period)
+  snapshotHash    String                                  // sha256 over BoardSnapshot's load-bearing fields
+  language        String                                  // "en" | "ru" | "az"
+  headline        String
+  paragraphs      String[]                                // length 3 (validateAndShape contract)
+  modelName       String
+  promptVersion   String
+  tokensIn        Int          @default(0)
+  tokensOut       Int          @default(0)
+  generatedAt     DateTime     @default(now())
+
+  @@unique([organizationId, period, snapshotHash, language])
+  @@index([organizationId, period])
+  @@map("board_deck_narrations")
+}
+
 // AlertRule — user-defined composite conditions evaluated after recompute.
 // Example condition: { op:"count_in_status", industry:"hospitality", status:"amber", threshold:3 }
 model AlertRule {
@@ -1351,6 +1383,7 @@ enum AuditAction {
   ai_forecast_explainer_run      // Phase C2 v2 — POST /api/indicators/values/[id]/forecast/explain
   alert_thresholds_update        // Phase 7.E C6 v2 — PATCH /api/organizations/settings (alertThresholds)
   intel_crawl_run                // Phase 7.G D.2 — POST /api/intel/refresh (AI Web Crawler)
+  ai_board_deck_narration_run    // Phase 7.G E.2 v2 — Board Deck narration cache miss (LLM call)
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

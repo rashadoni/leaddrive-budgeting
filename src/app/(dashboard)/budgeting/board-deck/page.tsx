@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import {
   localizeAlertMessageParams,
   type IndustryTranslator,
@@ -16,11 +16,11 @@ import {
 import { type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
 import {
-  runNarration,
   isNarrationLanguage,
   type NarrationLanguage,
   type NarrationOutput,
 } from "@/lib/board-deck/narrate-snapshot";
+import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
 import { PrintButton } from "./PrintButton";
 import { ExportPptxButton } from "./ExportPptxButton";
@@ -55,7 +55,7 @@ export const metadata = {
 export default async function BoardDeckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; lang?: string; narrate?: string }>;
+  searchParams: Promise<{ period?: string; lang?: string; regenerate?: string }>;
 }) {
   const session = await auth();
   // `auth()` (NextAuth server-side) puts orgId at session.user.organizationId
@@ -108,32 +108,38 @@ export default async function BoardDeckPage({
     redirect("/budgeting");
   }
 
-  // Phase 7.G E.2 — optional AI-narrated executive summary.
-  // Off by default (would cost ~$0.05 per page-load otherwise); user
-  // adds `?narrate=1` to request it. Param can also flow from a future
-  // toggle button. Language picker via `?lang=en|ru|az`; defaults to
-  // English. If the LLM call fails (timeout, no key, schema violation)
-  // we render the page WITHOUT the narrative section — the deck is
-  // still useful for the audience.
+  // Phase 7.G E.2 v2 (Turn XLVII) — AI-narrated executive summary
+  // ON BY DEFAULT, backed by the BoardDeckNarration cache. Cache hit
+  // = no LLM call. Cache miss = ~$0.05 + 10-30s, then writes the row
+  // for subsequent reads. `?regenerate=1` (admin escape hatch)
+  // bypasses the cache to force a fresh LLM call.
+  // Language follows the user's locale (next-intl) — `?lang=` query
+  // param overrides for ad-hoc inspection. Failure mode unchanged
+  // (returns null → page renders without narrative section).
+  const localeRaw = await getLocale();
   const langParam = params.lang;
   const narrationLanguage: NarrationLanguage =
     typeof langParam === "string" && isNarrationLanguage(langParam)
       ? langParam
-      : "en";
-  const wantNarration =
-    params.narrate === "1" || params.narrate === "true";
+      : isNarrationLanguage(localeRaw)
+        ? localeRaw
+        : "en";
+  const bypassCache =
+    params.regenerate === "1" || params.regenerate === "true";
   let narration: NarrationOutput | null = null;
-  if (wantNarration && hasAnthropicKey()) {
-    try {
-      narration = await runNarration({
+  if (hasAnthropicKey()) {
+    narration = await getOrCreateNarration(
+      {
+        organizationId: orgId,
         snapshot,
         language: narrationLanguage,
-      });
-    } catch (err) {
-      // Graceful degradation — log + render without narrative. Operator
-      // sees the failure in server logs; user sees a clean deck.
-      console.error("[board-deck] runNarration failed:", err);
-    }
+        audit: {
+          route: "/budgeting/board-deck",
+          actorUserId: session?.user?.id ?? null,
+        },
+      },
+      { bypassCache },
+    );
   }
   const {
     org,

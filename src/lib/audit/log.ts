@@ -233,6 +233,27 @@ export type AuditEventInput =
          *  org × time-window if errorsCount > 0. */
         errorsCount: number;
       };
+    }
+  | {
+      // Phase 7.G E.2 v2 (Turn XLVII) — Board Deck narration cache miss.
+      // Emitted ONLY on cache miss (i.e. when a fresh LLM call fired);
+      // cache hits do NOT emit, otherwise the audit log would explode
+      // on heavy traffic. The original miss already covers compliance
+      // attestation for the cached row's lifetime.
+      action: 'ai_board_deck_narration_run';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        period: string;
+        language: 'en' | 'ru' | 'az';
+        /** sha256 over snapshot's load-bearing fields — lets reviewers
+         *  match cache rows to audit events. */
+        snapshotHash: string;
+        tokensIn: number;
+        tokensOut: number;
+        modelName: string;
+        promptVersion: string;
+      };
     };
 
 /**

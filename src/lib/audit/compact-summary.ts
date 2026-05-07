@@ -171,6 +171,19 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
           : compact;
       return { compact, verbose };
     }
+    case 'ai_board_deck_narration_run': {
+      // Phase 7.G E.2 v2 — Board Deck narration cache miss. Compact
+      // shows the org; verbose surfaces period + language so review
+      // can spot whether a particular period was re-narrated.
+      const compact = e.entityType;
+      const period = stringField(m, 'period');
+      const lang = stringField(m, 'language');
+      const verbose =
+        period && lang
+          ? `${e.entityType} · ${period} · ${lang.toUpperCase()}`
+          : compact;
+      return { compact, verbose };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

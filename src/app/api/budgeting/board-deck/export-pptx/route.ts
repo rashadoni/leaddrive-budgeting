@@ -34,16 +34,17 @@ import {
 } from "@/lib/risk/alert-message-i18n";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
 import {
-  runNarration,
   isNarrationLanguage,
   type NarrationLanguage,
   type NarrationOutput,
 } from "@/lib/board-deck/narrate-snapshot";
+import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
 
 export const runtime = "nodejs";
-// LLM narration adds ~10-30s on top of the PPTX serialization. Default
-// 10s Vercel limit would cut it off; bump to 90s.
+// LLM narration adds ~10-30s on top of the PPTX serialization on cache
+// miss. Cache hit = ~3s end-to-end. Default 10s Vercel limit would
+// cut a cold-start off; 90s covers the worst case.
 export const maxDuration = 90;
 
 const STATUS_HEX: Record<string, string> = {
@@ -101,27 +102,39 @@ export async function GET(req: NextRequest) {
     "industries",
   )) as unknown as IndustryTranslator;
 
-  // Phase 7.G E.2 — optional AI-narrated executive summary. Off by
-  // default (would add ~$0.05 + 10-30s per export); user opts in via
-  // `?narrate=1`. Language picker via `?lang=en|ru|az`. Failure mode:
-  // log + render PPTX WITHOUT narrative slide (deck still useful).
-  const narrateParam = req.nextUrl.searchParams.get("narrate");
-  const wantNarration = narrateParam === "1" || narrateParam === "true";
+  // Phase 7.G E.2 v2 (Turn XLVII) — AI-narrated executive summary
+  // ON BY DEFAULT, backed by the BoardDeckNarration cache (shared
+  // with the page renderer at the same `/budgeting/board-deck`).
+  // Cache hit = no LLM call; warm export ~3s end-to-end. Cache miss
+  // = ~$0.05 + 10-30s on cold path. `?regenerate=1` bypasses cache.
+  // Language: `?lang=en|ru|az`; defaults to "en" (PPTX downloads
+  // are typically reviewed by international stakeholders, where
+  // English is the safe default — page render uses user locale via
+  // next-intl, but the API route doesn't have request-locale plumbed
+  // through here, so explicit query param wins).
   const langParam = req.nextUrl.searchParams.get("lang");
   const narrationLanguage: NarrationLanguage =
     typeof langParam === "string" && isNarrationLanguage(langParam)
       ? langParam
       : "en";
+  const regenerateParam = req.nextUrl.searchParams.get("regenerate");
+  const bypassCache =
+    regenerateParam === "1" || regenerateParam === "true";
   let narration: NarrationOutput | null = null;
-  if (wantNarration && hasAnthropicKey()) {
-    try {
-      narration = await runNarration({
+  if (hasAnthropicKey()) {
+    narration = await getOrCreateNarration(
+      {
+        organizationId: orgId,
         snapshot,
         language: narrationLanguage,
-      });
-    } catch (err) {
-      console.error("[export-pptx] runNarration failed:", err);
-    }
+        audit: {
+          route: "/api/budgeting/board-deck/export-pptx",
+          userAgent: req.headers.get("user-agent") ?? undefined,
+          actorUserId: auth.userId,
+        },
+      },
+      { bypassCache },
+    );
   }
 
   const body = await renderBoardDeckPptx(

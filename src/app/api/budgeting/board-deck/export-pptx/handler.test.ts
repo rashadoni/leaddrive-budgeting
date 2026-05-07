@@ -30,12 +30,15 @@ vi.mock("next-intl/server", () => ({
   }),
 }));
 
-// Phase 7.G E.2 — narrate-snapshot mock. By default the test suite
-// assumes narration is OFF (no `?narrate=1`); when a test passes the
-// flag we override `runNarration` with the resolved fixture below.
+// Phase 7.G E.2 v2 (Turn XLVII) — narration cache mock. Boundary
+// moved from `runNarration` (Turn XLVI) to `getOrCreateNarration`
+// (Turn XLVII) — handler now goes through cache, not direct LLM.
+// Default: narrationMock returns null (cache miss + LLM degraded
+// gracefully, deck renders without narrative slide). Tests opt in to
+// the populated fixture below.
 const { aiClientMock, narrateMock } = vi.hoisted(() => ({
   aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
-  narrateMock: { runNarration: vi.fn() },
+  narrateMock: { getOrCreateNarration: vi.fn() },
 }));
 vi.mock("@/lib/ai/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/ai/client")>(
@@ -43,10 +46,10 @@ vi.mock("@/lib/ai/client", async () => {
   );
   return { ...actual, ...aiClientMock };
 });
-vi.mock("@/lib/board-deck/narrate-snapshot", async () => {
+vi.mock("@/lib/board-deck/get-or-create-narration", async () => {
   const actual = await vi.importActual<
-    typeof import("@/lib/board-deck/narrate-snapshot")
-  >("@/lib/board-deck/narrate-snapshot");
+    typeof import("@/lib/board-deck/get-or-create-narration")
+  >("@/lib/board-deck/get-or-create-narration");
   return { ...actual, ...narrateMock };
 });
 
@@ -65,7 +68,9 @@ beforeEach(() => {
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
   aiClientMock.hasAnthropicKey.mockReturnValue(true);
-  narrateMock.runNarration.mockReset();
+  // Default: cache miss + LLM-failure path → null. Each test that
+  // wants populated narration opts in via mockResolvedValue.
+  narrateMock.getOrCreateNarration.mockReset().mockResolvedValue(null);
 });
 
 describe("GET /api/budgeting/board-deck/export-pptx", () => {
@@ -198,18 +203,9 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     expect(ivCall.where.period).toMatch(/^\d{4}$/);
   });
 
-  it("does NOT call runNarration when ?narrate is omitted (default off)", async () => {
+  it("calls getOrCreateNarration with the resolved snapshot (always-on default)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    const res = await GET(
-      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
-    );
-    expect(res.status).toBe(200);
-    expect(narrateMock.runNarration).not.toHaveBeenCalled();
-  });
-
-  it("calls runNarration with the resolved snapshot when ?narrate=1", async () => {
-    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.runNarration.mockResolvedValue({
+    narrateMock.getOrCreateNarration.mockResolvedValue({
       headline: "Hospitality recovery offsets industrial drag.",
       paragraphs: ["P1", "P2", "P3"],
       modelName: "claude-sonnet-4-5-20250929",
@@ -218,22 +214,28 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     });
 
     const res = await GET(
-      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025&narrate=1"),
+      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
     );
     expect(res.status).toBe(200);
-    expect(narrateMock.runNarration).toHaveBeenCalledTimes(1);
-    const arg = narrateMock.runNarration.mock.calls[0][0];
-    expect(arg.snapshot.org.name).toBe("Demo Holding");
-    expect(arg.language).toBe("en"); // default
-    // PPTX still ships even with narration on.
+    // v2: narration is ALWAYS attempted (cache may or may not hit;
+    // mocked function fires regardless). Old `?narrate=1` opt-in
+    // dropped Turn XLVII.
+    expect(narrateMock.getOrCreateNarration).toHaveBeenCalledTimes(1);
+    const [input, optsMaybe] = narrateMock.getOrCreateNarration.mock.calls[0];
+    expect(input.snapshot.org.name).toBe("Demo Holding");
+    expect(input.organizationId).toBe(ORG_ID);
+    expect(input.language).toBe("en"); // default
+    // bypassCache defaults to false (no `?regenerate=1`).
+    expect(optsMaybe?.bypassCache).toBeFalsy();
+    // PPTX still ships.
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf[0]).toBe(0x50);
     expect(buf[1]).toBe(0x4b);
   });
 
-  it("respects ?lang= query param when narrating", async () => {
+  it("respects ?lang= query param", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.runNarration.mockResolvedValue({
+    narrateMock.getOrCreateNarration.mockResolvedValue({
       headline: "x",
       paragraphs: ["a", "b", "c"],
       modelName: "m",
@@ -242,27 +244,42 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
 
     await GET(
       makeRequest(
-        "/api/budgeting/board-deck/export-pptx?period=2025&narrate=1&lang=ru",
+        "/api/budgeting/board-deck/export-pptx?period=2025&lang=ru",
       ),
     );
-    const arg = narrateMock.runNarration.mock.calls[0][0];
+    const arg = narrateMock.getOrCreateNarration.mock.calls[0][0];
     expect(arg.language).toBe("ru");
   });
 
-  it("renders deck WITHOUT narrative when runNarration throws (graceful degradation)", async () => {
+  it("?regenerate=1 sets bypassCache on the cache helper", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
-    narrateMock.runNarration.mockRejectedValue(new Error("LLM down"));
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    narrateMock.getOrCreateNarration.mockResolvedValue({
+      headline: "Fresh",
+      paragraphs: ["a", "b", "c"],
+      modelName: "m",
+      promptVersion: "v1",
+    });
+
+    await GET(
+      makeRequest(
+        "/api/budgeting/board-deck/export-pptx?period=2025&regenerate=1",
+      ),
+    );
+    const opts = narrateMock.getOrCreateNarration.mock.calls[0][1];
+    expect(opts?.bypassCache).toBe(true);
+  });
+
+  it("renders deck WITHOUT narrative when getOrCreateNarration returns null (graceful degradation)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    narrateMock.getOrCreateNarration.mockResolvedValue(null);
 
     const res = await GET(
-      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025&narrate=1"),
+      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
     );
     expect(res.status).toBe(200);
     const buf = Buffer.from(await res.arrayBuffer());
     expect(buf[0]).toBe(0x50);
     expect(buf[1]).toBe(0x4b);
-    expect(consoleSpy).toHaveBeenCalled();
-    consoleSpy.mockRestore();
   });
 
   it("skips narration entirely when ANTHROPIC_API_KEY missing", async () => {
@@ -270,9 +287,9 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     aiClientMock.hasAnthropicKey.mockReturnValue(false);
 
     const res = await GET(
-      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025&narrate=1"),
+      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
     );
     expect(res.status).toBe(200);
-    expect(narrateMock.runNarration).not.toHaveBeenCalled();
+    expect(narrateMock.getOrCreateNarration).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,7 @@ import {
   Activity,
   Upload,
   ScrollText,
+  Presentation,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -50,6 +51,11 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/terminal", icon: Activity, label: "Risk Terminal" },
+  // Phase 7.G E.2 v2 (Turn XLVII) — Board Deck v2 sidebar entry.
+  // Was orphaned from any nav previously (only reachable via
+  // CommandBar `BRF GO`); customer feedback noted nobody knew the
+  // verb. Icon: Presentation (lucide) — matches "deck for the board".
+  { href: "/budgeting/board-deck", icon: Presentation, label: "Board Deck" },
   { href: "/budgeting/onboarding", icon: Upload, label: "Onboarding" },
   { href: "/budgeting/audit", icon: ScrollText, label: "Audit Log", minRole: "manager" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
