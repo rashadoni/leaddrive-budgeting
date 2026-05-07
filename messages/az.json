@@ -1682,6 +1682,24 @@
         "cta": "Tam hesabatı oxu",
         "aiAttribution": "AI-yaradıb · {model} · prompt {version}"
       },
+      "narrative": {
+        "ariaLabel": "İcraçı icmal",
+        "eyebrow": "İcraçı icmal",
+        "attribution": "{model} · prompt {version} · snapshot {generatedAt}"
+      },
+      "topAlerts": {
+        "ariaLabel": "Əsas xəbərdarlıqlar",
+        "eyebrow": "Şura üçün əsas xəbərdarlıqlar",
+        "showingOf": "{showing} / {total} göstərilir",
+        "affectedCount": "{count, plural, one {# təsirə uğrayan sub-co} other {# təsirə uğrayan sub-co}}",
+        "allClear": "✓ Xəbərdarlıq yoxdur — bütün sistemlər yaşıl."
+      },
+      "footer": {
+        "ariaLabel": "Səhifə əməliyyatları",
+        "eyebrow": "Paylaş + detallar",
+        "subtitle": "Təqdimatı ixrac edin, çap edin və ya əməliyyat detalları üçün Risk Terminal-ı açın.",
+        "terminalCta": "Risk Terminal aç"
+      },
       "metrics": {
         "sectionAriaLabel": "Əlavə göstəricilər",
         "redCellsLabel": "Qırmızı xanalar",

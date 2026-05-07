@@ -1682,6 +1682,24 @@
         "cta": "Полный отчёт",
         "aiAttribution": "AI-сгенерировано · {model} · промпт {version}"
       },
+      "narrative": {
+        "ariaLabel": "Аналитический обзор",
+        "eyebrow": "Аналитический обзор",
+        "attribution": "Сгенерировано {model} · промпт {version} · снимок {generatedAt}"
+      },
+      "topAlerts": {
+        "ariaLabel": "Главные алерты",
+        "eyebrow": "Главные алерты для совета",
+        "showingOf": "Показано {showing} из {total}",
+        "affectedCount": "{count, plural, one {# затронутая суб-компания} few {# затронутые суб-компании} other {# затронутых суб-компаний}}",
+        "allClear": "✓ Алертов нет — все системы зелёные."
+      },
+      "footer": {
+        "ariaLabel": "Действия страницы",
+        "eyebrow": "Поделиться + детализация",
+        "subtitle": "Экспортируйте презентацию, распечатайте или откройте Risk Terminal для операционной детализации.",
+        "terminalCta": "Открыть Risk Terminal"
+      },
       "metrics": {
         "sectionAriaLabel": "Дополнительные метрики",
         "redCellsLabel": "Красные ячейки",

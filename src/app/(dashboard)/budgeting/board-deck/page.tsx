@@ -1,19 +1,7 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
-import {
-  localizeAlertMessageParams,
-  type IndustryTranslator,
-} from "@/lib/risk/alert-message-i18n";
 import { auth } from "@/lib/auth";
-import { scoreToBand } from "@/lib/risk/composite-score";
 import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
-import {
-  DEFAULT_ALERT_RULE_IDS,
-  type AlertSeverity,
-} from "@/lib/risk/alert-rules";
-import { type HeatMapCell } from "@/lib/risk/heatmap-matrix";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
 import {
   isNarrationLanguage,
@@ -27,9 +15,10 @@ import { buildTrendSeries } from "@/features/board-deck/lib/build-trend-series";
 import { HeroSection } from "@/features/board-deck/components/HeroSection";
 import { CompositeTrendChart } from "@/features/board-deck/components/CompositeTrendChart";
 import { MetricCard } from "@/features/board-deck/components/MetricCard";
+import { NarrativeSection } from "@/features/board-deck/components/NarrativeSection";
+import { TopAlertsSection } from "@/features/board-deck/components/TopAlertsSection";
+import { FooterActions } from "@/features/board-deck/components/FooterActions";
 import { prisma } from "@/lib/prisma";
-import { PrintButton } from "./PrintButton";
-import { ExportPptxButton } from "./ExportPptxButton";
 
 export const metadata = {
   title: "Board Deck — Risk Snapshot",
@@ -72,23 +61,12 @@ export default async function BoardDeckPage({
     redirect("/budgeting");
   }
 
-  // Sub-35 — server-side translator for alert rule names + message
-  // bodies. Server components use `getTranslations` (async) instead of
-  // `useTranslations` (client hook). Locale resolved from cookie/header
-  // by next-intl/server middleware. Scoped at "terminal" (NOT
-  // "terminal.alerts") so the engine-emitted absolute keys
-  // (`alerts.rules.<id>` / `alerts.messages.<id>`) flow through without
-  // string surgery — architect Round-31 closure of fragile prefix-strip.
-  const tTerminal = await getTranslations("terminal");
-  // Phase 7.G Turn G — separate scoped translator for `industries.*`. Used
-  // by `localizeAlertMessageParams` to swap raw industry codes (e.g.
-  // `"industrial"`) for their localized labels in sector-alert messages.
-  // Cast to `IndustryTranslator` because next-intl's typed-key narrowing
-  // is too strict for the dynamic-code lookup the helper does internally.
-  const tIndustries = (await getTranslations(
-    "industries",
-  )) as unknown as IndustryTranslator;
-
+  // Phase 7.G Turn LI (v2 Turn 4) — page-level translators retired.
+  // The v1 alerts list + composite-scores table consumed `tTerminal`
+  // and `tIndustries` for inline localization; v2 components
+  // (TopAlertsSection / NarrativeSection / FooterActions) call
+  // `getTranslations` themselves. The `tMetrics` translator below
+  // stays — it serves the Turn-XLIX MetricCards row.
   const params = await searchParams;
   const rawPeriod = params.period ?? currentBakuYear();
   // Architect Round-1 sub-12 ⚠️ closure: validate the period regex
@@ -151,12 +129,8 @@ export default async function BoardDeckPage({
     org,
     operational,
     indicators,
-    cellByKey,
     compositeByCompany,
-    countsByCompany,
-    matches,
     matchesBySeverity,
-    idToCode,
     totals,
     generatedAt,
   } = snapshot;
@@ -205,21 +179,6 @@ export default async function BoardDeckPage({
 
   return (
     <div className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0">
-      {/* Phase 7.G Turn XLVIII (v2 Turn 2) — utility bar. Print-hidden;
-          executive recipients see a clean print. Buttons move to
-          FooterActions in Turn 4. */}
-      <div className="flex items-center justify-end gap-2 print:hidden">
-        <Link
-          href="/budgeting/terminal"
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft size={12} aria-hidden="true" />
-          Terminal
-        </Link>
-        <ExportPptxButton period={period} />
-        <PrintButton />
-      </div>
-
       {/* Phase 7.G Turn XLVIII (v2 Turn 2) — Hero section: huge AI
           headline + ONE composite score + 3 lead-in lines + CTA.
           Replaces the v1 header strip + Holding totals stat-grid.
@@ -287,235 +246,32 @@ export default async function BoardDeckPage({
           was. Honest gaps when monthly data is missing. */}
       <CompositeTrendChart series={trendSeries} />
 
-      <section
-        aria-label="Composite scores"
-        className="rounded border border-gray-800 print:border-black print:break-inside-avoid"
-      >
-        <h2 className="text-xs uppercase tracking-wider text-gray-500 px-4 pt-4 mb-2 print:text-gray-700">
-          Composite scores ({operational.length})
-        </h2>
-        <table className="w-full text-sm">
-          <thead className="text-xs uppercase tracking-wider text-gray-500 border-b border-gray-800 print:text-gray-700 print:border-black">
-            <tr>
-              <th className="text-left px-4 py-2 font-mono">Code</th>
-              <th className="text-left px-4 py-2">Name</th>
-              <th className="text-left px-4 py-2">Industry</th>
-              <th className="text-right px-4 py-2">Score</th>
-              <th className="text-center px-4 py-2">Band</th>
-              <th className="text-right px-4 py-2">G / A / R / U</th>
-            </tr>
-          </thead>
-          <tbody>
-            {operational.map((co) => {
-              const composite = compositeByCompany.get(co.id);
-              const counts = countsByCompany.get(co.id);
-              const score = composite?.score ?? null;
-              const band = composite ? composite.band : "unknown";
-              return (
-                <tr
-                  key={co.id}
-                  className="border-b border-gray-800 print:border-gray-300"
-                >
-                  <td className="px-4 py-2 font-mono text-xs">{co.code}</td>
-                  <td className="px-4 py-2">{co.name}</td>
-                  <td className="px-4 py-2 text-gray-400 print:text-gray-700">
-                    {co.industry || "—"}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono">
-                    {score === null ? "—" : score}
-                  </td>
-                  <td className="px-4 py-2 text-center">
-                    <BandPill band={band} />
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-xs text-gray-300 print:text-gray-700">
-                    {counts
-                      ? `${counts.green} / ${counts.amber} / ${counts.red} / ${counts.unknown}`
-                      : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </section>
+      {/* Phase 7.G Turn LI (v2 Turn 4) — full AI narrative as
+          readable article. Hero owns the headline + first sentence;
+          this section gives the depth (3 paragraphs, serif body).
+          Replaces v1 inline narrative + sits ABOVE the operational
+          drill-downs, which v2 has killed. */}
+      <NarrativeSection
+        narration={narration}
+        generatedAt={generatedAt}
+      />
 
-      <section
-        aria-label="Active alerts"
-        className="rounded border border-gray-800 p-4 print:border-black print:break-inside-avoid"
-      >
-        <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-2 print:text-gray-700">
-          <AlertTriangle
-            size={12}
-            className="inline -mt-0.5 mr-1 text-[#FFB800]"
-            aria-hidden="true"
-          />
-          Active alerts ({matches.length})
-        </h2>
-        {matches.length === 0 ? (
-          <p className="text-sm text-[#00D4AA] print:text-black">
-            ✓ No alerts triggered — all systems green.
-          </p>
-        ) : (
-          (Object.keys(matchesBySeverity) as AlertSeverity[]).map((sev) => {
-            const list = matchesBySeverity[sev];
-            if (list.length === 0) return null;
-            return (
-              <div key={sev} className="mt-3 first:mt-0">
-                <h3 className="text-xs font-mono uppercase tracking-wider mb-1 text-gray-300 print:text-black">
-                  {sev} ({list.length})
-                </h3>
-                <ul className="space-y-1.5">
-                  {list.map((m, i) => (
-                    <li
-                      key={`${m.ruleId}-${i}`}
-                      className="text-sm border-l-2 pl-2 border-gray-700 print:border-black"
-                    >
-                      <div className="font-mono text-[10px] text-gray-500 print:text-gray-700">
-                        {(() => {
-                          // Sub-35 — locale-aware rule name (server-side).
-                          // tTerminal is scoped at "terminal" so the engine
-                          // key shape flows through directly.
-                          if (!DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) return m.ruleName;
-                          try {
-                            return tTerminal(`alerts.rules.${m.ruleId}` as never);
-                          } catch {
-                            return m.ruleName;
-                          }
-                        })()}
-                      </div>
-                      <div>
-                        {(() => {
-                          // Sub-35 — locale-aware message body.
-                          if (!m.messageKey || !DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
-                            return m.message;
-                          }
-                          try {
-                            // Turn G: localize industry code before substitution.
-                            const localizedParams = localizeAlertMessageParams(
-                              m.messageParams,
-                              tIndustries,
-                            );
-                            return tTerminal(
-                              m.messageKey as never,
-                              localizedParams as never,
-                            );
-                          } catch {
-                            return m.message;
-                          }
-                        })()}
-                      </div>
-                      {m.affectedCompanyIds.length > 0 && (
-                        <div className="text-xs text-gray-500 mt-0.5 font-mono print:text-gray-700">
-                          {m.affectedCompanyIds
-                            .map((id) => idToCode.get(id) ?? id.slice(0, 8))
-                            .join(", ")}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })
-        )}
-      </section>
+      {/* Phase 7.G Turn LI (v2 Turn 4) — top 3 alerts. Calm
+          "all clear" pane when zero. v1's full alerts dump (grouped
+          by severity, all rules) lives in /budgeting/terminal AlertsPanel
+          and is reachable via the FooterActions Terminal CTA. */}
+      <TopAlertsSection matchesBySeverity={matchesBySeverity} limit={3} />
 
-      <section
-        aria-label="Status grid"
-        className="rounded border border-gray-800 p-4 overflow-x-auto print:border-black print:break-before-page"
-      >
-        <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-2 print:text-gray-700">
-          Status grid (companies × indicators)
-        </h2>
-        <table className="w-full text-[9px] font-mono border-collapse">
-          <thead>
-            <tr>
-              <th className="text-left p-1 sticky left-0 bg-background print:bg-white">
-                CO \\ IND
-              </th>
-              {indicators.map((ind: IndicatorShape) => (
-                <th
-                  key={ind.id}
-                  className="text-center p-1 align-bottom"
-                  style={{
-                    writingMode: "vertical-rl",
-                    transform: "rotate(180deg)",
-                    minWidth: 16,
-                    maxWidth: 16,
-                  }}
-                  title={ind.nameEn}
-                >
-                  {ind.code.replace(/^IND_/, "")}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {operational.map((co) => (
-              <tr key={co.id}>
-                <th className="text-left p-1 sticky left-0 bg-background print:bg-white text-gray-300 print:text-black">
-                  {co.code}
-                </th>
-                {indicators.map((ind: IndicatorShape) => {
-                  const cell = cellByKey.get(`${co.id}|${ind.id}`);
-                  const status = cell?.status ?? "unknown";
-                  return (
-                    <td
-                      key={ind.id}
-                      className="p-0 border border-gray-900 print:border-gray-300"
-                      style={{
-                        backgroundColor: STATUS_PRINT_COLOR[status],
-                        height: 16,
-                        width: 16,
-                      }}
-                      title={`${co.code} · ${ind.code}: ${status}`}
-                      aria-label={`${co.code} ${ind.code} ${status}`}
-                    />
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <footer className="text-xs text-gray-500 border-t border-gray-800 pt-3 print:border-black print:text-gray-700 print:break-inside-avoid">
-        <p>
-          Generated by BudgetPro Risk Terminal · Static snapshot at print
-          time · Live recompute under scenario overrides ships with Phase 6
-          (BullMQ scheduler) · Confidential — intended for board / executive
-          recipients only.
-        </p>
-      </footer>
+      {/* Phase 7.G Turn LI (v2 Turn 4) — FooterActions absorbs the
+          Turn-XLVIII utility-bar (Print + Export PPTX + Terminal
+          back-link) into a single bottom-of-page block. Print-hidden;
+          the printed deck doesn't carry the buttons. */}
+      <FooterActions period={period} />
     </div>
   );
 }
 
-// Phase 7.G Turn XLVIII (v2 Turn 2) — `Stat` helper was consumed by
-// the v1 HOLDING TOTALS stat-grid. The Hero section replaces it; the
-// helper has no remaining call-sites and is removed.
-
-function BandPill({ band }: { band: ReturnType<typeof scoreToBand> | "unknown" }) {
-  const tone =
-    band === "green"
-      ? "bg-[#00D4AA]/20 text-[#00D4AA] print:bg-green-200 print:text-green-900"
-      : band === "amber"
-        ? "bg-[#FFB800]/20 text-[#FFB800] print:bg-yellow-200 print:text-yellow-900"
-        : band === "red"
-          ? "bg-[#FF4757]/20 text-[#FF4757] print:bg-red-200 print:text-red-900"
-          : "bg-gray-800 text-gray-400 print:bg-gray-200 print:text-gray-700";
-  return (
-    <span
-      className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-mono uppercase ${tone}`}
-    >
-      {band}
-    </span>
-  );
-}
-
-const STATUS_PRINT_COLOR: Record<HeatMapCell["status"], string> = {
-  green: "#00D4AA",
-  amber: "#FFB800",
-  red: "#FF4757",
-  unknown: "#1A2330",
-};
+// Phase 7.G Turn LI (v2 Turn 4) — orphan helpers removed. `Stat`
+// (Turn XLVIII), `BandPill` + `STATUS_PRINT_COLOR` (this turn) all
+// belonged to the v1 operational-tables that v2 retired. Page is
+// now ~150 LOC down from ~520 LOC v1 + Turns XLVIII/XLIX additions.
