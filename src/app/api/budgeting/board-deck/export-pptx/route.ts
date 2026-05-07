@@ -57,6 +57,8 @@ import {
   type IndustryTranslator,
 } from "@/lib/risk/alert-message-i18n";
 import { buildBoardSnapshot } from "@/lib/board-deck/build-snapshot";
+import { buildTrendSeries } from "@/features/board-deck/lib/build-trend-series";
+import { prisma } from "@/lib/prisma";
 import {
   isNarrationLanguage,
   type NarrationLanguage,
@@ -155,11 +157,35 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Phase 7.G Turn LVI — 12-month trailing composite trend for the
+  // dedicated chart slide. Mirror the page renderer (`page.tsx`)
+  // contract: try/catch with fallback to [] so a Prisma transient
+  // failure doesn't kill the deck — the chart slide just renders
+  // its empty-state placeholder.
+  const operationalIds = snapshot.operational.map((co) => co.id);
+  const indicatorIds = snapshot.indicators.map((ind) => ind.id);
+  let trendSeries: Awaited<ReturnType<typeof buildTrendSeries>> = [];
+  try {
+    trendSeries = await buildTrendSeries(
+      {
+        organizationId: orgId,
+        currentPeriod: period,
+        operationalIds,
+        indicatorIds,
+      },
+      { prisma },
+    );
+  } catch (err) {
+    console.error("[board-deck/export-pptx] buildTrendSeries failed", err);
+    trendSeries = [];
+  }
+
   const body = await renderBoardDeckPptx(
     snapshot,
     tTerminal,
     tIndustries,
     narration,
+    trendSeries,
   );
 
   const filename = `board-deck-${snapshot.org.slug}-${period}.pptx`;
@@ -202,6 +228,7 @@ async function renderBoardDeckPptx(
   tTerminal: Awaited<ReturnType<typeof getTranslations>>,
   tIndustries: IndustryTranslator,
   narration: NarrationOutput | null,
+  trendSeries: Awaited<ReturnType<typeof buildTrendSeries>>,
 ): Promise<ArrayBuffer> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -559,7 +586,7 @@ async function renderBoardDeckPptx(
     });
   });
   metricsSlide.addText(
-    "Open the Risk Terminal for the 12-month composite trend chart.",
+    "12-month composite trend continues on next slide.",
     {
       x: 0.6,
       y: 6.95,
@@ -572,7 +599,141 @@ async function renderBoardDeckPptx(
     },
   );
 
-  // ───────────────────────────── Slide 4 — Top alerts ────────────────────────
+  // ───────────────────────────── Slide 4 — Trend chart ───────────────────────
+  // Phase 7.G Turn LVI — native pptxgenjs `addChart('line', ...)` for
+  // the 12-month trailing composite trend. Earlier turns parked the
+  // chart with a "Open the Risk Terminal" footer because pptxgenjs
+  // SVG-rasterise is browser-only (`IMG_BROKEN` in Node — see lib
+  // dist `STEP 5: SVG-PNG previews`). pptxgenjs's native chart engine
+  // emits a real PowerPoint chart object that scales cleanly + opens
+  // editable in PowerPoint/Keynote, no rasterisation required.
+  //
+  // Empty-state path: `trendSeries === []` (Prisma transient or no
+  // ops/indicators) → render the "no monthly data yet" placeholder
+  // instead of an empty chart (which pptxgenjs accepts but renders
+  // ugly).
+  const trendSlide = pptx.addSlide();
+  trendSlide.background = { color: BG_CREAM };
+  trendSlide.addText("12-MONTH COMPOSITE TREND", {
+    x: 0.6,
+    y: 0.4,
+    w: 12.1,
+    h: 0.35,
+    fontFace: "Inter",
+    fontSize: 11,
+    color: ACCENT_AI,
+    bold: true,
+    charSpacing: 5,
+  });
+  trendSlide.addText(
+    `Holding-level composite, monthly · period anchor ${snap.period}`,
+    {
+      x: 0.6,
+      y: 0.85,
+      w: 12.1,
+      h: 0.5,
+      fontFace: "Inter",
+      fontSize: 16,
+      color: INK,
+      bold: true,
+    },
+  );
+
+  const hasAnyTrendData = trendSeries.some((p) => p.score !== null);
+  if (!hasAnyTrendData) {
+    trendSlide.addShape("rect", {
+      x: 1.5,
+      y: 2.5,
+      w: 10.33,
+      h: 2.5,
+      fill: { color: CARD_WHITE },
+      line: { color: BAND_GREY, width: 0.5 },
+    });
+    trendSlide.addText("No monthly data yet for this trailing window.", {
+      x: 1.5,
+      y: 3.5,
+      w: 10.33,
+      h: 0.5,
+      fontFace: "Inter",
+      fontSize: 14,
+      color: INK_MUTED,
+      align: "center",
+      italic: true,
+    });
+  } else {
+    // pptxgenjs Line chart contract: `data: [{name, labels[], values[]}]`.
+    // Null months are gaps on the page (M-restart in SVG); pptxgenjs
+    // line charts treat `null` in `values[]` as a gap natively, so we
+    // can pass-through. Labels are short month codes (e.g. "May") so
+    // 12-point X-axis stays legible.
+    const labels = trendSeries.map((p) => {
+      const [, monthStr] = p.period.split("-");
+      const monthIdx = Number(monthStr) - 1;
+      const monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+      ];
+      return monthNames[monthIdx] ?? p.period;
+    });
+    const values = trendSeries.map((p) => p.score) as Array<number | null>;
+    trendSlide.addChart(
+      "line",
+      [{ name: "Composite score", labels, values }],
+      {
+        x: 0.6,
+        y: 1.6,
+        w: 12.1,
+        h: 4.8,
+        chartColors: [ACCENT_AI],
+        showLegend: false,
+        showTitle: false,
+        catAxisLabelFontFace: "Inter",
+        catAxisLabelFontSize: 10,
+        catAxisLabelColor: INK_MUTED,
+        valAxisLabelFontFace: "Courier New",
+        valAxisLabelFontSize: 10,
+        valAxisLabelColor: INK_MUTED,
+        valAxisMinVal: 0,
+        valAxisMaxVal: 100,
+        lineSize: 3,
+        lineDataSymbol: "circle",
+        lineDataSymbolSize: 8,
+        lineDataSymbolLineColor: ACCENT_AI,
+      },
+    );
+    // Footnote — current-period score callout for the reader's eye.
+    const lastPoint = trendSeries[trendSeries.length - 1];
+    if (lastPoint && lastPoint.score !== null) {
+      trendSlide.addText(
+        `Latest (${lastPoint.period}): ${lastPoint.score}/100${lastPoint.band ? ` · ${lastPoint.band}` : ""}`,
+        {
+          x: 0.6,
+          y: 6.55,
+          w: 12.1,
+          h: 0.4,
+          fontFace: "Courier New",
+          fontSize: 11,
+          color: INK,
+          bold: true,
+        },
+      );
+    }
+  }
+  trendSlide.addText(
+    "Score scale: 0–100 · band thresholds: ≥67 green · ≥34 amber · <34 red",
+    {
+      x: 0.6,
+      y: 6.95,
+      w: 12.1,
+      h: 0.3,
+      fontFace: "Inter",
+      fontSize: 9,
+      color: INK_FAINT,
+      italic: true,
+    },
+  );
+
+  // ───────────────────────────── Slide 5 — Top alerts ────────────────────────
   const alertsSlide = pptx.addSlide();
   alertsSlide.background = { color: BG_CREAM };
   alertsSlide.addText("TOP ALERTS", {

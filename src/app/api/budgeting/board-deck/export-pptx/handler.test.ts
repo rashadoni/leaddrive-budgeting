@@ -36,9 +36,10 @@ vi.mock("next-intl/server", () => ({
 // Default: narrationMock returns null (cache miss + LLM degraded
 // gracefully, deck renders without narrative slide). Tests opt in to
 // the populated fixture below.
-const { aiClientMock, narrateMock } = vi.hoisted(() => ({
+const { aiClientMock, narrateMock, trendMock } = vi.hoisted(() => ({
   aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
   narrateMock: { getOrCreateNarration: vi.fn() },
+  trendMock: { buildTrendSeries: vi.fn() },
 }));
 vi.mock("@/lib/ai/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/ai/client")>(
@@ -51,6 +52,15 @@ vi.mock("@/lib/board-deck/get-or-create-narration", async () => {
     typeof import("@/lib/board-deck/get-or-create-narration")
   >("@/lib/board-deck/get-or-create-narration");
   return { ...actual, ...narrateMock };
+});
+// Phase 7.G Turn LVI — buildTrendSeries powers the new trend-chart
+// slide. Default empty array (matches the empty IndicatorValue
+// fixture); populated tests opt in via mockResolvedValue.
+vi.mock("@/features/board-deck/lib/build-trend-series", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/board-deck/lib/build-trend-series")
+  >("@/features/board-deck/lib/build-trend-series");
+  return { ...actual, ...trendMock };
 });
 
 import { mockSession, makeRequest } from "@/test/api-harness";
@@ -71,6 +81,9 @@ beforeEach(() => {
   // Default: cache miss + LLM-failure path → null. Each test that
   // wants populated narration opts in via mockResolvedValue.
   narrateMock.getOrCreateNarration.mockReset().mockResolvedValue(null);
+  // Phase 7.G Turn LVI — default empty trend series; populated path
+  // opt-in via per-test mockResolvedValue.
+  trendMock.buildTrendSeries.mockReset().mockResolvedValue([]);
 });
 
 describe("GET /api/budgeting/board-deck/export-pptx", () => {
@@ -291,5 +304,72 @@ describe("GET /api/budgeting/board-deck/export-pptx", () => {
     );
     expect(res.status).toBe(200);
     expect(narrateMock.getOrCreateNarration).not.toHaveBeenCalled();
+  });
+
+  // Phase 7.G Turn LVI — trend chart slide
+  it("calls buildTrendSeries with snapshot's operational + indicator ids", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    prismaMock.company.findMany.mockResolvedValue([
+      {
+        id: "c1",
+        code: "AAC",
+        name: "AAC",
+        industry: "industrial",
+        level: 2,
+        isActive: true,
+        role: "operational",
+        sortOrder: 1,
+      },
+      {
+        id: "c2",
+        code: "ZTP",
+        name: "ZTP",
+        industry: "industrial",
+        level: 2,
+        isActive: true,
+        role: "operational",
+        sortOrder: 2,
+      },
+    ]);
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+      {
+        id: "i1",
+        code: "IND_GROSS_MARGIN",
+        nameEn: "Gross Margin",
+        direction: "higher_is_better",
+        unit: "%",
+        sortOrder: 1,
+      },
+    ]);
+    trendMock.buildTrendSeries.mockResolvedValue([
+      { period: "2025-01", score: 50, band: "amber" },
+      { period: "2025-02", score: 55, band: "amber" },
+    ]);
+
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
+    );
+    expect(res.status).toBe(200);
+    expect(trendMock.buildTrendSeries).toHaveBeenCalledTimes(1);
+    const arg = trendMock.buildTrendSeries.mock.calls[0][0];
+    expect(arg.organizationId).toBe(ORG_ID);
+    expect(arg.currentPeriod).toBe("2025");
+    expect(arg.operationalIds).toEqual(["c1", "c2"]);
+    expect(arg.indicatorIds).toEqual(["i1"]);
+  });
+
+  it("PPTX still ships when buildTrendSeries throws (graceful degradation → empty trend slide)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" });
+    trendMock.buildTrendSeries.mockRejectedValue(
+      new Error("prisma transient"),
+    );
+
+    const res = await GET(
+      makeRequest("/api/budgeting/board-deck/export-pptx?period=2025"),
+    );
+    expect(res.status).toBe(200);
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf[0]).toBe(0x50);
+    expect(buf[1]).toBe(0x4b);
   });
 });
