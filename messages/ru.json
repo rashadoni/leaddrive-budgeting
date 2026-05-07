@@ -1685,7 +1685,8 @@
       "emptyViewer": "Нет свежих новостей. Попросите администратора обновить.",
       "pinAriaLabel": "Закрепить",
       "unpinAriaLabel": "Открепить",
-      "dismissAriaLabel": "Скрыть"
+      "dismissAriaLabel": "Скрыть",
+      "relevanceAriaLabel": "Релевантность {tone} {score}"
     },
     "shortcuts": {
       "title": "Горячие клавиши",

@@ -283,6 +283,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'intelFeedPanel.pinAriaLabel': 'Pin item',
   'intelFeedPanel.unpinAriaLabel': 'Unpin item',
   'intelFeedPanel.dismissAriaLabel': 'Dismiss item',
+  'intelFeedPanel.relevanceAriaLabel': 'Relevance {tone} {score}',
   // Sub-35 — alert message i18n. Mirrors `messages/en.json`
   // `terminal.alerts.messages.*` so component-test render assertions
   // can match the locale-formatted string. Drift between this map and

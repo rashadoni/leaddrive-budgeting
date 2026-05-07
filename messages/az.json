@@ -1685,7 +1685,8 @@
       "emptyViewer": "Son xəbərlər yoxdur. Adminə yeniləməsi üçün müraciət edin.",
       "pinAriaLabel": "Sabitlə",
       "unpinAriaLabel": "Sabitlikdən çıxar",
-      "dismissAriaLabel": "Gizlət"
+      "dismissAriaLabel": "Gizlət",
+      "relevanceAriaLabel": "Aidiyyət {tone} {score}"
     },
     "shortcuts": {
       "title": "Klaviatura qısayolları",

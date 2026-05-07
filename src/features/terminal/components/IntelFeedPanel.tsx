@@ -146,8 +146,15 @@ export function IntelFeedPanel() {
     setRefreshing(true);
     setRefreshNotice(null);
     setError(null);
+    // Architect Turn-XLV Quality fix #3: refresh + post-refresh re-fetch
+    // share an AbortController so closing the modal mid-flight cancels
+    // both legs (avoids stale-state setters firing into a closed panel).
+    const ctrl = new AbortController();
     try {
-      const res = await fetch("/api/intel/refresh", { method: "POST" });
+      const res = await fetch("/api/intel/refresh", {
+        method: "POST",
+        signal: ctrl.signal,
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `Refresh failed (${res.status})`);
@@ -160,8 +167,9 @@ export function IntelFeedPanel() {
       ];
       if (data.errors.length > 0) noticeParts.push(`⚠ ${data.errors.length} errors`);
       setRefreshNotice(noticeParts.join(" · "));
-      await fetchItems();
+      await fetchItems(ctrl.signal);
     } catch (err) {
+      if ((err as { name?: string })?.name === "AbortError") return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRefreshing(false);
@@ -359,7 +367,10 @@ export function IntelFeedPanel() {
                         </span>
                         <span
                           className={`rounded border px-1.5 py-0.5 ${tone.cls}`}
-                          aria-label={`Relevance ${tone.label} ${item.relevanceScore.toFixed(2)}`}
+                          aria-label={t("intelFeedPanel.relevanceAriaLabel", {
+                            tone: tone.label,
+                            score: item.relevanceScore.toFixed(2),
+                          })}
                         >
                           {tone.label} · {item.relevanceScore.toFixed(2)}
                         </span>
@@ -368,12 +379,12 @@ export function IntelFeedPanel() {
                             item.publishedAt ?? item.fetchedAt,
                           )}
                         </span>
-                        {item.industryTags.map((t) => (
+                        {item.industryTags.map((tag) => (
                           <span
-                            key={`ind-${t}`}
+                            key={`ind-${tag}`}
                             className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-300"
                           >
-                            {t}
+                            {tag}
                           </span>
                         ))}
                         {item.companyTags.map((c) => (
