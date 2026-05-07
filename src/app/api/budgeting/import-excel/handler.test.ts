@@ -110,6 +110,11 @@ describe("POST /api/budgeting/import-excel — rate-limit smoke (Turn LXIII)", (
     // Note: rate-limit is in-memory + per-org, so each test run starts
     // clean if the test runner imports a fresh module instance.
     // Vitest module isolation guarantees this for vitest-environment node.
+    //
+    // Org-segregation: dedicated `org_rate_test` (NOT shared `ORG_ID`)
+    // ensures no state bleed from other test blocks in the same file
+    // even if module-level bucket isolation were ever relaxed (defense
+    // in depth — architect Turn-LXIII follow-up suggestion).
     await mockSession({ orgId: "org_rate_test", userId: "u1", role: "manager" })
     const req1 = await POST(
       makeUploadRequest({ noFile: true }) as unknown as Parameters<typeof POST>[0],
