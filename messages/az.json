@@ -1672,6 +1672,17 @@
       "companyCodeNotLoaded": "Şirkət kodu yüklənmədi — yenidən açmağa cəhd et",
       "couldNotLoadCodes": "Şirkət kodları yüklənmədi — çiplər id-ləri göstərir: {error}"
     },
+    "boardDeck": {
+      "hero": {
+        "ariaLabel": "Board deck baş bölmə",
+        "eyebrowSuffix": "icmalı",
+        "fallbackHeadline": "{org} · {period} icmalı",
+        "scoreLabel": "Holding mürəkkəb balı / 100",
+        "contributingCount": "{contributing} / {total} sub-co",
+        "cta": "Tam hesabatı oxu",
+        "aiAttribution": "AI-yaradıb · {model} · prompt v{version}"
+      }
+    },
     "intelFeedPanel": {
       "title": "Intel lenti",
       "subtitle": "Portfelinizin sənayələri və şirkətləri üzrə AI-tərəfindən seçilmiş xəbərlər.",

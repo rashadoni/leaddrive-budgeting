@@ -1672,6 +1672,17 @@
       "companyCodeNotLoaded": "Company code not loaded — try reopening",
       "couldNotLoadCodes": "Could not load company codes — chips show ids: {error}"
     },
+    "boardDeck": {
+      "hero": {
+        "ariaLabel": "Board deck hero",
+        "eyebrowSuffix": "Review",
+        "fallbackHeadline": "{org} · {period} period review",
+        "scoreLabel": "Holding composite score / 100",
+        "contributingCount": "{contributing} of {total} sub-cos scored",
+        "cta": "Read full report",
+        "aiAttribution": "AI-generated · {model} · prompt v{version}"
+      }
+    },
     "intelFeedPanel": {
       "title": "Intel feed",
       "subtitle": "AI-curated news on your portfolio's industries + companies.",

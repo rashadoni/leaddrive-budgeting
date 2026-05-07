@@ -1672,6 +1672,17 @@
       "companyCodeNotLoaded": "Код компании не загружен — попробуйте переоткрыть",
       "couldNotLoadCodes": "Не удалось загрузить коды компаний — чипы показывают id: {error}"
     },
+    "boardDeck": {
+      "hero": {
+        "ariaLabel": "Заглавный блок отчёта",
+        "eyebrowSuffix": "обзор",
+        "fallbackHeadline": "{org} · обзор за {period}",
+        "scoreLabel": "Сводный балл холдинга / 100",
+        "contributingCount": "{contributing} из {total} суб-компаний",
+        "cta": "Полный отчёт",
+        "aiAttribution": "AI-сгенерировано · {model} · промпт v{version}"
+      }
+    },
     "intelFeedPanel": {
       "title": "Лента Intel",
       "subtitle": "AI-подборка новостей по индустриям и компаниям вашего портфеля.",

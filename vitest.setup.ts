@@ -284,6 +284,14 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'intelFeedPanel.unpinAriaLabel': 'Unpin item',
   'intelFeedPanel.dismissAriaLabel': 'Dismiss item',
   'intelFeedPanel.relevanceAriaLabel': 'Relevance {tone} {score}',
+  // Phase 7.G Turn XLVIII (v2 Turn 2) — Hero section fixtures.
+  'boardDeck.hero.ariaLabel': 'Board deck hero',
+  'boardDeck.hero.eyebrowSuffix': 'Review',
+  'boardDeck.hero.fallbackHeadline': '{org} · {period} period review',
+  'boardDeck.hero.scoreLabel': 'Holding composite score / 100',
+  'boardDeck.hero.contributingCount': '{contributing} of {total} sub-cos scored',
+  'boardDeck.hero.cta': 'Read full report',
+  'boardDeck.hero.aiAttribution': 'AI-generated · {model} · prompt v{version}',
   // Sub-35 — alert message i18n. Mirrors `messages/en.json`
   // `terminal.alerts.messages.*` so component-test render assertions
   // can match the locale-formatted string. Drift between this map and

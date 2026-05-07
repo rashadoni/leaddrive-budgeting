@@ -22,6 +22,8 @@ import {
 } from "@/lib/board-deck/narrate-snapshot";
 import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
+import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
+import { HeroSection } from "@/features/board-deck/components/HeroSection";
 import { PrintButton } from "./PrintButton";
 import { ExportPptxButton } from "./ExportPptxButton";
 
@@ -155,80 +157,54 @@ export default async function BoardDeckPage({
     generatedAt,
   } = snapshot;
   type IndicatorShape = (typeof indicators)[number];
-  const totalCells = totals.cells;
-  const totalGreen = totals.green;
-  const totalAmber = totals.amber;
-  const totalRed = totals.red;
+  // Phase 7.G Turn XLVIII (v2 Turn 2) — `totals.*` was consumed by
+  // the v1 HOLDING TOTALS stat-grid that the Hero section now
+  // replaces. Reads stay accessible via `totals.*` for sections
+  // below until Turn 4 kills the operational tables entirely.
+  void totals;
+
+  // Phase 7.G Turn XLVIII (Board Deck v2 Turn 2) — promote per-company
+  // composite scores to a holding-level aggregate for the Hero
+  // metric. Skip-null mean across operational sub-cos (weight=1 each
+  // for v1; revenue-weighting is a v2.x follow-up).
+  const holdingComposite = computeHoldingComposite(
+    compositeByCompany,
+    operational.map((c) => c.id),
+  );
 
   return (
     <div className="board-deck mx-auto max-w-5xl space-y-8 px-4 py-6 print:max-w-none print:px-0 print:py-0">
-      <header className="flex items-center justify-between border-b border-gray-700 pb-4 print:border-black">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-gray-500 print:text-gray-700">
-            Board Snapshot
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight print:text-black">
-            {org.name}
-          </h1>
-          <p className="text-sm text-gray-400 print:text-gray-700">
-            Period <span className="font-mono">{period}</span> · Generated{" "}
-            <time dateTime={generatedAt} className="font-mono">
-              {generatedAt.replace("T", " ").slice(0, 19)}Z
-            </time>
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            href="/budgeting/terminal"
-            className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-white print:hidden"
-          >
-            <ArrowLeft size={14} aria-hidden="true" />
-            Terminal
-          </Link>
-          <ExportPptxButton period={period} />
-          <PrintButton />
-        </div>
-      </header>
-
-      {narration !== null && (
-        <section
-          aria-label="Executive summary"
-          data-testid="board-deck-narrative"
-          className="rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 p-4 print:border-black print:bg-white print:break-inside-avoid"
+      {/* Phase 7.G Turn XLVIII (v2 Turn 2) — utility bar. Print-hidden;
+          executive recipients see a clean print. Buttons move to
+          FooterActions in Turn 4. */}
+      <div className="flex items-center justify-end gap-2 print:hidden">
+        <Link
+          href="/budgeting/terminal"
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
-          <p className="text-xs uppercase tracking-wider text-[#00D4AA] mb-2 print:text-gray-700">
-            Executive summary
-            <span className="ml-2 text-gray-500 font-mono text-[10px] print:text-gray-500">
-              · AI · {narration.modelName} · v{narration.promptVersion}
-            </span>
-          </p>
-          <h2 className="text-lg font-semibold tracking-tight mb-3 print:text-black">
-            {narration.headline}
-          </h2>
-          <div className="space-y-2 text-sm leading-relaxed text-gray-200 print:text-black">
-            {narration.paragraphs.map((paragraph, idx) => (
-              <p key={idx}>{paragraph}</p>
-            ))}
-          </div>
-        </section>
-      )}
+          <ArrowLeft size={12} aria-hidden="true" />
+          Terminal
+        </Link>
+        <ExportPptxButton period={period} />
+        <PrintButton />
+      </div>
 
-      <section
-        aria-label="Holding summary"
-        className="rounded border border-gray-800 p-4 print:border-black print:break-inside-avoid"
-      >
-        <h2 className="text-xs uppercase tracking-wider text-gray-500 mb-2 print:text-gray-700">
-          Holding totals
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <Stat label="Operational sub-cos" value={operational.length} />
-          <Stat label="Indicators" value={indicators.length} />
-          <Stat label="Cells" value={totalCells} />
-          <Stat
-            label="Green / Amber / Red"
-            value={`${totalGreen} / ${totalAmber} / ${totalRed}`}
-          />
-        </div>
+      {/* Phase 7.G Turn XLVIII (v2 Turn 2) — Hero section: huge AI
+          headline + ONE composite score + 3 lead-in lines + CTA.
+          Replaces the v1 header strip + Holding totals stat-grid.
+          Below this is still v1-style sections — Turn 3 ships the
+          metrics row + trend chart, Turn 4 kills the operational
+          tables. */}
+      <HeroSection
+        org={{ name: org.name }}
+        period={period}
+        generatedAt={generatedAt}
+        composite={holdingComposite}
+        narration={narration}
+      />
+
+      <section id="full-report" className="sr-only" aria-hidden="true">
+        Full report
       </section>
 
       <section
@@ -435,20 +411,9 @@ export default async function BoardDeckPage({
   );
 }
 
-function Stat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div>
-      <p className="text-xs text-gray-500 print:text-gray-700">{label}</p>
-      <p className="text-lg font-mono">{value}</p>
-    </div>
-  );
-}
+// Phase 7.G Turn XLVIII (v2 Turn 2) — `Stat` helper was consumed by
+// the v1 HOLDING TOTALS stat-grid. The Hero section replaces it; the
+// helper has no remaining call-sites and is removed.
 
 function BandPill({ band }: { band: ReturnType<typeof scoreToBand> | "unknown" }) {
   const tone =
