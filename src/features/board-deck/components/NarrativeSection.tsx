@@ -19,7 +19,11 @@
  */
 
 import { getTranslations } from "next-intl/server";
-import type { NarrationOutput } from "@/lib/board-deck/narrate-snapshot";
+import type {
+  NarrationLanguage,
+  NarrationOutput,
+} from "@/lib/board-deck/narrate-snapshot";
+import { NarrativeLanguagePicker } from "./NarrativeLanguagePicker";
 
 export interface NarrativeSectionProps {
   narration: NarrationOutput | null;
@@ -27,11 +31,15 @@ export interface NarrativeSectionProps {
    *  attribution footer so reviewers can correlate the narrative to
    *  a specific snapshot version. */
   generatedAt: string;
+  /** Currently-resolved narration language (`?lang=` or locale).
+   *  Drives the active state of the language picker. */
+  currentLanguage: NarrationLanguage;
 }
 
 export async function NarrativeSection({
   narration,
   generatedAt,
+  currentLanguage,
 }: NarrativeSectionProps) {
   if (narration === null) return null;
   const t = await getTranslations("terminal");
@@ -42,9 +50,12 @@ export async function NarrativeSection({
       data-testid="board-deck-narrative-full"
       className="rounded-lg bg-card border border-border px-6 md:px-12 py-10 md:py-12 print:border-black print:break-inside-avoid"
     >
-      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-6">
-        {t("boardDeck.narrative.eyebrow")}
-      </p>
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+          {t("boardDeck.narrative.eyebrow")}
+        </p>
+        <NarrativeLanguagePicker currentLanguage={currentLanguage} />
+      </div>
       <div
         className="space-y-4 font-serif text-base md:text-lg leading-relaxed text-foreground/90 max-w-2xl print:text-black"
         data-testid="narrative-paragraphs"

@@ -254,6 +254,7 @@ export default async function BoardDeckPage({
       <NarrativeSection
         narration={narration}
         generatedAt={generatedAt}
+        currentLanguage={narrationLanguage}
       />
 
       {/* Phase 7.G Turn LI (v2 Turn 4) — top 3 alerts. Calm

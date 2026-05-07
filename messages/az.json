@@ -1685,7 +1685,8 @@
       "narrative": {
         "ariaLabel": "İcraçı icmal",
         "eyebrow": "İcraçı icmal",
-        "attribution": "{model} · prompt {version} · snapshot {generatedAt}"
+        "attribution": "{model} · prompt {version} · snapshot {generatedAt}",
+        "languagePickerAriaLabel": "Hekayə dili"
       },
       "topAlerts": {
         "ariaLabel": "Əsas xəbərdarlıqlar",

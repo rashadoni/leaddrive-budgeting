@@ -1685,7 +1685,8 @@
       "narrative": {
         "ariaLabel": "Аналитический обзор",
         "eyebrow": "Аналитический обзор",
-        "attribution": "Сгенерировано {model} · промпт {version} · снимок {generatedAt}"
+        "attribution": "Сгенерировано {model} · промпт {version} · снимок {generatedAt}",
+        "languagePickerAriaLabel": "Язык повествования"
       },
       "topAlerts": {
         "ariaLabel": "Главные алерты",

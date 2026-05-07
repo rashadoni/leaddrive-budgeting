@@ -8,10 +8,21 @@
  */
 
 import React from "react";
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 import type { NarrationOutput } from "@/lib/board-deck/narrate-snapshot";
 import { NarrativeSection } from "./NarrativeSection";
+
+// Phase 7.G Turn LIII — NarrativeLanguagePicker is mounted inline in
+// the NarrativeSection eyebrow row; it consumes next/navigation hooks
+// that throw outside an App Router context. Mock them with no-op
+// stubs so the picker renders in tests without driving its behavior
+// (covered separately in NarrativeLanguagePicker.test.tsx).
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/budgeting/board-deck",
+}));
 
 afterEach(() => {
   cleanup();
@@ -34,8 +45,13 @@ const GENERATED_AT = "2026-05-07T10:00:00.000Z";
 async function renderSection(
   narration: NarrationOutput | null,
   generatedAt = GENERATED_AT,
+  currentLanguage: "en" | "ru" | "az" = "en",
 ) {
-  const tree = await NarrativeSection({ narration, generatedAt });
+  const tree = await NarrativeSection({
+    narration,
+    generatedAt,
+    currentLanguage,
+  });
   if (tree === null) return null;
   render(tree as React.ReactElement);
   return tree;
