@@ -163,6 +163,45 @@ describe("alert message i18n drift guard (sub-35)", () => {
     expect(formatted).toBe(m.message);
   });
 
+  // Phase 7.G Turn LVIII fix-before-build (architect closure):
+  // Production code passes lowercase snake_case industry codes from
+  // `Company.industry` (e.g. "industrial"), not proper-case "Industrial"
+  // used by the byte-equality fixtures above. The lowercase path goes
+  // through `industryNameEn(code)` which DOES find a match in INDUSTRIES
+  // and substitutes the proper-case `nameEn` ("Industrial"). The EN
+  // template substitutes the raw param ("industrial"). These are NO
+  // longer byte-equal — but the i18n consumer path (which production
+  // uses) reconciles via `localizeAlertMessageParams`. This test locks
+  // the production-path behavior: engine emits proper-case in m.message,
+  // raw code is preserved in messageParams for downstream localization.
+  it("RULE_SECTOR_AMBER_CLUSTER — engine emits canonical EN name even when input is raw lowercase code", () => {
+    const ctx: AlertContext = {
+      companies: [
+        { id: "c1", code: "A", name: "A", industry: "industrial" },
+        { id: "c2", code: "B", name: "B", industry: "industrial" },
+      ],
+      indicators: [
+        { id: "i1", code: "X1" },
+        { id: "i2", code: "X2" },
+        { id: "i3", code: "X3" },
+      ],
+      cells: [
+        { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "amber" },
+        { indicatorValueId: "iv2", companyId: "c1", indicatorId: "i2", value: 0, status: "amber" },
+        { indicatorValueId: "iv3", companyId: "c1", indicatorId: "i3", value: 0, status: "amber" },
+        { indicatorValueId: "iv4", companyId: "c2", indicatorId: "i1", value: 0, status: "amber" },
+        { indicatorValueId: "iv5", companyId: "c2", indicatorId: "i2", value: 0, status: "amber" },
+      ],
+    };
+    const [m] = RULE_SECTOR_AMBER_CLUSTER.match(ctx, mergeWithDefaults(undefined));
+    // Engine `m.message` MUST start with proper-case "Industrial"
+    // (resolved via `industryNameEn` lookup in INDUSTRIES).
+    expect(m.message).toMatch(/^Industrial sector:/);
+    // `messageParams.industry` MUST stay as raw code so the consumer
+    // i18n path (`localizeAlertMessageParams`) can substitute to RU/AZ.
+    expect(m.messageParams.industry).toBe("industrial");
+  });
+
   it("RULE_SECTOR_RED_SPREAD — EN template formats to engine `message`", () => {
     const ctx: AlertContext = {
       companies: [
