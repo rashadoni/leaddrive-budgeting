@@ -31,6 +31,21 @@ export interface IntelCrawlResult {
   /** Per-stage error messages (LLM failure, parse failure, write
    *  failure). Empty array on a clean run. */
   errors: string[];
+  /** Phase D.2: token usage from the Anthropic SDK envelope. Optional
+   *  because the short-circuit path (empty industries + companyCodes)
+   *  never calls the LLM. Caller (POST /api/intel/refresh) reads these
+   *  for the audit_event metadata. */
+  usage?: { inputTokens: number; outputTokens: number };
+  /** Phase D.2: resolved Anthropic model id, e.g.
+   *  "claude-sonnet-4-5-20250929". Captured for audit attestation —
+   *  future model swap MUST NOT silently erase the trail. Optional for
+   *  the same reason as `usage`. */
+  modelName?: string;
+  /** Phase D.2: hand-bumped `INTEL_PROMPT_VERSION` from `crawler.ts`.
+   *  Bump on any change to SYSTEM_PROMPT or buildIntelPrompt structure
+   *  so the audit log links each item back to the prompt variant that
+   *  produced it. */
+  promptVersion?: string;
 }
 
 /** API DTO — what `GET /api/intel` returns per item. Maps from the

@@ -194,6 +194,45 @@ export type AuditEventInput =
         before: Record<string, unknown> | null;
         after: Record<string, unknown>;
       };
+    }
+  | {
+      // Phase 7.G Turn XLIII (Phase D.2) — POST /api/intel/refresh.
+      // Records every admin-triggered AI Web Crawler run for an org.
+      // Compliance attestation: which admin ran the crawl, against
+      // which org context (industries × company codes), what items were
+      // written, what tokens were spent, on which model. Mirrors
+      // `ai_variance_explainer_run` shape but scoped to the org rather
+      // than a single IndicatorValue.
+      action: 'intel_crawl_run';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        /** Distinct industry codes fed to the LLM (cardinality, not the
+         *  list — full list lives in IntelItem rows the run produced). */
+        industriesCount: number;
+        /** Distinct active company codes fed to the LLM. */
+        companyCodesCount: number;
+        /** Raw search hits returned by the LLM (pre-dedup). */
+        itemsFetched: number;
+        /** New IntelItem rows written this run (post-dedup). */
+        itemsCreated: number;
+        /** Dedup hits — URL hash matched an existing IntelItem. */
+        itemsSkipped: number;
+        durationMs: number;
+        tokensIn: number;
+        tokensOut: number;
+        /** Resolved Anthropic model id (e.g. "claude-sonnet-4-5-20250929")
+         *  or "unknown" if the SDK envelope didn't echo it. */
+        modelName: string;
+        /** Hand-bumped `INTEL_PROMPT_VERSION` from
+         *  `src/lib/intel/crawler.ts`. v1 = initial Phase D.2 ship. */
+        promptVersion: string;
+        /** Length of the run's `errors[]` array — non-zero ≠ failure
+         *  (per-item DB write failure increments without aborting the
+         *  run); audit reviewers can drill into IntelItem rows for the
+         *  org × time-window if errorsCount > 0. */
+        errorsCount: number;
+      };
     };
 
 /**

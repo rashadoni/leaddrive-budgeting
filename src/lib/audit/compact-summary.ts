@@ -158,6 +158,19 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
           : compact;
       return { compact, verbose };
     }
+    case 'intel_crawl_run': {
+      // Phase 7.G D.2 — admin-triggered AI Web Crawler run, scoped to
+      // the org. No per-row code; verbose surfaces item counts so the
+      // feed shows at a glance whether a crawl was productive.
+      const compact = e.entityType;
+      const created = numberField(m, 'itemsCreated');
+      const fetched = numberField(m, 'itemsFetched');
+      const verbose =
+        created !== null && fetched !== null
+          ? `${e.entityType} · ${created} new / ${fetched} hit${fetched === 1 ? '' : 's'}`
+          : compact;
+      return { compact, verbose };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was
