@@ -41,9 +41,12 @@ import { BudgetChartLegend } from "@/components/budget-chart-legend"
 import { execPct } from "@/lib/budgeting/exec-pct"
 
 // Phase 7.G Turn LXI extraction — `fmt` was a top-level helper in
-// `src/app/(dashboard)/budgeting/page.tsx` (line 124, pre-LXI). Pulled
-// in privately here rather than extracting to a shared utility because
-// ComparisonTab is the only consumer + the function is trivial.
+// `src/app/(dashboard)/budgeting/page.tsx` (line 124). This is a PRIVATE
+// copy scoped to ComparisonTab; `page.tsx:124` retains the canonical
+// definition for the ~33 remaining inline-tab call sites
+// (WorkspaceTab/PLTab/etc.). When the last consumer in page.tsx is
+// extracted, dedup this + page.tsx copies into a shared utility.
+// Architect Turn-LXI doc-correctness closure.
 function fmt(n: number): string {
   return Math.round(n).toLocaleString() + " ₼"
 }
