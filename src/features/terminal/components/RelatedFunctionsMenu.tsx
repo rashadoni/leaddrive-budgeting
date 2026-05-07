@@ -19,12 +19,12 @@ import { useCompanies } from "../hooks/use-companies";
  * holds code; this component bridges the two without forcing a store
  * shape change. Fetch is cached for the component's lifetime.
  *
- * NOTE on the plan label "Variance" → "Compare" deviation: the approved
- * plan listed "P&L / Variance / Forecast / Audit"; no `?tab=variance`
- * route exists in the budgeting page (`src/components/sidebar.tsx:77`).
- * The closest existing surface is `?tab=comparison` (Plans-vs-Actuals
- * variance view), so the menu uses that. A real variance tab is a
- * Phase B item.
+ * Phase 7.G Turn LIX — closes the 106-turn-stale "Variance" → "Compare"
+ * deviation: a real `?tab=variance` route now ships in
+ * `src/app/(dashboard)/budgeting/page.tsx:VarianceTab` (single-plan
+ * plan-vs-actual % delta with materiality filter + sortable table).
+ * Menu now lists BOTH `compare` (multi-plan side-by-side) and `variance`
+ * (single-plan plan-vs-actual) since they serve different mental modes.
  *
  * Round-9 i18n closure — labels + section header + aria + title now
  * read through `useTranslations('terminal')` so RU/AZ users see the
@@ -54,6 +54,7 @@ interface CompanyLite {
 const FUNCTIONS = [
   { tab: "pnl-report", labelKey: "pnl" },
   { tab: "comparison", labelKey: "compare" },
+  { tab: "variance", labelKey: "variance" },
   { tab: "forecast", labelKey: "forecast" },
   { tab: "audit", labelKey: "audit", isPage: true },
 ] as const;

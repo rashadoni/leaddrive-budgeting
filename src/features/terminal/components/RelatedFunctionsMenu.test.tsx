@@ -80,7 +80,7 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("click opens menu with 4 entries (P&L, Compare, Forecast, Audit)", async () => {
+  it("click opens menu with 5 entries (P&L, Compare, Variance, Forecast, Audit)", async () => {
     render(<RelatedFunctionsMenu />);
     const button = screen.getByRole("button", { name: /Related functions/i });
     fireEvent.click(button);
@@ -88,8 +88,14 @@ describe("RelatedFunctionsMenu (Phase A4)", () => {
     expect(screen.queryByRole("menu")).toBeTruthy();
     expect(screen.queryByText("P&L")).toBeTruthy();
     expect(screen.queryByText("Compare")).toBeTruthy();
+    // Phase 7.G Turn LIX — `Variance` entry added (closes 106-turn-stale
+    // jsdoc deviation; real ?tab=variance route now ships).
+    expect(screen.queryByText("Variance")).toBeTruthy();
     expect(screen.queryByText("Forecast")).toBeTruthy();
     expect(screen.queryByText("Audit")).toBeTruthy();
+    // Variance link: org-wide tab nav (mirrors comparison/pnl-report).
+    const varianceLink = screen.getByText("Variance").closest("a");
+    expect(varianceLink?.getAttribute("href")).toBe("/budgeting?tab=variance");
   });
 
   it("without active company: 'Org-wide' header + links omit ?company= param", async () => {
