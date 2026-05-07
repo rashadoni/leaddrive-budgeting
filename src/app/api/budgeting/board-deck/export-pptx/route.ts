@@ -162,8 +162,18 @@ export async function GET(req: NextRequest) {
   // contract: try/catch with fallback to [] so a Prisma transient
   // failure doesn't kill the deck — the chart slide just renders
   // its empty-state placeholder.
+  //
+  // Phase 7.G Turn LVII — single derivation of operationalIds +
+  // holdingComposite at the handler boundary (architect Turn-LVI ⚠️
+  // closure: operationalIds was computed twice — once here for trend,
+  // once inside renderBoardDeckPptx for hero metric. Now computed once
+  // and threaded as parameter; renderBoardDeckPptx is dumber + DRY).
   const operationalIds = snapshot.operational.map((co) => co.id);
   const indicatorIds = snapshot.indicators.map((ind) => ind.id);
+  const holdingComposite = computeHoldingComposite(
+    snapshot.compositeByCompany,
+    operationalIds,
+  );
   let trendSeries: Awaited<ReturnType<typeof buildTrendSeries>> = [];
   try {
     trendSeries = await buildTrendSeries(
@@ -186,6 +196,7 @@ export async function GET(req: NextRequest) {
     tIndustries,
     narration,
     trendSeries,
+    holdingComposite,
   );
 
   const filename = `board-deck-${snapshot.org.slug}-${period}.pptx`;
@@ -229,6 +240,7 @@ async function renderBoardDeckPptx(
   tIndustries: IndustryTranslator,
   narration: NarrationOutput | null,
   trendSeries: Awaited<ReturnType<typeof buildTrendSeries>>,
+  holdingComposite: ReturnType<typeof computeHoldingComposite>,
 ): Promise<ArrayBuffer> {
   const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
@@ -236,11 +248,6 @@ async function renderBoardDeckPptx(
   pptx.author = "BudgetPro Risk Terminal";
   pptx.company = snap.org.name;
 
-  const operationalIds = snap.operational.map((co) => co.id);
-  const holdingComposite = computeHoldingComposite(
-    snap.compositeByCompany,
-    operationalIds,
-  );
   const heroBandHex =
     BAND_HEX[holdingComposite.band ?? "unknown"] ?? BAND_GREY;
 
@@ -666,16 +673,20 @@ async function renderBoardDeckPptx(
     // line charts treat `null` in `values[]` as a gap natively, so we
     // can pass-through. Labels are short month codes (e.g. "May") so
     // 12-point X-axis stays legible.
+    //
+    // Phase 7.G Turn LVII — `Intl.DateTimeFormat` replaces hardcoded
+    // EN month-name array (architect Turn-LVI 💡 closure). One
+    // formatter instance reused per chart render; locale stays "en"
+    // since PowerPoint chart axis labels are EN-only in current
+    // export contract.
+    const monthFmt = new Intl.DateTimeFormat("en", { month: "short" });
     const labels = trendSeries.map((p) => {
       const [, monthStr] = p.period.split("-");
       const monthIdx = Number(monthStr) - 1;
-      const monthNames = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-      ];
-      return monthNames[monthIdx] ?? p.period;
+      if (monthIdx < 0 || monthIdx > 11) return p.period;
+      return monthFmt.format(new Date(Date.UTC(2000, monthIdx, 1)));
     });
-    const values = trendSeries.map((p) => p.score) as Array<number | null>;
+    const values = trendSeries.map((p) => p.score);
     trendSlide.addChart(
       "line",
       [{ name: "Composite score", labels, values }],
