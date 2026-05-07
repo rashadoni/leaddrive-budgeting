@@ -1,13 +1,36 @@
 /**
- * Phase 7.E C3 v2 — PPTX export for the Board Deck.
+ * Phase 7.G Turn LII (Board Deck v2 Turn 5/5) — PPTX export aligned to
+ * the page redesign.
+ *
+ * v1 (pre-Turn LII) shipped 4 dense operational slides:
+ *   1. Cover (org/period/totals + KPI strip)
+ *   2. Composite-scores TABLE (every operational sub-co × 6 columns)
+ *   3. Active alerts grouped by severity (text wall)
+ *   4. Status grid (cells × indicators colored grid)
+ *
+ * v2 ships the same info architecture as the page (`page.tsx` Turn LI):
+ *   1. Cover — organization label (small) + huge AI headline + hero
+ *      composite score + period + 3-line lead-in (first sentence of
+ *      each AI paragraph).
+ *   2. Narrative — 3-paragraph executive summary in serif body, AI
+ *      attribution footer.
+ *   3. Key metrics — 3 hero numbers (composite / red cells / total
+ *      cells) with band-tinted accent bars + footer pointing to the
+ *      live terminal for the trend chart (PPT can't host the SVG
+ *      cleanly without a rasterise step that pptxgenjs doesn't ship).
+ *   4. Top alerts — top-3 critical-first cards (severity dot + rule
+ *      name pill + message body + affected sub-cos), or an "all
+ *      systems green" hero panel.
+ *
+ * Theme: light cream `#F5F1EA` background + near-black `#1A2332` ink
+ * matches the page's `--background` / `--foreground` tokens. Heading
+ * accent `#7D55C7` (AI lavender) reused for AI eyebrow + hero metric
+ * accent.
  *
  * Companion to `/budgeting/board-deck` page. Calls the same shared
- * `buildBoardSnapshot` helper, then serializes the snapshot into a
- * 4-slide widescreen presentation:
- *   1. Cover (org name, period, generated, holding totals)
- *   2. Composite scores per operational sub-co (table)
- *   3. Active alerts grouped by severity (text blocks)
- *   4. Status grid (colored cell-table mirror of the page's grid)
+ * `buildBoardSnapshot` + `getOrCreateNarration` helpers, so the deck
+ * is byte-identical between the live page and the downloadable PPTX
+ * within a 24h cache window.
  *
  * Localization: same `getTranslations("terminal")` + `industries`
  * scopes the page uses; rule names + messages render in the user's
@@ -26,6 +49,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   DEFAULT_ALERT_RULE_IDS,
+  type AlertMatch,
   type AlertSeverity,
 } from "@/lib/risk/alert-rules";
 import {
@@ -40,6 +64,7 @@ import {
 } from "@/lib/board-deck/narrate-snapshot";
 import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
+import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
 
 export const runtime = "nodejs";
 // LLM narration adds ~10-30s on top of the PPTX serialization on cache
@@ -47,26 +72,29 @@ export const runtime = "nodejs";
 // cut a cold-start off; 90s covers the worst case.
 export const maxDuration = 90;
 
-const STATUS_HEX: Record<string, string> = {
-  green: "00D4AA",
-  amber: "FFB800",
-  red: "FF4757",
-  unknown: "1A2330",
+// Light theme palette — mirrors page.tsx Turn LI design tokens.
+const BG_CREAM = "F5F1EA";
+const INK = "1A2332";
+const INK_MUTED = "5A6478";
+const INK_FAINT = "8892A6";
+const CARD_WHITE = "FFFFFF";
+const ACCENT_AI = "7D55C7"; // AI lavender (eyebrow + hero metric)
+const BAND_GREEN = "00B886";
+const BAND_AMBER = "F0A93B";
+const BAND_RED = "E04848";
+const BAND_GREY = "C8CDD8";
+
+const BAND_HEX: Record<string, string> = {
+  green: BAND_GREEN,
+  amber: BAND_AMBER,
+  red: BAND_RED,
+  unknown: BAND_GREY,
 };
 
-const BAND_FILL: Record<string, string> = {
-  green: "00D4AA",
-  amber: "FFB800",
-  red: "FF4757",
-  unknown: "1A2330",
-};
-
-const SEVERITY_ORDER: AlertSeverity[] = ["critical", "warning", "info"];
-
-const SEVERITY_HEX: Record<AlertSeverity, string> = {
-  critical: "FF4757",
-  warning: "FFB800",
-  info: "00B4D8",
+const SEVERITY_DOT: Record<AlertSeverity, string> = {
+  critical: BAND_RED,
+  warning: BAND_AMBER,
+  info: BAND_GREEN,
 };
 
 export async function GET(req: NextRequest) {
@@ -102,16 +130,6 @@ export async function GET(req: NextRequest) {
     "industries",
   )) as unknown as IndustryTranslator;
 
-  // Phase 7.G E.2 v2 (Turn XLVII) — AI-narrated executive summary
-  // ON BY DEFAULT, backed by the BoardDeckNarration cache (shared
-  // with the page renderer at the same `/budgeting/board-deck`).
-  // Cache hit = no LLM call; warm export ~3s end-to-end. Cache miss
-  // = ~$0.05 + 10-30s on cold path. `?regenerate=1` bypasses cache.
-  // Language: `?lang=en|ru|az`; defaults to "en" (PPTX downloads
-  // are typically reviewed by international stakeholders, where
-  // English is the safe default — page render uses user locale via
-  // next-intl, but the API route doesn't have request-locale plumbed
-  // through here, so explicit query param wins).
   const langParam = req.nextUrl.searchParams.get("lang");
   const narrationLanguage: NarrationLanguage =
     typeof langParam === "string" && isNarrationLanguage(langParam)
@@ -156,6 +174,29 @@ export async function GET(req: NextRequest) {
   });
 }
 
+function firstSentence(paragraph: string): string {
+  const trimmed = paragraph.trim();
+  if (trimmed.length === 0) return "";
+  const match = trimmed.match(/[^.!?]+[.!?]/);
+  if (match) return match[0].trim();
+  return trimmed;
+}
+
+function selectTopAlertMatches(
+  byBucket: Record<AlertSeverity, AlertMatch[]>,
+  limit: number,
+): Array<{ match: AlertMatch; severity: AlertSeverity }> {
+  const out: Array<{ match: AlertMatch; severity: AlertSeverity }> = [];
+  const order: AlertSeverity[] = ["critical", "warning", "info"];
+  for (const sev of order) {
+    for (const match of byBucket[sev]) {
+      if (out.length >= limit) return out;
+      out.push({ match, severity: sev });
+    }
+  }
+  return out;
+}
+
 async function renderBoardDeckPptx(
   snap: Awaited<ReturnType<typeof buildBoardSnapshot>> & object,
   tTerminal: Awaited<ReturnType<typeof getTranslations>>,
@@ -168,460 +209,547 @@ async function renderBoardDeckPptx(
   pptx.author = "BudgetPro Risk Terminal";
   pptx.company = snap.org.name;
 
-  // Slide 1 — Cover
+  const operationalIds = snap.operational.map((co) => co.id);
+  const holdingComposite = computeHoldingComposite(
+    snap.compositeByCompany,
+    operationalIds,
+  );
+  const heroBandHex =
+    BAND_HEX[holdingComposite.band ?? "unknown"] ?? BAND_GREY;
+
+  // ───────────────────────────── Slide 1 — Cover ─────────────────────────────
   const cover = pptx.addSlide();
-  cover.background = { color: "0B0F14" };
-  cover.addText("BOARD SNAPSHOT", {
-    x: 0.5,
-    y: 0.5,
-    w: 12.3,
+  cover.background = { color: BG_CREAM };
+
+  // Top bar — org label + period (mono, right-aligned)
+  cover.addText(snap.org.name, {
+    x: 0.6,
+    y: 0.4,
+    w: 8.0,
     h: 0.4,
     fontFace: "Inter",
-    fontSize: 12,
-    color: "9CA3AF",
+    fontSize: 11,
+    color: INK_MUTED,
     bold: true,
     charSpacing: 4,
   });
-  cover.addText(snap.org.name, {
-    x: 0.5,
-    y: 1.0,
-    w: 12.3,
-    h: 1.0,
+  cover.addText(`PERIOD ${snap.period}`, {
+    x: 8.6,
+    y: 0.4,
+    w: 4.1,
+    h: 0.4,
+    fontFace: "Courier New",
+    fontSize: 10,
+    color: INK_FAINT,
+    align: "right",
+    charSpacing: 3,
+  });
+
+  // AI eyebrow + huge headline
+  cover.addText("AI EXECUTIVE SUMMARY", {
+    x: 0.6,
+    y: 1.5,
+    w: 12.1,
+    h: 0.35,
+    fontFace: "Inter",
+    fontSize: 11,
+    color: ACCENT_AI,
+    bold: true,
+    charSpacing: 5,
+  });
+  const headline =
+    narration?.headline ??
+    (tTerminal as (k: string, v?: Record<string, unknown>) => string)(
+      "boardDeck.hero.fallbackHeadline",
+      {
+        org: snap.org.name,
+        period: snap.period,
+      },
+    );
+  cover.addText(headline, {
+    x: 0.6,
+    y: 1.95,
+    w: 12.1,
+    h: 1.6,
     fontFace: "Inter",
     fontSize: 36,
-    color: "FFFFFF",
+    color: INK,
     bold: true,
+    valign: "top",
+  });
+
+  // Hero composite score block
+  const scoreText =
+    holdingComposite.score === null
+      ? "—"
+      : String(holdingComposite.score);
+  cover.addShape("rect", {
+    x: 0.6,
+    y: 3.85,
+    w: 0.08,
+    h: 1.8,
+    fill: { color: heroBandHex },
+    line: { color: heroBandHex, width: 0 },
+  });
+  cover.addText("HOLDING COMPOSITE", {
+    x: 0.9,
+    y: 3.95,
+    w: 5.0,
+    h: 0.3,
+    fontFace: "Inter",
+    fontSize: 10,
+    color: INK_FAINT,
+    bold: true,
+    charSpacing: 4,
+  });
+  cover.addText(scoreText, {
+    x: 0.9,
+    y: 4.25,
+    w: 5.0,
+    h: 1.4,
+    fontFace: "Courier New",
+    fontSize: 80,
+    color: INK,
+    bold: true,
+    valign: "top",
   });
   cover.addText(
-    `Period ${snap.period} · Generated ${snap.generatedAt.replace("T", " ").slice(0, 19)}Z`,
+    holdingComposite.score === null
+      ? `0 / ${holdingComposite.totalCount} sub-cos`
+      : `${holdingComposite.contributingCount} of ${holdingComposite.totalCount} sub-cos`,
     {
-      x: 0.5,
-      y: 2.0,
-      w: 12.3,
-      h: 0.4,
-      fontFace: "Inter",
-      fontSize: 14,
-      color: "9CA3AF",
-    },
-  );
-
-  // Phase 7.G E.2 — AI-narrated headline below the period line. Only
-  // rendered when narration is non-null (i.e. caller passed
-  // `?narrate=1` AND the LLM call succeeded).
-  if (narration !== null) {
-    cover.addText(narration.headline, {
-      x: 0.5,
-      y: 2.55,
-      w: 12.3,
-      h: 0.7,
-      fontFace: "Inter",
-      fontSize: 18,
-      color: "00D4AA",
-      italic: true,
-    });
-  }
-
-  // KPI strip
-  const kpis: Array<{ label: string; value: string }> = [
-    { label: "Operational sub-cos", value: String(snap.totals.operational) },
-    { label: "Indicators", value: String(snap.totals.indicators) },
-    { label: "Cells", value: String(snap.totals.cells) },
-    {
-      label: "Green / Amber / Red",
-      value: `${snap.totals.green} / ${snap.totals.amber} / ${snap.totals.red}`,
-    },
-  ];
-  const kpiW = 2.9;
-  const kpiGap = 0.2;
-  const kpiTotal = kpis.length * kpiW + (kpis.length - 1) * kpiGap;
-  const kpiStartX = (13.33 - kpiTotal) / 2;
-  for (let i = 0; i < kpis.length; i++) {
-    const k = kpis[i];
-    const kx = kpiStartX + i * (kpiW + kpiGap);
-    cover.addShape("rect", {
-      x: kx,
-      y: 3.5,
-      w: kpiW,
-      h: 1.5,
-      fill: { color: "111827" },
-      line: { color: "374151", width: 0.75 },
-    });
-    cover.addText(k.label, {
-      x: kx,
-      y: 3.6,
-      w: kpiW,
+      x: 0.9,
+      y: 5.4,
+      w: 5.0,
       h: 0.3,
       fontFace: "Inter",
       fontSize: 10,
-      color: "9CA3AF",
-      align: "center",
-      charSpacing: 2,
-    });
-    cover.addText(k.value, {
-      x: kx,
-      y: 3.95,
-      w: kpiW,
-      h: 1.0,
-      fontFace: "Courier New",
-      fontSize: 28,
-      color: "FFFFFF",
-      align: "center",
-      bold: true,
+      color: INK_MUTED,
+    },
+  );
+
+  // 3 lead-in lines (right column) — first sentence of each AI paragraph
+  if (narration && narration.paragraphs.length > 0) {
+    const leadIns = narration.paragraphs
+      .slice(0, 3)
+      .map(firstSentence)
+      .filter((s) => s.length > 0);
+    leadIns.forEach((line, idx) => {
+      cover.addShape("rect", {
+        x: 6.4,
+        y: 4.0 + idx * 0.55,
+        w: 0.04,
+        h: 0.4,
+        fill: { color: INK_FAINT },
+        line: { color: INK_FAINT, width: 0 },
+      });
+      cover.addText(line, {
+        x: 6.55,
+        y: 3.95 + idx * 0.55,
+        w: 6.2,
+        h: 0.5,
+        fontFace: "Inter",
+        fontSize: 12,
+        color: INK,
+        valign: "top",
+      });
     });
   }
+
+  // CTA + footer
+  cover.addText(
+    `${snap.totals.operational} operational sub-cos · ${snap.totals.cells} cells · ${snap.totals.red} red · ${snap.totals.amber} amber · ${snap.totals.green} green`,
+    {
+      x: 0.6,
+      y: 6.4,
+      w: 12.1,
+      h: 0.3,
+      fontFace: "Courier New",
+      fontSize: 9,
+      color: INK_MUTED,
+    },
+  );
   cover.addText(
     "Confidential — intended for board / executive recipients only.",
     {
-      x: 0.5,
+      x: 0.6,
       y: 6.9,
-      w: 12.3,
+      w: 12.1,
       h: 0.3,
       fontFace: "Inter",
       fontSize: 9,
-      color: "6B7280",
+      color: INK_FAINT,
       italic: true,
     },
   );
 
-  // Phase 7.G E.2 — Optional Slide 2 = full executive narrative.
-  // Only rendered when `narration` is non-null. Slot index DOES change
-  // when narration is present — composite-scores moves from Slide 2
-  // to Slide 3 — but downstream readers consume slides by content,
-  // not index, so this is back-compat.
+  // ───────────────────────────── Slide 2 — Narrative ─────────────────────────
+  // Only rendered when narration is non-null. When the LLM call failed
+  // or no key, slide 2 is skipped — the deck still ships with cover +
+  // metrics + alerts.
   if (narration !== null) {
     const narrSlide = pptx.addSlide();
-    narrSlide.background = { color: "0B0F14" };
-    narrSlide.addText("EXECUTIVE SUMMARY", {
-      x: 0.5,
-      y: 0.3,
-      w: 12.3,
-      h: 0.4,
+    narrSlide.background = { color: BG_CREAM };
+    narrSlide.addText("EXECUTIVE NARRATIVE", {
+      x: 0.6,
+      y: 0.4,
+      w: 12.1,
+      h: 0.35,
       fontFace: "Inter",
       fontSize: 11,
-      color: "00D4AA",
+      color: ACCENT_AI,
       bold: true,
-      charSpacing: 4,
+      charSpacing: 5,
     });
     narrSlide.addText(narration.headline, {
-      x: 0.5,
-      y: 0.8,
-      w: 12.3,
+      x: 0.6,
+      y: 0.85,
+      w: 12.1,
       h: 0.9,
       fontFace: "Inter",
       fontSize: 22,
-      color: "FFFFFF",
+      color: INK,
       bold: true,
     });
-    // Three-paragraph body — laid out vertically with consistent gaps
-    // so the reader can scan in <60 seconds. Each paragraph gets
-    // ~1.6in vertical; 6.8in total fits comfortably below the headline.
-    const PARA_X = 0.5;
-    const PARA_W = 12.3;
-    const PARA_START_Y = 2.0;
-    const PARA_H = 1.6;
-    const PARA_GAP = 0.1;
+
+    // Three-paragraph body — laid out vertically; serif (Georgia) per
+    // page.tsx Turn LI NarrativeSection. PPTX font fallback chain:
+    // Georgia is a system font on macOS/Windows/PowerPoint web.
+    const PARA_X = 0.6;
+    const PARA_W = 12.1;
+    const PARA_START_Y = 2.1;
+    const PARA_H = 1.55;
+    const PARA_GAP = 0.15;
     narration.paragraphs.forEach((paragraph, idx) => {
       narrSlide.addText(paragraph, {
         x: PARA_X,
         y: PARA_START_Y + idx * (PARA_H + PARA_GAP),
         w: PARA_W,
         h: PARA_H,
-        fontFace: "Inter",
-        fontSize: 13,
-        color: "E5E7EB",
+        fontFace: "Georgia",
+        fontSize: 14,
+        color: INK,
         valign: "top",
       });
     });
     narrSlide.addText(
-      `AI-generated · ${narration.modelName} · prompt v${narration.promptVersion}`,
+      `AI-generated · ${narration.modelName} · prompt ${narration.promptVersion}`,
       {
-        x: 0.5,
+        x: 0.6,
         y: 6.95,
-        w: 12.3,
+        w: 12.1,
         h: 0.3,
-        fontFace: "Inter",
+        fontFace: "Courier New",
         fontSize: 9,
-        color: "6B7280",
-        italic: true,
+        color: INK_FAINT,
       },
     );
   }
 
-  // Composite scores table — Slide 2 by default; Slide 3 when narration
-  // pre-empts the slot.
-  const scoresSlide = pptx.addSlide();
-  scoresSlide.background = { color: "0B0F14" };
-  scoresSlide.addText(`Composite scores (${snap.totals.operational})`, {
-    x: 0.5,
-    y: 0.3,
-    w: 12.3,
-    h: 0.5,
+  // ───────────────────────────── Slide 3 — Key metrics ───────────────────────
+  const metricsSlide = pptx.addSlide();
+  metricsSlide.background = { color: BG_CREAM };
+  metricsSlide.addText("KEY METRICS", {
+    x: 0.6,
+    y: 0.4,
+    w: 12.1,
+    h: 0.35,
     fontFace: "Inter",
-    fontSize: 18,
-    color: "FFFFFF",
+    fontSize: 11,
+    color: ACCENT_AI,
     bold: true,
+    charSpacing: 5,
   });
-  type Cell = { text: string; options: Record<string, unknown> };
-  const headerOpts = {
-    fill: { color: "111827" },
-    color: "9CA3AF",
-    bold: true,
-    fontFace: "Inter",
-    fontSize: 10,
-  };
-  const headerRow: Cell[] = [
-    { text: "Code", options: headerOpts },
-    { text: "Name", options: headerOpts },
-    { text: "Industry", options: headerOpts },
-    { text: "Score", options: { ...headerOpts, align: "right" } },
-    { text: "Band", options: { ...headerOpts, align: "center" } },
-    { text: "G / A / R / U", options: { ...headerOpts, align: "right" } },
+  metricsSlide.addText(
+    `Period ${snap.period} · holding overview`,
+    {
+      x: 0.6,
+      y: 0.85,
+      w: 12.1,
+      h: 0.5,
+      fontFace: "Inter",
+      fontSize: 16,
+      color: INK,
+      bold: true,
+    },
+  );
+
+  const metrics: Array<{
+    label: string;
+    value: string;
+    accent: string;
+    context: string;
+  }> = [
+    {
+      label: "Holding composite",
+      value: scoreText,
+      accent: heroBandHex,
+      context:
+        holdingComposite.score === null
+          ? "no contributing sub-cos"
+          : `${holdingComposite.contributingCount} contributing of ${holdingComposite.totalCount}`,
+    },
+    {
+      label: "Red cells",
+      value: String(snap.totals.red),
+      accent: BAND_RED,
+      context: `of ${snap.totals.cells} total`,
+    },
+    {
+      label: "Operational sub-cos",
+      value: String(snap.totals.operational),
+      accent: ACCENT_AI,
+      context: `${snap.totals.indicators} indicators tracked`,
+    },
   ];
-  const bodyRows: Cell[][] = snap.operational.map((co) => {
-    const composite = snap.compositeByCompany.get(co.id);
-    const band: string = composite ? composite.band : "unknown";
-    const score = composite?.score ?? null;
-    const counts = snap.countsByCompany.get(co.id);
-    const cellOpts = {
+  const cardW = 3.85;
+  const cardH = 3.0;
+  const cardGap = 0.3;
+  const cardTotalW = metrics.length * cardW + (metrics.length - 1) * cardGap;
+  const cardStartX = (13.33 - cardTotalW) / 2;
+  const cardY = 2.0;
+  metrics.forEach((m, i) => {
+    const cx = cardStartX + i * (cardW + cardGap);
+    metricsSlide.addShape("rect", {
+      x: cx,
+      y: cardY,
+      w: cardW,
+      h: cardH,
+      fill: { color: CARD_WHITE },
+      line: { color: BAND_GREY, width: 0.5 },
+    });
+    metricsSlide.addShape("rect", {
+      x: cx,
+      y: cardY,
+      w: 0.07,
+      h: cardH,
+      fill: { color: m.accent },
+      line: { color: m.accent, width: 0 },
+    });
+    metricsSlide.addText(m.label.toUpperCase(), {
+      x: cx + 0.3,
+      y: cardY + 0.3,
+      w: cardW - 0.5,
+      h: 0.35,
       fontFace: "Inter",
       fontSize: 10,
-      color: "E5E7EB",
-    };
-    return [
-      {
-        text: co.code,
-        options: { ...cellOpts, fontFace: "Courier New", color: "FFFFFF" },
-      },
-      { text: co.name, options: cellOpts },
-      { text: co.industry || "—", options: cellOpts },
-      {
-        text: score === null ? "—" : String(score),
-        options: {
-          ...cellOpts,
-          align: "right",
-          fontFace: "Courier New",
-        },
-      },
-      {
-        text: band.toUpperCase(),
-        options: {
-          ...cellOpts,
-          fill: { color: BAND_FILL[band] ?? BAND_FILL.unknown },
-          color: band === "amber" ? "111827" : "FFFFFF",
-          align: "center",
-          bold: true,
-        },
-      },
-      {
-        text: counts
-          ? `${counts.green} / ${counts.amber} / ${counts.red} / ${counts.unknown}`
-          : "—",
-        options: {
-          ...cellOpts,
-          align: "right",
-          fontFace: "Courier New",
-          color: "9CA3AF",
-        },
-      },
-    ];
-  });
-  scoresSlide.addTable([headerRow, ...bodyRows], {
-    x: 0.5,
-    y: 0.95,
-    w: 12.3,
-    colW: [1.4, 4.0, 2.0, 1.2, 1.5, 2.2],
-    border: { type: "solid", color: "374151", pt: 0.5 },
-    fontFace: "Inter",
-    fontSize: 10,
-  });
-
-  // Slide 3 — Active alerts
-  const alertsSlide = pptx.addSlide();
-  alertsSlide.background = { color: "0B0F14" };
-  alertsSlide.addText(`Active alerts (${snap.matches.length})`, {
-    x: 0.5,
-    y: 0.3,
-    w: 12.3,
-    h: 0.5,
-    fontFace: "Inter",
-    fontSize: 18,
-    color: "FFFFFF",
-    bold: true,
-  });
-  if (snap.matches.length === 0) {
-    alertsSlide.addText("✓ No alerts triggered — all systems green.", {
-      x: 0.5,
-      y: 3.0,
-      w: 12.3,
-      h: 1.5,
-      fontFace: "Inter",
-      fontSize: 28,
-      color: "00D4AA",
-      align: "center",
+      color: INK_FAINT,
       bold: true,
+      charSpacing: 4,
     });
-  } else {
-    let cursorY = 1.0;
-    for (const sev of SEVERITY_ORDER) {
-      const list = snap.matchesBySeverity[sev];
-      if (list.length === 0) continue;
-      alertsSlide.addText(`${sev.toUpperCase()} (${list.length})`, {
-        x: 0.5,
-        y: cursorY,
-        w: 12.3,
-        h: 0.3,
-        fontFace: "Inter",
-        fontSize: 11,
-        color: SEVERITY_HEX[sev],
-        bold: true,
-        charSpacing: 3,
-      });
-      cursorY += 0.35;
-      for (const m of list) {
-        // Localize rule name + message body the same way the page does.
-        let ruleLabel = m.ruleName;
-        if (DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
-          try {
-            ruleLabel = tTerminal(`alerts.rules.${m.ruleId}` as never);
-          } catch {
-            // fall through
-          }
-        }
-        let body = m.message;
-        if (m.messageKey && DEFAULT_ALERT_RULE_IDS.has(m.ruleId)) {
-          try {
-            const localizedParams = localizeAlertMessageParams(
-              m.messageParams,
-              tIndustries,
-            );
-            body = tTerminal(
-              m.messageKey as never,
-              localizedParams as never,
-            );
-          } catch {
-            // fall through
-          }
-        }
-        const affected = m.affectedCompanyIds
-          .map((id) => snap.idToCode.get(id) ?? id.slice(0, 8))
-          .join(", ");
-        const composed =
-          `[${ruleLabel}]  ${body}` +
-          (affected ? `\n    ${affected}` : "");
-        alertsSlide.addText(composed, {
-          x: 0.7,
-          y: cursorY,
-          w: 12.1,
-          h: 0.5,
-          fontFace: "Inter",
-          fontSize: 9,
-          color: "E5E7EB",
-        });
-        cursorY += 0.55;
-      }
-      cursorY += 0.15;
-    }
-  }
-
-  // Slide 4 — Status grid
-  const gridSlide = pptx.addSlide();
-  gridSlide.background = { color: "0B0F14" };
-  gridSlide.addText("Status grid (companies × indicators)", {
-    x: 0.5,
-    y: 0.3,
-    w: 12.3,
-    h: 0.5,
-    fontFace: "Inter",
-    fontSize: 18,
-    color: "FFFFFF",
-    bold: true,
+    metricsSlide.addText(m.value, {
+      x: cx + 0.3,
+      y: cardY + 0.7,
+      w: cardW - 0.5,
+      h: 1.6,
+      fontFace: "Courier New",
+      fontSize: 60,
+      color: INK,
+      bold: true,
+      valign: "top",
+    });
+    metricsSlide.addText(m.context, {
+      x: cx + 0.3,
+      y: cardY + 2.4,
+      w: cardW - 0.5,
+      h: 0.4,
+      fontFace: "Inter",
+      fontSize: 10,
+      color: INK_MUTED,
+    });
   });
-  const gridHeader: Cell[] = [
+  metricsSlide.addText(
+    "Open the Risk Terminal for the 12-month composite trend chart.",
     {
-      text: "CO \\ IND",
-      options: {
-        fill: { color: "111827" },
-        color: "9CA3AF",
-        bold: true,
-        fontFace: "Courier New",
-        fontSize: 8,
-      },
-    },
-    ...snap.indicators.map((ind) => ({
-      text: ind.code.replace(/^IND_/, ""),
-      options: {
-        fill: { color: "111827" },
-        color: "9CA3AF",
-        bold: true,
-        fontFace: "Courier New",
-        fontSize: 7,
-        align: "center" as const,
-      },
-    })),
-  ];
-  const gridBody: Cell[][] = snap.operational.map((co) => {
-    const row: Cell[] = [
-      {
-        text: co.code,
-        options: {
-          fill: { color: "111827" },
-          color: "E5E7EB",
-          fontFace: "Courier New",
-          fontSize: 8,
-          bold: true,
-        },
-      },
-    ];
-    for (const ind of snap.indicators) {
-      const cell = snap.cellByKey.get(`${co.id}|${ind.id}`);
-      const status = cell?.status ?? "unknown";
-      row.push({
-        text: "",
-        options: {
-          fill: { color: STATUS_HEX[status] ?? STATUS_HEX.unknown },
-        },
-      });
-    }
-    return row;
-  });
-  // Column widths: first col wider for the code, rest evenly distributed
-  const indW = (12.3 - 1.2) / Math.max(1, snap.indicators.length);
-  const colW = [1.2, ...snap.indicators.map(() => indW)];
-  gridSlide.addTable([gridHeader, ...gridBody], {
-    x: 0.5,
-    y: 0.95,
-    w: 12.3,
-    colW,
-    border: { type: "solid", color: "374151", pt: 0.4 },
-    rowH: 0.22,
-  });
-  // Hint band/legend at the bottom
-  gridSlide.addText(
-    "Legend  ·  green  ·  amber  ·  red  ·  unknown",
-    {
-      x: 0.5,
-      y: 6.9,
-      w: 12.3,
+      x: 0.6,
+      y: 6.95,
+      w: 12.1,
       h: 0.3,
       fontFace: "Inter",
       fontSize: 9,
-      color: "6B7280",
+      color: INK_FAINT,
       italic: true,
     },
   );
-  // colored swatches just above the legend label
-  const swatchY = 6.6;
-  const swatchKeys: string[] = ["green", "amber", "red", "unknown"];
-  for (let i = 0; i < swatchKeys.length; i++) {
-    gridSlide.addShape("rect", {
-      x: 1.7 + i * 2.0,
-      y: swatchY,
-      w: 0.3,
-      h: 0.18,
-      fill: { color: STATUS_HEX[swatchKeys[i]] },
-      line: { color: "374151", width: 0.5 },
+
+  // ───────────────────────────── Slide 4 — Top alerts ────────────────────────
+  const alertsSlide = pptx.addSlide();
+  alertsSlide.background = { color: BG_CREAM };
+  alertsSlide.addText("TOP ALERTS", {
+    x: 0.6,
+    y: 0.4,
+    w: 12.1,
+    h: 0.35,
+    fontFace: "Inter",
+    fontSize: 11,
+    color: ACCENT_AI,
+    bold: true,
+    charSpacing: 5,
+  });
+  alertsSlide.addText(
+    snap.matches.length === 0
+      ? "All systems green"
+      : `Critical-first ranked alerts (${snap.matches.length} total)`,
+    {
+      x: 0.6,
+      y: 0.85,
+      w: 12.1,
+      h: 0.5,
+      fontFace: "Inter",
+      fontSize: 16,
+      color: INK,
+      bold: true,
+    },
+  );
+
+  if (snap.matches.length === 0) {
+    alertsSlide.addShape("rect", {
+      x: 1.5,
+      y: 2.5,
+      w: 10.33,
+      h: 2.5,
+      fill: { color: CARD_WHITE },
+      line: { color: BAND_GREY, width: 0.5 },
     });
+    alertsSlide.addText("✓", {
+      x: 1.5,
+      y: 2.7,
+      w: 10.33,
+      h: 1.2,
+      fontFace: "Inter",
+      fontSize: 64,
+      color: BAND_GREEN,
+      align: "center",
+      bold: true,
+    });
+    alertsSlide.addText(
+      "No alerts triggered — all systems green.",
+      {
+        x: 1.5,
+        y: 4.0,
+        w: 10.33,
+        h: 0.5,
+        fontFace: "Inter",
+        fontSize: 16,
+        color: INK,
+        align: "center",
+        bold: true,
+      },
+    );
+  } else {
+    const top = selectTopAlertMatches(snap.matchesBySeverity, 3);
+    const cardWidth = 12.1;
+    const cardHeight = 1.6;
+    const cardGapY = 0.2;
+    const cardStartY = 2.1;
+    top.forEach(({ match, severity }, idx) => {
+      const cy = cardStartY + idx * (cardHeight + cardGapY);
+      alertsSlide.addShape("rect", {
+        x: 0.6,
+        y: cy,
+        w: cardWidth,
+        h: cardHeight,
+        fill: { color: CARD_WHITE },
+        line: { color: BAND_GREY, width: 0.5 },
+      });
+      alertsSlide.addShape("rect", {
+        x: 0.6,
+        y: cy,
+        w: 0.08,
+        h: cardHeight,
+        fill: { color: SEVERITY_DOT[severity] },
+        line: { color: SEVERITY_DOT[severity], width: 0 },
+      });
+
+      // Localize rule name + message body the same way the page does.
+      let ruleLabel = match.ruleName;
+      if (DEFAULT_ALERT_RULE_IDS.has(match.ruleId)) {
+        try {
+          ruleLabel = tTerminal(`alerts.rules.${match.ruleId}` as never);
+        } catch {
+          // fall through
+        }
+      }
+      let body = match.message;
+      if (match.messageKey && DEFAULT_ALERT_RULE_IDS.has(match.ruleId)) {
+        try {
+          const localizedParams = localizeAlertMessageParams(
+            match.messageParams,
+            tIndustries,
+          );
+          body = tTerminal(
+            match.messageKey as never,
+            localizedParams as never,
+          );
+        } catch {
+          // fall through
+        }
+      }
+      const affected = match.affectedCompanyIds
+        .map((id) => snap.idToCode.get(id) ?? id.slice(0, 8))
+        .join(", ");
+
+      alertsSlide.addText(severity.toUpperCase(), {
+        x: 0.85,
+        y: cy + 0.15,
+        w: 1.4,
+        h: 0.3,
+        fontFace: "Inter",
+        fontSize: 9,
+        color: SEVERITY_DOT[severity],
+        bold: true,
+        charSpacing: 4,
+      });
+      alertsSlide.addText(ruleLabel, {
+        x: 2.3,
+        y: cy + 0.15,
+        w: 10.3,
+        h: 0.35,
+        fontFace: "Inter",
+        fontSize: 12,
+        color: INK,
+        bold: true,
+      });
+      alertsSlide.addText(body, {
+        x: 0.85,
+        y: cy + 0.55,
+        w: 11.7,
+        h: 0.7,
+        fontFace: "Inter",
+        fontSize: 11,
+        color: INK,
+        valign: "top",
+      });
+      if (affected.length > 0) {
+        alertsSlide.addText(`Affected: ${affected}`, {
+          x: 0.85,
+          y: cy + 1.25,
+          w: 11.7,
+          h: 0.3,
+          fontFace: "Courier New",
+          fontSize: 9,
+          color: INK_FAINT,
+        });
+      }
+    });
+
+    if (snap.matches.length > top.length) {
+      alertsSlide.addText(
+        `Showing ${top.length} of ${snap.matches.length} — open the Risk Terminal for the full feed.`,
+        {
+          x: 0.6,
+          y: 6.95,
+          w: 12.1,
+          h: 0.3,
+          fontFace: "Inter",
+          fontSize: 9,
+          color: INK_FAINT,
+          italic: true,
+        },
+      );
+    }
   }
+
   const out = await pptx.write({ outputType: "arraybuffer" });
   return out as ArrayBuffer;
 }
