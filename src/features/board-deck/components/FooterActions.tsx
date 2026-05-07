@@ -12,11 +12,49 @@
  * Terminal.
  */
 
+import { Suspense } from "react";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, FileDown } from "lucide-react";
 import { PrintButton } from "@/app/(dashboard)/budgeting/board-deck/PrintButton";
 import { ExportPptxButton } from "@/app/(dashboard)/budgeting/board-deck/ExportPptxButton";
+
+/**
+ * Phase 7.G Turn LV — Suspense fallback for ExportPptxButton.
+ *
+ * Turn LIV gave ExportPptxButton a `useSearchParams()` dependency
+ * (URL-thread for `?lang=` + `?regenerate=`). Per Next.js App Router
+ * spec, any client component reading `useSearchParams` MUST sit
+ * inside a `<Suspense>` boundary or the parent route is forced to
+ * dynamic-render-only. The board-deck page is fully dynamic today
+ * (auth + DB + searchParams), so the absence of Suspense was non-
+ * fatal — but it would become a hard build error if the route ever
+ * ships `export const dynamic = "force-static"`.
+ *
+ * Architect Turn-LIV flagged as a defensive follow-up; closed here.
+ *
+ * The fallback renders an inert button skeleton matching the live
+ * button's exact dimensions so the footer layout doesn't shift
+ * during the brief client-hydration tick on page load.
+ */
+function ExportPptxFallback() {
+  return (
+    <div
+      data-testid="export-pptx-fallback"
+      className="flex items-center gap-2 print:hidden"
+    >
+      <button
+        type="button"
+        disabled
+        aria-hidden="true"
+        className="inline-flex items-center gap-2 rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 text-[#00D4AA]/60 px-3 py-1.5 text-sm cursor-not-allowed"
+      >
+        <FileDown size={14} aria-hidden="true" />
+        Export PPTX
+      </button>
+    </div>
+  );
+}
 
 export interface FooterActionsProps {
   period: string;
@@ -40,7 +78,9 @@ export async function FooterActions({ period }: FooterActionsProps) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ExportPptxButton period={period} />
+          <Suspense fallback={<ExportPptxFallback />}>
+            <ExportPptxButton period={period} />
+          </Suspense>
           <PrintButton />
           <Link
             href="/budgeting/terminal"
