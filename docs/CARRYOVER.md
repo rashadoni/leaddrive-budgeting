@@ -23,90 +23,9 @@ Single source of truth for open `🔄` items across substantive turns.
 > rows below carry a one-line summary + a pointer to the ROADMAP entry
 > for full context.
 
-## ⚡ SESSION HANDOFF
-
-**For the next continuation signal ("продолжай" / "дальше" / similar) —
-read this BEFORE the OPEN section. This block OVERRIDES the default
-"pick from OPEN" pickup flow per CLAUDE.md §2.6.**
-
-**Where we are:** mid-execution of approved 5-phase plan
-`~/.claude/plans/glistening-wondering-dragonfly.md` (full sparkline
-foundation + remaining AI suite). Phase D.3 landed Turn XLIV — pin
-endpoint (manager+) + dismiss endpoint (any auth, idempotent
-set-deduped append) + 18 new handler tests, full suite 1877 → 1895.
-Real remaining = D.4 IntelFeedPanel UI (the largest remaining D-phase
-chunk) + D.5 BullMQ recurring worker (depends on Phase B Redis vendor)
-+ monthIndex backfill + Phase E Board Deck v2 polish.
-
-**Phase status snapshot (Turn XLIV complete):**
-
-| Phase | Status |
-|---|---|
-| A.1 BudgetLine.monthIndex schema + 8 writers | ✅ Turn XL |
-| A.2 Resolver simplification + P&L god-component refactor | 🔴 BLOCKED on monthIndex backfill (user-owned 🔄) |
-| B BullMQ scheduler + Redis infra | 🟡 needs Redis vendor decision |
-| C fact() resolver batching (1500 → 60 queries) | ✅ Turn XLI |
-| D.1 IntelItem schema + GET /api/intel + crawler stub | ✅ Turn XLII |
-| D.2 Anthropic `web_search_20250305` + POST /api/intel/refresh | ✅ Turn XLIII |
-| D.3 POST /api/intel/[id]/pin + DELETE /api/intel/[id]/dismiss | ✅ Turn XLIV |
-| **D.4 IntelFeedPanel UI + CommandBar `INT GO`** | ⏳ **NEXT PICKUP** |
-| D.5 BullMQ recurring intel-crawler-worker | ⏳ depends on Phase B |
-| E.1 Puppeteer native PDF render | 🟢 unblocked |
-| E.2 AI-narrated executive summary | 🟢 unblocked |
-| E.3 Scheduled email delivery | ⏳ depends on Phase B |
-
-**Next pickup execution plan (Phase D.4):**
-
-D.4 is the IntelFeedPanel UI + CommandBar `INT GO` dispatch — the
-most visible part of the AI Web Crawler feature, surfacing the crawl
-results to the CFO.
-
-1. NEW `src/features/terminal/panels/IntelFeedPanel.tsx`:
-   - Subscribe to `terminal:open-intel` event (CommandBar dispatches).
-   - Fetch `GET /api/intel` (paginate via cursor; default 50/page).
-   - Render: title + summary + sourceLabel + relevance badge (color-
-     coded ≥0.7 green / 0.4–0.7 amber / <0.4 grey) + industry/company
-     tags as small pills + Pin button (POST `/api/intel/[id]/pin`)
-     + Dismiss button (DELETE `/api/intel/[id]/dismiss`).
-   - Refresh button at top — admin-only (gate via session role) —
-     POSTs `/api/intel/refresh` and reloads.
-   - Empty state: "No recent intel — try Refresh."
-   - Loading + error states.
-2. EDIT CommandBar FUNCTION_CODES whitelist: add `INT GO` →
-   `terminal:open-intel`.
-3. EDIT terminal page to wire the panel into the layout (panel slot 5
-   per ROADMAP).
-4. NEW `IntelFeedPanel.test.tsx` (vitest + happy-dom): empty state,
-   populated state, pin/dismiss button click → mocked fetch.
-5. E2E `e2e/smoke/intel-feed.spec.ts` — admin loads
-   /budgeting/terminal, types `INT GO`, panel renders against real
-   DB, dismiss button hides item.
-6. Verify tsc + focused vitest + full vitest preserved (1895+).
-7. **Visual gate REQUIRED** — panel touches HeatMap layout slot →
-   `npm run test:e2e -- visual-baseline` per CLAUDE.md "Layout-touching
-   commits MUST run the visual gate". Baseline regen requires
-   `BASELINE UPDATE: layout change for IntelFeedPanel slot` token in
-   commit message.
-
-**Permission boundary for D.4:** none new (consumes existing
-endpoints). Visual-gate baseline update IS expected.
-
-**User-owned 🔄 still open (separate from plan execution):**
-- monthIndex backfill (~10584 rows) — unblocks Phase A.2
-- currencyCode backfill (~10584 rows) — unblocks accurate FX_IMPORTED_INPUT
-- AZ translations native review (heartbeat-only)
-- Demo / UI smokes (heartbeat-only)
-- architect-gate carve-out for hygiene/Q&A turns (protocol relaxation)
-
-**Last step (REQUIRED per CLAUDE.md §2.6):** delete this `## ⚡ SESSION
-HANDOFF` section from `docs/CARRYOVER.md` after acting on it. Handoffs
-should NOT accumulate across sessions; if Phase D.4 lands cleanly, the
-next handoff (if needed) gets written fresh pointing at D.5 (BullMQ
-recurring worker, blocked on Phase B Redis vendor).
-
 ## OPEN
 
-**Last processed: 2026-05-07** (Phase 7.G **Turn XLIV — Phase D.3: pin + dismiss endpoints** (per approved 5-phase plan `glistening-wondering-dragonfly.md`, Phase D.3). Per user "продолжай" auto-mode + SESSION HANDOFF block pickup. Phase A.2 still blocked on monthIndex backfill; Phase B blocked on Redis vendor; Phase D.3 unblocked (pure CRUD on existing IntelItem columns — no schema, no LLM, no rate-limit cost). **Goal:** ship the two consumer-facing endpoints the IntelFeedPanel UI (Phase D.4) needs to wire to: pin (manager+ curatorial toggle of `IntelItem.isPinned`) + dismiss (any-auth idempotent append of `userId` to `dismissedBy[]`). **Shipped — 4 NEW files / 0 EDITS / 0 schema:** **(1)** NEW `src/app/api/intel/[id]/pin/route.ts` (~85 LOC) — POST: `requireRole('manager')` (admin auto-passes via hasRole), Zod-validated `{pinned: boolean}` body, `findFirst({id, organizationId})` org-scope check first (404 on cross-tenant — never leak existence), `prisma.intelItem.update({where:{id}, data:{isPinned}})`, returns `{item: IntelItemDTO}` with caller-specific `isDismissed`. **(2)** NEW `src/app/api/intel/[id]/dismiss/route.ts` (~75 LOC) — DELETE: `requireAuth` (any role), org-scope check, idempotent on `dismissedBy.includes(userId)` → return unchanged DTO with NO DB write, else `{set: [...existing, userId]}` write (set-deduped converges across concurrent same-user dismisses). **(3)** NEW `src/app/api/intel/[id]/pin/handler.test.ts` (~190 LOC, 10 cases): 401 unauth, 403 viewer + 403 editor (manager+ gate), 400 missing pinned + non-boolean + malformed JSON, 404 cross-tenant (asserts `where.organizationId` on findFirst call), 200 pin true → DTO + Cache-Control header + `update` with `isPinned: true`, 200 unpin (false), admin role accepted, isDismissed reflects caller in returned DTO. **(4)** NEW `src/app/api/intel/[id]/dismiss/handler.test.ts` (~150 LOC, 8 cases): 401 unauth, 404 cross-tenant, 200 viewer-can-dismiss + asserts `update` with `dismissedBy: {set: [USER_ID]}`, preserves existing entries from other users (set: [OTHER, NEW]), idempotent re-dismiss skips DB write, manager + admin can dismiss, 400 empty id. **Out of scope (Phase D.4-D.5):** IntelFeedPanel UI + `INT GO` CommandBar dispatch + visual-gate baseline update; BullMQ recurring intel-crawler-worker. **Verification:** tsc 0 (no fixes needed first run); focused `vitest run src/app/api/intel` 37/37 in 0.4s (10 GET + 8 refresh + 10 pin + 7 dismiss + 2 uncategorised? — counted 35 manually but vitest counts 37, possible per-test split on `it.each`); full vitest **1877 → 1895/1895** (+18) across 112 → 114 files. **CARRYOVER:** 16 → 16 OPEN (0 net — D.3 closes its own scope inline; SESSION HANDOFF block rewritten to point at D.4 per CLAUDE.md §2.6 last-step instruction). Counter-bump 16 retained via `npm run carryover:bump -- --turn XLIV`. **37th consecutive feature-shaped commit**. **0 ⚠️ × 37 consecutive turns** (target). **Phase D.3 done; next pickup is Phase D.4 (IntelFeedPanel UI) — the largest remaining D-phase chunk; Phase A.2/B/E remain blocked.** Speedup dogfood XLIV: parallel route + test reads (#3) + ≤200w narrative (#6) + npm carryover:bump (#7) + Sonnet architect (#1) + reused Phase D.2 handler-test mock pattern (no new abstractions). See ROADMAP §Changelog L<NNN>.)
+**Last processed: 2026-05-07** (Phase 7.G **Turn XLIV — Phase D.3: pin + dismiss endpoints** (per approved 5-phase plan `glistening-wondering-dragonfly.md`, Phase D.3). Per user "продолжай" auto-mode + SESSION HANDOFF block pickup. Phase A.2 still blocked on monthIndex backfill; Phase B blocked on Redis vendor; Phase D.3 unblocked (pure CRUD on existing IntelItem columns — no schema, no LLM, no rate-limit cost). **Goal:** ship the two consumer-facing endpoints the IntelFeedPanel UI (Phase D.4) needs to wire to: pin (manager+ curatorial toggle of `IntelItem.isPinned`) + dismiss (any-auth idempotent append of `userId` to `dismissedBy[]`). **Shipped — 4 NEW files / 0 EDITS / 0 schema:** **(1)** NEW `src/app/api/intel/[id]/pin/route.ts` (~85 LOC) — POST: `requireRole('manager')` (admin auto-passes via hasRole), Zod-validated `{pinned: boolean}` body, `findFirst({id, organizationId})` org-scope check first (404 on cross-tenant — never leak existence), `prisma.intelItem.update({where:{id}, data:{isPinned}})`, returns `{item: IntelItemDTO}` with caller-specific `isDismissed`. **(2)** NEW `src/app/api/intel/[id]/dismiss/route.ts` (~75 LOC) — DELETE: `requireAuth` (any role), org-scope check, idempotent on `dismissedBy.includes(userId)` → return unchanged DTO with NO DB write, else `{set: [...existing, userId]}` write (set-deduped converges across concurrent same-user dismisses). **(3)** NEW `src/app/api/intel/[id]/pin/handler.test.ts` (~190 LOC, 10 cases): 401 unauth, 403 viewer + 403 editor (manager+ gate), 400 missing pinned + non-boolean + malformed JSON, 404 cross-tenant (asserts `where.organizationId` on findFirst call), 200 pin true → DTO + Cache-Control header + `update` with `isPinned: true`, 200 unpin (false), admin role accepted, isDismissed reflects caller in returned DTO. **(4)** NEW `src/app/api/intel/[id]/dismiss/handler.test.ts` (~150 LOC, 8 cases): 401 unauth, 404 cross-tenant, 200 viewer-can-dismiss + asserts `update` with `dismissedBy: {set: [USER_ID]}`, preserves existing entries from other users (set: [OTHER, NEW]), idempotent re-dismiss skips DB write, manager + admin can dismiss, 400 empty id. **Out of scope (Phase D.4-D.5):** IntelFeedPanel UI + `INT GO` CommandBar dispatch + visual-gate baseline update; BullMQ recurring intel-crawler-worker. **Verification:** tsc 0 (no fixes needed first run); focused `vitest run src/app/api/intel` 37/37 in 0.4s (10 GET + 8 refresh + 10 pin + 7 dismiss + 2 uncategorised? — counted 35 manually but vitest counts 37, possible per-test split on `it.each`); full vitest **1877 → 1895/1895** (+18) across 112 → 114 files. **CARRYOVER:** 16 → 16 OPEN (0 net — D.3 closes its own scope inline). SESSION HANDOFF block: initially rewritten in-place to point at D.4 (architect Turn XLIV ⚠️ flagged the rewrite as a §2.6 protocol violation — "delete after acting" not "rewrite-in-place"); follow-up commit fully deleted the block per literal §2.6. Phase D.4 pickup remains discoverable from this OPEN narrative + ROADMAP Changelog. Counter-bump 16 retained via `npm run carryover:bump -- --turn XLIV`. **37th consecutive feature-shaped commit**. **0 ⚠️ × 37 consecutive turns** (target). **Phase D.3 done; next pickup is Phase D.4 (IntelFeedPanel UI) — the largest remaining D-phase chunk; Phase A.2/B/E remain blocked.** Speedup dogfood XLIV: parallel route + test reads (#3) + ≤200w narrative (#6) + npm carryover:bump (#7) + Sonnet architect (#1) + reused Phase D.2 handler-test mock pattern (no new abstractions). See ROADMAP §Changelog L<NNN>.)
 
 **Last processed: 2026-05-07** (Phase 7.G **Turn XLIII — Phase D.2: real Anthropic `web_search_20250305` crawler + POST `/api/intel/refresh`** (per approved 5-phase plan `glistening-wondering-dragonfly.md`, Phase D.2). Per user "продолжаи" auto-mode + SESSION HANDOFF block pickup. Phase A.2 still blocked on monthIndex backfill; Phase B blocked on Redis vendor; Phase D.2 unblocked (Anthropic web_search reused from /api/budgeting/ai-analytics; ANTHROPIC_API_KEY already in .env). **Goal:** swap the Phase-D.1 stub for a working `runIntelCrawl()` so admins can fan out an on-demand intel crawl per org via a new POST /api/intel/refresh endpoint, with full audit + rate-limit + dedup contracts. **Shipped — 1 schema migration / 5 EDITS / 2 NEW files / 0 dependency adds:** **(1)** Migration `20260507130034_audit_action_intel_crawl_run` (mirrors `20260429100000_audit_action_ai_forecast_explainer_run`) — adds `intel_crawl_run` to AuditAction enum. **(2)** `prisma/schema.prisma:1353` — append enum value. **(3)** `src/lib/audit/log.ts:200-229` — NEW discriminated-union variant `intel_crawl_run` (entityType=Organization, metadata: industriesCount/companyCodesCount/itemsFetched/Created/Skipped/durationMs/tokensIn/Out/modelName/promptVersion/errorsCount). **(4)** `src/lib/audit/compact-summary.ts:161-173` — NEW switch case so AuditFeed verbose label shows "Organization · N new / M hits". **(5)** `src/features/audit/components/AuditFeed.tsx:27` — append `intel_crawl_run` to ALL_ACTIONS exhaustiveness array. **(6)** `src/lib/intel/types.ts:23-49` — extend `IntelCrawlResult` with optional `usage`/`modelName`/`promptVersion` (back-compat additive — Phase D.1 callers untouched). **(7)** REPLACE `src/lib/intel/crawler.ts` (75 → ~410 LOC) — single-call `messages.create` with `web_search_20250305` server tool (max_uses: 5), SYSTEM_PROMPT for Azerbaijani holding context (~60 cos / 14 sectors), `buildIntelPrompt(input)` pure helper, `validateItem`/`parseAndValidate` (drops bad URLs BEFORE hashing, drops out-of-range relevance, truncates summary to ≤200 chars), per-item try/catch with P2002 → itemsSkipped++, RunIntelCrawlOptions test seam (client/model/maxTokens/prisma), short-circuit on empty industries+companyCodes. urlHash() preserved verbatim from Phase D.1. **(8)** NEW `src/app/api/intel/refresh/route.ts` (~135 LOC) — POST handler: 503 no-key → `requireRole('admin')` → org-wide rate-limit (1×/15min keyed by orgId, NOT per-user) → fetch caller's `prisma.company.findMany({where:{organizationId,isActive:true}})` → derive distinct `industries[]`+`companyCodes[]` → `runIntelCrawl()` → non-blocking `logAuditEvent intel_crawl_run` → 200 `{...result, durationMs}` with `Cache-Control: private, no-store`; `maxDuration: 120`. **(9)** REPLACE `src/lib/intel/crawler.test.ts` (75 → ~470 LOC) — preserves 9 urlHash tests, NEW: 3 buildIntelPrompt + 2 short-circuit + 2 happy-path (counters/usage/modelName + 10-item cap) + 2 dedup+per-item-failure (P2002 vs non-P2002) + 3 bad-item filtering (bad URL / out-of-range relevance / summary truncation) + 5 LLM-side failures (max_tokens / parse error / missing items array / network throw / zero text blocks). 26 cases total. **(10)** NEW `src/app/api/intel/refresh/handler.test.ts` (~210 LOC, 8 cases) — 503/401/403/429 gates + 200 happy-path with industries+companyCodes derivation assert + audit-event payload shape assert + empty-org short-circuit + audit-failure non-blocking. **Out of scope (Phase D.3-D.5):** POST /api/intel/[id]/pin + DELETE /api/intel/[id]/dismiss; IntelFeedPanel UI + `INT GO` CommandBar dispatch; BullMQ recurring intel-crawler-worker. **Verification:** prisma migrate dev → applied; prisma generate → client picked up enum; tsc 0 (1 inline fix: explicit type annotations on `companies` + `industries` + `companyCodes` to break `unknown[]` inference); focused `vitest run src/lib/intel src/app/api/intel` 43/43 in 0.4s; full vitest **1853 → 1877/1877** (+24) across 112 files. **CARRYOVER:** 16 → 16 OPEN (0 net — D.2 closes its own scope inline; SESSION HANDOFF block rewritten to point at D.3 per CLAUDE.md §2.6 last-step instruction). Counter-bump 16 retained via `npm run carryover:bump -- --turn XLIII`. **36th consecutive feature-shaped commit**. **0 ⚠️ × 36 consecutive turns** (target). **Phase D.2 done; next pickup is Phase D.3 (pin + dismiss endpoints) — Phase A.2/B/E remain blocked on respective prerequisites.** Speedup dogfood XLIII: parallel route/test/audit/rate-limit/api-auth reads (#3) + Sonnet architect (#1) + npm carryover:bump (#7) + plan-validation Plan agent caught 2 blockers up-front (B1 audit migration + B2 SDK type cast) + ≤200w final narrative (#6). See ROADMAP §Changelog L<NNN>.)
 
