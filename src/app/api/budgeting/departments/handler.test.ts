@@ -137,6 +137,22 @@ describe("PUT /api/budgeting/departments — role gate", () => {
     expect(prismaMock.budgetDepartment.update).not.toHaveBeenCalled()
   })
 
+  // Architect Turn-LXIII closure: prove the manager+ FLOOR (not just
+  // viewer block). Editor is below manager → must also 403. Without this
+  // assertion, route could silently regress to `requireRole(req, "viewer")`
+  // and the viewer-blocks-only test would still pass.
+  it("returns 403 when editor (still below manager floor)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
+    const res = await PUT(
+      makeRequest("/api/budgeting/departments", {
+        method: "PUT",
+        json: { id: "d1", label: "Renamed" },
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(prismaMock.budgetDepartment.update).not.toHaveBeenCalled()
+  })
+
   it("returns 200 + filters by org on happy manager path", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     prismaMock.budgetDepartment.update.mockResolvedValue({
@@ -160,6 +176,16 @@ describe("PUT /api/budgeting/departments — role gate", () => {
 describe("DELETE /api/budgeting/departments — role gate", () => {
   it("returns 403 when viewer", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await DELETE(
+      makeRequest("/api/budgeting/departments?id=d1", { method: "DELETE" }),
+    )
+    expect(res.status).toBe(403)
+    expect(prismaMock.budgetDepartment.update).not.toHaveBeenCalled()
+  })
+
+  // Architect Turn-LXIII closure: editor-floor proof (same rationale as PUT).
+  it("returns 403 when editor (still below manager floor)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "editor" })
     const res = await DELETE(
       makeRequest("/api/budgeting/departments?id=d1", { method: "DELETE" }),
     )
