@@ -1692,7 +1692,8 @@
         "eyebrow": "Şura üçün əsas xəbərdarlıqlar",
         "showingOf": "{showing} / {total} göstərilir",
         "affectedCount": "{count, plural, one {# təsirə uğrayan sub-co} other {# təsirə uğrayan sub-co}}",
-        "allClear": "✓ Xəbərdarlıq yoxdur — bütün sistemlər yaşıl."
+        "allClear": "✓ Xəbərdarlıq yoxdur — bütün sistemlər yaşıl.",
+        "viewAll": "Risk Terminal-da bütün xəbərdarlıqlar"
       },
       "footer": {
         "ariaLabel": "Səhifə əməliyyatları",

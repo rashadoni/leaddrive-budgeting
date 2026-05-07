@@ -1692,7 +1692,8 @@
         "eyebrow": "Top alerts for the board",
         "showingOf": "Showing {showing} of {total}",
         "affectedCount": "{count, plural, one {# affected sub-co} other {# affected sub-cos}}",
-        "allClear": "✓ No alerts triggered — all systems green."
+        "allClear": "✓ No alerts triggered — all systems green.",
+        "viewAll": "View all alerts in Risk Terminal"
       },
       "footer": {
         "ariaLabel": "Page actions",

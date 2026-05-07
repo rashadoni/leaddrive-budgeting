@@ -125,6 +125,27 @@ describe("TopAlertsSection — all-clear empty state", () => {
   });
 });
 
+describe("TopAlertsSection — band pill + view-all link", () => {
+  it("renders a severity band pill per alert (critical → red palette)", async () => {
+    await renderSection(makeMatches({ critical: 1 }), 3);
+    const pill = screen.getByTestId("top-alert-0-band");
+    expect(pill.textContent).toBeTruthy();
+    expect(pill.className).toContain("FF4757"); // red palette
+  });
+
+  it("renders 'View all alerts' link to /budgeting/terminal", async () => {
+    await renderSection(makeMatches({ critical: 1 }), 3);
+    const link = screen.getByTestId("top-alerts-view-all");
+    expect(link.getAttribute("href")).toBe("/budgeting/terminal");
+    expect(link.textContent).toContain("View all alerts");
+  });
+
+  it("does NOT render 'View all alerts' link in the all-clear empty state", async () => {
+    await renderSection(makeMatches({}), 3);
+    expect(screen.queryByTestId("top-alerts-view-all")).toBeNull();
+  });
+});
+
 describe("TopAlertsSection — severity dot + affected count", () => {
   it("renders affected-count footnote when affectedCompanyIds non-empty", async () => {
     const matches = makeMatches({ critical: 1 });

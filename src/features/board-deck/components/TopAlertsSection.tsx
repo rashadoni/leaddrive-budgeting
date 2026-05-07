@@ -18,6 +18,8 @@
  * `getTranslations`).
  */
 
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import {
   DEFAULT_ALERT_RULE_IDS,
@@ -34,6 +36,13 @@ export interface TopAlertsSectionProps {
   /** Cap on how many to show. Default 3 — board readability. */
   limit?: number;
 }
+
+/** Severity → Tailwind classes for the per-alert band pill. */
+const SEVERITY_PILL: Record<AlertSeverity, string> = {
+  critical: "bg-[#FF4757]/15 text-[#FF4757] border-[#FF4757]/30",
+  warning: "bg-[#FFB800]/15 text-[#FFB800] border-[#FFB800]/30",
+  info: "bg-[#00D4AA]/15 text-[#00D4AA] border-[#00D4AA]/30",
+};
 
 const SEVERITY_DOT: Record<AlertSeverity, string> = {
   critical: "bg-[#FF4757]",
@@ -121,7 +130,7 @@ export async function TopAlertsSection({
           </p>
         )}
       </div>
-      <ul className="space-y-4 list-none" data-testid="top-alerts-list">
+      <ul className="space-y-4 list-none mb-6" data-testid="top-alerts-list">
         {top.map(({ match, severity }, idx) => {
           // Sub-35 — alert message i18n. Built-in rules render the
           // locale-aware template; custom or synthetic ruleIds fall
@@ -163,11 +172,18 @@ export async function TopAlertsSection({
                 className={`mt-1.5 h-2.5 w-2.5 rounded-full shrink-0 ${SEVERITY_DOT[severity]}`}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-mono">
-                  {t(SEVERITY_LABEL_KEY[severity] as never)} ·{" "}
-                  {localizedRuleName}
-                </p>
-                <p className="text-sm md:text-base text-foreground/90 leading-relaxed mt-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-[10px] uppercase tracking-[0.15em] text-muted-foreground font-mono">
+                    {localizedRuleName}
+                  </p>
+                  <span
+                    data-testid={`top-alert-${idx}-band`}
+                    className={`inline-block rounded border px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider ${SEVERITY_PILL[severity]}`}
+                  >
+                    {t(SEVERITY_LABEL_KEY[severity] as never)}
+                  </span>
+                </div>
+                <p className="text-sm md:text-base text-foreground/90 leading-relaxed mt-1.5">
                   {localizedMessage}
                 </p>
                 {match.affectedCompanyIds.length > 0 && (
@@ -182,6 +198,14 @@ export async function TopAlertsSection({
           );
         })}
       </ul>
+      <Link
+        href="/budgeting/terminal"
+        data-testid="top-alerts-view-all"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors print:hidden"
+      >
+        <span>{t("boardDeck.topAlerts.viewAll")}</span>
+        <ArrowRight size={14} aria-hidden="true" />
+      </Link>
     </section>
   );
 }

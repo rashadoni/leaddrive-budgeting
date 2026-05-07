@@ -314,6 +314,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'boardDeck.topAlerts.showingOf': 'Showing {showing} of {total}',
   'boardDeck.topAlerts.affectedCount': '{count} affected sub-cos',
   'boardDeck.topAlerts.allClear': '✓ No alerts triggered — all systems green.',
+  'boardDeck.topAlerts.viewAll': 'View all alerts in Risk Terminal',
   'boardDeck.footer.ariaLabel': 'Page actions',
   'boardDeck.footer.eyebrow': 'Share + drill-down',
   'boardDeck.footer.subtitle':

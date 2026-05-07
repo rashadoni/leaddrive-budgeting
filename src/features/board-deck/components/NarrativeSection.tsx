@@ -46,7 +46,7 @@ export async function NarrativeSection({
         {t("boardDeck.narrative.eyebrow")}
       </p>
       <div
-        className="space-y-4 text-base md:text-lg leading-relaxed text-foreground/90 max-w-2xl print:text-black"
+        className="space-y-4 font-serif text-base md:text-lg leading-relaxed text-foreground/90 max-w-2xl print:text-black"
         data-testid="narrative-paragraphs"
       >
         {narration.paragraphs.map((paragraph, idx) => (
