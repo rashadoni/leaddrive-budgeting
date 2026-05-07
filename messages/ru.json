@@ -1680,7 +1680,7 @@
         "scoreLabel": "Сводный балл холдинга / 100",
         "contributingCount": "{contributing} из {total} суб-компаний",
         "cta": "Полный отчёт",
-        "aiAttribution": "AI-сгенерировано · {model} · промпт v{version}"
+        "aiAttribution": "AI-сгенерировано · {model} · промпт {version}"
       },
       "metrics": {
         "sectionAriaLabel": "Дополнительные метрики",

@@ -291,7 +291,7 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'boardDeck.hero.scoreLabel': 'Holding composite score / 100',
   'boardDeck.hero.contributingCount': '{contributing} of {total} sub-cos scored',
   'boardDeck.hero.cta': 'Read full report',
-  'boardDeck.hero.aiAttribution': 'AI-generated · {model} · prompt v{version}',
+  'boardDeck.hero.aiAttribution': 'AI-generated · {model} · prompt {version}',
   // Phase 7.G Turn XLIX (v2 Turn 3) — supporting-metrics row.
   'boardDeck.metrics.sectionAriaLabel': 'Supporting metrics',
   'boardDeck.metrics.redCellsLabel': 'Red cells',

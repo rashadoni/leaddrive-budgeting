@@ -1680,7 +1680,7 @@
         "scoreLabel": "Holding mürəkkəb balı / 100",
         "contributingCount": "{contributing} / {total} sub-co",
         "cta": "Tam hesabatı oxu",
-        "aiAttribution": "AI-yaradıb · {model} · prompt v{version}"
+        "aiAttribution": "AI-yaradıb · {model} · prompt {version}"
       },
       "metrics": {
         "sectionAriaLabel": "Əlavə göstəricilər",

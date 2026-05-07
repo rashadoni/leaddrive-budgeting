@@ -1680,7 +1680,7 @@
         "scoreLabel": "Holding composite score / 100",
         "contributingCount": "{contributing} of {total} sub-cos scored",
         "cta": "Read full report",
-        "aiAttribution": "AI-generated · {model} · prompt v{version}"
+        "aiAttribution": "AI-generated · {model} · prompt {version}"
       },
       "metrics": {
         "sectionAriaLabel": "Supporting metrics",
