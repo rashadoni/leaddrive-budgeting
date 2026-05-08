@@ -3,6 +3,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
+import { looksLikeSapCode } from "@/lib/import/keywords"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
@@ -391,7 +392,7 @@ export async function GET(req: NextRequest) {
   // By department — track expense and revenue separately for correct variance
   // If department field looks like a SAP code, fall back to category (which holds the name after import refactor)
   const deptMap = new Map<string, { expPlanned: number; expActual: number; revPlanned: number; revActual: number; forecast: number }>()
-  const looksLikeSapCode = (s: string) => /^\d{3}(-\d+)*$/.test(s)
+  // Turn LXV — `looksLikeSapCode` from shared `@/lib/import/keywords` catalog.
 
   const resolveDept = (l: any): string => {
     // Prefer canonical account name when FK is populated (Phase 2.1).

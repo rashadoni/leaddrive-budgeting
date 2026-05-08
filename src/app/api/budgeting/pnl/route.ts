@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
+import { looksLikeCode } from "@/lib/import/keywords"
 
 /**
  * GET /api/budgeting/pnl
@@ -154,7 +155,8 @@ export async function GET(req: NextRequest) {
       // rows may still be the other way around. Detect by shape.
       const maybeCode = bl.department || ""
       const maybeName = bl.category || ""
-      const looksLikeCode = (s: string) => /^\d{3}/.test(s)
+      // Turn LXV — `looksLikeCode` extracted to `@/lib/import/keywords`
+      // (inline lambda was duplicated at line 283 below + analytics route).
       code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
       name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
     }
@@ -280,7 +282,7 @@ export async function GET(req: NextRequest) {
   // Aggregate BudgetActual rows to match the same code::name keys as the plan
   // rows. Actuals don't have an accountId FK, so we rely on the same
   // department/category string heuristic as the legacy branch above.
-  const looksLikeCode = (s: string) => /^\d{3}/.test(s)
+  // Turn LXV — `looksLikeCode` from shared `@/lib/import/keywords` catalog.
   const resolveActualKey = (dep: string | null, cat: string): { code: string; name: string; key: string } => {
     const maybeCode = dep || ""
     const maybeName = cat || ""

@@ -4,6 +4,14 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import ExcelJS from "exceljs"
+import {
+  looksLikeCostAccount,
+  isIndirectCostHeader,
+  isRawMaterialHeader,
+  HEADER_COST_CENTER_LOWER,
+  HEADER_NON_RAW_MATERIAL_PREFIX_LOWER,
+  HEADER_RAW_MATERIAL_PREFIX_LOWER,
+} from "@/lib/import/keywords"
 
 // App Router handles body parsing via request.formData() — no Pages-era
 // `config = { api: { bodyParser: false } }` needed (deprecated in Next 16).
@@ -655,9 +663,10 @@ export async function POST(req: NextRequest) {
           if (joined.includes("yanmış") && joined.includes("əhəng")) { currentStage = "yanmış"; currentSection = null; continue }
           if (joined.includes("sönmüş") && joined.includes("əhəng")) { currentStage = "sönmüş"; currentSection = null; continue }
 
-          // Detect section boundaries
-          if (joined.includes("qeyri-xammal xərclər") || joined.includes("istehsal xərci")) currentSection = "indirect"
-          if (joined.includes("xammal xərcləri")) currentSection = "raw_material"
+          // Detect section boundaries (Turn LXV — Phase 2.2: matchers
+          // moved to `src/lib/import/keywords.ts` shared catalog).
+          if (isIndirectCostHeader(joined)) currentSection = "indirect"
+          if (isRawMaterialHeader(joined)) currentSection = "raw_material"
 
           // Parse detail rows (have monthly numeric values)
           // Find a label — first non-empty text cell
@@ -668,17 +677,19 @@ export async function POST(req: NextRequest) {
             if (!v) continue
             if (typeof v === "string" && v.trim().length > 2) {
               const s = v.trim()
-              // SAP code pattern (703-xxx)
-              if (/^7\d{2}-/.test(s)) { accountCode = s; continue }
+              // SAP code pattern (703-xxx) — Turn LXV: shared keyword catalog.
+              if (looksLikeCostAccount(s)) { accountCode = s; continue }
               if (!label) label = s
             }
           }
           if (!label) continue
 
-          // Skip section headers themselves (no numeric values in month cols)
+          // Skip section headers themselves (no numeric values in month cols).
+          // Turn LXV: HEADER_COST_CENTER_LOWER + HEADER_NON_RAW_MATERIAL_PREFIX_LOWER
+          // moved to shared catalog. `startsWith` semantics preserved verbatim.
           const labelLower = label.toLowerCase()
-          if (labelLower === "xərc mərkəzi" || labelLower.startsWith("qeyri-xammal")) continue
-          if (labelLower.startsWith("xammal xərcləri")) continue
+          if (labelLower === HEADER_COST_CENTER_LOWER || labelLower.startsWith(HEADER_NON_RAW_MATERIAL_PREFIX_LOWER)) continue
+          if (labelLower.startsWith(HEADER_RAW_MATERIAL_PREFIX_LOWER)) continue
 
           // Collect monthly values
           const monthlyVals: number[] = []
