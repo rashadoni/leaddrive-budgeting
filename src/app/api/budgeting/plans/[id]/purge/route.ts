@@ -20,7 +20,7 @@ export async function DELETE(
 ) {
   const session = await requireRole(req, "admin")
   if (session instanceof NextResponse) return session
-  const { orgId } = session
+  const { orgId, userId } = session
 
   const { id } = await params
 
@@ -42,7 +42,7 @@ export async function DELETE(
   // Even though the plan is already soft-deleted, the actuals/lines beneath
   // it are still part of the locked-period record set.
   const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "DELETE /api/budgeting/plans/[id]/purge" })
 
   // Cascade-delete every child row before removing the plan itself.
   // Order matters only where foreign-key constraints would block (e.g. forecast

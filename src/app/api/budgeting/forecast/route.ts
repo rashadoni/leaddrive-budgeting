@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -40,8 +40,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
     ),
   )
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/forecast" })
 
   const results = []
   for (const entry of entries) {

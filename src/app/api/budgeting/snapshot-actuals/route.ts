@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
@@ -22,8 +22,9 @@ import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-loc
  */
 export async function POST(req: NextRequest) {
   try {
-    const orgId = await getOrgId(req)
-    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getSession(req)
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const { orgId, userId } = session
 
     const body = await req.json().catch(() => ({}))
     const { planId, month } = body as { planId?: string; month?: string }
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
       : []
     const periodsToCheck = Array.from(new Set([...planPeriodKeys, ...monthContainerKeys]))
     const snapLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
-    if (snapLock) return lockedResponse(snapLock)
+    if (snapLock) return lockedResponse(snapLock, { prisma, orgId, userId, route: "POST /api/budgeting/snapshot-actuals" })
 
     // Save cost model snapshot (upsert) — moved BELOW the lock check.
     const summary = (costModel as any).summary

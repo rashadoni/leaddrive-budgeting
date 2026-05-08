@@ -339,6 +339,23 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'varianceSeverityRed': 'high',
   'varianceSeverityAmber': 'moderate',
   'varianceSeverityGreen': 'low',
+  // Phase 7.G Turn LXX (Phase 4.2 closure) — period-locks admin UI labels.
+  'periodLocks.title': 'Period Locks',
+  'periodLocks.subtitle': 'Lock fiscal periods to prevent retroactive changes after close.',
+  'periodLocks.addTitle': 'Lock a new period',
+  'periodLocks.periodPlaceholder': 'Period (e.g. 2026 / 2026-Q1 / 2026-03)',
+  'periodLocks.periodHint': 'Format: YYYY / YYYY-Q[1-4] / YYYY-MM. Strict match — locking 2026 does NOT block 2026-Q1; lock each granularity explicitly.',
+  'periodLocks.reasonPlaceholder': 'Reason (optional, e.g. Q1 close, audit period)',
+  'periodLocks.addButton': 'Lock period',
+  'periodLocks.listTitle': 'Currently locked ({count})',
+  'periodLocks.loading': 'Loading…',
+  'periodLocks.empty': 'No periods locked.',
+  'periodLocks.metaLine': 'Locked {when} by {by}',
+  'periodLocks.unlockButton': 'Unlock',
+  'periodLocks.unlockAria': 'Unlock period {period}',
+  'periodLocks.confirmRemove': 'Unlock period {period}? Mutations will be allowed again.',
+  'periodLocks.noticeAlreadyLocked': 'Period {period} is already locked. Original lock preserved.',
+  'periodLocks.errAdminOnly': 'Only admins can lock or unlock periods.',
 };
 
 /**

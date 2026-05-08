@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { currentBakuYear } from "@/lib/risk/periods"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
@@ -74,8 +74,9 @@ export async function GET(req: NextRequest) {
 
 // POST — create a manual cash flow entry
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
   // Phase 7.G Turn LXIX cleanup: replaced inline year/quarter/month
   // construction with the shared `containingPeriodKeys` helper.
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cash-flow" })
 
   const entry = await prisma.cashFlowEntry.create({
     data: {

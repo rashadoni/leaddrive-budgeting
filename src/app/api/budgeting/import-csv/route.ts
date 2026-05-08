@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -15,8 +15,9 @@ const importCsvSchema = z.object({
 // POST — import CSV data as budget actuals
 // Accepts JSON array of rows: [{ category, department, amount, date, description, lineType }]
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
   // bulk actuals against the plan's period — reject if the plan's period
   // is locked (CFO post-close protection). Single Org read.
   const csvLock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(planOwned))
-  if (csvLock) return lockedResponse(csvLock)
+  if (csvLock) return lockedResponse(csvLock, { prisma, orgId, userId, route: "POST /api/budgeting/import-csv" })
 
   // Verify integrationId (if given) belongs to caller's org
   if (integrationId) {

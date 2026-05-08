@@ -41,7 +41,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
   const auth = await requireRole(req, "manager")
   if (auth instanceof NextResponse) return auth
-  const { orgId } = auth
+  const { orgId, userId } = auth
 
   const { id } = await params
 
@@ -66,7 +66,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Phase 7.G Turn LXVIII follow-up — period-lock guard.
   const lock = await findActiveLockForSection(orgId, id)
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/sections/[id]" })
 
   const result = await prisma.budgetSection.updateMany({
     where: { id, organizationId: orgId },
@@ -87,13 +87,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
   const auth = await requireRole(req, "manager")
   if (auth instanceof NextResponse) return auth
-  const { orgId } = auth
+  const { orgId, userId } = auth
 
   const { id } = await params
 
   // Phase 7.G Turn LXVIII follow-up — period-lock guard.
   const lock = await findActiveLockForSection(orgId, id)
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/sections/[id]" })
 
   await prisma.budgetSection.deleteMany({ where: { id, organizationId: orgId } })
   return NextResponse.json({ success: true, data: null })

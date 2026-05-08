@@ -20,7 +20,7 @@ const syncActualsSchema = z.object({
 export async function POST(req: NextRequest) {
   const session = await requireRole(req, "editor")
   if (isAuthError(session)) return session
-  const { orgId } = session
+  const { orgId, userId } = session
 
   let body
   try {
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     new Set([derivePeriodKey(plan), ...containingPeriodKeys(year, month)]),
   )
   const syncLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
-  if (syncLock) return lockedResponse(syncLock)
+  if (syncLock) return lockedResponse(syncLock, { prisma, orgId, userId, route: "POST /api/budgeting/sync-actuals" })
 
   let synced = 0
 

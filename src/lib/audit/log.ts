@@ -254,6 +254,57 @@ export type AuditEventInput =
         modelName: string;
         promptVersion: string;
       };
+    }
+  | {
+      // Phase 7.G Turn LXX (Phase 4.2 closure) — admin added a period lock.
+      // CFO compliance: who locked which period, when, with what reason.
+      action: 'period_lock_add';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        /** Locked period — "YYYY" / "YYYY-Q[1-4]" / "YYYY-MM". */
+        period: string;
+        /** Optional reason text from admin form (≤500 chars; truncate at API). */
+        reason?: string;
+      };
+    }
+  | {
+      // Phase 7.G Turn LXX (Phase 4.2 closure) — admin removed a period lock.
+      // Captures lock-removal so re-opening a closed period leaves a trail.
+      action: 'period_lock_remove';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        /** Period that was unlocked. */
+        period: string;
+        /** Original-lock metadata (preserves who/when/reason of the
+         *  original lock now being removed; otherwise the trail loses
+         *  context once the row is gone). */
+        removedLock: {
+          lockedAt: string;
+          lockedBy: string;
+          reason?: string;
+        };
+      };
+    }
+  | {
+      // Phase 7.G Turn LXX (Phase 4.2 closure) — a mutation was REJECTED
+      // by the period-lock gate (returned 423 Locked). Records the user's
+      // attempt to mutate a closed period — CFO needs trail of attempted
+      // post-close edits to spot bad-actor patterns or training gaps.
+      // Fire-and-forget from `lockedResponse()`; audit-write failures are
+      // swallowed so the 423 always reaches the caller intact.
+      action: 'period_lock_blocked_mutation';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        /** Locked period that triggered the rejection. */
+        period: string;
+        /** Original lock's reason (if any) — surfaces "why this period is closed". */
+        lockReason?: string;
+        /** Route + verb that was attempted, e.g. "POST /api/budgeting/lines". */
+        route: string;
+      };
     };
 
 /**

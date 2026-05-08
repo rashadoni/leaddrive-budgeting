@@ -1391,6 +1391,9 @@ enum AuditAction {
   alert_thresholds_update        // Phase 7.E C6 v2 — PATCH /api/organizations/settings (alertThresholds)
   intel_crawl_run                // Phase 7.G D.2 — POST /api/intel/refresh (AI Web Crawler)
   ai_board_deck_narration_run    // Phase 7.G E.2 v2 — Board Deck narration cache miss (LLM call)
+  period_lock_add                // Phase 7.G Turn LXX — admin locked a fiscal period (CFO close action)
+  period_lock_remove             // Phase 7.G Turn LXX — admin unlocked a fiscal period (re-open trail)
+  period_lock_blocked_mutation   // Phase 7.G Turn LXX — 423 Locked fired; user attempted to mutate a closed period
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

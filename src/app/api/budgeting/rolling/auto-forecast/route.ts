@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
@@ -12,8 +12,9 @@ const autoForecastSchema = z.object({
 
 // POST — auto-generate forecast based on linear trend from recent actuals
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
     orgId,
     Array.from(new Set([planKey, ...monthKeys])),
   )
-  if (afLock) return lockedResponse(afLock)
+  if (afLock) return lockedResponse(afLock, { prisma, orgId, userId, route: "POST /api/budgeting/rolling/auto-forecast" })
 
   let created = 0
 

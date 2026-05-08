@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
+import { getOrgId, getSession, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
@@ -28,8 +28,9 @@ const SVC_REVENUE_MAP: Record<string, string> = {
 
 // POST — create a rolling forecast plan with 12 months + auto-populate from cost model
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (pm > 12) { pm = 1; py++ }
   }
   const rollLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeysForMonths(targetMonths))
-  if (rollLock) return lockedResponse(rollLock)
+  if (rollLock) return lockedResponse(rollLock, { prisma, orgId, userId, route: "POST /api/budgeting/rolling" })
 
   // Create rolling plan
   const plan = await prisma.budgetPlan.create({
@@ -243,7 +244,7 @@ export async function PATCH(req: NextRequest) {
   // forecast entries (rolling roll-forward / rollback), which are real
   // mutations into the org's budget data.
   const patchLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
-  if (patchLock) return lockedResponse(patchLock)
+  if (patchLock) return lockedResponse(patchLock, { prisma, orgId, userId: session.userId, route: "PATCH /api/budgeting/rolling" })
 
   if (action === "reopen") {
     // Reopen: set month back to forecast

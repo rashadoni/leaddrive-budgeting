@@ -902,7 +902,25 @@
     "rollingReopen": "Yenidən aç",
     "rollingRevenue": "Gəlir",
     "tabAnalytics": "Analitika",
-    "versionDiffChangeCount": "{count} dəyişiklik"
+    "versionDiffChangeCount": "{count} dəyişiklik",
+    "periodLocks": {
+      "title": "Dövr kilidləri",
+      "subtitle": "Bağlanan maliyyə dövrlərini kilidləyin ki, geri tarixli dəyişikliklər qadağan olsun.",
+      "addTitle": "Yeni dövr kilidlə",
+      "periodPlaceholder": "Dövr (məsələn, 2026 / 2026-Q1 / 2026-03)",
+      "periodHint": "Format: YYYY / YYYY-Q[1-4] / YYYY-MM. Dəqiq uyğunluq — 2026 kilidi 2026-Q1-i bağlamır; hər səviyyəni ayrıca kilidləyin.",
+      "reasonPlaceholder": "Səbəb (istəyə bağlı, məsələn: Q1 bağlanma, audit dövrü)",
+      "addButton": "Kilidlə",
+      "listTitle": "Kilidlənmiş ({count})",
+      "loading": "Yüklənir…",
+      "empty": "Kilidlənmiş dövr yoxdur.",
+      "metaLine": "{when} tarixində {by} tərəfindən kilidlənib",
+      "unlockButton": "Aç",
+      "unlockAria": "{period} dövrünü aç",
+      "confirmRemove": "{period} dövrünü açasınız? Dəyişikliklər yenidən mümkün olacaq.",
+      "noticeAlreadyLocked": "{period} dövrü artıq kilidlidir. Orijinal kilid saxlanılıb.",
+      "errAdminOnly": "Yalnız adminlər dövrləri kilidləyə və ya aça bilər."
+    }
   },
   "auth": {
     "signIn": "Daxil ol",

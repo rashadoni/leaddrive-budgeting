@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import ExcelJS from "exceljs"
@@ -120,8 +120,9 @@ const ASSUMPTION_SHEETS: { sheet: string; category: string; label: string }[] = 
 ]
 
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   // Per-org rate limit — protects against accidental/malicious import spam
   const rateLimited = enforceRateLimit(orgId, IMPORT_RATE_LIMIT)
@@ -160,7 +161,7 @@ export async function POST(req: NextRequest) {
       orgId,
       containingPeriodKeysForMonths(importMonths),
     )
-    if (importLock) return lockedResponse(importLock)
+    if (importLock) return lockedResponse(importLock, { prisma, orgId, userId, route: "POST /api/budgeting/import-excel" })
 
     const results: Record<string, number> = {}
     // Collect per-row skip/warning information so the UI can surface what was ignored.

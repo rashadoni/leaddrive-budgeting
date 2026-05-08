@@ -26,6 +26,9 @@ const ALL_ACTIONS = [
   "alert_thresholds_update",
   "intel_crawl_run",
   "ai_board_deck_narration_run",
+  "period_lock_add",
+  "period_lock_remove",
+  "period_lock_blocked_mutation",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

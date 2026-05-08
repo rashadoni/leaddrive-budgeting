@@ -902,7 +902,25 @@
     "rollingReopen": "Reopen",
     "rollingRevenue": "Revenue",
     "tabAnalytics": "Analytics",
-    "versionDiffChangeCount": "{count} changes"
+    "versionDiffChangeCount": "{count} changes",
+    "periodLocks": {
+      "title": "Period Locks",
+      "subtitle": "Lock fiscal periods to prevent retroactive changes after close.",
+      "addTitle": "Lock a new period",
+      "periodPlaceholder": "Period (e.g. 2026 / 2026-Q1 / 2026-03)",
+      "periodHint": "Format: YYYY / YYYY-Q[1-4] / YYYY-MM. Strict match — locking 2026 does NOT block 2026-Q1; lock each granularity explicitly.",
+      "reasonPlaceholder": "Reason (optional, e.g. Q1 close, audit period)",
+      "addButton": "Lock period",
+      "listTitle": "Currently locked ({count})",
+      "loading": "Loading…",
+      "empty": "No periods locked.",
+      "metaLine": "Locked {when} by {by}",
+      "unlockButton": "Unlock",
+      "unlockAria": "Unlock period {period}",
+      "confirmRemove": "Unlock period {period}? Mutations will be allowed again.",
+      "noticeAlreadyLocked": "Period {period} is already locked. Original lock preserved.",
+      "errAdminOnly": "Only admins can lock or unlock periods."
+    }
   },
   "auth": {
     "signIn": "Sign in",

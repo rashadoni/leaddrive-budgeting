@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -32,7 +32,9 @@ const updateActualSchema = z.object({
 })
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const orgId = await getOrgId(req)
+  const session = await getSession(req)
+  const orgId = session?.orgId ?? null
+  const userId = session?.userId ?? null
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
@@ -59,7 +61,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const oldActual = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
   if (oldActual) {
     const lock = await findActiveLockForPlan(orgId, oldActual.planId)
-    if (lock) return lockedResponse(lock)
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/actuals/[id]" })
   }
 
   const result = await prisma.budgetActual.updateMany({
@@ -93,7 +95,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const orgId = await getOrgId(req)
+  const session = await getSession(req)
+  const orgId = session?.orgId ?? null
+  const userId = session?.userId ?? null
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
   const { id } = await params
@@ -106,7 +110,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
     }
     const lock = await findActiveLockForPlan(orgId, actualToDelete.planId)
-    if (lock) return lockedResponse(lock)
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/actuals/[id]" })
   }
 
   await prisma.budgetActual.deleteMany({ where: { id, organizationId: orgId } })

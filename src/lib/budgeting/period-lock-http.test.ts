@@ -1,9 +1,14 @@
 // @vitest-environment node
 /**
  * Phase 7.G Turn LXIX — guard tests for HTTP helpers.
+ * Phase 7.G Turn LXX — extended with audit-context coverage.
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+
+const { auditMock } = vi.hoisted(() => ({ auditMock: vi.fn() }))
+vi.mock("@/lib/audit/log", () => ({ logAuditEvent: auditMock }))
+
 import { lockedResponse, containingPeriodKeys, containingPeriodKeysForMonths } from "./period-lock-http"
 import type { LockedPeriod } from "./period-lock"
 
@@ -13,6 +18,10 @@ const LOCK: LockedPeriod = {
   lockedBy: "u_admin",
   reason: "Q1 close",
 }
+
+beforeEach(() => {
+  auditMock.mockReset().mockResolvedValue({ ok: true, id: "audit1" })
+})
 
 describe("lockedResponse — RFC 4918 423 envelope", () => {
   it("returns status 423", () => {
@@ -35,6 +44,64 @@ describe("lockedResponse — RFC 4918 423 envelope", () => {
     const lockNoReason: LockedPeriod = { ...LOCK, reason: undefined }
     const body = await lockedResponse(lockNoReason).json()
     expect(body.lock.reason).toBeUndefined()
+  })
+
+  it("does NOT call audit log when no audit context is provided (Turn LXX)", () => {
+    lockedResponse(LOCK)
+    expect(auditMock).not.toHaveBeenCalled()
+  })
+
+  it("fires period_lock_blocked_mutation audit event when context provided (Turn LXX)", () => {
+    const prismaStub = {} as any
+    lockedResponse(LOCK, {
+      prisma: prismaStub,
+      orgId: "org_demo",
+      userId: "u1",
+      route: "POST /api/budgeting/lines",
+    })
+    expect(auditMock).toHaveBeenCalledTimes(1)
+    expect(auditMock).toHaveBeenCalledWith(
+      prismaStub,
+      expect.objectContaining({
+        organizationId: "org_demo",
+        actorUserId: "u1",
+        event: expect.objectContaining({
+          action: "period_lock_blocked_mutation",
+          entityType: "Organization",
+          entityId: "org_demo",
+          metadata: expect.objectContaining({
+            period: "2026-Q1",
+            lockReason: "Q1 close",
+            route: "POST /api/budgeting/lines",
+          }),
+        }),
+      }),
+    )
+  })
+
+  it("returns 423 immediately even when audit promise hasn't settled (fire-and-forget)", () => {
+    auditMock.mockImplementation(() => new Promise(() => {})) // never resolves
+    const res = lockedResponse(LOCK, {
+      prisma: {} as any,
+      orgId: "org_demo",
+      userId: "u1",
+      route: "POST /test",
+    })
+    // Critical: response must be ready synchronously despite hung audit
+    expect(res.status).toBe(423)
+  })
+
+  it("audit handles userId=null (system / cookieless paths)", () => {
+    lockedResponse(LOCK, {
+      prisma: {} as any,
+      orgId: "org_demo",
+      userId: null,
+      route: "POST /test",
+    })
+    expect(auditMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ actorUserId: null }),
+    )
   })
 })
 

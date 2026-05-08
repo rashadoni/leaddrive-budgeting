@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Phase 7.G Turn LXII (audit M2 closure) — manager+ required.
   const auth = await requireRole(req, "manager")
   if (auth instanceof NextResponse) return auth
-  const { orgId } = auth
+  const { orgId, userId } = auth
 
   let body
   try {
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   }
   const periodKey = derivePeriodKey(plan)
   const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/sections" })
 
   const section = await prisma.budgetSection.create({
     data: {

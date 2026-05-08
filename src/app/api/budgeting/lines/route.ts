@@ -90,8 +90,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -133,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (plan) {
     const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-    if (lock) return lockedResponse(lock)
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/lines" })
   }
 
   if (Number(resolvedAmount) < 0) {

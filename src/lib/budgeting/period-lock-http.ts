@@ -17,7 +17,31 @@
  */
 
 import { NextResponse } from "next/server"
+import type { PrismaClient } from "@prisma/client"
 import type { LockedPeriod } from "./period-lock"
+import { logAuditEvent } from "@/lib/audit/log"
+
+/**
+ * Optional audit context for `lockedResponse`. When provided, the helper
+ * fires a `period_lock_blocked_mutation` audit event (fire-and-forget;
+ * audit-write failures are swallowed to never block the 423). Pass `null`
+ * or omit to skip audit logging — useful for tests and for routes where
+ * the user identity isn't easily available at the gate point.
+ *
+ * Phase 7.G Turn LXX (Phase 4.2 closure): introduced to centralize the
+ * 423-fire audit trail. CFO compliance can `SELECT * FROM auditEvent
+ * WHERE action = 'period_lock_blocked_mutation' AND createdAt > X` to
+ * see every blocked attempt with route + period + reason.
+ */
+export interface LockedResponseAudit {
+  prisma: Pick<PrismaClient, "auditEvent">
+  orgId: string
+  /** null when the route hasn't extracted userId (e.g. only used getOrgId). */
+  userId: string | null
+  /** Route + verb, e.g. "POST /api/budgeting/lines". Free-form for now;
+   *  becomes a typed enum if call frequency grows beyond ~30 routes. */
+  route: string
+}
 
 /**
  * Build the canonical RFC 4918 `423 Locked` response when a mutation
@@ -28,8 +52,32 @@ import type { LockedPeriod } from "./period-lock"
  * Why 423 not 403: 423 = "resource is in a locked state" (semantically
  * correct for closed periods, RFC 4918, frontend can branch on 423 to
  * surface "ask CFO to unlock" vs 403 generic permission deny).
+ *
+ * Optional `audit` parameter — when present, fires a
+ * `period_lock_blocked_mutation` audit event (fire-and-forget; never
+ * blocks the response). The function intentionally stays SYNC; the
+ * audit-log promise is left to settle in the background.
  */
-export function lockedResponse(lock: LockedPeriod): NextResponse {
+export function lockedResponse(lock: LockedPeriod, audit?: LockedResponseAudit | null): NextResponse {
+  if (audit) {
+    // Fire-and-forget — never block the 423 on audit-write latency or failure.
+    // logAuditEvent already swallows its own errors and returns {ok: false}
+    // rather than throwing, so .catch is defensive belt-and-braces.
+    void logAuditEvent(audit.prisma as PrismaClient, {
+      organizationId: audit.orgId,
+      actorUserId: audit.userId,
+      event: {
+        action: "period_lock_blocked_mutation",
+        entityType: "Organization",
+        entityId: audit.orgId,
+        metadata: {
+          period: lock.period,
+          lockReason: lock.reason,
+          route: audit.route,
+        },
+      },
+    }).catch(() => {})
+  }
   return NextResponse.json(
     {
       error: "Period locked — mutations rejected",

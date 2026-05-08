@@ -184,6 +184,35 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
           : compact;
       return { compact, verbose };
     }
+    case 'period_lock_add':
+    case 'period_lock_remove': {
+      // Phase 7.G Turn LXX — admin lock/unlock of a fiscal period.
+      // Compact = period; verbose adds reason (or "removed" annotation).
+      const period = stringField(m, 'period');
+      const reason = stringField(m, 'reason');
+      const compact = period ?? e.entityType;
+      let verbose = compact;
+      if (period && e.action === 'period_lock_add') {
+        verbose = reason ? `${period} · ${reason}` : period;
+      } else if (period && e.action === 'period_lock_remove') {
+        verbose = `${period} · removed`;
+      }
+      return { compact, verbose };
+    }
+    case 'period_lock_blocked_mutation': {
+      // Phase 7.G Turn LXX — a mutation was rejected by the period-lock
+      // gate. Compact = period; verbose surfaces route + reason so the
+      // CFO can see "who tried to write to a closed period".
+      const period = stringField(m, 'period');
+      const route = stringField(m, 'route');
+      const reason = stringField(m, 'lockReason');
+      const compact = period ?? e.entityType;
+      let verbose = compact;
+      if (period && route) {
+        verbose = reason ? `${period} · ${route} · "${reason}"` : `${period} · ${route}`;
+      }
+      return { compact, verbose };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

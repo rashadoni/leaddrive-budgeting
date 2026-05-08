@@ -13,7 +13,7 @@ export async function POST(
   if (session instanceof NextResponse) return session
 
   const { id: planId } = await params
-  const { orgId } = session
+  const { orgId, userId } = session
 
   // Find original plan
   const plan = await prisma.budgetPlan.findFirst({
@@ -26,7 +26,7 @@ export async function POST(
   // (create-version writes snapshotData on the existing plan AND clones
   // it as a new versioned plan, both into the period container).
   const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/plans/[id]/create-version" })
 
   // Snapshot current plan state
   const snapshot = {

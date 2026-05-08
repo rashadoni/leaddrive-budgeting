@@ -12,7 +12,7 @@ const applyTemplatesSchema = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(req, "manager")
   if (session instanceof NextResponse) return session
-  const { orgId } = session
+  const { orgId, userId } = session
   const { id: planId } = await params
 
   let body
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard
   // (apply-templates creates new budgetLine rows in the plan's period).
   const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/plans/[id]/apply-templates" })
 
   // Get templates
   const templates = await prisma.budgetDirectionTemplate.findMany({

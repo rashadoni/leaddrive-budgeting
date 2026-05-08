@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId } from "@/lib/api-auth"
+import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolvePatternForDept } from "@/lib/budgeting/cost-model-map"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
@@ -77,8 +77,9 @@ const EXPENSE_GROUPS = [
  * If includeExpenses → creates operating expense lines (Admin, Tech Infra, Labor, Risk).
  */
 export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const { orgId, userId } = session
 
   let body
   try {
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
   // matrix-seed creates dozens of budgetLine rows across the cartesian
   // product of costTypes × departments + ~30 OpEx rows in one $transaction.
   const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
-  if (lock) return lockedResponse(lock)
+  if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/matrix-seed" })
 
   const [costTypes, departments] = await Promise.all([
     prisma.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),
