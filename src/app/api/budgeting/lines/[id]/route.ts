@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId, getSession } from "@/lib/api-auth"
+import { getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"

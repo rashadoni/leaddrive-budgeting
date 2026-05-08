@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { getOrgId, getSession } from "@/lib/api-auth"
+import { getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
@@ -60,6 +60,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const oldActual = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
   if (oldActual) {
+    // Phase 7.G Turn LXX (CARRYOVER row close, was turns-open=3):
+    // approval-status check parity with DELETE handler. Without this,
+    // a manager could edit actuals on an approved plan.
+    const plan = await prisma.budgetPlan.findFirst({ where: { id: oldActual.planId }, select: { status: true } })
+    if (plan?.status === "approved") {
+      return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+    }
     const lock = await findActiveLockForPlan(orgId, oldActual.planId)
     if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/actuals/[id]" })
   }

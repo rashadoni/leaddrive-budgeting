@@ -82,6 +82,27 @@ describe("PUT /api/budgeting/actuals/[id] — period lock (Turn LXVIII follow-up
     expect(res.status).toBe(200)
     expect(prismaMock.budgetActual.updateMany).toHaveBeenCalledTimes(1)
   })
+
+  it("403 approved-status fires BEFORE 423 lock check (Turn LXX parity with DELETE)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    // Plan returned by findFirst (called twice: once for status, once for lock)
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({
+      status: "approved",
+      periodType: "annual",
+      year: 2026,
+      month: null,
+      quarter: null,
+    })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [{ period: "2026", lockedAt: "x", lockedBy: "y" }],
+    })
+    const res = await PUT(
+      makeRequest("/api/budgeting/actuals/a1", { method: "PUT", json: { actualAmount: 200 } }),
+      paramsFor("a1"),
+    )
+    expect(res.status).toBe(403) // approved gate wins
+    expect(prismaMock.budgetActual.updateMany).not.toHaveBeenCalled()
+  })
 })
 
 describe("DELETE /api/budgeting/actuals/[id] — period lock (Turn LXVIII follow-up)", () => {
