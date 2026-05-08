@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 /**
  * Phase 7.G Turn LXVIII follow-up — period-lock check helper for [id]
@@ -11,6 +12,9 @@ import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-loc
  * also load-bearing for cross-tenant safety: an un-org'd plan returns null
  * (no lock found, but the calling handler should also re-verify the line
  * row belongs to the org via its own organizationId filter).
+ *
+ * Phase 7.G Turn LXIX cleanup: `lockedResponse` migrated to shared
+ * `period-lock-http.ts` (was inline 3 times, now centralized).
  */
 async function findActiveLockForPlan(orgId: string, planId: string) {
   const plan = await prisma.budgetPlan.findFirst({
@@ -20,21 +24,6 @@ async function findActiveLockForPlan(orgId: string, planId: string) {
   if (!plan) return null
   const periodKey = derivePeriodKey(plan)
   return getActivePeriodLock(prisma, orgId, periodKey)
-}
-
-function lockedResponse(lock: { period: string; lockedAt: string; lockedBy: string; reason?: string }) {
-  return NextResponse.json(
-    {
-      error: "Period locked — mutations rejected",
-      lock: {
-        period: lock.period,
-        lockedAt: lock.lockedAt,
-        lockedBy: lock.lockedBy,
-        reason: lock.reason,
-      },
-    },
-    { status: 423 },
-  )
 }
 
 const updateLineSchema = z.object({

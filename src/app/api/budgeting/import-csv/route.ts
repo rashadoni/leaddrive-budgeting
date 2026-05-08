@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const importCsvSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -41,13 +43,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify planId belongs to caller's org (prevents cross-tenant attribution)
+  // + extend select with period fields for the period-lock check below.
   const planOwned = await prisma.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
-    select: { id: true },
+    select: { id: true, periodType: true, year: true, month: true, quarter: true },
   })
   if (!planOwned) {
     return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
   }
+
+  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). CSV import writes
+  // bulk actuals against the plan's period — reject if the plan's period
+  // is locked (CFO post-close protection). Single Org read.
+  const csvLock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(planOwned))
+  if (csvLock) return lockedResponse(csvLock)
 
   // Verify integrationId (if given) belongs to caller's org
   if (integrationId) {

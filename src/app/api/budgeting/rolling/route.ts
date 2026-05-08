@@ -3,6 +3,8 @@ import { z, ZodError } from "zod"
 import { getOrgId, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeysForMonths, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const createRollingSchema = z.object({
   name: z.string().min(1).max(500),
@@ -47,6 +49,20 @@ export async function POST(req: NextRequest) {
   }
 
   const { name, startYear, startMonth, rollingMonths = 12 } = data
+
+  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). A rolling plan
+  // creation writes 12 months of forecast entries into period containers
+  // year+quarter+month. Reject if any of those containers is locked.
+  const targetMonths: { year: number; month: number }[] = []
+  let py = startYear
+  let pm = startMonth
+  for (let i = 0; i < rollingMonths; i++) {
+    targetMonths.push({ year: py, month: pm })
+    pm++
+    if (pm > 12) { pm = 1; py++ }
+  }
+  const rollLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeysForMonths(targetMonths))
+  if (rollLock) return lockedResponse(rollLock)
 
   // Create rolling plan
   const plan = await prisma.budgetPlan.create({
@@ -216,6 +232,18 @@ export async function PATCH(req: NextRequest) {
     where: { id: planId, organizationId: orgId, isRolling: true },
   })
   if (!plan) return NextResponse.json({ error: "Rolling plan not found" }, { status: 404 })
+
+  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). PATCH close/reopen
+  // mutates the rolling plan's status for a SPECIFIC year/month. Reject if
+  // that month's containing periods (year/quarter/month) are locked at the
+  // org level. NOTE: a "close" action transitions the rolling forecast
+  // month into actual state — this is conceptually an internal lock-by-
+  // rolling-status, separate from the org's `lockedPeriods`. We still
+  // gate on org-level locks because the action also creates/deletes
+  // forecast entries (rolling roll-forward / rollback), which are real
+  // mutations into the org's budget data.
+  const patchLock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
+  if (patchLock) return lockedResponse(patchLock)
 
   if (action === "reopen") {
     // Reopen: set month back to forecast

@@ -23,20 +23,24 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
 const { prismaMock } = vi.hoisted(() => ({
-  prismaMock: {},
+  prismaMock: {
+    organization: { findUnique: vi.fn() },
+    $transaction: vi.fn(),
+  },
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 // Stub ExcelJS so the route's `new ExcelJS.Workbook()` doesn't trip
-// on missing-file (the test never reaches that path; we don't get past
-// the file-size gate). Ensures the test fails CLEANLY on a regression
-// rather than mysteriously on missing module.
+// on missing-file (most tests never reach that path; they bail at the
+// file-size gate). Use a class so `new ExcelJS.Workbook()` is a valid
+// constructor — needed for the Turn LXIX lock test which reaches xlsx.load.
 vi.mock("exceljs", () => ({
   default: {
-    Workbook: vi.fn(() => ({
-      xlsx: { load: vi.fn() },
-    })),
+    Workbook: class MockWorkbook {
+      xlsx = { load: vi.fn().mockResolvedValue(undefined), getWorksheet: vi.fn() }
+      getWorksheet() { return null }
+    },
   },
 }))
 
@@ -101,6 +105,25 @@ describe("POST /api/budgeting/import-excel — auth-gate smoke (Turn LXIII)", ()
     expect(res.status).toBe(413)
     const body = (await res.json()) as { error?: string }
     expect(body.error).toMatch(/file too large/i)
+  })
+})
+
+describe("POST /api/budgeting/import-excel — Phase 4.2 period lock (Turn LXIX)", () => {
+  it("returns 423 when target year is locked + does NOT begin transaction", async () => {
+    await mockSession({ orgId: "org_lock_test", userId: "u1", role: "manager" })
+    prismaMock.organization.findUnique.mockResolvedValueOnce({
+      lockedPeriods: [{ period: "2026", lockedAt: "x", lockedBy: "y", reason: "FY26 close" }],
+    })
+    // Need a small file so rate-limit/oversized gates don't trip first
+    const req = makeUploadRequest({ fileSize: 100, fileName: "test.xlsx" })
+    // Note: separate org id from earlier rate-limit test to avoid bucket bleed
+    const res = await POST(req as unknown as Parameters<typeof POST>[0])
+    expect(res.status).toBe(423)
+    const body = (await res.json()) as { error?: string; lock?: { period: string } }
+    expect(body.error).toMatch(/Period locked/i)
+    expect(body.lock?.period).toBe("2026")
+    // Critical: 423 fires BEFORE the $transaction (no plan created)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 })
 

@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
+import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const syncActualsSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -57,6 +59,18 @@ export async function POST(req: NextRequest) {
 
   const { year, month } = currentBakuYearMonth()
   const currentDate = `${year}-${String(month).padStart(2, "0")}-01`
+
+  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). sync-actuals
+  // writes/updates actuals at the CURRENT month. Lock check covers
+  // both the plan's period (annual/quarterly/monthly) AND the current
+  // month's containing periods (year/quarter/month). Any matched lock
+  // rejects — we never want auto-sync to bleed into a closed period.
+  const periodsToCheck = Array.from(
+    new Set([derivePeriodKey(plan), ...containingPeriodKeys(year, month)]),
+  )
+  const syncLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
+  if (syncLock) return lockedResponse(syncLock)
+
   let synced = 0
 
   for (const line of lines) {

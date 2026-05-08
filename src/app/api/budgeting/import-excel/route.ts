@@ -12,6 +12,8 @@ import {
   HEADER_NON_RAW_MATERIAL_PREFIX_LOWER,
   HEADER_RAW_MATERIAL_PREFIX_LOWER,
 } from "@/lib/import/keywords"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
 
 // App Router handles body parsing via request.formData() — no Pages-era
 // `config = { api: { bodyParser: false } }` needed (deprecated in Next 16).
@@ -144,6 +146,22 @@ export async function POST(req: NextRequest) {
     await wb.xlsx.load(buffer as unknown as ExcelJS.Buffer)
 
     const year = parseInt(formData.get("year") as string) || 2026
+
+    // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). Excel import
+    // creates a NEW annual plan + writes 12 months of data into it, AND
+    // (Section 15 below, line ~985) destructively replaces the org's
+    // rolling forecast plans (deleteMany on existing rolling plans, lines
+    // and forecasts). Reject if the target year OR any month within it
+    // OR any quarter within it is locked. Year-level check is sufficient
+    // because the month/quarter checks all roll up to year ⊂ container.
+    const importMonths = Array.from({ length: 12 }, (_, i) => ({ year, month: i + 1 }))
+    const importLock = await findFirstActiveLockInPeriods(
+      prisma,
+      orgId,
+      containingPeriodKeysForMonths(importMonths),
+    )
+    if (importLock) return lockedResponse(importLock)
+
     const results: Record<string, number> = {}
     // Collect per-row skip/warning information so the UI can surface what was ignored.
     // Capped to avoid memory blowup on large workbooks with many malformed rows.

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
+import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 /**
  * POST /api/budgeting/snapshot-actuals
@@ -62,6 +64,26 @@ export async function POST(req: NextRequest) {
     const plans = planId
       ? await prisma.budgetPlan.findMany({ where: { id: planId, organizationId: orgId } })
       : await prisma.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] } } })
+
+    // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). snapshot-actuals
+    // writes actuals at `targetMonth` for each plan. Reject if either:
+    //   - any plan's period is locked (annual/quarterly/monthly), OR
+    //   - the target month's containing periods (year/quarter/month) match a lock.
+    // Conservative: if ANY plan's period or the targetMonth-containers are
+    // locked, skip the whole batch (atomic intent). targetMonth is "YYYY-MM"
+    // string — split to year/month for containingPeriodKeys.
+    const [tYearStr, tMonthStr] = targetMonth.split("-")
+    const tYear = Number(tYearStr)
+    const tMonth = Number(tMonthStr)
+    const planPeriodKeys = plans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
+      derivePeriodKey(p),
+    )
+    const monthContainerKeys = Number.isFinite(tYear) && Number.isFinite(tMonth)
+      ? containingPeriodKeys(tYear, tMonth)
+      : []
+    const periodsToCheck = Array.from(new Set([...planPeriodKeys, ...monthContainerKeys]))
+    const snapLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
+    if (snapLock) return lockedResponse(snapLock)
 
     let created = 0
     let skipped = 0

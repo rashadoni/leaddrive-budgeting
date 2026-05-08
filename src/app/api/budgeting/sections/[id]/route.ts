@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 /**
  * Phase 7.G Turn LXVIII follow-up — period-lock check helper.
@@ -11,6 +12,9 @@ import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-loc
  * cross-tenant guard: a section not in the caller's org returns null
  * (treated as "not locked" — but the subsequent updateMany/deleteMany
  * will also miss because of organizationId in WHERE).
+ *
+ * Phase 7.G Turn LXIX cleanup: `lockedResponse` migrated to shared
+ * `period-lock-http.ts` module.
  */
 async function findActiveLockForSection(orgId: string, sectionId: string) {
   const section = await prisma.budgetSection.findFirst({
@@ -25,21 +29,6 @@ async function findActiveLockForSection(orgId: string, sectionId: string) {
   if (!plan) return null
   const periodKey = derivePeriodKey(plan)
   return getActivePeriodLock(prisma, orgId, periodKey)
-}
-
-function lockedResponse(lock: { period: string; lockedAt: string; lockedBy: string; reason?: string }) {
-  return NextResponse.json(
-    {
-      error: "Period locked — mutations rejected",
-      lock: {
-        period: lock.period,
-        lockedAt: lock.lockedAt,
-        lockedBy: lock.lockedBy,
-        reason: lock.reason,
-      },
-    },
-    { status: 423 },
-  )
 }
 
 const updateSectionSchema = z.object({

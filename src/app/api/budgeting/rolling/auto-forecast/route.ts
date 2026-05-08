@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
 
 const autoForecastSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -62,6 +64,22 @@ export async function POST(req: NextRequest) {
     where: { planId, organizationId: orgId, status: "forecast" },
     orderBy: [{ year: "asc" }, { month: "asc" }],
   })
+
+  // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). auto-forecast
+  // upserts forecast entries into the forecastMonths array. Reject if
+  // the plan's period OR any forecast month's containing periods are
+  // locked. Plan's period is included even though rolling plans are
+  // monthly — locking the plan year would correctly block the auto-fill.
+  const planKey = derivePeriodKey(plan)
+  const monthKeys = containingPeriodKeysForMonths(
+    forecastMonths.map((m: { year: number; month: number }) => ({ year: m.year, month: m.month })),
+  )
+  const afLock = await findFirstActiveLockInPeriods(
+    prisma,
+    orgId,
+    Array.from(new Set([planKey, ...monthKeys])),
+  )
+  if (afLock) return lockedResponse(afLock)
 
   let created = 0
 
