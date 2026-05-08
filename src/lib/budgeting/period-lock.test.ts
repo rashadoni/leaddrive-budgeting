@@ -14,6 +14,7 @@ import {
   addPeriodLock,
   removePeriodLock,
   getActivePeriodLock,
+  derivePeriodKey,
   type LockedPeriod,
 } from "./period-lock"
 
@@ -157,6 +158,36 @@ describe("removePeriodLock — idempotent remove", () => {
     const result = removePeriodLock(input, "2026-Q1")
     expect(result).not.toBe(input)
     expect(input).toHaveLength(1) // unchanged
+  })
+})
+
+describe("derivePeriodKey — plan → period key (Turn LXVII follow-up)", () => {
+  it("annual periodType → 'YYYY'", () => {
+    expect(derivePeriodKey({ periodType: "annual", year: 2026 })).toBe("2026")
+  })
+
+  it("quarterly periodType → 'YYYY-QN'", () => {
+    expect(derivePeriodKey({ periodType: "quarterly", year: 2026, quarter: 3 })).toBe("2026-Q3")
+  })
+
+  it("monthly periodType → 'YYYY-MM' zero-padded", () => {
+    expect(derivePeriodKey({ periodType: "monthly", year: 2026, month: 3 })).toBe("2026-03")
+    expect(derivePeriodKey({ periodType: "monthly", year: 2026, month: 12 })).toBe("2026-12")
+  })
+
+  it("falls back to year when monthly missing month", () => {
+    expect(derivePeriodKey({ periodType: "monthly", year: 2026, month: null })).toBe("2026")
+    expect(derivePeriodKey({ periodType: "monthly", year: 2026 })).toBe("2026")
+  })
+
+  it("falls back to year when quarterly missing quarter", () => {
+    expect(derivePeriodKey({ periodType: "quarterly", year: 2026, quarter: null })).toBe("2026")
+    expect(derivePeriodKey({ periodType: "quarterly", year: 2026 })).toBe("2026")
+  })
+
+  it("falls back to year when periodType is null/unknown", () => {
+    expect(derivePeriodKey({ periodType: null, year: 2026 })).toBe("2026")
+    expect(derivePeriodKey({ periodType: "weekly", year: 2026 })).toBe("2026")
   })
 })
 

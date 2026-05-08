@@ -134,6 +134,37 @@ export function removePeriodLock(
 }
 
 /**
+ * Phase 7.G Turn LXVII follow-up (architect FAIL closure):
+ * Derive the canonical `period` key from a `BudgetPlan` row. Mutation
+ * routes use this to map a plan → its lock-relevant period before
+ * calling `getActivePeriodLock`. Extracted here (not inline at the
+ * route) so all ~6 mutation routes share one definition + a future
+ * format change (e.g. zero-pad month) is a 1-line edit instead of 6.
+ *
+ * Format contract (matches `parsePeriod` from `@/lib/risk/periods`):
+ *   - "annual"        → "YYYY"
+ *   - "quarterly"     → "YYYY-Q[1-4]"
+ *   - "monthly"       → "YYYY-MM" (zero-padded)
+ *   - any unknown     → "YYYY" fallback (defensive)
+ */
+export interface PlanPeriodInput {
+  periodType: string | null
+  year: number
+  month?: number | null
+  quarter?: number | null
+}
+
+export function derivePeriodKey(plan: PlanPeriodInput): string {
+  if (plan.periodType === "monthly" && plan.month) {
+    return `${plan.year}-${String(plan.month).padStart(2, "0")}`
+  }
+  if (plan.periodType === "quarterly" && plan.quarter) {
+    return `${plan.year}-Q${plan.quarter}`
+  }
+  return String(plan.year)
+}
+
+/**
  * Convenience: load Organization + parse locks + check + return the
  * lock record (or null). Used directly by route handlers as the
  * canonical enforcement entry point. Single Prisma read; no caching

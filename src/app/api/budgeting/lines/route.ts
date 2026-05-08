@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
-import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
@@ -130,12 +130,7 @@ export async function POST(req: NextRequest) {
   // level, reject the write with 423 Locked. CFO controls who can
   // mutate closed periods.
   if (plan) {
-    const periodKey =
-      plan.periodType === "monthly" && plan.month
-        ? `${plan.year}-${String(plan.month).padStart(2, "0")}`
-        : plan.periodType === "quarterly" && plan.quarter
-          ? `${plan.year}-Q${plan.quarter}`
-          : String(plan.year)
+    const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
     if (lock) {
       return NextResponse.json(
