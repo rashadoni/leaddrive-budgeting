@@ -237,3 +237,73 @@ describe("PATCH cancel — requester-only (or admin)", () => {
     expect(prismaMock.approvalRequest.update.mock.calls[0][0].data.status).toBe("cancelled")
   })
 })
+
+describe("PATCH — terminal-state idempotency (LXXI follow-up)", () => {
+  it("returns 409 on re-cancel of a cancelled request", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "viewer" })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      status: "cancelled",
+      requestType: "period_unlock",
+      proposedChange: { period: "2026-Q1" },
+      requestedBy: "u_requester",
+    })
+    const res = await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "cancel" },
+      }),
+      paramsFor("req1"),
+    )
+    expect(res.status).toBe(409)
+    expect(prismaMock.approvalRequest.update).not.toHaveBeenCalled()
+  })
+
+  it("returns 409 on approve of a previously-rejected request", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      status: "rejected",
+      requestType: "period_unlock",
+      proposedChange: { period: "2026-Q1" },
+      requestedBy: "u_requester",
+    })
+    const res = await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "approve" },
+      }),
+      paramsFor("req1"),
+    )
+    expect(res.status).toBe(409)
+  })
+})
+
+describe("PATCH approve period_unlock — race-on-stale-lock branch (LXXI follow-up)", () => {
+  it("approve succeeds + sets appliedAt even when lock vanished pre-flight (no audit, no org.update)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    // Org no longer has the requested period in its lockedPeriods (raced
+    // with direct DELETE or admin-manual removal). Apply path should
+    // still mark request approved + appliedAt to honor requester intent,
+    // but skip the org.update + audit since there's nothing to remove.
+    prismaMock.organization.findUnique.mockResolvedValue({
+      id: ORG_ID,
+      lockedPeriods: [{ period: "2026-Q4", lockedAt: "x", lockedBy: "y" }], // Q4 only, NOT the requested Q1
+    })
+    const res = await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "approve" },
+      }),
+      paramsFor("req1"),
+    )
+    expect(res.status).toBe(200)
+    const updateArg = prismaMock.approvalRequest.update.mock.calls[0][0]
+    expect(updateArg.data.status).toBe("approved")
+    expect(updateArg.data.appliedAt).toBeInstanceOf(Date) // intent satisfied
+    expect(prismaMock.organization.update).not.toHaveBeenCalled() // nothing to remove
+    expect(auditMock).not.toHaveBeenCalled() // no audit for no-op apply
+  })
+})

@@ -27,7 +27,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
+import { requireAuth, hasRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
@@ -43,7 +43,7 @@ import {
   type ApprovalRequestAction,
   type PeriodUnlockChange,
 } from "@/lib/budgeting/approval-request"
-import type { Prisma, ApprovalRequestType } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 
 const RATE_LIMIT = { name: "approval-requests-patch", max: 30, windowMs: 60_000 }
 
@@ -105,18 +105,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     )
   }
 
-  // Action-specific authorization:
+  // Action-specific authorization (LXXI follow-up: use already-resolved
+  // session.role with `hasRole` instead of re-running requireRole — saves
+  // 1 session lookup per PATCH).
   //   - approve / reject → manager+ (CFO-class action)
   //   - cancel → original requester OR admin (withdraw your own request,
   //     or admin sweep stale ones)
   if (action === "approve" || action === "reject") {
-    const adminCheck = await requireRole(req, "manager")
-    if (isAuthError(adminCheck)) return adminCheck
+    if (!hasRole(session.role, "manager")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
   } else if (action === "cancel") {
     const isRequester = request.requestedBy === session.userId
-    if (!isRequester) {
-      const adminCheck = await requireRole(req, "admin")
-      if (isAuthError(adminCheck)) return adminCheck
+    if (!isRequester && !hasRole(session.role, "admin")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
   }
 
@@ -128,7 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // `approvalRequestId` query param — Turn LXXII).
   let appliedAt: Date | null = null
   let auditStale = false
-  if (action === "approve" && request.requestType === ("period_unlock" satisfies ApprovalRequestType)) {
+  if (action === "approve" && request.requestType === "period_unlock") {
     const change = request.proposedChange as unknown as PeriodUnlockChange
     const org = await prisma.organization.findUnique({
       where: { id: session.orgId },
