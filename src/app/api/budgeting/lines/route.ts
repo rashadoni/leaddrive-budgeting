@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
@@ -132,20 +133,7 @@ export async function POST(req: NextRequest) {
   if (plan) {
     const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-    if (lock) {
-      return NextResponse.json(
-        {
-          error: "Period locked — mutations rejected",
-          lock: {
-            period: lock.period,
-            lockedAt: lock.lockedAt,
-            lockedBy: lock.lockedBy,
-            reason: lock.reason,
-          },
-        },
-        { status: 423 }, // RFC 4918 Locked
-      )
-    }
+    if (lock) return lockedResponse(lock)
   }
 
   if (Number(resolvedAmount) < 0) {

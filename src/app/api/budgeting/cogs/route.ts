@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -61,20 +62,7 @@ export async function POST(req: NextRequest) {
       ),
     )
     const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
-    if (lock) {
-      return NextResponse.json(
-        {
-          error: "Period locked — mutations rejected",
-          lock: {
-            period: lock.period,
-            lockedAt: lock.lockedAt,
-            lockedBy: lock.lockedBy,
-            reason: lock.reason,
-          },
-        },
-        { status: 423 },
-      )
-    }
+    if (lock) return lockedResponse(lock)
   }
 
   if (Array.isArray(body)) {

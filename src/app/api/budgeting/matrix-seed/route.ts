@@ -3,6 +3,8 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolvePatternForDept } from "@/lib/budgeting/cost-model-map"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const matrixSeedSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -99,6 +101,12 @@ export async function POST(req: NextRequest) {
 
   const plan = await prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+
+  // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard.
+  // matrix-seed creates dozens of budgetLine rows across the cartesian
+  // product of costTypes × departments + ~30 OpEx rows in one $transaction.
+  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  if (lock) return lockedResponse(lock)
 
   const [costTypes, departments] = await Promise.all([
     prisma.budgetCostType.findMany({ where: { organizationId: orgId, isActive: true }, orderBy: { sortOrder: "asc" } }),

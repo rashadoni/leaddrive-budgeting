@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const applyTemplatesSchema = z.object({
   templateIds: z.array(z.string().min(1).max(100)).min(1).max(100),
@@ -35,6 +37,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // Verify plan exists
   const plan = await prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+
+  // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard
+  // (apply-templates creates new budgetLine rows in the plan's period).
+  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  if (lock) return lockedResponse(lock)
 
   // Get templates
   const templates = await prisma.budgetDirectionTemplate.findMany({

@@ -4,6 +4,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { currentBakuYear } from "@/lib/risk/periods"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 import type { CashFlowEntry } from "@prisma/client"
 
 const createCashFlowSchema = z.object({
@@ -102,24 +103,10 @@ export async function POST(req: NextRequest) {
   // so any of those locked rejects the write. This differs from plan-derived
   // routes (which check ONE key derived from the plan's periodType). Single
   // Org read via the bulk helper.
-  const monthKey = `${year}-${String(month).padStart(2, "0")}`
-  const quarterKey = `${year}-Q${Math.ceil(month / 3)}`
-  const yearKey = String(year)
-  const lock = await findFirstActiveLockInPeriods(prisma, orgId, [monthKey, quarterKey, yearKey])
-  if (lock) {
-    return NextResponse.json(
-      {
-        error: "Period locked — mutations rejected",
-        lock: {
-          period: lock.period,
-          lockedAt: lock.lockedAt,
-          lockedBy: lock.lockedBy,
-          reason: lock.reason,
-        },
-      },
-      { status: 423 },
-    )
-  }
+  // Phase 7.G Turn LXIX cleanup: replaced inline year/quarter/month
+  // construction with the shared `containingPeriodKeys` helper.
+  const lock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
+  if (lock) return lockedResponse(lock)
 
   const entry = await prisma.cashFlowEntry.create({
     data: {

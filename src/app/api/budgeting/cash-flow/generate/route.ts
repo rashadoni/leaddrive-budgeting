@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import type { CashFlowEntry } from "@prisma/client"
 
 const generateSchema = z.object({
@@ -49,20 +50,7 @@ export async function POST(req: NextRequest) {
   )
   const periodKeysToCheck: string[] = Array.from(new Set([yearKey, ...planPeriodKeys]))
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, periodKeysToCheck)
-  if (lock) {
-    return NextResponse.json(
-      {
-        error: "Period locked — mutations rejected",
-        lock: {
-          period: lock.period,
-          lockedAt: lock.lockedAt,
-          lockedBy: lock.lockedBy,
-          reason: lock.reason,
-        },
-      },
-      { status: 423 },
-    )
-  }
+  if (lock) return lockedResponse(lock)
 
   // Clear old generated entries for this year before regenerating
   await prisma.cashFlowEntry.deleteMany({

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 // POST — create a new version of an existing plan
 export async function POST(
@@ -19,6 +21,12 @@ export async function POST(
     include: { lines: true },
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+
+  // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard
+  // (create-version writes snapshotData on the existing plan AND clones
+  // it as a new versioned plan, both into the period container).
+  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  if (lock) return lockedResponse(lock)
 
   // Snapshot current plan state
   const snapshot = {

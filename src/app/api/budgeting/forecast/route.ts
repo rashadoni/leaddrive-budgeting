@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const forecastEntrySchema = z.object({
   planId: z.string().min(1).max(100),
@@ -92,20 +93,7 @@ export async function POST(req: NextRequest) {
     ),
   )
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
-  if (lock) {
-    return NextResponse.json(
-      {
-        error: "Period locked — mutations rejected",
-        lock: {
-          period: lock.period,
-          lockedAt: lock.lockedAt,
-          lockedBy: lock.lockedBy,
-          reason: lock.reason,
-        },
-      },
-      { status: 423 },
-    )
-  }
+  if (lock) return lockedResponse(lock)
 
   const results = []
   for (const entry of entries) {

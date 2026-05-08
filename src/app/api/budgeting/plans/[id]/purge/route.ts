@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 /**
  * DELETE /api/budgeting/plans/[id]/purge
@@ -24,7 +26,7 @@ export async function DELETE(
 
   const plan = await prisma.budgetPlan.findFirst({
     where: { id, organizationId: orgId, deletedAt: { not: null } },
-    select: { id: true },
+    select: { id: true, periodType: true, year: true, month: true, quarter: true },
   })
   if (!plan) {
     return NextResponse.json(
@@ -32,6 +34,15 @@ export async function DELETE(
       { status: 404 },
     )
   }
+
+  // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure: purge DELETE is the
+  // most-destructive route in the budget API (12-table cascade including
+  // budgetActual + budgetLine for the plan's period). Period-lock gate
+  // prevents irreversible loss of audit-trail data on a closed period.
+  // Even though the plan is already soft-deleted, the actuals/lines beneath
+  // it are still part of the locked-period record set.
+  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  if (lock) return lockedResponse(lock)
 
   // Cascade-delete every child row before removing the plan itself.
   // Order matters only where foreign-key constraints would block (e.g. forecast

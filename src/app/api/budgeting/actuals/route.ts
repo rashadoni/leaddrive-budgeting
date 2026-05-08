@@ -5,6 +5,7 @@ import { prisma, logBudgetChange } from "@/lib/prisma"
 import { buildDeptFilter } from "@/lib/budgeting/department-access"
 import { processCurrencyFields } from "@/lib/budgeting/currency"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import type { Role } from "@/lib/permissions"
 
 const createActualSchema = z.object({
@@ -86,20 +87,7 @@ export async function POST(req: NextRequest) {
   if (plan) {
     const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-    if (lock) {
-      return NextResponse.json(
-        {
-          error: "Period locked — mutations rejected",
-          lock: {
-            period: lock.period,
-            lockedAt: lock.lockedAt,
-            lockedBy: lock.lockedBy,
-            reason: lock.reason,
-          },
-        },
-        { status: 423 },
-      )
-    }
+    if (lock) return lockedResponse(lock)
   }
 
   if (Number(resolvedAmount) < 0) {

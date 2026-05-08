@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const createSectionSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -64,20 +65,7 @@ export async function POST(req: NextRequest) {
   }
   const periodKey = derivePeriodKey(plan)
   const lock = await getActivePeriodLock(prisma, orgId, periodKey)
-  if (lock) {
-    return NextResponse.json(
-      {
-        error: "Period locked — mutations rejected",
-        lock: {
-          period: lock.period,
-          lockedAt: lock.lockedAt,
-          lockedBy: lock.lockedBy,
-          reason: lock.reason,
-        },
-      },
-      { status: 423 },
-    )
-  }
+  if (lock) return lockedResponse(lock)
 
   const section = await prisma.budgetSection.create({
     data: {
