@@ -20,6 +20,13 @@ model Organization {
   name      String
   slug      String   @unique
   settings  Json     @default("{}")
+  // Phase 7.G Turn LXVII (Phase 4.2 — period locking foundation).
+  // Shape: `Array<{ period: string; lockedAt: ISO-string; lockedBy: userId; reason?: string }>`.
+  // `period` matches the canonical format ("YYYY", "YYYY-Q[1-4]", "YYYY-MM").
+  // Mutations on locked periods MUST be rejected by `period-lock.ts:isPeriodLocked()`.
+  // Admin-only lock/unlock via Phase 4.2 admin UI (next slice).
+  // Default `[]` — no periods locked by default; opt-in per org.
+  lockedPeriods Json @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

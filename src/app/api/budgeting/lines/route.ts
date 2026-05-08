@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
@@ -122,6 +123,34 @@ export async function POST(req: NextRequest) {
   const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
   if (plan?.status === "approved") {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+  }
+
+  // Phase 7.G Turn LXVII (Phase 4.2 — period lock enforcement). If the
+  // plan's period (annual / quarterly / monthly) is locked at the org
+  // level, reject the write with 423 Locked. CFO controls who can
+  // mutate closed periods.
+  if (plan) {
+    const periodKey =
+      plan.periodType === "monthly" && plan.month
+        ? `${plan.year}-${String(plan.month).padStart(2, "0")}`
+        : plan.periodType === "quarterly" && plan.quarter
+          ? `${plan.year}-Q${plan.quarter}`
+          : String(plan.year)
+    const lock = await getActivePeriodLock(prisma, orgId, periodKey)
+    if (lock) {
+      return NextResponse.json(
+        {
+          error: "Period locked — mutations rejected",
+          lock: {
+            period: lock.period,
+            lockedAt: lock.lockedAt,
+            lockedBy: lock.lockedBy,
+            reason: lock.reason,
+          },
+        },
+        { status: 423 }, // RFC 4918 Locked
+      )
+    }
   }
 
   if (Number(resolvedAmount) < 0) {
