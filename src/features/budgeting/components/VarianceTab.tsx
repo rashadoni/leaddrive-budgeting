@@ -38,27 +38,16 @@ import {
 } from "lucide-react"
 import { useBudgetPlans, useBudgetAnalytics } from "@/lib/budgeting/hooks"
 import { fmtK } from "@/lib/budget-chart-theme"
-
-const VARIANCE_BAND_RED_PCT = 10
-const VARIANCE_BAND_AMBER_PCT = 5
-
-function varianceBand(absPct: number): "red" | "amber" | "green" {
-  if (absPct >= VARIANCE_BAND_RED_PCT) return "red"
-  if (absPct >= VARIANCE_BAND_AMBER_PCT) return "amber"
-  return "green"
-}
-
-const VARIANCE_BAND_CLASS: Record<"red" | "amber" | "green", string> = {
-  red: "border-l-4 border-l-red-500 bg-red-50 dark:bg-red-950/20",
-  amber: "border-l-4 border-l-amber-500 bg-amber-50 dark:bg-amber-950/20",
-  green: "border-l-4 border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/20",
-}
-
-const VARIANCE_BAND_TEXT: Record<"red" | "amber" | "green", string> = {
-  red: "text-red-700 dark:text-red-400",
-  amber: "text-amber-700 dark:text-amber-400",
-  green: "text-emerald-700 dark:text-emerald-400",
-}
+// Phase 7.G Turn LXIV (audit M3 closure) — band thresholds + class/text
+// maps moved to shared `src/lib/risk/status-bands.ts` (canonical source
+// of truth across VarianceTab + VarianceExplainerPanel + alert-rules +
+// matrix route).
+import {
+  varianceBand,
+  VARIANCE_BAND_THRESHOLDS,
+  VARIANCE_BAND_CLASS,
+  VARIANCE_BAND_TEXT,
+} from "@/lib/risk/status-bands"
 
 export function VarianceTab() {
   const t = useTranslations("budgeting")
@@ -102,7 +91,7 @@ export function VarianceTab() {
   })
 
   const overBudgetCount = byCategory.filter(
-    (r) => Math.abs(r.variancePct ?? 0) >= VARIANCE_BAND_RED_PCT,
+    (r) => Math.abs(r.variancePct ?? 0) >= VARIANCE_BAND_THRESHOLDS.red,
   ).length
   const totalPlanned = analytics?.totalPlanned ?? 0
   const totalActual = analytics?.totalActual ?? 0
@@ -229,7 +218,7 @@ export function VarianceTab() {
                 {overBudgetCount}
               </div>
               <div className="text-[10px] text-muted-foreground mt-1">
-                {t("varianceOverBudgetSub", { threshold: VARIANCE_BAND_RED_PCT })}
+                {t("varianceOverBudgetSub", { threshold: VARIANCE_BAND_THRESHOLDS.red })}
               </div>
             </div>
           </div>
