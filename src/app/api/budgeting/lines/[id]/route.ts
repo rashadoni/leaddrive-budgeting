@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+
+/**
+ * Phase 7.G Turn LXVIII follow-up — period-lock check helper for [id]
+ * PUT/DELETE handlers. Loads plan (with period fields) by id+org, derives
+ * the period key, and returns the lock record if active. The plan-load is
+ * also load-bearing for cross-tenant safety: an un-org'd plan returns null
+ * (no lock found, but the calling handler should also re-verify the line
+ * row belongs to the org via its own organizationId filter).
+ */
+async function findActiveLockForPlan(orgId: string, planId: string) {
+  const plan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId },
+    select: { periodType: true, year: true, month: true, quarter: true },
+  })
+  if (!plan) return null
+  const periodKey = derivePeriodKey(plan)
+  return getActivePeriodLock(prisma, orgId, periodKey)
+}
+
+function lockedResponse(lock: { period: string; lockedAt: string; lockedBy: string; reason?: string }) {
+  return NextResponse.json(
+    {
+      error: "Period locked — mutations rejected",
+      lock: {
+        period: lock.period,
+        lockedAt: lock.lockedAt,
+        lockedBy: lock.lockedBy,
+        reason: lock.reason,
+      },
+    },
+    { status: 423 },
+  )
+}
 
 const updateLineSchema = z.object({
   category: z.string().min(1).max(500).optional(),
@@ -51,6 +85,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (plan?.status === "approved") {
       return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
     }
+    const lock = await findActiveLockForPlan(orgId, line.planId)
+    if (lock) return lockedResponse(lock)
   }
 
   if (plannedAmount !== undefined && Number(plannedAmount) < 0) {
@@ -111,6 +147,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (plan?.status === "approved") {
       return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
     }
+    const lock = await findActiveLockForPlan(orgId, lineToDelete.planId)
+    if (lock) return lockedResponse(lock)
   }
 
   await prisma.budgetLine.deleteMany({ where: { id, organizationId: orgId } })

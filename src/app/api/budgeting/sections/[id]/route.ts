@@ -2,6 +2,45 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+
+/**
+ * Phase 7.G Turn LXVIII follow-up — period-lock check helper.
+ * Resolves section → plan → periodKey → lock check. Returns the lock
+ * record (or null). The section load is also load-bearing as the
+ * cross-tenant guard: a section not in the caller's org returns null
+ * (treated as "not locked" — but the subsequent updateMany/deleteMany
+ * will also miss because of organizationId in WHERE).
+ */
+async function findActiveLockForSection(orgId: string, sectionId: string) {
+  const section = await prisma.budgetSection.findFirst({
+    where: { id: sectionId, organizationId: orgId },
+    select: { planId: true },
+  })
+  if (!section) return null
+  const plan = await prisma.budgetPlan.findFirst({
+    where: { id: section.planId, organizationId: orgId },
+    select: { periodType: true, year: true, month: true, quarter: true },
+  })
+  if (!plan) return null
+  const periodKey = derivePeriodKey(plan)
+  return getActivePeriodLock(prisma, orgId, periodKey)
+}
+
+function lockedResponse(lock: { period: string; lockedAt: string; lockedBy: string; reason?: string }) {
+  return NextResponse.json(
+    {
+      error: "Period locked — mutations rejected",
+      lock: {
+        period: lock.period,
+        lockedAt: lock.lockedAt,
+        lockedBy: lock.lockedBy,
+        reason: lock.reason,
+      },
+    },
+    { status: 423 },
+  )
+}
 
 const updateSectionSchema = z.object({
   name: z.string().min(1).max(500).optional(),
@@ -36,6 +75,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { name, sectionType, sortOrder } = data
 
+  // Phase 7.G Turn LXVIII follow-up — period-lock guard.
+  const lock = await findActiveLockForSection(orgId, id)
+  if (lock) return lockedResponse(lock)
+
   const result = await prisma.budgetSection.updateMany({
     where: { id, organizationId: orgId },
     data: {
@@ -58,6 +101,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { orgId } = auth
 
   const { id } = await params
+
+  // Phase 7.G Turn LXVIII follow-up — period-lock guard.
+  const lock = await findActiveLockForSection(orgId, id)
+  if (lock) return lockedResponse(lock)
+
   await prisma.budgetSection.deleteMany({ where: { id, organizationId: orgId } })
   return NextResponse.json({ success: true, data: null })
 }
