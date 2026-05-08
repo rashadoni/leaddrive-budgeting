@@ -14,6 +14,7 @@ import {
   addPeriodLock,
   removePeriodLock,
   getActivePeriodLock,
+  findFirstActiveLockInPeriods,
   derivePeriodKey,
   type LockedPeriod,
 } from "./period-lock"
@@ -230,6 +231,70 @@ describe("getActivePeriodLock — Prisma integration", () => {
       typeof getActivePeriodLock
     >[0]
     const result = await getActivePeriodLock(prismaMock, "org_demo", "2026-Q1")
+    expect(result).toBeNull()
+  })
+})
+
+describe("findFirstActiveLockInPeriods — multi-period bulk variant (Turn LXVIII)", () => {
+  it("returns null on empty periods array (no Prisma read)", async () => {
+    const findUnique = vi.fn()
+    const prismaMock = { organization: { findUnique } } as unknown as Parameters<
+      typeof findFirstActiveLockInPeriods
+    >[0]
+    const result = await findFirstActiveLockInPeriods(prismaMock, "org_demo", [])
+    expect(result).toBeNull()
+    expect(findUnique).not.toHaveBeenCalled()
+  })
+
+  it("returns lock for first matching period (in input order)", async () => {
+    const lockQ2: LockedPeriod = { ...FIXTURE, period: "2026-Q2" }
+    const findUnique = vi.fn().mockResolvedValue({ lockedPeriods: [FIXTURE, lockQ2] })
+    const prismaMock = { organization: { findUnique } } as unknown as Parameters<
+      typeof findFirstActiveLockInPeriods
+    >[0]
+    const result = await findFirstActiveLockInPeriods(prismaMock, "org_demo", [
+      "2026-Q3",
+      "2026-Q1",
+      "2026-Q2",
+    ])
+    expect(result).toEqual(FIXTURE) // Q1 matches before Q2 in input order
+  })
+
+  it("returns null when none of N periods is locked", async () => {
+    const findUnique = vi.fn().mockResolvedValue({ lockedPeriods: [FIXTURE] })
+    const prismaMock = { organization: { findUnique } } as unknown as Parameters<
+      typeof findFirstActiveLockInPeriods
+    >[0]
+    const result = await findFirstActiveLockInPeriods(prismaMock, "org_demo", [
+      "2026-Q2",
+      "2026-Q3",
+      "2026-Q4",
+    ])
+    expect(result).toBeNull()
+  })
+
+  it("uses SINGLE Prisma read regardless of N periods (perf contract)", async () => {
+    const findUnique = vi.fn().mockResolvedValue({ lockedPeriods: [FIXTURE] })
+    const prismaMock = { organization: { findUnique } } as unknown as Parameters<
+      typeof findFirstActiveLockInPeriods
+    >[0]
+    await findFirstActiveLockInPeriods(prismaMock, "org_demo", [
+      "2026-Q1",
+      "2026-Q2",
+      "2026-Q3",
+      "2026-Q4",
+      "2026-01",
+      "2026-02",
+    ])
+    expect(findUnique).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns null when org missing (cross-tenant safe)", async () => {
+    const findUnique = vi.fn().mockResolvedValue(null)
+    const prismaMock = { organization: { findUnique } } as unknown as Parameters<
+      typeof findFirstActiveLockInPeriods
+    >[0]
+    const result = await findFirstActiveLockInPeriods(prismaMock, "org_evil", ["2026-Q1"])
     expect(result).toBeNull()
   })
 })

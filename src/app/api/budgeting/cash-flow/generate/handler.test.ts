@@ -25,6 +25,7 @@ const { prismaMock } = vi.hoisted(() => ({
     },
     budgetPlan: { findMany: vi.fn() },
     budgetLine: { findMany: vi.fn() },
+    organization: { findUnique: vi.fn() },
   },
 }))
 
@@ -46,6 +47,7 @@ beforeEach(() => {
   prismaMock.cashFlowAlert.create.mockReset()
   prismaMock.budgetPlan.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])
+  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
 })
 
 describe("POST /api/budgeting/cash-flow/generate — gates", () => {
@@ -132,5 +134,48 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     expect(planArg.where.organizationId).toBe(ORG_ID)
     expect(planArg.where.year).toBe(2025)
     expect(planArg.where.isRolling).toBe(false)
+  })
+})
+
+describe("POST /api/budgeting/cash-flow/generate — Phase 4.2 period lock (Turn LXVIII)", () => {
+  it("returns 423 Locked when year-level lock is set + DOES NOT delete entries", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [
+        { period: "2025", lockedAt: "2026-01-01T00:00:00Z", lockedBy: "u_admin", reason: "FY25 close" },
+      ],
+    })
+    const res = await POST(
+      makeRequest("/api/budgeting/cash-flow/generate", {
+        method: "POST",
+        json: { year: 2025 },
+      }),
+    )
+    expect(res.status).toBe(423)
+    const body = await res.json()
+    expect(body.error).toMatch(/Period locked/i)
+    expect(body.lock.period).toBe("2025")
+    // Critical: 423 fires BEFORE deleteMany — destructive op MUST NOT leak
+    expect(prismaMock.cashFlowEntry.deleteMany).not.toHaveBeenCalled()
+  })
+
+  it("returns 423 Locked when a plan's quarter within the year is locked", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findMany.mockResolvedValue([
+      { id: "p1", periodType: "quarterly", year: 2025, month: null, quarter: 1, isRolling: false },
+    ])
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [
+        { period: "2025-Q1", lockedAt: "2025-04-01T00:00:00Z", lockedBy: "u_admin" },
+      ],
+    })
+    const res = await POST(
+      makeRequest("/api/budgeting/cash-flow/generate", {
+        method: "POST",
+        json: { year: 2025 },
+      }),
+    )
+    expect(res.status).toBe(423)
+    expect(prismaMock.cashFlowEntry.deleteMany).not.toHaveBeenCalled()
   })
 })

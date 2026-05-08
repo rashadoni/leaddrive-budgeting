@@ -4,6 +4,7 @@ import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { buildDeptFilter } from "@/lib/budgeting/department-access"
 import { processCurrencyFields } from "@/lib/budgeting/currency"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import type { Role } from "@/lib/permissions"
 
 const createActualSchema = z.object({
@@ -77,6 +78,28 @@ export async function POST(req: NextRequest) {
   const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
   if (plan?.status === "approved") {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+  }
+
+  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Reject mutations on
+  // budget-actual entries when the plan's period is locked at the org
+  // level (CFO closed-period control). RFC 4918 423 Locked.
+  if (plan) {
+    const periodKey = derivePeriodKey(plan)
+    const lock = await getActivePeriodLock(prisma, orgId, periodKey)
+    if (lock) {
+      return NextResponse.json(
+        {
+          error: "Period locked — mutations rejected",
+          lock: {
+            period: lock.period,
+            lockedAt: lock.lockedAt,
+            lockedBy: lock.lockedBy,
+            reason: lock.reason,
+          },
+        },
+        { status: 423 },
+      )
+    }
   }
 
   if (Number(resolvedAmount) < 0) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
+import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 
 const forecastEntrySchema = z.object({
   planId: z.string().min(1).max(100),
@@ -69,13 +70,41 @@ export async function POST(req: NextRequest) {
   }
   const ownedPlans = await prisma.budgetPlan.findMany({
     where: { id: { in: uniquePlanIds }, organizationId: orgId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, periodType: true, year: true, month: true, quarter: true },
   })
   if (ownedPlans.length !== uniquePlanIds.length) {
     return NextResponse.json({ error: "One or more plans not found in this organization" }, { status: 404 })
   }
   if (ownedPlans.some((p: { status: string }) => p.status === "approved")) {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
+  }
+
+  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Period-lock guard for bulk
+  // forecast upsert. If ANY of the unique plans' periods is locked, reject
+  // the entire batch (atomic semantics: the user's intent is a single bulk
+  // submit, partial commits would surprise). Single Org read, N period
+  // matches client-side via findFirstActiveLockInPeriods.
+  const uniquePeriodKeys: string[] = Array.from(
+    new Set(
+      ownedPlans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
+        derivePeriodKey(p),
+      ),
+    ),
+  )
+  const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
+  if (lock) {
+    return NextResponse.json(
+      {
+        error: "Period locked — mutations rejected",
+        lock: {
+          period: lock.period,
+          lockedAt: lock.lockedAt,
+          lockedBy: lock.lockedBy,
+          reason: lock.reason,
+        },
+      },
+      { status: 423 },
+    )
   }
 
   const results = []

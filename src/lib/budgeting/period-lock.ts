@@ -183,3 +183,35 @@ export async function getActivePeriodLock(
   const locks = parseLockedPeriods(org.lockedPeriods)
   return findLockForPeriod(locks, period)
 }
+
+/**
+ * Multi-period variant — checks N period keys against the org's lock list
+ * with a SINGLE Prisma read. Use when a route mutates multiple plans in
+ * one request (`forecast` bulk upsert across N planIds, `cash-flow/generate`
+ * regen across all plans for a year). Returns the FIRST matching lock or
+ * null. Order of `periods` defines precedence on tie. Empty array → null.
+ *
+ * Why single-read (not N getActivePeriodLock calls): Org lock list is
+ * small (≤34 realistic entries) so client-side scan is O(N×L) where
+ * N = caller's periods and L = lock-list length — both small, dominated
+ * by the single-row Prisma read latency. N separate findUnique calls
+ * would amplify network round-trips for no algorithmic benefit.
+ */
+export async function findFirstActiveLockInPeriods(
+  prisma: Pick<PrismaClient, "organization">,
+  orgId: string,
+  periods: readonly string[],
+): Promise<LockedPeriod | null> {
+  if (periods.length === 0) return null
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { lockedPeriods: true },
+  })
+  if (!org) return null
+  const locks = parseLockedPeriods(org.lockedPeriods)
+  for (const period of periods) {
+    const lock = findLockForPeriod(locks, period)
+    if (lock) return lock
+  }
+  return null
+}

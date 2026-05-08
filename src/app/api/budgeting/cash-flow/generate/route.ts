@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import type { CashFlowEntry } from "@prisma/client"
 
 const generateSchema = z.object({
@@ -33,17 +34,42 @@ export async function POST(req: NextRequest) {
 
   const { year, planId } = data
 
+  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Period-lock guard. cash-flow
+  // regeneration is destructive (deleteMany before recreate) and spans the
+  // ENTIRE year + every plan within it. Reject if the year itself is locked
+  // OR if any plan's narrower period (Q/M) is locked — both flavours block
+  // since regen would silently overwrite locked-period entries.
+  // Load plans BEFORE deleteMany so a 423 doesn't leak an incomplete state.
+  const plans = await prisma.budgetPlan.findMany({
+    where: { organizationId: orgId, year, isRolling: false },
+  })
+  const yearKey = String(year)
+  const planPeriodKeys: string[] = plans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
+    derivePeriodKey(p),
+  )
+  const periodKeysToCheck: string[] = Array.from(new Set([yearKey, ...planPeriodKeys]))
+  const lock = await findFirstActiveLockInPeriods(prisma, orgId, periodKeysToCheck)
+  if (lock) {
+    return NextResponse.json(
+      {
+        error: "Period locked — mutations rejected",
+        lock: {
+          period: lock.period,
+          lockedAt: lock.lockedAt,
+          lockedBy: lock.lockedBy,
+          reason: lock.reason,
+        },
+      },
+      { status: 423 },
+    )
+  }
+
   // Clear old generated entries for this year before regenerating
   await prisma.cashFlowEntry.deleteMany({
     where: { organizationId: orgId, year, source: "budget_line" },
   })
 
   let created = 0
-
-  // 1. From ALL budget plans for this year (not just one plan)
-  const plans = await prisma.budgetPlan.findMany({
-    where: { organizationId: orgId, year, isRolling: false },
-  })
 
   for (const plan of plans) {
     const lines = await prisma.budgetLine.findMany({

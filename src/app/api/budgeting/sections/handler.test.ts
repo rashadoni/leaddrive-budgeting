@@ -14,6 +14,12 @@ const { prismaMock } = vi.hoisted(() => ({
       findMany: vi.fn(),
       create: vi.fn(),
     },
+    budgetPlan: {
+      findFirst: vi.fn(),
+    },
+    organization: {
+      findUnique: vi.fn(),
+    },
   },
 }))
 
@@ -28,6 +34,14 @@ const ORG_ID = "org_demo"
 beforeEach(() => {
   prismaMock.budgetSection.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetSection.create.mockReset()
+  prismaMock.budgetPlan.findFirst.mockReset().mockResolvedValue({
+    id: "p1",
+    periodType: "annual",
+    year: 2026,
+    month: null,
+    quarter: null,
+  })
+  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
 })
 
 describe("GET /api/budgeting/sections", () => {
@@ -92,5 +106,37 @@ describe("POST /api/budgeting/sections — role gate (Turn LXII M2)", () => {
     const createArg = prismaMock.budgetSection.create.mock.calls[0][0]
     expect(createArg.data.organizationId).toBe(ORG_ID)
     expect(createArg.data.sectionType).toBe("expense") // default applied
+  })
+})
+
+describe("POST /api/budgeting/sections — Phase 4.2 period lock (Turn LXVIII)", () => {
+  const validBody = { planId: "p1", name: "Revenue" }
+
+  it("returns 404 when plan not found in org (cross-tenant guard)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.budgetPlan.findFirst.mockResolvedValue(null)
+    const res = await POST(
+      makeRequest("/api/budgeting/sections", { method: "POST", json: validBody }),
+    )
+    expect(res.status).toBe(404)
+    expect(prismaMock.budgetSection.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 423 Locked when plan period is locked", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [
+        { period: "2026", lockedAt: "2027-01-01T00:00:00Z", lockedBy: "u_admin", reason: "FY26 close" },
+      ],
+    })
+    const res = await POST(
+      makeRequest("/api/budgeting/sections", { method: "POST", json: validBody }),
+    )
+    expect(res.status).toBe(423)
+    const body = await res.json()
+    expect(body.error).toMatch(/Period locked/i)
+    expect(body.lock.period).toBe("2026")
+    expect(body.lock.reason).toBe("FY26 close")
+    expect(prismaMock.budgetSection.create).not.toHaveBeenCalled()
   })
 })

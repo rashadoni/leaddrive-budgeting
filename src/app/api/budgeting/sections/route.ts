@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 
 const createSectionSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -49,6 +50,34 @@ export async function POST(req: NextRequest) {
   }
 
   const { planId, name, sectionType, sortOrder } = data
+
+  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Verify plan belongs to caller's
+  // org (cross-tenant guard) and check period-lock. Org-membership check is
+  // load-bearing here — without it a viewer-promoted-to-manager could touch
+  // other orgs' sections via guessable planId.
+  const plan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId },
+    select: { id: true, periodType: true, year: true, month: true, quarter: true },
+  })
+  if (!plan) {
+    return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+  }
+  const periodKey = derivePeriodKey(plan)
+  const lock = await getActivePeriodLock(prisma, orgId, periodKey)
+  if (lock) {
+    return NextResponse.json(
+      {
+        error: "Period locked — mutations rejected",
+        lock: {
+          period: lock.period,
+          lockedAt: lock.lockedAt,
+          lockedBy: lock.lockedBy,
+          reason: lock.reason,
+        },
+      },
+      { status: 423 },
+    )
+  }
 
   const section = await prisma.budgetSection.create({
     data: {
