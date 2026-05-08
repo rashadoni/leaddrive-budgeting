@@ -38,6 +38,7 @@ model Organization {
   expenseForecasts       ExpenseForecast[]
   budgetDeptOwners       BudgetDepartmentOwner[]
   budgetApprovalComments BudgetApprovalComment[]
+  approvalRequests       ApprovalRequest[]
   currencyRateHistory    CurrencyRateHistory[]
   accountingIntegrations AccountingIntegration[]
   accountingImports      AccountingImport[]
@@ -411,6 +412,7 @@ model BudgetPlan {
   sections              BudgetSection[]
   forecastEntries       BudgetForecastEntry[]
   approvalComments      BudgetApprovalComment[]
+  approvalRequests      ApprovalRequest[]
   accountingImports     AccountingImport[]
   rollingForecastMonths RollingForecastMonth[]
   salesBudgetLines      SalesBudgetLine[]
@@ -675,6 +677,82 @@ model BudgetApprovalComment {
   @@index([planId, createdAt])
   @@index([organizationId])
   @@map("budget_approval_comments")
+}
+
+// ═══════════════════════════════════════════════════
+// PHASE 4.3 — APPROVAL WORKFLOW (Turn LXXI)
+// ═══════════════════════════════════════════════════
+// CFO change-request flow: when a manager wants to mutate something
+// they can't (plan approved → 403, period locked → 423, threshold
+// exceeded), they file an ApprovalRequest. An admin/CFO reviews and
+// approves (apply the change) or rejects (no change).
+//
+// Distinct from `BudgetApprovalComment` (which lives on plan-level
+// status transitions: draft → submitted → approved). ApprovalRequest
+// is per-mutation, fine-grained, and outlives the plan's status state.
+//
+// `proposedChange` is a Json snapshot of what the requester wants to
+// happen. Shape varies by `requestType`:
+//   - budget_line_create → full BudgetLine create payload
+//   - budget_line_update → { fieldChanges: { field: { from, to } } }
+//   - budget_line_delete → snapshot of the row pre-delete
+//   - budget_actual_create / update / delete → mirror BudgetLine shapes
+//   - period_unlock → { period: "YYYY|YYYY-Q[1-4]|YYYY-MM" }
+// Apply logic at PATCH-approve time materializes the change. Schema-Json
+// over relational columns chosen because the per-request shape varies
+// and admin only ever READS (not queries) the proposedChange.
+
+enum ApprovalRequestStatus {
+  pending          // initial state on POST
+  approved         // CFO approved + change applied
+  rejected         // CFO rejected (no change)
+  cancelled        // requester withdrew before review
+}
+
+enum ApprovalRequestType {
+  budget_line_create
+  budget_line_update
+  budget_line_delete
+  budget_actual_create
+  budget_actual_update
+  budget_actual_delete
+  period_unlock      // request to remove a period lock for one specific change
+}
+
+model ApprovalRequest {
+  id              String                  @id @default(cuid())
+  organizationId  String
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // planId is optional — period_unlock requests aren't plan-scoped.
+  planId          String?
+  plan            BudgetPlan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  requestType     ApprovalRequestType
+  // For update/delete requests: existing entity id. null for create / period_unlock.
+  targetType      String?                 // "BudgetLine" | "BudgetActual" | "Period"
+  targetId        String?
+  // What the requester wants to happen. Shape varies per requestType (see comment above).
+  proposedChange  Json
+  reason          String?                 // ≤500 chars
+  status          ApprovalRequestStatus   @default(pending)
+
+  // Request metadata
+  requestedBy     String                  // userId
+  requestedAt     DateTime                @default(now())
+
+  // Review metadata (set when admin approves/rejects)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  reviewComment   String?
+
+  // For approve path: when the change was actually materialized.
+  // Distinct from reviewedAt because v1 applies inline; future async
+  // queue would split decision-time from apply-time.
+  appliedAt       DateTime?
+
+  @@index([organizationId, status, requestedAt])
+  @@index([planId])
+  @@index([requestedBy])
+  @@map("approval_requests")
 }
 
 // ═══════════════════════════════════════════════════
