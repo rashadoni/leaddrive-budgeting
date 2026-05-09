@@ -43,6 +43,7 @@ import {
   type ApprovalRequestAction,
   type PeriodUnlockChange,
 } from "@/lib/budgeting/approval-request"
+import { notifyApprovalReviewed } from "@/lib/budgeting/approval-notifications"
 import type { Prisma } from "@prisma/client"
 
 const RATE_LIMIT = { name: "approval-requests-patch", max: 30, windowMs: 60_000 }
@@ -192,6 +193,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       appliedAt,
     },
   })
+
+  // Phase 7.G Turn LXXIII (Phase 4.3 sub-3 — email notifications).
+  // Approve / reject → notify the original requester. Cancel intentionally
+  // emits NO email — requester withdrew their own intent, no audience.
+  // Best-effort fire-and-forget; failures don't reverse the state change.
+  if (action === "approve" || action === "reject") {
+    void notifyApprovalReviewed(prisma, {
+      event: action === "approve" ? "approved" : "rejected",
+      requesterUserId: request.requestedBy,
+      reviewerUserId: session.userId,
+      requestType: request.requestType,
+      reviewComment: parsed.comment ?? null,
+    }).catch(() => {})
+  }
 
   const responseBody: { request: typeof updated; auditStale?: boolean } = { request: updated }
   if (auditStale) responseBody.auditStale = true

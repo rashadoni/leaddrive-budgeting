@@ -31,6 +31,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { isValidProposedChange } from "@/lib/budgeting/approval-request"
+import { notifyApprovalCreated } from "@/lib/budgeting/approval-notifications"
 import type { Prisma } from "@prisma/client"
 
 const RATE_LIMIT = { name: "approval-requests-create", max: 30, windowMs: 60_000 }
@@ -163,6 +164,17 @@ export async function POST(req: NextRequest) {
       // status defaults to 'pending' via schema
     },
   })
+
+  // Phase 7.G Turn LXXIII (Phase 4.3 sub-3 — email notifications).
+  // Best-effort fire-and-forget; failures don't surface in the response
+  // (the request was created either way, audit trail is intact).
+  void notifyApprovalCreated(prisma, {
+    orgId: session.orgId,
+    requestType: parsed.requestType,
+    requesterUserId: session.userId,
+    requesterName: session.name || session.email || session.userId,
+    reason: parsed.reason ?? null,
+  }).catch(() => {})
 
   return NextResponse.json({ request: created }, { status: 201 })
 }
