@@ -5,6 +5,11 @@
  */
 
 import { prisma } from "@/lib/prisma"
+import {
+  deriveRoleFromCode,
+  isContraRevenueCode,
+  pnlSectionFromRole,
+} from "@/lib/budgeting/coa-role"
 
 export type Section =
   | "pnl-report"
@@ -73,16 +78,22 @@ async function computePL(orgId: string, planId: string) {
   }
 
   const rows = Array.from(byCode.values())
-  const matches = (prefix: string) => rows.filter((r) => r.code.startsWith(prefix))
 
-  const revGross = matches("601").concat(matches("611")).reduce((s, r) => s + r.total, 0)
-  const contra = matches("602").concat(matches("603")).reduce((s, r) => s + r.total, 0)
+  // Phase 7.G Turn LXXV follow-up (architect FAIL closure): use canonical
+  // `coa-role` helpers — single source of truth for prefix matching across
+  // all 5 consumers (import-excel, pnl, PLTab, budget-pnl-view, this).
+  // Architect Round-1 ⚠️: this file was the un-migrated 5th consumer in
+  // the inventory; closed inline this same turn.
+  const inSection = (target: "revenue" | "cogs" | "opex" | "belowEbitda") =>
+    rows.filter((r) => pnlSectionFromRole(deriveRoleFromCode(r.code)) === target)
+
+  const revRows = inSection("revenue")
+  const revGross = revRows.filter((r) => !isContraRevenueCode(r.code)).reduce((s, r) => s + r.total, 0)
+  const contra = revRows.filter((r) => isContraRevenueCode(r.code)).reduce((s, r) => s + r.total, 0)
   const netRevenue = revGross - contra
-  const cogs = matches("701").reduce((s, r) => s + r.total, 0)
-  const opex = matches("711").concat(matches("721")).reduce((s, r) => s + r.total, 0)
-  const belowEbitda = ["731", "741", "751", "761", "771", "801"]
-    .flatMap((p) => matches(p))
-    .reduce((s, r) => s + r.total, 0)
+  const cogs = inSection("cogs").reduce((s, r) => s + r.total, 0)
+  const opex = inSection("opex").reduce((s, r) => s + r.total, 0)
+  const belowEbitda = inSection("belowEbitda").reduce((s, r) => s + r.total, 0)
 
   const grossProfit = netRevenue - cogs
   const ebitda = grossProfit - opex
