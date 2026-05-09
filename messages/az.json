@@ -903,6 +903,13 @@
     "rollingRevenue": "Gəlir",
     "tabAnalytics": "Analitika",
     "versionDiffChangeCount": "{count} dəyişiklik",
+    "periodLockBadge": {
+      "locked": "{period} dövrü kilidlidir",
+      "reason": "Səbəb: {reason}",
+      "by": "Kilidləyib: {who}",
+      "at": "Kilidlənib: {when}",
+      "ariaLabel": "{period} dövrü kilidlidir — dəyişikliklər qadağandır"
+    },
     "approvalRequests": {
       "title": "Təsdiq sorğuları",
       "subtitle": "Bağlanmış dövrlər və ya təsdiqlənmiş planlar üçün dəyişiklik sorğularını nəzərdən keçirin və təsdiqləyin.",

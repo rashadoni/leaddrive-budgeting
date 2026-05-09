@@ -903,6 +903,13 @@
     "rollingRevenue": "Выручка",
     "tabAnalytics": "Аналитика",
     "versionDiffChangeCount": "{count} изменений",
+    "periodLockBadge": {
+      "locked": "Период {period} заблокирован",
+      "reason": "Причина: {reason}",
+      "by": "Заблокировал: {who}",
+      "at": "Заблокировано: {when}",
+      "ariaLabel": "Период {period} заблокирован — изменения запрещены"
+    },
     "approvalRequests": {
       "title": "Запросы на согласование",
       "subtitle": "Просмотр и согласование запросов на изменения в закрытых периодах или утверждённых планах.",

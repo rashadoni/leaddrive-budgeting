@@ -381,6 +381,12 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'approvalRequests.confirmReject': 'Reject this request? Requester will be notified.',
   'approvalRequests.errInsufficientRole': 'You don\'t have permission to perform this action.',
   'approvalRequests.errAlreadyReviewed': 'This request was already reviewed.',
+  // Phase 7.G Turn LXXIV — period-lock indicator badge.
+  'periodLockBadge.locked': 'Period {period} is locked',
+  'periodLockBadge.reason': 'Reason: {reason}',
+  'periodLockBadge.by': 'Locked by: {who}',
+  'periodLockBadge.at': 'Locked at: {when}',
+  'periodLockBadge.ariaLabel': 'Period {period} locked — mutations rejected',
 };
 
 /**

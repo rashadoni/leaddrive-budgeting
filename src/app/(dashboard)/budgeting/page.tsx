@@ -29,6 +29,7 @@ import { BudgetChartTooltip } from "@/components/budget-chart-tooltip"
 import { BudgetBarLabel } from "@/components/budget-bar-label"
 import { BudgetChartLegend } from "@/components/budget-chart-legend"
 import { AnimatedNumber, fmtManat } from "@/components/animated-number"
+import { PeriodLockBadge } from "@/features/budgeting/components/PeriodLockBadge"
 import {
   useBudgetPlans,
   useCreateBudgetPlan,
@@ -3863,16 +3864,23 @@ export default function BudgetingPage() {
           {plansLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
           ) : plans.length > 0 ? (
-            <select value={resolvedPlanId} onChange={e => {
-                setActivePlanId(e.target.value)
-                const selected = (plans as any[]).find(p => p.id === e.target.value)
-                if (selected?.isRolling) setActiveTab("rolling")
-              }}
-              className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[180px]">
-              {plans.map(p => (
-                <option key={p.id} value={p.id}>{p.name} — {periodLabel(p, t)}</option>
-              ))}
-            </select>
+            <>
+              <select value={resolvedPlanId} onChange={e => {
+                  setActivePlanId(e.target.value)
+                  const selected = (plans as any[]).find(p => p.id === e.target.value)
+                  if (selected?.isRolling) setActiveTab("rolling")
+                }}
+                className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[180px]">
+                {plans.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} — {periodLabel(p, t)}</option>
+                ))}
+              </select>
+              {/* Phase 7.G Turn LXXIV — Phase 4.2 indicator UI badge.
+                  Shows lock-icon + period + tooltip when the active plan's
+                  period is locked at the org level. Renders nothing if
+                  not locked (no layout shift). */}
+              <PeriodLockBadge plan={(plans as any[]).find(p => p.id === resolvedPlanId) ?? null} />
+            </>
           ) : null}
           {/* Turn 30: per-daughter-company drilldown selector. Org-wide default;
               level-1 sub-groups indented with — prefix; level-2 ops indented

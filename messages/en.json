@@ -903,6 +903,13 @@
     "rollingRevenue": "Revenue",
     "tabAnalytics": "Analytics",
     "versionDiffChangeCount": "{count} changes",
+    "periodLockBadge": {
+      "locked": "Period {period} is locked",
+      "reason": "Reason: {reason}",
+      "by": "Locked by: {who}",
+      "at": "Locked at: {when}",
+      "ariaLabel": "Period {period} locked — mutations rejected"
+    },
     "approvalRequests": {
       "title": "Approval Requests",
       "subtitle": "Review and approve change requests for closed periods or approved plans.",
