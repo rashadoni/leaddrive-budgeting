@@ -53,6 +53,7 @@ import {
 import { AnimatedNumber } from "@/components/animated-number"
 import { execPct } from "@/lib/budgeting/exec-pct"
 import { SECTION_TYPES } from "@/lib/budgeting/types"
+import { isContraRevenueCode } from "@/lib/budgeting/coa-role"
 // Additional lucide icons not in initial import block (caught by tsc).
 import { BarChart2, Settings2 } from "lucide-react"
 
@@ -197,10 +198,9 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   // rather than add to them. Without subtracting them here the Plan view shows
   // gross sales (18.4M) while the P&L Report shows net revenue (18.0M),
   // confusing finance reviewers.
-  const isContraRevenue = (r: typeof byCategory[number]) => {
-    const code = rowCode(r)
-    return code.startsWith("602") || code.startsWith("603")
-  }
+  // Phase 7.G Turn LXXV (Phase 5.1) — delegates to canonical
+  // `isContraRevenueCode` (single source of truth for prefix matching).
+  const isContraRevenue = (r: typeof byCategory[number]) => isContraRevenueCode(rowCode(r))
   const revGross = revRows.filter((r) => !isContraRevenue(r)).reduce((s, r) => s + r.planned, 0)
   const revContra = revRows.filter(isContraRevenue).reduce((s, r) => s + r.planned, 0)
   const totalRevenuePlanned = revGross - revContra

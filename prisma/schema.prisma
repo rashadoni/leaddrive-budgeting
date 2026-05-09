@@ -771,6 +771,16 @@ model ChartOfAccount {
   parentCode     String?      // "601-01" → parent of "601-01-02"
   accountType    String       // revenue | expense | cogs | asset | liability | equity
   category       String?      // sales | staff | utilities | services | depreciation
+  // Phase 7.G Turn LXXV (Phase 5.1 — ChartOfAccount.role refactor).
+  // Finer-grained P&L bucket than `accountType`; canonical source of truth
+  // for "which P&L line does this account hit". Replaces inline
+  // code.startsWith() prefix-matching scattered in import-excel + pnl
+  // routes. Per-org override-friendly (set explicitly via Settings UI in
+  // future Phase 5.1 sub-2; default derived from code via
+  // `deriveRoleFromCode` in `src/lib/budgeting/coa-role.ts`).
+  // Nullable for backwards-compat with existing rows (backfilled via
+  // migration `phase7g_turnlxxv_chartofaccount_role`).
+  role           CoARole?
   sortOrder      Int          @default(0)
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
@@ -1454,6 +1464,26 @@ model ImportStaging {
 // `context` is a defensive bag for incident-response forensics: which
 // API route the event originated from, a hashed IP fragment if present.
 // Optional + nullable so non-HTTP call-sites (CLI scripts) can omit it.
+
+// ═══════════════════════════════════════════════════
+// CHART OF ACCOUNTS — ROLE ENUM
+// Phase 7.G Turn LXXV (Phase 5.1 — ChartOfAccount.role refactor).
+// Finer-grained P&L bucket than the legacy `accountType` column.
+// `unknown` covers balance-sheet codes (asset/liability/equity) and
+// any code that doesn't match the AAC-specific prefix rules — the
+// fallback for callers that need to filter "P&L-only" accounts.
+// ═══════════════════════════════════════════════════
+enum CoARole {
+  revenue        // 601, 611 (top-line) + 602, 603 (contra-revenue, sign-flip at consumer)
+  cogs           // 701
+  opex           // 711, 721
+  finance        // 731 (interest, finance costs)
+  tax_costs      // 741 (pre-EBIT tax-classed costs)
+  non_operating  // 751, 761, 771
+  tax            // 801 (corporate income tax)
+  unknown        // balance-sheet (1xx-5xx) or unrecognized
+}
+
 enum AuditAction {
   company_role_change            // Phase 7.E scoring toggle
   budget_plan_create

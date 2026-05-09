@@ -12,6 +12,7 @@ import {
 import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info } from "lucide-react"
 import { isDaCode } from "@/lib/budgeting/da-codes"
 import { isLumpyMonthly, sumPerRowSmoothed } from "@/lib/budgeting/margin-smoothing"
+import { deriveRoleFromCode, pnlSectionFromRole } from "@/lib/budgeting/coa-role"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -127,22 +128,23 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const grossProfit = totalRevenue - totalCogs
   const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
 
-  // Operating expenses from rows — split by type for EBITDA calculation
+  // Operating expenses from rows — split by type for EBITDA calculation.
+  // Phase 7.G Turn LXXV (Phase 5.1) — uses canonical `pnlSectionFromRole`
+  // (single source of truth for prefix matching). OpEx = section "opex"
+  // OR unmatched expense rows (legacy fallback for non-SAP-prefix codes).
+  // Below-EBITDA = section "belowEbitda" (finance/tax_costs/non_operating/tax).
+  // Depreciation row filter still uses startsWith("731") because 731
+  // includes both "depreciation" and other finance items — finer-grained
+  // depreciation/amortization lookup uses the dedicated `isDaCode` helper.
   const allExpenseRows = rows.filter((r: PnlRow) => r.accountType === "expense" && r.total !== 0)
-  // OpEx for EBITDA: only sales (711) + admin (721) expenses — NOT depreciation, finance, tax
   const opexRows = allExpenseRows.filter((r: PnlRow) => {
-    const code = r.accountCode
-    return code.startsWith("711") || code.startsWith("721") ||
-      (!code.startsWith("731") && !code.startsWith("741") && !code.startsWith("751") &&
-       !code.startsWith("761") && !code.startsWith("771") && !code.startsWith("801"))
+    const section = pnlSectionFromRole(deriveRoleFromCode(r.accountCode))
+    return section === "opex" || section === null // legacy unmatched falls into opex
   })
-  // Below-EBITDA items: depreciation, finance costs, extraordinary, tax
   const depreciationRows = allExpenseRows.filter((r: PnlRow) => r.accountCode.startsWith("731"))
-  const belowEbitdaRows = allExpenseRows.filter((r: PnlRow) => {
-    const code = r.accountCode
-    return code.startsWith("731") || code.startsWith("741") || code.startsWith("751") ||
-      code.startsWith("761") || code.startsWith("771") || code.startsWith("801")
-  })
+  const belowEbitdaRows = allExpenseRows.filter((r: PnlRow) =>
+    pnlSectionFromRole(deriveRoleFromCode(r.accountCode)) === "belowEbitda",
+  )
 
   // Turn 38 sub-turn 4: D&A is buried inside OpEx (721-11) and COGS
   // (703-11). True EBITDA must add D&A back. Without this the chart

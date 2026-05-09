@@ -12,6 +12,7 @@ import {
   HEADER_NON_RAW_MATERIAL_PREFIX_LOWER,
   HEADER_RAW_MATERIAL_PREFIX_LOWER,
 } from "@/lib/import/keywords"
+import { deriveRoleFromCode } from "@/lib/budgeting/coa-role"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
 
@@ -44,11 +45,16 @@ function getNumericValue(cell: ExcelJS.Cell): number {
   return 0
 }
 
+// Phase 7.G Turn LXXV (Phase 5.1) — delegates to canonical
+// `deriveRoleFromCode` (single source of truth for prefix matching).
+// Maps the finer 8-bucket role back to the legacy 3-bucket
+// `accountType` shape for backwards-compat with existing consumers.
+// New code reading ChartOfAccount.role should NOT go through this.
 function classifyAccount(code: string): string {
-  if (code.startsWith("601") || code.startsWith("611")) return "revenue"
-  if (code.startsWith("602") || code.startsWith("603")) return "revenue"
-  if (code.startsWith("701")) return "cogs"
-  return "expense"
+  const role = deriveRoleFromCode(code)
+  if (role === "revenue") return "revenue"
+  if (role === "cogs") return "cogs"
+  return "expense" // opex/finance/tax_costs/non_operating/tax/unknown
 }
 
 function categoryFromCode(code: string): string | null {
@@ -223,6 +229,14 @@ export async function POST(req: NextRequest) {
           const parts = codeStr.split("-")
           const parentCode = parts.length > 2 ? parts.slice(0, 2).join("-") : parts.length > 1 ? parts[0] : null
           const accountType = classifyAccount(codeStr)
+          // Phase 7.G Turn LXXV (Phase 5.1) — stamp the canonical
+          // P&L-bucket role at insert. Future per-org override UI will
+          // be able to manually re-set this; default is the AAC-prefix
+          // derivation. Refresh on upsert too so existing rows backfill
+          // when import re-runs (covers cases where the migration's
+          // SQL backfill missed the row, e.g. row created post-migration
+          // but pre-this-fix).
+          const role = deriveRoleFromCode(codeStr)
 
           chartOfAccounts.push({
             organizationId: orgId,
@@ -231,6 +245,7 @@ export async function POST(req: NextRequest) {
             nameAz: name.trim(),
             parentCode,
             accountType,
+            role,
             category: categoryFromCode(codeStr),
             sortOrder: r,
             isActive: true,
@@ -241,7 +256,7 @@ export async function POST(req: NextRequest) {
         for (const coa of chartOfAccounts) {
           await tx.chartOfAccount.upsert({
             where: { organizationId_code: { organizationId: orgId, code: coa.code } },
-            update: { name: coa.name, nameAz: coa.nameAz, parentCode: coa.parentCode, accountType: coa.accountType, category: coa.category, sortOrder: coa.sortOrder },
+            update: { name: coa.name, nameAz: coa.nameAz, parentCode: coa.parentCode, accountType: coa.accountType, role: coa.role, category: coa.category, sortOrder: coa.sortOrder },
             create: coa,
           })
         }

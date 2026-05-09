@@ -3,6 +3,11 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { looksLikeCode } from "@/lib/import/keywords"
+import {
+  deriveRoleFromCode,
+  isContraRevenueCode,
+  pnlSectionFromRole,
+} from "@/lib/budgeting/coa-role"
 
 /**
  * GET /api/budgeting/pnl
@@ -172,11 +177,15 @@ export async function GET(req: NextRequest) {
         // match SAP 601/611/602/603/701 prefixes — pre-fix they were silently
         // classified as "expense" → ATL-MRKZ revenue undercounted as 0.05M
         // YTD vs expected ~3.6M (10.8M annual / 12 × 4 months).
+        // Phase 7.G Turn LXXV (Phase 5.1): code-prefix branch now delegates
+        // to canonical `deriveRoleFromCode` (single source of truth).
         if (bl.lineType === "revenue") accountType = "revenue"
         else if (bl.lineType === "cogs") accountType = "cogs"
-        else if (code.startsWith("601") || code.startsWith("611")) accountType = "revenue"
-        else if (code.startsWith("602") || code.startsWith("603")) accountType = "revenue"
-        else if (code.startsWith("701")) accountType = "cogs"
+        else {
+          const role = deriveRoleFromCode(code)
+          if (role === "revenue") accountType = "revenue"
+          else if (role === "cogs") accountType = "cogs"
+        }
       }
 
       accountMap.set(mapKey, {
@@ -247,7 +256,7 @@ export async function GET(req: NextRequest) {
     for (let m = 1; m <= 12; m++) {
       const val = acct.monthlyAmounts[m] || 0
       if (acct.type === "revenue") {
-        const isContraRevenue = acct.code.startsWith("602") || acct.code.startsWith("603")
+        const isContraRevenue = isContraRevenueCode(acct.code)
         monthlyRevenue[m] += isContraRevenue ? -val : val
       } else if (acct.type === "cogs") {
         monthlyCogs[m] -= val // negative for P&L subtraction
@@ -319,26 +328,23 @@ export async function GET(req: NextRequest) {
     actualMonthlyByKey[key] ??= {}
     actualMonthlyByKey[key][month] = (actualMonthlyByKey[key][month] || 0) + amount
 
-    // Section aggregation mirrors the code-prefix rules used in the view.
-    if (code.startsWith("601") || code.startsWith("611")) {
-      sectionActuals.revenue += amount
-      monthlyActualRevenue[month] += amount
-    } else if (code.startsWith("602") || code.startsWith("603")) {
-      sectionActuals.revenue -= amount // contra-revenue
-      monthlyActualRevenue[month] -= amount
-    } else if (code.startsWith("701")) {
+    // Section aggregation. Phase 7.G Turn LXXV (Phase 5.1) — uses canonical
+    // `pnlSectionFromRole(deriveRoleFromCode(code))` instead of inline
+    // prefix matching. Contra-revenue (602/603) still folds into `revenue`
+    // section but with sign-flip — `isContraRevenueCode` is the explicit
+    // predicate.
+    const role = deriveRoleFromCode(code)
+    const section = pnlSectionFromRole(role)
+    if (section === "revenue") {
+      const sign = isContraRevenueCode(code) ? -1 : 1
+      sectionActuals.revenue += sign * amount
+      monthlyActualRevenue[month] += sign * amount
+    } else if (section === "cogs") {
       sectionActuals.cogs += amount
       monthlyActualCogs[month] += amount
-    } else if (code.startsWith("711") || code.startsWith("721")) {
+    } else if (section === "opex") {
       sectionActuals.opex += amount
-    } else if (
-      code.startsWith("731") ||
-      code.startsWith("741") ||
-      code.startsWith("751") ||
-      code.startsWith("761") ||
-      code.startsWith("771") ||
-      code.startsWith("801")
-    ) {
+    } else if (section === "belowEbitda") {
       sectionActuals.belowEbitda += amount
     }
   }
