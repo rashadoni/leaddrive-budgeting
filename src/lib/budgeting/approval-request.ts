@@ -20,7 +20,7 @@
  * PATCH-reject would silently allow double-approval bugs.
  */
 
-import type { ApprovalRequestStatus, ApprovalRequestType } from "@prisma/client"
+import type { ApprovalRequestStatus, ApprovalRequestType, PrismaClient, ApprovalRequest } from "@prisma/client"
 
 /** Statuses that can transition to a terminal state. */
 const ACTIVE_STATUSES: readonly ApprovalRequestStatus[] = ["pending"]
@@ -138,6 +138,82 @@ export type ProposedChangeFor<T extends ApprovalRequestType> =
  * shape for the given type? Returns true on shape match, false on
  * mismatch. Caller treats false as "malformed request, reject".
  */
+/**
+ * Phase 7.G Turn LXXII (Phase 4.3 mutation-route bypass).
+ *
+ * Resolves an `approvalRequestId` query param at a mutation route and
+ * checks if the request is valid to bypass the 403/423 gate for THIS
+ * specific mutation attempt.
+ *
+ * Returns:
+ *   - `null` if the request can't be used (not found, wrong status, wrong
+ *     type, wrong target, wrong requester, already-applied, cross-tenant).
+ *     Caller falls through to the normal 403/423 gate.
+ *   - The `ApprovalRequest` row if it validates and can be used. Caller
+ *     proceeds with the mutation; on success, marks `appliedAt = now` via
+ *     a separate `markApprovalRequestApplied()` call.
+ *
+ * Validation contract:
+ *   - Request belongs to caller's org
+ *   - status === "approved"
+ *   - requestType matches `expectedType` (the mutation operation)
+ *   - For update/delete: targetId matches the URL param (caller passes it)
+ *   - requestedBy === current userId (only the original requester can use
+ *     their own approval — prevents "user A approves, user B sneaks in")
+ *   - appliedAt is null (one-shot — already-applied requests can't be
+ *     reused for another mutation)
+ *
+ * Strict requester-gating is the v1 trust model. Multi-user use (B sees
+ * A's approval and acts on it) would need an explicit "delegate" enum
+ * and is filed for v2 if a customer asks.
+ */
+export interface ConsumeApprovalRequestOpts {
+  expectedType: ApprovalRequestType
+  /** For *_update / *_delete requests — required to match request.targetId. */
+  expectedTargetId?: string | null
+}
+
+export async function consumeApprovalRequest(
+  prisma: Pick<PrismaClient, "approvalRequest">,
+  opts: {
+    requestId: string
+    orgId: string
+    userId: string
+    expectedType: ApprovalRequestType
+    expectedTargetId?: string | null
+  },
+): Promise<ApprovalRequest | null> {
+  const request = await prisma.approvalRequest.findFirst({
+    where: { id: opts.requestId, organizationId: opts.orgId },
+  })
+  if (!request) return null
+  if (request.status !== "approved") return null
+  if (request.requestType !== opts.expectedType) return null
+  if (request.requestedBy !== opts.userId) return null
+  if (request.appliedAt !== null) return null
+  if (opts.expectedTargetId != null && request.targetId !== opts.expectedTargetId) return null
+  return request
+}
+
+/**
+ * Mark an approval request as applied — fire-and-forget side effect after
+ * the mutation succeeds. Caller logs the apply via the route's existing
+ * audit chain (logBudgetChange); this only stamps `appliedAt`.
+ *
+ * Why separate from consume: keeps the consume step side-effect-free for
+ * test fixtures + lets the caller decide WHEN to mark applied (after
+ * tx commit, not before).
+ */
+export async function markApprovalRequestApplied(
+  prisma: Pick<PrismaClient, "approvalRequest">,
+  requestId: string,
+): Promise<void> {
+  await prisma.approvalRequest.update({
+    where: { id: requestId },
+    data: { appliedAt: new Date() },
+  })
+}
+
 export function isValidProposedChange(
   type: ApprovalRequestType,
   raw: unknown,

@@ -6,6 +6,7 @@ import { buildDeptFilter } from "@/lib/budgeting/department-access"
 import { processCurrencyFields } from "@/lib/budgeting/currency"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { consumeApprovalRequest, markApprovalRequestApplied } from "@/lib/budgeting/approval-request"
 import type { Role } from "@/lib/permissions"
 
 const createActualSchema = z.object({
@@ -76,16 +77,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "planId and category are required" }, { status: 400 })
   }
 
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass).
+  const approvalRequestId = req.nextUrl.searchParams.get("approvalRequestId")
+  const bypassRequest = approvalRequestId
+    ? await consumeApprovalRequest(prisma, {
+        requestId: approvalRequestId,
+        orgId,
+        userId,
+        expectedType: "budget_actual_create",
+      })
+    : null
+
   // Check plan is not approved
   const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
-  if (plan?.status === "approved") {
+  if (plan?.status === "approved" && !bypassRequest) {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
   }
 
   // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Reject mutations on
   // budget-actual entries when the plan's period is locked at the org
   // level (CFO closed-period control). RFC 4918 423 Locked.
-  if (plan) {
+  if (plan && !bypassRequest) {
     const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
     if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/actuals" })
@@ -120,6 +132,10 @@ export async function POST(req: NextRequest) {
   })
 
   logBudgetChange({ orgId, planId: resolvedPlanId, entityType: "actual", entityId: actual.id, action: "create", snapshot: actual })
+
+  if (bypassRequest) {
+    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
+  }
 
   return NextResponse.json({ success: true, data: actual }, { status: 201 })
 }

@@ -3,6 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { consumeApprovalRequest, markApprovalRequestApplied } from "@/lib/budgeting/approval-request"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
@@ -121,17 +122,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "planId and category are required" }, { status: 400 })
   }
 
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass). If the
+  // request includes `?approvalRequestId=X` AND the request is approved,
+  // belongs to this user, and matches `budget_line_create`, the 403
+  // (approved-plan) and 423 (locked-period) gates below are skipped for
+  // this single mutation. The request's `appliedAt` is stamped after the
+  // mutation succeeds — one-shot enforcement.
+  const approvalRequestId = req.nextUrl.searchParams.get("approvalRequestId")
+  const bypassRequest = approvalRequestId
+    ? await consumeApprovalRequest(prisma, {
+        requestId: approvalRequestId,
+        orgId,
+        userId,
+        expectedType: "budget_line_create",
+      })
+    : null
+
   // Check plan is not approved
   const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
-  if (plan?.status === "approved") {
+  if (plan?.status === "approved" && !bypassRequest) {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
   }
 
   // Phase 7.G Turn LXVII (Phase 4.2 — period lock enforcement). If the
   // plan's period (annual / quarterly / monthly) is locked at the org
   // level, reject the write with 423 Locked. CFO controls who can
-  // mutate closed periods.
-  if (plan) {
+  // mutate closed periods. Bypass via approved ApprovalRequest (LXXII).
+  if (plan && !bypassRequest) {
     const periodKey = derivePeriodKey(plan)
     const lock = await getActivePeriodLock(prisma, orgId, periodKey)
     if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/lines" })
@@ -177,6 +194,13 @@ export async function POST(req: NextRequest) {
   })
 
   logBudgetChange({ orgId, planId: resolvedPlanId, entityType: "line", entityId: line.id, action: "create", snapshot: line })
+
+  // Mark approval request applied (one-shot) AFTER the mutation succeeds.
+  // Fire-and-forget: a failed appliedAt stamp shouldn't reverse a successful
+  // create — the audit trail still shows the line creation.
+  if (bypassRequest) {
+    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
+  }
 
   return NextResponse.json({ success: true, data: line }, { status: 201 })
 }

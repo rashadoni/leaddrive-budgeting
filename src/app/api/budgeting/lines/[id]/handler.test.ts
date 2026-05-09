@@ -22,6 +22,10 @@ const { prismaMock } = vi.hoisted(() => ({
     organization: {
       findUnique: vi.fn(),
     },
+    approvalRequest: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }))
 
@@ -60,6 +64,8 @@ beforeEach(() => {
     quarter: null,
   })
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
+  prismaMock.approvalRequest.findFirst.mockReset().mockResolvedValue(null)
+  prismaMock.approvalRequest.update.mockReset().mockResolvedValue({})
 })
 
 describe("PUT /api/budgeting/lines/[id] — period lock (Turn LXVIII follow-up)", () => {
@@ -126,6 +132,91 @@ describe("DELETE /api/budgeting/lines/[id] — period lock (Turn LXVIII follow-u
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     const res = await DELETE(
       makeRequest("/api/budgeting/lines/ln1", { method: "DELETE" }),
+      paramsFor("ln1"),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.budgetLine.deleteMany).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("PUT/DELETE /api/budgeting/lines/[id] — approval-request bypass (Turn LXXII)", () => {
+  it("PUT bypasses 423 when valid ?approvalRequestId is given + marks request applied", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "manager" })
+    // Period IS locked (would normally return 423)
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [{ period: "2026", lockedAt: "x", lockedBy: "y" }],
+    })
+    // Approval request is approved + matches PUT line target
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      requestType: "budget_line_update",
+      status: "approved",
+      requestedBy: "u_requester",
+      targetId: "ln1",
+      appliedAt: null,
+    })
+    const res = await PUT(
+      makeRequest("/api/budgeting/lines/ln1?approvalRequestId=req1", {
+        method: "PUT",
+        json: { plannedAmount: 200 },
+      }),
+      paramsFor("ln1"),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.budgetLine.updateMany).toHaveBeenCalledTimes(1)
+    // appliedAt stamp fires fire-and-forget after mutation succeeds
+    await new Promise((r) => setTimeout(r, 5))
+    expect(prismaMock.approvalRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "req1" },
+        data: expect.objectContaining({ appliedAt: expect.any(Date) }),
+      }),
+    )
+  })
+
+  it("PUT does NOT bypass when approvalRequestId belongs to different user", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_other", role: "manager" })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [{ period: "2026", lockedAt: "x", lockedBy: "y" }],
+    })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      requestType: "budget_line_update",
+      status: "approved",
+      requestedBy: "u_requester", // not u_other
+      targetId: "ln1",
+      appliedAt: null,
+    })
+    const res = await PUT(
+      makeRequest("/api/budgeting/lines/ln1?approvalRequestId=req1", {
+        method: "PUT",
+        json: { plannedAmount: 200 },
+      }),
+      paramsFor("ln1"),
+    )
+    // Bypass refused → fell through to the 423 lock gate
+    expect(res.status).toBe(423)
+    expect(prismaMock.approvalRequest.update).not.toHaveBeenCalled()
+  })
+
+  it("DELETE bypasses 423 when valid budget_line_delete approvalRequestId is given", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "manager" })
+    prismaMock.organization.findUnique.mockResolvedValue({
+      lockedPeriods: [{ period: "2026", lockedAt: "x", lockedBy: "y" }],
+    })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req2",
+      organizationId: ORG_ID,
+      requestType: "budget_line_delete",
+      status: "approved",
+      requestedBy: "u_requester",
+      targetId: "ln1",
+      appliedAt: null,
+    })
+    const res = await DELETE(
+      makeRequest("/api/budgeting/lines/ln1?approvalRequestId=req2", { method: "DELETE" }),
       paramsFor("ln1"),
     )
     expect(res.status).toBe(200)

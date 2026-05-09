@@ -4,6 +4,8 @@ import { getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { consumeApprovalRequest, markApprovalRequestApplied } from "@/lib/budgeting/approval-request"
+import type { ApprovalRequestType } from "@prisma/client"
 
 /**
  * Phase 7.G Turn LXVIII follow-up — period-lock helpers.
@@ -20,6 +22,25 @@ async function findActiveLockForPlan(orgId: string, planId: string) {
   if (!plan) return null
   const periodKey = derivePeriodKey(plan)
   return getActivePeriodLock(prisma, orgId, periodKey)
+}
+
+/** Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass). */
+async function resolveBypass(
+  req: NextRequest,
+  orgId: string,
+  userId: string,
+  expectedType: ApprovalRequestType,
+  expectedTargetId: string,
+) {
+  const id = req.nextUrl.searchParams.get("approvalRequestId")
+  if (!id) return null
+  return consumeApprovalRequest(prisma, {
+    requestId: id,
+    orgId,
+    userId,
+    expectedType,
+    expectedTargetId,
+  })
 }
 
 const updateActualSchema = z.object({
@@ -59,7 +80,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { actualAmount, category, department, lineType, expenseDate, description } = data
 
   const oldActual = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
-  if (oldActual) {
+
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass).
+  const bypassRequest = userId
+    ? await resolveBypass(req, orgId, userId, "budget_actual_update", id)
+    : null
+
+  if (oldActual && !bypassRequest) {
     // Phase 7.G Turn LXX (CARRYOVER row close, was turns-open=3):
     // approval-status check parity with DELETE handler. Without this,
     // a manager could edit actuals on an approved plan.
@@ -68,7 +95,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
     }
     const lock = await findActiveLockForPlan(orgId, oldActual.planId)
-    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/actuals/[id]" })
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT /api/budgeting/actuals/[id]" })
   }
 
   const result = await prisma.budgetActual.updateMany({
@@ -98,6 +125,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
+  if (bypassRequest) {
+    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
+  }
+
   return NextResponse.json({ success: true, data: updated })
 }
 
@@ -111,19 +142,29 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   // Fetch full state before deletion for change log
   const actualToDelete = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
-  if (actualToDelete) {
+
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass).
+  const bypassRequest = userId
+    ? await resolveBypass(req, orgId, userId, "budget_actual_delete", id)
+    : null
+
+  if (actualToDelete && !bypassRequest) {
     const plan = await prisma.budgetPlan.findFirst({ where: { id: actualToDelete.planId }, select: { status: true } })
     if (plan?.status === "approved") {
       return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
     }
     const lock = await findActiveLockForPlan(orgId, actualToDelete.planId)
-    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT|DELETE /api/budgeting/actuals/[id]" })
+    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "DELETE /api/budgeting/actuals/[id]" })
   }
 
   await prisma.budgetActual.deleteMany({ where: { id, organizationId: orgId } })
 
   if (actualToDelete) {
     logBudgetChange({ orgId, planId: actualToDelete.planId, entityType: "actual", entityId: id, action: "delete", oldValue: actualToDelete })
+  }
+
+  if (bypassRequest) {
+    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
   }
 
   return NextResponse.json({ success: true, data: null })
