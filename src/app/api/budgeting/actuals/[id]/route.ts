@@ -4,7 +4,7 @@ import { getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
-import { consumeApprovalRequest, markApprovalRequestApplied } from "@/lib/budgeting/approval-request"
+import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
 import type { ApprovalRequestType } from "@prisma/client"
 
 /**
@@ -24,13 +24,14 @@ async function findActiveLockForPlan(orgId: string, planId: string) {
   return getActivePeriodLock(prisma, orgId, periodKey)
 }
 
-/** Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass). */
+/** Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass) + ⚠️ #1 closure. */
 async function resolveBypass(
   req: NextRequest,
   orgId: string,
   userId: string,
   expectedType: ApprovalRequestType,
   expectedTargetId: string,
+  expectedPlanId: string | null,
 ) {
   const id = req.nextUrl.searchParams.get("approvalRequestId")
   if (!id) return null
@@ -40,6 +41,7 @@ async function resolveBypass(
     userId,
     expectedType,
     expectedTargetId,
+    expectedPlanId,
   })
 }
 
@@ -81,10 +83,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const oldActual = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
 
-  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass).
-  const bypassRequest = userId
-    ? await resolveBypass(req, orgId, userId, "budget_actual_update", id)
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass) +
+  // ⚠️ #1 (planId scope) + ⚠️ #2 (atomic claim) closure.
+  const bypassRequest = userId && oldActual
+    ? await resolveBypass(req, orgId, userId, "budget_actual_update", id, oldActual.planId)
     : null
+  if (bypassRequest) {
+    const claimed = await claimApprovalRequest(prisma, bypassRequest.id)
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "Approval request already used by a concurrent mutation" },
+        { status: 409 },
+      )
+    }
+  }
 
   if (oldActual && !bypassRequest) {
     // Phase 7.G Turn LXX (CARRYOVER row close, was turns-open=3):
@@ -125,9 +137,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  if (bypassRequest) {
-    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
-  }
+  // appliedAt was already stamped atomically via claimApprovalRequest above.
 
   return NextResponse.json({ success: true, data: updated })
 }
@@ -140,13 +150,23 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { id } = await params
 
-  // Fetch full state before deletion for change log
+  // Fetch full state before deletion for change log + planId for bypass scope check
   const actualToDelete = await prisma.budgetActual.findFirst({ where: { id, organizationId: orgId } })
 
-  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass).
-  const bypassRequest = userId
-    ? await resolveBypass(req, orgId, userId, "budget_actual_delete", id)
+  // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass) +
+  // ⚠️ #1+#2 closure: planId scope check + atomic claim.
+  const bypassRequest = userId && actualToDelete
+    ? await resolveBypass(req, orgId, userId, "budget_actual_delete", id, actualToDelete.planId)
     : null
+  if (bypassRequest) {
+    const claimed = await claimApprovalRequest(prisma, bypassRequest.id)
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "Approval request already used by a concurrent mutation" },
+        { status: 409 },
+      )
+    }
+  }
 
   if (actualToDelete && !bypassRequest) {
     const plan = await prisma.budgetPlan.findFirst({ where: { id: actualToDelete.planId }, select: { status: true } })
@@ -161,10 +181,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   if (actualToDelete) {
     logBudgetChange({ orgId, planId: actualToDelete.planId, entityType: "actual", entityId: id, action: "delete", oldValue: actualToDelete })
-  }
-
-  if (bypassRequest) {
-    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
   }
 
   return NextResponse.json({ success: true, data: null })

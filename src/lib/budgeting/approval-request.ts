@@ -147,17 +147,22 @@ export type ProposedChangeFor<T extends ApprovalRequestType> =
  *
  * Returns:
  *   - `null` if the request can't be used (not found, wrong status, wrong
- *     type, wrong target, wrong requester, already-applied, cross-tenant).
+ *     type, wrong target, wrong requester, already-applied, cross-tenant,
+ *     wrong planId).
  *     Caller falls through to the normal 403/423 gate.
  *   - The `ApprovalRequest` row if it validates and can be used. Caller
- *     proceeds with the mutation; on success, marks `appliedAt = now` via
- *     a separate `markApprovalRequestApplied()` call.
+ *     MUST then call `claimApprovalRequest()` (atomic conditional update)
+ *     BEFORE running the mutation — protects against concurrent
+ *     double-apply (TOCTOU between consume and mark).
  *
  * Validation contract:
  *   - Request belongs to caller's org
  *   - status === "approved"
  *   - requestType matches `expectedType` (the mutation operation)
  *   - For update/delete: targetId matches the URL param (caller passes it)
+ *   - For create types with plan scope: planId matches the mutation's plan
+ *     (prevents scope-leak — admin approves change for Plan A, user can't
+ *     redirect to Plan B). Filed Turn LXXII architect ⚠️ #1.
  *   - requestedBy === current userId (only the original requester can use
  *     their own approval — prevents "user A approves, user B sneaks in")
  *   - appliedAt is null (one-shot — already-applied requests can't be
@@ -171,6 +176,10 @@ export interface ConsumeApprovalRequestOpts {
   expectedType: ApprovalRequestType
   /** For *_update / *_delete requests — required to match request.targetId. */
   expectedTargetId?: string | null
+  /** For *_create / period_unlock — when the request is plan-scoped, the
+   *  mutation MUST target the same plan. Pass `resolvedPlanId` from the
+   *  route. Skip (undefined) for routes where the request is not plan-scoped. */
+  expectedPlanId?: string | null
 }
 
 export async function consumeApprovalRequest(
@@ -181,6 +190,7 @@ export async function consumeApprovalRequest(
     userId: string
     expectedType: ApprovalRequestType
     expectedTargetId?: string | null
+    expectedPlanId?: string | null
   },
 ): Promise<ApprovalRequest | null> {
   const request = await prisma.approvalRequest.findFirst({
@@ -192,17 +202,57 @@ export async function consumeApprovalRequest(
   if (request.requestedBy !== opts.userId) return null
   if (request.appliedAt !== null) return null
   if (opts.expectedTargetId != null && request.targetId !== opts.expectedTargetId) return null
+  // planId scope-check — only enforce when caller passes expectedPlanId AND
+  // the request itself was plan-scoped at create-time (period_unlock skips
+  // both). This means: if request.planId is null OR opts.expectedPlanId is
+  // null, no check. If both present, they MUST match.
+  if (
+    opts.expectedPlanId != null &&
+    request.planId != null &&
+    request.planId !== opts.expectedPlanId
+  ) {
+    return null
+  }
   return request
 }
 
 /**
- * Mark an approval request as applied — fire-and-forget side effect after
- * the mutation succeeds. Caller logs the apply via the route's existing
- * audit chain (logBudgetChange); this only stamps `appliedAt`.
+ * Atomic claim — conditional update with `appliedAt: null` precondition.
+ * Returns true if THIS caller successfully claimed the approval (count===1),
+ * false if another caller beat us to it (count===0). Closes the TOCTOU
+ * race in Turn LXXII architect ⚠️ #2: previously consume(read) + mark
+ * (post-mutation write) were non-atomic, allowing 2 concurrent requests
+ * with the same id to both pass the `appliedAt===null` check and both
+ * succeed → doubled mutation.
  *
- * Why separate from consume: keeps the consume step side-effect-free for
- * test fixtures + lets the caller decide WHEN to mark applied (after
- * tx commit, not before).
+ * Caller pattern:
+ *   const req = await consumeApprovalRequest(...)        // shape check
+ *   if (req) {
+ *     const claimed = await claimApprovalRequest(...)    // atomic stamp
+ *     if (!claimed) return 409 Conflict                  // lost the race
+ *     // proceed with mutation; approval already marked applied
+ *   }
+ *
+ * If the mutation later fails, the approval is "spent" — caller files a
+ * new request. Trade-off accepted vs the security risk of double-apply.
+ */
+export async function claimApprovalRequest(
+  prisma: Pick<PrismaClient, "approvalRequest">,
+  requestId: string,
+): Promise<boolean> {
+  const result = await prisma.approvalRequest.updateMany({
+    where: { id: requestId, appliedAt: null },
+    data: { appliedAt: new Date() },
+  })
+  return result.count === 1
+}
+
+/**
+ * @deprecated Turn LXXII architect ⚠️ #2 closure: superseded by
+ * `claimApprovalRequest` (atomic). Kept as a thin wrapper for callers
+ * that don't need the race-protection guarantee (e.g. period_unlock
+ * apply path which has org-level row-lock through the Organization
+ * update). New routes MUST use `claimApprovalRequest`.
  */
 export async function markApprovalRequestApplied(
   prisma: Pick<PrismaClient, "approvalRequest">,

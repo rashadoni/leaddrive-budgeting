@@ -3,7 +3,7 @@ import { z, ZodError } from "zod"
 import { getOrgId, getSession } from "@/lib/api-auth"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
-import { consumeApprovalRequest, markApprovalRequestApplied } from "@/lib/budgeting/approval-request"
+import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
@@ -124,10 +124,10 @@ export async function POST(req: NextRequest) {
 
   // Phase 7.G Turn LXXII (Phase 4.3 — approval-request bypass). If the
   // request includes `?approvalRequestId=X` AND the request is approved,
-  // belongs to this user, and matches `budget_line_create`, the 403
-  // (approved-plan) and 423 (locked-period) gates below are skipped for
-  // this single mutation. The request's `appliedAt` is stamped after the
-  // mutation succeeds — one-shot enforcement.
+  // belongs to this user, matches `budget_line_create`, AND its planId
+  // matches the mutation target plan, the 403/423 gates below are skipped.
+  // After consume passes, atomic claim BEFORE mutation closes the TOCTOU
+  // race that would otherwise allow concurrent double-apply.
   const approvalRequestId = req.nextUrl.searchParams.get("approvalRequestId")
   const bypassRequest = approvalRequestId
     ? await consumeApprovalRequest(prisma, {
@@ -135,8 +135,18 @@ export async function POST(req: NextRequest) {
         orgId,
         userId,
         expectedType: "budget_line_create",
+        expectedPlanId: resolvedPlanId,
       })
     : null
+  if (bypassRequest) {
+    const claimed = await claimApprovalRequest(prisma, bypassRequest.id)
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "Approval request already used by a concurrent mutation" },
+        { status: 409 },
+      )
+    }
+  }
 
   // Check plan is not approved
   const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
@@ -195,12 +205,8 @@ export async function POST(req: NextRequest) {
 
   logBudgetChange({ orgId, planId: resolvedPlanId, entityType: "line", entityId: line.id, action: "create", snapshot: line })
 
-  // Mark approval request applied (one-shot) AFTER the mutation succeeds.
-  // Fire-and-forget: a failed appliedAt stamp shouldn't reverse a successful
-  // create — the audit trail still shows the line creation.
-  if (bypassRequest) {
-    void markApprovalRequestApplied(prisma, bypassRequest.id).catch(() => {})
-  }
+  // appliedAt was already stamped atomically via claimApprovalRequest above
+  // (Turn LXXII architect ⚠️ #2 closure). No post-mutation work needed.
 
   return NextResponse.json({ success: true, data: line }, { status: 201 })
 }

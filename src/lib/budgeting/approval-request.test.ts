@@ -11,6 +11,7 @@ import {
   isValidProposedChange,
   consumeApprovalRequest,
   markApprovalRequestApplied,
+  claimApprovalRequest,
 } from "./approval-request"
 
 describe("canTransition — state machine", () => {
@@ -238,5 +239,90 @@ describe("markApprovalRequestApplied — sets appliedAt", () => {
     const arg = update.mock.calls[0][0]
     expect(arg.where.id).toBe("req1")
     expect(arg.data.appliedAt).toBeInstanceOf(Date)
+  })
+})
+
+describe("consumeApprovalRequest — expectedPlanId scope check (Turn LXXII architect ⚠️ #1)", () => {
+  function buildPrismaMockPlan(planId: string | null) {
+    const findFirst = vi.fn().mockResolvedValue({
+      id: "req1",
+      organizationId: "org_demo",
+      requestType: "budget_line_create",
+      status: "approved",
+      requestedBy: "u_requester",
+      targetType: null,
+      targetId: null,
+      planId,
+      appliedAt: null,
+    })
+    return { approvalRequest: { findFirst } } as unknown as Parameters<typeof consumeApprovalRequest>[0]
+  }
+
+  it("returns null when expectedPlanId mismatches request.planId (cross-plan refused)", async () => {
+    const result = await consumeApprovalRequest(buildPrismaMockPlan("plan_A"), {
+      requestId: "req1",
+      orgId: "org_demo",
+      userId: "u_requester",
+      expectedType: "budget_line_create",
+      expectedPlanId: "plan_B", // mismatch
+    })
+    expect(result).toBeNull()
+  })
+
+  it("returns request when expectedPlanId matches request.planId", async () => {
+    const result = await consumeApprovalRequest(buildPrismaMockPlan("plan_A"), {
+      requestId: "req1",
+      orgId: "org_demo",
+      userId: "u_requester",
+      expectedType: "budget_line_create",
+      expectedPlanId: "plan_A",
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it("does NOT enforce when request.planId is null (period_unlock-style requests)", async () => {
+    const result = await consumeApprovalRequest(buildPrismaMockPlan(null), {
+      requestId: "req1",
+      orgId: "org_demo",
+      userId: "u_requester",
+      expectedType: "budget_line_create",
+      expectedPlanId: "plan_X",
+    })
+    expect(result).not.toBeNull()
+  })
+
+  it("does NOT enforce when expectedPlanId is omitted by caller", async () => {
+    const result = await consumeApprovalRequest(buildPrismaMockPlan("plan_A"), {
+      requestId: "req1",
+      orgId: "org_demo",
+      userId: "u_requester",
+      expectedType: "budget_line_create",
+      // expectedPlanId: undefined — period_unlock route doesn't pass it
+    })
+    expect(result).not.toBeNull()
+  })
+})
+
+describe("claimApprovalRequest — atomic one-shot stamp (Turn LXXII architect ⚠️ #2)", () => {
+  it("returns true when conditional update affects exactly 1 row", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+    const prismaMock = { approvalRequest: { updateMany } } as unknown as Parameters<
+      typeof claimApprovalRequest
+    >[0]
+    const result = await claimApprovalRequest(prismaMock, "req1")
+    expect(result).toBe(true)
+    const arg = updateMany.mock.calls[0][0]
+    expect(arg.where.id).toBe("req1")
+    expect(arg.where.appliedAt).toBeNull() // critical: precondition
+    expect(arg.data.appliedAt).toBeInstanceOf(Date)
+  })
+
+  it("returns false when count===0 (another caller already claimed)", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 0 })
+    const prismaMock = { approvalRequest: { updateMany } } as unknown as Parameters<
+      typeof claimApprovalRequest
+    >[0]
+    const result = await claimApprovalRequest(prismaMock, "req1")
+    expect(result).toBe(false)
   })
 })

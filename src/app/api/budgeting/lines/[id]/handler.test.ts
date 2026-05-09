@@ -25,6 +25,7 @@ const { prismaMock } = vi.hoisted(() => ({
     approvalRequest: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   },
 }))
@@ -66,6 +67,7 @@ beforeEach(() => {
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
   prismaMock.approvalRequest.findFirst.mockReset().mockResolvedValue(null)
   prismaMock.approvalRequest.update.mockReset().mockResolvedValue({})
+  prismaMock.approvalRequest.updateMany.mockReset().mockResolvedValue({ count: 1 })
 })
 
 describe("PUT /api/budgeting/lines/[id] — period lock (Turn LXVIII follow-up)", () => {
@@ -154,6 +156,7 @@ describe("PUT/DELETE /api/budgeting/lines/[id] — approval-request bypass (Turn
       status: "approved",
       requestedBy: "u_requester",
       targetId: "ln1",
+      planId: "p1", // matches mocked line.planId
       appliedAt: null,
     })
     const res = await PUT(
@@ -165,11 +168,12 @@ describe("PUT/DELETE /api/budgeting/lines/[id] — approval-request bypass (Turn
     )
     expect(res.status).toBe(200)
     expect(prismaMock.budgetLine.updateMany).toHaveBeenCalledTimes(1)
-    // appliedAt stamp fires fire-and-forget after mutation succeeds
-    await new Promise((r) => setTimeout(r, 5))
-    expect(prismaMock.approvalRequest.update).toHaveBeenCalledWith(
+    // Turn LXXII architect ⚠️ #2 closure: appliedAt is stamped atomically
+    // BEFORE the mutation via claimApprovalRequest (updateMany with
+    // appliedAt: null precondition).
+    expect(prismaMock.approvalRequest.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "req1" },
+        where: expect.objectContaining({ id: "req1", appliedAt: null }),
         data: expect.objectContaining({ appliedAt: expect.any(Date) }),
       }),
     )
@@ -198,7 +202,7 @@ describe("PUT/DELETE /api/budgeting/lines/[id] — approval-request bypass (Turn
     )
     // Bypass refused → fell through to the 423 lock gate
     expect(res.status).toBe(423)
-    expect(prismaMock.approvalRequest.update).not.toHaveBeenCalled()
+    expect(prismaMock.approvalRequest.updateMany).not.toHaveBeenCalled()
   })
 
   it("DELETE bypasses 423 when valid budget_line_delete approvalRequestId is given", async () => {
@@ -213,6 +217,7 @@ describe("PUT/DELETE /api/budgeting/lines/[id] — approval-request bypass (Turn
       status: "approved",
       requestedBy: "u_requester",
       targetId: "ln1",
+      planId: "p1", // matches mocked line.planId
       appliedAt: null,
     })
     const res = await DELETE(

@@ -15,6 +15,10 @@ const { prismaMock } = vi.hoisted(() => ({
     budgetPlan: { findFirst: vi.fn() },
     organization: { findUnique: vi.fn() },
     currencyRate: { findFirst: vi.fn() },
+    approvalRequest: {
+      findFirst: vi.fn(),
+      updateMany: vi.fn(),
+    },
   },
 }))
 
@@ -49,6 +53,8 @@ beforeEach(() => {
     quarter: null,
   })
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
+  prismaMock.approvalRequest.findFirst.mockReset().mockResolvedValue(null)
+  prismaMock.approvalRequest.updateMany.mockReset().mockResolvedValue({ count: 1 })
 })
 
 describe("POST /api/budgeting/actuals — period lock (Turn LXVIII)", () => {
@@ -96,5 +102,73 @@ describe("POST /api/budgeting/actuals — period lock (Turn LXVIII)", () => {
     })
     const res = await POST(makeRequest("/api/budgeting/actuals", { method: "POST", json: validBody }))
     expect(res.status).toBe(403) // approved gate wins
+  })
+})
+
+describe("POST /api/budgeting/actuals — approval-request bypass (Turn LXXII ⚠️ #3)", () => {
+  it("bypasses 403 (approved-plan) when valid ?approvalRequestId is given + atomically claims", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "manager" })
+    // Plan is approved → would normally return 403
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({
+      id: "p1",
+      status: "approved",
+      periodType: "annual",
+      year: 2026,
+      month: null,
+      quarter: null,
+    })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      requestType: "budget_actual_create",
+      status: "approved",
+      requestedBy: "u_requester",
+      planId: "p1",
+      targetId: null,
+      appliedAt: null,
+    })
+    const res = await POST(
+      makeRequest("/api/budgeting/actuals?approvalRequestId=req1", {
+        method: "POST",
+        json: validBody,
+      }),
+    )
+    expect(res.status).toBe(201)
+    expect(prismaMock.budgetActual.create).toHaveBeenCalledTimes(1)
+    expect(prismaMock.approvalRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "req1", appliedAt: null }),
+      }),
+    )
+  })
+
+  it("does NOT bypass when approvalRequestId belongs to different user", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_other", role: "manager" })
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({
+      id: "p1",
+      status: "approved",
+      periodType: "annual",
+      year: 2026,
+      month: null,
+      quarter: null,
+    })
+    prismaMock.approvalRequest.findFirst.mockResolvedValue({
+      id: "req1",
+      organizationId: ORG_ID,
+      requestType: "budget_actual_create",
+      status: "approved",
+      requestedBy: "u_requester", // not u_other
+      planId: "p1",
+      targetId: null,
+      appliedAt: null,
+    })
+    const res = await POST(
+      makeRequest("/api/budgeting/actuals?approvalRequestId=req1", {
+        method: "POST",
+        json: validBody,
+      }),
+    )
+    expect(res.status).toBe(403)
+    expect(prismaMock.budgetActual.create).not.toHaveBeenCalled()
   })
 })
