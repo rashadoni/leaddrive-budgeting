@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock, auditMock } = vi.hoisted(() => ({
+const { prismaMock, auditMock, notifyReviewedMock } = vi.hoisted(() => ({
   prismaMock: {
     approvalRequest: {
       findFirst: vi.fn(),
@@ -21,6 +21,7 @@ const { prismaMock, auditMock } = vi.hoisted(() => ({
     },
   },
   auditMock: vi.fn(),
+  notifyReviewedMock: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
@@ -29,6 +30,9 @@ vi.mock("@/lib/audit/log", async () => {
   const actual = await vi.importActual<typeof import("@/lib/audit/log")>("@/lib/audit/log")
   return { ...actual, logAuditEvent: auditMock }
 })
+vi.mock("@/lib/budgeting/approval-notifications", () => ({
+  notifyApprovalReviewed: notifyReviewedMock,
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { PATCH } from "./route"
@@ -57,6 +61,7 @@ beforeEach(() => {
   })
   prismaMock.organization.update.mockReset().mockResolvedValue({})
   auditMock.mockReset().mockResolvedValue({ ok: true, id: "audit1" })
+  notifyReviewedMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe("PATCH /api/budgeting/approval-requests/[id] — auth + state machine", () => {
@@ -305,5 +310,60 @@ describe("PATCH approve period_unlock — race-on-stale-lock branch (LXXI follow
     expect(updateArg.data.appliedAt).toBeInstanceOf(Date) // intent satisfied
     expect(prismaMock.organization.update).not.toHaveBeenCalled() // nothing to remove
     expect(auditMock).not.toHaveBeenCalled() // no audit for no-op apply
+  })
+})
+
+describe("PATCH — notifier wiring (Turn LXXIII follow-up ⚠️ #3)", () => {
+  it("approve fires notifyApprovalReviewed with event=approved", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "approve", comment: "OK" },
+      }),
+      paramsFor("req1"),
+    )
+    await new Promise((r) => setTimeout(r, 5)) // let void microtask schedule
+    expect(notifyReviewedMock).toHaveBeenCalledTimes(1)
+    expect(notifyReviewedMock).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({
+        event: "approved",
+        requesterUserId: "u_requester",
+        reviewerUserId: "u_admin",
+        requestType: "period_unlock",
+        reviewComment: "OK",
+      }),
+    )
+  })
+
+  it("reject fires notifyApprovalReviewed with event=rejected", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "reject", comment: "Insufficient detail" },
+      }),
+      paramsFor("req1"),
+    )
+    await new Promise((r) => setTimeout(r, 5))
+    expect(notifyReviewedMock).toHaveBeenCalledTimes(1)
+    expect(notifyReviewedMock).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({ event: "rejected", reviewComment: "Insufficient detail" }),
+    )
+  })
+
+  it("cancel does NOT fire notifyApprovalReviewed (silent withdraw)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "viewer" })
+    await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "cancel" },
+      }),
+      paramsFor("req1"),
+    )
+    await new Promise((r) => setTimeout(r, 5))
+    expect(notifyReviewedMock).not.toHaveBeenCalled()
   })
 })

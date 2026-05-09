@@ -26,7 +26,29 @@ export interface EmailRecipient {
 }
 
 export interface EmailPayload {
+  /**
+   * Primary recipients. Visible to all other recipients (both `to` and
+   * `cc`). Use this when recipients are expected to see each other (e.g.
+   * a single named user, or a small named group). For broadcast-to-pool
+   * scenarios where addresses MUST NOT leak to peers, use `bcc` instead.
+   */
   to: EmailRecipient | EmailRecipient[]
+  /**
+   * Blind-carbon-copy recipients. NOT visible to `to` or other `bcc`
+   * addresses. Use for broadcast-to-pool (e.g. all org admins for an
+   * approval-request notification — each admin sees only their own
+   * envelope, not the addresses of other admins).
+   *
+   * Provider semantic: SMTP/Resend ship one message with bcc envelope;
+   * SendGrid ships per-recipient personalizations. Both produce the
+   * privacy-preserving outcome of "no peer addresses visible".
+   *
+   * Phase 7.G Turn LXXIII follow-up: added to close architect ⚠️ #2
+   * (interface ambiguity on multi-recipient semantic). Without bcc,
+   * `to: EmailRecipient[]` leaked the full admin pool address list to
+   * every notified admin.
+   */
+  bcc?: EmailRecipient[]
   subject: string
   /** Plain-text body. HTML rendering is provider-specific; v1 is text-only. */
   body: string

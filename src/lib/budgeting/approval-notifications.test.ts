@@ -38,11 +38,14 @@ describe("notifyApprovalCreated — org admins+managers (excluding requester)", 
     expect(where.isActive).toBe(true)
     expect(where.id.not).toBe("u_requester")
 
-    // 1 batched email with 2 recipients
+    // 1 batched email — recipients in BCC (privacy-preserving; addresses
+    // don't leak to peer admins). `to:` is empty (broadcast, no primary).
     const sent = (getEmailService() as InMemoryEmailService).getSentEmails()
     expect(sent).toHaveLength(1)
     expect(Array.isArray(sent[0].to)).toBe(true)
-    expect((sent[0].to as Array<{ email: string }>).map((r) => r.email)).toEqual(["a1@x", "m1@x"])
+    expect((sent[0].to as Array<{ email: string }>).length).toBe(0) // empty primary
+    expect(sent[0].bcc).toBeDefined()
+    expect(sent[0].bcc?.map((r) => r.email)).toEqual(["a1@x", "m1@x"])
     expect(sent[0].metadata?.kind).toBe("approval_request_created")
     expect(sent[0].subject).toContain("Alice")
     expect(sent[0].body).toContain("Need to add Q1 line")

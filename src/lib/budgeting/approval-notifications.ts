@@ -62,16 +62,27 @@ export async function notifyApprovalCreated(
   const recipients: EmailRecipient[] = reviewers.map(
     (r: { email: string; name: string }) => ({ email: r.email, name: r.name }),
   )
-  const lang = preferredLang(opts.requesterUserId) // v1: always en
+  // v1: always EN. TODO Phase 4.4 (per-user preferredLang): when
+  // User.preferredLang lands, render PER recipient (each reviewer in
+  // their own language) instead of a single batch — currently this
+  // would render in the requester's language for all reviewers, which
+  // is the wrong semantic. The single-batch + bcc pattern below is
+  // privacy-preserving but locale-uniform; per-recipient rendering
+  // requires a loop with N send() calls.
+  const lang = preferredLang(opts.requesterUserId)
   const params: ApprovalEmailParams = {
     requestType: opts.requestType,
     requesterName: opts.requesterName,
     reason: opts.reason ?? undefined,
   }
   const { subject, body } = renderApprovalEmail("created", lang, params)
+  // Phase 7.G Turn LXXIII follow-up (architect ⚠️ #2 closure): use `bcc`
+  // for the reviewer pool so admin email addresses don't leak to peer
+  // admins. `to` left empty (no primary recipient — pure broadcast).
   await getEmailService()
     .send({
-      to: recipients,
+      to: [],
+      bcc: recipients,
       subject,
       body,
       lang,

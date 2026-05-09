@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, notifyCreatedMock } = vi.hoisted(() => ({
   prismaMock: {
     approvalRequest: {
       findMany: vi.fn(),
@@ -19,10 +19,14 @@ const { prismaMock } = vi.hoisted(() => ({
       findFirst: vi.fn(),
     },
   },
+  notifyCreatedMock: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/budgeting/approval-notifications", () => ({
+  notifyApprovalCreated: notifyCreatedMock,
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
@@ -33,6 +37,7 @@ beforeEach(() => {
   prismaMock.approvalRequest.findMany.mockReset().mockResolvedValue([])
   prismaMock.approvalRequest.create.mockReset().mockResolvedValue({ id: "req1" })
   prismaMock.budgetPlan.findFirst.mockReset().mockResolvedValue({ id: "p1" })
+  notifyCreatedMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe("GET /api/budgeting/approval-requests", () => {
@@ -158,5 +163,42 @@ describe("POST /api/budgeting/approval-requests — create", () => {
     expect(data.organizationId).toBe(ORG_ID)
     expect(data.requestedBy).toBe("u_requester")
     expect(data.requestType).toBe("period_unlock")
+  })
+
+  it("fires notifyApprovalCreated after successful create (Turn LXXIII wiring) — Turn LXXIII follow-up ⚠️ #3", async () => {
+    await mockSession({
+      orgId: ORG_ID,
+      userId: "u_requester",
+      role: "manager",
+      name: "Alice",
+      email: "alice@x",
+    })
+    await POST(
+      makeRequest("/api/budgeting/approval-requests", { method: "POST", json: validPeriodUnlock }),
+    )
+    // Wait a microtask for the fire-and-forget void to schedule
+    await new Promise((r) => setTimeout(r, 5))
+    expect(notifyCreatedMock).toHaveBeenCalledTimes(1)
+    expect(notifyCreatedMock).toHaveBeenCalledWith(
+      prismaMock,
+      expect.objectContaining({
+        orgId: ORG_ID,
+        requestType: "period_unlock",
+        requesterUserId: "u_requester",
+        requesterName: "Alice",
+      }),
+    )
+  })
+
+  it("does NOT fire notifyApprovalCreated when create rejected by validation (no spurious side-effect)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_requester", role: "manager" })
+    const res = await POST(
+      makeRequest("/api/budgeting/approval-requests", {
+        method: "POST",
+        json: { requestType: "period_unlock", proposedChange: { period: "not-a-period" } },
+      }),
+    )
+    expect(res.status).toBe(400)
+    expect(notifyCreatedMock).not.toHaveBeenCalled()
   })
 })
