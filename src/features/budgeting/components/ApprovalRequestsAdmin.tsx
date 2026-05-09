@@ -19,7 +19,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, AlertCircle, Check, X, Ban, Clock } from "lucide-react"
@@ -62,6 +62,10 @@ function statusIcon(status: ApprovalStatus) {
 
 export function ApprovalRequestsAdmin() {
   const t = useTranslations("budgeting.approvalRequests")
+  // Phase 7.G Turn LXXIV follow-up² (locale-leak parity fix from architect 💡):
+  // toLocaleString() defaults to browser locale, NOT next-intl locale.
+  // Pass useLocale() to format dates per the user's UI language.
+  const locale = useLocale()
   const [requests, setRequests] = useState<ApprovalRequestRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -187,14 +191,14 @@ export function ApprovalRequestsAdmin() {
                       {r.reason && <p className="text-sm text-foreground mt-1">{r.reason}</p>}
                       <p className="text-xs text-muted-foreground mt-1">
                         {t("requestedMeta", {
-                          when: new Date(r.requestedAt).toLocaleString(),
+                          when: new Date(r.requestedAt).toLocaleString(locale),
                           by: r.requestedBy,
                         })}
                       </p>
                       {r.reviewedAt && r.reviewedBy && (
                         <p className="text-xs text-muted-foreground mt-1">
                           {t("reviewedMeta", {
-                            when: new Date(r.reviewedAt).toLocaleString(),
+                            when: new Date(r.reviewedAt).toLocaleString(locale),
                             by: r.reviewedBy,
                           })}
                           {r.reviewComment ? ` — "${r.reviewComment}"` : null}
