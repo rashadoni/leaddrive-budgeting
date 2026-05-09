@@ -10,7 +10,6 @@ import {
   isTerminalStatus,
   isValidProposedChange,
   consumeApprovalRequest,
-  markApprovalRequestApplied,
   claimApprovalRequest,
 } from "./approval-request"
 
@@ -225,20 +224,6 @@ describe("consumeApprovalRequest — mutation-route bypass guard (Turn LXXII)", 
       },
     )
     expect(result).not.toBeNull()
-  })
-})
-
-describe("markApprovalRequestApplied — sets appliedAt", () => {
-  it("calls update with current Date for appliedAt", async () => {
-    const update = vi.fn().mockResolvedValue({})
-    const prismaMock = { approvalRequest: { update } } as unknown as Parameters<
-      typeof markApprovalRequestApplied
-    >[0]
-    await markApprovalRequestApplied(prismaMock, "req1")
-    expect(update).toHaveBeenCalledTimes(1)
-    const arg = update.mock.calls[0][0]
-    expect(arg.where.id).toBe("req1")
-    expect(arg.data.appliedAt).toBeInstanceOf(Date)
   })
 })
 

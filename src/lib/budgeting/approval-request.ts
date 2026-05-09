@@ -247,22 +247,14 @@ export async function claimApprovalRequest(
   return result.count === 1
 }
 
-/**
- * @deprecated Turn LXXII architect ⚠️ #2 closure: superseded by
- * `claimApprovalRequest` (atomic). Kept as a thin wrapper for callers
- * that don't need the race-protection guarantee (e.g. period_unlock
- * apply path which has org-level row-lock through the Organization
- * update). New routes MUST use `claimApprovalRequest`.
- */
-export async function markApprovalRequestApplied(
-  prisma: Pick<PrismaClient, "approvalRequest">,
-  requestId: string,
-): Promise<void> {
-  await prisma.approvalRequest.update({
-    where: { id: requestId },
-    data: { appliedAt: new Date() },
-  })
-}
+// Turn LXXII architect ⚠️ #2 closure: `markApprovalRequestApplied`
+// removed — superseded by `claimApprovalRequest` (atomic) for the 6
+// mutation-route bypass paths, and `approval-requests/[id]/route.ts`
+// PATCH-approve handles its own `appliedAt` stamp inline as part of
+// the same `approvalRequest.update` that flips status (single write,
+// no helper needed). Architect Round-2 ⚠️ #1 closure: the helper had
+// no production callers + a misleading JSDoc claim; deleted rather
+// than redirected.
 
 export function isValidProposedChange(
   type: ApprovalRequestType,
