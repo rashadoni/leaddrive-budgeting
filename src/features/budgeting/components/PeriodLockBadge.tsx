@@ -17,7 +17,7 @@
  *  - Tests can mount in isolation.
  */
 
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { Lock } from "lucide-react"
 import {
   Tooltip,
@@ -36,6 +36,10 @@ interface PeriodLockBadgeProps {
 
 export function PeriodLockBadge({ plan }: PeriodLockBadgeProps) {
   const t = useTranslations("budgeting.periodLockBadge")
+  // Phase 7.G Turn LXXIV follow-up (architect ⚠️ closure): use next-intl
+  // locale (not browser locale) for date formatting — RU-mode UI on en-US
+  // browser was rendering "5/9/2026, 10:30:00 AM" instead of localized.
+  const locale = useLocale()
   const { lock } = useActivePeriodLockForPlan(plan)
   if (!lock) return null
 
@@ -45,7 +49,7 @@ export function PeriodLockBadge({ plan }: PeriodLockBadgeProps) {
   const lines: string[] = [t("locked", { period: lock.period })]
   if (lock.reason) lines.push(t("reason", { reason: lock.reason }))
   lines.push(t("by", { who: lock.lockedBy }))
-  lines.push(t("at", { when: new Date(lock.lockedAt).toLocaleString() }))
+  lines.push(t("at", { when: new Date(lock.lockedAt).toLocaleString(locale) }))
   const tooltipText = lines.join("\n")
 
   return (
