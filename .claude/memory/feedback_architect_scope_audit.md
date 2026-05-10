@@ -4,6 +4,15 @@ description: Workflow protocol — architect subagent must verify turn-scope com
 type: feedback
 originSessionId: cc752d7f-fcd5-4aa3-bd07-4a3cd4aa06f1
 ---
+
+> **🛑 DEPRECATED Phase 7.G Turn LXXXVII (per user «убери всех агентов»):**
+> Architect is no longer auto-invoked. This rule (scope audit on every
+> substantive turn) does NOT apply to default flow. Manual architect invocations
+> for high-risk classes (security / migrations / new API routes / LLM /
+> `.claude/hooks/**` per `feedback_no_agents.md`) MAY still use this scope-audit
+> format as guidance, but it's not enforced. Specifically: line 46 below
+> ("FAIL still blocks Stop") is FALSE under LXXXVII.
+
 Architect subagent reviews must include a **scope audit** in addition to the usual code-quality review. The current pattern (showing architect only what I built + asking for review) lets silently-dropped items slip through — they surfaced only months later when the user asked for an honest audit.
 
 **Why:** User observed 2026-04-24 after the Phase 7 audit revealed ~15 items marked "deferred" or "partial" that architect never flagged during their respective turns, because I had never told architect they were in scope. User: "если архитектор после каждой задачи сам запрашивал бы отчет и при не соответствии мог бы девелоперу давать команды — более чистая работа была бы."

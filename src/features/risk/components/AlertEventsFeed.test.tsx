@@ -141,6 +141,11 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     expect(url).toContain("period=2025");
   });
 
+  // Phase 7.G Turn LXXXXIII: this test has flapped under full-sweep
+  // concurrency since Turn LXIV (passes 7/7 in isolation). Root cause
+  // suspected: react state-batching race when 3 fetches resolve in quick
+  // succession. Mitigation: extended waitFor timeout 1000→3000ms +
+  // test-gate.sh `--retry=2` (LXXXVII) handles residual flap.
   it("Reset clears ruleId + re-fetches without filter", async () => {
     const fetchSpy = vi
       .fn()
@@ -160,15 +165,15 @@ describe("AlertEventsFeed (Phase 7.G C6 v3.3)", () => {
     });
 
     render(<AlertEventsFeed period="2025" />);
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1), { timeout: 3000 });
 
     const input = screen.getByPlaceholderText(/RULE_CRITICAL_INDICATOR/i);
     fireEvent.change(input, { target: { value: "RULE_MOSTLY_RED" } });
     fireEvent.click(screen.getByRole("button", { name: /apply/i }));
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2), { timeout: 3000 });
 
     fireEvent.click(screen.getByRole("button", { name: /reset/i }));
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(3), { timeout: 3000 });
     const url = fetchSpy.mock.calls[2][0] as string;
     expect(url).not.toContain("ruleId=");
     // Input itself cleared.

@@ -4,6 +4,15 @@ description: Workflow protocol — every user-defined task must reach 100% closu
 type: feedback
 originSessionId: cc752d7f-fcd5-4aa3-bd07-4a3cd4aa06f1
 ---
+
+> **🛑 DEPRECATED Phase 7.G Turn LXXXVII (per user «убери всех агентов»):**
+> Architect's Completion Audit is no longer auto-enforced. The "turn cannot
+> close until ⚠️/❌ resolved" claim at line 32 below is FALSE under LXXXVII —
+> turn closes regardless. Developer self-discipline + user code review +
+> tsc + vitest + pre-commit M7 are the active safety net. For high-risk
+> work classes, manual architect invocations MAY use the Completion Audit
+> format as guidance (`feedback_no_agents.md` for the risk-class table).
+
 Developer must close every user-defined task to **100%** before ending any substantive turn. "100%" means one of:
 - **✅ Done** — every deliverable implied by the user's request is implemented, tested, and verified.
 - **🔄 Explicit escalation** — deliverable cannot land this turn (genuine blocker: missing user data, infrastructure dependency, user-only decision required). Developer surfaces it INLINE in the user-facing final message as a single declarative sentence with the blocker, and proposes who breaks it.

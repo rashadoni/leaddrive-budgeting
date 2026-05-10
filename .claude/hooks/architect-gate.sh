@@ -44,9 +44,13 @@ DIRTY="${TMPDIR:-/tmp}/.claude-dirty-${SESSION_ID}"
 # Phase 7.G Turn LXXVIII follow-up — track carve-out state separately
 # from full-protocol state. CARVE_OUT=1 means "no source changes this
 # turn (docs/memory only via mark-dirty.sh carve-out)" — skip the
-# architect-required checks (#1 invocation, #2 RAW marker, #3 not-FAIL)
-# but STILL run the CARRYOVER freshness check #5 if OPEN items exist
+# architect-required checks (#1 invocation, #2 RAW marker — and historically
+# #3 not-FAIL, removed Turn LXXXI per Option B single-round rule) but
+# STILL run the CARRYOVER freshness check #5 if OPEN items exist
 # (otherwise pure docs/memory turns would bypass rot-prevention).
+#
+# Note Turn LXXXVII: this entire hook is unwired from .claude/settings.json
+# per user «убери всех агентов». Code preserved for revert option.
 CARVE_OUT=0
 if [ ! -f "$DIRTY" ]; then
   CARVE_OUT=1
