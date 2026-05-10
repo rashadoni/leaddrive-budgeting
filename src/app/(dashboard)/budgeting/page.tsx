@@ -60,8 +60,6 @@ import {
   useCreateBudgetVersion,
   useBudgetDiff,
   useExchangeRates,
-  useImportCsv,
-  useImportHistory,
   useCreateRollingPlan,
   useRollingForecast,
   useAutoForecast,
@@ -76,6 +74,7 @@ import { VarianceTab } from "@/features/budgeting/components/VarianceTab"
 import { ComparisonTab } from "@/features/budgeting/components/ComparisonTab"
 import { PLTab } from "@/features/budgeting/components/PLTab"
 import { PlansTab } from "@/features/budgeting/components/PlansTab"
+import { ImportTab } from "@/features/budgeting/components/ImportTab"
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_REVENUE_CATEGORIES,
@@ -99,8 +98,6 @@ import { computeOperatingProfit } from "@/lib/budgeting/operating-profit"
 import { varPct } from "@/lib/budgeting/var-pct"
 import { BudgetVersionDiff } from "@/components/budget-version-diff"
 import { BudgetFxSummary } from "@/components/budget-fx-summary"
-import { BudgetCsvImport } from "@/components/budget-csv-import"
-import { BudgetImportHistory } from "@/components/budget-import-history"
 import { BudgetRollingForecast } from "@/components/budget-rolling-forecast"
 import { BudgetCashFlowChart } from "@/components/budget-cash-flow-chart"
 import { BudgetCashFlowTable } from "@/components/budget-cash-flow-table"
@@ -147,52 +144,7 @@ function periodLabel(plan: any, t: (key: string) => string): string {
 
 // ─── Combined Import Tab ─────────────────────────────────────────────────────
 
-function ImportTab({ planId, onImported }: { planId: string; onImported: (planId: string) => void }) {
-  const t = useTranslations("budgeting")
-  const [importMode, setImportMode] = useState<"csv" | "excel">("csv")
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        <Button size="sm" variant={importMode === "csv" ? "default" : "outline"} onClick={() => setImportMode("csv")}>
-          <FileSpreadsheet className="h-4 w-4 mr-1" /> {t("wsImportTabCsv")}
-        </Button>
-        <Button size="sm" variant={importMode === "excel" ? "default" : "outline"} onClick={() => setImportMode("excel")}>
-          <FileSpreadsheet className="h-4 w-4 mr-1" /> {t("wsImportTabExcel")}
-        </Button>
-      </div>
-      {importMode === "csv" ? (
-        <IntegrationsTab planId={planId} />
-      ) : (
-        <BudgetExcelImport onImported={onImported} />
-      )}
-    </div>
-  )
-}
-
-// ─── F2: Integrations Tab ─────────────────────────────────────────────────────
-
-function IntegrationsTab({ planId }: { planId: string }) {
-  const importCsv = useImportCsv()
-  const { data: imports = [], isLoading: importsLoading } = useImportHistory(planId)
-  const [lastResult, setLastResult] = useState<any>(null)
-
-  const handleImport = async (data: any) => {
-    const result = await importCsv.mutateAsync(data)
-    setLastResult(result)
-  }
-
-  return (
-    <div className="space-y-6">
-      <BudgetCsvImport
-        planId={planId}
-        onImport={handleImport}
-        isImporting={importCsv.isPending}
-        lastResult={lastResult}
-      />
-      <BudgetImportHistory imports={imports} isLoading={importsLoading} />
-    </div>
-  )
-}
+// ─── F1: ImportTab — extracted to ./components/ImportTab.tsx (Turn LXXXII) ────
 
 // ─── F4: Rolling Forecast Tab ─────────────────────────────────────────────────
 
