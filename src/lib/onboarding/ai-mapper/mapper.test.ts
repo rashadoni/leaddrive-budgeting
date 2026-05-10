@@ -13,13 +13,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { MapperInput } from './types';
 
 // vi.mock must be hoisted ABOVE imports that use the mocked module.
+// Phase 7.G Turn LXXXXV — added hasAnthropicKey export so getLLMService()
+// factory's pre-flight check passes through to AnthropicLLMService impl
+// (which then uses the mocked getAnthropicClient below).
 vi.mock('@/lib/ai/client', () => ({
   AI_MODEL: 'mock-model',
   getAnthropicClient: vi.fn(),
+  hasAnthropicKey: vi.fn(() => true),
 }));
 
 import { runMapper } from './mapper';
 import { getAnthropicClient } from '@/lib/ai/client';
+import { resetLLMServiceForTests } from '@/lib/llm';
+
+// Reset LLM factory singleton before each test so the mock is re-resolved.
+beforeEach(() => {
+  resetLLMServiceForTests();
+});
 
 const mockedGetClient = vi.mocked(getAnthropicClient);
 
