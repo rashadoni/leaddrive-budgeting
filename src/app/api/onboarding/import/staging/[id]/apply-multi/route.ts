@@ -268,6 +268,8 @@ export async function POST(
   // on flat aggregate from all successful sheets.
   let totalInserted = 0
   let totalDeleted = 0
+  const successCount = perSheet.filter((r) => !isFailure(r)).length
+  const failureCount = perSheet.filter(isFailure).length
   try {
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
@@ -374,6 +376,69 @@ export async function POST(
     )
   }
 
+  // Phase 7.G Turn CXI — recompute trigger + audit emit. Mirrors single-
+  // sheet `/apply` route's post-transaction wiring. Recompute runs on the
+  // (companyId, year) the apply-multi just touched; failures surface as
+  // `indicatorsStale: true` instead of aborting the already-committed
+  // transaction. Audit failure surfaces as `auditStale: true`.
+  const { runRecomputeForCompanies } = await import("@/lib/risk/recompute-trigger")
+  const recomputeResult = await runRecomputeForCompanies(
+    prisma,
+    orgIdLocal,
+    [{ companyId, year: targetYear }],
+    {
+      pairError: (label, err) => console.error(`[apply-multi/recompute] ${label}:`, err),
+    },
+  )
+  const indicatorsStale = recomputeResult.failed > 0
+
+  const { logAuditEvent, buildAuditContext } = await import("@/lib/audit/log")
+  const auditResult = await logAuditEvent(prisma, {
+    organizationId: orgIdLocal,
+    actorUserId: session.userId,
+    event: {
+      action: "import_staging_apply",
+      entityType: "ImportStaging",
+      entityId: staging.id,
+      metadata: {
+        companyId,
+        year: targetYear,
+        inserted: totalInserted,
+        deleted: totalDeleted,
+        // Aggregate per-sheet warnings + parent-rollup counts. Per-sheet
+        // breakdown lives in the response body (perSheet[]); audit metadata
+        // keeps the aggregate for spend-tracking + compliance summaries.
+        warnings: perSheet
+          .filter((r): r is PerSheetSuccess => !isFailure(r))
+          .reduce((s, r) => s + r.warnings, 0),
+        parentRollupsDropped: perSheet
+          .filter((r): r is PerSheetSuccess => !isFailure(r))
+          .reduce((s, r) => s + r.parentRollupsDropped, 0),
+        parentRollupsUnallocated: perSheet
+          .filter((r): r is PerSheetSuccess => !isFailure(r))
+          .reduce((s, r) => s + r.parentRollupsUnallocated, 0),
+        recompute: {
+          ok: recomputeResult.ok,
+          unknown: recomputeResult.unknown,
+          failed: recomputeResult.failed,
+          targets: recomputeResult.targets,
+        },
+        // Multi-sheet discriminator + per-sheet outcome counts. Allows
+        // admin queries to filter `import_staging_apply` rows by
+        // `metadata.multiSheet = true` without a separate enum value.
+        multiSheet: true,
+        sheetCount: perSheet.length,
+        successCount,
+        failureCount,
+      },
+    },
+    context: buildAuditContext({
+      route: "/api/onboarding/import/staging/[id]/apply-multi",
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    }),
+  })
+  const auditStale = !auditResult.ok
+
   return NextResponse.json(
     {
       stagingId: staging.id,
@@ -381,9 +446,12 @@ export async function POST(
       year: targetYear,
       inserted: totalInserted,
       deleted: totalDeleted,
-      successCount: perSheet.filter((r) => !isFailure(r)).length,
-      failureCount: perSheet.filter(isFailure).length,
+      successCount,
+      failureCount,
       perSheet,
+      recompute: recomputeResult,
+      indicatorsStale,
+      auditStale,
     },
     { status: 200 },
   )

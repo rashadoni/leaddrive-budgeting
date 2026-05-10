@@ -102,6 +102,15 @@ export type AuditEventInput =
         parentRollupsDropped: number;
         parentRollupsUnallocated: number;
         recompute: { ok: number; unknown: number; failed: number; targets: number };
+        // Phase 7.G Turn CXI (Phase 7.B v2 Day 4) — multi-sheet apply
+        // emits this same enum value with these optional fields populated.
+        // Reusing import_staging_apply (vs adding a new enum value) avoids
+        // schema migration drift; multi-sheet apply rows are distinguishable
+        // by the presence of `multiSheet: true`.
+        multiSheet?: boolean;
+        sheetCount?: number;
+        successCount?: number;
+        failureCount?: number;
       };
     }
   | {

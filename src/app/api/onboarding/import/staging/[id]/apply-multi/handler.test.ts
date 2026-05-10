@@ -18,7 +18,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock, applierMocks } = vi.hoisted(() => ({
+const { prismaMock, applierMocks, recomputeMock, auditMock } = vi.hoisted(() => ({
   prismaMock: {
     importStaging: {
       findFirst: vi.fn(),
@@ -26,6 +26,7 @@ const { prismaMock, applierMocks } = vi.hoisted(() => ({
       update: vi.fn(),
     },
     company: { findUnique: vi.fn() },
+    auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   },
   applierMocks: {
@@ -33,11 +34,15 @@ const { prismaMock, applierMocks } = vi.hoisted(() => ({
     isMultiSheetProposal: vi.fn(),
     detectProposalYear: vi.fn(),
   },
+  recomputeMock: { runRecomputeForCompanies: vi.fn() },
+  auditMock: { logAuditEvent: vi.fn(), buildAuditContext: vi.fn((c) => c) },
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/onboarding/ai-mapper/applier", () => applierMocks)
+vi.mock("@/lib/risk/recompute-trigger", () => recomputeMock)
+vi.mock("@/lib/audit/log", () => auditMock)
 vi.mock("xlsx", () => ({
   read: vi.fn().mockReturnValue({
     SheetNames: ["P&L", "BS"],
@@ -103,10 +108,15 @@ beforeEach(() => {
   prismaMock.importStaging.updateMany.mockReset()
   prismaMock.importStaging.update.mockReset()
   prismaMock.company.findUnique.mockReset().mockResolvedValue({ baseCurrencyCode: "AZN" })
+  prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "audit_1" })
   prismaMock.$transaction.mockReset()
   applierMocks.applyMultiSheetProposal.mockReset()
   applierMocks.isMultiSheetProposal.mockReset().mockReturnValue(true)
   applierMocks.detectProposalYear.mockReset().mockReturnValue(2026)
+  recomputeMock.runRecomputeForCompanies
+    .mockReset()
+    .mockResolvedValue({ ok: 5, unknown: 1, failed: 0, targets: 6 })
+  auditMock.logAuditEvent.mockReset().mockResolvedValue({ ok: true, id: "audit_1" })
 })
 
 describe("POST /api/onboarding/import/staging/[id]/apply-multi — auth + status gates", () => {
@@ -321,5 +331,145 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     const body = await res.json()
     expect(body.error).toMatch(/Transaction failed/)
     expect(body.perSheet).toBeDefined()
+    // Recompute + audit MUST NOT fire when transaction failed
+    expect(recomputeMock.runRecomputeForCompanies).not.toHaveBeenCalled()
+    expect(auditMock.logAuditEvent).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/onboarding/import/staging/[id]/apply-multi — recompute + audit (Turn CXI)", () => {
+  beforeEach(async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    prismaMock.importStaging.findFirst.mockResolvedValue(validStagingRow)
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [
+              { code: "601-01", label: "Sales", accountType: "revenue", perMonth: Array(12).fill(100) },
+              { code: "701-01", label: "COGS", accountType: "cogs", perMonth: Array(12).fill(50) },
+            ],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+        {
+          sheetName: "BS",
+          result: {
+            lines: [
+              { code: "801-01", label: "OpEx", accountType: "expense", perMonth: Array(12).fill(20) },
+            ],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "BS",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    prismaMock.$transaction.mockResolvedValue({ inserted: 3, deleted: 0 })
+  })
+
+  it("recompute fires once for (companyId, year) after successful transaction", async () => {
+    await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(recomputeMock.runRecomputeForCompanies).toHaveBeenCalledOnce()
+    const args = recomputeMock.runRecomputeForCompanies.mock.calls[0]
+    expect(args[1]).toBe(ORG_ID)
+    expect(args[2]).toEqual([{ companyId: COMPANY_ID, year: 2026 }])
+  })
+
+  it("response carries recompute stats + indicatorsStale=false on full success", async () => {
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    const body = await res.json()
+    expect(body.recompute).toEqual({ ok: 5, unknown: 1, failed: 0, targets: 6 })
+    expect(body.indicatorsStale).toBe(false)
+  })
+
+  it("indicatorsStale=true when any recompute pair fails", async () => {
+    recomputeMock.runRecomputeForCompanies.mockResolvedValue({ ok: 4, unknown: 1, failed: 2, targets: 7 })
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    const body = await res.json()
+    expect(body.indicatorsStale).toBe(true)
+  })
+
+  it("audit emits import_staging_apply with multiSheet=true + sheet counts + recompute stats", async () => {
+    await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(auditMock.logAuditEvent).toHaveBeenCalledOnce()
+    const callArgs = auditMock.logAuditEvent.mock.calls[0][1]
+    expect(callArgs.organizationId).toBe(ORG_ID)
+    expect(callArgs.actorUserId).toBe("u_admin")
+    expect(callArgs.event).toMatchObject({
+      action: "import_staging_apply",
+      entityType: "ImportStaging",
+      entityId: STAGING_ID,
+      metadata: {
+        companyId: COMPANY_ID,
+        year: 2026,
+        inserted: 3,
+        deleted: 0,
+        multiSheet: true,
+        sheetCount: 2,
+        successCount: 2,
+        failureCount: 0,
+        recompute: { ok: 5, unknown: 1, failed: 0, targets: 6 },
+      },
+    })
+    expect(callArgs.context.route).toBe("/api/onboarding/import/staging/[id]/apply-multi")
+  })
+
+  it("audit metadata aggregates per-sheet warnings + parent-rollup counts", async () => {
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [{ code: "601-01", label: "S", accountType: "revenue", perMonth: Array(12).fill(100) }],
+            warnings: ["w1", "w2"],
+            parentRollupsDropped: ["p1"],
+            parentRollupsUnallocated: ["u1", "u2"],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+        {
+          sheetName: "BS",
+          result: {
+            lines: [{ code: "801-01", label: "O", accountType: "expense", perMonth: Array(12).fill(20) }],
+            warnings: ["w3"],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: ["u3"],
+            sheetName: "BS",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    await POST(await makeRequest(), paramsFor(STAGING_ID))
+    const meta = auditMock.logAuditEvent.mock.calls[0][1].event.metadata
+    expect(meta.warnings).toBe(3) // 2 + 1
+    expect(meta.parentRollupsDropped).toBe(1) // 1 + 0
+    expect(meta.parentRollupsUnallocated).toBe(3) // 2 + 1
+  })
+
+  it("audit failure → response carries auditStale=true (transaction NOT rolled back)", async () => {
+    auditMock.logAuditEvent.mockResolvedValue({ ok: false, error: "table missing" })
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.auditStale).toBe(true)
+    // Inserted lines still committed
+    expect(body.inserted).toBe(3)
+    expect(body.status).toBe("applied")
+  })
+
+  it("audit succeeds → auditStale=false (omitted-true in response)", async () => {
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    const body = await res.json()
+    expect(body.auditStale).toBe(false)
   })
 })
