@@ -108,7 +108,8 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# 5: dirty + architect RAW + FAIL reply → block.
+# 5 (Turn LXXXI Option B): dirty + architect RAW + FAIL reply → ALLOW
+#    (single-round; ⚠️ items become 🔄 rows, no spiral). Was: block.
 cat > "$FAKE" <<'JSONL'
 {"type":"user","message":{"role":"user","content":"test user message"},"timestamp":"2026-01-01T00:00:00Z"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"architect","description":"t","prompt":"RAW USER MESSAGE: close tasks. Review."}}]},"timestamp":"2026-01-01T00:00:01Z"}
@@ -116,10 +117,11 @@ cat > "$FAKE" <<'JSONL'
 JSONL
 touch "$DIRTY"
 out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'"}')
-if echo "$out" | grep -q '"decision":"block"' && echo "$out" | grep -q "architect review returned FAIL"; then
-  report "dirty + RAW + FAIL reply → block" 1
+# Stdout must be empty (no block JSON); dirty marker cleared. stderr notice is OK.
+if [ -z "$out" ] && [ ! -f "$DIRTY" ]; then
+  report "dirty + RAW + FAIL reply → ALLOW (Turn LXXXI single-round)" 1
 else
-  report "dirty + FAIL → block (got: $out)" 0
+  report "dirty + FAIL should ALLOW under Option B (got stdout: '$out', dirty: $([ -f "$DIRTY" ] && echo YES || echo no))" 0
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -141,8 +143,10 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────────────────
-# 7b: FAIL → developer fixed → PASS → should allow. Only the LATEST
-#     architect result counts. Intermediate FAIL in history must not block.
+# 7b (legacy LXXVII semantics, still passes under LXXXI Option B):
+#    FAIL → developer fixed → PASS → allow. Under Option B, ALL paths
+#    where architect was invoked + RAW marker present allow Stop, so
+#    this case still passes (developer voluntarily iterated, not forced).
 cat > "$FAKE" <<'JSONL'
 {"type":"user","message":{"role":"user","content":"real user directive"},"timestamp":"2026-01-01T00:00:00Z"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Agent","input":{"subagent_type":"architect","description":"round-1","prompt":"RAW USER MESSAGE: real directive. Review."}}]},"timestamp":"2026-01-01T00:00:01Z"}

@@ -94,13 +94,24 @@ environment.
 6. Architect's reply — **all three** sections — is quoted **verbatim** in
    the final user-facing message (pass-through identical whether scope is
    clean or not; user always sees the audit happened).
-7. Any Problem from Scope or Quality, OR any ⚠️/❌ from Completion Audit
-   without valid 🔄 escalation, triggers **fix-before-build** (memory
-   `feedback_fix_before_build.md`) — turn cannot close until the issue is
-   resolved or developer adds an inline escalation to the final user
-   message (not in a ROADMAP comment). Valid escalation format:
-   `🔄 Not closed: <item>. Blocker: <specific reason>. Proposed resolution:
-   <user action / next-turn plan / explicit cut>.`
+7. **Phase 7.G Turn LXXXI — Option B "single-round architect"
+   (user-confirmed):** after ONE architect round, turn closes regardless
+   of verdict. ⚠️/❌ items from architect's "Next-turn carryover" table →
+   paste into `docs/CARRYOVER.md` OPEN section as 🔄 rows. **Re-iteration
+   to PASS within the same turn is prohibited** unless the ⚠️ falls in
+   one of these hard exceptions (memory
+   `feedback_single_round_architect.md`):
+   - Security regression (auth bypass, org-isolation leak, PII exposure)
+   - Runtime broken (`tsc` errors, `vitest` failures, prod 500 on happy-path)
+   - Pre-existing test failures
+   - CARRYOVER freshness gap (single Edit closes)
+
+   For everything else (test design, false-green, hook-internal style,
+   refactor opportunity, doc/typo, naming, missing edge case) → 🔄 row,
+   turn closes. Architect-gate hook no longer blocks on FAIL — only
+   requires invocation + RAW marker + CARRYOVER freshness check #5.
+   Eliminates the architect-FAIL → fix → re-architect spiral that burned
+   8-25 min/turn (50-80% overhead) for ~5-6 real bugs in 90 turns.
 8. Turn ends with developer announcing the next step as a fact, not a
    question (memory `feedback_decide_next_step.md`).
 

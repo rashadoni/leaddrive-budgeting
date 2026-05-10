@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Stop hook — enforces 3 conditions before letting developer close a substantive turn:
+# Stop hook — enforces 2 conditions before letting developer close a substantive turn:
 #   (1) architect subagent was invoked AFTER the last REAL user message
 #       (hook-injected synthetic "Stop hook feedback" / "<system-reminder>"
 #        events are skipped so they can't create an infinite loop)
 #   (2) that architect prompt contains a verbatim user-message marker
 #       (developer must paste "RAW USER MESSAGE" section)
-#   (3) architect reply does NOT contain "Следующее действие: FAIL"
+#
+# **Phase 7.G Turn LXXXI — Option B "single-round architect" (user-confirmed)**:
+# Architect FAIL no longer blocks Stop. After ONE round of architect review
+# regardless of verdict (PASS/FAIL), the turn closes. Any unresolved ⚠️
+# items become 🔄 rows in `docs/CARRYOVER.md` (developer pastes architect's
+# "Next-turn carryover" table into OPEN section).
+#
+# Rationale: per turn-LXXX retrospective («такими темпами проверок мы
+# проект за год не закончим»), architect-FAIL → fix → re-architect spirals
+# burned 8-25 min/turn (50-80% overhead) for diminishing returns. Real bugs
+# caught: ~5-6 in 90 turns. Most architect ⚠️ are stylistic / test-design /
+# CARRYOVER-hygiene — valid 🔄 escalation, NOT runtime regressions.
+# `tsc` + `vitest` + pre-commit M7 catch the rest.
 #
 # Parsing: pure jq over the full transcript. Earlier awk implementation
 # silently failed on POSIX awk flavours over multi-line continuations,
@@ -236,16 +248,18 @@ JSON
     exit 0
   fi
 
-  # IMPORTANT: the "Следующее действие:\s*FAIL" regex below is intentionally
-  # strict — matches the exact format mandated in `.claude/agents/architect.md`
-  # (last line of the ARCHITECT REVIEW block). If architect.md template
-  # changes, update the jq regex in lockstep. Loose matching (e.g. "FAIL:" /
-  # "FAIL.") would false-positive on developer-written FAIL mentions elsewhere.
+  # Phase 7.G Turn LXXXI — Option B "single-round architect" (user-confirmed):
+  # Architect FAIL no longer blocks Stop. After 1 architect round, the turn
+  # closes regardless of verdict. Developer must paste architect's "Next-turn
+  # carryover" table into `docs/CARRYOVER.md` OPEN section so ⚠️ items don't
+  # silently rot — but that's enforced by check #5 (CARRYOVER freshness)
+  # below, not by re-iteration. Eliminates 5-15 min × N spiral overhead.
+  #
+  # The HAS_FAIL signal is preserved (still emitted in $AUDIT json above) for
+  # diagnostic visibility — printed to stderr so developer sees the reminder
+  # without blocking turn close.
   if [ "$HAS_FAIL" = "true" ]; then
-    cat <<'JSON'
-{"decision":"block","reason":"architect-gate: the most recent architect review returned FAIL (Completion Audit or Проблемы). Close the blocking items and re-invoke architect for a PASS before ending the turn. Silent ignore of architect FAIL is itself a scope violation (memory/feedback_100_percent_closure.md)."}
-JSON
-    exit 0
+    echo "[architect-gate] notice: architect returned FAIL; per Option B (Turn LXXXI), turn still closes. Paste architect's 'Next-turn carryover' table into docs/CARRYOVER.md OPEN section before commit so ⚠️ items become tracked 🔄 rows." >&2
   fi
 fi
 
