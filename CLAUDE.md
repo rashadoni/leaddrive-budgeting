@@ -73,8 +73,14 @@ environment.
    takes effect, no architect required. Pure docs/memory turns can't
    introduce runtime bugs by construction. ANY non-carve-out edit in
    the same turn (src/, prisma/, .claude/hooks/, .claude/agents/,
-   messages/, Bash) re-enables the gate. See `.claude/hooks/mark-dirty.sh`
-   doc-block for the exhaustive carve-out list.
+   messages/, Bash) re-enables the gate. CARRYOVER freshness check #5
+   still enforced on carve-out edit turns (rot prevention). **Q&A
+   exemption (Turn LXXIX refinement #1):** turns with zero tool_use
+   after last user message (pure conversation) skip check #5 too —
+   nothing to track. **Auto-bootstrap (Turn LXXIX refinement #2):**
+   `.claude/hooks/auto-bootstrap.sh` fires PostToolUse on memory edits
+   → user-home mirror always synced for next-session auto-load. See
+   `.claude/hooks/mark-dirty.sh` doc-block + memory rules #24/#25/#26.
 5. Architect prompt has **three** required sections (extended 2026-04-24):
    - **Scope check:** TurnGoal verbatim → architect verifies each goal landed
      in diff, flags silent drops / undeclared deferrals / retro-scope-creep.

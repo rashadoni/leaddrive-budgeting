@@ -355,25 +355,29 @@ fi
 rm -rf "$TMPPROJ"
 
 # ──────────────────────────────────────────────────────────────────────────
-# 14 (Turn LXXVIII follow-up): not-dirty + CARRYOVER N OPEN + no edit → block.
-# Carve-out turn must STILL be gated by CARRYOVER freshness check #5.
+# 14 (Turn LXXVIII follow-up, updated LXXIX): not-dirty + CARRYOVER N OPEN
+# + a tool_use that's NOT a CARRYOVER edit → block.
+# Carve-out turn that DID work (e.g. ROADMAP edit) but skipped CARRYOVER
+# heartbeat must STILL be gated by check #5. Note: post-Turn-LXXIX, a
+# turn with ZERO tool_use (pure Q&A) is exempt from check #5 — see test
+# #16; this test exercises the "did work, but wrong file" path.
 TMPPROJ="${TMPDIR:-/tmp}/carve-out-rot-test-$$"
 mkdir -p "$TMPPROJ/docs"
 cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
 ## OPEN
 | 🔄 | 2026-05-10 | 0 | developer | test | sample row |
 EOF
-# Transcript with NO Edit on CARRYOVER.md.
-cat > "$FAKE" <<'JSONL'
-{"type":"user","message":{"role":"user","content":"docs-only edit"},"timestamp":"2026-01-01T00:00:00Z"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]},"timestamp":"2026-01-01T00:00:01Z"}
+# Transcript with Edit on ROADMAP.md (carve-out path) but NOT on CARRYOVER.md.
+cat > "$FAKE" <<JSONL
+{"type":"user","message":{"role":"user","content":"update roadmap"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$TMPPROJ/docs/ROADMAP.md","old_string":"a","new_string":"b"}}]},"timestamp":"2026-01-01T00:00:01Z"}
 JSONL
-rm -f "$DIRTY"  # NOT dirty (carve-out turn)
+rm -f "$DIRTY"  # NOT dirty (carve-out turn — ROADMAP edit doesn't mark dirty)
 out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
 if echo "$out" | grep -q '"decision":"block"' && echo "$out" | grep -q "CARRYOVER"; then
-  report "carve-out + N OPEN + no edit → block (rot guard)" 1
+  report "carve-out (ROADMAP edit) + N OPEN + no CARRYOVER edit → block (rot guard)" 1
 else
-  report "carve-out + N OPEN + no edit should block (got: '$out')" 0
+  report "carve-out + edit + no CARRYOVER should block (got: '$out')" 0
 fi
 rm -rf "$TMPPROJ"
 
@@ -397,6 +401,56 @@ if [ -z "$out" ]; then
   report "carve-out + N OPEN + Edit on CARRYOVER → allow" 1
 else
   report "carve-out + N OPEN + Edit should allow (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 16 (Turn LXXIX refinement #1): pure Q&A turn (zero tool_use) + N OPEN → allow.
+# Carve-out + zero tool_use after last user message = pure conversation.
+# CARRYOVER rot-prevention rule only meaningfully applies to turns where
+# work was done. Without this exemption, every Q&A required artificial
+# heartbeat-touch.
+TMPPROJ="${TMPDIR:-/tmp}/qa-exempt-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
+## OPEN
+| 🔄 | 2026-05-10 | 0 | developer | test | sample row |
+EOF
+# Transcript: user asks a question, assistant replies with TEXT only (zero tool_use).
+cat > "$FAKE" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"что ты сделал?"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I summarized prior work."}]},"timestamp":"2026-01-01T00:00:01Z"}
+JSONL
+rm -f "$DIRTY"  # NOT dirty (pure Q&A — no tool_use at all)
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if [ -z "$out" ]; then
+  report "pure Q&A (zero tool_use) + N OPEN → allow (Q&A exemption)" 1
+else
+  report "pure Q&A should not block (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 17 (Turn LXXIX refinement #1 — boundary): carve-out edit + N OPEN + no
+# CARRYOVER edit → still block. Q&A exemption is ONLY for zero tool_use;
+# any tool_use (including a docs/memory edit) re-engages check #5.
+TMPPROJ="${TMPDIR:-/tmp}/carve-edit-no-carryover-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
+## OPEN
+| 🔄 | 2026-05-10 | 0 | developer | test | sample row |
+EOF
+# Transcript: assistant did Edit on a memory file but did NOT touch CARRYOVER.
+cat > "$FAKE" <<JSONL
+{"type":"user","message":{"role":"user","content":"add rule to memory"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$TMPPROJ/.claude/memory/foo.md","old_string":"a","new_string":"b"}}]},"timestamp":"2026-01-01T00:00:01Z"}
+JSONL
+rm -f "$DIRTY"  # NOT dirty (carve-out — memory edit doesn't mark dirty per LXXVIII)
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if echo "$out" | grep -q '"decision":"block"' && echo "$out" | grep -q "CARRYOVER"; then
+  report "carve-out edit + N OPEN + no CARRYOVER edit → block (Q&A exemption boundary)" 1
+else
+  report "carve-out + N OPEN + no CARRYOVER should block (got: '$out')" 0
 fi
 rm -rf "$TMPPROJ"
 

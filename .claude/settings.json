@@ -19,7 +19,8 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          {"type": "command", "command": ".claude/hooks/mark-dirty.sh"}
+          {"type": "command", "command": ".claude/hooks/mark-dirty.sh"},
+          {"type": "command", "command": ".claude/hooks/auto-bootstrap.sh"}
         ]
       }
     ],

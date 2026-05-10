@@ -151,11 +151,28 @@ AUDIT=$(jq -sr '
        | test("Следующее действие:\\s*FAIL"; "i")
      end) as $has_fail
 
+  # Phase 7.G Turn LXXIX follow-up — count ALL tool_use entries after
+  # last user message (not just architect). Zero = pure Q&A turn (no
+  # work done at all) → CARVE_OUT skips check #5 too. Caught the case
+  # where the previous Q&A turn («что ты сделал?») hit check #5 with no
+  # edits, requiring artificial heartbeat-touch.
+  | ($after
+      | map(
+          (.message.content // [])
+          | if type == "array"
+            then map(select(.type == "tool_use"))
+            else [] end
+        )
+      | flatten
+      | length
+    ) as $tool_use_count
+
   | {
       last_user_idx: $last_user_idx,
       architect_count: ($architect_calls | length),
       has_raw_marker: (($raw_calls | length) > 0),
-      has_fail: $has_fail
+      has_fail: $has_fail,
+      tool_use_count: $tool_use_count
     }
 ' "$TRANSCRIPT" 2>${TMPDIR:-/tmp}/architect-gate-jq-err.$$ || true)
 
@@ -176,12 +193,25 @@ LAST_USER_IDX=$(echo "$AUDIT" | jq -r '.last_user_idx')
 ARCHITECT_COUNT=$(echo "$AUDIT" | jq -r '.architect_count')
 HAS_RAW=$(echo "$AUDIT" | jq -r '.has_raw_marker')
 HAS_FAIL=$(echo "$AUDIT" | jq -r '.has_fail')
+TOOL_USE_COUNT=$(echo "$AUDIT" | jq -r '.tool_use_count')
 
 # No real user message ever? Unusual state — be conservative.
 if [ "$LAST_USER_IDX" = "-1" ]; then
   cat <<'JSON'
 {"decision":"block","reason":"architect-gate: transcript has no real user message (only synthetic hook-injections). Refusing to close without verification."}
 JSON
+  exit 0
+fi
+
+# Phase 7.G Turn LXXIX follow-up — pure Q&A turn (zero tool_use after
+# last user message) bypasses CARRYOVER check #5 entirely. The CARRYOVER
+# rot-prevention rule only meaningfully applies to turns where work was
+# done; pure Q&A turns ("что ты сделал?" / "почему долго?" / etc.) have
+# nothing to track. Without this exemption, every Q&A required artificial
+# heartbeat-touch — friction that defeated the carve-out's value.
+# Note: this only applies when CARVE_OUT=1 (no source change). Source
+# turns ALWAYS need full protocol regardless of tool_use count.
+if [ "$CARVE_OUT" = "1" ] && [ "$TOOL_USE_COUNT" = "0" ]; then
   exit 0
 fi
 

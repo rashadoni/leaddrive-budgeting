@@ -293,3 +293,28 @@ Risk accepted (per user Option C decision): missed `bootstrap.sh`-sync-
 gap-style bugs on memory turns. Mitigation: `feedback_session_speedup.md`
 itself codifies the bootstrap pattern as part of its rules — future-self
 should pattern-match without architect prodding.
+
+### Rule #25 — Pure-Q&A exemption from CARRYOVER check (Turn LXXIX refinement #1)
+
+`architect-gate.sh` now skips check #5 entirely when CARVE_OUT=1 AND
+zero tool_use after last user message. Pure Q&A turns ("что ты сделал?"
+/ "почему долго?" / explanations / planning conversations) have nothing
+to track — the CARRYOVER rot-prevention rule only meaningfully applies
+to turns where work was done.
+
+Boundary: ANY tool_use (including a docs/memory edit) on a carve-out turn
+re-engages check #5 → CARRYOVER must be touched (or you're producing
+work without tracking it). Test #16 (Q&A allow) + test #17 (boundary
+block) lock the contract.
+
+### Rule #26 — Auto-bootstrap on memory file edit (Turn LXXIX refinement #2)
+
+NEW PostToolUse hook `.claude/hooks/auto-bootstrap.sh` fires when an
+Edit/Write/MultiEdit touches `.claude/memory/*.md`. Runs `bootstrap.sh`
+fire-and-forget (~100ms) → user-home mirror always synced for next-session
+auto-load. Closes the highest risk class of the LXXVIII carve-out (memory
+edits bypass architect, used to catch "you forgot bootstrap" gaps —
+now bootstrap is automatic).
+
+Cost: ~100ms per memory edit (rsync-cheap; never blocks tool_use return).
+Failure mode: silent (bootstrap failure logged but doesn't propagate).
