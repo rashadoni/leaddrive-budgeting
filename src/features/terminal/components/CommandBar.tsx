@@ -251,6 +251,14 @@ export function CommandBar() {
         // on-demand crawl.
         window.dispatchEvent(new CustomEvent('terminal:open-intel'));
         return { message: 'INT →' };
+      case 'breach':
+        // Phase 7.G Turn CI (E.2d UI) — BreachForecastPanel opens on
+        // `terminal:open-breach`. Same overlay-modal pattern. Renders the
+        // org's predictive breach forecasts (declining trends classified as
+        // approaching amber/red) with period + confidence-band filters.
+        // Reads GET /api/indicators/breaches.
+        window.dispatchEvent(new CustomEvent('terminal:open-breach'));
+        return { message: 'BREACH →' };
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when

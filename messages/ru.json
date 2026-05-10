@@ -1624,6 +1624,10 @@
       "listAriaLabel": "Список сценариев",
       "detailAriaLabel": "Детали сценария"
     },
+    "breach": {
+      "dialogAriaLabel": "Прогноз нарушений индикаторов",
+      "closeAriaLabel": "Закрыть панель прогноза"
+    },
     "relatedFunctions": {
       "ariaLabel": "Связанные функции",
       "titleForCompany": "Открыть {code} в P&L / Compare / Variance / Forecast / Audit",

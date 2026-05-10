@@ -1624,6 +1624,10 @@
       "listAriaLabel": "Scenario list",
       "detailAriaLabel": "Scenario detail"
     },
+    "breach": {
+      "dialogAriaLabel": "Predictive Breach Forecasts",
+      "closeAriaLabel": "Close breach panel"
+    },
     "relatedFunctions": {
       "ariaLabel": "Related functions",
       "titleForCompany": "Open {code} in P&L / Compare / Variance / Forecast / Audit",

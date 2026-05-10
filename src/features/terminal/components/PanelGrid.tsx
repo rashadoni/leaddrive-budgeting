@@ -32,6 +32,7 @@ import { CommentsLayer } from './CommentsLayer';
 import { SubCoFinanceChat } from './SubCoFinanceChat';
 import { AISubscriptions } from './AISubscriptions';
 import { IntelFeedPanel } from './IntelFeedPanel';
+import { BreachForecastPanel } from './BreachForecastPanel';
 import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -292,6 +293,11 @@ export function PanelGrid() {
           (CommandBar `INT GO`). Admin-only Refresh button inside the
           panel triggers a fresh crawl via POST /api/intel/refresh. */}
       <IntelFeedPanel />
+      {/* Phase 7.G Turn CI (E.2d UI) — BreachForecastPanel: predictive
+          breach forecasts read from GET /api/indicators/breaches. Opens on
+          `terminal:open-breach` (CommandBar `BREACH GO`). Filters by period
+          and minConfidenceBand (default medium+). */}
+      <BreachForecastPanel />
       {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
           CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
           ≥1024px viewports. Dismissable + localStorage-persisted. */}

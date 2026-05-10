@@ -45,6 +45,7 @@ export type FunctionCode =
   | "CHT" // Tier-3 sub-30 — SubCoFinanceChat holding-CFO ↔ sub-co threads
   | "SUB" // Tier-3 sub-30 — AISubscriptions user-defined alert subscriptions
   | "INT" // Phase 7.G D.4 — IntelFeedPanel AI Web Crawler results feed
+  | "BREACH" // Phase 7.G Turn CI (E.2d UI) — predictive breach forecasts panel
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -62,6 +63,7 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "CHT",
   "SUB",
   "INT",
+  "BREACH",
 ]
 
 /**
@@ -89,6 +91,7 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   CHT: "forbidden", // Tier-3 sub-30 SubCoFinanceChat — global subco thread index
   SUB: "forbidden", // Tier-3 sub-30 AISubscriptions — global subscription manager
   INT: "forbidden", // Phase 7.G D.4 IntelFeedPanel — org-scoped global feed
+  BREACH: "forbidden", // Phase 7.G Turn CI (E.2d UI) — predictive breach panel, org-scoped global
 }
 
 export type ParsedCommand =
@@ -107,6 +110,7 @@ export type ParsedCommand =
   | { kind: "cht" }
   | { kind: "sub" }
   | { kind: "int" }
+  | { kind: "breach" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -264,6 +268,8 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "sub" } }
     case "INT":
       return { ok: true, command: { kind: "int" } }
+    case "BREACH":
+      return { ok: true, command: { kind: "breach" } }
   }
 }
 
@@ -304,6 +310,7 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "cht":
     case "sub":
     case "int":
+    case "breach":
       return null // overlay modal — does not steal focus from any panel
   }
 }

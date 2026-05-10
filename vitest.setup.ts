@@ -133,6 +133,8 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'scenario.closeAriaLabel': 'Close scenario panel',
   'scenario.listAriaLabel': 'Scenario list',
   'scenario.detailAriaLabel': 'Scenario detail',
+  'breach.dialogAriaLabel': 'Predictive Breach Forecasts',
+  'breach.closeAriaLabel': 'Close breach panel',
   'relatedFunctions.ariaLabel': 'Related functions',
   'relatedFunctions.titleForCompany': 'Open {code} in P&L / Compare / Variance / Forecast / Audit',
   'relatedFunctions.titleOrgWide': 'Open holding-wide P&L / Compare / Variance / Forecast / Audit',

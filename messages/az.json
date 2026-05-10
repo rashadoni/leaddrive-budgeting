@@ -1624,6 +1624,10 @@
       "listAriaLabel": "Ssenari siyahısı",
       "detailAriaLabel": "Ssenari detalları"
     },
+    "breach": {
+      "dialogAriaLabel": "İndikator pozuntuları proqnozu",
+      "closeAriaLabel": "Proqnoz panelini bağla"
+    },
     "relatedFunctions": {
       "ariaLabel": "Əlaqəli funksiyalar",
       "titleForCompany": "{code} üçün P&L / Müqayisə / Sapma / Proqnoz / Audit aç",

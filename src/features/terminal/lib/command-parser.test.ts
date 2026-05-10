@@ -245,6 +245,29 @@ describe("INT verb (Phase 7.G D.4 IntelFeedPanel)", () => {
   })
 })
 
+describe("BREACH verb (Phase 7.G Turn CI E.2d UI BreachForecastPanel)", () => {
+  it("`BREACH GO` parses to `{kind: breach}`", () => {
+    expect(parseCommand("BREACH GO")).toEqual({
+      ok: true,
+      command: { kind: "breach" },
+    })
+  })
+
+  it("lowercase + mixed case parses (case-insensitive)", () => {
+    expect(parseCommand("breach go")).toEqual({
+      ok: true,
+      command: { kind: "breach" },
+    })
+  })
+
+  it("`AAC BREACH GO` rejects (target forbidden — org-scoped global panel)", () => {
+    expect(parseCommand("AAC BREACH GO")).toMatchObject({
+      ok: false,
+      error: { code: "unexpected_target" },
+    })
+  })
+})
+
 describe("panelForCommand routing", () => {
   it.each([
     [{ kind: "hold" } as ParsedCommand, 2],
@@ -266,8 +289,8 @@ describe("panelForCommand routing", () => {
 })
 
 describe("FUNCTION_CODES catalog", () => {
-  it("exports exactly 15 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT)", () => {
-    expect(FUNCTION_CODES).toHaveLength(15)
+  it("exports exactly 16 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT + BREACH)", () => {
+    expect(FUNCTION_CODES).toHaveLength(16)
   })
 
   it("each panel-targeting function code has a panel route", () => {
@@ -287,8 +310,9 @@ describe("FUNCTION_CODES catalog", () => {
       CHT: { kind: "cht" },
       SUB: { kind: "sub" },
       INT: { kind: "int" },
+      BREACH: { kind: "breach" },
     }
-    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT"])
+    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT", "BREACH"])
     for (const code of FUNCTION_CODES) {
       const route = panelForCommand(sample[code])
       // Overlay modals intentionally return null (do not steal panel focus);
