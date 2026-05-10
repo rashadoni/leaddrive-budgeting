@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   PiggyBank, Plus, Trash2, Pencil, Loader2, TrendingUp, TrendingDown,
-  CheckCircle, AlertCircle, BarChart2, DollarSign, CalendarRange, Link2,
+  CheckCircle, AlertCircle, BarChart2, DollarSign, Link2,
   ChevronDown, ChevronRight, MessageSquare, Target, Brain, Sparkles, Settings2,
   LayoutGrid, List, Banknote, FileSpreadsheet, Upload,
 } from "lucide-react"
@@ -61,10 +61,6 @@ import {
   useBudgetDiff,
   useExchangeRates,
   useCreateRollingPlan,
-  useRollingForecast,
-  useAutoForecast,
-  useCloseRollingMonth,
-  useReopenRollingMonth,
 } from "@/lib/budgeting/hooks"
 import { VarianceTab } from "@/features/budgeting/components/VarianceTab"
 import { ComparisonTab } from "@/features/budgeting/components/ComparisonTab"
@@ -72,6 +68,7 @@ import { PLTab } from "@/features/budgeting/components/PLTab"
 import { PlansTab } from "@/features/budgeting/components/PlansTab"
 import { ImportTab } from "@/features/budgeting/components/ImportTab"
 import { CashFlowTab } from "@/features/budgeting/components/CashFlowTab"
+import { RollingTab } from "@/features/budgeting/components/RollingTab"
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_REVENUE_CATEGORIES,
@@ -95,7 +92,6 @@ import { computeOperatingProfit } from "@/lib/budgeting/operating-profit"
 import { varPct } from "@/lib/budgeting/var-pct"
 import { BudgetVersionDiff } from "@/components/budget-version-diff"
 import { BudgetFxSummary } from "@/components/budget-fx-summary"
-import { BudgetRollingForecast } from "@/components/budget-rolling-forecast"
 import { BudgetWaterfallChart } from "@/components/budget-waterfall-chart"
 import { BudgetExecutionGauge } from "@/components/budget-execution-gauge"
 import { BudgetCategoryBars } from "@/components/budget-category-bars"
@@ -138,59 +134,7 @@ function periodLabel(plan: any, t: (key: string) => string): string {
 
 // ─── F1: ImportTab — extracted to ./components/ImportTab.tsx (Turn LXXXII) ────
 
-// ─── F4: Rolling Forecast Tab ─────────────────────────────────────────────────
-
-function RollingTab() {
-  const t = useTranslations("budgeting")
-  const { data: plans = [] } = useBudgetPlans()
-  const rollingPlan = (plans as any[]).find((p) => p.isRolling)
-  const rollingPlanId = rollingPlan?.id || null
-  const { data: rollingData } = useRollingForecast(rollingPlanId)
-  const autoForecast = useAutoForecast()
-  const closeMonth = useCloseRollingMonth()
-  const reopenMonth = useReopenRollingMonth()
-
-  if (!rollingPlan) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <CalendarRange className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-lg mb-2">{t("rollingForecastTitle")}</p>
-          <p className="text-sm">{t("rollingNoPlanDesc")}</p>
-          <p className="text-sm mt-1">{t("rollingNoPlanHint")}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!rollingData || !rollingData.months.length) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <CalendarRange className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium text-lg mb-2">{t("rollingLoading")}</p>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="space-y-6">
-      <BudgetRollingForecast
-        months={rollingData.months}
-        totalRevenue={rollingData.revenue}
-        totalExpense={rollingData.expense}
-        totalMargin={rollingData.margin}
-        onAutoForecast={() => autoForecast.mutate({ planId: rollingPlanId! })}
-        isForecasting={autoForecast.isPending}
-        onCloseMonth={(year, month) => closeMonth.mutate({ planId: rollingPlanId!, year, month })}
-        isClosingMonth={closeMonth.isPending}
-        onReopenMonth={(year, month) => reopenMonth.mutate({ planId: rollingPlanId!, year, month })}
-        isReopeningMonth={reopenMonth.isPending}
-      />
-    </div>
-  )
-}
+// ─── F4: RollingTab — extracted to ./components/RollingTab.tsx (Turn LXXXIV)
 
 // ─── F6: CashFlowTab — extracted to ./components/CashFlowTab.tsx (Turn LXXXIII)
 
