@@ -2,17 +2,25 @@
 
 Single source of truth for open `🔄` items across substantive turns.
 
-**Enforced by**:
-- `.claude/agents/architect.md` — scans this file at start of every review.
-- `.claude/hooks/architect-gate.sh` — blocks turn-close if OPEN items exist and this file wasn't updated this turn.
-- `memory/feedback_carryover_enforcement.md` — durable rule spelling out developer obligations.
+**Status (Phase 7.G Turn LXXXVII):** Tracker is now **manual** — automatic
+enforcement removed per user «убери всех агентов». Memory rule:
+[`feedback_no_agents.md`](../.claude/memory/feedback_no_agents.md).
 
-**Invariants**:
-- Every substantive turn MUST update this file (at minimum: bump `turns-open` counters, touch mtime).
-- Items with `owner=developer` that stay OPEN for ≥ 1 turn without developer action = Проблема (fix-before-build).
-- Items with `owner=user` get heartbeat-only bumps from developer; stale (≥ 14 days) triggers architect re-ping suggestion.
-- Closed items move from OPEN → CLOSED section with closure date + resolution note.
-- **Long-term trigger-gated work lives in `docs/ROADMAP.md ## Backlog`**, not here. This tracker is for in-flight items only — items with a clear external trigger condition (Redis ship / multi-tenant SaaS / CI / vendor pick / heartbeat-only) belong in §Backlog with their re-open trigger explicit. Codified Turn XVIII (architect Round-1 ⚠️ #2 closure).
+~~**Enforced by**~~ (DEPRECATED Turn LXXXVII):
+- ~~`.claude/agents/architect.md` — scans this file at start of every review.~~ (no auto-architect)
+- ~~`.claude/hooks/architect-gate.sh` — blocks turn-close if OPEN items exist.~~ (hook unwired from settings.json)
+- ~~`memory/feedback_carryover_enforcement.md`~~ (deprecated)
+
+**Invariants (LXXXVII manual mode)**:
+- File 🔄 rows when useful (deferred work, user-action blockers, dev-owned follow-ups).
+- `turns-open` counters are OPTIONAL — bump via `npm run carryover:bump -- --turn N` if useful for stale-row detection. Counters were primarily for architect-gate freshness check (now disabled).
+- `owner=user` rows: re-ping user inline in chat when turns-open ≥ 14, manually.
+- Closed items move OPEN → CLOSED with date + resolution note.
+- **Long-term trigger-gated work lives in `docs/ROADMAP.md ## Backlog`**, not here.
+
+~~**Never delete OPEN rows silently.**~~ Still applies — but the enforcement
+mechanism is now developer self-discipline + user code review, not the architect
+gate.
 
 **Never delete OPEN rows silently.** They either close (→ CLOSED section), migrate to ROADMAP §Backlog with leave-behind narrative in this file's CLOSED section, or stay with a developer-written reason.
 
