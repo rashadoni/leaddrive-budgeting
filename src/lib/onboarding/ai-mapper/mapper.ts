@@ -15,6 +15,7 @@ import { getAnthropicClient, AI_MODEL } from '@/lib/ai/client';
 import type { MapperInput, MappingProposal } from './types';
 import { renderInputForPrompt } from './extract';
 import { extractJsonFromText } from './json-extract';
+import { detectHeuristicAnomalies, mergeAnomalies } from './anomaly-rules';
 
 const SYSTEM_PROMPT = `You are an expert financial-data analyst onboarding messy spreadsheets into a holding-level risk terminal.
 
@@ -171,14 +172,25 @@ export async function runMapper(
     }
   }
 
-  return {
+  // Phase 7.G Turn LXXXXIV (Phase 7.B v2 Day 2) — heuristic anomaly pre-pass.
+  // LLM misses ~20% of anomalies per POC runs. Run 7 deterministic rules
+  // (sign_inversion / magnitude_outlier / category_mismatch / duplicate_row /
+  // currency_mix / implausible_ratio / other) and merge with LLM-flagged.
+  // Dedupe by (row, category) — LLM description wins on overlap.
+  const partialProposal = {
     sourceFile: input.sourceFile,
     sourceSheet: input.sourceSheet,
     summary: parsed.summary,
     overallConfidence: parsed.overallConfidence,
     columns: parsed.columns,
     accountTypeOverrides: parsed.accountTypeOverrides ?? [],
-    anomalies: parsed.anomalies,
+  };
+  const heuristic = detectHeuristicAnomalies(input, partialProposal);
+  const mergedAnomalies = mergeAnomalies(parsed.anomalies, heuristic);
+
+  return {
+    ...partialProposal,
+    anomalies: mergedAnomalies,
     usage: {
       inputTokens: response.usage.input_tokens,
       outputTokens: response.usage.output_tokens,
