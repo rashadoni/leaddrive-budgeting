@@ -230,6 +230,23 @@ export function AlertEventsFeed({ period }: { period: string }) {
                     {ev.affectedCompanyIds.length === 1 ? "" : "s"}
                   </div>
                 )}
+                {/* Phase 7.G Turn LXXXXVIII (Phase 7.E #2 v2 E.1d) — alert deep-link.
+                  * Why? button → terminal pre-selecting first affected (company,
+                  * indicator) pair. Terminal-side query-param resolution + auto-
+                  * select filed as 🔄 (next-turn); for now, link surfaces context
+                  * in URL so terminal can read on mount. */}
+                {ev.affectedCompanyIds.length > 0 && ev.affectedIndicatorCodes.length > 0 && (
+                  <div className="mt-2">
+                    <a
+                      href={`/budgeting/terminal?company=${encodeURIComponent(ev.affectedCompanyIds[0])}&indicator=${encodeURIComponent(ev.affectedIndicatorCodes[0])}&period=${encodeURIComponent(ev.period)}&from=alert&alertId=${encodeURIComponent(ev.id)}`}
+                      className="inline-flex items-center gap-1 rounded border border-cyan-500/40 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-mono text-cyan-300 hover:bg-cyan-500/20"
+                      title={`Open AI explainer for ${ev.affectedCompanyIds[0]} / ${ev.affectedIndicatorCodes[0]} in Risk Terminal`}
+                      data-testid="alert-explain-link"
+                    >
+                      ? Why?
+                    </a>
+                  </div>
+                )}
               </li>
             );
           })}
