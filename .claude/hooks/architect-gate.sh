@@ -29,9 +29,28 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"')
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
 DIRTY="${TMPDIR:-/tmp}/.claude-dirty-${SESSION_ID}"
 
-# If not dirty (no substantive changes this turn), let it close.
+# Phase 7.G Turn LXXVIII follow-up — track carve-out state separately
+# from full-protocol state. CARVE_OUT=1 means "no source changes this
+# turn (docs/memory only via mark-dirty.sh carve-out)" — skip the
+# architect-required checks (#1 invocation, #2 RAW marker, #3 not-FAIL)
+# but STILL run the CARRYOVER freshness check #5 if OPEN items exist
+# (otherwise pure docs/memory turns would bypass rot-prevention).
+CARVE_OUT=0
 if [ ! -f "$DIRTY" ]; then
-  exit 0
+  CARVE_OUT=1
+  CWD_EARLY=$(echo "$INPUT" | jq -r '.cwd // empty')
+  if [ -z "$CWD_EARLY" ] || [ ! -f "$CWD_EARLY/docs/CARRYOVER.md" ]; then
+    # No CARRYOVER.md or no CWD — nothing to enforce, exit clean.
+    exit 0
+  fi
+  OPEN_EARLY=$(grep -c "^| 🔄 |" "$CWD_EARLY/docs/CARRYOVER.md" 2>/dev/null || echo 0)
+  if [ "$OPEN_EARLY" = "0" ]; then
+    # No OPEN items, no dirty — clean carve-out turn, exit.
+    exit 0
+  fi
+  # Not dirty but OPEN items exist → fall through; jq pass below is needed
+  # for LAST_USER_IDX which check #5 uses. Skip architect-required checks
+  # (#1/#2/#3) by branching on $CARVE_OUT below.
 fi
 
 # Missing transcript — diagnostic, distinct from protocol violation.
@@ -161,32 +180,38 @@ JSON
   exit 0
 fi
 
-# No architect invocation after the last real user message.
-if [ "$ARCHITECT_COUNT" = "0" ]; then
-  cat <<'JSON'
+# Phase 7.G Turn LXXVIII follow-up: skip architect-required checks (#1
+# invocation, #2 RAW marker, #3 not-FAIL) when this turn is a carve-out
+# (docs/memory-only edits, no source changes via mark-dirty.sh). Only
+# the CARRYOVER freshness check below still runs to prevent rot.
+if [ "$CARVE_OUT" = "0" ]; then
+  # No architect invocation after the last real user message.
+  if [ "$ARCHITECT_COUNT" = "0" ]; then
+    cat <<'JSON'
 {"decision":"block","reason":"architect-gate: no architect subagent invocation found after the last user message. Invoke Agent(subagent_type='architect') with a prompt that includes the user's RAW message verbatim under a 'RAW USER MESSAGE' marker, and deliver all three blocks (Scope / Quality / Completion Audit) in your final response."}
 JSON
-  exit 0
-fi
+    exit 0
+  fi
 
-# Architect was invoked but none of the calls carries the RAW marker.
-if [ "$HAS_RAW" != "true" ]; then
-  cat <<'JSON'
+  # Architect was invoked but none of the calls carries the RAW marker.
+  if [ "$HAS_RAW" != "true" ]; then
+    cat <<'JSON'
 {"decision":"block","reason":"architect-gate: architect was invoked but prompt lacks the 'RAW USER MESSAGE' marker. Per memory/feedback_100_percent_closure.md, the architect must receive the user's verbatim request — not a summary. Re-invoke architect with a 'RAW USER MESSAGE:' section quoting the user's words verbatim."}
 JSON
-  exit 0
-fi
+    exit 0
+  fi
 
-# IMPORTANT: the "Следующее действие:\s*FAIL" regex below is intentionally
-# strict — matches the exact format mandated in `.claude/agents/architect.md`
-# (last line of the ARCHITECT REVIEW block). If architect.md template
-# changes, update the jq regex in lockstep. Loose matching (e.g. "FAIL:" /
-# "FAIL.") would false-positive on developer-written FAIL mentions elsewhere.
-if [ "$HAS_FAIL" = "true" ]; then
-  cat <<'JSON'
+  # IMPORTANT: the "Следующее действие:\s*FAIL" regex below is intentionally
+  # strict — matches the exact format mandated in `.claude/agents/architect.md`
+  # (last line of the ARCHITECT REVIEW block). If architect.md template
+  # changes, update the jq regex in lockstep. Loose matching (e.g. "FAIL:" /
+  # "FAIL.") would false-positive on developer-written FAIL mentions elsewhere.
+  if [ "$HAS_FAIL" = "true" ]; then
+    cat <<'JSON'
 {"decision":"block","reason":"architect-gate: the most recent architect review returned FAIL (Completion Audit or Проблемы). Close the blocking items and re-invoke architect for a PASS before ending the turn. Silent ignore of architect FAIL is itself a scope violation (memory/feedback_100_percent_closure.md)."}
 JSON
-  exit 0
+    exit 0
+  fi
 fi
 
 # Check #5: CARRYOVER.md freshness.
