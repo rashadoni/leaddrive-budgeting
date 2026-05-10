@@ -43,6 +43,16 @@ type CachedEntry = {
   llmAnomalies: Anomaly[]
   usage: LLMUsage
   cachedAt: number
+  /** Phase 7.B v2 Day 5: template promotion. When true, entry bypasses TTL
+   * (forever-cached) and surfaces in `listTemplates()`. Promote via
+   * `promoteCacheEntryToTemplate()`. */
+  isTemplate?: boolean
+  /** User-supplied label for promoted template (e.g. "AZMADE 2026 P&L"). */
+  templateName?: string
+  /** Times this template was used (auto-incremented on each cache hit
+   * when isTemplate=true). */
+  applyCount?: number
+  lastUsedAt?: number
 }
 
 /**
@@ -100,7 +110,14 @@ export async function getOrCreateProposal(
     // in-memory provider, modelName is "in-memory" — distinct cache key.
     const cacheKey = await computeCacheKey(opts.orgId, structureHash, llm)
     const entry = cache.get(cacheKey)
-    if (entry && Date.now() - entry.cachedAt < PROPOSAL_CACHE_TTL_MS) {
+    // Templates (isTemplate=true) bypass TTL — forever-cached until deleted.
+    const isFresh = entry && (entry.isTemplate || Date.now() - entry.cachedAt < PROPOSAL_CACHE_TTL_MS)
+    if (entry && isFresh) {
+      // Increment template usage stats
+      if (entry.isTemplate) {
+        entry.applyCount = (entry.applyCount ?? 0) + 1
+        entry.lastUsedAt = Date.now()
+      }
       const heuristic = detectHeuristicAnomalies(input, {
         ...entry.baseProposal,
         sourceFile: input.sourceFile,
@@ -120,6 +137,8 @@ export async function getOrCreateProposal(
       }
     }
   }
+
+  // Below this point: cache miss path
 
   // Cache miss (or bypass) — call LLM
   const result = await getLLMService().generateMapping(input, {
@@ -142,6 +161,75 @@ export async function getOrCreateProposal(
   })
 
   return { proposal: result.proposal, usage: result.usage, cacheHit: false }
+}
+
+// ─── Phase 7.B v2 Day 5 — template library helpers ───────────────────────
+
+export type TemplateInfo = {
+  cacheKey: string
+  templateName: string
+  structureHash: string
+  applyCount: number
+  lastUsedAt: number | null
+  cachedAt: number
+}
+
+/**
+ * Promote an existing cache entry to a permanent template. Caller MUST have
+ * just run `getOrCreateProposal()` for this orgId+hash so the entry exists.
+ * Idempotent — re-promoting overwrites name + resets applyCount.
+ *
+ * Returns true on success, false if no cache entry exists for given key.
+ */
+export async function promoteCacheEntryToTemplate(
+  orgId: string,
+  input: MapperInput,
+  templateName: string,
+  language: string = "en",
+): Promise<boolean> {
+  const structureHash = computeStructureHash(input, language)
+  const cacheKey = await computeCacheKey(orgId, structureHash, null)
+  const entry = cache.get(cacheKey)
+  if (!entry) return false
+  entry.isTemplate = true
+  entry.templateName = templateName
+  entry.applyCount = entry.applyCount ?? 0
+  entry.lastUsedAt = entry.lastUsedAt ?? null as unknown as number
+  return true
+}
+
+/**
+ * List all approved templates for an org. Returned sorted by `lastUsedAt`
+ * desc (most-recently-used first).
+ */
+export function listTemplates(orgId: string): TemplateInfo[] {
+  const orgPrefix = `${orgId}:`
+  const result: TemplateInfo[] = []
+  for (const [key, entry] of cache.entries()) {
+    if (!key.startsWith(orgPrefix)) continue
+    if (!entry.isTemplate) continue
+    // Parse cacheKey shape: ${orgId}:${structureHash}:${promptVersion}:${modelName}
+    const parts = key.split(":")
+    const structureHash = parts[1] ?? ""
+    result.push({
+      cacheKey: key,
+      templateName: entry.templateName ?? "(unnamed)",
+      structureHash,
+      applyCount: entry.applyCount ?? 0,
+      lastUsedAt: entry.lastUsedAt ?? null,
+      cachedAt: entry.cachedAt,
+    })
+  }
+  result.sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
+  return result
+}
+
+/**
+ * Delete a template (and its underlying cache entry). Returns true if
+ * found and removed, false if no such cache key.
+ */
+export function deleteTemplate(cacheKey: string): boolean {
+  return cache.delete(cacheKey)
 }
 
 /** Build cache key — needs LLM service to resolve modelName + promptVersion.

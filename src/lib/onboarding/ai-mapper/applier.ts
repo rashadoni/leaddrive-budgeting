@@ -201,6 +201,57 @@ function toTrimmedString(v: unknown): string {
 }
 
 /**
+ * Phase 7.G Turn LXXXXVII (Phase 7.B v2 Day 4) — multi-sheet apply helper.
+ *
+ * Loops `applyProposal()` per sheet for workbooks containing multiple
+ * P&L-shaped sheets (e.g. AZMADE-style multi-entity workbooks with one
+ * P&L sheet per sub-entity). Returns per-sheet ParseResult or error.
+ *
+ * Storage shape (no schema migration — encoded in `ImportStaging.proposal`
+ * Json field): `{ sheets: [{ sheetName, proposal }, ...] }`. Backward
+ * compatible — single-sheet path stays as `{ ...proposal }` (the legacy
+ * shape without `sheets` key).
+ *
+ * Caller (apply route) wraps each per-sheet insert in same transaction so
+ * partial-failure rolls back ALL sheets.
+ */
+export type MultiSheetProposal = {
+  sheets: Array<{ sheetName: string; proposal: MappingProposal }>
+}
+
+export type MultiSheetApplyResult = {
+  perSheet: Array<
+    | { sheetName: string; result: ParseResult }
+    | { sheetName: string; error: string }
+  >
+}
+
+export function isMultiSheetProposal(
+  p: MappingProposal | MultiSheetProposal,
+): p is MultiSheetProposal {
+  return "sheets" in p && Array.isArray((p as MultiSheetProposal).sheets)
+}
+
+export function applyMultiSheetProposal(
+  workbook: XLSX.WorkBook,
+  multi: MultiSheetProposal,
+  xlsx: typeof XLSX,
+  userOverridesBySheet?: Record<string, Partial<MappingProposal>>,
+): MultiSheetApplyResult {
+  const perSheet: MultiSheetApplyResult["perSheet"] = []
+  for (const { sheetName, proposal } of multi.sheets) {
+    const overrides = userOverridesBySheet?.[sheetName]
+    const result = applyProposal(workbook, sheetName, proposal, xlsx, overrides)
+    if ("error" in result) {
+      perSheet.push({ sheetName, error: result.error })
+    } else {
+      perSheet.push({ sheetName, result })
+    }
+  }
+  return { perSheet }
+}
+
+/**
  * Apply the proposal to a workbook — returns ParsedBudgetLine[] with
  * dedup + reconciliation already applied. Caller (apply route) wraps the
  * insert in a transaction.

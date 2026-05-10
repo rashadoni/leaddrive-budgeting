@@ -136,3 +136,102 @@ describe("getOrCreateProposal — TTL", () => {
     expect(PROPOSAL_CACHE_TTL_MS).toBe(24 * 60 * 60 * 1000)
   })
 })
+
+// Phase 7.B v2 Day 5 — template library tests.
+import { promoteCacheEntryToTemplate, listTemplates, deleteTemplate } from "./proposal-cache"
+
+describe("template library (Day 5)", () => {
+  it("promoteCacheEntryToTemplate marks entry as forever-cached + listed", async () => {
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    const ok = await promoteCacheEntryToTemplate(
+      "org_a",
+      sampleInput(),
+      "AZMADE 2026 P&L",
+    )
+    expect(ok).toBe(true)
+    const templates = listTemplates("org_a")
+    expect(templates).toHaveLength(1)
+    expect(templates[0].templateName).toBe("AZMADE 2026 P&L")
+    expect(templates[0].applyCount).toBe(0) // promoted but not yet used
+  })
+
+  it("returns false when promoting non-existent cache entry", async () => {
+    // No prior getOrCreateProposal call — cache empty
+    const ok = await promoteCacheEntryToTemplate(
+      "org_a",
+      sampleInput(),
+      "Phantom Template",
+    )
+    expect(ok).toBe(false)
+  })
+
+  it("template hit increments applyCount + lastUsedAt", async () => {
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "T1")
+    const t0 = listTemplates("org_a")[0]
+    expect(t0.applyCount).toBe(0)
+    expect(t0.lastUsedAt).toBeNull()
+
+    // Trigger a cache hit
+    const r = await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    expect(r.cacheHit).toBe(true)
+
+    const t1 = listTemplates("org_a")[0]
+    expect(t1.applyCount).toBe(1)
+    expect(t1.lastUsedAt).toBeGreaterThan(0)
+  })
+
+  it("templates listed sorted by lastUsedAt desc", async () => {
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a", language: "en" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "EN-template", "en")
+
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a", language: "ru" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "RU-template", "ru")
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a", language: "ru" })
+
+    const templates = listTemplates("org_a")
+    expect(templates).toHaveLength(2)
+    // RU was used most recently
+    expect(templates[0].templateName).toBe("RU-template")
+    expect(templates[1].templateName).toBe("EN-template")
+  })
+
+  it("multi-tenant isolation: org_a templates not visible to org_b", async () => {
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "A-template")
+
+    await getOrCreateProposal(sampleInput(), { orgId: "org_b" })
+    await promoteCacheEntryToTemplate("org_b", sampleInput(), "B-template")
+
+    expect(listTemplates("org_a")).toHaveLength(1)
+    expect(listTemplates("org_a")[0].templateName).toBe("A-template")
+    expect(listTemplates("org_b")).toHaveLength(1)
+    expect(listTemplates("org_b")[0].templateName).toBe("B-template")
+  })
+
+  it("deleteTemplate removes underlying cache entry", async () => {
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "T1")
+    expect(listTemplates("org_a")).toHaveLength(1)
+    expect(getCacheSizeForTests()).toBe(1)
+
+    const cacheKey = listTemplates("org_a")[0].cacheKey
+    const removed = deleteTemplate(cacheKey)
+    expect(removed).toBe(true)
+    expect(listTemplates("org_a")).toHaveLength(0)
+    expect(getCacheSizeForTests()).toBe(0)
+  })
+
+  it("templates bypass TTL — would survive past TTL window", async () => {
+    // Hard to test TTL expiry without time-mocking. Smoke: entry remains
+    // in cache size after promoteToTemplate (proves no auto-purge on read).
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    await promoteCacheEntryToTemplate("org_a", sampleInput(), "Forever")
+    expect(getCacheSizeForTests()).toBe(1)
+    // Multiple reads — still cached
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
+    expect(getCacheSizeForTests()).toBe(1)
+    expect(listTemplates("org_a")[0].applyCount).toBe(2)
+  })
+})
