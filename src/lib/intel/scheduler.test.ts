@@ -180,6 +180,78 @@ describe("runScheduledIntelCrawl", () => {
   })
 })
 
+// Phase 7.G Turn CII (D.5b → scheduler) — optional commodity ingest
+describe("D.5b wire — runCommodityIngest opt-in flag", () => {
+  it("default (no flag) → result has no commodityIngest field", async () => {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+    })
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.commodityIngest).toBeUndefined()
+    }
+  })
+
+  it("runCommodityIngest=true → result includes commodityIngest counts", async () => {
+    const fakeAdapter = {
+      source: "test-fx",
+      label: "Test",
+      fetch: vi.fn(async () => ({
+        source: "test-fx",
+        dataPoints: [
+          {
+            sourceCode: "test-fx",
+            metric: "USD_AZN",
+            datetime: new Date(NOW_ISO),
+            value: 0.58,
+          },
+        ],
+        errors: [],
+        fetched: true,
+      })),
+    }
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+      runCommodityIngest: true,
+      commodityAdapters: [fakeAdapter],
+    })
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.commodityIngest).toBeDefined()
+      expect(result.commodityIngest?.sources).toEqual(["test-fx"])
+      expect(result.commodityIngest?.pointsWritten).toBe(1)
+      expect(result.commodityIngest?.errors).toEqual([])
+    }
+    expect(fakeAdapter.fetch).toHaveBeenCalledOnce()
+  })
+
+  it("commodity-ingest adapter throw is recorded but doesn't abort crawl", async () => {
+    const throwingAdapter = {
+      source: "broken",
+      label: "Broken",
+      fetch: vi.fn(async () => {
+        throw new Error("upstream API down")
+      }),
+    }
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+      runCommodityIngest: true,
+      commodityAdapters: [throwingAdapter],
+    })
+    // Crawl still ok; per-adapter throw recorded under errors[]
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.commodityIngest?.errors[0]).toMatch(/Adapter broken threw/)
+    }
+  })
+})
+
 // Phase 7.G Turn C (E.2e) — optional post-crawl breach scan
 describe("E.2e — runBreachScan opt-in flag", () => {
   it("default (no flag) → result has no breachScan field", async () => {

@@ -33,6 +33,11 @@ import type { PrismaClient } from "@prisma/client"
 import { runIntelCrawl } from "./crawler"
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from "./types"
 import { runBreachScanForOrg } from "@/lib/risk/breach-scan-runner"
+import {
+  ingestCommodityData,
+  getCommodityAdapters,
+  type CommodityAdapter,
+} from "@/lib/intel/commodity"
 
 /** Allowed values for `Organization.settings.intelLanguage`. Anything else
  *  falls back to "en". */
@@ -50,6 +55,16 @@ export interface ScheduledBreachScanCounts {
   errors: string[]
 }
 
+/** Phase 7.G Turn CII (D.5b → scheduler) — counts surfaced from the optional
+ *  post-crawl commodity ingest (TCMB FX + WorldBank CPI + commodities RSS). */
+export interface ScheduledCommodityIngestCounts {
+  /** Adapter sources that ran (e.g. ["tcmb-fx-rates", "worldbank-cpi"]). */
+  sources: string[]
+  /** Total data points written across all sources. */
+  pointsWritten: number
+  errors: string[]
+}
+
 export type ScheduledCrawlResult =
   | { skipped: "too-recent"; lastRunAt: string }
   | { skipped: "lock-busy" }
@@ -60,6 +75,8 @@ export type ScheduledCrawlResult =
       result: IntelCrawlResult
       /** Phase 7.G Turn C (E.2e) — present when post-crawl breach scan ran. */
       breachScan?: ScheduledBreachScanCounts
+      /** Phase 7.G Turn CII (D.5b wire) — present when commodity ingest ran. */
+      commodityIngest?: ScheduledCommodityIngestCounts
     }
   | { ok: false; error: string }
 
@@ -92,6 +109,15 @@ export type RunScheduledOptions = {
    *  result.breachScan.errors[].
    *  Default: false (opt-in to keep existing scheduler invocations unchanged). */
   runBreachScan?: boolean
+  /** Phase 7.G Turn CII (D.5b wire) — when true, run commodity API ingest
+   *  (`ingestCommodityData(getCommodityAdapters())`) AFTER the crawl. Pulls
+   *  TCMB FX + WorldBank CPI + commodities RSS for the org. Failures recorded
+   *  under result.commodityIngest.errors[]; never abort the crawl OK result.
+   *  Default: false (opt-in). Runs BEFORE breach scan so fresh intel data
+   *  is available to E.1b intel-fusion if downstream consumers need it. */
+  runCommodityIngest?: boolean
+  /** Test seam — override the adapter list (default `getCommodityAdapters()`). */
+  commodityAdapters?: CommodityAdapter[]
 }
 
 /**
@@ -174,6 +200,29 @@ export async function runScheduledIntelCrawl(
       )
     }
 
+    // 5.5 Phase 7.G Turn CII (D.5b wire) — optional commodity ingest.
+    //     Pulls FX/CPI/RSS data points for E.1b intel-fusion. Runs BEFORE
+    //     breach scan so fresh data is available to downstream consumers.
+    //     Failures never abort the crawl OK result.
+    let commodityIngest: ScheduledCommodityIngestCounts | undefined
+    if (opts.runCommodityIngest) {
+      try {
+        const adapters = opts.commodityAdapters ?? getCommodityAdapters()
+        const ingest = await ingestCommodityData(orgId, adapters, { prisma }, now())
+        commodityIngest = {
+          sources: adapters.map((a) => a.source),
+          pointsWritten: ingest.pointsWritten,
+          errors: ingest.errors,
+        }
+      } catch (e) {
+        commodityIngest = {
+          sources: [],
+          pointsWritten: 0,
+          errors: [`commodity-ingest threw: ${e instanceof Error ? e.message : String(e)}`],
+        }
+      }
+    }
+
     // 6. Phase 7.G Turn C (E.2e) — optional post-crawl breach scan.
     //    Failures here are recorded but never abort the crawl result.
     let breachScan: ScheduledBreachScanCounts | undefined
@@ -196,7 +245,7 @@ export async function runScheduledIntelCrawl(
       }
     }
 
-    return { ok: true, lastRunAt: now().toISOString(), result, breachScan }
+    return { ok: true, lastRunAt: now().toISOString(), result, breachScan, commodityIngest }
   } finally {
     // 6. Release advisory lock
     if (lockAcquired) {
