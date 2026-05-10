@@ -66,6 +66,12 @@ model Organization {
   auditEvents            AuditEvent[]
   intelItems             IntelItem[]
   boardDeckNarrations    BoardDeckNarration[]
+  // Phase 7.G Turn LXXXXI batch — back-relations for 5 NEW v2 models.
+  aiMapperProposalCache  AIMapperProposalCache[]
+  aiTokenUsage           AITokenUsage[]
+  intelDataPoints        IntelDataPoint[]
+  varianceExplanations   VarianceExplanation[]
+  predictiveBreaches     PredictiveBreach[]
 }
 
 model User {
@@ -1484,6 +1490,140 @@ enum CoARole {
   unknown        // balance-sheet (1xx-5xx) or unrecognized
 }
 
+// ═══════════════════════════════════════════════════
+// Phase 7.G Turn LXXXXI batch — 7 v2 model promotions.
+// Each model migrates from in-memory implementation (LXXXXVI/LXXXXVII/
+// LXXXXVIII) to durable Prisma persistence. Routes/wrappers detect Prisma
+// availability + fall back to in-memory if generate hasn't yet propagated.
+// ═══════════════════════════════════════════════════
+
+// Phase 7.B v2 Day 3 — AI Mapper proposal cache.
+// Promotes `src/lib/onboarding/ai-mapper/proposal-cache.ts` Map → Postgres.
+model AIMapperProposalCache {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// sha256 over column header text + sample TYPES (NOT values) + industry + language
+  structureHash  String
+  promptVersion  String
+  modelName      String
+  /// Frozen MappingProposal (columns + accountTypeOverrides + summary) — no anomalies (heuristic re-runs on hit)
+  proposal       Json
+  /// LLM-flagged anomalies cached (merge with fresh heuristic on cache hit)
+  llmAnomalies   Json
+  tokensIn       Int
+  tokensOut      Int
+  /// Phase 7.B v2 Day 5 — template promotion (bypasses TTL when true).
+  isTemplate     Boolean      @default(false)
+  templateName   String?
+  applyCount     Int          @default(0)
+  lastUsedAt     DateTime?
+  cachedAt       DateTime     @default(now())
+
+  @@unique([organizationId, structureHash, promptVersion, modelName])
+  @@index([organizationId, isTemplate, lastUsedAt(sort: Desc)])
+  @@map("ai_mapper_proposal_cache")
+}
+
+// Phase 7.B v2 Day 6 — per-org LLM token usage tracking.
+// Promotes `src/lib/llm/cost-budget.ts` Map → Postgres.
+model AITokenUsage {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// YYYY-MM-DD UTC bucket
+  date           String
+  tokensIn       Int          @default(0)
+  tokensOut      Int          @default(0)
+  calls          Int          @default(0)
+
+  @@unique([organizationId, date])
+  @@index([organizationId, date(sort: Desc)])
+  @@map("ai_token_usage")
+}
+
+// Phase 7.E #1 D.5b — external intelligence numeric series (FX rates, CPI, commodities).
+// Sister to IntelItem (article-shaped). Distinct table because shape diverges:
+// IntelItem = unstructured news; IntelDataPoint = numeric time series.
+model IntelDataPoint {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// e.g. "tcmb-fx-rates", "worldbank-cpi", "commodities-rss-brent"
+  sourceCode     String
+  /// e.g. "USD_AZN", "AZ_CPI_YOY", "BRENT_USD_BBL"
+  metric         String
+  /// Time the datapoint applies to (NOT when it was fetched)
+  datetime       DateTime
+  value          Float
+  /// e.g. "ratio", "%", "USD/bbl"
+  unit           String?
+  /// Raw source payload for audit / re-parsing
+  raw            Json?
+  fetchedAt      DateTime     @default(now())
+
+  @@unique([organizationId, sourceCode, metric, datetime])
+  @@index([organizationId, sourceCode, datetime(sort: Desc)])
+  @@map("intel_data_points")
+}
+
+// Phase 7.E #2 v2 E.1a — Variance Explainer cache promotion.
+// Promotes `src/lib/risk/explainer-cache.ts` Map → Postgres.
+model VarianceExplanation {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  indicatorValueId  String
+  /// EN/RU/AZ
+  language          String
+  promptVersion     String
+  /// sha256 over (indicator, period, value, status, resolved-inputs, errorCode, industry, tags) — value-sensitive
+  snapshotHash      String
+  /// Full VarianceExplainerOutput (narrative, recommendations, topDrivers, confidence, modelName, promptVersion)
+  output            Json
+  tokensIn          Int
+  tokensOut         Int
+  cachedAt          DateTime     @default(now())
+
+  @@unique([organizationId, indicatorValueId, language, promptVersion, snapshotHash])
+  @@index([organizationId, indicatorValueId, cachedAt(sort: Desc)])
+  @@map("variance_explanations")
+}
+
+// Phase 7.E #3 E.2b — predictive breach scanner output.
+// Cross-cell breach forecasts persisted per recompute cycle.
+model PredictiveBreach {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId           String
+  /// Indicator code (not id — denormalised for query speed)
+  indicatorCode       String
+  /// Period the FORECAST applies to (e.g. "2026-Q4" if scanning from Q3)
+  period              String
+  /// 1 = next period, 2 = +2 periods, 3 = +3 periods (max horizon)
+  horizonStep         Int
+  /// "green"|"amber"|"red"|"unknown" — current actual status
+  currentStatus       String
+  /// "green"|"amber"|"red"|"unknown" — forecast at horizon
+  predictedStatus     String
+  /// 0..1 LLM/OLS confidence in the forecast
+  forecastConfidence  Float
+  /// "low"|"medium"|"high" — discrete band derived from confidence
+  confidenceBand      String
+  /// Forecast value with 95% CI (margin of error)
+  predictedValue      Float
+  predictedLower      Float?
+  predictedUpper      Float?
+  /// Free-form drivers cited by the forecaster (top-3)
+  drivers             Json?
+  computedAt          DateTime     @default(now())
+
+  @@unique([organizationId, period, companyId, indicatorCode, horizonStep])
+  @@index([organizationId, period, horizonStep, confidenceBand])
+  @@map("predictive_breaches")
+}
+
 enum AuditAction {
   company_role_change            // Phase 7.E scoring toggle
   budget_plan_create
@@ -1502,6 +1642,15 @@ enum AuditAction {
   period_lock_add                // Phase 7.G Turn LXX — admin locked a fiscal period (CFO close action)
   period_lock_remove             // Phase 7.G Turn LXX — admin unlocked a fiscal period (re-open trail)
   period_lock_blocked_mutation   // Phase 7.G Turn LXX — 423 Locked fired; user attempted to mutate a closed period
+  // Phase 7.G Turn LXXXXI batch (drift-resolution + 7 v2 model promotions).
+  coa_role_change                // Phase 5.1.2 — admin override of ChartOfAccount.role
+  ai_mapper_proposal_cache_run   // Phase 7.B v2 Day 3 — LLM call cache miss for AI Mapper
+  ai_mapper_template_promote     // Phase 7.B v2 Day 5 — user promoted cache entry → template
+  ai_mapper_template_apply       // Phase 7.B v2 Day 5 — template-fast-path apply (vs LLM call)
+  ai_token_budget_exceeded       // Phase 7.B v2 Day 6 — per-org daily/monthly token cap hit
+  intel_data_source_run          // Phase 7.E #1 D.5b — commodity/macro adapter executed
+  predictive_breach_compute      // Phase 7.E #3 E.2b — breach scanner executed
+  ai_breach_digest               // Phase 7.E #3 E.2e — daily breach delta digest
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to
