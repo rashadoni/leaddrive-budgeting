@@ -33,6 +33,11 @@
 
 import { forecastHorizon, type ForecastConfidence } from "./forecast"
 import { classifyValue, type IndicatorStatus, type Thresholds } from "./formula-engine"
+import {
+  fitMultivariateOLS,
+  forecastMultivariate,
+  type RegressorSeries,
+} from "./multivariate-ols"
 
 /** Default horizon (number of future periods to project). 3 covers a quarter
  *  for monthly indicators, 3 years for annual — balanced for both cadences. */
@@ -53,6 +58,35 @@ const WORSENING_TRANSITIONS: Record<IndicatorStatus, Partial<Record<IndicatorSta
 
 export type BreachConfidenceBand = "high" | "medium" | "low"
 
+/**
+ * Phase 7.G Turn CVII (E.2c slice 3) — optional macro-overlay context.
+ *
+ * When supplied to `forecastBreach`, switches the underlying fit from
+ * univariate `forecastHorizon` to multivariate `fitMultivariateOLS`,
+ * incorporating FX/CPI/commodity series as additional regressors alongside
+ * the time index. Caller pre-aligns the macro series via
+ * `alignMacroSeriesByIndex` (macro-drivers.ts).
+ *
+ * Falls back to univariate when:
+ *   - macro fit returns null (under-determined / singular / multicollinear)
+ *   - any step's `futureValues` is missing or non-finite
+ *
+ * v1 simplification: caller responsible for projecting macro futures (e.g.
+ * via `projectMacroFuturesAsConstant`). Real macro forecasting is a separate
+ * problem (recursive forecastNextPeriod on each macro series, or external
+ * forecasts).
+ */
+export interface BreachMacroContext {
+  /** Macro regressor series, pre-aligned to sparkline index by caller (via
+   *  `alignMacroSeriesByIndex` from macro-drivers.ts). Length of each
+   *  series MUST equal `sparkline.length`. */
+  regressors: RegressorSeries[]
+  /** Future macro values at each horizon step. Outer length must be ≥ horizon
+   *  steps; inner length must equal `regressors.length`. Index `step-1`
+   *  carries the values for horizon step `step`. */
+  futureValues: number[][]
+}
+
 export interface BreachForecasterInput {
   /** Identity of the IV being forecasted. */
   indicatorCode: string
@@ -67,6 +101,10 @@ export interface BreachForecasterInput {
   currentStatus: IndicatorStatus
   /** Optional: per-step driver attribution (free-form; surfaced in digest). */
   drivers?: Record<string, unknown>
+  /** Phase 7.G Turn CVII (E.2c slice 3) — optional macro overlay. When
+   *  supplied AND the multivariate fit succeeds, replaces the univariate
+   *  forecastHorizon path. */
+  macroContext?: BreachMacroContext
 }
 
 export interface ForecastedBreach {
@@ -87,6 +125,9 @@ export interface ForecastedBreach {
   predictedUpper?: number
   /** Pass-through from input.drivers (caller decides shape). */
   drivers?: Record<string, unknown>
+  /** Phase 7.G Turn CVII (E.2c slice 3) — true when multivariate macro
+   *  overlay produced this forecast; false/absent when univariate fallback. */
+  usedMacroOverlay?: boolean
 }
 
 /** Convert categorical forecast.confidence + horizon step → BreachConfidenceBand.
@@ -123,8 +164,24 @@ export interface BreachForecasterOptions {
   horizonSteps?: number
 }
 
+/** Confidence-band derivation from raw r² + n (multivariate path). Mirrors
+ *  univariate `forecast.ts` thresholds: r²≥0.7 AND n≥6 → high; r²≥0.4 OR n≥5
+ *  → medium; else low. NaN r² (flat y) → low. */
+function r2ToConfidence(r2: number, n: number): ForecastConfidence {
+  if (!Number.isFinite(r2)) return "low"
+  if (r2 >= 0.7 && n >= 6) return "high"
+  if (r2 >= 0.4 || n >= 5) return "medium"
+  return "low"
+}
+
 /** Forecast breaches for a single IV. Returns 0..N rows (one per worsening
- *  transition step in the horizon). */
+ *  transition step in the horizon).
+ *
+ *  Phase 7.G Turn CVII (E.2c slice 3): when `input.macroContext` is supplied
+ *  AND the multivariate fit succeeds, uses macro-overlay forecast (per-step
+ *  CI from `forecastMultivariate`). Falls back to univariate `forecastHorizon`
+ *  otherwise — same code path as before for callers without macro context.
+ */
 export function forecastBreach(
   input: BreachForecasterInput,
   opts: BreachForecasterOptions = {},
@@ -135,6 +192,63 @@ export function forecastBreach(
       `forecastBreach: horizonSteps must be in [1, ${MAX_BREACH_HORIZON_STEPS}] (got ${steps})`,
     )
   }
+
+  // Try macro-overlay path first when context provided. Falls through to
+  // univariate when fit fails (insufficient data / multicollinearity / bad
+  // future values).
+  const macro = input.macroContext
+  if (macro && macro.regressors.length > 0) {
+    // Validate: each regressor series length == sparkline length
+    const allLengthsMatch = macro.regressors.every(
+      (r) => r.series.length === input.sparkline.length,
+    )
+    if (allLengthsMatch && macro.futureValues.length >= steps) {
+      // Build combined regressor list: time index + macro series
+      const timeRegressor: RegressorSeries = {
+        name: "_t",
+        series: input.sparkline.map((_, i) => i),
+      }
+      const fit = fitMultivariateOLS(input.sparkline, [timeRegressor, ...macro.regressors])
+      if (fit) {
+        const breaches: ForecastedBreach[] = []
+        for (let step = 1; step <= steps; step++) {
+          const futureMacro = macro.futureValues[step - 1]
+          if (
+            !Array.isArray(futureMacro) ||
+            futureMacro.length !== macro.regressors.length ||
+            !futureMacro.every(Number.isFinite)
+          ) {
+            continue // skip step (caller didn't supply usable future macro values)
+          }
+          const tStar = input.sparkline.length + step - 1
+          const fc = forecastMultivariate(fit, [tStar, ...futureMacro])
+          if (!fc) continue
+          const predictedStatus = classifyValue(fc.predicted, input.thresholds)
+          if (!isWorsening(input.currentStatus, predictedStatus)) continue
+          const baseConf = r2ToConfidence(fit.r2, fit.n)
+          breaches.push({
+            indicatorCode: input.indicatorCode,
+            companyId: input.companyId,
+            period: input.period,
+            horizonStep: step,
+            currentStatus: input.currentStatus,
+            predictedStatus,
+            forecastConfidence: Number.isFinite(fit.r2) ? Math.max(0, Math.min(1, fit.r2)) : 0,
+            confidenceBand: deriveConfidenceBand(baseConf, step),
+            predictedValue: fc.predicted,
+            predictedLower: fc.predictionInterval.lower,
+            predictedUpper: fc.predictionInterval.upper,
+            drivers: input.drivers,
+            usedMacroOverlay: true,
+          })
+        }
+        return breaches
+      }
+      // Fit failed → fall through to univariate path
+    }
+    // Length-mismatch / not enough future steps → fall through
+  }
+
   const horizon = forecastHorizon(input.sparkline, steps)
   if (!horizon) return []
 
@@ -155,13 +269,35 @@ export function forecastBreach(
       forecastConfidence: fitConfidenceToNumeric(horizon.confidence),
       confidenceBand: deriveConfidenceBand(horizon.confidence, stepResult.step),
       predictedValue: stepResult.predicted,
-      // Per-step CI deferred to E.2c (multi-variate refit); step=1 has the
-      // shared CI from the linear fit but propagating it requires another
-      // pass. v1 ships without; v1.1 follow-up.
       drivers: input.drivers,
     })
   }
   return breaches
+}
+
+/**
+ * v1 helper for slice-3 callers — projects each macro regressor's LATEST
+ * non-null value as a constant for `steps` horizon periods. Use when no
+ * better macro forecast is available.
+ *
+ * Returns `number[][]` where outer[i] is the future-value array for step i+1.
+ * If a regressor has no non-null values, its entry will be `NaN` and that
+ * step will be skipped by `forecastBreach`.
+ */
+export function projectMacroFuturesAsConstant(
+  regressors: ReadonlyArray<RegressorSeries>,
+  steps: number,
+): number[][] {
+  const latestPerRegressor: number[] = regressors.map((r) => {
+    for (let i = r.series.length - 1; i >= 0; i--) {
+      const v = r.series[i]
+      if (v !== null && Number.isFinite(v)) return v
+    }
+    return Number.NaN
+  })
+  const out: number[][] = []
+  for (let s = 0; s < steps; s++) out.push([...latestPerRegressor])
+  return out
 }
 
 export interface BreachScanResult {

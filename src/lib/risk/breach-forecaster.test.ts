@@ -9,11 +9,13 @@ import {
   scanForBreaches,
   isWorsening,
   deriveConfidenceBand,
+  projectMacroFuturesAsConstant,
   DEFAULT_BREACH_HORIZON_STEPS,
   MAX_BREACH_HORIZON_STEPS,
   type BreachForecasterInput,
 } from "./breach-forecaster"
 import type { Thresholds } from "./formula-engine"
+import type { RegressorSeries } from "./multivariate-ols"
 
 // Higher-better thresholds: green ≥80, amber ≥60, red <60
 const THRESH_HIGHER_BETTER: Thresholds = {
@@ -218,6 +220,166 @@ describe("forecastBreach — lower-better direction", () => {
     })
     const breaches = forecastBreach(input)
     expect(breaches.length).toBe(0)
+  })
+})
+
+// Phase 7.G Turn CVII (E.2c slice 3) — macro-overlay path
+describe("forecastBreach — macro-overlay path (E.2c slice 3)", () => {
+  const declining = [100, 95, 90, 85, 82, 80, 78]
+
+  it("with macro context AND fit succeeds → uses multivariate path (usedMacroOverlay=true)", () => {
+    const macroFx: RegressorSeries = {
+      name: "AZN_USD",
+      // Independent series (not collinear with time index)
+      series: [0.58, 0.59, 0.6, 0.62, 0.61, 0.63, 0.64],
+    }
+    const input = baseInput({
+      sparkline: declining,
+      currentStatus: "green",
+      macroContext: {
+        regressors: [macroFx],
+        futureValues: [[0.65], [0.66], [0.67]],
+      },
+    })
+    const breaches = forecastBreach(input)
+    expect(breaches.length).toBeGreaterThan(0)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBe(true)
+      // Per-step CI now populated (multivariate provides it natively)
+      expect(b.predictedLower).toBeDefined()
+      expect(b.predictedUpper).toBeDefined()
+    }
+  })
+
+  it("falls back to univariate when no macroContext provided", () => {
+    const input = baseInput({ sparkline: declining, currentStatus: "green" })
+    const breaches = forecastBreach(input)
+    expect(breaches.length).toBeGreaterThan(0)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBeUndefined()
+    }
+  })
+
+  it("falls back to univariate when macro regressor length doesn't match sparkline", () => {
+    const input = baseInput({
+      sparkline: declining, // length 7
+      currentStatus: "green",
+      macroContext: {
+        regressors: [{ name: "AZN_USD", series: [0.58, 0.59, 0.6] }], // length 3 != 7
+        futureValues: [[0.65], [0.66], [0.67]],
+      },
+    })
+    const breaches = forecastBreach(input)
+    expect(breaches.length).toBeGreaterThan(0)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBeUndefined()
+    }
+  })
+
+  it("falls back to univariate when futureValues array shorter than horizon steps", () => {
+    const input = baseInput({
+      sparkline: declining,
+      currentStatus: "green",
+      macroContext: {
+        regressors: [{ name: "AZN_USD", series: [0.58, 0.59, 0.6, 0.62, 0.61, 0.63, 0.64] }],
+        futureValues: [[0.65]], // only 1 step worth, default horizon is 3
+      },
+    })
+    const breaches = forecastBreach(input)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBeUndefined()
+    }
+  })
+
+  it("falls back to univariate when multivariate fit returns null (all-null macro series)", () => {
+    const input = baseInput({
+      sparkline: declining,
+      currentStatus: "green",
+      macroContext: {
+        regressors: [{ name: "AZN_USD", series: [null, null, null, null, null, null, null] }],
+        futureValues: [[0.65], [0.66], [0.67]],
+      },
+    })
+    const breaches = forecastBreach(input)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBeUndefined()
+    }
+  })
+
+  it("skips a horizon step when its futureValues entry is non-finite (other steps still surface)", () => {
+    const input = baseInput({
+      sparkline: declining,
+      currentStatus: "green",
+      macroContext: {
+        regressors: [{ name: "AZN_USD", series: [0.58, 0.59, 0.6, 0.62, 0.61, 0.63, 0.64] }],
+        futureValues: [[0.65], [Number.NaN], [0.67]],
+      },
+    })
+    const breaches = forecastBreach(input)
+    // No step=2 should appear
+    expect(breaches.find((b) => b.horizonStep === 2)).toBeUndefined()
+  })
+
+  it("multi-regressor macro overlay (FX + Brent both supplied)", () => {
+    const input = baseInput({
+      sparkline: declining,
+      currentStatus: "green",
+      macroContext: {
+        regressors: [
+          { name: "AZN_USD", series: [0.58, 0.59, 0.6, 0.62, 0.61, 0.63, 0.64] },
+          { name: "BRENT_USD_BBL", series: [70, 72, 74, 76, 75, 78, 80] },
+        ],
+        futureValues: [
+          [0.65, 82],
+          [0.66, 84],
+          [0.67, 86],
+        ],
+      },
+    })
+    const breaches = forecastBreach(input)
+    expect(breaches.length).toBeGreaterThan(0)
+    for (const b of breaches) {
+      expect(b.usedMacroOverlay).toBe(true)
+    }
+  })
+})
+
+describe("projectMacroFuturesAsConstant — v1 helper", () => {
+  it("repeats latest non-null value of each regressor across steps", () => {
+    const regressors: RegressorSeries[] = [
+      { name: "AZN_USD", series: [0.58, 0.59, 0.6] },
+      { name: "BRENT_USD_BBL", series: [70, 72, 74] },
+    ]
+    const futures = projectMacroFuturesAsConstant(regressors, 3)
+    expect(futures).toEqual([
+      [0.6, 74],
+      [0.6, 74],
+      [0.6, 74],
+    ])
+  })
+
+  it("skips trailing nulls when finding latest value", () => {
+    const regressors: RegressorSeries[] = [
+      { name: "AZN_USD", series: [0.58, 0.59, 0.6, null, null] },
+    ]
+    const futures = projectMacroFuturesAsConstant(regressors, 2)
+    expect(futures).toEqual([[0.6], [0.6]])
+  })
+
+  it("returns NaN when regressor has no non-null values (caller skips that step)", () => {
+    const regressors: RegressorSeries[] = [{ name: "X", series: [null, null, null] }]
+    const futures = projectMacroFuturesAsConstant(regressors, 2)
+    expect(futures.length).toBe(2)
+    expect(futures[0][0]).toBeNaN()
+    expect(futures[1][0]).toBeNaN()
+  })
+
+  it("zero steps → empty array", () => {
+    expect(projectMacroFuturesAsConstant([{ name: "X", series: [1, 2] }], 0)).toEqual([])
+  })
+
+  it("zero regressors → arrays of empty arrays per step", () => {
+    expect(projectMacroFuturesAsConstant([], 3)).toEqual([[], [], []])
   })
 })
 
