@@ -11,17 +11,21 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock } = vi.hoisted(() => ({
+const { prismaMock, logAuditEventMock } = vi.hoisted(() => ({
   prismaMock: {
     chartOfAccount: {
       updateMany: vi.fn(),
       findUnique: vi.fn(),
+      findFirst: vi.fn(),
     },
+    auditEvent: { create: vi.fn() },
   },
+  logAuditEventMock: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/audit/log", () => ({ logAuditEvent: logAuditEventMock }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { PUT } from "./route"
@@ -41,6 +45,13 @@ beforeEach(() => {
     accountType: "revenue",
     role: "revenue",
   })
+  // Phase 7.G LXXXXIV — prior-state read for audit metadata
+  prismaMock.chartOfAccount.findFirst.mockReset().mockResolvedValue({
+    code: "601-01",
+    name: "Sales — Goods",
+    role: "revenue",
+  })
+  logAuditEventMock.mockReset().mockResolvedValue({ ok: true, id: "audit_1" })
 })
 
 describe("PUT /api/budgeting/chart-of-accounts/[id] — auth gate", () => {
@@ -174,7 +185,22 @@ describe("PUT — cross-tenant + happy path", () => {
     })
   })
 
-  it("returns 404 when account belongs to a different org (updateMany count=0)", async () => {
+  it("returns 404 when account belongs to a different org (findFirst returns null)", async () => {
+    prismaMock.chartOfAccount.findFirst.mockResolvedValue(null)
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: "opex" },
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(404)
+    expect(prismaMock.chartOfAccount.updateMany).not.toHaveBeenCalled()
+    expect(prismaMock.chartOfAccount.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("returns 404 on race: prior present but updateMany count=0", async () => {
+    // findFirst sees the row, but updateMany finds nothing (deleted between)
     prismaMock.chartOfAccount.updateMany.mockResolvedValue({ count: 0 })
     const res = await PUT(
       makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
@@ -197,5 +223,107 @@ describe("PUT — cross-tenant + happy path", () => {
     )
     const callArgs = prismaMock.chartOfAccount.updateMany.mock.calls[0][0]
     expect(callArgs.where).toMatchObject({ organizationId: ORG_ID })
+  })
+})
+
+// Phase 7.G Turn LXXXXIV — coa_role_change audit emission
+describe("PUT — coa_role_change audit emission (Turn LXXXXIV)", () => {
+  beforeEach(async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+  })
+
+  it("emits coa_role_change with from/to/accountCode/accountName when role changes", async () => {
+    prismaMock.chartOfAccount.findFirst.mockResolvedValue({
+      code: "601-01",
+      name: "Sales — Goods",
+      role: "revenue",
+    })
+    await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: "opex" },
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    expect(logAuditEventMock).toHaveBeenCalledOnce()
+    const callArgs = logAuditEventMock.mock.calls[0][1]
+    expect(callArgs.organizationId).toBe(ORG_ID)
+    expect(callArgs.actorUserId).toBe("u_admin")
+    expect(callArgs.event).toMatchObject({
+      action: "coa_role_change",
+      entityType: "ChartOfAccount",
+      entityId: ACCOUNT_ID,
+      metadata: {
+        accountCode: "601-01",
+        accountName: "Sales — Goods",
+        from: "revenue",
+        to: "opex",
+      },
+    })
+    expect(callArgs.context.route).toContain("PUT /api/budgeting/chart-of-accounts/")
+  })
+
+  it("does NOT emit when role unchanged (PUT with same role = no-op audit)", async () => {
+    prismaMock.chartOfAccount.findFirst.mockResolvedValue({
+      code: "601-01",
+      name: "Sales — Goods",
+      role: "revenue",
+    })
+    await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: "revenue" }, // same as prior
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    expect(logAuditEventMock).not.toHaveBeenCalled()
+  })
+
+  it("emits when changing to null (revert to derived default)", async () => {
+    prismaMock.chartOfAccount.findFirst.mockResolvedValue({
+      code: "601-01",
+      name: "Sales — Goods",
+      role: "opex",
+    })
+    await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: null },
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    expect(logAuditEventMock).toHaveBeenCalledOnce()
+    const event = logAuditEventMock.mock.calls[0][1].event
+    expect(event.metadata.from).toBe("opex")
+    expect(event.metadata.to).toBeNull()
+  })
+
+  it("response includes auditStale=true when audit emit fails", async () => {
+    logAuditEventMock.mockResolvedValue({ ok: false, error: "table missing" })
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: "opex" },
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    expect(res.status).toBe(200) // role change still committed
+    const body = await res.json()
+    expect(body.updated).toBe(true)
+    expect(body.auditStale).toBe(true)
+  })
+
+  it("response omits auditStale when audit emit succeeds", async () => {
+    logAuditEventMock.mockResolvedValue({ ok: true, id: "audit_42" })
+    const res = await PUT(
+      makeRequest(`/api/budgeting/chart-of-accounts/${ACCOUNT_ID}`, {
+        method: "PUT",
+        json: { role: "opex" },
+      }),
+      stubParams(ACCOUNT_ID),
+    )
+    const body = await res.json()
+    expect(body.updated).toBe(true)
+    expect(body.auditStale).toBeUndefined()
   })
 })

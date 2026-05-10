@@ -305,6 +305,32 @@ export type AuditEventInput =
         /** Route + verb that was attempted, e.g. "POST /api/budgeting/lines". */
         route: string;
       };
+    }
+  | {
+      // Phase 7.G Turn LXXXXIV (Phase 5.1.2 audit closure) — admin
+      // override of `ChartOfAccount.role`. Affects P&L aggregation
+      // across every consumer reading account roles (revenue / cogs /
+      // opex / etc.) — must be auditable.
+      //
+      // Pattern A1 (await + soft surface) — caller surfaces auditStale
+      // in response. Schema enum value (`coa_role_change`) lives in
+      // `prisma/schema.prisma:1646`; runtime DB enum addition pending
+      // user `prisma migrate deploy` — until applied the audit insert
+      // fails gracefully (logger never-throws contract) and the role
+      // change still commits.
+      action: 'coa_role_change';
+      entityType: 'ChartOfAccount';
+      entityId: string;
+      metadata: {
+        /** Account code (e.g. "601-01") for human-readable forensics. */
+        accountCode: string;
+        /** Account name (snapshot — name may change later). */
+        accountName: string;
+        /** Prior role value (null = no override / Prisma default). */
+        from: string | null;
+        /** New role value (null = "clear override"). */
+        to: string | null;
+      };
     };
 
 /**

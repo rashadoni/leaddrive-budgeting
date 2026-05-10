@@ -1,5 +1,9 @@
 /**
  * Phase 7.G Turn LXXXXI (Phase 5.1.2 — per-org CoA role override).
+ * **Audit-emission added Turn LXXXXIV** — closes the «coa_role_change
+ * audit emission» 🔄 from LXXXXI. Logger uses Prisma `auditEvent`
+ * which gracefully no-ops if the enum value isn't yet in the DB
+ * (logger never-throws contract).
  *
  * PUT /api/budgeting/chart-of-accounts/[id] — admin-only manual override
  * of `ChartOfAccount.role` for non-AAC charts. Backend foundation
@@ -12,12 +16,14 @@
  * Cross-tenant: `where: { id, organizationId }` not just `id` (rejects
  * sibling-org rewrites).
  *
- * Audit: DEFERRED — `coa_role_change` AuditAction enum value would require
- * a Prisma migration; the dev DB has migration drift (`prisma migrate dev`
- * needs reset which would lose ~10K BudgetLines tracked in CARRYOVER 🔄
- * rows). Filed as 🔄 for future turn when drift is resolved. The PUT
- * mutation is logged in next-auth session events at the framework layer
- * via the `requireRole` audit hook (best-effort backstop).
+ * Audit (Turn LXXXXIV): emits `coa_role_change` AuditEvent with
+ * `{accountCode, accountName, from, to}` metadata. Pattern A1 — `await`
+ * + `auditStale` flag in response so admin UI can warn on log-write
+ * failure without losing the role change itself. Pre-`prisma migrate
+ * deploy`: enum value missing from DB → audit insert returns
+ * `{ok:false, error}` → response carries `auditStale:true` but the role
+ * change is still committed (the row update happens before the audit
+ * call). Post-migrate: clean trail in `audit_event` for compliance.
  *
  * Rate-limit: 30/min per userId (looser than period-locks 10/min — role
  * changes are a one-time setup operation per account, not a recurring
@@ -29,6 +35,7 @@ import { z, ZodError } from "zod"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
+import { logAuditEvent } from "@/lib/audit/log"
 
 const RATE_LIMIT = { name: "coa-role-update", max: 30, windowMs: 60_000 }
 
@@ -82,6 +89,16 @@ export async function PUT(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
+  // Read prior state BEFORE update so audit metadata captures `from`.
+  // Cross-tenant guard via composite where (rejects sibling-org reads).
+  const prior = await prisma.chartOfAccount.findFirst({
+    where: { id, organizationId: session.orgId },
+    select: { code: true, name: true, role: true },
+  })
+  if (!prior) {
+    return NextResponse.json({ error: "Account not found" }, { status: 404 })
+  }
+
   // Cross-tenant guard: composite where-clause rejects sibling-org rewrites.
   // updateMany returns count=0 when no row matches (vs update which throws),
   // letting us return 404 cleanly without try/catch.
@@ -91,11 +108,42 @@ export async function PUT(
   })
 
   if (result.count === 0) {
+    // Race: row deleted between findFirst and updateMany — surface as 404.
     return NextResponse.json({ error: "Account not found" }, { status: 404 })
   }
 
   // Re-read to return current row state (Prisma updateMany doesn't return
   // the row).
   const account = await prisma.chartOfAccount.findUnique({ where: { id } })
-  return NextResponse.json({ account, updated: true }, { status: 200 })
+
+  // Audit emit — Pattern A1 (await + auditStale surface). Skip if no-op
+  // (e.g. PUT with the same role); otherwise the audit log fills with
+  // identical-from/to noise.
+  let auditStale = false
+  if (prior.role !== parsed.role) {
+    const auditResult = await logAuditEvent(prisma, {
+      organizationId: session.orgId,
+      actorUserId: session.userId,
+      event: {
+        action: "coa_role_change",
+        entityType: "ChartOfAccount",
+        entityId: id,
+        metadata: {
+          accountCode: prior.code,
+          accountName: prior.name,
+          from: prior.role,
+          to: parsed.role,
+        },
+      },
+      context: {
+        route: `PUT /api/budgeting/chart-of-accounts/${id}`,
+      },
+    })
+    if (!auditResult.ok) auditStale = true
+  }
+
+  return NextResponse.json(
+    auditStale ? { account, updated: true, auditStale: true } : { account, updated: true },
+    { status: 200 },
+  )
 }
