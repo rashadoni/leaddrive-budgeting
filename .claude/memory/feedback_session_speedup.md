@@ -175,3 +175,93 @@ Apply this playbook proactively when:
 4. Architect 🟢 streak hits 5+ turns without ⚠️ (signal of routine pattern).
 
 When in doubt, default to compact mode for routine + thorough mode for novel.
+
+---
+
+## Phase 7.G Turn LXXVI follow-up — 3 NEW rules per user-confirmed «хочу»
+
+**Empirical evidence:** Turns LXXII-LXXV had 4 architect FAIL rounds for missed
+adjacent-pattern sites (5th consumer in Phase 5.1, locale-leak parity in
+ApprovalRequestsAdmin, missing handler tests, planId scope-leak). Each FAIL
+≈ 10 min closure overhead. Pattern: I narrowed inventory to user-named scope +
+missed sibling sites with the same pattern. Architect grepped wider + caught
+them. Self-claim "Inventory FIRST applied" was repeatedly false in practice.
+
+### Rule #21 — Wider grep BEFORE TurnGoal declaration
+
+Before writing TurnGoal, grep the full `src/` tree for the pattern being
+introduced/refactored, NOT just files user/CARRYOVER explicitly named:
+
+```bash
+# Bad (Turn LXXV): only checked routes that CARRYOVER mentioned (2 routes)
+# → architect FAIL'd because section-context.ts had identical pattern
+
+# Good: grep the actual pattern across all source
+grep -rn "<canonical-pattern>" src/ | head -30
+```
+
+Apply to:
+- New helper function → grep all current callers of the inline pattern
+- Schema field migration → grep all consumers of the legacy column
+- Locale/i18n changes → grep all toLocaleString/toLocaleDateString sites
+- Bug fix → grep the buggy idiom across the entire src/
+
+Cost: ~10-30s extra inventory. Saves ~10 min per missed-site FAIL closure.
+
+### Rule #22 — Compact doc-blocks for routine extractions
+
+Pattern-following extraction (e.g. PlansTab → PLTab pattern) doesn't need a
+50-line doc-block re-explaining the pattern. Reference the precedent:
+
+```ts
+// BEFORE (verbose):
+/**
+ * Phase 7.G Turn LXXVI (Phase 3.1 fourth slice — PlansTab extracted).
+ * Tab body extracted verbatim from src/app/(dashboard)/budgeting/page.tsx
+ * lines 2415-2722. Continues the LX/LXI/LXVI extraction pattern. ...
+ * [10 more lines on rationale, dispatch, closure-leak prevention]
+ */
+
+// AFTER (compact):
+/** Phase 3.1 4th-slice extraction (Turn LXXVI). Precedent: PLTab Turn LXVI. */
+```
+
+Cost: ~2-3 min/turn saved. Knowledge stays in ROADMAP changelog + CARRYOVER
+(canonical) instead of duplicating in source.
+
+### Rule #23 — Compact commit messages for routine work
+
+Routine extraction / FAIL closure / pattern propagation = bullet-point
+3-5 lines. Save the prose for novel architecture decisions.
+
+```
+# BEFORE (50-line commit body):
+# - Full TurnGoal restatement / per-file change explanation
+# - Rationale paragraphs / speedup-rules-applied section
+# - Architect verdict quote
+
+# AFTER (~10-line commit body):
+# - 1-line summary (subject)
+# - 3-5 bullet points: what changed (file:LOC), why (1 phrase),
+#   test count delta
+# - Co-Authored-By footer
+```
+
+Cost: ~3-5 min/turn saved. ROADMAP changelog stays canonical record.
+
+### Trigger for #21+#22+#23
+
+Apply automatically on any turn that fits these:
+- Refactor / extraction / pattern propagation across multiple sites (#21)
+- New file follows established precedent (#22)
+- Commit is FAIL closure / sub-turn / routine pattern (#23)
+
+Skip for: novel architecture (Phase X.0 foundation slices), schema migrations
+with non-obvious shape decisions, security-shaped fixes.
+
+### Realistic floor (replaces earlier 8-12 min fantasy)
+
+- Per-turn FLOOR: **~15-20 min** (architect sync alone = 5-7 min)
+- Per-turn 0 FAIL: ~15-25 min realistic
+- Per-turn 1 FAIL closure: ~25-35 min (down from current ~30-40)
+- Primary saving: fewer FAIL closures via #21 + less prose via #22+#23
