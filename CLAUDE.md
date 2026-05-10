@@ -25,105 +25,60 @@ When completing a task:
 
 ## Roles & workflow (read before acting)
 
-Four roles operate on this codebase; a new Claude session MUST understand
-them before writing code. This replaces an earlier, inaccurate description
-that claimed "Antigravity" was the architect — there is no external model,
-both developer and architect are Claude instances in the same Claude Code
-environment.
+Two roles operate on this codebase by default; subagents are available
+on-demand only.
 
 | Role | Identity | Tools | Does | Does NOT |
 |---|---|---|---|---|
 | **User** | Human (Rashad) | N/A | Strategic scope, ship/cut decisions, real-world context (Excel data, business rules), approves deferrals | Write code |
 | **Developer** | Main Claude in the session | Full (Read/Write/Edit/Bash/...) | Writes code, runs tests/tsc/migrations, makes tactical architecture calls autonomously, announces next step, never votes | Decide ship/cut unilaterally; silently defer promised work |
-| **Architect subagent** | Claude via `Agent` tool with `subagent_type: "architect"` | Read-only (Read/Grep/Glob/Bash) | Reviews changes: scope audit vs declared TurnGoal + quality review (Проблемы/Предложения). Finds drift, silent deferrals, security regressions, architectural gaps | Write or edit files |
-| **Explore subagent** | Claude via `Agent` tool with `subagent_type: "Explore"` | Read-only | On-demand codebase searches, honest audits spanning many files | Write or edit files |
+
+**Subagents (on-demand only — Phase 7.G Turn LXXXVII per user «убери всех агентов»):**
+- `architect` / `Explore` / `Plan` / `general-purpose` are NOT invoked in default turn flow
+- Invoke ONLY when user explicitly requests OR when the work falls in a
+  high-risk class (see `memory/feedback_no_agents.md`):
+  - Phase 5.2 RLS rollout (cross-tenant leak silent killer)
+  - Phase 4.x security additions (auth bypass)
+  - Schema migrations (especially destructive)
+  - New API routes (Zod / auth gate / rate limit consistency)
+  - LLM integration (prompt drift / token budgets)
+  - `.claude/hooks/**` edits (recursion-style risk)
+- Hook files (`architect-gate.sh`, `mark-dirty.sh`, `auto-bootstrap.sh`)
+  remain on disk but are UNWIRED from `settings.json`. Re-wire to
+  re-enable for a work block.
 
 ### Turn flow
 
 1. User gives direction OR developer continues per agreed plan.
-2. Developer declares **TurnGoal** at start of any substantive turn
-   (substantive = produces git diff OR writes to `memory/`; TodoWrite alone
-   doesn't count). Pure Q&A / planning turns are exempt.
-2.5. **Process `docs/CARRYOVER.md`** BEFORE TurnGoal is final. For every
-    OPEN row:
-    - `owner=developer` → either add to TurnGoal (close this turn) or
-      re-escalate to user with a specific new blocker; vague blockers
-      ("time", "complex") rejected by architect.
-    - `owner=user` → bump `turns-open` counter; if ≥14 add inline re-ping
-      to user in final message.
-    - Closed items: move OPEN → CLOSED with date + resolution note.
-    File MUST be touched this turn (hook check #5 blocks Stop if mtime <
-    dirty-marker mtime while OPEN items exist). See
-    `memory/feedback_carryover_enforcement.md`.
-2.6. **Session-handoff convention:** at session start, scan
-    `docs/CARRYOVER.md` for a `## ⚡ SESSION HANDOFF` section
-    BETWEEN the invariants block and `## OPEN`. If present, it
-    contains the previous session's pickup-point (deferred task,
-    state-of-the-world snapshot, specific instructions). Read it
-    BEFORE declaring TurnGoal — it overrides the default "pick from
-    OPEN" flow. Last step in the handoff block tells you to delete
-    the section after acting on it; honor that so handoffs don't
-    accumulate. The section is OPTIONAL — most sessions won't have one.
-3. Developer executes, runs `npx tsc --noEmit` + `npx vitest run` as it goes.
-4. **Stop hook** (`.claude/hooks/architect-gate.sh`) blocks turn close and
-   forces the developer to invoke the architect subagent. **Carve-out
-   (Turn LXXVII per user Option C):** if the turn ONLY edited
-   docs/*.md / .claude/memory/*.md / CLAUDE.md, `mark-dirty.sh` skips
-   the dirty marker → architect-gate's "no dirty = exit 0" early-return
-   takes effect, no architect required. Pure docs/memory turns can't
-   introduce runtime bugs by construction. ANY non-carve-out edit in
-   the same turn (src/, prisma/, .claude/hooks/, .claude/agents/,
-   messages/, Bash) re-enables the gate. CARRYOVER freshness check #5
-   still enforced on carve-out edit turns (rot prevention). **Q&A
-   exemption (Turn LXXIX refinement #1):** turns with zero tool_use
-   after last user message (pure conversation) skip check #5 too —
-   nothing to track. **Auto-bootstrap (Turn LXXIX refinement #2):**
-   `.claude/hooks/auto-bootstrap.sh` fires PostToolUse on memory edits
-   → user-home mirror always synced for next-session auto-load. See
-   `.claude/hooks/mark-dirty.sh` doc-block + memory rules #24/#25/#26.
-5. Architect prompt has **three** required sections (extended 2026-04-24):
-   - **Scope check:** TurnGoal verbatim → architect verifies each goal landed
-     in diff, flags silent drops / undeclared deferrals / retro-scope-creep.
-   - **Quality review:** Проблемы / Предложения on what was built.
-   - **Completion Audit (per-deliverable, vs RAW user message):** developer
-     MUST paste the user's verbatim request into the architect prompt (not a
-     summary). Architect tables every user-implied deliverable with status
-     ✅ / ⚠️ / ❌ / 🔄. TurnGoal that narrows user's ask is flagged as drift
-     — architect audits against user's words, NOT developer's reframe. See
-     `memory/feedback_100_percent_closure.md`.
-6. Architect's reply — **all three** sections — is quoted **verbatim** in
-   the final user-facing message (pass-through identical whether scope is
-   clean or not; user always sees the audit happened).
-7. **Phase 7.G Turn LXXXI — Option B "single-round architect"
-   (user-confirmed):** after ONE architect round, turn closes regardless
-   of verdict. ⚠️/❌ items from architect's "Next-turn carryover" table →
-   paste into `docs/CARRYOVER.md` OPEN section as 🔄 rows. **Re-iteration
-   to PASS within the same turn is prohibited** unless the ⚠️ falls in
-   one of these hard exceptions (memory
-   `feedback_single_round_architect.md`):
-   - Security regression (auth bypass, org-isolation leak, PII exposure)
-   - Runtime broken (`tsc` errors, `vitest` failures, prod 500 on happy-path)
-   - Pre-existing test failures
-   - CARRYOVER freshness gap (single Edit closes)
+2. Developer executes the work directly. No mandatory TurnGoal declaration
+   for routine work; declare for novel/multi-day work or when scope is
+   ambiguous.
+3. Developer runs `npx tsc --noEmit` + `npx vitest run` mid-turn as needed.
+   `test-gate.sh` Stop hook still runs `vitest` pre-Stop as safety net.
+4. Pre-commit hook runs M7 status-band scanner + secret scanner.
+5. Developer commits with descriptive message.
+6. **CARRYOVER (`docs/CARRYOVER.md`) is a manual tracker** — file 🔄 rows
+   when useful (deferred work, user-action blockers, dev-owned follow-ups).
+   No automatic freshness enforcement. Counter-bump (`npm run carryover:bump`)
+   is OPTIONAL.
+7. Turn ends with developer announcing the next step as a fact, not a
+   question (`feedback_decide_next_step.md`).
 
-   For everything else (test design, false-green, hook-internal style,
-   refactor opportunity, doc/typo, naming, missing edge case) → 🔄 row,
-   turn closes. Architect-gate hook no longer blocks on FAIL — only
-   requires invocation + RAW marker + CARRYOVER freshness check #5.
-   Eliminates the architect-FAIL → fix → re-architect spiral that burned
-   8-25 min/turn (50-80% overhead) for ~5-6 real bugs in 90 turns.
-8. Turn ends with developer announcing the next step as a fact, not a
-   question (memory `feedback_decide_next_step.md`).
-
-### How developer invokes subagents
+### How developer invokes subagents (on demand)
 
 ```
 Agent(subagent_type="architect", description="...", prompt="...")
 Agent(subagent_type="Explore", description="...", prompt="...")
+Agent(subagent_type="Plan", description="...", prompt="...")
 ```
 
-Architect is expected to run after every substantive turn. Explore is
-on-demand for cross-file audits. Neither can write files.
+Use cases:
+- `architect` — security review on Phase 5.2 RLS / Phase 4.x security work, schema migration audit, LLM cost review
+- `Explore` — cross-file audit ("where is X used", "find all consumers of Y")
+- `Plan` — multi-day feature plan needing architectural design
+
+Default is NO subagent invocation. tsc + vitest + pre-commit M7 +
+test-gate are the active safety net.
 
 ### Durable protocol files
 
@@ -135,11 +90,14 @@ must re-read them before continuing Phase 7.
 
 Core protocol files today:
 
-- `feedback_fix_before_build.md` — close review findings before new work
+- `feedback_no_agents.md` — **Phase 7.G Turn LXXXVII current default**: subagents not invoked in default flow; risk-class re-enable list
+- `feedback_fix_before_build.md` — close review findings before new work (LXXXVII: applies to dev self-review + user feedback; architect-FAIL gate removed)
 - `feedback_decide_next_step.md` — don't ask, announce
-- `feedback_architect_scope_audit.md` — TurnGoal + **triple-audit protocol** (Scope + Quality + Completion)
-- `feedback_100_percent_closure.md` — Completion Audit vs RAW user message; ⚠️/❌ without valid 🔄 escalation blocks turn-close; protocol kills silent reframe / scope narrowing
-- `feedback_carryover_enforcement.md` — `docs/CARRYOVER.md` is cross-turn tracker of open 🔄 items; developer must process every turn; architect + hook enforce freshness
+- `feedback_session_speedup.md` — pacing rules #1-26
+- ~~`feedback_architect_scope_audit.md`~~ — DEPRECATED Turn LXXXVII (no auto-architect)
+- ~~`feedback_100_percent_closure.md`~~ — DEPRECATED Turn LXXXVII (no Completion Audit)
+- ~~`feedback_carryover_enforcement.md`~~ — DEPRECATED Turn LXXXVII (CARRYOVER now manual; check #5 disabled)
+- ~~`feedback_single_round_architect.md`~~ — DEPRECATED Turn LXXXVII (architect not invoked at all; rule moot)
 - plus product / UX / user-preference memories — enumerated in `MEMORY.md`
 
 ### Multi-machine bootstrap

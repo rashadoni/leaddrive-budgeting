@@ -15,21 +15,11 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {"type": "command", "command": ".claude/hooks/mark-dirty.sh"},
-          {"type": "command", "command": ".claude/hooks/auto-bootstrap.sh"}
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "",
         "hooks": [
-          {"type": "command", "command": ".claude/hooks/test-gate.sh"},
-          {"type": "command", "command": ".claude/hooks/architect-gate.sh"}
+          {"type": "command", "command": ".claude/hooks/test-gate.sh"}
         ]
       }
     ]
