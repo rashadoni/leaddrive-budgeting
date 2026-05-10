@@ -1,0 +1,181 @@
+// @vitest-environment node
+import { describe, it, expect, beforeEach, vi } from "vitest"
+
+const { prismaMock, runIntelCrawlMock } = vi.hoisted(() => ({
+  prismaMock: {
+    organization: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
+    },
+    $queryRawUnsafe: vi.fn(),
+  },
+  runIntelCrawlMock: vi.fn(),
+}))
+
+vi.mock("./crawler", async () => {
+  const actual = await vi.importActual<typeof import("./crawler")>("./crawler")
+  return {
+    ...actual,
+    runIntelCrawl: runIntelCrawlMock,
+  }
+})
+
+import {
+  runScheduledIntelCrawl,
+  orgIdToLockKey,
+  INTEL_SCHEDULE_INTERVAL_MS,
+} from "./scheduler"
+
+const ORG = "org_demo"
+const NOW_ISO = "2026-05-10T20:00:00.000Z"
+const NOW_MS = new Date(NOW_ISO).getTime()
+const fakeNow = () => new Date(NOW_MS)
+
+const buildInputOk = async () => ({
+  organizationId: ORG,
+  industries: ["hospitality"],
+  companyCodes: ["AAC"],
+  language: "en" as const,
+})
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ settings: {} })
+  prismaMock.organization.update.mockReset().mockResolvedValue({})
+  prismaMock.$queryRawUnsafe.mockReset().mockResolvedValue([{ pg_try_advisory_lock: true }])
+  runIntelCrawlMock.mockReset().mockResolvedValue({
+    itemsFetched: 5,
+    itemsCreated: 3,
+    itemsSkipped: 2,
+    errors: [],
+    promptVersion: "v1",
+    modelName: "test-model",
+  })
+})
+
+describe("orgIdToLockKey", () => {
+  it("deterministic — same orgId → same key", () => {
+    expect(orgIdToLockKey(ORG)).toBe(orgIdToLockKey(ORG))
+  })
+
+  it("different orgIds → different keys", () => {
+    expect(orgIdToLockKey("org_a")).not.toBe(orgIdToLockKey("org_b"))
+  })
+
+  it("returns bigint within signed 64-bit", () => {
+    const key = orgIdToLockKey(ORG)
+    expect(key > BigInt(0)).toBe(true)
+    expect(key < BigInt(2) ** BigInt(56)).toBe(true) // 7 bytes max
+  })
+})
+
+describe("runScheduledIntelCrawl", () => {
+  it("happy path: no lastRunAt → runs crawl + updates settings", async () => {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+    })
+    expect(result).toMatchObject({ ok: true })
+    expect(runIntelCrawlMock).toHaveBeenCalledOnce()
+    expect(prismaMock.organization.update).toHaveBeenCalledWith({
+      where: { id: ORG },
+      data: { settings: { intelLastRunAt: NOW_ISO } },
+    })
+  })
+
+  it("skip too-recent: lastRunAt < 24h ago", async () => {
+    const recentRun = new Date(NOW_MS - 60 * 60 * 1000).toISOString() // 1h ago
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLastRunAt: recentRun },
+    })
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+    })
+    expect(result).toMatchObject({ skipped: "too-recent", lastRunAt: recentRun })
+    expect(runIntelCrawlMock).not.toHaveBeenCalled()
+  })
+
+  it("runs after 24h elapsed", async () => {
+    const oldRun = new Date(NOW_MS - 25 * 60 * 60 * 1000).toISOString() // 25h ago
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLastRunAt: oldRun },
+    })
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+    })
+    expect(result).toMatchObject({ ok: true })
+    expect(runIntelCrawlMock).toHaveBeenCalledOnce()
+  })
+
+  it("skip lock-busy: pg_try_advisory_lock returns false", async () => {
+    prismaMock.$queryRawUnsafe.mockResolvedValue([{ pg_try_advisory_lock: false }])
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+    })
+    expect(result).toEqual({ skipped: "lock-busy" })
+    expect(runIntelCrawlMock).not.toHaveBeenCalled()
+  })
+
+  it("skip no-input: buildInput returns null (e.g. org has 0 active companies)", async () => {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: async () => null,
+      now: fakeNow,
+    })
+    expect(result).toEqual({ skipped: "no-input" })
+    expect(runIntelCrawlMock).not.toHaveBeenCalled()
+  })
+
+  it("releases lock even if crawl throws", async () => {
+    runIntelCrawlMock.mockRejectedValue(new Error("LLM down"))
+    await expect(
+      runScheduledIntelCrawl(prismaMock as never, ORG, {
+        buildInput: buildInputOk,
+        now: fakeNow,
+      }),
+    ).rejects.toThrow(/LLM down/)
+    // Lock release call should still happen
+    const calls = prismaMock.$queryRawUnsafe.mock.calls
+    expect(calls.some((c) => String(c[0]).includes("pg_advisory_unlock"))).toBe(true)
+  })
+
+  it("skipLock=true bypasses Postgres advisory lock (test mode)", async () => {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+    })
+    expect(result).toMatchObject({ ok: true })
+    // Lock acquire NOT called
+    expect(prismaMock.$queryRawUnsafe).not.toHaveBeenCalled()
+  })
+
+  it("returns error when org not found", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue(null)
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+    })
+    expect(result).toEqual({ ok: false, error: `Organization ${ORG} not found` })
+  })
+
+  it("custom intervalMs override", async () => {
+    const recentRun = new Date(NOW_MS - 30 * 1000).toISOString() // 30s ago
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLastRunAt: recentRun },
+    })
+    // 1-minute interval — 30s ago counts as too-recent
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      intervalMs: 60 * 1000,
+    })
+    expect(result).toMatchObject({ skipped: "too-recent" })
+  })
+
+  it("INTEL_SCHEDULE_INTERVAL_MS is 24h", () => {
+    expect(INTEL_SCHEDULE_INTERVAL_MS).toBe(24 * 60 * 60 * 1000)
+  })
+})
