@@ -180,6 +180,62 @@ describe("runScheduledIntelCrawl", () => {
   })
 })
 
+// Phase 7.G Turn C (E.2e) — optional post-crawl breach scan
+describe("E.2e — runBreachScan opt-in flag", () => {
+  it("default (no flag) → result has no breachScan field", async () => {
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+    })
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.breachScan).toBeUndefined()
+    }
+  })
+
+  it("runBreachScan=true → result includes breachScan counts", async () => {
+    // Mock indicatorValue.findMany so the breach-scan-runner load step succeeds.
+    // Empty rows → zero scans, but breachScan still present in result.
+    const findManyMock = vi.fn(async () => [])
+    const ext = prismaMock as unknown as { indicatorValue: { findMany: typeof findManyMock } }
+    ext.indicatorValue = { findMany: findManyMock }
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+      runBreachScan: true,
+    })
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.breachScan).toBeDefined()
+      expect(result.breachScan?.ivsLoaded).toBe(0)
+      expect(result.breachScan?.breachesPersisted).toBe(0)
+      expect(result.breachScan?.errors).toEqual([])
+    }
+    expect(findManyMock).toHaveBeenCalledOnce()
+  })
+
+  it("breach-scan throw doesn't abort crawl result (records error)", async () => {
+    const findManyMock = vi.fn(async () => {
+      throw new Error("DB exploded")
+    })
+    const ext = prismaMock as unknown as { indicatorValue: { findMany: typeof findManyMock } }
+    ext.indicatorValue = { findMany: findManyMock }
+    const result = await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+      runBreachScan: true,
+    })
+    // Crawl still ok even though breach scan threw
+    expect(result).toMatchObject({ ok: true })
+    if ("ok" in result && result.ok) {
+      expect(result.breachScan?.errors[0]).toContain("breach-scan threw")
+    }
+  })
+})
+
 // Phase 7.G Turn LXXXXIII (D.5c) — language resolution from settings.intelLanguage
 describe("D.5c — language resolution from settings", () => {
   it("settings.intelLanguage='ru' overrides input.language='en'", async () => {

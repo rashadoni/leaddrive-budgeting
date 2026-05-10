@@ -32,6 +32,7 @@ import { createHash } from "node:crypto"
 import type { PrismaClient } from "@prisma/client"
 import { runIntelCrawl } from "./crawler"
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from "./types"
+import { runBreachScanForOrg } from "@/lib/risk/breach-scan-runner"
 
 /** Allowed values for `Organization.settings.intelLanguage`. Anything else
  *  falls back to "en". */
@@ -39,11 +40,27 @@ const ALLOWED_LANGUAGES: IntelOutputLanguage[] = ["en", "ru", "az"]
 
 export const INTEL_SCHEDULE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
+/** Phase 7.G Turn C (E.2e) — counts surfaced from the optional post-crawl
+ *  breach scan. Mirrors `RunBreachScanResult` shape minus `persist` detail
+ *  (caller doesn't need raw upsert errors here, just headline counts). */
+export interface ScheduledBreachScanCounts {
+  ivsLoaded: number
+  ivsScanned: number
+  breachesPersisted: number
+  errors: string[]
+}
+
 export type ScheduledCrawlResult =
   | { skipped: "too-recent"; lastRunAt: string }
   | { skipped: "lock-busy" }
   | { skipped: "no-input" }
-  | { ok: true; lastRunAt: string; result: IntelCrawlResult }
+  | {
+      ok: true
+      lastRunAt: string
+      result: IntelCrawlResult
+      /** Phase 7.G Turn C (E.2e) — present when post-crawl breach scan ran. */
+      breachScan?: ScheduledBreachScanCounts
+    }
   | { ok: false; error: string }
 
 /**
@@ -68,6 +85,13 @@ export type RunScheduledOptions = {
   now?: () => Date
   /** Skip the advisory-lock acquisition (test mode — single process anyway). */
   skipLock?: boolean
+  /** Phase 7.G Turn C (E.2e) — when true, run a predictive-breach scan
+   *  (`runBreachScanForOrg`) AFTER the crawl completes successfully. The
+   *  scan re-uses the same DB connection + the lock window. Failures from
+   *  the breach scan never abort the crawl result — they're recorded under
+   *  result.breachScan.errors[].
+   *  Default: false (opt-in to keep existing scheduler invocations unchanged). */
+  runBreachScan?: boolean
 }
 
 /**
@@ -150,7 +174,29 @@ export async function runScheduledIntelCrawl(
       )
     }
 
-    return { ok: true, lastRunAt: now().toISOString(), result }
+    // 6. Phase 7.G Turn C (E.2e) — optional post-crawl breach scan.
+    //    Failures here are recorded but never abort the crawl result.
+    let breachScan: ScheduledBreachScanCounts | undefined
+    if (opts.runBreachScan) {
+      try {
+        const scan = await runBreachScanForOrg(orgId, { prisma, now: now() })
+        breachScan = {
+          ivsLoaded: scan.ivsLoaded,
+          ivsScanned: scan.ivsScanned,
+          breachesPersisted: scan.breachesPersisted,
+          errors: scan.errors,
+        }
+      } catch (e) {
+        breachScan = {
+          ivsLoaded: 0,
+          ivsScanned: 0,
+          breachesPersisted: 0,
+          errors: [`breach-scan threw: ${e instanceof Error ? e.message : String(e)}`],
+        }
+      }
+    }
+
+    return { ok: true, lastRunAt: now().toISOString(), result, breachScan }
   } finally {
     // 6. Release advisory lock
     if (lockAcquired) {
