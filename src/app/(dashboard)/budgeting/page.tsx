@@ -109,7 +109,8 @@ function periodLabel(plan: any, t: (key: string) => string): string {
 
 // ─── AddLineForm — DELETED Turn LXXXVI (dead code; was sole-consumer LinesTab also dead) ──
 
-// AddActualForm — moved into ActualsTab.tsx as private helper (Turn LXXXV)
+// AddActualForm + ActualsTab — DELETED Turn LXXXXIV (dead code; ActualsTab had no tab route, AddActualForm was sole-consumer).
+// WorkspaceTab handles all actuals UI. Revert via `git show 1d4e666:src/features/budgeting/components/ActualsTab.tsx` if needed.
 
 // ─── Workspace Tab (G-01 through G-09) ───────────────────────────────────────
 
