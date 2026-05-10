@@ -27,11 +27,12 @@ import type { PrismaClient } from '@prisma/client';
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/client';
 import { extractJsonFromText } from '@/lib/onboarding/ai-mapper/json-extract';
 import { prisma as defaultPrisma } from '@/lib/prisma';
-import type { IntelCrawlInput, IntelCrawlResult } from './types';
+import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './types';
 
 /** Bump on any change to SYSTEM_PROMPT or buildIntelPrompt structure.
- *  v1 = initial Phase D.2 ship. */
-export const INTEL_PROMPT_VERSION = 'v1';
+ *  v1 = initial Phase D.2 ship.
+ *  v2 = Phase 7.G Turn LXXXXIII (D.5c) — language parameter added. */
+export const INTEL_PROMPT_VERSION = 'v2';
 
 /** Per-crawl item cap. The model is instructed to return ≤10; this is
  *  a safety belt against runaway responses. */
@@ -42,7 +43,20 @@ const MAX_ITEMS_PER_CRAWL = 10;
  *  60 orgs/day ≈ $0.03/day org-wide.) */
 const WEB_SEARCH_MAX_USES = 5;
 
-const SYSTEM_PROMPT = `You are an intelligence analyst building a daily news feed for the CFO of an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
+/** Language-specific output instruction line. The rest of SYSTEM_PROMPT
+ *  stays English (instructions to the LLM) — only the user-facing strings
+ *  (title / summary / sourceLabel) flip. */
+const LANGUAGE_OUTPUT_INSTRUCTIONS: Record<IntelOutputLanguage, string> = {
+  en: '  - Output `title`, `summary`, and `sourceLabel` strings IN ENGLISH.',
+  ru: '  - Output `title`, `summary`, and `sourceLabel` strings IN RUSSIAN (translate where the source is non-Russian; preserve company names + tickers as-is).',
+  az: '  - Output `title`, `summary`, and `sourceLabel` strings IN AZERBAIJANI (translate where the source is non-Azerbaijani; preserve company names + tickers as-is).',
+};
+
+/** Build language-aware system prompt.
+ *  Phase 7.G Turn LXXXXIII (D.5c) — was a const string; now parameterized
+ *  over output language so RU/AZ orgs see summaries in their language. */
+export function buildSystemPrompt(language: IntelOutputLanguage = 'en'): string {
+  return `You are an intelligence analyst building a daily news feed for the CFO of an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
 Your job: use the web_search tool to find recent news (last 7 days) relevant to the holding's portfolio, then return a STRICT JSON feed of items each scored for relevance.
 
@@ -58,7 +72,7 @@ Hard constraints:
   - Each item's \`summary\` MUST be ≤200 characters.
   - \`relevanceScore\` is honest: 1.0 = directly names a listed company; 0.7 = sector + region match; 0.4 = sector only; below 0.3 = drop the item.
   - Output is JSON-only. No markdown fences, no commentary, no apology.
-  - English output (UI translation lands in a follow-up phase).
+${LANGUAGE_OUTPUT_INSTRUCTIONS[language]}
   - Schema (use EXACTLY these field names):
     {
       "items": [
@@ -76,6 +90,8 @@ Hard constraints:
     }
 
 If the searches return no relevant news, return \`{"items": []}\` — never fabricate items to pad the feed.`;
+}
+
 
 /**
  * SHA-256 of a normalised URL (lowercased + trailing-slash stripped +
@@ -280,7 +296,7 @@ export async function runIntelCrawl(
     response = await client.messages.create({
       model,
       max_tokens: maxTokens,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(input.language ?? 'en'),
       messages: [
         { role: 'user', content: buildIntelPrompt(input) },
       ],

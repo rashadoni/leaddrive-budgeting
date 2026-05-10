@@ -31,7 +31,11 @@
 import { createHash } from "node:crypto"
 import type { PrismaClient } from "@prisma/client"
 import { runIntelCrawl } from "./crawler"
-import type { IntelCrawlInput, IntelCrawlResult } from "./types"
+import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from "./types"
+
+/** Allowed values for `Organization.settings.intelLanguage`. Anything else
+ *  falls back to "en". */
+const ALLOWED_LANGUAGES: IntelOutputLanguage[] = ["en", "ru", "az"]
 
 export const INTEL_SCHEDULE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
@@ -114,8 +118,23 @@ export async function runScheduledIntelCrawl(
     const input = await opts.buildInput(orgId)
     if (!input) return { skipped: "no-input" }
 
+    // 3.5 Phase 7.G Turn LXXXXIII (D.5c) — apply org's preferred output
+    // language (settings.intelLanguage). Caller-supplied language wins ONLY
+    // if scheduler can't resolve a valid one from settings — this gives
+    // org-admin (UI) the canonical knob, callers a sane default.
+    const settingsLanguage =
+      typeof settings.intelLanguage === "string" &&
+      (ALLOWED_LANGUAGES as string[]).includes(settings.intelLanguage)
+        ? (settings.intelLanguage as IntelOutputLanguage)
+        : null
+    const effectiveLanguage: IntelOutputLanguage =
+      settingsLanguage ?? input.language ?? "en"
+
     // 4. Run the crawl
-    const result = await runIntelCrawl(input, { prisma })
+    const result = await runIntelCrawl(
+      { ...input, language: effectiveLanguage },
+      { prisma },
+    )
 
     // 5. Update settings.intelLastRunAt (best-effort — crawl already wrote
     //    IntelItem rows + audit_event, those are the durable record)

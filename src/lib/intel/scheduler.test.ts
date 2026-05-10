@@ -179,3 +179,74 @@ describe("runScheduledIntelCrawl", () => {
     expect(INTEL_SCHEDULE_INTERVAL_MS).toBe(24 * 60 * 60 * 1000)
   })
 })
+
+// Phase 7.G Turn LXXXXIII (D.5c) — language resolution from settings.intelLanguage
+describe("D.5c — language resolution from settings", () => {
+  it("settings.intelLanguage='ru' overrides input.language='en'", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLanguage: "ru" },
+    })
+    await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk, // input.language="en"
+      now: fakeNow,
+      skipLock: true,
+    })
+    // Verify runIntelCrawlMock called with overridden language
+    const callArgs = runIntelCrawlMock.mock.calls[0]?.[0] as { language?: string }
+    expect(callArgs.language).toBe("ru")
+  })
+
+  it("settings.intelLanguage='az' propagates to crawl input", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLanguage: "az" },
+    })
+    await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk,
+      now: fakeNow,
+      skipLock: true,
+    })
+    const callArgs = runIntelCrawlMock.mock.calls[0]?.[0] as { language?: string }
+    expect(callArgs.language).toBe("az")
+  })
+
+  it("invalid settings.intelLanguage value falls back to input.language", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({
+      settings: { intelLanguage: "fr" }, // not in en/ru/az
+    })
+    await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk, // input.language="en"
+      now: fakeNow,
+      skipLock: true,
+    })
+    const callArgs = runIntelCrawlMock.mock.calls[0]?.[0] as { language?: string }
+    expect(callArgs.language).toBe("en")
+  })
+
+  it("missing settings.intelLanguage falls back to input.language", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
+    await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputOk, // input.language="en"
+      now: fakeNow,
+      skipLock: true,
+    })
+    const callArgs = runIntelCrawlMock.mock.calls[0]?.[0] as { language?: string }
+    expect(callArgs.language).toBe("en")
+  })
+
+  it("missing both settings AND input.language → 'en' default", async () => {
+    prismaMock.organization.findUnique.mockResolvedValue({ settings: {} })
+    const buildInputNoLang = async () => ({
+      organizationId: ORG,
+      industries: ["hospitality"],
+      companyCodes: ["AAC"],
+      // no language
+    })
+    await runScheduledIntelCrawl(prismaMock as never, ORG, {
+      buildInput: buildInputNoLang,
+      now: fakeNow,
+      skipLock: true,
+    })
+    const callArgs = runIntelCrawlMock.mock.calls[0]?.[0] as { language?: string }
+    expect(callArgs.language).toBe("en")
+  })
+})

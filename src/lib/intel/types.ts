@@ -8,6 +8,12 @@
 
 import type { IntelItem } from '@prisma/client';
 
+/** Output language for crawler summaries. Phase 7.G Turn LXXXXIII (D.5c)
+ *  — defaults to "en" when unspecified. Russian (ru) and Azerbaijani (az)
+ *  flow through to the LLM SYSTEM_PROMPT so summaries land in the user's
+ *  preferred language. */
+export type IntelOutputLanguage = "en" | "ru" | "az";
+
 /** Org-context input for a crawl run. */
 export interface IntelCrawlInput {
   organizationId: string;
@@ -17,6 +23,9 @@ export interface IntelCrawlInput {
   /** Active company codes (e.g. `["AAC","ATL"]`) — used both to bias
    *  the prompt AND to score relevance after the search returns. */
   companyCodes: string[];
+  /** Phase 7.G Turn LXXXXIII (D.5c) — output language for `summary` /
+   *  `sourceLabel` strings. Default "en" (backwards-compatible). */
+  language?: IntelOutputLanguage;
 }
 
 /** Aggregate crawl result for observability. */

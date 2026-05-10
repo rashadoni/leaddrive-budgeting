@@ -33,6 +33,7 @@ import {
   runIntelCrawl,
   urlHash,
   buildIntelPrompt,
+  buildSystemPrompt,
   INTEL_PROMPT_VERSION,
 } from './crawler';
 import type { IntelCrawlInput } from './types';
@@ -116,6 +117,75 @@ describe('buildIntelPrompt (Phase D.2)', () => {
       companyCodes: ['AAC'],
     });
     expect(prompt).toContain('(none listed — return empty feed)');
+  });
+});
+
+// Phase 7.G Turn LXXXXIII (D.5c) — language-aware system prompt
+describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
+  it('default (no arg) → English instruction', () => {
+    const p = buildSystemPrompt();
+    expect(p).toContain('IN ENGLISH');
+    expect(p).not.toContain('IN RUSSIAN');
+    expect(p).not.toContain('IN AZERBAIJANI');
+  });
+
+  it('language="en" → English instruction', () => {
+    expect(buildSystemPrompt('en')).toContain('IN ENGLISH');
+  });
+
+  it('language="ru" → Russian instruction (preserves company names)', () => {
+    const p = buildSystemPrompt('ru');
+    expect(p).toContain('IN RUSSIAN');
+    expect(p).toContain('preserve company names');
+    expect(p).not.toContain('IN ENGLISH');
+  });
+
+  it('language="az" → Azerbaijani instruction (preserves company names)', () => {
+    const p = buildSystemPrompt('az');
+    expect(p).toContain('IN AZERBAIJANI');
+    expect(p).toContain('preserve company names');
+    expect(p).not.toContain('IN ENGLISH');
+  });
+
+  it('common scaffolding (web_search, ≤200 chars, JSON-only) shared across all languages', () => {
+    for (const lang of ['en', 'ru', 'az'] as const) {
+      const p = buildSystemPrompt(lang);
+      expect(p).toContain('web_search');
+      expect(p).toContain('≤200 char');
+      expect(p).toContain('JSON-only');
+      expect(p).toContain('relevanceScore');
+    }
+  });
+
+  it('runIntelCrawl passes input.language through to messages.create system field', async () => {
+    let capturedSystem: string | null = null;
+    const client = {
+      messages: {
+        create: vi.fn(async (args: { system: string }) => {
+          capturedSystem = args.system;
+          return fakeResponse('{"items": []}');
+        }),
+      },
+    } as unknown as ReturnType<typeof import('@/lib/ai/client').getAnthropicClient>;
+    await runIntelCrawl(
+      { ...BASE_INPUT, language: 'ru' },
+      { client, prisma: makePrisma() },
+    );
+    expect(capturedSystem).toContain('IN RUSSIAN');
+  });
+
+  it('runIntelCrawl defaults to English when language unset', async () => {
+    let capturedSystem: string | null = null;
+    const client = {
+      messages: {
+        create: vi.fn(async (args: { system: string }) => {
+          capturedSystem = args.system;
+          return fakeResponse('{"items": []}');
+        }),
+      },
+    } as unknown as ReturnType<typeof import('@/lib/ai/client').getAnthropicClient>;
+    await runIntelCrawl(BASE_INPUT, { client, prisma: makePrisma() });
+    expect(capturedSystem).toContain('IN ENGLISH');
   });
 });
 
