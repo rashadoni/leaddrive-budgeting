@@ -335,6 +335,72 @@ fi
 rm -rf "$TMPPROJ"
 
 # ──────────────────────────────────────────────────────────────────────────
+# 13 (Turn LXXVIII follow-up): not-dirty + CARRYOVER 0 OPEN → allow.
+# Carve-out turn (no source edits) with no pending tracker items must
+# exit cleanly. Regression guard against the `grep -c || echo 0` bug
+# that produced literal "0\n0" and crashed the integer comparison.
+TMPPROJ="${TMPDIR:-/tmp}/carve-out-empty-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
+## OPEN
+(no rows)
+EOF
+rm -f "$DIRTY"  # NOT dirty (carve-out turn)
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"cwd":"'"$TMPPROJ"'"}')
+if [ -z "$out" ]; then
+  report "carve-out (not dirty) + CARRYOVER 0 OPEN → allow" 1
+else
+  report "carve-out + 0 OPEN should not block (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 14 (Turn LXXVIII follow-up): not-dirty + CARRYOVER N OPEN + no edit → block.
+# Carve-out turn must STILL be gated by CARRYOVER freshness check #5.
+TMPPROJ="${TMPDIR:-/tmp}/carve-out-rot-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
+## OPEN
+| 🔄 | 2026-05-10 | 0 | developer | test | sample row |
+EOF
+# Transcript with NO Edit on CARRYOVER.md.
+cat > "$FAKE" <<'JSONL'
+{"type":"user","message":{"role":"user","content":"docs-only edit"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done"}]},"timestamp":"2026-01-01T00:00:01Z"}
+JSONL
+rm -f "$DIRTY"  # NOT dirty (carve-out turn)
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if echo "$out" | grep -q '"decision":"block"' && echo "$out" | grep -q "CARRYOVER"; then
+  report "carve-out + N OPEN + no edit → block (rot guard)" 1
+else
+  report "carve-out + N OPEN + no edit should block (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 15 (Turn LXXVIII follow-up): not-dirty + CARRYOVER N OPEN + Edit → allow.
+# Carve-out turn that DID heartbeat-touch CARRYOVER must allow close.
+TMPPROJ="${TMPDIR:-/tmp}/carve-out-heartbeat-test-$$"
+mkdir -p "$TMPPROJ/docs"
+cat > "$TMPPROJ/docs/CARRYOVER.md" <<'EOF'
+## OPEN
+| 🔄 | 2026-05-10 | 0 | developer | test | sample row |
+EOF
+# Transcript WITH Edit on CARRYOVER.md.
+cat > "$FAKE" <<JSONL
+{"type":"user","message":{"role":"user","content":"docs-only edit + heartbeat"},"timestamp":"2026-01-01T00:00:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"$TMPPROJ/docs/CARRYOVER.md","old_string":"sample","new_string":"updated"}}]},"timestamp":"2026-01-01T00:00:01Z"}
+JSONL
+rm -f "$DIRTY"  # NOT dirty (carve-out turn — Edit on CARRYOVER doesn't mark dirty per Turn LXXVIII)
+out=$(run_hook '{"session_id":"'"$SESSION"'","stop_hook_active":false,"transcript_path":"'"$FAKE"'","cwd":"'"$TMPPROJ"'"}')
+if [ -z "$out" ]; then
+  report "carve-out + N OPEN + Edit on CARRYOVER → allow" 1
+else
+  report "carve-out + N OPEN + Edit should allow (got: '$out')" 0
+fi
+rm -rf "$TMPPROJ"
+
+# ──────────────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: $pass_count passed, $fail_count failed"
 if [ "$fail_count" -gt 0 ]; then

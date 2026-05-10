@@ -4,7 +4,7 @@
 # edits don't mark dirty (architect-gate skips); other edits do.
 #
 # Run: bash .claude/hooks/tests/mark-dirty.test.sh
-# Expected: all 10 tests pass, exit 0.
+# Expected: all 14 tests pass, exit 0.
 
 set -euo pipefail
 

@@ -43,7 +43,12 @@ if [ ! -f "$DIRTY" ]; then
     # No CARRYOVER.md or no CWD — nothing to enforce, exit clean.
     exit 0
   fi
-  OPEN_EARLY=$(grep -c "^| 🔄 |" "$CWD_EARLY/docs/CARRYOVER.md" 2>/dev/null || echo 0)
+  # NOTE: `grep -c ... || echo 0` is a known antipattern — when grep finds
+  # 0 matches it exits 1 (which triggers `|| echo 0`) AND prints "0" itself
+  # → variable becomes literal "0\n0", breaking string + integer comparisons.
+  # Use `|| true` + parameter default for safe-zero handling.
+  OPEN_EARLY=$(grep -c "^| 🔄 |" "$CWD_EARLY/docs/CARRYOVER.md" 2>/dev/null || true)
+  OPEN_EARLY=${OPEN_EARLY:-0}
   if [ "$OPEN_EARLY" = "0" ]; then
     # No OPEN items, no dirty — clean carve-out turn, exit.
     exit 0
@@ -237,7 +242,9 @@ fi
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 if [ -n "$CWD" ] && [ -f "$CWD/docs/CARRYOVER.md" ]; then
   CARRYOVER="$CWD/docs/CARRYOVER.md"
-  OPEN_COUNT=$(grep -c "^| 🔄 |" "$CARRYOVER" 2>/dev/null || echo 0)
+  # See doc-comment on OPEN_EARLY above re `grep -c || echo 0` antipattern.
+  OPEN_COUNT=$(grep -c "^| 🔄 |" "$CARRYOVER" 2>/dev/null || true)
+  OPEN_COUNT=${OPEN_COUNT:-0}
   if [ "$OPEN_COUNT" -gt 0 ]; then
     # Count Edit/Write/MultiEdit tool_use calls after LAST_USER_IDX whose
     # file_path matches CARRYOVER.md. Match by suffix (handles abs / rel
