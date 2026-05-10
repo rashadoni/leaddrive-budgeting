@@ -27,11 +27,36 @@ JSON
 fi
 
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null || echo "unknown")
-DIRTY="${TMPDIR:-/tmp}/.claude-dirty-${SESSION_ID}"
 
-# Not dirty → no code changes → no need to test. Same gate as architect-gate.sh.
-if [ ! -f "$DIRTY" ]; then
-  exit 0
+# Phase 7.G Turn LXXXVII follow-up: dirty-marker check REMOVED.
+# Under no-agents protocol (LXXXVII), `mark-dirty.sh` is unwired from
+# settings.json — DIRTY marker is never created → old `[ ! -f "$DIRTY" ]`
+# check would short-circuit test-gate to no-op every turn. Without
+# auto-architect, test-gate IS the only remaining safety net; it must
+# fire on every Stop. Cost: ~25 sec/turn vitest run. Worth it.
+#
+# Skip path retained ONLY if turn was pure-conversation (no tool_use after
+# last user message) — vitest run is wasted compute if no code touched.
+TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
+if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  TOOL_USE_COUNT=$(jq -sr '
+    def is_real_user:
+      .type == "user"
+      and ((.message.content // []) | if type == "array"
+        then (any(.type == "tool_result") | not) else true end)
+      and ((.message.content // "") | if type == "string"
+        then ((startswith("Stop hook feedback:") | not)
+          and (startswith("<system-reminder>") | not)) else true end);
+    (to_entries | map(select(.value | is_real_user)) | .[-1].key // -1) as $idx
+    | (if $idx >= 0 then .[$idx+1:] else . end)
+    | map((.message.content // []) | if type == "array"
+        then map(select(.type == "tool_use" and .name != "Agent")) else [] end)
+    | flatten | length
+  ' "$TRANSCRIPT" 2>/dev/null || echo 0)
+  TOOL_USE_COUNT=${TOOL_USE_COUNT:-0}
+  if [ "$TOOL_USE_COUNT" = "0" ]; then
+    exit 0
+  fi
 fi
 
 # Project root: hook script lives at .claude/hooks/test-gate.sh → up 2 = repo root.
@@ -73,7 +98,14 @@ $TSC_TAIL"
 # from vitest 1.x/2.x is gone and triggers a reporter-load crash that
 # produced false-block in the first synthetic test. Pin `default` so the
 # hook is robust to a version that ships in this repo.
-VITEST_OUT=$(npx vitest run --reporter=default 2>&1) || {
+#
+# `--retry=2` (Phase 7.G Turn LXXXVII follow-up): handles known intermittent
+# flappers like `AlertEventsFeed.test.tsx` (passes 7/7 in isolation, flaps
+# under full-sweep concurrency since Turn LXIV — filed as 🔄 row in CARRYOVER).
+# Real failures fail consistently; flappers pass within 3 attempts. Cost:
+# ~5-10 sec extra worst-case (only when flap actually triggers). Without
+# this, test-gate becomes friction → developer pressure to disable it.
+VITEST_OUT=$(npx vitest run --reporter=default --retry=2 2>&1) || {
   VITEST_TAIL=$(echo "$VITEST_OUT" | tail -20 | strip_ctrl)
   REASON_PAYLOAD="test-gate: vitest run failed. Fix failing tests before turn close. Last 20 lines:
 $VITEST_TAIL"
