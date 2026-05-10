@@ -66,7 +66,15 @@ environment.
     accumulate. The section is OPTIONAL — most sessions won't have one.
 3. Developer executes, runs `npx tsc --noEmit` + `npx vitest run` as it goes.
 4. **Stop hook** (`.claude/hooks/architect-gate.sh`) blocks turn close and
-   forces the developer to invoke the architect subagent.
+   forces the developer to invoke the architect subagent. **Carve-out
+   (Turn LXXVII per user Option C):** if the turn ONLY edited
+   docs/*.md / .claude/memory/*.md / CLAUDE.md, `mark-dirty.sh` skips
+   the dirty marker → architect-gate's "no dirty = exit 0" early-return
+   takes effect, no architect required. Pure docs/memory turns can't
+   introduce runtime bugs by construction. ANY non-carve-out edit in
+   the same turn (src/, prisma/, .claude/hooks/, .claude/agents/,
+   messages/, Bash) re-enables the gate. See `.claude/hooks/mark-dirty.sh`
+   doc-block for the exhaustive carve-out list.
 5. Architect prompt has **three** required sections (extended 2026-04-24):
    - **Scope check:** TurnGoal verbatim → architect verifies each goal landed
      in diff, flags silent drops / undeclared deferrals / retro-scope-creep.

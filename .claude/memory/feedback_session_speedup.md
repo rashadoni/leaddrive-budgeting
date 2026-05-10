@@ -265,3 +265,31 @@ with non-obvious shape decisions, security-shaped fixes.
 - Per-turn 0 FAIL: ~15-25 min realistic
 - Per-turn 1 FAIL closure: ~25-35 min (down from current ~30-40)
 - Primary saving: fewer FAIL closures via #21 + less prose via #22+#23
+
+### Rule #24 — architect-gate CARVE-OUT for docs/memory-only turns (Turn LXXVII per user Option C)
+
+`mark-dirty.sh` extended (Turn LXXVII commit `<see CARRYOVER>`) to skip the
+dirty marker for pure docs/memory edits. Carve-out paths:
+
+- `docs/*.md` — ROADMAP, CARRYOVER, project docs
+- `.claude/memory/*.md` — protocol memory files
+- `CLAUDE.md` — project root context
+
+Result: turns that ONLY touch these paths skip architect-gate entirely.
+Saves ~5-7 min wall-clock per such turn (architect sync + prompt prep
++ verdict read).
+
+NOT carved out (architect still required):
+- `.claude/hooks/*.sh` — editing hooks affects future enforcement
+- `.claude/agents/*.md` — architect.md changes alter review behavior
+- `messages/*.json` — i18n affects UI runtime
+- `prisma/schema.prisma` — schema changes affect runtime
+- `src/**` — source code obviously
+- Bash / Agent / any other tool_use → safe-default mark dirty
+
+Mixed-edit turn: ANY single non-carve-out edit re-enables the gate.
+
+Risk accepted (per user Option C decision): missed `bootstrap.sh`-sync-
+gap-style bugs on memory turns. Mitigation: `feedback_session_speedup.md`
+itself codifies the bootstrap pattern as part of its rules — future-self
+should pattern-match without architect prodding.
