@@ -1,5 +1,8 @@
 /**
  * Phase 7.G Turn LXXXXVII (Phase 7.B v2 Day 6) — per-org LLM cost budget.
+ * **Promoted Turn LXXXXII** to dual-write: Prisma `AITokenUsage` primary,
+ * in-memory Map fallback when migration not yet applied. See
+ * `src/lib/prisma-promotion.ts` for the helper rationale.
  *
  * Per Phase 7.B v2 plan §"Day 6": daily token cap + monthly token cap per
  * org, enforced before LLM calls. 429 with `Retry-After` when exceeded.
@@ -9,12 +12,11 @@
  *   - 10_000_000 tokens/month per org (≈$30/month per org)
  * Override via `Organization.settings.aiTokenBudget` (Json: `{daily: N, monthly: N}`).
  *
- * **In-memory storage** (this turn): module-level `Map` keyed by
- * `${orgId}:${date}` → `{tokensIn, tokensOut, calls}`. Persistence to NEW
- * Prisma `AITokenUsage` table deferred until migration drift resolved
- * (filed as 🔄 in CARRYOVER alongside cache + audit promotions).
+ * **Persistence (post-migrate):** Prisma `AITokenUsage` table keyed by
+ * (orgId, date) — durable across restarts, queryable for admin dashboards.
  *
- * **Production-readiness gap:** in-memory loses on Next.js restart →
+ * **In-memory fallback (pre-migrate):** module-level `Map` keyed by
+ * `${orgId}:${date}` → `{tokensIn, tokensOut, calls}`. Loses on restart →
  * partial budget reset. Acceptable for MVP because:
  * - Restarts are rare (LaunchAgent kickstart only on dev)
  * - Audit log preserves token spend trail (running sum from
@@ -22,6 +24,9 @@
  *   for a given period via aggregate query
  * - Worst case: budget over-spend by a fraction of one cycle
  */
+
+import { prisma as defaultPrisma } from "@/lib/prisma"
+import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
 const DEFAULT_DAILY_TOKEN_CAP = 500_000
 const DEFAULT_MONTHLY_TOKEN_CAP = 10_000_000
@@ -65,28 +70,83 @@ function nextMonthFirstUTC(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
 }
 
-/** Get aggregated daily usage for an org+date. */
-export function getDailyUsage(orgId: string, date: Date = new Date()): UsageStats {
-  const entry = dailyUsage.get(todayKey(orgId, date))
-  if (!entry) return { tokensIn: 0, tokensOut: 0, calls: 0, total: 0 }
-  return entry
+function emptyStats(): UsageStats {
+  return { tokensIn: 0, tokensOut: 0, calls: 0, total: 0 }
 }
 
-/** Get aggregated monthly usage by summing all daily entries within month. */
-export function getMonthlyUsage(orgId: string, date: Date = new Date()): UsageStats {
-  const month = monthKeyOf(date)
-  const orgPrefix = `${orgId}:${month}`
-  let tokensIn = 0
-  let tokensOut = 0
-  let calls = 0
-  for (const [key, usage] of dailyUsage.entries()) {
-    if (key.startsWith(orgPrefix)) {
-      tokensIn += usage.tokensIn
-      tokensOut += usage.tokensOut
-      calls += usage.calls
-    }
-  }
-  return { tokensIn, tokensOut, calls, total: tokensIn + tokensOut }
+/** Get aggregated daily usage for an org+date.
+ *  Reads Prisma `AITokenUsage` (primary), falls back to in-memory map. */
+export async function getDailyUsage(orgId: string, date: Date = new Date()): Promise<UsageStats> {
+  const dateStr = date.toISOString().slice(0, 10)
+  return await tryPrismaThenFallback<UsageStats>(
+    async () => {
+      const row = await defaultPrisma.aiTokenUsage.findUnique({
+        where: {
+          organizationId_date: { organizationId: orgId, date: dateStr },
+        },
+      })
+      if (!row) {
+        // Mirror empty so subsequent in-process reads don't re-hit DB
+        const empty = emptyStats()
+        // Note: don't write to dailyUsage Map here — empty is the natural absence
+        return empty
+      }
+      const stats: UsageStats = {
+        tokensIn: row.tokensIn,
+        tokensOut: row.tokensOut,
+        calls: row.calls,
+        total: row.tokensIn + row.tokensOut,
+      }
+      // Mirror to in-memory for hot reads
+      dailyUsage.set(todayKey(orgId, date), stats)
+      return stats
+    },
+    () => {
+      const entry = dailyUsage.get(todayKey(orgId, date))
+      return entry ?? emptyStats()
+    },
+  )
+}
+
+/** Get aggregated monthly usage by summing all daily entries within month.
+ *  Reads Prisma (sums via aggregate), falls back to in-memory scan. */
+export async function getMonthlyUsage(orgId: string, date: Date = new Date()): Promise<UsageStats> {
+  const month = monthKeyOf(date) // YYYY-MM
+  return await tryPrismaThenFallback<UsageStats>(
+    async () => {
+      // Prisma string startsWith filter — efficient with the (orgId, date desc) index
+      const rows = await defaultPrisma.aiTokenUsage.findMany({
+        where: {
+          organizationId: orgId,
+          date: { startsWith: month },
+        },
+        select: { tokensIn: true, tokensOut: true, calls: true },
+      })
+      let tokensIn = 0
+      let tokensOut = 0
+      let calls = 0
+      for (const r of rows) {
+        tokensIn += r.tokensIn
+        tokensOut += r.tokensOut
+        calls += r.calls
+      }
+      return { tokensIn, tokensOut, calls, total: tokensIn + tokensOut }
+    },
+    () => {
+      const orgPrefix = `${orgId}:${month}`
+      let tokensIn = 0
+      let tokensOut = 0
+      let calls = 0
+      for (const [key, usage] of dailyUsage.entries()) {
+        if (key.startsWith(orgPrefix)) {
+          tokensIn += usage.tokensIn
+          tokensOut += usage.tokensOut
+          calls += usage.calls
+        }
+      }
+      return { tokensIn, tokensOut, calls, total: tokensIn + tokensOut }
+    },
+  )
 }
 
 /**
@@ -96,14 +156,16 @@ export function getMonthlyUsage(orgId: string, date: Date = new Date()): UsageSt
  * Estimates input tokens before call (caller passes expected count or
  * a heuristic). For routes that can't estimate, omit `expectedInput` —
  * check uses 0 + relies on post-call `recordUsage()` to true-up.
+ *
+ * **Async** (LXXXXII promotion): reads from Prisma (primary) or memory (fallback).
  */
-export function checkBudget(
+export async function checkBudget(
   orgId: string,
   budget: TokenBudget = { daily: DEFAULT_DAILY_TOKEN_CAP, monthly: DEFAULT_MONTHLY_TOKEN_CAP },
   expectedInput: number = 0,
-): BudgetCheckResult {
-  const today = getDailyUsage(orgId)
-  const month = getMonthlyUsage(orgId)
+): Promise<BudgetCheckResult> {
+  const today = await getDailyUsage(orgId)
+  const month = await getMonthlyUsage(orgId)
 
   if (today.total + expectedInput > budget.daily) {
     return {
@@ -133,18 +195,53 @@ export function checkBudget(
 }
 
 /** Record actual usage after an LLM call completes. Caller passes
- * the LLMUsage from getLLMService(). */
-export function recordUsage(
+ * the LLMUsage from getLLMService(). Writes through to Prisma + memory. */
+export async function recordUsage(
   orgId: string,
   usage: { inputTokens: number; outputTokens: number },
-): void {
-  const key = todayKey(orgId)
-  const existing = dailyUsage.get(key) ?? { tokensIn: 0, tokensOut: 0, calls: 0, total: 0 }
-  existing.tokensIn += usage.inputTokens
-  existing.tokensOut += usage.outputTokens
-  existing.calls += 1
-  existing.total = existing.tokensIn + existing.tokensOut
-  dailyUsage.set(key, existing)
+): Promise<void> {
+  const date = new Date()
+  const dateStr = date.toISOString().slice(0, 10)
+  const key = todayKey(orgId, date)
+
+  await tryPrismaThenFallback<void>(
+    async () => {
+      // Atomic upsert with increment — race-safe across concurrent LLM calls.
+      const row = await defaultPrisma.aiTokenUsage.upsert({
+        where: {
+          organizationId_date: { organizationId: orgId, date: dateStr },
+        },
+        create: {
+          organizationId: orgId,
+          date: dateStr,
+          tokensIn: usage.inputTokens,
+          tokensOut: usage.outputTokens,
+          calls: 1,
+        },
+        update: {
+          tokensIn: { increment: usage.inputTokens },
+          tokensOut: { increment: usage.outputTokens },
+          calls: { increment: 1 },
+        },
+      })
+      // Mirror to in-memory for hot reads
+      dailyUsage.set(key, {
+        tokensIn: row.tokensIn,
+        tokensOut: row.tokensOut,
+        calls: row.calls,
+        total: row.tokensIn + row.tokensOut,
+      })
+    },
+    () => {
+      // Pre-migrate fallback — write to in-memory only.
+      const existing = dailyUsage.get(key) ?? emptyStats()
+      existing.tokensIn += usage.inputTokens
+      existing.tokensOut += usage.outputTokens
+      existing.calls += 1
+      existing.total = existing.tokensIn + existing.tokensOut
+      dailyUsage.set(key, existing)
+    },
+  )
 }
 
 /** Convenience wrapper: check + execute + record. Throws if over budget. */
@@ -153,7 +250,7 @@ export async function withTokenBudget<T>(
   fn: () => Promise<{ result: T; usage: { inputTokens: number; outputTokens: number } }>,
   budget?: TokenBudget,
 ): Promise<T> {
-  const check = checkBudget(orgId, budget)
+  const check = await checkBudget(orgId, budget)
   if (!check.ok) {
     const err = new Error(
       `LLM ${check.reason} token budget exceeded (used ${check.used}/${check.cap}). Resets at ${check.resetAt.toISOString()}.`,
@@ -163,7 +260,7 @@ export async function withTokenBudget<T>(
     throw err
   }
   const { result, usage } = await fn()
-  recordUsage(orgId, usage)
+  await recordUsage(orgId, usage)
   return result
 }
 

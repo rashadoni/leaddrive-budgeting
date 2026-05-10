@@ -1,11 +1,11 @@
 /**
  * Phase 7.G Turn LXXXXVIII (Phase 7.E #2 v2 E.1a) — Variance Explainer cache.
+ * **Promoted Turn LXXXXII** to dual-write: Prisma `VarianceExplanation`
+ * primary, in-memory Map fallback when migration not yet applied. See
+ * `src/lib/prisma-promotion.ts` for the helper rationale.
  *
  * Wraps `runExplainer()` with 24h-TTL cache keyed by
- * `(orgId, indicatorValueId, language, snapshotHash)`. Mirrors
- * `proposal-cache.ts` pattern (LXXXXVI) — in-memory for now, Prisma
- * `VarianceExplanation` table promotion deferred until migration drift
- * resolved (filed alongside other Prisma 🔄 rows).
+ * `(orgId, indicatorValueId, language, snapshotHash)`.
  *
  * **Why cache matters here:**
  * Per Phase 7.E v2 plan §"Capability #2": CFO clicks "Explain" on the
@@ -25,6 +25,8 @@
  */
 
 import { createHash } from "node:crypto"
+import { prisma as defaultPrisma } from "@/lib/prisma"
+import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import {
   runExplainer,
   EXPLAINER_PROMPT_VERSION,
@@ -104,17 +106,82 @@ export async function getOrCreateExplanation(
   const hash = snapshotHash(input)
   const cacheKey = `${opts.orgId}:${opts.indicatorValueId}:${input.language}:${EXPLAINER_PROMPT_VERSION}:${hash}`
 
+  // ── READ path: Prisma → memory fallback ────────────────────────────
   if (!opts.bypassCache) {
-    const entry = cache.get(cacheKey)
+    const entry = await tryPrismaThenFallback<CachedEntry | undefined>(
+      async () => {
+        const row = await defaultPrisma.varianceExplanation.findUnique({
+          where: {
+            organizationId_indicatorValueId_language_promptVersion_snapshotHash: {
+              organizationId: opts.orgId,
+              indicatorValueId: opts.indicatorValueId,
+              language: input.language,
+              promptVersion: EXPLAINER_PROMPT_VERSION,
+              snapshotHash: hash,
+            },
+          },
+        })
+        if (!row) return undefined
+        const hydrated: CachedEntry = {
+          output: row.output as unknown as VarianceExplainerOutput,
+          cachedAt: row.cachedAt.getTime(),
+        }
+        // Mirror to in-memory for hot reads
+        cache.set(cacheKey, hydrated)
+        return hydrated
+      },
+      () => cache.get(cacheKey),
+    )
+
     if (entry && Date.now() - entry.cachedAt < EXPLAINER_CACHE_TTL_MS) {
       return { output: entry.output, cacheHit: true }
     }
   }
 
-  // Cache miss (or bypass) — call LLM
+  // ── MISS path: call LLM (errors propagate; no cache write on failure) ──
   const output = await runExplainer(input)
 
-  cache.set(cacheKey, { output, cachedAt: Date.now() })
+  const newEntry: CachedEntry = { output, cachedAt: Date.now() }
+
+  // ── WRITE path: Prisma upsert + in-memory mirror ───────────────────
+  await tryPrismaThenFallback<void>(
+    async () => {
+      await defaultPrisma.varianceExplanation.upsert({
+        where: {
+          organizationId_indicatorValueId_language_promptVersion_snapshotHash: {
+            organizationId: opts.orgId,
+            indicatorValueId: opts.indicatorValueId,
+            language: input.language,
+            promptVersion: EXPLAINER_PROMPT_VERSION,
+            snapshotHash: hash,
+          },
+        },
+        create: {
+          organizationId: opts.orgId,
+          indicatorValueId: opts.indicatorValueId,
+          language: input.language,
+          promptVersion: EXPLAINER_PROMPT_VERSION,
+          snapshotHash: hash,
+          output: output as unknown as object,
+          tokensIn: output.usage?.inputTokens ?? 0,
+          tokensOut: output.usage?.outputTokens ?? 0,
+          cachedAt: new Date(newEntry.cachedAt),
+        },
+        update: {
+          output: output as unknown as object,
+          tokensIn: output.usage?.inputTokens ?? 0,
+          tokensOut: output.usage?.outputTokens ?? 0,
+          cachedAt: new Date(newEntry.cachedAt),
+        },
+      })
+      cache.set(cacheKey, newEntry)
+    },
+    () => {
+      // Pre-migrate fallback — write to in-memory only.
+      cache.set(cacheKey, newEntry)
+    },
+  )
+
   return { output, cacheHit: false }
 }
 

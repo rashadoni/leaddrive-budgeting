@@ -1,5 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi } from "vitest"
+
+// Phase 7.G LXXXXII — explainer-cache promoted to dual-write (Prisma + memory).
+// Tests stub Prisma → calls hit in-memory fallback path via
+// `tryPrismaThenFallback` table-missing detection.
+vi.mock("@/lib/prisma", () => ({ prisma: {} }))
+
 import {
   getOrCreateExplanation,
   snapshotHash,

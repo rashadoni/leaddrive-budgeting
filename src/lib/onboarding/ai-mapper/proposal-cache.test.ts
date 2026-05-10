@@ -1,5 +1,11 @@
 // @vitest-environment node
 import { describe, it, expect, beforeEach, vi } from "vitest"
+
+// Phase 7.G LXXXXII — proposal-cache promoted to dual-write (Prisma + memory).
+// Tests stub Prisma out; calls hit the in-memory fallback path via
+// `tryPrismaThenFallback` table-missing detection (TypeError on undefined model).
+vi.mock("@/lib/prisma", () => ({ prisma: {} }))
+
 import {
   getOrCreateProposal,
   clearProposalCacheForTests,
@@ -149,7 +155,7 @@ describe("template library (Day 5)", () => {
       "AZMADE 2026 P&L",
     )
     expect(ok).toBe(true)
-    const templates = listTemplates("org_a")
+    const templates = await listTemplates("org_a")
     expect(templates).toHaveLength(1)
     expect(templates[0].templateName).toBe("AZMADE 2026 P&L")
     expect(templates[0].applyCount).toBe(0) // promoted but not yet used
@@ -168,7 +174,7 @@ describe("template library (Day 5)", () => {
   it("template hit increments applyCount + lastUsedAt", async () => {
     await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
     await promoteCacheEntryToTemplate("org_a", sampleInput(), "T1")
-    const t0 = listTemplates("org_a")[0]
+    const t0 = (await listTemplates("org_a"))[0]
     expect(t0.applyCount).toBe(0)
     expect(t0.lastUsedAt).toBeNull()
 
@@ -176,7 +182,7 @@ describe("template library (Day 5)", () => {
     const r = await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
     expect(r.cacheHit).toBe(true)
 
-    const t1 = listTemplates("org_a")[0]
+    const t1 = (await listTemplates("org_a"))[0]
     expect(t1.applyCount).toBe(1)
     expect(t1.lastUsedAt).toBeGreaterThan(0)
   })
@@ -189,7 +195,7 @@ describe("template library (Day 5)", () => {
     await promoteCacheEntryToTemplate("org_a", sampleInput(), "RU-template", "ru")
     await getOrCreateProposal(sampleInput(), { orgId: "org_a", language: "ru" })
 
-    const templates = listTemplates("org_a")
+    const templates = await listTemplates("org_a")
     expect(templates).toHaveLength(2)
     // RU was used most recently
     expect(templates[0].templateName).toBe("RU-template")
@@ -203,22 +209,22 @@ describe("template library (Day 5)", () => {
     await getOrCreateProposal(sampleInput(), { orgId: "org_b" })
     await promoteCacheEntryToTemplate("org_b", sampleInput(), "B-template")
 
-    expect(listTemplates("org_a")).toHaveLength(1)
-    expect(listTemplates("org_a")[0].templateName).toBe("A-template")
-    expect(listTemplates("org_b")).toHaveLength(1)
-    expect(listTemplates("org_b")[0].templateName).toBe("B-template")
+    expect(await listTemplates("org_a")).toHaveLength(1)
+    expect((await listTemplates("org_a"))[0].templateName).toBe("A-template")
+    expect(await listTemplates("org_b")).toHaveLength(1)
+    expect((await listTemplates("org_b"))[0].templateName).toBe("B-template")
   })
 
   it("deleteTemplate removes underlying cache entry", async () => {
     await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
     await promoteCacheEntryToTemplate("org_a", sampleInput(), "T1")
-    expect(listTemplates("org_a")).toHaveLength(1)
+    expect(await listTemplates("org_a")).toHaveLength(1)
     expect(getCacheSizeForTests()).toBe(1)
 
-    const cacheKey = listTemplates("org_a")[0].cacheKey
-    const removed = deleteTemplate(cacheKey)
+    const cacheKey = (await listTemplates("org_a"))[0].cacheKey
+    const removed = await deleteTemplate(cacheKey)
     expect(removed).toBe(true)
-    expect(listTemplates("org_a")).toHaveLength(0)
+    expect(await listTemplates("org_a")).toHaveLength(0)
     expect(getCacheSizeForTests()).toBe(0)
   })
 
@@ -232,6 +238,6 @@ describe("template library (Day 5)", () => {
     await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
     await getOrCreateProposal(sampleInput(), { orgId: "org_a" })
     expect(getCacheSizeForTests()).toBe(1)
-    expect(listTemplates("org_a")[0].applyCount).toBe(2)
+    expect((await listTemplates("org_a"))[0].applyCount).toBe(2)
   })
 })
