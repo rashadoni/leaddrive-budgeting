@@ -27,6 +27,9 @@ import {
   Upload,
   ScrollText,
   Presentation,
+  Lock,
+  CheckSquare,
+  BookOpen,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -103,6 +106,19 @@ const budgetSubNav = [
     items: [
       { value: "integrations", icon: FileSpreadsheet, label: "Import" },
       { value: "config", icon: Settings2, label: "Configuration" },
+    ],
+  },
+  // Phase 7.G Turn LXXXXII (closes LXXXXI architect ⚠️ class-issue):
+  // 3 admin pages were unreachable from any UI nav until this turn.
+  // Each entry uses `href` instead of `value` (full path, not ?tab=X).
+  // `minRole: "admin"` hides for non-admin (matches API enforcement).
+  {
+    group: "Admin",
+    minRole: "admin" as Role,
+    items: [
+      { href: "/budgeting/admin/periods", icon: Lock, label: "Period Locks", isPage: true },
+      { href: "/budgeting/admin/approval-requests", icon: CheckSquare, label: "Approvals", isPage: true },
+      { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, label: "Chart of Accounts", isPage: true },
     ],
   },
 ]
@@ -214,6 +230,9 @@ export function Sidebar() {
               {item.href === "/budgeting" && isBudgetingLegacy && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav
+                    // Phase 7.G Turn LXXXXII: filter groups by minRole
+                    // (Admin group is admin-only — matches API enforcement).
+                    .filter((group) => !group.minRole || hasRole(userRole, group.minRole))
                     .map((group) => ({
                       ...group,
                       // Bug #6: filter sub-items to those whose backing data
@@ -221,7 +240,11 @@ export function Sidebar() {
                       // (loading) — in that case treat unknown as visible
                       // so we don't blink-hide on first paint. The flag
                       // explicitly being `false` is what hides the entry.
-                      items: group.items.filter((sub) => availability[sub.value] !== false),
+                      // Admin entries (no `value`, only `href`) bypass
+                      // availability check — they are always visible to admin.
+                      items: group.items.filter((sub) =>
+                        "value" in sub ? availability[sub.value] !== false : true
+                      ),
                     }))
                     // Drop entire group if all its items are hidden.
                     .filter((group) => group.items.length > 0)
@@ -231,13 +254,24 @@ export function Sidebar() {
                           {group.group}
                         </p>
                         {group.items.map((sub) => {
-                          const href = (sub as any).isPage ? "/budgeting/reports" : `/budgeting?tab=${sub.value}`
-                          const isSubActive = (sub as any).isPage
-                            ? pathname === "/budgeting/reports"
-                            : activeTab === sub.value
+                          // Three URL shapes:
+                          //   (a) `value` only        → /budgeting?tab=<value>
+                          //   (b) `value` + isPage    → /budgeting/reports
+                          //   (c) `href` (LXXXXII)    → use href verbatim (admin pages)
+                          const href = "href" in sub
+                            ? sub.href
+                            : (sub as { isPage?: boolean; value: string }).isPage
+                              ? "/budgeting/reports"
+                              : `/budgeting?tab=${(sub as { value: string }).value}`
+                          const isSubActive = "href" in sub
+                            ? pathname === sub.href || pathname.startsWith(sub.href + "/")
+                            : (sub as { isPage?: boolean; value: string }).isPage
+                              ? pathname === "/budgeting/reports"
+                              : activeTab === (sub as { value: string }).value
+                          const key = "href" in sub ? sub.href : (sub as { value: string }).value
                           return (
                             <Link
-                              key={sub.value}
+                              key={key}
                               href={href}
                               className={cn(
                                 "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
