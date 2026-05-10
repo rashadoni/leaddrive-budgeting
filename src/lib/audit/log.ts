@@ -307,6 +307,27 @@ export type AuditEventInput =
       };
     }
   | {
+      // Phase 7.G Turn CIV (Phase 7.E #3 v2 E.2e LLM wire) — daily
+      // predictive-breach digest emission. Records the LLM call's cost +
+      // breach count + top 3 companies the digest cited. Pattern B
+      // (fire-and-forget) — digest narrative is returned to caller
+      // synchronously; audit row is for compliance trail + admin spend
+      // tracking, not for blocking the response.
+      action: 'ai_breach_digest';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        period: string;
+        language: 'en' | 'ru' | 'az';
+        breachCount: number;
+        topCompanies: string[]; // first 3 distinct companyIds in the digest
+        tokensIn: number;
+        tokensOut: number;
+        modelName: string;
+        promptVersion: string;
+      };
+    }
+  | {
       // Phase 7.G Turn LXXXXIV (Phase 5.1.2 audit closure) — admin
       // override of `ChartOfAccount.role`. Affects P&L aggregation
       // across every consumer reading account roles (revenue / cogs /
