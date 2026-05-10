@@ -60,9 +60,10 @@ export function getExplainerCacheSizeForTests(): number {
  * `company.name` (display only) and `error.reason` (free-form variance
  * — but `error.code` IS included since it shapes recommendations).
  *
- * Future E.1b: extend with `relevantIntelIds[]` so cache invalidates when
- * fresh intel arrives (avoid stale "FX spiked per Reuters X" when X is
- * 30 days old).
+ * Phase 7.G Turn LXXXXVI (E.1b) — extended with `intelSignature` so the
+ * cache auto-invalidates when fresh FX/CPI/commodity data arrives. Avoids
+ * stale "AZN/USD fell 4%" narratives lingering after the intel data has
+ * shifted underneath.
  */
 export function snapshotHash(input: VarianceExplainerInput): string {
   const stable = {
@@ -74,6 +75,7 @@ export function snapshotHash(input: VarianceExplainerInput): string {
     errorCode: input.error?.code ?? null,
     industry: input.company.industry,
     tags: (input.company.tags ?? []).slice().sort(),
+    intelSignature: input.intelContext?.signature ?? null,
   }
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex").slice(0, 16)
 }

@@ -24,6 +24,7 @@
 
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
 import { extractJsonFromText } from "@/lib/onboarding/ai-mapper/json-extract"
+import { formatIntelContextForPrompt, type IntelContextSnapshot } from "./intel-context"
 
 export type ExplainerLanguage = "en" | "ru" | "az"
 
@@ -73,6 +74,12 @@ export interface VarianceExplainerInput {
   }
   /** Output language for the narrative + recommendations. UI stays EN. */
   language: ExplainerLanguage
+  /** Phase 7.E #2 v2 E.1b (Turn LXXXXVI) — optional intel context: latest
+   *  FX / CPI / commodity observations. When present, the LLM can cite
+   *  specific external drivers (e.g. "AZN/USD fell 3% MoM"). When omitted
+   *  or empty, the explainer falls back to inputs-only narrative (v1
+   *  behaviour). */
+  intelContext?: IntelContextSnapshot
 }
 
 export interface VarianceExplainerOutput {
@@ -106,8 +113,11 @@ const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
 }
 
 /** Bump on any change to SYSTEM_PROMPT or buildExplainerPrompt structure.
- *  v1 = initial Phase 7.E ship (Turn 38 sub-turn 9 backfill). */
-export const EXPLAINER_PROMPT_VERSION = "v1"
+ *  v1 = initial Phase 7.E ship (Turn 38 sub-turn 9 backfill).
+ *  v2 = Phase 7.G Turn LXXXXVI (E.1b) — intel context block added to prompt.
+ *       Bumping invalidates v1-cached explanations; CFO sees richer narratives
+ *       on next request. */
+export const EXPLAINER_PROMPT_VERSION = "v2"
 
 const SYSTEM_PROMPT = `You are a senior financial analyst producing variance explanations for a CFO at an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
@@ -123,7 +133,8 @@ Constraints:
   - For status=unknown with error.code='out_of_range': lead recommendations with "verify data classification — this is likely a misclassified line".
   - For status=unknown with no error: data is missing — lead with "populate <missing_input>".
   - For amber/red on rollup-sourced or admin cost-centre companies (tags include 'admin' or 'cost_centre' or 'rollup_sourced'): factor that into recommendations — don't suggest revenue growth for an admin entity that has none.
-  - Recommendations target the SECTOR. Hospitality → ADR/occupancy levers; agro → yield/feed levers; pharma → margin/inventory levers. NEVER suggest cross-sector moves like "diversify into renewable energy" unless explicitly relevant to the indicator.`
+  - Recommendations target the SECTOR. Hospitality → ADR/occupancy levers; agro → yield/feed levers; pharma → margin/inventory levers. NEVER suggest cross-sector moves like "diversify into renewable energy" unless explicitly relevant to the indicator.
+  - When an "Intel context" section is present (FX rates / CPI / commodity prices), USE it: cite specific external drivers when the indicator's variance correlates (e.g. "AZN/USD fell 4% MoM, inflating USD-denominated COGS"). Do NOT invent external context that isn't shown.`
 
 function summarizeAggregates(aggregates: Record<string, unknown>): string {
   if (Object.keys(aggregates).length === 0) return "(none)"
@@ -160,6 +171,14 @@ export function buildExplainerPrompt(input: VarianceExplainerInput): string {
     .map(([k, v]) => `  ${k} = ${v}`)
     .join("\n")
 
+  // Phase 7.G Turn LXXXXVI (E.1b) — optional intel block
+  const intelBlock = input.intelContext
+    ? formatIntelContextForPrompt(input.intelContext)
+    : null
+  const intelSection = intelBlock
+    ? `\n\nIntel context (latest macro / FX / commodity observations):\n${intelBlock}\n`
+    : ""
+
   return `Indicator: ${input.indicator.code} (${input.indicator.nameEn})
 Direction: ${input.indicator.direction}
 Unit: ${input.indicator.unit}
@@ -178,13 +197,13 @@ Resolved variables (the formula context):
 ${resolvedLines || "  (none — likely missing-data status=unknown)"}
 
 Aggregates (drill-down breakdowns):
-${summarizeAggregates(input.aggregates)}
+${summarizeAggregates(input.aggregates)}${intelSection}
 
 Output language: ${LANGUAGE_LABEL[input.language]}.
 
 Return STRICT JSON in this exact shape (no markdown):
 {
-  "narrative": "1-2 sentences citing the actual driving numbers from inputs",
+  "narrative": "1-2 sentences citing the actual driving numbers from inputs${input.intelContext && !input.intelContext.empty ? " (and intel context if relevant)" : ""}",
   "recommendations": ["≤25 words, action verb + target", "...", "..."],
   "confidence": 0.0,
   "topDrivers": ["resolved_var_name", "..."]

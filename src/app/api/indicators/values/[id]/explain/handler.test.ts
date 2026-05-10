@@ -91,7 +91,7 @@ const explainerOutput = {
   topDrivers: ["total_cost", "cogs", "opex"],
   usage: { inputTokens: 905, outputTokens: 249 },
   modelName: "claude-sonnet-4-5-20250929",
-  promptVersion: "v1",
+  promptVersion: "v2",
 };
 
 beforeEach(() => {
@@ -189,7 +189,7 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
       tokensIn: 905,
       tokensOut: 249,
       modelName: "claude-sonnet-4-5-20250929",
-      promptVersion: "v1",
+      promptVersion: "v2",
     });
     expect(typeof auditCall.data.metadata.durationMs).toBe("number");
     expect(auditCall.data.context).toMatchObject({

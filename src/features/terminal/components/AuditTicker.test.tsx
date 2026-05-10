@@ -147,7 +147,7 @@ describe("AuditTicker (Phase A3)", () => {
         tokensOut: 246,
         durationMs: 6460,
         modelName: "claude-sonnet-4-5-20250929",
-        promptVersion: "v1",
+        promptVersion: "v2",
       },
       createdAt: "2026-04-27T18:32:00.000Z",
     };

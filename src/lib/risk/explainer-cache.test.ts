@@ -181,6 +181,52 @@ describe("getOrCreateExplanation", () => {
     expect(EXPLAINER_CACHE_TTL_MS).toBe(24 * 60 * 60 * 1000)
   })
 
+  // Phase 7.G Turn LXXXXVI (E.1b) — intel context invalidates cache
+  it("intelContext signature change invalidates cache (fresh intel → fresh narrative)", async () => {
+    const intelV1 = {
+      fx: [{ metric: "AZN_USD", datetime: "2026-05-10T00:00:00.000Z", value: 0.58, unit: "USD/AZN" }],
+      cpi: [],
+      commodities: [],
+      signature: "intel-sig-v1",
+      empty: false,
+    }
+    const intelV2 = { ...intelV1, signature: "intel-sig-v2" }
+    // First call with v1 intel — cache miss, writes
+    const r1 = await getOrCreateExplanation(
+      baseInput({ intelContext: intelV1 }),
+      { orgId: "org_a", indicatorValueId: "iv_1" },
+    )
+    expect(r1.cacheHit).toBe(false)
+    // Second call with v2 intel (signature changed) — cache miss again
+    const r2 = await getOrCreateExplanation(
+      baseInput({ intelContext: intelV2 }),
+      { orgId: "org_a", indicatorValueId: "iv_1" },
+    )
+    expect(r2.cacheHit).toBe(false)
+    // Third call with v1 intel again — cache HIT (still cached)
+    const r3 = await getOrCreateExplanation(
+      baseInput({ intelContext: intelV1 }),
+      { orgId: "org_a", indicatorValueId: "iv_1" },
+    )
+    expect(r3.cacheHit).toBe(true)
+  })
+
+  it("snapshotHash includes intelSignature (different intel → different hash)", () => {
+    const a = snapshotHash(baseInput({
+      intelContext: { fx: [], cpi: [], commodities: [], signature: "abc123", empty: true },
+    }))
+    const b = snapshotHash(baseInput({
+      intelContext: { fx: [], cpi: [], commodities: [], signature: "xyz789", empty: true },
+    }))
+    expect(a).not.toBe(b)
+  })
+
+  it("snapshotHash same when intelContext omitted (backwards compat with v1 callers)", () => {
+    const a = snapshotHash(baseInput()) // no intelContext
+    const b = snapshotHash(baseInput()) // no intelContext
+    expect(a).toBe(b)
+  })
+
   it("LLM throw propagates (graceful degradation = caller's job)", async () => {
     const { runExplainer } = await import("./variance-explainer")
     vi.mocked(runExplainer).mockRejectedValueOnce(new Error("LLM down"))
