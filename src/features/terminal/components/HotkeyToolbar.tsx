@@ -28,6 +28,7 @@ import {
   Bell,
   FilePlus2,
   GitCompare,
+  HelpCircle,
   History,
   RefreshCw,
   Search,
@@ -183,6 +184,15 @@ export function HotkeyToolbar() {
         window.location.href = "/budgeting/onboarding";
         return true;
       },
+    },
+    {
+      // CLI Bloomberg-sweep — discoverable HELP button. Same destination as
+      // typing `HELP GO` in the command bar.
+      key: "help",
+      label: t("hotkeys.help"),
+      icon: HelpCircle,
+      title: t("hotkeys.helpTitle"),
+      action: () => fireWindowEvent("terminal:open-help"),
     },
   ];
 

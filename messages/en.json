@@ -1627,6 +1627,8 @@
       "searchTitle": "Focus the search input in the active panel (same as /)",
       "import": "IMPORT",
       "importTitle": "Upload a budget xlsx via Onboarding wizard",
+      "help": "Help",
+      "helpTitle": "Open command reference (HELP GO)",
       "compact": "COMPACT",
       "compactTitle": "Toggle compact mode (Ctrl+/)",
       "compactAriaLabel": "Toggle compact mode",

@@ -1627,6 +1627,8 @@
       "searchTitle": "Aktiv paneldə axtarışı fokuslayır (/ kimi)",
       "import": "İDXAL",
       "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə",
+      "help": "Kömək",
+      "helpTitle": "Komanda arayışını aç (HELP GO)",
       "compact": "KOMPAKT",
       "compactTitle": "Kompakt rejimi açıb-bağla (Ctrl+/)",
       "compactAriaLabel": "Kompakt rejimi açıb-bağla",
