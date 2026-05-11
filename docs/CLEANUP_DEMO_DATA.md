@@ -85,7 +85,7 @@ node scripts/cleanup-fake-azmade-data.cjs --execute
 
 Получишь cash flow производный от плана клиента — не фейк, а derived.
 
-## Шаг 5 — Импорт реальных BS + CF из xlsx (CXXXIV — готово!)
+## Шаг 5 — Импорт реальных BS + CF из xlsx (CXXXIV+CXXXV+CXXXVIII)
 
 ```bash
 npx tsx scripts/import-azmade-bs-cf.ts
@@ -96,7 +96,9 @@ npx tsx scripts/import-azmade-bs-cf.ts
 - `balance_sheet_lines` — ~2500 строк (54 BS позиции × 12 месяцев × 4 файла: LLS / SPARK / ZTP / ATL)
 - `cash_flow_entries` (source=`xlsx_import`) — ~900 entries (Operating / Financing / Investing) для LLS / SPARK / ZTP / ATL + AAC
 
-**Известное ограничение:** AAC BS использует Excel date serials как headers вместо названий месяцев — парсер их сейчас не понимает, пропустит этот sheet с warning. AAC CF (английские месяцы Jan..Dec) — работает.
+**Покрытие:** все 5/5 компаний (CXXXV закрыл AAC BS через date-serial detection).
+
+**Консолидированный вид:** UI группирует BS-строки по `accountName`, поэтому "Pul və pul vəsaiti" из всех 5 компаний автоматически суммируется в одну строку — то что нужно для холдинг-уровня. CF аналогично показывает aggregated monthly totals. Per-company изоляция в БД через `accountCode` prefix `BS-<COMPANY>-<slug>` (CXXXVIII fix предотвращает cross-job overwrite).
 
 После Шага 5 в UI:
 - **Balance Sheet таб** — реальные данные клиента для LLS / SPARK / ZTP / ATL (consolidated)
