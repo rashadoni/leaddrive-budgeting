@@ -85,7 +85,24 @@ npx tsx scripts/import-azmade-bs-cf.ts
 - **Balance Sheet таб** — реальные данные клиента для LLS / SPARK / ZTP / ATL (consolidated)
 - **Cash Flow таб** — реальные движения с разделением Operating / Financing / Investing для всех 5 компаний
 
-## Шаг 6 (опционально) — расширить парсер дальше
+## Шаг 6 — Импорт реальных Sales by product для AAC (CXXXVI — готово!)
+
+```bash
+npx tsx scripts/import-azmade-sales.ts
+```
+
+Запускает `parseAacSalesAllSheet` против AAC `S-all` → создаёт 6 ProductLine (MHB, LIME_BURNT, LIME_SLAKED, ADHESIVE, LIME_WASTE, UBLOCK) + 72 строки `sales_budget_lines` (6 продуктов × 12 месяцев). Реальные суммы из xlsx клиента:
+
+- MHB: 13.3M ₼ годовых
+- Əhəng yanmış (burnt lime): 2.6M ₼
+- Əhəng sönmüş (slaked lime): 616K ₼
+- Yapışqan (adhesive): 577K ₼
+- Əhəng tullantı (lime waste): 8K ₼
+- U-block: 65K ₼
+
+После этого Sales Budget таб для AAC покажет реальную продуктовую разбивку. Другие компании (LLS / SPARK / ZTP / ATL) продают услуги или другие форматы — для них Sales Budget таб остаётся пустым (их revenue видна в P&L через 601-xx счета).
+
+## Шаг 7 (опционально) — расширить парсер дальше
 
 Что ещё в реальных файлах НЕ парсится:
 
