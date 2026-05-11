@@ -225,7 +225,10 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'intel_data_source_run':
     case 'predictive_breach_compute':
     case 'user_access_change':
-    case 'user_role_change': {
+    case 'user_role_change':
+    case 'user_create':
+    case 'user_password_reset':
+    case 'user_active_toggle': {
       const preview = JSON.stringify(m);
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };

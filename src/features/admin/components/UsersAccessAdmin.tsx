@@ -28,6 +28,10 @@ import {
   Eye,
   EyeOff,
   Search,
+  UserPlus,
+  KeyRound,
+  Power,
+  Copy,
 } from "lucide-react";
 
 interface UserRow {
@@ -92,6 +96,17 @@ export function UsersAccessAdmin() {
   const [roleState, setRoleState] = useState<Record<string, RoleState>>({});
   const [draft, setDraft] = useState<Record<string, string[]>>({});
   const [search, setSearch] = useState("");
+  // Add-user dialog + result modal state.
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addForm, setAddForm] = useState({ name: "", email: "", role: "viewer" as Role });
+  const [tempPasswordModal, setTempPasswordModal] = useState<{
+    email: string;
+    password: string;
+    isReset: boolean;
+  } | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   useEffect(() => {
     let alive = true;
@@ -161,6 +176,102 @@ export function UsersAccessAdmin() {
     setRowState((p) =>
       p[userId]?.kind === "saved" ? { ...p, [userId]: { kind: "idle" } } : p,
     );
+  };
+
+  const createUser = async () => {
+    setAddBusy(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addForm),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAddError(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      setUsers((us) => (us ? [...us, body.user] : [body.user]));
+      setDraft((d) => ({ ...d, [body.user.id]: [] }));
+      setAddOpen(false);
+      setAddForm({ name: "", email: "", role: "viewer" });
+      setTempPasswordModal({
+        email: body.user.email,
+        password: body.tempPassword,
+        isReset: false,
+      });
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
+  const resetPassword = async (userId: string, email: string) => {
+    if (!confirm(t("confirmResetPassword", { email }))) return;
+    try {
+      const res = await fetch(
+        `/api/users/${encodeURIComponent(userId)}/password-reset`,
+        { method: "PATCH" },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      setTempPasswordModal({
+        email,
+        password: body.tempPassword,
+        isReset: true,
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const toggleActive = async (userId: string, currentlyActive: boolean) => {
+    const next = !currentlyActive;
+    if (
+      !currentlyActive
+        ? false
+        : !confirm(t("confirmDeactivate"))
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(
+        `/api/users/${encodeURIComponent(userId)}/active`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: next }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(body.error || `HTTP ${res.status}`);
+        return;
+      }
+      setUsers((us) =>
+        us
+          ? us.map((u) => (u.id === userId ? { ...u, isActive: next } : u))
+          : us,
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const copyPassword = async () => {
+    if (!tempPasswordModal) return;
+    try {
+      await navigator.clipboard.writeText(tempPasswordModal.password);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 1500);
+    } catch {
+      // Clipboard blocked — user can still select+copy manually.
+    }
   };
 
   const changeRole = async (userId: string, newRole: Role) => {
@@ -245,6 +356,10 @@ export function UsersAccessAdmin() {
               <CardTitle className="text-lg">{t("title")}</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">{t("subtitle")}</p>
             </div>
+            <Button onClick={() => setAddOpen(true)} size="sm" className="gap-1.5">
+              <UserPlus className="h-4 w-4" />
+              {t("addUser")}
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -444,26 +559,26 @@ export function UsersAccessAdmin() {
 
                         {/* Actions */}
                         <td className="px-3 py-2.5 align-top text-right">
-                          {!isAdmin && (
-                            <div className="flex items-center justify-end gap-2">
-                              {state.kind === "saving" && (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                              )}
-                              {state.kind === "saved" && (
-                                <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
-                                  <Check className="h-3.5 w-3.5" />
-                                  {t("saved")}
-                                </span>
-                              )}
-                              {state.kind === "error" && (
-                                <span
-                                  className="inline-flex items-center gap-1 text-xs text-destructive"
-                                  title={state.message}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                  {t("errorShort")}
-                                </span>
-                              )}
+                          <div className="flex items-center justify-end gap-1.5">
+                            {!isAdmin && state.kind === "saving" && (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                            )}
+                            {!isAdmin && state.kind === "saved" && (
+                              <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                                <Check className="h-3.5 w-3.5" />
+                                {t("saved")}
+                              </span>
+                            )}
+                            {!isAdmin && state.kind === "error" && (
+                              <span
+                                className="inline-flex items-center gap-1 text-xs text-destructive"
+                                title={state.message}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                {t("errorShort")}
+                              </span>
+                            )}
+                            {!isAdmin && (
                               <Button
                                 size="sm"
                                 onClick={() => save(u.id)}
@@ -472,8 +587,30 @@ export function UsersAccessAdmin() {
                               >
                                 {t("save")}
                               </Button>
-                            </div>
-                          )}
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => resetPassword(u.id, u.email)}
+                              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              title={t("resetPassword")}
+                              aria-label={t("resetPassword")}
+                            >
+                              <KeyRound className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleActive(u.id, u.isActive)}
+                              className={`p-1.5 rounded transition-colors ${
+                                u.isActive
+                                  ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                  : "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                              }`}
+                              title={u.isActive ? t("deactivate") : t("activate")}
+                              aria-label={u.isActive ? t("deactivate") : t("activate")}
+                            >
+                              <Power className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -486,6 +623,158 @@ export function UsersAccessAdmin() {
           <p className="text-xs text-muted-foreground italic">{t("hint")}</p>
         </CardContent>
       </Card>
+
+      {/* Add user dialog */}
+      {addOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => !addBusy && setAddOpen(false)}
+        >
+          <div
+            className="bg-card rounded-lg shadow-xl max-w-md w-full p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                <UserPlus className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">{t("addUser")}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {t("addUserSubtitle")}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  {t("addForm.name")}
+                </label>
+                <Input
+                  value={addForm.name}
+                  onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
+                  placeholder={t("addForm.namePlaceholder")}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  {t("addForm.email")}
+                </label>
+                <Input
+                  type="email"
+                  value={addForm.email}
+                  onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                  placeholder="user@company.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  {t("col.role")}
+                </label>
+                <select
+                  value={addForm.role}
+                  onChange={(e) => setAddForm({ ...addForm, role: e.target.value as Role })}
+                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {addError && (
+              <div className="rounded-md bg-destructive/10 p-2.5 text-xs text-destructive flex items-start gap-2">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>{addError}</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => setAddOpen(false)}
+                disabled={addBusy}
+              >
+                {t("cancel")}
+              </Button>
+              <Button onClick={createUser} disabled={addBusy}>
+                {addBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  t("create")
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Temp password reveal modal */}
+      {tempPasswordModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+          onClick={() => setTempPasswordModal(null)}
+        >
+          <div
+            className="bg-card rounded-lg shadow-xl max-w-md w-full p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-amber-100 dark:bg-amber-900/40 p-2 text-amber-700 dark:text-amber-300">
+                <KeyRound className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-lg font-semibold">
+                  {tempPasswordModal.isReset
+                    ? t("passwordReset.title")
+                    : t("passwordCreated.title")}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {tempPasswordModal.isReset
+                    ? t("passwordReset.subtitle", { email: tempPasswordModal.email })
+                    : t("passwordCreated.subtitle", { email: tempPasswordModal.email })}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-md border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <code className="font-mono text-base font-semibold tracking-wider select-all">
+                  {tempPasswordModal.password}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyPassword}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border/60 hover:bg-muted transition-colors"
+                >
+                  {copyState === "copied" ? (
+                    <>
+                      <Check className="h-3 w-3" /> {t("copied")}
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" /> {t("copy")}
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-snug">
+                {t("passwordCreated.warning")}
+              </p>
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button onClick={() => setTempPasswordModal(null)}>
+                {t("done")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

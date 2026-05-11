@@ -40,6 +40,9 @@ const ALL_ACTIONS = [
   "predictive_breach_compute",
   "user_access_change",
   "user_role_change",
+  "user_create",
+  "user_password_reset",
+  "user_active_toggle",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

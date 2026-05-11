@@ -2143,6 +2143,32 @@
     "saved": "Saxlandı",
     "errorShort": "Xəta",
     "companies": "şirkət",
-    "hint": "Alt-qrup koduna (AAC, ATL, SPARK…) klikləyin ki, istifadəçinin girişinə əlavə edin və ya silsiniz. Dəyişikliklər istifadəçinin növbəti sorğusunda (≤30s) tətbiq olunur."
+    "hint": "Alt-qrup koduna (AAC, ATL, SPARK…) klikləyin ki, istifadəçinin girişinə əlavə edin və ya silsiniz. Dəyişikliklər istifadəçinin növbəti sorğusunda (≤30s) tətbiq olunur.",
+    "addUser": "Əlavə et",
+    "addUserSubtitle": "Yeni hesab yarat. Müvəqqəti şifrə generasiya olunacaq — istifadəçiyə bir dəfə göstərin.",
+    "addForm": {
+      "name": "Ad",
+      "namePlaceholder": "Məs. Əli Məmmədov",
+      "email": "Email"
+    },
+    "create": "Yarat",
+    "cancel": "İmtina",
+    "done": "Hazır",
+    "copy": "Kopyala",
+    "copied": "Kopyalandı",
+    "resetPassword": "Şifrəni sıfırla",
+    "deactivate": "Deaktiv et",
+    "activate": "Aktiv et",
+    "confirmResetPassword": "{email} üçün şifrəni sıfırla? Yeni müvəqqəti şifrə generasiya olunacaq.",
+    "confirmDeactivate": "Bu istifadəçini deaktiv et? Yenidən aktiv edilənə qədər giriş edə bilməyəcək.",
+    "passwordCreated": {
+      "title": "İstifadəçi yaradıldı",
+      "subtitle": "{email} üçün müvəqqəti şifrə. İstifadəçi ilə paylaşın — açıq şəkildə saxlanmır.",
+      "warning": "⚠️ Bu şifrə BİR DƏFƏ göstərilir. Pəncərəni bağladıqdan sonra yenidən almaq üçün sıfırlama lazımdır."
+    },
+    "passwordReset": {
+      "title": "Şifrə sıfırlandı",
+      "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
+    }
   }
 }

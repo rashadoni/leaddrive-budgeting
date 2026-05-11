@@ -2143,6 +2143,32 @@
     "saved": "Saved",
     "errorShort": "Error",
     "companies": "companies",
-    "hint": "Click a sub-group code (AAC, ATL, SPARK…) to add or remove it from this user's access. Changes take effect on the user's next request (≤30s)."
+    "hint": "Click a sub-group code (AAC, ATL, SPARK…) to add or remove it from this user's access. Changes take effect on the user's next request (≤30s).",
+    "addUser": "Add user",
+    "addUserSubtitle": "Create a new account. A temp password will be generated — show it to the user once.",
+    "addForm": {
+      "name": "Name",
+      "namePlaceholder": "e.g. John Doe",
+      "email": "Email"
+    },
+    "create": "Create",
+    "cancel": "Cancel",
+    "done": "Done",
+    "copy": "Copy",
+    "copied": "Copied",
+    "resetPassword": "Reset password",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "confirmResetPassword": "Reset password for {email}? A new temp password will be generated.",
+    "confirmDeactivate": "Deactivate this user? They won't be able to sign in until reactivated.",
+    "passwordCreated": {
+      "title": "User created",
+      "subtitle": "Temporary password for {email}. Share it with the user — it's never stored in plaintext.",
+      "warning": "⚠️ This password is shown ONCE. After closing the modal you'll need to reset to see a new one."
+    },
+    "passwordReset": {
+      "title": "Password reset",
+      "subtitle": "New temp password for {email}. Share it with the user once."
+    }
   }
 }

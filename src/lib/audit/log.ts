@@ -387,6 +387,34 @@ export type AuditEventInput =
         from: string;
         to: string;
       };
+    }
+  | {
+      action: 'user_create';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+        targetName: string;
+        role: string;
+      };
+    }
+  | {
+      action: 'user_password_reset';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+      };
+    }
+  | {
+      action: 'user_active_toggle';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+        from: boolean;
+        to: boolean;
+      };
     };
 
 /**
