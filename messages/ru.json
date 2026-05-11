@@ -1671,6 +1671,15 @@
       "starredAriaLabel": "Избранные компании",
       "alertedAriaLabel": "Компании с алертами"
     },
+    "todayBrief": {
+      "title": "Сводка дня",
+      "subtitle": "Что требует вашего внимания прямо сейчас",
+      "worstTitle": "Топ-3 худших",
+      "moversTitle": "Топ-3 движений (тренд 12 мес.)",
+      "alertsTitle": "Активные алёрты",
+      "empty": "(нет данных)",
+      "footerHint": "Клик по строке → drill-down. Клик по ячейке HeatMap заменит этот вид."
+    },
     "heatMap": {
       "filterRowsPlaceholder": "фильтр строк…",
       "loadingHeatmap": "Загрузка карты рисков…",

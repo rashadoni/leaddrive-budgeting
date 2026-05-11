@@ -1671,6 +1671,15 @@
       "starredAriaLabel": "Starred companies",
       "alertedAriaLabel": "Alerted companies"
     },
+    "todayBrief": {
+      "title": "Today's Brief",
+      "subtitle": "What needs your attention right now",
+      "worstTitle": "Top 3 worst",
+      "moversTitle": "Top 3 movers (12-mo trend)",
+      "alertsTitle": "Active alerts",
+      "empty": "(no data)",
+      "footerHint": "Click any row → drill-down. Click a HeatMap cell to swap this view."
+    },
     "heatMap": {
       "filterRowsPlaceholder": "filter rows…",
       "loadingHeatmap": "Loading heatmap…",

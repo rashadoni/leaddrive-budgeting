@@ -1671,6 +1671,15 @@
       "starredAriaLabel": "Seçilmiş şirkətlər",
       "alertedAriaLabel": "Xəbərdarlıq olan şirkətlər"
     },
+    "todayBrief": {
+      "title": "Bu günkü icmal",
+      "subtitle": "İndi diqqətinizi tələb edən",
+      "worstTitle": "Top 3 ən pis",
+      "moversTitle": "Top 3 dəyişən (12 ay trend)",
+      "alertsTitle": "Aktiv xəbərdarlıqlar",
+      "empty": "(məlumat yox)",
+      "footerHint": "Sətirə klik → ətraflı. HeatMap hüceyrəsinə klik bu görünüşü əvəz edəcək."
+    },
     "heatMap": {
       "filterRowsPlaceholder": "sətr filtri…",
       "loadingHeatmap": "Risk xəritəsi yüklənir…",

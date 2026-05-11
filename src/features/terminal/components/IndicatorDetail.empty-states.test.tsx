@@ -124,25 +124,38 @@ describe("IndicatorDetail empty-state DOM-class invariants (Round-33 ⚠️ clos
     expectCenteredClasses(el, /* requireFlexCol */ true);
   });
 
-  it("empty/welcome branch (no IV + no pending) — testid + centered + flex-col", async () => {
+  it("empty/welcome branch (no IV + no pending) — renders Today's Brief", async () => {
+    // CLI Tier 2 #5 — empty-state placeholder replaced with TodayBrief
+    // (top-3 worst / movers / alerts). Test no longer checks centering
+    // since TodayBrief manages its own layout (top-aligned scroll list,
+    // not centered placeholder text).
     vi.doMock("../store/terminalStore", () => ({
       useTerminalStore: <T,>(
         selector: (s: {
           activeIndicatorValueId: string | null;
           pendingMissingCell: null;
           setActivePanel: (id: number) => void;
+          alertMatches: null;
+          selectCompany: (c: string) => void;
+          setActiveIndicatorValue: (id: string | null) => void;
         }) => T,
       ) =>
         selector({
           activeIndicatorValueId: null,
           pendingMissingCell: null,
           setActivePanel: () => {},
+          alertMatches: null,
+          selectCompany: () => {},
+          setActiveIndicatorValue: () => {},
         }),
     }));
     const { IndicatorDetail } = await import("./IndicatorDetail");
     render(<IndicatorDetail />);
     const el = screen.getByTestId("indicator-detail-empty");
-    expectCenteredClasses(el, /* requireFlexCol */ true);
+    expect(el).toBeTruthy();
+    // TodayBrief is mounted inside; its data-testid should be present.
+    const brief = el.querySelector('[data-testid="today-brief"]');
+    expect(brief).toBeTruthy();
   });
 
   it("loading branch — testid + centered (flex row, no flex-col required)", async () => {

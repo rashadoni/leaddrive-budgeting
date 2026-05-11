@@ -16,6 +16,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import React, { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
+import { TodayBrief } from "./TodayBrief";
 import { useTerminalStore } from "../store/terminalStore";
 import {
   forecastNextPeriod,
@@ -267,21 +268,13 @@ export function IndicatorDetail() {
     // and leaving dead space below. User feedback "тяни нижнию часть
     // не тянется" was about the visual filling, not the underlying
     // height resolution (which already worked via items-stretch).
+    // CLI Tier 2 #5 — replace static empty placeholder with Today's
+    // Brief: top-3 worst red, top-3 movers (sparkline delta), top-3
+    // alerts. Bloomberg launchpad equivalent — gives the CFO immediate
+    // signal without a single click.
     return (
-      <div
-        data-testid="indicator-detail-empty"
-        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4"
-      >
-        <div>
-          {t('indicatorDetail.emptyDrillDown')}
-          <br />
-          <br />
-          <span className="text-gray-600">
-            {t('indicatorDetail.emptyOrTypePrefix')}{' '}
-            <span className="text-[#FFB800]">IND_OPEX_RATIO IND GO</span>{' '}
-            {t('indicatorDetail.emptyOrTypeSuffix')}
-          </span>
-        </div>
+      <div data-testid="indicator-detail-empty" className="h-full w-full">
+        <TodayBrief />
       </div>
     );
   }
