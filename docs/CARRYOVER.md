@@ -39,9 +39,10 @@ gate.
 3. **CL** — `baseCurrency` plumbed E2E from recompute-trigger → recomputeIndicator → buildContext → ResolverCtx (was hardcoded "AZN" default — would break multi-tenant). 2 new unit tests guard the CXLVIII regression class. ATL-MRKZ role corrected `admin → operational` (10.8M revenue + full P&L) — exposes 2 legitimate RED indicators in HeatMap (was 117 pairs, now 128). Onboarding wizards (`ImportWizard.tsx` + `ImportWizardMulti.tsx`, 1357 LOC combined) translated to en/ru/az with new `onboarding.{multi,single}` namespaces (~50 keys × 3 locales).
 
 **Open / known data gaps (legit "?" not bugs):**
-- AZSEKER-HORIZON: 0 BudgetLines (only 33 CF entries) — needs client clarification whether P&L data is expected for this services entity. owner=user.
-- IND_NET_MARGIN_VS_2025: 6 unknowns — needs 2025 baseline; `scripts/backfill-historical-ivs.ts --years=2025` exists but no 2025 plans imported yet. owner=user.
-- AGRO_DROUGHT_RISK / AGRO_YIELD / AGRO_COMMODITY_VOL / FP_INVENTORY_TURNS / FP_YIELD_LOSS — need external data feeds (weather/commodity APIs) or manual `OperationalFact` entries. Phase 7.E #1 commodity adapters exist but not wired to live feeds. owner=engineering+user.
+- AZSEKER-HORIZON: **NEW company** (user-confirmed CL turn) — 0 BudgetLines / only 33 CF entries / 8 IVs all unknown. Expected state for a freshly added entity without historical P&L. No action — IVs will populate naturally once HORIZON's first budget xlsx is imported through the onboarding wizard. owner=user (data submission), not engineering.
+- IND_NET_MARGIN_VS_2025: 6 unknowns — needs 2025 baseline; `scripts/backfill-historical-ivs.ts --years=2025` exists but no 2025 plans imported yet. owner=user (acknowledged CL turn — no 2025 budget exists yet).
+- AGRO_DROUGHT_RISK / AGRO_YIELD / AGRO_COMMODITY_VOL / FP_YIELD_LOSS — need external data feeds. Phase 7.E #1 commodity adapter SHELL (`src/lib/intel/commodity/`) exists but uses placeholder feed URLs (`example-aggregator.test`). Real-source wiring (World Bank Pink Sheet for ag commodities + weather API for drought) is multi-day Phase 7.E work — explicitly deferred per CL turn user preference (automation preferred but not "fake data"). owner=engineering (Phase 7.E #1 live-feed integration).
+- FP_INVENTORY_TURNS: inventory data exists in `BalanceSheetLine` for industrial cos (AAC-MAIN/ATL-MRKZ/SPARK-MAIN/ZTP-MAIN) but FP_INVENTORY_TURNS targets `food_processing` industry — AZSEKER-AZSF/CPC have no inventory in BS. Resolver wiring won't help; needs source data. owner=user (AZSEKER ops can populate via OperationalFact / future BS extension).
 
 **Tests:** 2950 → 2962/2962 (+12 across CXLVIII/CL). tsc 0 throughout. Wall-clock total ~90 min.
 
