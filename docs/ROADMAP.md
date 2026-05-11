@@ -169,11 +169,11 @@ Main pain points that drive the roadmap:
 **Goal:** sell to second client without rewriting code.
 
 ### 5.1 Configurable Chart of Accounts
-- 🟡 Backend foundation shipped Turn LXXV; per-org override UI deferred:
+- ✅ Phase 5.1 closed Phase 7.G Turn LXXXXI (backend foundation Turn LXXV + per-org override UI Turn LXXXXI):
   - ✅ Remove hardcoded SAP-code prefixes from analytics — extracted to canonical `src/lib/budgeting/coa-role.ts:deriveRoleFromCode` + `isContraRevenueCode` + `pnlSectionFromRole` (20 unit tests). 4 consumers refactored: `import-excel/route.ts` (delegates `classifyAccount`), `pnl/route.ts` (3 sites — fallback classify, contra-revenue check, sectionActuals aggregation), `PLTab.tsx`, `budget-pnl-view.tsx`. Remaining `startsWith` calls are out-of-Phase-5.1 scope: (a) `categoryFromCode` returns finer category (sales/staff/utilities) — separate concern; (b) `depreciationRows` filter on 731 — finer than role taxonomy, dedicated `isDaCode` helper covers D&A.
   - ✅ `ChartOfAccount.role: CoARole` enum (revenue/cogs/opex/finance/tax_costs/non_operating/tax/unknown). Migration `phase7g_turnlxxv_chartofaccount_role` adds nullable enum column + SQL backfill (CASE WHEN code LIKE '601%' THEN 'revenue' ...). Backfill applied to dev DB. import-excel stamps `role` at upsert time.
   - ✅ Analytics computes EBITDA/Gross Profit via role helpers — `pnl/route.ts` `sectionActuals` aggregation uses `pnlSectionFromRole(deriveRoleFromCode(code))` instead of inline prefix matching; contra-revenue sign-flip via `isContraRevenueCode` predicate. Plus AI Variance Explainer pipeline `src/lib/ai/section-context.ts:computePL` migrated to same helpers (Turn LXXV follow-up — architect Round-1 ⚠️ caught it as the un-migrated 5th consumer + closed inline). All 5 P&L-aggregating call sites now share the canonical module.
-  - ⬜ Per-org override UI: admin Settings page to manually re-set `chartOfAccount.role` for non-AAC charts (deferred to Turn 5.1.2 — not blocking until 2nd customer onboarding surfaces a real different chart). Consumer pattern when wired: `account.role ?? deriveRoleFromCode(account.code)`.
+  - ✅ Per-org override UI: admin Settings page shipped Phase 7.G Turn LXXXXI (Phase 5.1.2) at `/budgeting/admin/chart-of-accounts` route. NEW `CoARolesAdmin.tsx` client component (account list + per-row role override dropdown + filter by accountType + free-text search) backed by `/api/budgeting/chart-of-accounts/[id]` PUT (admin-only, 403 for non-admin). Consumer pattern in analytics: `account.role ?? deriveRoleFromCode(account.code)`. CXXIV migrated component to canonical DataBoundary loading.
 
 ### 5.2 Row-level security
 - ⬜ Postgres RLS policies on all tables with orgId
