@@ -73,19 +73,39 @@ export function HotkeyToolbar() {
   const triggerRecompute = () => {
     if (recomputing || !currentPeriod) return false;
     setRecomputing(true);
-    // Holding-wide refresh — bulk path, route handler defaults
-    // `withSparkline=false` per Phase 7.E phase 2 cost model. Sparklines
-    // get refreshed via the per-IV button in IndicatorDetail (single-IV
-    // path, withSparkline=true) or the offline `compute-sparklines.ts`
-    // worker.
+    // Phase 6.1 — POST may return 202 + jobId (async path) or 200 + sync
+    // results (small fan-out). Either way we clear the spinner when the
+    // initial request resolves. For async path, poll the job until it
+    // finishes; per-poll updates the running label so the user sees
+    // "running 23/180".
     fetch("/api/indicators", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ period: currentPeriod }),
     })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (body?.async && body?.jobId) {
+          // Poll until succeeded/failed or 5min timeout.
+          const startedAt = Date.now();
+          const pollOnce = async (): Promise<void> => {
+            if (Date.now() - startedAt > 5 * 60_000) return;
+            try {
+              const r = await fetch(`/api/recompute/jobs/${body.jobId}`, { cache: "no-store" });
+              if (!r.ok) return;
+              const j = await r.json();
+              if (j.status === "running" || j.status === "pending") {
+                setTimeout(pollOnce, 1500);
+              }
+            } catch {
+              // Network blip — give up silently; user can re-fire.
+            }
+          };
+          pollOnce();
+        }
+      })
       .catch(() => {})
       .finally(() => {
-        // Brief delay so the user sees the feedback even on fast servers.
         setTimeout(() => setRecomputing(false), 800);
       });
     return true;

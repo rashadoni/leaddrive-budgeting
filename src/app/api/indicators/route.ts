@@ -21,13 +21,14 @@ import {
   type IndicatorDefinitionLike,
 } from '@/lib/risk/recompute';
 import { filterOperationalCompanies } from '@/lib/risk/targets';
+import { enqueue as enqueueRecomputeJob } from '@/lib/recompute/job-runner';
 
-// Hand off to Phase-6 BullMQ when recompute fan-out exceeds this. 500 covers a
-// realistic 60-company × 9-indicator holding-wide refresh (~540 pairs typical
-// today, architect-raised from the initial 100 which would 413 most real
-// period-only calls). At ~4 Prisma reads + 1 write per pair, 500 fits into the
-// 60s function window set via `export const maxDuration`.
-const MAX_TARGETS_PER_REQUEST = 500;
+// Phase 6.1 — sync vs async threshold. Targets ≤ this run synchronously
+// in the request handler (drill-down style: single cell, instant feedback).
+// Larger fan-outs are enqueued via the in-process job runner — POST returns
+// 202 + jobId; client polls GET /api/recompute/jobs/[jobId] for status.
+// The old 500 cap is gone — async path has no fan-out limit.
+const SYNC_THRESHOLD = 50;
 
 // Next.js/Vercel function budget. Default is 10s on Hobby and 30s on Pro,
 // which is tight for 500 × 5 Prisma calls even on warm connections. Lift
@@ -209,15 +210,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (targets.length > MAX_TARGETS_PER_REQUEST) {
-    return NextResponse.json(
-      {
-        error: `Recompute fan-out too large (${targets.length} pairs, max ${MAX_TARGETS_PER_REQUEST}). Narrow with companyId or indicatorCode, or wait for the Phase-6 background queue.`,
-      },
-      { status: 413 },
-    );
-  }
-
   const ds = createPrismaDataSource(prisma);
   type Outcome = {
     companyId: string;
@@ -228,7 +220,6 @@ export async function POST(request: NextRequest) {
     value?: number;
     error?: string;
   };
-  const results: Outcome[] = [];
 
   // Phase 7.E phase 2 — opt in to inline sparkline computation only when
   // the request is a single (company, indicator) recompute (UI drill-down,
@@ -237,6 +228,79 @@ export async function POST(request: NextRequest) {
   // `scripts/compute-sparklines.ts` worker is the canonical refresher there.
   const withSparkline = Boolean(companyId && indicatorCode);
 
+  // Phase 6.1 — async path for large fan-outs. Returns 202 + jobId; the
+  // client polls /api/recompute/jobs/[jobId] for progress. No more 413
+  // ceiling — workloads of 5000+ pairs are now safe.
+  if (targets.length > SYNC_THRESHOLD) {
+    const orgId = session.orgId;
+    const job = enqueueRecomputeJob(orgId, targets.length, async (state, report) => {
+      let processed = 0;
+      for (const { company, definition } of targets) {
+        const defLike: IndicatorDefinitionLike = {
+          id: definition.id,
+          code: definition.code,
+          formula: definition.formula,
+          sparklineFormula: definition.sparklineFormula,
+          thresholds: definition.thresholds,
+          requiredInputs: definition.requiredInputs,
+          unit: definition.unit,
+        };
+        let outcome: Outcome;
+        try {
+          const r = await recomputeIndicator(ds, {
+            organizationId: orgId,
+            companyId: company.id,
+            definition: defLike,
+            period,
+            withSparkline,
+          });
+          outcome = {
+            companyId: company.id,
+            companyCode: company.code,
+            indicatorId: definition.id,
+            indicatorCode: definition.code,
+            status: r.status,
+            value: r.value,
+          };
+        } catch (err) {
+          console.error(`Recompute failed for ${company.code}/${definition.code}:`, err);
+          outcome = {
+            companyId: company.id,
+            companyCode: company.code,
+            indicatorId: definition.id,
+            indicatorCode: definition.code,
+            status: 'error',
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+        processed += 1;
+        report({
+          processed,
+          total: targets.length,
+          result: {
+            companyCode: outcome.companyCode,
+            indicatorCode: outcome.indicatorCode,
+            status: outcome.status === 'error' ? 'error' : outcome.status === 'unknown' ? 'unknown' : 'ok',
+            error: outcome.error,
+          },
+        });
+      }
+      void state;
+    });
+    return NextResponse.json(
+      {
+        async: true,
+        jobId: job.jobId,
+        period,
+        total: targets.length,
+        statusUrl: `/api/recompute/jobs/${job.jobId}`,
+      },
+      { status: 202 },
+    );
+  }
+
+  // Sync path — small fan-outs (drill-down style, ≤ SYNC_THRESHOLD pairs).
+  const results: Outcome[] = [];
   for (const { company, definition } of targets) {
     const defLike: IndicatorDefinitionLike = {
       id: definition.id,
