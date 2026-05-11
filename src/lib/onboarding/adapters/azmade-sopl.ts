@@ -157,7 +157,7 @@ const AZ_MONTHS: readonly string[] = [
 // use AZ (`Yanvar`, `Fevral`, ...). Case-insensitive via `normalizeHeader`;
 // match is exact after whitespace collapse, except for the `<Month>Plan`
 // variant handled in `isPlanMonthHeader`.
-const MONTH_ALIASES: readonly (readonly string[])[] = [
+export const MONTH_ALIASES: readonly (readonly string[])[] = [
   ['Yanvar', 'Jan', 'January', 'Январь', 'Янв'],
   ['Fevral', 'Feb', 'February', 'Февраль', 'Фев'],
   ['Mart', 'Mar', 'March', 'Март'],
@@ -226,7 +226,7 @@ function normalizeHeader(v: unknown): string {
  * real workbook uses those, the sheet parses zero rows — extend this
  * function with the additional suffix when such a layout lands.
  */
-function isPlanMonthHeader(cell: unknown, monthIndex: number): boolean {
+export function isPlanMonthHeader(cell: unknown, monthIndex: number): boolean {
   const n = normalizeHeader(cell);
   if (!n) return false;
   const aliases = MONTH_ALIASES[monthIndex];
@@ -337,7 +337,7 @@ export function mapColumns(headerRow: unknown[]): ColumnMap | null {
   return { codeCol, labelCol, monthCols, codeColFromFallback };
 }
 
-function toNumberOrNull(v: unknown): number | null {
+export function toNumberOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string') {

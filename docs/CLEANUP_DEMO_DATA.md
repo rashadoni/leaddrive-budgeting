@@ -68,20 +68,39 @@ node scripts/cleanup-fake-azmade-data.cjs --execute
 
 Получишь cash flow производный от плана клиента — не фейк, а derived.
 
-## Шаг 5 (на будущее) — Расширить парсер на BS / CF / Actuals
+## Шаг 5 — Импорт реальных BS + CF из xlsx (CXXXIV — готово!)
 
-Сейчас `import-azmade-budgets.ts` берёт только sheet `SOPL` / `P&L` (P&L данные). В реальных файлах есть ещё:
+```bash
+npx tsx scripts/import-azmade-bs-cf.ts
+```
 
-| Файл | Доп. sheet'ы | Что можно импортировать |
+Запускает новые парсеры (`parseSofpSheet` + `parseCfsSheet`) и заполняет:
+
+- `balance_sheet_lines` — ~2500 строк (54 BS позиции × 12 месяцев × 4 файла: LLS / SPARK / ZTP / ATL)
+- `cash_flow_entries` (source=`xlsx_import`) — ~900 entries (Operating / Financing / Investing) для LLS / SPARK / ZTP / ATL + AAC
+
+**Известное ограничение:** AAC BS использует Excel date serials как headers вместо названий месяцев — парсер их сейчас не понимает, пропустит этот sheet с warning. AAC CF (английские месяцы Jan..Dec) — работает.
+
+После Шага 5 в UI:
+- **Balance Sheet таб** — реальные данные клиента для LLS / SPARK / ZTP / ATL (consolidated)
+- **Cash Flow таб** — реальные движения с разделением Operating / Financing / Investing для всех 5 компаний
+
+## Шаг 6 (опционально) — расширить парсер дальше
+
+Что ещё в реальных файлах НЕ парсится:
+
+| Файл | Sheet'ы НЕ парсятся | Что можно добавить |
 |---|---|---|
-| rev6 LLS | `Balans`, `CF`, `SOFP`, `CFS` | Balance Sheet (Balans/SOFP) + Cash Flow (CF/CFS) |
-| rev7 SPARK | `Balans`, `CF`, `SOFP`, `CFS`, `CAPEX` | BS + CF + CAPEX |
-| rev8 ZTP | `SOPL P-F`, `Production-2024/2025`, `Satış`, `CFS P-F` | Actuals (P-F = Plan-Fact) + Production data + Sales |
-| rev9 ATL | `SOPL P-F DBZ/PMZ/TAZ` (Plan-Fact), `Consolidated PL/BS/CF` | Actuals для всех ATL дочек |
-| AAC | `BS`, `CF`, `S-1..S-6` (продукты), `COGS`, `Historical` | BS + CF + Sales by product + COGS detail |
-| ATL Budce объяснит. | `material`, `maya dəyəri`, `kontragent`, `stok`, `2026 capex alış/ödəmə` | Material costs + COGS + AR/AP + Stock + CAPEX |
+| rev8 ZTP | `Production-2024/2025` (1000+ строк), `Satış` (1039 строк), `CAPEX-2026` | Production data + Sales detail + CAPEX schedule |
+| rev9 ATL | `SOPL P-F DBZ/PMZ/TAZ 2026` (Plan-Fact) | Per-entity actuals (fakt сейчас = 0 для 2026 — нужно ждать середины года) |
+| AAC | `S-1..S-6` (продуктовая разбивка MHB/Lime/...), `COGS` (детальный COGS), `Historical` | Sales by product + COGS breakdown + multi-year history |
+| ATL Budce объяснит. | `material`, `maya dəyəri`, `kontragent`, `stok`, `2026 capex alış/ödəmə` | Material costs + COGS detail + AR/AP + Stock + CAPEX |
 
-**Эта работа — отдельная задача (~3-5 часов с тестами).** Расширение `parseSoplSheet` → ещё `parseBalansSheet` + `parseCashFlowSheet` + `parsePlanFactSheet` (для actuals).
+**Каждое расширение — отдельный парсер (~1-2 часа с тестами).** Файлы готовы — можно делать по приоритету клиента.
+
+### Известные TODO:
+- **AAC BS** использует Excel date serials как заголовки месяцев (`45657/46053/...`) вместо `Yanvar/Jan/...`. Нужно расширение парсера `parseSofpSheet` — детекция последовательности Excel date serials в нужном диапазоне (Jan-Dec 2026).
+- **Per-entity ATL BS/CF** — `SOFP P-F DBZ 2026` / `CFS P-F DBZ 2026` есть в rev9, но требуют parser для Plan-Fact формата (текущий импорт берёт только консолидированную SOFP/CFS).
 
 ## Что было удалено из кодовой базы
 
