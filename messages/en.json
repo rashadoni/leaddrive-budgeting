@@ -1703,7 +1703,7 @@
       "title": "Today's Brief",
       "subtitle": "What needs your attention right now",
       "worstTitle": "Top 3 worst",
-      "moversTitle": "Top 3 movers (12-mo trend)",
+      "moversTitle": "Top 5 movers by sector (12-mo)",
       "alertsTitle": "Active alerts",
       "empty": "(no data)",
       "footerHint": "Click any row → drill-down. Click a HeatMap cell to swap this view.",
