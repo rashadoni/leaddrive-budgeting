@@ -153,7 +153,7 @@ Main pain points that drive the roadmap:
   - ✅ Indicator UI badge (Turn LXXIV): NEW `<PeriodLockBadge plan={...}>` component + `useActivePeriodLockForPlan` hook + i18n EN/RU/AZ. Mounted in `budgeting/page.tsx` header next to plan selector. Renders nothing when no lock active (no layout shift); shows amber lock-badge + period mono + tooltip (reason / lockedBy / lockedAt) when active plan's period is in org's lock list. 10 new tests (5 hook + 5 badge). Per-row "locked" status in tables defer to next-slice (low priority — single header badge surfaces the state cleanly for v1).
 
 ### 4.3 Approval workflow
-- 🟡 In progress (Turn LXXI backend MVP + Turn LXXII admin UI + bypass shipped):
+- ✅ Phase 4.3 closed Phase 7.G Turn LXXIII (backend Turn LXXI + admin UI Turn LXXII + email notifications Turn LXXIII):
   - ✅ Table `ApprovalRequest` (Turn LXXI; migration `phase7g_turnlxxi_approval_request`). 2 enums (`ApprovalRequestStatus` pending/approved/rejected/cancelled, `ApprovalRequestType` 7 variants: budget_line/actual create/update/delete + period_unlock). Polymorphic `proposedChange Json` field — shape varies per type, validated runtime via `isValidProposedChange`.
   - ✅ NEW `src/lib/budgeting/approval-request.ts` (~250 LOC) — state-machine helpers (`canTransition`/`nextStatus`/`isTerminalStatus`) + 7 typed `proposedChange` shapes + `isValidProposedChange` runtime guard + Turn LXXII `consumeApprovalRequest` (mutation-route bypass guard with cross-user safety) + `markApprovalRequestApplied` (one-shot stamp). 22 unit tests.
   - ✅ NEW API `/api/budgeting/approval-requests` GET (any-member, ?status & ?planId filters, top-50) + POST (auth-required, Zod-validated, cross-tenant planId guard, rate-limited 30/min). 11 handler tests.
@@ -181,11 +181,14 @@ Main pain points that drive the roadmap:
 - ⬜ DB blocks cross-tenant access, not app code
 
 ### 5.3 Onboarding wizard for new clients
-- ⬜ Step 1: Organization details (name, currency, locale)
-- ⬜ Step 2: Upload Chart of Accounts (Excel)
-- ⬜ Step 3: Column mapping UI
-- ⬜ Step 4: First budget import
-- ⬜ Step 5: Ready
+**Note (CXXX reality-check):** original 5-step plan was partially superseded
+by the AI-Mapper-driven multi-sheet wizard at `/budgeting/onboarding`
+(`OnboardingWizardSwitcher` + `ImportWizardMulti`/`ImportWizard`). Mapping:
+- ⬜ Step 1: Organization details (name, currency, locale) — NOT in wizard; org config lives elsewhere (registration / admin).
+- 🟡 Step 2: Upload Chart of Accounts (Excel) — **CoA templates are seeded automatically** (10 industry packs Phase 7.B); explicit per-org CoA upload via wizard NOT shipped, but per-row admin override at `/budgeting/admin/chart-of-accounts` (Turn LXXXXI) closes the gap for non-AAC charts.
+- ✅ Step 3: Column mapping UI — shipped via AI Mapper (Phase 7.B Turn LXXXXV) — auto-detects column types + AI proposal + human reviewer confirms.
+- ✅ Step 4: First budget import — shipped via wizard's `/api/onboarding/import/budget` (single-sheet) + `/api/onboarding/import/analyze-multi` (multi-sheet, Turn CIX/CXII/CXIII) flows.
+- ✅ Step 5: Ready — wizard renders per-sheet success/error chips post-import (Turn CXII slice 1).
 
 ### 5.4 Billing/subscription
 - ⬜ Stripe integration (referenced in leaddrive-v2 memory `project_subscription_billing_flow.md`)
