@@ -29,7 +29,6 @@
 import { useState } from "react"
 import { useTranslations } from "next-intl"
 import {
-  Loader2,
   BarChart2,
   CheckCircle,
   AlertTriangle,
@@ -150,15 +149,13 @@ export function VarianceTab() {
         </div>
       </div>
 
-      {/* Plan-level KPIs — only when plan selected + data loaded. */}
-      {selectedPlanId && analyticsLoading && (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-        </div>
-      )}
-
-      {selectedPlanId && !analyticsLoading && analytics && (
-        <>
+      {/* Plan-level KPIs — DataBoundary wraps analytics fetch (CXXI consolidation
+          of CXVI top-level migration; merges 2 sibling conditionals into single
+          wrap so loading skeleton + KPIs share one render branch). */}
+      {selectedPlanId && (
+        <DataBoundary loading={analyticsLoading}>
+          {analytics && (
+            <>
           <div
             className="grid grid-cols-2 md:grid-cols-5 gap-3"
             data-testid="variance-kpi-strip"
@@ -343,6 +340,8 @@ export function VarianceTab() {
             </div>
           )}
         </>
+          )}
+        </DataBoundary>
       )}
 
       {!selectedPlanId && (
