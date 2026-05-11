@@ -55,12 +55,10 @@ beforeEach(() => {
 })
 
 describe("VarianceTab — empty / loading states", () => {
-  it("renders loading spinner while plans loading", () => {
+  it("renders DataBoundary skeleton while plans loading (Turn CXVI migration)", () => {
     hooksMock.useBudgetPlans.mockReturnValue({ data: [], isLoading: true })
-    render(<VarianceTab />)
-    // Loader2 from lucide renders as SVG with class animate-spin
-    const loaders = document.querySelectorAll(".animate-spin")
-    expect(loaders.length).toBeGreaterThan(0)
+    const { getByTestId } = render(<VarianceTab />)
+    expect(getByTestId("data-boundary-skeleton")).toBeTruthy()
   })
 
   it("renders empty-no-plans state when zero plans", () => {

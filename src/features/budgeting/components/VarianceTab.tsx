@@ -48,6 +48,7 @@ import {
   VARIANCE_BAND_CLASS,
   VARIANCE_BAND_TEXT,
 } from "@/lib/risk/status-bands"
+import { DataBoundary } from "@/components/ui/data-boundary"
 
 export function VarianceTab() {
   const t = useTranslations("budgeting")
@@ -62,13 +63,7 @@ export function VarianceTab() {
     selectedPlanId ?? "",
   )
 
-  if (plansLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-      </div>
-    )
-  }
+  if (plansLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   if (plans.length === 0) {
     return (

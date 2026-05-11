@@ -28,7 +28,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, LabelList,
 } from "recharts"
-import { Loader2, BarChart2, CheckCircle, FileSpreadsheet, TrendingUp } from "lucide-react"
+import { BarChart2, CheckCircle, FileSpreadsheet, TrendingUp } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -76,7 +77,7 @@ export function ComparisonTab() {
     )
   }
 
-  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-purple-500" /></div>
+  if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   if (plans.length < 2) {
     return (

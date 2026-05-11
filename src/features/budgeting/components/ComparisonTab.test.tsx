@@ -82,11 +82,10 @@ describe("ComparisonTab — empty / loading", () => {
     hooksMock.useBudgetAnalytics.mockReturnValue({ data: undefined, isLoading: false })
   })
 
-  it("renders loading spinner while plans loading", () => {
+  it("renders DataBoundary skeleton while plans loading (Turn CXVI migration)", () => {
     hooksMock.useBudgetPlans.mockReturnValue({ data: [], isLoading: true })
-    render(<ComparisonTab />)
-    const loaders = document.querySelectorAll(".animate-spin")
-    expect(loaders.length).toBeGreaterThan(0)
+    const { getByTestId } = render(<ComparisonTab />)
+    expect(getByTestId("data-boundary-skeleton")).toBeTruthy()
   })
 
   it("renders empty-not-enough-data when < 2 plans", () => {
