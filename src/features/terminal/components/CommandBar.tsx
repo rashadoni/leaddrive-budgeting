@@ -100,6 +100,11 @@ export function CommandBar() {
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
   const setActiveIndicatorValue = useTerminalStore((s) => s.setActiveIndicatorValue);
   const setActiveScenario = useTerminalStore((s) => s.setActiveScenarioCode);
+  // CLI Bloomberg-sweep — GRP <code> GO + SEC <name> GO must FILTER the
+  // HeatMap to the sub-group / sector hierarchy, not just switch focus.
+  // Panel 2's search slice is the right hook (CompanyTree + HeatMap both
+  // consume `searchByPanel`).
+  const setSearchForPanel = useTerminalStore((s) => s.setSearchForPanel);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -307,9 +312,30 @@ export function CommandBar() {
         // (modal reads it via the same key).
         window.dispatchEvent(new CustomEvent('terminal:open-help'));
         return { message: 'HELP →' };
-      case 'hold':
       case 'grp':
+        // CLI Bloomberg-sweep — GRP <CODE> GO filters HeatMap rows by the
+        // sub-group code (e.g. `AZSEKER GRP GO` → only AZSEKER + its 5
+        // children visible). Panel 1 (Tree) AND Panel 2 (HeatMap) both
+        // consume `searchByPanel`. Setting Panel-2 search is the path that
+        // narrows the matrix grid. Bare `GRP GO` (no code) clears any
+        // existing filter — lists all sub-groups.
+        if (cmd.subgroupCode) {
+          setSearchForPanel(2, cmd.subgroupCode);
+          setSearchForPanel(1, cmd.subgroupCode);
+        } else {
+          setSearchForPanel(2, '');
+          setSearchForPanel(1, '');
+        }
+        break;
       case 'sec':
+        // CLI Bloomberg-sweep — SEC <industry> GO filters HeatMap rows by
+        // sector tag (industry). Same mechanism as GRP — search slice
+        // already supports case-insensitive substring match across name/
+        // code/industry.
+        setSearchForPanel(2, cmd.sector);
+        setSearchForPanel(1, cmd.sector);
+        break;
+      case 'hold':
       case 'alt':
         // Pure panel-switch (no company change). The destination panel
         // reads the relevant store slice and re-renders.
