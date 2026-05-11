@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Save, TrendingDown, Info, Zap, ChevronDown, ChevronUp } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts"
 import { BUDGET_COLORS, ANIMATION, AXIS_TICK, fmtK, VBarGradient } from "@/lib/budget-chart-theme"
 import { AnimatedNumber, fmtManat } from "@/components/animated-number"
@@ -255,11 +256,7 @@ export function ExpenseForecastTab() {
     .sort((a, b) => b.total - a.total)
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      </div>
-    )
+    return <DataBoundary loading>{null}</DataBoundary>
   }
 
   return (

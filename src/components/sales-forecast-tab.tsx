@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, Save, TrendingUp, Zap, ChevronDown, ChevronUp } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, PieChart, Pie, Cell } from "recharts"
 import { BUDGET_COLORS, ANIMATION, AXIS_TICK, fmtK, VBarGradient } from "@/lib/budget-chart-theme"
 import { AnimatedNumber, fmtManat } from "@/components/animated-number"
@@ -196,11 +197,7 @@ export function SalesForecastTab() {
     .sort((a, b) => b.value - a.value)
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      </div>
-    )
+    return <DataBoundary loading>{null}</DataBoundary>
   }
 
   if (departments.length === 0) {
