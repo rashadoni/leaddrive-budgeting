@@ -135,6 +135,7 @@ export function HelpModal() {
             <Section title={t("sectionAnalysis")} rows={ANALYSIS} t={t} onPick={pasteCommand} />
             <Section title={t("sectionAlerts")} rows={ALERTS} t={t} onPick={pasteCommand} />
             <Section title={t("sectionOther")} rows={OTHER} t={t} onPick={pasteCommand} />
+            <LegendSection t={t} />
           </div>
 
           {/* Recent sidebar */}
@@ -164,6 +165,111 @@ export function HelpModal() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LegendSection({ t }: { t: (k: string) => string }) {
+  return (
+    <section data-testid="help-legend">
+      <h3 className="text-[10px] font-mono uppercase tracking-wider text-gray-500 mb-1.5 border-b border-gray-800 pb-1">
+        {t("sectionLegend")}
+      </h3>
+
+      {/* Composite risk score (CompanyTree badges) */}
+      <div className="mt-2">
+        <p className="text-[11px] text-gray-300 mb-1.5">{t("legendCompositeTitle")}</p>
+        <ul className="grid grid-cols-3 gap-1.5 text-[10px]">
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#00D4AA]/10 border border-[#00D4AA]/40 text-[#00D4AA]">
+            <span aria-hidden="true">●</span>
+            <span className="font-mono">R67–100</span>
+            <span className="opacity-80">{t("legendCompositeGreen")}</span>
+          </li>
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#FFB020]/10 border border-[#FFB020]/40 text-[#FFB020]">
+            <span aria-hidden="true">▲</span>
+            <span className="font-mono">R34–66</span>
+            <span className="opacity-80">{t("legendCompositeAmber")}</span>
+          </li>
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded bg-[#FF4757]/10 border border-[#FF4757]/40 text-[#FF4757]">
+            <span aria-hidden="true">■</span>
+            <span className="font-mono">R0–33</span>
+            <span className="opacity-80">{t("legendCompositeRed")}</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Direction marker (column header prefix) */}
+      <div className="mt-3">
+        <p className="text-[11px] text-gray-300 mb-1.5">{t("legendDirectionTitle")}</p>
+        <ul className="grid grid-cols-3 gap-1.5 text-[10px] text-gray-300">
+          <li className="flex items-baseline gap-1.5 px-2 py-1 rounded border border-gray-800">
+            <span className="text-gray-500" aria-hidden="true">▲</span>
+            <span>{t("legendDirHigher")}</span>
+          </li>
+          <li className="flex items-baseline gap-1.5 px-2 py-1 rounded border border-gray-800">
+            <span className="text-gray-500" aria-hidden="true">▼</span>
+            <span>{t("legendDirLower")}</span>
+          </li>
+          <li className="flex items-baseline gap-1.5 px-2 py-1 rounded border border-gray-800">
+            <span className="text-gray-500" aria-hidden="true">◆</span>
+            <span>{t("legendDirBand")}</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Cell status (HeatMap colors) */}
+      <div className="mt-3">
+        <p className="text-[11px] text-gray-300 mb-1.5">{t("legendCellTitle")}</p>
+        <ul className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-300">
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded" style={{ backgroundColor: "#00D4AA22" }}>
+            <span style={{ color: "#00D4AA" }} aria-hidden="true">●</span>
+            <span>{t("legendCellGreen")}</span>
+          </li>
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded" style={{ backgroundColor: "#FFA50222" }}>
+            <span style={{ color: "#FFA502" }} aria-hidden="true">▲</span>
+            <span>{t("legendCellAmber")}</span>
+          </li>
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded" style={{ backgroundColor: "#FF475722" }}>
+            <span style={{ color: "#FF4757" }} aria-hidden="true">■</span>
+            <span>{t("legendCellRed")}</span>
+          </li>
+          <li className="flex items-center gap-1.5 px-2 py-1 rounded" style={{ backgroundColor: "#6B728022" }}>
+            <span style={{ color: "#6B7280" }} aria-hidden="true">◇</span>
+            <span>{t("legendCellUnknown")}</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Common units */}
+      <div className="mt-3">
+        <p className="text-[11px] text-gray-300 mb-1.5">{t("legendUnitsTitle")}</p>
+        <ul className="grid grid-cols-2 gap-1.5 text-[10px] text-gray-300">
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">%</span>
+            <span>{t("legendUnitPercent")}</span>
+          </li>
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">AZN ₼</span>
+            <span>{t("legendUnitAzn")}</span>
+          </li>
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">ratio</span>
+            <span>{t("legendUnitRatio")}</span>
+          </li>
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">index</span>
+            <span>{t("legendUnitIndex")}</span>
+          </li>
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">pp</span>
+            <span>{t("legendUnitPp")}</span>
+          </li>
+          <li className="flex items-baseline gap-2 px-2 py-1 rounded border border-gray-800">
+            <span className="font-mono text-cyan-300 w-12">ton/ha</span>
+            <span>{t("legendUnitTonHa")}</span>
+          </li>
+        </ul>
+      </div>
+    </section>
   );
 }
 
