@@ -1679,6 +1679,7 @@
       "noCompaniesMatch": "Нет совпадений для",
       "aiSummaryGenerating": "💬 Генерирую AI-сводку…",
       "cellClickHint": "Клик → drill-down (Панель 3)",
+      "notApplicable": "Н/Д — индикатор не применим к индустрии «{industry}»",
       "noScoreableIndicators": "Нет индикаторов для оценки",
       "compositeScoreTitle": "Композитный {score}/100 · {contributing}/{total} индикаторов",
       "filterAriaLabel": "Фильтр строк карты рисков",

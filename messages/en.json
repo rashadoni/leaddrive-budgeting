@@ -1679,6 +1679,7 @@
       "noCompaniesMatch": "No companies match",
       "aiSummaryGenerating": "💬 Generating AI summary…",
       "cellClickHint": "Click → drill-down (Panel 3)",
+      "notApplicable": "N/A — indicator does not apply to industry «{industry}»",
       "noScoreableIndicators": "No scoreable indicators",
       "compositeScoreTitle": "Composite {score}/100 · {contributing}/{total} indicators",
       "filterAriaLabel": "Filter heatmap rows",

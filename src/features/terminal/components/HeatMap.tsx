@@ -55,6 +55,10 @@ type IndicatorCol = {
   nameRu?: string | null;
   direction: string;
   unit: string;
+  /** CLI Tier 2 — used to compute "N/A" cells (indicator not applicable to
+   *  this company's industry) distinct from "unknown" (applicable but no
+   *  data). Empty array = sector-agnostic, applies to every operational co. */
+  industries?: string[];
 };
 type MatrixResponse = {
   period: string;
@@ -864,7 +868,17 @@ function useAISummary(ivId: string | undefined, locale: string): AISummaryEntry 
 // sweep (each cell's Tooltip initialized to open=true and Radix did not
 // transition to closed on pointerleave from the forced-open initial state).
 function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellTdProps) {
-  const status = cell?.status ?? 'missing';
+  // CLI Tier 2 — distinguish "N/A" (indicator not applicable to this
+  // company's industry — e.g. AGRO_YIELD on services entity) from
+  // "missing" (applicable but no computed value). Empty industries[]
+  // means sector-agnostic indicator (applies everywhere). Status taxonomy
+  // is local-only; matrix payload still uses the 4 core statuses.
+  const isNotApplicable =
+    !cell &&
+    Array.isArray(ind.industries) &&
+    ind.industries.length > 0 &&
+    !ind.industries.includes(co.industry);
+  const status = cell?.status ?? (isNotApplicable ? 'na' : 'missing');
   // M3 — only red/amber cells trigger LLM hover-summary. Green/missing
   // are noise; unknown often errors at LLM (no narrative to extract).
   const ivId = cell?.indicatorValueId;
@@ -891,7 +905,12 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
     };
   }, []);
-  const color = statusColor(status);
+  // CLI Tier 2 — 'na' cells render almost invisible (very low opacity, no
+  // glyph, no value). Other statuses use the shared palette helper. Cast
+  // 'na' to 'missing' for the shared color helper input type contract;
+  // the resulting color is overridden anyway when status === 'na'.
+  const baseColor = statusColor(status === 'na' ? 'missing' : status);
+  const color = status === 'na' ? '#0A0E27' : baseColor;
   const statusColorClass =
     status === 'red'
       ? 'text-[#FF4757]'
@@ -927,9 +946,11 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
       }`}
       style={{
         backgroundColor: color,
-        opacity: status === 'missing' ? 0.25 : 0.85,
+        // CLI Tier 2 — 'na' is barely visible (0.05); 'missing' faded (0.25);
+        // all computed statuses fully visible (0.85).
+        opacity: status === 'na' ? 0.05 : status === 'missing' ? 0.25 : 0.85,
       }}
-      aria-label={`${co.code} ${ind.code} ${status} ${statusShape(status)}`}
+      aria-label={`${co.code} ${ind.code} ${status === 'na' ? 'not applicable' : `${status} ${statusShape(status)}`}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
@@ -956,19 +977,22 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 full and skip mix-blend on `unknown` so the glyph
                 renders white-on-gray (high contrast). All other
                 statuses keep the difference-blend rule. */}
-            <span
-              aria-hidden="true"
-              className="absolute top-0 right-0.5 leading-none"
-              style={{
-                fontSize: compactMode ? 7 : 9,
-                opacity: status === 'unknown' ? 0.95 : 0.7,
-                color: '#FFFFFF',
-                mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
-                pointerEvents: 'none',
-              }}
-            >
-              {statusShape(status)}
-            </span>
+            {/* Status glyph hidden for 'na' (no symbol = "not applicable"). */}
+            {status !== 'na' && (
+              <span
+                aria-hidden="true"
+                className="absolute top-0 right-0.5 leading-none"
+                style={{
+                  fontSize: compactMode ? 7 : 9,
+                  opacity: status === 'unknown' ? 0.95 : 0.7,
+                  color: '#FFFFFF',
+                  mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
+                  pointerEvents: 'none',
+                }}
+              >
+                {statusShape(status)}
+              </span>
+            )}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
                 Bloomberg-class analyst gets trend AT A GLANCE without
                 hovering. Empty-sparkline cells get an identical-height
@@ -1022,12 +1046,14 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
               <div className="text-[11px] mt-1">
                 {/* Round-16 closure — shape glyph next to status word
                     inside cell tooltip detail. aria-hidden because the
-                    status word itself conveys the same meaning to AT. */}
+                    status word itself conveys the same meaning to AT.
+                    Inside this branch `cell` is truthy ⇒ status is one of
+                    the IndicatorStatus values, never 'na' / 'missing'. */}
                 <span className={statusColorClass}>
                   <span aria-hidden="true" className="mr-0.5 opacity-80">
-                    {statusShape(status)}
+                    {statusShape(cell.status)}
                   </span>
-                  {status.toUpperCase()}
+                  {cell.status.toUpperCase()}
                 </span>
                 {' @ '}
                 <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
@@ -1070,6 +1096,10 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 {t('heatMap.cellClickHint')}
               </div>
             </>
+          ) : status === 'na' ? (
+            <div className="text-[11px] text-muted-foreground mt-1">
+              {t('heatMap.notApplicable', { industry: co.industry })}
+            </div>
           ) : (
             <div className="text-[11px] text-muted-foreground mt-1">
               no value computed

@@ -1679,6 +1679,7 @@
       "noCompaniesMatch": "Uyğunluq yoxdur:",
       "aiSummaryGenerating": "💬 AI xülasəsi yaradılır…",
       "cellClickHint": "Klik → ətraflı (Panel 3)",
+      "notApplicable": "Tətbiq olunmur — indikator «{industry}» sənayesinə aid deyil",
       "noScoreableIndicators": "Qiymətləndiriləcək göstərici yoxdur",
       "compositeScoreTitle": "Kompozit {score}/100 · {contributing}/{total} göstərici",
       "filterAriaLabel": "Risk xəritəsi sətr filtri",

@@ -128,6 +128,10 @@ export async function GET(request: NextRequest) {
           // post-fetch filter below.
           category: true,
           requiredInputs: true,
+          // CLI Tier 2 — surfaced so HeatMap can distinguish "N/A — indicator
+          // not applicable to this industry" from "unknown — applicable but
+          // no computed value". UI renders the two states differently.
+          industries: true,
         },
         orderBy: { sortOrder: 'asc' },
       }),
