@@ -138,9 +138,9 @@ Main pain points that drive the roadmap:
 **Goal:** financial audit readiness (SOX / GAAP).
 
 ### 4.1 Immutable change history
-- ⬜ Table `audit_log`: `id, orgId, userId, entityType, entityId, action, beforeJson, afterJson, at`
-- ⬜ Prisma middleware auto-writes on all mutations
-- ⬜ Never delete audit_log rows
+- ✅ Table `audit_events` (Prisma model `AuditEvent`, shipped Phase 7.F Turn 11): `id, organizationId, actorUserId, action (enum AuditAction), entityType, entityId, metadata (Json), context (Json?), createdAt`. 365-day retention documented in schema; auto-prune deferred to Phase 6 BullMQ.
+- ✅ Typed call-site logging via `logAuditEvent(prisma, event)` at `src/lib/audit/log.ts` — discriminated-union event types (one variant per `AuditAction` enum member) lock metadata shape at compile time. **Deliberate non-middleware design** per docstring: middleware would require free-form JSON (no compile-time guarantees) + can't capture business-context semantics that vary per route. 16+ call sites integrated across mutation routes (period locks, approval requests, organization settings, intel refresh, indicator explanations, ChartOfAccount role overrides). Never-throws contract: audit-write failure returns `{ok: false, error}` so caller can surface as soft warning without breaking the calling action.
+- ✅ Never-delete contract: `src/lib/audit/` exposes only `logAuditEvent` (write) + `listAuditEvents` (read) + `import-helpers` (write) + `compact-summary` (read). No DELETE/UPDATE methods anywhere; `prisma.auditEvent.delete*` not called from any module.
 
 ### 4.2 Period locking
 - ✅ **DONE — Phase 4.2 closed Turn LXX.** 24 mutation handlers reject with 423 + admin UI + lock/unlock API + audit-trail on add/remove + audit-trail on 423 attempts. Foundations (LXVII) → fan-out (LXVIII) → bulk-paths (LXIX) → admin/audit (LXX). The remaining ⬜ items (indicator UI lock-icon badges in tabs) are cosmetic surface — file as Turn LXXI follow-up if user wants the visual polish, but the **CFO-protection contract is fully shipped**.
