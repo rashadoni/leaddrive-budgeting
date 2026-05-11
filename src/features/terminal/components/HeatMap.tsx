@@ -21,6 +21,7 @@ import {
 import { useEventStream } from '@/lib/events/use-event-stream';
 import { Sparkline, type SparklineStatus } from './Sparkline';
 import { PeriodChips } from './PeriodChips';
+import { TimeMachineSlider } from './TimeMachineSlider';
 import {
   computeCompositeByCompany,
   type CompositeScore,
@@ -387,11 +388,19 @@ export function HeatMap({ period }: Props) {
 
       {/* CLI Bloomberg-sweep: period chip row — annual / quarters / months.
           Active chip wired to setSelectedPeriod, which drives useMatrix(). */}
-      <div className="mb-2 shrink-0">
+      <div className="mb-1 shrink-0">
         <PeriodChips
           current={renderedPeriod}
           onChange={(p) => setSelectedPeriod(p)}
           compact={compactMode}
+        />
+      </div>
+      {/* Tier 3 time-machine — scrub through months with play/pause.
+          Same setSelectedPeriod → useMatrix() refetch path as the chips. */}
+      <div className="mb-2 shrink-0">
+        <TimeMachineSlider
+          current={renderedPeriod}
+          onChange={(p) => setSelectedPeriod(p)}
         />
       </div>
       {loading && (

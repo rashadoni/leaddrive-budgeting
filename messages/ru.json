@@ -1490,6 +1490,16 @@
       "quarterHint": "Q{q} {year}",
       "monthHint": "Месяц {m} {year}"
     },
+    "timeMachine": {
+      "ariaLabel": "Машина времени — прокрутка по месяцам",
+      "sliderLabel": "Месяц",
+      "annual": "Весь {year}",
+      "play": "Воспроизвести (M1 → M12)",
+      "pause": "Пауза",
+      "stepBack": "На месяц назад",
+      "stepForward": "На месяц вперёд",
+      "reset": "Сбросить (весь год)"
+    },
     "help": {
       "title": "Справочник команд",
       "subtitle": "Введите команду и нажмите GO (или Enter).",

@@ -1490,6 +1490,16 @@
       "quarterHint": "Q{q} {year}",
       "monthHint": "Ay {m} {year}"
     },
+    "timeMachine": {
+      "ariaLabel": "Zaman maşını — aylar üzrə sürüşdür",
+      "sliderLabel": "Ay",
+      "annual": "Bütün {year}",
+      "play": "Oynat (M1 → M12)",
+      "pause": "Dayandır",
+      "stepBack": "Bir ay geri",
+      "stepForward": "Bir ay irəli",
+      "reset": "Sıfırla (tam il)"
+    },
     "help": {
       "title": "Komanda arayışı",
       "subtitle": "Komandanı yazın və GO (və ya Enter) basın.",

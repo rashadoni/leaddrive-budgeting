@@ -1490,6 +1490,16 @@
       "quarterHint": "Q{q} of {year}",
       "monthHint": "Month {m} of {year}"
     },
+    "timeMachine": {
+      "ariaLabel": "Time machine — scrub through months",
+      "sliderLabel": "Month",
+      "annual": "All of {year}",
+      "play": "Play (M1 → M12)",
+      "pause": "Pause",
+      "stepBack": "Step back one month",
+      "stepForward": "Step forward one month",
+      "reset": "Reset (full year)"
+    },
     "help": {
       "title": "Command Reference",
       "subtitle": "Press the command, then GO (or Enter).",
