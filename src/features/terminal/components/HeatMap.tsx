@@ -104,11 +104,14 @@ export function HeatMap({ period }: Props) {
   // CXLVI — honest status counts from DB (bypasses matrix-API admin/rollup
   // filter so badge `0G/5A/9R` reflects what's actually in IndicatorValue
   // rows). Falls back to matrix-derived `summary` if endpoint is missing.
+  // Dependency on `data?.period` not `period` prop: prop may be empty
+  // initially while matrix-derived period is the canonical "active" one.
   const [dbSummary, setDbSummary] = useState<{ green: number; amber: number; red: number; unknown: number; total: number } | null>(null);
+  const activePeriod = data?.period ?? period;
   useEffect(() => {
-    if (!period) return;
+    if (!activePeriod) return;
     let cancelled = false;
-    fetch(`/api/indicators/status-summary?period=${encodeURIComponent(period)}`)
+    fetch(`/api/indicators/status-summary?period=${encodeURIComponent(activePeriod)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (cancelled || !j) return;
@@ -116,7 +119,7 @@ export function HeatMap({ period }: Props) {
       })
       .catch(() => { /* silent — fall back to matrix-derived summary */ });
     return () => { cancelled = true; };
-  }, [period]);
+  }, [activePeriod]);
 
   // Phase 7.E C6 v2 — pull org-tuned alert thresholds. Falls back to
   // DEFAULT_ALERT_THRESHOLDS while the fetch is in-flight or if it fails;
