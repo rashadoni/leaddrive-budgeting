@@ -64,20 +64,74 @@ function findHeaderRow(aoa) {
   return -1
 }
 
+// Phase 7.G CXXXV — fallback: detect 12 Excel date serials covering Jan-Dec
+function excelSerialToMonth(cell) {
+  let date = null
+  if (cell instanceof Date) date = cell
+  else if (typeof cell === "number" && Number.isFinite(cell)) {
+    if (cell < 44000 || cell > 48000) return null
+    date = new Date((cell - 25569) * 86400 * 1000)
+  }
+  if (!date || isNaN(date.getTime())) return null
+  const y = date.getUTCFullYear()
+  if (y < 2020 || y > 2031) return null
+  return date.getUTCMonth()
+}
+
+function findDateHeaderRow(aoa) {
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i]
+    if (!row) continue
+    const candidates = []
+    for (let c = 0; c < row.length; c++) {
+      const m = excelSerialToMonth(row[c])
+      if (m === null) continue
+      let date
+      if (row[c] instanceof Date) date = row[c]
+      else date = new Date((row[c] - 25569) * 86400 * 1000)
+      candidates.push({ col: c, year: date.getUTCFullYear(), month: m })
+    }
+    if (candidates.length < 12) continue
+    const yearMonthCols = new Map()
+    for (const cand of candidates) {
+      const arr = yearMonthCols.get(cand.year) ?? Array(12).fill(-1)
+      if (arr[cand.month] === -1) arr[cand.month] = cand.col
+      yearMonthCols.set(cand.year, arr)
+    }
+    for (const [, cols] of yearMonthCols) {
+      if (cols.every((v) => v !== -1)) {
+        let monotonic = true
+        for (let k = 1; k < 12; k++) if (cols[k] <= cols[k - 1]) { monotonic = false; break }
+        if (monotonic) return { row: i, monthCols: cols }
+      }
+    }
+  }
+  return null
+}
+
 function probeSheet(workbook, sheetName) {
   const sheet = workbook.Sheets[sheetName]
   if (!sheet) return { exists: false }
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, blankrows: false })
-  const headerRowIdx = findHeaderRow(aoa)
-  if (headerRowIdx === -1) return { exists: true, headerFound: false, totalRows: aoa.length }
+  let headerRowIdx = findHeaderRow(aoa)
+  let monthCols = []
+  let mode = "month-name"
 
-  const headerRow = aoa[headerRowIdx] || []
-  const monthCols = []
-  for (let m = 0; m < 12; m++) {
-    monthCols.push(headerRow.findIndex((c) => isPlanMonthHeader(c, m)))
+  if (headerRowIdx !== -1) {
+    const headerRow = aoa[headerRowIdx] || []
+    for (let m = 0; m < 12; m++) {
+      monthCols.push(headerRow.findIndex((c) => isPlanMonthHeader(c, m)))
+    }
+  } else {
+    const dh = findDateHeaderRow(aoa)
+    if (!dh) return { exists: true, headerFound: false, totalRows: aoa.length }
+    headerRowIdx = dh.row
+    monthCols = dh.monthCols
+    mode = "date-serial"
   }
 
-  // Count data rows below header that have label + at least one non-zero month
+  // labelCol detection (header-row-text or sample-data fallback)
+  const headerRow = aoa[headerRowIdx] || []
   let labelCol = -1
   for (let c = 0; c < monthCols[0]; c++) {
     const v = headerRow[c]
@@ -86,7 +140,21 @@ function probeSheet(workbook, sheetName) {
       break
     }
   }
-  if (labelCol === -1) labelCol = 0
+  if (labelCol === -1) {
+    const stringCounts = new Map()
+    for (let r = headerRowIdx + 1; r < Math.min(headerRowIdx + 11, aoa.length); r++) {
+      const row = aoa[r] || []
+      for (let c = 0; c < monthCols[0]; c++) {
+        const v = row[c]
+        if (typeof v === "string" && v.trim()) {
+          stringCounts.set(c, (stringCounts.get(c) || 0) + 1)
+        }
+      }
+    }
+    let best = 0, bestCount = 0
+    for (const [c, n] of stringCounts) if (n > bestCount) { bestCount = n; best = c }
+    labelCol = best
+  }
 
   let withLabelAndData = 0
   let allZero = 0
@@ -112,6 +180,7 @@ function probeSheet(workbook, sheetName) {
   return {
     exists: true,
     headerFound: true,
+    mode,
     headerRow: headerRowIdx + 1,
     labelCol: labelCol + 1,
     monthColsRange: `${monthCols[0] + 1}..${monthCols[11] + 1}`,

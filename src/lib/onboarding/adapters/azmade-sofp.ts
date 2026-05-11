@@ -37,6 +37,7 @@ import type * as XLSX from "xlsx"
 import {
   MONTH_ALIASES,
   findHeaderRow,
+  findDateHeaderRow,
   toNumberOrNull,
   isPlanMonthHeader,
 } from "./azmade-sopl"
@@ -151,33 +152,46 @@ export function parseSofpSheet(
   }
   const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, blankrows: false }) as unknown[][]
 
-  const headerRowIdx = findHeaderRow(aoa)
-  if (headerRowIdx === -1) {
-    return {
-      sheetName,
-      lines: [],
-      warnings: [{ row: 0, reason: "No header row with 12 month names found (Yanvar..Dekabr)" }],
-      skippedRowCount: 0,
-    }
-  }
+  // Try month-name detection first (LLS / SPARK / ZTP / ATL layouts)
+  let headerRowIdx = findHeaderRow(aoa)
+  let monthCols: number[]
 
-  const headerRow = aoa[headerRowIdx] ?? []
-  // Find the column for each month — strict left-to-right plan-shape match.
-  const monthCols: number[] = []
-  for (let m = 0; m < MONTH_ALIASES.length; m++) {
-    const idx = headerRow.findIndex((v) => isPlanMonthHeader(v, m))
-    if (idx === -1) {
+  if (headerRowIdx !== -1) {
+    const headerRow = aoa[headerRowIdx] ?? []
+    monthCols = []
+    for (let m = 0; m < MONTH_ALIASES.length; m++) {
+      const idx = headerRow.findIndex((v) => isPlanMonthHeader(v, m))
+      if (idx === -1) {
+        return {
+          sheetName,
+          lines: [],
+          warnings: [{ row: headerRowIdx + 1, reason: `Month col for index ${m} not found in header row` }],
+          skippedRowCount: 0,
+        }
+      }
+      monthCols.push(idx)
+    }
+  } else {
+    // Fallback: Excel date-serial headers (AAC BS layout — CXXXV)
+    const dateHeader = findDateHeaderRow(aoa)
+    if (!dateHeader) {
       return {
         sheetName,
         lines: [],
-        warnings: [{ row: headerRowIdx + 1, reason: `Month col for index ${m} not found in header row` }],
+        warnings: [{ row: 0, reason: "No header row found (neither month-name nor date-serial layout)" }],
         skippedRowCount: 0,
       }
     }
-    monthCols.push(idx)
+    headerRowIdx = dateHeader.row
+    monthCols = dateHeader.monthCols
   }
 
-  // Label column = leftmost non-empty text cell BEFORE monthCols[0] in the header row.
+  // Label column detection:
+  //   1. Try leftmost non-empty text cell in header row (works for month-name
+  //      headers where header row also has the "Balans hesabatı" label)
+  //   2. If header row has no text cell (date-serial layout), scan first 10
+  //      data rows below header — pick col with most string content
+  const headerRow = aoa[headerRowIdx] ?? []
   let labelCol = -1
   for (let c = 0; c < monthCols[0]; c++) {
     const v = headerRow[c]
@@ -186,7 +200,28 @@ export function parseSofpSheet(
       break
     }
   }
-  if (labelCol === -1) labelCol = 0
+  if (labelCol === -1) {
+    const stringCounts = new Map<number, number>()
+    const sampleRows = aoa.slice(headerRowIdx + 1, headerRowIdx + 11)
+    for (const row of sampleRows) {
+      if (!row) continue
+      for (let c = 0; c < monthCols[0]; c++) {
+        const v = row[c]
+        if (typeof v === "string" && v.trim().length > 0) {
+          stringCounts.set(c, (stringCounts.get(c) ?? 0) + 1)
+        }
+      }
+    }
+    let bestCol = 0
+    let bestCount = 0
+    for (const [c, count] of stringCounts) {
+      if (count > bestCount) {
+        bestCount = count
+        bestCol = c
+      }
+    }
+    labelCol = bestCol
+  }
 
   const lines: ParsedBalanceSheetLine[] = []
   const warnings: SofpParseWarning[] = []

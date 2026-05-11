@@ -79,6 +79,37 @@ describe("parseSofpSheet — happy path with section context", () => {
   })
 })
 
+describe("parseSofpSheet — Excel date-serial headers (AAC BS layout, CXXXV)", () => {
+  // 2026 month-end Excel serials
+  const SERIALS_2026 = [46053, 46081, 46112, 46142, 46173, 46203, 46234, 46265, 46295, 46326, 46356, 46387]
+
+  it("falls back to date-serial header when month-name detection fails", () => {
+    const wb = makeWorkbook("BS", [
+      [null, "Balans maddəsi", null, null, "BUDCƏ 2026"], // R0
+      [null, null, 45657, null, ...SERIALS_2026], // R1: opening date col 2; 12 month-end serials starting col 4
+      [null, "Pul və pul vəsaiti", 100, null, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220], // R2 data
+      [null, "Bank krediti", 50, null, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], // R3 data — debt
+    ])
+    const r = parseSofpSheet(wb, "BS", XLSX)
+    expect(r.warnings).toEqual([])
+    expect(r.lines).toHaveLength(2)
+    expect(r.lines[0]).toMatchObject({ label: "Pul və pul vəsaiti", lineType: "asset" })
+    expect(r.lines[0].perMonth).toEqual([110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220])
+    expect(r.lines[1]).toMatchObject({ label: "Bank krediti", lineType: "liability" })
+  })
+
+  it("rejects serials outside reasonable date range (sanity guard)", () => {
+    const wb = makeWorkbook("BS", [
+      // 100, 200, ... look like dollar amounts — not dates. No month names either.
+      [null, "Label", null, null, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200],
+      [null, "Bank hesabı", 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    ])
+    const r = parseSofpSheet(wb, "BS", XLSX)
+    expect(r.lines).toEqual([])
+    expect(r.warnings[0]?.reason).toMatch(/No header row found/)
+  })
+})
+
 describe("parseSofpSheet — fallback classification (no section context)", () => {
   it("classifies via label keywords when no section header preceded", () => {
     const months = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "İyun", "İyul", "Avqust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"]

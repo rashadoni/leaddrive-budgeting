@@ -250,6 +250,91 @@ export function findHeaderRow(aoa: unknown[][]): number {
   return -1;
 }
 
+/**
+ * Phase 7.G CXXXV — Excel serial number → month index (0=Jan ... 11=Dec).
+ *
+ * AAC's BS sheet uses Excel-formatted date serials as month headers
+ * (e.g. 46053 = 2026-01-31, 46081 = 2026-02-28) instead of month-name
+ * strings. This helper converts a serial to its calendar month, with
+ * sanity guards: only accepts serials in [44000, 48000] (covers
+ * 2020-2031) so a stray dollar amount doesn't get mis-classified as a
+ * date.
+ *
+ * Returns `null` for non-numbers, JS Date instances are ALSO supported
+ * (for callers that read with `XLSX.readFile(..., { cellDates: true })`).
+ */
+export function excelSerialToMonth(cell: unknown): number | null {
+  let date: Date | null = null;
+  if (cell instanceof Date) {
+    date = cell;
+  } else if (typeof cell === "number" && Number.isFinite(cell)) {
+    if (cell < 44000 || cell > 48000) return null;
+    // Excel serial → JS Date: serial 25569 = 1970-01-01.
+    date = new Date((cell - 25569) * 86400 * 1000);
+  }
+  if (!date || isNaN(date.getTime())) return null;
+  // Sanity: only accept dates in 2020-2031 window
+  const y = date.getUTCFullYear();
+  if (y < 2020 || y > 2031) return null;
+  return date.getUTCMonth();
+}
+
+/**
+ * Phase 7.G CXXXV — fallback header-row detection for sheets that use
+ * Excel date serials instead of month-name strings (e.g. AAC's BS sheet).
+ *
+ * Returns `{row, monthCols}` for the first row where ≥12 cells are date
+ * serials AND those cells cover all 12 months (Jan..Dec) of the SAME
+ * year. Returns `null` if no such row found.
+ *
+ * Why "same year": some workbooks have multi-year columns (Jan 2025 ...
+ * Dec 2025 | Jan 2026 ... Dec 2026) — picking month cols across years
+ * would mix them. Single-year constraint keeps the picked columns
+ * unambiguous.
+ */
+export function findDateHeaderRow(
+  aoa: unknown[][],
+): { row: number; monthCols: number[] } | null {
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i];
+    if (!row) continue;
+    // For each cell, compute (year, monthIdx) if it's a valid date header.
+    const candidates: Array<{ col: number; year: number; month: number }> = [];
+    for (let c = 0; c < row.length; c++) {
+      const m = excelSerialToMonth(row[c]);
+      if (m === null) continue;
+      // Re-derive year for cross-year filter
+      let date: Date;
+      if (row[c] instanceof Date) date = row[c] as Date;
+      else date = new Date(((row[c] as number) - 25569) * 86400 * 1000);
+      candidates.push({ col: c, year: date.getUTCFullYear(), month: m });
+    }
+    if (candidates.length < 12) continue;
+    // Find a year that has all 12 months represented (pick first month col
+    // per (month) within that year). Returns the canonical 12-col layout.
+    const yearMonthCols = new Map<number, number[]>();
+    for (const cand of candidates) {
+      const arr = yearMonthCols.get(cand.year) ?? Array(12).fill(-1);
+      if (arr[cand.month] === -1) arr[cand.month] = cand.col;
+      yearMonthCols.set(cand.year, arr);
+    }
+    for (const [, cols] of yearMonthCols) {
+      if (cols.every((v) => v !== -1)) {
+        // Sanity: cols must be monotonically increasing (Jan..Dec in order)
+        let monotonic = true;
+        for (let k = 1; k < 12; k++) {
+          if (cols[k] <= cols[k - 1]) {
+            monotonic = false;
+            break;
+          }
+        }
+        if (monotonic) return { row: i, monthCols: cols };
+      }
+    }
+  }
+  return null;
+}
+
 export interface ColumnMap {
   codeCol: number;
   labelCol: number;
