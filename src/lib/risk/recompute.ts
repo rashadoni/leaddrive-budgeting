@@ -761,6 +761,10 @@ interface ResolverCtx {
   organizationId: string;
   companyId: string;
   period: Period;
+  /** Company-base currency code (or "AZN" fallback). Used by the budgetLine
+   *  resolver to NOT treat lines tagged with the company's base currency as
+   *  foreign — see CXLVIII regression note in the resolver body. */
+  baseCurrency: string;
 }
 
 interface NamespaceResolver {
@@ -975,8 +979,14 @@ const budgetLineResolver: NamespaceResolver = {
     let domestic_opex = 0;
     let missing_rate_count = 0;
 
+    // Defensive: a line tagged with the company's base currency is NOT
+    // foreign — treat as base regardless of whether `exchangeRate` is set.
+    // CXLVIII regression class: pre-fix imports stamped every base-currency
+    // line with `currencyCode='AZN'` + no rate, which the strict-foreign
+    // path below skipped, zeroing out 100% of revenue/cogs/opex.
+    const baseCcy = ctx.baseCurrency;
     for (const l of lines) {
-      const isForeign = l.currencyCode != null;
+      const isForeign = l.currencyCode != null && l.currencyCode !== baseCcy;
       // Skip foreign lines without an explicit rate rather than silently
       // assume 1:1 — that would inflate P&L denominators.
       if (isForeign && l.exchangeRate == null) {
@@ -1821,6 +1831,8 @@ export async function buildContext(
     companyId: string;
     period: Period;
     requiredInputs: string[];
+    /** Optional override; defaults to "AZN" — FO Holding base. */
+    baseCurrency?: string;
   },
 ): Promise<{
   context: FormulaContext;
@@ -1837,6 +1849,7 @@ export async function buildContext(
     organizationId: args.organizationId,
     companyId: args.companyId,
     period: args.period,
+    baseCurrency: args.baseCurrency ?? 'AZN',
   };
 
   // RESOLVERS is iterated once per recompute; each resolver sees all its

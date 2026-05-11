@@ -244,7 +244,8 @@ async function main() {
                 plannedAmount: line.perMonth[m],
                 sortOrder: m, monthIndex: m,
                 isAutoPlanned: false, isAutoActual: false,
-                currencyCode: "AZN",
+                // currencyCode left null = base (AZN) per resolver contract
+                // (recompute.ts skips lines with currencyCode!=null + exchangeRate=null)
               })
             }
           }

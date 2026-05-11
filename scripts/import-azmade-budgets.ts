@@ -206,10 +206,14 @@ async function insertBudgetLineTx(
         // values; they are NOT auto-planned. Schema default is now false too.
         isAutoPlanned: false,
         isAutoActual: false,
-        // Phase 7.G Turn XXXIX: tag with the company's base currency so
-        // FX_IMPORTED_INPUT (and any future per-currency indicator) can
-        // distinguish imported lines from base-currency lines.
-        currencyCode: baseCurrencyCode ?? 'AZN',
+        // Phase 7.G Turn XXXIX → CXLVIII fix: do NOT stamp currencyCode when
+        // it equals base. The resolver at recompute.ts:982 skips lines with
+        // `currencyCode != null && exchangeRate == null` to avoid silently
+        // assuming rate=1. Stamping AZN with no rate excluded 100% of lines
+        // from revenue/cogs/opex aggregation. Foreign lines (USD/EUR) still
+        // get stamped via the future per-line FX field — not at the
+        // company-base level.
+        currencyCode: null,
       },
     });
   }
