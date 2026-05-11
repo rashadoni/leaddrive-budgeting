@@ -236,13 +236,33 @@ export function VarianceExplainerPanel() {
           <span className="text-[#FFB800]">{t("varianceExplainer.reRun")}</span>{" "}
           {t("varianceExplainer.clickSuffix")}
         </div>
-        <button
-          type="button"
-          onClick={() => ivId && run(ivId, language)}
-          className="text-[10px] uppercase tracking-wider px-2 py-1 rounded bg-[#00D4AA] text-[#050814] hover:bg-[#00E5BB]"
-        >
-          {t("varianceExplainer.runFor")} {language.toUpperCase()}
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-gray-500">
+            {t("varianceExplainer.runFor")}
+          </span>
+          <div role="radiogroup" className="flex border border-[#00D4AA]/50 rounded overflow-hidden text-[10px]">
+            {LANGUAGE_OPTIONS.map((opt) => {
+              const active = opt.value === language;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => {
+                    setLanguage(opt.value);
+                    if (ivId) run(ivId, opt.value);
+                  }}
+                  className={`px-2 py-1 uppercase tracking-wider ${
+                    active
+                      ? "bg-[#00D4AA] text-[#050814] hover:bg-[#00E5BB]"
+                      : "bg-transparent text-[#00D4AA] hover:bg-[#00D4AA]/10"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
     );
   }
