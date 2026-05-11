@@ -96,11 +96,13 @@ Main pain points that drive the roadmap:
 - ⬜ Persist mapping in `Organization.importConfig.products[]`
 
 ### 2.4 Import = staging + validation + apply
-- ⬜ New `import_staging` table — raw parsed data
-- ⬜ `/api/import/parse` endpoint → stages data
-- ⬜ UI preview + validation warnings before commit
-- ⬜ User confirms → `/api/import/apply` → copy to production tables
-- ⬜ Persist `ImportRun` history
+**Note (CXXXII reality-check):** original 5-bullet plan was implemented via
+the AI-Mapper-driven Phase 7.B onboarding wizard pipeline. Mapping:
+- ✅ New `import_staging` table — shipped as Prisma model `ImportStaging` (Phase 7.B): `proposal Json` (AI mapper output) + `userOverrides Json?` (user edits) + `xlsxTempPath String?` (re-runnable) + `status enum (pending|applied|discarded|expired)` + audit fields (`createdBy` / `createdAt` / `expiresAt` / `appliedAt` / `errorMessage`).
+- ✅ `/api/import/parse` endpoint → stages data — shipped as `/api/onboarding/import/analyze` (single-sheet) + `/api/onboarding/import/analyze-multi` (multi-sheet, Turn CIX) which create `ImportStaging` rows.
+- ✅ UI preview + validation warnings before commit — shipped via `OnboardingWizardSwitcher` + `ImportWizardMulti` per-sheet success/error chips + AI Mapper anomaly flags (-200% margin, missing column types, etc.).
+- ✅ User confirms → `/api/import/apply` → copy to production tables — shipped via `/api/onboarding/import/budget` POST (single-sheet known-shape) + apply pattern from staging row's `proposal` + `userOverrides`.
+- 🟡 Persist `ImportRun` history — partial via `ImportStaging` audit fields (status / createdBy / createdAt / appliedAt / errorMessage cover the lifecycle); separate dedicated `ImportRun` model not shipped (would duplicate ImportStaging audit semantics).
 
 ---
 
