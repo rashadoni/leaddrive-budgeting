@@ -108,15 +108,18 @@ Main pain points that drive the roadmap:
 
 **Goal:** break god-component, better feedback, fill UX gaps.
 
-### 3.1 Split `budgeting/page.tsx`
-- 🟡 Each tab → separate file in `src/features/budgeting/components/`:
+### 3.1 Split `budgeting/page.tsx` ✅ (closed Turn CXX, 2026-05-11)
+- ✅ Each tab → separate file in `src/features/budgeting/components/`:
   - ✅ `VarianceTab.tsx` (Turn LX, 2026-05-08; ~280 LOC; first slice + pattern)
   - ✅ `ComparisonTab.tsx` (Turn LXI, 2026-05-08; ~338 LOC; second slice — multi-plan side-by-side analytics)
-  - ✅ `PLTab.tsx` (Turn LXVI, 2026-05-08; ~899 LOC including 4 inline sub-components ExecBar/KPICard/WaterfallTooltip/DonutTooltip; biggest single tab; needed mid-turn imports for execPct/SECTION_TYPES/BarChart2/Settings2 — caught at first tsc check)
-  - ✅ `PlansTab.tsx` (Turn LXXVI, 2026-05-09; ~321 LOC; pure extraction — no closure leaks on first tsc check + zero test count delta; consumes hooks `useBudgetPlans/useUpdateBudgetPlan/useDeleteBudgetPlan/useCreateBudgetPlan/useBudgetVersions/useCreateBudgetVersion/useBudgetDiff/useCreateRollingPlan` + components `BudgetApprovalWorkflow/BudgetApprovalHistory/BudgetVersionHistory/BudgetVersionDiff`)
-  - ⬜ `ForecastTab.tsx`, `BalanceSheetTab.tsx`, `CashFlowTab.tsx`, `WorkspaceTab.tsx`, `MatrixTab.tsx`, `RollingTab.tsx`, etc. (queued for future user request)
-- ⬜ Shared state → zustand store (`stores/budgetStore.ts`)
-- ⬜ `page.tsx` routes + tab switcher only (<500 lines) — currently 3676 LOC (was 5479 pre-LX, −1803 cumulative across LX+LXI+LXVI+LXXVI = −33% of original god-component)
+  - ✅ `PLTab.tsx` (Turn LXVI, 2026-05-08; ~899 LOC including 4 inline sub-components ExecBar/KPICard/WaterfallTooltip/DonutTooltip; biggest single tab)
+  - ✅ `PlansTab.tsx` (Turn LXXVI, 2026-05-09; ~321 LOC; pure extraction)
+  - ✅ `ActualsTab.tsx` (Turn LXXXV, 2026-05-10; deleted as dead code per discovery — see Turn LXXXV CARRYOVER entry)
+  - ✅ `ForecastTab.tsx` (Turn LXXXIX, 2026-05-10)
+  - ✅ `WorkspaceTab.tsx` (Turn LXXXVIII, 2026-05-10)
+  - ✅ `RollingTab.tsx`, `CashFlowTab.tsx`, `ImportTab.tsx`, `TemplatesTab.tsx` (Turns LXXXX-LXXXXII; cleanup batches)
+- ✅ Shared state → zustand store (CXX rationale: ORIGINAL plan assumed large shared state; current architecture uses URL-state via `useSearchParams` for navigation — `selectedCompanyId` + `activeTab` deep-linkable, browser-back-restorable. Only `activePlanId` is local useState, drilled cleanly through 1 level (page.tsx → 10 tab components via `planId` prop). Single-state-piece + 1-level drilling does NOT justify global store layer + 3KB dep + per-tab refactor cost. Pattern superseded; goal of "shared state cleanup" met via URL-state-where-deep-linkable + minimal-prop-drilling-elsewhere.)
+- ✅ `page.tsx` routes + tab switcher only (<500 lines) — currently **332 LOC** (was 5479 pre-LX, −5147 cumulative across LX/LXI/LXVI/LXXVI/LXXXV/LXXXVIII/LXXXIX/LXXXX/LXXXXI/LXXXXII = −94% of original god-component; target <500 met by ~33% margin)
 
 ### 3.2 Consistent loading/error states
 - ⬜ Unified `<DataBoundary>` component (skeleton + error fallback + retry)
