@@ -41,6 +41,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import {
   useBudgetAnalytics,
   useBudgetSections,
@@ -190,7 +191,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   }
 
   if (analyticsLoading || sectionsLoading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-purple-500" /></div>
+    return <DataBoundary loading>{null}</DataBoundary>
   }
 
   // Revenue totals — also account for parent auto-actuals.

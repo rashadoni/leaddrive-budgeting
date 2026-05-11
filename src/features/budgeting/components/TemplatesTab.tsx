@@ -17,6 +17,7 @@ import {
   useDeleteBudgetTemplate,
 } from "@/lib/budgeting/hooks"
 import { type BudgetDirectionTemplate } from "@/lib/budgeting/types"
+import { DataBoundary } from "@/components/ui/data-boundary"
 
 // Local fmt — duplicated from page.tsx::fmt (CARRYOVER M6 dedup deferred).
 function fmt(n: number): string {
@@ -55,7 +56,7 @@ export function TemplatesTab() {
     setConfirmDelete(null)
   }
 
-  if (isLoading) return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
+  if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   const subtypeLabel = (s: string | null | undefined) => {
     if (s === "service") return t("subtypeService")

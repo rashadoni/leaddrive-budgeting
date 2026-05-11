@@ -30,6 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import {
   Dialog,
   DialogContent,
@@ -103,7 +104,7 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
     setRollingForm({ name: "", startYear: new Date().getFullYear(), startMonth: new Date().getMonth() + 1 })
   }
 
-  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-purple-500" /></div>
+  if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   return (
     <div>
