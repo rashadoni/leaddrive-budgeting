@@ -1656,6 +1656,7 @@ enum AuditAction {
   predictive_breach_compute      // Phase 7.E #3 E.2b — breach scanner executed
   ai_breach_digest               // Phase 7.E #3 E.2e — daily breach delta digest
   user_access_change             // Phase 7.F sub-group RBAC — admin updated User.allowedSubGroupIds
+  user_role_change               // Phase 7.F admin v2 — admin promoted/demoted a user's role
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

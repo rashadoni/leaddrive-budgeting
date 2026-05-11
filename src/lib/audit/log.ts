@@ -374,6 +374,19 @@ export type AuditEventInput =
         before: string[];
         after: string[];
       };
+    }
+  | {
+      // Phase 7.F admin v2 — admin promoted/demoted a user's role.
+      // entityId = target user id; before/after capture the role
+      // transition for compliance ("who promoted X to admin").
+      action: 'user_role_change';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+        from: string;
+        to: string;
+      };
     };
 
 /**

@@ -53,6 +53,14 @@ type RowState =
   | { kind: "saved"; at: number }
   | { kind: "error"; message: string };
 
+type RoleState =
+  | { kind: "idle" }
+  | { kind: "saving" }
+  | { kind: "error"; message: string };
+
+const ROLES = ["admin", "manager", "editor", "viewer"] as const;
+type Role = (typeof ROLES)[number];
+
 const ROLE_BADGE: Record<string, { label: string; tone: string }> = {
   admin: { label: "admin", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
   manager: { label: "manager", tone: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
@@ -81,6 +89,7 @@ export function UsersAccessAdmin() {
   const [subGroups, setSubGroups] = useState<SubGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
+  const [roleState, setRoleState] = useState<Record<string, RoleState>>({});
   const [draft, setDraft] = useState<Record<string, string[]>>({});
   const [search, setSearch] = useState("");
 
@@ -152,6 +161,34 @@ export function UsersAccessAdmin() {
     setRowState((p) =>
       p[userId]?.kind === "saved" ? { ...p, [userId]: { kind: "idle" } } : p,
     );
+  };
+
+  const changeRole = async (userId: string, newRole: Role) => {
+    setRoleState((p) => ({ ...p, [userId]: { kind: "saving" } }));
+    try {
+      const res = await fetch(
+        `/api/users/${encodeURIComponent(userId)}/role`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: newRole }),
+        },
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body.error || `HTTP ${res.status}`;
+        setRoleState((p) => ({ ...p, [userId]: { kind: "error", message: msg } }));
+        alert(msg); // Hard guard violation needs visible feedback.
+        return;
+      }
+      setRoleState((p) => ({ ...p, [userId]: { kind: "idle" } }));
+      setUsers((us) =>
+        us ? us.map((u) => (u.id === userId ? { ...u, role: newRole } : u)) : us,
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setRoleState((p) => ({ ...p, [userId]: { kind: "error", message: msg } }));
+    }
   };
 
   const save = async (userId: string) => {
@@ -336,14 +373,31 @@ export function UsersAccessAdmin() {
                           </div>
                         </td>
 
-                        {/* Role */}
+                        {/* Role — editable dropdown */}
                         <td className="px-3 py-2.5 align-top">
-                          <Badge
-                            variant="default"
-                            className={`text-[10px] uppercase tracking-wider ${roleBadge.tone}`}
-                          >
-                            {roleBadge.label}
-                          </Badge>
+                          <div className="flex items-center gap-1.5">
+                            <select
+                              value={u.role}
+                              onChange={(e) =>
+                                changeRole(u.id, e.target.value as Role)
+                              }
+                              disabled={
+                                (roleState[u.id]?.kind === "saving") ||
+                                u.id === undefined // never disable; placeholder for future "current user" lock
+                              }
+                              className={`text-[10px] uppercase tracking-wider rounded-full px-2 py-1 border-0 cursor-pointer focus:ring-2 focus:ring-primary/40 focus:outline-none ${roleBadge.tone}`}
+                              aria-label={t("col.role")}
+                            >
+                              {ROLES.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                            {roleState[u.id]?.kind === "saving" && (
+                              <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+                            )}
+                          </div>
                         </td>
 
                         {/* Access */}
