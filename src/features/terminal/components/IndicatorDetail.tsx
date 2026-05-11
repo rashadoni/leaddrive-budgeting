@@ -562,8 +562,11 @@ export function IndicatorDetail() {
               {Object.entries(resolved).map(([k, v]) => (
                 <tr key={k} className="border-b border-gray-800/30 last:border-b-0">
                   <td className="py-0.5 pr-3 text-gray-400 font-mono">{k}</td>
-                  <td className="py-0.5 text-gray-200 text-right">
-                    {formatValue(v)}
+                  <td
+                    className="py-0.5 text-gray-200 text-right"
+                    title={Number.isFinite(v) ? v.toLocaleString("ru-RU") : undefined}
+                  >
+                    {formatAggValue(v, hintForKey(k))}
                   </td>
                 </tr>
               ))}
