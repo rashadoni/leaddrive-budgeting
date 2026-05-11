@@ -123,7 +123,7 @@ Main pain points that drive the roadmap:
 
 ### 3.2 Consistent loading/error states
 - ✅ Unified `<DataBoundary>` component (skeleton + error fallback + retry) — shipped Turn CXV at `src/components/ui/data-boundary.tsx` with 13 consumer test cases.
-- 🟡 Replace all `isLoading ? <Loader/> : ...` occurrences — 13 consumers migrated through Turn CXXIV (CXV/CXVI/CXXI VarianceTab + 7 batch tabs in CXVII-CXX + CXXIV CoARolesAdmin/ApprovalRequestsAdmin/PeriodLocksAdmin); remaining inline mutation-button spinners (`isPending ? Loader : Icon`) are NOT DataBoundary candidates (correct pattern for button states).
+- 🟡 Replace all `isLoading ? <Loader/> : ...` occurrences — 16 consumers migrated through Turn CXXV (CXV/CXVI/CXXI VarianceTab + 7 batch tabs in CXVII-CXX + CXXIV CoARolesAdmin/ApprovalRequestsAdmin/PeriodLocksAdmin + CXXV budget-config-tab/budget-department-access/budget-approval-history); remaining inline mutation-button spinners (`isPending ? Loader : Icon`) are NOT DataBoundary candidates (correct pattern for button states).
 - ⬜ Sentry / LogRocket integration for frontend errors (blocked: requires Sentry DSN + `npm install` — npm-install blocked by `~/.npm` perms)
 
 ### 3.3 Drill-down everywhere code+name appears

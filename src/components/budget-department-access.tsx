@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Loader2, Plus, Trash2, Shield, Users } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { useBudgetDeptOwners, useAssignDeptOwner, useRemoveDeptOwner } from "@/lib/budgeting/hooks"
 
 interface User {
@@ -58,14 +59,6 @@ export function BudgetDepartmentAccess() {
     setCanApprove(false)
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -75,6 +68,7 @@ export function BudgetDepartmentAccess() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        <DataBoundary loading={isLoading}>
         {/* Assign form */}
         <div className="flex flex-wrap items-end gap-3 p-4 bg-muted/30 rounded-lg border">
           <div className="space-y-1.5">
@@ -174,6 +168,7 @@ export function BudgetDepartmentAccess() {
           <strong>Note:</strong> Admin and Manager roles automatically have full access to all departments.
           Department owners only apply to Sales, Support, and Viewer roles.
         </div>
+        </DataBoundary>
       </CardContent>
     </Card>
   )

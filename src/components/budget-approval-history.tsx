@@ -2,7 +2,8 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, MessageSquare, Send, CheckCircle2, XCircle, FileText, Lock } from "lucide-react"
+import { MessageSquare, Send, CheckCircle2, XCircle, FileText, Lock } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { useBudgetApprovalComments } from "@/lib/budgeting/hooks"
 
 const STATUS_ICONS: Record<string, any> = {
@@ -46,11 +47,7 @@ export function BudgetApprovalHistory({ planId }: Props) {
   const { data: comments = [], isLoading } = useBudgetApprovalComments(planId)
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    )
+    return <DataBoundary loading>{null}</DataBoundary>
   }
 
   if (comments.length === 0) {

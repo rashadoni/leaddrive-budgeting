@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2, Loader2, Building2, Layers } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 
 interface CostType {
   id: string
@@ -149,12 +150,9 @@ export function BudgetConfigTab() {
     fetchData()
   }
 
-  if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>
-  }
-
   return (
     <div className="space-y-6">
+      <DataBoundary loading={loading}>
       {/* Cost Types */}
       <Card>
         <CardHeader>
@@ -376,6 +374,7 @@ export function BudgetConfigTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </DataBoundary>
     </div>
   )
 }
