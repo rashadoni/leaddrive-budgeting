@@ -63,15 +63,25 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
+      // Re-read role / organization from DB on every refresh, not just at
+      // login. Otherwise renaming an org (or changing role) never surfaces
+      // until logout — the `if (user)` guard meant subsequent requests
+      // returned the cached token verbatim, defeating the 1h maxAge.
+      // Refreshes every ~30s via a stamp on the token to avoid hammering
+      // the DB on every API hit while still surfacing changes quickly.
+      const REFRESH_MS = 30_000
+      const stamp = (token as { _refreshedAt?: number })._refreshedAt ?? 0
+      const fresh = user != null || Date.now() - stamp > REFRESH_MS
+      if (fresh && token.email) {
         const dbUser = await prisma.user.findFirst({
-          where: { email: token.email! },
+          where: { email: token.email },
           include: { organization: true },
         })
         if (dbUser) {
           token.role = dbUser.role
           token.organizationId = dbUser.organizationId
           token.organizationName = dbUser.organization?.name || ""
+          ;(token as { _refreshedAt?: number })._refreshedAt = Date.now()
         }
       }
       return token
