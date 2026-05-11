@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 
 export async function GET(
   request: NextRequest,
@@ -42,6 +43,7 @@ export async function GET(
       computedAt: true,
       inputs: true,
       sparkline: true,
+      companyId: true,
       indicator: {
         select: {
           id: true,
@@ -69,6 +71,12 @@ export async function GET(
       { error: "Indicator value not found" },
       { status: 404 },
     )
+  }
+
+  // Phase 7.F sub-group RBAC.
+  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  if (scope.ids != null && !scope.ids.has(iv.companyId)) {
+    return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
   }
 
   return NextResponse.json({

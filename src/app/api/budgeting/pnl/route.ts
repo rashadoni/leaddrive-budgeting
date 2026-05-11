@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getOrgId } from "@/lib/api-auth"
+import { getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { looksLikeCode } from "@/lib/import/keywords"
 import {
   deriveRoleFromCode,
@@ -49,8 +50,9 @@ const PNL_SECTIONS = [
 ]
 
 export async function GET(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const session = await getSession(req)
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const orgId = session.orgId
 
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
@@ -73,9 +75,29 @@ export async function GET(req: NextRequest) {
   if (companyFilter.kind === "not_found") {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
+
+  // Phase 7.F sub-group RBAC — narrow companyFilter further if user is
+  // restricted. Org-wide consolidated → restrict to allowed companies.
+  // Single-company → 404 if outside scope. Sub-group expansion → keep
+  // only allowed children.
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
+  if (scope.ids != null) {
+    if (companyFilter.kind === "single") {
+      const filtered = companyFilter.companyIds.filter((id) => scope.ids!.has(id))
+      if (filtered.length === 0) {
+        return NextResponse.json({ error: "Company not found" }, { status: 404 })
+      }
+      companyFilter.companyIds = filtered
+    }
+  }
+
   const blWhere: { organizationId: string; planId: string; companyId?: { in: string[] } } = {
     organizationId: orgId,
     planId,
+  }
+  // For org-wide queries on a restricted user, narrow to scoped companies.
+  if (companyFilter.kind === "all" && scope.ids != null) {
+    blWhere.companyId = { in: Array.from(scope.ids) }
   }
   if (companyFilter.kind === "single") {
     if (companyFilter.companyIds.length === 0) {

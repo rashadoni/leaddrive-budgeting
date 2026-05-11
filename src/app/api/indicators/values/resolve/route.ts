@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { prisma } from "@/lib/prisma"
 
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
@@ -65,6 +66,12 @@ export async function GET(req: NextRequest) {
     select: { id: true },
   })
   if (!company) {
+    return NextResponse.json({ error: "Company not found" }, { status: 404 })
+  }
+
+  // Phase 7.F sub-group RBAC.
+  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  if (scope.ids != null && !scope.ids.has(company.id)) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 

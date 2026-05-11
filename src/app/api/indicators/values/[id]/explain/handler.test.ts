@@ -24,6 +24,7 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     indicatorValue: { findFirst: vi.fn() },
     auditEvent: { create: vi.fn() },
+    user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
   },
 }));
 

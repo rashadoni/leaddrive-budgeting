@@ -6,6 +6,7 @@ const { prismaMock } = vi.hoisted(() => ({
     company: { findFirst: vi.fn() },
     indicatorDefinition: { findFirst: vi.fn() },
     indicatorValue: { findUnique: vi.fn() },
+    user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
   },
 }))
 

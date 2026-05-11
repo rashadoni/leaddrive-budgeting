@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { getPredictiveBreaches } from "@/lib/risk/breach-persist"
 
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
@@ -68,8 +69,14 @@ export async function GET(req: NextRequest) {
     minConfidenceBand: parsed.minConfidenceBand,
   })
 
+  // Phase 7.F sub-group RBAC — filter breaches by allowed companies.
+  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  const scoped = scope.ids != null
+    ? breaches.filter((b) => scope.ids!.has(b.companyId))
+    : breaches
+
   // Strip organizationId from response — caller already knows their own org.
-  const sanitized = breaches.map(({ organizationId: _o, ...rest }) => rest)
+  const sanitized = scoped.map(({ organizationId: _o, ...rest }) => rest)
 
   return NextResponse.json({
     breaches: sanitized,

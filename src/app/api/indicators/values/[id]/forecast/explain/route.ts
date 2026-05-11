@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
+import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit";
 import { hasAnthropicKey } from "@/lib/ai/client";
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
@@ -173,6 +174,12 @@ export async function POST(
       { error: "Indicator value not found" },
       { status: 404 },
     );
+  }
+
+  // Phase 7.F sub-group RBAC.
+  const scope = await getCompanyScope(orgId, session.userId, session.role);
+  if (scope.ids != null && !scope.ids.has(iv.companyId)) {
+    return NextResponse.json({ error: "Indicator value not found" }, { status: 404 });
   }
 
   if (!isDirection(iv.indicator.direction)) {

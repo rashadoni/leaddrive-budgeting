@@ -18,6 +18,7 @@ const { prismaMock, companyFilterMock } = vi.hoisted(() => ({
     salesBudgetLine: { findMany: vi.fn() },
     cOGSBudgetLine: { findMany: vi.fn() },
     budgetActual: { findMany: vi.fn() },
+    user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
   },
   companyFilterMock: { resolveCompanyFilter: vi.fn() },
 }))
