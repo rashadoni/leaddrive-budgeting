@@ -38,6 +38,29 @@ if [ -x "$HOOK_DIR/pre-commit-secrets.sh" ]; then
   fi
 fi
 
+# Phase 1.3 (Turn CXXII) — tsc --noEmit type gate. Skips on doc-only /
+# config-only commits to keep the per-commit cost predictable.
+#
+# Cost shape:
+#   - No .ts/.tsx in staged diff → skip entirely (~0ms)
+#   - Warm tsc cache → ~3-5s on this codebase (197 test files + src/)
+#   - Cold tsc cache → ~10-15s (rare; only after `rm -rf node_modules`)
+#
+# Bypass in emergencies via `git commit --no-verify`.
+ts_staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -E '\.(ts|tsx)$' || true)
+if [ -n "$ts_staged" ] && [ -f "package.json" ] && command -v npx >/dev/null 2>&1; then
+  echo "[pre-commit] Running tsc --noEmit (TS/TSX changes detected)…"
+  if npx tsc --noEmit 2>&1; then
+    echo "[pre-commit] tsc ✓ passed"
+  else
+    echo ""
+    echo "[pre-commit] ❌ tsc FAILED — commit aborted."
+    echo "  Fix the type errors above, re-stage, and commit again."
+    echo "  Emergency bypass: \`git commit --no-verify\`."
+    exit 1
+  fi
+fi
+
 SCANNER_TEST_PATH="src/features/terminal/components/m7-status-band-shape.test.ts"
 
 # Only run if package.json + vitest exist (e.g. skip on hook fired

@@ -36,7 +36,7 @@ Main pain points that drive the roadmap:
 | 0.4 | Rate limit all POST/PUT/DELETE budget endpoints via middleware | 3h | ✅ |
 | 0.5 | Role-based access on plan mutation endpoints | 2h | ✅ |
 | 0.6 | Check git history for leaked secrets, purge if found | 1h | ✅ |
-| 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | 🟡 |
+| 0.7 | **NEW** — `git init` + setup remote, add pre-commit secret scanner (gitleaks/detect-secrets) | 2h | 🟡 — secret scanner ✅ Turn XXXVI (`.githooks/pre-commit-secrets.sh`, 11 regex patterns, 16-case test gate); remote `git init` + CI workflow remain ⬜ (user-decision: GitHub/GitLab destination) |
 
 ---
 
@@ -61,7 +61,7 @@ Main pain points that drive the roadmap:
 - ✅ `src/lib/budgeting/report-engine.ts:370` — undefined indexing (guard with `?? ""`)
 - ✅ `src/app/api/budgeting/import-excel/route.ts` — Buffer type (cast to ExcelJS.Buffer)
 - ✅ Set `typescript.ignoreBuildErrors: false` in `next.config.ts`
-- ⬜ Add `tsc --noEmit` to CI / pre-commit hook (deferred until remote/CI set up — Phase 0.7 stretch)
+- ✅ Add `tsc --noEmit` to pre-commit hook (Turn CXXII, 2026-05-11; in `.githooks/pre-commit` with `.ts/.tsx` diff-filter — skips on doc-only commits to keep cost predictable; ~3-5s warm cache, ~10-15s cold; bypass via `git commit --no-verify`). CI workflow integration still pending (Phase 0.7 remote setup).
 
 ### 1.4 Soft-delete + undo for reset
 - ✅ Add `deletedAt: DateTime?` (+ `deletedBy`) to `BudgetPlan` — cascading via the parent covers the user-facing scope without touching 4 tables
