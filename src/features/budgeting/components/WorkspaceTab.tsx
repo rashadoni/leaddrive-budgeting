@@ -1177,7 +1177,9 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                   })
                   const json = await res.json()
                   if (!res.ok) {
-                    alert(json.error || t("wsGenMatrixFailed"))
+                    // CXLIII: prefer translated errorKey when API supplies it
+                    const msg = json.errorKey ? t(json.errorKey) : (json.error || t("wsGenMatrixFailed"))
+                    alert(msg)
                     return
                   }
                   window.location.reload()

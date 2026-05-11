@@ -673,6 +673,8 @@
     "matrixNotConfigured": "Matrix not configured",
     "matrixNotConfiguredHint": "To use the matrix view, you need to generate budget lines using the \"Cost type × Department\" scheme.",
     "matrixGenerate": "Generate matrix",
+    "matrixNoCostTypes": "No cost types configured. Go to Settings → Configuration to add them.",
+    "matrixNoDepartments": "No departments configured. Go to Settings → Configuration to add them.",
     "configCostTypes": "Cost Types",
     "configDepartments": "Departments",
     "configAdd": "Add",

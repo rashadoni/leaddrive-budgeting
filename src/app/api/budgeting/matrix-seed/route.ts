@@ -115,7 +115,19 @@ export async function POST(req: NextRequest) {
   ])
 
   if (costTypes.length === 0) {
-    return NextResponse.json({ error: "No cost types configured. Run seed or add via Settings." }, { status: 400 })
+    // CXLIII: error includes both English fallback (for non-i18n callers)
+    // AND errorKey for UI to translate via next-intl. UI consumer:
+    // `alert(t(json.errorKey, json.error))`.
+    return NextResponse.json({
+      error: "No cost types configured. Run seed or add via Settings.",
+      errorKey: "matrixNoCostTypes",
+    }, { status: 400 })
+  }
+  if (departments.length === 0) {
+    return NextResponse.json({
+      error: "No departments configured. Run seed or add via Settings.",
+      errorKey: "matrixNoDepartments",
+    }, { status: 400 })
   }
 
   const linesToCreate: any[] = []

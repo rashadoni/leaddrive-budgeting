@@ -673,6 +673,8 @@
     "matrixNotConfigured": "Matris konfiqurasiya edilməyib",
     "matrixNotConfiguredHint": "Matris görünüşündən istifadə etmək üçün «Xərc növü × Departament» sxemi ilə büdcə sətirləri yaradılmalıdır.",
     "matrixGenerate": "Matris yarat",
+    "matrixNoCostTypes": "Xərc növləri konfiqurasiya edilməyib. Tənzimləmələr → Konfiqurasiya bölməsində əlavə edin.",
+    "matrixNoDepartments": "Departamentlər konfiqurasiya edilməyib. Tənzimləmələr → Konfiqurasiya bölməsində əlavə edin.",
     "configCostTypes": "Xərc növləri",
     "configDepartments": "Departamentlər",
     "configAdd": "Əlavə et",
