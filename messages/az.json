@@ -2114,5 +2114,24 @@
       "fullHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. LLM çağırışları istifadəçi tərəfindən tetiklənir (Explain / Re-run) — xanaya klikdə avtomatik baş vermir.",
       "shortHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. Xəritə xanasına klikləyin, sonra"
     }
+  },
+  "usersAdmin": {
+    "title": "İstifadəçilər — alt-qrup girişi",
+    "subtitle": "Hər istifadəçi yalnız seçilmiş alt-qrupların məlumatlarını görür. Boş = bütün holdinqə tam giriş. Admin rolu məhdudiyyətləri həmişə keçir.",
+    "loading": "İstifadəçilər yüklənir…",
+    "col": {
+      "user": "İstifadəçi",
+      "role": "Rol",
+      "access": "Alt-qrup girişi",
+      "actions": ""
+    },
+    "adminBypass": "admin bütün holdinqi görür",
+    "emptyFullAccess": "(boş = tam giriş)",
+    "save": "Saxla",
+    "saving": "Saxlanır…",
+    "saved": "Saxlandı",
+    "errorShort": "Xəta",
+    "companies": "şirkət",
+    "hint": "Alt-qrup koduna (AAC, ATL, SPARK…) klikləyin ki, istifadəçinin girişinə əlavə edin və ya silsiniz. Dəyişikliklər istifadəçinin növbəti sorğusunda (≤30s) tətbiq olunur."
   }
 }

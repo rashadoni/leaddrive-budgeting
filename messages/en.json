@@ -2114,5 +2114,24 @@
       "fullHint": "AI Variance Explainer — narrates what's driving the indicator + 3 actionable recommendations. LLM calls are user-triggered (Explain / Re-run) — never auto-fired on cell-click navigation.",
       "shortHint": "AI Variance Explainer — narrates what's driving an indicator + 3 actionable recommendations. Click any HeatMap cell, then"
     }
+  },
+  "usersAdmin": {
+    "title": "Users — sub-group access",
+    "subtitle": "Each user only sees data from the selected sub-groups. Empty = full holding access. Admin role bypasses restrictions always.",
+    "loading": "Loading users…",
+    "col": {
+      "user": "User",
+      "role": "Role",
+      "access": "Sub-group access",
+      "actions": ""
+    },
+    "adminBypass": "admin sees the full holding",
+    "emptyFullAccess": "(empty = full access)",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "errorShort": "Error",
+    "companies": "companies",
+    "hint": "Click a sub-group code (AAC, ATL, SPARK…) to add or remove it from this user's access. Changes take effect on the user's next request (≤30s)."
   }
 }

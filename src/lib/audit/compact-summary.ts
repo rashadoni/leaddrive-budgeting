@@ -223,7 +223,8 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'ai_mapper_template_apply':
     case 'ai_token_budget_exceeded':
     case 'intel_data_source_run':
-    case 'predictive_breach_compute': {
+    case 'predictive_breach_compute':
+    case 'user_access_change': {
       const preview = JSON.stringify(m);
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };

@@ -361,6 +361,19 @@ export type AuditEventInput =
         /** New role value (null = "clear override"). */
         to: string | null;
       };
+    }
+  | {
+      // Phase 7.F sub-group RBAC admin v2 — admin updated a user's
+      // allowedSubGroupIds. `entityId` = target user id; `before`/`after`
+      // arrays let the audit feed render diffs cleanly.
+      action: 'user_access_change';
+      entityType: 'User';
+      entityId: string;
+      metadata: {
+        targetEmail: string;
+        before: string[];
+        after: string[];
+      };
     };
 
 /**

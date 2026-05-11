@@ -30,6 +30,7 @@ import {
   Lock,
   CheckSquare,
   BookOpen,
+  Users,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -119,6 +120,7 @@ const budgetSubNav = [
       { href: "/budgeting/admin/periods", icon: Lock, label: "Period Locks", isPage: true },
       { href: "/budgeting/admin/approval-requests", icon: CheckSquare, label: "Approvals", isPage: true },
       { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, label: "Chart of Accounts", isPage: true },
+      { href: "/budgeting/admin/users", icon: Users, label: "User Access", isPage: true },
     ],
   },
 ]
