@@ -27,6 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Lock, Unlock, Loader2, AlertCircle } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import type { LockedPeriod } from "@/lib/budgeting/period-lock"
 
 interface ApiAddResponse {
@@ -178,11 +179,8 @@ export function PeriodLocksAdmin() {
           <CardTitle>{t("listTitle", { count: locks.length })}</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
-            </div>
-          ) : locks.length === 0 ? (
+          <DataBoundary loading={loading}>
+          {locks.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <ul className="divide-y divide-border" data-testid="period-locks-list">
@@ -217,6 +215,7 @@ export function PeriodLocksAdmin() {
               ))}
             </ul>
           )}
+          </DataBoundary>
         </CardContent>
       </Card>
     </div>

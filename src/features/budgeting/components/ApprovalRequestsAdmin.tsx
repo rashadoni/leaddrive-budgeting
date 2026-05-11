@@ -22,7 +22,8 @@ import { useState, useEffect, useCallback } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, AlertCircle, Check, X, Ban, Clock } from "lucide-react"
+import { AlertCircle, Check, X, Ban, Clock } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 
 type ApprovalStatus = "pending" | "approved" | "rejected" | "cancelled"
 type ApprovalAction = "approve" | "reject" | "cancel"
@@ -170,11 +171,8 @@ export function ApprovalRequestsAdmin() {
           <CardTitle>{t("listTitle", { count: requests.length })}</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
-            </div>
-          ) : requests.length === 0 ? (
+          <DataBoundary loading={loading}>
+          {requests.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <ul className="divide-y divide-border" data-testid="approval-requests-list">
@@ -249,6 +247,7 @@ export function ApprovalRequestsAdmin() {
               ))}
             </ul>
           )}
+          </DataBoundary>
         </CardContent>
       </Card>
     </div>

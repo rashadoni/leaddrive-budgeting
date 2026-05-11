@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle } from "lucide-react"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import {
   useChartOfAccounts, useUpdateCoARole,
   type CoARole, type ChartOfAccount,
@@ -84,27 +85,9 @@ export function CoARolesAdmin() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="p-6 max-w-3xl mx-auto">
-        <div role="alert" className="rounded-lg bg-destructive/10 p-4 text-sm text-destructive flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
-          <span>{t("errorLoad")}</span>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <DataBoundary loading={isLoading} error={error ? t("errorLoad") : null}>
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">{t("title")}</CardTitle>
@@ -217,6 +200,7 @@ export function CoARolesAdmin() {
           </Button>
         </CardContent>
       </Card>
+      </DataBoundary>
     </div>
   )
 }
