@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LabelList,
 } from "recharts"
@@ -68,7 +69,7 @@ export function BudgetPlanFactDashboard({ year }: { year: number }) {
     enabled: !!orgId,
   })
 
-  if (isLoading) return <div className="p-6 text-center text-muted-foreground">Loading Plan vs Actual...</div>
+  if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
   if (!data) return <div className="p-6 text-center text-muted-foreground">No data</div>
 
   const { totals } = data

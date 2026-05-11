@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
 
 function fmt(n: number): string {
@@ -54,7 +55,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
     enabled: !!orgId,
   })
 
-  if (isLoading) return <div className="p-6 text-center text-muted-foreground">Loading cash flow report...</div>
+  if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
   if (!data) return <div className="p-6 text-center text-muted-foreground">No data</div>
 
   const toggleSection = (activity: string) => {
