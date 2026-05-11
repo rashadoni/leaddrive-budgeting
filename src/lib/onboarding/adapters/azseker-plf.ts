@@ -177,9 +177,17 @@ export function parsePlfPlSheet(
     const perMonth: number[] = []
     let totalAnnual = 0
     let allZero = true
+    // CXLIX sign normalization: source xlsx stores cogs/expense as NEGATIVE
+    // (additive convention: gross_margin = revenue + cogs in the sheet).
+    // The risk resolver expects positive magnitudes (formula:
+    // gross_profit = revenue - cogs). Take ABS for cogs/expense to bridge.
+    // Revenue rows kept as-is (negative revenue = legitimate returns/discounts
+    // that net out correctly in the sum).
+    const normalizeSign = accountType === "cogs" || accountType === "expense"
     for (let m = 0; m < 12; m++) {
       const v = toNumberOrNull(row[monthCols[m]])
-      const num = v ?? 0
+      const raw = v ?? 0
+      const num = normalizeSign ? Math.abs(raw) : raw
       perMonth.push(num)
       totalAnnual += num
       if (num !== 0) allZero = false
