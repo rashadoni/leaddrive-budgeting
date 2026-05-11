@@ -205,6 +205,16 @@ export function HotkeyToolbar() {
       title: t("hotkeys.exportPdfTitle"),
       action: () => fireWindowEvent("terminal:export-pdf"),
     },
+    {
+      // Tier 3 closer — xlsx export. Sister button to PDF; builds a
+      // 3-sheet workbook (Summary / Matrix values / Matrix status /
+      // Today's Brief). Lazy-loads `xlsx` in <ExportXlsxTrigger />.
+      key: "export-xlsx",
+      label: t("hotkeys.exportXlsx"),
+      icon: Download,
+      title: t("hotkeys.exportXlsxTitle"),
+      action: () => fireWindowEvent("terminal:export-xlsx"),
+    },
   ];
 
   return (

@@ -1662,6 +1662,8 @@
       "helpTitle": "Open command reference (HELP GO)",
       "exportPdf": "PDF",
       "exportPdfTitle": "Export Risk Matrix as a multi-page PDF report",
+      "exportXlsx": "XLSX",
+      "exportXlsxTitle": "Export Risk Matrix as an Excel workbook (Summary / Matrix / Today's Brief)",
       "compact": "COMPACT",
       "compactTitle": "Toggle compact mode (Ctrl+/)",
       "compactAriaLabel": "Toggle compact mode",

@@ -28,6 +28,7 @@ import { HelpModal } from './HelpModal';
 import { ComparePanel } from './ComparePanel';
 import { PeerPanel } from './PeerPanel';
 import { ExportPdfTrigger } from './ExportPdfButton';
+import { ExportXlsxTrigger } from './ExportXlsxButton';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { ActionCenterPanel } from './ActionCenterPanel';
@@ -275,6 +276,10 @@ export function PanelGrid() {
       {/* CLI Tier 3 — listens for `terminal:export-pdf` and builds the
           Risk Matrix PDF on demand (lazy-loads @react-pdf/renderer). */}
       <ExportPdfTrigger />
+      {/* Tier 3 closer — listens for `terminal:export-xlsx` and builds a
+          3-sheet workbook (lazy-loads xlsx). Companion to PDF for analyst
+          consumers who want raw values in Excel. */}
+      <ExportXlsxTrigger />
       {/* Phase C6 v2 — opens on `terminal:open-alerts` event fired by
           CommandBar's `[alerts]` strip click. Lists rule-engine matches
           grouped by severity. Same dismiss pattern as AuditModal. */}
