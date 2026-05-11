@@ -7,13 +7,28 @@
  * `allowedSubGroupIds`. Admin can toggle which sub-groups each user
  * can see. Empty selection = full org access (legacy default).
  *
- * - Admin-only API: non-admin viewers see "Forbidden" state
- * - Per-row save (no batch) — keeps mutations small + auditable
- * - Optimistic UI: row goes green on success, red on error
+ * Design: matches the CoARolesAdmin / approval-requests admin pattern
+ * (Card + Badge + Lucide icons + theme tokens) so the admin section
+ * feels consistent.
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2,
+  AlertCircle,
+  Check,
+  X,
+  Users,
+  Shield,
+  Eye,
+  EyeOff,
+  Search,
+} from "lucide-react";
 
 interface UserRow {
   id: string;
@@ -38,6 +53,28 @@ type RowState =
   | { kind: "saved"; at: number }
   | { kind: "error"; message: string };
 
+const ROLE_BADGE: Record<string, { label: string; tone: string }> = {
+  admin: { label: "admin", tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  manager: { label: "manager", tone: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  editor: { label: "editor", tone: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  viewer: { label: "viewer", tone: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+};
+
+function formatRelativeTime(iso: string | null, locale: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const diffMs = Date.now() - d.getTime();
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return d.toLocaleDateString(locale, { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export function UsersAccessAdmin() {
   const t = useTranslations("usersAdmin");
   const [users, setUsers] = useState<UserRow[] | null>(null);
@@ -45,6 +82,7 @@ export function UsersAccessAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [rowState, setRowState] = useState<Record<string, RowState>>({});
   const [draft, setDraft] = useState<Record<string, string[]>>({});
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -64,7 +102,6 @@ export function UsersAccessAdmin() {
         if (alive) {
           setUsers(uBody.users);
           setSubGroups(sgBody.subGroups);
-          // Initialize draft with current state.
           const d: Record<string, string[]> = {};
           for (const u of uBody.users) d[u.id] = [...u.allowedSubGroupIds];
           setDraft(d);
@@ -78,11 +115,30 @@ export function UsersAccessAdmin() {
     };
   }, []);
 
-  const subGroupById = useMemo(() => {
-    const m = new Map<string, SubGroup>();
-    for (const s of subGroups ?? []) m.set(s.id, s);
-    return m;
-  }, [subGroups]);
+  const stats = useMemo(() => {
+    if (!users) return null;
+    const total = users.length;
+    const admins = users.filter((u) => u.role === "admin").length;
+    const restricted = users.filter(
+      (u) => u.role !== "admin" && u.allowedSubGroupIds.length > 0,
+    ).length;
+    const unrestricted = users.filter(
+      (u) => u.role !== "admin" && u.allowedSubGroupIds.length === 0,
+    ).length;
+    return { total, admins, restricted, unrestricted };
+  }, [users]);
+
+  const filteredUsers = useMemo(() => {
+    if (!users) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        u.role.toLowerCase().includes(q),
+    );
+  }, [users, search]);
 
   const toggleSubGroup = (userId: string, subGroupId: string) => {
     setDraft((prev) => {
@@ -92,6 +148,10 @@ export function UsersAccessAdmin() {
         : [...cur, subGroupId];
       return { ...prev, [userId]: next };
     });
+    // Clear stale "saved" state on next edit so the toast doesn't linger.
+    setRowState((p) =>
+      p[userId]?.kind === "saved" ? { ...p, [userId]: { kind: "idle" } } : p,
+    );
   };
 
   const save = async (userId: string) => {
@@ -117,11 +177,7 @@ export function UsersAccessAdmin() {
         }));
         return;
       }
-      setRowState((p) => ({
-        ...p,
-        [userId]: { kind: "saved", at: Date.now() },
-      }));
-      // Refresh local user row state so dirty detection works.
+      setRowState((p) => ({ ...p, [userId]: { kind: "saved", at: Date.now() } }));
       setUsers((us) =>
         us
           ? us.map((u) =>
@@ -140,136 +196,266 @@ export function UsersAccessAdmin() {
     }
   };
 
-  if (error) {
-    return (
-      <div className="p-6 text-[#FF4757]" role="alert">
-        {error}
-      </div>
-    );
-  }
-  if (users == null || subGroups == null) {
-    return (
-      <div className="p-6 text-gray-500">{t("loading")}</div>
-    );
-  }
-
   return (
-    <div className="p-6 max-w-6xl">
-      <h1 className="text-xl font-semibold mb-2">{t("title")}</h1>
-      <p className="text-sm text-gray-500 mb-4">{t("subtitle")}</p>
-      <div className="overflow-x-auto rounded border border-gray-800/40">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-900/30 text-gray-500 uppercase text-xs">
-            <tr>
-              <th className="text-left py-2 px-3 font-normal">{t("col.user")}</th>
-              <th className="text-left py-2 px-3 font-normal">{t("col.role")}</th>
-              <th className="text-left py-2 px-3 font-normal">
-                {t("col.access")}
-              </th>
-              <th className="text-right py-2 px-3 font-normal">{t("col.actions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => {
-              const current = draft[u.id] ?? [];
-              const dirty =
-                current.length !== u.allowedSubGroupIds.length ||
-                current.some((id) => !u.allowedSubGroupIds.includes(id));
-              const state = rowState[u.id] ?? { kind: "idle" };
-              const isAdmin = u.role === "admin";
-              return (
-                <tr
-                  key={u.id}
-                  className="border-t border-gray-800/30 hover:bg-gray-800/20"
-                  data-testid={`user-row-${u.id}`}
-                >
-                  <td className="py-2 px-3">
-                    <div className="text-gray-200">{u.name}</div>
-                    <div className="text-xs text-gray-500">{u.email}</div>
-                  </td>
-                  <td className="py-2 px-3">
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded border ${
-                        isAdmin
-                          ? "border-[#00D4AA]/50 text-[#00D4AA]"
-                          : "border-gray-700 text-gray-400"
-                      }`}
-                    >
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="py-2 px-3">
-                    {isAdmin ? (
-                      <span className="text-xs text-gray-500 italic">
-                        {t("adminBypass")}
-                      </span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {subGroups.map((sg) => {
-                          const selected = current.includes(sg.id);
-                          return (
-                            <button
-                              key={sg.id}
-                              type="button"
-                              onClick={() => toggleSubGroup(u.id, sg.id)}
-                              className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border transition-colors ${
-                                selected
-                                  ? "border-[#00D4AA]/60 bg-[#00D4AA]/15 text-[#00D4AA]"
-                                  : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
-                              }`}
-                              title={`${sg.name} · ${sg.childCount} ${t("companies")}`}
-                            >
-                              {sg.code}
-                            </button>
-                          );
-                        })}
-                        {current.length === 0 && (
-                          <span className="text-[10px] text-gray-600 italic ml-1">
-                            {t("emptyFullAccess")}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="py-2 px-3 text-right">
-                    {!isAdmin && (
-                      <div className="flex items-center justify-end gap-2">
-                        {state.kind === "saving" && (
-                          <span className="text-xs text-gray-500">
-                            {t("saving")}
-                          </span>
-                        )}
-                        {state.kind === "saved" && (
-                          <span className="text-xs text-[#00D4AA]">
-                            ✓ {t("saved")}
-                          </span>
-                        )}
-                        {state.kind === "error" && (
-                          <span
-                            className="text-xs text-[#FF4757]"
-                            title={state.message}
+    <div className="p-6 max-w-6xl mx-auto space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2 text-primary">
+              <Users className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <CardTitle className="text-lg">{t("title")}</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">{t("subtitle")}</p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Stats row */}
+          {stats && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <StatCard
+                label={t("stats.total")}
+                value={stats.total}
+                icon={<Users className="h-4 w-4" />}
+                tone="bg-slate-50 dark:bg-slate-900/40"
+              />
+              <StatCard
+                label={t("stats.admins")}
+                value={stats.admins}
+                icon={<Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+                tone="bg-emerald-50 dark:bg-emerald-900/20"
+              />
+              <StatCard
+                label={t("stats.restricted")}
+                value={stats.restricted}
+                icon={<EyeOff className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
+                tone="bg-blue-50 dark:bg-blue-900/20"
+              />
+              <StatCard
+                label={t("stats.unrestricted")}
+                value={stats.unrestricted}
+                icon={<Eye className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+                tone="bg-amber-50 dark:bg-amber-900/20"
+              />
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder={t("searchPlaceholder")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-9"
+            />
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive flex items-start gap-2"
+            >
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {users == null && !error && (
+            <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">{t("loading")}</span>
+            </div>
+          )}
+
+          {users != null && (
+            <div className="overflow-x-auto rounded-lg border border-border/60">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("col.user")}
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("col.role")}
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("col.access")}
+                    </th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground hidden md:table-cell">
+                      {t("col.lastLogin")}
+                    </th>
+                    <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {t("col.actions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground text-xs">
+                        {search ? t("noMatches") : t("empty")}
+                      </td>
+                    </tr>
+                  )}
+                  {filteredUsers.map((u) => {
+                    const current = draft[u.id] ?? [];
+                    const dirty =
+                      current.length !== u.allowedSubGroupIds.length ||
+                      current.some((id) => !u.allowedSubGroupIds.includes(id));
+                    const state = rowState[u.id] ?? { kind: "idle" };
+                    const isAdmin = u.role === "admin";
+                    const roleBadge = ROLE_BADGE[u.role] ?? ROLE_BADGE.viewer;
+                    return (
+                      <tr
+                        key={u.id}
+                        className="border-t border-border/50 hover:bg-muted/20 transition-colors"
+                        data-testid={`user-row-${u.id}`}
+                      >
+                        {/* User */}
+                        <td className="px-3 py-2.5 align-top">
+                          <div className="flex items-center gap-2.5">
+                            <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold">
+                              {u.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate flex items-center gap-1.5">
+                                {u.name}
+                                {!u.isActive && (
+                                  <span className="text-[9px] uppercase tracking-wider text-muted-foreground border border-border/60 rounded px-1 py-0.5">
+                                    {t("inactive")}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate">
+                                {u.email}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Role */}
+                        <td className="px-3 py-2.5 align-top">
+                          <Badge
+                            variant="default"
+                            className={`text-[10px] uppercase tracking-wider ${roleBadge.tone}`}
                           >
-                            ✗ {t("errorShort")}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => save(u.id)}
-                          disabled={!dirty || state.kind === "saving"}
-                          className="text-xs px-2 py-1 rounded bg-[#00D4AA] text-[#050814] disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed hover:bg-[#00E5BB]"
-                        >
-                          {t("save")}
-                        </button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                            {roleBadge.label}
+                          </Badge>
+                        </td>
+
+                        {/* Access */}
+                        <td className="px-3 py-2.5 align-top">
+                          {isAdmin ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400">
+                              <Shield className="h-3.5 w-3.5" />
+                              {t("adminBypass")}
+                            </span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {(subGroups ?? []).map((sg) => {
+                                const selected = current.includes(sg.id);
+                                return (
+                                  <button
+                                    key={sg.id}
+                                    type="button"
+                                    onClick={() => toggleSubGroup(u.id, sg.id)}
+                                    className={`inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider px-2 py-1 rounded-full border transition-all ${
+                                      selected
+                                        ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                        : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-muted/40"
+                                    }`}
+                                    title={`${sg.name} · ${sg.childCount} ${t("companies")}`}
+                                  >
+                                    {selected && <Check className="h-3 w-3" />}
+                                    {sg.code}
+                                  </button>
+                                );
+                              })}
+                              {current.length === 0 && (
+                                <span className="inline-flex items-center text-[10px] text-amber-700 dark:text-amber-400 italic ml-1">
+                                  {t("emptyFullAccess")}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Last login */}
+                        <td className="px-3 py-2.5 align-top text-xs text-muted-foreground hidden md:table-cell">
+                          {formatRelativeTime(u.lastLogin, "en")}
+                        </td>
+
+                        {/* Actions */}
+                        <td className="px-3 py-2.5 align-top text-right">
+                          {!isAdmin && (
+                            <div className="flex items-center justify-end gap-2">
+                              {state.kind === "saving" && (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                              )}
+                              {state.kind === "saved" && (
+                                <span className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+                                  <Check className="h-3.5 w-3.5" />
+                                  {t("saved")}
+                                </span>
+                              )}
+                              {state.kind === "error" && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-xs text-destructive"
+                                  title={state.message}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  {t("errorShort")}
+                                </span>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => save(u.id)}
+                                disabled={!dirty || state.kind === "saving"}
+                                className="h-8"
+                              >
+                                {t("save")}
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground italic">{t("hint")}</p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  icon,
+  tone,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  tone: string;
+}) {
+  return (
+    <div className={`rounded-lg p-3 ${tone}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        {icon}
       </div>
-      <p className="text-xs text-gray-500 mt-3">{t("hint")}</p>
+      <div className="text-2xl font-semibold tabular-nums mt-1">{value}</div>
     </div>
   );
 }

@@ -2116,17 +2116,28 @@
     }
   },
   "usersAdmin": {
-    "title": "İstifadəçilər — alt-qrup girişi",
+    "title": "İstifadəçi alt-qrup girişi",
     "subtitle": "Hər istifadəçi yalnız seçilmiş alt-qrupların məlumatlarını görür. Boş = bütün holdinqə tam giriş. Admin rolu məhdudiyyətləri həmişə keçir.",
     "loading": "İstifadəçilər yüklənir…",
+    "empty": "Bu təşkilatda istifadəçi yoxdur",
+    "noMatches": "Sorğuya uyğun istifadəçi yoxdur",
+    "searchPlaceholder": "Ad, email və ya rol üzrə axtarış…",
+    "inactive": "deaktiv",
+    "stats": {
+      "total": "Cəmi",
+      "admins": "Admin",
+      "restricted": "Məhdud giriş",
+      "unrestricted": "Tam giriş"
+    },
     "col": {
       "user": "İstifadəçi",
       "role": "Rol",
       "access": "Alt-qrup girişi",
+      "lastLogin": "Son giriş",
       "actions": ""
     },
-    "adminBypass": "admin bütün holdinqi görür",
-    "emptyFullAccess": "(boş = tam giriş)",
+    "adminBypass": "bütün holdinqi görür",
+    "emptyFullAccess": "boş = tam giriş",
     "save": "Saxla",
     "saving": "Saxlanır…",
     "saved": "Saxlandı",

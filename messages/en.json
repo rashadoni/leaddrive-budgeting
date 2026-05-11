@@ -2116,17 +2116,28 @@
     }
   },
   "usersAdmin": {
-    "title": "Users — sub-group access",
+    "title": "User access to sub-groups",
     "subtitle": "Each user only sees data from the selected sub-groups. Empty = full holding access. Admin role bypasses restrictions always.",
     "loading": "Loading users…",
+    "empty": "No users in this organization",
+    "noMatches": "No users match your search",
+    "searchPlaceholder": "Search by name, email or role…",
+    "inactive": "disabled",
+    "stats": {
+      "total": "Total users",
+      "admins": "Admins",
+      "restricted": "Restricted",
+      "unrestricted": "Full access"
+    },
     "col": {
       "user": "User",
       "role": "Role",
       "access": "Sub-group access",
+      "lastLogin": "Last login",
       "actions": ""
     },
-    "adminBypass": "admin sees the full holding",
-    "emptyFullAccess": "(empty = full access)",
+    "adminBypass": "sees the full holding",
+    "emptyFullAccess": "empty = full access",
     "save": "Save",
     "saving": "Saving…",
     "saved": "Saved",
