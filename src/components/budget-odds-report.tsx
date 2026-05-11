@@ -3,10 +3,18 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { DataBoundary } from "@/components/ui/data-boundary"
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, ArrowDownToLine, ArrowUpFromLine } from "lucide-react"
+
+// Map API-returned activity key (operating/investing/financing) to i18n key
+const ACTIVITY_LABEL_KEY: Record<string, string> = {
+  operating: "oddsActivityOperating",
+  investing: "oddsActivityInvesting",
+  financing: "oddsActivityFinancing",
+}
 
 function fmt(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 })
@@ -41,6 +49,7 @@ interface ODDSData {
 
 export function BudgetODDSReport({ year }: { year: number }) {
   const orgId = useOrgId()
+  const t = useTranslations("budgeting")
   const [compareYear, setCompareYear] = useState<number | null>(null)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["operating"]))
 
@@ -56,7 +65,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
   })
 
   if (isLoading) return <DataBoundary loading>{null}</DataBoundary>
-  if (!data) return <div className="p-6 text-center text-muted-foreground">No data</div>
+  if (!data) return <div className="p-6 text-center text-muted-foreground">{t("oddsNoData")}</div>
 
   const toggleSection = (activity: string) => {
     const next = new Set(expandedSections)
@@ -76,17 +85,17 @@ export function BudgetODDSReport({ year }: { year: number }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold">Cash Flow Statement</h3>
-          <p className="text-xs text-muted-foreground">Year {year}</p>
+          <h3 className="text-sm font-semibold">{t("oddsTitle")}</h3>
+          <p className="text-xs text-muted-foreground">{t("oddsYearLabel", { year })}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Compare with:</span>
+          <span className="text-xs text-muted-foreground">{t("oddsCompareWith")}</span>
           <select
             value={compareYear || ""}
             onChange={(e) => setCompareYear(e.target.value ? Number(e.target.value) : null)}
             className="h-8 rounded-md border border-input bg-background px-2 text-xs"
           >
-            <option value="">None</option>
+            <option value="">{t("oddsCompareNone")}</option>
             <option value={year - 1}>{year - 1}</option>
             <option value={year - 2}>{year - 2}</option>
           </select>
@@ -108,7 +117,9 @@ export function BudgetODDSReport({ year }: { year: number }) {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                  <CardTitle className="text-sm font-semibold">{section.label}</CardTitle>
+                  <CardTitle className="text-sm font-semibold">
+                    {ACTIVITY_LABEL_KEY[section.activity] ? t(ACTIVITY_LABEL_KEY[section.activity]) : section.label}
+                  </CardTitle>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`text-lg font-bold tabular-nums ${section.net >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -116,7 +127,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                   </span>
                   {section.yoyChange !== undefined && (
                     <Badge variant={section.yoyChange >= 0 ? "default" : "destructive"} className="text-[10px]">
-                      {section.yoyChange >= 0 ? "+" : ""}{section.yoyChange}% YoY
+                      {t("oddsYoyBadge", { change: `${section.yoyChange >= 0 ? "+" : ""}${section.yoyChange}` })}
                     </Badge>
                   )}
                 </div>
@@ -130,7 +141,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
                       <ArrowDownToLine className="w-3.5 h-3.5 text-green-600" />
-                      <span className="text-xs font-semibold text-green-600">Inflows: {fmt(section.totalInflow)} AZN</span>
+                      <span className="text-xs font-semibold text-green-600">{t("oddsInflowsLabel")} {fmt(section.totalInflow)} AZN</span>
                     </div>
                     {section.inflowByCategory.length > 0 ? (
                       <div className="space-y-1">
@@ -142,7 +153,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground">No inflows</p>
+                      <p className="text-xs text-muted-foreground">{t("oddsNoInflows")}</p>
                     )}
                   </div>
 
@@ -150,7 +161,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                   <div>
                     <div className="flex items-center gap-1.5 mb-2">
                       <ArrowUpFromLine className="w-3.5 h-3.5 text-red-600" />
-                      <span className="text-xs font-semibold text-red-600">Outflows: {fmt(section.totalOutflow)} AZN</span>
+                      <span className="text-xs font-semibold text-red-600">{t("oddsOutflowsLabel")} {fmt(section.totalOutflow)} AZN</span>
                     </div>
                     {section.outflowByCategory.length > 0 ? (
                       <div className="space-y-1">
@@ -162,7 +173,7 @@ export function BudgetODDSReport({ year }: { year: number }) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-muted-foreground">No outflows</p>
+                      <p className="text-xs text-muted-foreground">{t("oddsNoOutflows")}</p>
                     )}
                   </div>
                 </div>
@@ -176,18 +187,18 @@ export function BudgetODDSReport({ year }: { year: number }) {
       <Card className="bg-muted/30">
         <CardContent className="py-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-bold">Net Cash Flow</span>
+            <span className="text-sm font-bold">{t("oddsNetCashFlow")}</span>
             <div className="flex items-center gap-4">
               <div className="text-right">
-                <span className="text-xs text-muted-foreground block">Inflows</span>
+                <span className="text-xs text-muted-foreground block">{t("oddsGrandInflows")}</span>
                 <span className="text-sm font-bold tabular-nums text-green-600">{fmt(data.grandInflow)}</span>
               </div>
               <div className="text-right">
-                <span className="text-xs text-muted-foreground block">Outflows</span>
+                <span className="text-xs text-muted-foreground block">{t("oddsGrandOutflows")}</span>
                 <span className="text-sm font-bold tabular-nums text-red-600">{fmt(data.grandOutflow)}</span>
               </div>
               <div className="text-right pl-3 border-l">
-                <span className="text-xs text-muted-foreground block">Net</span>
+                <span className="text-xs text-muted-foreground block">{t("oddsGrandNet")}</span>
                 <span className={`text-lg font-bold tabular-nums ${data.grandNet >= 0 ? "text-green-600" : "text-red-600"}`}>
                   {data.grandNet >= 0 ? "+" : ""}{fmt(data.grandNet)} AZN
                 </span>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table2 } from "lucide-react"
 
@@ -24,12 +25,13 @@ function fmt(n: number): string {
 }
 
 export function BudgetCashFlowTable({ months }: Props) {
+  const t = useTranslations("budgeting")
   return (
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Table2 className="h-4 w-4" />
-          Cash Flow Statement
+          {t("oddsTitle")}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -37,12 +39,12 @@ export function BudgetCashFlowTable({ months }: Props) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="py-2 px-3 text-left font-medium">Month</th>
-                <th className="py-2 px-3 text-right font-medium">Opening</th>
-                <th className="py-2 px-3 text-right font-medium text-green-700">Receipts</th>
-                <th className="py-2 px-3 text-right font-medium text-red-700">Payments</th>
-                <th className="py-2 px-3 text-right font-medium">Net</th>
-                <th className="py-2 px-3 text-right font-medium">Closing</th>
+                <th className="py-2 px-3 text-left font-medium">{t("cashFlowColMonth")}</th>
+                <th className="py-2 px-3 text-right font-medium">{t("cashFlowColOpening")}</th>
+                <th className="py-2 px-3 text-right font-medium text-green-700">{t("cashFlowColInflows")}</th>
+                <th className="py-2 px-3 text-right font-medium text-red-700">{t("cashFlowColOutflows")}</th>
+                <th className="py-2 px-3 text-right font-medium">{t("cashFlowColNet")}</th>
+                <th className="py-2 px-3 text-right font-medium">{t("cashFlowColClosing")}</th>
               </tr>
             </thead>
             <tbody>
@@ -63,7 +65,7 @@ export function BudgetCashFlowTable({ months }: Props) {
             </tbody>
             <tfoot>
               <tr className="border-t-2 font-bold">
-                <td className="py-2 px-3">Total</td>
+                <td className="py-2 px-3">{t("cashFlowTotal")}</td>
                 <td className="py-2 px-3 text-right font-mono text-xs">{fmt(months[0]?.opening || 0)}</td>
                 <td className="py-2 px-3 text-right font-mono text-xs text-green-700">
                   +{fmt(months.reduce((s, m) => s + m.inflows, 0))}
