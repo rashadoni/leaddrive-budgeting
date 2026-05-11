@@ -1734,6 +1734,17 @@
       "noneMissingData": "(none — likely missing-data / unknown status)",
       "aggregates": "Aggregates",
       "none": "(none)",
+      "drilldown": {
+        "title": "Source rows (BudgetLine)",
+        "show": "Show",
+        "hide": "Hide",
+        "loading": "Loading…",
+        "empty": "No budget lines for this period",
+        "code": "Code",
+        "name": "Account",
+        "amount": "Amount (AZN)",
+        "truncated": "Showing first 500 rows — more exist"
+      },
       "explainButton": "Explain →",
       "explainTitle": "Open AI Variance Explainer in Panel 4 + run for current cell",
       "explainGreenDisabled": "Variance explainer is for amber / red / unknown only",

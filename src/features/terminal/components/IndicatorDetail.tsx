@@ -590,6 +590,8 @@ export function IndicatorDetail() {
         )}
       </section>
 
+      <DrillDownSection ivId={detail.id} t={t} />
+
       <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end">
         <button
           type="button"
@@ -1023,4 +1025,192 @@ function ForecastSection(props: {
       )}
     </div>
   );
+}
+
+interface DrillDownLine {
+  id: string;
+  accountCode: string | null;
+  accountName: string | null;
+  accountType: string;
+  category: string;
+  department: string | null;
+  plannedAmount: number;
+  amountBase: number;
+  currencyCode: string;
+  exchangeRate: number | null;
+  monthIndex: number | null;
+  notes: string | null;
+}
+interface DrillDownData {
+  lines: DrillDownLine[];
+  summary: Record<string, { count: number; total: number }>;
+  truncated: boolean;
+}
+type DrillState =
+  | { kind: "collapsed" }
+  | { kind: "loading" }
+  | { kind: "loaded"; data: DrillDownData }
+  | { kind: "error"; message: string };
+
+function DrillDownSection({
+  ivId,
+  t,
+}: {
+  ivId: string;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const [state, setState] = useState<DrillState>({ kind: "collapsed" });
+
+  // Reset to collapsed whenever the active cell changes — otherwise a
+  // previous cell's lines briefly flash when navigating between rows.
+  useEffect(() => {
+    setState({ kind: "collapsed" });
+  }, [ivId]);
+
+  const expand = async () => {
+    setState({ kind: "loading" });
+    try {
+      const res = await fetch(
+        `/api/indicators/values/${encodeURIComponent(ivId)}/drilldown`,
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setState({
+          kind: "error",
+          message: body.error || `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const data = (await res.json()) as DrillDownData;
+      setState({ kind: "loaded", data });
+    } catch (err) {
+      setState({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-0.5">
+        <div className="text-gray-500 uppercase tracking-wider text-[9px]">
+          {t("indicatorDetail.drilldown.title")}
+        </div>
+        {state.kind === "collapsed" && (
+          <button
+            type="button"
+            onClick={expand}
+            className="text-[10px] text-[#00D4AA] hover:text-[#00E5BB] uppercase tracking-wider"
+            data-testid="drilldown-expand"
+          >
+            {t("indicatorDetail.drilldown.show")}
+          </button>
+        )}
+        {state.kind === "loaded" && (
+          <button
+            type="button"
+            onClick={() => setState({ kind: "collapsed" })}
+            className="text-[10px] text-gray-500 hover:text-gray-300 uppercase tracking-wider"
+          >
+            {t("indicatorDetail.drilldown.hide")}
+          </button>
+        )}
+      </div>
+      {state.kind === "loading" && (
+        <p className="text-gray-700 text-[11px]">
+          {t("indicatorDetail.drilldown.loading")}
+        </p>
+      )}
+      {state.kind === "error" && (
+        <p className="text-[#FF4757] text-[11px]" role="alert">
+          {state.message}
+        </p>
+      )}
+      {state.kind === "loaded" && (
+        <DrillDownTable data={state.data} t={t} />
+      )}
+    </section>
+  );
+}
+
+function DrillDownTable({
+  data,
+  t,
+}: {
+  data: DrillDownData;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (data.lines.length === 0) {
+    return (
+      <p className="text-gray-700 text-[11px]">
+        {t("indicatorDetail.drilldown.empty")}
+      </p>
+    );
+  }
+  return (
+    <div className="space-y-1.5">
+      {Object.keys(data.summary).length > 0 && (
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 border-b border-gray-800/40 pb-1">
+          {Object.entries(data.summary).map(([type, info]) => (
+            <span key={type}>
+              <span className="text-gray-600 uppercase">{type}</span>{" "}
+              <span className="text-gray-300 tabular-nums">
+                {formatThousands(info.total)}
+              </span>{" "}
+              <span className="text-gray-700">({info.count})</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <table className="w-full text-[10px] tabular-nums">
+        <thead>
+          <tr className="text-gray-600 uppercase text-[9px]">
+            <th className="text-left font-normal py-0.5">
+              {t("indicatorDetail.drilldown.code")}
+            </th>
+            <th className="text-left font-normal py-0.5">
+              {t("indicatorDetail.drilldown.name")}
+            </th>
+            <th className="text-right font-normal py-0.5">
+              {t("indicatorDetail.drilldown.amount")}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.lines.map((l) => (
+            <tr
+              key={l.id}
+              className="border-t border-gray-800/30 hover:bg-gray-800/20"
+            >
+              <td className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate">
+                {l.accountCode ?? "—"}
+              </td>
+              <td className="text-gray-300 py-0.5 pr-1 truncate">
+                {l.accountName ?? l.category ?? "—"}
+                {l.currencyCode !== "AZN" && (
+                  <span className="ml-1 text-[#FFB800]">{l.currencyCode}</span>
+                )}
+              </td>
+              <td className="text-gray-200 text-right py-0.5">
+                {formatThousands(l.amountBase)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {data.truncated && (
+        <p className="text-[#FFB800] text-[10px]">
+          {t("indicatorDetail.drilldown.truncated")}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function formatThousands(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(1) + "M";
+  if (Math.abs(v) >= 1_000) return (v / 1_000).toFixed(1) + "K";
+  return v.toFixed(0);
 }

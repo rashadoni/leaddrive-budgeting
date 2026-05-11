@@ -1734,6 +1734,17 @@
       "noneMissingData": "(yoxdur — ehtimal ki, məlumat çatışmır / unknown statusu)",
       "aggregates": "Aqreqatlar",
       "none": "(yoxdur)",
+      "drilldown": {
+        "title": "Mənbə sətirləri (BudgetLine)",
+        "show": "Göstər",
+        "hide": "Gizlət",
+        "loading": "Yüklənir…",
+        "empty": "Bu dövr üçün büdcə sətri yoxdur",
+        "code": "Kod",
+        "name": "Hesab",
+        "amount": "Məbləğ (AZN)",
+        "truncated": "İlk 500 sətir göstərilir — daha çoxu var"
+      },
       "explainButton": "İzah et →",
       "explainTitle": "Panel 4-də AI Variance Explainer aç + cari xana üçün işə sal",
       "explainGreenDisabled": "Variance explainer yalnız amber / red / unknown üçündür",

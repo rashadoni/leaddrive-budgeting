@@ -1734,6 +1734,17 @@
       "noneMissingData": "(нет — вероятно отсутствуют данные / unknown-статус)",
       "aggregates": "Агрегаты",
       "none": "(нет)",
+      "drilldown": {
+        "title": "Источники (BudgetLine)",
+        "show": "Показать",
+        "hide": "Скрыть",
+        "loading": "Загрузка…",
+        "empty": "Нет строк бюджета для этого периода",
+        "code": "Код",
+        "name": "Счёт",
+        "amount": "Сумма (AZN)",
+        "truncated": "Показаны первые 500 строк — есть ещё"
+      },
       "explainButton": "Объяснить →",
       "explainTitle": "Открыть AI Variance Explainer в Панели 4 + запустить для текущей ячейки",
       "explainGreenDisabled": "Variance explainer работает только с amber / red / unknown",
