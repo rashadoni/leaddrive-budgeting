@@ -8,6 +8,23 @@
 
 ---
 
+## TL;DR — 3 команды для полной чистки + импорта
+
+```bash
+node scripts/audit-azmade-data.cjs                    # 1. посмотреть что в БД
+node scripts/cleanup-fake-azmade-data.cjs --execute    # 2. удалить фейки
+bash scripts/import-azmade-all.sh                      # 3. импорт всех реальных данных (P&L + BS + CF + Sales)
+```
+
+После этого браузер:
+- `/budgeting?tab=pnl-report` — реальный P&L клиента
+- `/budgeting?tab=balance-sheet` — реальный BS (5/5 компаний)
+- `/budgeting?tab=cash-flow` — реальный CF (5/5)
+- `/budgeting?tab=sales-budget` — реальные продукты AAC
+- `/budgeting/terminal` — Risk Terminal HeatMap на реальных данных
+
+---
+
 ## Шаг 0 — Аудит (опционально, посмотреть что в БД)
 
 ```bash
