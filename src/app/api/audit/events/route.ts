@@ -51,6 +51,7 @@ import {
   parseAuditEventsQuery,
   buildAuditEventsWhere,
 } from '@/lib/audit/list';
+import { getCompanyScope } from '@/lib/rbac/company-scope';
 
 const RATE_LIMIT = { name: 'audit-events-list', max: 60, windowMs: 60_000 };
 
@@ -106,8 +107,48 @@ export async function GET(request: NextRequest) {
   });
 
   type Row = (typeof rows)[number];
-  const hasMore = rows.length > parsed.filters.limit;
-  const events: Row[] = hasMore ? rows.slice(0, parsed.filters.limit) : rows;
+
+  // Phase 7.F sub-group RBAC — filter events whose entity sits in a
+  // company outside the caller's scope. admin → scope.ids === null →
+  // no filtering (full visibility, current behavior preserved).
+  //
+  // Strategy (post-fetch, simple):
+  //   - Company entity: entityId IS the companyId → direct check
+  //   - IndicatorValue entity: lookup IV.companyId via single bulk query
+  //   - Other entity types: kept visible (BudgetPlan / User / etc. are
+  //     org-tier today; sub-group scoping for those is a v2 concern)
+  const scope = await getCompanyScope(session.orgId, session.userId, session.role);
+  let scopedRows: Row[] = rows;
+  if (scope.ids != null) {
+    const ivEventIds = rows
+      .filter((r: Row) => r.entityType === 'IndicatorValue')
+      .map((r: Row) => r.entityId);
+    const ivCompanyMap = new Map<string, string>();
+    if (ivEventIds.length > 0) {
+      const ivs = await prisma.indicatorValue.findMany({
+        where: { id: { in: ivEventIds }, organizationId: session.orgId },
+        select: { id: true, companyId: true },
+      });
+      for (const iv of ivs as Array<{ id: string; companyId: string }>) {
+        ivCompanyMap.set(iv.id, iv.companyId);
+      }
+    }
+    scopedRows = rows.filter((r: Row) => {
+      if (r.entityType === 'Company') {
+        return scope.ids!.has(r.entityId);
+      }
+      if (r.entityType === 'IndicatorValue') {
+        const cid = ivCompanyMap.get(r.entityId);
+        // Unknown IV (deleted?) → fail closed
+        return cid != null && scope.ids!.has(cid);
+      }
+      // Other entity types pass through.
+      return true;
+    });
+  }
+
+  const hasMore = scopedRows.length > parsed.filters.limit;
+  const events: Row[] = hasMore ? scopedRows.slice(0, parsed.filters.limit) : scopedRows;
   const nextCursor =
     hasMore && events.length > 0
       ? `${events[events.length - 1].createdAt.toISOString()}|${events[events.length - 1].id}`

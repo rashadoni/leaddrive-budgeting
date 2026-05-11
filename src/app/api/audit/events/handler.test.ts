@@ -22,6 +22,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     auditEvent: { findMany: vi.fn() },
+    // Phase 7.F sub-group RBAC — getCompanyScope reads user row.
+    user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
+    // Audit-log RBAC bulk-fetches IV → companyId for IndicatorValue events.
+    indicatorValue: { findMany: vi.fn().mockResolvedValue([]) },
   },
 }));
 
