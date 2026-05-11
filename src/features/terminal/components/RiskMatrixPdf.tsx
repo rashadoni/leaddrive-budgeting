@@ -93,11 +93,23 @@ const STATUS_HEX = {
   unknown: "#9CA3AF",
 } as const;
 
+// CLI Tier 3 follow-up — Roboto core (Latin+Cyrillic) lacks U+25CF/B2/A0/C7
+// geometric shapes. In PDF context the color carries the status signal
+// reliably (color-blind safety in PDF is less critical than on-screen
+// where the M7 sweep guard fires). Use text-only status markers that
+// every font ships with.
 const STATUS_GLYPH = {
-  green: "●",
-  amber: "▲",
-  red: "■",
-  unknown: "◇",
+  green: "OK",
+  amber: "!",
+  red: "X",
+  unknown: "?",
+} as const;
+// Direction markers in headers — same constraint. Use Roboto-safe arrows
+// (↑↓) which are in Latin Extended Additional + Cyrillic supplement.
+const DIRECTION_GLYPH = {
+  higher_better: "↑",
+  lower_better: "↓",
+  band: "≈",
 } as const;
 
 const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
@@ -302,26 +314,26 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
         <View style={styles.countersRow}>
           <View style={[styles.counter, { backgroundColor: STATUS_HEX.green + "22", borderColor: STATUS_HEX.green, borderWidth: 1 }]}>
             <Text style={[styles.counterValue, { color: STATUS_HEX.green }]}>{counters.green}</Text>
-            <Text style={[styles.counterLabel, { color: STATUS_HEX.green }]}>● {t.healthy}</Text>
+            <Text style={[styles.counterLabel, { color: STATUS_HEX.green }]}>{t.healthy}</Text>
           </View>
           <View style={[styles.counter, { backgroundColor: STATUS_HEX.amber + "22", borderColor: STATUS_HEX.amber, borderWidth: 1 }]}>
             <Text style={[styles.counterValue, { color: STATUS_HEX.amber }]}>{counters.amber}</Text>
-            <Text style={[styles.counterLabel, { color: STATUS_HEX.amber }]}>▲ {t.watch}</Text>
+            <Text style={[styles.counterLabel, { color: STATUS_HEX.amber }]}>{t.watch}</Text>
           </View>
           <View style={[styles.counter, { backgroundColor: STATUS_HEX.red + "22", borderColor: STATUS_HEX.red, borderWidth: 1 }]}>
             <Text style={[styles.counterValue, { color: STATUS_HEX.red }]}>{counters.red}</Text>
-            <Text style={[styles.counterLabel, { color: STATUS_HEX.red }]}>■ {t.critical}</Text>
+            <Text style={[styles.counterLabel, { color: STATUS_HEX.red }]}>{t.critical}</Text>
           </View>
           <View style={[styles.counter, { backgroundColor: STATUS_HEX.unknown + "22", borderColor: STATUS_HEX.unknown, borderWidth: 1 }]}>
             <Text style={[styles.counterValue, { color: STATUS_HEX.unknown }]}>{counters.unknown}</Text>
-            <Text style={[styles.counterLabel, { color: STATUS_HEX.unknown }]}>◇ {t.nodata}</Text>
+            <Text style={[styles.counterLabel, { color: STATUS_HEX.unknown }]}>{t.nodata}</Text>
           </View>
         </View>
 
         {/* Today's Brief inline on cover */}
         <Text style={styles.sectionTitle}>{t.todayBrief}</Text>
 
-        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.red }]}>■ {t.worstHeader}</Text>
+        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.red }]}>{t.worstHeader}</Text>
         {props.brief.worst.length === 0 ? (
           <Text style={{ color: "#9CA3AF", fontSize: 9 }}>—</Text>
         ) : (
@@ -334,7 +346,7 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
           ))
         )}
 
-        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.amber }]}>↕ {t.moversHeader}</Text>
+        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.amber }]}>{t.moversHeader}</Text>
         {props.brief.movers.length === 0 ? (
           <Text style={{ color: "#9CA3AF", fontSize: 9 }}>—</Text>
         ) : (
@@ -343,13 +355,13 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
               <Text style={styles.briefLeft}>{m.companyCode}</Text>
               <Text style={styles.briefMid}>{m.indicatorCode}</Text>
               <Text style={[styles.briefRight, { color: m.deltaPct > 0 ? STATUS_HEX.green : STATUS_HEX.red }]}>
-                {m.deltaPct > 0 ? "▲ +" : "▼ "}{m.deltaPct.toFixed(1)}%
+                {m.deltaPct > 0 ? "+" : ""}{m.deltaPct.toFixed(1)}%
               </Text>
             </View>
           ))
         )}
 
-        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.amber }]}>⚠ {t.alertsHeader}</Text>
+        <Text style={[styles.sectionTitle, { fontSize: 10, color: STATUS_HEX.amber }]}>{t.alertsHeader}</Text>
         {props.brief.alerts.length === 0 ? (
           <Text style={{ color: "#9CA3AF", fontSize: 9 }}>—</Text>
         ) : (
@@ -376,14 +388,11 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
           <View style={styles.matrixTable}>
             <View style={styles.matrixHeaderRow}>
               <Text style={[styles.matrixHeaderCell, styles.matrixCoCol, { textAlign: "left" }]}>CO</Text>
-              {indChunk.map((ind) => {
-                const dir = ind.direction === "higher_better" ? "▲ " : ind.direction === "lower_better" ? "▼ " : "◆ ";
-                return (
-                  <Text key={ind.id} style={[styles.matrixHeaderCell, styles.matrixIndCol]}>
-                    {dir}{ind.code}
-                  </Text>
-                );
-              })}
+              {indChunk.map((ind) => (
+                <Text key={ind.id} style={[styles.matrixHeaderCell, styles.matrixIndCol]}>
+                  {DIRECTION_GLYPH[ind.direction]} {ind.code}
+                </Text>
+              ))}
             </View>
             {props.companies.map((co) => (
               <View key={co.id} style={styles.matrixRow}>
@@ -409,7 +418,7 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                         { color: STATUS_HEX[cell.status], fontWeight: "bold" },
                       ]}
                     >
-                      {STATUS_GLYPH[cell.status]} {formatVal(cell.value, ind.unit)}
+                      {formatVal(cell.value, ind.unit)}
                     </Text>
                   );
                 })}
@@ -443,7 +452,7 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
               <Text style={styles.perCoTitle}>
                 {co.code} · {co.name}{" "}
                 <Text style={{ color: STATUS_HEX[band], fontSize: 10 }}>
-                  {STATUS_GLYPH[band]} R{comp.score ?? "—"}
+                  R{comp.score ?? "—"}
                 </Text>
               </Text>
               <Text style={styles.perCoMeta}>
@@ -455,11 +464,11 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
                 coCells.slice(0, 12).map(({ ind, cell }) => (
                   <View key={ind.id} style={styles.perCoTableRow}>
                     <Text style={styles.perCoTableCellLabel}>
-                      {ind.direction === "higher_better" ? "▲" : ind.direction === "lower_better" ? "▼" : "◆"} {ind.code}
+                      {DIRECTION_GLYPH[ind.direction]} {ind.code}
                     </Text>
                     <Text style={styles.perCoTableCellValue}>{formatVal(cell.value, ind.unit)}</Text>
                     <Text style={[styles.perCoTableCellStatus, { color: STATUS_HEX[cell.status] }]}>
-                      {STATUS_GLYPH[cell.status]} {cell.status.toUpperCase()}
+                      {cell.status.toUpperCase()}
                     </Text>
                   </View>
                 ))
@@ -480,29 +489,29 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
 
         <Text style={styles.sectionTitle}>{t.legendComposite}</Text>
         <View style={styles.legendItem}>
-          <Text style={[styles.legendBadge, { color: STATUS_HEX.green }]}>● R67–100</Text>
+          <Text style={[styles.legendBadge, { color: STATUS_HEX.green }]}>R67–100</Text>
           <Text>{t.healthy}</Text>
         </View>
         <View style={styles.legendItem}>
-          <Text style={[styles.legendBadge, { color: STATUS_HEX.amber }]}>▲ R34–66</Text>
+          <Text style={[styles.legendBadge, { color: STATUS_HEX.amber }]}>R34–66</Text>
           <Text>{t.watch}</Text>
         </View>
         <View style={styles.legendItem}>
-          <Text style={[styles.legendBadge, { color: STATUS_HEX.red }]}>■ R0–33</Text>
+          <Text style={[styles.legendBadge, { color: STATUS_HEX.red }]}>R0–33</Text>
           <Text>{t.critical}</Text>
         </View>
 
         <Text style={styles.sectionTitle}>{t.legendDirection}</Text>
         <View style={styles.legendItem}>
-          <Text style={styles.legendBadge}>▲</Text>
+          <Text style={styles.legendBadge}>{DIRECTION_GLYPH.higher_better}</Text>
           <Text>{t.higherBetter}</Text>
         </View>
         <View style={styles.legendItem}>
-          <Text style={styles.legendBadge}>▼</Text>
+          <Text style={styles.legendBadge}>{DIRECTION_GLYPH.lower_better}</Text>
           <Text>{t.lowerBetter}</Text>
         </View>
         <View style={styles.legendItem}>
-          <Text style={styles.legendBadge}>◆</Text>
+          <Text style={styles.legendBadge}>{DIRECTION_GLYPH.band}</Text>
           <Text>{t.bandTarget}</Text>
         </View>
 
