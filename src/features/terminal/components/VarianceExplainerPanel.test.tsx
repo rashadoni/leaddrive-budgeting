@@ -125,7 +125,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     expect(global.fetch as unknown as { mock?: { calls: unknown[][] } })
       .toBeTruthy();
     // The Run for <lang> button is rendered.
-    const runBtn = screen.getByRole("button");
+    const runBtn = screen.getByRole("button", { name: "EN" });
     expect(runBtn).toBeTruthy();
   });
 
@@ -136,7 +136,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
       activeCompanyCode: null,
     };
     render(<VarianceExplainerPanel />);
-    const runBtn = screen.getByRole("button");
+    const runBtn = screen.getByRole("button", { name: "EN" });
     fireEvent.click(runBtn);
     // Allow fetch microtasks + setState to flush.
     await act(async () => {
@@ -161,7 +161,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
       activeCompanyCode: null,
     };
     render(<VarianceExplainerPanel />);
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -187,7 +187,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
       activeCompanyCode: null,
     };
     render(<VarianceExplainerPanel />);
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -204,7 +204,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     };
     render(<VarianceExplainerPanel />);
     // First run.
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
@@ -267,7 +267,7 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
     render(<VarianceExplainerPanel />);
     // First trigger a run so the panel transitions to data state with the
     // language radiogroup visible.
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
