@@ -225,30 +225,30 @@ Main pain points that drive the roadmap:
 
 **Status:** active per 2026-04-23 decision. Supersedes the prior "sellable to 2nd client" MVP path (see § below). Execution-ready plan: `.claude/plans/dreamy-leaping-manatee.md`.
 
-### 7.A — Foundation (3 weeks)
-- Prisma migration: `Company` with 2-level self-referencing hierarchy (sub-group ← operational); `Industry`, `IndicatorDefinition`, `IndicatorValue`, `Booking`, `OperationalFact`, `Alert`, `AlertRule`, `Scenario`; `BudgetLine.companyId?`
-- Formula engine (`expr-eval`, sandboxed) + resolvers (reuse existing FX helpers in `src/lib/budgeting/currency.ts`)
-- Core API routes (companies, indicators, alerts)
-- Backfill existing AAC data under Company records
+### 7.A — Foundation (3 weeks) — ✅ all 4 bullets shipped (per CLAUDE.md)
+- ✅ Prisma migration: `Company` with 2-level self-referencing hierarchy (sub-group ← operational); `Industry`, `IndicatorDefinition`, `IndicatorValue`, `Booking`, `OperationalFact`, `Alert`, `AlertRule`, `Scenario`; `BudgetLine.companyId?` — schema 1100+ LOC + migrations applied.
+- ✅ Formula engine (`expr-eval`, sandboxed) + resolvers (reuse existing FX helpers in `src/lib/budgeting/currency.ts`) — engine + 5 resolvers registered (`booking`, `company.settings`, `operationalFact`, `currencyRate`, `budgetLine`).
+- ✅ Core API routes (companies, indicators, alerts) — companies, indicators, indicators/matrix, scenarios, alerts (incl. `/alerts/events` v3 read API).
+- ✅ Backfill existing AAC data under Company records — 13 seeded today (8 operational); CLI importer for AZMADE budgets with transactional replace + auto-recompute.
 
 ### 7.B — Onboarding infrastructure (4 weeks)
 - ✅ Excel bulk-import for Companies (2-pass: sub-groups first, then operational with parent links) — secured + tested 2026-04-24
 - ✅ 10 industry CoA templates (seeded) — `scripts/seed-industries.ts` + `src/lib/onboarding/coa-templates.ts` 2026-04-24
-- Per-company budget / actual batch import (extend existing import-excel)
-- Onboarding wizard UI
-- **NEW: AI Data Mapper & Quality Control:** AI-driven smart mapping for dirty Excel files. Automatically detects column types, aligns custom naming with holding CoA, and flags numerical anomalies (e.g., -200% margins) before DB commit.
-- User loads all ~60 companies (dry-run → real)
+- ✅ Per-company budget / actual batch import — shipped at `/api/onboarding/import/budget` POST route. Multipart `file + companyId + sheetName + year + parser ("sopl"|"rollup")` for known-shape xlsx (AZMADE SOPL / P-F sheets / "5-2 büdcə mrkz daxil" rollup). Distinct from `/analyze` (AI Mapper unknown-shape proposal flow).
+- ✅ Onboarding wizard UI — shipped at `/budgeting/onboarding` page + `OnboardingWizardSwitcher` client component (`src/features/onboarding/components/`). Backed by 5 API routes: `/import/companies`, `/import/budget`, `/import/analyze`, `/import/analyze-multi`, `/import/staging[/<id>]`.
+- ✅ **NEW: AI Data Mapper & Quality Control:** shipped Phase 7.G Turn LXXXXV (Phase 7.B v2 Day 1) — `src/lib/onboarding/ai-mapper/mapper.ts` vendor-agnostic entry wrapping `getLLMService().generateMapping()`. SYSTEM_PROMPT + user-message builder at `src/lib/llm/prompts/mapper-system.ts` (single source of truth across providers). Heuristic anomaly merge inside provider impls. Proposal cache at `proposal-cache.ts` saves ~$0.05+10s per re-analyze. Critical safety: LLM is **advisory** — proposal shown to finance reviewer in onboarding UI; nothing lands in DB until reviewer confirms.
+- 🟡 User loads all ~60 companies (dry-run → real) — 13 seeded today, 8 operational (per CLAUDE.md). User-action item; remaining ~47 require xlsx delivery.
 
 ### 7.C — Indicator packs (5 weeks)
 - ~52 indicators across 10 sectors: hospitality, food processing, agro, pharma, industrial, real estate, entertainment, education, beverage, services + 5 cross-sector composites
 - AI-assisted drafting; per-sector validation with user (~1 sector / week after hospitality baseline)
 
-### 7.D — Bloomberg-style UX (3 weeks)
-- Dark theme + JetBrains Mono monospace for numbers
-- Command bar + function-code parser (`HILTN FX GO`, `HOLD HEAT GO`)
-- Multi-pane workspace (2×2 default, drag-resize, saveable named layouts)
-- Keyboard-first (`Ctrl+K` focus cmd bar, panel cycling, F-key workspaces, `/` in-panel search)
-- Functions: `HOLD`, `GRP`, `CO`, `IND`, `SEC`, `CMP`, `ALT`, `SCN`, `BRF`
+### 7.D — Bloomberg-style UX (3 weeks) — ✅ all 5 bullets shipped
+- ✅ Dark theme + JetBrains Mono monospace for numbers — wired in `src/app/globals.css` + Risk Terminal at `/budgeting/terminal` page; HeroSection / CompositeTrendChart use mono numerics.
+- ✅ Command bar + function-code parser (`HILTN FX GO`, `HOLD HEAT GO`) — `src/features/terminal/components/CommandBar.tsx` with locale-aware tests. Token parser → dispatch wiring per-function.
+- ✅ Multi-pane workspace (2×2 default, drag-resize, saveable named layouts) — `PanelGrid.tsx` + `LayoutMenu.tsx` (saveable layouts persisted server-side).
+- ✅ Keyboard-first (`Ctrl+K` focus cmd bar, panel cycling, F-key workspaces, `/` in-panel search) — `HotkeyToolbar.tsx` + `KeyboardShortcutsModal.tsx`.
+- ✅ Functions: `HOLD`, `GRP`, `CO`, `IND`, `SEC`, `CMP`, `ALT`, `SCN`, `BRF` — wired through CommandBar parser.
 
 ### 7.E — Scoring, alerts, AI Intelligence Suite (4 weeks)
 - ✅ Composite risk score (per-company / sub-group / holding roll-up) — shipped at `src/lib/risk/composite-score.ts` with per-company + sub-group + holding aggregation; surfaced in Risk Terminal HeatMap + Board Deck cover.
@@ -262,9 +262,9 @@ Main pain points that drive the roadmap:
 - **C6 alert system v3 — server-side persistence + replay** (Turns III + IV + V, 2026-05-05): NEW `AlertEvent` Prisma model (immutable evaluator-output replay log, sister table to user-acknowledgeable `Alert` inbox); `persistAlertEvents` write helper with delete-by-(orgId,period) + insertMany inside one $transaction; `evaluateAndPersistAlertsForPeriods` composer wired into `runRecomputeForCompanies` post-IV-write; `GET /api/indicators/alerts/events?period=X[&ruleId=Y]` read API with composite-keyset pagination; **`AlertEventsFeed` UI replay viewer** at `/budgeting/alerts/history?period=X` (Turn V) — paginated severity-coded list with ruleId filter + Load More + role=alert error states. End-to-end functional: client live eval + server persistence + UI replay viewer.
 
 ### 7.F — Permissions, audit, polish (1.5 weeks)
-- Sub-group scoping on user roles (users see only their sub-groups)
-- Audit log
-- Heat-map perf tuning (target: 60 × 50 = 3k cells, <500ms render)
+- ⬜ Sub-group scoping on user roles (users see only their sub-groups) — `company-filter.ts` exists for per-query scope but NO per-user RBAC field on User model. Schema check: `grep "subGroupId\|subGroupAccess" prisma/schema.prisma` returns zero matches.
+- ✅ Audit log — shipped Phase 7.F Turn 11 (covered by §4.1 closure CXXVII): `AuditEvent` model + `logAuditEvent` typed helper + 16+ call sites + never-delete contract.
+- ⬜ Heat-map perf tuning (target: 60 × 50 = 3k cells, <500ms render) — current `HeatMap.tsx` renders all cells without virtualization; defer until 60-co target hit (currently 8 operational).
 
 ### 7.G — Verification + polish (1 week)
 - ✅ **E2E test harness** — Playwright shipped 2026-05-03 across 3 turns (D.1 login+terminal 3 cases / D.2 onboarding wizard 4 cases / D.3 recompute+SSE 3 cases). 10/10 pass empirically against live dev server in 1.0min. Critical-path coverage: auth, dashboard render, wizard state machine, AI Data Mapper happy-path (LLM-gated), API contract, SSE LISTEN/NOTIFY end-to-end. Per-sector pack E2E is a v2 expansion (current 10 cases cover the cross-sector mechanics).
