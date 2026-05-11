@@ -535,6 +535,12 @@ export function createPrismaDataSource(
           // null for out-of-range / non-monthly rows so resolvers can
           // group by month deterministically.
           sortOrder: true,
+          // CLI follow-up — fallback channel when accountId is null.
+          // The ATL detailed import (`scripts/import-atl-detailed.cjs`)
+          // populates `lineType` directly instead of linking to CoA. The
+          // resolver below reads `accountType ?? lineType` so granular
+          // imports work without the upstream CoA-link step.
+          lineType: true,
           account: {
             select: {
               accountType: true,
@@ -553,6 +559,7 @@ export function createPrismaDataSource(
             currencyCode: string | null;
             exchangeRate: number | null;
             sortOrder: number;
+            lineType: string;
             account: {
               accountType: string;
               code: string;
@@ -565,7 +572,7 @@ export function createPrismaDataSource(
           plannedAmount: r.plannedAmount,
           currencyCode: r.currencyCode,
           exchangeRate: r.exchangeRate,
-          accountType: r.account?.accountType ?? null,
+          accountType: r.account?.accountType ?? r.lineType ?? null,
           accountCode: r.account?.code ?? null,
           accountCategory: r.account?.category ?? null,
           // Prefer English name for downstream lowercase-name heuristics
