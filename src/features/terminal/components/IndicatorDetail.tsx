@@ -586,13 +586,11 @@ export function IndicatorDetail() {
         {Object.keys(aggregates).length === 0 ? (
           <p className="text-gray-700 text-[11px]">{t('indicatorDetail.none')}</p>
         ) : (
-          <ul className="space-y-1">
+          <ul className="space-y-2">
             {Object.entries(aggregates).map(([ns, data]) => (
               <li key={ns} className="text-[10px]">
-                <div className="text-gray-500 uppercase">{ns}</div>
-                <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1 mt-0.5">
-                  {JSON.stringify(data, null, 2)}
-                </pre>
+                <div className="text-gray-500 uppercase mb-0.5">{ns}</div>
+                <AggregateBlock data={data} t={t} />
               </li>
             ))}
           </ul>
@@ -636,6 +634,90 @@ function formatValue(v: number): string {
     : Math.abs(v) >= 10
     ? v.toFixed(1)
     : v.toFixed(2);
+}
+
+/** Compact magnitude formatter (K/M/B) + unit-aware suffix.
+ *  Mirrors HeatMap.formatValueCompact so a finance reader sees the same
+ *  "1.2M ₼" / "34.1%" / "0.62" representation across drill-down + matrix. */
+function formatAggValue(v: number, hint: "money" | "count" | "ratio" | "percent"): string {
+  if (!Number.isFinite(v)) return "—";
+  if (hint === "count") return String(Math.round(v));
+  if (hint === "percent") return `${v.toFixed(Math.abs(v) >= 100 ? 0 : 1)}%`;
+  if (hint === "ratio") return v.toFixed(2);
+  // money
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B ₼`;
+  if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M ₼`;
+  if (abs >= 1e3) return `${(v / 1e3).toFixed(1)}K ₼`;
+  return `${v.toFixed(0)} ₼`;
+}
+
+/** Heuristic — derive a presentation hint from the key name. Used to
+ *  disambiguate "line_count: 900" (integer count) vs "revenue: 28713024"
+ *  (money) vs "fx_revenue_share: 0.42" (ratio). */
+function hintForKey(key: string): "money" | "count" | "ratio" | "percent" {
+  if (/_count$|_n$|^count$/.test(key)) return "count";
+  if (/_share$|_ratio$|_pct$|^ratio$/.test(key)) return "ratio";
+  if (/_pct$|^pct/.test(key)) return "percent";
+  // FX rates — small ratio-like numbers (1, 1.7, 1.85)
+  if (/^fx_/.test(key)) return "ratio";
+  // Default: money (revenue/cogs/opex/total_cost/imported_input_cost/etc.)
+  return "money";
+}
+
+/** Render one aggregate namespace as a clean key-value table. Falls back to
+ *  raw JSON for non-flat (nested) shapes — most production aggregates today
+ *  are flat numeric records (budget_line / currency_rate / operational_fact
+ *  / booking) so the table path covers ~95% of cases. */
+function AggregateBlock({
+  data,
+  t,
+}: {
+  data: unknown;
+  t: (k: string) => string;
+}) {
+  // Non-record fallback — show raw JSON for nested / non-flat payloads.
+  if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    return (
+      <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    );
+  }
+  const entries = Object.entries(data as Record<string, unknown>);
+  // If any value is non-primitive, fall back to JSON (rollup aggregates have
+  // nested `sums` / `denoms` shapes that benefit from JSON formatting).
+  const allPrimitive = entries.every(
+    ([, v]) => v === null || ["number", "string", "boolean"].includes(typeof v),
+  );
+  if (!allPrimitive) {
+    return (
+      <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1">
+        {JSON.stringify(data, null, 2)}
+      </pre>
+    );
+  }
+  return (
+    <table className="text-[10px] tabular-nums w-full bg-[#050814] rounded border border-gray-800">
+      <tbody>
+        {entries.map(([k, v]) => {
+          const hint = typeof v === "number" ? hintForKey(k) : "money";
+          const display =
+            typeof v === "number"
+              ? formatAggValue(v, hint)
+              : v === null
+                ? "—"
+                : String(v);
+          return (
+            <tr key={k} className="border-b border-gray-900 last:border-b-0">
+              <td className="px-2 py-0.5 text-gray-400 font-mono">{k}</td>
+              <td className="px-2 py-0.5 text-gray-200 text-right">{display}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 }
 
 function forecastColor(confidence: ForecastConfidence): string {
