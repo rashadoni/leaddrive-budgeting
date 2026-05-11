@@ -33,6 +33,47 @@ gate.
 
 ## OPEN
 
+**Last processed: 2026-05-11** (Phase 7.G **Turns CLI–CLVII — Bloomberg sweep Tier 1 + ATL detailed import + UX polish**: Per user «возьми из данных посмотри на какой период можешь создать план» + iterative UX feedback.
+
+**Bloomberg-style UX shipped (Tier 1, 7 items):**
+- JWT TTL 8h → 1h so org-name / role changes propagate fast
+- HeatMap column headers: `▲IND_GROSS_MARGIN` style with direction marker (▲/▼/◆) instead of truncated locale text
+- Inline 28×10 sparklines in cells (12-mo trailing); + currency-tag + magnitude (1.2M ₼)
+- Period chips `[2026]·[Q1..Q4]·[M1..M12]` with click-to-filter
+- CompanyTree composite-score badges with `R` prefix (`R 38`)
+- HELP GO modal with 17 commands + Recent + Legend section
+- Visible Справка button in HotkeyToolbar
+
+**Bug fixes after audit:**
+- `GRP <code> GO` now actually filters Tree+HeatMap (was no-op)
+- CompanyTree parent badges (AZMADE/AAC/ATL/SPARK/ZTP/LLS/AZSEKER) derive composite from children avg (was "—" because rollup-only)
+- Strip parent code prefix from child rows in tree+dropdown (`AZSEKER-EDEN` → `EDEN`)
+- Bogus 91 ChartOfAccount rows (numeric codes/names from old BS import) deleted
+- IndicatorDetail aggregates JSON dump replaced with readable table (`cogs 15.8M ₼` instead of `{"cogs":15806042.91...}`)
+
+**Data ingestion + recompute:**
+- ATL detailed monthly P&L imported from `rev 9 ATL.xlsx Input PL` — 4034 BudgetLine across 4 ATL ops × 12 months (replaced 2964 coarse aggregates)
+- Resolver `lineType` fallback so granular imports work without explicit CoA-link
+- Backfill script (`scripts/backfill-quarter-month-ivs.ts`) populates Q1-Q4 + M1-M12 IVs (2048 sub-year)
+- Sparkline regen for all 13 ops (2192 spark series)
+
+**Effect on matrix:** 15G/17A/2R/86? (CXLVII baseline) → 36G/38A/23R/25? (after sign + currency fixes) → **55G/26A/20R/27?** (after ATL detailed import + sparkline). Period chips now show real seasonal variation (Q1 25R / Q3 23R / M5 27R).
+
+**Test count:** 2962/2962. tsc 0. ~9 cleanup commits + ~6 feature commits + 1 strategic xlsx import.
+
+**Open data-gap items (legit "?" not bugs):**
+- AZSEKER-HORIZON: NEW company, expected `—` until first budget xlsx
+- IND_NET_MARGIN_VS_2025: 6 unknowns — needs 2025 baseline (no xlsx yet)
+- AGRO_DROUGHT_RISK / AGRO_YIELD / AGRO_COMMODITY_VOL / FP_YIELD_LOSS — need external data feeds
+- LLS / SPARK / ZTP: source xlsx is annual-only (no monthly grid) — Q/M chips empty for them; mass-annual-distribute placeholder is one option
+
+**Tier 2 candidates (next batch):**
+- N/A vs unknown distinction
+- Today's Brief on Panel 3 default
+- CO PEER comparison command
+- AAC umbrella BS import
+- AI Variance Explainer auto-run
+
 **Last processed: 2026-05-11** (Phase 7.G **Turns CXLVIII–CL — empty HeatMap fix + sign normalization + baseCurrency E2E + admin-entity surfacing + onboarding wizard i18n**: Per user «фиксируем поочередно всё» after honest CXLVII audit. **Closed:**
 1. **CXLVIII** — Root cause of empty grey HeatMap: imports stamped every BudgetLine with `currencyCode='AZN'` (base) + no `exchangeRate`; resolver skipped 100% of lines as "foreign-no-rate". Fix: DB cleared 10,356 lines via `scripts/fix-azn-currency.cjs`; resolver got `baseCurrency` guard so `currencyCode === baseCurrency` is treated as base; import scripts patched to not stamp base. Effect: 15G/17A/2R/86? → 43G/34A/20R/25?.
 2. **CXLIX** — 3 critical data fixes: (a) Azərşəkər xlsx stored cogs/expense as NEGATIVE (additive convention) — 2,474 rows flipped via `scripts/fix-cogs-expense-signs.cjs` + parser patched to take Math.abs(); fixed AZSEKER-EDEN gross_margin from impossible 165% → realistic 34%, exposed real loss net_margin -38%. (b) Stale "Q1" testing plan deleted (1716 lines, 0 actuals). (c) 5,112 orphan CashFlowEntry rows (`category=NULL`) deleted.
