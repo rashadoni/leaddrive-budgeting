@@ -1042,9 +1042,14 @@ interface DrillDownLine {
   notes: string | null;
 }
 interface DrillDownData {
+  companyId: string;
+  year: number;
   lines: DrillDownLine[];
   summary: Record<string, { count: number; total: number }>;
   truncated: boolean;
+}
+interface MonthlySeries {
+  months: { monthIndex: number; amountBase: number; lineCount: number }[];
 }
 type DrillState =
   | { kind: "collapsed" }
@@ -1141,6 +1146,14 @@ function DrillDownTable({
   data: DrillDownData;
   t: ReturnType<typeof useTranslations>;
 }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [seriesState, setSeriesState] = useState<
+    | { kind: "idle" }
+    | { kind: "loading"; id: string }
+    | { kind: "loaded"; id: string; data: MonthlySeries }
+    | { kind: "error"; id: string; message: string }
+  >({ kind: "idle" });
+
   if (data.lines.length === 0) {
     return (
       <p className="text-gray-700 text-[11px]">
@@ -1148,6 +1161,45 @@ function DrillDownTable({
       </p>
     );
   }
+
+  const toggle = async (line: DrillDownLine) => {
+    if (expandedId === line.id) {
+      setExpandedId(null);
+      setSeriesState({ kind: "idle" });
+      return;
+    }
+    setExpandedId(line.id);
+    setSeriesState({ kind: "loading", id: line.id });
+    const params = new URLSearchParams({
+      companyId: data.companyId,
+      year: String(data.year),
+    });
+    if (line.accountCode) params.set("accountCode", line.accountCode);
+    else if (line.category) params.set("category", line.category);
+    try {
+      const res = await fetch(
+        `/api/budget-lines/monthly-series?${params.toString()}`,
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setSeriesState({
+          kind: "error",
+          id: line.id,
+          message: body.error || `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const body = (await res.json()) as MonthlySeries;
+      setSeriesState({ kind: "loaded", id: line.id, data: body });
+    } catch (err) {
+      setSeriesState({
+        kind: "error",
+        id: line.id,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   return (
     <div className="space-y-1.5">
       {Object.keys(data.summary).length > 0 && (
@@ -1166,6 +1218,7 @@ function DrillDownTable({
       <table className="w-full text-[10px] tabular-nums">
         <thead>
           <tr className="text-gray-600 uppercase text-[9px]">
+            <th className="text-left font-normal py-0.5 w-3"></th>
             <th className="text-left font-normal py-0.5">
               {t("indicatorDetail.drilldown.code")}
             </th>
@@ -1178,25 +1231,64 @@ function DrillDownTable({
           </tr>
         </thead>
         <tbody>
-          {data.lines.map((l) => (
-            <tr
-              key={l.id}
-              className="border-t border-gray-800/30 hover:bg-gray-800/20"
-            >
-              <td className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate">
-                {l.accountCode ?? "—"}
-              </td>
-              <td className="text-gray-300 py-0.5 pr-1 truncate">
-                {l.accountName ?? l.category ?? "—"}
-                {l.currencyCode !== "AZN" && (
-                  <span className="ml-1 text-[#FFB800]">{l.currencyCode}</span>
+          {data.lines.map((l) => {
+            const isExpanded = expandedId === l.id;
+            return (
+              <React.Fragment key={l.id}>
+                <tr
+                  className="border-t border-gray-800/30 hover:bg-gray-800/20 cursor-pointer"
+                  onClick={() => toggle(l)}
+                  data-testid={isExpanded ? "drilldown-row-expanded" : undefined}
+                >
+                  <td className="text-gray-500 py-0.5 pr-0.5 text-center w-3">
+                    {isExpanded ? "▾" : "▸"}
+                  </td>
+                  <td className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate">
+                    {l.accountCode ?? "—"}
+                  </td>
+                  <td className="text-gray-300 py-0.5 pr-1 truncate">
+                    {l.accountName ?? l.category ?? "—"}
+                    {l.currencyCode !== "AZN" && (
+                      <span className="ml-1 text-[#FFB800]">
+                        {l.currencyCode}
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-gray-200 text-right py-0.5">
+                    {formatThousands(l.amountBase)}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr className="border-t border-gray-800/20 bg-gray-800/10">
+                    <td colSpan={4} className="py-1.5 px-2">
+                      {seriesState.kind === "loading" &&
+                        seriesState.id === l.id && (
+                          <span className="text-gray-700 text-[10px]">
+                            {t("indicatorDetail.drilldown.loading")}
+                          </span>
+                        )}
+                      {seriesState.kind === "error" &&
+                        seriesState.id === l.id && (
+                          <span
+                            className="text-[#FF4757] text-[10px]"
+                            role="alert"
+                          >
+                            {seriesState.message}
+                          </span>
+                        )}
+                      {seriesState.kind === "loaded" &&
+                        seriesState.id === l.id && (
+                          <MonthlyBars
+                            data={seriesState.data}
+                            t={t}
+                          />
+                        )}
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className="text-gray-200 text-right py-0.5">
-                {formatThousands(l.amountBase)}
-              </td>
-            </tr>
-          ))}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
       {data.truncated && (
@@ -1204,6 +1296,54 @@ function DrillDownTable({
           {t("indicatorDetail.drilldown.truncated")}
         </p>
       )}
+    </div>
+  );
+}
+
+function MonthlyBars({
+  data,
+  t,
+}: {
+  data: MonthlySeries;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const amounts = data.months.map((m) => m.amountBase);
+  const maxAbs = Math.max(1, ...amounts.map((a) => Math.abs(a)));
+  return (
+    <div className="space-y-1">
+      <div className="text-gray-600 uppercase tracking-wider text-[8px]">
+        {t("indicatorDetail.drilldown.monthlySeries")}
+      </div>
+      <div className="flex items-end gap-1 h-10">
+        {data.months.map((m) => {
+          const heightPct = (Math.abs(m.amountBase) / maxAbs) * 100;
+          const isPositive = m.amountBase >= 0;
+          return (
+            <div
+              key={m.monthIndex}
+              className="flex-1 flex flex-col items-center gap-0.5"
+              title={`M${m.monthIndex + 1}: ${formatThousands(m.amountBase)} (${m.lineCount} ${t("indicatorDetail.drilldown.lines")})`}
+            >
+              <div className="w-full h-8 flex items-end justify-center">
+                <div
+                  className={`w-full ${isPositive ? "bg-[#00D4AA]/60" : "bg-[#FF4757]/60"} rounded-sm`}
+                  style={{ height: `${Math.max(2, heightPct)}%` }}
+                />
+              </div>
+              <span className="text-gray-600 text-[8px]">
+                M{m.monthIndex + 1}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-2 text-[9px] text-gray-500 pt-1 border-t border-gray-800/40">
+        {data.months.map((m) => (
+          <span key={m.monthIndex} className="flex-1 text-center">
+            {formatThousands(m.amountBase)}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

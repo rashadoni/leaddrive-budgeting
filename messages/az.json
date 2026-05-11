@@ -1753,7 +1753,9 @@
         "code": "Kod",
         "name": "Hesab",
         "amount": "Məbləğ (AZN)",
-        "truncated": "İlk 500 sətir göstərilir — daha çoxu var"
+        "truncated": "İlk 500 sətir göstərilir — daha çoxu var",
+        "monthlySeries": "12-aylıq tarix (AZN)",
+        "lines": "sətir"
       },
       "explainButton": "İzah et →",
       "explainTitle": "Panel 4-də AI Variance Explainer aç + cari xana üçün işə sal",

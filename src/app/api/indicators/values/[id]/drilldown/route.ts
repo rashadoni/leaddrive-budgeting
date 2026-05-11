@@ -163,9 +163,11 @@ export async function GET(
 
   return NextResponse.json({
     indicatorValueId: iv.id,
+    companyId: iv.companyId,
     company: iv.company,
     indicator: iv.indicator,
     period: iv.period,
+    year: period.year,
     value: iv.value,
     status: iv.status,
     resolved: (iv.inputs as Record<string, unknown> | null)?.resolved ?? {},

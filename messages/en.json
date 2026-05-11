@@ -1753,7 +1753,9 @@
         "code": "Code",
         "name": "Account",
         "amount": "Amount (AZN)",
-        "truncated": "Showing first 500 rows — more exist"
+        "truncated": "Showing first 500 rows — more exist",
+        "monthlySeries": "12-month history (AZN)",
+        "lines": "lines"
       },
       "explainButton": "Explain →",
       "explainTitle": "Open AI Variance Explainer in Panel 4 + run for current cell",

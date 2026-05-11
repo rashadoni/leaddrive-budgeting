@@ -1753,7 +1753,9 @@
         "code": "Код",
         "name": "Счёт",
         "amount": "Сумма (AZN)",
-        "truncated": "Показаны первые 500 строк — есть ещё"
+        "truncated": "Показаны первые 500 строк — есть ещё",
+        "monthlySeries": "12-месячная история (AZN)",
+        "lines": "строк"
       },
       "explainButton": "Объяснить →",
       "explainTitle": "Открыть AI Variance Explainer в Панели 4 + запустить для текущей ячейки",
