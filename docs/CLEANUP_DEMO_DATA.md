@@ -8,13 +8,23 @@
 
 ---
 
-## TL;DR — 3 команды для полной чистки + импорта
+## TL;DR — 4 команды для полной чистки + импорта + логина
 
 ```bash
 node scripts/audit-azmade-data.cjs                    # 1. посмотреть что в БД
 node scripts/cleanup-fake-azmade-data.cjs --execute    # 2. удалить фейки
 bash scripts/import-azmade-all.sh                      # 3. импорт всех реальных данных (P&L + BS + CF + Sales)
+node scripts/create-azmade-user.cjs                    # 4. создать demo-пользователей для логина
 ```
+
+**Demo-пользователи** (CXXXIX, пароль для всех `Demo2026!`):
+| Email | Role | Что может |
+|---|---|---|
+| `admin@azmade.com` | admin | всё (lock periods, manage CoA, approve requests) |
+| `cfo@azmade.com` | manager | редактировать бюджет / actuals / forecasts |
+| `viewer@azmade.com` | viewer | только смотреть отчёты |
+
+Login URL: `http://localhost:3000/login`. Logout: иконка справа сверху в header.
 
 После этого браузер:
 - `/budgeting?tab=pnl-report` — реальный P&L клиента
