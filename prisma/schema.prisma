@@ -82,6 +82,10 @@ model User {
   name           String
   passwordHash   String
   role           String    @default("viewer")
+  // Phase 7.F sub-group RBAC. Empty array = full org access (admins,
+  // CFO). Non-empty = user can only see these sub-group Company IDs
+  // and their operational children. `admin` role bypasses regardless.
+  allowedSubGroupIds String[] @default([])
   avatar         String?
   phone          String?
   department     String?

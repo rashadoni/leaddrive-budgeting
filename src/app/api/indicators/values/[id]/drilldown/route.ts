@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { parsePeriod } from "@/lib/risk/periods"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 
 export async function GET(
   request: NextRequest,
@@ -72,6 +73,13 @@ export async function GET(
     },
   })
   if (!iv) {
+    return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
+  }
+
+  // Phase 7.F sub-group RBAC — deny if the IV's company is outside
+  // the caller's scope. Same 404 as cross-tenant; never leak existence.
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
+  if (scope.ids != null && !scope.ids.has(iv.companyId)) {
     return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
   }
 

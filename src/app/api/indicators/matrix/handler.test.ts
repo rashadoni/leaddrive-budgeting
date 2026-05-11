@@ -25,6 +25,9 @@ const { prismaMock } = vi.hoisted(() => ({
     company: { findMany: vi.fn() },
     indicatorDefinition: { findMany: vi.fn() },
     indicatorValue: { findMany: vi.fn() },
+    // Phase 7.F sub-group RBAC — getCompanyScope reads user.allowedSubGroupIds
+    // for non-admin roles. Default empty array = full access (legacy behavior).
+    user: { findFirst: vi.fn() },
   },
 }));
 
@@ -40,6 +43,7 @@ beforeEach(() => {
   prismaMock.company.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([]);
   prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.user.findFirst.mockReset().mockResolvedValue({ allowedSubGroupIds: [] });
 });
 
 describe('GET /api/indicators/matrix — handler', () => {

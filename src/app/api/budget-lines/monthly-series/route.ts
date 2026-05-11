@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { getCompanyScope } from "@/lib/rbac/company-scope"
 
 export async function GET(request: NextRequest) {
   const session = await requireRole(request, "viewer")
@@ -47,6 +48,13 @@ export async function GET(request: NextRequest) {
   const year = yearStr ? parseInt(yearStr, 10) : null
   if (year == null || !Number.isFinite(year)) {
     return NextResponse.json({ error: "year required" }, { status: 400 })
+  }
+
+  // Phase 7.F sub-group RBAC — deny if companyId is outside scope.
+  // Same 404 as cross-tenant; never leak existence.
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
+  if (scope.ids != null && !scope.ids.has(companyId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
   const rows = await prisma.budgetLine.findMany({

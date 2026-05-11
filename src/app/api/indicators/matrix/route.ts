@@ -36,6 +36,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
 import { currentBakuYear, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
+import { getCompanyScope } from '@/lib/rbac/company-scope';
 
 // Default period reader — annual, anchored to Asia/Baku (see
 // `currentBakuYear` for rationale). Callers wanting monthly granularity
@@ -69,6 +70,11 @@ export async function GET(request: NextRequest) {
   }
   const period = rawPeriod;
 
+  // Phase 7.F sub-group RBAC — narrow visible companies to the user's
+  // allowed sub-groups + their children. Admins / unrestricted users
+  // get scope.ids === null and pass the full org through unchanged.
+  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+
   try {
     // Load companies + indicators first, then fetch only the IndicatorValue
     // rows scoped to their ids — avoids pulling orphan values for disabled
@@ -76,7 +82,11 @@ export async function GET(request: NextRequest) {
     // them inside the org.
     const [companiesRaw, indicators] = await Promise.all([
       prisma.company.findMany({
-        where: { organizationId: session.orgId, isActive: true },
+        where: {
+          organizationId: session.orgId,
+          isActive: true,
+          ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
+        },
         select: {
           id: true,
           code: true,
