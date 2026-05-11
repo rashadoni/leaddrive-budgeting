@@ -230,7 +230,29 @@ export function TodayBrief() {
             {topAlerts.map((a, i) => (
               <li key={`${a.ruleId}-${i}`} className="px-1.5 py-0.5 text-[10px] text-amber-200/90">
                 <span className="text-cyan-300 font-mono mr-2">{a.ruleId}</span>
-                <span className="text-gray-400">{a.message.slice(0, 80)}</span>
+                <span className="text-gray-400">{
+                  // Localized message via `messageKey` + `messageParams`;
+                  // alerts.messages.* lives under the terminal namespace
+                  // (so `t` here = useTranslations("terminal")). Strip the
+                  // "alerts.messages." namespace prefix produced by the
+                  // engine; fall back to EN `message` if the key is
+                  // missing in the locale file.
+                  (() => {
+                    const subKey = a.messageKey.startsWith("alerts.messages.")
+                      ? `alerts.messages.${a.messageKey.slice("alerts.messages.".length)}`
+                      : a.messageKey;
+                    try {
+                      // Cast through `unknown` — next-intl's t() generic
+                      // demands compile-time-known keys; alert rule IDs are
+                      // runtime-driven so we erase the type and rely on the
+                      // catch fallback for missing keys.
+                      const tt = t as unknown as (k: string, v: Record<string, string | number>) => string;
+                      return tt(subKey, a.messageParams);
+                    } catch {
+                      return a.message;
+                    }
+                  })()
+                }</span>
               </li>
             ))}
           </ul>
