@@ -28,6 +28,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 
 interface CompanyOption {
@@ -104,6 +105,7 @@ const INDUSTRIES_FALLBACK = [
 ]
 
 export function ImportWizardMulti() {
+  const t = useTranslations("onboarding.multi")
   const [step, setStep] = useState<WizardStep>("select")
   const [companies, setCompanies] = useState<CompanyOption[]>([])
   const [companiesLoading, setCompaniesLoading] = useState(true)
@@ -169,11 +171,11 @@ export function ImportWizardMulti() {
     e.preventDefault()
     setAnalyzeError(null)
     if (!file) {
-      setAnalyzeError("Pick an .xlsx file first.")
+      setAnalyzeError(t("errPickFile"))
       return
     }
     if (!companyId) {
-      setAnalyzeError("Pick a target company.")
+      setAnalyzeError(t("errPickCompany"))
       return
     }
     setAnalyzing(true)
@@ -246,18 +248,15 @@ export function ImportWizardMulti() {
   return (
     <div className="space-y-6" data-testid="import-wizard-multi">
       <header>
-        <h2 className="text-lg font-semibold">Multi-Sheet Import (AI Mapper)</h2>
-        <p className="text-sm text-muted-foreground">
-          Upload a workbook with multiple sheets — each is analyzed separately. Failures
-          isolated per sheet.
-        </p>
+        <h2 className="text-lg font-semibold">{t("title")}</h2>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
 
       {step === "select" && (
         <form onSubmit={handleAnalyze} className="space-y-4" data-testid="select-form">
           <div className="space-y-1">
             <label htmlFor="company" className="text-sm font-medium block">
-              Target company
+              {t("targetCompany")}
             </label>
             <select
               id="company"
@@ -267,7 +266,7 @@ export function ImportWizardMulti() {
               data-testid="company-select"
               disabled={companiesLoading}
             >
-              <option value="">— select —</option>
+              <option value="">{t("selectPlaceholder")}</option>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.code} · {c.name}
@@ -276,7 +275,7 @@ export function ImportWizardMulti() {
             </select>
             {companiesLoading && (
               <p className="text-xs text-muted-foreground" data-testid="companies-loading">
-                Loading companies…
+                {t("loadingCompanies")}
               </p>
             )}
             {companiesError && (
@@ -288,7 +287,7 @@ export function ImportWizardMulti() {
 
           <div className="space-y-1">
             <label htmlFor="industry" className="text-sm font-medium block">
-              Industry hint <span className="text-muted-foreground">(optional)</span>
+              {t("industryHint")} <span className="text-muted-foreground">{t("optional")}</span>
             </label>
             <select
               id="industry"
@@ -297,7 +296,7 @@ export function ImportWizardMulti() {
               className="w-full px-2 py-1 rounded border border-gray-700 bg-background text-sm"
               data-testid="industry-select"
             >
-              <option value="">— derive from company —</option>
+              <option value="">{t("deriveFromCompany")}</option>
               {INDUSTRIES_FALLBACK.map((ind) => (
                 <option key={ind} value={ind}>
                   {ind}
@@ -308,17 +307,15 @@ export function ImportWizardMulti() {
 
           <div className="space-y-1">
             <label htmlFor="sheet-filter" className="text-sm font-medium block">
-              Sheet filter{" "}
-              <span className="text-muted-foreground">
-                (optional — comma-separated names; default: all sheets)
-              </span>
+              {t("sheetFilter")}{" "}
+              <span className="text-muted-foreground">{t("sheetFilterHint")}</span>
             </label>
             <input
               id="sheet-filter"
               type="text"
               value={sheetNamesFilter}
               onChange={(e) => setSheetNamesFilter(e.target.value)}
-              placeholder="e.g. P&L, BS, CF"
+              placeholder={t("sheetFilterPlaceholder")}
               className="w-full px-2 py-1 rounded border border-gray-700 bg-background text-sm font-mono"
               data-testid="sheet-filter-input"
             />
@@ -326,7 +323,7 @@ export function ImportWizardMulti() {
 
           <div className="space-y-1">
             <label htmlFor="file" className="text-sm font-medium block">
-              .xlsx workbook
+              {t("xlsxWorkbook")}
             </label>
             <input
               id="file"
@@ -344,7 +341,7 @@ export function ImportWizardMulti() {
             data-testid="analyze-submit"
             className="rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 px-4 py-1.5 text-sm hover:bg-cyan-500/20 disabled:opacity-50"
           >
-            {analyzing ? "Analyzing…" : "Analyze sheets"}
+            {analyzing ? t("analyzing") : t("analyzeSheets")}
           </button>
 
           {analyzeError && (
@@ -362,16 +359,16 @@ export function ImportWizardMulti() {
       {step === "analyzed" && analyzeResult && (
         <section className="space-y-4" data-testid="analyzed-results">
           <div className="rounded border border-gray-800 bg-card p-4">
-            <p className="text-xs uppercase tracking-wider text-muted-foreground">Summary</p>
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">{t("summary")}</p>
             <p className="mt-1 text-sm">
               <span className="font-mono font-semibold text-emerald-400">
                 {analyzeResult.successCount}
               </span>{" "}
-              succeeded ·{" "}
+              {t("succeeded")} ·{" "}
               <span className="font-mono font-semibold text-[#FF4757]">
                 {analyzeResult.failureCount}
               </span>{" "}
-              failed · staging:{" "}
+              {t("failed")} · {t("staging")}:{" "}
               <code className="text-xs">{analyzeResult.stagingId}</code>
             </p>
           </div>
@@ -395,7 +392,7 @@ export function ImportWizardMulti() {
                         : "bg-emerald-500/15 text-emerald-400"
                     }`}
                   >
-                    {isFailure(r) ? "ERROR" : "OK"}
+                    {isFailure(r) ? t("statusError") : t("statusOk")}
                   </span>
                   <span className="font-mono font-medium">{r.sheetName}</span>
                 </div>
@@ -403,9 +400,11 @@ export function ImportWizardMulti() {
                   <p className="mt-1 text-xs text-[#FF4757]">{r.error}</p>
                 ) : (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {r.proposal.columns.length} columns · {r.sourceColumns.length} source
-                    headers · confidence{" "}
-                    {(r.proposal.overallConfidence * 100).toFixed(0)}%
+                    {t("perSheetSummary", {
+                      cols: r.proposal.columns.length,
+                      headers: r.sourceColumns.length,
+                      pct: Math.round(r.proposal.overallConfidence * 100),
+                    })}
                   </p>
                 )}
               </div>
@@ -419,7 +418,7 @@ export function ImportWizardMulti() {
               data-testid="restart"
               className="rounded border border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-800"
             >
-              Start over
+              {t("startOver")}
             </button>
             {!stagingTerminal && analyzeResult.successCount > 0 && (
               <button
@@ -429,7 +428,11 @@ export function ImportWizardMulti() {
                 data-testid="apply-submit"
                 className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-4 py-1.5 text-sm hover:bg-emerald-500/20 disabled:opacity-50"
               >
-                {applying ? "Applying…" : `Apply ${analyzeResult.successCount} sheet${analyzeResult.successCount === 1 ? "" : "s"}`}
+                {applying
+                  ? t("applying")
+                  : analyzeResult.successCount === 1
+                  ? t("applySheets", { n: analyzeResult.successCount })
+                  : t("applySheetsPlural", { n: analyzeResult.successCount })}
               </button>
             )}
           </div>
@@ -450,7 +453,7 @@ export function ImportWizardMulti() {
                     data-testid="restart-after-terminal"
                     className="underline text-xs"
                   >
-                    Restart from step 1
+                    {t("restartFromStep1")}
                   </button>
                 </>
               )}
@@ -463,21 +466,23 @@ export function ImportWizardMulti() {
         <section className="space-y-4" data-testid="applied-results">
           <div className="rounded border border-emerald-500/40 bg-emerald-500/5 p-4">
             <p className="text-xs uppercase tracking-wider text-emerald-400">
-              Imported successfully
+              {t("importedSuccessfully")}
             </p>
             <p className="mt-1 text-sm">
               <span className="font-mono font-semibold">{applyResult.inserted}</span>{" "}
-              budget lines inserted ·{" "}
-              <span className="font-mono font-semibold">{applyResult.deleted}</span> prior
-              deleted · year{" "}
+              {t("linesInserted")} ·{" "}
+              <span className="font-mono font-semibold">{applyResult.deleted}</span> {t("priorDeleted")} · {t("year")}{" "}
               <span className="font-mono font-semibold">{applyResult.year}</span> ·{" "}
               <span className="font-mono font-semibold">{applyResult.successCount}</span>/
-              {applyResult.successCount + applyResult.failureCount} sheets applied
+              {applyResult.successCount + applyResult.failureCount} {t("sheetsApplied")}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Recompute: {applyResult.recompute.ok} ok · {applyResult.recompute.unknown}{" "}
-              unknown · {applyResult.recompute.failed} failed (of{" "}
-              {applyResult.recompute.targets} targets)
+              {t("recomputeStats", {
+                ok: applyResult.recompute.ok,
+                unknown: applyResult.recompute.unknown,
+                failed: applyResult.recompute.failed,
+                targets: applyResult.recompute.targets,
+              })}
             </p>
           </div>
 
@@ -487,8 +492,7 @@ export function ImportWizardMulti() {
               className="rounded border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-300"
               data-testid="indicators-stale-warning"
             >
-              ⚠ One or more indicators failed to recompute — Risk Terminal matrix may be
-              stale until you re-run recompute manually.
+              {t("indicatorsStaleWarn")}
             </p>
           )}
 
@@ -498,8 +502,7 @@ export function ImportWizardMulti() {
               className="rounded border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-300"
               data-testid="audit-stale-warning"
             >
-              ⚠ Audit row for this import did not persist — compliance trail incomplete.
-              Notify ops to investigate.
+              {t("auditStaleWarn")}
             </p>
           )}
 
@@ -524,7 +527,7 @@ export function ImportWizardMulti() {
                           : "bg-emerald-500/15 text-emerald-400"
                       }`}
                     >
-                      {isErr ? "ERROR" : "OK"}
+                      {isErr ? t("statusError") : t("statusOk")}
                     </span>
                     <span className="font-mono font-medium">{r.sheetName}</span>
                   </div>
@@ -532,9 +535,12 @@ export function ImportWizardMulti() {
                     <p className="mt-1 text-xs text-[#FF4757]">{r.error}</p>
                   ) : (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {r.inserted} lines · {r.warnings} warning(s) ·{" "}
-                      {r.parentRollupsDropped} rollups dropped ·{" "}
-                      {r.parentRollupsUnallocated} unallocated
+                      {t("perAppliedSheet", {
+                        n: r.inserted,
+                        warns: r.warnings,
+                        dropped: r.parentRollupsDropped,
+                        unallocated: r.parentRollupsUnallocated,
+                      })}
                     </p>
                   )}
                 </div>
@@ -548,7 +554,7 @@ export function ImportWizardMulti() {
             data-testid="another-import"
             className="rounded border border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-800"
           >
-            Import another workbook
+            {t("anotherImport")}
           </button>
         </section>
       )}

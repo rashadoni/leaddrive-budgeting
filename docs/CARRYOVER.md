@@ -33,6 +33,20 @@ gate.
 
 ## OPEN
 
+**Last processed: 2026-05-11** (Phase 7.G **Turns CXLVIII–CL — empty HeatMap fix + sign normalization + baseCurrency E2E + admin-entity surfacing + onboarding wizard i18n**: Per user «фиксируем поочередно всё» after honest CXLVII audit. **Closed:**
+1. **CXLVIII** — Root cause of empty grey HeatMap: imports stamped every BudgetLine with `currencyCode='AZN'` (base) + no `exchangeRate`; resolver skipped 100% of lines as "foreign-no-rate". Fix: DB cleared 10,356 lines via `scripts/fix-azn-currency.cjs`; resolver got `baseCurrency` guard so `currencyCode === baseCurrency` is treated as base; import scripts patched to not stamp base. Effect: 15G/17A/2R/86? → 43G/34A/20R/25?.
+2. **CXLIX** — 3 critical data fixes: (a) Azərşəkər xlsx stored cogs/expense as NEGATIVE (additive convention) — 2,474 rows flipped via `scripts/fix-cogs-expense-signs.cjs` + parser patched to take Math.abs(); fixed AZSEKER-EDEN gross_margin from impossible 165% → realistic 34%, exposed real loss net_margin -38%. (b) Stale "Q1" testing plan deleted (1716 lines, 0 actuals). (c) 5,112 orphan CashFlowEntry rows (`category=NULL`) deleted.
+3. **CL** — `baseCurrency` plumbed E2E from recompute-trigger → recomputeIndicator → buildContext → ResolverCtx (was hardcoded "AZN" default — would break multi-tenant). 2 new unit tests guard the CXLVIII regression class. ATL-MRKZ role corrected `admin → operational` (10.8M revenue + full P&L) — exposes 2 legitimate RED indicators in HeatMap (was 117 pairs, now 128). Onboarding wizards (`ImportWizard.tsx` + `ImportWizardMulti.tsx`, 1357 LOC combined) translated to en/ru/az with new `onboarding.{multi,single}` namespaces (~50 keys × 3 locales).
+
+**Open / known data gaps (legit "?" not bugs):**
+- AZSEKER-HORIZON: 0 BudgetLines (only 33 CF entries) — needs client clarification whether P&L data is expected for this services entity. owner=user.
+- IND_NET_MARGIN_VS_2025: 6 unknowns — needs 2025 baseline; `scripts/backfill-historical-ivs.ts --years=2025` exists but no 2025 plans imported yet. owner=user.
+- AGRO_DROUGHT_RISK / AGRO_YIELD / AGRO_COMMODITY_VOL / FP_INVENTORY_TURNS / FP_YIELD_LOSS — need external data feeds (weather/commodity APIs) or manual `OperationalFact` entries. Phase 7.E #1 commodity adapters exist but not wired to live feeds. owner=engineering+user.
+
+**Tests:** 2950 → 2962/2962 (+12 across CXLVIII/CL). tsc 0 throughout. Wall-clock total ~90 min.
+
+**CARRYOVER:** 4 → 4 OPEN (HORIZON gap + 2025 baseline + operational facts already covered above; IND_NET_MARGIN_VS_2025 + HORIZON net new client-action items).)
+
 **Last processed: 2026-05-11** (Phase 7.G **Turns CXXXIV–CXLVII (14-turn batch) — fakes purge + Azərşəkər ingest + AZMADE tree grouping + i18n/test follow-ups**: User pivoted from synthetic demo data («я же просил без фейковых. где еще фейкоые убери везде»). **Major work:**
 1. **Demo-data purge** (`scripts/cleanup-demo-budget-plans.cjs`); removed fake AZ-* companies; replaced with real client data ingestion.
 2. **Cash Flow + Balance Sheet + Sales import** (CXXXVIII fixed cross-job delete bug — deleteMany was scoped only by planId+year, wiping previous jobs; fix: per-company accountCode prefix + scoped delete).

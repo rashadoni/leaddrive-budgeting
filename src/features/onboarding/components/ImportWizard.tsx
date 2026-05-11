@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import type {
   ColumnMappingProposal,
   MappingProposal,
@@ -82,6 +83,7 @@ const INDUSTRIES_FALLBACK = [
 ]
 
 export function ImportWizard() {
+  const t = useTranslations("onboarding.single")
   const [step, setStep] = useState<WizardStep>("select")
   const [companies, setCompanies] = useState<CompanyOption[]>([])
   const [companiesLoading, setCompaniesLoading] = useState(true)
@@ -161,11 +163,11 @@ export function ImportWizard() {
     e.preventDefault()
     setAnalyzeError(null)
     if (!file) {
-      setAnalyzeError({ message: "Pick an .xlsx file first." })
+      setAnalyzeError({ message: t("errPickFile") })
       return
     }
     if (!companyId) {
-      setAnalyzeError({ message: "Pick a target company." })
+      setAnalyzeError({ message: t("errPickCompany") })
       return
     }
     setAnalyzing(true)
@@ -299,14 +301,15 @@ export function ImportWizard() {
 }
 
 function StepIndicator({ step }: { step: WizardStep }) {
+  const t = useTranslations("onboarding.single")
   const steps: Array<{ id: WizardStep; label: string }> = [
-    { id: "select", label: "1. Upload" },
-    { id: "review", label: "2. Review" },
-    { id: "applied", label: "3. Applied" },
+    { id: "select", label: t("stepUpload") },
+    { id: "review", label: t("stepReview") },
+    { id: "applied", label: t("stepApplied") },
   ]
   const activeIdx = steps.findIndex((s) => s.id === step)
   return (
-    <ol className="flex items-center gap-3 text-sm" aria-label="Progress">
+    <ol className="flex items-center gap-3 text-sm" aria-label={t("progress")}>
       {steps.map((s, i) => {
         const isCurrent = i === activeIdx
         const isDone = i < activeIdx
@@ -364,6 +367,9 @@ function SelectStep(props: {
     onSubmit,
   } = props
 
+  const t = useTranslations("onboarding")
+  const tm = useTranslations("onboarding.multi")
+  const ts = useTranslations("onboarding.single")
   const selectedCompany = companies.find((c) => c.id === companyId)
 
   return (
@@ -371,10 +377,10 @@ function SelectStep(props: {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <label className="text-sm font-medium" htmlFor="company">
-            Target company <span className="text-red-500">*</span>
+            {tm("targetCompany")} <span className="text-red-500">*</span>
           </label>
           {companiesLoading ? (
-            <div className="mt-1 text-sm text-muted-foreground">Loading…</div>
+            <div className="mt-1 text-sm text-muted-foreground">{ts("loading")}</div>
           ) : companiesError ? (
             <div className="mt-1 text-sm text-red-500">
               Failed to load companies: {companiesError}
@@ -489,7 +495,7 @@ function SelectStep(props: {
           disabled={analyzing || !file || !companyId}
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {analyzing ? "Analyzing…" : "Analyze with AI"}
+          {analyzing ? tm("analyzing") : ts("analyzeWithAi")}
         </button>
       </div>
     </form>
@@ -531,6 +537,8 @@ function ReviewStep(props: {
     setEditedColumns(next)
   }
 
+  const ts = useTranslations("onboarding.single")
+  const tm = useTranslations("onboarding.multi")
   const overall = Math.round(proposal.overallConfidence * 100)
   const overallTone =
     proposal.overallConfidence >= 0.8
@@ -544,7 +552,7 @@ function ReviewStep(props: {
       <section className="rounded-xl border border-border/70 bg-card p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-lg font-semibold">AI proposal</h2>
+            <h2 className="text-lg font-semibold">{ts("aiProposal")}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {proposal.sourceFile} · sheet{" "}
               <span className="font-mono">{proposal.sourceSheet}</span>
@@ -583,10 +591,10 @@ function ReviewStep(props: {
             <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-4 py-2 text-left">#</th>
-                <th className="px-4 py-2 text-left">Header</th>
-                <th className="px-4 py-2 text-left">Role</th>
-                <th className="px-4 py-2 text-left">Conf.</th>
-                <th className="px-4 py-2 text-left">Reasoning</th>
+                <th className="px-4 py-2 text-left">{ts("colHeader")}</th>
+                <th className="px-4 py-2 text-left">{ts("colRole")}</th>
+                <th className="px-4 py-2 text-left">{ts("colConfidence")}</th>
+                <th className="px-4 py-2 text-left">{ts("colReasoning")}</th>
               </tr>
             </thead>
             <tbody>
@@ -708,7 +716,7 @@ function ReviewStep(props: {
             onClick={onBack}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
-            Restart from step 1
+            {ts("restart")}
           </button>
         ) : (
           <button
@@ -717,7 +725,7 @@ function ReviewStep(props: {
             disabled={applying}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {applying ? "Applying…" : "Apply to BudgetLine"}
+            {applying ? tm("applying") : ts("applyToBudgetLine")}
           </button>
         )}
       </div>
@@ -732,15 +740,17 @@ function AppliedStep({
   result: ApplyResponse
   onAnother: () => void
 }) {
+  const ts = useTranslations("onboarding.single")
+  const tm = useTranslations("onboarding.multi")
   return (
     <div className="space-y-4 rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-6">
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
-            ✓ Applied to BudgetLine
+            ✓ {ts("appliedToBudgetLine")}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Year {result.year} · staging {result.stagingId}
+            {tm("year")} {result.year} · {tm("staging")} {result.stagingId}
           </p>
         </div>
         <button
@@ -748,21 +758,21 @@ function AppliedStep({
           onClick={onAnother}
           className="rounded-lg border border-border/70 px-4 py-2 text-sm hover:bg-muted"
         >
-          Import another
+          {tm("anotherImport")}
         </button>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Inserted" value={result.inserted} />
-        <Stat label="Deleted" value={result.deleted} />
-        <Stat label="Warnings" value={result.warnings} />
+        <Stat label={ts("inserted")} value={result.inserted} />
+        <Stat label={ts("deleted")} value={result.deleted} />
+        <Stat label={ts("warnings")} value={result.warnings} />
         <Stat
-          label="Rollups deduped"
+          label={ts("rollupsDeduped")}
           value={result.parentRollupsDropped}
           hint={`${result.parentRollupsUnallocated} reconciled`}
         />
       </div>
       <div className="rounded-lg bg-card px-4 py-3 text-sm">
-        <p className="font-medium">Indicator recompute</p>
+        <p className="font-medium">{ts("indicatorRecompute")}</p>
         <p className="mt-1 text-muted-foreground">
           {result.recompute.ok} ok · {result.recompute.unknown} unknown ·{" "}
           {result.recompute.failed} failed (over {result.recompute.targets}{" "}
