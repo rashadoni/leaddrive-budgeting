@@ -29,6 +29,10 @@ const COMMODITY_METRICS = [
   "WHEAT_USD_TON",
   "CORN_USD_TON",
   "AZ_CPI_YOY",
+  // Phase 7.H Feature 4 — Azerbaijan government climate readiness.
+  // Surfaces alongside macro indicators in the bottom ticker. Will
+  // populate when AI Web Crawler ingests gov-climate sources (v2).
+  "AZ_GOV_CLIMATE_SCORE",
 ] as const
 
 export async function GET(request: NextRequest) {

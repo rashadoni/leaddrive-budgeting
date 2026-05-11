@@ -1722,6 +1722,8 @@ export const RETIRED_CODES: readonly string[] = [
  * All active indicator seeds, in the order they should be presented
  * (sortOrder respected per pack; packs run in this top-level order).
  */
+import { esgIndicators } from "./esg-seeds";
+
 export const ALL_INDICATOR_SEEDS: readonly IndicatorSeed[] = [
   ...hospitalityIndicators,
   ...agroIndicators,
@@ -1738,4 +1740,6 @@ export const ALL_INDICATOR_SEEDS: readonly IndicatorSeed[] = [
   ...logisticsIndicators,
   ...constructionIndicators,
   ...crossSectorIndicators,
+  // Phase 7.H Feature 4 — ESG / Climate cross-sector pack.
+  ...esgIndicators,
 ];

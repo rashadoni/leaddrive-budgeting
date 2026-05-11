@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("58 active indicator seeds (sub-42: +3 cross-sector phase-3 building blocks — IND_REVENUE_TOTAL + IND_HOLDING_REVENUE + IND_NET_MARGIN_VS_2025)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(58)
+  it("63 active indicator seeds (Phase 7.H Feature 4: +5 ESG/Climate cross-sector pack — Scope 1/2/3 + ESG composite + AZ gov climate)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(63)
   })
 
   it("every indicator has a unique code", () => {
