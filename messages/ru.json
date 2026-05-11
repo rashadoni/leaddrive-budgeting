@@ -859,6 +859,8 @@
     "pnlWfGrossProfit": "Валовая прибыль",
     "pnlWfOverhead": "Накладные",
     "pnlWfEbitda": "EBITDA",
+    "plSectionDirectCosts": "Прямые расходы",
+    "plSectionOverheadExpenses": "Накладные расходы",
     "pnlGrossMarginLine": "Валовая маржа: {planPct}% (план) / {actualPct}% (факт)",
     "pnlEbitdaMarginLine": "EBITDA маржа: {planPct}% (план) / {actualPct}% (факт)",
     "pnlNetMarginLine": "Чистая маржа: {planPct}% (план)",
@@ -1005,6 +1007,15 @@
       "noticeAlreadyLocked": "Период {period} уже заблокирован. Исходная блокировка сохранена.",
       "errAdminOnly": "Только администраторы могут блокировать или разблокировать периоды."
     }
+  },
+  "onboarding": {
+    "metaTitle": "Онбординг — AI-маппер данных",
+    "pageTitle": "Онбординг",
+    "pageSubtitle": "Загрузите xlsx-файл с бюджетом — AI-маппер предложит, как сопоставить его колонки с планом счетов холдинга. Проверьте и примените.",
+    "wizardModeLegend": "Режим мастера",
+    "wizardModeMulti": "Несколько листов",
+    "wizardModeSingle": "Один лист",
+    "wizardModeDefaultBadge": "по умолч."
   },
   "auth": {
     "signIn": "Войти",

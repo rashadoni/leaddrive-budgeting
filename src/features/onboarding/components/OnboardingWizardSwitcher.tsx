@@ -21,6 +21,7 @@
  */
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { ImportWizard } from "./ImportWizard"
 import { ImportWizardMulti } from "./ImportWizardMulti"
 
@@ -30,11 +31,12 @@ const DEFAULT_MODE: WizardMode = "multi"
 
 export function OnboardingWizardSwitcher() {
   const [mode, setMode] = useState<WizardMode>(DEFAULT_MODE)
+  const t = useTranslations("onboarding")
 
   return (
     <div className="space-y-4" data-testid="onboarding-wizard-switcher">
-      <fieldset className="flex items-center gap-2 rounded-lg border border-gray-700 bg-card p-1 w-fit" aria-label="Wizard mode">
-        <legend className="sr-only">Wizard mode</legend>
+      <fieldset className="flex items-center gap-2 rounded-lg border border-gray-700 bg-card p-1 w-fit" aria-label={t("wizardModeLegend")}>
+        <legend className="sr-only">{t("wizardModeLegend")}</legend>
         <button
           type="button"
           onClick={() => setMode("multi")}
@@ -46,8 +48,8 @@ export function OnboardingWizardSwitcher() {
               : "text-muted-foreground hover:bg-gray-800"
           }`}
         >
-          Multi-sheet
-          <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">default</span>
+          {t("wizardModeMulti")}
+          <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">{t("wizardModeDefaultBadge")}</span>
         </button>
         <button
           type="button"
@@ -60,7 +62,7 @@ export function OnboardingWizardSwitcher() {
               : "text-muted-foreground hover:bg-gray-800"
           }`}
         >
-          Single sheet
+          {t("wizardModeSingle")}
         </button>
       </fieldset>
 

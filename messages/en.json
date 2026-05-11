@@ -859,6 +859,8 @@
     "pnlWfGrossProfit": "Gross profit",
     "pnlWfOverhead": "Overhead",
     "pnlWfEbitda": "EBITDA",
+    "plSectionDirectCosts": "Direct Costs",
+    "plSectionOverheadExpenses": "Overhead Expenses",
     "pnlGrossMarginLine": "Gross margin: {planPct}% (plan) / {actualPct}% (actual)",
     "pnlEbitdaMarginLine": "EBITDA margin: {planPct}% (plan) / {actualPct}% (actual)",
     "pnlNetMarginLine": "Net margin: {planPct}% (plan)",
@@ -1005,6 +1007,15 @@
       "noticeAlreadyLocked": "Period {period} is already locked. Original lock preserved.",
       "errAdminOnly": "Only admins can lock or unlock periods."
     }
+  },
+  "onboarding": {
+    "metaTitle": "Onboarding — AI Data Mapper",
+    "pageTitle": "Onboarding",
+    "pageSubtitle": "Upload a budget xlsx, let the AI Data Mapper propose how its columns map to the holding chart of accounts, review and apply.",
+    "wizardModeLegend": "Wizard mode",
+    "wizardModeMulti": "Multi-sheet",
+    "wizardModeSingle": "Single sheet",
+    "wizardModeDefaultBadge": "default"
   },
   "auth": {
     "signIn": "Sign in",

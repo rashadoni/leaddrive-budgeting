@@ -859,6 +859,8 @@
     "pnlWfGrossProfit": "Ümumi mənfəət",
     "pnlWfOverhead": "Dolayı xərclər",
     "pnlWfEbitda": "EBITDA",
+    "plSectionDirectCosts": "Birbaşa xərclər",
+    "plSectionOverheadExpenses": "Dolayı (qaimə) xərclər",
     "pnlGrossMarginLine": "Ümumi marja: {planPct}% (plan) / {actualPct}% (faktiki)",
     "pnlEbitdaMarginLine": "EBITDA marjası: {planPct}% (plan) / {actualPct}% (faktiki)",
     "pnlNetMarginLine": "Xalis marja: {planPct}% (plan)",
@@ -1005,6 +1007,15 @@
       "noticeAlreadyLocked": "{period} dövrü artıq kilidlidir. Orijinal kilid saxlanılıb.",
       "errAdminOnly": "Yalnız adminlər dövrləri kilidləyə və ya aça bilər."
     }
+  },
+  "onboarding": {
+    "metaTitle": "Onboarding — AI Data Mapper",
+    "pageTitle": "Onboarding",
+    "pageSubtitle": "Büdcə xlsx faylını yükləyin — AI Data Mapper onun sütunlarının holdinqin hesablar planı ilə necə uyğunlaşdırılacağını təklif edəcək. Yoxlayın və tətbiq edin.",
+    "wizardModeLegend": "Sehrbaz rejimi",
+    "wizardModeMulti": "Çoxlu vərəq",
+    "wizardModeSingle": "Bir vərəq",
+    "wizardModeDefaultBadge": "default"
   },
   "auth": {
     "signIn": "Daxil ol",
