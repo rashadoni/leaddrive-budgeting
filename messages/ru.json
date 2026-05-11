@@ -1490,6 +1490,11 @@
       "quarterHint": "Q{q} {year}",
       "monthHint": "Месяц {m} {year}"
     },
+    "marketTicker": {
+      "ariaLabel": "Рыночная строка — курсы и сырьё",
+      "label": "Рынок",
+      "loading": "Загрузка котировок…"
+    },
     "timeMachine": {
       "ariaLabel": "Машина времени — прокрутка по месяцам",
       "sliderLabel": "Месяц",

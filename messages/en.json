@@ -1490,6 +1490,11 @@
       "quarterHint": "Q{q} of {year}",
       "monthHint": "Month {m} of {year}"
     },
+    "marketTicker": {
+      "ariaLabel": "Market ticker — FX rates and commodities",
+      "label": "Market",
+      "loading": "Loading quotes…"
+    },
     "timeMachine": {
       "ariaLabel": "Time machine — scrub through months",
       "sliderLabel": "Month",

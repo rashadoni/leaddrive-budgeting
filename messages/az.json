@@ -1490,6 +1490,11 @@
       "quarterHint": "Q{q} {year}",
       "monthHint": "Ay {m} {year}"
     },
+    "marketTicker": {
+      "ariaLabel": "Bazar lenti — valyuta və xammal",
+      "label": "Bazar",
+      "loading": "Kotirovkalar yüklənir…"
+    },
     "timeMachine": {
       "ariaLabel": "Zaman maşını — aylar üzrə sürüşdür",
       "sliderLabel": "Ay",

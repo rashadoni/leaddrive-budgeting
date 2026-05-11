@@ -24,6 +24,7 @@ import { VarianceExplainerPanel } from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
 import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
+import { MarketTicker } from './MarketTicker';
 import { HelpModal } from './HelpModal';
 import { ComparePanel } from './ComparePanel';
 import { PeerPanel } from './PeerPanel';
@@ -406,6 +407,7 @@ export function PanelGrid() {
         </Panel>
       </Group>
       </div>
+      <MarketTicker />
       <AuditTicker />
     </div>
   );
