@@ -101,6 +101,23 @@ export function HeatMap({ period }: Props) {
     setMounted(true);
   }, []);
 
+  // CXLVI — honest status counts from DB (bypasses matrix-API admin/rollup
+  // filter so badge `0G/5A/9R` reflects what's actually in IndicatorValue
+  // rows). Falls back to matrix-derived `summary` if endpoint is missing.
+  const [dbSummary, setDbSummary] = useState<{ green: number; amber: number; red: number; unknown: number; total: number } | null>(null);
+  useEffect(() => {
+    if (!period) return;
+    let cancelled = false;
+    fetch(`/api/indicators/status-summary?period=${encodeURIComponent(period)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled || !j) return;
+        if (typeof j.total === 'number') setDbSummary(j);
+      })
+      .catch(() => { /* silent — fall back to matrix-derived summary */ });
+    return () => { cancelled = true; };
+  }, [period]);
+
   // Phase 7.E C6 v2 — pull org-tuned alert thresholds. Falls back to
   // DEFAULT_ALERT_THRESHOLDS while the fetch is in-flight or if it fails;
   // either way the engine sees a fully-resolved config so alert output is
@@ -325,25 +342,29 @@ export function HeatMap({ period }: Props) {
             aria-label={t('heatMap.filterAriaLabel')}
           />
         </div>
-        {summary && (
-          <span className="tabular-nums shrink-0">
+        {(dbSummary || summary) && (
+          <span className="tabular-nums shrink-0" title={dbSummary ? 'Counts from DB (all entities incl. admin)' : 'Counts from matrix view (admin filtered)'}>
             <span style={{ color: statusColor('green') }}>
-              {statusShape('green')} {summary.green}G
+              {statusShape('green')} {(dbSummary ?? summary)!.green}G
             </span>
             {' / '}
             <span style={{ color: statusColor('amber') }}>
-              {statusShape('amber')} {summary.amber}A
+              {statusShape('amber')} {(dbSummary ?? summary)!.amber}A
             </span>
             {' / '}
             <span style={{ color: statusColor('red') }}>
-              {statusShape('red')} {summary.red}R
+              {statusShape('red')} {(dbSummary ?? summary)!.red}R
             </span>
             {' / '}
             <span className="text-gray-500">
-              {statusShape('unknown')} {summary.unknown}?
+              {statusShape('unknown')} {(dbSummary ?? summary)!.unknown}?
             </span>
-            {' / '}
-            <span className="text-gray-600">{summary.missing}·</span>
+            {!dbSummary && summary && (
+              <>
+                {' / '}
+                <span className="text-gray-600">{summary.missing}·</span>
+              </>
+            )}
           </span>
         )}
       </div>
