@@ -27,6 +27,7 @@ import { AuditTicker } from './AuditTicker';
 import { HelpModal } from './HelpModal';
 import { ComparePanel } from './ComparePanel';
 import { PeerPanel } from './PeerPanel';
+import { ExportPdfTrigger } from './ExportPdfButton';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { ActionCenterPanel } from './ActionCenterPanel';
@@ -271,6 +272,9 @@ export function PanelGrid() {
           CommandBar's `<A>,<B>,<C> PEER GO` dispatch. Multi-company
           (2-5) side-by-side comparison with best/worst markers. */}
       <PeerPanel />
+      {/* CLI Tier 3 — listens for `terminal:export-pdf` and builds the
+          Risk Matrix PDF on demand (lazy-loads @react-pdf/renderer). */}
+      <ExportPdfTrigger />
       {/* Phase C6 v2 — opens on `terminal:open-alerts` event fired by
           CommandBar's `[alerts]` strip click. Lists rule-engine matches
           grouped by severity. Same dismiss pattern as AuditModal. */}

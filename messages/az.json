@@ -1650,6 +1650,8 @@
       "importTitle": "Onboard sehrbazı vasitəsilə xlsx büdcəsini yüklə",
       "help": "Kömək",
       "helpTitle": "Komanda arayışını aç (HELP GO)",
+      "exportPdf": "PDF",
+      "exportPdfTitle": "Risk Matrix-i çoxsəhifəli PDF hesabat olaraq ixrac et",
       "compact": "KOMPAKT",
       "compactTitle": "Kompakt rejimi açıb-bağla (Ctrl+/)",
       "compactAriaLabel": "Kompakt rejimi açıb-bağla",

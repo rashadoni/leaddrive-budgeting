@@ -1650,6 +1650,8 @@
       "importTitle": "Загрузить xlsx бюджета через мастер онбординга",
       "help": "Справка",
       "helpTitle": "Открыть справочник команд (HELP GO)",
+      "exportPdf": "PDF",
+      "exportPdfTitle": "Экспортировать Risk Matrix как многостраничный PDF-отчёт",
       "compact": "КОМПАКТ",
       "compactTitle": "Переключить компактный режим (Ctrl+/)",
       "compactAriaLabel": "Переключить компактный режим",

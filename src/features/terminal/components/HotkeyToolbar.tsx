@@ -26,6 +26,7 @@ import React, { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   Bell,
+  Download,
   FilePlus2,
   GitCompare,
   HelpCircle,
@@ -193,6 +194,16 @@ export function HotkeyToolbar() {
       icon: HelpCircle,
       title: t("hotkeys.helpTitle"),
       action: () => fireWindowEvent("terminal:open-help"),
+    },
+    {
+      // CLI Tier 3 — Risk Matrix PDF export. Fires event consumed by
+      // <ExportPdfTrigger /> mounted in PanelGrid which lazy-loads
+      // @react-pdf/renderer + builds the multi-page document.
+      key: "export-pdf",
+      label: t("hotkeys.exportPdf"),
+      icon: Download,
+      title: t("hotkeys.exportPdfTitle"),
+      action: () => fireWindowEvent("terminal:export-pdf"),
     },
   ];
 

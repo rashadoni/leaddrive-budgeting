@@ -1650,6 +1650,8 @@
       "importTitle": "Upload a budget xlsx via Onboarding wizard",
       "help": "Help",
       "helpTitle": "Open command reference (HELP GO)",
+      "exportPdf": "PDF",
+      "exportPdfTitle": "Export Risk Matrix as a multi-page PDF report",
       "compact": "COMPACT",
       "compactTitle": "Toggle compact mode (Ctrl+/)",
       "compactAriaLabel": "Toggle compact mode",
