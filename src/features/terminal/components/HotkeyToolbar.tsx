@@ -42,7 +42,7 @@ import { useMatrix } from "../hooks/use-matrix";
 interface HotkeyDef {
   key: string;
   label: string;
-  icon: React.ComponentType<{ size?: number }>;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
   /** Returns true if action ran; false if disabled / no-op. */
   action: () => boolean;
@@ -55,6 +55,12 @@ export function HotkeyToolbar() {
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
   const activePanelId = useTerminalStore((s) => s.activePanelId);
   const [recomputing, setRecomputing] = useState(false);
+  // Phase 6.1 — async recompute progress. null when no async job is in
+  // flight; { processed, total } populated by polling the job state.
+  const [recomputeProgress, setRecomputeProgress] = useState<{
+    processed: number;
+    total: number;
+  } | null>(null);
   // Phase 7.E phase 2 hardening (sub-40) — the route handler requires
   // `period` in the POST body. Pre-fix this button sent no body and 400'd
   // silently behind a swallowed `.catch()`. Read the currently-rendered
@@ -86,26 +92,45 @@ export function HotkeyToolbar() {
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (body?.async && body?.jobId) {
-          // Poll until succeeded/failed or 5min timeout.
+          setRecomputeProgress({ processed: 0, total: body.total ?? 0 });
           const startedAt = Date.now();
           const pollOnce = async (): Promise<void> => {
-            if (Date.now() - startedAt > 5 * 60_000) return;
+            if (Date.now() - startedAt > 5 * 60_000) {
+              setRecomputeProgress(null);
+              setRecomputing(false);
+              return;
+            }
             try {
               const r = await fetch(`/api/recompute/jobs/${body.jobId}`, { cache: "no-store" });
-              if (!r.ok) return;
+              if (!r.ok) {
+                setRecomputeProgress(null);
+                setRecomputing(false);
+                return;
+              }
               const j = await r.json();
+              setRecomputeProgress({ processed: j.processed, total: j.total });
               if (j.status === "running" || j.status === "pending") {
                 setTimeout(pollOnce, 1500);
+              } else {
+                // Brief delay so user sees the 100% bar before it disappears.
+                setTimeout(() => {
+                  setRecomputeProgress(null);
+                  setRecomputing(false);
+                }, 800);
               }
             } catch {
-              // Network blip — give up silently; user can re-fire.
+              setRecomputeProgress(null);
+              setRecomputing(false);
             }
           };
           pollOnce();
+          return; // Async path manages its own clear above.
         }
+        // Sync path — clear immediately.
+        setTimeout(() => setRecomputing(false), 800);
       })
-      .catch(() => {})
-      .finally(() => {
+      .catch(() => {
+        setRecomputeProgress(null);
         setTimeout(() => setRecomputing(false), 800);
       });
     return true;
@@ -178,7 +203,11 @@ export function HotkeyToolbar() {
     },
     {
       key: "recompute",
-      label: recomputing ? t("hotkeys.running") : t("hotkeys.recompute"),
+      label: recomputeProgress
+        ? `${recomputeProgress.processed}/${recomputeProgress.total}`
+        : recomputing
+          ? t("hotkeys.running")
+          : t("hotkeys.recompute"),
       icon: RefreshCw,
       title: recomputing
         ? t("hotkeys.recomputeRunning")
@@ -246,6 +275,13 @@ export function HotkeyToolbar() {
       <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>
       {hotkeys.map((h) => {
         const Icon = h.icon;
+        // Phase 6.1 — progress overlay on Recompute button when async job
+        // is in flight. Cyan fill grows left → right behind the icon+label.
+        const showProgress =
+          h.key === "recompute" && recomputeProgress && recomputeProgress.total > 0;
+        const pct = showProgress
+          ? Math.min(100, Math.max(0, Math.round((recomputeProgress!.processed / recomputeProgress!.total) * 100)))
+          : 0;
         return (
           <button
             key={h.key}
@@ -254,10 +290,17 @@ export function HotkeyToolbar() {
             disabled={h.disabled}
             title={h.title}
             aria-label={h.title}
-            className="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors shrink-0"
+            className="relative flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors shrink-0 overflow-hidden"
           >
-            <Icon size={11} />
-            <span>{h.label}</span>
+            {showProgress && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 bg-[#00D4AA]/30 transition-all duration-300 pointer-events-none"
+                style={{ width: `${pct}%` }}
+              />
+            )}
+            <Icon size={11} className="relative" />
+            <span className="relative">{h.label}</span>
           </button>
         );
       })}
