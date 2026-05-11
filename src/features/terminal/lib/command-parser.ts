@@ -47,6 +47,7 @@ export type FunctionCode =
   | "INT" // Phase 7.G D.4 — IntelFeedPanel AI Web Crawler results feed
   | "BREACH" // Phase 7.G Turn CI (E.2d UI) — predictive breach forecasts panel
   | "HELP" // CLI Bloomberg-sweep — opens command-reference modal
+  | "PEER" // CLI Tier 2 — multi-company side-by-side comparison (2-5 companies)
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -66,6 +67,7 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "INT",
   "BREACH",
   "HELP",
+  "PEER",
 ]
 
 /**
@@ -95,6 +97,7 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   INT: "forbidden", // Phase 7.G D.4 IntelFeedPanel — org-scoped global feed
   BREACH: "forbidden", // Phase 7.G Turn CI (E.2d UI) — predictive breach panel, org-scoped global
   HELP: "forbidden", // CLI Bloomberg-sweep — global modal, no scope
+  PEER: "required", // CLI Tier 2 — comma-separated 2-5 company codes
 }
 
 export type ParsedCommand =
@@ -115,6 +118,7 @@ export type ParsedCommand =
   | { kind: "int" }
   | { kind: "breach" }
   | { kind: "help" }
+  | { kind: "peer"; codes: string[] }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -221,8 +225,18 @@ export function parseCommand(rawInput: string): ParseResult {
       },
     }
   }
-  // For non-CMP required/optional functions, accept exactly one target.
-  if (fn !== "CMP" && targets.length > 1) {
+  // PEER accepts 2-5 comma-separated company codes.
+  if (fn === "PEER" && (targets.length < 2 || targets.length > 5)) {
+    return {
+      ok: false,
+      error: {
+        code: "cmp_requires_two_targets",
+        reason: `PEER compares 2-5 companies. Got ${targets.length}: \`${targets.join(", ")}\`. Example: \`AAC,ATL,SPARK PEER GO\`.`,
+      },
+    }
+  }
+  // For non-CMP / non-PEER required/optional functions, accept exactly one target.
+  if (fn !== "CMP" && fn !== "PEER" && targets.length > 1) {
     return {
       ok: false,
       error: {
@@ -276,6 +290,8 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "breach" } }
     case "HELP":
       return { ok: true, command: { kind: "help" } }
+    case "PEER":
+      return { ok: true, command: { kind: "peer", codes: targets } }
   }
 }
 
@@ -318,6 +334,7 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "int":
     case "breach":
     case "help":
+    case "peer":
       return null // overlay modal — does not steal focus from any panel
   }
 }

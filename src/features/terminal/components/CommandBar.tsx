@@ -39,6 +39,7 @@ const VERBS = [
   'SUB',
   'INT',
   'HELP',
+  'PEER',
   'GO',
 ] as const;
 
@@ -312,6 +313,15 @@ export function CommandBar() {
         // (modal reads it via the same key).
         window.dispatchEvent(new CustomEvent('terminal:open-help'));
         return { message: 'HELP →' };
+      case 'peer':
+        // CLI Tier 2 #6 — `<A>,<B>,<C> PEER GO` opens multi-company
+        // side-by-side comparison (2-5 companies). Sets the first as
+        // active for downstream panels, then fires the panel-open event.
+        if (cmd.codes.length > 0) setCompany(cmd.codes[0]);
+        window.dispatchEvent(
+          new CustomEvent('terminal:open-peer', { detail: { codes: cmd.codes } }),
+        );
+        return { message: `PEER ${cmd.codes.join(', ')} →` };
       case 'grp':
         // CLI Bloomberg-sweep — GRP <CODE> GO filters HeatMap rows by the
         // sub-group code (e.g. `AZSEKER GRP GO` → only AZSEKER + its 5

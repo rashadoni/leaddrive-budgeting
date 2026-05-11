@@ -26,6 +26,7 @@ import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
 import { HelpModal } from './HelpModal';
 import { ComparePanel } from './ComparePanel';
+import { PeerPanel } from './PeerPanel';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
 import { ActionCenterPanel } from './ActionCenterPanel';
@@ -266,6 +267,10 @@ export function PanelGrid() {
           CommandBar's `CMP <LHS> <RHS> GO` dispatch. Side-by-side
           indicator view + Δ column. Same dismiss pattern as AuditModal. */}
       <ComparePanel />
+      {/* CLI Tier 2 #6 — opens on `terminal:open-peer` event fired by
+          CommandBar's `<A>,<B>,<C> PEER GO` dispatch. Multi-company
+          (2-5) side-by-side comparison with best/worst markers. */}
+      <PeerPanel />
       {/* Phase C6 v2 — opens on `terminal:open-alerts` event fired by
           CommandBar's `[alerts]` strip click. Lists rule-engine matches
           grouped by severity. Same dismiss pattern as AuditModal. */}
