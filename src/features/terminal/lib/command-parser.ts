@@ -46,6 +46,7 @@ export type FunctionCode =
   | "SUB" // Tier-3 sub-30 — AISubscriptions user-defined alert subscriptions
   | "INT" // Phase 7.G D.4 — IntelFeedPanel AI Web Crawler results feed
   | "BREACH" // Phase 7.G Turn CI (E.2d UI) — predictive breach forecasts panel
+  | "HELP" // CLI Bloomberg-sweep — opens command-reference modal
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -64,6 +65,7 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "SUB",
   "INT",
   "BREACH",
+  "HELP",
 ]
 
 /**
@@ -92,6 +94,7 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   SUB: "forbidden", // Tier-3 sub-30 AISubscriptions — global subscription manager
   INT: "forbidden", // Phase 7.G D.4 IntelFeedPanel — org-scoped global feed
   BREACH: "forbidden", // Phase 7.G Turn CI (E.2d UI) — predictive breach panel, org-scoped global
+  HELP: "forbidden", // CLI Bloomberg-sweep — global modal, no scope
 }
 
 export type ParsedCommand =
@@ -111,6 +114,7 @@ export type ParsedCommand =
   | { kind: "sub" }
   | { kind: "int" }
   | { kind: "breach" }
+  | { kind: "help" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -270,6 +274,8 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "int" } }
     case "BREACH":
       return { ok: true, command: { kind: "breach" } }
+    case "HELP":
+      return { ok: true, command: { kind: "help" } }
   }
 }
 
@@ -311,6 +317,7 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "sub":
     case "int":
     case "breach":
+    case "help":
       return null // overlay modal — does not steal focus from any panel
   }
 }

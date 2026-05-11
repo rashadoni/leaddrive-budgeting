@@ -53,7 +53,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
-  session: { strategy: "jwt", maxAge: 8 * 60 * 60 },
+  // CLI: JWT cache TTL reduced 8h → 1h so org-name / role / sub-group
+  // changes surface in ≤1h instead of ≤8h. NextAuth refreshes only on
+  // access; sliding-window means mid-session users aren't logged out.
+  session: { strategy: "jwt", maxAge: 60 * 60 },
   pages: {
     signIn: "/login",
     error: "/login",

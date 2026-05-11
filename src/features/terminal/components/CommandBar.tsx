@@ -38,6 +38,7 @@ const VERBS = [
   'CHT',
   'SUB',
   'INT',
+  'HELP',
   'GO',
 ] as const;
 
@@ -300,6 +301,12 @@ export function CommandBar() {
         // so `window` is always defined here — no SSR guard needed.
         window.open('/budgeting/board-deck', '_blank');
         return { message: 'BRF →' };
+      case 'help':
+        // CLI Bloomberg-sweep — `HELP GO` opens the command-reference modal.
+        // Records the command into sessionStorage recent-commands history
+        // (modal reads it via the same key).
+        window.dispatchEvent(new CustomEvent('terminal:open-help'));
+        return { message: 'HELP →' };
       case 'hold':
       case 'grp':
       case 'sec':
@@ -324,6 +331,18 @@ export function CommandBar() {
       setFeedback({ kind: 'err', message: result.error.reason });
       return;
     }
+    // CLI Bloomberg-sweep — record the raw command into sessionStorage
+    // recent-commands history (HelpModal reads this). Cap at 5; dedup
+    // exact matches so the list stays meaningful.
+    try {
+      const trimmed = command.trim();
+      if (trimmed) {
+        const existing = JSON.parse(window.sessionStorage.getItem('terminal.recentCommands') || '[]');
+        const filtered = (Array.isArray(existing) ? existing : []).filter((c: string) => c !== trimmed);
+        const updated = [trimmed, ...filtered].slice(0, 5);
+        window.sessionStorage.setItem('terminal.recentCommands', JSON.stringify(updated));
+      }
+    } catch { /* swallow — quota / serialization edge cases shouldn't break the dispatch */ }
     const out = dispatch(result.command);
     // If the dispatch surfaced a `partial`, render that instead of plain
     // ok — yellow warning styling so the user immediately spots the gap.
@@ -334,6 +353,18 @@ export function CommandBar() {
     }
     setCommand('');
   };
+
+  // CLI Bloomberg-sweep — listen for HelpModal click-to-paste events. The
+  // modal closes itself; we just pre-fill the input so the user only has
+  // to hit Enter (or Tab to edit).
+  useEffect(() => {
+    const onPaste = (e: Event) => {
+      const detail = (e as CustomEvent<{ command?: string }>).detail;
+      if (detail?.command) setCommand(detail.command);
+    };
+    window.addEventListener('terminal:paste-command', onPaste);
+    return () => window.removeEventListener('terminal:paste-command', onPaste);
+  }, []);
 
   // Round-8 M4 — derive suggestions from current command's last word.
   const suggestions = useMemo<Suggestion[]>(() => {

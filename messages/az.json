@@ -1484,6 +1484,41 @@
     }
   },
   "terminal": {
+    "periodChips": {
+      "ariaLabel": "Dövr seçici",
+      "annualHint": "Tam il {year}",
+      "quarterHint": "Q{q} {year}",
+      "monthHint": "Ay {m} {year}"
+    },
+    "help": {
+      "title": "Komanda arayışı",
+      "subtitle": "Komandanı yazın və GO (və ya Enter) basın.",
+      "sectionNavigation": "Naviqasiya",
+      "sectionAnalysis": "Analiz",
+      "sectionAlerts": "Alertlər və briflər",
+      "sectionOther": "Digər",
+      "recentTitle": "Son komandalar",
+      "recentEmpty": "Hələ komanda işlədilməyib — `HOLD GO` ilə holdinq icmalını yoxlayın.",
+      "examplePrefix": "Misal:",
+      "close": "Bağla",
+      "cmdHoldDesc": "Holdinq səviyyəsi rolluquna keç.",
+      "cmdCoDesc": "Şirkət aç. Kodu yazın, məs. `AAC CO GO`.",
+      "cmdIndDesc": "İndikator detalları. Prefiks — kod, məs. `IND_GM IND GO`.",
+      "cmdAltDesc": "Aktiv alertləri göstər.",
+      "cmdCmpDesc": "İki şirkəti yan-yana müqayisə et.",
+      "cmdScnDesc": "Ssenari overlay-ı aktivləşdir (stress-test).",
+      "cmdBrfDesc": "Board Deck aç — icraçı baxış üçün narrativ.",
+      "cmdAudDesc": "Son dəyişikliklərin audit izi.",
+      "cmdActDesc": "Sizə təyin edilmiş açıq tapşırıqlar.",
+      "cmdCmtDesc": "Aktiv indikatorun hüceyrə şərhləri.",
+      "cmdChtDesc": "Aktiv indikatorun çoxdövrlü qrafiki.",
+      "cmdSubDesc": "Aktiv obyekt üzrə alertlərə abunə ol.",
+      "cmdIntDesc": "Intel lenti (bazar + makro).",
+      "cmdBreachDesc": "Proqnozlaşdırılan hədd aşımları.",
+      "cmdSecDesc": "Sektora keç (sənaye).",
+      "cmdGrpDesc": "Alt-qrupa keç (səviyyə 1).",
+      "cmdHelpDesc": "Bu arayışı aç."
+    },
     "panels": {
       "companyTree": "Şirkət ağacı",
       "companyTreeShort": "AĞAC",

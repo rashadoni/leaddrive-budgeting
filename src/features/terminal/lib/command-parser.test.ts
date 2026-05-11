@@ -289,8 +289,8 @@ describe("panelForCommand routing", () => {
 })
 
 describe("FUNCTION_CODES catalog", () => {
-  it("exports exactly 16 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT + BREACH)", () => {
-    expect(FUNCTION_CODES).toHaveLength(16)
+  it("exports exactly 17 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT + BREACH + HELP)", () => {
+    expect(FUNCTION_CODES).toHaveLength(17)
   })
 
   it("each panel-targeting function code has a panel route", () => {
@@ -311,8 +311,9 @@ describe("FUNCTION_CODES catalog", () => {
       SUB: { kind: "sub" },
       INT: { kind: "int" },
       BREACH: { kind: "breach" },
+      HELP: { kind: "help" },
     }
-    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT", "BREACH"])
+    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT", "BREACH", "HELP"])
     for (const code of FUNCTION_CODES) {
       const route = panelForCommand(sample[code])
       // Overlay modals intentionally return null (do not steal panel focus);

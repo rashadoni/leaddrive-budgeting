@@ -39,6 +39,11 @@ interface Props {
    * compatible (they rely on cell-fit fixed dims).
    */
   responsive?: boolean;
+  /** CLI Bloomberg-sweep — custom width/height for inline-in-cell rendering.
+   *  Overrides `compact` dimensions when both are set. Used by HeatMap cells
+   *  to fit a 28×10 mini-spark next to the inline numeric value. */
+  width?: number;
+  height?: number;
   /** Optional accessible description for screen readers. */
   ariaLabel?: string;
 }
@@ -86,10 +91,12 @@ export function Sparkline({
   status = "unknown",
   compact = false,
   responsive = false,
+  width: widthOverride,
+  height: heightOverride,
   ariaLabel,
 }: Props) {
-  const width = compact ? COMPACT_WIDTH : NORMAL_WIDTH;
-  const height = compact ? COMPACT_HEIGHT : NORMAL_HEIGHT;
+  const width = widthOverride ?? (compact ? COMPACT_WIDTH : NORMAL_WIDTH);
+  const height = heightOverride ?? (compact ? COMPACT_HEIGHT : NORMAL_HEIGHT);
   const color = COLORS[status];
   const sizing = svgSizingProps(width, height, responsive);
 

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/tooltip';
 import { useEventStream } from '@/lib/events/use-event-stream';
 import { Sparkline, type SparklineStatus } from './Sparkline';
+import { PeriodChips } from './PeriodChips';
 import {
   computeCompositeByCompany,
   type CompositeScore,
@@ -68,6 +69,11 @@ const PANEL_ID = 2;
 export function HeatMap({ period }: Props) {
   const t = useTranslations('terminal');
   const locale = useLocale();
+  // CLI Bloomberg-sweep: period chips. Local state so panel switches don't
+  // ripple across other consumers of useMatrix(); seeded from `period` prop
+  // (URL query or default year). Caller can still override via prop change.
+  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(period);
+  useEffect(() => { setSelectedPeriod(period); }, [period]);
   // User-driven HeatMap row/cell clicks → selectCompany (tracks LRU recent).
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
@@ -93,7 +99,7 @@ export function HeatMap({ period }: Props) {
   // refetch goes through `refresh()` so the cache is invalidated and
   // every subscribing panel re-renders with fresh data.
   const { matrix: data, loading, error, refresh: refetchMatrix } =
-    useMatrix(period);
+    useMatrix(selectedPeriod);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // SSR/CSR hydration guard — see CompanyTree for rationale.
   const [mounted, setMounted] = useState(false);
@@ -107,7 +113,7 @@ export function HeatMap({ period }: Props) {
   // Dependency on `data?.period` not `period` prop: prop may be empty
   // initially while matrix-derived period is the canonical "active" one.
   const [dbSummary, setDbSummary] = useState<{ green: number; amber: number; red: number; unknown: number; total: number } | null>(null);
-  const activePeriod = data?.period ?? period;
+  const activePeriod = data?.period ?? selectedPeriod ?? period;
   useEffect(() => {
     if (!activePeriod) return;
     let cancelled = false;
@@ -317,7 +323,7 @@ export function HeatMap({ period }: Props) {
     !loading &&
     (!data || data.companies.length === 0 || data.indicators.length === 0);
   const indicators = data?.indicators ?? [];
-  const renderedPeriod = data?.period ?? period ?? '';
+  const renderedPeriod = data?.period ?? selectedPeriod ?? period ?? '';
 
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
@@ -372,6 +378,15 @@ export function HeatMap({ period }: Props) {
         )}
       </div>
 
+      {/* CLI Bloomberg-sweep: period chip row — annual / quarters / months.
+          Active chip wired to setSelectedPeriod, which drives useMatrix(). */}
+      <div className="mb-2 shrink-0">
+        <PeriodChips
+          current={renderedPeriod}
+          onChange={(p) => setSelectedPeriod(p)}
+          compact={compactMode}
+        />
+      </div>
       {loading && (
         <span className="text-gray-700 text-[11px] py-2">{t('heatMap.loadingHeatmap')}</span>
       )}
@@ -401,20 +416,23 @@ export function HeatMap({ period }: Props) {
                     maxWidth: compactMode ? 40 : 54,
                   }}
                 >
-                  {/* Sub-27 cont'd Round-5 M1 — plain-language column headers.
-                      CFO-friendly primary label (locale-aware nameRu/nameAz/nameEn);
-                      technical code surfaced in tooltip + as small dim secondary line.
-                      Compact-mode (40px width) hides secondary line to preserve density. */}
+                  {/* CLI Bloomberg-sweep: primary label is `ind.code` (mono,
+                      Bloomberg-ticker style) + direction marker (▲ higher_better
+                      / ▼ lower_better / ◆ band). Localized full name moves to
+                      hover-tooltip + secondary muted line under code. Codes scan
+                      ~3× faster than truncated locale text. */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="cursor-help leading-tight">
-                        <div className="truncate font-sans normal-case text-gray-300 text-[10px]">
-                          {/* Round-24 Stage 3 — shared resolver. */}
-                          {resolveIndicatorLabel(ind, locale)}
+                        <div className="truncate font-mono text-gray-200 text-[10px] tracking-tight">
+                          <span className="text-gray-500 mr-0.5" aria-hidden="true">
+                            {ind.direction === 'higher_better' ? '▲' : ind.direction === 'lower_better' ? '▼' : '◆'}
+                          </span>
+                          {ind.code}
                         </div>
                         {!compactMode && (
-                          <div className="truncate font-mono text-gray-600 text-[8px] mt-px">
-                            {ind.code}
+                          <div className="truncate font-sans text-gray-600 text-[8px] mt-px normal-case">
+                            {resolveIndicatorLabel(ind, locale)}
                           </div>
                         )}
                       </div>
@@ -697,6 +715,31 @@ function formatValue(value: number, unit: string): string {
   return `${rounded} ${unit}`;
 }
 
+// CLI Bloomberg-sweep: compact in-cell number formatter. Trims to K/M/B
+// magnitudes for large currency amounts (AZN revenue ≥ 1e6 prints "1.2M ₼"
+// instead of "1234567 AZN"). Percentages keep 1 dp; ratios keep 2 dp.
+// Currency code AZN → glyph ₼ for visual density. Other units fall through
+// to compact decimal + suffix.
+function formatValueCompact(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return '—';
+  if (unit === '%') {
+    return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
+  }
+  if (unit === 'ratio') {
+    return value.toFixed(2);
+  }
+  // Money / large units (AZN, USD, EUR, count of nights, kg, ton…)
+  const abs = Math.abs(value);
+  let mantissa: string;
+  let suffix: string;
+  if (abs >= 1e9) { mantissa = (value / 1e9).toFixed(1); suffix = 'B'; }
+  else if (abs >= 1e6) { mantissa = (value / 1e6).toFixed(1); suffix = 'M'; }
+  else if (abs >= 1e3) { mantissa = (value / 1e3).toFixed(1); suffix = 'K'; }
+  else { mantissa = abs >= 10 ? value.toFixed(0) : value.toFixed(1); suffix = ''; }
+  const unitTag = unit === 'AZN' ? '₼' : unit === 'USD' ? '$' : unit === 'EUR' ? '€' : unit ? ` ${unit}` : '';
+  return `${mantissa}${suffix}${unitTag}`;
+}
+
 type HeatMapCellTdProps = {
   co: CompanyRow;
   ind: IndicatorCol;
@@ -891,7 +934,11 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
             className="relative"
             style={{
               width: compactMode ? 40 : 54,
-              height: compactMode ? 12 : 18,
+              // CLI Bloomberg-sweep: normal cells expand 18 → 30 to host
+              // inline sparkline + numeric value below status glyph.
+              // Compact mode unchanged to preserve density (sparkline +
+              // value only show in tooltip there).
+              height: compactMode ? 12 : 30,
             }}
           >
             {/* Tier-3 sub-29 M7 — color-blind safe redundant signal.
@@ -919,6 +966,37 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
             >
               {statusShape(status)}
             </span>
+            {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
+                Bloomberg-class analyst gets trend AT A GLANCE without
+                hovering. Empty-sparkline cells get an identical-height
+                placeholder so the grid doesn't shift row-by-row. */}
+            {!compactMode && cell ? (
+              <div className="absolute inset-x-0.5 bottom-0.5 flex items-end gap-0.5 pointer-events-none">
+                <div
+                  className="flex items-end shrink-0"
+                  style={{ width: 28, height: 10 }}
+                >
+                  {cell.sparkline && cell.sparkline.length > 0 ? (
+                    <Sparkline
+                      data={cell.sparkline}
+                      status={status as SparklineStatus}
+                      width={28}
+                      height={10}
+                      ariaLabel=""
+                    />
+                  ) : null}
+                </div>
+                <span
+                  className="font-mono text-[8px] leading-none text-white/95 truncate"
+                  style={{
+                    mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
+                    textShadow: status === 'unknown' ? '0 0 2px rgba(0,0,0,0.7)' : undefined,
+                  }}
+                >
+                  {formatValueCompact(cell.value, ind.unit)}
+                </span>
+              </div>
+            ) : null}
           </div>
         </TooltipTrigger>
         <TooltipContent

@@ -538,13 +538,16 @@ function CompositeMini({ score }: { score: number | null }) {
         backgroundColor: `${tone}1A`,
         border: `1px solid ${tone}33`,
       }}
-      title={`Composite ${score}/100`}
-      aria-label={`Composite score ${score}`}
+      title={`Composite Risk ${score}/100`}
+      aria-label={`Composite risk score ${score} of 100`}
     >
       <span aria-hidden="true" className="mr-0.5 opacity-70">
         {shape}
       </span>
-      {score}
+      {/* CLI Bloomberg-sweep: "R" prefix disambiguates badge as RISK score
+          (0–100), not a count or revenue thousand. Bloomberg convention:
+          always tag scale + unit. */}
+      <span className="opacity-60 mr-px">R</span>{score}
     </span>
   );
 }

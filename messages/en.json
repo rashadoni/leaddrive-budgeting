@@ -1484,6 +1484,41 @@
     }
   },
   "terminal": {
+    "periodChips": {
+      "ariaLabel": "Period selector",
+      "annualHint": "Full year {year}",
+      "quarterHint": "Q{q} of {year}",
+      "monthHint": "Month {m} of {year}"
+    },
+    "help": {
+      "title": "Command Reference",
+      "subtitle": "Press the command, then GO (or Enter).",
+      "sectionNavigation": "Navigation",
+      "sectionAnalysis": "Analysis",
+      "sectionAlerts": "Alerts & Briefs",
+      "sectionOther": "Other",
+      "recentTitle": "Recent commands",
+      "recentEmpty": "No commands run yet — try `HOLD GO` to see the holding overview.",
+      "examplePrefix": "Example:",
+      "close": "Close",
+      "cmdHoldDesc": "Switch focus to holding-level rollup.",
+      "cmdCoDesc": "Open a specific company. Prefix with company code, e.g. `AAC CO GO`.",
+      "cmdIndDesc": "Open an indicator's drill-down. Prefix with code, e.g. `IND_GM IND GO`.",
+      "cmdAltDesc": "Show the active alert list.",
+      "cmdCmpDesc": "Compare two companies side-by-side.",
+      "cmdScnDesc": "Activate a scenario overlay (preset stress test).",
+      "cmdBrfDesc": "Open the Board Deck — narrative snapshot for executive review.",
+      "cmdAudDesc": "Show audit trail of recent mutations.",
+      "cmdActDesc": "Show open actions assigned to you.",
+      "cmdCmtDesc": "Open cell comments for the selected indicator.",
+      "cmdChtDesc": "Open a multi-period chart of the active indicator.",
+      "cmdSubDesc": "Subscribe to alerts for the active entity.",
+      "cmdIntDesc": "Open the Intel feed (market + macro context).",
+      "cmdBreachDesc": "Show predicted threshold breaches (forecast).",
+      "cmdSecDesc": "Switch focus to a sector (industry).",
+      "cmdGrpDesc": "Switch focus to a sub-group (level 1 entity).",
+      "cmdHelpDesc": "Open this command reference."
+    },
     "panels": {
       "companyTree": "Company Tree",
       "companyTreeShort": "TREE",

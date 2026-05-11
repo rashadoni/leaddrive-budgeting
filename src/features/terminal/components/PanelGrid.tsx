@@ -24,6 +24,7 @@ import { VarianceExplainerPanel } from './VarianceExplainerPanel';
 import { LayoutMenu } from './LayoutMenu';
 import { AuditModal } from './AuditModal';
 import { AuditTicker } from './AuditTicker';
+import { HelpModal } from './HelpModal';
 import { ComparePanel } from './ComparePanel';
 import { AlertsPanel } from './AlertsPanel';
 import { ScenarioPanel } from './ScenarioPanel';
@@ -257,6 +258,10 @@ export function PanelGrid() {
           fired by CommandBar's `AUD GO` dispatch + AuditTicker click.
           Renders nothing when closed; Escape / backdrop / Close all dismiss. */}
       <AuditModal />
+      {/* CLI Bloomberg-sweep — opens on `terminal:open-help` event fired
+          by CommandBar's `HELP GO` dispatch. Renders command reference +
+          recent-commands sidebar. Same dismiss pattern as AuditModal. */}
+      <HelpModal />
       {/* Phase B5 — opens on `terminal:open-compare` event fired by
           CommandBar's `CMP <LHS> <RHS> GO` dispatch. Side-by-side
           indicator view + Δ column. Same dismiss pattern as AuditModal. */}
