@@ -22,7 +22,23 @@ import {
   Text,
   View,
   StyleSheet,
+  Font,
 } from "@react-pdf/renderer";
+
+// CLI Tier 3 follow-up — Helvetica (default) lacks Cyrillic + Azerbaijani
+// extended Latin glyphs. Register Roboto (TTF served from /public/fonts/)
+// which covers Latin + Cyrillic + Latin Extended (ə, ğ, ş diacritics).
+// Without this, RU/AZ headers render as garbage like "5@8>4" instead
+// of "Период". Idempotent: react-pdf no-ops repeat registrations.
+if (typeof window !== "undefined") {
+  Font.register({
+    family: "Roboto",
+    fonts: [
+      { src: `${window.location.origin}/fonts/Roboto-Regular.ttf` },
+      { src: `${window.location.origin}/fonts/Roboto-Bold.ttf`, fontWeight: 700 },
+    ],
+  });
+}
 
 export interface MatrixCell {
   companyId: string;
@@ -178,7 +194,7 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
 };
 
 const styles = StyleSheet.create({
-  page: { fontFamily: "Helvetica", fontSize: 9, padding: 28, color: "#1f2937" },
+  page: { fontFamily: "Roboto", fontSize: 9, padding: 28, color: "#1f2937" },
   coverHeader: { fontSize: 18, fontWeight: "bold", color: "#0A0E27", marginBottom: 6 },
   coverSubtitle: { fontSize: 11, color: "#4B5563", marginBottom: 4 },
   coverGrid: { marginTop: 22, padding: 12, border: "1pt solid #E5E7EB", borderRadius: 6 },
@@ -191,27 +207,27 @@ const styles = StyleSheet.create({
   counterLabel: { fontSize: 8, marginTop: 2 },
   sectionTitle: { fontSize: 13, fontWeight: "bold", color: "#0A0E27", marginTop: 14, marginBottom: 6 },
   briefRow: { flexDirection: "row", marginBottom: 3, fontSize: 9 },
-  briefLeft: { width: 80, fontFamily: "Courier", color: "#3B82F6" },
+  briefLeft: { width: 80, fontFamily: "Roboto", color: "#3B82F6" },
   briefMid: { flex: 1, color: "#374151" },
-  briefRight: { width: 80, textAlign: "right", fontFamily: "Courier" },
+  briefRight: { width: 80, textAlign: "right", fontFamily: "Roboto" },
   matrixTable: { marginTop: 8 },
   matrixHeaderRow: { flexDirection: "row", borderBottom: "1pt solid #6B7280", paddingBottom: 2 },
-  matrixHeaderCell: { fontSize: 7, fontFamily: "Courier", color: "#6B7280", textAlign: "center" },
-  matrixCoCol: { width: 70 },
-  matrixIndCol: { flex: 1, paddingHorizontal: 1 },
-  matrixRow: { flexDirection: "row", borderBottom: "0.5pt solid #E5E7EB", paddingVertical: 1 },
-  matrixCoCell: { width: 70, fontSize: 8, fontFamily: "Courier", color: "#1f2937" },
-  matrixCell: { flex: 1, fontSize: 7, fontFamily: "Courier", textAlign: "center", paddingHorizontal: 1 },
+  matrixHeaderCell: { fontSize: 7, fontFamily: "Roboto", color: "#6B7280", textAlign: "center", paddingHorizontal: 2 },
+  matrixCoCol: { width: 90 },
+  matrixIndCol: { flex: 1, paddingHorizontal: 2, minWidth: 56 },
+  matrixRow: { flexDirection: "row", borderBottom: "0.5pt solid #E5E7EB", paddingVertical: 2 },
+  matrixCoCell: { width: 90, fontSize: 8, fontFamily: "Roboto", color: "#1f2937", paddingRight: 4 },
+  matrixCell: { flex: 1, fontSize: 7, fontFamily: "Roboto", textAlign: "center", paddingHorizontal: 2, minWidth: 56 },
   perCoBlock: { marginTop: 10, padding: 6, border: "0.5pt solid #E5E7EB", borderRadius: 3 },
   perCoTitle: { fontSize: 11, fontWeight: "bold", marginBottom: 4 },
   perCoMeta: { fontSize: 8, color: "#6B7280", marginBottom: 4 },
   perCoTableRow: { flexDirection: "row", paddingVertical: 1.5 },
-  perCoTableCellLabel: { width: 200, fontSize: 8, fontFamily: "Courier" },
-  perCoTableCellValue: { width: 90, fontSize: 8, fontFamily: "Courier", textAlign: "right" },
+  perCoTableCellLabel: { width: 200, fontSize: 8, fontFamily: "Roboto" },
+  perCoTableCellValue: { width: 90, fontSize: 8, fontFamily: "Roboto", textAlign: "right" },
   perCoTableCellStatus: { width: 60, fontSize: 8, textAlign: "center" },
   legendBlock: { marginTop: 8, padding: 6 },
   legendItem: { flexDirection: "row", marginBottom: 2, fontSize: 9 },
-  legendBadge: { width: 60, fontFamily: "Courier" },
+  legendBadge: { width: 60, fontFamily: "Roboto" },
   footer: {
     position: "absolute",
     bottom: 14,
@@ -256,8 +272,10 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
   const cellByPair = new Map(
     props.cells.map((c) => [`${c.companyId}_${c.indicatorId}`, c]),
   );
-  // For matrix grid we cap indicator count per page (~12) to keep readable.
-  const INDS_PER_PAGE = 12;
+  // For matrix grid we cap indicator count per page (~9) so each column has
+  // ~70-90pt for the code label + value (landscape A4 = ~770pt usable width
+  // minus 90pt company column).
+  const INDS_PER_PAGE = 9;
   const indicatorPages: MatrixIndicator[][] = [];
   for (let i = 0; i < props.indicators.length; i += INDS_PER_PAGE) {
     indicatorPages.push(props.indicators.slice(i, i + INDS_PER_PAGE));
@@ -358,11 +376,14 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
           <View style={styles.matrixTable}>
             <View style={styles.matrixHeaderRow}>
               <Text style={[styles.matrixHeaderCell, styles.matrixCoCol, { textAlign: "left" }]}>CO</Text>
-              {indChunk.map((ind) => (
-                <Text key={ind.id} style={[styles.matrixHeaderCell, styles.matrixIndCol]}>
-                  {ind.direction === "higher_better" ? "▲" : ind.direction === "lower_better" ? "▼" : "◆"}{ind.code.slice(0, 12)}
-                </Text>
-              ))}
+              {indChunk.map((ind) => {
+                const dir = ind.direction === "higher_better" ? "▲ " : ind.direction === "lower_better" ? "▼ " : "◆ ";
+                return (
+                  <Text key={ind.id} style={[styles.matrixHeaderCell, styles.matrixIndCol]}>
+                    {dir}{ind.code}
+                  </Text>
+                );
+              })}
             </View>
             {props.companies.map((co) => (
               <View key={co.id} style={styles.matrixRow}>

@@ -213,6 +213,21 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
       }
       return { compact, verbose };
     }
+    // CLI Tier 3 follow-up — minimal compact-summary handlers for newer
+    // AuditAction variants. JSON-preview verbose so the audit feed
+    // surfaces them without `default` exhaustiveness assertion failing.
+    case 'ai_breach_digest':
+    case 'coa_role_change':
+    case 'ai_mapper_proposal_cache_run':
+    case 'ai_mapper_template_promote':
+    case 'ai_mapper_template_apply':
+    case 'ai_token_budget_exceeded':
+    case 'intel_data_source_run':
+    case 'predictive_breach_compute': {
+      const preview = JSON.stringify(m);
+      const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
+      return { compact: e.action, verbose };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

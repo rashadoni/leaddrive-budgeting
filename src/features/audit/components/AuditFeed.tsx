@@ -29,6 +29,15 @@ const ALL_ACTIONS = [
   "period_lock_add",
   "period_lock_remove",
   "period_lock_blocked_mutation",
+  // Additions surfaced by tsc Coverage-check (CLI Tier 3 follow-up):
+  "ai_breach_digest",
+  "coa_role_change",
+  "ai_mapper_proposal_cache_run",
+  "ai_mapper_template_promote",
+  "ai_mapper_template_apply",
+  "ai_token_budget_exceeded",
+  "intel_data_source_run",
+  "predictive_breach_compute",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.
