@@ -1,4 +1,4 @@
-import { ImportWizard } from "@/features/onboarding/components/ImportWizard"
+import { OnboardingWizardSwitcher } from "@/features/onboarding/components/OnboardingWizardSwitcher"
 
 export const metadata = {
   title: "Onboarding — AI Data Mapper",
@@ -14,7 +14,7 @@ export default function OnboardingPage() {
           map to the holding chart of accounts, review and apply.
         </p>
       </header>
-      <ImportWizard />
+      <OnboardingWizardSwitcher />
     </div>
   )
 }
