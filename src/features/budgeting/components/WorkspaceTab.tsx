@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog"
@@ -329,9 +330,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   }
 
 
-  if (analyticsLoading || linesLoading) return (
-    <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-purple-500" /></div>
-  )
+  if (analyticsLoading || linesLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   // Render one grid row
   const renderRow = (line: BudgetLine) => {

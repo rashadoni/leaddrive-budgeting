@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DataBoundary } from "@/components/ui/data-boundary"
 import { AnimatedNumber } from "@/components/animated-number"
 import { ANIMATION, AXIS_TICK, fmtK } from "@/lib/budget-chart-theme"
 import {
@@ -225,9 +226,7 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
     setAddingExpense(false)
   }
 
-  if (analyticsLoading || linesLoading) return (
-    <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-purple-500" /></div>
-  )
+  if (analyticsLoading || linesLoading) return <DataBoundary loading>{null}</DataBoundary>
 
   const renderRow = (line: BudgetLine) => {
     const rowTotal = getRowTotal(line.category, line.lineType)
