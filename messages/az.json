@@ -2070,6 +2070,10 @@
       "reRunTitle": "Yeni LLM çağırışını məcburi et (kəşi keçir)",
       "askingModel": "Modela sorğu…",
       "error": "Xəta",
+      "greenNoVariance": {
+        "title": "İzah ediləcək bir şey yoxdur",
+        "body": "Bu xana yaşıl zonadadır — hədəfdən sapma yoxdur. İzahlar yalnız sarı, qırmızı və naməlum xanalar üçün mümkündür."
+      },
       "narrative": "İzah",
       "recommendations": "Tövsiyələr",
       "topDrivers": "Əsas sürücülər",

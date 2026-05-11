@@ -2070,6 +2070,10 @@
       "reRunTitle": "Force a fresh LLM call (bypasses cache)",
       "askingModel": "Asking the model…",
       "error": "Error",
+      "greenNoVariance": {
+        "title": "Nothing to explain",
+        "body": "This cell is in the green band — no variance from target. Explanations are available for amber, red, and unknown cells."
+      },
       "narrative": "Narrative",
       "recommendations": "Recommendations",
       "topDrivers": "Top drivers",

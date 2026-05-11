@@ -53,6 +53,7 @@ export function VarianceExplainerPanel() {
   const [data, setData] = useState<ExplainResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   /** Track which (ivId, language) combo `data` belongs to so swapping
    *  language doesn't render stale narrative. */
   const [stamp, setStamp] = useState<string | null>(null);
@@ -87,6 +88,7 @@ export function VarianceExplainerPanel() {
 
       setLoading(true);
       setError(null);
+      setErrorCode(null);
       try {
         const res = await fetch(
           `/api/indicators/values/${encodeURIComponent(id)}/explain`,
@@ -100,6 +102,7 @@ export function VarianceExplainerPanel() {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) {
           setError(body.error || `HTTP ${res.status}`);
+          setErrorCode(typeof body.code === "string" ? body.code : null);
           setData(null);
           return;
         }
@@ -133,6 +136,7 @@ export function VarianceExplainerPanel() {
       abortRef.current?.abort();
       setData(null);
       setError(null);
+      setErrorCode(null);
       setStamp(null);
       return;
     }
@@ -149,6 +153,7 @@ export function VarianceExplainerPanel() {
       // state until the user clicks Explain.
       setData(null);
       setError(null);
+      setErrorCode(null);
       setStamp(null);
     }
     // language intentionally NOT in deps — switching language without
@@ -344,9 +349,15 @@ export function VarianceExplainerPanel() {
       {error && (
         <div className="rounded border border-[#FF4757]/40 bg-[#FF4757]/10 px-2 py-1.5">
           <div className="text-[#FF4757] text-[10px] uppercase tracking-wider mb-0.5">
-            {t("varianceExplainer.error")}
+            {errorCode === "STATUS_NOT_EXPLAINABLE"
+              ? t("varianceExplainer.greenNoVariance.title")
+              : t("varianceExplainer.error")}
           </div>
-          <div className="text-gray-200 text-[11px]">{error}</div>
+          <div className="text-gray-200 text-[11px]">
+            {errorCode === "STATUS_NOT_EXPLAINABLE"
+              ? t("varianceExplainer.greenNoVariance.body")
+              : error}
+          </div>
         </div>
       )}
 

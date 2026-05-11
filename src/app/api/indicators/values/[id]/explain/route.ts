@@ -141,6 +141,8 @@ export async function POST(
     return NextResponse.json(
       {
         error: `Status '${iv.status}' has nothing to explain. Only amber / red / unknown rows are explainable.`,
+        code: "STATUS_NOT_EXPLAINABLE",
+        status: iv.status,
       },
       { status: 400 },
     )
