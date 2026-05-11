@@ -10,14 +10,15 @@ import { useTranslations } from "next-intl"
 interface HeaderProps {
   orgName?: string
   userName?: string
+  compact?: boolean
 }
 
-export function Header({ orgName = "BudgetPro", userName = "User" }: HeaderProps) {
+export function Header({ orgName = "BudgetPro", userName = "User", compact = false }: HeaderProps) {
   const t = useTranslations("auth")
   const { theme, setTheme } = useTheme()
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border/40 bg-card backdrop-blur-xl px-6 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+    <header className={`flex ${compact ? "h-10 px-4" : "h-14 px-6"} items-center justify-between border-b border-border/40 bg-card backdrop-blur-xl shadow-[0_1px_3px_rgba(0,0,0,0.04)]`}>
       <div className="flex items-center gap-4">
         <span className="text-sm font-semibold text-foreground">{orgName}</span>
       </div>
@@ -36,7 +37,7 @@ export function Header({ orgName = "BudgetPro", userName = "User" }: HeaderProps
         </Button>
 
         <div className="ml-2 flex items-center gap-2 border-l border-border/40 pl-4">
-          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-medium text-primary-foreground">
+          <div className={`${compact ? "h-6 w-6" : "h-8 w-8"} rounded-full bg-primary flex items-center justify-center text-xs font-medium text-primary-foreground`}>
             {userName.charAt(0).toUpperCase()}
           </div>
           <span className="text-sm font-medium hidden md:block">{userName}</span>

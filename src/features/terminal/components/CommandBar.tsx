@@ -480,7 +480,7 @@ export function CommandBar() {
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div className="flex items-center justify-between px-4 py-2 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
+    <div className="flex items-center justify-between px-4 py-1 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
       <div className="flex items-center flex-1 gap-2">
         <span className="text-gray-500 shrink-0">[cmd]</span>
         <div className="flex-1 max-w-xl relative">

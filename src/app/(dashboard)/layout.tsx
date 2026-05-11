@@ -31,6 +31,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Header
             orgName={user?.organizationName || "BudgetPro"}
             userName={user?.name || "User"}
+            compact={isFullBleed}
           />
           <main
             className={
