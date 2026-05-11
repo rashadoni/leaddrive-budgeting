@@ -1495,6 +1495,20 @@
       "label": "Market",
       "loading": "Loading quotes…"
     },
+    "benchmark": {
+      "title": "Industry peer benchmark",
+      "loading": "Computing median + quartiles…",
+      "close": "Close",
+      "you": "You",
+      "median": "Industry median",
+      "topQuartile": "Top quartile",
+      "medianLabel": "Median",
+      "topQuartileLabel": "Top 25%",
+      "rank": "Your rank",
+      "rankOf": "of",
+      "cohort": "among {sector} sector companies",
+      "insufficientPeers": "Only {count} other companies in your industry — need ≥ 3 for median + quartiles."
+    },
     "timeMachine": {
       "ariaLabel": "Time machine — scrub through months",
       "sliderLabel": "Month",
@@ -1771,6 +1785,8 @@
         "monthlySeries": "12-month history (AZN)",
         "lines": "lines"
       },
+      "benchmarkButton": "Benchmark",
+      "benchmarkTitle": "Compare to other companies in your industry (median + top-quartile)",
       "explainButton": "Explain →",
       "explainTitle": "Open AI Variance Explainer in Panel 4 + run for current cell",
       "explainGreenDisabled": "Variance explainer is for amber / red / unknown only",

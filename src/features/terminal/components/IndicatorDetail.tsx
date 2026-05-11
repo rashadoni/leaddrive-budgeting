@@ -24,6 +24,7 @@ import {
 } from "@/lib/risk/forecast";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
+import { PeerBenchmarkModal } from "./PeerBenchmarkModal";
 
 interface IndicatorMeta {
   id: string;
@@ -101,6 +102,8 @@ export function IndicatorDetail() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recomputeState, setRecomputeState] = useState<RecomputeState>({ kind: 'idle' });
+  // Phase 7.H Feature 3 — peer benchmark modal toggle.
+  const [benchmarkOpen, setBenchmarkOpen] = useState(false);
   // Bumped after a successful recompute to force the IV-fetch effect to
   // re-run (the existing dep array tracks `ivId` only; without this tick,
   // the user clicks Recompute, the API persists fresh value+sparkline,
@@ -595,7 +598,15 @@ export function IndicatorDetail() {
 
       <DrillDownSection ivId={detail.id} t={t} />
 
-      <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end">
+      <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => setBenchmarkOpen(true)}
+          className="bg-transparent border border-[#00D4AA] text-[#00D4AA] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider hover:bg-[#00D4AA]/10"
+          title={t('indicatorDetail.benchmarkTitle')}
+        >
+          {t('indicatorDetail.benchmarkButton')}
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -621,6 +632,9 @@ export function IndicatorDetail() {
           {t('indicatorDetail.explainButton')}
         </button>
       </section>
+      {benchmarkOpen && (
+        <PeerBenchmarkModal ivId={detail.id} onClose={() => setBenchmarkOpen(false)} />
+      )}
     </div>
   );
 }

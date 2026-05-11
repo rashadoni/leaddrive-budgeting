@@ -1495,6 +1495,20 @@
       "label": "Bazar",
       "loading": "Kotirovkalar yüklənir…"
     },
+    "benchmark": {
+      "title": "Sənaye üzrə müqayisə",
+      "loading": "Median və kvartillər hesablanır…",
+      "close": "Bağla",
+      "you": "Siz",
+      "median": "Sənaye medianı",
+      "topQuartile": "Top kvartil",
+      "medianLabel": "Median",
+      "topQuartileLabel": "Top 25%",
+      "rank": "Sıralamanız",
+      "rankOf": "/",
+      "cohort": "{sector} sektoru şirkətləri arasında",
+      "insufficientPeers": "Sənayənizdə yalnız {count} digər şirkət — median + kvartillər üçün ≥ 3 lazımdır."
+    },
     "timeMachine": {
       "ariaLabel": "Zaman maşını — aylar üzrə sürüşdür",
       "sliderLabel": "Ay",
@@ -1771,6 +1785,8 @@
         "monthlySeries": "12-aylıq tarix (AZN)",
         "lines": "sətir"
       },
+      "benchmarkButton": "Müqayisə",
+      "benchmarkTitle": "Sənayənizdəki digər şirkətlərlə müqayisə et (median + top-kvartil)",
       "explainButton": "İzah et →",
       "explainTitle": "Panel 4-də AI Variance Explainer aç + cari xana üçün işə sal",
       "explainGreenDisabled": "Variance explainer yalnız amber / red / unknown üçündür",

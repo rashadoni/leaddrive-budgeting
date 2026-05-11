@@ -1495,6 +1495,20 @@
       "label": "Рынок",
       "loading": "Загрузка котировок…"
     },
+    "benchmark": {
+      "title": "Сравнение с конкурентами по отрасли",
+      "loading": "Считаем медиану и квартили…",
+      "close": "Закрыть",
+      "you": "Вы",
+      "median": "Медиана отрасли",
+      "topQuartile": "Топ-25% отрасли",
+      "medianLabel": "Медиана",
+      "topQuartileLabel": "Топ-25%",
+      "rank": "Ваш ранг",
+      "rankOf": "из",
+      "cohort": "среди компаний сектора {sector}",
+      "insufficientPeers": "В вашей отрасли только {count} других компаний — нужно ≥ 3 для медианы и квартилей."
+    },
     "timeMachine": {
       "ariaLabel": "Машина времени — прокрутка по месяцам",
       "sliderLabel": "Месяц",
@@ -1771,6 +1785,8 @@
         "monthlySeries": "12-месячная история (AZN)",
         "lines": "строк"
       },
+      "benchmarkButton": "Бенчмарк",
+      "benchmarkTitle": "Сравнение с другими компаниями вашей отрасли (медиана + топ-квартиль)",
       "explainButton": "Объяснить →",
       "explainTitle": "Открыть AI Variance Explainer в Панели 4 + запустить для текущей ячейки",
       "explainGreenDisabled": "Variance explainer работает только с amber / red / unknown",
