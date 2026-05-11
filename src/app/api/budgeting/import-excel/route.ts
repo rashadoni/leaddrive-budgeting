@@ -15,6 +15,7 @@ import {
 import { deriveRoleFromCode } from "@/lib/budgeting/coa-role"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths } from "@/lib/budgeting/period-lock-http"
+import { chunkedCreateMany } from "@/lib/db/chunked-create-many"
 
 // App Router handles body parsing via request.formData() — no Pages-era
 // `config = { api: { bodyParser: false } }` needed (deprecated in Next 16).
@@ -374,7 +375,12 @@ export async function POST(req: NextRequest) {
           }
         }
         if (budgetLines.length > 0) {
-          await tx.budgetLine.createMany({ data: budgetLines, skipDuplicates: true })
+          // Phase 1.1 (Turn CXXIII) — chunked savepoints for large imports.
+          // 5000-row chunks; small payloads skip savepoint overhead.
+          await chunkedCreateMany(tx, tx.budgetLine, budgetLines, {
+            skipDuplicates: true,
+            savepointPrefix: "budgetlines",
+          })
           results.budgetLines = budgetLines.length
         }
       }
@@ -425,7 +431,10 @@ export async function POST(req: NextRequest) {
         }
       }
       if (salesData.length > 0) {
-        await tx.salesBudgetLine.createMany({ data: salesData, skipDuplicates: true })
+        await chunkedCreateMany(tx, tx.salesBudgetLine, salesData, {
+          skipDuplicates: true,
+          savepointPrefix: "salesbudget",
+        })
         results.salesBudgetLines = salesData.length
       }
 
@@ -566,7 +575,10 @@ export async function POST(req: NextRequest) {
           }
         }
         if (bsLines.length > 0) {
-          await tx.balanceSheetLine.createMany({ data: bsLines, skipDuplicates: true })
+          await chunkedCreateMany(tx, tx.balanceSheetLine, bsLines, {
+            skipDuplicates: true,
+            savepointPrefix: "balancesheet",
+          })
           results.balanceSheetLines = bsLines.length
         }
       }
@@ -634,7 +646,10 @@ export async function POST(req: NextRequest) {
         }
         const cogsAggData = [...cogsAgg.values()]
         if (cogsAggData.length > 0) {
-          await tx.cOGSBudgetLine.createMany({ data: cogsAggData, skipDuplicates: true })
+          await chunkedCreateMany(tx, tx.cOGSBudgetLine, cogsAggData, {
+            skipDuplicates: true,
+            savepointPrefix: "cogsbudget",
+          })
           results.cogsLines = cogsAggData.length
         }
       }
@@ -764,7 +779,10 @@ export async function POST(req: NextRequest) {
       }
 
       if (detailRows.length > 0) {
-        await tx.cOGSCostDetail.createMany({ data: detailRows, skipDuplicates: true })
+        await chunkedCreateMany(tx, tx.cOGSCostDetail, detailRows, {
+          skipDuplicates: true,
+          savepointPrefix: "cogsdetail",
+        })
         results.cogsCostDetails = detailRows.length
       }
 

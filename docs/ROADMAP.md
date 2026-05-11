@@ -46,7 +46,7 @@ Main pain points that drive the roadmap:
 
 ### 1.1 Transaction-wrapped import
 - ✅ Wrap `import-excel/route.ts` in `prisma.$transaction([...])`
-- ⬜ Split into chunks with savepoints every 5000 rows
+- ✅ Split into chunks with savepoints every 5000 rows (Turn CXXIII, 2026-05-11; new `src/lib/db/chunked-create-many.ts` reusable helper with PostgreSQL SAVEPOINTs per chunk + small-payload fast path skipping savepoint overhead when `data.length ≤ chunkSize`. Applied to 5 createMany call sites in `import-excel/route.ts`: budgetLines / salesBudgetLines / balanceSheetLines / cogsBudgetLines / cogsCostDetails. 12 unit tests cover empty/below-chunkSize/above-chunkSize/custom-size/throw-rollback/skipDuplicates passthrough/savepoint-injection-guard.)
 - ✅ On failure: full rollback, no half-imported state
 
 ### 1.2 Error reporting in UI
