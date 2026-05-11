@@ -18,6 +18,10 @@ const FILES = [
   { f: "/Users/rashadrahimov/Documents/budgets azmade/rev8 - 2026 Budget - ZTP.xlsx", co: "ZTP-MAIN", sofp: "SOFP", cfs: "CFS" },
   { f: "/Users/rashadrahimov/Documents/budgets azmade/rev 9 - 2026 Budget - ATL.xlsx", co: "ATL-MRKZ", sofp: "SOFP", cfs: "CFS" },
   { f: "/Users/rashadrahimov/Downloads/2026 Budget - AAC.xlsx", co: "AAC-MAIN", sofp: "BS", cfs: "CF" },
+  // Per-entity ATL probes intentionally omitted — drill-down deferred until
+  // BalanceSheetLine + CashFlowEntry get a companyId field. Smoke confirmed
+  // earlier that parser PARSES per-entity sheets fine (46/50/48 BS lines for
+  // DBZ/PMZ/TAZ) — rejection is at the persistence layer, not the parser.
 ]
 
 // Mirror real parser: aliases include Turkish-İ form so both sides of the

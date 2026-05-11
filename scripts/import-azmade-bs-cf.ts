@@ -47,10 +47,11 @@ const JOBS: BsCfJob[] = [
   { file: "rev6 - 2026 Budget - LLS.xlsx", sofpSheet: "SOFP", cfsSheet: "CFS", companyCode: "LLS-MAIN", year: 2026 },
   { file: "rev7 - 2026 Budget - -SPARK.xlsx", sofpSheet: "SOFP", cfsSheet: "CFS", companyCode: "SPARK-MAIN", year: 2026 },
   { file: "rev8 - 2026 Budget - ZTP.xlsx", sofpSheet: "SOFP", cfsSheet: "CFS", companyCode: "ZTP-MAIN", year: 2026 },
-  // For ATL — the workbook has consolidated SOFP + CFS at top, plus per-
-  // entity P-F (Plan-Fact) sheets. The consolidated SOFP/CFS aggregate
-  // all 4 ATL entities, so we attribute them to ATL-MRKZ as the "central"
-  // entity. Per-entity BS/CF would need separate sheet adapters; deferred.
+  // ATL: only consolidated SOFP/CFS (attributed to ATL-MRKZ as central
+  // entity) — per-entity DBZ/PMZ/TAZ drill-down deferred until
+  // BalanceSheetLine + CashFlowEntry schemas gain a `companyId` field
+  // (current schema is org-wide → per-entity rows would visually mix
+  // and accountCode dedup wouldn't disambiguate cleanly).
   { file: "rev 9 - 2026 Budget - ATL.xlsx", sofpSheet: "SOFP", cfsSheet: "CFS", companyCode: "ATL-MRKZ", year: 2026 },
   // AAC — uses `BS` + `CF` sheet names (not SOFP/CFS). KNOWN LIMITATION:
   // AAC BS uses Excel date serials as headers (45657/46053/...) instead of
@@ -137,28 +138,41 @@ async function processBsForJob(job: BsCfJob, refs: ResolvedRefs, fullPath: strin
     return { inserted: 0, deleted: 0, warnings: parsed.warnings.length }
   }
 
+  // CXXXVIII fix: prefix accountCode with companyCode so each company's BS
+  // rows coexist in the org-wide table (BalanceSheetLine has no companyId
+  // discriminator). Without this, sequential job runs would all delete each
+  // other's rows on every job. Format: `BS-<COMPANY>-<slug>` (e.g.
+  // `BS-LLS-MAIN-pul-ve-pul-vesaiti`). UI sorts by accountCode so rows from
+  // the same company stay grouped.
+  const codePrefix = `BS-${job.companyCode}-`
   const result = await prisma.$transaction(async (tx) => {
     const coaCache = new Map<string, string>()
-    // Replace prior BS rows for this (planId, year) atomically
+    // Scoped delete: only THIS company's BS rows for this plan+year
     const del = await tx.balanceSheetLine.deleteMany({
-      where: { planId: refs.planId, year: job.year },
+      where: {
+        planId: refs.planId,
+        year: job.year,
+        accountCode: { startsWith: codePrefix },
+      },
     })
     const rows: Prisma.BalanceSheetLineCreateManyInput[] = []
     for (const line of parsed.lines) {
+      // Original parser code is `BS-<slug>`; rewrite as `BS-<company>-<slug>`
+      const scopedCode = codePrefix + line.code.replace(/^BS-/, "")
       const accountId = await ensureChartOfAccountTx(
         tx,
         refs.orgId,
-        line.code,
-        line.label,
-        line.lineType, // "asset" | "liability" | "equity"
+        scopedCode,
+        `${job.companyCode}: ${line.label}`,
+        line.lineType,
         coaCache,
       )
       for (let m = 0; m < 12; m++) {
         rows.push({
           organizationId: refs.orgId,
           planId: refs.planId,
-          accountCode: line.code,
-          accountName: line.label,
+          accountCode: scopedCode,
+          accountName: line.label, // raw AZ label without company prefix (UI shows code separately)
           accountId,
           lineType: line.lineType,
           subType: line.subType ?? null,
@@ -186,12 +200,19 @@ async function processCfForJob(job: BsCfJob, refs: ResolvedRefs, fullPath: strin
     return { inserted: 0, deleted: 0, warnings: parsed.warnings.length }
   }
 
+  // CXXXVIII fix: scope delete to THIS company via sourceId prefix so
+  // sequential job runs don't wipe each other. sourceId format:
+  // `<companyId>:<code>:<month>`. Replaces prior `WHERE org+year+source` which
+  // wiped across all companies.
+  const sourceIdPrefix = `${refs.companyId}:`
   const result = await prisma.$transaction(async (tx) => {
-    // Replace prior CF entries for this (orgId, year) imported from xlsx
-    // Use source="xlsx_import" to distinguish from "plan" (synthetic) /
-    // "budget_line" (Generate from Budget) / "manual" / "invoice".
     const del = await tx.cashFlowEntry.deleteMany({
-      where: { organizationId: refs.orgId, year: job.year, source: "xlsx_import" },
+      where: {
+        organizationId: refs.orgId,
+        year: job.year,
+        source: "xlsx_import",
+        sourceId: { startsWith: sourceIdPrefix },
+      },
     })
     const rows: Prisma.CashFlowEntryCreateManyInput[] = []
     for (const entry of parsed.entries) {
@@ -204,12 +225,12 @@ async function processCfForJob(job: BsCfJob, refs: ResolvedRefs, fullPath: strin
           month: m + 1,
           entryType: entry.entryType,
           source: "xlsx_import",
-          sourceId: `${refs.companyId}:${entry.code}:${m + 1}`,
+          sourceId: `${sourceIdPrefix}${entry.code}:${m + 1}`,
           amount,
           currencyCode: refs.baseCurrencyCode,
-          description: entry.label,
+          description: `${job.companyCode}: ${entry.label}`,
           activityType: entry.activityType === "opening_balance" ? "operating" : entry.activityType,
-          category: entry.label,
+          category: `${job.companyCode}: ${entry.label}`,
           isProjected: true,
         })
       }
