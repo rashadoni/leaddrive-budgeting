@@ -43,6 +43,9 @@ type CompanyRow = {
   industry: string;
   /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
   isSubgroup?: boolean;
+  /** CLI follow-up — surfaces hierarchy so CompanyTree can derive parent
+   *  composite from children's averages. Null for root-level entities. */
+  parentCompanyId?: string | null;
 };
 type IndicatorCol = {
   id: string;

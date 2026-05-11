@@ -93,6 +93,12 @@ export async function GET(request: NextRequest) {
           // don't false-red the holding view.
           role: true,
           sortOrder: true,
+          // CLI follow-up — surface parentCompanyId so the CompanyTree can
+          // derive composite scores for sub-groups + holding umbrella from
+          // their children's averages (otherwise level=1 nodes show "—"
+          // because they only carry rollup indicators which composite-score
+          // intentionally filters out).
+          parentCompanyId: true,
         },
         orderBy: { sortOrder: 'asc' },
       }),
@@ -212,6 +218,9 @@ export async function GET(request: NextRequest) {
       // view that includes admin entities greyed-out — keeping the field
       // here means that change is one-line on the server.
       role: c.role,
+      // CLI follow-up — needed by CompanyTree to derive parent composite
+      // from children's averages.
+      parentCompanyId: c.parentCompanyId ?? null,
     }));
 
     const cells = values
@@ -273,6 +282,7 @@ export async function GET(request: NextRequest) {
       name: sg.name,
       industry: sg.industry,
       role: sg.role,
+      parentCompanyId: sg.parentCompanyId ?? null,
       isSubgroup: true,
     }));
 
