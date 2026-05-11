@@ -64,7 +64,27 @@ interface AnalyzeMultiResponse {
   perSheet: PerSheetResult[]
 }
 
-type WizardStep = "select" | "analyzed"
+/** Phase 7.G Turn CXIII (slice 2) — apply-multi response shape mirrors
+ *  the route's serialized payload (CX+CXI). Recompute + auditStale flags
+ *  surface staleness without aborting the response. */
+interface ApplyMultiResponse {
+  stagingId: string
+  status: "applied"
+  year: number
+  inserted: number
+  deleted: number
+  successCount: number
+  failureCount: number
+  perSheet: Array<
+    | { sheetName: string; inserted: number; warnings: number; parentRollupsDropped: number; parentRollupsUnallocated: number }
+    | { sheetName: string; error: string }
+  >
+  recompute: { ok: number; unknown: number; failed: number; targets: number }
+  indicatorsStale: boolean
+  auditStale: boolean
+}
+
+type WizardStep = "select" | "analyzed" | "applied"
 
 const INDUSTRIES_FALLBACK = [
   "agro_crops",
@@ -100,6 +120,15 @@ export function ImportWizardMulti() {
 
   // Step-2 result
   const [analyzeResult, setAnalyzeResult] = useState<AnalyzeMultiResponse | null>(null)
+
+  // Step-3 (apply) state — Phase 7.G Turn CXIII (slice 2)
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [applyResult, setApplyResult] = useState<ApplyMultiResponse | null>(null)
+  // Set when apply hits 410/409 (staging row in terminal state — expired,
+  // discarded, already-applied). Cached analyze result is stale; user must
+  // restart from select. Mirrors single-sheet wizard's stagingTerminal flag.
+  const [stagingTerminal, setStagingTerminal] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -173,11 +202,45 @@ export function ImportWizardMulti() {
     }
   }
 
+  async function handleApply() {
+    if (!analyzeResult || !file) return
+    setApplyError(null)
+    setApplying(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch(
+        `/api/onboarding/import/staging/${encodeURIComponent(analyzeResult.stagingId)}/apply-multi`,
+        { method: "POST", body: form },
+      )
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // 410 / 409 = staging row in terminal state (expired / discarded /
+        // already applied). Cached analyzeResult is stale — user must restart
+        // from step 1. Same semantic as single-sheet wizard's stagingTerminal.
+        if (res.status === 410 || res.status === 409) {
+          setStagingTerminal(true)
+        }
+        setApplyError(body.error || `HTTP ${res.status}`)
+        return
+      }
+      setApplyResult(body as ApplyMultiResponse)
+      setStep("applied")
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setApplying(false)
+    }
+  }
+
   function resetWizard() {
     setStep("select")
     setAnalyzeResult(null)
     setAnalyzeError(null)
     setFile(null)
+    setApplyResult(null)
+    setApplyError(null)
+    setStagingTerminal(false)
   }
 
   return (
@@ -358,12 +421,135 @@ export function ImportWizardMulti() {
             >
               Start over
             </button>
-            <p className="text-xs text-muted-foreground">
-              Apply flow ships in slice 2 — for now, the staging row is persisted; rerun
-              <code className="mx-1">/api/onboarding/import/staging/{analyzeResult.stagingId}/apply-multi</code>
-              manually to commit.
+            {!stagingTerminal && analyzeResult.successCount > 0 && (
+              <button
+                type="button"
+                onClick={handleApply}
+                disabled={applying}
+                data-testid="apply-submit"
+                className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-4 py-1.5 text-sm hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {applying ? "Applying…" : `Apply ${analyzeResult.successCount} sheet${analyzeResult.successCount === 1 ? "" : "s"}`}
+              </button>
+            )}
+          </div>
+
+          {applyError && (
+            <p
+              role="alert"
+              className="text-sm text-[#FF4757]"
+              data-testid="apply-error"
+            >
+              {applyError}
+              {stagingTerminal && (
+                <>
+                  {" — "}
+                  <button
+                    type="button"
+                    onClick={resetWizard}
+                    data-testid="restart-after-terminal"
+                    className="underline text-xs"
+                  >
+                    Restart from step 1
+                  </button>
+                </>
+              )}
+            </p>
+          )}
+        </section>
+      )}
+
+      {step === "applied" && applyResult && (
+        <section className="space-y-4" data-testid="applied-results">
+          <div className="rounded border border-emerald-500/40 bg-emerald-500/5 p-4">
+            <p className="text-xs uppercase tracking-wider text-emerald-400">
+              Imported successfully
+            </p>
+            <p className="mt-1 text-sm">
+              <span className="font-mono font-semibold">{applyResult.inserted}</span>{" "}
+              budget lines inserted ·{" "}
+              <span className="font-mono font-semibold">{applyResult.deleted}</span> prior
+              deleted · year{" "}
+              <span className="font-mono font-semibold">{applyResult.year}</span> ·{" "}
+              <span className="font-mono font-semibold">{applyResult.successCount}</span>/
+              {applyResult.successCount + applyResult.failureCount} sheets applied
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Recompute: {applyResult.recompute.ok} ok · {applyResult.recompute.unknown}{" "}
+              unknown · {applyResult.recompute.failed} failed (of{" "}
+              {applyResult.recompute.targets} targets)
             </p>
           </div>
+
+          {applyResult.indicatorsStale && (
+            <p
+              role="alert"
+              className="rounded border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-300"
+              data-testid="indicators-stale-warning"
+            >
+              ⚠ One or more indicators failed to recompute — Risk Terminal matrix may be
+              stale until you re-run recompute manually.
+            </p>
+          )}
+
+          {applyResult.auditStale && (
+            <p
+              role="alert"
+              className="rounded border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-300"
+              data-testid="audit-stale-warning"
+            >
+              ⚠ Audit row for this import did not persist — compliance trail incomplete.
+              Notify ops to investigate.
+            </p>
+          )}
+
+          <div className="space-y-2" data-testid="applied-per-sheet-list">
+            {applyResult.perSheet.map((r) => {
+              const isErr = "error" in r
+              return (
+                <div
+                  key={r.sheetName}
+                  className={`rounded border p-3 text-sm ${
+                    isErr
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-emerald-500/40 bg-emerald-500/5"
+                  }`}
+                  data-testid={`applied-sheet-row-${r.sheetName}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-mono uppercase ${
+                        isErr
+                          ? "bg-[#FF4757]/15 text-[#FF4757]"
+                          : "bg-emerald-500/15 text-emerald-400"
+                      }`}
+                    >
+                      {isErr ? "ERROR" : "OK"}
+                    </span>
+                    <span className="font-mono font-medium">{r.sheetName}</span>
+                  </div>
+                  {isErr ? (
+                    <p className="mt-1 text-xs text-[#FF4757]">{r.error}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {r.inserted} lines · {r.warnings} warning(s) ·{" "}
+                      {r.parentRollupsDropped} rollups dropped ·{" "}
+                      {r.parentRollupsUnallocated} unallocated
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={resetWizard}
+            data-testid="another-import"
+            className="rounded border border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-800"
+          >
+            Import another workbook
+          </button>
         </section>
       )}
     </div>

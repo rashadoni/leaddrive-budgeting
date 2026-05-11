@@ -104,11 +104,41 @@ const ANALYZE_MULTI_RESPONSE_MIXED = {
   ],
 }
 
+const APPLY_MULTI_RESPONSE_OK = {
+  stagingId: "staging_multi_123",
+  status: "applied" as const,
+  year: 2026,
+  inserted: 3,
+  deleted: 0,
+  successCount: 2,
+  failureCount: 0,
+  perSheet: [
+    {
+      sheetName: "P&L",
+      inserted: 2,
+      warnings: 0,
+      parentRollupsDropped: 0,
+      parentRollupsUnallocated: 0,
+    },
+    {
+      sheetName: "BS",
+      inserted: 1,
+      warnings: 1,
+      parentRollupsDropped: 2,
+      parentRollupsUnallocated: 0,
+    },
+  ],
+  recompute: { ok: 5, unknown: 1, failed: 0, targets: 6 },
+  indicatorsStale: false,
+  auditStale: false,
+}
+
 type RouteHandler = (init: RequestInit | undefined) => Promise<Response> | Response
 
 interface RouteOverrides {
   companies?: RouteHandler
   analyzeMulti?: RouteHandler
+  applyMulti?: RouteHandler
 }
 
 function installFetchMock(overrides: RouteOverrides = {}): void {
@@ -124,6 +154,13 @@ function installFetchMock(overrides: RouteOverrides = {}): void {
     if (u === "/api/onboarding/import/analyze-multi") {
       if (overrides.analyzeMulti) return overrides.analyzeMulti(init)
       return new Response(JSON.stringify(ANALYZE_MULTI_RESPONSE_OK), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    }
+    if (u.startsWith("/api/onboarding/import/staging/") && u.endsWith("/apply-multi")) {
+      if (overrides.applyMulti) return overrides.applyMulti(init)
+      return new Response(JSON.stringify(APPLY_MULTI_RESPONSE_OK), {
         status: 200,
         headers: { "content-type": "application/json" },
       })
@@ -352,5 +389,148 @@ describe("ImportWizardMulti — analyzed step rendering", () => {
     fireEvent.click(screen.getByTestId("restart"))
     await waitFor(() => expect(screen.queryByTestId("analyzed-results")).toBeNull())
     expect(screen.getByTestId("select-form")).toBeTruthy()
+  })
+})
+
+// Phase 7.G Turn CXIII (slice 2) — apply-multi flow
+describe("ImportWizardMulti — apply-multi flow (slice 2)", () => {
+  /** Run select → analyze pipeline so the apply button is reachable. */
+  async function reachAnalyzedStep(extraOverrides: RouteOverrides = {}) {
+    installFetchMock(extraOverrides)
+    render(<ImportWizardMulti />)
+    await waitFor(() => expect(screen.queryByTestId("companies-loading")).toBeNull())
+    fireEvent.change(screen.getByTestId("company-select"), {
+      target: { value: "co_op_a" },
+    })
+    fireEvent.change(screen.getByTestId("file-input"), {
+      target: { files: [makeXlsxFile()] },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("analyze-submit"))
+    })
+    await waitFor(() => expect(screen.getByTestId("analyzed-results")).toBeTruthy())
+  }
+
+  it("Apply button NOT rendered when successCount=0 (nothing to apply)", async () => {
+    const ALL_FAIL = {
+      stagingId: "staging_x",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      successCount: 0,
+      failureCount: 2,
+      perSheet: [
+        { sheetName: "P&L", error: "extract failed" },
+        { sheetName: "BS", error: "extract failed" },
+      ],
+    }
+    await reachAnalyzedStep({
+      analyzeMulti: () =>
+        new Response(JSON.stringify(ALL_FAIL), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    })
+    expect(screen.queryByTestId("apply-submit")).toBeNull()
+    // restart button still visible
+    expect(screen.getByTestId("restart")).toBeTruthy()
+  })
+
+  it("happy path: clicks Apply → POST apply-multi → transitions to 'applied' step with stats", async () => {
+    let capturedForm: FormData | null = null
+    let capturedUrl: string | null = null
+    await reachAnalyzedStep({
+      applyMulti: async (init) => {
+        capturedForm = init?.body as FormData
+        return new Response(JSON.stringify(APPLY_MULTI_RESPONSE_OK), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })
+      },
+    })
+    // Re-install fetch mock to capture the apply-multi URL string
+    const originalFetch = global.fetch
+    global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url)
+      capturedUrl = u
+      capturedForm = init?.body as FormData
+      return originalFetch(url, init)
+    }) as never
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("apply-submit"))
+    })
+    await waitFor(() => expect(screen.getByTestId("applied-results")).toBeTruthy())
+
+    // URL targets apply-multi for the right stagingId
+    expect(capturedUrl).toContain("/api/onboarding/import/staging/")
+    expect(capturedUrl).toContain("/apply-multi")
+    expect(capturedForm).not.toBeNull()
+    expect(capturedForm!.get("file")).toBeInstanceOf(File)
+
+    // Summary panel renders inserted + year + per-sheet count
+    const summary = screen.getByTestId("applied-results")
+    expect(summary.textContent).toContain("3") // inserted
+    expect(summary.textContent).toContain("2026") // year
+    expect(summary.textContent).toContain("Recompute")
+  })
+
+  it("apply 410 → renders staging-terminal error + Restart link", async () => {
+    await reachAnalyzedStep({
+      applyMulti: () =>
+        new Response(JSON.stringify({ error: "Staging proposal has expired" }), {
+          status: 410,
+          headers: { "content-type": "application/json" },
+        }),
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("apply-submit"))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId("apply-error")).toBeTruthy()
+    })
+    // Apply button hidden (stagingTerminal=true gate); Restart link shown
+    expect(screen.queryByTestId("apply-submit")).toBeNull()
+    const restartAfter = screen.getByTestId("restart-after-terminal")
+    expect(restartAfter).toBeTruthy()
+    fireEvent.click(restartAfter)
+    await waitFor(() => expect(screen.queryByTestId("apply-error")).toBeNull())
+    expect(screen.getByTestId("select-form")).toBeTruthy()
+  })
+
+  it("indicatorsStale=true → renders warning banner", async () => {
+    await reachAnalyzedStep({
+      applyMulti: () =>
+        new Response(
+          JSON.stringify({
+            ...APPLY_MULTI_RESPONSE_OK,
+            recompute: { ok: 4, unknown: 1, failed: 2, targets: 7 },
+            indicatorsStale: true,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("apply-submit"))
+    })
+    await waitFor(() => expect(screen.getByTestId("applied-results")).toBeTruthy())
+    expect(screen.getByTestId("indicators-stale-warning")).toBeTruthy()
+    // No audit-stale warning when audit succeeded
+    expect(screen.queryByTestId("audit-stale-warning")).toBeNull()
+  })
+
+  it("auditStale=true → renders audit-stale warning banner", async () => {
+    await reachAnalyzedStep({
+      applyMulti: () =>
+        new Response(
+          JSON.stringify({ ...APPLY_MULTI_RESPONSE_OK, auditStale: true }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("apply-submit"))
+    })
+    await waitFor(() => expect(screen.getByTestId("applied-results")).toBeTruthy())
+    expect(screen.getByTestId("audit-stale-warning")).toBeTruthy()
+    // No indicators-stale when recompute clean
+    expect(screen.queryByTestId("indicators-stale-warning")).toBeNull()
   })
 })
