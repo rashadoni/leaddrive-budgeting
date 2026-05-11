@@ -1954,6 +1954,14 @@ export async function recomputeIndicator(
      * worker remains the canonical refresher for bulk paths.
      */
     withSparkline?: boolean;
+    /**
+     * CXLVIII — the operating company's base currency, threaded into the
+     * budgetLine resolver so BudgetLines tagged with `currencyCode ==
+     * baseCurrency` are NOT treated as foreign (would otherwise be skipped
+     * if no `exchangeRate` is set). Undefined falls back to 'AZN' in
+     * buildContext (FO Holding default; safe for the single-tenant case).
+     */
+    baseCurrency?: string;
   },
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
@@ -1963,6 +1971,7 @@ export async function recomputeIndicator(
     companyId: args.companyId,
     period,
     requiredInputs: args.definition.requiredInputs,
+    baseCurrency: args.baseCurrency,
   });
 
   const result = tryEvaluateFormula(

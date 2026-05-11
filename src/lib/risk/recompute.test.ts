@@ -581,6 +581,55 @@ describe('buildContext — budgetLine namespace', () => {
     expect(context.imported_input_cost).toBe(0);
   });
 
+  it('CXLVIII regression — currencyCode === baseCurrency treated as base (NOT foreign-no-rate)', async () => {
+    // Pre-fix: imports stamped every line with currencyCode='AZN' + no rate,
+    // and the resolver skipped them ALL as "foreign without rate" — zeroing
+    // 100% of revenue/cogs/opex. Guard: when currencyCode equals baseCurrency
+    // (default 'AZN'), the line is treated as base regardless of rate.
+    const ds = mockDs({
+      budgetLines: [
+        // All 3 lines stamped with base currency, no rate — should NOT be skipped.
+        bl({ plannedAmount: 1000, currencyCode: 'AZN', exchangeRate: null, accountType: 'revenue' }),
+        bl({ plannedAmount: 400,  currencyCode: 'AZN', exchangeRate: null, accountType: 'cogs' }),
+        bl({ plannedAmount: 200,  currencyCode: 'AZN', exchangeRate: null, accountType: 'expense' }),
+      ],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine'],
+    });
+    // Resolves identically to currencyCode=null case (line 479 test above).
+    expect(context.revenue).toBe(1000);
+    expect(context.cogs).toBe(400);
+    expect(context.opex).toBe(200);
+    expect(context.gross_profit).toBe(600);
+    expect(inputs.aggregates.budget_line?.missing_rate_count).toBe(0); // not skipped!
+    // And imported_input_cost stays 0 — base currency lines are NOT imported.
+    expect(context.imported_input_cost).toBe(0);
+    expect(context.domestic_input_cost).toBe(400);
+  });
+
+  it('CXLVIII regression — non-base currencyCode without rate still SKIPS', async () => {
+    // Belt-and-braces — the base-currency guard must not weaken the strict
+    // foreign-no-rate skip. A USD/EUR/etc. line without exchangeRate stays
+    // excluded (would silently inflate denominators at 1:1).
+    const ds = mockDs({
+      budgetLines: [
+        bl({ plannedAmount: 100, currencyCode: 'USD', exchangeRate: null, accountType: 'cogs' }),
+        bl({ plannedAmount: 200, currencyCode: 'AZN', exchangeRate: null, accountType: 'cogs' }),
+      ],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026'),
+      requiredInputs: ['budgetLine'],
+    });
+    // USD/no-rate skipped, AZN included.
+    expect(context.cogs).toBe(200);
+    expect(inputs.aggregates.budget_line?.missing_rate_count).toBe(1);
+  });
+
   it('threads the year from the period into the DS read', async () => {
     const ds = mockDs({ budgetLines: [] });
     await buildContext(ds, {

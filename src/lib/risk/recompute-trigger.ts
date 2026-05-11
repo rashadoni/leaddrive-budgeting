@@ -158,6 +158,11 @@ export async function runRecomputeForCompanies(
       level: true,
       isActive: true,
       role: true,
+      // CXLVIII guard — used to determine whether a BudgetLine tagged with a
+      // currencyCode equals the company's base (no FX conversion) or is
+      // genuinely foreign (rate required). Null falls back to 'AZN' at the
+      // resolver's argument default.
+      baseCurrencyCode: true,
     },
   });
   const operational = filterOperationalCompanies(companies);
@@ -261,6 +266,7 @@ export async function runRecomputeForCompanies(
         level: true,
         isActive: true,
         role: true,
+        baseCurrencyCode: true,
       },
     });
     parentCompanies = filterRollupParentCompanies(parents);
@@ -347,6 +353,7 @@ export async function runRecomputeForCompanies(
           companyId: company.id,
           definition: defLike,
           period,
+          baseCurrency: company.baseCurrencyCode ?? undefined,
         });
         if (result.status === 'unknown') unknown += 1;
         else ok += 1;
