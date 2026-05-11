@@ -1706,7 +1706,14 @@
       "moversTitle": "Топ-3 движений (тренд 12 мес.)",
       "alertsTitle": "Активные алёрты",
       "empty": "(нет данных)",
-      "footerHint": "Клик по строке → drill-down. Клик по ячейке HeatMap заменит этот вид."
+      "footerHint": "Клик по строке → drill-down. Клик по ячейке HeatMap заменит этот вид.",
+      "newsHeader": "Новости холдинга",
+      "newsLoading": "AI готовит сводку…",
+      "newsEmpty": "Свежих новостей нет — запустите AI-крауллер через админку.",
+      "newsRefresh": "Обновить сводку",
+      "newsCached": "из кэша",
+      "newsFresh": "свежий ответ",
+      "newsItems": "источников"
     },
     "heatMap": {
       "filterRowsPlaceholder": "фильтр строк…",

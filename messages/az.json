@@ -1706,7 +1706,14 @@
       "moversTitle": "Top 3 dəyişən (12 ay trend)",
       "alertsTitle": "Aktiv xəbərdarlıqlar",
       "empty": "(məlumat yox)",
-      "footerHint": "Sətirə klik → ətraflı. HeatMap hüceyrəsinə klik bu görünüşü əvəz edəcək."
+      "footerHint": "Sətirə klik → ətraflı. HeatMap hüceyrəsinə klik bu görünüşü əvəz edəcək.",
+      "newsHeader": "Holdinq xəbərləri",
+      "newsLoading": "AI icmal hazırlayır…",
+      "newsEmpty": "Təzə xəbər yoxdur — admin panelindən AI Crawler işə salın.",
+      "newsRefresh": "İcmalı yenilə",
+      "newsCached": "keş",
+      "newsFresh": "təzə cavab",
+      "newsItems": "mənbə"
     },
     "heatMap": {
       "filterRowsPlaceholder": "sətr filtri…",

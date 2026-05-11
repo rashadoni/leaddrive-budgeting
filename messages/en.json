@@ -1706,7 +1706,14 @@
       "moversTitle": "Top 3 movers (12-mo trend)",
       "alertsTitle": "Active alerts",
       "empty": "(no data)",
-      "footerHint": "Click any row → drill-down. Click a HeatMap cell to swap this view."
+      "footerHint": "Click any row → drill-down. Click a HeatMap cell to swap this view.",
+      "newsHeader": "Holding news",
+      "newsLoading": "AI preparing summary…",
+      "newsEmpty": "No fresh news — run the AI Crawler from admin.",
+      "newsRefresh": "Refresh summary",
+      "newsCached": "from cache",
+      "newsFresh": "fresh response",
+      "newsItems": "sources"
     },
     "heatMap": {
       "filterRowsPlaceholder": "filter rows…",

@@ -25,6 +25,7 @@ import { useTranslations } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
+import { NewsSummarySection } from "./NewsSummarySection";
 
 interface MoverEntry {
   companyCode: string;
@@ -258,6 +259,8 @@ export function TodayBrief() {
           </ul>
         )}
       </section>
+
+      <NewsSummarySection />
 
       <footer className="text-[9px] text-gray-700 pt-1 border-t border-gray-800">
         {t("todayBrief.footerHint")}

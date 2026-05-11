@@ -228,7 +228,8 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'user_role_change':
     case 'user_create':
     case 'user_password_reset':
-    case 'user_active_toggle': {
+    case 'user_active_toggle':
+    case 'ai_news_summary_run': {
       const preview = JSON.stringify(m);
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };

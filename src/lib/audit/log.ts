@@ -415,6 +415,21 @@ export type AuditEventInput =
         from: boolean;
         to: boolean;
       };
+    }
+  | {
+      // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call.
+      // entityType=Organization since the summary is org-wide, not tied
+      // to any single IndicatorValue.
+      action: 'ai_news_summary_run';
+      entityType: 'Organization';
+      entityId: string;
+      metadata: {
+        language: 'en' | 'ru' | 'az';
+        itemsConsumed: number;
+        bulletsProduced: number;
+        fromCache: boolean;
+        usage?: { inputTokens: number; outputTokens: number };
+      };
     };
 
 /**
