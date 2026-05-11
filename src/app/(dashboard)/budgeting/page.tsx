@@ -134,6 +134,20 @@ function periodLabel(plan: any, t: (key: string) => string): string {
 
 // ─── TemplateSeedButton — extracted to ./components/TemplateSeedButton.tsx (Turn LXXXX)
 
+// CXL: tabs whose underlying data table has a `companyId` column AND whose
+// component already propagates the prop. Other tabs (sales-budget / cogs /
+// balance-sheet / cash-flow / assumptions / variance / comparison /
+// sales-forecast / expense-forecast / rolling) back schema rows that lack a
+// per-company discriminator → dropdown is hidden so the user doesn't get a
+// false "switching has no effect" UX. Adding companyId to remaining schemas
+// is a separate roadmap item (multi-table migration).
+const COMPANY_FILTERED_TABS: ReadonlySet<string> = new Set([
+  "pnl-report",
+  "workspace",
+  "pl",
+  "forecast",
+])
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BudgetingPage() {
@@ -224,8 +238,14 @@ export default function BudgetingPage() {
           ) : null}
           {/* Turn 30: per-daughter-company drilldown selector. Org-wide default;
               level-1 sub-groups indented with — prefix; level-2 ops indented
-              with —— prefix. Selecting a sub-group rolls up its children. */}
-          {companies.length > 0 && (
+              with —— prefix. Selecting a sub-group rolls up its children.
+              CXL: hide on tabs that DON'T propagate companyId to their data
+              query — current schema-supported tabs are pnl-report / workspace
+              / pl / forecast (all use BudgetLine which has companyId). Other
+              tabs back tables (sales_budget_lines / cash_flow_entries /
+              balance_sheet_lines / etc.) that lack a companyId column —
+              schema migration required to extend filtering. */}
+          {companies.length > 0 && COMPANY_FILTERED_TABS.has(activeTab) && (
             <select
               value={selectedCompanyId ?? ""}
               onChange={(e) => setSelectedCompanyId(e.target.value || null)}
