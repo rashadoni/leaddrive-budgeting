@@ -84,10 +84,10 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     render(<CompanyTree companies={COMPANIES} />);
     // All 5 codes (3 leaves + 2 sub-group headers) visible
     expect(screen.queryByText("AAC")).toBeTruthy();
-    expect(screen.queryByText("AAC-MAIN")).toBeTruthy();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeTruthy();
     expect(screen.queryByText("ATL")).toBeTruthy();
-    expect(screen.queryByText("ATL-MAIN")).toBeTruthy();
-    expect(screen.queryByText("ATL-DBZ")).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-MAIN"]')).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-DBZ"]')).toBeTruthy();
   });
 
   it("STARRED tab with no stars → empty tree (No match for '')", () => {
@@ -96,7 +96,7 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
       result.current.setWatchlistTab("starred");
     });
     render(<CompanyTree companies={COMPANIES} />);
-    expect(screen.queryByText("AAC-MAIN")).toBeNull();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull();
     expect(screen.queryByText(/No match/i)).toBeTruthy();
   });
 
@@ -110,11 +110,11 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     act(() => {
       result.current.setWatchlistTab("starred");
     });
-    expect(screen.queryByText("AAC-MAIN")).toBeTruthy();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeTruthy();
     expect(screen.queryByText("AAC")).toBeTruthy(); // parent as header
     // ATL family dropped
-    expect(screen.queryByText("ATL-MAIN")).toBeNull();
-    expect(screen.queryByText("ATL-DBZ")).toBeNull();
+    expect(document.querySelector('[data-company-code="ATL-MAIN"]')).toBeNull();
+    expect(document.querySelector('[data-company-code="ATL-DBZ"]')).toBeNull();
   });
 
   it("Star sub-group container (AAC) → AAC visible alone in STARRED tab (unit-pin semantic, NOT auto-pin children)", () => {
@@ -130,7 +130,7 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     // AAC-MAIN is NOT starred → does NOT auto-show under starred AAC
     // (per StarToggle jsdoc: "starring AAC pins the sub-group itself
     //  for the STARRED tab filter. It does NOT auto-pin children.")
-    expect(screen.queryByText("AAC-MAIN")).toBeNull();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull();
     // ATL not starred → dropped
     expect(screen.queryByText("ATL")).toBeNull();
   });
@@ -144,7 +144,7 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     render(<CompanyTree companies={COMPANIES} />);
     expect(screen.queryByText(/Loading alerts/i)).toBeTruthy();
     // Tree itself NOT rendered yet
-    expect(screen.queryByText("AAC-MAIN")).toBeNull();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull();
   });
 
   it("ALERTED tab filters to published codes after HeatMap publishes", () => {
@@ -154,10 +154,10 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
       result.current.setAlertedCompanyCodes(new Set(["ATL-DBZ"]));
     });
     render(<CompanyTree companies={COMPANIES} />);
-    expect(screen.queryByText("ATL-DBZ")).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-DBZ"]')).toBeTruthy();
     expect(screen.queryByText("ATL")).toBeTruthy(); // parent header
-    expect(screen.queryByText("ATL-MAIN")).toBeNull(); // not alerted
-    expect(screen.queryByText("AAC-MAIN")).toBeNull(); // not alerted
+    expect(document.querySelector('[data-company-code="ATL-MAIN"]')).toBeNull(); // not alerted
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull(); // not alerted
   });
 
   it("RECENT tab uses array (not Set) — filter still works via Array.isArray dispatch", () => {
@@ -168,9 +168,9 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
       result.current.setWatchlistTab("recent");
     });
     render(<CompanyTree companies={COMPANIES} />);
-    expect(screen.queryByText("AAC-MAIN")).toBeTruthy();
-    expect(screen.queryByText("ATL-MAIN")).toBeTruthy();
-    expect(screen.queryByText("ATL-DBZ")).toBeNull(); // not in recent
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-MAIN"]')).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-DBZ"]')).toBeNull(); // not in recent
   });
 
   it("setCompany (no-track) does NOT add to recent tab filter", () => {
@@ -181,7 +181,7 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     });
     render(<CompanyTree companies={COMPANIES} />);
     // AAC-MAIN was set as active but NOT pushed to recent → not visible
-    expect(screen.queryByText("AAC-MAIN")).toBeNull();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull();
     expect(screen.queryByText(/No match/i)).toBeTruthy();
   });
 
@@ -194,8 +194,8 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     render(<CompanyTree companies={COMPANIES} />);
     // ATL parent NOT starred but child ATL-DBZ is → ATL renders as header
     expect(screen.queryByText("ATL")).toBeTruthy();
-    expect(screen.queryByText("ATL-DBZ")).toBeTruthy();
-    expect(screen.queryByText("ATL-MAIN")).toBeNull(); // not starred
+    expect(document.querySelector('[data-company-code="ATL-DBZ"]')).toBeTruthy();
+    expect(document.querySelector('[data-company-code="ATL-MAIN"]')).toBeNull(); // not starred
   });
 
   it("Toggle star OFF → company removed from STARRED filter on next render", () => {
@@ -207,7 +207,7 @@ describe("CompanyTree watchlist filter (Phase B4 + Round-2)", () => {
     act(() => {
       result.current.setWatchlistTab("starred");
     });
-    expect(screen.queryByText("AAC-MAIN")).toBeNull();
+    expect(document.querySelector('[data-company-code="AAC-MAIN"]')).toBeNull();
   });
 
   it("WatchlistTabs renders 5 tabs with correct ARIA roles", () => {

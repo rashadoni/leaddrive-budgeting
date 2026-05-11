@@ -436,8 +436,16 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                     starred={starredCompanyCodes.has(child.code)}
                     onToggle={toggleStarredCompany}
                   />
-                  <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
-                    {child.code}
+                  <span
+                    className="text-gray-500 uppercase tracking-wider w-20 truncate"
+                    title={child.code}
+                  >
+                    {/* CLI follow-up — strip parent code prefix in nested
+                        children. The hierarchy is conveyed by indentation;
+                        the redundant `AZSEKER-` prefix wastes label width. */}
+                    {child.code.startsWith(root.code + '-')
+                      ? child.code.slice(root.code.length + 1)
+                      : child.code}
                   </span>
                   <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
                   <span className="flex-1 truncate">{child.name}</span>

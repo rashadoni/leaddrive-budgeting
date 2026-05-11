@@ -253,11 +253,25 @@ export default function BudgetingPage() {
               title={t("companyFilterTitle")}
             >
               <option value="">{t("companyFilterAllConsolidated")}</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.level === 1 ? "— " : "—— "}{c.code} {c.name && c.name !== c.code ? `· ${c.name}` : ""}
-                </option>
-              ))}
+              {companies.map((c) => {
+                // CLI follow-up — strip parent code prefix for child rows
+                // (`AZSEKER-EDEN` → `EDEN` when nested under AZSEKER). The
+                // hierarchy is already conveyed by the indent dashes; the
+                // redundant prefix wastes label width and clutters the
+                // dropdown for the CFO.
+                const parent = c.parentCompanyId
+                  ? companies.find((p) => p.id === c.parentCompanyId)
+                  : null;
+                const display =
+                  parent && c.code.startsWith(parent.code + "-")
+                    ? c.code.slice(parent.code.length + 1)
+                    : c.code;
+                return (
+                  <option key={c.id} value={c.id}>
+                    {c.level === 1 ? "— " : "—— "}{display} {c.name && c.name !== c.code ? `· ${c.name}` : ""}
+                  </option>
+                );
+              })}
             </select>
           )}
           <Button size="sm" onClick={() => setShowCreate(true)}>
