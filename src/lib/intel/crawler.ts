@@ -27,6 +27,7 @@ import type { PrismaClient } from '@prisma/client';
 import { getAnthropicClient, AI_MODEL } from '@/lib/ai/client';
 import { extractJsonFromText } from '@/lib/onboarding/ai-mapper/json-extract';
 import { prisma as defaultPrisma } from '@/lib/prisma';
+import { runSentimentBatch } from './sentiment';
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './types';
 
 /** Bump on any change to SYSTEM_PROMPT or buildIntelPrompt structure.
@@ -244,6 +245,7 @@ function parseAndValidate(rawJson: unknown): ValidatedItem[] {
 type CrawlerPrisma = {
   intelItem: {
     create: PrismaClient['intelItem']['create'];
+    update: PrismaClient['intelItem']['update'];
   };
 };
 
@@ -257,6 +259,11 @@ export interface RunIntelCrawlOptions {
   /** Override Prisma (test seam). Unit tests inject a stub; the route
    *  never sets this and uses the default. */
   prisma?: CrawlerPrisma;
+  /** Phase 7.H Feature B — sentiment scoring after persistence. Pass
+   *  `false` to skip (used by tests so the LLM mock surface stays small).
+   *  Pass a function to override (e.g. injecting a stub for unit tests).
+   *  Default: real `runSentimentBatch` from `./sentiment`. */
+  scoreSentimentBatch?: typeof runSentimentBatch | false;
 }
 
 /**
@@ -411,10 +418,20 @@ export async function runIntelCrawl(
   // to `errors[]` and we continue.
   let itemsCreated = 0;
   let itemsSkipped = 0;
+  // Phase 7.H Feature B — track newly-created rows so we can batch-score
+  // their sentiment after the persist loop. Skipped (P2002 dedup) rows
+  // are NOT re-scored — they already exist with prior score.
+  const justCreated: Array<{
+    id: string;
+    title: string;
+    summary: string;
+    companyTags: string[];
+    industryTags: string[];
+  }> = [];
   for (const item of validated) {
     const hash = urlHash(item.url);
     try {
-      await prismaClient.intelItem.create({
+      const created = await prismaClient.intelItem.create({
         data: {
           organizationId: input.organizationId,
           title: item.title,
@@ -429,6 +446,13 @@ export async function runIntelCrawl(
         },
       });
       itemsCreated++;
+      justCreated.push({
+        id: created.id,
+        title: item.title,
+        summary: item.summary,
+        companyTags: item.companyTags,
+        industryTags: item.industryTags,
+      });
     } catch (err) {
       // Prisma error code surface — `P2002` = unique constraint hit
       // (our dedup case). Anything else = real write failure.
@@ -443,6 +467,36 @@ export async function runIntelCrawl(
           `Write failed for url=${item.url}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+    }
+  }
+
+  // Phase 7.H Feature B — sentiment scoring on freshly-created items.
+  // One LLM batch call, then per-row updates. Failures here are non-
+  // fatal — they show up in errors[] but the crawl result still ships.
+  // Skipped when no new items OR caller explicitly opted out.
+  const sentimentFn =
+    opts.scoreSentimentBatch === false
+      ? null
+      : (opts.scoreSentimentBatch ?? runSentimentBatch);
+  if (sentimentFn && justCreated.length > 0) {
+    try {
+      const result = await sentimentFn(justCreated);
+      for (const [id, score] of result.scores) {
+        try {
+          await prismaClient.intelItem.update({
+            where: { id },
+            data: { sentimentScore: score },
+          });
+        } catch (err) {
+          errors.push(
+            `Sentiment write failed for id=${id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+    } catch (err) {
+      errors.push(
+        `Sentiment batch failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

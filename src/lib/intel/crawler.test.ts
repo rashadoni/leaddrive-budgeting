@@ -26,7 +26,7 @@ vi.mock('@/lib/ai/client', () => ({
   getAnthropicClient: vi.fn(),
 }));
 vi.mock('@/lib/prisma', () => ({
-  prisma: { intelItem: { create: vi.fn() } },
+  prisma: { intelItem: { create: vi.fn(), update: vi.fn() } },
 }));
 
 import {
@@ -184,7 +184,7 @@ describe('buildSystemPrompt (D.5c — language pipe-through)', () => {
         }),
       },
     } as unknown as ReturnType<typeof import('@/lib/ai/client').getAnthropicClient>;
-    await runIntelCrawl(BASE_INPUT, { client, prisma: makePrisma() });
+    await runIntelCrawl(BASE_INPUT, { client, prisma: makePrisma(), scoreSentimentBatch: false });
     expect(capturedSystem).toContain('IN ENGLISH');
   });
 });
@@ -228,6 +228,7 @@ function makePrisma() {
   return {
     intelItem: {
       create: vi.fn().mockResolvedValue({ id: 'intel_1' }),
+      update: vi.fn().mockResolvedValue({ id: 'intel_1' }),
     },
   };
 }
@@ -316,6 +317,7 @@ describe('runIntelCrawl — happy path', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
 
     expect(result.itemsFetched).toBe(3);
@@ -351,6 +353,7 @@ describe('runIntelCrawl — happy path', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
 
     expect(result.itemsFetched).toBe(10);
@@ -393,6 +396,7 @@ describe('runIntelCrawl — dedup + per-item failure', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
 
     expect(result.itemsFetched).toBe(2);
@@ -433,6 +437,7 @@ describe('runIntelCrawl — dedup + per-item failure', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
 
     expect(result.itemsFetched).toBe(2);
@@ -472,6 +477,7 @@ describe('runIntelCrawl — bad item filtering', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(1);
     expect(result.itemsCreated).toBe(1);
@@ -518,6 +524,7 @@ describe('runIntelCrawl — bad item filtering', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(1);
     expect(result.itemsCreated).toBe(1);
@@ -540,7 +547,7 @@ describe('runIntelCrawl — bad item filtering', () => {
     });
     const client = makeClient(fakeResponse(llmJson));
     const prismaStub = makePrisma();
-    await runIntelCrawl(BASE_INPUT, { client, prisma: prismaStub });
+    await runIntelCrawl(BASE_INPUT, { client, prisma: prismaStub, scoreSentimentBatch: false });
     const writtenSummary =
       prismaStub.intelItem.create.mock.calls[0][0].data.summary;
     expect(writtenSummary.length).toBe(200);
@@ -569,6 +576,7 @@ describe('runIntelCrawl — LLM-side failures (errors[])', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     // Items still parsed + written — the truncation warning is purely
     // surfaced via errors[] so the operator sees the feed may be partial.
@@ -583,6 +591,7 @@ describe('runIntelCrawl — LLM-side failures (errors[])', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(0);
     expect(result.itemsCreated).toBe(0);
@@ -597,6 +606,7 @@ describe('runIntelCrawl — LLM-side failures (errors[])', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(0);
     expect(result.errors[0]).toMatch(/missing 'items' array/);
@@ -610,6 +620,7 @@ describe('runIntelCrawl — LLM-side failures (errors[])', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(0);
     expect(result.errors.length).toBe(1);
@@ -629,8 +640,112 @@ describe('runIntelCrawl — LLM-side failures (errors[])', () => {
     const result = await runIntelCrawl(BASE_INPUT, {
       client,
       prisma: prismaStub,
+      scoreSentimentBatch: false,
     });
     expect(result.itemsFetched).toBe(0);
     expect(result.errors[0]).toMatch(/no text blocks/);
+  });
+});
+
+describe('runIntelCrawl — Phase 7.H Feature B sentiment scoring', () => {
+  it('calls scoreSentimentBatch with newly-created items when option is omitted (production default)', async () => {
+    const llmJson = JSON.stringify({
+      items: [
+        {
+          title: 'AAC margins under pressure',
+          summary: 'Cocoa supplier shortage',
+          url: 'https://x.com/a',
+          sourceLabel: 'X',
+          relevanceScore: 0.7,
+          industryTags: ['food'],
+          companyTags: ['AAC'],
+        },
+        {
+          title: 'AZN strengthens',
+          summary: 'Currency tailwind',
+          url: 'https://x.com/b',
+          sourceLabel: 'X',
+          relevanceScore: 0.6,
+          industryTags: [],
+          companyTags: [],
+        },
+      ],
+    });
+    const client = makeClient(fakeResponse(llmJson));
+    const prismaStub = makePrisma();
+    prismaStub.intelItem.create
+      .mockResolvedValueOnce({ id: 'intel_a' })
+      .mockResolvedValueOnce({ id: 'intel_b' });
+
+    const sentimentSpy = vi.fn().mockResolvedValue({
+      scores: new Map([
+        ['intel_a', -0.6],
+        ['intel_b', 0.3],
+      ]),
+      usage: { inputTokens: 100, outputTokens: 30 },
+    });
+
+    const result = await runIntelCrawl(BASE_INPUT, {
+      client,
+      prisma: prismaStub,
+      scoreSentimentBatch: sentimentSpy,
+    });
+
+    expect(result.itemsCreated).toBe(2);
+    expect(result.errors).toEqual([]);
+    expect(sentimentSpy).toHaveBeenCalledTimes(1);
+    const sentimentArg = sentimentSpy.mock.calls[0][0];
+    expect(sentimentArg).toHaveLength(2);
+    expect(sentimentArg[0]).toMatchObject({
+      id: 'intel_a',
+      title: 'AAC margins under pressure',
+      companyTags: ['AAC'],
+    });
+    expect(prismaStub.intelItem.update).toHaveBeenCalledTimes(2);
+    expect(prismaStub.intelItem.update).toHaveBeenCalledWith({
+      where: { id: 'intel_a' },
+      data: { sentimentScore: -0.6 },
+    });
+  });
+
+  it('does not call sentiment when zero items were created', async () => {
+    const llmJson = JSON.stringify({ items: [] });
+    const client = makeClient(fakeResponse(llmJson));
+    const prismaStub = makePrisma();
+    const sentimentSpy = vi.fn();
+    await runIntelCrawl(BASE_INPUT, {
+      client,
+      prisma: prismaStub,
+      scoreSentimentBatch: sentimentSpy,
+    });
+    expect(sentimentSpy).not.toHaveBeenCalled();
+  });
+
+  it('records errors[] entry but still returns counters when sentiment batch throws', async () => {
+    const llmJson = JSON.stringify({
+      items: [
+        {
+          title: 'A',
+          summary: 'a',
+          url: 'https://x.com/a',
+          sourceLabel: 'X',
+          relevanceScore: 0.5,
+          industryTags: [],
+          companyTags: [],
+        },
+      ],
+    });
+    const client = makeClient(fakeResponse(llmJson));
+    const prismaStub = makePrisma();
+    const sentimentSpy = vi
+      .fn()
+      .mockRejectedValue(new Error('LLM rate-limited'));
+    const result = await runIntelCrawl(BASE_INPUT, {
+      client,
+      prisma: prismaStub,
+      scoreSentimentBatch: sentimentSpy,
+    });
+    expect(result.itemsCreated).toBe(1);
+    expect(result.errors[0]).toMatch(/Sentiment batch failed.*rate-limited/);
   });
 });

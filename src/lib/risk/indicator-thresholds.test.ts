@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("63 active indicator seeds (Phase 7.H Feature 4: +5 ESG/Climate cross-sector pack — Scope 1/2/3 + ESG composite + AZ gov climate)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(63)
+  it("64 active indicator seeds (Phase 7.H Feature B: +1 IND_NEWS_SENTIMENT_30D)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(64)
   })
 
   it("every indicator has a unique code", () => {

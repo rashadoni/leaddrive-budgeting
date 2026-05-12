@@ -170,6 +170,20 @@ export interface RecomputeDataSource {
     period: Period;
   }): Promise<BudgetLineRow[]>;
 
+  /**
+   * Phase 7.H Feature B — rolling-30d average sentiment for IntelItems
+   * tagged with this company. Uses companyTags[] (the human-readable code,
+   * e.g. "AAC"), not companyId — that's how the AI Web Crawler stores
+   * mentions. Returns null when:
+   *  - the company has no `code` set
+   *  - no IntelItems with non-null sentimentScore in the 30d window
+   * Range: [-1, +1] (LLM-clamped at write time).
+   */
+  getNewsSentimentRolling30d(args: {
+    organizationId: string;
+    companyId: string;
+  }): Promise<number | null>;
+
   upsertIndicatorValue(args: {
     organizationId: string;
     companyId: string;
@@ -322,6 +336,8 @@ export interface RecomputeAggregates {
   fact?: FactAggregate;
   /** Phase 7.E phase 3 — `rollup()` cross-company sums. */
   rollup?: RollupAggregate;
+  /** Phase 7.H Feature B — rolling-30d news sentiment for the company. */
+  news_sentiment?: { avg: number | null; hasData: boolean };
 }
 
 /**
@@ -672,6 +688,36 @@ export function createPrismaDataSource(
       return rows.map((r) => r.id);
     },
 
+    async getNewsSentimentRolling30d({ organizationId, companyId }) {
+      // Resolve the company's code — IntelItem.companyTags[] uses the
+      // human-readable code (e.g. "AAC"), not the cuid id.
+      const co = await prisma.company.findFirst({
+        where: { id: companyId, organizationId },
+        select: { code: true },
+      });
+      if (!co?.code) return null;
+
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      // PostgreSQL array-contains via `has` (Prisma operator); partial
+      // index `intel_items_sentiment_lookup_idx` (WHERE sentimentScore IS
+      // NOT NULL) speeds the date-bound scan.
+      const rows = await prisma.intelItem.findMany({
+        where: {
+          organizationId,
+          companyTags: { has: co.code },
+          fetchedAt: { gte: cutoff },
+          sentimentScore: { not: null },
+        },
+        select: { sentimentScore: true },
+      });
+      if (rows.length === 0) return null;
+      const sum = rows.reduce(
+        (acc, r) => acc + (r.sentimentScore ?? 0),
+        0,
+      );
+      return sum / rows.length;
+    },
+
     async upsertIndicatorValue({
       organizationId,
       companyId,
@@ -899,6 +945,30 @@ const operationalFactResolver: NamespaceResolver = {
       perMetric[metric] = { count: rows.length, avg };
     }
     state.inputs.aggregates.operational_fact = perMetric;
+  },
+};
+
+// Phase 7.H Feature B — news sentiment resolver.
+// Exposes the rolling-30-day average sentiment for IntelItems tagged
+// with the company's code as a single context variable
+// `news_sentiment_30d` ∈ [-1, +1]. NULL = no scored news in the window
+// (formula resolves to NaN → status='unknown' downstream, which the
+// UI renders as a blank/grey cell — the honest answer when we have
+// nothing to say). Triggered by any `requiredInputs` entry equal to
+// `news.sentiment30d` or starting with `news.sentiment30d.`.
+const newsSentimentResolver: NamespaceResolver = {
+  name: 'news.sentiment',
+  matches: (r) => r === 'news.sentiment30d' || r.startsWith('news.sentiment30d.'),
+  async resolve(_matched, ctx, state) {
+    const avg = await ctx.ds.getNewsSentimentRolling30d({
+      organizationId: ctx.organizationId,
+      companyId: ctx.companyId,
+    });
+    if (avg !== null && Number.isFinite(avg)) {
+      state.context['news_sentiment_30d'] = avg;
+      state.inputs.resolved['news_sentiment_30d'] = avg;
+    }
+    state.inputs.aggregates.news_sentiment = { avg, hasData: avg !== null };
   },
 };
 
@@ -1659,6 +1729,7 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   bookingResolver,
   companySettingsResolver,
   operationalFactResolver,
+  newsSentimentResolver,
   currencyRateResolver,
   budgetLineResolver,
   factResolver,

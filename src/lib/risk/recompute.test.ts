@@ -108,6 +108,10 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
       state.orgReads.push(`budgetlines:${organizationId}:${period.year}:${period.kind}`);
       return state.budgetLines;
     },
+    getNewsSentimentRolling30d: async ({ organizationId, companyId }) => {
+      state.orgReads.push(`sentiment:${organizationId}:${companyId}`);
+      return null;
+    },
     upsertIndicatorValue: async (args) => {
       state.upserts.push(args);
     },

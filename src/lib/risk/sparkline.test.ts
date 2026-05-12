@@ -78,6 +78,7 @@ const stubDs: RecomputeDataSource = {
   getCompanySettings: async () => null,
   listCurrencyRates: async () => [],
   listBudgetLines: async () => [],
+  getNewsSentimentRolling30d: async () => null,
   upsertIndicatorValue: async () => {},
   getIndicatorValue: async () => null,
   // Phase 7.G Turn XLI (Phase C): batched fact() resolver. Stub returns
