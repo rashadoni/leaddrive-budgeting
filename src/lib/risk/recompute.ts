@@ -1911,6 +1911,20 @@ export async function buildContext(
     requiredInputs: string[];
     /** Optional override; defaults to "AZN" — FO Holding base. */
     baseCurrency?: string;
+    /**
+     * Phase 7.E ad-hoc scenario preview — flat key/value overrides
+     * applied to `state.context` AFTER all resolvers run. Keys must
+     * match the variable names resolvers produce (e.g. `fx_usd`,
+     * `fx_eur`, `news_sentiment_30d`, `revenue`, etc).
+     *
+     * Use case: "what if AZN/USD jumps to 2.0?" — caller passes
+     * `{ fx_usd: 2.0 }` and downstream formulas see the override
+     * instead of the persisted rate. Pure preview — no DB writes.
+     *
+     * Override values bypass resolver-level transforms; pass the
+     * final per-variable value the formula should see.
+     */
+    scenarioOverrides?: Record<string, number>;
   },
 ): Promise<{
   context: FormulaContext;
@@ -1937,6 +1951,20 @@ export async function buildContext(
     const matched = args.requiredInputs.filter((r) => resolver.matches(r));
     if (matched.length === 0) continue;
     await resolver.resolve(matched, ctx, state);
+  }
+
+  // Phase 7.E ad-hoc scenario preview — apply overrides AFTER resolvers
+  // so resolver-side computations are never bypassed (e.g. revenue
+  // aggregation still runs to populate aggregates for drill-down) but
+  // the formula sees the overridden value. Inputs.resolved is also
+  // overwritten so the audit trail shows the preview value, not the
+  // baseline.
+  if (args.scenarioOverrides) {
+    for (const [key, value] of Object.entries(args.scenarioOverrides)) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+      state.context[key] = value;
+      state.inputs.resolved[key] = value;
+    }
   }
 
   await postProcess(ctx, state);
@@ -2040,6 +2068,8 @@ export async function recomputeIndicator(
      * buildContext (FO Holding default; safe for the single-tenant case).
      */
     baseCurrency?: string;
+    /** Phase 7.E ad-hoc scenario preview — see `buildContext` doc. */
+    scenarioOverrides?: Record<string, number>;
   },
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
@@ -2050,6 +2080,7 @@ export async function recomputeIndicator(
     period,
     requiredInputs: args.definition.requiredInputs,
     baseCurrency: args.baseCurrency,
+    scenarioOverrides: args.scenarioOverrides,
   });
 
   const result = tryEvaluateFormula(

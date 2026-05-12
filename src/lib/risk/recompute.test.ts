@@ -479,6 +479,59 @@ describe('buildContext — currencyRate namespace', () => {
   });
 });
 
+describe('buildContext — Phase 7.E scenarioOverrides', () => {
+  it('overrides resolver-produced fx_<code> vars with provided values', async () => {
+    const ds = mockDs({
+      currencyRates: [rate('AZN', 1, true), rate('USD', 1.7), rate('EUR', 1.85)],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['currencyRate'],
+      scenarioOverrides: { fx_usd: 2.0, fx_eur: 2.2 },
+    });
+    expect(context.fx_usd).toBe(2.0);
+    expect(context.fx_eur).toBe(2.2);
+    // Base AZN untouched (no override).
+    expect(context.fx_azn).toBe(1);
+    // resolved snapshot reflects overrides for audit trail.
+    expect(inputs.resolved.fx_usd).toBe(2.0);
+    expect(inputs.resolved.fx_eur).toBe(2.2);
+  });
+
+  it('skips non-finite override values silently', async () => {
+    const ds = mockDs({
+      currencyRates: [rate('USD', 1.7)],
+    });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['currencyRate'],
+      scenarioOverrides: {
+        fx_usd: NaN,
+        fx_eur: Infinity,
+        fx_try: 0.05, // valid override even though no resolver populated it
+      },
+    });
+    // NaN/Infinity rejected → resolver value preserved.
+    expect(context.fx_usd).toBeCloseTo(1.7);
+    // Valid override applied even with no underlying rate.
+    expect(context.fx_try).toBe(0.05);
+  });
+
+  it('absent scenarioOverrides is a no-op (baseline behavior unchanged)', async () => {
+    const ds = mockDs({
+      currencyRates: [rate('USD', 1.7)],
+    });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['currencyRate'],
+    });
+    expect(context.fx_usd).toBeCloseTo(1.7);
+  });
+});
+
 describe('buildContext — budgetLine namespace', () => {
   it('aggregates revenue / cogs / opex by accountType in base currency', async () => {
     const ds = mockDs({
