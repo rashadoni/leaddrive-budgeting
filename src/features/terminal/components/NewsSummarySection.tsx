@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { Newspaper, RefreshCw } from "lucide-react";
 
+const POP_OUT_FEATURES = "width=600,height=700,resizable=yes,scrollbars=yes";
+
 interface NewsSummary {
   bullets: string[];
   language: string;
@@ -66,15 +68,47 @@ export function NewsSummarySection() {
           <Newspaper size={11} />
           <span>{t("todayBrief.newsHeader")}</span>
         </div>
-        <button
-          type="button"
-          onClick={fetchSummary}
-          disabled={state.kind === "loading"}
-          className="text-gray-600 hover:text-cyan-300 disabled:opacity-30 transition-colors"
-          title={t("todayBrief.newsRefresh")}
-        >
-          <RefreshCw size={10} className={state.kind === "loading" ? "animate-spin" : ""} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={fetchSummary}
+            disabled={state.kind === "loading"}
+            className="text-gray-600 hover:text-cyan-300 disabled:opacity-30 transition-colors"
+            title={t("todayBrief.newsRefresh")}
+          >
+            <RefreshCw size={10} className={state.kind === "loading" ? "animate-spin" : ""} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.open(
+                `/terminal-panel/news?language=${locale}`,
+                "terminal-panel-news",
+                POP_OUT_FEATURES,
+              );
+            }}
+            className="text-gray-600 hover:text-cyan-300 transition-colors"
+            title={t("todayBrief.newsPopOut")}
+            aria-label={t("todayBrief.newsPopOut")}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 3h6v6" />
+              <path d="M10 14L21 3" />
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            </svg>
+          </button>
+        </div>
       </div>
       {state.kind === "loading" && (
         <p className="text-gray-700 text-[10px]">{t("todayBrief.newsLoading")}</p>

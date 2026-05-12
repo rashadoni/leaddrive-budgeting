@@ -1727,6 +1727,7 @@
       "newsLoading": "AI icmal hazırlayır…",
       "newsEmpty": "Təzə xəbər yoxdur — admin panelindən AI Crawler işə salın.",
       "newsRefresh": "İcmalı yenilə",
+      "newsPopOut": "Xəbərləri ayrı pəncərədə aç",
       "newsCached": "keş",
       "newsFresh": "təzə cavab",
       "newsItems": "mənbə"

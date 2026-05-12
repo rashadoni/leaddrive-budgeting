@@ -21,6 +21,7 @@ import { HeatMap } from "@/features/terminal/components/HeatMap";
 import { IndicatorDetail } from "@/features/terminal/components/IndicatorDetail";
 import { VarianceExplainerPanel } from "@/features/terminal/components/VarianceExplainerPanel";
 import { TodayBrief } from "@/features/terminal/components/TodayBrief";
+import { NewsSummarySection } from "@/features/terminal/components/NewsSummarySection";
 import { useCompanies } from "@/features/terminal/hooks/use-companies";
 
 const PANEL_TITLES: Record<string, string> = {
@@ -29,6 +30,7 @@ const PANEL_TITLES: Record<string, string> = {
   detail: "Детализация индикатора",
   variance: "AI Variance Explainer",
   brief: "Сводка дня",
+  news: "📰 Новости холдинга",
 };
 
 function PanelContent({ kind }: { kind: string }) {
@@ -44,6 +46,8 @@ function PanelContent({ kind }: { kind: string }) {
       return <VarianceExplainerPanel />;
     case "brief":
       return <TodayBrief />;
+    case "news":
+      return <NewsSummarySection />;
     default:
       return (
         <div className="text-gray-500 p-6">

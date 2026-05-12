@@ -1727,6 +1727,7 @@
       "newsLoading": "AI preparing summary…",
       "newsEmpty": "No fresh news — run the AI Crawler from admin.",
       "newsRefresh": "Refresh summary",
+      "newsPopOut": "Open news in a separate window",
       "newsCached": "from cache",
       "newsFresh": "fresh response",
       "newsItems": "sources"
