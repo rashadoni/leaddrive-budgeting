@@ -1752,6 +1752,10 @@
       "tooltipNoData": "— нет данных",
       "tooltipIndicators": "индикаторов",
       "tooltipSparkline12mo": "12 мес",
+      "errMissingBaseline": "Нет данных за {year} год — загрузите Actuals {year} через Onboarding и запустите Перерасчёт.",
+      "errNonFinite": "Не удалось посчитать (деление на 0 или NaN). Проверьте полноту входных данных.",
+      "errParse": "Ошибка в формуле индикатора — обратитесь к админу.",
+      "errEval": "Ошибка вычисления формулы — отсутствует одна из переменных.",
       "sparklineTrendAriaLabel": "{indCode} тренд за 12 месяцев для {coCode}",
       "sparklineTrendAriaLabelSelf": "{indCode} тренд за 12 месяцев"
     },

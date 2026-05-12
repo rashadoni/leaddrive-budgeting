@@ -1752,6 +1752,10 @@
       "tooltipNoData": "— məlumat yoxdur",
       "tooltipIndicators": "göstərici",
       "tooltipSparkline12mo": "12 ay",
+      "errMissingBaseline": "{year} ili üçün baseline məlumat yoxdur — Onboarding-dan {year} Actuals yükləyin və Yenidən hesabla işə salın.",
+      "errNonFinite": "Hesablamaq mümkün olmadı (sıfıra bölmə və ya NaN). Daxil olan məlumatları yoxlayın.",
+      "errParse": "Göstərici formulasında sintaksis xətası — admin ilə əlaqə saxlayın.",
+      "errEval": "Formula hesablama xətası — daxil olan dəyişənlərdən biri əksikdir.",
       "sparklineTrendAriaLabel": "{indCode} {coCode} üçün 12 aylıq trend",
       "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend"
     },

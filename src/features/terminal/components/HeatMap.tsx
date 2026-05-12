@@ -720,6 +720,31 @@ function CompositeBadge({ score }: { score: CompositeScore | null }) {
   );
 }
 
+/** Translate a formula-engine error to user-friendly text per locale.
+ *  Special-cases _VS_<YEAR> indicators (where missing baseline data
+ *  is the typical NaN cause) with an actionable hint. Raw code+reason
+ *  remain in the title attribute for technical debugging. */
+function localizeFormulaError(
+  code: string,
+  reason: string,
+  indicatorCode: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
+  // Most common case: _VS_<YEAR> Δ-indicators NaN because the baseline
+  // year's IndicatorValue isn't in the DB. Show the year + actionable
+  // import hint instead of the cryptic engine error.
+  if (code === 'non_finite') {
+    const m = indicatorCode.match(/_VS_(\d{4})/);
+    if (m) {
+      return t('heatMap.errMissingBaseline', { year: m[1] });
+    }
+    return t('heatMap.errNonFinite');
+  }
+  if (code === 'parse') return t('heatMap.errParse');
+  if (code === 'eval') return t('heatMap.errEval');
+  return reason;
+}
+
 function formatValue(value: number, unit: string): string {
   if (!Number.isFinite(value)) return '—';
   const rounded =
@@ -1083,8 +1108,11 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 </div>
               )}
               {cell.error && (
-                <div className="text-[11px] text-[#FF4757] mt-1">
-                  ⚠ {cell.error.code}: {cell.error.reason}
+                <div
+                  className="text-[11px] text-[#FF4757] mt-1"
+                  title={`${cell.error.code}: ${cell.error.reason}`}
+                >
+                  ⚠ {localizeFormulaError(cell.error.code, cell.error.reason, ind.code, t)}
                 </div>
               )}
               {/* M3 inline AI commentary — pending → spinner; ok → first

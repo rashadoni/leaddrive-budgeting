@@ -1752,6 +1752,10 @@
       "tooltipNoData": "— no data",
       "tooltipIndicators": "indicators",
       "tooltipSparkline12mo": "12mo",
+      "errMissingBaseline": "Missing {year} baseline data — import {year} Actuals via Onboarding and run Recompute.",
+      "errNonFinite": "Couldn't compute (division by zero or NaN). Check input data completeness.",
+      "errParse": "Indicator formula has a syntax error — contact admin.",
+      "errEval": "Formula eval error — one of the inputs is missing.",
       "sparklineTrendAriaLabel": "{indCode} 12-month trend for {coCode}",
       "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend"
     },
