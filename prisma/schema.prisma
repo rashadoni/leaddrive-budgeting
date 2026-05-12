@@ -1737,6 +1737,7 @@ enum AuditAction {
   user_password_reset            // Phase 7.F admin v3 — admin generated a new temp password
   user_active_toggle             // Phase 7.F admin v3 — admin enabled/disabled a user account
   ai_news_summary_run            // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
+  ai_morning_brief_run           // Phase 7.E AI Morning Brief — composed narrative LLM call
   // Phase 7.H F4.v2.3 — manual data-entry trail for the non-engineer
   // admin flow at `/budgeting/admin/data-entry`. Three families:
   //   - operational_fact_* : ручной ввод KPI (yield, occupancy, FCR, etc.)

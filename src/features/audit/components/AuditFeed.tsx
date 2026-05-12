@@ -44,6 +44,7 @@ const ALL_ACTIONS = [
   "user_password_reset",
   "user_active_toggle",
   "ai_news_summary_run",
+  "ai_morning_brief_run",
   // Phase 7.H F4.v2.3 — manual data-entry actions surfaced in the
   // audit feed so a reviewer can trace yield/occupancy/disclosure edits.
   "operational_fact_create",

@@ -432,6 +432,22 @@ export type AuditEventInput =
       };
     }
   | {
+      // Phase 7.E AI Morning Brief — composed CFO narrative LLM call.
+      // entityType=Organization since the brief is org-wide.
+      action: 'ai_morning_brief_run';
+      entityType: 'Organization';
+      entityId: string;
+      metadata: {
+        language: 'en' | 'ru' | 'az';
+        worstCellsCount: number;
+        moversCount: number;
+        alertsCount: number;
+        newsBulletsCount: number;
+        fromCache: boolean;
+        usage?: { inputTokens: number; outputTokens: number };
+      };
+    }
+  | {
       // Phase 7.H F4.v2.3 — admin entered/updated/deleted a manual
       // operational KPI through `/budgeting/admin/data-entry`. Captures
       // the metric + value + source-note so a finance reviewer can

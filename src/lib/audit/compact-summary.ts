@@ -230,6 +230,7 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'user_password_reset':
     case 'user_active_toggle':
     case 'ai_news_summary_run':
+    case 'ai_morning_brief_run':
     // Phase 7.H F4.v2.3 — manual data-entry trail. JSON-preview is the
     // right granularity for these (metric + value + sourceNote in the
     // metadata blob); the AuditFeed UI surfaces them in the "All" tab.

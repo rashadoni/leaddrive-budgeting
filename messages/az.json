@@ -1036,6 +1036,20 @@
         "formTitle": "Yeni əməliyyat KPI qeydi",
         "metric": "Metrika",
         "recentTitle": "Son qeydlər",
+        "bulkImport": {
+          "title": "Excel-dən kütləvi yükləmə",
+          "subtitle": "Şablonu yükləyin, Excel-də doldurun (13 metrika × 12 ay × N şirkət), faylı yükləyin. Əvvəlcə xətalar və xəbərdarlıqlarla önizləmə göstərəcəyik — təsdiq edənə qədər heç nə tətbiq olunmur.",
+          "downloadTemplate": "Şablonu yüklə",
+          "previewing": "Fayl təhlil edilir…",
+          "applying": "Tətbiq edilir…",
+          "previewSummary": "Önizləmə: {rows} sətir hazır, {errors} xəta, {warnings} xəbərdarlıq.",
+          "errorsHeading": "Xətalar (Excel-də düzəlt və yenidən yüklə):",
+          "warningsHeading": "Xəbərdarlıqlar (tətbiq mümkündür, amma yoxlayın):",
+          "confirmApply": "{rows} sətri tətbiq et",
+          "confirmApplyWithWarnings": "Bəli, {rows} sətri tətbiq et (xəbərdarlıqlara baxmayaraq)",
+          "appliedSummary": "Hazır: {applied} sətir tətbiq edildi, {rejected} rədd edildi.",
+          "row": "Sətir {n}"
+        },
         "sector": {
           "agro": "Aqro",
           "real_estate": "Daşınmaz əmlak",

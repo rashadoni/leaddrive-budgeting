@@ -1036,6 +1036,20 @@
         "formTitle": "New operational KPI entry",
         "metric": "Metric",
         "recentTitle": "Recent entries",
+        "bulkImport": {
+          "title": "Bulk Excel upload",
+          "subtitle": "Download the template, fill in Excel (13 metrics × 12 months × N companies), upload the file. We'll show a preview with errors and warnings first — nothing is applied until you confirm.",
+          "downloadTemplate": "Download template",
+          "previewing": "Analyzing file…",
+          "applying": "Applying…",
+          "previewSummary": "Preview: {rows} rows ready, {errors} errors, {warnings} warnings.",
+          "errorsHeading": "Errors (fix in Excel and re-upload):",
+          "warningsHeading": "Warnings (can apply but please check):",
+          "confirmApply": "Apply {rows} rows",
+          "confirmApplyWithWarnings": "Yes, apply {rows} rows (despite warnings)",
+          "appliedSummary": "Done: applied {applied} rows, rejected {rejected}.",
+          "row": "Row {n}"
+        },
         "sector": {
           "agro": "Agro",
           "real_estate": "Real estate",
