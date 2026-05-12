@@ -387,8 +387,9 @@ export function IndicatorDetail() {
           <div
             className="text-2xl tabular-nums font-semibold"
             style={{ color: statusColor }}
+            title={Number.isFinite(value) ? value.toLocaleString("ru-RU") : undefined}
           >
-            {formatValue(value)}
+            {formatHeadlineValue(value, ind.unit)}
           </div>
           <div
             className="text-[10px] uppercase tracking-wider"
@@ -648,6 +649,86 @@ function formatValue(v: number): string {
     : v.toFixed(2);
 }
 
+/** Headline-value formatter that respects the indicator's unit.
+ *  Mirrors HeatMap.formatValueCompact: AZN/money → K/M/B + ₼,
+ *  % → fixed-precision percent, else compact decimals. Used for the
+ *  big number at the top of Panel 3 — the "42682305" eyesore was raw
+ *  formatValue() not knowing the unit (Phase 7.H follow-up fix). */
+function formatHeadlineValue(v: number, unit: string): string {
+  if (!Number.isFinite(v)) return "—";
+  const u = (unit ?? "").trim();
+  if (u === "%" || /percent/i.test(u)) {
+    return `${v.toFixed(Math.abs(v) >= 100 ? 0 : 1)}%`;
+  }
+  const abs = Math.abs(v);
+  if (u === "AZN" || u === "₼" || u === "USD" || u === "EUR" || /^[A-Z]{3}$/.test(u)) {
+    const suffix = u === "AZN" ? "₼" : u;
+    if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B ${suffix}`;
+    if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M ${suffix}`;
+    if (abs >= 1e3) return `${(v / 1e3).toFixed(1)}K ${suffix}`;
+    return `${v.toFixed(0)} ${suffix}`;
+  }
+  // tCO2e / score / count / unitless — compact decimals.
+  if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B${u ? " " + u : ""}`;
+  if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M${u ? " " + u : ""}`;
+  if (abs >= 1e3) return `${(v / 1e3).toFixed(1)}K${u ? " " + u : ""}`;
+  return `${v.toFixed(abs >= 10 ? 1 : 2)}${u ? " " + u : ""}`;
+}
+
+/** Pretty-renderer for the rollup-resolver aggregate shape:
+ *  { sums: { INDICATOR_CODE: { sum, matched_count } }, children_count }.
+ *  Returns null if shape doesn't match → caller falls back to JSON. */
+function renderRollupAggregate(
+  data: Record<string, unknown>,
+): React.ReactElement | null {
+  const sums = data.sums;
+  const childrenCount = typeof data.children_count === "number" ? data.children_count : null;
+  if (!sums || typeof sums !== "object" || Array.isArray(sums)) return null;
+  const sumEntries = Object.entries(sums as Record<string, unknown>);
+  // Validate every sum entry has the expected shape.
+  type SumEntry = { code: string; sum: number; matchedCount: number };
+  const parsed: SumEntry[] = [];
+  for (const [code, raw] of sumEntries) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.sum !== "number") return null;
+    parsed.push({
+      code,
+      sum: r.sum,
+      matchedCount:
+        typeof r.matched_count === "number" ? r.matched_count : 0,
+    });
+  }
+  if (parsed.length === 0) return null;
+  return (
+    <div className="space-y-1 bg-[#050814] rounded border border-gray-800 px-2 py-1.5">
+      <table className="text-[10px] tabular-nums w-full">
+        <tbody>
+          {parsed.map((p) => (
+            <tr key={p.code}>
+              <td className="text-gray-400 pr-2 font-mono">{p.code}</td>
+              <td
+                className="text-gray-200 text-right pr-2"
+                title={p.sum.toLocaleString("ru-RU")}
+              >
+                {formatAggValue(p.sum, "money")}
+              </td>
+              <td className="text-gray-600 text-right text-[9px] w-12">
+                ({p.matchedCount})
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {childrenCount != null && (
+        <div className="text-gray-600 text-[9px] pt-1 border-t border-gray-800/40">
+          children_count: <span className="text-gray-400">{childrenCount}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Compact magnitude formatter (K/M/B) + unit-aware suffix.
  *  Mirrors HeatMap.formatValueCompact so a finance reader sees the same
  *  "1.2M ₼" / "34.1%" / "0.62" representation across drill-down + matrix. */
@@ -697,12 +778,15 @@ function AggregateBlock({
     );
   }
   const entries = Object.entries(data as Record<string, unknown>);
-  // If any value is non-primitive, fall back to JSON (rollup aggregates have
-  // nested `sums` / `denoms` shapes that benefit from JSON formatting).
+  // If any value is non-primitive, attempt structured rollup rendering
+  // before falling back to raw JSON (Phase 7.H follow-up: rollup
+  // aggregates were unreadable JSON dumps).
   const allPrimitive = entries.every(
     ([, v]) => v === null || ["number", "string", "boolean"].includes(typeof v),
   );
   if (!allPrimitive) {
+    const rollupView = renderRollupAggregate(data as Record<string, unknown>);
+    if (rollupView) return rollupView;
     return (
       <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1">
         {JSON.stringify(data, null, 2)}
