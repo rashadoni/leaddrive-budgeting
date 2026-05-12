@@ -210,6 +210,10 @@ export async function runRecomputeForCompanies(
       industries: true,
       isActive: true,
       unit: true,
+      // Phase 7.H F4.v2.1 — pulled into the IndicatorDefinitionLike that
+      // recomputeIndicator consumes so every IV writes the right
+      // provenance stamp without per-call lookup.
+      defaultValueSource: true,
     },
   });
   const defs = preferOrgScopedDefinitions(allDefs);
@@ -341,6 +345,11 @@ export async function runRecomputeForCompanies(
         thresholds: definition.thresholds,
         requiredInputs: definition.requiredInputs,
         unit: definition.unit,
+        // Phase 7.H F4.v2.1 — string-union mirror of the Prisma enum
+        // value (1:1 names). Cast through unknown because the generated
+        // Prisma enum type isn't structurally identical to our
+        // `ValueSource` string union at the TS level.
+        defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
       };
       try {
         // Phase 7.E phase 2 — bulk-import follow-up paths intentionally
@@ -354,6 +363,7 @@ export async function runRecomputeForCompanies(
           definition: defLike,
           period,
           baseCurrency: company.baseCurrencyCode ?? undefined,
+          industry: company.industry ?? null,
         });
         if (result.status === 'unknown') unknown += 1;
         else ok += 1;

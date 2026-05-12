@@ -191,15 +191,21 @@ export function SubCoFinanceChat() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-hidden rounded-lg border border-gray-700 bg-background shadow-2xl flex flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur shrink-0">
+      <div
+        className="relative w-full max-w-3xl max-h-[80vh] overflow-hidden rounded-lg border border-gray-700 shadow-2xl flex flex-col text-gray-200"
+        style={{ backgroundColor: "#0A0E27" }}
+      >
+        <header
+          className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 px-6 py-3 backdrop-blur shrink-0"
+          style={{ backgroundColor: "rgba(10, 14, 39, 0.95)" }}
+        >
           <div className="flex items-center gap-2">
             <Users size={16} className="text-[#FFB020]" aria-hidden="true" />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-lg font-semibold tracking-tight text-gray-100">
                 {t("subcoChat.title")}
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-gray-500">
                 {t("subcoChat.subtitle")}
               </p>
             </div>
@@ -208,11 +214,25 @@ export function SubCoFinanceChat() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("subcoChat.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800 text-gray-300"
           >
             <X size={14} aria-hidden="true" />
           </button>
         </header>
+
+        {/* v1 disclosure — local-only persistence is non-obvious from the
+            visual chrome alone; tell users explicitly so they don't expect
+            sub-co finance manager to receive the message. */}
+        <div
+          className="px-6 py-2 border-b border-gray-800 text-[10px] text-[#FFB020]/80 flex items-start gap-2"
+          style={{ backgroundColor: "rgba(255, 176, 32, 0.06)" }}
+          role="note"
+        >
+          <span className="font-bold mt-0.5">⚠</span>
+          <span className="leading-snug">
+            {t("subcoChat.localOnlyBanner")}
+          </span>
+        </div>
 
         <div className="flex-1 overflow-hidden grid grid-cols-[200px_1fr]">
           <aside
@@ -223,7 +243,7 @@ export function SubCoFinanceChat() {
               {t("subcoChat.channels")} ({channels.length})
             </div>
             {channels.length === 0 ? (
-              <div className="px-3 py-3 text-xs text-muted-foreground italic">
+              <div className="px-3 py-3 text-xs text-gray-500 italic">
                 {companiesLoading
                   ? t("subcoChat.loading")
                   : t("subcoChat.noChannels")}
@@ -269,14 +289,14 @@ export function SubCoFinanceChat() {
             >
               {!selectedCode ? (
                 <p
-                  className="text-sm text-muted-foreground"
+                  className="text-sm text-gray-500"
                   data-testid="subco-chat-no-channel"
                 >
                   {t("subcoChat.pickChannel")}
                 </p>
               ) : thread.length === 0 ? (
                 <p
-                  className="text-sm text-muted-foreground italic"
+                  className="text-sm text-gray-500 italic"
                   data-testid="subco-chat-empty"
                 >
                   {t("subcoChat.emptyThread")}

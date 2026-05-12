@@ -56,6 +56,26 @@ import {
 } from './formula-engine';
 import { parsePeriod, daysInPeriod, type Period } from './periods';
 import { computeSparkline, bridgeRecomputeBuildContext } from './sparkline';
+import {
+  getIndustryEmissionFactor,
+  type EmissionScope,
+  type ConfidenceTier,
+} from './industry-emission-factors';
+
+/**
+ * Phase 7.H F4.v2.1 — provenance ladder. Mirrors the Prisma enum
+ * `IndicatorValueSource` (declared in `prisma/schema.prisma`). Kept as a
+ * string-literal union here so the recompute module stays Prisma-type-free
+ * at the boundary (the in-memory test data sources never touch
+ * `@prisma/client`). Adapters write the literal value through to Postgres;
+ * Prisma accepts string values for enum columns.
+ */
+export type ValueSource =
+  | 'disclosed'
+  | 'modeled_industry'
+  | 'modeled_generic'
+  | 'macro'
+  | 'computed';
 
 // --- Narrow row shapes the pipeline consumes ---------------------------------
 
@@ -184,6 +204,25 @@ export interface RecomputeDataSource {
     companyId: string;
   }): Promise<number | null>;
 
+  /**
+   * Phase 7.H F4.v2.3 — disclosure lookup. Returns the disclosed value
+   * if a row exists in `IndicatorDisclosure` for the (companyId,
+   * indicatorCode, period) triple, else null. When non-null, the
+   * recompute pipeline uses this value verbatim and stamps
+   * `valueSource: 'disclosed'` instead of evaluating the formula.
+   *
+   * Required (not optional) on the interface so a stub adapter must
+   * implement it — returning null is fine for fixtures that don't
+   * exercise disclosure, but the method must exist so a future
+   * adapter regression can't silently fall through to modeled values.
+   */
+  getIndicatorDisclosure(args: {
+    organizationId: string;
+    companyId: string;
+    indicatorCode: string;
+    period: string;
+  }): Promise<{ value: number; unit: string } | null>;
+
   upsertIndicatorValue(args: {
     organizationId: string;
     companyId: string;
@@ -203,6 +242,28 @@ export interface RecomputeDataSource {
      * default that predates phase 2).
      */
     sparkline?: (number | null)[];
+    /**
+     * Phase 7.H F4.v2.1 — Bloomberg-style provenance stamp inherited from
+     * `IndicatorDefinition.defaultValueSource`. Drives the UI badge in
+     * Panel 3 + the modeled-marker on HeatMap cells. Required at the
+     * type level so callers think about it explicitly; the runner
+     * passes the seed's `defaultValueSource` and falls back to
+     * `'computed'` when a legacy seed omits the field. Adapters use
+     * this value as-is on both CREATE and UPDATE so a re-recompute
+     * after a seed flip (e.g. `modeled_generic` → `modeled_industry`
+     * in v2.2) refreshes the badge without manual migration.
+     */
+    valueSource: ValueSource;
+    /**
+     * Phase 7.H F4.v2.2.1 — model-confidence tier (`A`|`B`|`C`|`D`)
+     * derived from the resolver's industry-factor aggregate (worst tier
+     * across scopes used). Persists into `IndicatorValue.confidence` so
+     * the Panel-3 badge tooltip can surface "Confidence: B (sector-
+     * average benchmark)". Optional — null on disclosed cells (the
+     * disclosed value IS the ground truth; tier doesn't apply) and on
+     * legacy fixtures that don't yet thread the resolver aggregate.
+     */
+    confidence?: 'A' | 'B' | 'C' | 'D' | null;
   }): Promise<void>;
 
   /**
@@ -338,6 +399,20 @@ export interface RecomputeAggregates {
   rollup?: RollupAggregate;
   /** Phase 7.H Feature B — rolling-30d news sentiment for the company. */
   news_sentiment?: { avg: number | null; hasData: boolean };
+  /**
+   * Phase 7.H F4.v2.2 — sector intensity lookup snapshot. The
+   * drilldown UI surfaces this as "Source: industry intensity for
+   * agro_crops, confidence B" alongside the modeled value. `null`
+   * scope entries mean the company's industry has no catalog row OR
+   * the scope wasn't requested by the seed's requiredInputs.
+   */
+  industry_factor?: {
+    industry: string | null;
+    scopes: Record<
+      string,
+      { factor: number; confidence: 'A' | 'B' | 'C' | 'D' } | null
+    >;
+  };
 }
 
 /**
@@ -718,6 +793,19 @@ export function createPrismaDataSource(
       return sum / rows.length;
     },
 
+    async getIndicatorDisclosure({
+      organizationId,
+      companyId,
+      indicatorCode,
+      period,
+    }) {
+      const row = await prisma.indicatorDisclosure.findFirst({
+        where: { organizationId, companyId, indicatorCode, period },
+        select: { value: true, unit: true },
+      });
+      return row ?? null;
+    },
+
     async upsertIndicatorValue({
       organizationId,
       companyId,
@@ -727,6 +815,8 @@ export function createPrismaDataSource(
       status,
       inputs,
       sparkline,
+      valueSource,
+      confidence,
     }) {
       // Phase 7.E phase 2 — sparkline write semantics:
       //   - CREATE: caller-supplied array OR `[]` (the original first-write
@@ -737,6 +827,9 @@ export function createPrismaDataSource(
       //     fan-out, xlsx-import follow-up) MUST NOT clobber sparklines
       //     populated earlier by the offline `compute-sparklines.ts` worker
       //     OR by an interactive `withSparkline: true` recompute.
+      // Phase 7.H F4.v2.1 — `valueSource` is written on both CREATE and
+      // UPDATE so a seed flip (e.g. v2.2 swapping a generic placeholder
+      // for industry-specific) refreshes the badge on the next recompute.
       await prisma.indicatorValue.upsert({
         where: {
           companyId_indicatorId_period: { companyId, indicatorId, period },
@@ -750,12 +843,31 @@ export function createPrismaDataSource(
           status,
           sparkline: (sparkline ?? []) as Prisma.InputJsonValue,
           inputs: inputs as unknown as Prisma.InputJsonValue,
+          // Our `ValueSource` string union mirrors the generated Prisma enum
+          // `IndicatorValueSource` 1:1 (declared in prisma/schema.prisma).
+          // TypeScript accepts the literal union directly without a cast
+          // because Prisma generates the enum as a union of the same string
+          // literals.
+          valueSource,
+          // Phase 7.H F4.v2.2.1 — model-confidence tier written on
+          // CREATE; null when caller omits.
+          confidence: confidence ?? null,
         },
         update: {
           value,
           status,
           inputs: inputs as unknown as Prisma.InputJsonValue,
           computedAt: new Date(),
+          // Our `ValueSource` string union mirrors the generated Prisma enum
+          // `IndicatorValueSource` 1:1 (declared in prisma/schema.prisma).
+          // TypeScript accepts the literal union directly without a cast
+          // because Prisma generates the enum as a union of the same string
+          // literals.
+          valueSource,
+          // Confidence on UPDATE: caller's null clears the tier (mirrors
+          // disclosed-override → no tier). Recompute always passes a
+          // value or null; undefined → null via the `??` coercion.
+          confidence: confidence ?? null,
           ...(sparkline !== undefined && {
             sparkline: sparkline as Prisma.InputJsonValue,
           }),
@@ -818,6 +930,15 @@ interface ResolverCtx {
    *  resolver to NOT treat lines tagged with the company's base currency as
    *  foreign — see CXLVIII regression note in the resolver body. */
   baseCurrency: string;
+  /**
+   * Phase 7.H F4.v2.2 — company industry code (e.g. "agro_crops",
+   * "real_estate"). Threaded from the recompute trigger so the
+   * `industryFactorResolver` can pick the right sector intensity
+   * factor without an extra DB read. `null` when the company has no
+   * industry set (defensive — Company.industry is required at the
+   * schema level today but legacy fixtures may omit it).
+   */
+  industry: string | null;
 }
 
 interface NamespaceResolver {
@@ -1725,6 +1846,82 @@ const rollupResolver: NamespaceResolver = {
  */
 type FormulaFunctionArgLike = number | string;
 
+/**
+ * Phase 7.H F4.v2.2 — `industryFactor(scope)` formula function.
+ *
+ * Looks up the kg CO₂e per AZN coefficient for the current company's
+ * industry × scope. Powers the v2.2 ESG formulas:
+ *   `revenue * industryFactor("scope_1") / 1000  // → tonnes CO₂e`
+ *
+ * Required-input format: `industryFactor:<scope>` where scope ∈
+ * `{scope_1, scope_2, scope_3}`. Bare `industryFactor` (no colon)
+ * declares the function in scope without committing to a specific
+ * scope — useful when a seed builds the scope arg dynamically.
+ *
+ * Returns:
+ *  - factor (kg/AZN) when company.industry has a catalog row
+ *  - NaN when industry is null OR not catalogued — this propagates
+ *    via `tryEvaluateFormula` to `status='unknown'`, which is the
+ *    fail-loud semantic. Silently returning 0 would render a green
+ *    «zero emissions» cell for an un-catalogued company.
+ *
+ * Also stamps `state.inputs.aggregates.industry_factor` with the
+ * resolved (industry, scope) → factor map so the drilldown UI can
+ * surface "Source: industry intensity for [industry], confidence B"
+ * alongside the value.
+ */
+const industryFactorResolver: NamespaceResolver = {
+  name: 'industryFactor',
+  matches: (r) => r === 'industryFactor' || r.startsWith('industryFactor:'),
+  async resolve(matched, ctx, state) {
+    // Pre-resolve every scope mentioned in requiredInputs so the
+    // synchronous formula function below doesn't need to do an
+    // additional lookup per call. The catalog is in-memory + cheap so
+    // this is essentially free, but keeps the function pure-sync
+    // (expr-eval requires sync functions).
+    const resolved: Record<
+      string,
+      { factor: number; confidence: ConfidenceTier; note: string } | null
+    > = {};
+    for (const raw of matched) {
+      if (raw === 'industryFactor') continue;
+      const scope = raw.slice('industryFactor:'.length) as EmissionScope;
+      const lookup = getIndustryEmissionFactor(ctx.industry, scope);
+      resolved[scope] = lookup;
+    }
+
+    state.inputs.aggregates.industry_factor = {
+      industry: ctx.industry ?? null,
+      scopes: Object.fromEntries(
+        Object.entries(resolved).map(([scope, v]) => [
+          scope,
+          v ? { factor: v.factor, confidence: v.confidence } : null,
+        ]),
+      ),
+    };
+
+    if (state.functions.industryFactor) {
+      throw new Error(
+        'industryFactorResolver re-entry: state.functions.industryFactor already set. ' +
+          'buildContext must invoke each resolver at most once per call.',
+      );
+    }
+    state.functions.industryFactor = (scope: FormulaFunctionArgLike) => {
+      const key = String(scope) as EmissionScope;
+      const r = resolved[key];
+      if (!r) {
+        // Allow late lookup for callers that didn't pre-declare the
+        // exact scope in requiredInputs (e.g. defensive seed author
+        // who only listed `industryFactor`). Falls back to the live
+        // catalog read for the company's industry; NaN when missing.
+        const live = getIndustryEmissionFactor(ctx.industry, key);
+        return live ? live.factor : Number.NaN;
+      }
+      return r.factor;
+    };
+  },
+};
+
 const RESOLVERS: readonly NamespaceResolver[] = [
   bookingResolver,
   companySettingsResolver,
@@ -1734,6 +1931,7 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   budgetLineResolver,
   factResolver,
   rollupResolver,
+  industryFactorResolver,
 ];
 
 // --- Seed-load-time requiredInputs validator -------------------------------
@@ -1814,6 +2012,28 @@ export function validateRequiredInputs(
         return {
           ok: false,
           reason: `requiredInputs[${i}] = "${r}" — empty INDICATOR_CODE after "rollup:". Expected "rollup:<INDICATOR_CODE>".`,
+        };
+      }
+    } else if (r.startsWith('industryFactor:')) {
+      // Phase 7.H F4.v2.2 — sector intensity factor. Validates the
+      // scope token is one of the three known names; typos like
+      // `industryFactor:scope1` (no underscore) get caught at seed-
+      // load time instead of producing silent NaN at evaluation.
+      const scope = r.slice('industryFactor:'.length).trim();
+      if (!scope) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — empty scope after "industryFactor:". Expected "industryFactor:scope_1" | "scope_2" | "scope_3".`,
+        };
+      }
+      if (
+        scope !== 'scope_1' &&
+        scope !== 'scope_2' &&
+        scope !== 'scope_3'
+      ) {
+        return {
+          ok: false,
+          reason: `requiredInputs[${i}] = "${r}" — unknown scope "${scope}". Expected one of: scope_1, scope_2, scope_3.`,
         };
       }
     }
@@ -1925,6 +2145,15 @@ export async function buildContext(
      * final per-variable value the formula should see.
      */
     scenarioOverrides?: Record<string, number>;
+    /**
+     * Phase 7.H F4.v2.2 — sector intensity factor lookup key. Threaded
+     * from the recompute trigger (which already knows
+     * `company.industry`); resolvers requiring `industryFactor:<scope>`
+     * read it via ctx. Optional + null tolerant so test fixtures and
+     * legacy callers compile without churn — when null, the resolver
+     * surfaces NaN into the formula (status='unknown').
+     */
+    industry?: string | null;
   },
 ): Promise<{
   context: FormulaContext;
@@ -1942,6 +2171,7 @@ export async function buildContext(
     companyId: args.companyId,
     period: args.period,
     baseCurrency: args.baseCurrency ?? 'AZN',
+    industry: args.industry ?? null,
   };
 
   // RESOLVERS is iterated once per recompute; each resolver sees all its
@@ -2002,6 +2232,14 @@ export interface IndicatorDefinitionLike {
    * Optional so tests / callers without sparkline support stay green.
    */
   sparklineFormula?: string | null;
+  /**
+   * Phase 7.H F4.v2.1 — provenance default for IVs produced from this
+   * definition. Mirrors the Prisma column `defaultValueSource`. Optional
+   * so legacy callers / fixtures that don't set the field still recompute;
+   * `recomputeIndicator` falls back to `'computed'` (the financial /
+   * operational default) when absent.
+   */
+  defaultValueSource?: ValueSource;
 }
 
 /**
@@ -2040,6 +2278,39 @@ export interface RecomputeResult {
   value: number;
 }
 
+/**
+ * Phase 7.H F4.v2.2.1 — derive a single confidence tier for the IV from
+ * the per-scope catalog readings the `industryFactorResolver` left in
+ * `inputs.aggregates.industry_factor`.
+ *
+ * Rule: take the WORST tier across non-null scopes. A composite that
+ * uses Scope 1 (B) + Scope 2 (B) + Scope 3 (C) lands at C — the whole
+ * is only as trustworthy as the weakest scope. Scope-3 is uniformly C
+ * across the catalog (spend-based proxy), so most composite IVs end
+ * up C; pure-Scope-1 IVs end up B (and A for `logistics` which has a
+ * directly-measurable fleet fuel scope_1).
+ *
+ * Returns `null` when no scopes were resolved (formula doesn't use
+ * industryFactor) — the IV is either disclosed (handled upstream) or
+ * `computed`/`modeled_generic`/`macro` where confidence-tier isn't
+ * meaningful.
+ */
+function worstConfidenceFromAggregate(
+  agg: RecomputeAggregates['industry_factor'],
+): ConfidenceTier | null {
+  if (!agg || !agg.scopes) return null;
+  // Tier ordering: A (best) > B > C > D (worst). Return the highest
+  // ordinal — i.e. the most conservative.
+  const order: Record<ConfidenceTier, number> = { A: 0, B: 1, C: 2, D: 3 };
+  let worst: ConfidenceTier | null = null;
+  for (const scope of Object.values(agg.scopes)) {
+    if (!scope) continue;
+    const c = scope.confidence;
+    if (worst === null || order[c] > order[worst]) worst = c;
+  }
+  return worst;
+}
+
 export async function recomputeIndicator(
   ds: RecomputeDataSource,
   args: {
@@ -2070,9 +2341,36 @@ export async function recomputeIndicator(
     baseCurrency?: string;
     /** Phase 7.E ad-hoc scenario preview — see `buildContext` doc. */
     scenarioOverrides?: Record<string, number>;
+    /**
+     * Phase 7.H F4.v2.2 — sector industry code (e.g. "agro_crops"),
+     * threaded into `industryFactorResolver`. Optional + null tolerant
+     * — when missing, ESG formulas that depend on `industryFactor`
+     * surface NaN → `status='unknown'` rather than silently returning
+     * a misleading zero.
+     */
+    industry?: string | null;
   },
 ): Promise<RecomputeResult> {
   const period = parsePeriod(args.period);
+
+  // Phase 7.H F4.v2.3 — disclosure-first override. If the user has
+  // manually entered a value for this (co, indicator, period) triple
+  // via the data-entry admin, use it verbatim and skip formula
+  // evaluation entirely. The stamped `valueSource: 'disclosed'`
+  // overrides whatever the seed's `defaultValueSource` was — a
+  // disclosed ESG cell wins over its modeled-generic formula. Only
+  // honored when the definition has a `code` (anchor for the
+  // disclosure lookup); legacy fixtures without `code` skip this path
+  // and fall through to the formula branch.
+  let disclosed: { value: number; unit: string } | null = null;
+  if (args.definition.code) {
+    disclosed = await ds.getIndicatorDisclosure({
+      organizationId: args.organizationId,
+      companyId: args.companyId,
+      indicatorCode: args.definition.code,
+      period: args.period,
+    });
+  }
 
   const { context, inputs, functions } = await buildContext(ds, {
     organizationId: args.organizationId,
@@ -2081,13 +2379,16 @@ export async function recomputeIndicator(
     requiredInputs: args.definition.requiredInputs,
     baseCurrency: args.baseCurrency,
     scenarioOverrides: args.scenarioOverrides,
+    industry: args.industry,
   });
 
-  const result = tryEvaluateFormula(
-    args.definition.formula,
-    context,
-    functions,
-  );
+  // Skip formula evaluation when a disclosure overrides the value —
+  // there's no point burning expr-eval cycles on a number we already
+  // know. But we DO still need the resolved-inputs snapshot for
+  // drilldown UI, so buildContext runs above either way.
+  const result = disclosed
+    ? { ok: true as const, value: disclosed.value }
+    : tryEvaluateFormula(args.definition.formula, context, functions);
 
   let status: IndicatorStatus;
   let value: number;
@@ -2096,6 +2397,15 @@ export async function recomputeIndicator(
   // mutation here doesn't alias anything buildContext or its resolvers
   // may hold onto in the future (e.g. per-org caching).
   const finalInputs: RecomputeInputs = { ...inputs };
+  if (disclosed) {
+    // Annotate the audit snapshot so a drilldown viewer sees this was
+    // a manual disclosure, not a formula evaluation. The
+    // `disclosed.unit` lands here for after-the-fact verification.
+    finalInputs.resolved = {
+      ...(finalInputs.resolved ?? {}),
+      disclosed_value: disclosed.value,
+    };
+  }
 
   if (result.ok) {
     value = result.value;
@@ -2156,6 +2466,26 @@ export async function recomputeIndicator(
     status,
     inputs: finalInputs,
     sparkline,
+    // Phase 7.H F4.v2.1 — fall back to `computed` when the caller omits
+    // the field (legacy / pre-v2.1 IndicatorDefinitionLike fixtures).
+    // The matrix API + IndicatorDetail UI rely on this stamp to render
+    // the provenance badge.
+    //
+    // Phase 7.H F4.v2.3 — a disclosed override beats the seed default.
+    // When the user manually entered the value, the badge MUST show
+    // "РАСКРЫТО" (teal) rather than "ОБЩАЯ ОЦЕНКА" (gray) — the whole
+    // point of the data-entry flow is to upgrade provenance.
+    valueSource: disclosed
+      ? 'disclosed'
+      : (args.definition.defaultValueSource ?? 'computed'),
+    // Phase 7.H F4.v2.2.1 — model-confidence tier (A|B|C|D). Disclosed
+    // cells are ground truth → no tier. Industry-modeled cells inherit
+    // the WORST tier across the scopes used (a Scope 1+2+3 composite is
+    // only as trustworthy as its weakest scope). When industry_factor
+    // aggregate is absent (formula doesn't use industryFactor()), null.
+    confidence: disclosed
+      ? null
+      : worstConfidenceFromAggregate(finalInputs.aggregates?.industry_factor),
   });
 
   return { ok: result.ok, status, value };

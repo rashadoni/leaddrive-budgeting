@@ -45,6 +45,14 @@ const ALL_ACTIONS = [
   "user_active_toggle",
   "ai_news_summary_run",
   "ai_morning_brief_run",
+  // Phase 7.H F4.v2.3 — manual data-entry actions surfaced in the
+  // audit feed so a reviewer can trace yield/occupancy/disclosure edits.
+  "operational_fact_create",
+  "operational_fact_update",
+  "operational_fact_delete",
+  "indicator_disclosure_create",
+  "indicator_disclosure_update",
+  "indicator_disclosure_delete",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

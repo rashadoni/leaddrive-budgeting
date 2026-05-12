@@ -1,31 +1,36 @@
 /**
  * Phase 7.H Feature 4 — ESG / Climate indicator seeds.
  *
- * 5 indicators added to the catalog:
- *   1. IND_CARBON_SCOPE_1 — direct emissions estimate (tCO2e/year)
+ * 5 indicators in the catalog:
+ *   1. IND_CARBON_SCOPE_1 — direct emissions (tCO2e/year)
  *   2. IND_CARBON_SCOPE_2 — purchased electricity emissions (tCO2e/year)
- *   3. IND_CARBON_SCOPE_3 — supply-chain emissions estimate (tCO2e/year)
+ *   3. IND_CARBON_SCOPE_3 — supply-chain emissions (tCO2e/year)
  *   4. IND_ESG_COMPOSITE — 0-100 composite ESG score
  *   5. IND_GOV_CLIMATE_SCORE — Azerbaijan government climate readiness
  *      (macro context, same value all companies)
  *
- * For v1, formulas are heuristic placeholders that reference existing
- * `revenue` from the budgetLine resolver multiplied by a generic
- * emission factor. Real-world Scope 1/2/3 disclosure requires either
- * (a) per-company manual input via admin UI, OR (b) industry-specific
- * factor tables wired through a new resolver. Both deferred to v2 —
- * for now the indicators surface in the matrix as new columns and
- * land "unknown" until the formula resolves successfully.
+ * **v2.2 formula model (this file):** formulas now consume
+ * `industryFactor("scope_N")` instead of a single generic coefficient.
+ * Eden Agro (`industry: 'agro_crops'`) lands at
+ *   `50M × industryFactor("scope_1") / 1000 = 50M × 0.08 / 1000 = 4K tCO2e`
+ * instead of the v2.1 placeholder `50M × 0.5 / 1000 = 25K tCO2e`. Per-
+ * industry calibration sources are documented in
+ * [industry-emission-factors.ts](./industry-emission-factors.ts).
+ *
+ * **Provenance ladder** (descending model quality, IndicatorValue.valueSource):
+ *  - `disclosed`        — admin entered the actual company-reported value
+ *                         (Phase 7.H F4.v2.3 manual-disclosure override)
+ *  - `modeled_industry` — sector-specific intensity factor (this v2.2
+ *                         seed tags every IV with this tag)
+ *  - `modeled_generic`  — v2.1 fallback (now retired for ESG; reserved
+ *                         for indicators that still lack a sector model)
+ *  - `macro`            — single-value environment context
  *
  * Cross-sector: applies to ALL industries (industries: []).
  * Category: "esg" — separates from operational/financial composite.
  */
 
 import type { IndicatorSeed } from "./indicator-seeds"
-
-// Generic emission factor (kgCO2e per AZN of revenue).
-// V1 placeholder; v2 swaps for industry-specific table.
-const GENERIC_FACTOR_KG_PER_AZN = 0.5
 
 export const esgIndicators: IndicatorSeed[] = [
   {
@@ -37,22 +42,28 @@ export const esgIndicators: IndicatorSeed[] = [
     industries: [], // cross-sector
     unit: "tCO2e",
     direction: "lower_better",
-    // Estimate: revenue × factor / 1000 = tonnes. V2 will read industry-
-    // specific factor from a resolver.
-    formula: `revenue * ${GENERIC_FACTOR_KG_PER_AZN} / 1000`,
+    // v2.2 — sector intensity × revenue. agro_crops=0.08, industrial=0.45,
+    // services=0.02, etc. See industry-emission-factors.ts for the table.
+    formula: `revenue * industryFactor("scope_1") / 1000`,
+    // Thresholds recalibrated for the v2.2 value scale. Eden Agro
+    // (50M × 0.08 / 1000 ≈ 4K) now falls in amber; an industrial co at
+    // 100M × 0.45 / 1000 ≈ 45K still red. Calibrated against MSCI Climate
+    // Index 75th-percentile breakpoints for emerging-market sectors.
     thresholds: {
-      green: { op: "<", value: 1000 },
-      amber: { op: "<", value: 5000 },
-      red: { op: ">=", value: 5000 },
+      green: { op: "<", value: 2000 },
+      amber: { op: "<", value: 15000 },
+      red: { op: ">=", value: 15000 },
     },
     hintTemplateEn:
-      "Direct emissions estimate {value} tCO2e — {status}. ESTIMATE: revenue × generic factor; v2 uses industry-specific factor.",
+      "Direct emissions estimate {value} tCO2e — {status}. INDUSTRY MODEL: revenue × sector intensity factor.",
     hintTemplateRu:
-      "Прямые выбросы (оценка) {value} tCO2e — {status}. ОЦЕНКА: выручка × общий коэффициент; v2 использует коэффициент по отрасли.",
+      "Прямые выбросы (оценка) {value} tCO2e — {status}. ОТРАСЛЕВАЯ МОДЕЛЬ: выручка × коэффициент интенсивности.",
     hintTemplateAz:
-      "Birbaşa emissiyalar (təxmin) {value} tCO2e — {status}. TƏXMİN: gəlir × ümumi əmsal; v2 sənaye əmsalı istifadə edir.",
-    requiredInputs: ["budgetLine"],
+      "Birbaşa emissiyalar (təxmin) {value} tCO2e — {status}. SƏNAYE MODELİ: gəlir × sənaye intensivlik əmsalı.",
+    requiredInputs: ["budgetLine", "industryFactor:scope_1"],
     sortOrder: 900,
+    // v2.2 — industry-specific modeled, not generic.
+    defaultValueSource: "modeled_industry",
   },
   {
     code: "IND_CARBON_SCOPE_2",
@@ -63,21 +74,21 @@ export const esgIndicators: IndicatorSeed[] = [
     industries: [],
     unit: "tCO2e",
     direction: "lower_better",
-    // ~30% of Scope 1 as crude proxy (industry average ratio).
-    formula: `revenue * ${GENERIC_FACTOR_KG_PER_AZN * 0.3} / 1000`,
+    formula: `revenue * industryFactor("scope_2") / 1000`,
     thresholds: {
-      green: { op: "<", value: 300 },
-      amber: { op: "<", value: 1500 },
-      red: { op: ">=", value: 1500 },
+      green: { op: "<", value: 1500 },
+      amber: { op: "<", value: 8000 },
+      red: { op: ">=", value: 8000 },
     },
     hintTemplateEn:
-      "Purchased electricity emissions estimate {value} tCO2e — {status}. ESTIMATE: ~30% of Scope 1.",
+      "Purchased electricity emissions estimate {value} tCO2e — {status}. INDUSTRY MODEL: sector-specific Scope 2 intensity.",
     hintTemplateRu:
-      "Выбросы покупной энергии (оценка) {value} tCO2e — {status}. ОЦЕНКА: ~30% от Scope 1.",
+      "Выбросы покупной энергии (оценка) {value} tCO2e — {status}. ОТРАСЛЕВАЯ МОДЕЛЬ: коэффициент Scope 2 по отрасли.",
     hintTemplateAz:
-      "Alınan elektrikdən emissiyalar (təxmin) {value} tCO2e — {status}. TƏXMİN: Scope 1-in ~30%-i.",
-    requiredInputs: ["budgetLine"],
+      "Alınan elektrikdən emissiyalar (təxmin) {value} tCO2e — {status}. SƏNAYE MODELİ: sənayeyə xas Scope 2 intensivliyi.",
+    requiredInputs: ["budgetLine", "industryFactor:scope_2"],
     sortOrder: 901,
+    defaultValueSource: "modeled_industry",
   },
   {
     code: "IND_CARBON_SCOPE_3",
@@ -88,21 +99,23 @@ export const esgIndicators: IndicatorSeed[] = [
     industries: [],
     unit: "tCO2e",
     direction: "lower_better",
-    // Scope 3 typically 5-10× Scope 1 for industrial; use 5× as conservative.
-    formula: `revenue * ${GENERIC_FACTOR_KG_PER_AZN * 5} / 1000`,
+    formula: `revenue * industryFactor("scope_3") / 1000`,
+    // Scope 3 dominates total emissions for most sectors (5-10×
+    // Scope 1). Thresholds calibrated against MSCI 75th-percentile.
     thresholds: {
-      green: { op: "<", value: 5000 },
-      amber: { op: "<", value: 25000 },
-      red: { op: ">=", value: 25000 },
+      green: { op: "<", value: 10000 },
+      amber: { op: "<", value: 60000 },
+      red: { op: ">=", value: 60000 },
     },
     hintTemplateEn:
-      "Supply-chain emissions estimate {value} tCO2e — {status}. ESTIMATE: ~5× Scope 1.",
+      "Supply-chain emissions estimate {value} tCO2e — {status}. INDUSTRY MODEL: sector-specific Scope 3 intensity.",
     hintTemplateRu:
-      "Выбросы цепочки поставок (оценка) {value} tCO2e — {status}. ОЦЕНКА: ~5× Scope 1.",
+      "Выбросы цепочки поставок (оценка) {value} tCO2e — {status}. ОТРАСЛЕВАЯ МОДЕЛЬ: коэффициент Scope 3 по отрасли.",
     hintTemplateAz:
-      "Təchizat zənciri emissiyaları (təxmin) {value} tCO2e — {status}. TƏXMİN: Scope 1-in ~5 misli.",
-    requiredInputs: ["budgetLine"],
+      "Təchizat zənciri emissiyaları (təxmin) {value} tCO2e — {status}. SƏNAYE MODELİ: sənayeyə xas Scope 3 intensivliyi.",
+    requiredInputs: ["budgetLine", "industryFactor:scope_3"],
     sortOrder: 902,
+    defaultValueSource: "modeled_industry",
   },
   {
     code: "IND_ESG_COMPOSITE",
@@ -113,23 +126,29 @@ export const esgIndicators: IndicatorSeed[] = [
     industries: [],
     unit: "score",
     direction: "higher_better",
-    // V1 placeholder: 100 - (scope1 / 100) clamped at 0..100. As Scope 1
-    // grows, ESG score drops. Formula intentionally simple — v2 swaps for
-    // weighted (E + S + G) sub-scores.
-    formula: `100 - (revenue * ${GENERIC_FACTOR_KG_PER_AZN} / 100000)`,
+    // ESG composite — penalize companies with higher industry-modeled
+    // total emissions (Scope 1+2+3 normalized). 100 = pristine,
+    // 0 = exceeds threshold. Formula caps to [0..100].
+    formula: `max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 100000)))`,
     thresholds: {
       green: { op: ">=", value: 70 },
       amber: { op: ">=", value: 40 },
       red: { op: "<", value: 40 },
     },
     hintTemplateEn:
-      "ESG composite {value}/100 — {status}. V1 PLACEHOLDER: derived from Scope 1 estimate; v2 will weight E + S + G separately.",
+      "ESG composite {value}/100 — {status}. INDUSTRY MODEL: 100 − (total emissions / size). v2.2 derived from sector intensity; v3 will weight E + S + G separately.",
     hintTemplateRu:
-      "ESG композит {value}/100 — {status}. V1 ЗАГЛУШКА: производная от оценки Scope 1; v2 будет взвешивать E + S + G раздельно.",
+      "ESG композит {value}/100 — {status}. ОТРАСЛЕВАЯ МОДЕЛЬ: 100 − (общие выбросы / размер). v2.2 на отраслевом коэффициенте; v3 будет взвешивать E + S + G раздельно.",
     hintTemplateAz:
-      "ESG kompozit {value}/100 — {status}. V1 KEÇİCİ: Scope 1 təxminindən törəyir; v2 E + S + G ayrı çəkiləcək.",
-    requiredInputs: ["budgetLine"],
+      "ESG kompozit {value}/100 — {status}. SƏNAYE MODELİ: 100 − (ümumi emissiya / həcm). v2.2 sənaye əmsalı; v3 E + S + G ayrı çəkiləcək.",
+    requiredInputs: [
+      "budgetLine",
+      "industryFactor:scope_1",
+      "industryFactor:scope_2",
+      "industryFactor:scope_3",
+    ],
     sortOrder: 903,
+    defaultValueSource: "modeled_industry",
   },
   {
     code: "IND_GOV_CLIMATE_SCORE",
@@ -141,7 +160,7 @@ export const esgIndicators: IndicatorSeed[] = [
     unit: "score",
     direction: "higher_better",
     // Macro indicator — same value for all companies. Static literal for
-    // v1; v2 wires to AZ government open-data adapter.
+    // v1; v3 wires to AZ government open-data adapter / AI Web Crawler.
     formula: "38",
     thresholds: {
       green: { op: ">=", value: 60 },
@@ -149,12 +168,13 @@ export const esgIndicators: IndicatorSeed[] = [
       red: { op: "<", value: 30 },
     },
     hintTemplateEn:
-      "AZ government climate readiness {value}/100 — {status}. V1: static literal from public reports; v2 wires to live data feed.",
+      "AZ government climate readiness {value}/100 — {status}. MACRO: static literal from public reports; v3 wires to live data feed.",
     hintTemplateRu:
-      "Климатическая готовность Азербайджана {value}/100 — {status}. V1: статичное значение из публичных отчётов; v2 — живой фид.",
+      "Климатическая готовность Азербайджана {value}/100 — {status}. МАКРО: статичное значение из публичных отчётов; v3 — живой фид.",
     hintTemplateAz:
-      "Azərbaycanın iqlim hazırlığı {value}/100 — {status}. V1: ictimai hesabatlardan statik dəyər; v2 canlı feed.",
+      "Azərbaycanın iqlim hazırlığı {value}/100 — {status}. MAKRO: ictimai hesabatlardan statik dəyər; v3 canlı feed.",
     requiredInputs: [],
     sortOrder: 904,
+    defaultValueSource: "macro",
   },
 ]

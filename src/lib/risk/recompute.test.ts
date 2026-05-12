@@ -37,6 +37,15 @@ type MockState = {
    * Keyed by parent companyId. Returns [] when key absent.
    */
   children: Record<string, string[]>;
+  /**
+   * Phase 7.H F4.v2.3 — pre-canned disclosure overrides. Keyed by
+   * `${companyId}:${indicatorCode}@${period}`. Returns null (= no
+   * disclosure, formula evaluates normally) when key absent. Tests
+   * that exercise disclosure-first override populate this map and
+   * assert the upsert payload carries `valueSource: 'disclosed'` +
+   * the user-supplied value (not the formula output).
+   */
+  disclosures: Record<string, { value: number; unit: string } | null>;
   upserts: Array<{
     organizationId: string;
     companyId: string;
@@ -48,6 +57,13 @@ type MockState = {
     /** Phase 7.E phase 2 — captured for sparkline-integration tests; the
      *  field is optional because non-sparkline call paths leave it absent. */
     sparkline?: (number | null)[];
+    /** Phase 7.H F4.v2.1 — provenance stamp written on every upsert.
+     *  Required field on the live interface; tests that assert badge
+     *  behaviour pin it via `toMatchObject({ valueSource: '...' })`. */
+    valueSource?: string;
+    /** Phase 7.H F4.v2.2.1 — model-confidence tier captured for
+     *  industry-modeled cells; null for disclosed + computed paths. */
+    confidence?: string | null;
   }>;
   /** Every read logged with the org it was scoped to — used to prove the
    *  data-source enforces tenant scoping at the call site. */
@@ -77,6 +93,7 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     budgetLines: initial.budgetLines ?? [],
     ivReads: initial.ivReads ?? {},
     children: initial.children ?? {},
+    disclosures: initial.disclosures ?? {},
     upserts: [],
     orgReads: [],
     ivReadCalls: [],
@@ -141,6 +158,23 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
       state.orgReads.push(`children:${organizationId}:${parentId}`);
       state.childrenCalls.push({ parentId });
       return state.children[parentId] ?? [];
+    },
+    // Phase 7.H F4.v2.3 — disclosure-first override lookup. Tests
+    // populate `state.disclosures[companyId:indicatorCode@period]`
+    // when they want to exercise the override path; absent key → null
+    // = formula evaluation proceeds normally (preserves all prior
+    // test contracts that don't know about disclosures).
+    getIndicatorDisclosure: async ({
+      organizationId,
+      companyId,
+      indicatorCode,
+      period,
+    }) => {
+      state.orgReads.push(
+        `disclosure:${organizationId}:${companyId}:${indicatorCode}@${period}`,
+      );
+      const key = `${companyId}:${indicatorCode}@${period}`;
+      return state.disclosures[key] ?? null;
     },
   };
 }
@@ -1883,6 +1917,10 @@ describe('createPrismaDataSource.upsertIndicatorValue — sparkline write semant
     value: 80,
     status: 'green' as const,
     inputs: { resolved: {}, aggregates: {}, derived: {} },
+    // Phase 7.H F4.v2.1 — provenance default for the financial /
+    // operational majority of indicators. ESG seeds override to
+    // 'modeled_generic' or 'macro' via IndicatorDefinition.defaultValueSource.
+    valueSource: 'computed' as const,
   };
 
   it('CREATE: omits sparkline → writes [] (preserves first-write default)', async () => {
@@ -1921,6 +1959,29 @@ describe('createPrismaDataSource.upsertIndicatorValue — sparkline write semant
     await ds.upsertIndicatorValue({ ...baseArgs, sparkline: sl });
     const args = upsert.mock.calls[0][0];
     expect(args.update.sparkline).toEqual(sl);
+  });
+
+  // Phase 7.H F4.v2.1 — provenance stamp on CREATE and UPDATE. Locks the
+  // contract that every IV row carries the seed-defined source tag so
+  // panel-3 + heatmap-cell can show the right "ОБЩАЯ ОЦЕНКА" / "МАКРО"
+  // / etc. badge. Without persistence, the matrix API would have to
+  // re-join IndicatorDefinition.defaultValueSource on every read.
+  it('CREATE: writes the seed-supplied valueSource', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.upsertIndicatorValue({ ...baseArgs, valueSource: 'modeled_generic' });
+    const args = upsert.mock.calls[0][0];
+    expect(args.create.valueSource).toBe('modeled_generic');
+    expect(args.update.valueSource).toBe('modeled_generic');
+  });
+
+  it('CREATE+UPDATE: macro provenance lands on both branches', async () => {
+    const { prisma, upsert } = makePrismaSpy();
+    const ds = createPrismaDataSource(prisma);
+    await ds.upsertIndicatorValue({ ...baseArgs, valueSource: 'macro' });
+    const args = upsert.mock.calls[0][0];
+    expect(args.create.valueSource).toBe('macro');
+    expect(args.update.valueSource).toBe('macro');
   });
 });
 
@@ -2475,5 +2536,343 @@ describe("validateRollupSeed (sub-44 cont'd architect 💡 closure)", () => {
       requiredInputs: ['budgetLine', 'rollup:Y', 'fact:Z@2025'],
     });
     expect(r).toEqual({ ok: true });
+  });
+});
+
+// --- Phase 7.H F4.v2.3 — disclosure-first override ---------------------------
+
+describe('recomputeIndicator — disclosure override (Phase 7.H F4.v2.3)', () => {
+  // Scope 1 carbon: stock formula is `revenue * 0.5 / 1000`. With
+  // revenue ~50M AZN, the modeled cell would land at 25,150 tCO2e
+  // (red). When a disclosure of 800 tCO2e exists for the (co,
+  // indicator, period) triple, the override fires and the IV lands
+  // at 800 (green) with `valueSource: 'disclosed'`.
+  const CARBON_SCOPE_1: IndicatorDefinitionLike = {
+    id: 'ind_carbon_s1',
+    code: 'IND_CARBON_SCOPE_1',
+    formula: 'revenue * 0.5 / 1000',
+    thresholds: {
+      green: { op: '<', value: 1000 },
+      amber: { op: '<', value: 5000 },
+      red: { op: '>=', value: 5000 },
+    },
+    requiredInputs: ['budgetLine'],
+    unit: 'tCO2e',
+    defaultValueSource: 'modeled_generic',
+  };
+
+  it('uses disclosed value instead of formula when present + stamps disclosed', async () => {
+    const ds = mockDs({
+      // Provide revenue so the formula CAN evaluate — verifies the
+      // override skips evaluation rather than being masked by a
+      // formula-fail short-circuit.
+      budgetLines: [
+        {
+          plannedAmount: 50_000_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'revenue',
+          accountCode: '601',
+          accountCategory: 'sales',
+          accountName: 'Revenue',
+          monthIndex: null,
+        },
+      ],
+      disclosures: {
+        'co_eden:IND_CARBON_SCOPE_1@2026': { value: 800, unit: 'tCO2e' },
+      },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1,
+      period: '2026',
+    });
+    expect(result.value).toBe(800);
+    expect(result.status).toBe('green');
+    expect(ds.state.upserts).toHaveLength(1);
+    expect(ds.state.upserts[0]).toMatchObject({
+      indicatorId: 'ind_carbon_s1',
+      value: 800,
+      status: 'green',
+      // The load-bearing assertion: the upsert MUST carry
+      // valueSource='disclosed' not the seed's 'modeled_generic'.
+      // This is how Panel-3 + heatmap flip from gray "ОБЩАЯ ОЦЕНКА"
+      // → teal "РАСКРЫТО" automatically.
+      valueSource: 'disclosed',
+    });
+  });
+
+  it('falls back to formula + modeled_generic when no disclosure exists', async () => {
+    const ds = mockDs({
+      budgetLines: [
+        {
+          plannedAmount: 50_000_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'revenue',
+          accountCode: '601',
+          accountCategory: 'sales',
+          accountName: 'Revenue',
+          monthIndex: null,
+        },
+      ],
+      disclosures: {}, // no override for this (co, indicator, period)
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1,
+      period: '2026',
+    });
+    // Modeled placeholder: 50M × 0.5 / 1000 = 25,000 — red status
+    expect(result.value).toBeCloseTo(25_000, 0);
+    expect(result.status).toBe('red');
+    expect(ds.state.upserts[0].valueSource).toBe('modeled_generic');
+  });
+
+  it('disclosure for a different period does NOT bleed into the requested period', async () => {
+    const ds = mockDs({
+      budgetLines: [
+        {
+          plannedAmount: 50_000_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'revenue',
+          accountCode: '601',
+          accountCategory: 'sales',
+          accountName: 'Revenue',
+          monthIndex: null,
+        },
+      ],
+      // 2025 disclosure should NOT apply when recomputing 2026.
+      disclosures: {
+        'co_eden:IND_CARBON_SCOPE_1@2025': { value: 500, unit: 'tCO2e' },
+      },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1,
+      period: '2026',
+    });
+    expect(result.value).not.toBe(500);
+    expect(ds.state.upserts[0].valueSource).toBe('modeled_generic');
+  });
+});
+
+// --- Phase 7.H F4.v2.2 — industryFactor() resolver ---------------------------
+
+describe('recomputeIndicator — industryFactor resolver (Phase 7.H F4.v2.2)', () => {
+  // v2.2 carbon Scope 1 formula: `revenue × industryFactor("scope_1") / 1000`.
+  // For agro_crops (factor 0.08), 50M × 0.08 / 1000 = 4,000 tCO2e
+  // (amber band [2000..15000)). For industrial (factor 0.45), 50M × 0.45
+  // / 1000 = 22,500 tCO2e (red band ≥15000). Locks the sector-specific
+  // wiring end-to-end.
+  const CARBON_SCOPE_1_V22: IndicatorDefinitionLike = {
+    id: 'ind_carbon_s1_v22',
+    code: 'IND_CARBON_SCOPE_1',
+    formula: 'revenue * industryFactor("scope_1") / 1000',
+    thresholds: {
+      green: { op: '<', value: 2000 },
+      amber: { op: '<', value: 15000 },
+      red: { op: '>=', value: 15000 },
+    },
+    requiredInputs: ['budgetLine', 'industryFactor:scope_1'],
+    unit: 'tCO2e',
+    defaultValueSource: 'modeled_industry',
+  };
+
+  const baseBudgetLines = [
+    {
+      plannedAmount: 50_000_000,
+      currencyCode: null,
+      exchangeRate: null,
+      accountType: 'revenue',
+      accountCode: '601',
+      accountCategory: 'sales',
+      accountName: 'Revenue',
+      monthIndex: null,
+    },
+  ];
+
+  it('agro_crops Scope 1 lands in amber (4K) using sector factor 0.08', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'agro_crops',
+    });
+    expect(result.value).toBeCloseTo(4000, 0); // 50M × 0.08 / 1000
+    expect(result.status).toBe('amber');
+    expect(ds.state.upserts[0].valueSource).toBe('modeled_industry');
+  });
+
+  it('industrial Scope 1 lands in red (22.5K) using sector factor 0.45', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_industrial',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'industrial',
+    });
+    expect(result.value).toBeCloseTo(22500, 0); // 50M × 0.45 / 1000
+    expect(result.status).toBe('red');
+    expect(ds.state.upserts[0].valueSource).toBe('modeled_industry');
+  });
+
+  it('services Scope 1 lands in green (1K) using sector factor 0.02', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_services',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'services',
+    });
+    expect(result.value).toBeCloseTo(1000, 0); // 50M × 0.02 / 1000
+    expect(result.status).toBe('green');
+  });
+
+  it('unknown industry → status=unknown (fail-loud; no silent zero)', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_x',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'not_a_catalogued_sector',
+    });
+    expect(result.status).toBe('unknown');
+  });
+
+  it('null industry → status=unknown (legacy company without industry tag)', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_x',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: null,
+    });
+    expect(result.status).toBe('unknown');
+  });
+
+  it('disclosure beats industry factor (v2.3 > v2.2 in the ladder)', async () => {
+    const ds = mockDs({
+      budgetLines: baseBudgetLines,
+      disclosures: {
+        'co_eden:IND_CARBON_SCOPE_1@2026': { value: 600, unit: 'tCO2e' },
+      },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'agro_crops',
+    });
+    expect(result.value).toBe(600);
+    expect(ds.state.upserts[0].valueSource).toBe('disclosed');
+  });
+
+  // --- Phase 7.H F4.v2.2.1 — confidence tier persistence ----------------
+
+  it('industry-modeled IV carries confidence from catalog (Scope 1 alone → B)', async () => {
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'agro_crops',
+    });
+    // agro_crops scope_1 tier is B in industry-emission-factors.ts —
+    // single-scope formula inherits it verbatim.
+    expect(ds.state.upserts[0].confidence).toBe('B');
+  });
+
+  it('industry-modeled IV picks worst tier across multiple scopes', async () => {
+    // ESG composite reads Scope 1 (B) + Scope 2 (B) + Scope 3 (C);
+    // worstConfidenceFromAggregate picks C — locks the "whole is only
+    // as trustworthy as the weakest scope" rule.
+    const COMPOSITE: IndicatorDefinitionLike = {
+      id: 'ind_esg_composite_v22',
+      code: 'IND_ESG_COMPOSITE',
+      formula:
+        'max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 100000)))',
+      thresholds: {
+        green: { op: '>=', value: 70 },
+        amber: { op: '>=', value: 40 },
+        red: { op: '<', value: 40 },
+      },
+      requiredInputs: [
+        'budgetLine',
+        'industryFactor:scope_1',
+        'industryFactor:scope_2',
+        'industryFactor:scope_3',
+      ],
+      unit: 'score',
+      defaultValueSource: 'modeled_industry',
+    };
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_industrial',
+      definition: COMPOSITE,
+      period: '2026',
+      industry: 'industrial',
+    });
+    expect(ds.state.upserts[0].confidence).toBe('C');
+  });
+
+  it('disclosed override clears the confidence tier (truth, not model)', async () => {
+    const ds = mockDs({
+      budgetLines: baseBudgetLines,
+      disclosures: {
+        'co_eden:IND_CARBON_SCOPE_1@2026': { value: 600, unit: 'tCO2e' },
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: CARBON_SCOPE_1_V22,
+      period: '2026',
+      industry: 'agro_crops',
+    });
+    expect(ds.state.upserts[0].valueSource).toBe('disclosed');
+    expect(ds.state.upserts[0].confidence).toBeNull();
+  });
+
+  it('formula without industryFactor() → confidence stays null (financial cells)', async () => {
+    // A pure-budgetLine indicator (no industryFactor in requiredInputs)
+    // should NOT carry a confidence tier — tier is meaningful only for
+    // industry-modeled cells.
+    const FIN_INDICATOR: IndicatorDefinitionLike = {
+      id: 'ind_fin',
+      code: 'IND_FIN_TEST',
+      formula: 'revenue * 0.5',
+      thresholds: {
+        green: { op: '>=', value: 0 },
+        amber: { op: '>=', value: -1000000 },
+        red: { op: '<', value: -1000000 },
+      },
+      requiredInputs: ['budgetLine'],
+      unit: 'AZN',
+      defaultValueSource: 'computed',
+    };
+    const ds = mockDs({ budgetLines: baseBudgetLines });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_fin',
+      definition: FIN_INDICATOR,
+      period: '2026',
+      industry: 'agro_crops',
+    });
+    expect(ds.state.upserts[0].valueSource).toBe('computed');
+    expect(ds.state.upserts[0].confidence).toBeNull();
   });
 });

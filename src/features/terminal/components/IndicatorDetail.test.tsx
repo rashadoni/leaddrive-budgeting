@@ -41,6 +41,14 @@ interface DetailFixture {
   value?: number;
   status?: "green" | "amber" | "red" | "unknown";
   sparkline: (number | null)[] | null;
+  valueSource?:
+    | "disclosed"
+    | "modeled_industry"
+    | "modeled_generic"
+    | "macro"
+    | "computed";
+  materiality?: "material" | "low_materiality" | "not_material" | null;
+  materialityNote?: string | null;
 }
 
 function fixture(overrides: DetailFixture) {
@@ -776,3 +784,129 @@ describe("IndicatorDetail per-IV recompute (sub-40)", () => {
     expect(postCount).toBe(1);
   });
 });
+
+// Phase 7.H F4.v2.1 — provenance badge in Panel 3.
+//
+// Locks the contract that the four non-`computed` variants render a
+// visible labeled badge with the right palette tone, and that
+// `computed` (or absent) renders NOTHING — adding a badge to every
+// real financial cell would be visual noise. The badge is the
+// load-bearing answer to the original "where does this 25.2K tCO2e
+// come from?" user question; if it stops rendering, the feature is
+// silently broken.
+describe("IndicatorDetail provenance badge (Phase 7.H F4.v2.1)", () => {
+  async function renderWithSource(
+    source: DetailFixture["valueSource"] | undefined,
+  ) {
+    global.fetch = vi.fn(async () => {
+      const payload = { ...fixture({ sparkline: null }), valueSource: source };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as never;
+    render(<IndicatorDetail />);
+    // Wait for the panel to hydrate.
+    await waitFor(() => {
+      expect(screen.getByText(/Test Indicator/i)).toBeTruthy();
+    });
+  }
+
+  it("modeled_generic → renders `ОБЩАЯ ОЦЕНКА` badge (or EN fallback)", async () => {
+    await renderWithSource("modeled_generic");
+    const badge = screen.getByTestId("provenance-badge");
+    expect(badge.getAttribute("data-source")).toBe("modeled_generic");
+    // Both EN ("Generic estimate") and RU ("Общая оценка") are acceptable —
+    // test runs the default locale. Match either by checking the data
+    // attribute (locked above) AND that the label is non-empty.
+    expect(badge.textContent?.trim().length ?? 0).toBeGreaterThan(0);
+  });
+
+  it("macro → renders blue macro badge", async () => {
+    await renderWithSource("macro");
+    const badge = screen.getByTestId("provenance-badge");
+    expect(badge.getAttribute("data-source")).toBe("macro");
+  });
+
+  it("modeled_industry → renders amber industry badge (v2.2 ready)", async () => {
+    await renderWithSource("modeled_industry");
+    const badge = screen.getByTestId("provenance-badge");
+    expect(badge.getAttribute("data-source")).toBe("modeled_industry");
+  });
+
+  it("disclosed → renders teal disclosed badge", async () => {
+    await renderWithSource("disclosed");
+    const badge = screen.getByTestId("provenance-badge");
+    expect(badge.getAttribute("data-source")).toBe("disclosed");
+  });
+
+  it("computed → renders NO badge (real financial cell)", async () => {
+    await renderWithSource("computed");
+    expect(screen.queryByTestId("provenance-badge")).toBeNull();
+  });
+
+  it("absent valueSource → renders NO badge (back-compat with legacy IVs)", async () => {
+    await renderWithSource(undefined);
+    expect(screen.queryByTestId("provenance-badge")).toBeNull();
+  });
+});
+
+// Phase 7.H F4.v2.4 — materiality badge.
+//
+// Locks the contract that `low_materiality` + `not_material` render a
+// visible badge, `material` (default) + null render nothing. The
+// load-bearing assertion: services × Scope 1 — the canonical SASB
+// "heat-map-noise" case — must show "Не материально" so the analyst
+// understands the cell is intentionally de-emphasized.
+describe("IndicatorDetail materiality badge (Phase 7.H F4.v2.4)", () => {
+  async function renderWithMateriality(
+    rating: DetailFixture["materiality"],
+    note: string | null = null,
+  ) {
+    global.fetch = vi.fn(async () => {
+      const payload = {
+        ...fixture({ sparkline: null }),
+        valueSource: "modeled_industry" as const,
+        materiality: rating ?? null,
+        materialityNote: note,
+      };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as never;
+    render(<IndicatorDetail />);
+    await waitFor(() => {
+      expect(screen.getByText(/Test Indicator/i)).toBeTruthy();
+    });
+  }
+
+  it("not_material → renders NOT MATERIAL badge with calibration note in tooltip", async () => {
+    await renderWithMateriality(
+      "not_material",
+      "Campus ops dominated by purchased electricity.",
+    );
+    const badge = screen.getByTestId("materiality-badge");
+    expect(badge.getAttribute("data-rating")).toBe("not_material");
+    expect(badge.getAttribute("title")?.toLowerCase()).toContain(
+      "purchased electricity",
+    );
+  });
+
+  it("low_materiality → renders LOW MATERIALITY badge", async () => {
+    await renderWithMateriality("low_materiality", "Light-ops sector.");
+    const badge = screen.getByTestId("materiality-badge");
+    expect(badge.getAttribute("data-rating")).toBe("low_materiality");
+  });
+
+  it("material → renders NO badge (default, would be visual noise)", async () => {
+    await renderWithMateriality("material");
+    expect(screen.queryByTestId("materiality-badge")).toBeNull();
+  });
+
+  it("null materiality (non-ESG indicator) → renders NO badge", async () => {
+    await renderWithMateriality(null);
+    expect(screen.queryByTestId("materiality-badge")).toBeNull();
+  });
+});
+

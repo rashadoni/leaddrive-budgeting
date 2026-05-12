@@ -446,6 +446,48 @@ export type AuditEventInput =
         fromCache: boolean;
         usage?: { inputTokens: number; outputTokens: number };
       };
+    }
+  | {
+      // Phase 7.H F4.v2.3 — admin entered/updated/deleted a manual
+      // operational KPI through `/budgeting/admin/data-entry`. Captures
+      // the metric + value + source-note so a finance reviewer can
+      // later replay why the indicator landed where it did.
+      action:
+        | 'operational_fact_create'
+        | 'operational_fact_update'
+        | 'operational_fact_delete';
+      entityType: 'OperationalFact';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        metric: string;
+        date: string;
+        value?: number;
+        unit?: string;
+        sourceNote?: string;
+        previousValue?: number;
+      };
+    }
+  | {
+      // Phase 7.H F4.v2.3 — admin entered/updated/deleted a manual ESG
+      // disclosure override. When the create lands, the next recompute
+      // flips the IndicatorValue.valueSource from 'modeled_generic' to
+      // 'disclosed' and the Panel-3 badge switches to teal "РАСКРЫТО".
+      action:
+        | 'indicator_disclosure_create'
+        | 'indicator_disclosure_update'
+        | 'indicator_disclosure_delete';
+      entityType: 'IndicatorDisclosure';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        indicatorCode: string;
+        period: string;
+        value?: number;
+        unit?: string;
+        sourceNote?: string;
+        previousValue?: number;
+      };
     };
 
 /**

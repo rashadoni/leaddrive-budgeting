@@ -74,6 +74,12 @@ async function resolveTargets(
       industries: true,
       isActive: true,
       unit: true,
+      // Phase 7.H F4.v2.1 — provenance default needed by recompute to
+      // stamp every IV; without this select, the field becomes
+      // `undefined` on the `definition` object and the runner falls
+      // back to `computed`, mis-tagging modeled-generic ESG IVs as
+      // real measurements.
+      defaultValueSource: true,
     },
   });
   // Inline prefer-org-scoped + match — keeping Prisma's full row types.
@@ -244,6 +250,7 @@ export async function POST(request: NextRequest) {
           thresholds: definition.thresholds,
           requiredInputs: definition.requiredInputs,
           unit: definition.unit,
+          defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
         };
         let outcome: Outcome;
         try {
@@ -253,6 +260,7 @@ export async function POST(request: NextRequest) {
             definition: defLike,
             period,
             withSparkline,
+            industry: company.industry ?? null,
           });
           outcome = {
             companyId: company.id,
@@ -310,6 +318,7 @@ export async function POST(request: NextRequest) {
       thresholds: definition.thresholds,
       requiredInputs: definition.requiredInputs,
       unit: definition.unit,
+      defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
     };
     try {
       const r = await recomputeIndicator(ds, {
@@ -318,6 +327,7 @@ export async function POST(request: NextRequest) {
         definition: defLike,
         period,
         withSparkline,
+        industry: company.industry ?? null,
       });
       results.push({
         companyId: company.id,

@@ -15,12 +15,35 @@
 
 import type { Direction, Thresholds } from "./formula-engine";
 
+/**
+ * Phase 7.H F4.v2.1 — provenance ladder mirrored from the Prisma enum
+ * `IndicatorValueSource`. Kept as a string-literal union here to keep
+ * the seed catalog Prisma-free (the seed module is loaded by both the
+ * runtime seeder AND the boundary test suite, which has no DB).
+ *
+ * Semantics:
+ *  - `disclosed`        — company-reported fact (manual entry / import)
+ *  - `modeled_industry` — industry-specific intensity factor (v2.2+)
+ *  - `modeled_generic`  — v1 placeholder formula (revenue × constant)
+ *  - `macro`            — single-value macro context (same across cos)
+ *  - `computed`         — derived from real BudgetLine / OperationalFact /
+ *                         Booking data; financial / operational default
+ *
+ * Seeds omit the field when the default `computed` applies.
+ */
+export type SeedValueSource =
+  | "disclosed"
+  | "modeled_industry"
+  | "modeled_generic"
+  | "macro"
+  | "computed";
+
 export interface IndicatorSeed {
   code: string;
   nameEn: string;
   nameAz?: string;
   nameRu?: string;
-  /** fx | commodity | operational | geopolitical | macro | regulatory | composite */
+  /** fx | commodity | operational | geopolitical | macro | regulatory | composite | esg */
   category: string;
   industries: string[];
   unit: string;
@@ -40,6 +63,14 @@ export interface IndicatorSeed {
   hintTemplateRu?: string;
   requiredInputs: string[];
   sortOrder: number;
+  /**
+   * Phase 7.H F4.v2.1 — provenance stamp inherited by every IV produced
+   * from this seed. Optional; omitted seeds inherit the Prisma default
+   * (`computed`) via `IndicatorDefinition.defaultValueSource`. ESG v1
+   * placeholders set this to `modeled_generic`; macro literal indicators
+   * set `macro`.
+   */
+  defaultValueSource?: SeedValueSource;
 }
 
 // ─── Hospitality pack (5) ──────────────────────────────────────────────────

@@ -74,6 +74,33 @@ export interface HeatMapCell {
    * Turn VI omit it; consumers fall back to "averaged from children".
    */
   contributingChildCount?: number;
+  /**
+   * Phase 7.H F4.v2.1 — provenance stamp from `IndicatorValue.valueSource`.
+   * Drives the modeled-marker on HeatMap cells (lowercase `e` overlay
+   * for `modeled_generic` / `modeled_industry`) and the badge in Panel 3.
+   *  - `disclosed`        : company-reported fact (manual / import)
+   *  - `modeled_industry` : industry-specific intensity factor (v2.2+)
+   *  - `modeled_generic`  : v1 placeholder formula (revenue × constant)
+   *  - `macro`            : single-value macro context
+   *  - `computed`         : real BudgetLine / OperationalFact / Booking
+   * Optional + back-compat: cells emitted before v2.1 omit it; consumers
+   * default to no marker (treats absence as `computed`).
+   */
+  valueSource?:
+    | 'disclosed'
+    | 'modeled_industry'
+    | 'modeled_generic'
+    | 'macro'
+    | 'computed';
+  /**
+   * Phase 7.H F4.v2.4 — SASB-style materiality rating for this
+   * (company.industry × indicator) pair. Only set on the 5 ESG
+   * indicators (rest are universally material). HeatMap dims
+   * `low_materiality` cells to ~30% opacity, `not_material` to ~12%
+   * + strips status color so they don't compete with material reds.
+   * Absent = `material` (default, full visual presence).
+   */
+  materiality?: 'material' | 'low_materiality' | 'not_material';
 }
 
 /**
