@@ -47,11 +47,29 @@ interface Props {
   sectionLabel: string
   planId: string | null
   planName: string | null
+  /**
+   * Phase 7.G — selected company filter from the parent page. When
+   * non-null, BudgetLine-backed sections scope to this company; the
+   * LLM also sees the chosen company in `<section_data>.scope` so it
+   * can qualify its narrative. `null` = "all consolidated".
+   */
+  companyId?: string | null
+  /** Display string ("SPARK · SPARK Tech LLC") for the header chip. */
+  companyName?: string | null
 }
 
 const MAX_TURNS = 20
 
-export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId, planName }: Props) {
+export function AIAnalyticsPanel({
+  open,
+  onClose,
+  section,
+  sectionLabel,
+  planId,
+  planName,
+  companyId,
+  companyName,
+}: Props) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [streaming, setStreaming] = useState(false)
@@ -59,13 +77,15 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
   const [language, setLanguage] = useState<Language>("en")
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  // Reset chat only when the user switches to a different section or plan.
-  // Closing and reopening the panel on the same section keeps the history so
-  // the conversation can be continued after a tab detour.
+  // Reset chat when the user switches to a different section, plan,
+  // OR company filter. The company switch is the load-bearing one
+  // here — without it, a SPARK→AZMADE flip would leave the old
+  // SPARK-scoped conversation in place but next turn would land on
+  // AZMADE data, confusing the LLM mid-thread.
   useEffect(() => {
     setMessages([])
     setError(null)
-  }, [section, planId])
+  }, [section, planId, companyId])
 
   // Autoscroll
   useEffect(() => {
@@ -88,6 +108,7 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
           body: JSON.stringify({
             section,
             planId,
+            companyId: companyId ?? null,
             language,
             messages: history.map(m => ({ role: m.role, content: m.content })),
           }),
@@ -251,6 +272,29 @@ export function AIAnalyticsPanel({ open, onClose, section, sectionLabel, planId,
             </SheetTitle>
             <SheetDescription className="text-xs mt-0.5 truncate">
               {sectionLabel}{planName ? ` · ${planName}` : ""}
+              {companyName ? (
+                <>
+                  {" · "}
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-300"
+                    data-testid="ai-analytics-company-chip"
+                    title="Scoped to this company (data filtered server-side)"
+                  >
+                    {companyName}
+                  </span>
+                </>
+              ) : (
+                <>
+                  {" · "}
+                  <span
+                    className="inline-flex items-center rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                    data-testid="ai-analytics-all-companies-chip"
+                    title="All companies under this plan (no per-company filter)"
+                  >
+                    All companies
+                  </span>
+                </>
+              )}
             </SheetDescription>
           </div>
           <div className="flex items-center gap-1 shrink-0">

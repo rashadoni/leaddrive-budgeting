@@ -358,6 +358,16 @@ export default function BudgetingPage() {
             sectionLabel={SECTION_LABELS[activeTab as Section]}
             planId={resolvedPlanId}
             planName={plans.find((p: { id: string; name?: string }) => p.id === resolvedPlanId)?.name ?? null}
+            // Phase 7.G — pass the same company filter the visible UI
+            // already honors. Without this, SPARK in the dropdown +
+            // open AI panel would still get AZMADE's roll-up P&L.
+            companyId={selectedCompanyId}
+            companyName={(() => {
+              if (!selectedCompanyId) return null
+              const c = companies.find((x) => x.id === selectedCompanyId)
+              if (!c) return null
+              return `${c.code} · ${c.name}`
+            })()}
           />
         </>
       )}

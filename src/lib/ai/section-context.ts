@@ -48,10 +48,42 @@ async function verifyPlan(orgId: string, planId: string) {
   return plan
 }
 
+/**
+ * Phase 7.G — note attached to the AI's section context when the
+ * user's selected company filter cannot be applied because the table
+ * has no `companyId` column. The LLM uses this to qualify its
+ * narrative ("balance-sheet data is plan-wide, not per-company; the
+ * SPARK figures below reflect AZMADE's consolidated balance sheet").
+ */
+function scopeNote(
+  companyName: string | null | undefined,
+  tableHasCompanyId: boolean,
+): string | null {
+  if (!companyName) return null;
+  if (tableHasCompanyId) {
+    return `Scoped to company: ${companyName}.`;
+  }
+  return `User selected company ${companyName}, but this section's underlying table is plan-wide (no per-company breakdown). Numbers reflect the entire plan; mention this caveat in any per-company claim.`;
+}
+
 /** Light wrapper around the budget-line math used by the P&L Report. */
-async function computePL(orgId: string, planId: string) {
+async function computePL(
+  orgId: string,
+  planId: string,
+  companyId: string | null,
+  companyName: string | null,
+) {
   const lines = await prisma.budgetLine.findMany({
-    where: { organizationId: orgId, planId },
+    where: {
+      organizationId: orgId,
+      planId,
+      // Phase 7.G — when the user picked a specific company in the
+      // budgeting page selector, scope BudgetLine reads to that
+      // company so the AI sees the same numbers the visible UI shows.
+      // BudgetLine.companyId is nullable; absence of a filter is the
+      // "all consolidated" view.
+      ...(companyId ? { companyId } : {}),
+    },
     include: { account: { select: { code: true, name: true, accountType: true } } },
   })
 
@@ -101,6 +133,7 @@ async function computePL(orgId: string, planId: string) {
 
   return {
     plan: await verifyPlan(orgId, planId),
+    scope: scopeNote(companyName, true),
     totals: {
       netRevenue: Math.round(netRevenue),
       grossSales: Math.round(revGross),
@@ -124,7 +157,12 @@ async function computePL(orgId: string, planId: string) {
   }
 }
 
-async function computeBalanceSheet(orgId: string, planId: string) {
+async function computeBalanceSheet(
+  orgId: string,
+  planId: string,
+  _companyId: string | null,
+  companyName: string | null,
+) {
   const plan = await verifyPlan(orgId, planId)
   const rows = await prisma.balanceSheetLine.findMany({
     where: { organizationId: orgId, planId },
@@ -146,6 +184,7 @@ async function computeBalanceSheet(orgId: string, planId: string) {
 
   return {
     plan,
+    scope: scopeNote(companyName, false),
     totalsDec: {
       assets: Math.round(byType.asset ?? 0),
       liabilities: Math.round(Math.abs(byType.liability ?? 0)),
@@ -158,7 +197,12 @@ async function computeBalanceSheet(orgId: string, planId: string) {
   }
 }
 
-async function computeCOGS(orgId: string, planId: string) {
+async function computeCOGS(
+  orgId: string,
+  planId: string,
+  _companyId: string | null,
+  companyName: string | null,
+) {
   const plan = await verifyPlan(orgId, planId)
   const [cogsLines, details] = await Promise.all([
     prisma.cOGSBudgetLine.findMany({
@@ -189,13 +233,19 @@ async function computeCOGS(orgId: string, planId: string) {
   const totalCost = products.reduce((s, p) => s + p.totalCost, 0)
   return {
     plan,
+    scope: scopeNote(companyName, false),
     totalCost,
     products,
     detailCount: details.length,
   }
 }
 
-async function computeCashFlow(orgId: string, planId: string) {
+async function computeCashFlow(
+  orgId: string,
+  planId: string,
+  _companyId: string | null,
+  companyName: string | null,
+) {
   const plan = await verifyPlan(orgId, planId)
   const entries = await prisma.cashFlowEntry.findMany({
     where: { organizationId: orgId, year: plan.year },
@@ -209,13 +259,19 @@ async function computeCashFlow(orgId: string, planId: string) {
   }
   return {
     plan,
+    scope: scopeNote(companyName, false),
     byActivity: Object.fromEntries(Object.entries(byActivity).map(([k, v]) => [k, Math.round(v)])),
     monthly: Object.fromEntries(Object.entries(byMonth).map(([k, v]) => [k, Math.round(v)])),
     netCashFlow: Math.round(Object.values(byActivity).reduce((s, v) => s + v, 0)),
   }
 }
 
-async function computeAssumptions(orgId: string, planId: string) {
+async function computeAssumptions(
+  orgId: string,
+  planId: string,
+  _companyId: string | null,
+  companyName: string | null,
+) {
   const plan = await verifyPlan(orgId, planId)
   const rows = await prisma.budgetAssumption.findMany({
     where: { organizationId: orgId, planId },
@@ -228,6 +284,7 @@ async function computeAssumptions(orgId: string, planId: string) {
   }
   return {
     plan,
+    scope: scopeNote(companyName, false),
     count: rows.length,
     byCategory: Object.fromEntries(
       Object.entries(grouped).map(([k, v]) => [k, v.slice(0, 10)]),
@@ -235,14 +292,27 @@ async function computeAssumptions(orgId: string, planId: string) {
   }
 }
 
-async function computeWorkspace(orgId: string, planId: string) {
+async function computeWorkspace(
+  orgId: string,
+  planId: string,
+  companyId: string | null,
+  companyName: string | null,
+) {
   const [pl, bs, cogs] = await Promise.all([
-    computePL(orgId, planId),
-    computeBalanceSheet(orgId, planId),
-    computeCOGS(orgId, planId),
+    computePL(orgId, planId, companyId, companyName),
+    computeBalanceSheet(orgId, planId, companyId, companyName),
+    computeCOGS(orgId, planId, companyId, companyName),
   ])
   return {
     plan: pl.plan,
+    // Workspace mixes per-company P&L with plan-wide BS+COGS — relay
+    // both notes so the LLM doesn't claim a SPARK-specific balance sheet.
+    scope: pl.scope,
+    scopeNotes: {
+      pl: pl.scope,
+      balanceSheet: bs.scope,
+      cogs: cogs.scope,
+    },
     profitability: pl.totals,
     balanceSheetDec: bs.totalsDec,
     cogsTotal: cogs.totalCost,
@@ -250,7 +320,12 @@ async function computeWorkspace(orgId: string, planId: string) {
   }
 }
 
-async function computeForecast(orgId: string, planId: string) {
+async function computeForecast(
+  orgId: string,
+  planId: string,
+  _companyId: string | null,
+  companyName: string | null,
+) {
   const plan = await verifyPlan(orgId, planId)
   const entries = await prisma.budgetForecastEntry.findMany({
     where: { organizationId: orgId, planId },
@@ -263,6 +338,7 @@ async function computeForecast(orgId: string, planId: string) {
   }
   return {
     plan,
+    scope: scopeNote(companyName, false),
     totals: Object.fromEntries(Object.entries(byLineType).map(([k, v]) => [k, Math.round(v)])),
     monthly: Object.fromEntries(Object.entries(byMonth).map(([k, v]) => [k, Math.round(v)])),
     entryCount: entries.length,
@@ -273,23 +349,25 @@ export async function collectSectionContext(
   section: Section,
   orgId: string,
   planId: string,
+  companyId: string | null,
+  companyName: string | null,
 ): Promise<unknown> {
   switch (section) {
     case "pnl-report":
     case "pl":
-      return computePL(orgId, planId)
+      return computePL(orgId, planId, companyId, companyName)
     case "balance-sheet":
-      return computeBalanceSheet(orgId, planId)
+      return computeBalanceSheet(orgId, planId, companyId, companyName)
     case "cogs":
-      return computeCOGS(orgId, planId)
+      return computeCOGS(orgId, planId, companyId, companyName)
     case "cash-flow":
-      return computeCashFlow(orgId, planId)
+      return computeCashFlow(orgId, planId, companyId, companyName)
     case "assumptions":
-      return computeAssumptions(orgId, planId)
+      return computeAssumptions(orgId, planId, companyId, companyName)
     case "workspace":
-      return computeWorkspace(orgId, planId)
+      return computeWorkspace(orgId, planId, companyId, companyName)
     case "forecast":
-      return computeForecast(orgId, planId)
+      return computeForecast(orgId, planId, companyId, companyName)
     default:
       throw new Error(`Unknown section: ${section}`)
   }

@@ -245,8 +245,14 @@ export function CommentsLayer() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-lg border border-gray-700 bg-background shadow-2xl flex flex-col">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur shrink-0">
+      <div
+        className="relative w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-lg border border-gray-700 shadow-2xl flex flex-col text-gray-200"
+        style={{ backgroundColor: "#0A0E27" }}
+      >
+        <header
+          className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 px-6 py-3 backdrop-blur shrink-0"
+          style={{ backgroundColor: "rgba(10, 14, 39, 0.95)" }}
+        >
           <div className="flex items-center gap-2">
             <MessageSquare
               size={16}
@@ -254,10 +260,10 @@ export function CommentsLayer() {
               aria-hidden="true"
             />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-lg font-semibold tracking-tight text-gray-100">
                 {t("comments.title", { count: totalThreadCount })}
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-gray-500">
                 {t("comments.subtitle")}
               </p>
             </div>
@@ -266,16 +272,30 @@ export function CommentsLayer() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("comments.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800 text-gray-300"
           >
             <X size={14} aria-hidden="true" />
           </button>
         </header>
 
+        {/* v1 disclosure — comments persist in localStorage only; don't
+            notify anyone else. Surface this so users don't expect
+            real-time inter-user threads. */}
+        <div
+          className="px-6 py-2 border-b border-gray-800 text-[10px] text-[#00D4AA]/80 flex items-start gap-2"
+          style={{ backgroundColor: "rgba(0, 212, 170, 0.06)" }}
+          role="note"
+        >
+          <span className="font-bold mt-0.5">⚠</span>
+          <span className="leading-snug">
+            {t("comments.localOnlyBanner")}
+          </span>
+        </div>
+
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
           {!cellKey ? (
             <p
-              className="text-sm text-muted-foreground"
+              className="text-sm text-gray-500"
               data-testid="comments-no-cell"
             >
               {t("comments.noActiveCell")}
@@ -290,7 +310,7 @@ export function CommentsLayer() {
               </div>
               {thread.length === 0 ? (
                 <p
-                  className="text-sm text-muted-foreground italic"
+                  className="text-sm text-gray-500 italic"
                   data-testid="comments-empty"
                 >
                   {t("comments.empty")}

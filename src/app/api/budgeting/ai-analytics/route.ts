@@ -23,6 +23,13 @@ const requestSchema = z.object({
     "forecast",
   ]),
   planId: z.string().min(1),
+  // Phase 7.G — optional company scope. When set, BudgetLine-backed
+  // sections (pnl-report / pl / workspace pieces) filter to this
+  // company so SPARK doesn't see AZMADE's roll-up. Sections backed by
+  // plan-wide tables (balance-sheet / cogs / cash-flow / assumptions /
+  // forecast) attach a scope-note to the data blob instead so the LLM
+  // qualifies its narrative. Null / absent = "all consolidated".
+  companyId: z.string().min(1).nullable().optional(),
   language: z.enum(["en", "ru", "az"]).default("en"),
   messages: z
     .array(
@@ -58,6 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Validation failed", details: parsed.error.flatten() }, { status: 400 })
   }
   const { section, planId, language, messages } = parsed.data
+  const companyId = parsed.data.companyId ?? null
 
   // Confirm plan ownership — section-context.ts re-verifies but this gives a
   // clean 404 before we load a large context blob or hit the LLM.
@@ -67,9 +75,28 @@ export async function POST(req: NextRequest) {
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
+  // Cross-tenant guard + resolve company name for the scope note when
+  // the caller supplied a companyId. 404 the request on cross-tenant
+  // id rather than silently dropping the filter (would mask a bug).
+  let companyName: string | null = null
+  if (companyId) {
+    const co = await prisma.company.findFirst({
+      where: { id: companyId, organizationId: auth.orgId },
+      select: { id: true, code: true, name: true },
+    })
+    if (!co) return NextResponse.json({ error: "Company not found" }, { status: 404 })
+    companyName = `${co.code} · ${co.name}`
+  }
+
   let sectionData: unknown
   try {
-    sectionData = await collectSectionContext(section as Section, auth.orgId, planId)
+    sectionData = await collectSectionContext(
+      section as Section,
+      auth.orgId,
+      planId,
+      companyId,
+      companyName,
+    )
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Failed to collect section data" }, { status: 500 })
   }
