@@ -25,6 +25,7 @@
 import React, { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
+  AlertTriangle,
   Bell,
   Download,
   FilePlus2,
@@ -180,6 +181,13 @@ export function HotkeyToolbar() {
       icon: Bell,
       title: t("hotkeys.alertsTitle"),
       action: () => fireWindowEvent("terminal:open-audit"),
+    },
+    {
+      key: "breach",
+      label: t("hotkeys.breach"),
+      icon: AlertTriangle,
+      title: t("hotkeys.breachTitle"),
+      action: () => fireWindowEvent("terminal:open-breach"),
     },
     {
       key: "favorites",

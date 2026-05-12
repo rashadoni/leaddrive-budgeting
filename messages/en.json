@@ -1666,6 +1666,8 @@
       "compareTitle": "Focus command bar with 'CMP ' prefilled — type 2 codes + GO",
       "alerts": "ALERTS",
       "alertsTitle": "Open Audit Log overlay (AUD GO equivalent)",
+      "breach": "BREACH",
+      "breachTitle": "Open Breach Forecasts overlay (BREACH GO equivalent)",
       "starred": "STARRED",
       "starredTitle": "Filter Company Tree to starred companies",
       "recent": "RECENT",

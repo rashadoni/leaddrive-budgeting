@@ -1666,6 +1666,8 @@
       "compareTitle": "Komanda sətrinə 'CMP ' prefiksi — 2 kod + GO yazın",
       "alerts": "XƏBƏRDARLIQLAR",
       "alertsTitle": "Audit jurnalı modal pəncərəsi (AUD GO ekvivalenti)",
+      "breach": "PROQNOZ",
+      "breachTitle": "Pozuntu proqnozları panelini aç (BREACH GO ekvivalenti)",
       "starred": "SEÇİLMİŞLƏR",
       "starredTitle": "Şirkət ağacını seçilmişlərə filtrlə",
       "recent": "SON",
