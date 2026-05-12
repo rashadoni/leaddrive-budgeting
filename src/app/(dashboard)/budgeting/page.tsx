@@ -201,6 +201,63 @@ export default function BudgetingPage() {
       .catch(() => {})
   }, [])
 
+  // Phase 7.G — plan-scoped company list. The dropdown previously showed
+  // every operational company in the org regardless of which plan was
+  // active, so picking "Azərşəkər 2026 Budget" still surfaced AZMADE's
+  // children (AAC / ATL / SPARK) as options. Fix: fetch the distinct
+  // companyIds present in the plan's BudgetLines + their parent chain,
+  // then narrow the dropdown to that set.
+  //
+  // `null` = endpoint hasn't responded yet OR plan has no lines yet
+  // (new draft) — in both cases we fall back to the unfiltered list so
+  // the user can still pick anything during initial seeding.
+  const [planCompanyIds, setPlanCompanyIds] = useState<Set<string> | null>(null)
+  React.useEffect(() => {
+    if (!resolvedPlanId) {
+      setPlanCompanyIds(null)
+      return
+    }
+    let cancelled = false
+    fetch(`/api/budgeting/plans/${encodeURIComponent(resolvedPlanId)}/companies`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { companyIds?: string[] } | null) => {
+        if (cancelled) return
+        const ids = Array.isArray(body?.companyIds) ? body!.companyIds : []
+        // Empty list → leave the dropdown unfiltered so brand-new plans
+        // (no lines yet) don't show an empty "All companies (consolidated)"
+        // selector. The moment a single line lands, the filter activates.
+        setPlanCompanyIds(ids.length > 0 ? new Set(ids) : null)
+      })
+      .catch(() => {
+        if (!cancelled) setPlanCompanyIds(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedPlanId])
+
+  // Companies visible in the dropdown: when the plan-scope is known,
+  // include only ids that participate in this plan; otherwise show the
+  // full list. Calculated once per (companies, planCompanyIds) tuple.
+  const visibleCompanies = React.useMemo(() => {
+    if (!planCompanyIds) return companies
+    return companies.filter((c) => planCompanyIds.has(c.id))
+  }, [companies, planCompanyIds])
+
+  // If the user had a company selected and the active plan no longer
+  // contains it, drop the stale selection so they don't see "filter
+  // applied but visibly absent from the dropdown".
+  React.useEffect(() => {
+    if (!selectedCompanyId) return
+    if (!planCompanyIds) return
+    if (!planCompanyIds.has(selectedCompanyId)) {
+      setSelectedCompanyId(null)
+    }
+    // setSelectedCompanyId is referentially stable (router.push wrapper)
+    // but we list it for the linter contract; eslint-disable not needed
+    // because the wrapper closes over the same params reference.
+  }, [planCompanyIds, selectedCompanyId])
+
   return (
     <div className="flex flex-col gap-6 p-6">
       {/* Header */}
@@ -245,7 +302,7 @@ export default function BudgetingPage() {
               tabs back tables (sales_budget_lines / cash_flow_entries /
               balance_sheet_lines / etc.) that lack a companyId column —
               schema migration required to extend filtering. */}
-          {companies.length > 0 && COMPANY_FILTERED_TABS.has(activeTab) && (
+          {visibleCompanies.length > 0 && COMPANY_FILTERED_TABS.has(activeTab) && (
             <select
               value={selectedCompanyId ?? ""}
               onChange={(e) => setSelectedCompanyId(e.target.value || null)}
@@ -253,7 +310,7 @@ export default function BudgetingPage() {
               title={t("companyFilterTitle")}
             >
               <option value="">{t("companyFilterAllConsolidated")}</option>
-              {companies.map((c) => {
+              {visibleCompanies.map((c) => {
                 // CLI follow-up — strip parent code prefix for child rows
                 // (`AZSEKER-EDEN` → `EDEN` when nested under AZSEKER). The
                 // hierarchy is already conveyed by the indent dashes; the
