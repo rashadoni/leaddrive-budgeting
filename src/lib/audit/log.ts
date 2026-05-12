@@ -430,7 +430,10 @@ export type AuditEventInput =
         fromCache: boolean;
         usage?: { inputTokens: number; outputTokens: number };
       };
-    };
+    }
+    ;
+// "ai_morning_brief_run" discriminated-union variant re-added once
+// migration 20260512110000_add_morning_brief_audit is applied.
 
 /**
  * Optional forensics context; set by the API route, NOT by the

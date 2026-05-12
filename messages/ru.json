@@ -1748,6 +1748,14 @@
       "newsFresh": "свежий ответ",
       "newsItems": "источников"
     },
+    "morningBrief": {
+      "header": "Утренний бриф AI",
+      "loading": "AI собирает сводку дня…",
+      "refresh": "Обновить бриф",
+      "calmMorning": "Спокойное утро — без красных индикаторов и активных алёртов.",
+      "cached": "из кэша",
+      "fresh": "сгенерировано сейчас"
+    },
     "heatMap": {
       "filterRowsPlaceholder": "фильтр строк…",
       "loadingHeatmap": "Загрузка карты рисков…",

@@ -1748,6 +1748,14 @@
       "newsFresh": "fresh response",
       "newsItems": "sources"
     },
+    "morningBrief": {
+      "header": "AI Morning Brief",
+      "loading": "AI composing today's brief…",
+      "refresh": "Refresh brief",
+      "calmMorning": "Calm morning — no red indicators or active alerts.",
+      "cached": "from cache",
+      "fresh": "freshly generated"
+    },
     "heatMap": {
       "filterRowsPlaceholder": "filter rows…",
       "loadingHeatmap": "Loading heatmap…",

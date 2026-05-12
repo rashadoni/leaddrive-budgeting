@@ -1669,6 +1669,7 @@ enum AuditAction {
   user_password_reset            // Phase 7.F admin v3 — admin generated a new temp password
   user_active_toggle             // Phase 7.F admin v3 — admin enabled/disabled a user account
   ai_news_summary_run            // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
+  ai_morning_brief_run           // Phase 7.E AI Morning Brief — composed narrative LLM call
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

@@ -26,6 +26,7 @@ import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { NewsSummarySection } from "./NewsSummarySection";
+import { MorningBriefIntro } from "./MorningBriefIntro";
 import { MoversSection } from "./MoversSection";
 import { computeTopMovers, type MoverRow } from "@/lib/risk/movers";
 
@@ -135,6 +136,29 @@ export function TodayBrief() {
         <h3 className="text-cyan-300 uppercase tracking-wider text-[10px]">{t("todayBrief.title")}</h3>
         <p className="text-gray-600 text-[9px] mt-0.5">{t("todayBrief.subtitle")}</p>
       </header>
+
+      {/* Phase 7.E AI Morning Brief — narrative intro composed from
+          worst/movers/alerts + last news bullets. Sits above the
+          existing 4 derived sections. */}
+      <MorningBriefIntro
+        inputs={{
+          worstCells: worst.map((w) => ({
+            companyCode: w.companyCode,
+            indicatorCode: w.indicatorCode,
+            value: w.value,
+            unit: w.unit,
+          })),
+          topMovers: movers.map((m) => ({
+            companyCode: m.companyCode,
+            indicatorCode: m.indicatorCode,
+            deltaPct: m.deltaPct,
+          })),
+          activeAlerts: topAlerts.map((a) => ({
+            severity: (a.severity as "info" | "warning" | "critical") ?? "info",
+            message: a.message ?? "",
+          })),
+        }}
+      />
 
       {/* Worst */}
       <section>

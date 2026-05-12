@@ -1748,6 +1748,14 @@
       "newsFresh": "təzə cavab",
       "newsItems": "mənbə"
     },
+    "morningBrief": {
+      "header": "AI səhər icmalı",
+      "loading": "AI gün üçün icmal hazırlayır…",
+      "refresh": "İcmalı yenilə",
+      "calmMorning": "Sakit səhər — qırmızı indikator və aktiv xəbərdarlıq yoxdur.",
+      "cached": "keşdən",
+      "fresh": "yeni yaradıldı"
+    },
     "heatMap": {
       "filterRowsPlaceholder": "sətr filtri…",
       "loadingHeatmap": "Risk xəritəsi yüklənir…",
