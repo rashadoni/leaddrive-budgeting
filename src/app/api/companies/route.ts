@@ -2,7 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 
-// GET: Companies for the caller's organization (roots + 1 level of children)
+// GET: Companies for the caller's organization (roots + 2 levels of descendants)
+//
+// Phase 7.H — holding-tree depth was bumped from 1 to 2 levels of nested
+// `children`. AZMADE's tree is now AZMADE (root) → AAC/ATL/SPARK/ZTP/LLS
+// (level=1 sub-groups) → AAC-MAIN/ATL-DBZ/SPARK-MAIN/etc. (level=2 op-cos).
+// The previous 1-level fetch surfaced the level=1 sub-groups but dropped
+// the op-cos that actually hold BudgetLines — picking SPARK in the
+// budgeting dropdown showed "zero" because SPARK-MAIN (its child) was
+// the row tagged with the BudgetLines, and SPARK-MAIN never made the
+// dropdown. Three-level include covers every holding we currently
+// support (AZSEKER is 2-deep, AZMADE is 3-deep). A future 4-level
+// holding would need another `children: { include: { children: ... } }`
+// hop OR a `?flat=true` opt-in mode.
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request);
   if (isAuthError(session)) return session;
@@ -18,7 +30,12 @@ export async function GET(request: NextRequest) {
         parentCompanyId: null,
       },
       include: {
-        children: { orderBy: { sortOrder: 'asc' } },
+        children: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            children: { orderBy: { sortOrder: 'asc' } },
+          },
+        },
       },
       orderBy: { sortOrder: 'asc' },
     });

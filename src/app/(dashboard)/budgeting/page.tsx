@@ -183,18 +183,20 @@ export default function BudgetingPage() {
       .then((body) => {
         const list = body?.data || body
         if (Array.isArray(list)) {
-          // Flatten: top-level companies + their embedded children. /api/companies
-          // returns level=1 with `children` arrays; we want a flat list for the
-          // dropdown (preserving level so we can indent children visually).
+          // Recursive flatten so the holding tree's level-2 op-cos
+          // (AAC-MAIN, ATL-DBZ, SPARK-MAIN, etc.) make the dropdown
+          // alongside the level-1 sub-groups. AZMADE is 3 levels deep
+          // (root → sub-group → op-co); previous flat-walk stopped at
+          // level-1 and silently dropped every op-co, so picking SPARK
+          // in the budgeting filter saw "zero" because SPARK-MAIN —
+          // the row that actually holds BudgetLines — was missing.
+          type Node = { id: string; code: string; name: string; level: number; parentCompanyId: string | null; children?: Node[] }
           const flat: Array<{ id: string; code: string; name: string; level: number; parentCompanyId: string | null }> = []
-          for (const c of list) {
-            flat.push({ id: c.id, code: c.code, name: c.name, level: c.level, parentCompanyId: c.parentCompanyId })
-            if (Array.isArray(c.children)) {
-              for (const child of c.children) {
-                flat.push({ id: child.id, code: child.code, name: child.name, level: child.level, parentCompanyId: child.parentCompanyId })
-              }
-            }
+          const walk = (n: Node) => {
+            flat.push({ id: n.id, code: n.code, name: n.name, level: n.level, parentCompanyId: n.parentCompanyId })
+            if (Array.isArray(n.children)) for (const c of n.children) walk(c)
           }
+          for (const root of list as Node[]) walk(root)
           setCompanies(flat)
         }
       })
