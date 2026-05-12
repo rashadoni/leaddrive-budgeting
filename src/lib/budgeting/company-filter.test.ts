@@ -47,12 +47,18 @@ describe("resolveCompanyFilter (Turn 30 helper)", () => {
     });
   });
 
-  it("level=1 sub-group → expands to children's level=2 ids", async () => {
+  it("level=1 sub-group → expands BFS to all leaf descendants", async () => {
+    // Tree: sg-atl → 4 leaves directly. Post-fix: 1 query loads full org
+    // tree, BFS picks leaves.
     const prisma = makeStubPrisma({
       findFirst: vi.fn().mockResolvedValue({ id: "sg-atl", level: 1 }),
-      findMany: vi
-        .fn()
-        .mockResolvedValue([{ id: "co-dbz" }, { id: "co-pmz" }, { id: "co-taz" }, { id: "co-mrkz" }]),
+      findMany: vi.fn().mockResolvedValue([
+        { id: "sg-atl", parentCompanyId: null },
+        { id: "co-dbz", parentCompanyId: "sg-atl" },
+        { id: "co-pmz", parentCompanyId: "sg-atl" },
+        { id: "co-taz", parentCompanyId: "sg-atl" },
+        { id: "co-mrkz", parentCompanyId: "sg-atl" },
+      ]),
     });
     const result = await resolveCompanyFilter(prisma, "org-1", "sg-atl");
     expect(result).toEqual({
@@ -62,10 +68,35 @@ describe("resolveCompanyFilter (Turn 30 helper)", () => {
     });
   });
 
-  it("level=1 sub-group with NO children → returns empty companyIds (caller handles as no-data)", async () => {
+  it("3-level holding root (e.g. AZMADE) → expands BFS to all grandchild leaves", async () => {
+    // FO Holding shape: AZMADE → ATL → ATL-MRKZ. 1-hop expansion would
+    // miss ATL-MRKZ. BFS catches it.
+    const prisma = makeStubPrisma({
+      findFirst: vi.fn().mockResolvedValue({ id: "azmade", level: 1 }),
+      findMany: vi.fn().mockResolvedValue([
+        { id: "azmade", parentCompanyId: null },
+        { id: "atl", parentCompanyId: "azmade" },
+        { id: "spark", parentCompanyId: "azmade" },
+        { id: "atl-mrkz", parentCompanyId: "atl" },
+        { id: "atl-dbz", parentCompanyId: "atl" },
+        { id: "spark-main", parentCompanyId: "spark" },
+      ]),
+    });
+    const result = await resolveCompanyFilter(prisma, "org-1", "azmade");
+    expect(result.kind).toBe("single");
+    if (result.kind !== "single") return;
+    expect(result.companyIds.sort()).toEqual(
+      ["atl-dbz", "atl-mrkz", "spark-main"].sort(),
+    );
+    expect(result.resolvedFromLevel).toBe(1);
+  });
+
+  it("level=1 sub-group with NO descendants → returns empty companyIds (caller handles as no-data)", async () => {
     const prisma = makeStubPrisma({
       findFirst: vi.fn().mockResolvedValue({ id: "sg-empty", level: 1 }),
-      findMany: vi.fn().mockResolvedValue([]),
+      findMany: vi.fn().mockResolvedValue([
+        { id: "sg-empty", parentCompanyId: null },
+      ]),
     });
     const result = await resolveCompanyFilter(prisma, "org-1", "sg-empty");
     expect(result).toEqual({
@@ -95,16 +126,20 @@ describe("resolveCompanyFilter (Turn 30 helper)", () => {
     });
   });
 
-  it("level=1 children query uses tenant-scoped where (security regression guard)", async () => {
-    const findMany = vi.fn().mockResolvedValue([]);
+  it("BFS query uses tenant-scoped where (security regression guard)", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { id: "sg-atl", parentCompanyId: null },
+    ]);
     const prisma = makeStubPrisma({
       findFirst: vi.fn().mockResolvedValue({ id: "sg-atl", level: 1 }),
       findMany,
     });
     await resolveCompanyFilter(prisma, "org-azmade", "sg-atl");
+    // Post-fix: full org tree loaded once, BFS in JS — single
+    // tenant-scoped findMany call.
     expect(findMany).toHaveBeenCalledWith({
-      where: { parentCompanyId: "sg-atl", organizationId: "org-azmade" },
-      select: { id: true },
+      where: { organizationId: "org-azmade" },
+      select: { id: true, parentCompanyId: true },
     });
   });
 });
