@@ -1307,6 +1307,10 @@ model IntelItem {
   publishedAt     DateTime?                           // article publish date if extractable
   fetchedAt       DateTime      @default(now())
   isPinned        Boolean       @default(false)
+  // Phase 7.H Feature B — LLM-scored sentiment in [-1, +1] range.
+  // NULL = unscored (legacy rows pre-Feature B, or batch failures).
+  // Resolver `news.sentimentRolling30d` skips NULLs when averaging.
+  sentimentScore  Float?
   // Architect Turn-XLII Suggestion: `dismissedBy String[]` is fine for
   // Phase D.1-D.3 volumes (<1K dismissals/org). At Phase D.5+ scale
   // (thousands of users × thousands of items), migrate to a
@@ -1318,6 +1322,10 @@ model IntelItem {
 
   @@index([organizationId, fetchedAt(sort: Desc)])
   @@index([organizationId, relevanceScore(sort: Desc)])
+  // intel_items_sentiment_lookup_idx is a partial index (WHERE
+  // sentimentScore IS NOT NULL) created via raw SQL migration; Prisma's
+  // schema language can't model partial indexes today. Visible to db
+  // pull but absent from diff.
   @@unique([organizationId, urlHash])                  // hash-dedup within org × 7-day window enforced at write time
   @@map("intel_items")
 }
