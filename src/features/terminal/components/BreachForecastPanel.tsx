@@ -71,6 +71,19 @@ const BAND_PILL: Record<ConfidenceFilter, string> = {
   low: "bg-slate-500/15 text-slate-400",
 };
 
+function pluralize(
+  count: number,
+  one: string,
+  few: string,
+  many: string,
+): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
 export function BreachForecastPanel() {
   const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
@@ -155,9 +168,9 @@ export function BreachForecastPanel() {
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-[#FF4757]" aria-hidden="true" />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">Breach Forecasts</h2>
+              <h2 className="text-lg font-semibold tracking-tight">{t("breach.title")}</h2>
               <p className="text-xs text-muted-foreground">
-                Predictive trend-based breach detection (linear regression on indicator sparklines)
+                {t("breach.subtitle")}
               </p>
             </div>
           </div>
@@ -175,27 +188,27 @@ export function BreachForecastPanel() {
         {/* Filter row */}
         <section className="px-6 py-3 border-b border-gray-800 flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wider">Period</span>
+            <span className="text-muted-foreground uppercase tracking-wider">{t("breach.periodLabel")}</span>
             <input
               type="text"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
-              placeholder="e.g. 2026 or 2026-Q1"
+              placeholder={t("breach.periodPlaceholder")}
               data-testid="breach-period-input"
               className="font-mono px-2 py-1 rounded border border-gray-700 bg-black/30 text-sm w-40"
             />
           </label>
           <label className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wider">Min confidence</span>
+            <span className="text-muted-foreground uppercase tracking-wider">{t("breach.minConfidenceLabel")}</span>
             <select
               value={minBand}
               onChange={(e) => setMinBand(e.target.value as ConfidenceFilter)}
               data-testid="breach-band-select"
               className="font-mono px-2 py-1 rounded border border-gray-700 bg-black/30 text-sm"
             >
-              <option value="low">low+</option>
-              <option value="medium">medium+</option>
-              <option value="high">high only</option>
+              <option value="low">{t("breach.bandLow")}</option>
+              <option value="medium">{t("breach.bandMedium")}</option>
+              <option value="high">{t("breach.bandHigh")}</option>
             </select>
           </label>
           <button
@@ -205,7 +218,7 @@ export function BreachForecastPanel() {
             data-testid="breach-refresh"
             className="ml-auto rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 px-3 py-1 text-xs hover:bg-cyan-500/20 disabled:opacity-50"
           >
-            {loading ? "Loading…" : "Refresh"}
+            {loading ? t("breach.loading") : t("breach.refresh")}
           </button>
         </section>
 
@@ -213,7 +226,7 @@ export function BreachForecastPanel() {
         <section className="px-6 py-4">
           {loading && data === null ? (
             <p className="text-sm text-muted-foreground" data-testid="breach-loading">
-              Loading breach forecasts…
+              {t("breach.loadingForecasts")}
             </p>
           ) : fetchError ? (
             <p
@@ -225,14 +238,17 @@ export function BreachForecastPanel() {
             </p>
           ) : data === null ? null : data.count === 0 ? (
             <p className="text-sm text-muted-foreground" data-testid="breach-empty">
-              No breach forecasts at the current filter. Try lowering Min confidence to{" "}
-              <span className="font-mono">low+</span>.
+              {t("breach.emptyPrefix")}{" "}
+              <span className="font-mono">{t("breach.bandLow")}</span>{t("breach.emptySuffix")}
             </p>
           ) : (
             <div className="space-y-4" data-testid="breach-results">
               <p className="text-xs text-muted-foreground">
-                {data.count} {data.count === 1 ? "forecast" : "forecasts"} across{" "}
-                {grouped.size} {grouped.size === 1 ? "company" : "companies"}
+                {data.count}{" "}
+                {pluralize(data.count, t("breach.forecastOne"), t("breach.forecastFew"), t("breach.forecastMany"))}{" "}
+                {t("breach.summaryAcross")}{" "}
+                {grouped.size}{" "}
+                {pluralize(grouped.size, t("breach.companyOne"), t("breach.companyFew"), t("breach.companyMany"))}
               </p>
               {Array.from(grouped.entries()).map(([companyId, rows]) => (
                 <div
@@ -243,7 +259,8 @@ export function BreachForecastPanel() {
                   <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-black/30">
                     <h3 className="text-sm font-mono font-semibold tracking-wide">{companyId}</h3>
                     <span className="text-xs text-muted-foreground">
-                      {rows.length} {rows.length === 1 ? "forecast" : "forecasts"}
+                      {rows.length}{" "}
+                      {pluralize(rows.length, t("breach.forecastOne"), t("breach.forecastFew"), t("breach.forecastMany"))}
                     </span>
                   </header>
                   <ul className="divide-y divide-gray-800">
@@ -256,7 +273,7 @@ export function BreachForecastPanel() {
                         <div>
                           <div className="font-mono font-medium">{b.indicatorCode}</div>
                           <div className="text-xs text-muted-foreground">
-                            {b.period} · step +{b.horizonStep}
+                            {b.period} · {t("breach.stepLabel")} +{b.horizonStep}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -300,8 +317,7 @@ export function BreachForecastPanel() {
         </section>
 
         <footer className="px-6 py-3 border-t border-gray-800 text-xs text-muted-foreground">
-          Forecasts use linear regression on indicator sparklines (≥3 non-null points). Worsening
-          transitions only (green→amber/red, amber→red). Confidence degrades by horizon step.
+          {t("breach.footerNote")}
         </footer>
       </div>
     </div>
