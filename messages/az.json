@@ -1577,7 +1577,9 @@
       "indicatorDetail": "Göstərici detalları",
       "indicatorDetailShort": "DETAL",
       "snapshot": "Şirkət portreti",
-      "snapshotShort": "PORTRET"
+      "snapshotShort": "PORTRET",
+      "popOutTitle": "Ayrı pəncərədə aç (Bloomberg multi-monitor)",
+      "popOutAria": "Paneli ayrı pəncərədə aç"
     },
     "status": {
       "green": "Sağlam",

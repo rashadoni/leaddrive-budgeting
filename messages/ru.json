@@ -1577,7 +1577,9 @@
       "indicatorDetail": "Детализация индикатора",
       "indicatorDetailShort": "ДЕТАЛИ",
       "snapshot": "Снимок компании",
-      "snapshotShort": "СНИМОК"
+      "snapshotShort": "СНИМОК",
+      "popOutTitle": "Открыть в отдельном окне (Bloomberg multi-monitor)",
+      "popOutAria": "Открыть панель в отдельном окне"
     },
     "status": {
       "green": "В норме",

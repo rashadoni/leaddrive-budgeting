@@ -1577,7 +1577,9 @@
       "indicatorDetail": "Indicator Detail",
       "indicatorDetailShort": "DETAIL",
       "snapshot": "Company Snapshot",
-      "snapshotShort": "SNAPSHOT"
+      "snapshotShort": "SNAPSHOT",
+      "popOutTitle": "Open in separate window (Bloomberg multi-monitor)",
+      "popOutAria": "Open panel in separate window"
     },
     "status": {
       "green": "Healthy",

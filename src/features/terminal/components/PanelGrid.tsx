@@ -354,6 +354,7 @@ export function PanelGrid() {
                 onActivate={setActivePanel}
                 panelLabel={`${PANEL_LABEL} 1`}
                 panelTitle={PANEL_TITLES_T[1]}
+                panelKind="tree"
               >
                 <CompanyTree companies={companies} loading={loading} />
               </PanelShell>
@@ -366,6 +367,7 @@ export function PanelGrid() {
                 onActivate={setActivePanel}
                 panelLabel={`${PANEL_LABEL} 2`}
                 panelTitle={PANEL_TITLES_T[2]}
+                panelKind="matrix"
               >
                 <HeatMap />
               </PanelShell>
@@ -387,6 +389,7 @@ export function PanelGrid() {
                 onActivate={setActivePanel}
                 panelLabel={`${PANEL_LABEL} 3`}
                 panelTitle={PANEL_TITLES_T[3]}
+                panelKind="detail"
               >
                 <IndicatorDetail />
               </PanelShell>
@@ -399,6 +402,7 @@ export function PanelGrid() {
                 onActivate={setActivePanel}
                 panelLabel={`${PANEL_LABEL} 4`}
                 panelTitle={PANEL_TITLES_T[4]}
+                panelKind="variance"
               >
                 <VarianceExplainerPanel />
               </PanelShell>
@@ -464,9 +468,29 @@ function PanelShell(props: {
   onActivate: (id: number) => void;
   panelLabel: string;
   panelTitle: string;
+  /** Phase 7.H Bloomberg-multi-window — kind id used to construct
+   *  the pop-out URL `/budgeting/terminal/panel/<kind>`. */
+  panelKind: string;
   children: React.ReactNode;
 }) {
-  const { id, isActive, onActivate, panelLabel, panelTitle, children } = props;
+  const { id, isActive, onActivate, panelLabel, panelTitle, panelKind, children } = props;
+  const tPanels = useTranslations('terminal.panels');
+  const tPopOutTitle = tPanels('popOutTitle');
+  const tPopOutAria = tPanels('popOutAria');
+  const handlePopOut = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Period from current URL — preserves whatever the user had selected.
+    const period =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('period')
+        : null;
+    const params = period ? `?period=${encodeURIComponent(period)}` : '';
+    window.open(
+      `/terminal-panel/${panelKind}${params}`,
+      `terminal-panel-${panelKind}`,
+      'width=900,height=700,resizable=yes,scrollbars=yes',
+    );
+  };
   return (
     <div
       onClick={() => onActivate(id)}
@@ -493,7 +517,32 @@ function PanelShell(props: {
           <span className="text-gray-700">·</span>
           <span>{panelTitle}</span>
         </h3>
-        {isActive && <span className="w-2 h-2 rounded-full bg-[#00D4AA]" />}
+        <div className="flex items-center gap-2">
+          {isActive && <span className="w-2 h-2 rounded-full bg-[#00D4AA]" />}
+          <button
+            type="button"
+            onClick={handlePopOut}
+            className="text-gray-600 hover:text-cyan-300 transition-colors"
+            title={tPopOutTitle}
+            aria-label={tPopOutAria}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 3h6v6" />
+              <path d="M10 14L21 3" />
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            </svg>
+          </button>
+        </div>
       </div>
       <div
         className={`flex-1 overflow-auto ${
