@@ -14,6 +14,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+import {
+  getMateriality,
+  getMaterialityNote,
+  isMaterialityScoped,
+} from "@/lib/risk/esg-materiality"
 
 export async function GET(
   request: NextRequest,
@@ -44,6 +49,10 @@ export async function GET(
       inputs: true,
       sparkline: true,
       companyId: true,
+      // Phase 7.H F4.v2.1 — surface provenance + reserved confidence
+      // slot so the panel-3 badge renders without a second request.
+      valueSource: true,
+      confidence: true,
       indicator: {
         select: {
           id: true,
@@ -79,6 +88,18 @@ export async function GET(
     return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
   }
 
+  // Phase 7.H F4.v2.4 — materiality lookup. Only ESG indicators
+  // participate; non-ESG cells return null + null note. UI suppresses
+  // the badge on null.
+  const materiality =
+    iv.indicator?.code && isMaterialityScoped(iv.indicator.code)
+      ? getMateriality(iv.company.industry, iv.indicator.code)
+      : null
+  const materialityNote =
+    iv.indicator?.code && isMaterialityScoped(iv.indicator.code)
+      ? getMaterialityNote(iv.company.industry, iv.indicator.code)
+      : null
+
   return NextResponse.json({
     id: iv.id,
     value: iv.value,
@@ -87,6 +108,13 @@ export async function GET(
     computedAt: iv.computedAt.toISOString(),
     inputs: iv.inputs,
     sparkline: iv.sparkline,
+    // Phase 7.H F4.v2.1 — drives the provenance badge in Panel 3.
+    valueSource: iv.valueSource,
+    confidence: iv.confidence,
+    // Phase 7.H F4.v2.4 — materiality rating + calibration note for
+    // the Panel-3 materiality badge tooltip.
+    materiality,
+    materialityNote,
     indicator: iv.indicator,
     company: iv.company,
   })

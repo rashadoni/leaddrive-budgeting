@@ -970,6 +970,20 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
     if (cell) prevValueRef.current = cell.value;
   }, [cell?.value]);
 
+  // Phase 7.H F4.v2.4 — SASB materiality dimming. `low_materiality`
+  // cells render at ~30% opacity (still legible, status color preserved
+  // — analyst can drill in but the cell isn't competing for attention).
+  // `not_material` cells render at ~12% with status color stripped to
+  // a neutral background (effectively "this metric doesn't apply to
+  // this sector"). Material cells (the default) are unaffected.
+  const materialityOpacityScale =
+    cell?.materiality === 'not_material'
+      ? 0.12
+      : cell?.materiality === 'low_materiality'
+        ? 0.45
+        : 1;
+  const materialityBackground =
+    cell?.materiality === 'not_material' ? '#1F2937' : color;
   return (
     <td
       onClick={onCellClick}
@@ -979,12 +993,21 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
         flashing ? 'shadow-[inset_0_0_0_2px_#00D4AA]' : ''
       }`}
       style={{
-        backgroundColor: color,
+        backgroundColor: materialityBackground,
         // CLI Tier 2 — 'na' is barely visible (0.05); 'missing' faded (0.25);
         // all computed statuses fully visible (0.85).
-        opacity: status === 'na' ? 0.05 : status === 'missing' ? 0.25 : 0.85,
+        // Phase 7.H F4.v2.4 — materiality scales the base opacity down
+        // for low/non-material ESG cells.
+        opacity:
+          (status === 'na' ? 0.05 : status === 'missing' ? 0.25 : 0.85) *
+          materialityOpacityScale,
       }}
-      aria-label={`${co.code} ${ind.code} ${status === 'na' ? 'not applicable' : `${status} ${statusShape(status)}`}`}
+      data-materiality={cell?.materiality ?? undefined}
+      aria-label={`${co.code} ${ind.code} ${status === 'na' ? 'not applicable' : `${status} ${statusShape(status)}`}${
+        cell?.materiality && cell.materiality !== 'material'
+          ? ` (${cell.materiality})`
+          : ''
+      }`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
@@ -1027,6 +1050,33 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 {statusShape(status)}
               </span>
             )}
+            {/* Phase 7.H F4.v2.1 — modeled-source marker at top-LEFT
+                (opposite corner from the status glyph). Lowercase italic
+                `e` = estimate. Renders for `modeled_generic` /
+                `modeled_industry` only — `disclosed`, `macro`,
+                `computed` show no marker (real or single-value-by-design
+                cells aren't "estimates"). Tooltip text exists in the
+                cell tooltip (`heatMap.tooltipProvenance`) so a hover
+                resolves the ambiguity ("e" = what?). */}
+            {cell &&
+              (cell.valueSource === 'modeled_generic' ||
+                cell.valueSource === 'modeled_industry') && (
+                <span
+                  aria-hidden="true"
+                  data-testid="heatmap-modeled-marker"
+                  data-source={cell.valueSource}
+                  className="absolute top-0 left-0.5 leading-none italic font-mono"
+                  style={{
+                    fontSize: compactMode ? 7 : 9,
+                    opacity: 0.85,
+                    color: '#FFFFFF',
+                    mixBlendMode: 'difference',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  e
+                </span>
+              )}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
                 Bloomberg-class analyst gets trend AT A GLANCE without
                 hovering. Empty-sparkline cells get an identical-height
@@ -1113,6 +1163,24 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                   title={`${cell.error.code}: ${cell.error.reason}`}
                 >
                   ⚠ {localizeFormulaError(cell.error.code, cell.error.reason, ind.code, t)}
+                </div>
+              )}
+              {/* Phase 7.H F4.v2.1 — provenance footnote in the cell
+                  tooltip. Mirrors the badge in Panel 3 so a hover-only
+                  glance already tells the analyst this is a modelled
+                  estimate, not a measured fact. Only renders for the
+                  non-`computed` variants — adding it on every cell
+                  would defeat the visual signal. */}
+              {cell.valueSource && cell.valueSource !== 'computed' && (
+                <div
+                  className="text-[10px] mt-1 italic"
+                  style={{ color: '#94A3B8' }}
+                  data-testid="heatmap-provenance-line"
+                  data-source={cell.valueSource}
+                >
+                  {t(
+                    `indicatorDetail.provenance.${cell.valueSource}` as never,
+                  )}
                 </div>
               )}
               {/* M3 inline AI commentary — pending → spinner; ok → first

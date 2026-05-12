@@ -1006,6 +1006,54 @@
       "confirmRemove": "Unlock period {period}? Mutations will be allowed again.",
       "noticeAlreadyLocked": "Period {period} is already locked. Original lock preserved.",
       "errAdminOnly": "Only admins can lock or unlock periods."
+    },
+    "dataEntry": {
+      "title": "Data entry",
+      "subtitle": "Manually enter operational KPIs (harvest yield, occupancy, FCR, etc.) and ESG disclosures (reported Scope 1/2/3, ESG score). When a value falls outside the typical range for the metric, the form asks for confirmation before saving.",
+      "loading": "Loading…",
+      "noCompanies": "No companies found.",
+      "noRows": "No entries yet.",
+      "company": "Company",
+      "date": "Date",
+      "period": "Period (YYYY / YYYY-QN / YYYY-MM)",
+      "value": "Value",
+      "unit": "Unit",
+      "source": "Source",
+      "sourceNote": "Source / note",
+      "sourceNotePlaceholder": "e.g. Q1 internal report, ERP export 2026-03-15",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Entry saved.",
+      "savedDisclosure": "Disclosure saved. The indicator badge will update to 'DISCLOSED' within a few seconds.",
+      "confirmTitle": "Value looks unusual. Confirm before saving:",
+      "confirmSave": "Yes, save anyway",
+      "cancel": "Cancel",
+      "tabs": {
+        "operational": "Operational KPI",
+        "esg": "ESG disclosure"
+      },
+      "operational": {
+        "formTitle": "New operational KPI entry",
+        "metric": "Metric",
+        "recentTitle": "Recent entries",
+        "sector": {
+          "agro": "Agro",
+          "real_estate": "Real estate",
+          "entertainment": "Entertainment",
+          "education": "Education",
+          "poultry": "Poultry",
+          "food_processing": "Food processing",
+          "hospitality": "Hospitality",
+          "esg": "ESG"
+        }
+      },
+      "esg": {
+        "formTitle": "ESG indicator disclosure",
+        "formSubtitle": "If the company has verified Scope 1/2/3 or ESG composite data (sustainability report, CDP filing, rating agency score) enter it here. The disclosed value replaces the modeled estimate and the indicator badge flips to 'DISCLOSED' (teal).",
+        "indicator": "Indicator",
+        "recentTitle": "Current disclosures",
+        "sourceNotePlaceholder": "e.g. Annual Sustainability Report 2026, MSCI ESG Rating 2026-01"
+      }
     }
   },
   "onboarding": {
@@ -1809,6 +1857,8 @@
         "lines": "lines"
       },
       "benchmarkButton": "Benchmark",
+      "commentsButton": "Discuss",
+      "commentsButtonTitle": "Attach a comment to this cell. Stored locally in your browser (v2 — team sync).",
       "benchmarkTitle": "Compare to other companies in your industry (median + top-quartile)",
       "explainButton": "Explain →",
       "explainTitle": "Open AI Variance Explainer in Panel 4 + run for current cell",
@@ -1839,7 +1889,25 @@
       "llmConfidence": "LLM confidence",
       "forecastExplainFailed": "Forecast explain failed",
       "explaining": "Explaining…",
-      "extrapolationCaveat": "linear extrapolation; uncertainty grows with horizon"
+      "extrapolationCaveat": "linear extrapolation; uncertainty grows with horizon",
+      "provenance": {
+        "disclosed": "Disclosed",
+        "disclosedTitle": "Company-reported value (manual entry / import). A real measured figure.",
+        "modeled_industry": "Industry estimate",
+        "modeled_industryTitle": "Estimate using an industry-specific intensity factor. Not a company disclosure, but closer to reality than the generic factor.",
+        "modeled_generic": "Generic estimate",
+        "modeled_genericTitle": "V1 PLACEHOLDER: formula × generic factor (e.g. revenue × 0.5 kg CO₂/AZN for carbon indicators). Not a real measurement; v2 will swap in an industry-specific factor or disclosed value.",
+        "macro": "Macro indicator",
+        "macroTitle": "Macro context — a single value applied to every company. Not a measurement of this entity, but environmental context (e.g. Azerbaijan climate readiness).",
+        "computed": "Computed",
+        "computedTitle": "Derived from real BudgetLine / OperationalFact / Booking data. Financial reality.",
+        "confidenceLabel": "Model confidence: {tier} (A — best, D — worst)."
+      },
+      "materiality": {
+        "lowMateriality": "Low materiality",
+        "notMaterial": "Not material",
+        "tooltipSuffix": "SASB materiality: this metric is not a priority for the sector."
+      }
     },
     "auditTicker": {
       "events": "EVENTS",
@@ -1966,13 +2034,14 @@
       "subtitle": "Per-cell @mention threads. Tag a teammate (@cfo, @aac-finance) to discuss a specific data point. Press Esc to close.",
       "dialogAriaLabel": "Comments overlay",
       "closeAriaLabel": "Close comments",
-      "noActiveCell": "No active cell — click a HeatMap cell first to attach a comment thread.",
+      "noActiveCell": "No active cell — click a HeatMap cell (Panel 2) and then open this panel to attach a comment thread.",
       "threadFor": "Thread for {key}",
       "empty": "No comments yet — start the discussion below.",
       "draftPlaceholder": "Type a comment, @mention with @name…",
       "draftAriaLabel": "Comment draft",
       "send": "Send",
-      "sendAriaLabel": "Post comment"
+      "sendAriaLabel": "Post comment",
+      "localOnlyBanner": "v1: comments are stored locally in your browser (localStorage). Teammates won't see them and no notifications fire. Real sync arrives in v2 (backend + WebSocket)."
     },
     "subcoChat": {
       "title": "Sub-Co Finance Chat",
@@ -1990,7 +2059,8 @@
       "draftPlaceholder": "Message {channel}…",
       "draftAriaLabel": "Chat draft",
       "send": "Send",
-      "sendAriaLabel": "Send message"
+      "sendAriaLabel": "Send message",
+      "localOnlyBanner": "v1: messages are stored locally (localStorage). The sub-co finance manager will NOT see them and no notifications fire. Use phone/email/Slack until v2 (backend + push) ships."
     },
     "subscriptions": {
       "title": "AI Subscriptions ({active} active · {paused} paused)",

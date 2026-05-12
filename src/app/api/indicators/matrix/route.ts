@@ -37,6 +37,10 @@ import type { IndicatorStatus } from '@/lib/risk/formula-engine';
 import { currentBakuYear, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 import { getCompanyScope } from '@/lib/rbac/company-scope';
+import {
+  getMateriality,
+  isMaterialityScoped,
+} from '@/lib/risk/esg-materiality';
 
 // Default period reader — annual, anchored to Asia/Baku (see
 // `currentBakuYear` for rationale). Callers wanting monthly granularity
@@ -217,6 +221,12 @@ export async function GET(request: NextRequest) {
               // Populated by `scripts/compute-sparklines.ts`. Phase B3
               // renders this in HeatMap cell tooltip + IndicatorDetail.
               sparkline: true,
+              // Phase 7.H F4.v2.1 — provenance stamp threaded to the
+              // HeatMap cell + Panel 3 badge. Without this select the
+              // cell payload omits the field and modeled-generic ESG
+              // cells fall back to "computed" rendering — defeating
+              // the entire feature.
+              valueSource: true,
             },
           });
 
@@ -236,6 +246,27 @@ export async function GET(request: NextRequest) {
       // from children's averages.
       parentCompanyId: c.parentCompanyId ?? null,
     }));
+
+    // Phase 7.H F4.v2.4 — materiality lookup needs the company's
+    // industry + indicator's code. Pre-build maps so the per-cell
+    // emission stays O(1).
+    const companyIndustryById = new Map<string, string>();
+    for (const c of companiesRaw) {
+      companyIndustryById.set(c.id, c.industry);
+    }
+    const indicatorCodeById = new Map<string, string>();
+    for (const i of indicatorsForRender) {
+      indicatorCodeById.set(i.id, i.code);
+    }
+    const lookupMateriality = (
+      companyId: string,
+      indicatorId: string,
+    ): 'material' | 'low_materiality' | 'not_material' | undefined => {
+      const indCode = indicatorCodeById.get(indicatorId);
+      if (!indCode || !isMaterialityScoped(indCode)) return undefined;
+      const industry = companyIndustryById.get(companyId);
+      return getMateriality(industry, indCode);
+    };
 
     const cells = values
       .filter((v: ValueShape) => {
@@ -261,14 +292,26 @@ export async function GET(request: NextRequest) {
         const sparkline = Array.isArray(sparklineRaw)
           ? (sparklineRaw as (number | null)[])
           : null;
+        const materiality = lookupMateriality(v.companyId, v.indicatorId);
         return {
           indicatorValueId: v.id,
           companyId: v.companyId,
           indicatorId: v.indicatorId,
           value: v.value,
           status: v.status as IndicatorStatus,
+          // Phase 7.H F4.v2.1 — string mirror of the Prisma enum,
+          // safe to send to the client as-is.
+          valueSource: v.valueSource as
+            | 'disclosed'
+            | 'modeled_industry'
+            | 'modeled_generic'
+            | 'macro'
+            | 'computed',
           ...(sparkline ? { sparkline } : {}),
           ...(error ? { error } : {}),
+          // Phase 7.H F4.v2.4 — materiality is only stamped on ESG
+          // cells (other indicators don't participate in the framework).
+          ...(materiality ? { materiality } : {}),
         };
       });
 
@@ -336,6 +379,10 @@ export async function GET(request: NextRequest) {
               status: true,
               inputs: true,
               sparkline: true,
+              // Phase 7.H F4.v2.1 — also threaded for real-rollup
+              // parent cells (sub-44 path) so a holding-level cell
+              // carries the same provenance badge as its children.
+              valueSource: true,
             },
           });
 
@@ -349,14 +396,22 @@ export async function GET(request: NextRequest) {
       const sparkline = Array.isArray(sparklineRaw)
         ? (sparklineRaw as (number | null)[])
         : null;
+      const materiality = lookupMateriality(v.companyId, v.indicatorId);
       return {
         indicatorValueId: v.id,
         companyId: v.companyId,
         indicatorId: v.indicatorId,
         value: v.value,
         status: v.status as IndicatorStatus,
+        valueSource: v.valueSource as
+          | 'disclosed'
+          | 'modeled_industry'
+          | 'modeled_generic'
+          | 'macro'
+          | 'computed',
         ...(sparkline ? { sparkline } : {}),
         ...(error ? { error } : {}),
+        ...(materiality ? { materiality } : {}),
         // Sub-44 cont'd architect 💡 closure — discriminated-union
         // `kind` field replaces the legacy `isRealParentRollup` boolean.
         // Distinguishes from synthetic averages (different drill-down

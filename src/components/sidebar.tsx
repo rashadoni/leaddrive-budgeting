@@ -31,6 +31,7 @@ import {
   CheckSquare,
   BookOpen,
   Users,
+  ClipboardEdit,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -121,6 +122,9 @@ const budgetSubNav = [
       { href: "/budgeting/admin/approval-requests", icon: CheckSquare, label: "Approvals", isPage: true },
       { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, label: "Chart of Accounts", isPage: true },
       { href: "/budgeting/admin/users", icon: Users, label: "User Access", isPage: true },
+      // Phase 7.H F4.v2.3 — non-engineer entry surface for operational
+      // KPIs + ESG disclosures.
+      { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, label: "Data Entry", isPage: true },
     ],
   },
 ]

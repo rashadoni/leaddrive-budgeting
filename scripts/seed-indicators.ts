@@ -248,6 +248,10 @@ async function upsertGlobal(seed: IndicatorSeed) {
     requiredInputs: seed.requiredInputs,
     isActive: true,
     sortOrder: seed.sortOrder,
+    // Phase 7.H F4.v2.1 — fall back to Prisma default (`computed`) when
+    // a seed omits the field. ESG seeds set `modeled_generic`/`macro`;
+    // every financial / operational seed keeps the default.
+    defaultValueSource: seed.defaultValueSource ?? "computed",
   }
 
   if (existing) {

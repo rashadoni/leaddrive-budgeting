@@ -1006,6 +1006,54 @@
       "confirmRemove": "{period} dövrünü açasınız? Dəyişikliklər yenidən mümkün olacaq.",
       "noticeAlreadyLocked": "{period} dövrü artıq kilidlidir. Orijinal kilid saxlanılıb.",
       "errAdminOnly": "Yalnız adminlər dövrləri kilidləyə və ya aça bilər."
+    },
+    "dataEntry": {
+      "title": "Məlumat daxiletmə",
+      "subtitle": "Əməliyyat KPI-lərini (məhsul, doluluq, FCR və s.) və ESG açıqlamalarını (Scope 1/2/3, ESG balı) əl ilə daxil edin. Dəyər metrikanın adi diapazonundan kənara çıxarsa, forma yadda saxlamadan əvvəl təsdiq istəyəcək.",
+      "loading": "Yüklənir…",
+      "noCompanies": "Heç bir şirkət tapılmadı.",
+      "noRows": "Hələ qeyd yoxdur.",
+      "company": "Şirkət",
+      "date": "Tarix",
+      "period": "Dövr (YYYY / YYYY-QN / YYYY-MM)",
+      "value": "Dəyər",
+      "unit": "Vahid",
+      "source": "Mənbə",
+      "sourceNote": "Mənbə / qeyd",
+      "sourceNotePlaceholder": "məs. Q1 daxili hesabat, ERP ixracı 2026-03-15",
+      "save": "Yadda saxla",
+      "saving": "Saxlanılır…",
+      "saved": "Qeyd yadda saxlanıldı.",
+      "savedDisclosure": "Açıqlama yadda saxlanıldı. Göstərici nişanı bir neçə saniyəyə 'AÇIQLANIB'a yenilənəcək.",
+      "confirmTitle": "Dəyər qeyri-adi görünür. Yadda saxlamadan əvvəl təsdiqləyin:",
+      "confirmSave": "Bəli, yenə də saxla",
+      "cancel": "Ləğv et",
+      "tabs": {
+        "operational": "Əməliyyat KPI",
+        "esg": "ESG açıqlama"
+      },
+      "operational": {
+        "formTitle": "Yeni əməliyyat KPI qeydi",
+        "metric": "Metrika",
+        "recentTitle": "Son qeydlər",
+        "sector": {
+          "agro": "Aqro",
+          "real_estate": "Daşınmaz əmlak",
+          "entertainment": "Əyləncə",
+          "education": "Təhsil",
+          "poultry": "Quşçuluq",
+          "food_processing": "Qida emalı",
+          "hospitality": "Qonaqpərvərlik",
+          "esg": "ESG"
+        }
+      },
+      "esg": {
+        "formTitle": "ESG göstərici açıqlaması",
+        "formSubtitle": "Əgər şirkətin təsdiqlənmiş Scope 1/2/3 və ya ESG kompozit məlumatları varsa (davamlılıq hesabatı, CDP, reytinq agentliyi balı) — onu burada daxil edin. Açıqlanmış dəyər modellənmiş təxmini əvəzləyir və göstərici nişanı 'AÇIQLANIB' (firuzəyi) olur.",
+        "indicator": "Göstərici",
+        "recentTitle": "Mövcud açıqlamalar",
+        "sourceNotePlaceholder": "məs. İllik Davamlılıq Hesabatı 2026, MSCI ESG Reytinqi 2026-01"
+      }
     }
   },
   "onboarding": {
@@ -1809,6 +1857,8 @@
         "lines": "sətir"
       },
       "benchmarkButton": "Müqayisə",
+      "commentsButton": "Müzakirə et",
+      "commentsButtonTitle": "Bu xanaya şərh əlavə edin. Brauzerinizdə lokal saxlanılır (v2 — komanda sinxronizasiyası).",
       "benchmarkTitle": "Sənayənizdəki digər şirkətlərlə müqayisə et (median + top-kvartil)",
       "explainButton": "İzah et →",
       "explainTitle": "Panel 4-də AI Variance Explainer aç + cari xana üçün işə sal",
@@ -1839,7 +1889,25 @@
       "llmConfidence": "LLM inamı",
       "forecastExplainFailed": "Proqnoz izahı uğursuz oldu",
       "explaining": "İzah edirəm…",
-      "extrapolationCaveat": "xətti ekstrapolyasiya; üfüq artdıqca qeyri-müəyyənlik artır"
+      "extrapolationCaveat": "xətti ekstrapolyasiya; üfüq artdıqca qeyri-müəyyənlik artır",
+      "provenance": {
+        "disclosed": "Açıqlanıb",
+        "disclosedTitle": "Şirkət tərəfindən açıqlanmış dəyər (əl ilə daxil edilmə / idxal). Real ölçülmüş göstərici.",
+        "modeled_industry": "Sənaye təxmini",
+        "modeled_industryTitle": "Sənayeyə xas intensivlik əmsalı ilə təxmin. Şirkət açıqlaması deyil, lakin ümumi əmsaldan daha dəqiqdir.",
+        "modeled_generic": "Ümumi təxmin",
+        "modeled_genericTitle": "V1 KEÇİCİ: formula × ümumi əmsal (məs. karbon göstəriciləri üçün gəlir × 0.5 kq CO₂/AZN). Real ölçü deyil; v2 sənaye əmsalı və ya açıqlanmış dəyərlə əvəz edəcək.",
+        "macro": "Makro göstərici",
+        "macroTitle": "Makro kontekst — bütün şirkətlərə tətbiq olunan vahid dəyər. Bu qurumun ölçüsü deyil, ətraf mühit konteksti (məsələn Azərbaycanın iqlim hazırlığı).",
+        "computed": "Hesablanıb",
+        "computedTitle": "Real BudgetLine / OperationalFact / Booking məlumatlarından əldə edilib. Maliyyə reallığı.",
+        "confidenceLabel": "Model etibarlılığı: {tier} (A — ən yaxşı, D — ən pis)."
+      },
+      "materiality": {
+        "lowMateriality": "Aşağı materiallıq",
+        "notMaterial": "Materialli deyil",
+        "tooltipSuffix": "SASB materiallıq: bu göstərici bu sektor üçün prioritet deyil."
+      }
     },
     "auditTicker": {
       "events": "HADİSƏLƏR",
@@ -1966,13 +2034,14 @@
       "subtitle": "Hər xana üçün @mention tred. Konkret məlumat nöqtəsini müzakirə etmək üçün komanda yoldaşını tag edin (@cfo, @aac-finance). Bağlamaq üçün Esc.",
       "dialogAriaLabel": "Şərh qatı",
       "closeAriaLabel": "Şərhləri bağla",
-      "noActiveCell": "Aktiv xana yoxdur — tred əlavə etmək üçün əvvəl HeatMap xanasına klikləyin.",
+      "noActiveCell": "Aktiv xana yoxdur — HeatMap xanasına klikləyin (Panel 2) və sonra bu paneli açın.",
       "threadFor": "{key} üçün tred",
       "empty": "Hələ şərh yoxdur — aşağıda müzakirə başlayın.",
       "draftPlaceholder": "Şərh yazın, @ad ilə @mention edin…",
       "draftAriaLabel": "Şərh qaralaması",
       "send": "Göndər",
-      "sendAriaLabel": "Şərhi yerləşdir"
+      "sendAriaLabel": "Şərhi yerləşdir",
+      "localOnlyBanner": "v1: şərhlər brauzerinizdə lokal saxlanılır (localStorage). Komanda yoldaşları görməz və bildiriş gəlməz. Real sinxronizasiya v2-də (backend + WebSocket)."
     },
     "subcoChat": {
       "title": "Sub-co Maliyyə Çatı",
@@ -1990,7 +2059,8 @@
       "draftPlaceholder": "{channel} üçün mesaj…",
       "draftAriaLabel": "Çat qaralaması",
       "send": "Göndər",
-      "sendAriaLabel": "Mesaj göndər"
+      "sendAriaLabel": "Mesaj göndər",
+      "localOnlyBanner": "v1: mesajlar lokal saxlanılır (localStorage). Sub-co maliyyə meneceri onları GÖRMƏYƏCƏK və bildiriş ALMAYACAQ. v2 (backend + push) çıxana qədər telefon/email/Slack istifadə edin."
     },
     "subscriptions": {
       "title": "AI Abunələr ({active} aktiv · {paused} dayandırılmış)",

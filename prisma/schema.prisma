@@ -1074,6 +1074,9 @@ model Company {
   bookings          Booking[]
   operationalFacts  OperationalFact[]
   indicatorValues   IndicatorValue[]
+  // Phase 7.H F4.v2.3 — manual disclosure overrides for modeled-generic
+  // ESG indicators. See `IndicatorDisclosure` model below.
+  indicatorDisclosures IndicatorDisclosure[]
   companyIndicators CompanyIndicator[]
   importStaging     ImportStaging[]
 
@@ -1109,33 +1112,60 @@ model Industry {
   @@map("industries")
 }
 
+// IndicatorValueSource — Phase 7.H F4.v2.1 provenance ladder (Bloomberg-
+// style). Tags every IndicatorValue with where its number came from so
+// modelled estimates (e.g. carbon Scope 1 derived from revenue × generic
+// 0.5 kg/AZN factor) are visually distinguishable from disclosed facts
+// and from real financial aggregates. Values:
+//   - disclosed         : company-reported fact (manual entry / import)
+//   - modeled_industry  : industry-specific intensity factor (v2.2+)
+//   - modeled_generic   : v1 placeholder formula (revenue × constant)
+//   - macro             : single-value macro context (same across cos)
+//   - computed          : derived from real BudgetLine / OperationalFact /
+//                         Booking data; the financial / operational default
+enum IndicatorValueSource {
+  disclosed
+  modeled_industry
+  modeled_generic
+  macro
+  computed
+
+  @@map("indicator_value_source")
+}
+
 // IndicatorDefinition — formula-as-data. Each indicator stores an expression
 // string evaluated by src/lib/risk/formula-engine.ts (expr-eval, sandboxed).
 // organizationId = null  → global seed (shipped with the product)
 // organizationId = set   → org-specific override
 model IndicatorDefinition {
-  id               String        @id @default(cuid())
-  organizationId   String?
-  organization     Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code             String                 // "HOSP_FX_EXPOSURE"
-  nameEn           String
-  nameAz           String?
-  nameRu           String?
-  category         String                 // "fx"|"commodity"|"operational"|"geopolitical"|"macro"|"regulatory"|"composite"
-  industries       String[]               // which industries this indicator applies to (Postgres text[])
-  unit             String                 // "AZN"|"%"|"ratio"|"nights"|...
-  direction        String                 // "higher_better"|"lower_better"|"band"
-  formula          String                 // expr-eval expression (see src/lib/risk/formula-engine.ts)
-  sparklineFormula String?                // optional variant evaluated per period for sparkline
-  thresholds       Json                   // { green:{op,value}, amber:{op,value}, red:{op,value} }
-  hintTemplateEn   String?
-  hintTemplateAz   String?
-  hintTemplateRu   String?
-  requiredInputs   String[]               // ["budgetLine","booking","currencyRate","operationalFact",...]
-  isActive         Boolean  @default(true)
-  sortOrder        Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                  String        @id @default(cuid())
+  organizationId      String?
+  organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code                String                 // "HOSP_FX_EXPOSURE"
+  nameEn              String
+  nameAz              String?
+  nameRu              String?
+  category            String                 // "fx"|"commodity"|"operational"|"geopolitical"|"macro"|"regulatory"|"composite"|"esg"
+  industries          String[]               // which industries this indicator applies to (Postgres text[])
+  unit                String                 // "AZN"|"%"|"ratio"|"nights"|...
+  direction           String                 // "higher_better"|"lower_better"|"band"
+  formula             String                 // expr-eval expression (see src/lib/risk/formula-engine.ts)
+  sparklineFormula    String?                // optional variant evaluated per period for sparkline
+  thresholds          Json                   // { green:{op,value}, amber:{op,value}, red:{op,value} }
+  hintTemplateEn      String?
+  hintTemplateAz      String?
+  hintTemplateRu      String?
+  requiredInputs      String[]               // ["budgetLine","booking","currencyRate","operationalFact",...]
+  // Phase 7.H F4.v2.1 — default provenance tag stamped on every IV
+  // produced from this definition. ESG v1 placeholders use
+  // `modeled_generic`; macro indicators (e.g. IND_GOV_CLIMATE_SCORE) use
+  // `macro`; financial / operational defaults to `computed`. Optional at
+  // the seed level — null falls back to `computed` in recompute.
+  defaultValueSource  IndicatorValueSource @default(computed)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   values            IndicatorValue[]
   companyIndicators CompanyIndicator[]
@@ -1178,12 +1208,58 @@ model IndicatorValue {
   status         String                              // "green"|"amber"|"red"|"unknown"
   sparkline      Json                                // (number|null)[] — 12-slot trailing-month series; nulls = evaluation gap (Bloomberg "no-tick")
   inputs         Json                                // snapshot of resolved vars (for audit/drill-down)
+  // Phase 7.H F4.v2.1 — provenance stamp inherited from
+  // `IndicatorDefinition.defaultValueSource` at upsert time. Drives the
+  // UI provenance badge (panel 3) + heatmap-cell modeled marker, and is
+  // surfaced verbatim on `/api/indicators/matrix` cells. Defaults to
+  // `computed` so legacy rows (Phase 7.A-G) stay correct without a
+  // re-recompute: every existing financial / operational IV is a real
+  // derived value.
+  valueSource    IndicatorValueSource @default(computed)
+  // Reserved for Phase 7.H F4.v2.2 — model-confidence tier (A/B/C/D)
+  // when an industry-specific factor is in play. Null until that phase
+  // ships; UI shows badge without confidence sub-label until then.
+  confidence     String?
   computedAt     DateTime            @default(now())
 
   @@unique([companyId, indicatorId, period])
   @@index([organizationId, companyId, period])
   @@index([indicatorId])
   @@map("indicator_values")
+}
+
+// IndicatorDisclosure — Phase 7.H F4.v2.3 manual-disclosure override for
+// ESG / modeled-generic indicators. When a row exists for (companyId,
+// indicatorCode, period), the recompute pipeline uses `value` instead
+// of the seed formula and stamps `IndicatorValue.valueSource =
+// 'disclosed'`. Without a row, the v2.1 modeled-generic placeholder
+// stays active.
+//
+// Indicator code (not id) so disclosures keep working across
+// IndicatorDefinition re-seeds that re-cuid the row. `period` mirrors
+// the IndicatorValue period grammar ("YYYY" | "YYYY-QN" | "YYYY-MM").
+// Each entry carries audit metadata (enteredBy / enteredAt /
+// sourceNote) so a finance reviewer can later trace where the number
+// came from. `unit` is required so a "kg" never lands silently into
+// a "tonnes" slot.
+model IndicatorDisclosure {
+  id             String   @id @default(cuid())
+  organizationId String
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  indicatorCode  String
+  period         String
+  value          Float
+  unit           String
+  sourceNote     String?  // free-form provenance note from the entering user
+  enteredBy      String   // User.id of the person who entered the row
+  enteredAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([companyId, indicatorCode, period])
+  @@index([organizationId, companyId])
+  @@index([indicatorCode])
+  @@map("indicator_disclosures")
 }
 
 // Booking — hospitality operational data. Feeds RevPAR, source-country HHI, etc.
@@ -1661,6 +1737,16 @@ enum AuditAction {
   user_password_reset            // Phase 7.F admin v3 — admin generated a new temp password
   user_active_toggle             // Phase 7.F admin v3 — admin enabled/disabled a user account
   ai_news_summary_run            // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
+  // Phase 7.H F4.v2.3 — manual data-entry trail for the non-engineer
+  // admin flow at `/budgeting/admin/data-entry`. Three families:
+  //   - operational_fact_* : ручной ввод KPI (yield, occupancy, FCR, etc.)
+  //   - indicator_disclosure_* : ESG manual override of modeled value
+  operational_fact_create
+  operational_fact_update
+  operational_fact_delete
+  indicator_disclosure_create
+  indicator_disclosure_update
+  indicator_disclosure_delete
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

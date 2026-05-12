@@ -49,6 +49,15 @@ interface CompanyMeta {
   industry: string | null;
 }
 
+/** Phase 7.H F4.v2.1 — provenance ladder rendered as a Panel-3 badge.
+ *  Mirrors `IndicatorValueSource` from prisma/schema.prisma. */
+type ValueSource =
+  | "disclosed"
+  | "modeled_industry"
+  | "modeled_generic"
+  | "macro"
+  | "computed";
+
 interface IndicatorValueDetail {
   id: string;
   value: number;
@@ -62,6 +71,17 @@ interface IndicatorValueDetail {
   } | null;
   /** Phase B2/B3 — 12-slot trailing-month series; nulls = evaluation gap. */
   sparkline: (number | null)[] | null;
+  /** Phase 7.H F4.v2.1 — provenance stamp from `IndicatorValue.valueSource`. */
+  valueSource?: ValueSource;
+  /** Phase 7.H F4.v2.1 — reserved (`A`|`B`|`C`|`D`) for the v2.2 industry-
+   *  factor confidence tier; null until that phase ships. */
+  confidence?: string | null;
+  /** Phase 7.H F4.v2.4 — SASB-style materiality rating for the
+   *  (company.industry × indicator) pair. Null on non-ESG indicators. */
+  materiality?: 'material' | 'low_materiality' | 'not_material' | null;
+  /** Phase 7.H F4.v2.4 — calibration note explaining why this pair was
+   *  rated low/not-material. Null on `material` (default) cells + non-ESG. */
+  materialityNote?: string | null;
   indicator: IndicatorMeta;
   company: CompanyMeta;
 }
@@ -415,6 +435,30 @@ export function IndicatorDetail() {
               }
             })()}
           </div>
+          {/* Phase 7.H F4.v2.1 — Bloomberg-style provenance badge. The
+              red KPIs that the client sees aren't always real measurements
+              (carbon Scope 1/2/3 + ESG composite are revenue × generic
+              factor, IND_GOV_CLIMATE_SCORE is a single macro literal).
+              The badge surfaces THIS source distinction so a client can
+              tell a disclosed/measured number from a modelled estimate
+              at a glance. `computed` (financial/operational majority)
+              renders no badge — adding one would be visual noise on the
+              92% of cells that are real derived values. */}
+          <ProvenanceBadge
+            source={detail.valueSource}
+            confidence={detail.confidence ?? null}
+            t={t}
+          />
+          {/* Phase 7.H F4.v2.4 — SASB materiality badge. Renders next to
+              provenance for ESG cells where the (industry × indicator)
+              pair isn't fully material. `material` cells (the default)
+              show no badge — adding "MATERIAL" on every cell would be
+              visual noise. */}
+          <MaterialityBadge
+            rating={detail.materiality ?? null}
+            note={detail.materialityNote ?? null}
+            t={t}
+          />
           {/* Phase 7.E phase 2 hardening (sub-40) — per-IV recompute
               affordance. Single-IV path (companyId+indicatorCode) is
               the only branch that flips withSparkline=true on the API
@@ -599,7 +643,21 @@ export function IndicatorDetail() {
 
       <DrillDownSection ivId={detail.id} t={t} />
 
-      <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end gap-2">
+      <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end gap-2 flex-wrap">
+        <button
+          type="button"
+          onClick={() => {
+            // Opens the per-cell Comments overlay. The store already
+            // knows the active cell from `setActiveIv`, so the modal
+            // auto-selects this thread on open — no extra args needed.
+            window.dispatchEvent(new CustomEvent("terminal:open-comments"));
+          }}
+          className="bg-transparent border border-[#00D4AA]/60 text-[#00D4AA] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider hover:bg-[#00D4AA]/10"
+          title={t('indicatorDetail.commentsButtonTitle')}
+          data-testid="indicator-detail-comments"
+        >
+          {t('indicatorDetail.commentsButton')}
+        </button>
         <button
           type="button"
           onClick={() => setBenchmarkOpen(true)}
@@ -647,6 +705,159 @@ function formatValue(v: number): string {
     : Math.abs(v) >= 10
     ? v.toFixed(1)
     : v.toFixed(2);
+}
+
+/**
+ * Phase 7.H F4.v2.1 — provenance badge rendered next to the headline
+ * value in Panel 3. Five variants with distinct tones:
+ *   - `disclosed`        : teal contour ("РАСКРЫТО")
+ *   - `modeled_industry` : amber ("ОТРАСЛЕВАЯ ОЦЕНКА")
+ *   - `modeled_generic`  : gray-striped ("ОБЩАЯ ОЦЕНКА")
+ *   - `macro`            : blue ("МАКРО-ПОКАЗАТЕЛЬ")
+ *   - `computed` / null  : no badge (real derived value — adding one
+ *                          would be visual noise on every cell)
+ *
+ * Tailwind utility classes only — no module.css. The Risk Terminal
+ * palette uses these hex values across the app, so we hard-code them
+ * inline to avoid spreading new design-tokens for a single badge.
+ *
+ * Sized to match the existing status badge (`text-[10px]`, same
+ * padding) so the two stack cleanly without disturbing the panel
+ * layout. Visual gate isn't expected to fire — the badge slot is
+ * additive in an existing flex column.
+ *
+ * Phase 7.H F4.v2.2.1 — `confidence` tier appended to the tooltip
+ * (e.g. "Confidence: B"). For `modeled_industry` cells this is the
+ * worst tier across the scopes the formula used (A best → D worst).
+ * `disclosed` cells have no tier (the value IS the truth).
+ */
+function ProvenanceBadge({
+  source,
+  confidence,
+  t,
+}: {
+  source: IndicatorValueDetail["valueSource"];
+  confidence: IndicatorValueDetail["confidence"];
+  t: ReturnType<typeof useTranslations>;
+}) {
+  // `computed` is the financial / operational default — no badge.
+  // Treat absence (legacy rows) the same: assume real until proven
+  // otherwise. Phase 7.A through 7.G IVs predate the v2.1 stamp and
+  // are all `computed` semantically.
+  if (!source || source === "computed") return null;
+  const labelKey = `indicatorDetail.provenance.${source}` as const;
+  const titleKey = `indicatorDetail.provenance.${source}Title` as const;
+  let label: string;
+  let title: string;
+  try {
+    label = t(labelKey);
+    title = t(titleKey);
+  } catch {
+    // Defensive fallback when a new variant lands without a matching
+    // i18n key — render the raw enum value rather than throw.
+    label = source.toUpperCase();
+    title = source;
+  }
+  // Phase 7.H F4.v2.2.1 — append "Confidence: X" to the title tooltip
+  // when the IV carries a tier (industry-modeled cells). Disclosed cells
+  // skip the tier — the value is the truth, not a model output. Plain
+  // string concat keeps the tooltip readable in all 3 locales.
+  if (confidence) {
+    let confidenceLabel: string;
+    try {
+      confidenceLabel = t("indicatorDetail.provenance.confidenceLabel", {
+        tier: confidence,
+      });
+    } catch {
+      confidenceLabel = `Confidence: ${confidence}`;
+    }
+    title = `${title} ${confidenceLabel}`;
+  }
+  const palette: Record<NonNullable<IndicatorValueDetail["valueSource"]>, string> = {
+    disclosed:
+      "border-[#00D4AA]/60 text-[#00D4AA] bg-[#00D4AA]/5",
+    modeled_industry:
+      "border-[#FFB020]/60 text-[#FFB020] bg-[#FFB020]/5",
+    modeled_generic:
+      "border-gray-500/60 text-gray-300 bg-gray-500/10",
+    macro:
+      "border-[#5B9DFF]/60 text-[#5B9DFF] bg-[#5B9DFF]/5",
+    // `computed` never renders (guarded above) but keep the entry
+    // so the map is exhaustive for future maintainers.
+    computed: "",
+  };
+  return (
+    <span
+      data-testid="provenance-badge"
+      data-source={source}
+      data-confidence={confidence ?? undefined}
+      title={title}
+      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-mono ${palette[source]}`}
+    >
+      {label}
+      {confidence && (
+        <span
+          aria-hidden="true"
+          data-testid="provenance-confidence-tier"
+          className="ml-1.5 opacity-70 font-bold"
+        >
+          {confidence}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Phase 7.H F4.v2.4 — SASB materiality badge. Two non-default variants:
+ *   - `low_materiality` : amber-soft contour, "НИЗКАЯ МАТЕРИАЛЬНОСТЬ"
+ *   - `not_material`    : neutral gray, "НЕ МАТЕРИАЛЬНО"
+ *   - `material` / null : no badge (default state)
+ *
+ * Calibration note (per-pair) surfaces in the tooltip — e.g.
+ * "Campus operations dominated by purchased electricity (Scope 2),
+ *  not direct combustion."
+ */
+function MaterialityBadge({
+  rating,
+  note,
+  t,
+}: {
+  rating: "material" | "low_materiality" | "not_material" | null;
+  note: string | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  if (!rating || rating === "material") return null;
+  const labelKey =
+    rating === "not_material"
+      ? "indicatorDetail.materiality.notMaterial"
+      : "indicatorDetail.materiality.lowMateriality";
+  let label: string;
+  try {
+    label = t(labelKey);
+  } catch {
+    label = rating.toUpperCase();
+  }
+  let titleSuffix = "";
+  try {
+    titleSuffix = t("indicatorDetail.materiality.tooltipSuffix");
+  } catch {
+    titleSuffix = "Materiality (SASB).";
+  }
+  const tone =
+    rating === "not_material"
+      ? "border-gray-600/60 text-gray-400 bg-gray-700/15"
+      : "border-[#FFB020]/40 text-[#FFB020]/80 bg-[#FFB020]/5";
+  return (
+    <span
+      data-testid="materiality-badge"
+      data-rating={rating}
+      title={`${titleSuffix}${note ? ` ${note}` : ""}`}
+      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-mono ${tone}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 /** Headline-value formatter that respects the indicator's unit.

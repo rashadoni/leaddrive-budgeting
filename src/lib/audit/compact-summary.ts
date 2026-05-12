@@ -229,7 +229,16 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'user_create':
     case 'user_password_reset':
     case 'user_active_toggle':
-    case 'ai_news_summary_run': {
+    case 'ai_news_summary_run':
+    // Phase 7.H F4.v2.3 — manual data-entry trail. JSON-preview is the
+    // right granularity for these (metric + value + sourceNote in the
+    // metadata blob); the AuditFeed UI surfaces them in the "All" tab.
+    case 'operational_fact_create':
+    case 'operational_fact_update':
+    case 'operational_fact_delete':
+    case 'indicator_disclosure_create':
+    case 'indicator_disclosure_update':
+    case 'indicator_disclosure_delete': {
       const preview = JSON.stringify(m);
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };

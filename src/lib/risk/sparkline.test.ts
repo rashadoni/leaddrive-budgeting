@@ -89,6 +89,9 @@ const stubDs: RecomputeDataSource = {
     return out;
   },
   listChildCompanyIds: async () => [],
+  // Phase 7.H F4.v2.3 — sparkline tests don't exercise disclosure;
+  // stub returns null so every formula evaluation proceeds normally.
+  getIndicatorDisclosure: async () => null,
 };
 
 describe('evaluateAt', () => {
