@@ -277,6 +277,12 @@ function OperationalFactsTab({
 
   return (
     <div className="space-y-6">
+      <BulkImportSection
+        companies={companies}
+        onImported={() => void refresh()}
+        t={t}
+      />
+
       <section className="bg-card border border-border rounded-md p-4">
         <h2 className="text-sm font-semibold mb-3">{t("operational.formTitle")}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -790,5 +796,264 @@ function FormControls({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Phase 7.H F4.v2.3.1 — bulk Excel import.
+ *
+ * Single-row entry doesn't scale (13 metrics × 12 months × N companies
+ * = 1000+ rows). This section gives the user a "download template →
+ * fill in Excel → upload → preview → confirm → apply" flow. Mirrors
+ * the AI-Mapper onboarding pattern (preview-then-commit), but for
+ * structured pre-known shape rather than free-form xlsx.
+ */
+function BulkImportSection({
+  onImported,
+  t,
+}: {
+  companies: CompanyRow[]
+  onImported: () => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const [stage, setStage] = useState<
+    | { kind: "idle" }
+    | { kind: "previewing" }
+    | { kind: "preview"; rowCount: number; errorCount: number; warningCount: number; warnings: Array<{ rowNumber: number; message: string }>; errors: Array<{ rowNumber: number; reason: string }>; file: File }
+    | { kind: "applying" }
+    | { kind: "applied"; appliedCount: number; rejectedCount: number; rejected: Array<{ rowNumber: number; reason: string }> }
+    | { kind: "error"; message: string }
+  >({ kind: "idle" })
+
+  const handleFile = async (file: File) => {
+    setStage({ kind: "previewing" })
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      form.append("dryRun", "true")
+      const res = await fetch("/api/operational-facts/import", {
+        method: "POST",
+        body: form,
+      })
+      const json = (await res.json()) as Record<string, unknown>
+      if (!res.ok) {
+        setStage({
+          kind: "error",
+          message: (json.error as string) ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      setStage({
+        kind: "preview",
+        rowCount: Number(json.rowCount ?? 0),
+        errorCount: Number(json.errorCount ?? 0),
+        warningCount: Number(json.warningCount ?? 0),
+        warnings: Array.isArray(json.warnings)
+          ? (json.warnings as Array<{ rowNumber: number; message: string }>)
+          : [],
+        errors: Array.isArray(json.errors)
+          ? (json.errors as Array<{ rowNumber: number; reason: string }>)
+          : [],
+        file,
+      })
+    } catch (err) {
+      setStage({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  const confirmApply = async () => {
+    if (stage.kind !== "preview") return
+    setStage({ kind: "applying" })
+    try {
+      const form = new FormData()
+      form.append("file", stage.file)
+      form.append("dryRun", "false")
+      if (stage.warningCount > 0) form.append("forceWarnings", "true")
+      const res = await fetch("/api/operational-facts/import", {
+        method: "POST",
+        body: form,
+      })
+      const json = (await res.json()) as Record<string, unknown>
+      if (!res.ok) {
+        setStage({
+          kind: "error",
+          message: (json.error as string) ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      setStage({
+        kind: "applied",
+        appliedCount: Number(json.appliedCount ?? 0),
+        rejectedCount: Number(json.rejectedCount ?? 0),
+        rejected: Array.isArray(json.rejected)
+          ? (json.rejected as Array<{ rowNumber: number; reason: string }>)
+          : [],
+      })
+      onImported()
+    } catch (err) {
+      setStage({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  return (
+    <section className="bg-card border border-border rounded-md p-4" data-testid="bulk-import-section">
+      <header className="flex items-center justify-between mb-3">
+        <div>
+          <h2 className="text-sm font-semibold">
+            {t("operational.bulkImport.title")}
+          </h2>
+          <p className="text-xs text-muted-foreground mt-1 max-w-2xl">
+            {t("operational.bulkImport.subtitle")}
+          </p>
+        </div>
+        <a
+          href="/api/operational-facts/import/template"
+          className="text-xs px-3 py-1.5 border border-border rounded text-foreground hover:bg-accent shrink-0"
+          download
+          data-testid="bulk-import-template"
+        >
+          {t("operational.bulkImport.downloadTemplate")}
+        </a>
+      </header>
+
+      <label className="block">
+        <input
+          type="file"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) void handleFile(f)
+            e.target.value = ""
+          }}
+          disabled={stage.kind === "previewing" || stage.kind === "applying"}
+          data-testid="bulk-import-file"
+          className="text-xs"
+        />
+      </label>
+
+      {stage.kind === "previewing" && (
+        <p className="text-xs text-muted-foreground mt-2">
+          {t("operational.bulkImport.previewing")}
+        </p>
+      )}
+
+      {stage.kind === "preview" && (
+        <div className="mt-3 space-y-2" data-testid="bulk-import-preview">
+          <div className="text-xs">
+            <span className="font-semibold text-foreground">
+              {t("operational.bulkImport.previewSummary", {
+                rows: stage.rowCount,
+                errors: stage.errorCount,
+                warnings: stage.warningCount,
+              })}
+            </span>
+          </div>
+          {stage.errorCount > 0 && (
+            <div
+              className="border border-[#FF4757]/40 bg-[#FF4757]/10 text-[#FF4757] rounded p-2 text-xs space-y-1 max-h-40 overflow-y-auto"
+              role="alert"
+            >
+              <div className="font-semibold">
+                {t("operational.bulkImport.errorsHeading")}
+              </div>
+              <ul className="list-disc pl-4">
+                {stage.errors.slice(0, 10).map((e, i) => (
+                  <li key={i}>
+                    {t("operational.bulkImport.row", { n: e.rowNumber })}:{" "}
+                    {e.reason}
+                  </li>
+                ))}
+                {stage.errors.length > 10 && (
+                  <li>+{stage.errors.length - 10} more</li>
+                )}
+              </ul>
+            </div>
+          )}
+          {stage.warningCount > 0 && (
+            <div className="border border-[#FFB020]/40 bg-[#FFB020]/10 text-[#FFB020] rounded p-2 text-xs space-y-1 max-h-32 overflow-y-auto">
+              <div className="font-semibold">
+                {t("operational.bulkImport.warningsHeading")}
+              </div>
+              <ul className="list-disc pl-4">
+                {stage.warnings.slice(0, 10).map((w, i) => (
+                  <li key={i}>
+                    {t("operational.bulkImport.row", { n: w.rowNumber })}:{" "}
+                    {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setStage({ kind: "idle" })}
+              className="text-xs px-3 py-1.5 border border-border rounded"
+            >
+              {t("cancel")}
+            </button>
+            {stage.errorCount === 0 && (
+              <button
+                type="button"
+                onClick={confirmApply}
+                data-testid="bulk-import-apply"
+                className="text-xs px-3 py-1.5 bg-[#00D4AA] text-[#050814] rounded font-semibold"
+              >
+                {stage.warningCount > 0
+                  ? t("operational.bulkImport.confirmApplyWithWarnings", {
+                      rows: stage.rowCount,
+                    })
+                  : t("operational.bulkImport.confirmApply", {
+                      rows: stage.rowCount,
+                    })}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {stage.kind === "applying" && (
+        <p className="text-xs text-muted-foreground mt-2">
+          {t("operational.bulkImport.applying")}
+        </p>
+      )}
+
+      {stage.kind === "applied" && (
+        <div
+          className="mt-3 border border-[#00D4AA]/40 bg-[#00D4AA]/10 text-[#00D4AA] rounded p-2 text-xs"
+          data-testid="bulk-import-applied"
+        >
+          {t("operational.bulkImport.appliedSummary", {
+            applied: stage.appliedCount,
+            rejected: stage.rejectedCount,
+          })}
+          {stage.rejectedCount > 0 && (
+            <ul className="mt-1 list-disc pl-4 max-h-32 overflow-y-auto">
+              {stage.rejected.slice(0, 10).map((r, i) => (
+                <li key={i}>
+                  {t("operational.bulkImport.row", { n: r.rowNumber })}: {r.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {stage.kind === "error" && (
+        <div
+          className="mt-3 border border-[#FF4757]/40 bg-[#FF4757]/10 text-[#FF4757] rounded p-2 text-xs"
+          role="alert"
+          data-testid="bulk-import-error"
+        >
+          {stage.message}
+        </div>
+      )}
+    </section>
   )
 }
