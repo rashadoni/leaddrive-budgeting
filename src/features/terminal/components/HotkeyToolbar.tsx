@@ -27,12 +27,19 @@ import { useTranslations } from "next-intl";
 import {
   AlertTriangle,
   Bell,
+  BellRing,
   Download,
   FilePlus2,
+  FlaskConical,
   GitCompare,
   HelpCircle,
   History,
+  Layers,
+  ListTodo,
+  MessageSquare,
+  MessagesSquare,
   RefreshCw,
+  Rss,
   Search,
   Star,
   Upload,
@@ -74,6 +81,23 @@ export function HotkeyToolbar() {
 
   const fireWindowEvent = (name: string, detail?: unknown) => {
     window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
+    return true;
+  };
+
+  const prefillCmdBar = (prefix: string): boolean => {
+    const input = document.querySelector(
+      'input[data-cmd-bar]',
+    ) as HTMLInputElement | null;
+    if (!input) return false;
+    input.focus();
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value',
+    )?.set;
+    if (setter) {
+      setter.call(input, prefix);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     return true;
   };
 
@@ -153,27 +177,7 @@ export function HotkeyToolbar() {
       label: t("hotkeys.compare"),
       icon: GitCompare,
       title: t("hotkeys.compareTitle"),
-      action: () => {
-        // Prefill CMD-bar with "CMP " so the user just types 2 company
-        // codes + GO. Uses data-cmd-bar marker that PanelGrid switchPanel
-        // also matches; here we both focus AND prefill the value.
-        const input = document.querySelector(
-          'input[data-cmd-bar]',
-        ) as HTMLInputElement | null;
-        if (input) {
-          input.focus();
-          // React-controlled input: set via native setter so React picks it up.
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,
-            'value',
-          )?.set;
-          if (setter) {
-            setter.call(input, 'CMP ');
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
-        return true;
-      },
+      action: () => prefillCmdBar('CMP '),
     },
     {
       key: "alerts",
@@ -188,6 +192,55 @@ export function HotkeyToolbar() {
       icon: AlertTriangle,
       title: t("hotkeys.breachTitle"),
       action: () => fireWindowEvent("terminal:open-breach"),
+    },
+    {
+      key: "intel",
+      label: t("hotkeys.intel"),
+      icon: Rss,
+      title: t("hotkeys.intelTitle"),
+      action: () => fireWindowEvent("terminal:open-intel"),
+    },
+    {
+      key: "actions",
+      label: t("hotkeys.actions"),
+      icon: ListTodo,
+      title: t("hotkeys.actionsTitle"),
+      action: () => fireWindowEvent("terminal:open-action-center"),
+    },
+    {
+      key: "subs",
+      label: t("hotkeys.subs"),
+      icon: BellRing,
+      title: t("hotkeys.subsTitle"),
+      action: () => fireWindowEvent("terminal:open-subscriptions"),
+    },
+    {
+      key: "comments",
+      label: t("hotkeys.comments"),
+      icon: MessageSquare,
+      title: t("hotkeys.commentsTitle"),
+      action: () => fireWindowEvent("terminal:open-comments"),
+    },
+    {
+      key: "chat",
+      label: t("hotkeys.chat"),
+      icon: MessagesSquare,
+      title: t("hotkeys.chatTitle"),
+      action: () => fireWindowEvent("terminal:open-subco-chat"),
+    },
+    {
+      key: "scenario",
+      label: t("hotkeys.scenario"),
+      icon: FlaskConical,
+      title: t("hotkeys.scenarioTitle"),
+      action: () => prefillCmdBar('SCN '),
+    },
+    {
+      key: "peer",
+      label: t("hotkeys.peer"),
+      icon: Layers,
+      title: t("hotkeys.peerTitle"),
+      action: () => prefillCmdBar('PEER '),
     },
     {
       key: "favorites",
