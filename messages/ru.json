@@ -1680,6 +1680,8 @@
       "chatTitle": "Открыть чат с финансами sub-co (эквивалент CHT GO)",
       "scenario": "СЦЕНАРИЙ",
       "scenarioTitle": "Открыть сценарии — подставит SCN, введите код + GO",
+      "whatif": "ЧТО-ЕСЛИ",
+      "whatifTitle": "Открыть ad-hoc превью: подвинуть курсы FX и увидеть пересчёт индикаторов",
       "peer": "ПИРЫ",
       "peerTitle": "Бенчмаркинг между компаниями — подставит PEER, введите коды + GO",
       "starred": "ИЗБРАННОЕ",
@@ -1879,6 +1881,21 @@
       "closeAriaLabel": "Закрыть панель сценариев",
       "listAriaLabel": "Список сценариев",
       "detailAriaLabel": "Детали сценария"
+    },
+    "whatif": {
+      "title": "What-If превью",
+      "subtitle": "Подвиньте курсы FX → пересчёт затронутых индикаторов без записи в БД. Esc для закрытия.",
+      "dialogAriaLabel": "What-If превью",
+      "closeAriaLabel": "Закрыть What-If",
+      "fxOverridesHeader": "Курсы валют (override)",
+      "previewRun": "Запустить превью",
+      "previewLoading": "Считаем",
+      "resetToBase": "Сбросить к базовым",
+      "periodLabel": "Период",
+      "idleHint": "Подвиньте курсы выше → нажмите «Запустить превью»",
+      "summaryLine": "Затронуто {affected} индикаторов · {cells} ячеек по {companies} компаниям",
+      "noAffected": "Нет затронутых индикаторов в текущей области видимости.",
+      "footerNote": "Превью не пишется в БД. Чтобы сохранить набор overrides — используйте «Сценарий → Сохранить» (v2)."
     },
     "breach": {
       "dialogAriaLabel": "Прогноз нарушений индикаторов",

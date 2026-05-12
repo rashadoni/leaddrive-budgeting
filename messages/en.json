@@ -1680,6 +1680,8 @@
       "chatTitle": "Open SubCo Finance Chat (CHT GO equivalent)",
       "scenario": "SCENARIO",
       "scenarioTitle": "Open Scenarios — prefills SCN, type code + GO",
+      "whatif": "WHAT-IF",
+      "whatifTitle": "Open ad-hoc preview: nudge FX rates and see indicators recompute live",
       "peer": "PEER",
       "peerTitle": "Cross-company benchmarking — prefills PEER, type codes + GO",
       "starred": "STARRED",
@@ -1879,6 +1881,21 @@
       "closeAriaLabel": "Close scenario panel",
       "listAriaLabel": "Scenario list",
       "detailAriaLabel": "Scenario detail"
+    },
+    "whatif": {
+      "title": "What-If preview",
+      "subtitle": "Nudge FX rates → recompute affected indicators without writing to DB. Esc to close.",
+      "dialogAriaLabel": "What-If preview",
+      "closeAriaLabel": "Close What-If",
+      "fxOverridesHeader": "Currency rates (override)",
+      "previewRun": "Run preview",
+      "previewLoading": "Computing",
+      "resetToBase": "Reset to baseline",
+      "periodLabel": "Period",
+      "idleHint": "Nudge rates above → click Run preview",
+      "summaryLine": "Affected {affected} indicators · {cells} cells across {companies} companies",
+      "noAffected": "No affected indicators in current scope.",
+      "footerNote": "Preview is not persisted. Save an override set via Scenario → Save (v2)."
     },
     "breach": {
       "dialogAriaLabel": "Predictive Breach Forecasts",

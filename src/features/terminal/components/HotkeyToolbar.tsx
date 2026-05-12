@@ -236,6 +236,13 @@ export function HotkeyToolbar() {
       action: () => prefillCmdBar('SCN '),
     },
     {
+      key: "whatif",
+      label: t("hotkeys.whatif"),
+      icon: FlaskConical,
+      title: t("hotkeys.whatifTitle"),
+      action: () => fireWindowEvent("terminal:open-whatif"),
+    },
+    {
       key: "peer",
       label: t("hotkeys.peer"),
       icon: Layers,

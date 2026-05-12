@@ -38,6 +38,7 @@ import { SubCoFinanceChat } from './SubCoFinanceChat';
 import { AISubscriptions } from './AISubscriptions';
 import { IntelFeedPanel } from './IntelFeedPanel';
 import { BreachForecastPanel } from './BreachForecastPanel';
+import { WhatIfPreviewPanel } from './WhatIfPreviewPanel';
 import { MobileViewportBanner } from './MobileViewportBanner';
 import { WelcomeHint } from './WelcomeHint';
 import { KeyboardShortcutsModal } from './KeyboardShortcutsModal';
@@ -318,6 +319,11 @@ export function PanelGrid() {
           `terminal:open-breach` (CommandBar `BREACH GO`). Filters by period
           and minConfidenceBand (default medium+). */}
       <BreachForecastPanel />
+      {/* Phase 7.E ad-hoc Scenario "What-If" preview overlay. Opens on
+          `terminal:open-whatif` (HotkeyToolbar WHAT-IF button). FX
+          sliders → POST /api/indicators/matrix/preview → side-by-side
+          baseline vs scenario per affected (co × indicator). */}
+      <WhatIfPreviewPanel />
       {/* Tier-3 sub-30 Stage 3f — M8-lite mobile viewport advisory.
           CSS-media-query-driven (Tailwind lg:hidden); auto-hidden on
           ≥1024px viewports. Dismissable + localStorage-persisted. */}
