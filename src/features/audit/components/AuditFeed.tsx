@@ -44,8 +44,7 @@ const ALL_ACTIONS = [
   "user_password_reset",
   "user_active_toggle",
   "ai_news_summary_run",
-  // "ai_morning_brief_run" — re-enable once migration
-  // 20260512110000_add_morning_brief_audit applied to DB.
+  "ai_morning_brief_run",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

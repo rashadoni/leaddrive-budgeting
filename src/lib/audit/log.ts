@@ -431,9 +431,22 @@ export type AuditEventInput =
         usage?: { inputTokens: number; outputTokens: number };
       };
     }
-    ;
-// "ai_morning_brief_run" discriminated-union variant re-added once
-// migration 20260512110000_add_morning_brief_audit is applied.
+  | {
+      // Phase 7.E AI Morning Brief — composed CFO narrative LLM call.
+      // entityType=Organization since the brief is org-wide.
+      action: 'ai_morning_brief_run';
+      entityType: 'Organization';
+      entityId: string;
+      metadata: {
+        language: 'en' | 'ru' | 'az';
+        worstCellsCount: number;
+        moversCount: number;
+        alertsCount: number;
+        newsBulletsCount: number;
+        fromCache: boolean;
+        usage?: { inputTokens: number; outputTokens: number };
+      };
+    };
 
 /**
  * Optional forensics context; set by the API route, NOT by the

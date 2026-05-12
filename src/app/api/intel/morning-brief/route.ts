@@ -19,9 +19,11 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createHash } from "node:crypto"
+import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
+import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import {
   runMorningBrief,
   type MorningBriefLanguage,
@@ -202,9 +204,28 @@ export async function POST(request: NextRequest) {
     generatedAt,
   })
 
-  // Audit logging deferred until migration
-  // 20260512110000_add_morning_brief_audit is applied (Prisma client
-  // doesn't yet recognize the `ai_morning_brief_run` enum value).
+  await logAuditEvent(prisma, {
+    organizationId: orgId,
+    actorUserId: session.userId,
+    event: {
+      action: "ai_morning_brief_run",
+      entityType: "Organization",
+      entityId: orgId,
+      metadata: {
+        language: shaped.language,
+        worstCellsCount: shaped.worstCells.length,
+        moversCount: shaped.topMovers.length,
+        alertsCount: shaped.activeAlerts.length,
+        newsBulletsCount: shaped.newsBullets.length,
+        fromCache: false,
+        usage: result.usage,
+      },
+    },
+    context: buildAuditContext({
+      route: "/api/intel/morning-brief",
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    }),
+  })
 
   return NextResponse.json({
     headline: result.headline,

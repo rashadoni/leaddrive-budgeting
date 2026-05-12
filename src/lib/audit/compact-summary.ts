@@ -229,14 +229,12 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
     case 'user_create':
     case 'user_password_reset':
     case 'user_active_toggle':
-    case 'ai_news_summary_run': {
+    case 'ai_news_summary_run':
+    case 'ai_morning_brief_run': {
       const preview = JSON.stringify(m);
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };
     }
-    // "ai_morning_brief_run" handler re-added once migration
-    // 20260512110000_add_morning_brief_audit is applied (Prisma client
-    // doesn't know the enum value yet).
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was
