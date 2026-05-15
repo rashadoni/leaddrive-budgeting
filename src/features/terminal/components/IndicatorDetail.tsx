@@ -117,6 +117,9 @@ export function IndicatorDetail() {
   const pendingMissing = useTerminalStore((s) => s.pendingMissingCell);
   const pendingRollup = useTerminalStore((s) => s.pendingRollupCell);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
+  // Phase 7.I — forward to commodity-ticker pop-out so it hydrates with
+  // this company instead of landing on "Select a company".
+  const activeCompanyCodeForPopout = useTerminalStore((s) => s.activeCompanyCode);
 
   const [detail, setDetail] = useState<IndicatorValueDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -472,12 +475,15 @@ export function IndicatorDetail() {
             detail.indicator.code === "AGRO_WEATHER_RAINFALL") && (
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                const qs = activeCompanyCodeForPopout
+                  ? `?company=${encodeURIComponent(activeCompanyCodeForPopout)}`
+                  : "";
                 window.open(
-                  "/terminal-panel/commodity-ticker",
+                  `/terminal-panel/commodity-ticker${qs}`,
                   "terminal-panel-commodity-ticker",
-                )
-              }
+                );
+              }}
               className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 transition-colors text-gray-500"
               title={t('indicatorDetail.openSourceTitle')}
             >

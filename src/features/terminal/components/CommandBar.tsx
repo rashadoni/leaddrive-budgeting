@@ -274,21 +274,27 @@ export function CommandBar() {
         window.dispatchEvent(new CustomEvent('terminal:open-breach'));
         return { message: 'BREACH →' };
       // Phase 7.I — agro/sugar pop-out widgets. Each opens a dedicated
-      // browser window (Bloomberg Launchpad pattern). The popped window
-      // re-reads `activeCompanyCode` from terminalStore so the user can
-      // continue navigating in the main terminal and the pop-out pivots.
+      // browser window (Bloomberg Launchpad pattern). The opener
+      // forwards the current `activeCompanyCode` via `?company=<code>`
+      // so the popped window's terminalStore hydrates correctly — each
+      // browser window has its own React state, so without URL param the
+      // pop-out would land on an empty "Select a company" view even when
+      // the main window already has AZSEKER-EDEN selected.
       case 'agro':
-        window.open('/terminal-panel/agro-dashboard', 'terminal-panel-agro-dashboard');
-        return { message: 'AGRO →' };
       case 'wx':
       case 'price':
-        // WX and PRICE both open the CommodityTicker (sugar prices + weather);
-        // two aliases because traders type one or the other from muscle memory.
-        window.open('/terminal-panel/commodity-ticker', 'terminal-panel-commodity-ticker');
-        return { message: cmd.kind === 'wx' ? 'WX →' : 'PRICE →' };
-      case 'kpi':
-        window.open('/terminal-panel/agronomy-entry', 'terminal-panel-agronomy-entry');
-        return { message: 'KPI →' };
+      case 'kpi': {
+        const verbToKind: Record<typeof cmd.kind, string> = {
+          agro: 'agro-dashboard',
+          wx: 'commodity-ticker',
+          price: 'commodity-ticker',
+          kpi: 'agronomy-entry',
+        } as const;
+        const popKind = verbToKind[cmd.kind];
+        const qs = activeCompany ? `?company=${encodeURIComponent(activeCompany)}` : '';
+        window.open(`/terminal-panel/${popKind}${qs}`, `terminal-panel-${popKind}`);
+        return { message: cmd.kind.toUpperCase() + ' →' };
+      }
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when
