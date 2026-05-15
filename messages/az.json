@@ -1787,7 +1787,10 @@
       "compact": "KOMPAKT",
       "compactTitle": "Kompakt rejimi açıb-bağla (Ctrl+/)",
       "compactAriaLabel": "Kompakt rejimi açıb-bağla",
-      "toolbarAriaLabel": "Terminal qısayolları"
+      "toolbarAriaLabel": "Terminal qısayolları",
+      "paletteLabel": "+{count} daha",
+      "paletteTitle": "Komanda sətrini aç (⌘K) — daxildə {count} əlavə komanda (CMP / SCN / WX / etc.)",
+      "paletteAriaLabel": "Komanda palitrasını aç"
     },
     "companyTree": {
       "filterPlaceholder": "şirkət filtri…",

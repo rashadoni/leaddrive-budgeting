@@ -1787,7 +1787,10 @@
       "compact": "COMPACT",
       "compactTitle": "Toggle compact mode (Ctrl+/)",
       "compactAriaLabel": "Toggle compact mode",
-      "toolbarAriaLabel": "Terminal hotkeys"
+      "toolbarAriaLabel": "Terminal hotkeys",
+      "paletteLabel": "{count}+ more",
+      "paletteTitle": "Open the command bar (⌘K) — {count} more commands inside (CMP / SCN / WX / etc.)",
+      "paletteAriaLabel": "Open command palette"
     },
     "companyTree": {
       "filterPlaceholder": "filter companies…",

@@ -96,6 +96,22 @@ interface HotkeyDef {
   title: string;
   /** Visual grouping cluster — drives separator placement. */
   group: HotkeyGroup;
+  /**
+   * Phase 7.I — Variant C palette restructure.
+   *   pinned   — high-frequency action; always visible in the toolbar.
+   *   overflow — accessible only via CommandBar verb + `⌘K All commands`
+   *              palette trigger. Keeps the toolbar uncluttered without
+   *              losing access — CommandBar already supports fuzzy verb
+   *              search (`fuzzyScore` in CommandBar.tsx) so users get
+   *              one keystroke + autocomplete to every hidden command.
+   *
+   * Bloomberg-style discipline: top toolbar reserved for triage +
+   * system ops (alerts, breach, actions, recompute, help). Workflow +
+   * social + analysis surfaces accessed by name (CommandBar verbs)
+   * because muscle memory + autocomplete is faster than scanning a
+   * 20-button strip.
+   */
+  priority: "pinned" | "overflow";
   /** Returns true if action ran; false if disabled / no-op. */
   action: () => boolean;
   disabled?: boolean;
@@ -226,6 +242,7 @@ export function HotkeyToolbar() {
       icon: Bell,
       title: t("hotkeys.alertsTitle"),
       group: "critical",
+      priority: "pinned",
       action: () => fireWindowEvent("terminal:open-audit"),
     },
     {
@@ -234,6 +251,7 @@ export function HotkeyToolbar() {
       icon: AlertTriangle,
       title: t("hotkeys.breachTitle"),
       group: "critical",
+      priority: "pinned",
       action: () => fireWindowEvent("terminal:open-breach"),
     },
     {
@@ -242,23 +260,26 @@ export function HotkeyToolbar() {
       icon: ListTodo,
       title: t("hotkeys.actionsTitle"),
       group: "critical",
+      priority: "pinned",
       action: () => fireWindowEvent("terminal:open-action-center"),
     },
-    // ─── Analysis: comparison + what-if surfaces ──────────────────────
+    // ─── Analysis: comparison + what-if surfaces (overflow → CommandBar) ──
     {
       key: "compare",
       label: t("hotkeys.compare"),
       icon: GitCompare,
-      title: t("hotkeys.compareTitle"),
+      title: t("hotkeys.compareTitle") + " · ⌘K: CMP A,B GO",
       group: "analysis",
+      priority: "overflow",
       action: () => prefillCmdBar('CMP '),
     },
     {
       key: "scenario",
       label: t("hotkeys.scenario"),
       icon: FlaskConical,
-      title: t("hotkeys.scenarioTitle"),
+      title: t("hotkeys.scenarioTitle") + " · ⌘K: SCN <code> GO",
       group: "analysis",
+      priority: "overflow",
       action: () => prefillCmdBar('SCN '),
     },
     {
@@ -267,56 +288,63 @@ export function HotkeyToolbar() {
       icon: FlaskConical,
       title: t("hotkeys.whatifTitle"),
       group: "analysis",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:open-whatif"),
     },
     {
       key: "peer",
       label: t("hotkeys.peer"),
       icon: Layers,
-      title: t("hotkeys.peerTitle"),
+      title: t("hotkeys.peerTitle") + " · ⌘K: PEER A,B,C GO",
       group: "analysis",
+      priority: "overflow",
       action: () => prefillCmdBar('PEER '),
     },
-    // ─── Intel & social: collaboration surfaces ───────────────────────
+    // ─── Intel & social: collaboration surfaces (overflow → CommandBar) ──
     {
       key: "intel",
       label: t("hotkeys.intel"),
       icon: Rss,
-      title: t("hotkeys.intelTitle"),
+      title: t("hotkeys.intelTitle") + " · ⌘K: INT GO",
       group: "social",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:open-intel"),
     },
     {
       key: "subs",
       label: t("hotkeys.subs"),
       icon: BellRing,
-      title: t("hotkeys.subsTitle"),
+      title: t("hotkeys.subsTitle") + " · ⌘K: SUB GO",
       group: "social",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:open-subscriptions"),
     },
     {
       key: "comments",
       label: t("hotkeys.comments"),
       icon: MessageSquare,
-      title: t("hotkeys.commentsTitle"),
+      title: t("hotkeys.commentsTitle") + " · ⌘K: CMT GO",
       group: "social",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:open-comments"),
     },
     {
       key: "chat",
       label: t("hotkeys.chat"),
       icon: MessagesSquare,
-      title: t("hotkeys.chatTitle"),
+      title: t("hotkeys.chatTitle") + " · ⌘K: CHT GO",
       group: "social",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:open-subco-chat"),
     },
-    // ─── Workspace: data entry + navigation ───────────────────────────
+    // ─── Workspace: data entry + navigation (overflow → CommandBar) ──
     {
       key: "new-plan",
       label: t("hotkeys.newPlan"),
       icon: FilePlus2,
       title: t("hotkeys.newPlanTitle"),
       group: "workspace",
+      priority: "overflow",
       action: () => {
         window.location.href = "/budgeting?tab=plans";
         return true;
@@ -328,6 +356,7 @@ export function HotkeyToolbar() {
       icon: Upload,
       title: t("hotkeys.importTitle"),
       group: "workspace",
+      priority: "overflow",
       action: () => {
         window.location.href = "/budgeting/onboarding";
         return true;
@@ -339,6 +368,7 @@ export function HotkeyToolbar() {
       icon: Search,
       title: t("hotkeys.searchTitle"),
       group: "workspace",
+      priority: "overflow",
       action: () =>
         fireWindowEvent("terminal:focus-search", { panelId: activePanelId }),
     },
@@ -348,6 +378,7 @@ export function HotkeyToolbar() {
       icon: Star,
       title: t("hotkeys.starredTitle"),
       group: "workspace",
+      priority: "overflow",
       action: () => {
         setWatchlistTab("starred");
         return true;
@@ -359,17 +390,15 @@ export function HotkeyToolbar() {
       icon: History,
       title: t("hotkeys.recentTitle"),
       group: "workspace",
+      priority: "overflow",
       action: () => {
         setWatchlistTab("recent");
         return true;
       },
     },
-    // ─── Sector: agro/sugar widgets (gated by industry) ───────────────
-    // Phase 7.I — visible ONLY when active company is agro_crops or
-    // food_processing. CommandBar verbs (AGRO/WX/PRICE/KPI) remain
-    // available as keyboard equivalents regardless of industry; the
-    // pop-out itself renders a "not applicable" hint when opened for a
-    // non-agro company so direct-URL navigation still degrades gracefully.
+    // ─── Sector: agro/sugar widgets (pinned ONLY when active company is
+    //     agro_crops or food_processing). High-frequency for cane-cycle
+    //     entities — these earn pinned status when they apply.
     ...(isAgroLike
       ? ([
           {
@@ -377,8 +406,9 @@ export function HotkeyToolbar() {
             label: "AGRO",
             icon: Sprout,
             title:
-              "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
+              "Open agro dashboard (yield, sugar content, water/fertilizer intensity) · ⌘K: AGRO GO",
             group: "sector",
+            priority: "pinned",
             action: () => openPopOut("agro-dashboard", activeCompanyCode),
           },
           {
@@ -386,8 +416,9 @@ export function HotkeyToolbar() {
             label: "PRICE",
             icon: Cloud,
             title:
-              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
+              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall) · ⌘K: PRICE GO",
             group: "sector",
+            priority: "pinned",
             action: () => openPopOut("commodity-ticker", activeCompanyCode),
           },
           {
@@ -395,8 +426,9 @@ export function HotkeyToolbar() {
             label: "KPI",
             icon: Pencil,
             title:
-              "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
+              "Log an agronomy KPI (yield, sugar content, etc.) for the active company · ⌘K: KPI GO",
             group: "sector",
+            priority: "pinned",
             action: () => openPopOut("agronomy-entry", activeCompanyCode),
           },
         ] as HotkeyDef[])
@@ -416,6 +448,7 @@ export function HotkeyToolbar() {
           ? t("hotkeys.recomputeNoPeriod")
           : t("hotkeys.recomputeTitle"),
       group: "ops",
+      priority: "pinned",
       action: triggerRecompute,
       disabled: recomputing || !currentPeriod,
     },
@@ -425,33 +458,48 @@ export function HotkeyToolbar() {
       key: "help",
       label: t("hotkeys.help"),
       icon: HelpCircle,
-      title: t("hotkeys.helpTitle"),
+      title: t("hotkeys.helpTitle") + " · ⌘K: HELP GO",
       group: "ops",
+      priority: "pinned",
       action: () => fireWindowEvent("terminal:open-help"),
     },
     {
-      // CLI Tier 3 — Risk Matrix PDF export. Fires event consumed by
-      // <ExportPdfTrigger /> mounted in PanelGrid which lazy-loads
-      // @react-pdf/renderer + builds the multi-page document.
       key: "export-pdf",
       label: t("hotkeys.exportPdf"),
       icon: Download,
       title: t("hotkeys.exportPdfTitle"),
       group: "ops",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:export-pdf"),
     },
     {
-      // Tier 3 closer — xlsx export. Sister button to PDF; builds a
-      // 3-sheet workbook (Summary / Matrix values / Matrix status /
-      // Today's Brief). Lazy-loads `xlsx` in <ExportXlsxTrigger />.
       key: "export-xlsx",
       label: t("hotkeys.exportXlsx"),
       icon: Download,
       title: t("hotkeys.exportXlsxTitle"),
       group: "ops",
+      priority: "overflow",
       action: () => fireWindowEvent("terminal:export-xlsx"),
     },
   ];
+
+  // Phase 7.I — Variant C: only render pinned buttons in the toolbar.
+  // Overflow buttons (compare/scenario/intel/etc.) accessible via the
+  // CommandBar's `⌘K Commands` button below + via direct verbs.
+  const visibleHotkeys = hotkeys.filter((h) => h.priority === "pinned");
+  const overflowCount = hotkeys.length - visibleHotkeys.length;
+
+  /** Focus the CommandBar input + scroll it into view. Used by both the
+   *  `⌘K Commands` button and the existing Cmd+K keyboard shortcut. */
+  const focusCommandBar = (): boolean => {
+    const input = document.querySelector(
+      'input[data-cmd-bar]',
+    ) as HTMLInputElement | null;
+    if (!input) return false;
+    input.focus();
+    input.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    return true;
+  };
 
   return (
     <div
@@ -460,7 +508,7 @@ export function HotkeyToolbar() {
       className="flex items-center gap-1 px-2 py-1 bg-[#050814] border-b border-gray-800 font-mono text-[10px] text-gray-500 overflow-x-auto whitespace-nowrap shrink-0"
     >
       <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>
-      {hotkeys.map((h, i) => {
+      {visibleHotkeys.map((h, i) => {
         const Icon = h.icon;
         // Phase 6.1 — progress overlay on Recompute button when async job
         // is in flight. Cyan fill grows left → right behind the icon+label.
@@ -474,7 +522,7 @@ export function HotkeyToolbar() {
         // subtle vertical separator. The separator carries the group
         // label as a tooltip so users can discover the cluster name
         // without consuming horizontal space with always-visible labels.
-        const prev = i > 0 ? hotkeys[i - 1] : null;
+        const prev = i > 0 ? visibleHotkeys[i - 1] : null;
         const groupChanged = prev !== null && prev.group !== h.group;
         return (
           <React.Fragment key={h.key}>
@@ -512,6 +560,23 @@ export function HotkeyToolbar() {
           </React.Fragment>
         );
       })}
+      {/* Phase 7.I Variant C — `⌘K All commands` palette trigger. Overflow
+          buttons (analysis/social/workspace + PDF/XLSX exports = 14 hidden)
+          accessible via fuzzy verb search in the CommandBar below. Click
+          focuses + scrolls the CommandBar into view; Cmd+K keyboard
+          shortcut also works (handled inside CommandBar). The hover-tooltip
+          shows the count of hidden commands so the user knows there's more
+          available. */}
+      <button
+        type="button"
+        onClick={focusCommandBar}
+        title={t("hotkeys.paletteTitle", { count: overflowCount })}
+        aria-label={t("hotkeys.paletteAriaLabel")}
+        className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#00D4AA]/40 text-[#00D4AA] hover:bg-[#00D4AA]/10 hover:border-[#00D4AA] transition-colors shrink-0 ml-2 font-semibold"
+      >
+        <span className="opacity-70">⌘K</span>
+        <span>{t("hotkeys.paletteLabel", { count: overflowCount })}</span>
+      </button>
       {/* Compact-mode toggle is in PanelGrid; mirror it here for one-stop access */}
       <button
         type="button"

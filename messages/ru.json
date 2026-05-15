@@ -1787,7 +1787,10 @@
       "compact": "КОМПАКТ",
       "compactTitle": "Переключить компактный режим (Ctrl+/)",
       "compactAriaLabel": "Переключить компактный режим",
-      "toolbarAriaLabel": "Горячие клавиши терминала"
+      "toolbarAriaLabel": "Горячие клавиши терминала",
+      "paletteLabel": "ещё {count}+",
+      "paletteTitle": "Открыть командную строку (⌘K) — внутри ещё {count} команд (CMP / SCN / WX / etc.)",
+      "paletteAriaLabel": "Открыть командную палитру"
     },
     "companyTree": {
       "filterPlaceholder": "фильтр компаний…",
