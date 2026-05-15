@@ -1806,7 +1806,10 @@
       "sectorTreeAriaLabel": "Companies grouped by sector",
       "tabsAriaLabel": "Company watchlist filter",
       "starredAriaLabel": "Starred companies",
-      "alertedAriaLabel": "Alerted companies"
+      "alertedAriaLabel": "Alerted companies",
+      "allRowLabel": "ALL",
+      "allRowDescription": "Show every company on the HeatMap",
+      "allRowAriaLabel": "Show all companies on the HeatMap"
     },
     "peer": {
       "title": "Peer Comparison ({count} companies)",

@@ -95,6 +95,9 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   }, [matrix]);
   // User-driven row clicks → selectCompany (tracks LRU recent).
   const storeSetCompany = useTerminalStore((s) => s.selectCompany);
+  // Phase 7.I — "ALL" synthetic row clears the active company so HeatMap
+  // shows every company again. Default state on first mount.
+  const clearCompany = useTerminalStore((s) => s.clearCompany);
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
@@ -325,6 +328,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           className="self-start space-y-0.5 w-full"
           data-testid="company-tree-sector-mode"
         >
+          <AllRow active={activeCompanyCode === null} onSelect={clearCompany} />
           {sectorGroups.map(({ industry, roots }) => (
             <li key={industry} role="presentation">
               <div
@@ -345,6 +349,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           aria-label={t('companyTree.treeAriaLabel')}
           className="self-start space-y-0.5 w-full"
         >
+          <AllRow active={activeCompanyCode === null} onSelect={clearCompany} />
           {filteredRoots.map((root) => renderRoot(root))}
         </ul>
       )}
@@ -603,6 +608,52 @@ function CompositeMini({ score }: { score: number | null }) {
           always tag scale + unit. */}
       <span className="opacity-60 mr-px">R</span>{score}
     </span>
+  );
+}
+
+/**
+ * Phase 7.I — synthetic "ALL" row that resets HeatMap to show every
+ * company. Highlighted when activeCompanyCode is null (default).
+ *
+ * Rendered above the actual root list so it's the first row a user sees,
+ * matching the user's mental model: "ALL is the default; pick a company
+ * to drill in." Clicking any actual company row sets activeCompanyCode,
+ * which un-highlights this row and filters HeatMap to that single company.
+ */
+function AllRow({ active, onSelect }: { active: boolean; onSelect: () => void }) {
+  const t = useTranslations('terminal');
+  return (
+    <li role="treeitem" aria-selected={active}>
+      <div
+        data-testid="company-tree-all-row"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+        title={t('companyTree.allRowDescription')}
+        aria-label={t('companyTree.allRowAriaLabel')}
+        className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 border-b border-gray-800/60 mb-1 ${
+          active ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : 'text-gray-400'
+        }`}
+      >
+        <span className="w-3 text-center text-gray-600" aria-hidden="true">
+          ◉
+        </span>
+        <span className="w-3 text-center" aria-hidden="true">
+          {' '}
+        </span>
+        <span className="uppercase tracking-wider w-20 truncate font-semibold">
+          {t('companyTree.allRowLabel')}
+        </span>
+        <span className="flex-1 truncate text-[10px] text-gray-600">
+          {t('companyTree.allRowDescription')}
+        </span>
+      </div>
+    </li>
   );
 }
 

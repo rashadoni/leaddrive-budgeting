@@ -248,6 +248,16 @@ export function HeatMap({ period }: Props) {
 
   const filteredCompanies = useMemo(() => {
     if (!data) return [];
+    // Phase 7.I — Panel 2 unload. When CompanyTree has a specific company
+    // selected (activeCompanyCode !== null), HeatMap renders ONLY that
+    // company's row — drops the visual noise of the full 60-row matrix
+    // down to a single focused row. The "ALL" synthetic row at the top
+    // of CompanyTree clears activeCompanyCode, restoring the full view.
+    // Search filter still applies *within* the selected scope (single row,
+    // so search trivially passes or fails) — kept for code symmetry.
+    if (activeCompanyCode) {
+      return data.companies.filter((c) => c.code === activeCompanyCode);
+    }
     const q = search.trim().toUpperCase();
     if (q === '') return data.companies;
     return data.companies.filter(
@@ -256,7 +266,7 @@ export function HeatMap({ period }: Props) {
         c.name.toUpperCase().includes(q) ||
         (c.industry ?? '').toUpperCase().includes(q),
     );
-  }, [data, search]);
+  }, [data, search, activeCompanyCode]);
 
   const summary = useMemo(() => {
     if (!data) return null;
