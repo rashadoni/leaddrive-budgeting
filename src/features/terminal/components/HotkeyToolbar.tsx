@@ -52,10 +52,15 @@ import { useMatrix } from "../hooks/use-matrix";
 
 /** Phase 7.I — open a terminal pop-out widget by kind. Mirrors the
  *  CommandBar verbs (AGRO / WX / PRICE / KPI) so the toolbar buttons and
- *  command-line shortcut both land on the same window. */
-function openPopOut(kind: string): boolean {
+ *  command-line shortcut both land on the same window. The active
+ *  company is forwarded via `?company=<code>` so the popped window
+ *  doesn't land on a blank "Select a company" state — each browser
+ *  window has its own React state, no cross-window sync without URL
+ *  hydration. */
+function openPopOut(kind: string, company: string | null): boolean {
   if (typeof window === "undefined") return false;
-  window.open(`/terminal-panel/${kind}`, `terminal-panel-${kind}`);
+  const qs = company ? `?company=${encodeURIComponent(company)}` : "";
+  window.open(`/terminal-panel/${kind}${qs}`, `terminal-panel-${kind}`);
   return true;
 }
 
@@ -74,6 +79,8 @@ export function HotkeyToolbar() {
   const setWatchlistTab = useTerminalStore((s) => s.setWatchlistTab);
   const toggleCompactMode = useTerminalStore((s) => s.toggleCompactMode);
   const activePanelId = useTerminalStore((s) => s.activePanelId);
+  // Phase 7.I — forward active company to pop-out widgets via URL param.
+  const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const [recomputing, setRecomputing] = useState(false);
   // Phase 6.1 — async recompute progress. null when no async job is in
   // flight; { processed, total } populated by polling the job state.
@@ -265,26 +272,27 @@ export function HotkeyToolbar() {
     // pop-out itself renders a "not applicable" hint for non-agro companies)
     // so the buttons are discoverable without hiding them behind active-
     // industry context. CommandBar verbs are the keyboard-only equivalent.
+    // Active company forwarded via URL param so the pop-out hydrates state.
     {
       key: "agro",
       label: "AGRO",
       icon: Sprout,
       title: "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
-      action: () => openPopOut("agro-dashboard"),
+      action: () => openPopOut("agro-dashboard", activeCompanyCode),
     },
     {
       key: "commodity",
       label: "PRICE",
       icon: Cloud,
       title: "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
-      action: () => openPopOut("commodity-ticker"),
+      action: () => openPopOut("commodity-ticker", activeCompanyCode),
     },
     {
       key: "kpi-entry",
       label: "KPI",
       icon: Pencil,
       title: "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
-      action: () => openPopOut("agronomy-entry"),
+      action: () => openPopOut("agronomy-entry", activeCompanyCode),
     },
     {
       key: "favorites",

@@ -3,18 +3,23 @@
 /**
  * Phase 7.H Bloomberg-multi-window — single-panel popped-out window.
  *
- * URL: /terminal-panel/<kind>?period=2026
+ * URL: /terminal-panel/<kind>?period=2026&company=AZSEKER-EDEN
  *
  * Renders ONE terminal panel full-screen — no sidebar, no header chrome.
  * Opened via window.open() from the main terminal's pop-out button.
  *
  * Each window has its own React state (no cross-window sync) — like
- * Bloomberg Launchpad components, each is an independent context. The
- * URL `period` param seeds the initial view; subsequent changes inside
- * the popped window stay local.
+ * Bloomberg Launchpad components, each is an independent context.
+ *
+ * Phase 7.I — URL params seed the popped window's terminalStore so the
+ * Agro/Commodity/Agronomy widgets land on the correct company instead of
+ * an empty "Select a company" state. The opener (CommandBar / HotkeyToolbar)
+ * passes `?company=<activeCode>` so the pop-out inherits context. Once
+ * inside the pop-out, the user can switch companies independently —
+ * Bloomberg-style window autonomy.
  */
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { CompanyTree } from "@/features/terminal/components/CompanyTree";
 import { HeatMap } from "@/features/terminal/components/HeatMap";
@@ -26,6 +31,7 @@ import { AgroDashboardPanel } from "@/features/terminal/components/AgroDashboard
 import { CommodityTickerPanel } from "@/features/terminal/components/CommodityTickerPanel";
 import { AgronomyEntryPanel } from "@/features/terminal/components/AgronomyEntryPanel";
 import { useCompanies } from "@/features/terminal/hooks/use-companies";
+import { useTerminalStore } from "@/features/terminal/store/terminalStore";
 
 const PANEL_TITLES: Record<string, string> = {
   tree: "Дерево компаний",
@@ -78,9 +84,20 @@ export default function PoppedOutPanelPage() {
   const search = useSearchParams();
   const kind = typeof params.id === "string" ? params.id : "matrix";
   const period = search?.get("period");
-  // V1: each popped window starts with default period; can extend to
-  // hydrate from URL once terminalStore exposes a global setPeriod
-  // action (currently period is HeatMap-local state).
+  const companyFromUrl = search?.get("company");
+  const setCompany = useTerminalStore((s) => s.setCompany);
+  const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
+
+  // Phase 7.I — hydrate popped window's terminalStore from URL `?company=<code>`
+  // on first mount so Agro/Commodity/Agronomy widgets land on the right
+  // entity. Use `setCompany` (programmatic) — `selectCompany` would pollute
+  // the recent-LRU list with the auto-selection. Skip when already set
+  // (e.g., user navigated within the window after open).
+  useEffect(() => {
+    if (companyFromUrl && !activeCompanyCode) {
+      setCompany(companyFromUrl);
+    }
+  }, [companyFromUrl, activeCompanyCode, setCompany]);
 
   const title = PANEL_TITLES[kind] ?? kind;
 
