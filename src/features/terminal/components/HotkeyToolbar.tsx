@@ -97,6 +97,17 @@ export function HotkeyToolbar() {
   // triggers a 400.
   const { matrix } = useMatrix();
   const currentPeriod = matrix?.period;
+  // Phase 7.I overflow fix — read industry of the active company so we can
+  // gate sector-specific toolbar buttons. AGRO/PRICE/KPI render only for
+  // agro_crops + food_processing companies; other industries keep the
+  // generic toolbar uncluttered. Reuses useMatrix() — no extra fetch.
+  const activeCompanyIndustry = (() => {
+    const co = matrix?.companies.find((c) => c.code === activeCompanyCode);
+    return co?.industry ?? null;
+  })();
+  const isAgroLike =
+    activeCompanyIndustry === "agro_crops" ||
+    activeCompanyIndustry === "food_processing";
 
   const fireWindowEvent = (name: string, detail?: unknown) => {
     window.dispatchEvent(new CustomEvent(name, detail ? { detail } : undefined));
@@ -268,32 +279,41 @@ export function HotkeyToolbar() {
       title: t("hotkeys.peerTitle"),
       action: () => prefillCmdBar('PEER '),
     },
-    // Phase 7.I — sector-aware widget shortcuts. Visible to everyone (the
-    // pop-out itself renders a "not applicable" hint for non-agro companies)
-    // so the buttons are discoverable without hiding them behind active-
-    // industry context. CommandBar verbs are the keyboard-only equivalent.
+    // Phase 7.I — sector-aware widget shortcuts. Visible ONLY when active
+    // company is agro_crops or food_processing — keeps the toolbar uncluttered
+    // for hospitality/services/etc. companies. CommandBar verbs (AGRO/WX/PRICE/KPI)
+    // remain available as keyboard equivalents regardless of industry; the
+    // pop-out itself renders a "not applicable" hint when opened for a
+    // non-agro company so direct-URL navigation still degrades gracefully.
     // Active company forwarded via URL param so the pop-out hydrates state.
-    {
-      key: "agro",
-      label: "AGRO",
-      icon: Sprout,
-      title: "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
-      action: () => openPopOut("agro-dashboard", activeCompanyCode),
-    },
-    {
-      key: "commodity",
-      label: "PRICE",
-      icon: Cloud,
-      title: "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
-      action: () => openPopOut("commodity-ticker", activeCompanyCode),
-    },
-    {
-      key: "kpi-entry",
-      label: "KPI",
-      icon: Pencil,
-      title: "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
-      action: () => openPopOut("agronomy-entry", activeCompanyCode),
-    },
+    ...(isAgroLike
+      ? ([
+          {
+            key: "agro",
+            label: "AGRO",
+            icon: Sprout,
+            title:
+              "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
+            action: () => openPopOut("agro-dashboard", activeCompanyCode),
+          },
+          {
+            key: "commodity",
+            label: "PRICE",
+            icon: Cloud,
+            title:
+              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
+            action: () => openPopOut("commodity-ticker", activeCompanyCode),
+          },
+          {
+            key: "kpi-entry",
+            label: "KPI",
+            icon: Pencil,
+            title:
+              "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
+            action: () => openPopOut("agronomy-entry", activeCompanyCode),
+          },
+        ] as HotkeyDef[])
+      : []),
     {
       key: "favorites",
       label: t("hotkeys.starred"),
