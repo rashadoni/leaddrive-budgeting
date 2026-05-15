@@ -66,18 +66,56 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(toolbar.getAttribute("aria-label")).toMatch(/hotkey/i);
   });
 
-  it("renders 8 default hotkey buttons + COMPACT", () => {
+  it("renders the pinned hotkey set + ⌘K palette trigger + COMPACT (Phase 7.I Variant C)", () => {
     render(<HotkeyToolbar />);
-    expect(screen.queryByText("NEW PLAN")).toBeTruthy();
-    expect(screen.queryByText("COMPARE")).toBeTruthy();
+    // Pinned set — high-frequency triage + system ops (non-agro context).
+    // Test mock returns key.split('.').pop().toUpperCase() so all labels
+    // arrive uppercased (see vitest.setup.ts fallbackLabel).
     expect(screen.queryByText("ALERTS")).toBeTruthy();
-    expect(screen.queryByText("STARRED")).toBeTruthy();
-    expect(screen.queryByText("RECENT")).toBeTruthy();
+    expect(screen.queryByText("BREACH")).toBeTruthy();
+    expect(screen.queryByText("ACTIONS")).toBeTruthy();
     expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
-    expect(screen.queryByText("SEARCH")).toBeTruthy();
-    expect(screen.queryByText("IMPORT")).toBeTruthy();
-    // Compact toggle
+    expect(screen.queryByText("HELP")).toBeTruthy();
+    // Overflow buttons NOT rendered (only reachable via CommandBar verbs).
+    expect(screen.queryByText("NEW PLAN")).toBeNull();
+    expect(screen.queryByText("COMPARE")).toBeNull();
+    expect(screen.queryByText("STARRED")).toBeNull();
+    expect(screen.queryByText("RECENT")).toBeNull();
+    expect(screen.queryByText("SEARCH")).toBeNull();
+    expect(screen.queryByText("IMPORT")).toBeNull();
+    // ⌘K palette trigger present (aria-label test-mock value = "PALETTE ARIA LABEL").
+    expect(screen.queryByLabelText(/palette/i)).toBeTruthy();
+    expect(screen.queryByText("⌘K")).toBeTruthy();
+    // Compact toggle still pinned ml-auto.
     expect(screen.queryByLabelText(/Toggle compact/i)).toBeTruthy();
+  });
+
+  it("⌘K palette trigger focuses input[data-cmd-bar] when clicked (Phase 7.I)", () => {
+    let lastInputValue = "";
+    const Harness = (): React.ReactElement => {
+      const [v, setV] = React.useState("");
+      lastInputValue = v;
+      return (
+        <>
+          <HotkeyToolbar />
+          <input
+            data-cmd-bar="true"
+            value={v}
+            onChange={(e) => setV(e.target.value)}
+            aria-label="cmd-bar harness"
+          />
+        </>
+      );
+    };
+    render(<Harness />);
+    const input = document.querySelector('input[data-cmd-bar]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(document.activeElement).not.toBe(input);
+    // Test mock renders aria-label as "PALETTE ARIA LABEL" — match via
+    // /palette/i regex on the aria-label attribute.
+    fireEvent.click(screen.getByLabelText(/palette/i));
+    expect(document.activeElement).toBe(input);
+    expect(lastInputValue).toBe("");
   });
 
   it("ALERTS click fires terminal:open-audit", () => {
@@ -92,33 +130,19 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(fired).toBe(1);
   });
 
-  it("SEARCH click fires terminal:focus-search with active panel id", () => {
-    render(<HotkeyToolbar />);
-    let received: { panelId?: number } | null = null;
-    const handler = (e: Event) => {
-      received = (e as CustomEvent<{ panelId: number }>).detail;
-    };
-    window.addEventListener("terminal:focus-search", handler);
-    fireEvent.click(screen.getByText("SEARCH"));
-    window.removeEventListener("terminal:focus-search", handler);
-    expect(received).toBeTruthy();
-    expect(typeof received!.panelId).toBe("number");
+  // Phase 7.I Variant C — SEARCH/STARRED/RECENT moved to overflow.
+  // They're now reachable via CommandBar verbs (or `/` keyboard shortcut
+  // for search). The toolbar-button code paths still exist in the
+  // hotkeys array (verified by unit logic) but are not rendered, so
+  // these click-based tests no longer apply. Skipping with rationale:
+  it.skip("SEARCH click fires terminal:focus-search with active panel id (moved to overflow)", () => {
+    /* see comment above */
   });
-
-  it("STARRED click sets watchlistTab to 'starred'", () => {
-    render(<HotkeyToolbar />);
-    act(() => {
-      fireEvent.click(screen.getByText("STARRED"));
-    });
-    expect(getTerminalSnapshot().watchlistTab).toBe("starred");
+  it.skip("STARRED click sets watchlistTab to 'starred' (moved to overflow)", () => {
+    /* see comment above */
   });
-
-  it("RECENT click sets watchlistTab to 'recent'", () => {
-    render(<HotkeyToolbar />);
-    act(() => {
-      fireEvent.click(screen.getByText("RECENT"));
-    });
-    expect(getTerminalSnapshot().watchlistTab).toBe("recent");
+  it.skip("RECENT click sets watchlistTab to 'recent' (moved to overflow)", () => {
+    /* see comment above */
   });
 
   it("COMPACT click toggles compactMode", () => {
@@ -184,62 +208,15 @@ describe("HotkeyToolbar (Phase B6)", () => {
   // These lock the post-fix behavior so future refactors can't silently
   // re-break them.
 
-  describe("regression: COMPARE button (e66263a fix #1)", () => {
-    // Pre-fix: COMPARE dispatched a panelId:0 focus-search event which
-    // matched no listener — button was dead. Now it directly focuses the
-    // CommandBar input + prefills "CMP " via the native value setter.
-    it("focuses an input[data-cmd-bar] and prefills it with 'CMP '", () => {
-      // Render a controlled <input data-cmd-bar="true" /> alongside the
-      // toolbar so we can isolate COMPARE's DOM-side wiring without
-      // pulling the full CommandBar (which has its own fetch + store
-      // dependencies). The selector in HotkeyToolbar is `input[data-cmd-bar]`
-      // — any value of the attribute matches.
-      let lastInputValue = "";
-      const Harness = (): React.ReactElement => {
-        const [v, setV] = React.useState("");
-        // Mirror to outer scope so the assertion can read it post-event.
-        lastInputValue = v;
-        return (
-          <>
-            <HotkeyToolbar />
-            <input
-              data-cmd-bar="true"
-              value={v}
-              onChange={(e) => setV(e.target.value)}
-              aria-label="cmd-bar harness"
-            />
-          </>
-        );
-      };
-      render(<Harness />);
-      const input = document.querySelector(
-        'input[data-cmd-bar]',
-      ) as HTMLInputElement;
-      expect(input).toBeTruthy();
-      // Pre-click: input is empty, not focused.
-      expect(input.value).toBe("");
-      expect(document.activeElement).not.toBe(input);
-
-      fireEvent.click(screen.getByText("COMPARE"));
-
-      // After click: input is focused AND its value is exactly "CMP "
-      // (the prefill string the user types codes after).
-      expect(document.activeElement).toBe(input);
-      // The native-setter + 'input' event path makes the React-controlled
-      // harness re-render with the new value.
-      expect(input.value).toBe("CMP ");
-      expect(lastInputValue).toBe("CMP ");
-    });
-
-    it("is a no-op when no input[data-cmd-bar] is present (does not throw)", () => {
-      // Pre-fix would dispatch a dead event; post-fix should silently
-      // no-op when the selector finds nothing.
-      render(<HotkeyToolbar />);
-      // Nothing else rendered — no input[data-cmd-bar] in DOM.
-      expect(document.querySelector('input[data-cmd-bar]')).toBeNull();
-      // Clicking must not throw.
-      expect(() => fireEvent.click(screen.getByText("COMPARE"))).not.toThrow();
-    });
+  describe.skip("regression: COMPARE button (e66263a fix #1) — moved to overflow in Phase 7.I Variant C", () => {
+    // Pre-Phase-7.I COMPARE was a pinned toolbar button. Variant C moved
+    // it to overflow (reachable via CommandBar `CMP A,B GO` or via the
+    // ⌘K palette trigger). The underlying `prefillCmdBar('CMP ')` action
+    // still exists in the hotkeys array; only the rendering changed. The
+    // ⌘K palette test above covers the equivalent code path (focus the
+    // CommandBar input). If COMPARE is re-pinned, un-skip this block.
+    it.skip("focuses an input[data-cmd-bar] and prefills it with 'CMP '", () => {});
+    it.skip("is a no-op when no input[data-cmd-bar] is present (does not throw)", () => {});
   });
 
   describe("regression: RECOMPUTE pending UX (e66263a fix #2)", () => {
@@ -344,7 +321,9 @@ describe("HotkeyToolbar (Phase B6)", () => {
   it("every button has descriptive title + aria-label (a11y)", () => {
     render(<HotkeyToolbar />);
     const buttons = screen.getAllByRole("button");
-    expect(buttons.length).toBeGreaterThanOrEqual(9);
+    // Phase 7.I Variant C — pinned set is smaller now: ALERTS, BREACH,
+    // ACTIONS, RECOMPUTE, HELP + ⌘K palette + COMPACT = 7 minimum.
+    expect(buttons.length).toBeGreaterThanOrEqual(7);
     buttons.forEach((b) => {
       expect(b.getAttribute("title")).toBeTruthy();
       expect(b.getAttribute("aria-label")).toBeTruthy();
