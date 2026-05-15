@@ -149,6 +149,86 @@ describe("buildExplainerPrompt — pure shape", () => {
     )
   })
 
+  // Phase 7.I — sector-aware company.settings descriptor.
+  describe("company.settings descriptor (Phase 7.I)", () => {
+    it("renders 'Settings: (none)' when settings absent (back-compat)", () => {
+      const prompt = buildExplainerPrompt(makeInput())
+      expect(prompt).toContain("Settings: (none)")
+    })
+
+    it("agro_crops settings produce a natural-language descriptor with crop/region/hectares/target", () => {
+      const prompt = buildExplainerPrompt(
+        makeInput({
+          company: {
+            name: "AZSEKER-EDEN",
+            industry: "agro_crops",
+            tags: [],
+            settings: {
+              hectaresPlanted: 12000,
+              region: "salyan",
+              cropType: "sugarcane",
+              yieldTarget: 65,
+            },
+          },
+        }),
+      )
+      expect(prompt).toContain("growing sugarcane")
+      expect(prompt).toContain("12,000 ha")
+      expect(prompt).toContain("salyan")
+      expect(prompt).toContain("target yield 65 t/ha")
+    })
+
+    it("food_processing settings cite capacity + main input commodity", () => {
+      const prompt = buildExplainerPrompt(
+        makeInput({
+          company: {
+            name: "AZSEKER-AZSF",
+            industry: "food_processing",
+            tags: [],
+            settings: {
+              processingCapacityTonsYr: 50000,
+              extractionRateTarget: 88,
+              mainInputCommodity: "sugarcane",
+            },
+          },
+        }),
+      )
+      expect(prompt).toContain("processing sugarcane")
+      expect(prompt).toContain("capacity 50,000 t/yr")
+      expect(prompt).toContain("target extraction rate 88%")
+    })
+
+    it("hospitality settings cite room count + seasonality", () => {
+      const prompt = buildExplainerPrompt(
+        makeInput({
+          company: {
+            name: "RAMADA",
+            industry: "hospitality",
+            tags: [],
+            settings: { totalRooms: 220, seasonalityProfile: "summer_peak" },
+          },
+        }),
+      )
+      expect(prompt).toContain("220 rooms")
+      expect(prompt).toContain("summer_peak")
+    })
+
+    it("unknown industry with arbitrary settings falls back to compact JSON dump (capped)", () => {
+      const prompt = buildExplainerPrompt(
+        makeInput({
+          company: {
+            name: "FOO",
+            industry: "renewables",
+            tags: [],
+            settings: { panelCount: 1000, region: "Sumqayit" },
+          },
+        }),
+      )
+      // Settings line present + the JSON shape leaks (no natural-language template for renewables)
+      expect(prompt).toMatch(/Settings: \{.*panelCount/)
+    })
+  })
+
   it("aggregates render compactly with first 8 keys per namespace (exact boundary pinned)", () => {
     const big: Record<string, number> = {}
     for (let i = 0; i < 20; i++) big[`k${i}`] = i

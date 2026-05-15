@@ -46,6 +46,12 @@ type MockState = {
    * the user-supplied value (not the formula output).
    */
   disclosures: Record<string, { value: number; unit: string } | null>;
+  /**
+   * Phase 7.I — pre-canned IntelDataPoint rows for weather/commodity
+   * resolver tests. Keyed by `${sourceCode}:${metric}` (or just sourceCode
+   * if metric filter omitted). Returns [] when key absent.
+   */
+  intelDataPoints: Record<string, Array<{ metric: string; datetime: Date; value: number; unit?: string | null }>>;
   upserts: Array<{
     organizationId: string;
     companyId: string;
@@ -94,6 +100,7 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
     ivReads: initial.ivReads ?? {},
     children: initial.children ?? {},
     disclosures: initial.disclosures ?? {},
+    intelDataPoints: initial.intelDataPoints ?? {},
     upserts: [],
     orgReads: [],
     ivReadCalls: [],
@@ -175,6 +182,14 @@ function mockDs(initial: Partial<MockState> = {}): RecomputeDataSource & {
       );
       const key = `${companyId}:${indicatorCode}@${period}`;
       return state.disclosures[key] ?? null;
+    },
+    // Phase 7.I — IntelDataPoint read mock. Records the lookup key + returns
+    // the pre-canned rows. Tests populate `state.intelDataPoints[<source>:<metric>]`
+    // to exercise weatherResolver / commodityPriceResolver paths.
+    listIntelDataPoints: async ({ organizationId, sourceCode, metric }) => {
+      const key = metric ? `${sourceCode}:${metric}` : sourceCode;
+      state.orgReads.push(`intel:${organizationId}:${key}`);
+      return state.intelDataPoints[key] ?? [];
     },
   };
 }
@@ -2874,5 +2889,172 @@ describe('recomputeIndicator — industryFactor resolver (Phase 7.H F4.v2.2)', (
     });
     expect(ds.state.upserts[0].valueSource).toBe('computed');
     expect(ds.state.upserts[0].confidence).toBeNull();
+  });
+});
+
+// ─── Phase 7.I — weatherResolver + commodityPriceResolver ──────────────────
+
+const AGRO_WEATHER_RAINFALL_TEST: IndicatorDefinitionLike = {
+  id: 'ind_rain',
+  code: 'AGRO_WEATHER_RAINFALL',
+  formula: 'rainfall_mm_90d',
+  thresholds: {
+    green: { op: '>=', value: 60 },
+    amber: { op: '>=', value: 30 },
+    red: { op: '<', value: 30 },
+  },
+  requiredInputs: ['weather:rainfall_mm_90d'],
+  unit: 'mm',
+  defaultValueSource: 'macro',
+};
+
+const AGRO_SUGAR_PRICE_TREND_TEST: IndicatorDefinitionLike = {
+  id: 'ind_sugar',
+  code: 'AGRO_SUGAR_PRICE_TREND',
+  formula:
+    '(sugar_price_latest - sugar_price_mean_12m) / sugar_price_mean_12m * 100',
+  thresholds: {
+    green: { op: '>=', value: 0 },
+    amber: { op: '>=', value: -10 },
+    red: { op: '<', value: -10 },
+  },
+  requiredInputs: [
+    'commodityPrice:sugar_price_latest',
+    'commodityPrice:sugar_price_mean_12m',
+  ],
+  unit: '%',
+  defaultValueSource: 'macro',
+};
+
+describe('recomputeIndicator — weatherResolver (Phase 7.I)', () => {
+  it('resolves rainfall_mm_90d for the active company region from IntelDataPoint', async () => {
+    const ds = mockDs({
+      settings: { region: 'salyan', cropType: 'sugarcane' },
+      intelDataPoints: {
+        'weather-openmeteo:SALYAN_RAINFALL_MM_90D': [
+          { metric: 'SALYAN_RAINFALL_MM_90D', datetime: new Date('2026-04-01'), value: 95, unit: 'mm' },
+        ],
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: AGRO_WEATHER_RAINFALL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    expect(ds.state.upserts[0].value).toBe(95);
+    expect(ds.state.upserts[0].status).toBe('green'); // ≥60 → green
+    expect(ds.state.upserts[0].inputs.resolved.rainfall_mm_90d).toBe(95);
+    // Aggregate carries the region context for drilldown
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.weather).toMatchObject({
+      rainfall_mm_90d: { value: 95, region: 'salyan' },
+    });
+  });
+
+  it('falls to status=unknown when company.settings.region is missing', async () => {
+    const ds = mockDs({
+      settings: { cropType: 'sugarcane' }, // no region
+      intelDataPoints: {
+        'weather-openmeteo:SALYAN_RAINFALL_MM_90D': [
+          { metric: 'SALYAN_RAINFALL_MM_90D', datetime: new Date('2026-04-01'), value: 95, unit: 'mm' },
+        ],
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: AGRO_WEATHER_RAINFALL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+  });
+
+  it('falls to status=unknown when no IntelDataPoint row matches region+metric', async () => {
+    const ds = mockDs({
+      settings: { region: 'salyan' },
+      intelDataPoints: {}, // empty — no weather data ingested yet
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_eden',
+      definition: AGRO_WEATHER_RAINFALL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+  });
+});
+
+describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
+  it('resolves sugar_price_latest + mean_12m and computes variance %', async () => {
+    // 12 months at $400, then current month at $440 → mean=400, latest=440,
+    // variance = (440-400)/400 * 100 = +10% → green (≥0)
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(2025, i, 1),
+      value: 400,
+      unit: 'USD/tonne',
+    }));
+    series.push({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(2026, 0, 1),
+      value: 440,
+      unit: 'USD/tonne',
+    });
+    const ds = mockDs({
+      intelDataPoints: {
+        'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series,
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_SUGAR_PRICE_TREND_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    // mean of last 12 = (11×400 + 440) / 12 ≈ 403.33; variance ≈ +9.1%
+    expect(ds.state.upserts[0].value).toBeGreaterThan(0);
+    expect(ds.state.upserts[0].value).toBeLessThan(15);
+    expect(ds.state.upserts[0].status).toBe('green'); // ≥0 → green
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.commodity_price).toMatchObject({
+      sugar_price_latest: { value: 440, samples: expect.any(Number) },
+    });
+  });
+
+  it('returns status=unknown when no IntelDataPoint rows exist for the series', async () => {
+    const ds = mockDs({
+      intelDataPoints: {}, // empty
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_SUGAR_PRICE_TREND_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+  });
+
+  it('mean_12m falls back to mean over whatever samples exist (graceful degradation)', async () => {
+    // Only 3 months of data — still computes mean over those 3, not NaN.
+    const series = [
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 0, 1), value: 400, unit: 'USD/tonne' },
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 1, 1), value: 420, unit: 'USD/tonne' },
+      { metric: 'SUGAR_RAW_USD_TONNE', datetime: new Date(2026, 2, 1), value: 440, unit: 'USD/tonne' },
+    ];
+    const ds = mockDs({
+      intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_SUGAR_PRICE_TREND_TEST,
+      period: '2026',
+    });
+    // mean = (400+420+440)/3 = 420; latest = 440; variance = (440-420)/420 ≈ +4.76%
+    expect(ds.state.upserts[0].status).toBe('green');
+    expect(ds.state.upserts[0].value).toBeCloseTo(4.76, 1);
   });
 });

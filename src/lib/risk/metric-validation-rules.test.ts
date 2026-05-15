@@ -20,15 +20,16 @@ import {
 } from "./metric-validation-rules"
 
 describe("metric-validation-rules — catalog shape", () => {
-  it("ships 26 operational metric rules (13 indicators × 1-2 inputs + 5 Phase 7.I sugar/agro)", () => {
+  it("ships 27 operational metric rules (13 indicators × 1-2 inputs + 6 Phase 7.I sugar/agro)", () => {
     // 13 operational indicators consume between 1 and 5 distinct
     // metrics each (e.g. AGRO_YIELD reads `harvest_tons` ÷
     // `area_hectares` = 2; EDU_STUDENT_TEACHER_RATIO reads enrolled +
     // teachers = 2; some single-metric like AGRO_DROUGHT_RISK). Base count: 21.
-    // Phase 7.I — AzerSheker pilot — added 5 sugar/agro metrics:
-    // yield_per_ha, sugar_content_pct, water_use_m3_per_ha,
-    // fertilizer_kg_per_ha, extraction_rate_pct. Total: 26.
-    expect(OPERATIONAL_METRIC_RULES).toHaveLength(26)
+    // Phase 7.I — AzerSheker pilot — added 6 sugar/agro metrics:
+    // hectares_planted, yield_per_ha, sugar_content_pct,
+    // water_use_m3_per_ha, fertilizer_kg_per_ha, extraction_rate_pct.
+    // Total: 27.
+    expect(OPERATIONAL_METRIC_RULES).toHaveLength(27)
     const codes = OPERATIONAL_METRIC_RULES.map((r) => r.metric)
     // Spot-check the canonical metrics the F4 audit identified —
     // dropping one of these (e.g. removing `harvest_tons`) silently

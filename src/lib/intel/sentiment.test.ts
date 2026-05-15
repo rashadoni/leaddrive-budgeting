@@ -123,3 +123,40 @@ describe("runSentimentBatch", () => {
     expect(out.usage.outputTokens).toBe(40)
   })
 })
+
+// Phase 7.I — sector-aware prompt (agro/sugar heuristics).
+// LLM behavior is mocked, so this asserts the SYSTEM_PROMPT text is the
+// one the LLM sees — we capture the `system` field on the mocked
+// `messages.create` call. Locks the prompt-as-contract: a future
+// inadvertent removal of sugar/agro heuristics breaks loudly.
+describe("runSentimentBatch — Phase 7.I sector-aware prompt", () => {
+  it("system prompt carries the sugar/agro heuristics block when LLM is invoked", async () => {
+    const createMock = vi.fn().mockResolvedValue(fakeResponse(JSON.stringify({ scores: [] })))
+    mockedGetClient.mockReturnValue({
+      messages: { create: createMock },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
+    await runSentimentBatch(items(1))
+    expect(createMock).toHaveBeenCalledTimes(1)
+    const sentSystem = createMock.mock.calls[0][0].system as string
+    // The canonical sugar/agro heuristics block tokens.
+    expect(sentSystem).toMatch(/AGRO \/ FOOD_PROCESSING/)
+    expect(sentSystem).toMatch(/ICE Sugar #11/)
+    expect(sentSystem).toMatch(/Salyan|Imishli/i)
+    expect(sentSystem).toMatch(/fertilizer|NPK|urea/i)
+  })
+
+  it("preserves the base scoring contract while the sector heuristics are present", async () => {
+    installFakeClient(
+      JSON.stringify({
+        scores: [
+          { id: "item-1", score: 0.7 }, // simulating: "ICE Sugar spike → bullish"
+          { id: "item-2", score: -0.6 }, // simulating: "drought in Salyan → bearish"
+        ],
+      }),
+    )
+    const out = await runSentimentBatch(items(2))
+    expect(out.scores.get("item-1")).toBe(0.7)
+    expect(out.scores.get("item-2")).toBe(-0.6)
+  })
+})

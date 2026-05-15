@@ -1912,6 +1912,8 @@
       "recomputeDone": "Updated",
       "recomputeFailed": "Failed",
       "recomputeTitle": "Recompute this indicator value with up-to-date sparkline",
+      "openSourceButton": "Open source",
+      "openSourceTitle": "Open the underlying commodity / weather feed in a new window",
       "forecastNextPeriod": "Next-period forecast",
       "forecastNoChange": "no change expected",
       "forecastConfidence": "confidence",

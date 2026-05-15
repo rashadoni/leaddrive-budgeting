@@ -154,6 +154,26 @@ export const OPERATIONAL_METRIC_RULES: readonly MetricValidationRule[] = [
   // sum granular per-field external data outside the system and submit the
   // aggregate.
   {
+    // hectares_planted: planted area for the current crop cycle. Distinct
+    // from `area_hectares` (cultivated/yielding area — those may differ if
+    // some fields were planted but not harvested due to flooding/disease).
+    // Used for company.settings + dashboards, NOT a direct indicator driver.
+    metric: "hectares_planted",
+    unit: "hectares",
+    min: 0,
+    max: 200_000,
+    warnMin: 1,
+    warnMax: 20_000,
+    anomalyDeltaPct: 30,
+    sector: "agro",
+    labelEn: "Hectares planted",
+    labelRu: "Засеяно (га)",
+    labelAz: "Əkilmiş (ha)",
+    hintEn: "Planted area at start of cycle (vs area_hectares = effective cultivated).",
+    hintRu: "Засеянная площадь в начале цикла (vs area_hectares = эффективно возделываемая).",
+    hintAz: "Dövrün başında əkilmiş sahə (vs area_hectares = effektiv əkin sahəsi).",
+  },
+  {
     metric: "yield_per_ha",
     unit: "tons/ha",
     min: 0,

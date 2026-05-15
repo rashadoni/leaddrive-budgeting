@@ -151,6 +151,52 @@ insert: level=1 sub-groups first, then level=2 operationals with
 `parentCompanyId` set. Each operational company REQUIRES `industry` + `role`
 (usually `'operational'`).
 
+### 1.5b `Company.settings` JSON — per-industry operational descriptors (Phase 7.I)
+
+Each company can carry an industry-specific `settings` JSON. Used by indicator
+resolvers (e.g. `companySettingsResolver`, `weatherResolver`), by the AI
+variance explainer (sector context in the prompt), and by terminal widgets
+(AgroDashboard, etc.).
+
+**Edit path (preferred):** `/budgeting/admin/companies` (admin UI) — per-company
+inline form auto-renders the right schema based on the company's `industry`.
+
+**SQL alternative:**
+```sql
+UPDATE companies
+SET settings = jsonb_build_object(
+  'hectaresPlanted', 12000,
+  'region', 'salyan',
+  'cropType', 'sugarcane',
+  'yieldTarget', 65
+)
+WHERE code = 'AZSEKER-EDEN';
+```
+
+**Per-industry shape (Zod-validated by `/api/companies/[id]/settings`):**
+
+| Industry | Field | Type | Notes |
+|----------|-------|------|-------|
+| **agro_crops** | `hectaresPlanted` | number (ha, 0-200_000) | Planted area for current cycle |
+| | `region` | enum: `salyan` / `imishli` / `sabirabad` / `other` | Drives weather adapter lookup |
+| | `cropType` | enum: `sugarcane` / `sugar_beet` / `wheat` / `corn` / `cotton` / `rice` / `other` | Drives indicator hint text |
+| | `yieldTarget` | number (t/ha, 0-200) | Sets AGRO_YIELD_PER_HA threshold context |
+| **food_processing** | `processingCapacityTonsYr` | number (0-10M) | Plant nameplate |
+| | `extractionRateTarget` | number (%, 0-100) | FP_EXTRACTION_RATE benchmark |
+| | `mainInputCommodity` | enum: `sugarcane` / `sugar_beet` / `wheat` / `corn` / `fruit` / `vegetable` / `dairy` / `meat` / `other` | Drives sentiment + LLM context |
+| **hospitality** | `totalRooms` | int (1-10_000) | HOSP_OCC + RevPAR divisor |
+| | `seasonalityProfile` | enum: `summer_peak` / `winter_peak` / `year_round` / `weekday_only` | UI badge + LLM context |
+| | `region` | string (free, max 60) | Display only (no resolver hookup yet) |
+| **other industries** | (free-form) | string / number / boolean / null | Capped 32 keys × 256-char values; no schema validation |
+
+**Strict mode:** industry-specific schemas reject unknown fields. Posting
+`totalRooms` to an `agro_crops` company returns 400 — prevents cross-industry
+leakage in the LLM prompt downstream. Generic fallback (unknown industry)
+accepts any primitives.
+
+**Audit:** every `PATCH /api/companies/[id]/settings` emits
+`company_settings_update` with before/after + diff'd keysChanged.
+
 ### 1.6 Chart of Accounts (per industry or per company)
 
 Each operational company needs a ChartOfAccount row per account they use
