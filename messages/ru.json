@@ -1958,6 +1958,12 @@
         "lowMateriality": "Низкая материальность",
         "notMaterial": "Не материально",
         "tooltipSuffix": "SASB-материальность: показатель не приоритетен для этой отрасли."
+      },
+      "trust": {
+        "source": "Источник",
+        "lastAudited": "Сверено",
+        "notReconciled": "Ещё не сверено",
+        "sourceNotRecorded": "Источник не зафиксирован"
       }
     },
     "auditTicker": {

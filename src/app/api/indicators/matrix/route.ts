@@ -227,6 +227,11 @@ export async function GET(request: NextRequest) {
               // cells fall back to "computed" rendering — defeating
               // the entire feature.
               valueSource: true,
+              // Financial-truth-infra Phase B.2 — sanityBand reaches
+              // every HeatMap cell so the CompanyTree trust badge can
+              // promote to 'suspicious' on extreme-band cells without a
+              // second round-trip per row.
+              sanityBand: true,
             },
           });
 
@@ -312,6 +317,9 @@ export async function GET(request: NextRequest) {
           // Phase 7.H F4.v2.4 — materiality is only stamped on ESG
           // cells (other indicators don't participate in the framework).
           ...(materiality ? { materiality } : {}),
+          // Financial-truth-infra Phase B.2 — sanity-band from latest
+          // audit run; null when not yet audited.
+          ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
         };
       });
 
@@ -383,6 +391,10 @@ export async function GET(request: NextRequest) {
               // parent cells (sub-44 path) so a holding-level cell
               // carries the same provenance badge as its children.
               valueSource: true,
+              // Financial-truth-infra Phase B.2 — sanityBand mirrored to
+              // parent rollup cells so a holding-level row inherits the
+              // audit verdict from its IV.
+              sanityBand: true,
             },
           });
 
@@ -412,6 +424,7 @@ export async function GET(request: NextRequest) {
         ...(sparkline ? { sparkline } : {}),
         ...(error ? { error } : {}),
         ...(materiality ? { materiality } : {}),
+        ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
         // Sub-44 cont'd architect 💡 closure — discriminated-union
         // `kind` field replaces the legacy `isRealParentRollup` boolean.
         // Distinguishes from synthetic averages (different drill-down

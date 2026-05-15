@@ -101,6 +101,26 @@ export interface HeatMapCell {
    * Absent = `material` (default, full visual presence).
    */
   materiality?: 'material' | 'low_materiality' | 'not_material';
+  /**
+   * Financial-truth-infra Phase B.2 — sanity-band classification from
+   * the last audit-company.cjs run for this IV. Drives the CompanyTree
+   * trust badge (suspicious vs partial/verified) and the Panel-3
+   * sanity-band chip. Null/missing when audit hasn't run yet.
+   *   - 'normal'        : value within expected industry sanity band
+   *   - 'low_extreme'   : below the low threshold (e.g. 0% gross margin
+   *                       on services-industry → investigate)
+   *   - 'high_extreme'  : above the high threshold (e.g. 100% gross
+   *                       margin on food-processing → likely COGS
+   *                       classification gap)
+   *   - 'missing_input' : audit script couldn't compute (e.g. zero rev)
+   *   - 'no_band'       : audited but no band defined for this combo
+   */
+  sanityBand?:
+    | 'normal'
+    | 'low_extreme'
+    | 'high_extreme'
+    | 'missing_input'
+    | 'no_band';
 }
 
 /**

@@ -131,17 +131,21 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       for (const [parentId, kids] of childrenByParentId) {
         const parent = cosWithParent.find((c) => c.id === parentId);
         if (!parent) continue;
-        const existing = direct.get(parent.code);
-        // Only re-derive a parent that's still 'pending' (had no own data).
-        if (existing && existing !== 'pending') continue;
+        const existing = direct.get(parent.code) ?? 'pending';
         let agg: TrustStatus | null = null;
         for (const k of kids) {
           const ks = direct.get(k.code);
           if (!ks) continue;
           agg = agg === null ? ks : worstOf(agg, ks);
         }
-        if (agg && agg !== existing) {
-          direct.set(parent.code, agg);
+        if (!agg) continue;
+        // Parent inherits the worst of (its own resolved status, worst
+        // descendant) — a single child marked `suspicious` should bubble
+        // up to the holding row so a user scanning the tree sees the red
+        // dot at the root, not just on the deeply-nested entity.
+        const merged = worstOf(existing, agg);
+        if (merged !== existing) {
+          direct.set(parent.code, merged);
           progressed = true;
         }
       }
