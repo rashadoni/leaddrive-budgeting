@@ -90,32 +90,35 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(screen.queryByLabelText(/Toggle compact/i)).toBeTruthy();
   });
 
-  it("⌘K palette trigger focuses input[data-cmd-bar] when clicked (Phase 7.I)", () => {
-    let lastInputValue = "";
-    const Harness = (): React.ReactElement => {
-      const [v, setV] = React.useState("");
-      lastInputValue = v;
-      return (
-        <>
-          <HotkeyToolbar />
-          <input
-            data-cmd-bar="true"
-            value={v}
-            onChange={(e) => setV(e.target.value)}
-            aria-label="cmd-bar harness"
-          />
-        </>
-      );
-    };
-    render(<Harness />);
-    const input = document.querySelector('input[data-cmd-bar]') as HTMLInputElement;
-    expect(input).toBeTruthy();
-    expect(document.activeElement).not.toBe(input);
-    // Test mock renders aria-label as "PALETTE ARIA LABEL" — match via
-    // /palette/i regex on the aria-label attribute.
+  it("⌘K palette trigger opens a popover listing overflow commands (Phase 7.I)", () => {
+    render(<HotkeyToolbar />);
+    // Before click: overflow commands hidden.
+    expect(screen.queryByText("COMPARE")).toBeNull();
+    expect(screen.queryByText("INTEL")).toBeNull();
+    expect(screen.queryByText("NEW PLAN")).toBeNull();
+    // Click the palette trigger (Radix Popover opens on click).
     fireEvent.click(screen.getByLabelText(/palette/i));
-    expect(document.activeElement).toBe(input);
-    expect(lastInputValue).toBe("");
+    // After click: overflow commands rendered inside the popover content.
+    // The popover content is portalled but happy-dom keeps it in the same
+    // document so screen.queryByText still finds it.
+    expect(screen.queryByText("COMPARE")).toBeTruthy();
+    expect(screen.queryByText("INTEL")).toBeTruthy();
+    expect(screen.queryByText("NEW PLAN")).toBeTruthy();
+  });
+
+  it("clicking an overflow command in the palette fires its action (Phase 7.I)", () => {
+    render(<HotkeyToolbar />);
+    let fired = 0;
+    const handler = () => {
+      fired += 1;
+    };
+    window.addEventListener("terminal:open-intel", handler);
+    // Open palette, then click INTEL inside it.
+    fireEvent.click(screen.getByLabelText(/palette/i));
+    const intelBtn = screen.getByText("INTEL").closest("button")!;
+    fireEvent.click(intelBtn);
+    window.removeEventListener("terminal:open-intel", handler);
+    expect(fired).toBe(1);
   });
 
   it("ALERTS click fires terminal:open-audit", () => {
