@@ -493,6 +493,13 @@ model BudgetLine {
   parentId       String?
   parent         BudgetLine?       @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children       BudgetLine[]      @relation("LineChildren")
+  // Financial-truth-infra Phase A.2 — source-of-record pointer. Mirrors the
+  // same provenance field on `IndicatorValue` so drift watchdog can hop
+  // from a divergent indicator down to the specific budget line + source
+  // xlsx cell that contributed. Typically `filename.xlsx#sheet!cell_ref`
+  // for direct xlsx imports, or `cli:import-X.ts` for CLI-driven loads.
+  // Nullable for backward compat with pre-Phase-A budget lines.
+  sourceDocument String?
 
   @@index([organizationId])
   @@index([planId])
@@ -1223,6 +1230,20 @@ model IndicatorValue {
   // ships; UI shows badge without confidence sub-label until then.
   confidence     String?
   computedAt     DateTime             @default(now())
+  // Financial-truth-infra Phase A.2 — provenance + reconciliation fields.
+  // `sourceDocument` is a pointer to the original artifact this value was
+  // ingested from: typically `filename.xlsx#sheet_name!row` for xlsx
+  // imports, or `commodity-adapter:source-code` for external feeds.
+  // `lastReconciledAt` / `reconciledBy` are populated by audit-company.cjs
+  // when drift checks pass (or are manually signed off). `sanityBand`
+  // stores the verdict from the industry sanity-band classifier so the
+  // CompanyTree status badge can be computed without re-querying audit
+  // results: "normal" | "low_extreme" | "high_extreme" | "missing_input"
+  // | "no_band". All nullable for backward compat with pre-Phase-A IVs.
+  sourceDocument    String?
+  lastReconciledAt  DateTime?
+  reconciledBy      String?
+  sanityBand        String?
 
   @@unique([companyId, indicatorId, period])
   @@index([organizationId, companyId, period])

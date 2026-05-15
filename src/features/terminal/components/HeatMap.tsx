@@ -1082,8 +1082,17 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
   // glyph, no value). Other statuses use the shared palette helper. Cast
   // 'na' to 'missing' for the shared color helper input type contract;
   // the resulting color is overridden anyway when status === 'na'.
-  const baseColor = statusColor(status === 'na' ? 'missing' : status);
-  const color = status === 'na' ? '#0A0E27' : baseColor;
+  //
+  // Financial-truth-infra Phase A.3 — `unknown` status also gets a neutral
+  // background (no green/amber/red color band) + a "—" placeholder in
+  // place of the numeric value. Reason: user reported that
+  // `AGRO_YIELD: 0 [unknown]` looked like "actual yield of 0 tons/ha" —
+  // an alarming red signal — when it actually meant "no data ingested
+  // yet". Both `na` and `unknown` are now visually neutral, the
+  // distinction (industry-not-applicable vs no-data) is conveyed via
+  // tooltip text. `missing` is also kept neutral.
+  const baseColor = statusColor(status === 'na' || status === 'unknown' ? 'missing' : status);
+  const color = status === 'na' || status === 'unknown' ? '#0A0E27' : baseColor;
   const statusColorClass =
     status === 'red'
       ? 'text-[#FF4757]'
@@ -1173,16 +1182,19 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 full and skip mix-blend on `unknown` so the glyph
                 renders white-on-gray (high contrast). All other
                 statuses keep the difference-blend rule. */}
-            {/* Status glyph hidden for 'na' (no symbol = "not applicable"). */}
-            {status !== 'na' && (
+            {/* Status glyph hidden for 'na' (no symbol = "not applicable").
+                Phase A.3 — also hidden for `unknown` so the cell reads as
+                an empty placeholder ("—") rather than a status-bearing
+                signal. Tooltip carries the "no data ingested" copy. */}
+            {status !== 'na' && status !== 'unknown' && (
               <span
                 aria-hidden="true"
                 className="absolute top-0 right-0.5 leading-none"
                 style={{
                   fontSize: compactMode ? 7 : 9,
-                  opacity: status === 'unknown' ? 0.95 : 0.7,
+                  opacity: 0.7,
                   color: '#FFFFFF',
-                  mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
+                  mixBlendMode: 'difference',
                   pointerEvents: 'none',
                 }}
               >
@@ -1243,7 +1255,10 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                     textShadow: status === 'unknown' ? '0 0 2px rgba(0,0,0,0.7)' : undefined,
                   }}
                 >
-                  {formatValueCompact(cell.value, ind.unit)}
+                  {/* Phase A.3 — `unknown` status hides the numeric value
+                      (which could read as a real measurement). Show "—"
+                      so the empty-state is unambiguous. */}
+                  {status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
                 </span>
               </div>
             ) : null}
@@ -1271,15 +1286,26 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                     inside cell tooltip detail. aria-hidden because the
                     status word itself conveys the same meaning to AT.
                     Inside this branch `cell` is truthy ⇒ status is one of
-                    the IndicatorStatus values, never 'na' / 'missing'. */}
+                    the IndicatorStatus values, never 'na' / 'missing'.
+                    Phase A.3 — for `unknown` show explicit "no data
+                    ingested" copy instead of the raw 0 value, which would
+                    misread as a real measurement. */}
                 <span className={statusColorClass}>
                   <span aria-hidden="true" className="mr-0.5 opacity-80">
                     {statusShape(cell.status)}
                   </span>
                   {cell.status.toUpperCase()}
                 </span>
-                {' @ '}
-                <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
+                {cell.status === 'unknown' ? (
+                  <span className="ml-1 text-muted-foreground/80 italic">
+                    — нет данных / no data ingested
+                  </span>
+                ) : (
+                  <>
+                    {' @ '}
+                    <span className="font-mono">{formatValue(cell.value, ind.unit)}</span>
+                  </>
+                )}
               </div>
               {cell.sparkline && cell.sparkline.length > 0 && (
                 <div className="mt-1.5 flex items-center gap-1.5">
