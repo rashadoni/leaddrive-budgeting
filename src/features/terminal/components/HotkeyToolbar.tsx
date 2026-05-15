@@ -49,6 +49,11 @@ import {
 } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /** Phase 7.I — open a terminal pop-out widget by kind. Mirrors the
  *  CommandBar verbs (AGRO / WX / PRICE / KPI) so the toolbar buttons and
@@ -125,6 +130,12 @@ export function HotkeyToolbar() {
   // Phase 7.I — forward active company to pop-out widgets via URL param.
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const [recomputing, setRecomputing] = useState(false);
+  // Phase 7.I — controlled state for the ⌘K palette popover so item
+  // click-handlers can close it after firing their action. Uncontrolled
+  // Radix popovers can't be programmatically closed from inside their
+  // own content without a `PopoverClose` wrapper (not exported), so we
+  // lift state instead.
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Phase 6.1 — async recompute progress. null when no async job is in
   // flight; { processed, total } populated by polling the job state.
   const [recomputeProgress, setRecomputeProgress] = useState<{
@@ -560,23 +571,80 @@ export function HotkeyToolbar() {
           </React.Fragment>
         );
       })}
-      {/* Phase 7.I Variant C — `⌘K All commands` palette trigger. Overflow
-          buttons (analysis/social/workspace + PDF/XLSX exports = 14 hidden)
-          accessible via fuzzy verb search in the CommandBar below. Click
-          focuses + scrolls the CommandBar into view; Cmd+K keyboard
-          shortcut also works (handled inside CommandBar). The hover-tooltip
-          shows the count of hidden commands so the user knows there's more
-          available. */}
-      <button
-        type="button"
-        onClick={focusCommandBar}
-        title={t("hotkeys.paletteTitle", { count: overflowCount })}
-        aria-label={t("hotkeys.paletteAriaLabel")}
-        className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#00D4AA]/40 text-[#00D4AA] hover:bg-[#00D4AA]/10 hover:border-[#00D4AA] transition-colors shrink-0 ml-2 font-semibold"
-      >
-        <span className="opacity-70">⌘K</span>
-        <span>{t("hotkeys.paletteLabel", { count: overflowCount })}</span>
-      </button>
+      {/* Phase 7.I Variant C — `⌘K palette` popover. Lists every overflow
+          command with icon + label + group header, click-to-execute.
+          Replaces the earlier "focus the CommandBar" behavior — clicking
+          the trigger now actually reveals what's hidden so discovery
+          doesn't require knowing verbs in advance. Cmd+K keyboard
+          shortcut still focuses the CommandBar input (existing
+          handler in CommandBar.tsx); both paths are valid entry. */}
+      <Popover open={paletteOpen} onOpenChange={setPaletteOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            title={t("hotkeys.paletteTitle", { count: overflowCount })}
+            aria-label={t("hotkeys.paletteAriaLabel")}
+            className="flex items-center gap-1 px-2 py-0.5 rounded border border-[#00D4AA]/40 text-[#00D4AA] hover:bg-[#00D4AA]/10 hover:border-[#00D4AA] transition-colors shrink-0 ml-2 font-semibold"
+          >
+            <span className="opacity-70">⌘K</span>
+            <span>{t("hotkeys.paletteLabel", { count: overflowCount })}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          sideOffset={6}
+          className="w-80 max-h-[70vh] overflow-y-auto p-0 bg-[#0A0E27] border-gray-800 text-gray-300 font-mono text-[11px]"
+        >
+          <div className="px-3 py-2 border-b border-gray-800 text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between">
+            <span>Command palette</span>
+            <span className="text-gray-600">
+              {overflowCount} command{overflowCount === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="px-3 py-1 border-b border-gray-800 text-[9px] text-gray-600 leading-relaxed">
+            Type in the command bar below (⌘K) for fuzzy search — these
+            shortcuts are the click-equivalents.
+          </div>
+          {/* Group overflow items by their group label for visual rhythm. */}
+          {(["analysis", "social", "workspace", "ops"] as HotkeyGroup[]).flatMap((g) => {
+            const groupItems = hotkeys.filter((h) => h.priority === "overflow" && h.group === g);
+            if (groupItems.length === 0) return [];
+            return [
+              <div
+                key={`${g}-header`}
+                className="px-3 pt-3 pb-1 text-[9px] uppercase tracking-wider text-gray-600"
+              >
+                {GROUP_LABELS[g]}
+              </div>,
+              ...groupItems.map((h) => {
+                const Icon = h.icon;
+                return (
+                  <button
+                    key={h.key}
+                    type="button"
+                    onClick={() => {
+                      h.action();
+                      // Close the palette after firing — controlled state
+                      // lets us toggle from inside content without
+                      // PopoverClose (not exported from ui/popover).
+                      setPaletteOpen(false);
+                    }}
+                    disabled={h.disabled}
+                    title={h.title}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-[#00D4AA]/5 hover:text-[#00D4AA] disabled:opacity-40 transition-colors text-left"
+                  >
+                    <Icon size={12} className="shrink-0 opacity-70" />
+                    <span className="flex-1 truncate">{h.label}</span>
+                  </button>
+                );
+              }),
+            ];
+          })}
+          <div className="px-3 py-2 border-t border-gray-800 text-[9px] text-gray-600 leading-relaxed">
+            Tip: press <span className="text-gray-400">⌘K</span> anywhere to focus the command bar instead.
+          </div>
+        </PopoverContent>
+      </Popover>
       {/* Compact-mode toggle is in PanelGrid; mirror it here for one-stop access */}
       <button
         type="button"
