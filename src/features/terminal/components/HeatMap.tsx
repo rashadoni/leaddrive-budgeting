@@ -354,15 +354,43 @@ export function HeatMap({ period }: Props) {
   // conditional early-return so the hook order stays stable across renders
   // (React's Rules of Hooks). Empty/loading branches re-use the same memos
   // — they just return empty arrays.
-  const activeCompanyIndustry = useMemo(() => {
-    if (!data || !activeCompanyCode) return null;
+  //
+  // For LEAF entities (level=2 ops cos like AZSEKER-EDEN) the company row
+  // carries `industry` directly. For SUB-GROUPS / holdings (AAC, AZSEKER,
+  // …) the row's own `industry` is null — derive the relevant set by
+  // walking descendants and unioning their industries. The matrix payload
+  // surfaces `parentCompanyId` on each row, so the walk is one pass.
+  const activeCompanyIndustries = useMemo<readonly string[]>(() => {
+    if (!data || !activeCompanyCode) return [];
     const co = data.companies.find((c) => c.code === activeCompanyCode);
-    return co?.industry ?? null;
+    if (!co) return [];
+    if (co.industry) return [co.industry];
+    // Sub-group with no own industry — union of descendant industries.
+    type WithParent = (typeof data.companies)[number] & { parentCompanyId?: string | null };
+    const collected = new Set<string>();
+    const walk = (parentId: string): void => {
+      for (const c of data.companies as ReadonlyArray<WithParent>) {
+        if (c.parentCompanyId === parentId) {
+          if (c.industry) collected.add(c.industry);
+          walk(c.id);
+        }
+      }
+    };
+    walk(co.id);
+    return Array.from(collected);
   }, [data, activeCompanyCode]);
+  // Back-compat single-industry alias used by materiality lookups. When
+  // the active company resolves to exactly ONE industry (leaf op-co OR a
+  // sub-group whose descendants share one industry, e.g. AAC = pure
+  // industrial), the SASB materiality matrix lookup is unambiguous.
+  // Mixed sub-groups skip materiality scoring (defaults to "material"
+  // for every indicator — see enriched branch below).
+  const activeCompanyIndustry =
+    activeCompanyIndustries.length === 1 ? activeCompanyIndustries[0] : null;
 
   const rawIndicators = data?.indicators ?? [];
   const indicators = useMemo(() => {
-    if (!activeCompanyIndustry) return rawIndicators;
+    if (activeCompanyIndustries.length === 0) return rawIndicators;
     const rankMateriality = (rating: 'material' | 'low_materiality' | 'not_material'): number => {
       if (rating === 'material') return 0;
       if (rating === 'low_materiality') return 1;
@@ -370,27 +398,29 @@ export function HeatMap({ period }: Props) {
     };
     /**
      * Phase 7.I sub-fix — an indicator is "associated" with the active
-     * company's industry when EITHER:
+     * company when EITHER:
      *   - its `industries` field is empty/missing (universal indicator
      *     like financial ratios that apply to every sector), OR
-     *   - its `industries` array contains the active industry.
-     * If `industries` is non-empty AND doesn't include the active
-     * industry, the indicator is explicitly NOT relevant to this
-     * company (e.g. HOSP_OCC for an agro_crops entity) and gets hidden
-     * when the "Material only" toggle is on. Drops the indicator-column
-     * count from ~65 down to ~10–15 for a typical single-industry view,
+     *   - its `industries` array intersects with the active company's
+     *     resolved industry set (one entry for a leaf op-co; multiple
+     *     for a mixed sub-group like AZSEKER → agro_crops + food_processing).
+     * If `industries` is non-empty AND doesn't intersect, the indicator
+     * is explicitly NOT relevant to this entity (e.g. HOSP_OCC for an
+     * industrial holding) and gets hidden when "Material only" is on.
+     * Drops the column count from ~65 down to ~10–15 for a focused view,
      * eliminating horizontal scroll.
      */
     const isAssociatedWithIndustry = (ind: { industries?: string[] }): boolean => {
       const tags = ind.industries ?? [];
       if (tags.length === 0) return true; // universal indicator
-      return tags.includes(activeCompanyIndustry);
+      return tags.some((t) => activeCompanyIndustries.includes(t));
     };
     const enriched = rawIndicators.map((ind) => ({
       ind,
-      rating: isMaterialityScoped(ind.code)
-        ? getMateriality(activeCompanyIndustry, ind.code)
-        : ('material' as const),
+      rating:
+        activeCompanyIndustry && isMaterialityScoped(ind.code)
+          ? getMateriality(activeCompanyIndustry, ind.code)
+          : ('material' as const),
     }));
     const visible = hideNotMaterial
       ? enriched.filter(
@@ -399,7 +429,7 @@ export function HeatMap({ period }: Props) {
       : enriched;
     visible.sort((a, b) => rankMateriality(a.rating) - rankMateriality(b.rating));
     return visible.map((e) => e.ind);
-  }, [activeCompanyIndustry, hideNotMaterial, rawIndicators]);
+  }, [activeCompanyIndustries, activeCompanyIndustry, hideNotMaterial, rawIndicators]);
 
   if (!mounted) {
     return (
