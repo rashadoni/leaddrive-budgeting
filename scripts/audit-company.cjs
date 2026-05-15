@@ -301,6 +301,38 @@ async function auditOne(prisma, wb, company, sheetName, period, indByCode, indBy
   return result;
 }
 
+// ── Persist audit verdict back to IndicatorValue rows ───────────────────────
+// When invoked with --write, this updates each IV referenced in the audit
+// with sourceDocument / lastReconciledAt / reconciledBy / sanityBand so
+// Panel 3 + the CompanyTree trust badge see real provenance, not nulls.
+async function writeAuditToDb(prisma, result, xlsxPath, sheetName, reconciledBy) {
+  if (!result || result.verdict === 'pending') return;
+  const company = await prisma.company.findFirst({ where: { code: result.company }, select: { id: true } });
+  if (!company) return;
+  const indByCode = await prisma.indicatorDefinition.findMany({ select: { id: true, code: true } });
+  const indMap = new Map(indByCode.map(i => [i.code, i.id]));
+  const xlsxBaseName = xlsxPath.split('/').pop();
+  const reconciledAt = new Date();
+  for (const [code, snap] of Object.entries(result.sanity)) {
+    if (snap === 'missing_iv' || !indMap.has(code)) continue;
+    const sanityBand = typeof snap === 'object' ? snap.band : 'no_band';
+    const sourceDocument = sheetName ? `${xlsxBaseName}#${sheetName}` : `${xlsxBaseName}`;
+    try {
+      await prisma.indicatorValue.updateMany({
+        where: { companyId: company.id, indicatorId: indMap.get(code), period: result.period },
+        data: {
+          sourceDocument,
+          lastReconciledAt: reconciledAt,
+          reconciledBy,
+          sanityBand,
+        },
+      });
+    } catch (e) {
+      console.error(`  ✗ write failed for ${code}:`, e.message);
+    }
+  }
+}
+
 (async () => {
   const args = parseArgs(process.argv.slice(2));
   if (!args.company) {
@@ -352,10 +384,19 @@ async function auditOne(prisma, wb, company, sheetName, period, indByCode, indBy
     }
 
     const results = [];
+    const reconciledBy = args['user'] ?? 'cli';
     for (const { company, sheet } of targets) {
       const r = await auditOne(prisma, wb, company, sheet, period, indByCode, indById);
       results.push(r);
       if (r.verdict === 'drift_major' || r.verdict === 'suspicious') exitCode = 1;
+      // --write — persist this audit's verdict back to the affected IVs
+      // so Panel 3 / trust badges immediately reflect "audited X days ago,
+      // sanity=normal/high_extreme/etc.". Without this flag the audit is
+      // read-only (dry-run); with it the run becomes the "official"
+      // reconciliation timestamp.
+      if (args.write) {
+        await writeAuditToDb(prisma, r, args.xlsx, sheet, reconciledBy);
+      }
     }
 
     // Output.

@@ -1958,6 +1958,12 @@
         "lowMateriality": "Aşağı materiallıq",
         "notMaterial": "Materialli deyil",
         "tooltipSuffix": "SASB materiallıq: bu göstərici bu sektor üçün prioritet deyil."
+      },
+      "trust": {
+        "source": "Mənbə",
+        "lastAudited": "Yoxlanıldı",
+        "notReconciled": "Hələ yoxlanılmayıb",
+        "sourceNotRecorded": "Mənbə qeydə alınmayıb"
       }
     },
     "auditTicker": {

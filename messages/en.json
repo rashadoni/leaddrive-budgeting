@@ -1958,6 +1958,12 @@
         "lowMateriality": "Low materiality",
         "notMaterial": "Not material",
         "tooltipSuffix": "SASB materiality: this metric is not a priority for the sector."
+      },
+      "trust": {
+        "source": "Source",
+        "lastAudited": "Audited",
+        "notReconciled": "Not yet reconciled",
+        "sourceNotRecorded": "Source not recorded"
       }
     },
     "auditTicker": {

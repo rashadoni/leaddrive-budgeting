@@ -82,6 +82,18 @@ interface IndicatorValueDetail {
   /** Phase 7.H F4.v2.4 — calibration note explaining why this pair was
    *  rated low/not-material. Null on `material` (default) cells + non-ESG. */
   materialityNote?: string | null;
+  /** Financial-truth-infra Phase B.2 — provenance + reconciliation
+   *  metadata. `sourceDocument` is the file/sheet/row pointer the value
+   *  was ingested from (e.g. `Consolidated budget 2026.xlsx#PL_EDEN!R3`).
+   *  `lastReconciledAt` is the ISO timestamp of the most-recent
+   *  audit-company.cjs pass. `reconciledBy` is the user id (or 'cli'
+   *  for unattended runs). `sanityBand` is the verdict from the
+   *  industry sanity-band classifier. All optional — pre-Phase-A IVs
+   *  have null values and render the "not yet reconciled" copy. */
+  sourceDocument?: string | null;
+  lastReconciledAt?: string | null;
+  reconciledBy?: string | null;
+  sanityBand?: 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' | null;
   indicator: IndicatorMeta;
   company: CompanyMeta;
 }
@@ -541,6 +553,19 @@ export function IndicatorDetail() {
         </div>
       </header>
 
+      {/* Financial-truth-infra Phase B.2 — audit/provenance strip. Shows
+          where this number came from + when (and by whom) it was last
+          reconciled against the source document. Renders even on
+          unreconciled IVs so users know the status is "never audited",
+          rather than the panel silently omitting trust info. */}
+      <TrustAuditStrip
+        sourceDocument={detail.sourceDocument}
+        lastReconciledAt={detail.lastReconciledAt}
+        reconciledBy={detail.reconciledBy}
+        sanityBand={detail.sanityBand}
+        t={t}
+      />
+
       {hint && (
         <p className="text-gray-300 leading-snug">{hint}</p>
       )}
@@ -889,6 +914,100 @@ function MaterialityBadge({
     >
       {label}
     </span>
+  );
+}
+
+/**
+ * Financial-truth-infra Phase B.2 — Trust/Audit strip rendered between
+ * the panel header and the hint paragraph. Shows where the value came
+ * from (sourceDocument) + when it was last audited (lastReconciledAt
+ * + reconciledBy) + sanity-band verdict.
+ *
+ * Renders even on pre-Phase-A IVs (all fields null) so the user gets a
+ * clear "not yet reconciled" signal instead of the strip being silently
+ * hidden — that absence-as-info was the original failure mode.
+ */
+function TrustAuditStrip(props: {
+  sourceDocument?: string | null;
+  lastReconciledAt?: string | null;
+  reconciledBy?: string | null;
+  sanityBand?: 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' | null;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { sourceDocument, lastReconciledAt, reconciledBy, sanityBand } = props;
+  // Soft-fail i18n lookups so the strip works even before keys are added.
+  const lookup = (key: string, fallback: string): string => {
+    try {
+      return props.t(key as never);
+    } catch {
+      return fallback;
+    }
+  };
+  const sourceLabel = lookup('indicatorDetail.trust.source', 'Источник / Source');
+  const lastAuditedLabel = lookup('indicatorDetail.trust.lastAudited', 'Сверено / Audited');
+  const notReconciledLabel = lookup('indicatorDetail.trust.notReconciled', 'Ещё не сверено · Not yet reconciled');
+  const sourceNotRecorded = lookup('indicatorDetail.trust.sourceNotRecorded', 'Источник не зафиксирован · Source not recorded');
+
+  const sanityLabel: Record<NonNullable<typeof sanityBand>, string> = {
+    normal: 'normal',
+    low_extreme: 'low extreme',
+    high_extreme: 'high extreme',
+    missing_input: 'missing input',
+    no_band: 'no band',
+  };
+  const sanityTone: Record<NonNullable<typeof sanityBand>, string> = {
+    normal: 'border-[#00D4AA]/40 text-[#00D4AA]/80 bg-[#00D4AA]/5',
+    low_extreme: 'border-[#FF4757]/40 text-[#FF4757]/90 bg-[#FF4757]/5',
+    high_extreme: 'border-[#FF4757]/40 text-[#FF4757]/90 bg-[#FF4757]/5',
+    missing_input: 'border-gray-600/60 text-gray-400 bg-gray-700/15',
+    no_band: 'border-gray-700/60 text-gray-500 bg-gray-800/15',
+  };
+
+  const auditDate = lastReconciledAt
+    ? new Date(lastReconciledAt).toLocaleDateString(undefined, {
+        year: 'numeric', month: 'short', day: '2-digit',
+      })
+    : null;
+
+  return (
+    <div
+      data-testid="trust-audit-strip"
+      className="flex items-start gap-3 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5 text-[10px] text-gray-500 leading-snug flex-wrap"
+    >
+      <div className="flex items-start gap-1 min-w-0 flex-1">
+        <span className="text-gray-600 uppercase tracking-wider shrink-0">
+          {sourceLabel}:
+        </span>
+        <span
+          className={sourceDocument ? 'text-gray-300 font-mono truncate' : 'italic text-gray-600'}
+          title={sourceDocument ?? sourceNotRecorded}
+        >
+          {sourceDocument ?? sourceNotRecorded}
+        </span>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="text-gray-600 uppercase tracking-wider">
+          {lastAuditedLabel}:
+        </span>
+        {auditDate ? (
+          <span className="text-gray-300">
+            {auditDate}
+            {reconciledBy ? <span className="text-gray-600"> · {reconciledBy}</span> : null}
+          </span>
+        ) : (
+          <span className="italic text-gray-600">{notReconciledLabel}</span>
+        )}
+      </div>
+      {sanityBand && sanityBand !== 'no_band' && (
+        <span
+          data-testid="sanity-band-badge"
+          data-sanity-band={sanityBand}
+          className={`uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded border shrink-0 ${sanityTone[sanityBand]}`}
+        >
+          {sanityLabel[sanityBand]}
+        </span>
+      )}
+    </div>
   );
 }
 

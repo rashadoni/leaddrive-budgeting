@@ -53,6 +53,13 @@ export async function GET(
       // slot so the panel-3 badge renders without a second request.
       valueSource: true,
       confidence: true,
+      // Financial-truth-infra Phase B.2 — provenance + reconciliation
+      // fields exposed to Panel 3 so the user can trace any cell back to
+      // its source xlsx row and see when it was last audited.
+      sourceDocument: true,
+      lastReconciledAt: true,
+      reconciledBy: true,
+      sanityBand: true,
       indicator: {
         select: {
           id: true,
@@ -115,6 +122,13 @@ export async function GET(
     // the Panel-3 materiality badge tooltip.
     materiality,
     materialityNote,
+    // Financial-truth-infra Phase B.2 — provenance + reconciliation.
+    // null when audit-company.cjs hasn't yet visited this IV (legacy /
+    // freshly-computed rows). UI renders "not yet reconciled" copy.
+    sourceDocument: iv.sourceDocument,
+    lastReconciledAt: iv.lastReconciledAt?.toISOString() ?? null,
+    reconciledBy: iv.reconciledBy,
+    sanityBand: iv.sanityBand,
     indicator: iv.indicator,
     company: iv.company,
   })
