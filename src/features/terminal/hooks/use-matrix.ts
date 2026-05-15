@@ -64,6 +64,14 @@ export interface MatrixIndicatorCol {
    */
   direction: MatrixIndicatorDirection;
   unit: string;
+  /**
+   * Phase 7.I — list of industries this indicator targets. Empty array
+   * means universal (applies to every industry — e.g. financial ratios).
+   * HeatMap filters out indicators whose `industries` is non-empty and
+   * doesn't include the active company's industry when the "Material
+   * only" toggle is on. Source: `IndicatorDefinition.industries`.
+   */
+  industries?: string[];
 }
 
 export interface MatrixResponse {

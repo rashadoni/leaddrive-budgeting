@@ -103,9 +103,31 @@ export function HeatMap({ period }: Props) {
   const compactMode = useTerminalStore((s) => s.compactMode);
   // Phase 7.I — sector-aware column ordering: when active company has an
   // industry the materiality matrix knows about, sort indicator columns so
-  // material ones land left + (optional) hide not_material via a toggle.
-  // Persisted in component state so a panel re-render doesn't snap back.
-  const [hideNotMaterial, setHideNotMaterial] = useState(false);
+  // material ones land left and hide `not_material` by default. User can
+  // flip the toggle to show all indicators; the choice persists via
+  // localStorage so reload doesn't snap back.
+  const [hideNotMaterial, setHideNotMaterial] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const stored = window.localStorage.getItem('terminal-hide-not-material-v1');
+      if (stored === '0') return false;
+      if (stored === '1') return true;
+    } catch {
+      // localStorage can throw in private mode — non-fatal.
+    }
+    return true; // default ON (hide indicators not associated with industry)
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        'terminal-hide-not-material-v1',
+        hideNotMaterial ? '1' : '0',
+      );
+    } catch {
+      // non-fatal.
+    }
+  }, [hideNotMaterial]);
 
   // Sub-20: shared `useMatrix()` hook. Module-level cache means
   // HeatMap + ComparePanel + CompanySnapshot all subscribe to ONE
@@ -346,6 +368,24 @@ export function HeatMap({ period }: Props) {
       if (rating === 'low_materiality') return 1;
       return 2; // not_material
     };
+    /**
+     * Phase 7.I sub-fix — an indicator is "associated" with the active
+     * company's industry when EITHER:
+     *   - its `industries` field is empty/missing (universal indicator
+     *     like financial ratios that apply to every sector), OR
+     *   - its `industries` array contains the active industry.
+     * If `industries` is non-empty AND doesn't include the active
+     * industry, the indicator is explicitly NOT relevant to this
+     * company (e.g. HOSP_OCC for an agro_crops entity) and gets hidden
+     * when the "Material only" toggle is on. Drops the indicator-column
+     * count from ~65 down to ~10–15 for a typical single-industry view,
+     * eliminating horizontal scroll.
+     */
+    const isAssociatedWithIndustry = (ind: { industries?: string[] }): boolean => {
+      const tags = ind.industries ?? [];
+      if (tags.length === 0) return true; // universal indicator
+      return tags.includes(activeCompanyIndustry);
+    };
     const enriched = rawIndicators.map((ind) => ({
       ind,
       rating: isMaterialityScoped(ind.code)
@@ -353,7 +393,9 @@ export function HeatMap({ period }: Props) {
         : ('material' as const),
     }));
     const visible = hideNotMaterial
-      ? enriched.filter((e) => e.rating !== 'not_material')
+      ? enriched.filter(
+          (e) => e.rating !== 'not_material' && isAssociatedWithIndustry(e.ind),
+        )
       : enriched;
     visible.sort((a, b) => rankMateriality(a.rating) - rankMateriality(b.rating));
     return visible.map((e) => e.ind);
