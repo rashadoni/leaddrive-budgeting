@@ -244,6 +244,32 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
       const verbose = preview.length > 80 ? preview.slice(0, 77) + '…' : preview;
       return { compact: e.action, verbose };
     }
+    case 'client_reconciliation_submit':
+    case 'client_reconciliation_delete': {
+      // Phase 7.H Feature 5 — client-recon trail. Surface key + currency
+      // + value in the verbose; compact stays at the action name so the
+      // audit feed reads "client_reconciliation_submit  EBITDA 1.5M AZN".
+      const indicatorKey = stringField(m, 'indicatorKey') ?? '?';
+      const value = numberField(m, e.action === 'client_reconciliation_submit' ? 'clientValue' : 'deletedValue');
+      const currency = stringField(m, 'currency') ?? '';
+      const period = stringField(m, 'period') ?? '?';
+      const valueStr = value == null ? '?' : value.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      return {
+        compact: e.action,
+        verbose: `${indicatorKey} ${period} ${valueStr} ${currency}`.trim(),
+      };
+    }
+    case 'company_settings_update': {
+      const code = stringField(m, 'companyCode') ?? '?';
+      const industry = stringField(m, 'industry') ?? 'none';
+      const keys = Array.isArray(m.keysChanged)
+        ? (m.keysChanged as string[]).slice(0, 4).join(', ')
+        : '?';
+      return {
+        compact: e.action,
+        verbose: `${code} (${industry}) — ${keys}`,
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

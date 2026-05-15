@@ -1068,6 +1068,25 @@
         "recentTitle": "Mövcud açıqlamalar",
         "sourceNotePlaceholder": "məs. İllik Davamlılıq Hesabatı 2026, MSCI ESG Reytinqi 2026-01"
       }
+    },
+    "reconciliation": {
+      "title": "Müştəri ilə EBITDA üzləşməsi",
+      "description": "Müştərinin verdiyi EBITDA-nı sistemin hesabladığı dəyərlə müqayisə edin və fərqi audit izi ilə saxlayın.",
+      "systemEbitdaLabel": "Bizim EBITDA",
+      "clientEbitdaLabel": "Müştərinin EBITDA-sı",
+      "varianceLabel": "Fərq",
+      "period": "Dövr (YYYY, YYYY-QN, YYYY-MM)",
+      "clientValue": "Müştərinin dəyəri",
+      "currency": "Valyuta",
+      "note": "Qeyd (məcburi deyil)",
+      "notePlaceholder": "Rəqəm haradan gəlib: zəng, e-poçt, üzləşmə iş-vərəqi və s.",
+      "submitButton": "Üzləşməni saxla",
+      "deleteButton": "Sil",
+      "topRowsHeader": "Ən böyük P&L sətirləri — fərqli təsnifatı yoxlayın",
+      "daBadge": "D&A",
+      "noRows": "Bu dövr üçün P&L sətiri yoxdur.",
+      "submittedBy": "Son dəyişiklik: {user}, {at}",
+      "errorInvalidNumber": "Dəyər sonlu rəqəm olmalıdır."
     }
   },
   "onboarding": {

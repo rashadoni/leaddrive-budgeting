@@ -48,6 +48,11 @@ export type FunctionCode =
   | "BREACH" // Phase 7.G Turn CI (E.2d UI) — predictive breach forecasts panel
   | "HELP" // CLI Bloomberg-sweep — opens command-reference modal
   | "PEER" // CLI Tier 2 — multi-company side-by-side comparison (2-5 companies)
+  // Phase 7.I — sector-aware pop-out widgets for agro / food_processing companies.
+  | "AGRO" // AgroDashboard pop-out (yield/sugar/water sparklines + recent ops entries)
+  | "WX" // CommodityTickerPanel pop-out (synonym for PRICE — weather + sugar price)
+  | "PRICE" // CommodityTickerPanel pop-out
+  | "KPI" // AgronomyEntryPanel pop-out (inline OperationalFact form)
 
 export const FUNCTION_CODES: readonly FunctionCode[] = [
   "HOLD",
@@ -68,6 +73,11 @@ export const FUNCTION_CODES: readonly FunctionCode[] = [
   "BREACH",
   "HELP",
   "PEER",
+  // Phase 7.I — agro/sugar pop-out verbs.
+  "AGRO",
+  "WX",
+  "PRICE",
+  "KPI",
 ]
 
 /**
@@ -98,6 +108,13 @@ export const TARGET_REQUIREMENT: Record<FunctionCode, "required" | "optional" | 
   BREACH: "forbidden", // Phase 7.G Turn CI (E.2d UI) — predictive breach panel, org-scoped global
   HELP: "forbidden", // CLI Bloomberg-sweep — global modal, no scope
   PEER: "required", // CLI Tier 2 — comma-separated 2-5 company codes
+  // Phase 7.I — agro/sugar pop-outs are activeCompany-aware (read from store)
+  // so the verb itself takes no target; the popped window pivots when the
+  // user picks a different company in the main window.
+  AGRO: "forbidden",
+  WX: "forbidden",
+  PRICE: "forbidden",
+  KPI: "forbidden",
 }
 
 export type ParsedCommand =
@@ -119,6 +136,12 @@ export type ParsedCommand =
   | { kind: "breach" }
   | { kind: "help" }
   | { kind: "peer"; codes: string[] }
+  // Phase 7.I — agro/sugar widget pop-outs. All four open `/terminal-panel/<kind>`
+  // via window.open(); no parser arg needed.
+  | { kind: "agro" }
+  | { kind: "wx" }
+  | { kind: "price" }
+  | { kind: "kpi" }
 
 export type ParseError = {
   /** Machine code: keep stable for tests + UI categorisation. */
@@ -292,6 +315,14 @@ export function parseCommand(rawInput: string): ParseResult {
       return { ok: true, command: { kind: "help" } }
     case "PEER":
       return { ok: true, command: { kind: "peer", codes: targets } }
+    case "AGRO":
+      return { ok: true, command: { kind: "agro" } }
+    case "WX":
+      return { ok: true, command: { kind: "wx" } }
+    case "PRICE":
+      return { ok: true, command: { kind: "price" } }
+    case "KPI":
+      return { ok: true, command: { kind: "kpi" } }
   }
 }
 
@@ -335,6 +366,10 @@ export function panelForCommand(cmd: ParsedCommand): 1 | 2 | 3 | 4 | null {
     case "breach":
     case "help":
     case "peer":
-      return null // overlay modal — does not steal focus from any panel
+    case "agro":
+    case "wx":
+    case "price":
+    case "kpi":
+      return null // pop-out / overlay modal — does not steal focus from any panel
   }
 }

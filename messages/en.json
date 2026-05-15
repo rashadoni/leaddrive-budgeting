@@ -1068,6 +1068,25 @@
         "recentTitle": "Current disclosures",
         "sourceNotePlaceholder": "e.g. Annual Sustainability Report 2026, MSCI ESG Rating 2026-01"
       }
+    },
+    "reconciliation": {
+      "title": "Client EBITDA reconciliation",
+      "description": "Compare the EBITDA reported by the client against the system-computed value and store the delta with an audit trail.",
+      "systemEbitdaLabel": "Our EBITDA",
+      "clientEbitdaLabel": "Client EBITDA",
+      "varianceLabel": "Variance",
+      "period": "Period (YYYY, YYYY-QN, YYYY-MM)",
+      "clientValue": "Client value",
+      "currency": "Currency",
+      "note": "Note (optional)",
+      "notePlaceholder": "How was this number derived? Call notes, attached email, reconciliation working paper, etc.",
+      "submitButton": "Save reconciliation",
+      "deleteButton": "Delete",
+      "topRowsHeader": "Top P&L contributors — check for misclassification",
+      "daBadge": "D&A",
+      "noRows": "No P&L rows for this period.",
+      "submittedBy": "Last edited by {user} at {at}",
+      "errorInvalidNumber": "Value must be a finite number."
     }
   },
   "onboarding": {

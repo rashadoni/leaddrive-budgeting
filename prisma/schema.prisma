@@ -16,19 +16,19 @@ datasource db {
 // ═══════════════════════════════════════════════════
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  settings  Json     @default("{}")
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  settings      Json     @default("{}")
   // Phase 7.G Turn LXVII (Phase 4.2 — period locking foundation).
   // Shape: `Array<{ period: string; lockedAt: ISO-string; lockedBy: userId; reason?: string }>`.
   // `period` matches the canonical format ("YYYY", "YYYY-Q[1-4]", "YYYY-MM").
   // Mutations on locked periods MUST be rejected by `period-lock.ts:isPeriodLocked()`.
   // Admin-only lock/unlock via Phase 4.2 admin UI (next slice).
   // Default `[]` — no periods locked by default; opt-in per org.
-  lockedPeriods Json @default("[]")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lockedPeriods Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   users                  User[]
   budgetPlans            BudgetPlan[]
@@ -55,50 +55,50 @@ model Organization {
   budgetAssumptions      BudgetAssumption[]
 
   // Phase 7 — Risk & Performance Indicators (FO Holding foundation)
-  companies              Company[]
-  indicatorDefinitions   IndicatorDefinition[]
-  alerts                 Alert[]
-  alertEvents            AlertEvent[]
-  alertRules             AlertRule[]
-  scenarios              Scenario[]
-  importStaging          ImportStaging[]
-  terminalLayouts        UserLayoutPreference[]
-  auditEvents            AuditEvent[]
-  intelItems             IntelItem[]
-  boardDeckNarrations    BoardDeckNarration[]
+  companies             Company[]
+  indicatorDefinitions  IndicatorDefinition[]
+  alerts                Alert[]
+  alertEvents           AlertEvent[]
+  alertRules            AlertRule[]
+  scenarios             Scenario[]
+  importStaging         ImportStaging[]
+  terminalLayouts       UserLayoutPreference[]
+  auditEvents           AuditEvent[]
+  intelItems            IntelItem[]
+  boardDeckNarrations   BoardDeckNarration[]
   // Phase 7.G Turn LXXXXI batch — back-relations for 5 NEW v2 models.
-  aiMapperProposalCache  AIMapperProposalCache[]
-  aiTokenUsage           AITokenUsage[]
-  intelDataPoints        IntelDataPoint[]
-  varianceExplanations   VarianceExplanation[]
-  predictiveBreaches     PredictiveBreach[]
+  aiMapperProposalCache AIMapperProposalCache[]
+  aiTokenUsage          AITokenUsage[]
+  intelDataPoints       IntelDataPoint[]
+  varianceExplanations  VarianceExplanation[]
+  predictiveBreaches    PredictiveBreach[]
 }
 
 model User {
-  id             String    @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  email          String
-  name           String
-  passwordHash   String
-  role           String    @default("viewer")
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email              String
+  name               String
+  passwordHash       String
+  role               String       @default("viewer")
   // Phase 7.F sub-group RBAC. Empty array = full org access (admins,
   // CFO). Non-empty = user can only see these sub-group Company IDs
   // and their operational children. `admin` role bypasses regardless.
-  allowedSubGroupIds String[] @default([])
-  avatar         String?
-  phone          String?
-  department     String?
-  lastLogin      DateTime?
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  allowedSubGroupIds String[]     @default([])
+  avatar             String?
+  phone              String?
+  department         String?
+  lastLogin          DateTime?
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  budgetDeptOwnership BudgetDepartmentOwner[]
-  accounts            Account[]
-  importStagingCreated ImportStaging[]        @relation("ImportStagingCreator")
-  terminalLayouts     UserLayoutPreference[]
-  auditEvents         AuditEvent[]           @relation("AuditEventActor")
+  budgetDeptOwnership  BudgetDepartmentOwner[]
+  accounts             Account[]
+  importStagingCreated ImportStaging[]         @relation("ImportStagingCreator")
+  terminalLayouts      UserLayoutPreference[]
+  auditEvents          AuditEvent[]            @relation("AuditEventActor")
 
   @@unique([organizationId, email])
   @@map("users")
@@ -123,15 +123,15 @@ model User {
 // rows fall back to defaults via `validateLayoutSizes` rather than
 // rendering a half-broken layout.
 model UserLayoutPreference {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name           String   // "morning brief", "audit", etc.
-  sizes          Json     // see jsdoc above
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String // "morning brief", "audit", etc.
+  sizes          Json // see jsdoc above
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   // Per-user uniqueness on (userId, name) — overwriting an existing
   // name is the upsert path the API uses.
@@ -197,19 +197,19 @@ model CurrencyRateHistory {
 // ═══════════════════════════════════════════════════
 
 model AccountingIntegration {
-  id              String   @id @default(cuid())
+  id              String             @id @default(cuid())
   organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization    Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   provider        String
   name            String
-  config          Json     @default("{}")
-  categoryMapping Json     @default("{}")
-  isActive        Boolean  @default(true)
+  config          Json               @default("{}")
+  categoryMapping Json               @default("{}")
+  isActive        Boolean            @default(true)
   lastSyncAt      DateTime?
   lastSyncStatus  String?
   lastSyncError   String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
   imports         AccountingImport[]
 
   @@index([organizationId])
@@ -217,21 +217,21 @@ model AccountingIntegration {
 }
 
 model AccountingImport {
-  id              String                 @id @default(cuid())
-  organizationId  String
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  integrationId   String?
-  integration     AccountingIntegration? @relation(fields: [integrationId], references: [id])
-  planId          String
-  plan            BudgetPlan             @relation(fields: [planId], references: [id], onDelete: Cascade)
-  fileName        String?
-  importType      String
-  status          String   @default("pending")
-  totalRows       Int      @default(0)
-  matchedRows     Int      @default(0)
-  unmatchedRows   Int      @default(0)
-  errors          Json?
-  createdAt       DateTime @default(now())
+  id             String                 @id @default(cuid())
+  organizationId String
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  integrationId  String?
+  integration    AccountingIntegration? @relation(fields: [integrationId], references: [id])
+  planId         String
+  plan           BudgetPlan             @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fileName       String?
+  importType     String
+  status         String                 @default("pending")
+  totalRows      Int                    @default(0)
+  matchedRows    Int                    @default(0)
+  unmatchedRows  Int                    @default(0)
+  errors         Json?
+  createdAt      DateTime               @default(now())
 
   @@index([organizationId])
   @@index([planId])
@@ -264,26 +264,26 @@ model RollingForecastMonth {
 // ═══════════════════════════════════════════════════
 
 model CashFlowEntry {
-  id             String       @id @default(cuid())
+  id             String          @id @default(cuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   year           Int
   month          Int
   entryType      String
   source         String
   sourceId       String?
   amount         Float
-  currencyCode   String       @default("AZN")
+  currencyCode   String          @default("AZN")
   description    String?
   paymentDate    DateTime?
-  isProjected    Boolean      @default(true)
-  activityType   String       @default("operating")
+  isProjected    Boolean         @default(true)
+  activityType   String          @default("operating")
   category       String?
   accountId      String?
   account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   counterpartyId String?
   plannedAmount  Float?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime        @default(now())
 
   @@index([organizationId, year, month])
   @@index([organizationId, activityType])
@@ -436,15 +436,15 @@ model BudgetPlan {
 }
 
 model BudgetLine {
-  id             String              @id @default(cuid())
+  id             String            @id @default(cuid())
   organizationId String
   planId         String
-  plan           BudgetPlan          @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan           BudgetPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
   category       String
   department     String?
-  lineType       String              @default("expense")
+  lineType       String            @default("expense")
   lineSubtype    String?
-  plannedAmount  Float               @default(0)
+  plannedAmount  Float             @default(0)
   forecastAmount Float?
   unitPrice      Float?
   unitCost       Float?
@@ -456,31 +456,31 @@ model BudgetLine {
   // of literal imports (xlsx-sourced AZMADE BudgetLines have explicit
   // plannedAmount values that were silently zeroed by getEffectivePlanned
   // when the dynamic-source side returned 0).
-  isAutoPlanned  Boolean             @default(false)
-  isAutoActual   Boolean             @default(false)
+  isAutoPlanned  Boolean           @default(false)
+  isAutoActual   Boolean           @default(false)
   costTypeId     String?
-  costType       BudgetCostType?     @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
+  costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
   departmentId   String?
-  budgetDept     BudgetDepartment?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   // Optional FK to the Chart of Accounts entry. Phase 2.1 adds this alongside
   // the legacy `category`/`department` strings so new imports can join against
   // ChartOfAccount; existing rows keep working via the string fallback until
   // the backfill script runs.
   accountId      String?
-  account        ChartOfAccount?     @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  account        ChartOfAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
   // Phase 7 — Risk & Performance Indicators: every BudgetLine belongs to an
   // operational Company (level 2) under a sub-group (level 1) under FO Holding
   // (Organization). Nullable for backward compat; backfilled at 7.A end.
   companyId      String?
-  company        Company?            @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  vatIncluded    Boolean             @default(false)
+  company        Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  vatIncluded    Boolean           @default(false)
   vatRate        Float?
   amountExVat    Float?
   currencyCode   String?
   exchangeRate   Float?
   originalAmount Float?
   notes          String?
-  sortOrder      Int                 @default(0)
+  sortOrder      Int               @default(0)
   // Phase 7.G Turn XL (Phase A.1) — explicit 0-indexed month for BudgetLine
   // rows. 0=Jan..11=Dec. Nullable for legacy/annual/rollup-derived rows
   // (resolvers handle null defensively per `recompute.ts:107`). All NEW
@@ -491,8 +491,8 @@ model BudgetLine {
   // permission, same boundary as Turn XXXIX currencyCode backfill).
   monthIndex     Int?
   parentId       String?
-  parent         BudgetLine?         @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
-  children       BudgetLine[]        @relation("LineChildren")
+  parent         BudgetLine?       @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children       BudgetLine[]      @relation("LineChildren")
 
   @@index([organizationId])
   @@index([planId])
@@ -713,10 +713,10 @@ model BudgetApprovalComment {
 // and admin only ever READS (not queries) the proposedChange.
 
 enum ApprovalRequestStatus {
-  pending          // initial state on POST
-  approved         // CFO approved + change applied
-  rejected         // CFO rejected (no change)
-  cancelled        // requester withdrew before review
+  pending // initial state on POST
+  approved // CFO approved + change applied
+  rejected // CFO rejected (no change)
+  cancelled // requester withdrew before review
 }
 
 enum ApprovalRequestType {
@@ -726,38 +726,38 @@ enum ApprovalRequestType {
   budget_actual_create
   budget_actual_update
   budget_actual_delete
-  period_unlock      // request to remove a period lock for one specific change
+  period_unlock // request to remove a period lock for one specific change
 }
 
 model ApprovalRequest {
-  id              String                  @id @default(cuid())
-  organizationId  String
-  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String                @id @default(cuid())
+  organizationId String
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   // planId is optional — period_unlock requests aren't plan-scoped.
-  planId          String?
-  plan            BudgetPlan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
-  requestType     ApprovalRequestType
+  planId         String?
+  plan           BudgetPlan?           @relation(fields: [planId], references: [id], onDelete: SetNull)
+  requestType    ApprovalRequestType
   // For update/delete requests: existing entity id. null for create / period_unlock.
-  targetType      String?                 // "BudgetLine" | "BudgetActual" | "Period"
-  targetId        String?
+  targetType     String? // "BudgetLine" | "BudgetActual" | "Period"
+  targetId       String?
   // What the requester wants to happen. Shape varies per requestType (see comment above).
-  proposedChange  Json
-  reason          String?                 // ≤500 chars
-  status          ApprovalRequestStatus   @default(pending)
+  proposedChange Json
+  reason         String? // ≤500 chars
+  status         ApprovalRequestStatus @default(pending)
 
   // Request metadata
-  requestedBy     String                  // userId
-  requestedAt     DateTime                @default(now())
+  requestedBy String // userId
+  requestedAt DateTime @default(now())
 
   // Review metadata (set when admin approves/rejects)
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  reviewComment   String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  reviewComment String?
 
   // For approve path: when the change was actually materialized.
   // Distinct from reviewedAt because v1 applies inline; future async
   // queue would split decision-time from apply-time.
-  appliedAt       DateTime?
+  appliedAt DateTime?
 
   @@index([organizationId, status, requestedAt])
   @@index([planId])
@@ -773,14 +773,14 @@ model ChartOfAccount {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code           String       // "601-01-02", "711-02-01"
-  name           String       // primary name
-  nameAz         String?      // Azerbaijani
-  nameRu         String?      // Russian
-  nameEn         String?      // English
-  parentCode     String?      // "601-01" → parent of "601-01-02"
-  accountType    String       // revenue | expense | cogs | asset | liability | equity
-  category       String?      // sales | staff | utilities | services | depreciation
+  code           String // "601-01-02", "711-02-01"
+  name           String // primary name
+  nameAz         String? // Azerbaijani
+  nameRu         String? // Russian
+  nameEn         String? // English
+  parentCode     String? // "601-01" → parent of "601-01-02"
+  accountType    String // revenue | expense | cogs | asset | liability | equity
+  category       String? // sales | staff | utilities | services | depreciation
   // Phase 7.G Turn LXXV (Phase 5.1 — ChartOfAccount.role refactor).
   // Finer-grained P&L bucket than `accountType`; canonical source of truth
   // for "which P&L line does this account hit". Replaces inline
@@ -814,18 +814,18 @@ model ChartOfAccount {
 // ═══════════════════════════════════════════════════
 
 model ProductLine {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code           String       // "MHB", "LIME_BURNT"
-  name           String
-  unit           String       // "m3", "ton", "ədəd"
-  revenueAccountCode String?  // links to ChartOfAccount.code
-  cogsAccountCode    String?  // links to ChartOfAccount.code
-  sortOrder      Int          @default(0)
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code               String // "MHB", "LIME_BURNT"
+  name               String
+  unit               String // "m3", "ton", "ədəd"
+  revenueAccountCode String? // links to ChartOfAccount.code
+  cogsAccountCode    String? // links to ChartOfAccount.code
+  sortOrder          Int          @default(0)
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   salesBudgetLines SalesBudgetLine[]
   costComponents   CostComponent[]
@@ -850,7 +850,7 @@ model SalesBudgetLine {
   productLineId  String
   productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
   year           Int
-  month          Int          // 1-12
+  month          Int // 1-12
   quantity       Float        @default(0)
   unitPrice      Float        @default(0)
   amount         Float        @default(0) // quantity * unitPrice
@@ -874,7 +874,7 @@ model CostComponent {
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   productLineId   String
   productLine     ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
-  name            String       // "Qum", "Sement", "Əhəng"
+  name            String // "Qum", "Sement", "Əhəng"
   unit            String
   consumptionRate Float        @default(0) // norm per unit of product
   unitCost        Float        @default(0)
@@ -889,23 +889,23 @@ model CostComponent {
 }
 
 model COGSBudgetLine {
-  id             String       @id @default(cuid())
+  id             String          @id @default(cuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
-  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan           BudgetPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   productLineId  String
-  productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
-  accountCode    String?      // "701-01-02"
+  productLine    ProductLine     @relation(fields: [productLineId], references: [id], onDelete: Cascade)
+  accountCode    String? // "701-01-02"
   accountId      String?
   account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   year           Int
   month          Int
-  productionQty  Float        @default(0)
-  totalCost      Float        @default(0)
+  productionQty  Float           @default(0)
+  totalCost      Float           @default(0)
   notes          String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@unique([planId, productLineId, year, month])
   @@index([organizationId])
@@ -922,16 +922,16 @@ model COGSCostDetail {
   plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
   productLineId  String
   productLine    ProductLine  @relation(fields: [productLineId], references: [id], onDelete: Cascade)
-  costType       String       // "raw_material" | "indirect" | "production" | "unit_cost"
-  label          String       // "Qum", "703-104 istehsal xərci", "Maqnotoloq", etc.
-  accountCode    String?      // "703-104"
-  stage          String?      // Multi-stage lime: "partladılmış" | "yararlı" | "yanmış"
+  costType       String // "raw_material" | "indirect" | "production" | "unit_cost"
+  label          String // "Qum", "703-104 istehsal xərci", "Maqnotoloq", etc.
+  accountCode    String? // "703-104"
+  stage          String? // Multi-stage lime: "partladılmış" | "yararlı" | "yanmış"
   year           Int
   month          Int
   amount         Float        @default(0)
-  quantity       Float?       // e.g. 0.49 KG
-  unitPrice      Float?       // e.g. 11.3 AZN/KG
-  unit           String?      // "KG", "TON"
+  quantity       Float? // e.g. 0.49 KG
+  unitPrice      Float? // e.g. 11.3 AZN/KG
+  unit           String? // "KG", "TON"
   sortOrder      Int          @default(0)
   createdAt      DateTime     @default(now())
 
@@ -946,23 +946,23 @@ model COGSCostDetail {
 // ═══════════════════════════════════════════════════
 
 model BalanceSheetLine {
-  id             String       @id @default(cuid())
+  id             String          @id @default(cuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
-  plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan           BudgetPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   accountCode    String
   accountName    String
   accountId      String?
   account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
-  lineType       String       // asset | liability | equity
-  subType        String?      // current_asset | fixed_asset | current_liability | long_term
+  lineType       String // asset | liability | equity
+  subType        String? // current_asset | fixed_asset | current_liability | long_term
   year           Int
   month          Int
-  amount         Float        @default(0)
+  amount         Float           @default(0)
   notes          String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   @@index([organizationId])
   @@index([planId])
@@ -981,12 +981,12 @@ model BudgetAssumption {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
   plan           BudgetPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
-  category       String       // transport | food | utilities | mining | repair | marketing
+  category       String // transport | food | utilities | mining | repair | marketing
   key            String
   label          String
   value          Float        @default(0)
-  unit           String?      // "AZN", "%", "ton"
-  period         String?      // monthly | annual | per_unit
+  unit           String? // "AZN", "%", "ton"
+  period         String? // monthly | annual | per_unit
   notes          String?
   sortOrder      Int          @default(0)
   createdAt      DateTime     @default(now())
@@ -999,25 +999,25 @@ model BudgetAssumption {
 }
 
 model SavedBudgetReport {
-  id              String   @id @default(cuid())
-  organizationId  String
-  createdBy       String?
-  name            String
-  description     String?
-  entityType      String   // budgetLines, budgetActuals, salesBudget, cogsBudget, balanceSheet, cashFlow, forecasts, assumptions
-  planId          String?
-  columns         Json     // [{ field, label?, aggregate? }]
-  filters         Json     @default("[]") // [{ field, op, value }]
-  groupBy         String?
-  periodGroupBy   String?  // month | quarter | year
-  sortBy          String?
-  sortOrder       String   @default("desc")
-  chartType       String   @default("table") // table, bar, line, pie, area, stacked_bar
-  chartConfig     Json?
-  computedFields  Json?    // [variance, execution_pct, margin_pct]
-  isShared        Boolean  @default(false)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  createdBy      String?
+  name           String
+  description    String?
+  entityType     String // budgetLines, budgetActuals, salesBudget, cogsBudget, balanceSheet, cashFlow, forecasts, assumptions
+  planId         String?
+  columns        Json // [{ field, label?, aggregate? }]
+  filters        Json     @default("[]") // [{ field, op, value }]
+  groupBy        String?
+  periodGroupBy  String? // month | quarter | year
+  sortBy         String?
+  sortOrder      String   @default("desc")
+  chartType      String   @default("table") // table, bar, line, pie, area, stacked_bar
+  chartConfig    Json?
+  computedFields Json? // [variance, execution_pct, margin_pct]
+  isShared       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, planId])
@@ -1040,12 +1040,12 @@ model Company {
   parentCompanyId  String?
   parent           Company?     @relation("CompanyHierarchy", fields: [parentCompanyId], references: [id], onDelete: SetNull)
   children         Company[]    @relation("CompanyHierarchy")
-  code             String       // short mnemonic for command bar: "HLTN", "TABIA", "AAC"
+  code             String // short mnemonic for command bar: "HLTN", "TABIA", "AAC"
   name             String
   nameAz           String?
   nameRu           String?
   nameEn           String?
-  industry         String?      // FK on Industry.code when set; application layer enforces "null for level=1, required for level=2"
+  industry         String? // FK on Industry.code when set; application layer enforces "null for level=1, required for level=2"
   industryRef      Industry?    @relation(fields: [industry], references: [code], onDelete: Restrict, onUpdate: Cascade)
   level            Int          @default(2) // 1 = sub-group, 2 = operational
   // Phase 7.E foundation — cost-centre role taxonomy.
@@ -1061,24 +1061,26 @@ model Company {
   // Phase 7.E hardening (Turn 10): String → enum so typos like "Admin"
   // can't silently bypass the operational filter.
   role             CompanyRole  @default(operational)
-  country          String?      // ISO-2
+  country          String? // ISO-2
   baseCurrencyCode String?
-  settings         Json?        // per-industry config: { totalRooms?, feedSpecies?, ... }
+  settings         Json? // per-industry config: { totalRooms?, feedSpecies?, ... }
   isActive         Boolean      @default(true)
   sortOrder        Int          @default(0)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  budgetLines       BudgetLine[]
-  budgetActuals     BudgetActual[]
-  bookings          Booking[]
-  operationalFacts  OperationalFact[]
-  indicatorValues   IndicatorValue[]
+  budgetLines           BudgetLine[]
+  budgetActuals         BudgetActual[]
+  bookings              Booking[]
+  operationalFacts      OperationalFact[]
+  indicatorValues       IndicatorValue[]
   // Phase 7.H F4.v2.3 — manual disclosure overrides for modeled-generic
   // ESG indicators. See `IndicatorDisclosure` model below.
-  indicatorDisclosures IndicatorDisclosure[]
-  companyIndicators CompanyIndicator[]
-  importStaging     ImportStaging[]
+  indicatorDisclosures  IndicatorDisclosure[]
+  // Phase 7.H Feature 5 — client-reported reconciliation reference values.
+  clientReconciliations ClientReconciliation[]
+  companyIndicators     CompanyIndicator[]
+  importStaging         ImportStaging[]
 
   @@unique([organizationId, code])
   @@index([organizationId, parentCompanyId, industry])
@@ -1099,15 +1101,15 @@ enum CompanyRole {
 // Industry — seed taxonomy (hospitality, agro_crops, poultry, ...).
 // Shared catalog, not org-scoped. Seeded at 7.A via scripts/seed-industries.ts.
 model Industry {
-  code      String   @id          // "hospitality" | "food_processing" | "agro_crops" | ...
+  code      String    @id // "hospitality" | "food_processing" | "agro_crops" | ...
   companies Company[]
   nameEn    String
   nameAz    String?
   nameRu    String?
-  category  String?              // optional UI grouping ("agro_umbrella", etc.)
-  sortOrder Int      @default(0)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  category  String? // optional UI grouping ("agro_umbrella", etc.)
+  sortOrder Int       @default(0)
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
 
   @@map("industries")
 }
@@ -1138,34 +1140,34 @@ enum IndicatorValueSource {
 // organizationId = null  → global seed (shipped with the product)
 // organizationId = set   → org-specific override
 model IndicatorDefinition {
-  id                  String        @id @default(cuid())
-  organizationId      String?
-  organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code                String                 // "HOSP_FX_EXPOSURE"
-  nameEn              String
-  nameAz              String?
-  nameRu              String?
-  category            String                 // "fx"|"commodity"|"operational"|"geopolitical"|"macro"|"regulatory"|"composite"|"esg"
-  industries          String[]               // which industries this indicator applies to (Postgres text[])
-  unit                String                 // "AZN"|"%"|"ratio"|"nights"|...
-  direction           String                 // "higher_better"|"lower_better"|"band"
-  formula             String                 // expr-eval expression (see src/lib/risk/formula-engine.ts)
-  sparklineFormula    String?                // optional variant evaluated per period for sparkline
-  thresholds          Json                   // { green:{op,value}, amber:{op,value}, red:{op,value} }
-  hintTemplateEn      String?
-  hintTemplateAz      String?
-  hintTemplateRu      String?
-  requiredInputs      String[]               // ["budgetLine","booking","currencyRate","operationalFact",...]
+  id                 String               @id @default(cuid())
+  organizationId     String?
+  organization       Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code               String // "HOSP_FX_EXPOSURE"
+  nameEn             String
+  nameAz             String?
+  nameRu             String?
+  category           String // "fx"|"commodity"|"operational"|"geopolitical"|"macro"|"regulatory"|"composite"|"esg"
+  industries         String[] // which industries this indicator applies to (Postgres text[])
+  unit               String // "AZN"|"%"|"ratio"|"nights"|...
+  direction          String // "higher_better"|"lower_better"|"band"
+  formula            String // expr-eval expression (see src/lib/risk/formula-engine.ts)
+  sparklineFormula   String? // optional variant evaluated per period for sparkline
+  thresholds         Json // { green:{op,value}, amber:{op,value}, red:{op,value} }
+  hintTemplateEn     String?
+  hintTemplateAz     String?
+  hintTemplateRu     String?
+  requiredInputs     String[] // ["budgetLine","booking","currencyRate","operationalFact",...]
   // Phase 7.H F4.v2.1 — default provenance tag stamped on every IV
   // produced from this definition. ESG v1 placeholders use
   // `modeled_generic`; macro indicators (e.g. IND_GOV_CLIMATE_SCORE) use
   // `macro`; financial / operational defaults to `computed`. Optional at
   // the seed level — null falls back to `computed` in recompute.
-  defaultValueSource  IndicatorValueSource @default(computed)
-  isActive            Boolean  @default(true)
-  sortOrder           Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  defaultValueSource IndicatorValueSource @default(computed)
+  isActive           Boolean              @default(true)
+  sortOrder          Int                  @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   values            IndicatorValue[]
   companyIndicators CompanyIndicator[]
@@ -1197,17 +1199,17 @@ model CompanyIndicator {
 // IndicatorValue — computed cache. Populated on-demand by src/lib/risk/compute.ts
 // (dedicated cron scheduling comes later, Phase 6 infra).
 model IndicatorValue {
-  id             String              @id @default(cuid())
+  id             String               @id @default(cuid())
   organizationId String
   companyId      String
-  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company        Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   indicatorId    String
-  indicator      IndicatorDefinition @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
-  period         String                              // "2026-04" | "2026-Q2" | "2026"
+  indicator      IndicatorDefinition  @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  period         String // "2026-04" | "2026-Q2" | "2026"
   value          Float
-  status         String                              // "green"|"amber"|"red"|"unknown"
-  sparkline      Json                                // (number|null)[] — 12-slot trailing-month series; nulls = evaluation gap (Bloomberg "no-tick")
-  inputs         Json                                // snapshot of resolved vars (for audit/drill-down)
+  status         String // "green"|"amber"|"red"|"unknown"
+  sparkline      Json // (number|null)[] — 12-slot trailing-month series; nulls = evaluation gap (Bloomberg "no-tick")
+  inputs         Json // snapshot of resolved vars (for audit/drill-down)
   // Phase 7.H F4.v2.1 — provenance stamp inherited from
   // `IndicatorDefinition.defaultValueSource` at upsert time. Drives the
   // UI provenance badge (panel 3) + heatmap-cell modeled marker, and is
@@ -1220,7 +1222,7 @@ model IndicatorValue {
   // when an industry-specific factor is in play. Null until that phase
   // ships; UI shows badge without confidence sub-label until then.
   confidence     String?
-  computedAt     DateTime            @default(now())
+  computedAt     DateTime             @default(now())
 
   @@unique([companyId, indicatorId, period])
   @@index([organizationId, companyId, period])
@@ -1251,8 +1253,8 @@ model IndicatorDisclosure {
   period         String
   value          Float
   unit           String
-  sourceNote     String?  // free-form provenance note from the entering user
-  enteredBy      String   // User.id of the person who entered the row
+  sourceNote     String? // free-form provenance note from the entering user
+  enteredBy      String // User.id of the person who entered the row
   enteredAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1260,6 +1262,34 @@ model IndicatorDisclosure {
   @@index([organizationId, companyId])
   @@index([indicatorCode])
   @@map("indicator_disclosures")
+}
+
+// Phase 7.H Feature 5 — client-reported reference values for finance
+// reconciliation. Unlike IndicatorDisclosure (which OVERRIDES the
+// computed indicator value via `valueSource='disclosed'`), this table
+// stores a PARALLEL reference number — what the client said the metric
+// is in their own books — so the P&L screen can show variance without
+// the recompute pipeline touching it. v1 ships EBITDA-only; the
+// `indicatorKey` is a string so NET_MARGIN / ROE / NET_DEBT can be
+// added later without a schema migration. Period format matches
+// IndicatorValue grammar ("YYYY" | "YYYY-QN" | "YYYY-MM").
+model ClientReconciliation {
+  id             String   @id @default(cuid())
+  organizationId String
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  period         String
+  indicatorKey   String // v1: "EBITDA"; future: "NET_MARGIN", "ROE", "NET_DEBT"
+  value          Float // can be negative (loss case)
+  currency       String   @default("AZN") // ISO 4217
+  note           String? // free-form provenance note
+  submittedById  String? // User.id; null after user deletion (SetNull) to preserve trail
+  submittedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([companyId, period, indicatorKey])
+  @@index([organizationId, companyId, period])
+  @@map("client_reconciliations")
 }
 
 // Booking — hospitality operational data. Feeds RevPAR, source-country HHI, etc.
@@ -1275,9 +1305,9 @@ model Booking {
   revenue        Float
   currencyCode   String?
   exchangeRate   Float?
-  sourceCountry  String                  // ISO-2 country code
+  sourceCountry  String // ISO-2 country code
   roomsBooked    Int?
-  channel        String?                 // "direct"|"ota"|"corporate"|...
+  channel        String? // "direct"|"ota"|"corporate"|...
   isCancelled    Boolean  @default(false)
   createdAt      DateTime @default(now())
 
@@ -1294,11 +1324,11 @@ model OperationalFact {
   organizationId String
   companyId      String
   company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  metric         String                  // "broiler_weight_avg_kg", "yield_per_hectare", ...
+  metric         String // "broiler_weight_avg_kg", "yield_per_hectare", ...
   date           DateTime
   value          Float
   unit           String?
-  source         String?                 // "manual" | "import" | "api"
+  source         String? // "manual" | "import" | "api"
   createdAt      DateTime @default(now())
 
   @@index([companyId, date, metric])
@@ -1311,9 +1341,9 @@ model Alert {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  type           String                       // "indicator"|"composite"|"scenario"|"brief"
-  sourceRef      Json                         // { companyId?, indicatorId?, ruleId? }
-  severity       String                       // "info"|"warn"|"critical"
+  type           String // "indicator"|"composite"|"scenario"|"brief"
+  sourceRef      Json // { companyId?, indicatorId?, ruleId? }
+  severity       String // "info"|"warn"|"critical"
   title          String
   message        String
   triggeredAt    DateTime     @default(now())
@@ -1338,19 +1368,19 @@ model Alert {
 // keeping single-row reads cheap. `messageParams` stored as Json blob to keep
 // the rule-shape contract loose (per AlertRule's deferred discriminated-union).
 model AlertEvent {
-  id                  String       @id @default(cuid())
-  organizationId      String
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  period              String                   // matches IndicatorValue.period (e.g. "2025" or "2025-04")
-  ruleId              String                   // matches AlertMatch.ruleId (DEFAULT_ALERT_RULES[].id)
-  ruleName            String
-  severity            String                   // "critical"|"warning"|"info"
-  message             String                   // EN template-output (always populated for non-React/CLI consumers)
-  messageKey          String                   // i18n key (terminal.alerts.messages.<ruleId>)
-  messageParams       Json                     // ICU placeholder values
-  affectedCompanyIds  String[]                 // company IDs in the matched set
-  affectedIndicatorCodes String[] @default([]) // indicator codes (when applicable)
-  emittedAt           DateTime     @default(now())
+  id                     String       @id @default(cuid())
+  organizationId         String
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period                 String // matches IndicatorValue.period (e.g. "2025" or "2025-04")
+  ruleId                 String // matches AlertMatch.ruleId (DEFAULT_ALERT_RULES[].id)
+  ruleName               String
+  severity               String // "critical"|"warning"|"info"
+  message                String // EN template-output (always populated for non-React/CLI consumers)
+  messageKey             String // i18n key (terminal.alerts.messages.<ruleId>)
+  messageParams          Json // ICU placeholder values
+  affectedCompanyIds     String[] // company IDs in the matched set
+  affectedIndicatorCodes String[]     @default([]) // indicator codes (when applicable)
+  emittedAt              DateTime     @default(now())
 
   @@index([organizationId, period, emittedAt])
   @@index([organizationId, ruleId, emittedAt])
@@ -1369,24 +1399,24 @@ model AlertEvent {
 // Same SDK + auth pattern as `/api/budgeting/ai-analytics` route.
 // No vendor-specific keys — reuses the project's single ANTHROPIC_API_KEY.
 model IntelItem {
-  id              String       @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  title           String
-  summary         String                              // 1-3 sentence LLM-generated summary
-  url             String                              // canonical source URL
-  urlHash         String                              // sha256 of URL for dedup
-  sourceLabel     String                              // human-readable source name (e.g. "Reuters", "Bloomberg")
-  relevanceScore  Float                               // 0..1; LLM-scored relative to org's industry/company tags
-  industryTags    String[]      @default([])          // e.g. ["industrial","hospitality"]
-  companyTags     String[]      @default([])          // company codes mentioned in the article
-  publishedAt     DateTime?                           // article publish date if extractable
-  fetchedAt       DateTime      @default(now())
-  isPinned        Boolean       @default(false)
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title          String
+  summary        String // 1-3 sentence LLM-generated summary
+  url            String // canonical source URL
+  urlHash        String // sha256 of URL for dedup
+  sourceLabel    String // human-readable source name (e.g. "Reuters", "Bloomberg")
+  relevanceScore Float // 0..1; LLM-scored relative to org's industry/company tags
+  industryTags   String[]     @default([]) // e.g. ["industrial","hospitality"]
+  companyTags    String[]     @default([]) // company codes mentioned in the article
+  publishedAt    DateTime? // article publish date if extractable
+  fetchedAt      DateTime     @default(now())
+  isPinned       Boolean      @default(false)
   // Phase 7.H Feature B — LLM-scored sentiment in [-1, +1] range.
   // NULL = unscored (legacy rows pre-Feature B, or batch failures).
   // Resolver `news.sentimentRolling30d` skips NULLs when averaging.
-  sentimentScore  Float?
+  sentimentScore Float?
   // Architect Turn-XLII Suggestion: `dismissedBy String[]` is fine for
   // Phase D.1-D.3 volumes (<1K dismissals/org). At Phase D.5+ scale
   // (thousands of users × thousands of items), migrate to a
@@ -1394,15 +1424,15 @@ model IntelItem {
   // `(userId, intelItemId)` unique index — enables `WHERE NOT EXISTS(...)`
   // with a B-tree index instead of GIN array contains. Migration path:
   // backfill from existing arrays, then drop the column.
-  dismissedBy     String[]      @default([])          // user IDs that dismissed this item
+  dismissedBy    String[]     @default([]) // user IDs that dismissed this item
 
-  @@index([organizationId, fetchedAt(sort: Desc)])
-  @@index([organizationId, relevanceScore(sort: Desc)])
   // intel_items_sentiment_lookup_idx is a partial index (WHERE
   // sentimentScore IS NOT NULL) created via raw SQL migration; Prisma's
   // schema language can't model partial indexes today. Visible to db
   // pull but absent from diff.
-  @@unique([organizationId, urlHash])                  // hash-dedup within org × 7-day window enforced at write time
+  @@unique([organizationId, urlHash]) // hash-dedup within org × 7-day window enforced at write time
+  @@index([organizationId, fetchedAt(sort: Desc)])
+  @@index([organizationId, relevanceScore(sort: Desc)])
   @@map("intel_items")
 }
 
@@ -1418,19 +1448,19 @@ model IntelItem {
 // regenerates anything older even if hash matches — guards against
 // stale narrative on a slow-changing snapshot).
 model BoardDeckNarration {
-  id              String       @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  period          String                                  // YYYY or YYYY-MM (mirrors IndicatorValue.period)
-  snapshotHash    String                                  // sha256 over BoardSnapshot's load-bearing fields
-  language        String                                  // "en" | "ru" | "az"
-  headline        String
-  paragraphs      String[]                                // length 3 (validateAndShape contract)
-  modelName       String
-  promptVersion   String
-  tokensIn        Int          @default(0)
-  tokensOut       Int          @default(0)
-  generatedAt     DateTime     @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period         String // YYYY or YYYY-MM (mirrors IndicatorValue.period)
+  snapshotHash   String // sha256 over BoardSnapshot's load-bearing fields
+  language       String // "en" | "ru" | "az"
+  headline       String
+  paragraphs     String[] // length 3 (validateAndShape contract)
+  modelName      String
+  promptVersion  String
+  tokensIn       Int          @default(0)
+  tokensOut      Int          @default(0)
+  generatedAt    DateTime     @default(now())
 
   @@unique([organizationId, period, snapshotHash, language])
   @@index([organizationId, period])
@@ -1445,7 +1475,7 @@ model AlertRule {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   description    String?
-  condition      Json                         // rule DSL
+  condition      Json // rule DSL
   severity       String       @default("warn")
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
@@ -1461,12 +1491,12 @@ model Scenario {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  code           String                       // "IRAN_HIGH", "AZN_DEVAL_20", ...
+  code           String // "IRAN_HIGH", "AZN_DEVAL_20", ...
   nameEn         String
   nameAz         String?
   nameRu         String?
   description    String?
-  overrides      Json                         // { fx_rates:{USD:1.9}, booking_drop_pct:{IR:80}, ... }
+  overrides      Json // { fx_rates:{USD:1.9}, booking_drop_pct:{IR:80}, ... }
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -1505,8 +1535,8 @@ model ImportStaging {
   companyId      String
   company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
   status         ImportStagingStatus @default(pending)
-  sourceFile     String       // original filename for audit trail
-  sourceSheet    String       // sheet name within workbook
+  sourceFile     String // original filename for audit trail
+  sourceSheet    String // sheet name within workbook
   // Snapshot of the AI mapper proposal (MappingProposal shape from
   // src/lib/onboarding/ai-mapper/types.ts). Never mutate after creation —
   // user overrides are stored separately in `userOverrides`.
@@ -1520,11 +1550,11 @@ model ImportStaging {
   xlsxTempPath   String?
   // Audit fields. createdBy is the User.id who triggered /analyze.
   createdBy      String
-  creator        User         @relation("ImportStagingCreator", fields: [createdBy], references: [id])
-  createdAt      DateTime     @default(now())
-  expiresAt      DateTime     // /apply rejects when now() > expiresAt
-  appliedAt      DateTime?    // null until /apply succeeds
-  errorMessage   String?      // populated when status transitions to discarded with error
+  creator        User                @relation("ImportStagingCreator", fields: [createdBy], references: [id])
+  createdAt      DateTime            @default(now())
+  expiresAt      DateTime // /apply rejects when now() > expiresAt
+  appliedAt      DateTime? // null until /apply succeeds
+  errorMessage   String? // populated when status transitions to discarded with error
 
   @@index([organizationId, status])
   @@index([companyId])
@@ -1568,14 +1598,14 @@ model ImportStaging {
 // fallback for callers that need to filter "P&L-only" accounts.
 // ═══════════════════════════════════════════════════
 enum CoARole {
-  revenue        // 601, 611 (top-line) + 602, 603 (contra-revenue, sign-flip at consumer)
-  cogs           // 701
-  opex           // 711, 721
-  finance        // 731 (interest, finance costs)
-  tax_costs      // 741 (pre-EBIT tax-classed costs)
-  non_operating  // 751, 761, 771
-  tax            // 801 (corporate income tax)
-  unknown        // balance-sheet (1xx-5xx) or unrecognized
+  revenue // 601, 611 (top-line) + 602, 603 (contra-revenue, sign-flip at consumer)
+  cogs // 701
+  opex // 711, 721
+  finance // 731 (interest, finance costs)
+  tax_costs // 741 (pre-EBIT tax-classed costs)
+  non_operating // 751, 761, 771
+  tax // 801 (corporate income tax)
+  unknown // balance-sheet (1xx-5xx) or unrecognized
 }
 
 // ═══════════════════════════════════════════════════
@@ -1658,20 +1688,20 @@ model IntelDataPoint {
 // Phase 7.E #2 v2 E.1a — Variance Explainer cache promotion.
 // Promotes `src/lib/risk/explainer-cache.ts` Map → Postgres.
 model VarianceExplanation {
-  id                String       @id @default(cuid())
-  organizationId    String
-  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  indicatorValueId  String
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  indicatorValueId String
   /// EN/RU/AZ
-  language          String
-  promptVersion     String
+  language         String
+  promptVersion    String
   /// sha256 over (indicator, period, value, status, resolved-inputs, errorCode, industry, tags) — value-sensitive
-  snapshotHash      String
+  snapshotHash     String
   /// Full VarianceExplainerOutput (narrative, recommendations, topDrivers, confidence, modelName, promptVersion)
-  output            Json
-  tokensIn          Int
-  tokensOut         Int
-  cachedAt          DateTime     @default(now())
+  output           Json
+  tokensIn         Int
+  tokensOut        Int
+  cachedAt         DateTime     @default(now())
 
   @@unique([organizationId, indicatorValueId, language, promptVersion, snapshotHash])
   @@index([organizationId, indicatorValueId, cachedAt(sort: Desc)])
@@ -1681,31 +1711,31 @@ model VarianceExplanation {
 // Phase 7.E #3 E.2b — predictive breach scanner output.
 // Cross-cell breach forecasts persisted per recompute cycle.
 model PredictiveBreach {
-  id                  String       @id @default(cuid())
-  organizationId      String
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  companyId           String
+  id                 String       @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId          String
   /// Indicator code (not id — denormalised for query speed)
-  indicatorCode       String
+  indicatorCode      String
   /// Period the FORECAST applies to (e.g. "2026-Q4" if scanning from Q3)
-  period              String
+  period             String
   /// 1 = next period, 2 = +2 periods, 3 = +3 periods (max horizon)
-  horizonStep         Int
+  horizonStep        Int
   /// "green"|"amber"|"red"|"unknown" — current actual status
-  currentStatus       String
+  currentStatus      String
   /// "green"|"amber"|"red"|"unknown" — forecast at horizon
-  predictedStatus     String
+  predictedStatus    String
   /// 0..1 LLM/OLS confidence in the forecast
-  forecastConfidence  Float
+  forecastConfidence Float
   /// "low"|"medium"|"high" — discrete band derived from confidence
-  confidenceBand      String
+  confidenceBand     String
   /// Forecast value with 95% CI (margin of error)
-  predictedValue      Float
-  predictedLower      Float?
-  predictedUpper      Float?
+  predictedValue     Float
+  predictedLower     Float?
+  predictedUpper     Float?
   /// Free-form drivers cited by the forecaster (top-3)
-  drivers             Json?
-  computedAt          DateTime     @default(now())
+  drivers            Json?
+  computedAt         DateTime     @default(now())
 
   @@unique([organizationId, period, companyId, indicatorCode, horizonStep])
   @@index([organizationId, period, horizonStep, confidenceBand])
@@ -1713,39 +1743,39 @@ model PredictiveBreach {
 }
 
 enum AuditAction {
-  company_role_change            // Phase 7.E scoring toggle
+  company_role_change // Phase 7.E scoring toggle
   budget_plan_create
   budget_plan_approve
-  import_budget_create           // /api/onboarding/import/budget
-  import_staging_apply           // /api/onboarding/import/staging/[id]/apply
-  import_staging_expired         // lazy-flip pending → expired on read
+  import_budget_create // /api/onboarding/import/budget
+  import_staging_apply // /api/onboarding/import/staging/[id]/apply
+  import_staging_expired // lazy-flip pending → expired on read
   indicator_override_create
   indicator_override_update
   indicator_override_delete
-  ai_variance_explainer_run      // Phase 7.E AI-suite — POST /api/indicators/values/[id]/explain
-  ai_forecast_explainer_run      // Phase C2 v2 — POST /api/indicators/values/[id]/forecast/explain
-  alert_thresholds_update        // Phase 7.E C6 v2 — PATCH /api/organizations/settings (alertThresholds)
-  intel_crawl_run                // Phase 7.G D.2 — POST /api/intel/refresh (AI Web Crawler)
-  ai_board_deck_narration_run    // Phase 7.G E.2 v2 — Board Deck narration cache miss (LLM call)
-  period_lock_add                // Phase 7.G Turn LXX — admin locked a fiscal period (CFO close action)
-  period_lock_remove             // Phase 7.G Turn LXX — admin unlocked a fiscal period (re-open trail)
-  period_lock_blocked_mutation   // Phase 7.G Turn LXX — 423 Locked fired; user attempted to mutate a closed period
+  ai_variance_explainer_run // Phase 7.E AI-suite — POST /api/indicators/values/[id]/explain
+  ai_forecast_explainer_run // Phase C2 v2 — POST /api/indicators/values/[id]/forecast/explain
+  alert_thresholds_update // Phase 7.E C6 v2 — PATCH /api/organizations/settings (alertThresholds)
+  intel_crawl_run // Phase 7.G D.2 — POST /api/intel/refresh (AI Web Crawler)
+  ai_board_deck_narration_run // Phase 7.G E.2 v2 — Board Deck narration cache miss (LLM call)
+  period_lock_add // Phase 7.G Turn LXX — admin locked a fiscal period (CFO close action)
+  period_lock_remove // Phase 7.G Turn LXX — admin unlocked a fiscal period (re-open trail)
+  period_lock_blocked_mutation // Phase 7.G Turn LXX — 423 Locked fired; user attempted to mutate a closed period
   // Phase 7.G Turn LXXXXI batch (drift-resolution + 7 v2 model promotions).
-  coa_role_change                // Phase 5.1.2 — admin override of ChartOfAccount.role
-  ai_mapper_proposal_cache_run   // Phase 7.B v2 Day 3 — LLM call cache miss for AI Mapper
-  ai_mapper_template_promote     // Phase 7.B v2 Day 5 — user promoted cache entry → template
-  ai_mapper_template_apply       // Phase 7.B v2 Day 5 — template-fast-path apply (vs LLM call)
-  ai_token_budget_exceeded       // Phase 7.B v2 Day 6 — per-org daily/monthly token cap hit
-  intel_data_source_run          // Phase 7.E #1 D.5b — commodity/macro adapter executed
-  predictive_breach_compute      // Phase 7.E #3 E.2b — breach scanner executed
-  ai_breach_digest               // Phase 7.E #3 E.2e — daily breach delta digest
-  user_access_change             // Phase 7.F sub-group RBAC — admin updated User.allowedSubGroupIds
-  user_role_change               // Phase 7.F admin v2 — admin promoted/demoted a user's role
-  user_create                    // Phase 7.F admin v3 — admin created a new user account
-  user_password_reset            // Phase 7.F admin v3 — admin generated a new temp password
-  user_active_toggle             // Phase 7.F admin v3 — admin enabled/disabled a user account
-  ai_news_summary_run            // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
-  ai_morning_brief_run           // Phase 7.E AI Morning Brief — composed narrative LLM call
+  coa_role_change // Phase 5.1.2 — admin override of ChartOfAccount.role
+  ai_mapper_proposal_cache_run // Phase 7.B v2 Day 3 — LLM call cache miss for AI Mapper
+  ai_mapper_template_promote // Phase 7.B v2 Day 5 — user promoted cache entry → template
+  ai_mapper_template_apply // Phase 7.B v2 Day 5 — template-fast-path apply (vs LLM call)
+  ai_token_budget_exceeded // Phase 7.B v2 Day 6 — per-org daily/monthly token cap hit
+  intel_data_source_run // Phase 7.E #1 D.5b — commodity/macro adapter executed
+  predictive_breach_compute // Phase 7.E #3 E.2b — breach scanner executed
+  ai_breach_digest // Phase 7.E #3 E.2e — daily breach delta digest
+  user_access_change // Phase 7.F sub-group RBAC — admin updated User.allowedSubGroupIds
+  user_role_change // Phase 7.F admin v2 — admin promoted/demoted a user's role
+  user_create // Phase 7.F admin v3 — admin created a new user account
+  user_password_reset // Phase 7.F admin v3 — admin generated a new temp password
+  user_active_toggle // Phase 7.F admin v3 — admin enabled/disabled a user account
+  ai_news_summary_run // Phase 7.H Feature 1 — Today's Brief AI news summary LLM call
+  ai_morning_brief_run // Phase 7.E AI Morning Brief — composed narrative LLM call
   // Phase 7.H F4.v2.3 — manual data-entry trail for the non-engineer
   // admin flow at `/budgeting/admin/data-entry`. Three families:
   //   - operational_fact_* : ручной ввод KPI (yield, occupancy, FCR, etc.)
@@ -1756,6 +1786,17 @@ enum AuditAction {
   indicator_disclosure_create
   indicator_disclosure_update
   indicator_disclosure_delete
+  // Phase 7.H Feature 5 — client-reported reconciliation reference values
+  // (variance vs system EBITDA). `submit` covers both create and update
+  // (upsert path) since the unique key is composite — metadata.previousValue
+  // distinguishes the two cases for audit reviewers.
+  client_reconciliation_submit
+  client_reconciliation_delete
+  // Phase 7.I — admin updated Company.settings JSON (per-industry
+  // descriptors: hectares/region/cropType for agro_crops,
+  // totalRooms/seasonality for hospitality, etc.). Metadata captures
+  // before/after + changed keys so a reviewer can replay the change.
+  company_settings_update
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to
@@ -1779,7 +1820,7 @@ model AuditEvent {
   // "BudgetPlan", "ImportStaging", ...). Lowercase-first variants
   // ("company") are also accepted but discouraged.
   entityType     String
-  entityId       String?      // null for bulk operations (e.g. multi-row import)
+  entityId       String? // null for bulk operations (e.g. multi-row import)
   metadata       Json
   context        Json?
   createdAt      DateTime     @default(now())

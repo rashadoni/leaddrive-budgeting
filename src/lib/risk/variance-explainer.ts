@@ -71,6 +71,19 @@ export interface VarianceExplainerInput {
      *  LLM uses these to avoid suggesting "increase revenue" for a pure
      *  admin cost centre that has none. */
     tags?: string[]
+    /**
+     * Phase 7.I — per-industry settings (`Company.settings` JSON) that
+     * shape sector-specific recommendations. Examples:
+     *   - hospitality: { totalRooms: 150, seasonalityProfile: "summer-peak" }
+     *   - agro_crops:  { hectaresPlanted: 12000, region: "salyan",
+     *                    cropType: "sugarcane", yieldTarget: 65 }
+     *   - food_processing: { processingCapacityTonsYr: 50000,
+     *                        extractionRateTarget: 88, mainInputCommodity: "sugarcane" }
+     * When present the prompt formats a sector-aware descriptor so the
+     * LLM cites concrete plant size + region + crop instead of generic
+     * "agro recommendations". Absent / null = pre-Phase-7.I behavior.
+     */
+    settings?: Record<string, unknown> | null
   }
   /** Output language for the narrative + recommendations. UI stays EN. */
   language: ExplainerLanguage
@@ -115,9 +128,12 @@ const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
 /** Bump on any change to SYSTEM_PROMPT or buildExplainerPrompt structure.
  *  v1 = initial Phase 7.E ship (Turn 38 sub-turn 9 backfill).
  *  v2 = Phase 7.G Turn LXXXXVI (E.1b) — intel context block added to prompt.
- *       Bumping invalidates v1-cached explanations; CFO sees richer narratives
- *       on next request. */
-export const EXPLAINER_PROMPT_VERSION = "v2"
+ *  v3 = Phase 7.I — company.settings descriptor passed to prompt for
+ *       sector-aware recommendations (sugar producer with hectares,
+ *       region, crop type cited explicitly).
+ *  Bumping invalidates v2-cached explanations; CFO sees richer
+ *  narratives on next request. */
+export const EXPLAINER_PROMPT_VERSION = "v3"
 
 const SYSTEM_PROMPT = `You are a senior financial analyst producing variance explanations for a CFO at an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
@@ -134,7 +150,74 @@ Constraints:
   - For status=unknown with no error: data is missing — lead with "populate <missing_input>".
   - For amber/red on rollup-sourced or admin cost-centre companies (tags include 'admin' or 'cost_centre' or 'rollup_sourced'): factor that into recommendations — don't suggest revenue growth for an admin entity that has none.
   - Recommendations target the SECTOR. Hospitality → ADR/occupancy levers; agro → yield/feed levers; pharma → margin/inventory levers. NEVER suggest cross-sector moves like "diversify into renewable energy" unless explicitly relevant to the indicator.
-  - When an "Intel context" section is present (FX rates / CPI / commodity prices), USE it: cite specific external drivers when the indicator's variance correlates (e.g. "AZN/USD fell 4% MoM, inflating USD-denominated COGS"). Do NOT invent external context that isn't shown.`
+  - When an "Intel context" section is present (FX rates / CPI / commodity prices), USE it: cite specific external drivers when the indicator's variance correlates (e.g. "AZN/USD fell 4% MoM, inflating USD-denominated COGS"). Do NOT invent external context that isn't shown.
+  - When a "Settings" line gives concrete physical/operational descriptors (hectares, crop, region, room count, processing capacity), CITE them in recommendations. For agro_crops sugar: reference yield-per-ha targets, irrigation in the specific region, fertilizer/water intensity. For food_processing sugar refining: reference extraction-rate target, capacity utilization, raw-input source. Generic-sector advice when this descriptor is present = a worse answer than tailored advice.`
+
+/**
+ * Phase 7.I — format the `Company.settings` JSON into a sector-aware
+ * descriptor sentence for the LLM. We don't dump the raw JSON because:
+ *  - Settings shape varies per industry and JSON in prompts is noisy.
+ *  - The LLM responds better to a natural-language description ("growing
+ *    sugarcane on 12,000 ha in Salyan, target yield 65 t/ha") than to
+ *    `{hectaresPlanted: 12000, ...}`.
+ *
+ * Pure helper — testable; returns one descriptor line keyed by industry.
+ * Falls back to a single neutral "Settings: (none)" line when settings
+ * are null/empty/absent, so the prompt shape stays stable.
+ */
+function formatCompanySettings(
+  industry: string | null,
+  settings: Record<string, unknown> | null,
+): string {
+  if (!settings || Object.keys(settings).length === 0) {
+    return "Settings: (none)"
+  }
+  const s = settings
+  const pickStr = (k: string): string | null =>
+    typeof s[k] === "string" ? (s[k] as string) : null
+  const pickNum = (k: string): number | null =>
+    typeof s[k] === "number" && Number.isFinite(s[k] as number)
+      ? (s[k] as number)
+      : null
+
+  if (industry === "agro_crops") {
+    const crop = pickStr("cropType") ?? "crop"
+    const ha = pickNum("hectaresPlanted")
+    const region = pickStr("region")
+    const target = pickNum("yieldTarget")
+    const parts: string[] = [`growing ${crop}`]
+    if (ha !== null) parts.push(`on ${ha.toLocaleString("en-US")} ha`)
+    if (region) parts.push(`in ${region}`)
+    if (target !== null) parts.push(`target yield ${target} t/ha`)
+    return `Settings: ${parts.join(", ")}.`
+  }
+  if (industry === "food_processing") {
+    const cap = pickNum("processingCapacityTonsYr")
+    const inputCom = pickStr("mainInputCommodity")
+    const target = pickNum("extractionRateTarget")
+    const parts: string[] = []
+    if (inputCom) parts.push(`processing ${inputCom}`)
+    if (cap !== null) parts.push(`capacity ${cap.toLocaleString("en-US")} t/yr`)
+    if (target !== null) parts.push(`target extraction rate ${target}%`)
+    if (parts.length === 0) return `Settings: ${JSON.stringify(s).slice(0, 200)}`
+    return `Settings: ${parts.join(", ")}.`
+  }
+  if (industry === "hospitality") {
+    const rooms = pickNum("totalRooms")
+    const profile = pickStr("seasonalityProfile")
+    const parts: string[] = []
+    if (rooms !== null) parts.push(`${rooms} rooms`)
+    if (profile) parts.push(`seasonality ${profile}`)
+    if (parts.length === 0) return `Settings: ${JSON.stringify(s).slice(0, 200)}`
+    return `Settings: ${parts.join(", ")}.`
+  }
+  // Fallback: compact JSON dump capped to 200 chars to keep prompt size sane.
+  const dump = JSON.stringify(s)
+  return `Settings: ${dump.length > 200 ? dump.slice(0, 200) + "…" : dump}`
+}
+
+// Exported for unit tests — pure helper, no side effects.
+export { formatCompanySettings as __formatCompanySettingsForTest }
 
 function summarizeAggregates(aggregates: Record<string, unknown>): string {
   if (Object.keys(aggregates).length === 0) return "(none)"
@@ -179,6 +262,8 @@ export function buildExplainerPrompt(input: VarianceExplainerInput): string {
     ? `\n\nIntel context (latest macro / FX / commodity observations):\n${intelBlock}\n`
     : ""
 
+  const settingsLine = formatCompanySettings(input.company.industry, input.company.settings ?? null)
+
   return `Indicator: ${input.indicator.code} (${input.indicator.nameEn})
 Direction: ${input.indicator.direction}
 Unit: ${input.indicator.unit}
@@ -187,6 +272,7 @@ Hint template: ${input.indicator.hintTemplateEn ?? "(none)"}
 Company: ${input.company.name}
 Industry: ${input.company.industry ?? "(none)"}
 ${tagsLine}
+${settingsLine}
 
 Period: ${input.result.period}
 Status: ${input.result.status}

@@ -9,10 +9,15 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area, ComposedChart, Line, Cell,
 } from "recharts"
-import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, Percent, BarChart2, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Info, Pencil } from "lucide-react"
 import { isDaCode } from "@/lib/budgeting/da-codes"
 import { isLumpyMonthly, sumPerRowSmoothed } from "@/lib/budgeting/margin-smoothing"
-import { deriveRoleFromCode, pnlSectionFromRole } from "@/lib/budgeting/coa-role"
+import { aggregateRowsForEbitda, computeEbitda, computeActualEbitda } from "@/lib/budgeting/ebitda"
+import {
+  ClientReconDrawer,
+  type ClientReconciliationRow,
+  type PnlContributorRow,
+} from "@/features/budgeting/components/ClientReconDrawer"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -66,7 +71,10 @@ interface PnlRow {
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()
   const orgId = (session?.user as any)?.organizationId
+  const userRole = (session?.user as any)?.role as string | undefined
+  const canEditRecon = userRole === "admin" || userRole === "manager"
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
+  const [reconOpen, setReconOpen] = useState(false)
   // Turn 38 sub-turn 4: Margin Trends chart toggle. "management" smooths
   // year-end accounting lumps (FX losses, interest, tax, D&A true-ups
   // booked 100% in one month per AZ SAP practice) by spreading them
@@ -122,67 +130,86 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
   const hasActuals: boolean = Boolean(data.hasActuals)
 
-  // Calculate totals
+  // Calculate totals — revenue/cogs already pre-aggregated by the API route.
+  // EBITDA + adjacent metrics come from `src/lib/budgeting/ebitda.ts` (single
+  // source of truth shared with the client-reconciliation API).
   const totalRevenue = Object.values(monthlyRevenue || {}).reduce((s: number, v: any) => s + (v || 0), 0)
   const totalCogs = Math.abs(Object.values(monthlyCogs || {}).reduce((s: number, v: any) => s + (v || 0), 0))
-  const grossProfit = totalRevenue - totalCogs
-  const grossMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
 
-  // Operating expenses from rows — split by type for EBITDA calculation.
-  // Phase 7.G Turn LXXV (Phase 5.1) — uses canonical `pnlSectionFromRole`
-  // (single source of truth for prefix matching). OpEx = section "opex"
-  // OR unmatched expense rows (legacy fallback for non-SAP-prefix codes).
-  // Below-EBITDA = section "belowEbitda" (finance/tax_costs/non_operating/tax).
-  // Depreciation row filter still uses startsWith("731") because 731
-  // includes both "depreciation" and other finance items — finer-grained
-  // depreciation/amortization lookup uses the dedicated `isDaCode` helper.
+  // `depreciationRows` stays here (not in the shared module) because it uses
+  // a broader `startsWith("731")` predicate for a UI legend, whereas the
+  // EBITDA math uses the strict D&A code set (`isDaCode` → 703-11/721-11).
   const allExpenseRows = rows.filter((r: PnlRow) => r.accountType === "expense" && r.total !== 0)
-  const opexRows = allExpenseRows.filter((r: PnlRow) => {
-    const section = pnlSectionFromRole(deriveRoleFromCode(r.accountCode))
-    return section === "opex" || section === null // legacy unmatched falls into opex
-  })
   const depreciationRows = allExpenseRows.filter((r: PnlRow) => r.accountCode.startsWith("731"))
-  const belowEbitdaRows = allExpenseRows.filter((r: PnlRow) =>
-    pnlSectionFromRole(deriveRoleFromCode(r.accountCode)) === "belowEbitda",
-  )
 
-  // Turn 38 sub-turn 4: D&A is buried inside OpEx (721-11) and COGS
-  // (703-11). True EBITDA must add D&A back. Without this the chart
-  // line labelled "EBITDA Margin" was actually EBIT — a label finance
-  // audience spots in 30 seconds.
-  const daRowsInOpex = opexRows.filter((r: PnlRow) => isDaCode(r.accountCode))
-  const daRowsInCogs = (rows as PnlRow[]).filter(
-    (r) => r.accountType === "cogs" && r.total !== 0 && isDaCode(r.accountCode),
-  )
-  const totalDaInOpex = Math.abs(daRowsInOpex.reduce((s: number, r: PnlRow) => s + r.total, 0))
-  const totalDaInCogs = Math.abs(daRowsInCogs.reduce((s: number, r: PnlRow) => s + r.total, 0))
-  const totalDa = totalDaInOpex + totalDaInCogs
+  const planAggregated = aggregateRowsForEbitda({
+    rows: rows as PnlRow[],
+    totalRevenue,
+    totalCogs,
+  })
+  const { opexRows, belowEbitdaRows, daRowsInOpex, daRowsInCogs } = planAggregated
+  const totalOpex = planAggregated.totals.totalOpex
+  const totalBelowEbitda = planAggregated.totals.totalBelowEbitda
+  const totalDaInCogs = planAggregated.totals.daInCogs
+  const totalDaInOpex = planAggregated.totals.daInOpex
+  const planBreakdown = computeEbitda(planAggregated.totals)
+  const { grossProfit, grossMargin, totalDa, ebit, ebitda, ebitdaMargin, netProfit, netMargin } = planBreakdown
 
-  const totalOpex = Math.abs(opexRows.reduce((s: number, r: PnlRow) => s + r.total, 0))
-  const totalBelowEbitda = Math.abs(belowEbitdaRows.reduce((s: number, r: PnlRow) => s + r.total, 0))
-  // EBIT = Rev − COGS − OpEx (D&A still inside both)
-  const ebit = grossProfit - totalOpex
-  // EBITDA = EBIT + D&A (correct definition)
-  const ebitda = ebit + totalDa
-  const ebitdaMargin = totalRevenue > 0 ? (ebitda / totalRevenue) * 100 : 0
-  const netProfit = grossProfit - totalOpex - totalBelowEbitda
-  const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0
+  // Actual-side EBITDA — same formula (EBIT + D&A) so the Actual column
+  // carries meaning for computed rows. D&A in actuals comes from a single
+  // bucket since sectionActuals doesn't preserve the COGS/OpEx split.
+  const actualBreakdown = computeActualEbitda({ sectionActuals, actualByKey })
+  const actualGrossProfit = actualBreakdown.grossProfit
+  const actualEbit = actualBreakdown.ebit
+  const actualEbitda = actualBreakdown.ebitda
+  const actualNetProfit = actualBreakdown.netProfit
 
-  // Derived actual equivalents — match the plan-side formulas so the
-  // Actual column keeps meaning for computed rows (Gross Profit, EBITDA, Net).
-  // Turn 38 sub-turn 4 closure: actual D&A summed from actualByKey for
-  // 703-11 + 721-11 accounts so EBITDA actual matches the plan-side
-  // (true-EBITDA = EBIT + D&A) formula. Without this the KPI card showed
-  // EBIT on the actual side while plan showed true EBITDA — apples-to-
-  // oranges variance for finance reviewers.
-  const actualDaTotal = Object.entries(actualByKey).reduce((s, [key, value]) => {
-    const code = key.split("::")[0]
-    return s + (isDaCode(code) ? Math.abs(value) : 0)
-  }, 0)
-  const actualGrossProfit = sectionActuals.revenue - sectionActuals.cogs
-  const actualEbit = actualGrossProfit - sectionActuals.opex
-  const actualEbitda = actualEbit + actualDaTotal
-  const actualNetProfit = actualEbit - sectionActuals.belowEbitda
+  // Phase 7.H Feature 5 — client-reported EBITDA reference (compare-only).
+  // The default period for the drawer is the plan's year ("YYYY"); users
+  // can switch to YYYY-QN / YYYY-MM in the drawer's period input.
+  const reconPeriod = data?.year ? String(data.year) : new Date().getFullYear().toString()
+
+  // Top-5 P&L contributors to EBITDA, sorted by |total| desc. Revenue +
+  // COGS + OpEx rows participate (below-EBITDA lines don't affect EBITDA).
+  // D&A rows aren't pinned, only badged in the drawer — pinning a small
+  // D&A item over a 10x larger revenue row would mislead the viewer.
+  const contributors: PnlContributorRow[] = (() => {
+    const acc: PnlContributorRow[] = []
+    for (const r of rows as PnlRow[]) {
+      if (r.total === 0) continue
+      if (r.accountType === "revenue") {
+        acc.push({ accountCode: r.accountCode, accountName: r.accountName, section: "revenue", total: r.total })
+      } else if (r.accountType === "cogs") {
+        acc.push({ accountCode: r.accountCode, accountName: r.accountName, section: "cogs", total: r.total })
+      }
+    }
+    for (const r of opexRows) {
+      acc.push({ accountCode: r.accountCode, accountName: r.accountName, section: "opex", total: r.total })
+    }
+    acc.sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+    return acc.slice(0, 5)
+  })()
+
+  // Existing client reconciliation row for this (company × current-year-period),
+  // if any — feeds the inline "Client: X" badge below the EBITDA number.
+  const reconLookupEnabled = !!companyId && !!orgId
+  const { data: reconLookup } = useQuery({
+    queryKey: ["pnl-recon-lookup", companyId, reconPeriod],
+    enabled: reconLookupEnabled,
+    queryFn: async () => {
+      const url = new URL(`/api/companies/${companyId}/reconciliation`, window.location.origin)
+      url.searchParams.set("period", reconPeriod)
+      url.searchParams.set("indicatorKey", "EBITDA")
+      const res = await fetch(url.toString())
+      if (!res.ok) return { rows: [] as ClientReconciliationRow[] }
+      return res.json() as Promise<{ rows: ClientReconciliationRow[] }>
+    },
+  })
+  const clientReconRow: ClientReconciliationRow | null = reconLookup?.rows?.[0] ?? null
+  const reconVariance: number | null =
+    clientReconRow && ebitda !== 0
+      ? ((clientReconRow.value - ebitda) / Math.abs(ebitda)) * 100
+      : null
 
   // Chart data
   const chartData = MONTHS.map((m, i) => {
@@ -363,6 +390,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${ebitda >= 0 ? "bg-purple-200 dark:bg-purple-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${ebitda >= 0 ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400"}`}>
             <BarChart2 className="h-3.5 w-3.5" /> EBITDA
+            {companyId && (
+              <button
+                type="button"
+                aria-label="Reconcile client EBITDA"
+                onClick={() => setReconOpen(true)}
+                className="ml-auto relative z-10 rounded p-1 text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-white/10"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
           </div>
           <p className={`text-2xl font-bold tracking-tight ${ebitda >= 0 ? "text-purple-700 dark:text-purple-300" : "text-red-700 dark:text-red-300"}`}>
             {ebitda < 0 && "("}{fmtNum(Math.abs(ebitda))}{ebitda < 0 && ")"} <span className="text-sm font-normal text-muted-foreground">AZN</span>
@@ -372,6 +409,26 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <span className={`text-[10px] font-medium ${ebitda >= 0 ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400"}`}>{ebitdaMargin.toFixed(1)}%</span>
             <span className="text-[10px] text-muted-foreground">margin</span>
           </div>
+          {clientReconRow && (
+            <div className="mt-1.5 flex items-center gap-1.5 text-[10px]">
+              <span className="text-muted-foreground">Client:</span>
+              <span className="font-medium tabular-nums">
+                {fmtNum(clientReconRow.value)} {clientReconRow.currency}
+              </span>
+              {reconVariance != null && (
+                <span
+                  className={`tabular-nums font-medium ${
+                    reconVariance >= 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {reconVariance >= 0 ? "+" : ""}
+                  {reconVariance.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Net Profit */}
@@ -790,6 +847,21 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           </table>
         </div>
       </div>
+
+      {/* Phase 7.H Feature 5 — client-reported EBITDA reconciliation drawer.
+          Mounted only when a specific company is selected (consolidated-org
+          view doesn't have a meaningful single-EBITDA reconcile target). */}
+      {companyId && (
+        <ClientReconDrawer
+          open={reconOpen}
+          onOpenChange={setReconOpen}
+          companyId={companyId}
+          defaultPeriod={reconPeriod}
+          systemEbitda={ebitda}
+          contributors={contributors}
+          canEdit={canEditRecon}
+        />
+      )}
     </div>
   )
 }

@@ -289,8 +289,9 @@ describe("panelForCommand routing", () => {
 })
 
 describe("FUNCTION_CODES catalog", () => {
-  it("exports exactly 18 reserved function codes (9 panel verbs + AUD + ACT + CMT + CHT + SUB + INT + BREACH + HELP + PEER)", () => {
-    expect(FUNCTION_CODES).toHaveLength(18)
+  // Phase 7.I added 4 agro/sugar pop-out verbs: AGRO, WX, PRICE, KPI.
+  it("exports exactly 22 reserved function codes (18 base + 4 Phase 7.I agro pop-outs)", () => {
+    expect(FUNCTION_CODES).toHaveLength(22)
   })
 
   it("each panel-targeting function code has a panel route", () => {
@@ -313,8 +314,17 @@ describe("FUNCTION_CODES catalog", () => {
       BREACH: { kind: "breach" },
       HELP: { kind: "help" },
       PEER: { kind: "peer", codes: ["A", "B"] },
+      // Phase 7.I — sector-aware widget pop-outs. All four are
+      // overlay/pop-out modals — do not steal panel focus.
+      AGRO: { kind: "agro" },
+      WX: { kind: "wx" },
+      PRICE: { kind: "price" },
+      KPI: { kind: "kpi" },
     }
-    const OVERLAY_MODALS = new Set(["AUD", "ACT", "CMT", "CHT", "SUB", "INT", "BREACH", "HELP", "PEER"])
+    const OVERLAY_MODALS = new Set([
+      "AUD", "ACT", "CMT", "CHT", "SUB", "INT", "BREACH", "HELP", "PEER",
+      "AGRO", "WX", "PRICE", "KPI",
+    ])
     for (const code of FUNCTION_CODES) {
       const route = panelForCommand(sample[code])
       // Overlay modals intentionally return null (do not steal panel focus);

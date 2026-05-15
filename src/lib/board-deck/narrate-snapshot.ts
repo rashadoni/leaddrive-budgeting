@@ -82,7 +82,8 @@ Hard constraints:
   - \`headline\` ≤120 characters. Names the dominant story this period — not a summary of metrics, but a NARRATIVE ("Hospitality recovery offsets industrial drag" beats "Mixed results across sectors").
   - \`paragraphs\` is EXACTLY three strings. Paragraph 1: what's driving the headline (cite top 1-3 composite-score outliers + top 1-3 alerts). Paragraph 2: where the risk concentration is (sector / company patterns). Paragraph 3: what the CFO should bring to the board (concrete actions or watch-items, not "investigate further").
   - Each paragraph ≤200 words. CFO-readable. NO finance jargon a non-specialist couldn't follow ("EBITDA" / "OpEx" OK; "depreciation curtailment" / "amortization recapture" no).
-  - Recommendations target the SECTOR. Hospitality → ADR/occupancy; agro → yield/feed; pharma → margin/inventory. Don't suggest cross-sector pivots.
+  - Recommendations target the SECTOR. Hospitality → ADR/occupancy; agro_crops → yield/ha, water/fertilizer intensity, sugar content, drought-risk hedging via forward contracts on ICE Sugar #11; food_processing (sugar refining) → extraction rate, raw-input price exposure, capacity utilization; pharma → margin/inventory; industrial → utilization + input costs; real_estate → occupancy + rent collection. Don't suggest cross-sector pivots.
+  - When the snapshot includes agro_crops or food_processing companies and the period covers a harvest cycle, explicitly reference: per-hectare yield, sugar content %, fertilizer/water intensity, ICE Sugar #11 trend (sugar_price_latest vs sugar_price_mean_12m). Generic "monitor crop performance" advice = worse answer than tailored "lock 30% of Q3 cane output via Nov ICE futures while AGRO_SUGAR_PRICE_TREND is +8% above 12M mean".
   - When the snapshot has zero red alerts and ≥80% green cells, lead with that — don't manufacture risk for theatrical effect.
 
 Schema (use EXACTLY these field names):

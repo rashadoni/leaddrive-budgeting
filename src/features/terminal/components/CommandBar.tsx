@@ -40,6 +40,13 @@ const VERBS = [
   'INT',
   'HELP',
   'PEER',
+  // Phase 7.I — agro/sugar pop-out widgets. Open full-window pop-outs
+  // (like CompanyTree pop-out) since they're rich UIs that benefit from
+  // dedicated screen real estate during analysis.
+  'AGRO',
+  'WX',
+  'PRICE',
+  'KPI',
   'GO',
 ] as const;
 
@@ -266,6 +273,22 @@ export function CommandBar() {
         // Reads GET /api/indicators/breaches.
         window.dispatchEvent(new CustomEvent('terminal:open-breach'));
         return { message: 'BREACH →' };
+      // Phase 7.I — agro/sugar pop-out widgets. Each opens a dedicated
+      // browser window (Bloomberg Launchpad pattern). The popped window
+      // re-reads `activeCompanyCode` from terminalStore so the user can
+      // continue navigating in the main terminal and the pop-out pivots.
+      case 'agro':
+        window.open('/terminal-panel/agro-dashboard', 'terminal-panel-agro-dashboard');
+        return { message: 'AGRO →' };
+      case 'wx':
+      case 'price':
+        // WX and PRICE both open the CommodityTicker (sugar prices + weather);
+        // two aliases because traders type one or the other from muscle memory.
+        window.open('/terminal-panel/commodity-ticker', 'terminal-panel-commodity-ticker');
+        return { message: cmd.kind === 'wx' ? 'WX →' : 'PRICE →' };
+      case 'kpi':
+        window.open('/terminal-panel/agronomy-entry', 'terminal-panel-agronomy-entry');
+        return { message: 'KPI →' };
       case 'ind': {
         // Turn 32 (Bug #2 fix): switch to Panel 3 immediately + kick off
         // async resolve of indicator code → IV id. Fire-and-forget — when

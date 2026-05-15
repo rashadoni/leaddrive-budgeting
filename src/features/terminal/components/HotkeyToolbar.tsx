@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   Bell,
   BellRing,
+  Cloud,
   Download,
   FilePlus2,
   FlaskConical,
@@ -38,14 +39,25 @@ import {
   ListTodo,
   MessageSquare,
   MessagesSquare,
+  Pencil,
   RefreshCw,
   Rss,
   Search,
+  Sprout,
   Star,
   Upload,
 } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
+
+/** Phase 7.I — open a terminal pop-out widget by kind. Mirrors the
+ *  CommandBar verbs (AGRO / WX / PRICE / KPI) so the toolbar buttons and
+ *  command-line shortcut both land on the same window. */
+function openPopOut(kind: string): boolean {
+  if (typeof window === "undefined") return false;
+  window.open(`/terminal-panel/${kind}`, `terminal-panel-${kind}`);
+  return true;
+}
 
 interface HotkeyDef {
   key: string;
@@ -248,6 +260,31 @@ export function HotkeyToolbar() {
       icon: Layers,
       title: t("hotkeys.peerTitle"),
       action: () => prefillCmdBar('PEER '),
+    },
+    // Phase 7.I — sector-aware widget shortcuts. Visible to everyone (the
+    // pop-out itself renders a "not applicable" hint for non-agro companies)
+    // so the buttons are discoverable without hiding them behind active-
+    // industry context. CommandBar verbs are the keyboard-only equivalent.
+    {
+      key: "agro",
+      label: "AGRO",
+      icon: Sprout,
+      title: "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
+      action: () => openPopOut("agro-dashboard"),
+    },
+    {
+      key: "commodity",
+      label: "PRICE",
+      icon: Cloud,
+      title: "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
+      action: () => openPopOut("commodity-ticker"),
+    },
+    {
+      key: "kpi-entry",
+      label: "KPI",
+      icon: Pencil,
+      title: "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
+      action: () => openPopOut("agronomy-entry"),
     },
     {
       key: "favorites",

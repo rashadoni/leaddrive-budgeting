@@ -205,6 +205,32 @@ export interface RecomputeDataSource {
   }): Promise<number | null>;
 
   /**
+   * Phase 7.I — external commodity / weather observations from the
+   * `IntelDataPoint` table. Returns observations matching the source +
+   * metric filter, ordered by datetime ascending (oldest first) so
+   * callers can compute trailing windows by `.slice(-N)`.
+   *
+   * Returns `[]` when no rows match — the resolver downstream maps
+   * empty → "data not available", which surfaces as `unknown` IV status.
+   * Optional on the interface so legacy fixtures keep working without
+   * implementing it; resolvers handle `undefined` as "feature off".
+   */
+  listIntelDataPoints?(args: {
+    organizationId: string;
+    sourceCode: string;
+    metric?: string;
+    /** Inclusive lower bound on `datetime`. Omit = no lower bound. */
+    start?: Date;
+    /** Exclusive upper bound on `datetime`. Omit = no upper bound. */
+    end?: Date;
+    /** Hard cap on rows returned. Defaults to 50 so a 5y monthly history
+     *  doesn't blow up memory on every recompute. */
+    limit?: number;
+  }): Promise<
+    Array<{ metric: string; datetime: Date; value: number; unit?: string | null }>
+  >;
+
+  /**
    * Phase 7.H F4.v2.3 — disclosure lookup. Returns the disclosed value
    * if a row exists in `IndicatorDisclosure` for the (companyId,
    * indicatorCode, period) triple, else null. When non-null, the
@@ -413,6 +439,30 @@ export interface RecomputeAggregates {
       { factor: number; confidence: 'A' | 'B' | 'C' | 'D' } | null
     >;
   };
+  /**
+   * Phase 7.I — per-metric weather observations the `weatherResolver`
+   * resolved for the current company's region. `value: null` = no
+   * IntelDataPoint row matched (region unset OR adapter hasn't ingested
+   * yet). The drilldown UI surfaces this as "Source: Open-Meteo,
+   * region=Salyan, no data yet" so a missing weather feed reads as a
+   * data-pipeline state, not a silent zero.
+   */
+  weather?: Record<string, { value: number | null; region: string | null }>;
+  /**
+   * Phase 7.I — per-alias commodity-price observations the
+   * `commodityPriceResolver` derived from IntelDataPoint. `samples`
+   * captures how many monthly bars fed the aggregator (`mean_12m` needs
+   * 12 to be honest; fewer is a degraded answer the UI can flag).
+   */
+  commodity_price?: Record<
+    string,
+    {
+      value: number | null;
+      sourceCode: string;
+      aggregator: string;
+      samples: number;
+    }
+  >;
 }
 
 /**
@@ -514,6 +564,51 @@ export function createPrismaDataSource(
       });
       if (!c || !c.settings) return null;
       return c.settings as Record<string, unknown>;
+    },
+
+    // Phase 7.I — IntelDataPoint reads for the weather + commodityPrice
+    // resolvers. The table is added by the drift-resolution v2-models
+    // migration; until that migration applies in dev, prisma.intelDataPoint
+    // is in the client but the table doesn't exist. We catch the table-
+    // missing error and return [] so the resolver downgrades cleanly to
+    // "data not available" rather than throwing inside recompute.
+    async listIntelDataPoints({ organizationId, sourceCode, metric, start, end, limit = 50 }) {
+      const where: {
+        organizationId: string;
+        sourceCode: string;
+        metric?: string;
+        datetime?: { gte?: Date; lt?: Date };
+      } = { organizationId, sourceCode };
+      if (metric) where.metric = metric;
+      if (start || end) {
+        where.datetime = {};
+        if (start) where.datetime.gte = start;
+        if (end) where.datetime.lt = end;
+      }
+      try {
+        const rows = await prisma.intelDataPoint.findMany({
+          where,
+          orderBy: { datetime: 'asc' },
+          take: limit,
+          select: { metric: true, datetime: true, value: true, unit: true },
+        });
+        return rows;
+      } catch (err) {
+        // Drift-migration not applied yet — table missing. Treat as no
+        // data rather than fail loudly: recompute should still complete
+        // for the financial / operational indicators that don't depend
+        // on IntelDataPoint, and the external-feed indicators will
+        // legitimately read `unknown` until the migration lands.
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes('relation "intel_data_points"') ||
+          msg.includes('does not exist') ||
+          msg.includes('P2021')
+        ) {
+          return [];
+        }
+        throw err;
+      }
     },
 
     async listCurrencyRates({ organizationId, asOf }) {
@@ -1090,6 +1185,197 @@ const newsSentimentResolver: NamespaceResolver = {
       state.inputs.resolved['news_sentiment_30d'] = avg;
     }
     state.inputs.aggregates.news_sentiment = { avg, hasData: avg !== null };
+  },
+};
+
+/**
+ * Phase 7.I — weather resolver.
+ *
+ * Triggers: any `requiredInputs` entry like `weather:<metric>` (e.g.
+ *   `weather:rainfall_mm_90d`, `weather:temp_avg_c_30d`).
+ *
+ * Flow: read `company.settings.region` (e.g. "salyan"), look up the
+ * latest `IntelDataPoint` where sourceCode='weather-openmeteo' and
+ * metric=`<REGION>_<METRIC>` (the adapter writes per-region rows so
+ * one ingest covers every AzerSheker entity downstream).
+ *
+ * Exposes the bare metric name to the formula context (e.g. the
+ * formula `rainfall_mm_90d` resolves to the value), matching the
+ * operationalFactResolver convention.
+ *
+ * Graceful degradation: when company.settings.region is missing, or
+ * when no IntelDataPoint exists for that region+metric, leaves the
+ * context var unset → formula evaluates to NaN → IV status='unknown'
+ * (the right "honest" answer; no synthetic placeholder).
+ */
+const WEATHER_SOURCE_CODE = 'weather-openmeteo';
+const weatherResolver: NamespaceResolver = {
+  name: 'weather',
+  matches: (r) => r.startsWith('weather:'),
+  async resolve(matched, ctx, state) {
+    // Resolve region once per recompute (per-company).
+    const settings = await ctx.ds.getCompanySettings({
+      organizationId: ctx.organizationId,
+      companyId: ctx.companyId,
+    });
+    const region =
+      settings && typeof settings.region === 'string'
+        ? settings.region.toLowerCase()
+        : null;
+    const perMetric: Record<string, { value: number | null; region: string | null }> = {};
+    if (!ctx.ds.listIntelDataPoints || !region) {
+      // No DataSource impl or no region — emit per-metric nulls for snapshot.
+      for (const raw of matched) {
+        const m = raw.slice('weather:'.length);
+        perMetric[m] = { value: null, region };
+      }
+      state.inputs.aggregates.weather = perMetric;
+      return;
+    }
+    for (const raw of matched) {
+      const varName = raw.slice('weather:'.length);
+      const dbMetric = `${region.toUpperCase()}_${varName.toUpperCase()}`;
+      const rows = await ctx.ds.listIntelDataPoints({
+        organizationId: ctx.organizationId,
+        sourceCode: WEATHER_SOURCE_CODE,
+        metric: dbMetric,
+        limit: 1,
+      });
+      if (rows.length === 0) {
+        perMetric[varName] = { value: null, region };
+        continue;
+      }
+      // Adapter orders ASC; the most recent is the last row.
+      const value = rows[rows.length - 1].value;
+      state.context[varName] = value;
+      state.inputs.resolved[varName] = value;
+      perMetric[varName] = { value, region };
+    }
+    state.inputs.aggregates.weather = perMetric;
+  },
+};
+
+/**
+ * Phase 7.I — commodity-price resolver.
+ *
+ * Triggers: `commodityPrice:<varName>` requiredInput. The varName maps
+ * to a series-and-aggregator via the COMMODITY_PRICE_ALIASES table:
+ *
+ *   sugar_price_latest    → latest monthly close, sugar-yahoo-sb-f
+ *   sugar_price_mean_12m  → trailing-12-month mean of same series
+ *   sugar_price_stdev_12m → trailing-12-month stdev of same series
+ *
+ * The alias table is the single source of truth for "which commodity
+ * series feeds which formula variable" — adding a new commodity later
+ * (cotton, wheat) is one table row + one adapter, no resolver code change.
+ *
+ * Exposes `varName` (bare) to the formula context; aggregate snapshot
+ * records the (alias, series, agg, n_samples) tuple for forensics in
+ * Panel 3.
+ */
+interface CommodityAlias {
+  varName: string;
+  sourceCode: string;
+  metric: string;
+  /** How to derive the value from the series. */
+  aggregator: 'latest' | 'mean_12m' | 'stdev_12m';
+}
+const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
+  {
+    varName: 'sugar_price_latest',
+    sourceCode: 'sugar-yahoo-sb-f',
+    metric: 'SUGAR_RAW_USD_TONNE',
+    aggregator: 'latest',
+  },
+  {
+    varName: 'sugar_price_mean_12m',
+    sourceCode: 'sugar-yahoo-sb-f',
+    metric: 'SUGAR_RAW_USD_TONNE',
+    aggregator: 'mean_12m',
+  },
+  {
+    varName: 'sugar_price_stdev_12m',
+    sourceCode: 'sugar-yahoo-sb-f',
+    metric: 'SUGAR_RAW_USD_TONNE',
+    aggregator: 'stdev_12m',
+  },
+];
+
+function aggregateCommodity(
+  values: number[],
+  agg: CommodityAlias['aggregator'],
+): number | null {
+  if (values.length === 0) return null;
+  if (agg === 'latest') return values[values.length - 1];
+  const sample = values.slice(-12);
+  if (sample.length === 0) return null;
+  const mean = sample.reduce((s, v) => s + v, 0) / sample.length;
+  if (agg === 'mean_12m') return mean;
+  // stdev_12m: population stdev (we control the sample size, no inferential need)
+  const variance =
+    sample.reduce((s, v) => s + (v - mean) ** 2, 0) / sample.length;
+  return Math.sqrt(variance);
+}
+
+const commodityPriceResolver: NamespaceResolver = {
+  name: 'commodityPrice',
+  matches: (r) => r.startsWith('commodityPrice:'),
+  async resolve(matched, ctx, state) {
+    const perAlias: Record<
+      string,
+      { value: number | null; sourceCode: string; aggregator: string; samples: number }
+    > = {};
+    if (!ctx.ds.listIntelDataPoints) {
+      for (const raw of matched) {
+        const varName = raw.slice('commodityPrice:'.length);
+        const alias = COMMODITY_PRICE_ALIASES.find((a) => a.varName === varName);
+        if (alias) {
+          perAlias[varName] = {
+            value: null,
+            sourceCode: alias.sourceCode,
+            aggregator: alias.aggregator,
+            samples: 0,
+          };
+        }
+      }
+      state.inputs.aggregates.commodity_price = perAlias;
+      return;
+    }
+    // Group needed aliases by sourceCode+metric so we hit the DB once per
+    // series even if multiple aggregators read it.
+    const seriesKey = (a: CommodityAlias) => `${a.sourceCode}::${a.metric}`;
+    const seriesCache = new Map<string, number[]>();
+    for (const raw of matched) {
+      const varName = raw.slice('commodityPrice:'.length);
+      const alias = COMMODITY_PRICE_ALIASES.find((a) => a.varName === varName);
+      if (!alias) continue;
+      const key = seriesKey(alias);
+      if (!seriesCache.has(key)) {
+        const rows = await ctx.ds.listIntelDataPoints({
+          organizationId: ctx.organizationId,
+          sourceCode: alias.sourceCode,
+          metric: alias.metric,
+          limit: 24, // up to 2y monthly — enough for 12m windows + buffer
+        });
+        seriesCache.set(
+          key,
+          rows.map((r) => r.value),
+        );
+      }
+      const series = seriesCache.get(key) ?? [];
+      const value = aggregateCommodity(series, alias.aggregator);
+      if (value !== null && Number.isFinite(value)) {
+        state.context[varName] = value;
+        state.inputs.resolved[varName] = value;
+      }
+      perAlias[varName] = {
+        value,
+        sourceCode: alias.sourceCode,
+        aggregator: alias.aggregator,
+        samples: series.length,
+      };
+    }
+    state.inputs.aggregates.commodity_price = perAlias;
   },
 };
 
@@ -1932,6 +2218,10 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   factResolver,
   rollupResolver,
   industryFactorResolver,
+  // Phase 7.I — AzerSheker pilot. Both pull from IntelDataPoint; degrade
+  // to "data not available" cleanly when no rows / no region set.
+  weatherResolver,
+  commodityPriceResolver,
 ];
 
 // --- Seed-load-time requiredInputs validator -------------------------------

@@ -1068,6 +1068,25 @@
         "recentTitle": "Текущие раскрытия",
         "sourceNotePlaceholder": "Например: Annual Sustainability Report 2026, MSCI ESG Rating 2026-01"
       }
+    },
+    "reconciliation": {
+      "title": "Сверка EBITDA с клиентом",
+      "description": "Сравните EBITDA, которую назвал клиент, с системной цифрой и сохраните разницу с audit-следом.",
+      "systemEbitdaLabel": "Наша EBITDA",
+      "clientEbitdaLabel": "EBITDA клиента",
+      "varianceLabel": "Разница",
+      "period": "Период (YYYY, YYYY-QN, YYYY-MM)",
+      "clientValue": "Значение клиента",
+      "currency": "Валюта",
+      "note": "Комментарий (необязательно)",
+      "notePlaceholder": "Откуда взята цифра: звонок, письмо, рабочий лист сверки и т.п.",
+      "submitButton": "Сохранить сверку",
+      "deleteButton": "Удалить",
+      "topRowsHeader": "Крупнейшие строки P&L — проверьте на разную классификацию",
+      "daBadge": "D&A",
+      "noRows": "Нет строк P&L за этот период.",
+      "submittedBy": "Последнее изменение: {user} в {at}",
+      "errorInvalidNumber": "Значение должно быть конечным числом."
     }
   },
   "onboarding": {

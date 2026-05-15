@@ -8,6 +8,13 @@
       "port": 3002
     },
     {
+      "name": "funny-satoshi-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev"],
+      "port": 3007,
+      "autoPort": true
+    },
+    {
       "name": "budgetpro-live-PORT-MARKER-ONLY",
       "_comment": "Port 3000 is owned by the LaunchAgent dev server (com.budgetpro.dev). Do NOT preview_start this entry — preview tooling cannot attach to a non-preview-owned port. Kept as a marker so a future Claude doesn't try to spin up a parallel server on :3000 (which would conflict per CLAUDE.md). Use curl + tail logs for live verification instead.",
       "runtimeExecutable": "true",
