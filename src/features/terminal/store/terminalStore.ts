@@ -144,6 +144,12 @@ export interface TerminalActions {
    * setCompany so programmatic callers don't pollute recent.
    */
   selectCompany: (code: string) => void;
+  /**
+   * Phase 7.I — clear the active company → HeatMap renders ALL companies
+   * again. Bound to the "ALL" synthetic row at the top of CompanyTree.
+   * Does NOT touch the LRU recent stack (only user-driven row clicks do).
+   */
+  clearCompany: () => void;
   setActiveIndicatorValue: (id: string | null) => void;
   /**
    * Phase 7.D regression closure — set the Panel 3 no-data hint when user
@@ -327,6 +333,10 @@ const actions: TerminalActions = {
     const next = [code, ...filtered].slice(0, RECENT_LIMIT);
     setGlobalState({ activeCompanyCode: code, recentCompanyCodes: next });
     writeJsonToStorage(RECENT_LS_KEY, next);
+  },
+  clearCompany: () => {
+    // Phase 7.I — clear active company (ALL mode). No LRU side-effect.
+    setGlobalState({ activeCompanyCode: null });
   },
   setActiveIndicatorValue: (id) =>
     // Mutual-exclusion invariant (Turn VI extends): setting an active IV

@@ -1806,7 +1806,10 @@
       "sectorTreeAriaLabel": "Sektor üzrə qruplaşdırılmış şirkətlər",
       "tabsAriaLabel": "Şirkət izləmə filtri",
       "starredAriaLabel": "Seçilmiş şirkətlər",
-      "alertedAriaLabel": "Xəbərdarlıq olan şirkətlər"
+      "alertedAriaLabel": "Xəbərdarlıq olan şirkətlər",
+      "allRowLabel": "HAMI",
+      "allRowDescription": "HeatMap-da bütün şirkətləri göstər",
+      "allRowAriaLabel": "HeatMap-da bütün şirkətləri göstər"
     },
     "peer": {
       "title": "Peer müqayisəsi ({count} şirkət)",

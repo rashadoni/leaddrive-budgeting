@@ -1806,7 +1806,10 @@
       "sectorTreeAriaLabel": "Компании, сгруппированные по сектору",
       "tabsAriaLabel": "Фильтр списка наблюдения компаний",
       "starredAriaLabel": "Избранные компании",
-      "alertedAriaLabel": "Компании с алертами"
+      "alertedAriaLabel": "Компании с алертами",
+      "allRowLabel": "ВСЕ",
+      "allRowDescription": "Показать все компании на HeatMap",
+      "allRowAriaLabel": "Показать все компании на HeatMap"
     },
     "peer": {
       "title": "Сравнение peer ({count} компаний)",
