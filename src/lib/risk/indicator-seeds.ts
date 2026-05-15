@@ -278,6 +278,36 @@ export const agroIndicators: IndicatorSeed[] = [
   //   commodityPrice) land — until then they evaluate to `unknown` and the
   //   HeatMap shows the legitimate "?" instead of a synthetic placeholder.
   {
+    code: "AGRO_YIELD_PER_HA",
+    nameEn: "Direct-entry Yield per Hectare",
+    nameAz: "Birbaşa daxil edilmiş Hektar başına Məhsuldarlıq",
+    nameRu: "Прямой ввод урожайности (т/га)",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "t/ha",
+    direction: "higher_better",
+    // Distinct from AGRO_YIELD (which divides harvest_tons / area_hectares):
+    // this seed accepts the directly-entered yield_per_ha OperationalFact,
+    // used by clients who aggregate per-field externally and submit the
+    // weighted average. Thresholds re-calibrated for sugarcane (vs the
+    // generic AGRO_YIELD which is calibrated for wheat-style crops).
+    formula: "yield_per_ha",
+    thresholds: {
+      green: { op: ">=", value: 60 },
+      amber: { op: ">=", value: 40 },
+      red: { op: "<", value: 40 },
+    },
+    hintTemplateEn:
+      "Yield {value} t/ha — {status}. Sugarcane: target 60+ t/ha; below 40 signals irrigation or variety drift.",
+    hintTemplateRu:
+      "Урожайность {value} т/га — {status}. Тростник: цель 60+; ниже 40 — ирригация или сорт.",
+    hintTemplateAz:
+      "Məhsuldarlıq {value} t/ha — {status}. Qamış: hədəf 60+; 40-dan aşağı — suvarma və ya sort.",
+    requiredInputs: ["operationalFact:yield_per_ha"],
+    sortOrder: 45,
+    defaultValueSource: "disclosed",
+  },
+  {
     code: "AGRO_SUGAR_CONTENT",
     nameEn: "Sugar Content of Harvest",
     nameAz: "Məhsulda Şəkər Miqdarı",

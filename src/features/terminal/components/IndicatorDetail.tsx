@@ -14,7 +14,7 @@ import { useTranslations, useLocale } from 'next-intl';
  */
 
 import React, { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw } from "lucide-react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { TodayBrief } from "./TodayBrief";
 import { useTerminalStore } from "../store/terminalStore";
@@ -459,6 +459,32 @@ export function IndicatorDetail() {
             note={detail.materialityNote ?? null}
             t={t}
           />
+          {/* Phase 7.I — "Open source" jump for indicators that read from
+              external feeds (commodityPriceResolver or weatherResolver).
+              For non-macro/computed cells the source IS the formula's
+              budget lines — drill-down is already in the variables list
+              below; a button here would be redundant. Detection by
+              indicator-code prefix lets us route to the right pop-out
+              (sugar price + weather both live in the CommodityTicker
+              panel, so AGRO_SUGAR_PRICE_TREND and AGRO_WEATHER_RAINFALL
+              both open it). */}
+          {(detail.indicator.code === "AGRO_SUGAR_PRICE_TREND" ||
+            detail.indicator.code === "AGRO_WEATHER_RAINFALL") && (
+            <button
+              type="button"
+              onClick={() =>
+                window.open(
+                  "/terminal-panel/commodity-ticker",
+                  "terminal-panel-commodity-ticker",
+                )
+              }
+              className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 transition-colors text-gray-500"
+              title={t('indicatorDetail.openSourceTitle')}
+            >
+              <ExternalLink size={10} aria-hidden="true" />
+              <span>{t('indicatorDetail.openSourceButton')}</span>
+            </button>
+          )}
           {/* Phase 7.E phase 2 hardening (sub-40) — per-IV recompute
               affordance. Single-IV path (companyId+indicatorCode) is
               the only branch that flips withSparkline=true on the API

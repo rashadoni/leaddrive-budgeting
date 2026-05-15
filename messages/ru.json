@@ -1912,6 +1912,8 @@
       "recomputeDone": "Обновлено",
       "recomputeFailed": "Ошибка",
       "recomputeTitle": "Пересчитать значение индикатора со свежей sparkline-кривой",
+      "openSourceButton": "Источник",
+      "openSourceTitle": "Открыть базовый commodity / weather фид в новом окне",
       "forecastNextPeriod": "Прогноз след. периода",
       "forecastNoChange": "изменений не ожидается",
       "forecastConfidence": "уверенность",

@@ -1912,6 +1912,8 @@
       "recomputeDone": "Yeniləndi",
       "recomputeFailed": "Xəta",
       "recomputeTitle": "Bu göstərici dəyərini yenilənmiş sparkline ilə yenidən hesabla",
+      "openSourceButton": "Mənbə",
+      "openSourceTitle": "Müvafiq commodity / weather mənbəsini yeni pəncərədə aç",
       "forecastNextPeriod": "Növbəti dövrə proqnoz",
       "forecastNoChange": "dəyişiklik gözlənilmir",
       "forecastConfidence": "inam",
