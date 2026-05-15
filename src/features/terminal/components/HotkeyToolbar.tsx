@@ -482,10 +482,13 @@ export function HotkeyToolbar() {
               <span
                 aria-hidden="true"
                 title={GROUP_LABELS[h.group]}
-                className="shrink-0 mx-1 text-gray-800 select-none cursor-help"
-              >
-                │
-              </span>
+                // Visible vertical divider: 1px border, ~14px tall, gap on both
+                // sides so the cluster boundary is clearly readable against the
+                // dark toolbar background. Hover surfaces the group label as
+                // a tooltip without consuming horizontal space.
+                className="shrink-0 mx-2 self-stretch border-l border-gray-700 cursor-help"
+                style={{ minHeight: "16px" }}
+              />
             )}
             <button
               type="button"
