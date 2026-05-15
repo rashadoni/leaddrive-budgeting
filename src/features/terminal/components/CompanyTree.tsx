@@ -11,6 +11,12 @@ import {
   type CompositeScore,
 } from '@/lib/risk/composite-score';
 import { statusShape } from '@/lib/risk/heatmap-matrix';
+import {
+  computeCompanyTrustStatus,
+  TRUST_COLOR,
+  TRUST_LABEL,
+  type TrustStatus,
+} from '@/lib/risk/trust-status';
 
 const PANEL_ID = 1;
 
@@ -92,6 +98,55 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       }
     }
     return out;
+  }, [matrix]);
+  // Financial-truth-infra Phase B.1 — per-company trust status badge.
+  // Walks the cell list once per matrix change, returns a Map keyed by
+  // company.code so row render is O(1) lookup. For sub-groups whose own
+  // row has no IVs (rollup-only), we union their descendants' cells so
+  // the parent badge reflects the worst child state.
+  const trustByCode = useMemo<Map<string, TrustStatus>>(() => {
+    if (!matrix) return new Map();
+    const direct = new Map<string, TrustStatus>();
+    for (const co of matrix.companies) {
+      direct.set(co.code, computeCompanyTrustStatus(co.id, matrix.cells));
+    }
+    // Walk children → propagate worst child status up to parent. Trust
+    // ordering: suspicious < partial < pending < verified (lowest wins).
+    type WithParent = (typeof matrix.companies)[number] & { parentCompanyId?: string | null };
+    const cosWithParent = matrix.companies as ReadonlyArray<WithParent>;
+    const childrenByParentId = new Map<string, WithParent[]>();
+    for (const c of cosWithParent) {
+      if (!c.parentCompanyId) continue;
+      const list = childrenByParentId.get(c.parentCompanyId);
+      if (list) list.push(c);
+      else childrenByParentId.set(c.parentCompanyId, [c]);
+    }
+    const order: TrustStatus[] = ['suspicious', 'partial', 'pending', 'verified'];
+    const worstOf = (a: TrustStatus, b: TrustStatus): TrustStatus =>
+      order.indexOf(a) < order.indexOf(b) ? a : b;
+    let progressed = true;
+    let safety = 5;
+    while (progressed && safety-- > 0) {
+      progressed = false;
+      for (const [parentId, kids] of childrenByParentId) {
+        const parent = cosWithParent.find((c) => c.id === parentId);
+        if (!parent) continue;
+        const existing = direct.get(parent.code);
+        // Only re-derive a parent that's still 'pending' (had no own data).
+        if (existing && existing !== 'pending') continue;
+        let agg: TrustStatus | null = null;
+        for (const k of kids) {
+          const ks = direct.get(k.code);
+          if (!ks) continue;
+          agg = agg === null ? ks : worstOf(agg, ks);
+        }
+        if (agg && agg !== existing) {
+          direct.set(parent.code, agg);
+          progressed = true;
+        }
+      }
+    }
+    return direct;
   }, [matrix]);
   // User-driven row clicks → selectCompany (tracks LRU recent).
   const storeSetCompany = useTerminalStore((s) => s.selectCompany);
@@ -402,6 +457,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
             starred={starredCompanyCodes.has(root.code)}
             onToggle={toggleStarredCompany}
           />
+          <TrustBadge status={trustByCode.get(root.code) ?? 'pending'} />
           <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
             {root.code}
           </span>
@@ -441,6 +497,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                     starred={starredCompanyCodes.has(child.code)}
                     onToggle={toggleStarredCompany}
                   />
+                  <TrustBadge status={trustByCode.get(child.code) ?? 'pending'} />
                   <span
                     className="text-gray-500 uppercase tracking-wider w-20 truncate"
                     title={child.code}
@@ -654,6 +711,30 @@ function AllRow({ active, onSelect }: { active: boolean; onSelect: () => void })
         </span>
       </div>
     </li>
+  );
+}
+
+/**
+ * Financial-truth-infra Phase B.1 — tiny circle badge encoding per-company
+ * trust status: verified / partial / suspicious / pending. Tooltip carries
+ * the full label for hover-discoverability. Position: between StarToggle
+ * and the company code, both at root + child levels.
+ */
+function TrustBadge({ status }: { status: TrustStatus }) {
+  return (
+    <span
+      role="img"
+      aria-label={`Trust status: ${status}`}
+      title={TRUST_LABEL[status]}
+      className="inline-block shrink-0 rounded-full"
+      style={{
+        width: 6,
+        height: 6,
+        backgroundColor: TRUST_COLOR[status],
+        // Subtle ring so the dot reads on busy backgrounds.
+        boxShadow: `0 0 0 1px ${TRUST_COLOR[status]}30`,
+      }}
+    />
   );
 }
 
