@@ -147,6 +147,76 @@ export const OPERATIONAL_METRIC_RULES: readonly MetricValidationRule[] = [
     hintRu: "Рыночная цена за период. Используется в индикаторе волатильности выручки.",
     hintAz: "Dövr üzrə bazar qiyməti. Gəlir dəyişkənliyi göstəricisində istifadə olunur.",
   },
+  // Phase 7.I — sugar/agro pilot metrics. Yield/water/fertilizer per hectare
+  // metrics drive Azerşəkər's AGRO_YIELD_PER_HA / AGRO_WATER_INTENSITY /
+  // AGRO_FERTILIZER_INTENSITY indicators. yield_per_ha is also computable
+  // from (harvest_tons ÷ area_hectares) but direct-entry support lets clients
+  // sum granular per-field external data outside the system and submit the
+  // aggregate.
+  {
+    metric: "yield_per_ha",
+    unit: "tons/ha",
+    min: 0,
+    max: 200,
+    warnMin: 5,
+    warnMax: 100,
+    anomalyDeltaPct: 40,
+    sector: "agro",
+    labelEn: "Yield per hectare (tons/ha)",
+    labelRu: "Урожайность на гектар (т/га)",
+    labelAz: "Hektar başına məhsuldarlıq (ton/ha)",
+    hintEn: "Tons harvested per hectare. Sugarcane: typical 50–80 t/ha; sugar beet: 40–70 t/ha; wheat: 3–7 t/ha.",
+    hintRu: "Тонн с гектара. Сахарный тростник: обычно 50–80 т/га; сахарная свёкла: 40–70; пшеница: 3–7.",
+    hintAz: "Hektar başına ton. Şəkər qamışı: adətən 50–80 t/ha; şəkər çuğunduru: 40–70; buğda: 3–7.",
+  },
+  {
+    metric: "sugar_content_pct",
+    unit: "%",
+    min: 0,
+    max: 25,
+    warnMin: 8,
+    warnMax: 20,
+    anomalyDeltaPct: 30,
+    sector: "agro",
+    labelEn: "Sugar content (%)",
+    labelRu: "Содержание сахара (%)",
+    labelAz: "Şəkər miqdarı (%)",
+    hintEn: "Sucrose content of harvested cane/beet. Sugarcane: 10–18%; sugar beet: 16–20%.",
+    hintRu: "Содержание сахарозы в собранном тростнике/свёкле. Тростник: 10–18%; свёкла: 16–20%.",
+    hintAz: "Yığılan qamış/çuğundurda saxaroza miqdarı. Qamış: 10–18%; çuğundur: 16–20%.",
+  },
+  {
+    metric: "water_use_m3_per_ha",
+    unit: "m³/ha",
+    min: 0,
+    max: 20_000,
+    warnMin: 1_000,
+    warnMax: 15_000,
+    anomalyDeltaPct: 50,
+    sector: "agro",
+    labelEn: "Water use (m³/ha)",
+    labelRu: "Расход воды (м³/га)",
+    labelAz: "Su istifadəsi (m³/ha)",
+    hintEn: "Irrigation water applied per hectare per growing cycle. Sugarcane: 12,000–18,000 m³/ha annually.",
+    hintRu: "Объём поливной воды на гектар за вегетационный цикл. Тростник: 12 000–18 000 м³/га в год.",
+    hintAz: "Vegetasiya dövrü ərzində hektar başına suvarma suyu. Qamış: 12 000–18 000 m³/ha.",
+  },
+  {
+    metric: "fertilizer_kg_per_ha",
+    unit: "kg/ha",
+    min: 0,
+    max: 2_000,
+    warnMin: 50,
+    warnMax: 1_000,
+    anomalyDeltaPct: 50,
+    sector: "agro",
+    labelEn: "Fertilizer applied (kg/ha)",
+    labelRu: "Внесённые удобрения (кг/га)",
+    labelAz: "Tətbiq edilən gübrə (kq/ha)",
+    hintEn: "NPK (or urea) per hectare per growing cycle. Cane: ~300–600 kg/ha; beet: ~150–300 kg/ha.",
+    hintRu: "NPK или мочевина на гектар за вегетационный цикл. Тростник: ~300–600 кг/га; свёкла: ~150–300.",
+    hintAz: "Vegetasiya dövrü ərzində hektar başına NPK / karbamid. Qamış: ~300–600 kq/ha.",
+  },
 
   // --- Real Estate -----------------------------------------------------
   {
@@ -363,6 +433,24 @@ export const OPERATIONAL_METRIC_RULES: readonly MetricValidationRule[] = [
     labelEn: "Finished output (kg)",
     labelRu: "Готовая продукция (кг)",
     labelAz: "Hazır məhsul (kq)",
+  },
+  // Phase 7.I — sugar refining extraction efficiency. Driver for
+  // AGRO_EXTRACTION_RATE indicator. Tracks: finished_sugar / raw_cane × 100.
+  {
+    metric: "extraction_rate_pct",
+    unit: "%",
+    min: 0,
+    max: 100,
+    warnMin: 50,
+    warnMax: 95,
+    anomalyDeltaPct: 20,
+    sector: "food_processing",
+    labelEn: "Extraction rate (%)",
+    labelRu: "Выход переработки (%)",
+    labelAz: "Çıxım dərəcəsi (%)",
+    hintEn: "Sugar yield from raw input. Modern cane refineries: 85–92%; older beet processing: 75–85%.",
+    hintRu: "Выход сахара из сырья. Современные заводы по тростнику: 85–92%; старые свеклосахарные: 75–85%.",
+    hintAz: "Xammaldan şəkər çıxımı. Müasir qamış zavodları: 85–92%; köhnə çuğundur zavodları: 75–85%.",
   },
 ];
 

@@ -162,6 +162,55 @@ export const ESG_MATERIALITY_OVERRIDES: readonly MaterialityOverride[] = [
     rating: "low_materiality",
     note: "Macro AZ climate-readiness has limited direct impact on real-estate ops.",
   },
+
+  // ─── Phase 7.I — financial-indicator materiality for agro/food_processing ───
+  // For harvest-cycle agribusinesses, working-capital indicators (DSO/DPO/CCC,
+  // inventory turns) are vestigial finance metrics — revenue lands in 1–2
+  // harvest pulses per year, inventory by definition is seasonal stockpile.
+  // Operational metrics (yield, sugar content, water/fertilizer intensity)
+  // and external metrics (commodity price trend, weather) carry the actual
+  // operational signal. Marking the working-capital ratios as low/not material
+  // means HeatMap dims them visually so the client sees what matters first,
+  // without losing the ability to drill into them.
+  // For downstream food_processing (sugar refining, beverage), inventory
+  // turns + DSO are RESTORED to material — refined sugar IS B2B inventory
+  // on a normal credit cycle, not seasonal field stock.
+  {
+    industry: "agro_crops",
+    indicatorCode: "IND_DSO",
+    rating: "low_materiality",
+    note: "Revenue lands in 1–2 harvest pulses per year — DSO not a continuous signal.",
+  },
+  {
+    industry: "agro_crops",
+    indicatorCode: "IND_DPO",
+    rating: "low_materiality",
+    note: "Payables aligned with planting/fertilizer cycle, not steady B2B credit terms.",
+  },
+  {
+    industry: "agro_crops",
+    indicatorCode: "IND_CCC",
+    rating: "low_materiality",
+    note: "Cash conversion cycle distorted by harvest seasonality — read DSO/DPO individually.",
+  },
+  {
+    industry: "agro_crops",
+    indicatorCode: "IND_INVENTORY_TURNS",
+    rating: "not_material",
+    note: "Standing crop ≠ retail/B2B inventory; turns metric doesn't apply.",
+  },
+  // food_processing keeps WC indicators material because B2B sugar/processed
+  // food has normal credit cycle + warehouse rotation. The cane-side metrics
+  // (sugar content, extraction rate) apply via the dedicated AGRO_/FP_ seeds.
+
+  // Indicators that DON'T apply to non-banking businesses — DEBT_TO_EBITDA / CCC
+  // for the agro side are dimmed, mirroring the working-capital rationale.
+  {
+    industry: "agro_crops",
+    indicatorCode: "IND_LEVERAGE",
+    rating: "low_materiality",
+    note: "Asset-heavy seasonal capital; benchmarks read against agri-finance peers, not service-sector ratios.",
+  },
 ];
 
 /**
@@ -199,10 +248,11 @@ export function getMaterialityNote(
 }
 
 /**
- * The 5 ESG indicators eligible for materiality calls. Other
- * indicators (financial, operational) are universally material — they
- * aren't sector-conditional, so the materiality matrix doesn't apply.
- * The matrix API gates the materiality lookup to these codes.
+ * The 5 ESG indicators that v2.4 originally calibrated. Kept as the
+ * canonical "ESG group" for tests + admin UI grouping. After Phase 7.I
+ * (AzerSheker pilot) materiality is no longer ESG-only — any indicator
+ * with at least one override row in `ESG_MATERIALITY_OVERRIDES` is
+ * considered materiality-scoped. See `isMaterialityScoped()`.
  */
 export const ESG_INDICATOR_CODES: readonly string[] = [
   "IND_CARBON_SCOPE_1",
@@ -212,7 +262,26 @@ export const ESG_INDICATOR_CODES: readonly string[] = [
   "IND_GOV_CLIMATE_SCORE",
 ];
 
-/** True if the indicator participates in the materiality framework. */
+/**
+ * Derived set of every indicator code that participates in the
+ * materiality framework — i.e. has at least one (industry, indicatorCode)
+ * override row in `ESG_MATERIALITY_OVERRIDES`. Computed once at module
+ * load; lookup is O(1).
+ *
+ * Phase 7.I: previously hard-coded to the 5 ESG codes. Now generalized
+ * so adding agro/food_processing financial-override rows auto-enables
+ * materiality dimming in the HeatMap for those codes without touching
+ * the gating function.
+ */
+const MATERIALITY_SCOPED_CODES: ReadonlySet<string> = new Set([
+  ...ESG_INDICATOR_CODES,
+  ...ESG_MATERIALITY_OVERRIDES.map((r) => r.indicatorCode),
+]);
+
+/**
+ * True if the indicator participates in the materiality framework.
+ * Returns true for any indicator with at least one override row.
+ */
 export function isMaterialityScoped(indicatorCode: string): boolean {
-  return ESG_INDICATOR_CODES.includes(indicatorCode);
+  return MATERIALITY_SCOPED_CODES.has(indicatorCode);
 }

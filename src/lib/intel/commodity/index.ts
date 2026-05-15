@@ -8,6 +8,8 @@
 import { createTCMBAdapter } from "./tcmb-fx"
 import { createWorldBankCPIAdapter } from "./worldbank-cpi"
 import { createCommoditiesRSSAdapter } from "./commodities-rss"
+import { createOpenMeteoWeatherAdapter } from "./weather-openmeteo"
+import { createSugarYahooAdapter } from "./sugar-yahoo"
 import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
 
 export function getCommodityAdapters(opts: CommodityAdapterOptions = {}): CommodityAdapter[] {
@@ -15,12 +17,27 @@ export function getCommodityAdapters(opts: CommodityAdapterOptions = {}): Commod
     createTCMBAdapter(opts),
     createWorldBankCPIAdapter(opts),
     createCommoditiesRSSAdapter(opts),
+    // Phase 7.I — sector-aware feeds for AzerSheker pilot.
+    createOpenMeteoWeatherAdapter(opts),
+    createSugarYahooAdapter(opts),
   ]
 }
 
 export { createTCMBAdapter, TCMB_FX_SOURCE } from "./tcmb-fx"
 export { createWorldBankCPIAdapter, WB_CPI_SOURCE } from "./worldbank-cpi"
 export { createCommoditiesRSSAdapter, COMMODITIES_RSS_SOURCE } from "./commodities-rss"
+export {
+  createOpenMeteoWeatherAdapter,
+  WEATHER_OPENMETEO_SOURCE,
+  WEATHER_REGIONS,
+  openMeteoResponseToDataPoints,
+  type WeatherRegionCode,
+} from "./weather-openmeteo"
+export {
+  createSugarYahooAdapter,
+  SUGAR_YAHOO_SOURCE,
+  SUGAR_YAHOO_METRIC,
+} from "./sugar-yahoo"
 export {
   ingestCommodityData,
   clearCommodityMemoryForTests,

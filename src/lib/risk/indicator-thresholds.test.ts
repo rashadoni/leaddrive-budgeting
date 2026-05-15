@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("64 active indicator seeds (Phase 7.H Feature B: +1 IND_NEWS_SENTIMENT_30D)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(64)
+  it("70 active indicator seeds (Phase 7.I added 6 sugar/agro: AGRO_SUGAR_CONTENT, AGRO_WATER_INTENSITY, AGRO_FERTILIZER_INTENSITY, AGRO_WEATHER_RAINFALL, AGRO_SUGAR_PRICE_TREND, FP_EXTRACTION_RATE)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(70)
   })
 
   it("every indicator has a unique code", () => {

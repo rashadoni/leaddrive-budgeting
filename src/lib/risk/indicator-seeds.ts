@@ -271,6 +271,157 @@ export const agroIndicators: IndicatorSeed[] = [
     requiredInputs: ["operationalFact:commodity_price"],
     sortOrder: 40,
   },
+  // ─ Phase 7.I — AzerSheker / sugar pilot. Five new agro indicators that
+  //   move the terminal from "P&L mirror" to "true ops & external dashboard"
+  //   for harvest-cycle businesses. Each declares its real-feed source so
+  //   the recompute pipeline can wire it once the resolvers (weather +
+  //   commodityPrice) land — until then they evaluate to `unknown` and the
+  //   HeatMap shows the legitimate "?" instead of a synthetic placeholder.
+  {
+    code: "AGRO_SUGAR_CONTENT",
+    nameEn: "Sugar Content of Harvest",
+    nameAz: "Məhsulda Şəkər Miqdarı",
+    nameRu: "Содержание сахара в урожае",
+    category: "operational",
+    industries: ["agro_crops", "food_processing"],
+    unit: "%",
+    direction: "higher_better",
+    formula: "sugar_content_pct",
+    thresholds: {
+      // Calibrated for cane: 14%+ green, 10–14% amber, <10% red. Beet uses higher
+      // bands but conservative cane defaults serve the AzerSheker baseline.
+      green: { op: ">=", value: 14 },
+      amber: { op: ">=", value: 10 },
+      red: { op: "<", value: 10 },
+    },
+    hintTemplateEn:
+      "Sucrose content {value}% — {status}. Below 10% usually means late harvest, drought stress, or variety drift.",
+    hintTemplateRu:
+      "Содержание сахарозы {value}% — {status}. Ниже 10% обычно — поздняя уборка, засушливый стресс или дрейф сорта.",
+    hintTemplateAz:
+      "Saxaroza miqdarı {value}% — {status}. 10%-dən aşağı: gec biçim, quraqlıq stresi və ya sort dreyfi.",
+    requiredInputs: ["operationalFact:sugar_content_pct"],
+    sortOrder: 50,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AGRO_WATER_INTENSITY",
+    nameEn: "Water Use Intensity",
+    nameAz: "Su İstifadəsinin İntensivliyi",
+    nameRu: "Водоёмкость",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "m³/ha",
+    direction: "lower_better",
+    formula: "water_use_m3_per_ha",
+    thresholds: {
+      // Sugarcane benchmarks: <12,000 efficient, 12-18k typical, >18k wasteful.
+      green: { op: "<=", value: 12_000 },
+      amber: { op: "<=", value: 18_000 },
+      red: { op: ">", value: 18_000 },
+    },
+    hintTemplateEn:
+      "Water use {value} m³/ha — {status}. Above 18,000 signals irrigation inefficiency (canal losses, poor scheduling).",
+    hintTemplateRu:
+      "Расход воды {value} м³/га — {status}. Выше 18 000 — неэффективная ирригация (потери в каналах, плохое расписание).",
+    hintTemplateAz:
+      "Su istifadəsi {value} m³/ha — {status}. 18 000-dən yuxarı: səmərəsiz suvarma (kanal itkiləri, zəif planlaşdırma).",
+    requiredInputs: ["operationalFact:water_use_m3_per_ha"],
+    sortOrder: 60,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AGRO_FERTILIZER_INTENSITY",
+    nameEn: "Fertilizer Use Intensity",
+    nameAz: "Gübrə İstifadəsinin İntensivliyi",
+    nameRu: "Удобрениеёмкость",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "kg/ha",
+    direction: "lower_better",
+    formula: "fertilizer_kg_per_ha",
+    thresholds: {
+      // Lower-is-better but only when yield is held constant. Hard-line cane
+      // defaults: ≤400 efficient, 400-800 typical, >800 may signal nutrient
+      // mismanagement or N-leaching risk.
+      green: { op: "<=", value: 400 },
+      amber: { op: "<=", value: 800 },
+      red: { op: ">", value: 800 },
+    },
+    hintTemplateEn:
+      "Fertilizer {value} kg/ha — {status}. High values without yield gain → N-leaching risk + cost drag.",
+    hintTemplateRu:
+      "Удобрений {value} кг/га — {status}. Высокий расход без роста урожая — риск вымывания азота + лишние затраты.",
+    hintTemplateAz:
+      "Gübrə {value} kq/ha — {status}. Məhsuldarlıq artmadan yüksək — azot yuyulması riski + əlavə xərc.",
+    requiredInputs: ["operationalFact:fertilizer_kg_per_ha"],
+    sortOrder: 70,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AGRO_WEATHER_RAINFALL",
+    nameEn: "Trailing 90-day Rainfall",
+    nameAz: "Son 90 günün Yağıntısı",
+    nameRu: "Осадки за последние 90 дней",
+    category: "macro",
+    industries: ["agro_crops"],
+    unit: "mm",
+    direction: "higher_better",
+    // Formula uses bare variable name — `weatherResolver` exposes
+    // `rainfall_mm_90d` to the formula context after looking up the
+    // region-keyed IntelDataPoint via company.settings.region.
+    formula: "rainfall_mm_90d",
+    thresholds: {
+      // Calibrated for the Azerbaijani sugar belt (Salyan/Imishli/Sabirabad),
+      // where 90-day climatological norm in growing season is ~120-180mm.
+      // <60mm = drought stress; 60-150 = normal; >150 = abundant.
+      green: { op: ">=", value: 60 },
+      amber: { op: ">=", value: 30 },
+      red: { op: "<", value: 30 },
+    },
+    hintTemplateEn:
+      "Trailing 90-day rainfall {value} mm — {status}. Below 30 mm in growing season indicates drought stress on cane.",
+    hintTemplateRu:
+      "Осадки за 90 дней {value} мм — {status}. Меньше 30 мм в вегетацию — засушливый стресс на тростнике.",
+    hintTemplateAz:
+      "Son 90 günün yağıntısı {value} mm — {status}. Vegetasiyada 30 mm-dən aşağı qamış üçün quraqlıq stresidir.",
+    requiredInputs: ["weather:rainfall_mm_90d"],
+    sortOrder: 80,
+    defaultValueSource: "macro",
+  },
+  {
+    code: "AGRO_SUGAR_PRICE_TREND",
+    nameEn: "Sugar Price (vs 12M mean)",
+    nameAz: "Şəkər Qiyməti (12 aylıq ortalama ilə müqayisədə)",
+    nameRu: "Цена сахара (отклонение от 12-мес среднего)",
+    category: "commodity",
+    industries: ["agro_crops", "food_processing"],
+    unit: "%",
+    direction: "higher_better",
+    // Formula uses bare variable names exposed by `commodityPriceResolver`:
+    //   sugar_price_latest    = latest monthly close (USD/tonne)
+    //   sugar_price_mean_12m  = trailing-12-month arithmetic mean
+    formula: "(sugar_price_latest - sugar_price_mean_12m) / sugar_price_mean_12m * 100",
+    thresholds: {
+      // Above 12M mean = revenue tailwind. Below 10% drop = pricing-margin
+      // risk for unhedged exposure. Symmetric bands per finance recommendation.
+      green: { op: ">=", value: 0 },
+      amber: { op: ">=", value: -10 },
+      red: { op: "<", value: -10 },
+    },
+    hintTemplateEn:
+      "Sugar price {value}% vs 12M mean — {status}. Below −10% suggests forward-contract a slice of next-quarter output.",
+    hintTemplateRu:
+      "Цена сахара {value}% от 12-мес среднего — {status}. Ниже −10% — стоит застраховать часть выпуска следующего квартала.",
+    hintTemplateAz:
+      "Şəkər qiyməti 12 aylıq ortalamadan {value}% — {status}. −10%-dən aşağı: növbəti rübün bir hissəsini forvard etmək.",
+    requiredInputs: [
+      "commodityPrice:sugar_price_latest",
+      "commodityPrice:sugar_price_mean_12m",
+    ],
+    sortOrder: 90,
+    defaultValueSource: "macro",
+  },
 ];
 
 // ─── Cross-sector pack (4) ─────────────────────────────────────────────────
@@ -1443,6 +1594,36 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
       "OpEx gəlirin {value}%-dir. Qida emalı 12–22%; 28%-dən yuxarı — marja üçün strukturca ağır (logistika + soyuq saxlama).",
     requiredInputs: ["budgetLine"],
     sortOrder: 740,
+  },
+  // ─ Phase 7.I — sugar refining extraction efficiency. Pairs with
+  //   AGRO_SUGAR_CONTENT (cane side) — together they tell the whole
+  //   field-to-warehouse value chain story for AzerSheker's AZSF + CPC.
+  {
+    code: "FP_EXTRACTION_RATE",
+    nameEn: "Extraction / Recovery Rate",
+    nameAz: "Çıxım / Bərpa Dərəcəsi",
+    nameRu: "Выход переработки",
+    category: "operational",
+    industries: ["food_processing"],
+    unit: "%",
+    direction: "higher_better",
+    formula: "extraction_rate_pct",
+    thresholds: {
+      // Cane refining: modern plants 85–92%, older 75–85%. Baseline for
+      // AZSF/CPC. Sub-75% is industrial-red.
+      green: { op: ">=", value: 85 },
+      amber: { op: ">=", value: 75 },
+      red: { op: "<", value: 75 },
+    },
+    hintTemplateEn:
+      "Extraction rate {value}% — {status}. Below 75% signals juice loss in mills, bagasse moisture too high, or evaporator scale.",
+    hintTemplateRu:
+      "Выход {value}% — {status}. Меньше 75% — потери сока на мельницах, влажность жома, накипь в выпарных.",
+    hintTemplateAz:
+      "Çıxım {value}% — {status}. 75%-dən aşağı: dəyirmanda şirə itkisi, baqas nəmlik, evaporatorda təbəqə.",
+    requiredInputs: ["operationalFact:extraction_rate_pct"],
+    sortOrder: 750,
+    defaultValueSource: "disclosed",
   },
 ];
 

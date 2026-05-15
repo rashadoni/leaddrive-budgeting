@@ -36,6 +36,7 @@ import {
   readAlertThresholdsFromOrgSettings,
 } from '@/lib/risk/alert-thresholds-config';
 import { useMatrix } from '../hooks/use-matrix';
+import { getMateriality, isMaterialityScoped } from '@/lib/risk/esg-materiality';
 
 type CompanyRow = {
   id: string;
@@ -100,6 +101,11 @@ export function HeatMap({ period }: Props) {
   const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
   const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
   const compactMode = useTerminalStore((s) => s.compactMode);
+  // Phase 7.I — sector-aware column ordering: when active company has an
+  // industry the materiality matrix knows about, sort indicator columns so
+  // material ones land left + (optional) hide not_material via a toggle.
+  // Persisted in component state so a panel re-render doesn't snap back.
+  const [hideNotMaterial, setHideNotMaterial] = useState(false);
 
   // Sub-20: shared `useMatrix()` hook. Module-level cache means
   // HeatMap + ComparePanel + CompanySnapshot all subscribe to ONE
@@ -312,6 +318,37 @@ export function HeatMap({ period }: Props) {
     setAlertMatches,
   ]);
 
+  // Phase 7.I — sector-aware column resolution. MUST be declared above any
+  // conditional early-return so the hook order stays stable across renders
+  // (React's Rules of Hooks). Empty/loading branches re-use the same memos
+  // — they just return empty arrays.
+  const activeCompanyIndustry = useMemo(() => {
+    if (!data || !activeCompanyCode) return null;
+    const co = data.companies.find((c) => c.code === activeCompanyCode);
+    return co?.industry ?? null;
+  }, [data, activeCompanyCode]);
+
+  const rawIndicators = data?.indicators ?? [];
+  const indicators = useMemo(() => {
+    if (!activeCompanyIndustry) return rawIndicators;
+    const rankMateriality = (rating: 'material' | 'low_materiality' | 'not_material'): number => {
+      if (rating === 'material') return 0;
+      if (rating === 'low_materiality') return 1;
+      return 2; // not_material
+    };
+    const enriched = rawIndicators.map((ind) => ({
+      ind,
+      rating: isMaterialityScoped(ind.code)
+        ? getMateriality(activeCompanyIndustry, ind.code)
+        : ('material' as const),
+    }));
+    const visible = hideNotMaterial
+      ? enriched.filter((e) => e.rating !== 'not_material')
+      : enriched;
+    visible.sort((a, b) => rankMateriality(a.rating) - rankMateriality(b.rating));
+    return visible.map((e) => e.ind);
+  }, [activeCompanyIndustry, hideNotMaterial, rawIndicators]);
+
   if (!mounted) {
     return (
       <span className="text-gray-700 font-mono text-[10px]">{t('heatMap.loading')}</span>
@@ -330,8 +367,10 @@ export function HeatMap({ period }: Props) {
   const isEmpty =
     !loading &&
     (!data || data.companies.length === 0 || data.indicators.length === 0);
-  const indicators = data?.indicators ?? [];
   const renderedPeriod = data?.period ?? selectedPeriod ?? period ?? '';
+  // Show the toggle only when there's a sector-aware industry — for org-wide
+  // view it would be ambiguous which industry to dim against.
+  const showMaterialityToggle = activeCompanyIndustry != null;
 
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
@@ -359,6 +398,24 @@ export function HeatMap({ period }: Props) {
             aria-label={t('heatMap.filterAriaLabel')}
           />
         </div>
+        {showMaterialityToggle && (
+          <button
+            type="button"
+            onClick={() => setHideNotMaterial((v) => !v)}
+            className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors ${
+              hideNotMaterial
+                ? 'border-[#00D4AA] text-[#00D4AA]'
+                : 'border-gray-700 text-gray-500 hover:border-gray-500'
+            }`}
+            title={
+              hideNotMaterial
+                ? `Showing material indicators only for ${activeCompanyIndustry}. Click to show all.`
+                : `Click to hide indicators flagged not-material for ${activeCompanyIndustry}.`
+            }
+          >
+            {hideNotMaterial ? 'Material only' : 'All'}
+          </button>
+        )}
         {(dbSummary || summary) && (
           <span className="tabular-nums shrink-0" title={dbSummary ? 'Counts from DB (all entities incl. admin)' : 'Counts from matrix view (admin filtered)'}>
             <span style={{ color: statusColor('green') }}>

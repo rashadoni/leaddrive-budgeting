@@ -488,6 +488,60 @@ export type AuditEventInput =
         sourceNote?: string;
         previousValue?: number;
       };
+    }
+  | {
+      // Phase 7.H Feature 5 — client-reported reconciliation reference
+      // values. `submit` covers both first-insert and update (upsert
+      // path); `previousValue` in metadata is null for create, present
+      // for update so audit reviewers can diff. Currency is logged
+      // alongside value so a "1.5M" delta isn't ambiguous between AZN
+      // and USD when the trail is replayed.
+      action: 'client_reconciliation_submit';
+      entityType: 'ClientReconciliation';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        period: string;
+        indicatorKey: string;
+        clientValue: number;
+        currency: string;
+        noteLength?: number;
+        previousValue?: number;
+      };
+    }
+  | {
+      action: 'client_reconciliation_delete';
+      entityType: 'ClientReconciliation';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        period: string;
+        indicatorKey: string;
+        deletedValue: number;
+        currency: string;
+      };
+    }
+  | {
+      // Phase 7.I — admin updated `Company.settings` JSON (per-industry
+      // operational descriptors: hectares, region, totalRooms, processing
+      // capacity, etc.). The diff between previous and next is logged so
+      // a future review can see what was changed without joining
+      // back to the row's mutation history.
+      action: 'company_settings_update';
+      entityType: 'Company';
+      entityId: string;
+      metadata: {
+        companyCode: string;
+        industry: string | null;
+        /** Keys that changed (added/modified/removed). Audit reviewer can
+         *  drill: "AZSEKER-EDEN gained region=salyan, hectaresPlanted bumped
+         *  10000→12000". */
+        keysChanged: string[];
+        /** Pre/post snapshot for forensics. Capped at 8 keys × 200 char
+         *  values upstream to keep the audit row size reasonable. */
+        before: Record<string, unknown> | null;
+        after: Record<string, unknown>;
+      };
     };
 
 /**

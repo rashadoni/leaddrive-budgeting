@@ -129,16 +129,59 @@ describe("esg-materiality — notes for tooltip surface", () => {
 })
 
 describe("esg-materiality — gate scope", () => {
-  it("isMaterialityScoped lights up exactly the 5 ESG codes", () => {
+  it("isMaterialityScoped lights up all 5 ESG codes (canonical group)", () => {
     expect(ESG_INDICATOR_CODES).toHaveLength(5)
     for (const code of ESG_INDICATOR_CODES) {
       expect(isMaterialityScoped(code)).toBe(true)
     }
   })
 
-  it("financial/operational indicators don't participate", () => {
+  // Phase 7.I — gate generalized: any indicator with at least one override
+  // row in the materiality catalog now participates. Adding agro/financial
+  // overrides auto-enables HeatMap dimming for those codes.
+  it("financial indicators with agro overrides ARE materiality-scoped (Phase 7.I)", () => {
+    expect(isMaterialityScoped("IND_DSO")).toBe(true)
+    expect(isMaterialityScoped("IND_DPO")).toBe(true)
+    expect(isMaterialityScoped("IND_CCC")).toBe(true)
+    expect(isMaterialityScoped("IND_INVENTORY_TURNS")).toBe(true)
+    expect(isMaterialityScoped("IND_LEVERAGE")).toBe(true)
+  })
+
+  it("financial/operational indicators WITHOUT overrides don't participate", () => {
     expect(isMaterialityScoped("IND_OPEX_RATIO")).toBe(false)
     expect(isMaterialityScoped("IND_NET_MARGIN")).toBe(false)
     expect(isMaterialityScoped("HOSP_OCC")).toBe(false)
+  })
+})
+
+describe("esg-materiality — Phase 7.I agro/financial overrides", () => {
+  it("agro_crops × IND_DSO is LOW (harvest-cycle revenue, DSO not continuous)", () => {
+    expect(getMateriality("agro_crops", "IND_DSO")).toBe("low_materiality")
+  })
+
+  it("agro_crops × IND_INVENTORY_TURNS is NOT MATERIAL (standing crop ≠ B2B inventory)", () => {
+    expect(getMateriality("agro_crops", "IND_INVENTORY_TURNS")).toBe(
+      "not_material",
+    )
+  })
+
+  it("agro_crops × IND_CCC is LOW (cash conversion distorted by seasonality)", () => {
+    expect(getMateriality("agro_crops", "IND_CCC")).toBe("low_materiality")
+  })
+
+  it("food_processing × IND_DSO stays MATERIAL (B2B credit cycle is normal)", () => {
+    expect(getMateriality("food_processing", "IND_DSO")).toBe("material")
+  })
+
+  it("food_processing × IND_INVENTORY_TURNS stays MATERIAL (refined-sugar B2B rotation)", () => {
+    expect(getMateriality("food_processing", "IND_INVENTORY_TURNS")).toBe(
+      "material",
+    )
+  })
+
+  it("notes on Phase 7.I agro overrides explain the seasonality rationale", () => {
+    const note = getMaterialityNote("agro_crops", "IND_DSO")
+    expect(note).toBeTruthy()
+    expect(note?.toLowerCase()).toMatch(/harvest|seasonal|pulse/)
   })
 })

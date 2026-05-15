@@ -33,6 +33,109 @@ gate.
 
 ## OPEN
 
+**Last processed: 2026-05-13** (Phase 7.I **Sector-Aware Terminal (AzerSheker pilot)** — backend + AI + admin shipped; Track C UI widgets carried to next session.
+
+Per client wishlist via user: «reasonable indicators / AzerSheker as pilot / all business-related data / AI considers real market+business model / wider analysis incl. qualitative + per-ha productivity». User chose hybrid form-factor, all 4 data sources, production-ready (~2 weeks).
+
+**Shipped this turn (Tracks A + B + D + E):**
+
+**Track A — Sector-aware indicator pack:**
+- +5 metric keys in [metric-validation-rules.ts](src/lib/risk/metric-validation-rules.ts) (yield_per_ha, sugar_content_pct, water_use_m3_per_ha, fertilizer_kg_per_ha, extraction_rate_pct); calibrated to sugarcane benchmarks.
+- +6 indicator seeds in [indicator-seeds.ts](src/lib/risk/indicator-seeds.ts): AGRO_SUGAR_CONTENT, AGRO_WATER_INTENSITY, AGRO_FERTILIZER_INTENSITY, AGRO_WEATHER_RAINFALL (macro), AGRO_SUGAR_PRICE_TREND (commodity), FP_EXTRACTION_RATE — total seed count 64 → **70**.
+- Materiality matrix generalized in [esg-materiality.ts](src/lib/risk/esg-materiality.ts): `isMaterialityScoped()` now derived from override set (was hard-coded ESG-only). Added 5 financial-on-agro overrides (IND_DSO/DPO/CCC/INVENTORY_TURNS/LEVERAGE for agro_crops → low/not_material) so HeatMap auto-dims working-capital metrics for harvest-cycle businesses without losing drill-down.
+
+**Track B — External data feeds:**
+- [weather-openmeteo.ts](src/lib/intel/commodity/weather-openmeteo.ts) adapter: free Open-Meteo archive API → 90-day rainfall + 30-day mean-temp per region (Salyan/Imishli/Sabirabad). Per-region (not per-company); resolver maps via `company.settings.region`.
+- [sugar-yahoo.ts](src/lib/intel/commodity/sugar-yahoo.ts) adapter: Yahoo Finance ICE Sugar #11 (`SB=F`) → monthly USD/tonne. Free, no key. Pink Sheet XLSX is a 1-file swap when warranted.
+- Both registered in [commodity/index.ts](src/lib/intel/commodity/index.ts) factory; scheduler picks them up via `runCommodityIngest`.
+- `weatherResolver` + `commodityPriceResolver` added to [recompute.ts](src/lib/risk/recompute.ts) RESOLVERS registry. Commodity alias table (`sugar_price_latest`, `sugar_price_mean_12m`, `sugar_price_stdev_12m`) lets formula authors reference aggregators without resolver code change. `listIntelDataPoints` added to DataSource interface with graceful degradation when table missing (drift migration not yet applied).
+
+**Track D — AI sector-awareness:**
+- [variance-explainer.ts](src/lib/risk/variance-explainer.ts) — `company.settings` plumbed into prompt as natural-language descriptor ("growing sugarcane on 12,000 ha in salyan, target yield 65 t/ha"). Prompt version v2 → **v3**. Sector-specific instruction added to SYSTEM_PROMPT (cite hectares/region/crop, not generic "agro recommendations").
+- [sentiment.ts](src/lib/intel/sentiment.ts) — system prompt augmented with 9 sugar/agro heuristics: ICE Sugar #11 movements, drought warnings for AzerSheker regions, urea/NPK price spikes, sugar import tariffs, etc. Items tagged `agro_crops`/`food_processing` now score with sector-specific sensitivity.
+- [narrate-snapshot.ts](src/lib/board-deck/narrate-snapshot.ts) — sector recommendation menu expanded: agro_crops → yield/water/fertilizer + ICE Sugar hedging guidance; food_processing → extraction rate + capacity utilization + raw-input exposure.
+
+**Track E — Per-industry Company settings:**
+- New `company_settings_update` audit action enum value (migration [20260513120000_phase7i_company_settings_audit](prisma/migrations/20260513120000_phase7i_company_settings_audit/migration.sql)).
+- New `PATCH/GET /api/companies/[id]/settings` ([route.ts](src/app/api/companies/%5Bid%5D/settings/route.ts)) — manager+ writes, viewer reads, sub-group RBAC. Per-industry Zod schemas in [validate.ts](src/app/api/companies/%5Bid%5D/settings/validate.ts) (agro_crops/hospitality/food_processing strict-mode; generic fallback for other industries with 32-key cap).
+- Audit log union + compact-summary + AuditFeed coverage extended (compile-time exhaustiveness held).
+- Admin UI at `/budgeting/admin/companies` ([CompanySettingsAdmin.tsx](src/features/budgeting/components/CompanySettingsAdmin.tsx)) — list all operational companies + inline per-industry form (hectares/region/crop for agro_crops, totalRooms/seasonality for hospitality, capacity/extraction for food_processing, free-form JSON fallback for others).
+
+**Tests:** +43 new (validate 17 + handler 9 + adapter 17). Full vitest **3271/3271 passing** (was 3185 last turn). tsc 0 errors.
+
+**Track C — UI widgets (CLOSED this turn, same day):**
+
+- ✅ **C1 HeatMap sector-aware toggle.** [HeatMap.tsx](src/features/terminal/components/HeatMap.tsx) — when active company has an industry recognized by the materiality matrix, indicator columns auto-sort material → low_materiality → not_material; toggle "Material only" hides the not_material columns entirely. Hook-order safe (memos above early-returns). `isMaterialityScoped` gate generalized in Phase 7.I A3 means agro_crops financial overrides (DSO/DPO/CCC/INVENTORY_TURNS/LEVERAGE) participate automatically.
+
+- ✅ **C2 [AgroDashboardPanel.tsx](src/features/terminal/components/AgroDashboardPanel.tsx)** — sparklines for yield/ha, sugar content %, water/fertilizer intensity, extraction rate, harvest tons + recent agronomy entries table. Sector descriptor header (cropType / region / hectares / yieldTarget) reads from `Company.settings`. Status badge auto-green when yield ≥ yieldTarget.
+
+- ✅ **C3 [CommodityTickerPanel.tsx](src/features/terminal/components/CommodityTickerPanel.tsx)** — ICE Sugar #11 24-month sparkline + 12M-mean variance + per-region weather strip (Salyan / Imishli / Sabirabad rainfall 90d + temp 30d). Reads new `/api/intel/data-points` endpoint with graceful degradation when IntelDataPoint table missing (drift migration not applied).
+
+- ✅ **C4 [AgronomyEntryPanel.tsx](src/features/terminal/components/AgronomyEntryPanel.tsx)** — inline form for posting OperationalFact rows (yield_per_ha / sugar_content_pct / water_use_m3_per_ha / fertilizer_kg_per_ha / extraction_rate_pct / harvest_tons / area_hectares). Soft-bound warnings surface; second click "Save anyway" forces persist with `forceConfirm: true`. Reuses existing `/api/operational-facts` POST.
+
+- ✅ **C5 [command-parser.ts](src/features/terminal/lib/command-parser.ts) + [CommandBar.tsx](src/features/terminal/components/CommandBar.tsx)** — added 4 new verbs: `AGRO GO` / `WX GO` / `PRICE GO` / `KPI GO`. All forbidden-target (activeCompany-aware via terminalStore). FUNCTION_CODES 18 → 22; tests updated.
+
+- ✅ **C6 [HotkeyToolbar.tsx](src/features/terminal/components/HotkeyToolbar.tsx)** — 3 new buttons (AGRO / PRICE / KPI) visible to everyone (the panel itself shows "not applicable" hint for non-agro companies; hiding by industry adds complexity without clarity).
+
+- ✅ **Pop-out routing** — [terminal-panel/[id]/page.tsx](src/app/terminal-panel/%5Bid%5D/page.tsx) extended with cases `agro-dashboard` / `commodity-ticker` / `agronomy-entry`. Pop-outs re-read `activeCompanyCode` from store so they pivot when user navigates the main window.
+
+- ✅ **NEW [/api/intel/data-points/route.ts](src/app/api/intel/data-points/route.ts)** — viewer-allowed GET, sourceCode+metric+limit query params, graceful degradation on missing table.
+
+**Phase 7.I CLOSED — all 6 tracks (A/B/C/D/E/F) shipped same day.** Full vitest **3271/3271** (no new tests for UI widgets — UI is the surface, not core logic; coverage relies on existing HeatMap snapshot regressions + integration smoke), tsc 0. Phase 7.I.2 follow-up reduces to: i18n strings for the 3 new pop-outs (currently inline EN), Polish/visual styling on CommodityTicker chart, optional industry-gated visibility on HotkeyToolbar buttons.
+
+**🔄 OPEN follow-ups (lower priority):**
+- 🔄 **Migration apply** — `npx prisma migrate dev --skip-seed` to land the `company_settings_update` enum + Phase 7.H Feature 5's `client_reconciliations` table. Blocked by pre-existing broken drift migration; user-side resolution required. owner=user.
+- 🔄 **Scheduler enable for FO Holding** — `runScheduledIntelCrawl` exists but isn't bootstrapped for the live org. Per-org `Organization.settings.intelCommodityIngest` flag flip + `scripts/intel-scheduler-bootstrap.ts` deployment. Until then, IntelDataPoint is empty and the new weather/sugar indicators read `unknown` (the honest answer; no synthetic placeholders). owner=engineering+user.
+
+---
+
+**Last processed: 2026-05-12** (Phase 7.H **Feature 5 — Client EBITDA Reconciliation**: Per user «толькот потом сравни сегодня например azersheker отличался клиент сверял ebitda». Built the variance-input fixture the user was asking for, end-to-end.
+
+**Shipped:**
+- New Prisma `ClientReconciliation` model (companyId × period × indicatorKey UNIQUE) + migration `20260512120000_phase7h_client_reconciliation` + audit-enum extensions (`client_reconciliation_submit` + `client_reconciliation_delete`).
+- New pure module [src/lib/budgeting/ebitda.ts](src/lib/budgeting/ebitda.ts) — single source of truth for `Rev−COGS−OpEx + D&A` formula. Refactored [budget-pnl-view.tsx:147-185](src/components/budget-pnl-view.tsx) to consume it (bit-for-bit identical math).
+- `GET/POST/DELETE /api/companies/[id]/reconciliation` — manager+ writes, viewer reads, sub-group RBAC, Zod period regex YYYY|YYYY-QN|YYYY-MM, ISO-4217 currency default AZN, note ≤500 chars, audit-event on every mutation.
+- Audit log discriminated union extended with both action variants + `compact-summary.ts` + `AuditFeed.tsx` (compile-time exhaustiveness held).
+- Right-sliding [ClientReconDrawer](src/features/budgeting/components/ClientReconDrawer.tsx) opens from a pencil icon on the EBITDA KPI card; shows live system / client / variance% strip + top-5 P&L contributors with D&A badged. Read-only for viewers. Mounted only when a specific company is selected (consolidated view skipped).
+- Inline `Client: 850K AZN −12%` badge under EBITDA number on KPI card (auto-fetches `?period=YYYY` for the current plan).
+- i18n: 17 keys × 3 locales under `budgeting.reconciliation`.
+- Tests: +11 ebitda unit, +16 validator, +10 handler = +37; full vitest **2962 → 3185/3185** (3 prior turns also added tests); tsc 0.
+
+**🔄 OPEN (new, owner = user):**
+- 🔄 **Apply migration `20260512120000_phase7h_client_reconciliation`** to dev Postgres. Tool-policy blocked direct `psql` apply this turn; user must run `npx prisma migrate dev --skip-seed` (or `migrate deploy` after resolving pre-existing drift) before the new endpoint can write. Until applied, POST/DELETE will fail at the DB layer; GET returns empty. owner=user, turn opened 2026-05-12.
+
+**🔄 OPEN (new, owner = engineering — separate plan):**
+- 🔄 **Risk Terminal `IND_EBITDA_MARGIN` formula inconsistent with P&L EBITDA.** `budgetLineResolver` in [recompute.ts:1138-1244](src/lib/risk/recompute.ts) exports `revenue`, `cogs`, `gross_profit`, `net_income` but NOT `ebitda` — so the Risk Terminal indicator can't add D&A back. Feature 5 v1 uses the P&L `computeEbitda` as the canonical comparison source; resolver upgrade is a separate plan. Open per Feature 5 plan §Out-of-scope. owner=engineering, turn opened 2026-05-12.
+
+**File ↔ DB import-fidelity audit — CLOSED 12/12 ✅ (this turn).**
+
+Per user «дело не только в ебитда надо проверить всё. чтоб точно было отображение из файла» + «да хочу исправь» + «сам проверь файлах данные это P&l тут всё должно быть четко до копейки». Cumulative fix sequence:
+
+**1. Discovery — [scripts/verify-all-vs-xlsx.ts](scripts/verify-all-vs-xlsx.ts)** (extends `verify-azmade-vs-xlsx.ts` with AzerSheker coverage). Initial state: 5/12 entities drifted; biggest = ATL ops with cogs/expense stored as NEGATIVE magnitudes (78M+ off).
+
+**2. ATL sign-flip — fixed via [fix-atl-signs.cjs](scripts/fix-atl-signs.cjs).** Diagnostic [diagnose-atl-signs.cjs](scripts/diagnose-atl-signs.cjs) confirmed all 4 ATL ops had `accountId=NULL` (Input PL detailed import didn't attach CoA FK), so existing `fix-cogs-expense-signs.cjs` join-by-accountId silently skipped them. New scoped script filters by `lineType` directly. Flipped **3,901 rows**. Brought ATL from 60-80% off → 1-6% residual (sheet-vs-sheet artifact).
+
+**3. ATL/LLS classification drift — fixed via re-import on canonical SOPL P-F sheets.** Residual ATL drift was because DB had been imported from `Input PL` sheet (regex-on-English-label parser) but the verifier (and finance audit view) reads `SOPL P-F XX 2026` (SAP-code-prefix parser). User explicit «до копейки» → re-ran `npx tsx scripts/import-azmade-budgets.ts` which the JOBS array already routed to the SOPL P-F sheets via canonical `parseSoplSheet`. Transactional delete-then-insert per (org × plan × company) — replaced 7,886 prior rows with 568 leaves × 12 months. Trade-off: less per-row granularity than Input PL had (~3,000 detailed rows replaced), but exact alignment with audited P&L totals. LLS-MAIN 86K residual also closed by the re-import (flushed pre-Math.abs() stale rows).
+
+**Final state — `npx tsx scripts/verify-all-vs-xlsx.ts`:**
+```
+Summary:
+  Full match (annual + monthly): 12/12
+  Annual sums match:             12/12
+```
+All 8 AZMADE (LLS-MAIN, SPARK-MAIN, ZTP-MAIN, ATL-DBZ, ATL-PMZ, ATL-TAZ, ATL-MRKZ, AAC-MAIN) + 4 AZSEKER (EDEN, AZSF, FARM, CPC) match xlsx annual + 12 monthly buckets within 1 ₼.
+
+**About today's earlier reported AZSEKER EBITDA discrepancy** — raw xlsx↔DB for all AzerSheker entities match exactly, both before and after this fix sequence. So the EBITDA gap the client saw is downstream of import (formula / D&A code coverage in `isDaCode` (only 703-11/721-11) / FX / classification). The Client Reconciliation drawer shipped this turn ([ClientReconDrawer.tsx](src/features/budgeting/components/ClientReconDrawer.tsx)) is the right surface for the client to flag the gap interactively.
+
+**🔄 Follow-up (next turn, owner=engineering, NOT blocking):**
+- Indicator recompute needed: P&L changed → `IND_EBITDA_MARGIN` / `IND_GROSS_MARGIN` etc. need refresh. Run `npm run recompute` or trigger via UI button. Until then, Risk Terminal still shows pre-fix indicator values.
+- Granularity loss: ATL was 1037 detailed rows per company (Input PL); now 79 leaves × 12 months = 948 per company (SOPL P-F leaves). Per-row drill-down has fewer lines. If finer detail wanted, options: (a) parallel-import Input PL into a separate detail-table (not BudgetLine); (b) extend `parseSoplSheet` to consume Input PL with SAP-code mapping. Defer until granularity-loss complaint surfaces.
+
+**🔄 OPEN (pre-existing — unblock on user side):**
+- 🔄 **Migration `20260510210000_phase7g_turnlxxxxi_drift_resolution_v2_models` in failed state** (`_prisma_migrations.finished_at IS NULL`). Table references `organizations` (snake_case) but local DB still has `Organization` (PascalCase); the audit-enum ALTER VALUEs at the head of the migration succeeded but the FK constraint failed mid-way. Pre-existing before this turn (8 audit-enum values declared in schema but missing from DB; consumer code never breaks because `logAuditEvent` is never-throws). Unblocks: `prisma migrate resolve --rolled-back 20260510210000_phase7g_turnlxxxxi_drift_resolution_v2_models` then fix the FK targets to match actual table names (`Organization` vs `organizations`) and re-apply. Not introduced this turn; surfaced while attempting Feature 5 migration. owner=user, turn opened 2026-05-12.
+
+---
+
 **Last processed: 2026-05-11** (Phase 7.G **Turns CLI–CLVII — Bloomberg sweep Tier 1 + ATL detailed import + UX polish**: Per user «возьми из данных посмотри на какой период можешь создать план» + iterative UX feedback.
 
 **Bloomberg-style UX shipped (Tier 1, 7 items):**

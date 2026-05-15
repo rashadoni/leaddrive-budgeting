@@ -50,12 +50,27 @@ For EACH item, return a sentiment score in [-1.0, +1.0] from the holding's finan
   -0.5 = negative (headwind, cost pressure, demand softness)
   -1.0 = very bearish (severe risk: regulatory, supply shock, demand collapse, geopolitical)
 
-Heuristics:
+Heuristics (sector-aware — read industryTags + companyTags first; an item without a relevant tag is usually neutral 0.0):
+
+GENERIC:
   - "AAC cocoa supplier reduced shipments" → AAC sees cost pressure → -0.6
   - "AZN strengthens vs USD by 2%" → improves import-heavy companies' margin → +0.3
   - "Government raises minimum wage 15%" → labor cost up across holding → -0.4
   - "Tourism growth Azerbaijan +12% YoY" → positive for hospitality companies → +0.6
+
+AGRO / FOOD_PROCESSING (Phase 7.I — sugar/cane heuristics for AzerSheker pilot):
+  - "ICE Sugar #11 closes up 4% on Brazilian crop fears" → tailwind for sugar producers → +0.5
+  - "Sugar futures slump 6% as Indian export window opens" → headwind for our sugar exposure → -0.6
+  - "Drought warning issued for Salyan / Imishli / Mil-Karabakh plain" → cane yield risk → -0.7
+  - "Heavy rainfall + flooding in southern Azerbaijan" → cane logistics + waterlogging risk → -0.5
+  - "Urea / NPK fertilizer prices spike 12%" → input cost up for agro_crops → -0.4
+  - "Diesel subsidies extended for agriculture" → mechanization cost down → +0.3
+  - "Government raises sugar import tariff" → protects domestic producers (food_processing) → +0.5
+  - "EU sugar quota relaxation" → competitor flood, headwind for domestic refiners → -0.4
+  - "Genetically engineered cane variety boosts sucrose yield 8%" → R&D tailwind → +0.4
   - Pure macro stat with no actionable angle → 0.0
+
+Context clues to attend to: explicit mention of "sugar", "cane", "beet", "yield", "harvest", "fertilizer", "irrigation", "drought", "frost", "ICE", "Pink Sheet", "extraction rate", "Salyan/Imishli/Sabirabad" → bump up specificity of score (more positive OR more negative).
 
 Output JSON ONLY: { "scores": [{ "id": "...", "score": -0.4 }, ...] }
   - One entry per input item, in the same order.

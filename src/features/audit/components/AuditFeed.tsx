@@ -53,6 +53,11 @@ const ALL_ACTIONS = [
   "indicator_disclosure_create",
   "indicator_disclosure_update",
   "indicator_disclosure_delete",
+  // Phase 7.H Feature 5 — client-reported reconciliation reference values.
+  "client_reconciliation_submit",
+  "client_reconciliation_delete",
+  // Phase 7.I — admin updated Company.settings JSON (per-industry config).
+  "company_settings_update",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

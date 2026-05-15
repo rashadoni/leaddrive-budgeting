@@ -22,6 +22,9 @@ import { IndicatorDetail } from "@/features/terminal/components/IndicatorDetail"
 import { VarianceExplainerPanel } from "@/features/terminal/components/VarianceExplainerPanel";
 import { TodayBrief } from "@/features/terminal/components/TodayBrief";
 import { NewsSummarySection } from "@/features/terminal/components/NewsSummarySection";
+import { AgroDashboardPanel } from "@/features/terminal/components/AgroDashboardPanel";
+import { CommodityTickerPanel } from "@/features/terminal/components/CommodityTickerPanel";
+import { AgronomyEntryPanel } from "@/features/terminal/components/AgronomyEntryPanel";
 import { useCompanies } from "@/features/terminal/hooks/use-companies";
 
 const PANEL_TITLES: Record<string, string> = {
@@ -31,6 +34,10 @@ const PANEL_TITLES: Record<string, string> = {
   variance: "AI Variance Explainer",
   brief: "Сводка дня",
   news: "📰 Новости холдинга",
+  // Phase 7.I — agro / sugar pop-out widgets
+  "agro-dashboard": "Agro Dashboard",
+  "commodity-ticker": "Commodity & Weather",
+  "agronomy-entry": "Agronomy Entry",
 };
 
 function PanelContent({ kind }: { kind: string }) {
@@ -48,6 +55,15 @@ function PanelContent({ kind }: { kind: string }) {
       return <TodayBrief />;
     case "news":
       return <NewsSummarySection />;
+    // Phase 7.I — agro / sugar pop-out widgets. activeCompany-aware via
+    // terminalStore so a popped window pivots when the user picks a
+    // different company in the main window.
+    case "agro-dashboard":
+      return <AgroDashboardPanel />;
+    case "commodity-ticker":
+      return <CommodityTickerPanel />;
+    case "agronomy-entry":
+      return <AgronomyEntryPanel />;
     default:
       return (
         <div className="text-gray-500 p-6">
