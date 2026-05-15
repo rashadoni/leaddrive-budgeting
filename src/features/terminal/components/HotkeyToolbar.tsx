@@ -64,11 +64,38 @@ function openPopOut(kind: string, company: string | null): boolean {
   return true;
 }
 
+/**
+ * Phase 7.I — visual grouping. Buttons share a `group` tag; in render
+ * order, when the group changes vs the previous visible button, a
+ * subtle vertical separator is inserted. Group labels surface as a
+ * tooltip on the separator for discoverability without taking up
+ * horizontal space. Order within each group preserves muscle-memory
+ * adjacency for related verbs.
+ */
+type HotkeyGroup =
+  | "critical" // alerts / breach / actions — surfaces that drive triage
+  | "analysis" // compare / scenario / whatif / peer — drill-down workflows
+  | "social"   // intel / comments / chat / subs — collaboration surfaces
+  | "workspace" // new-plan / import / search / favorites / recent — view + entry
+  | "sector"   // agro / commodity / kpi-entry — industry-specific (gated)
+  | "ops";     // recompute / help / export — system actions
+
+const GROUP_LABELS: Record<HotkeyGroup, string> = {
+  critical: "Alerts & triage",
+  analysis: "Analysis",
+  social: "Intel & social",
+  workspace: "Workspace",
+  sector: "Sector",
+  ops: "Tools",
+};
+
 interface HotkeyDef {
   key: string;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   title: string;
+  /** Visual grouping cluster — drives separator placement. */
+  group: HotkeyGroup;
   /** Returns true if action ran; false if disabled / no-op. */
   action: () => boolean;
   disabled?: boolean;
@@ -192,28 +219,13 @@ export function HotkeyToolbar() {
   };
 
   const hotkeys: HotkeyDef[] = [
-    {
-      key: "new-plan",
-      label: t("hotkeys.newPlan"),
-      icon: FilePlus2,
-      title: t("hotkeys.newPlanTitle"),
-      action: () => {
-        window.location.href = "/budgeting?tab=plans";
-        return true;
-      },
-    },
-    {
-      key: "compare",
-      label: t("hotkeys.compare"),
-      icon: GitCompare,
-      title: t("hotkeys.compareTitle"),
-      action: () => prefillCmdBar('CMP '),
-    },
+    // ─── Critical: surfaces that drive triage ─────────────────────────
     {
       key: "alerts",
       label: t("hotkeys.alerts"),
       icon: Bell,
       title: t("hotkeys.alertsTitle"),
+      group: "critical",
       action: () => fireWindowEvent("terminal:open-audit"),
     },
     {
@@ -221,48 +233,32 @@ export function HotkeyToolbar() {
       label: t("hotkeys.breach"),
       icon: AlertTriangle,
       title: t("hotkeys.breachTitle"),
+      group: "critical",
       action: () => fireWindowEvent("terminal:open-breach"),
-    },
-    {
-      key: "intel",
-      label: t("hotkeys.intel"),
-      icon: Rss,
-      title: t("hotkeys.intelTitle"),
-      action: () => fireWindowEvent("terminal:open-intel"),
     },
     {
       key: "actions",
       label: t("hotkeys.actions"),
       icon: ListTodo,
       title: t("hotkeys.actionsTitle"),
+      group: "critical",
       action: () => fireWindowEvent("terminal:open-action-center"),
     },
+    // ─── Analysis: comparison + what-if surfaces ──────────────────────
     {
-      key: "subs",
-      label: t("hotkeys.subs"),
-      icon: BellRing,
-      title: t("hotkeys.subsTitle"),
-      action: () => fireWindowEvent("terminal:open-subscriptions"),
-    },
-    {
-      key: "comments",
-      label: t("hotkeys.comments"),
-      icon: MessageSquare,
-      title: t("hotkeys.commentsTitle"),
-      action: () => fireWindowEvent("terminal:open-comments"),
-    },
-    {
-      key: "chat",
-      label: t("hotkeys.chat"),
-      icon: MessagesSquare,
-      title: t("hotkeys.chatTitle"),
-      action: () => fireWindowEvent("terminal:open-subco-chat"),
+      key: "compare",
+      label: t("hotkeys.compare"),
+      icon: GitCompare,
+      title: t("hotkeys.compareTitle"),
+      group: "analysis",
+      action: () => prefillCmdBar('CMP '),
     },
     {
       key: "scenario",
       label: t("hotkeys.scenario"),
       icon: FlaskConical,
       title: t("hotkeys.scenarioTitle"),
+      group: "analysis",
       action: () => prefillCmdBar('SCN '),
     },
     {
@@ -270,6 +266,7 @@ export function HotkeyToolbar() {
       label: t("hotkeys.whatif"),
       icon: FlaskConical,
       title: t("hotkeys.whatifTitle"),
+      group: "analysis",
       action: () => fireWindowEvent("terminal:open-whatif"),
     },
     {
@@ -277,48 +274,80 @@ export function HotkeyToolbar() {
       label: t("hotkeys.peer"),
       icon: Layers,
       title: t("hotkeys.peerTitle"),
+      group: "analysis",
       action: () => prefillCmdBar('PEER '),
     },
-    // Phase 7.I — sector-aware widget shortcuts. Visible ONLY when active
-    // company is agro_crops or food_processing — keeps the toolbar uncluttered
-    // for hospitality/services/etc. companies. CommandBar verbs (AGRO/WX/PRICE/KPI)
-    // remain available as keyboard equivalents regardless of industry; the
-    // pop-out itself renders a "not applicable" hint when opened for a
-    // non-agro company so direct-URL navigation still degrades gracefully.
-    // Active company forwarded via URL param so the pop-out hydrates state.
-    ...(isAgroLike
-      ? ([
-          {
-            key: "agro",
-            label: "AGRO",
-            icon: Sprout,
-            title:
-              "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
-            action: () => openPopOut("agro-dashboard", activeCompanyCode),
-          },
-          {
-            key: "commodity",
-            label: "PRICE",
-            icon: Cloud,
-            title:
-              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
-            action: () => openPopOut("commodity-ticker", activeCompanyCode),
-          },
-          {
-            key: "kpi-entry",
-            label: "KPI",
-            icon: Pencil,
-            title:
-              "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
-            action: () => openPopOut("agronomy-entry", activeCompanyCode),
-          },
-        ] as HotkeyDef[])
-      : []),
+    // ─── Intel & social: collaboration surfaces ───────────────────────
+    {
+      key: "intel",
+      label: t("hotkeys.intel"),
+      icon: Rss,
+      title: t("hotkeys.intelTitle"),
+      group: "social",
+      action: () => fireWindowEvent("terminal:open-intel"),
+    },
+    {
+      key: "subs",
+      label: t("hotkeys.subs"),
+      icon: BellRing,
+      title: t("hotkeys.subsTitle"),
+      group: "social",
+      action: () => fireWindowEvent("terminal:open-subscriptions"),
+    },
+    {
+      key: "comments",
+      label: t("hotkeys.comments"),
+      icon: MessageSquare,
+      title: t("hotkeys.commentsTitle"),
+      group: "social",
+      action: () => fireWindowEvent("terminal:open-comments"),
+    },
+    {
+      key: "chat",
+      label: t("hotkeys.chat"),
+      icon: MessagesSquare,
+      title: t("hotkeys.chatTitle"),
+      group: "social",
+      action: () => fireWindowEvent("terminal:open-subco-chat"),
+    },
+    // ─── Workspace: data entry + navigation ───────────────────────────
+    {
+      key: "new-plan",
+      label: t("hotkeys.newPlan"),
+      icon: FilePlus2,
+      title: t("hotkeys.newPlanTitle"),
+      group: "workspace",
+      action: () => {
+        window.location.href = "/budgeting?tab=plans";
+        return true;
+      },
+    },
+    {
+      key: "import",
+      label: t("hotkeys.import"),
+      icon: Upload,
+      title: t("hotkeys.importTitle"),
+      group: "workspace",
+      action: () => {
+        window.location.href = "/budgeting/onboarding";
+        return true;
+      },
+    },
+    {
+      key: "search",
+      label: t("hotkeys.search"),
+      icon: Search,
+      title: t("hotkeys.searchTitle"),
+      group: "workspace",
+      action: () =>
+        fireWindowEvent("terminal:focus-search", { panelId: activePanelId }),
+    },
     {
       key: "favorites",
       label: t("hotkeys.starred"),
       icon: Star,
       title: t("hotkeys.starredTitle"),
+      group: "workspace",
       action: () => {
         setWatchlistTab("starred");
         return true;
@@ -329,11 +358,50 @@ export function HotkeyToolbar() {
       label: t("hotkeys.recent"),
       icon: History,
       title: t("hotkeys.recentTitle"),
+      group: "workspace",
       action: () => {
         setWatchlistTab("recent");
         return true;
       },
     },
+    // ─── Sector: agro/sugar widgets (gated by industry) ───────────────
+    // Phase 7.I — visible ONLY when active company is agro_crops or
+    // food_processing. CommandBar verbs (AGRO/WX/PRICE/KPI) remain
+    // available as keyboard equivalents regardless of industry; the
+    // pop-out itself renders a "not applicable" hint when opened for a
+    // non-agro company so direct-URL navigation still degrades gracefully.
+    ...(isAgroLike
+      ? ([
+          {
+            key: "agro",
+            label: "AGRO",
+            icon: Sprout,
+            title:
+              "Open agro dashboard (yield, sugar content, water/fertilizer intensity)",
+            group: "sector",
+            action: () => openPopOut("agro-dashboard", activeCompanyCode),
+          },
+          {
+            key: "commodity",
+            label: "PRICE",
+            icon: Cloud,
+            title:
+              "Open sugar price + weather pop-out (ICE #11 trend + AZ rainfall)",
+            group: "sector",
+            action: () => openPopOut("commodity-ticker", activeCompanyCode),
+          },
+          {
+            key: "kpi-entry",
+            label: "KPI",
+            icon: Pencil,
+            title:
+              "Log an agronomy KPI (yield, sugar content, etc.) for the active company",
+            group: "sector",
+            action: () => openPopOut("agronomy-entry", activeCompanyCode),
+          },
+        ] as HotkeyDef[])
+      : []),
+    // ─── Ops: system actions ──────────────────────────────────────────
     {
       key: "recompute",
       label: recomputeProgress
@@ -347,26 +415,9 @@ export function HotkeyToolbar() {
         : !currentPeriod
           ? t("hotkeys.recomputeNoPeriod")
           : t("hotkeys.recomputeTitle"),
+      group: "ops",
       action: triggerRecompute,
       disabled: recomputing || !currentPeriod,
-    },
-    {
-      key: "search",
-      label: t("hotkeys.search"),
-      icon: Search,
-      title: t("hotkeys.searchTitle"),
-      action: () =>
-        fireWindowEvent("terminal:focus-search", { panelId: activePanelId }),
-    },
-    {
-      key: "import",
-      label: t("hotkeys.import"),
-      icon: Upload,
-      title: t("hotkeys.importTitle"),
-      action: () => {
-        window.location.href = "/budgeting/onboarding";
-        return true;
-      },
     },
     {
       // CLI Bloomberg-sweep — discoverable HELP button. Same destination as
@@ -375,6 +426,7 @@ export function HotkeyToolbar() {
       label: t("hotkeys.help"),
       icon: HelpCircle,
       title: t("hotkeys.helpTitle"),
+      group: "ops",
       action: () => fireWindowEvent("terminal:open-help"),
     },
     {
@@ -385,6 +437,7 @@ export function HotkeyToolbar() {
       label: t("hotkeys.exportPdf"),
       icon: Download,
       title: t("hotkeys.exportPdfTitle"),
+      group: "ops",
       action: () => fireWindowEvent("terminal:export-pdf"),
     },
     {
@@ -395,6 +448,7 @@ export function HotkeyToolbar() {
       label: t("hotkeys.exportXlsx"),
       icon: Download,
       title: t("hotkeys.exportXlsxTitle"),
+      group: "ops",
       action: () => fireWindowEvent("terminal:export-xlsx"),
     },
   ];
@@ -406,7 +460,7 @@ export function HotkeyToolbar() {
       className="flex items-center gap-1 px-2 py-1 bg-[#050814] border-b border-gray-800 font-mono text-[10px] text-gray-500 overflow-x-auto whitespace-nowrap shrink-0"
     >
       <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>
-      {hotkeys.map((h) => {
+      {hotkeys.map((h, i) => {
         const Icon = h.icon;
         // Phase 6.1 — progress overlay on Recompute button when async job
         // is in flight. Cyan fill grows left → right behind the icon+label.
@@ -415,26 +469,44 @@ export function HotkeyToolbar() {
         const pct = showProgress
           ? Math.min(100, Math.max(0, Math.round((recomputeProgress!.processed / recomputeProgress!.total) * 100)))
           : 0;
+        // Phase 7.I — Variant C grouping. When the current button's group
+        // differs from the previous visible button's group, prepend a
+        // subtle vertical separator. The separator carries the group
+        // label as a tooltip so users can discover the cluster name
+        // without consuming horizontal space with always-visible labels.
+        const prev = i > 0 ? hotkeys[i - 1] : null;
+        const groupChanged = prev !== null && prev.group !== h.group;
         return (
-          <button
-            key={h.key}
-            type="button"
-            onClick={h.action}
-            disabled={h.disabled}
-            title={h.title}
-            aria-label={h.title}
-            className="relative flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors shrink-0 overflow-hidden"
-          >
-            {showProgress && (
+          <React.Fragment key={h.key}>
+            {groupChanged && (
               <span
                 aria-hidden="true"
-                className="absolute inset-y-0 left-0 bg-[#00D4AA]/30 transition-all duration-300 pointer-events-none"
-                style={{ width: `${pct}%` }}
-              />
+                title={GROUP_LABELS[h.group]}
+                className="shrink-0 mx-1 text-gray-800 select-none cursor-help"
+              >
+                │
+              </span>
             )}
-            <Icon size={11} className="relative" />
-            <span className="relative">{h.label}</span>
-          </button>
+            <button
+              type="button"
+              onClick={h.action}
+              disabled={h.disabled}
+              title={h.title}
+              aria-label={h.title}
+              data-group={h.group}
+              className="relative flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors shrink-0 overflow-hidden"
+            >
+              {showProgress && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 bg-[#00D4AA]/30 transition-all duration-300 pointer-events-none"
+                  style={{ width: `${pct}%` }}
+                />
+              )}
+              <Icon size={11} className="relative" />
+              <span className="relative">{h.label}</span>
+            </button>
+          </React.Fragment>
         );
       })}
       {/* Compact-mode toggle is in PanelGrid; mirror it here for one-stop access */}
