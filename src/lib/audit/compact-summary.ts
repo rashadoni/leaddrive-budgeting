@@ -282,6 +282,18 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: `${drifts.length} drift${drifts.length === 1 ? '' : 's'}: ${first}${extra}`,
       };
     }
+    case 'period_snapshot_drift': {
+      // Phase E.5 — recompute mutated a signed-off period. Verbose
+      // shows which hash (IV or BudgetLine) diverged + the period.
+      const period = stringField(m, 'period') ?? '?';
+      const ivOk = m.ivHashMatched === true;
+      const budgetOk = m.budgetHashMatched === true;
+      const which = ivOk && budgetOk ? 'no diff' : !ivOk && !budgetOk ? 'both' : !ivOk ? 'IV' : 'BudgetLine';
+      return {
+        compact: e.action,
+        verbose: `${period} · diverged: ${which}`,
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was
