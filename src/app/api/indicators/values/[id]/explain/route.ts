@@ -1,7 +1,7 @@
 /**
  * Phase 7.E AI Variance Explainer — POST endpoint.
  *
- * Body: `{ language?: 'en' | 'ru' | 'az' }` (default 'en').
+ * Body: `{ language?: ExplainerLanguage }` (default 'en'; type defined in `src/lib/risk/variance-explainer.ts`).
  * URL param `:id` = `IndicatorValue.id`.
  *
  * Flow: fetch IndicatorValue + Definition + Company (org-scoped) →

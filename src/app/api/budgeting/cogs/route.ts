@@ -3,6 +3,7 @@ import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { resolveAccountId } from "@/lib/budgeting/chart-of-accounts"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -68,8 +69,13 @@ export async function POST(req: NextRequest) {
 
   if (Array.isArray(body)) {
     const results = await Promise.all(
-      body.map((item: any) =>
-        prisma.cOGSBudgetLine.upsert({
+      body.map(async (item: any) => {
+        // Phase 2.1 step 2 (Turn LII): resolve ChartOfAccount FK from
+        // the SAP-style accountCode string. Helper returns null for
+        // free-text or no-match — `accountId` stays unset and the
+        // legacy `accountCode` string drives display.
+        const accountId = await resolveAccountId(prisma, orgId, item.accountCode ?? "")
+        return prisma.cOGSBudgetLine.upsert({
           where: {
             planId_productLineId_year_month: {
               planId: item.planId,
@@ -78,16 +84,18 @@ export async function POST(req: NextRequest) {
               month: item.month,
             },
           },
-          update: { productionQty: item.productionQty, totalCost: item.totalCost, accountCode: item.accountCode, notes: item.notes },
-          create: { ...item, organizationId: orgId },
+          update: { productionQty: item.productionQty, totalCost: item.totalCost, accountCode: item.accountCode, accountId, notes: item.notes },
+          create: { ...item, organizationId: orgId, accountId },
         })
-      )
+      })
     )
     return NextResponse.json(results, { status: 201 })
   }
 
+  // Single-create path — same resolver call, same null-fallback contract.
+  const accountId = await resolveAccountId(prisma, orgId, body.accountCode ?? "")
   const line = await prisma.cOGSBudgetLine.create({
-    data: { ...body, organizationId: orgId },
+    data: { ...body, organizationId: orgId, accountId },
   })
   return NextResponse.json(line, { status: 201 })
 }

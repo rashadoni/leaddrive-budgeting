@@ -4,7 +4,7 @@
  * Mirror of `/api/indicators/values/[id]/explain` (Phase 7.E AI Variance
  * Explainer) tailored for forward-looking forecast narration.
  *
- * Body: `{ language?: 'en' | 'ru' | 'az' }` (default 'en').
+ * Body: `{ language?: ForecastExplainerLanguage }` (default 'en'; type defined in `src/lib/risk/forecast-explainer.ts`).
  * URL param `:id` = `IndicatorValue.id`.
  *
  * Flow:
