@@ -18,6 +18,7 @@ import Link from "next/link";
 import { ArrowRight, FileDown } from "lucide-react";
 import { PrintButton } from "@/app/(dashboard)/budgeting/board-deck/PrintButton";
 import { ExportPptxButton } from "@/app/(dashboard)/budgeting/board-deck/ExportPptxButton";
+import { ExportPdfButton } from "@/app/(dashboard)/budgeting/board-deck/ExportPdfButton";
 
 /**
  * Phase 7.G Turn LV — Suspense fallback for ExportPptxButton.
@@ -81,6 +82,11 @@ export async function FooterActions({ period }: FooterActionsProps) {
           <Suspense fallback={<ExportPptxFallback />}>
             <ExportPptxButton period={period} />
           </Suspense>
+          {/* Phase 7.G Turn XLVII recovery (2026-05-16) — server-side PDF
+              export via Playwright headless Chromium. Sibling to the PPTX
+              button; no Suspense wrapper needed because ExportPdfButton
+              doesn't consume `useSearchParams`. */}
+          <ExportPdfButton period={period} />
           <PrintButton />
           <Link
             href="/budgeting/terminal"

@@ -70,5 +70,15 @@ test.describe('Phase 7.G LII smoke — Board Deck v2 layout', () => {
     const footer = page.getByTestId('board-deck-footer-actions');
     await expect(footer).toBeVisible();
     await expect(footer.getByTestId('footer-terminal-link')).toBeVisible();
+    // Phase 7.G Turn XLVII recovery (2026-05-16) — both server-side
+    // export buttons + the legacy Print button all mounted in the footer.
+    // Be specific so the assertion picks the right button (PrintButton
+    // also matches /pdf/i because it says "Print to PDF").
+    // `name` matcher resolves to the accessible name → aria-label when
+    // set. PrintButton + ExportPdfButton both contain "to PDF" in their
+    // aria-labels; use the distinguishing first verb.
+    await expect(footer.getByRole('button', { name: /pptx/i })).toBeVisible();
+    await expect(footer.getByRole('button', { name: /^export board snapshot to pdf$/i })).toBeVisible();
+    await expect(footer.getByRole('button', { name: /^print board snapshot to pdf$/i })).toBeVisible();
   });
 });

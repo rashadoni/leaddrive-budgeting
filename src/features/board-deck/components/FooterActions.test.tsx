@@ -35,6 +35,19 @@ vi.mock("@/app/(dashboard)/budgeting/board-deck/ExportPptxButton", () => ({
     </button>
   ),
 }));
+// Phase 7.G Turn XLVII recovery (2026-05-16) — server-side PDF button
+// mounted next to PPTX in the footer. Same period-threading contract.
+vi.mock("@/app/(dashboard)/budgeting/board-deck/ExportPdfButton", () => ({
+  ExportPdfButton: ({ period }: { period: string }) => (
+    <button
+      type="button"
+      data-testid="mocked-export-pdf-button"
+      data-period={period}
+    >
+      Export PDF
+    </button>
+  ),
+}));
 
 import { FooterActions } from "./FooterActions";
 
@@ -57,13 +70,20 @@ describe("FooterActions", () => {
     expect(exportBtn.getAttribute("data-period")).toBe("2026-Q2");
   });
 
-  it("renders Print + Export PPTX + Terminal CTA", async () => {
+  it("renders Print + Export PPTX + Export PDF + Terminal CTA", async () => {
     await renderFooter("2026");
     expect(screen.getByTestId("mocked-print-button")).toBeTruthy();
     expect(screen.getByTestId("mocked-export-pptx-button")).toBeTruthy();
+    expect(screen.getByTestId("mocked-export-pdf-button")).toBeTruthy();
     const terminalLink = screen.getByTestId("footer-terminal-link");
     expect(terminalLink.getAttribute("href")).toBe("/budgeting/terminal");
     expect(terminalLink.textContent).toContain("Open Risk Terminal");
+  });
+
+  it("threads period prop to ExportPdfButton", async () => {
+    await renderFooter("2026-M5");
+    const pdfBtn = screen.getByTestId("mocked-export-pdf-button");
+    expect(pdfBtn.getAttribute("data-period")).toBe("2026-M5");
   });
 
   it("aria-label is set", async () => {
