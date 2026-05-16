@@ -534,34 +534,26 @@ No UI for editing this yet; admins set it via direct DB update or
 `PATCH /api/organizations/settings`. Future work: add a freshness-source
 editor next to the existing source-registry admin (`/budgeting/admin/source-registry`).
 
-### 6.5 Verifying freshness wiring without waiting for the scheduler (V3 closure)
+### 6.5 Verifying freshness wiring without waiting for the scheduler
 
-Fresh installs / dev DBs show every freshness card as `missing` because
-no adapter has run yet. To prove the dashboard renders `fresh` rows
-without sitting through a real scheduler cycle, use the diagnostic
-seeder:
+To prove the dashboard renders `fresh` rows without sitting through a
+real scheduler cycle, run the actual ingest CLI once — this populates
+**real** IntelDataPoint rows from Open-Meteo + Yahoo finance and lights
+up the cards the same way the cron would:
 
 ```bash
-# Seed one synthetic IntelDataPoint per source (5 sources by default).
-node scripts/diag-seed-intel.cjs --insert
-
-# Narrow to a single source if you only want to verify one card.
-node scripts/diag-seed-intel.cjs --insert --source weather-openmeteo
-
-# Cleanup — only sweeps rows where raw.synthetic === true.
-node scripts/diag-seed-intel.cjs --delete
+npx tsx scripts/ingest-commodity-once.ts
 ```
 
-After insert, refresh `/budgeting/admin/drift` — every freshness card
-should flip to `fresh` (ageHours ≈ 0). The script is idempotent (uses
-`prisma.intelDataPoint.upsert`) and tags every row with
-`raw.synthetic = true` so the `--delete` mode can't touch real
-production data.
+After the run, refresh `/budgeting/admin/drift` — the configured
+sources flip to `fresh`. No synthetic placeholders end up in the live
+DB (admin policy 2026-05-16: shared business tables stay real; finance
+users land on the same DB and read every row as production truth).
 
-Companion script for the drift-events panel:
-`node scripts/diag-synthetic-drift.cjs --insert` (V2) — seeds a fake
-`reconciliation_drift_detected` AuditEvent so the Recent drift events
-section also renders red rows during a demo.
+For UI verification without DB writes at all — use the happy-dom
+integration tests at `src/features/terminal/components/CommodityTickerPanel.test.tsx`,
+which mock `/api/intel/data-points` with deterministic per-source rows
+and assert the sugar card + 3-region weather strip render correctly.
 
 ### 6.6 Phase 7.I weather + sugar commodity ingest (AzerSheker pilot)
 

@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
-import type { SummaryLanguage } from "@/lib/board-deck/generate-summary";
+// Recovery 2026-05-16: brave-lehmann's `SummaryLanguage` (from the
+// abandoned `generate-summary` module) was the same shape as main's
+// canonical `Language` exported by `lib/ai/prompts`. Re-aliased here
+// to keep the public API of this button stable while consuming the
+// canonical type.
+import type { Language as SummaryLanguage } from "@/lib/ai/prompts";
 
 /**
  * Phase 7.G Turn XLVII (Phase E.1) — server-side PDF export button.
