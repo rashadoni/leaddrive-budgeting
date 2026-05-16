@@ -9,6 +9,7 @@ import {
   PRODUCT_UNITS,
   SALES_SHEETS,
 } from "@/lib/import/aac-products"
+import { COST_TYPE_DEFS } from "@/lib/import/cost-types"
 import ExcelJS from "exceljs"
 import {
   looksLikeCostAccount,
@@ -87,23 +88,6 @@ function categoryFromCode(code: string): string | null {
   }
   return null
 }
-
-// Cost type definitions from P&L structure
-const COST_TYPE_DEFS = [
-  { key: "staff", label: "İşçi heyəti xərcləri (Staff costs)", sortOrder: 1 },
-  { key: "utilities", label: "Kommunal xərclər (Utilities)", sortOrder: 2 },
-  { key: "services", label: "Alınmış xidmətlər (Services)", sortOrder: 3 },
-  { key: "communication", label: "Rabitə xərcləri (Communication)", sortOrder: 4 },
-  { key: "maintenance", label: "Təmir-istismar xərcləri (Maintenance)", sortOrder: 5 },
-  { key: "materials", label: "Mal-materiallar (Materials)", sortOrder: 6 },
-  { key: "transport", label: "Nəqliyyat xərcləri (Transport)", sortOrder: 7 },
-  { key: "other_expense", label: "Digər xərclər (Other expenses)", sortOrder: 8 },
-  { key: "marketing", label: "Marketinq xərcləri (Marketing)", sortOrder: 9 },
-  { key: "finance", label: "Maliyyə xərcləri (Finance costs)", sortOrder: 10 },
-  { key: "non_operating", label: "Qeyri-əməliyyat xərcləri (Non-operating)", sortOrder: 11 },
-  { key: "tax", label: "Vergilər (Taxes)", sortOrder: 12 },
-  { key: "depreciation", label: "Amortizasiya (Depreciation)", sortOrder: 13 },
-]
 
 // Assumption sheet mapping
 const ASSUMPTION_SHEETS: { sheet: string; category: string; label: string }[] = [
