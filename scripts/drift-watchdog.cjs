@@ -26,7 +26,15 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
 
-const DRIFT_THRESHOLD_PCT = 0.5; // 0.5% considered material drift
+// Pure helpers live in src/lib/audit/* so they're testable from vitest
+// (F2 closure 2026-05-16). parseArgs is shared with audit-company.cjs;
+// computeDrifts / buildBeforeMap are watchdog-specific.
+const { parseArgs } = require('../src/lib/audit/audit-helpers.cjs');
+const {
+  DRIFT_THRESHOLD_PCT,
+  computeDrifts,
+  buildBeforeMap,
+} = require('../src/lib/audit/drift-watchdog-helpers.cjs');
 
 /**
  * Idempotently ensure a service-account user exists for the org and
@@ -64,20 +72,6 @@ async function ensureServiceUser(prisma, orgId) {
   });
   serviceUserCache.set(orgId, created.id);
   return created.id;
-}
-
-function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith('--')) {
-      const k = a.slice(2);
-      const v = argv[i + 1];
-      if (!v || v.startsWith('--')) args[k] = true;
-      else { args[k] = v; i++; }
-    }
-  }
-  return args;
 }
 
 (async () => {
@@ -134,7 +128,7 @@ function parseArgs(argv) {
         where: { companyId: company.id, period: cfg.period ?? '2026', lastReconciledAt: { not: null } },
         select: { indicatorId: true, sanityBand: true, value: true, indicator: { select: { code: true } } },
       });
-      const beforeMap = new Map(ivsBefore.map((iv) => [iv.indicator.code, iv]));
+      const beforeMap = buildBeforeMap(ivsBefore);
 
       // Run audit-company.cjs with --write so DB sanityBand updates.
       const auditArgs = [
@@ -160,26 +154,7 @@ function parseArgs(argv) {
         where: { companyId: company.id, period: cfg.period ?? '2026', lastReconciledAt: { not: null } },
         select: { indicatorId: true, sanityBand: true, value: true, indicator: { select: { code: true } } },
       });
-      const drifts = [];
-      for (const iv of ivsAfter) {
-        const before = beforeMap.get(iv.indicator.code);
-        if (!before) continue;
-        const bandChanged = before.sanityBand !== iv.sanityBand;
-        const valueDrift =
-          Math.abs((Number(iv.value) - Number(before.value)) /
-            Math.max(Math.abs(Number(before.value)), 1)) * 100;
-        if (bandChanged || valueDrift > DRIFT_THRESHOLD_PCT) {
-          drifts.push({
-            indicatorCode: iv.indicator.code,
-            beforeBand: before.sanityBand,
-            afterBand: iv.sanityBand,
-            beforeValue: Number(before.value),
-            afterValue: Number(iv.value),
-            valueDriftPct: valueDrift,
-            bandChanged,
-          });
-        }
-      }
+      const drifts = computeDrifts(beforeMap, ivsAfter, DRIFT_THRESHOLD_PCT);
       if (drifts.length > 0) {
         anyDrift = true;
         report.summary.drift++;

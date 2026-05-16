@@ -452,6 +452,100 @@ export const agroIndicators: IndicatorSeed[] = [
     sortOrder: 90,
     defaultValueSource: "macro",
   },
+  // ─ Phase 7.I cane-grower/seller indicators (AzerSheker pilot, 2026-05-16).
+  //   AzerSheker grows and sells sugarcane to external sugar mills — they
+  //   do NOT process to refined sugar themselves. The economics are
+  //   different from a vertically-integrated producer:
+  //     - Logistics urgency (every 12h cut-to-mill = ~2% sucrose loss → less $/ton)
+  //     - Buyer concentration risk (revenue from 1-2 sugar mills is normal)
+  //     - Harvest plan execution (the only window to monetise the crop)
+  //   These three operational indicators surface the drivers the existing
+  //   yield / sugar-content / weather seeds can't capture.
+  {
+    code: "AGRO_CUT_TO_MILL",
+    nameEn: "Cut-to-Mill Time",
+    nameAz: "Kəsim → Zavod Müddəti",
+    nameRu: "Срез → завод (часы)",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "hours",
+    direction: "lower_better",
+    formula: "cane_cut_to_mill_hours",
+    thresholds: {
+      // <24h excellent (sucrose nearly fully preserved); 24-48h acceptable
+      // (industry-standard for mills with regional supply); >48h material
+      // sucrose loss → buyer price penalty + reputational hit.
+      green: { op: "<=", value: 24 },
+      amber: { op: "<=", value: 48 },
+      red: { op: ">", value: 48 },
+    },
+    hintTemplateEn:
+      "Cut-to-mill {value}h — {status}. Sucrose drops ~2% per 12h post-cut; >48h means visible Brix loss at mill assay.",
+    hintTemplateRu:
+      "Срез → завод {value} ч — {status}. Сахароза падает ~2% за 12 ч; >48 ч — заметная потеря Brix при приёмке.",
+    hintTemplateAz:
+      "Kəsim → zavod {value} saat — {status}. Saxaroza hər 12 saatda ~2% azalır; >48 saat — zavod analizində Brix itkisi.",
+    requiredInputs: ["operationalFact:cane_cut_to_mill_hours"],
+    sortOrder: 95,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AGRO_BUYER_CONCENTRATION",
+    nameEn: "Sugar-Mill Buyer Concentration",
+    nameAz: "Şəkər Zavodu Alıcı Cəmləşməsi",
+    nameRu: "Концентрация покупателей-заводов",
+    category: "commercial",
+    industries: ["agro_crops"],
+    unit: "%",
+    direction: "lower_better",
+    formula: "cane_buyer_concentration_pct",
+    thresholds: {
+      // <40% = diversified (3+ buyers, AR risk distributed); 40-70% =
+      // monitored (top buyer dominant but secondary buyers cushion); >70%
+      // = critical (one mill's payment delay = company cash crisis).
+      green: { op: "<=", value: 40 },
+      amber: { op: "<=", value: 70 },
+      red: { op: ">", value: 70 },
+    },
+    hintTemplateEn:
+      "Top-buyer share {value}% — {status}. >70% means a single mill's 30-day delay creates immediate cash crisis. Diversify or hedge with payment-term contracts.",
+    hintTemplateRu:
+      "Доля топ-покупателя {value}% — {status}. >70% — задержка одним заводом на 30 дней = кассовый разрыв. Диверсифицировать или хеджировать условиями оплаты.",
+    hintTemplateAz:
+      "Əsas alıcının payı {value}% — {status}. >70%: bir zavodun 30 günlük gecikməsi = pul böhranı. Diversifikasiya və ya ödəniş şərtləri ilə hedcinq.",
+    requiredInputs: ["operationalFact:cane_buyer_concentration_pct"],
+    sortOrder: 96,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AGRO_HARVEST_PROGRESS",
+    nameEn: "Harvest Plan Completion",
+    nameAz: "Yığım Planının İcrası",
+    nameRu: "Выполнение плана уборки",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "%",
+    direction: "higher_better",
+    // Harvest progress must be read with `cane_harvest_season_progress`
+    // as context — 30% complete mid-season is fine; 30% complete at
+    // season end is critical. v1 thresholds calibrated for end-of-season
+    // reading; v2 will dual-axis against season_progress.
+    formula: "cane_hectares_harvested_pct",
+    thresholds: {
+      green: { op: ">=", value: 95 },
+      amber: { op: ">=", value: 70 },
+      red: { op: "<", value: 70 },
+    },
+    hintTemplateEn:
+      "Harvest completion {value}% — {status}. <70% near season end means standing crop will degrade (Brix drops past peak); investigate labor/weather/equipment.",
+    hintTemplateRu:
+      "Выполнение уборки {value}% — {status}. <70% к концу сезона — несобранный тростник теряет Brix; проверить трудовые ресурсы / погоду / технику.",
+    hintTemplateAz:
+      "Yığım icrası {value}% — {status}. Sezon sonu <70% — yığılmayan qamış Brix-i itirir; işçi qüvvəsi / hava / texnika yoxlayın.",
+    requiredInputs: ["operationalFact:cane_hectares_harvested_pct"],
+    sortOrder: 97,
+    defaultValueSource: "disclosed",
+  },
 ];
 
 // ─── Cross-sector pack (4) ─────────────────────────────────────────────────

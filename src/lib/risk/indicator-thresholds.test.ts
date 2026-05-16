@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("71 active indicator seeds (Phase 7.I added 7 sugar/agro: AGRO_YIELD_PER_HA, AGRO_SUGAR_CONTENT, AGRO_WATER_INTENSITY, AGRO_FERTILIZER_INTENSITY, AGRO_WEATHER_RAINFALL, AGRO_SUGAR_PRICE_TREND, FP_EXTRACTION_RATE)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(71)
+  it("74 active indicator seeds (Phase 7.I sugar/agro pack + 2026-05-16 cane-seller trio: AGRO_CUT_TO_MILL, AGRO_BUYER_CONCENTRATION, AGRO_HARVEST_PROGRESS)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(74)
   })
 
   it("every indicator has a unique code", () => {
@@ -208,5 +208,55 @@ describe("indicator thresholds — catalog completeness", () => {
         code,
       )
     }
+  })
+
+  // ─── Phase 7.I cane-seller trio (2026-05-16) ────────────────────────
+  // The 3 cane-grower-specific indicators each encode a non-obvious threshold
+  // tied to AzerSheker's business model (cut-to-mill, buyer concentration,
+  // harvest progress). Lock the threshold values and direction so a future
+  // edit can't quietly widen/tighten the band without a test signal.
+  describe("Phase 7.I cane-seller seeds", () => {
+    const byCode = Object.fromEntries(
+      ALL_INDICATOR_SEEDS.map((s) => [s.code, s]),
+    )
+
+    it("AGRO_CUT_TO_MILL is lower-is-better, green ≤24h / amber ≤48h", () => {
+      const seed = byCode["AGRO_CUT_TO_MILL"]
+      expect(seed).toBeTruthy()
+      expect(seed.direction).toBe("lower_better")
+      expect(seed.thresholds.green).toEqual({ op: "<=", value: 24 })
+      expect(seed.thresholds.amber).toEqual({ op: "<=", value: 48 })
+      expect(seed.industries).toEqual(["agro_crops"])
+    })
+
+    it("AGRO_BUYER_CONCENTRATION is lower-is-better, green ≤40% / amber ≤70%", () => {
+      const seed = byCode["AGRO_BUYER_CONCENTRATION"]
+      expect(seed).toBeTruthy()
+      expect(seed.direction).toBe("lower_better")
+      expect(seed.thresholds.green).toEqual({ op: "<=", value: 40 })
+      expect(seed.thresholds.amber).toEqual({ op: "<=", value: 70 })
+      expect(seed.unit).toBe("%")
+    })
+
+    it("AGRO_HARVEST_PROGRESS is higher-is-better, green ≥95% / amber ≥70%", () => {
+      const seed = byCode["AGRO_HARVEST_PROGRESS"]
+      expect(seed).toBeTruthy()
+      expect(seed.direction).toBe("higher_better")
+      expect(seed.thresholds.green).toEqual({ op: ">=", value: 95 })
+      expect(seed.thresholds.amber).toEqual({ op: ">=", value: 70 })
+      expect(seed.unit).toBe("%")
+    })
+
+    it("all three cane-seller seeds source from disclosed operationalFact inputs", () => {
+      for (const code of [
+        "AGRO_CUT_TO_MILL",
+        "AGRO_BUYER_CONCENTRATION",
+        "AGRO_HARVEST_PROGRESS",
+      ]) {
+        const seed = byCode[code]
+        expect(seed.defaultValueSource).toBe("disclosed")
+        expect(seed.requiredInputs?.[0]).toMatch(/^operationalFact:/)
+      }
+    })
   })
 })

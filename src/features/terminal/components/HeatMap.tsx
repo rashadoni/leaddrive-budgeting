@@ -435,6 +435,28 @@ export function HeatMap({ period }: Props) {
       if (tags.length === 0) return true; // universal indicator
       return tags.some((t) => activeCompanyIndustries.includes(t));
     };
+    /**
+     * Phase 7.I — secondary sort key: industry-specificity.
+     *
+     * Within the same materiality rating, push industry-tagged indicators
+     * that match the active company's industry BEFORE universal indicators.
+     * For an AZSEKER (agro_crops) entity this lifts the 7 AGRO_* seeds
+     * (yield, sugar content, weather rainfall, sugar price trend, cut-to-mill,
+     * buyer concentration, harvest progress) to the left of the universal
+     * financial ratios (IND_DSO, IND_GROSS_MARGIN, IND_NET_MARGIN, etc.) so
+     * the operator's eye lands on the sector-defining signals first.
+     *
+     *   priority 0 — industry-tagged AND intersects active company industry
+     *   priority 1 — universal indicator (empty `industries`)
+     *   priority 2 — industry-tagged but non-intersecting (only visible
+     *                when "Material only" toggle is off; lands at the
+     *                right edge as low-relevance noise)
+     */
+    const rankIndustrySpecificity = (ind: { industries?: string[] }): number => {
+      const tags = ind.industries ?? [];
+      if (tags.length === 0) return 1;
+      return tags.some((t) => activeCompanyIndustries.includes(t)) ? 0 : 2;
+    };
     const enriched = rawIndicators.map((ind) => ({
       ind,
       rating:
@@ -447,7 +469,14 @@ export function HeatMap({ period }: Props) {
           (e) => e.rating !== 'not_material' && isAssociatedWithIndustry(e.ind),
         )
       : enriched;
-    visible.sort((a, b) => rankMateriality(a.rating) - rankMateriality(b.rating));
+    // Stable two-level sort: (materiality rating ASC) then (industry-
+    // specificity ASC). Equal-rated equal-specificity rows fall back to
+    // insertion order, which matches the seed `sortOrder` field.
+    visible.sort((a, b) => {
+      const r = rankMateriality(a.rating) - rankMateriality(b.rating);
+      if (r !== 0) return r;
+      return rankIndustrySpecificity(a.ind) - rankIndustrySpecificity(b.ind);
+    });
     return visible.map((e) => e.ind);
   }, [activeCompanyIndustries, activeCompanyIndustry, hideNotMaterial, rawIndicators]);
 
@@ -598,6 +627,10 @@ export function HeatMap({ period }: Props) {
               {indicators.map((ind) => (
                 <th
                   key={ind.id}
+                  // data-indicator-code lets tests + ARIA tools read the
+                  // canonical column code without parsing the ticker text
+                  // (which carries a leading direction marker glyph).
+                  data-indicator-code={ind.code}
                   className="sticky top-0 z-10 bg-[#0A0E27] px-1 py-1 border-b border-gray-800/60 text-gray-500 uppercase tracking-wider text-[9px]"
                   style={{
                     minWidth: compactMode ? 40 : 54,

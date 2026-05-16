@@ -33,7 +33,9 @@ export interface SourceFreshness {
   metricCount: number;
 }
 
-const DEFAULT_SOURCES: Array<{ sourceCode: string; cadence: "daily" | "monthly" }> = [
+export type FreshnessSource = { sourceCode: string; cadence: "daily" | "monthly" };
+
+export const DEFAULT_SOURCES: ReadonlyArray<FreshnessSource> = [
   // Phase 7.E #1 commodity / FX adapters.
   { sourceCode: "tcmb-fx-rates", cadence: "daily" },
   { sourceCode: "worldbank-cpi", cadence: "monthly" },
@@ -42,6 +44,51 @@ const DEFAULT_SOURCES: Array<{ sourceCode: string; cadence: "daily" | "monthly" 
   { sourceCode: "weather-openmeteo", cadence: "daily" },
   { sourceCode: "worldbank-sugar", cadence: "monthly" },
 ];
+
+/**
+ * L3 closure 2026-05-16 — resolve the source list to monitor.
+ *
+ * Reads `Organization.settings.intelFreshnessSources` (a JSON array of
+ * `{sourceCode, cadence}` objects). When the array is present + valid,
+ * it replaces DEFAULT_SOURCES so adding a new adapter no longer requires
+ * a code change: paste the new source into the org settings (or the
+ * source-registry admin page when L4 lands a freshness editor) and the
+ * dashboard picks it up on the next request.
+ *
+ * Validation is strict: the entire override is dropped if any entry is
+ * malformed. Invalid configs print a single console.warn so the admin
+ * sees it in the server log without dropping the page render.
+ */
+function isValidSourceShape(v: unknown): v is FreshnessSource {
+  if (!v || typeof v !== "object") return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    typeof obj.sourceCode === "string" &&
+    obj.sourceCode.length > 0 &&
+    (obj.cadence === "daily" || obj.cadence === "monthly")
+  );
+}
+
+export async function resolveFreshnessSources(
+  prisma: PrismaClient,
+  orgId: string,
+): Promise<ReadonlyArray<FreshnessSource>> {
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { settings: true },
+  });
+  const settings = (org?.settings ?? null) as Record<string, unknown> | null;
+  const override = settings?.intelFreshnessSources;
+  if (!Array.isArray(override) || override.length === 0) return DEFAULT_SOURCES;
+  const allValid = override.every(isValidSourceShape);
+  if (!allValid) {
+    console.warn(
+      `[freshness] organization.settings.intelFreshnessSources has invalid entry(s) — ignoring override, falling back to DEFAULT_SOURCES`,
+    );
+    return DEFAULT_SOURCES;
+  }
+  return override as FreshnessSource[];
+}
 
 const THRESHOLDS = {
   daily: { staleHours: 36, criticalHours: 72 },
@@ -59,7 +106,7 @@ function classify(ageHours: number | null, cadence: "daily" | "monthly"): Freshn
 export async function checkReferenceFreshness(
   prisma: PrismaClient,
   orgId: string,
-  sources: Array<{ sourceCode: string; cadence: "daily" | "monthly" }> = DEFAULT_SOURCES,
+  sources: ReadonlyArray<FreshnessSource> = DEFAULT_SOURCES,
 ): Promise<SourceFreshness[]> {
   const now = Date.now();
   const out: SourceFreshness[] = [];

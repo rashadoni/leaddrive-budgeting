@@ -199,6 +199,61 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     });
   });
 
+  it("Phase 7.I Track D — passes company.settings (region/cropType/hectaresPlanted) into runExplainer", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    // AzerSheker-EDEN-style row: cane grower in Salyan on 12K hectares.
+    // The route must forward settings into explainerInput.company.settings
+    // so the LLM prompt's `Settings:` line becomes sector-aware.
+    const azerSettings = {
+      region: "Salyan",
+      cropType: "sugarcane",
+      hectaresPlanted: 12000,
+    };
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      company: {
+        name: "AzerSheker EDEN",
+        industry: "agro_crops",
+        settings: azerSettings,
+      },
+    });
+    runExplainerMock.mockResolvedValue(explainerOutput);
+
+    const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
+      method: "POST",
+      json: { language: "ru" },
+    });
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(200);
+
+    expect(runExplainerMock).toHaveBeenCalledTimes(1);
+    const explainerCall = runExplainerMock.mock.calls[0][0];
+    // Settings round-trip through the route unchanged.
+    expect(explainerCall.company.industry).toBe("agro_crops");
+    expect(explainerCall.company.settings).toEqual(azerSettings);
+  });
+
+  it("Track D — settings: null tolerated (no industry-specific descriptor for unconfigured entities)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
+    prismaMock.indicatorValue.findFirst.mockResolvedValue({
+      ...ivRow,
+      company: {
+        name: "Unconfigured Co",
+        industry: "industrial",
+        settings: null,
+      },
+    });
+    runExplainerMock.mockResolvedValue(explainerOutput);
+
+    const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
+      method: "POST",
+      json: {},
+    });
+    const res = await POST(req, paramsFor(IV_ID));
+    expect(res.status).toBe(200);
+    expect(runExplainerMock.mock.calls[0][0].company.settings).toBeNull();
+  });
+
   it("non-blocking: explain response still 200 even when audit insert throws", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
     prismaMock.indicatorValue.findFirst.mockResolvedValue(ivRow);

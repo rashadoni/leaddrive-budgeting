@@ -507,6 +507,119 @@ matches the v1 hardcoded constants byte-for-byte. An org with empty
 `settings.alertThresholds` sees zero behavior change vs the legacy
 hardcoded engine.
 
+### 6.4 Reference-data freshness sources (L3 closure 2026-05-16)
+
+The drift dashboard (`/budgeting/admin/drift`) shows a freshness card
+per external feed. The list of feeds used to be hardcoded in
+`src/lib/intel/freshness.ts` (`DEFAULT_SOURCES`). Now it can be
+overridden per-org via:
+
+```json
+{
+  "intelFreshnessSources": [
+    { "sourceCode": "tcmb-fx-rates", "cadence": "daily" },
+    { "sourceCode": "weather-openmeteo", "cadence": "daily" },
+    { "sourceCode": "worldbank-cpi", "cadence": "monthly" }
+  ]
+}
+```
+
+Path: `Organization.settings.intelFreshnessSources`. Validation is
+strict — any malformed entry causes the override to be dropped and the
+default list used instead (a `console.warn` is logged so the
+misconfiguration surfaces in the server log). `cadence` must be exactly
+`"daily"` or `"monthly"`. Empty array → fall back to defaults.
+
+No UI for editing this yet; admins set it via direct DB update or
+`PATCH /api/organizations/settings`. Future work: add a freshness-source
+editor next to the existing source-registry admin (`/budgeting/admin/source-registry`).
+
+### 6.5 Verifying freshness wiring without waiting for the scheduler (V3 closure)
+
+Fresh installs / dev DBs show every freshness card as `missing` because
+no adapter has run yet. To prove the dashboard renders `fresh` rows
+without sitting through a real scheduler cycle, use the diagnostic
+seeder:
+
+```bash
+# Seed one synthetic IntelDataPoint per source (5 sources by default).
+node scripts/diag-seed-intel.cjs --insert
+
+# Narrow to a single source if you only want to verify one card.
+node scripts/diag-seed-intel.cjs --insert --source weather-openmeteo
+
+# Cleanup — only sweeps rows where raw.synthetic === true.
+node scripts/diag-seed-intel.cjs --delete
+```
+
+After insert, refresh `/budgeting/admin/drift` — every freshness card
+should flip to `fresh` (ageHours ≈ 0). The script is idempotent (uses
+`prisma.intelDataPoint.upsert`) and tags every row with
+`raw.synthetic = true` so the `--delete` mode can't touch real
+production data.
+
+Companion script for the drift-events panel:
+`node scripts/diag-synthetic-drift.cjs --insert` (V2) — seeds a fake
+`reconciliation_drift_detected` AuditEvent so the Recent drift events
+section also renders red rows during a demo.
+
+### 6.6 Phase 7.I weather + sugar commodity ingest (AzerSheker pilot)
+
+The Phase 7.I sector-aware indicators `AGRO_WEATHER_RAINFALL` and
+`AGRO_SUGAR_PRICE_TREND` consume real external data:
+
+- **Weather (Open-Meteo)** — per-region rainfall + temperature for
+  Salyan / Imishli / Sabirabad (the Azerbaijani sugar belt). Adapter:
+  `src/lib/intel/commodity/weather-openmeteo.ts`.
+- **Sugar prices (Yahoo Finance Sugar #11)** — monthly raw sugar
+  closes in USD/tonne. Adapter: `src/lib/intel/commodity/sugar-yahoo.ts`.
+
+The scheduler bootstrap pulls both on every run (`runCommodityIngest:
+true` is on by default in `scripts/intel-scheduler-bootstrap.ts`). For
+manual / on-demand bootstrap (e.g. after fresh DB seed) run:
+
+```bash
+npx tsx scripts/ingest-commodity-once.ts                  # FO Holding (first org)
+npx tsx scripts/ingest-commodity-once.ts --org <orgId>    # specific org
+```
+
+The script:
+- pulls all 5 adapters (TCMB FX, WorldBank CPI, Commodities RSS,
+  Open-Meteo, Sugar Yahoo) in parallel,
+- upserts into `IntelDataPoint`,
+- prints per-source counts + errors at exit (idempotent — re-running
+  doesn't duplicate rows).
+
+After ingest, trigger recompute for the affected companies so the
+matrix picks up the new datapoints:
+
+```bash
+# AZSEKER pilot example — agro_crops × 2026:
+npx tsx -e "
+import { PrismaClient } from '@prisma/client';
+import { runRecomputeForCompanies } from './src/lib/risk/recompute-trigger';
+const prisma = new PrismaClient();
+(async () => {
+  const azs = await prisma.company.findMany({
+    where: { code: { startsWith: 'AZSEKER-' }, industry: 'agro_crops' },
+    select: { id: true, organizationId: true },
+  });
+  await runRecomputeForCompanies(
+    prisma, azs[0].organizationId,
+    azs.map((c) => ({ companyId: c.id, year: 2026 })),
+  );
+  await prisma.\$disconnect();
+})();
+"
+```
+
+For the weather resolver to pick the right region for each company,
+set `Company.settings.region` (one of `Salyan` / `Imishli` /
+`Sabirabad`) — the resolver case-insensitively matches the region
+prefix on `<REGION>_RAINFALL_MM_90D` metrics. Likewise
+`Company.settings.cropType` (`sugarcane` / `sugar_beet`) feeds the AI
+Variance Explainer's context.
+
 ---
 
 ## 7. Audit log (Phase 7.F)

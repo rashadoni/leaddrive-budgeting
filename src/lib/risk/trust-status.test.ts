@@ -99,5 +99,31 @@ describe('computeCompanyTrustStatus', () => {
       ];
       expect(computeCompanyTrustStatus('co1', cells)).toBe('partial');
     });
+
+    // V5 closure 2026-05-16 — extreme-staleness edge case. The 30-day
+    // threshold from L6 must still hold at 1+ year, and `suspicious`
+    // (extreme sanityBand on any material cell) must outrank staleness
+    // so a year-old extreme reading does not get hidden behind a generic
+    // "partial" pill.
+    const ONE_YEAR_ISO = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000).toISOString();
+
+    it('degrades verified → partial even when audits are >1 year old (extreme staleness)', () => {
+      const cells = [
+        baseCell({ status: 'green', lastReconciledAt: ONE_YEAR_ISO }),
+        baseCell({ status: 'green', indicatorId: 'i2', lastReconciledAt: ONE_YEAR_ISO }),
+      ];
+      expect(computeCompanyTrustStatus('co1', cells)).toBe('partial');
+    });
+
+    it('keeps suspicious (extreme sanityBand) above staleness for >1-year-old audits', () => {
+      const cells = [
+        baseCell({ status: 'green', lastReconciledAt: ONE_YEAR_ISO }),
+        {
+          ...baseCell({ status: 'red', indicatorId: 'i2', lastReconciledAt: ONE_YEAR_ISO }),
+          sanityBand: 'high_extreme',
+        } as unknown as HeatMapCell,
+      ];
+      expect(computeCompanyTrustStatus('co1', cells)).toBe('suspicious');
+    });
   });
 });

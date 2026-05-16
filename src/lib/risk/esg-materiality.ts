@@ -164,22 +164,27 @@ export const ESG_MATERIALITY_OVERRIDES: readonly MaterialityOverride[] = [
   },
 
   // ─── Phase 7.I — financial-indicator materiality for agro/food_processing ───
-  // For harvest-cycle agribusinesses, working-capital indicators (DSO/DPO/CCC,
-  // inventory turns) are vestigial finance metrics — revenue lands in 1–2
-  // harvest pulses per year, inventory by definition is seasonal stockpile.
-  // Operational metrics (yield, sugar content, water/fertilizer intensity)
-  // and external metrics (commodity price trend, weather) carry the actual
-  // operational signal. Marking the working-capital ratios as low/not material
-  // means HeatMap dims them visually so the client sees what matters first,
-  // without losing the ability to drill into them.
-  // For downstream food_processing (sugar refining, beverage), inventory
-  // turns + DSO are RESTORED to material — refined sugar IS B2B inventory
-  // on a normal credit cycle, not seasonal field stock.
+  // For harvest-cycle agribusinesses, working-capital indicators (DPO / CCC /
+  // inventory turns) are vestigial — payables align with planting cycle,
+  // standing crop ≠ B2B inventory. Operational metrics (yield, sugar content,
+  // water/fertilizer intensity) and external metrics (commodity price, weather)
+  // carry the operational signal. Marking those WC ratios as low/not material
+  // dims them visually so the client sees what matters first.
+  //
+  // **DSO is the EXCEPTION for cane-growers/sellers** (AzerSheker pilot, 2026-05-16):
+  // a cane grower's revenue lands in 1-2 harvest pulses per year, but each
+  // pulse goes to 1-2 sugar-mill buyers. If one mill delays payment 30 days,
+  // the entire post-harvest cash plan unravels. Buyer concentration × annual
+  // billing cycle = DSO is MORE material here, not less. Hence: `material`.
+  //
+  // For downstream food_processing (sugar refining, beverage), inventory turns
+  // + DSO are RESTORED to material — refined sugar IS B2B inventory on a
+  // normal credit cycle.
   {
     industry: "agro_crops",
     indicatorCode: "IND_DSO",
-    rating: "low_materiality",
-    note: "Revenue lands in 1–2 harvest pulses per year — DSO not a continuous signal.",
+    rating: "material",
+    note: "Cane-seller revenue concentrates into 1-2 buyer payments per harvest — late payment from a single sugar mill creates immediate cash crisis. DSO is the early warning.",
   },
   {
     industry: "agro_crops",

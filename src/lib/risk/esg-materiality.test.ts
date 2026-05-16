@@ -155,8 +155,17 @@ describe("esg-materiality — gate scope", () => {
 })
 
 describe("esg-materiality — Phase 7.I agro/financial overrides", () => {
-  it("agro_crops × IND_DSO is LOW (harvest-cycle revenue, DSO not continuous)", () => {
-    expect(getMateriality("agro_crops", "IND_DSO")).toBe("low_materiality")
+  it("agro_crops × IND_DSO is MATERIAL (cane-seller buyer-concentration risk — 2026-05-16 correction)", () => {
+    // Pre-2026-05-16 this was low_materiality with seasonality rationale.
+    // Corrected after AzerSheker business-model clarification: they GROW
+    // and SELL cane to 1-2 sugar mills. Annual revenue concentrated into a
+    // couple of buyer payments → late payment by a single mill = cash crisis.
+    // DSO is MORE material here, not less.
+    expect(getMateriality("agro_crops", "IND_DSO")).toBe("material")
+  })
+
+  it("agro_crops × IND_DPO stays LOW (payables aligned with planting cycle, not steady B2B)", () => {
+    expect(getMateriality("agro_crops", "IND_DPO")).toBe("low_materiality")
   })
 
   it("agro_crops × IND_INVENTORY_TURNS is NOT MATERIAL (standing crop ≠ B2B inventory)", () => {
@@ -179,9 +188,9 @@ describe("esg-materiality — Phase 7.I agro/financial overrides", () => {
     )
   })
 
-  it("notes on Phase 7.I agro overrides explain the seasonality rationale", () => {
+  it("agro_crops × IND_DSO note flags buyer-concentration / cash-crisis logic (not just seasonality)", () => {
     const note = getMaterialityNote("agro_crops", "IND_DSO")
     expect(note).toBeTruthy()
-    expect(note?.toLowerCase()).toMatch(/harvest|seasonal|pulse/)
+    expect(note?.toLowerCase()).toMatch(/buyer|mill|cash/)
   })
 })
