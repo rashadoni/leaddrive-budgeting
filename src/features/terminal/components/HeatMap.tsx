@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useEventStream } from '@/lib/events/use-event-stream';
+import { Lock } from 'lucide-react';
 import { Sparkline, type SparklineStatus } from './Sparkline';
 import { PeriodChips } from './PeriodChips';
 import { TimeMachineSlider } from './TimeMachineSlider';
@@ -101,6 +102,25 @@ export function HeatMap({ period }: Props) {
   const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
   const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
   const compactMode = useTerminalStore((s) => s.compactMode);
+  // Financial-truth-infra Phase E.4 — pull org-level lockedPeriods so the
+  // HeatMap header surfaces a 🔒 badge when the current period is signed
+  // off. Hand-rolled fetch (no useQuery) so existing test harnesses don't
+  // need a QueryClientProvider wrapper. Refresh on period change.
+  const [lockedPeriods, setLockedPeriods] = useState<
+    Array<{ period: string; lockedAt: string; lockedBy: string; reason?: string }>
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/budgeting/period-locks')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { locks?: typeof lockedPeriods } | null) => {
+        if (!cancelled && Array.isArray(body?.locks)) setLockedPeriods(body!.locks);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Phase 7.I — sector-aware column ordering: when active company has an
   // industry the materiality matrix knows about, sort indicator columns so
   // material ones land left and hide `not_material` by default. User can
@@ -453,12 +473,25 @@ export function HeatMap({ period }: Props) {
   // Show the toggle only when there's a sector-aware industry — for org-wide
   // view it would be ambiguous which industry to dim against.
   const showMaterialityToggle = activeCompanyIndustry != null;
+  // Phase E.4 — flag whether the currently-rendered period is signed off.
+  // Match against the renderedPeriod string (exact match — locking "2026"
+  // doesn't tag "2026-Q1" per period-lock.ts semantics).
+  const activeLock = lockedPeriods.find((l) => l.period === renderedPeriod);
 
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
       <div className="flex items-center justify-between mb-2 text-[10px] text-gray-500 shrink-0 gap-2">
-        <span className="shrink-0" title={t('hints.heatMap')}>
+        <span className="shrink-0 flex items-center gap-1" title={t('hints.heatMap')}>
           {t('panels.heatMapShort')} · <span className="text-gray-300">{renderedPeriod}</span>
+          {activeLock && (
+            <span
+              data-testid="period-lock-badge"
+              title={`Period locked${activeLock.reason ? `: ${activeLock.reason}` : ''} (signed ${new Date(activeLock.lockedAt).toLocaleDateString()})`}
+              className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-500 text-[9px] uppercase tracking-wider font-semibold"
+            >
+              <Lock size={9} aria-hidden="true" /> LOCKED
+            </span>
+          )}
         </span>
         <div className="flex items-center gap-1 flex-1 max-w-[220px]">
           <span className="text-gray-600">/</span>
