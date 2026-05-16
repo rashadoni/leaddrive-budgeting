@@ -58,6 +58,8 @@ const ALL_ACTIONS = [
   "client_reconciliation_delete",
   // Phase 7.I — admin updated Company.settings JSON (per-industry config).
   "company_settings_update",
+  // Financial-truth-infra Phase D.1 — drift watchdog detected drift.
+  "reconciliation_drift_detected",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

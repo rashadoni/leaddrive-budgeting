@@ -32,6 +32,7 @@ import {
   BookOpen,
   Users,
   ClipboardEdit,
+  AlertTriangle,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -125,6 +126,9 @@ const budgetSubNav = [
       // Phase 7.H F4.v2.3 — non-engineer entry surface for operational
       // KPIs + ESG disclosures.
       { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, label: "Data Entry", isPage: true },
+      // Phase D.3 — drift dashboard. Recent drift events, reference-feed
+      // freshness, stalled onboarding cases. Admin-only.
+      { href: "/budgeting/admin/drift", icon: AlertTriangle, label: "Drift Dashboard", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],
