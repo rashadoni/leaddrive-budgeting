@@ -91,7 +91,10 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
     const m = new Map<string, number>()
     for (const e of forecastEntries) {
       if (e.category === "__total__") continue
-      const lt = (e as any).lineType || "expense"
+      // `BudgetForecastEntry.lineType` is non-optional `string` per the
+      // Prisma model + zod-validated route — defensively coerce empty
+      // string to "expense" without an `as any` escape hatch.
+      const lt = e.lineType || "expense"
       const key = `${e.category}||${lt}||${e.month}`
       m.set(key, (m.get(key) ?? 0) + e.forecastAmount)
     }
