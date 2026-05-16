@@ -7,6 +7,7 @@ import { looksLikeSapCode } from "@/lib/import/keywords"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
+import { computeElapsedMonthIndices } from "@/lib/budgeting/elapsed-months"
 
 /**
  * GET /api/budgeting/analytics
@@ -132,38 +133,12 @@ export async function GET(req: NextRequest) {
   if (hasAutoActual && costModel && plan) {
     const { year: curYear, month: curMonth } = currentBakuYearMonth()
 
-    let elapsedMonths = 1
-    // Phase 3.1 v1.2 — which specific months are "elapsed" for the
-    // sparkline. Auto-actuals don't have per-month detail in their
-    // source (cost model is a monthly recurring amount), so we attribute
-    // them to the months that were actually elapsed at request time.
-    const elapsedMonthIndices: number[] = []
-    if (plan.periodType === "monthly" && plan.month) {
-      elapsedMonths = 1
-      elapsedMonthIndices.push(plan.month - 1)
-    } else if (plan.periodType === "quarterly" && plan.quarter) {
-      const qStart = (plan.quarter - 1) * 3 + 1
-      const qEnd = qStart + 2
-      if (curYear > plan.year || (curYear === plan.year && curMonth > qEnd)) {
-        elapsedMonths = 3 // quarter fully completed
-        for (let m = qStart; m <= qEnd; m++) elapsedMonthIndices.push(m - 1)
-      } else if (curYear === plan.year && curMonth >= qStart) {
-        elapsedMonths = curMonth - qStart + 1 // inside quarter
-        for (let m = qStart; m <= curMonth; m++) elapsedMonthIndices.push(m - 1)
-      } else {
-        elapsedMonths = 0 // quarter hasn't started
-      }
-    } else if (plan.periodType === "annual") {
-      if (curYear > plan.year) {
-        elapsedMonths = 12
-        for (let m = 1; m <= 12; m++) elapsedMonthIndices.push(m - 1)
-      } else if (curYear === plan.year) {
-        elapsedMonths = curMonth
-        for (let m = 1; m <= curMonth; m++) elapsedMonthIndices.push(m - 1)
-      } else {
-        elapsedMonths = 0
-      }
-    }
+    // Phase 3.1 v1.2 — pure helper computes the elapsed-month indices
+    // (0-indexed) for the plan's period. The legacy `elapsedMonths`
+    // count is derived from the array length for back-compat with the
+    // existing autoActualByCategory year-total fan-out below.
+    const elapsedMonthIndices = computeElapsedMonthIndices(plan, curYear, curMonth)
+    const elapsedMonths = elapsedMonthIndices.length
 
     for (const line of lines) {
       if (line.isAutoActual && line.costModelKey) {
