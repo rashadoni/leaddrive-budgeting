@@ -821,7 +821,13 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   {/* Legend below donut */}
                   <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-1">
                     {expenseItems.slice(0, 6).map((item, i) => (
-                      <div key={i} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                        // Phase 3.3 hover pattern — donut legend names
+                        // truncate aggressively at 80px max-width.
+                        title={item.name}
+                      >
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }} />
                         <span className="truncate max-w-[80px]">{item.name}</span>
                       </div>
