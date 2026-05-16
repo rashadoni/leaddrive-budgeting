@@ -49,41 +49,65 @@ import {
 } from "@/lib/risk/status-bands"
 import { DataBoundary } from "@/components/ui/data-boundary"
 
-// Phase 3.1 v1.1 (Turn LIX closure) — compact 12-month planned-amount
-// sparkline. Pure presentational; renders a polyline normalized to its
-// own min/max. Empty/all-zero arrays render a muted em-dash to avoid
-// noisy empty cells. `<title>` SVG child provides keyboard/screen-reader
-// accessibility ("Plan: Jan 12K, Feb 14K, ...").
-function MonthlySparkline({ values }: { values?: number[] }) {
+// Phase 3.1 v1.1+v1.2 (Turn LIX closures) — compact 12-month sparkline.
+// Pure presentational. v1.1 = planned polyline (indigo). v1.2 = optional
+// actual polyline overlay (amber) on the SAME normalized axis so the
+// user can eyeball spend-vs-plan per month inline in the variance table.
+//
+// Normalization spans BOTH series so the two lines share a coordinate
+// frame; under-spend dips below the indigo line, over-spend rises above.
+// Empty / all-zero in BOTH series → em-dash (avoids noisy empty cells).
+// `<title>` SVG child carries a per-month "Jan plan=12K actual=14K"
+// tooltip for keyboard / screen-reader users.
+function MonthlySparkline({
+  values,
+  actuals,
+}: {
+  values?: number[]
+  actuals?: number[]
+}) {
   if (!values || values.length !== 12) {
     return <span className="text-muted-foreground/40 text-xs">—</span>
   }
-  const max = Math.max(...values)
+  // Combined range across plan + actual so both polylines share an axis.
+  const all = actuals && actuals.length === 12 ? [...values, ...actuals] : values
+  const max = Math.max(...all)
   if (max <= 0) {
     return <span className="text-muted-foreground/40 text-xs">—</span>
   }
-  const min = Math.min(...values)
+  const min = Math.min(...all)
   const range = max - min || 1
   const width = 72
   const height = 18
   const stepX = width / 11
-  const points = values
-    .map((v, i) => {
-      const x = i * stepX
-      const y = height - ((v - min) / range) * height
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(" ")
+  const toPoints = (series: number[]) =>
+    series
+      .map((v, i) => {
+        const x = i * stepX
+        const y = height - ((v - min) / range) * height
+        return `${x.toFixed(1)},${y.toFixed(1)}`
+      })
+      .join(" ")
+  const plannedPoints = toPoints(values)
+  const hasActual =
+    actuals && actuals.length === 12 && actuals.some((v) => v !== 0)
+  const actualPoints = hasActual ? toPoints(actuals!) : null
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const fmt = (v: number) => (v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0))
   const tooltip = values
-    .map((v, i) => `${MONTHS[i]}: ${v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0)}`)
+    .map((v, i) => {
+      if (hasActual) {
+        return `${MONTHS[i]}: plan ${fmt(v)} / actual ${fmt(actuals![i])}`
+      }
+      return `${MONTHS[i]}: ${fmt(v)}`
+    })
     .join(" · ")
   return (
     <svg
       width={width}
       height={height}
       viewBox={`0 0 ${width} ${height}`}
-      aria-label={`12-month planned distribution: ${tooltip}`}
+      aria-label={`12-month distribution: ${tooltip}`}
       className="overflow-visible"
       data-testid="variance-sparkline"
     >
@@ -94,9 +118,23 @@ function MonthlySparkline({ values }: { values?: number[] }) {
         strokeWidth={1.2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        points={points}
+        points={plannedPoints}
         className="text-indigo-500 dark:text-indigo-400"
+        data-testid="variance-sparkline-plan"
       />
+      {actualPoints && (
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.2}
+          strokeDasharray="2 1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={actualPoints}
+          className="text-amber-500 dark:text-amber-400"
+          data-testid="variance-sparkline-actual"
+        />
+      )}
     </svg>
   )
 }
@@ -392,7 +430,10 @@ export function VarianceTab() {
                           {(row.variancePct ?? 0).toFixed(1)}%
                         </td>
                         <td className="px-3 py-2">
-                          <MonthlySparkline values={row.monthlyPlanned} />
+                          <MonthlySparkline
+                            values={row.monthlyPlanned}
+                            actuals={row.monthlyActual}
+                          />
                         </td>
                       </tr>
                     )

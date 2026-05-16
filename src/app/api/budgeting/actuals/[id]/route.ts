@@ -5,6 +5,7 @@ import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
+import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 import type { ApprovalRequestType } from "@prisma/client"
 
 /**
@@ -110,6 +111,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "PUT /api/budgeting/actuals/[id]" })
   }
 
+  // Phase 3.1 v1.2 — re-stamp monthIndex when expenseDate is supplied
+  // in the update payload. Keeps the per-month attribution accurate
+  // if the user corrects the date of an existing entry.
+  const monthIndexUpdate =
+    expenseDate !== undefined ? { monthIndex: deriveMonthIndex(expenseDate) } : {}
   const result = await prisma.budgetActual.updateMany({
     where: { id, organizationId: orgId },
     data: {
@@ -118,6 +124,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       ...(department !== undefined && { department }),
       ...(lineType !== undefined && { lineType }),
       ...(expenseDate !== undefined && { expenseDate }),
+      ...monthIndexUpdate,
       ...(description !== undefined && { description }),
     },
   })

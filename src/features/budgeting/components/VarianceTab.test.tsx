@@ -326,6 +326,82 @@ describe("VarianceTab — monthly sparkline column (Phase 3.1 v1.1)", () => {
     expect(row.textContent).toContain("—")
   })
 
+  it("renders amber actual-overlay polyline when monthlyActual present (v1.2)", () => {
+    hooksMock.useBudgetPlans.mockReturnValue({
+      data: [PLAN_FIXTURE],
+      isLoading: false,
+    })
+    const planned = [10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000, 10_000]
+    const actual = [8_000, 12_000, 11_000, 0, 0, 0, 0, 0, 0, 0, 0, 0] // Q1 elapsed
+    hooksMock.useBudgetAnalytics.mockReturnValue({
+      data: {
+        totalPlanned: 120_000,
+        totalActual: 31_000,
+        totalVariance: -89_000,
+        executionPct: 26,
+        byCategory: [
+          {
+            category: "WithActuals",
+            planned: 120_000,
+            actual: 31_000,
+            variance: -89_000,
+            variancePct: -74,
+            monthlyPlanned: planned,
+            monthlyActual: actual,
+          },
+        ],
+      },
+      isLoading: false,
+    })
+    render(<VarianceTab />)
+    fireEvent.click(screen.getByTestId("variance-plan-p1"))
+    const row = screen.getByTestId("variance-row-WithActuals")
+    // Both polylines render (plan = indigo, actual = amber dashed)
+    const planLine = row.querySelector('[data-testid="variance-sparkline-plan"]')
+    const actualLine = row.querySelector('[data-testid="variance-sparkline-actual"]')
+    expect(planLine).toBeTruthy()
+    expect(actualLine).toBeTruthy()
+    expect(actualLine!.getAttribute("stroke-dasharray")).toBeTruthy()
+    // Tooltip mentions plan + actual per month
+    const svg = row.querySelector('[data-testid="variance-sparkline"]')
+    const title = svg!.querySelector("title")
+    expect(title?.textContent ?? "").toContain("plan")
+    expect(title?.textContent ?? "").toContain("actual")
+  })
+
+  it("does NOT render actual-overlay when monthlyActual is all-zero (no spend yet)", () => {
+    hooksMock.useBudgetPlans.mockReturnValue({
+      data: [PLAN_FIXTURE],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReturnValue({
+      data: {
+        totalPlanned: 120_000,
+        totalActual: 0,
+        totalVariance: -120_000,
+        executionPct: 0,
+        byCategory: [
+          {
+            category: "NoSpend",
+            planned: 120_000,
+            actual: 0,
+            variance: -120_000,
+            variancePct: -100,
+            monthlyPlanned: Array(12).fill(10_000),
+            monthlyActual: Array(12).fill(0),
+          },
+        ],
+      },
+      isLoading: false,
+    })
+    render(<VarianceTab />)
+    fireEvent.click(screen.getByTestId("variance-plan-p1"))
+    const row = screen.getByTestId("variance-row-NoSpend")
+    // Plan line renders, actual overlay suppressed
+    expect(row.querySelector('[data-testid="variance-sparkline-plan"]')).toBeTruthy()
+    expect(row.querySelector('[data-testid="variance-sparkline-actual"]')).toBeNull()
+  })
+
   it("renders em-dash when all 12 months are zero (empty distribution)", () => {
     hooksMock.useBudgetPlans.mockReturnValue({
       data: [PLAN_FIXTURE],
