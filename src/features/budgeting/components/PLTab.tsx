@@ -42,6 +42,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DataBoundary } from "@/components/ui/data-boundary"
+// Phase 3.1 v1.2 ext — same 12-month sparkline used in VarianceTab.
+// Mounted as a colSpan={6} expansion row under the active drilldown
+// row so the user sees the monthly distribution without leaving PLTab.
+import { MonthlySparkline } from "./monthly-sparkline"
 import {
   useBudgetAnalytics,
   useBudgetSections,
@@ -433,9 +437,11 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                         {isGroupOpen && g.children.map((row, i) => {
                           const rowPct = gPlanned > 0 ? Math.round((row.planned / gPlanned) * 100) : 0
                           const isActive = drilldown === row.category
+                          const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
+                          const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
                           return (
+                            <React.Fragment key={i}>
                             <tr
-                              key={i}
                               data-pl-category={row.category}
                               className={`border-t border-border/20 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                               onClick={() => setDrilldown(isActive ? null : row.category)}>
@@ -455,6 +461,24 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                                 <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
                               </td>
                             </tr>
+                            {/* Phase 3.1 v1.2 ext — drill expansion row.
+                                Shows the row's 12-month plan + actual
+                                sparkline so the user sees seasonality
+                                without leaving PLTab. */}
+                            {isActive && rowMonthly && (
+                              <tr
+                                className="border-t-0 bg-primary/[0.02]"
+                                data-pl-drill-row={row.category}
+                              >
+                                <td colSpan={6} className="px-4 py-2 pl-14">
+                                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                                    <span className="uppercase tracking-wider">12-month</span>
+                                    <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           )
                         })}
                       </React.Fragment>
@@ -462,9 +486,11 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   })}
                   {grouped.standalone.map((row, i) => {
                     const isActive = drilldown === row.category
+                    const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
+                    const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
                     return (
+                      <React.Fragment key={`s-${i}`}>
                       <tr
-                        key={`s-${i}`}
                         data-pl-category={row.category}
                         className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                         onClick={() => setDrilldown(isActive ? null : row.category)}>
@@ -484,15 +510,28 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                           <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
                         </td>
                       </tr>
+                      {isActive && rowMonthly && (
+                        <tr className="border-t-0 bg-primary/[0.02]" data-pl-drill-row={row.category}>
+                          <td colSpan={6} className="px-4 py-2 pl-6">
+                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                              <span className="uppercase tracking-wider">12-month</span>
+                              <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     )
                   })}
                 </>
               ) : (
                 rows.map((row, i) => {
                   const isActive = drilldown === row.category
+                  const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
+                  const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
                   return (
+                    <React.Fragment key={i}>
                     <tr
-                      key={i}
                       data-pl-category={row.category}
                       className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                       onClick={() => setDrilldown(isActive ? null : row.category)}>
@@ -512,6 +551,17 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                         <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
                       </td>
                     </tr>
+                    {isActive && rowMonthly && (
+                      <tr className="border-t-0 bg-primary/[0.02]" data-pl-drill-row={row.category}>
+                        <td colSpan={6} className="px-4 py-2 pl-6">
+                          <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                            <span className="uppercase tracking-wider">12-month</span>
+                            <MonthlySparkline values={rowMonthly} actuals={rowMonthlyActual} width={220} height={28} />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   )
                 })
               )}
