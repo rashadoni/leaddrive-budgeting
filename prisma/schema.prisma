@@ -30,6 +30,7 @@ model Organization {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  periodSnapshots        PeriodSnapshot[]
   users                  User[]
   budgetPlans            BudgetPlan[]
   budgetCostTypes        BudgetCostType[]
@@ -1856,4 +1857,49 @@ model AuditEvent {
   @@index([organizationId, entityType, entityId])
   @@index([organizationId, action, createdAt])
   @@map("audit_events")
+}
+
+/**
+ * Financial-truth-infra Phase E.1 — period snapshot table.
+ *
+ * When admin locks a fiscal period via `/budgeting/admin/periods`, this
+ * captures an immutable cryptographic fingerprint of all IndicatorValue
+ * + BudgetLine rows for that period. Lets later recomputes prove they
+ * haven't drifted from the signed-off numbers (compare new hash vs
+ * stored hash).
+ *
+ * Storage strategy: instead of duplicating every row, store SHA-256 of
+ * a canonical serialization (sorted by key, JSON.stringify) plus a
+ * compact aggregate (revenue total, cogs total, line count). On
+ * recompute, the same hashing routine runs and a divergence is logged
+ * as `period_snapshot_drift` (next-slice audit action).
+ *
+ * Unsigned periods have no row here. Signed periods have exactly one
+ * row per (organizationId, period). Re-signing a period (after manual
+ * unlock + edit + relock) creates a new row; old rows retained for
+ * historical comparison.
+ */
+model PeriodSnapshot {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period         String // "YYYY" / "YYYY-Q[1-4]" / "YYYY-MM"
+  signedAt       DateTime     @default(now())
+  signedBy       String // userId
+  // SHA-256 of the canonical JSON over all IndicatorValue rows at this
+  // period (companyId, indicatorId, value, status sorted lex).
+  ivHash         String
+  // Same shape over BudgetLine rows (planId, companyId, accountId,
+  // monthIndex, plannedAmount).
+  budgetHash     String
+  // Aggregate fingerprint that's cheap to display in the UI without
+  // re-hashing — JSON of { ivCount, budgetLineCount, revenueTotal,
+  // cogsTotal, ebitda }. Lets the terminal banner show "Q1 2026 —
+  // signed by Rashad on 16.05.2026, Revenue 50.6M".
+  aggregates     Json
+  // Free-form admin commentary captured at lock time (optional).
+  signoffNote    String?
+
+  @@index([organizationId, period, signedAt])
+  @@map("period_snapshots")
 }

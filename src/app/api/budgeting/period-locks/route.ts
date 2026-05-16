@@ -134,6 +134,23 @@ export async function POST(req: NextRequest) {
     data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
   })
 
+  // Financial-truth-infra Phase E.1 — when a period is newly locked,
+  // also persist an immutable PeriodSnapshot (SHA-256 of all IV +
+  // BudgetLine rows scoped to that period). Lets later recomputes
+  // prove they haven't silently drifted from the signed-off numbers.
+  // Failure here is non-fatal — the lock itself succeeded; we just
+  // surface `snapshotStale: true` so the admin UI flags the gap.
+  let snapshotStale = false
+  if (wasNew) {
+    try {
+      const { createPeriodSnapshot } = await import("@/lib/budgeting/period-snapshot")
+      await createPeriodSnapshot(prisma, session.orgId, parsed.period, session.userId, parsed.reason ?? null)
+    } catch (e) {
+      console.error("[period-locks] snapshot create failed", e)
+      snapshotStale = true
+    }
+  }
+
   // Audit emission — awaited (compliance-grade). On audit failure, surface
   // `auditStale: true` in the response so the admin UI can show a soft warning.
   let auditStale = false
@@ -158,11 +175,17 @@ export async function POST(req: NextRequest) {
     if (!auditResult.ok) auditStale = true
   }
 
-  const responseBody: { lock: LockedPeriod; isNew: boolean; auditStale?: boolean } = {
+  const responseBody: {
+    lock: LockedPeriod
+    isNew: boolean
+    auditStale?: boolean
+    snapshotStale?: boolean
+  } = {
     lock: findLockForPeriod(nextLocks, parsed.period) ?? newLock,
     isNew: wasNew,
   }
   if (auditStale) responseBody.auditStale = true
+  if (snapshotStale) responseBody.snapshotStale = true
 
   return NextResponse.json(responseBody, { status: wasNew ? 201 : 200 })
 }
