@@ -3,6 +3,8 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const salesForecastSchema = z.object({
   year: z.number().int().min(2020).max(2050),
@@ -54,6 +56,16 @@ export async function POST(req: NextRequest) {
   }
 
   const { year, entries } = data
+
+  // Phase L8 — period-lock gate (year-scoped forecast).
+  const lock = await getActivePeriodLock(prisma, orgId, String(year))
+  if (lock)
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: null,
+      route: "POST /api/budgeting/sales-forecast",
+    })
 
   const results = await prisma.$transaction(
     entries

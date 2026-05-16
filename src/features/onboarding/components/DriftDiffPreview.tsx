@@ -46,6 +46,7 @@ export function DriftDiffPreview({
   companyName,
   confirmed,
   onConfirmChange,
+  onHasExistingDataChange,
 }: {
   stagingId: string;
   file: File | null;
@@ -53,6 +54,14 @@ export function DriftDiffPreview({
   companyName: string;
   confirmed: boolean;
   onConfirmChange: (v: boolean) => void;
+  /**
+   * Phase L1 hard-gate — invoked when the dryRun result resolves so the
+   * wizard parent can disable the Apply button until the user ticks
+   * the diff-confirm checkbox. `true` = existing data present, Apply
+   * needs a confirmation; `false` = fresh onboarding, Apply free to
+   * proceed.
+   */
+  onHasExistingDataChange?: (hasExistingData: boolean) => void;
 }) {
   const [data, setData] = React.useState<DryRunResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -80,7 +89,15 @@ export function DriftDiffPreview({
           return;
         }
         const body = (await res.json()) as DryRunResponse;
-        if (!cancelled) setData(body);
+        if (!cancelled) {
+          setData(body);
+          // L1 hard-gate — tell the wizard whether Apply should require
+          // user confirmation. planExisted + currentLineCount > 0 is the
+          // same criterion used to render the warning panel below.
+          if (onHasExistingDataChange) {
+            onHasExistingDataChange(body.planExisted && body.currentLineCount > 0);
+          }
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));

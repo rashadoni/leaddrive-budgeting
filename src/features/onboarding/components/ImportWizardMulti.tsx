@@ -132,6 +132,11 @@ export function ImportWizardMulti() {
   // "wrong file / wrong company" failure mode noted in the user
   // feedback after Phase A+B+C.
   const [safetyConfirmed, setSafetyConfirmed] = useState(false)
+  // L1 hard-gate — flips to true when the dryRun preview detects
+  // existing plan data for the target company. Apply button is hard-
+  // disabled until safetyConfirmed is ticked in that case (was advisory
+  // only pre-L1).
+  const [diffHasExistingData, setDiffHasExistingData] = useState(false)
   const [applyError, setApplyError] = useState<string | null>(null)
   const [applyResult, setApplyResult] = useState<ApplyMultiResponse | null>(null)
   // Set when apply hits 410/409 (staging row in terminal state — expired,
@@ -435,6 +440,7 @@ export function ImportWizardMulti() {
               }
               confirmed={safetyConfirmed}
               onConfirmChange={setSafetyConfirmed}
+              onHasExistingDataChange={setDiffHasExistingData}
             />
           )}
 
@@ -451,16 +457,13 @@ export function ImportWizardMulti() {
               <button
                 type="button"
                 onClick={handleApply}
-                /* Apply disabled while applying OR when company already
-                   has plan data AND user hasn't ticked the safety
-                   confirmation. The PreImportSafetyCheck itself
-                   short-circuits to "fresh onboarding" branch when no
-                   existing data exists, in which case `safetyConfirmed`
-                   stays false but Apply should still be enabled — we
-                   approximate by allowing Apply when the wizard hasn't
-                   surfaced the warning panel. The dashboard's recheck
-                   button after import lets the user verify post-commit. */
-                disabled={applying}
+                /* L1 hard-gate (replaces advisory-only behavior from Phase
+                   C.5): Apply disabled while applying OR when DriftDiff
+                   preview detected existing plan data AND user hasn't
+                   ticked the diff-confirm checkbox. Fresh onboarding
+                   (no existing data) keeps Apply enabled without
+                   requiring confirmation — same UX. */
+                disabled={applying || (diffHasExistingData && !safetyConfirmed)}
                 data-testid="apply-submit"
                 className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-4 py-1.5 text-sm hover:bg-emerald-500/20 disabled:opacity-50"
               >

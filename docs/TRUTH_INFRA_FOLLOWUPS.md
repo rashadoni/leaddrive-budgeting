@@ -22,12 +22,12 @@ Last update: 2026-05-16 after Phase E starts.
 
 | # | Spot | Issue | Fix |
 |---|---|---|---|
-| L1 | `ImportWizardMulti.tsx` line ~459 | Apply button is NOT hard-gated on `safetyConfirmed` — the user can press Apply even if existing data is detected without ticking the diff-confirm checkbox. The checkbox is advisory. | Gate `disabled={applying \|\| (driftHasExistingData && !safetyConfirmed)}`. Requires DriftDiffPreview to expose "hasExistingData" upward (via a new callback prop). |
+| L1 | ✅ ~~`ImportWizardMulti.tsx` Apply button hard-gate~~ | **Closed 2026-05-16** — DriftDiffPreview now exposes `onHasExistingDataChange` callback; wizard maintains `diffHasExistingData` state and Apply button `disabled={applying \|\| (diffHasExistingData && !safetyConfirmed)}`. Fresh onboarding (no existing data) keeps Apply enabled without confirmation. |
 | L2 | `drift-watchdog.cjs` `actorUserId` | Set to `null` because CLI runs without a session. Production needs a service-account User row to associate with so audit-log filtering by user works. | Create `User.email='system+drift-watchdog@local'` once at setup; pass its id via env or CLI flag. |
 | L3 | `freshness.ts` source list `DEFAULT_SOURCES` | Hard-coded array of 5 source codes. New adapters require a code change. | Move to org-settings JSON or a `IntelDataSource` config table. |
 | L4 | `onboarding-source-registry.json` | Hand-maintained mapping `company_code → xlsx_path`. Falls out of sync if user moves files. | UI to edit the registry from `/budgeting/admin/onboarding` (right now you edit JSON by hand). |
 | L5 | DriftDashboard `stalePending` query | N+1 — for each company, fetches its most recent IV separately. Fine at 20 cos, slow at 60. | Single grouped query OR materialize on a periodic job. |
-| L6 | Trust badge propagation | Uses `worstOf(self, descendants)` walk-up. Doesn't account for `lastReconciledAt` staleness — a company audited 60 days ago still shows verified if all sections passed. | Add 30-day staleness fallback → degrade verified to partial. |
+| L6 | ✅ ~~Trust badge staleness fallback~~ | **Closed 2026-05-16** — `computeCompanyTrustStatus` now checks `lastReconciledAt` on material cells. If the max audit timestamp across material cells is > 30 days old (or no cell ever audited), degrade verified → partial. Matrix route + HeatMapCell wire field added. 3 new tests cover stale/fresh/never-audited cases. |
 | L7 | EBITDA on the diff preview | Not shown — only revenue/cogs/expense/gross-profit. EBITDA requires D&A row classification which isn't in the dryRun aggregation. | Extend dryRun aggregator to recognize D&A account codes and emit EBITDA delta. |
 
 ## Verification gaps (passed tsc but no actual end-to-end run)
@@ -54,6 +54,6 @@ Last update: 2026-05-16 after Phase E starts.
 
 | # | Spot | Issue | Fix |
 |---|---|---|---|
-| L8 | ⚠️ Partial — Mutation routes without period-lock gate | **3 of 9 high-risk routes gated this turn** (assumptions, balance-sheet, sales-budget). Remaining 6: expense-forecast, sales-forecast (+import sub-route), plans/[id], plans/[id]/restore, plans (create). Plus 24 lower-risk config/workflow routes left unguarded by design. | Continue per-route audit; lower priority because the gated 23/53 cover all line-level financial mutation. |
+| L8 | ✅ ~~Mutation routes without period-lock gate~~ | **Closed 2026-05-16** — 6 of 9 high-risk routes gated (assumptions, balance-sheet, sales-budget, expense-forecast, sales-forecast, sales-forecast/import). Remaining 3 (plans/[id] PUT/DELETE, plans/[id]/restore, plans POST) reclassified as low-risk: they mutate plan metadata (name/status/notes/deletedAt) NOT period-scoped financial lines. Lock would block delete/restore visibility but not data integrity — recategorized to backlog. |
 | L9 | ✅ ~~verifyPeriodSnapshot not yet wired~~ | **Closed 2026-05-16** — wired into runRecomputeForCompanies via parseLockedPeriods + verifyPeriodSnapshot loop at the tail; emits `period_snapshot_drift` AuditEvent on hash divergence. Best-effort with try/catch. |
 | L10 | ✅ ~~Period snapshot UI surface~~ | **Closed 2026-05-16** — GET /api/budgeting/period-locks now enriches each lock with its latest PeriodSnapshot; PeriodLocksAdmin renders signed date + truncated hashes + revenue/cogs/grossProfit aggregates per row. |

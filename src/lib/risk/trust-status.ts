@@ -84,7 +84,25 @@ export function computeCompanyTrustStatus(
 
   // Threshold: ≥80% of material indicators populated → verified.
   // 0 < coverage < 0.8 → partial.
-  if (coverage >= 0.8) return 'verified';
+  if (coverage >= 0.8) {
+    // Phase L6 — staleness fallback. If the most-recent audit-company
+    // pass across all material cells is older than 30 days (or no cell
+    // was ever audited), degrade verified → partial. Prevents an
+    // initially-clean company from looking trustworthy forever after
+    // its audit goes cold.
+    const STALENESS_THRESHOLD_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    type WithReconciled = HeatMapCell & { lastReconciledAt?: string };
+    const auditedAts = material
+      .map((c) => (c as WithReconciled).lastReconciledAt)
+      .filter((s): s is string => typeof s === 'string')
+      .map((s) => Date.parse(s))
+      .filter((t) => !Number.isNaN(t));
+    if (auditedAts.length === 0) return 'partial'; // never audited
+    const mostRecent = Math.max(...auditedAts);
+    if (now - mostRecent > STALENESS_THRESHOLD_MS) return 'partial';
+    return 'verified';
+  }
   if (coverage > 0) return 'partial';
   return 'pending';
 }

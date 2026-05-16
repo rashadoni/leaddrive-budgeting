@@ -121,6 +121,14 @@ export interface HeatMapCell {
     | 'high_extreme'
     | 'missing_input'
     | 'no_band';
+  /**
+   * Phase L6 — timestamp of the last audit-company.cjs verify pass on
+   * this IV. Drives the trust-status staleness fallback (verified
+   * degrades to partial when all material cells were last audited
+   * more than 30 days ago). ISO-8601 string on the wire; consumers
+   * parse with `Date.parse()` or `new Date()`.
+   */
+  lastReconciledAt?: string;
 }
 
 /**
