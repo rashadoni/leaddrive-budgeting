@@ -100,10 +100,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     }
     const key = map[chartCategory]
     if (!key) return
-    // Auto-expand the expandable sections (revenue/cogs/opex) so the
-    // detail rows are visible after the scroll. GP / EBITDA / Net Profit
-    // are summary rows — already visible, no expand needed.
-    if (key === "revenue" || key === "cogs" || key === "opex") {
+    // Auto-expand the expandable sections (revenue/cogs/opex/below-ebitda)
+    // so the detail rows are visible after the scroll. GP / EBITDA / Net
+    // Profit are summary rows — already visible, no expand needed.
+    if (key === "revenue" || key === "cogs" || key === "opex" || key === "below-ebitda") {
       setExpandedSections((prev) => {
         const next = new Set(prev)
         next.add(key)
@@ -858,7 +858,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {/* D&A, Finance, Tax — below EBITDA items */}
               {belowEbitdaRows.length > 0 && (
                 <tr
-                  className="bg-slate-50 dark:bg-slate-950/30 font-semibold border-b cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-950/40"
+                  id="pnl-section-below-ebitda"
+                  className={`bg-slate-50 dark:bg-slate-950/30 font-semibold border-b cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-950/40 transition-shadow ${flashSection === "below-ebitda" ? "shadow-[inset_0_0_0_3px_rgb(100,116,139)]" : ""}`}
                   onClick={() => toggleSection("below-ebitda")}
                 >
                   <td className="sticky left-0 bg-slate-50 dark:bg-slate-950/30 px-3 py-2 flex items-center gap-1">
