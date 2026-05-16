@@ -97,6 +97,31 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     enabled: !!planId && !!orgId,
   })
 
+  // Phase 7.H Feature 5 — client-reported EBITDA reference. MUST be
+  // declared above the early-return branches below so React sees a
+  // consistent hook order across renders (first render: data still
+  // loading → early return at line ~120; second render: data resolved
+  // → full body executes). Pre-fix this useQuery sat below the early
+  // returns and broke the rules-of-hooks contract once the loading
+  // state flipped. Period defaults to current year while data is
+  // pending; the enabled flag prevents the request from firing without
+  // companyId / orgId, so no wasted fetches during load.
+  const reconPeriod =
+    (data?.year ? String(data.year) : null) ?? new Date().getFullYear().toString()
+  const reconLookupEnabled = !!companyId && !!orgId
+  const { data: reconLookup } = useQuery({
+    queryKey: ["pnl-recon-lookup", companyId, reconPeriod],
+    enabled: reconLookupEnabled,
+    queryFn: async () => {
+      const url = new URL(`/api/companies/${companyId}/reconciliation`, window.location.origin)
+      url.searchParams.set("period", reconPeriod)
+      url.searchParams.set("indicatorKey", "EBITDA")
+      const res = await fetch(url.toString())
+      if (!res.ok) return { rows: [] as ClientReconciliationRow[] }
+      return res.json() as Promise<{ rows: ClientReconciliationRow[] }>
+    },
+  })
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -164,11 +189,6 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const actualEbitda = actualBreakdown.ebitda
   const actualNetProfit = actualBreakdown.netProfit
 
-  // Phase 7.H Feature 5 — client-reported EBITDA reference (compare-only).
-  // The default period for the drawer is the plan's year ("YYYY"); users
-  // can switch to YYYY-QN / YYYY-MM in the drawer's period input.
-  const reconPeriod = data?.year ? String(data.year) : new Date().getFullYear().toString()
-
   // Top-5 P&L contributors to EBITDA, sorted by |total| desc. Revenue +
   // COGS + OpEx rows participate (below-EBITDA lines don't affect EBITDA).
   // D&A rows aren't pinned, only badged in the drawer — pinning a small
@@ -190,21 +210,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     return acc.slice(0, 5)
   })()
 
-  // Existing client reconciliation row for this (company × current-year-period),
-  // if any — feeds the inline "Client: X" badge below the EBITDA number.
-  const reconLookupEnabled = !!companyId && !!orgId
-  const { data: reconLookup } = useQuery({
-    queryKey: ["pnl-recon-lookup", companyId, reconPeriod],
-    enabled: reconLookupEnabled,
-    queryFn: async () => {
-      const url = new URL(`/api/companies/${companyId}/reconciliation`, window.location.origin)
-      url.searchParams.set("period", reconPeriod)
-      url.searchParams.set("indicatorKey", "EBITDA")
-      const res = await fetch(url.toString())
-      if (!res.ok) return { rows: [] as ClientReconciliationRow[] }
-      return res.json() as Promise<{ rows: ClientReconciliationRow[] }>
-    },
-  })
+  // `clientReconRow` derived from the hook declared at the top of the
+  // component (see rules-of-hooks block above the early-return guards).
   const clientReconRow: ClientReconciliationRow | null = reconLookup?.rows?.[0] ?? null
   const reconVariance: number | null =
     clientReconRow && ebitda !== 0
