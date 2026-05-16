@@ -6,19 +6,24 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const { prismaMock, freshnessMock } = vi.hoisted(() => ({
+const { prismaMock, freshnessMock, resolveSourcesMock } = vi.hoisted(() => ({
   prismaMock: {
     auditEvent: { findMany: vi.fn() },
     company: { findMany: vi.fn(), findUnique: vi.fn() },
     indicatorValue: { findFirst: vi.fn(), groupBy: vi.fn() },
   },
   freshnessMock: vi.fn(),
+  // L3 closure 2026-05-16 — route now calls resolveFreshnessSources before
+  // checkReferenceFreshness. Default to a single test-fixture source so
+  // the through-pipe behavior matches production.
+  resolveSourcesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/lib/intel/freshness", () => ({
   checkReferenceFreshness: freshnessMock,
+  resolveFreshnessSources: resolveSourcesMock,
 }));
 
 import { mockSession } from "@/test/api-harness";
@@ -40,6 +45,9 @@ beforeEach(() => {
   prismaMock.indicatorValue.findFirst.mockReset().mockResolvedValue(null);
   prismaMock.indicatorValue.groupBy.mockReset().mockResolvedValue([]);
   freshnessMock.mockReset().mockResolvedValue([]);
+  resolveSourcesMock.mockReset().mockResolvedValue([
+    { sourceCode: "weather-openmeteo", cadence: "daily" },
+  ]);
 });
 
 describe("GET /api/admin/drift", () => {

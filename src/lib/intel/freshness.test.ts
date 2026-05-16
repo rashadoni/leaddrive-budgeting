@@ -4,7 +4,11 @@
  * each status branch (fresh / stale / critical_stale / missing).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { checkReferenceFreshness } from "./freshness";
+import {
+  checkReferenceFreshness,
+  resolveFreshnessSources,
+  DEFAULT_SOURCES,
+} from "./freshness";
 
 const NOW = new Date("2026-05-16T12:00:00Z").getTime();
 
@@ -104,5 +108,90 @@ describe("checkReferenceFreshness", () => {
     expect(r[0].status).toBe("missing");
     expect(r[0].ageHours).toBeNull();
     expect(r[0].metricCount).toBe(0);
+  });
+});
+
+describe("resolveFreshnessSources (L3 closure)", () => {
+  function mockPrismaWithSettings(settings: unknown) {
+    return {
+      organization: {
+        findUnique: async () => ({ settings }),
+      },
+    } as never;
+  }
+
+  it("falls back to DEFAULT_SOURCES when settings is null", async () => {
+    const result = await resolveFreshnessSources(mockPrismaWithSettings(null), "org-1");
+    expect(result).toEqual(DEFAULT_SOURCES);
+  });
+
+  it("falls back to DEFAULT_SOURCES when key is missing", async () => {
+    const result = await resolveFreshnessSources(
+      mockPrismaWithSettings({ otherKey: 123 }),
+      "org-1",
+    );
+    expect(result).toEqual(DEFAULT_SOURCES);
+  });
+
+  it("falls back to DEFAULT_SOURCES on empty array (zero adapters is never intentional)", async () => {
+    const result = await resolveFreshnessSources(
+      mockPrismaWithSettings({ intelFreshnessSources: [] }),
+      "org-1",
+    );
+    expect(result).toEqual(DEFAULT_SOURCES);
+  });
+
+  it("returns the override array when entries are well-formed", async () => {
+    const override = [
+      { sourceCode: "custom-feed-a", cadence: "daily" },
+      { sourceCode: "custom-feed-b", cadence: "monthly" },
+    ];
+    const result = await resolveFreshnessSources(
+      mockPrismaWithSettings({ intelFreshnessSources: override }),
+      "org-1",
+    );
+    expect(result).toEqual(override);
+  });
+
+  it("falls back to DEFAULT_SOURCES + warns when any entry is malformed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const override = [
+      { sourceCode: "valid", cadence: "daily" },
+      { sourceCode: "missing-cadence" }, // bad
+    ];
+    const result = await resolveFreshnessSources(
+      mockPrismaWithSettings({ intelFreshnessSources: override }),
+      "org-1",
+    );
+    expect(result).toEqual(DEFAULT_SOURCES);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("intelFreshnessSources");
+    warn.mockRestore();
+  });
+
+  it("rejects unknown cadence values", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await resolveFreshnessSources(
+      mockPrismaWithSettings({
+        intelFreshnessSources: [{ sourceCode: "x", cadence: "weekly" }],
+      }),
+      "org-1",
+    );
+    expect(result).toEqual(DEFAULT_SOURCES);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("rejects non-array overrides (string / object)", async () => {
+    const r1 = await resolveFreshnessSources(
+      mockPrismaWithSettings({ intelFreshnessSources: "tcmb-fx-rates" }),
+      "org-1",
+    );
+    const r2 = await resolveFreshnessSources(
+      mockPrismaWithSettings({ intelFreshnessSources: { foo: "bar" } }),
+      "org-1",
+    );
+    expect(r1).toEqual(DEFAULT_SOURCES);
+    expect(r2).toEqual(DEFAULT_SOURCES);
   });
 });

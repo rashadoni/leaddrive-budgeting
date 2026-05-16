@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
-import { checkReferenceFreshness } from "@/lib/intel/freshness";
+import { checkReferenceFreshness, resolveFreshnessSources } from "@/lib/intel/freshness";
 
 export async function GET(req: NextRequest) {
   const session = await requireRole(req, "admin");
@@ -71,8 +71,16 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // Reference-data freshness.
-  const referenceFreshness = await checkReferenceFreshness(prisma, session.orgId);
+  // Reference-data freshness. L3 closure: list of sources is resolved from
+  // Organization.settings.intelFreshnessSources (falls back to DEFAULT_SOURCES
+  // when missing or malformed) so new adapters can be onboarded without a
+  // code change.
+  const freshnessSources = await resolveFreshnessSources(prisma, session.orgId);
+  const referenceFreshness = await checkReferenceFreshness(
+    prisma,
+    session.orgId,
+    freshnessSources,
+  );
 
   // Stale-pending companies (onboarding stalled).
   // Heuristic: leaf op-cos (level=2) whose most recent IV

@@ -507,6 +507,33 @@ matches the v1 hardcoded constants byte-for-byte. An org with empty
 `settings.alertThresholds` sees zero behavior change vs the legacy
 hardcoded engine.
 
+### 6.4 Reference-data freshness sources (L3 closure 2026-05-16)
+
+The drift dashboard (`/budgeting/admin/drift`) shows a freshness card
+per external feed. The list of feeds used to be hardcoded in
+`src/lib/intel/freshness.ts` (`DEFAULT_SOURCES`). Now it can be
+overridden per-org via:
+
+```json
+{
+  "intelFreshnessSources": [
+    { "sourceCode": "tcmb-fx-rates", "cadence": "daily" },
+    { "sourceCode": "weather-openmeteo", "cadence": "daily" },
+    { "sourceCode": "worldbank-cpi", "cadence": "monthly" }
+  ]
+}
+```
+
+Path: `Organization.settings.intelFreshnessSources`. Validation is
+strict — any malformed entry causes the override to be dropped and the
+default list used instead (a `console.warn` is logged so the
+misconfiguration surfaces in the server log). `cadence` must be exactly
+`"daily"` or `"monthly"`. Empty array → fall back to defaults.
+
+No UI for editing this yet; admins set it via direct DB update or
+`PATCH /api/organizations/settings`. Future work: add a freshness-source
+editor next to the existing source-registry admin (`/budgeting/admin/source-registry`).
+
 ---
 
 ## 7. Audit log (Phase 7.F)
