@@ -149,6 +149,37 @@ describe("BudgetPnlDrillPanel", () => {
     expect(cells[3].className).not.toMatch(/text-red/)
   })
 
+  it("renders 'no actuals yet' placeholder when actualMonthly is empty / undefined (v1.3)", () => {
+    // No actuals data → summary Δ cell shows muted placeholder, not the
+    // alarming "−1,680,000 (−100%)" computed variance that would imply
+    // a catastrophic miss.
+    render(<BudgetPnlDrillPanel row={ROW} onClose={() => {}} />)
+    expect(screen.getByTestId("pnl-drill-empty-actuals")).toBeTruthy()
+    expect(screen.getByText("No actuals yet")).toBeTruthy()
+    // The literal -100% variance string must NOT appear in the summary
+    // when actuals are absent (it would still show in the tfoot Total
+    // row but the summary is the prominent display).
+    const summaryDelta = screen.queryByText("-1,680,000")
+    // Tfoot still shows "1,680,000" plan + "—" actual; the variance
+    // cell there is also -1,680,000. The summary one is suppressed.
+    // Check by counting: only the tfoot Δ should match.
+    const allMatches = screen.queryAllByText("-1,680,000")
+    expect(allMatches.length).toBeLessThanOrEqual(1)
+  })
+
+  it("renders normal Δ when actualMonthly has any non-zero (v1.3 negation)", () => {
+    // Sanity check the inverse: even a single non-zero actual flips
+    // hasAnyActual=true and shows the normal Δ summary.
+    render(
+      <BudgetPnlDrillPanel
+        row={ROW}
+        actualMonthly={{ 1: 100 } as Record<number, number>}
+        onClose={() => {}}
+      />,
+    )
+    expect(screen.queryByTestId("pnl-drill-empty-actuals")).toBeNull()
+  })
+
   it("expense account: over-spent (actual > plan) renders RED (v1.2)", () => {
     // Overspending an expense budget IS bad. Plan 100K, actual 150K →
     // +50K abs × sign(-1) = -50K → red.

@@ -93,6 +93,13 @@ export function BudgetPnlDrillPanel({
   // accounts keep the literal sign (higher actual = green).
   const sign = favorableSign(row.accountType)
   const favorableTotalAbs = totalVariance.abs * sign
+  // Phase 3.3 v1.3 — distinguish "no actuals entered yet" from a real
+  // -100% miss. When actualMonthly is empty / all-zero AND planned > 0,
+  // the literal variance "−plannedTotal (−100%)" reads as a catastrophic
+  // gap when really the user just hasn't recorded actuals. Show a soft
+  // "no actuals yet" placeholder instead so the Δ cell doesn't scream.
+  const hasAnyActual =
+    actualMonthly != null && Object.values(actualMonthly).some((v) => (v || 0) !== 0)
 
   return (
     <>
@@ -159,20 +166,34 @@ export function BudgetPnlDrillPanel({
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Δ
             </div>
-            <div
-              className={`text-base font-semibold tabular-nums mt-1 ${
-                favorableTotalAbs > 0
-                  ? "text-emerald-700 dark:text-emerald-400"
-                  : favorableTotalAbs < 0
-                  ? "text-red-700 dark:text-red-400"
-                  : ""
-              }`}
-            >
-              {fmtMoney(totalVariance.abs)}
-            </div>
-            <div className="text-[10px] text-muted-foreground tabular-nums">
-              {fmtPct(totalVariance.pct * sign)}
-            </div>
+            {hasAnyActual ? (
+              <>
+                <div
+                  className={`text-base font-semibold tabular-nums mt-1 ${
+                    favorableTotalAbs > 0
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : favorableTotalAbs < 0
+                      ? "text-red-700 dark:text-red-400"
+                      : ""
+                  }`}
+                >
+                  {fmtMoney(totalVariance.abs)}
+                </div>
+                <div className="text-[10px] text-muted-foreground tabular-nums">
+                  {fmtPct(totalVariance.pct * sign)}
+                </div>
+              </>
+            ) : (
+              // Phase 3.3 v1.3 — soft empty state. No actuals recorded yet,
+              // so the "Δ = -plannedTotal (-100%)" computation reads as a
+              // false alarm. Show a muted placeholder instead.
+              <div
+                className="text-xs text-muted-foreground/70 mt-1.5 italic"
+                data-testid="pnl-drill-empty-actuals"
+              >
+                No actuals yet
+              </div>
+            )}
           </div>
         </div>
 
