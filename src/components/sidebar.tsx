@@ -32,6 +32,7 @@ import {
   BookOpen,
   Users,
   ClipboardEdit,
+  ListChecks,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -125,6 +126,10 @@ const budgetSubNav = [
       // Phase 7.H F4.v2.3 — non-engineer entry surface for operational
       // KPIs + ESG disclosures.
       { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, label: "Data Entry", isPage: true },
+      // Financial-truth-infra Phase C.3 — per-company onboarding
+      // completeness dashboard. Re-derives from DB on every visit so a
+      // user can run a re-check after each xlsx import.
+      { href: "/budgeting/admin/onboarding", icon: ListChecks, label: "Onboarding Status", isPage: true },
     ],
   },
 ]
