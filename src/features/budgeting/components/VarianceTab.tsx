@@ -49,6 +49,58 @@ import {
 } from "@/lib/risk/status-bands"
 import { DataBoundary } from "@/components/ui/data-boundary"
 
+// Phase 3.1 v1.1 (Turn LIX closure) — compact 12-month planned-amount
+// sparkline. Pure presentational; renders a polyline normalized to its
+// own min/max. Empty/all-zero arrays render a muted em-dash to avoid
+// noisy empty cells. `<title>` SVG child provides keyboard/screen-reader
+// accessibility ("Plan: Jan 12K, Feb 14K, ...").
+function MonthlySparkline({ values }: { values?: number[] }) {
+  if (!values || values.length !== 12) {
+    return <span className="text-muted-foreground/40 text-xs">—</span>
+  }
+  const max = Math.max(...values)
+  if (max <= 0) {
+    return <span className="text-muted-foreground/40 text-xs">—</span>
+  }
+  const min = Math.min(...values)
+  const range = max - min || 1
+  const width = 72
+  const height = 18
+  const stepX = width / 11
+  const points = values
+    .map((v, i) => {
+      const x = i * stepX
+      const y = height - ((v - min) / range) * height
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(" ")
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const tooltip = values
+    .map((v, i) => `${MONTHS[i]}: ${v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0)}`)
+    .join(" · ")
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      aria-label={`12-month planned distribution: ${tooltip}`}
+      className="overflow-visible"
+      data-testid="variance-sparkline"
+    >
+      <title>{tooltip}</title>
+      <polyline
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+        className="text-indigo-500 dark:text-indigo-400"
+      />
+    </svg>
+  )
+}
+
 export function VarianceTab() {
   const t = useTranslations("budgeting")
   const { data: plans = [], isLoading: plansLoading } = useBudgetPlans()
@@ -273,6 +325,13 @@ export function VarianceTab() {
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColActual")}</th>
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColVariance")}</th>
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColPct")}</th>
+                    {/* Phase 3.1 v1.1 (Turn LIX closure) — 12-month planned
+                        distribution sparkline. Helps users see seasonality
+                        (year-end loaded? quarter-start spike? steady?)
+                        without leaving the variance table. */}
+                    <th className="text-left px-3 py-2 font-semibold" title="12-month planned distribution">
+                      {t("varianceColTrend")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -331,6 +390,9 @@ export function VarianceTab() {
                         <td className={`text-right px-4 py-2 tabular-nums font-semibold ${VARIANCE_BAND_TEXT[band]}`}>
                           {sign}
                           {(row.variancePct ?? 0).toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-2">
+                          <MonthlySparkline values={row.monthlyPlanned} />
                         </td>
                       </tr>
                     )

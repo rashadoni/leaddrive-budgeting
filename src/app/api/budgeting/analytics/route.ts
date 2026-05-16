@@ -319,15 +319,26 @@ export async function GET(req: NextRequest) {
   // the same human-readable category name (e.g. "Sair xərclər" appears under
   // 711-09-99, 721-09-99 and 731-01-99). Merging them by name misclassifies
   // OpEx vs below-EBITDA by thousands of manat.
-  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null; displayCategory: string }>()
+  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null; displayCategory: string; monthlyPlanned: number[] }>()
 
   for (const l of lines) {
     if (!isLeaf(l)) continue
     const code = (l as any).account?.code ?? l.department ?? null
     const key = `${code ?? l.category}||${l.lineType}`
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category }
-    existing.planned += getEffectivePlanned(l)
-    existing.forecast += l.forecastAmount ?? getEffectivePlanned(l)
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category, monthlyPlanned: Array(12).fill(0) }
+    const planned = getEffectivePlanned(l)
+    existing.planned += planned
+    existing.forecast += l.forecastAmount ?? planned
+    // Phase 3.1 v1.1 (Turn LIX deferral closure) — bucket the planned
+    // amount into the correct month for sparkline rendering. `monthIndex`
+    // is 0-indexed (0=Jan..11=Dec). Pre-Phase-A rows fall back to
+    // `sortOrder % 100` per the schema docstring. Out-of-range or null →
+    // bucket 0 (Jan) as a defensive default; better than dropping the
+    // row's planned amount from the sparkline entirely.
+    const lAny = l as { monthIndex?: number | null; sortOrder?: number | null }
+    const rawIdx = lAny.monthIndex ?? (typeof lAny.sortOrder === "number" ? lAny.sortOrder % 100 : null)
+    const monthIdx = rawIdx != null && rawIdx >= 0 && rawIdx < 12 ? rawIdx : 0
+    existing.monthlyPlanned[monthIdx] += planned
     categoryMap.set(key, existing)
   }
 
@@ -386,7 +397,7 @@ export async function GET(req: NextRequest) {
     // legacy key from our display name so existing children/parent wiring holds.
     const legacyKey = `${val.displayCategory}||${val.lineType}`
     const parentCategory = parentLookup.get(legacyKey) ?? null
-    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode }
+    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned }
   })
 
   // By department — track expense and revenue separately for correct variance

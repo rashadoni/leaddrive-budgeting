@@ -473,6 +473,7 @@
     "varianceColActual": "Fakt",
     "varianceColVariance": "Sapma",
     "varianceColPct": "%",
+    "varianceColTrend": "Dinamika",
     "periodAnnual": "İllik",
     "periodQuarterly": "R{n}",
     "periodMonthly": "A{n}",

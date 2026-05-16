@@ -262,3 +262,91 @@ describe("VarianceTab — empty-at-threshold state", () => {
     expect(screen.queryByTestId("variance-table")).toBeNull()
   })
 })
+
+describe("VarianceTab — monthly sparkline column (Phase 3.1 v1.1)", () => {
+  it("renders an SVG sparkline for rows with monthlyPlanned data", () => {
+    hooksMock.useBudgetPlans.mockReturnValue({
+      data: [PLAN_FIXTURE],
+      isLoading: false,
+    })
+    // 12 months, Q1-heavy distribution
+    const q1Heavy = [40_000, 50_000, 60_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 30_000, 80_000]
+    hooksMock.useBudgetAnalytics.mockReturnValue({
+      data: {
+        totalPlanned: 400_000,
+        totalActual: 420_000,
+        totalVariance: 20_000,
+        executionPct: 105,
+        byCategory: [
+          { category: "Seasonal-Q1", planned: 400_000, actual: 420_000, variance: 20_000, variancePct: 5, monthlyPlanned: q1Heavy },
+        ],
+      },
+      isLoading: false,
+    })
+    render(<VarianceTab />)
+    fireEvent.click(screen.getByTestId("variance-plan-p1"))
+    // SVG with title (tooltip) containing Jan/Dec labels. Note: row also
+    // carries the SeverityIcon SVG; we target the sparkline specifically.
+    const row = screen.getByTestId("variance-row-Seasonal-Q1")
+    const svg = row.querySelector('[data-testid="variance-sparkline"]')
+    expect(svg).toBeTruthy()
+    const title = svg!.querySelector("title")
+    expect(title?.textContent ?? "").toContain("Jan")
+    expect(title?.textContent ?? "").toContain("Dec")
+    // Polyline should have 12 points (11 commas)
+    const polyline = svg!.querySelector("polyline")
+    expect(polyline).toBeTruthy()
+    const points = polyline!.getAttribute("points") ?? ""
+    expect(points.split(" ").length).toBe(12)
+  })
+
+  it("renders em-dash for rows missing monthlyPlanned (back-compat)", () => {
+    hooksMock.useBudgetPlans.mockReturnValue({
+      data: [PLAN_FIXTURE],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReturnValue({
+      data: {
+        totalPlanned: 1_000,
+        totalActual: 1_050,
+        totalVariance: 50,
+        executionPct: 105,
+        byCategory: [
+          // Note: no monthlyPlanned field — simulates pre-LIX-closure rows
+          { category: "Legacy", planned: 1000, actual: 1050, variance: 50, variancePct: 5 },
+        ],
+      },
+      isLoading: false,
+    })
+    render(<VarianceTab />)
+    fireEvent.click(screen.getByTestId("variance-plan-p1"))
+    const row = screen.getByTestId("variance-row-Legacy")
+    // No sparkline SVG (severity icon SVG is unrelated), em-dash text instead
+    expect(row.querySelector('[data-testid="variance-sparkline"]')).toBeNull()
+    expect(row.textContent).toContain("—")
+  })
+
+  it("renders em-dash when all 12 months are zero (empty distribution)", () => {
+    hooksMock.useBudgetPlans.mockReturnValue({
+      data: [PLAN_FIXTURE],
+      isLoading: false,
+    })
+    hooksMock.useBudgetAnalytics.mockReturnValue({
+      data: {
+        totalPlanned: 1000,
+        totalActual: 0,
+        totalVariance: -1000,
+        executionPct: 0,
+        byCategory: [
+          { category: "AllZero", planned: 1000, actual: 0, variance: -1000, variancePct: -100, monthlyPlanned: Array(12).fill(0) },
+        ],
+      },
+      isLoading: false,
+    })
+    render(<VarianceTab />)
+    fireEvent.click(screen.getByTestId("variance-plan-p1"))
+    const row = screen.getByTestId("variance-row-AllZero")
+    // All-zero sparkline data → component renders em-dash, not the SVG
+    expect(row.querySelector('[data-testid="variance-sparkline"]')).toBeNull()
+  })
+})

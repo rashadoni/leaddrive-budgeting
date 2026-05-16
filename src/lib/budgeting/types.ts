@@ -61,6 +61,13 @@ export interface BudgetCategoryRow {
   variance: number
   variancePct: number
   parentCategory?: string | null
+  // Phase 3.1 v1.1 (Turn LIX deferral closure) — 12-month planned
+  // distribution for the variance-tab inline sparkline. Indexed 0..11
+  // (0=Jan..11=Dec). Optional + nullable per-element: routes built
+  // before this field shipped won't carry it; consumers must guard.
+  // Actuals analog (`monthlyActual`) deferred to v1.2 — needs
+  // `BudgetActual.monthIndex` or normalized `expenseDate` parsing.
+  monthlyPlanned?: number[]
 }
 
 export interface BudgetDepartmentRow {
