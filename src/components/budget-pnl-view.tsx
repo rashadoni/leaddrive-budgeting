@@ -18,6 +18,7 @@ import {
   type ClientReconciliationRow,
   type PnlContributorRow,
 } from "@/features/budgeting/components/ClientReconDrawer"
+import { BudgetPnlDrillPanel } from "./budget-pnl-drill-panel"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -75,6 +76,9 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const canEditRecon = userRole === "admin" || userRole === "manager"
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [reconOpen, setReconOpen] = useState(false)
+  // Phase 3.3 — clicked-row drill-down side panel state. Holds the
+  // PnlRow currently expanded into month-by-month detail. null = closed.
+  const [drillRow, setDrillRow] = useState<PnlRow | null>(null)
   // Turn 38 sub-turn 4: Margin Trends chart toggle. "management" smooths
   // year-end accounting lumps (FX losses, interest, tax, D&A true-ups
   // booked 100% in one month per AZ SAP practice) by spreading them
@@ -310,9 +314,22 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       const rowKey = `${row.accountCode}::${row.accountName}`
       const actual = actualByKey[rowKey] || 0
       return (
-        <tr key={rowKey} className={`border-b hover:bg-muted/30 ${isParent ? "font-medium" : "text-muted-foreground"}`}>
+        <tr
+          key={rowKey}
+          // Phase 3.3 — click any row to open the month-by-month
+          // drill-down side panel. Cursor + hover-bg-stronger affordance
+          // so users discover the clickability without a tutorial.
+          onClick={() => setDrillRow(row)}
+          className={`border-b cursor-pointer hover:bg-primary/5 ${isParent ? "font-medium" : "text-muted-foreground"}`}
+          data-drill-row-code={row.accountCode}
+        >
           <td className="sticky left-0 bg-card px-3 py-1.5 text-xs">
-            <span className="text-[10px] text-muted-foreground/60 mr-2 font-mono">{row.accountCode}</span>
+            <span
+              className="text-[10px] text-muted-foreground/60 mr-2 font-mono"
+              title={`Account code: ${row.accountCode}`}
+            >
+              {row.accountCode}
+            </span>
             {row.accountName}
           </td>
           {Array.from({ length: 12 }, (_, i) => {
@@ -867,6 +884,24 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           systemEbitda={ebitda}
           contributors={contributors}
           canEdit={canEditRecon}
+        />
+      )}
+
+      {/* Phase 3.3 — P&L row drill-down. Opens via row onClick. Shows
+          12-month plan vs actual vs Δ for the clicked account. */}
+      {drillRow && (
+        <BudgetPnlDrillPanel
+          row={drillRow}
+          actualMonthly={
+            // Build per-month actuals from the actualByKey map. The
+            // current API surfaces actuals as a totals-only map keyed by
+            // accountCode::accountName. Until per-month actuals land,
+            // fall back to {} so the panel shows planned-only — better
+            // than not showing the panel at all.
+            undefined
+          }
+          monthlyRevenue={monthlyRevenue ?? {}}
+          onClose={() => setDrillRow(null)}
         />
       )}
     </div>
