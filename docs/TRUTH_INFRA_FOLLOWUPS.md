@@ -10,12 +10,12 @@ Last update: 2026-05-16 after Phase E starts.
 
 | # | File | Class | Why deferred |
 |---|---|---|---|
-| F1 | `scripts/audit-company.cjs` | CLI script | Smoke-tested manually on AZSEKER cluster; no Vitest fixture. Need: mock-DB test that asserts drift-major / suspicious verdicts trigger correctly. |
-| F2 | `scripts/drift-watchdog.cjs` | CLI script | Smoke-tested with the AzərŞəkər registry (0 drifts). No fixture for "drift detected" path — need a fake xlsx with mutated values + assert audit_log entry is emitted. |
+| F1 | `scripts/audit-company.cjs` | CLI script | 🟡 Deferred — scripts are top-level CommonJS with no exported helpers; unit tests require refactor to expose internals. Smoke-verified manually on AZSEKER cluster (sanityBands wrote, verdicts emitted, 5/5 entries processed). Re-prioritize if regression appears. |
+| F2 | `scripts/drift-watchdog.cjs` | CLI script | 🟡 Deferred — same constraint as F1. Smoke-verified with AzərŞəkər registry (0 drifts, ok=5/drift=0/error=0 summary). |
 | F3 | ✅ ~~`src/lib/intel/freshness.ts`~~ | Library | **Closed 2026-05-16** — 5 cases (fresh / stale / critical_stale on daily threshold, monthly day-scale, missing). |
-| F4 | `src/app/api/admin/drift/route.ts` | Route handler | No handler test. Need: cross-tenant isolation + correct enrichment of `actor` and `company` joins + correct shape of stalePending output. |
-| F5 | `src/features/admin/components/DriftDashboard.tsx` | React component | No vitest. Could mount with stubbed fetch + assert 3 sections + freshness chips render. |
-| F6 | `src/features/onboarding/components/DriftDiffPreview.tsx` | React component | No vitest. Needs: mock fetch dryRun response → assert diff table renders + confirm checkbox toggles. |
+| F4 | ✅ ~~`src/app/api/admin/drift/route.ts`~~ | Route handler | **Closed 2026-05-16** — 4 cases: 401/403 auth, 200 happy path with stalePending composition, runBy metadata fallback for CLI-origin events. |
+| F5 | ✅ ~~`src/features/admin/components/DriftDashboard.tsx`~~ | React component | **Closed 2026-05-16** — 5 cases via happy-dom: 3-section render, freshness cards with status pills, empty-drift green message, drift row renders co/runBy/indicator, stalled-onboarding "never audited" copy. |
+| F6 | ✅ ~~`src/features/onboarding/components/DriftDiffPreview.tsx`~~ | React component | **Closed 2026-05-16** — 5 cases: all 5 metric rows render, onHasExistingDataChange fires (true/false) per branch, confirm checkbox onChange wired, fetch error state shows "Diff preview failed". |
 | F7 | ✅ ~~`?dryRun=true` branch in apply-multi/route.ts~~ | Route handler | **Closed 2026-05-16** — 2 cases: existing-plan (current vs incoming totals + asserts \$transaction NEVER called) + fresh-onboarding (planExisted:false, current zero). Plus minor fix to normalize cogs/expense via Math.abs for sign-convention-independent gross profit. |
 
 ## Incomplete / advisory-only
@@ -26,7 +26,7 @@ Last update: 2026-05-16 after Phase E starts.
 | L2 | ✅ ~~`drift-watchdog.cjs` `actorUserId`~~ | **Closed 2026-05-16** — watchdog now `ensureServiceUser()` upserts `system+drift-watchdog@local` per org (random passwordHash, viewer role, cached for the process), uses its id on every audit event. Falls back to null on upsert failure. |
 | L3 | `freshness.ts` source list `DEFAULT_SOURCES` | Hard-coded array of 5 source codes. New adapters require a code change. | Move to org-settings JSON or a `IntelDataSource` config table. |
 | L4 | ✅ ~~`onboarding-source-registry.json` UI~~ | **Closed 2026-05-16** — admin page `/budgeting/admin/source-registry` provides CRUD over the JSON file via PUT/DELETE on `/api/admin/source-registry`. Atomic write (tmp + rename) protects against concurrent edits. Sidebar entry added under Admin. |
-| L5 | DriftDashboard `stalePending` query | N+1 — for each company, fetches its most recent IV separately. Fine at 20 cos, slow at 60. | Single grouped query OR materialize on a periodic job. |
+| L5 | ✅ ~~DriftDashboard `stalePending` N+1~~ | **Closed 2026-05-16** — replaced per-company findFirst loop with a single `prisma.indicatorValue.groupBy({ by: ['companyId'], _max: { lastReconciledAt: true } })`. 60 cos → 1 query (was 60). |
 | L6 | ✅ ~~Trust badge staleness fallback~~ | **Closed 2026-05-16** — `computeCompanyTrustStatus` now checks `lastReconciledAt` on material cells. If the max audit timestamp across material cells is > 30 days old (or no cell ever audited), degrade verified → partial. Matrix route + HeatMapCell wire field added. 3 new tests cover stale/fresh/never-audited cases. |
 | L7 | ✅ ~~EBITDA on the diff preview~~ | **Closed 2026-05-16** — dryRun aggregator now tracks D&A in COGS (703-11) + OpEx (721-11) via the existing `isDaCode` helper, computes EBITDA = Rev - (COGS-DA_COGS) - (OpEx-DA_OpEx). UI renders bold EBITDA row in DriftDiffPreview. Handler test asserts EBITDA = 4800 with D&A add-back of 600+360 from a 12000 revenue scenario. |
 
