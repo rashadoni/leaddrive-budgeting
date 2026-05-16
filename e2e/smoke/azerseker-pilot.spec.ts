@@ -180,17 +180,14 @@ test.describe('Phase 7.I AzerSheker pilot smoke', () => {
     // wait for one of the configured source codes to appear in the DOM
     // rather than reading initial SSR HTML.
     //
-    // DEFAULT_SOURCES (src/lib/intel/freshness.ts) lists 5 monitored
-    // adapters: tcmb-fx-rates, worldbank-cpi, commodities-rss-brent,
-    // weather-openmeteo, worldbank-sugar. We assert against weather-
-    // openmeteo + worldbank-cpi because those have real ingested rows
-    // (verified by the DB-state audit step of this verification pass).
-    //
-    // NOTE: sugar-yahoo-sb-f feeds AGRO_SUGAR_PRICE_TREND but is NOT in
-    // DEFAULT_SOURCES → invisible on the freshness dashboard. Tracking
-    // separately as a 🔄 follow-up; for this smoke we assert on
-    // worldbank-cpi which IS in DEFAULT_SOURCES and has rows.
+    // DEFAULT_SOURCES (src/lib/intel/freshness.ts) lists 6 monitored
+    // adapters as of 2026-05-16: tcmb-fx-rates, worldbank-cpi,
+    // commodities-rss-brent, weather-openmeteo, worldbank-sugar,
+    // sugar-yahoo-sb-f. We assert against the three that have real
+    // ingested rows (DB-state audit confirms): weather-openmeteo,
+    // worldbank-cpi, sugar-yahoo-sb-f.
     await expect(page.getByText(/weather-openmeteo/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/worldbank-cpi/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/sugar-yahoo/i)).toBeVisible({ timeout: 15_000 });
   });
 });

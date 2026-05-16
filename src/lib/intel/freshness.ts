@@ -43,6 +43,12 @@ export const DEFAULT_SOURCES: ReadonlyArray<FreshnessSource> = [
   // Phase 7.I sector-aware sources.
   { sourceCode: "weather-openmeteo", cadence: "daily" },
   { sourceCode: "worldbank-sugar", cadence: "monthly" },
+  // Live Yahoo Finance sugar futures — feeds AGRO_SUGAR_PRICE_TREND on
+  // the Risk Terminal. Added 2026-05-16 after the AzerSheker pilot e2e
+  // smoke surfaced the gap: the adapter was already running daily but
+  // invisible on the freshness dashboard. Daily cadence matches Yahoo's
+  // refresh frequency.
+  { sourceCode: "sugar-yahoo-sb-f", cadence: "daily" },
 ];
 
 /**
