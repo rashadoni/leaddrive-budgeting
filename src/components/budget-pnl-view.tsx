@@ -365,7 +365,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           className={`border-b cursor-pointer hover:bg-primary/5 ${isParent ? "font-medium" : "text-muted-foreground"}`}
           data-drill-row-code={row.accountCode}
         >
-          <td className="sticky left-0 bg-card px-3 py-1.5 text-xs">
+          <td
+            className="sticky left-0 bg-card px-3 py-1.5 text-xs"
+            // Phase 3.3 third bullet — hover anywhere on the first
+            // column reveals the qualified identifier (code — name).
+            // Useful when CoA names are long and truncated, or when
+            // the user wants to copy the code into a search box.
+            title={`${row.accountCode} — ${row.accountName}`}
+          >
             <span
               className="text-[10px] text-muted-foreground/60 mr-2 font-mono"
               title={`Account code: ${row.accountCode}`}

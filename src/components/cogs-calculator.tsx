@@ -419,7 +419,12 @@ export function COGSCalculator({ planId }: { planId: string }) {
                                   </tr>
                                   {stage.raw.map((line, idx) => (
                                     <tr key={`raw-${idx}`} className="border-b hover:bg-muted/20">
-                                      <td className="px-4 py-1 w-64 text-muted-foreground truncate">
+                                      <td
+                                        className="px-4 py-1 w-64 text-muted-foreground truncate"
+                                        // Phase 3.3 third bullet — hover reveals the
+                                        // qualified identifier when label gets truncated.
+                                        title={line.accountCode ? `${line.accountCode} — ${line.label}` : line.label}
+                                      >
                                         {line.accountCode && <span className="font-mono text-[9px] mr-1.5 text-muted-foreground/70">{line.accountCode}</span>}
                                         {line.label}
                                       </td>
@@ -440,7 +445,12 @@ export function COGSCalculator({ planId }: { planId: string }) {
                                   </tr>
                                   {stage.indirect.map((line, idx) => (
                                     <tr key={`ind-${idx}`} className="border-b hover:bg-muted/20">
-                                      <td className="px-4 py-1 w-64 text-muted-foreground truncate">
+                                      <td
+                                        className="px-4 py-1 w-64 text-muted-foreground truncate"
+                                        // Phase 3.3 third bullet — hover reveals the
+                                        // qualified identifier when label gets truncated.
+                                        title={line.accountCode ? `${line.accountCode} — ${line.label}` : line.label}
+                                      >
                                         {line.accountCode && <span className="font-mono text-[9px] mr-1.5 text-muted-foreground/70">{line.accountCode}</span>}
                                         {line.label}
                                       </td>

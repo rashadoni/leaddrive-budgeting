@@ -97,7 +97,12 @@ export function BudgetPnlDrillPanel({
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               Account · {row.accountType}
             </div>
-            <div className="text-lg font-semibold truncate" title={row.accountName}>
+            <div
+              className="text-lg font-semibold truncate"
+              // Phase 3.3 — hover reveals fully-qualified identifier
+              // even when the name truncates.
+              title={`${row.accountCode} — ${row.accountName}`}
+            >
               {row.accountName}
             </div>
             <div className="text-[11px] font-mono text-muted-foreground">

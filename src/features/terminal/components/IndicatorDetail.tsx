@@ -1706,10 +1706,23 @@ function DrillDownTable({
                   <td className="text-gray-500 py-0.5 pr-0.5 text-center w-3">
                     {isExpanded ? "▾" : "▸"}
                   </td>
-                  <td className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate">
+                  <td
+                    className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate"
+                    // Phase 3.3 — hover reveals full code when truncated.
+                    title={l.accountCode ?? undefined}
+                  >
                     {l.accountCode ?? "—"}
                   </td>
-                  <td className="text-gray-300 py-0.5 pr-1 truncate">
+                  <td
+                    className="text-gray-300 py-0.5 pr-1 truncate"
+                    // Phase 3.3 — hover reveals qualified identifier so users
+                    // can see "<code> — <name>" without expanding the row.
+                    title={
+                      l.accountName || l.category
+                        ? `${l.accountCode ? `${l.accountCode} — ` : ""}${l.accountName ?? l.category ?? ""}`
+                        : undefined
+                    }
+                  >
                     {l.accountName ?? l.category ?? "—"}
                     {l.currencyCode !== "AZN" && (
                       <span className="ml-1 text-[#FFB800]">
