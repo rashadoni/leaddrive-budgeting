@@ -127,6 +127,12 @@ export async function POST(
         select: {
           name: true,
           industry: true,
+          // Phase 7.I Track D — sector-specific context (region, cropType,
+          // hectaresPlanted, totalRooms, etc.) so the variance explainer
+          // can speak to the actual operational shape of the entity
+          // instead of generic industry-level language. Already wired into
+          // formatCompanySettings (variance-explainer.ts:163).
+          settings: true,
         },
       },
     },
@@ -216,6 +222,10 @@ export async function POST(
       name: iv.company.name,
       industry: iv.company.industry,
       tags: [],
+      // Phase 7.I Track D — pass sector-specific settings to the
+      // explainer so LLM gets `Settings: Sugarcane on 12,000 ha in
+      // Salyan` instead of a bare "agro_crops" label.
+      settings: (iv.company.settings as Record<string, unknown> | null) ?? null,
     },
     language,
   }
