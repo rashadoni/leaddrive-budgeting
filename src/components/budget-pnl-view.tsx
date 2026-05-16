@@ -79,6 +79,48 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   // Phase 3.3 — clicked-row drill-down side panel state. Holds the
   // PnlRow currently expanded into month-by-month detail. null = closed.
   const [drillRow, setDrillRow] = useState<PnlRow | null>(null)
+
+  // Phase 3.3 — chart-category drill: clicking a Waterfall bar scrolls
+  // to + briefly highlights the corresponding section in the table
+  // below. Auto-expands collapsed sections so the rows are visible
+  // after the scroll lands. `flashSection` holds the section key
+  // currently pulsing (auto-clears after 1.5s via the timer in
+  // drillToSection).
+  const [flashSection, setFlashSection] = useState<string | null>(null)
+  function drillToSection(chartCategory: string): void {
+    // Map waterfallData[].name → section key + DOM id.
+    const map: Record<string, string> = {
+      Revenue: "revenue",
+      COGS: "cogs",
+      "Gross Profit": "gross-profit",
+      OpEx: "opex",
+      EBITDA: "ebitda",
+      "D&A/Tax": "below-ebitda",
+      "Net Profit": "net-profit",
+    }
+    const key = map[chartCategory]
+    if (!key) return
+    // Auto-expand the expandable sections (revenue/cogs/opex) so the
+    // detail rows are visible after the scroll. GP / EBITDA / Net Profit
+    // are summary rows — already visible, no expand needed.
+    if (key === "revenue" || key === "cogs" || key === "opex") {
+      setExpandedSections((prev) => {
+        const next = new Set(prev)
+        next.add(key)
+        return next
+      })
+    }
+    // Scroll + flash on the next paint so the expand-induced layout
+    // shift has happened.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`pnl-section-${key}`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+      setFlashSection(key)
+      setTimeout(() => setFlashSection((cur) => (cur === key ? null : cur)), 1500)
+    })
+  }
   // Turn 38 sub-turn 4: Margin Trends chart toggle. "management" smooths
   // year-end accounting lumps (FX losses, interest, tax, D&A true-ups
   // booked 100% in one month per AZ SAP practice) by spreading them
@@ -561,9 +603,18 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
             <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
+            {/* Phase 3.3 — Cell onClick fires drillToSection with the
+                category name; auto-expands the table section + scrolls
+                to it + briefly pulses the section header. cursor:pointer
+                tells users the bars are clickable. */}
             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
               {waterfallData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} />
+                <Cell
+                  key={i}
+                  fill={entry.fill}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => drillToSection(entry.name)}
+                />
               ))}
             </Bar>
           </BarChart>
@@ -599,7 +650,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <tbody>
               {/* Revenue */}
               <tr
-                className="bg-emerald-50 dark:bg-emerald-950/30 font-semibold border-b cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-950/40"
+                id="pnl-section-revenue"
+                className={`bg-emerald-50 dark:bg-emerald-950/30 font-semibold border-b cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-shadow ${flashSection === "revenue" ? "shadow-[inset_0_0_0_3px_rgb(16,185,129)]" : ""}`}
                 onClick={() => toggleSection("revenue")}
               >
                 <td className="sticky left-0 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 flex items-center gap-1">
@@ -625,7 +677,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
               {/* COGS */}
               <tr
-                className="bg-red-50 dark:bg-red-950/30 font-semibold border-b cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40"
+                id="pnl-section-cogs"
+                className={`bg-red-50 dark:bg-red-950/30 font-semibold border-b cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40 transition-shadow ${flashSection === "cogs" ? "shadow-[inset_0_0_0_3px_rgb(239,68,68)]" : ""}`}
                 onClick={() => toggleSection("cogs")}
               >
                 <td className="sticky left-0 bg-red-50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-1">
@@ -663,7 +716,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("cogs") && renderSectionRows(cogsRows, "text-red-600")}
 
               {/* Gross Profit */}
-              <tr className="bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800">
+              <tr
+                id="pnl-section-gross-profit"
+                className={`bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800 transition-shadow ${flashSection === "gross-profit" ? "shadow-[inset_0_0_0_3px_rgb(59,130,246)]" : ""}`}
+              >
                 <td className="sticky left-0 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 pl-6">Gross Profit</td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
@@ -702,7 +758,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
               {/* Operating Expenses */}
               <tr
-                className="bg-amber-50 dark:bg-amber-950/30 font-semibold border-b cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                id="pnl-section-opex"
+                className={`bg-amber-50 dark:bg-amber-950/30 font-semibold border-b cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-shadow ${flashSection === "opex" ? "shadow-[inset_0_0_0_3px_rgb(245,158,11)]" : ""}`}
                 onClick={() => toggleSection("opex")}
               >
                 <td className="sticky left-0 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-center gap-1">
@@ -740,7 +797,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("opex") && renderSectionRows(opexRows, "text-amber-600")}
 
               {/* EBITDA */}
-              <tr className={`font-bold border-t-2 ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"}`}>
+              <tr
+                id="pnl-section-ebitda"
+                className={`font-bold border-t-2 transition-shadow ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"} ${flashSection === "ebitda" ? "shadow-[inset_0_0_0_3px_rgb(139,92,246)]" : ""}`}
+              >
                 <td className={`sticky left-0 px-3 py-2.5 pl-6 text-sm ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400" : "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"}`}>
                   EBITDA
                 </td>
@@ -825,7 +885,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("below-ebitda") && renderSectionRows(belowEbitdaRows, "text-slate-600")}
 
               {/* Net Profit */}
-              <tr className={`font-bold border-t-2 ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
+              <tr
+                id="pnl-section-net-profit"
+                className={`font-bold border-t-2 transition-shadow ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"} ${flashSection === "net-profit" ? "shadow-[inset_0_0_0_3px_rgb(16,185,129)]" : ""}`}
+              >
                 <td className={`sticky left-0 px-3 py-3 pl-6 text-sm ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
                   Net Profit / (Loss)
                 </td>
