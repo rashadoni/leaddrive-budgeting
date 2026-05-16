@@ -20,16 +20,18 @@ import {
 } from "./metric-validation-rules"
 
 describe("metric-validation-rules — catalog shape", () => {
-  it("ships 27 operational metric rules (13 indicators × 1-2 inputs + 6 Phase 7.I sugar/agro)", () => {
+  it("ships 31 operational metric rules (13 base indicators + 6 Phase 7.I sugar/agro + 4 cane-seller 2026-05-16)", () => {
     // 13 operational indicators consume between 1 and 5 distinct
     // metrics each (e.g. AGRO_YIELD reads `harvest_tons` ÷
-    // `area_hectares` = 2; EDU_STUDENT_TEACHER_RATIO reads enrolled +
-    // teachers = 2; some single-metric like AGRO_DROUGHT_RISK). Base count: 21.
-    // Phase 7.I — AzerSheker pilot — added 6 sugar/agro metrics:
+    // `area_hectares` = 2; some single-metric like AGRO_DROUGHT_RISK).
+    // Base count: 21.
+    // Phase 7.I added 6 sugar/agro metrics:
     // hectares_planted, yield_per_ha, sugar_content_pct,
-    // water_use_m3_per_ha, fertilizer_kg_per_ha, extraction_rate_pct.
-    // Total: 27.
-    expect(OPERATIONAL_METRIC_RULES).toHaveLength(27)
+    // water_use_m3_per_ha, fertilizer_kg_per_ha, extraction_rate_pct → 27.
+    // 2026-05-16 cane-seller pilot added 4 metrics:
+    // cane_cut_to_mill_hours, cane_buyer_concentration_pct,
+    // cane_hectares_harvested_pct, cane_harvest_season_progress → 31.
+    expect(OPERATIONAL_METRIC_RULES).toHaveLength(31)
     const codes = OPERATIONAL_METRIC_RULES.map((r) => r.metric)
     // Spot-check the canonical metrics the F4 audit identified —
     // dropping one of these (e.g. removing `harvest_tons`) silently
@@ -45,8 +47,34 @@ describe("metric-validation-rules — catalog shape", () => {
       "teachers",
       "raw_input",
       "finished_output",
+      // Cane-seller specific (2026-05-16):
+      "cane_cut_to_mill_hours",
+      "cane_buyer_concentration_pct",
+      "cane_hectares_harvested_pct",
+      "cane_harvest_season_progress",
     ]) {
       expect(codes).toContain(expected)
+    }
+  })
+
+  it("cane-seller metrics have lower-is-better warn-bounds calibrated for AzerSheker (2026-05-16)", () => {
+    const ruleByMetric = Object.fromEntries(
+      OPERATIONAL_METRIC_RULES.map((r) => [r.metric, r]),
+    )
+    // Cut-to-mill warns above 48h (sucrose loss material at that point).
+    expect(ruleByMetric["cane_cut_to_mill_hours"].warnMax).toBe(48)
+    // Buyer concentration warns above 70% (cash-crisis threshold).
+    expect(ruleByMetric["cane_buyer_concentration_pct"].warnMax).toBe(70)
+    // Harvest progress warns below 80% (standing crop degrades after).
+    expect(ruleByMetric["cane_hectares_harvested_pct"].warnMin).toBe(80)
+    // All 4 cane metrics tagged "agro" sector.
+    for (const m of [
+      "cane_cut_to_mill_hours",
+      "cane_buyer_concentration_pct",
+      "cane_hectares_harvested_pct",
+      "cane_harvest_season_progress",
+    ]) {
+      expect(ruleByMetric[m].sector).toBe("agro")
     }
   })
 
