@@ -3,6 +3,12 @@ import { Prisma } from "@prisma/client"
 import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
+import {
+  PRODUCT_CODES,
+  PRODUCT_NAMES,
+  PRODUCT_UNITS,
+  SALES_SHEETS,
+} from "@/lib/import/aac-products"
 import ExcelJS from "exceljs"
 import {
   looksLikeCostAccount,
@@ -81,14 +87,6 @@ function categoryFromCode(code: string): string | null {
   }
   return null
 }
-
-const PRODUCT_CODES = ["MHB", "LIME_BURNT", "LIME_SLAKED", "ADHESIVE", "UBLOCK", "LIME_WASTE"]
-const PRODUCT_NAMES = [
-  "MHB (Qaz beton)", "Yandırılmış əhəng", "Söndürülmüş əhəng",
-  "Yapışqan", "U-block", "Tullantı əhəng",
-]
-const PRODUCT_UNITS = ["m3", "ton", "ton", "ədəd", "ədəd", "ton"]
-const SALES_SHEETS = ["S-1", "S-2", "S-3", "S-4", "S-5", "S-6"]
 
 // Cost type definitions from P&L structure
 const COST_TYPE_DEFS = [
