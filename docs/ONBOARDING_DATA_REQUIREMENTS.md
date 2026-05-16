@@ -431,6 +431,126 @@ Auto-fetched (no client input needed):
 
 ---
 
+# Section §S — Strategic + qualitative inputs (addendum 2026-05-16)
+
+The §0–10 + §R.0–R.10 sections above cover everything numerical. But the
+client's original ask included items that aren't pure numbers — **"AI
+should consider real market circumstances and entity's business model"**
+and **"wider analysis capability — qualitative + per-ha productivity"**.
+This section closes the gap.
+
+Without §S inputs, the AI Variance Explainer + Board Deck Generator emit
+generic recommendations ("consider hedging FX exposure"). With them, the
+LLM gets the company's actual strategy, risk register, and competitive
+positioning — recommendations become specific to THIS entity ("based on
+your Salyan drought-risk flag from Q1 register, advance harvest by 2
+weeks; revise the Q3 sugar-price floor in your hedging contract").
+
+All §S inputs are **once-per-year refreshable** — typical 30-minute
+intake from CFO via free-text + bullet-list form (single PDF or txt is
+fine; we parse into Company.settings JSON).
+
+## §S.1 — Strategic narrative
+
+| # | Field | Format | Example |
+|---|---|---|---|
+| S1.1 | 3-year strategic plan (high-level) | 200–400 words narrative | "Double EBITDA by 2028 via wheat-export expansion + downstream sugar refining acquisition" |
+| S1.2 | Major initiatives 2026 | Bullet list (5–10 items) | "Launch ATL-DBZ Polymer line; Acquire 2k ha cane in Sabirabad; ISO 22000 certification" |
+| S1.3 | Top-3 strategic priorities | Ranked list | "1) Volume growth via export, 2) Margin expansion via vertical integration, 3) ESG compliance" |
+| S1.4 | Customer-satisfaction NPS | Number (or "not measured") | "+42 (measured Q4 2025, sample n=180)" |
+| S1.5 | Brand / positioning narrative | 2–3 sentences | "Premium domestic sugar; only HACCP-certified processor in Azerbaijan" |
+
+## §S.2 — Risk register
+
+Top-5 risks management actively watches. Each row drives an AI prompt
+template — "if indicator X drifts red, surface the related risk from
+this register, not a generic LLM completion".
+
+| # | Field | Format | Example |
+|---|---|---|---|
+| S2.1 | Risk name | Short label | "Salyan drought" |
+| S2.2 | Probability | 1–5 (1=remote, 5=likely) | 4 |
+| S2.3 | Impact | 1–5 (1=minor, 5=catastrophic) | 5 |
+| S2.4 | Mitigation status | text | "Modern irrigation 60% complete; full coverage by Q2 2026" |
+| S2.5 | Triggering indicators | indicator codes (comma-sep) | "AGRO_DROUGHT_RISK, AGRO_WEATHER_RAINFALL, AGRO_YIELD_PER_HA" |
+| S2.6 | Owner | manager name / role | "COO + Salyan farm manager" |
+| S2.7 | Review cadence | weekly / monthly / quarterly | "weekly during growing season" |
+
+## §S.3 — Competitive positioning
+
+| # | Field | Format | Example |
+|---|---|---|---|
+| S3.1 | Top-3 competitors | Comma-sep with country | "Bakı Şirniyyat (AZ), Hayat Group (TR import), Beneo (EU import)" |
+| S3.2 | Our differentiation | 1–2 sentences each vs top-3 | "vs Bakı Şirniyyat: vertical (own cane); vs imports: 15-day fresher delivery via local production" |
+| S3.3 | Market share estimate | % of domestic | "~38% AZ refined sugar market" |
+| S3.4 | Pricing position vs market | premium / parity / discount | "parity — within ±3% of import benchmark" |
+| S3.5 | Threat watch | 2–3 emerging threats | "1) New free-trade agreement w/ Turkey would expand imports; 2) Sugar-tax legislation in parliament" |
+
+## §S.4 — Operational compliance + commitments
+
+| # | Field | Format | Notes |
+|---|---|---|---|
+| S4.1 | Bank covenants | List of (lender, metric, threshold) | "Pasha Bank: DSCR ≥ 1.3, debt/EBITDA ≤ 3.5" |
+| S4.2 | Insurance coverage | List of (peril, cover, expiry) | "Crop insurance 50% loss cover via Azərsığorta — 31.12.2026" |
+| S4.3 | Certifications | List + expiry | "ISO 9001:2015 — 2028; HACCP — 2027; Halal — 2026" |
+| S4.4 | Open litigation / regulatory | Brief description + status | "Tax dispute Q3 2024, 1.2M AZN claimed by tax authority — appeal pending" |
+| S4.5 | Land titles (agro only) | owned ha / leased ha + expiry of leases | "12,000 owned + 6,500 leased; longest lease 2032, shortest 2027" |
+| S4.6 | Government subsidy pipeline | List of (program, amount, ETA) | "Cotton planting subsidy 6.5M AZN expected June 2026; Wheat seed subsidy 1.2M Aug 2026" |
+
+## §S.5 — Customer + supplier deep-dive
+
+Beyond the §R-level HHI; this gives the AI specific entity names.
+
+| # | Field | Format |
+|---|---|---|
+| S5.1 | Top-10 customers | name, country, % of revenue, contract end, payment terms, price-escalator clauses |
+| S5.2 | Top-10 suppliers | name, country, % of COGS, single-source flag (Y/N), alternates available, payment terms |
+| S5.3 | Single-source dependencies | List "if supplier X disappears, we stop production within N days" |
+| S5.4 | Currency exposure breakdown | revenue % by currency (AZN/USD/EUR/TRY) + cost % by currency |
+
+## §S.6 — Market context feeds (AI consumes automatically)
+
+Already automated where possible (the user doesn't fill these in):
+
+| Source | Currently active | Drives |
+|---|---|---|
+| Open-Meteo weather (Salyan/Imishli/Sabirabad) | ✅ via `weather-openmeteo` adapter | AGRO_DROUGHT_RISK, AGRO_WEATHER_RAINFALL |
+| World Bank Pink Sheet (sugar/wheat) | ✅ via `worldbank-sugar` adapter | AGRO_COMMODITY_VOL, AGRO_SUGAR_PRICE_TREND |
+| TCMB AZN/USD rates | ✅ via `tcmb-fx-rates` adapter | FX_IMPORTED_INPUT, AZN-exposure modeling |
+| World Bank CPI Azerbaijan | ✅ via `worldbank-cpi` adapter | Inflation context |
+| News sentiment (general) | ✅ via `IntelItem` + LLM tagging | IND_NEWS_SENTIMENT_30D |
+| **News sentiment (entity-tagged)** | ⚠️ partial — only generic, no per-entity tags | Future: per-AZSEKER news subset for sharper sentiment |
+| **Competitor public reports** | ❌ not automated — manual paste into §S.3 | Future: scrape Baku Stock Exchange |
+| **Geopolitical risk feed** | ❌ not automated | Future: ICR / Fitch sovereign updates |
+
+---
+
+# §S verification flow
+
+After §S submission, the AI is re-prompted with the new context. The
+`/budgeting/terminal` Variance Explainer panel for any indicator now
+references:
+- The relevant risk-register entry (S2)
+- The closest competitor positioning narrative (S3)
+- Bank-covenant proximity if a financial indicator (S4.1)
+- The strategic-plan goal the indicator measures progress against (S1.1)
+
+Compare two Variance Explainer outputs for the same red indicator:
+
+**Without §S** (generic, today):
+> EBITDA margin dropped 4.2pp QoQ. Consider hedging FX exposure and
+> reviewing pricing.
+
+**With §S** (after onboarding):
+> EBITDA margin dropped 4.2pp QoQ. Per your Q4 risk register, risk #2
+> (Imishli late-rain) was rated 4×4 and triggered AGRO_YIELD_PER_HA red.
+> Your 3-year plan (S1.1) commits to ISO 22000 certification — defer
+> CAPEX on the new line and divert to drought-mitigation per S2.4
+> mitigation plan. Bank covenant DSCR=1.3 from S4.1 still met (current
+> 1.45) but a 5pp further drop would breach.
+
+---
+
 # Onboarding workflow — practical sequence
 
 For each new sub-co, run §0–10 in this order. **Stages can ship
@@ -448,6 +568,7 @@ tabs; sections 7–10 unlock variance + signoff.
 | **Day 7** | §R per-industry detail (R.1–R.10) | 0.5 day | Sector-specific indicators unlock |
 | **Day 8** | §8 (Assumptions) + §9 (Access) | 0.5 day | Forecast scenarios + RBAC done |
 | **Day 9** | §10 (Period locks) + sign-off | 0.5 day | Trust badge graduates to ✅ Verified |
+| **Day 10** | §S (Strategic + qualitative) | 0.5 day | AI Variance Explainer + Board Deck become entity-specific (vs generic) |
 
 **Total per company:** ~7 working days when client is responsive. Most
 of that time is on the client's side gathering data — our import +
