@@ -4,7 +4,11 @@ Tracks **incomplete + untested** items across Phases A–D so they don't
 slip through. Once Phase E lands, walk back through this list before
 calling the truth-infrastructure "done".
 
-Last update: 2026-05-16 after Phase E starts.
+Last update: 2026-05-16 after the «начни всё»/«продолжай» closure session
+(Waves 1–3 + V4/V5 bonus, +39 vitest cases). **Only V1 remains open** —
+DriftDiffPreview UI verification via real xlsx upload, browser-only.
+Status: 17 of 18 rows closed; truth-infrastructure feature-complete
+modulo the one browser-side verification.
 
 ## Untested artifacts
 
