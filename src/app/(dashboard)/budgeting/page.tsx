@@ -210,41 +210,59 @@ export default function BudgetingPage() {
   // companyIds present in the plan's BudgetLines + their parent chain,
   // then narrow the dropdown to that set.
   //
-  // `null` = endpoint hasn't responded yet OR plan has no lines yet
-  // (new draft) — in both cases we fall back to the unfiltered list so
-  // the user can still pick anything during initial seeding.
-  const [planCompanyIds, setPlanCompanyIds] = useState<Set<string> | null>(null)
+  // Three-state filter — distinguishes "still fetching" from "fetch
+  // resolved + plan has zero lines" so the dropdown doesn't briefly
+  // leak entities from other plans during the load gap.
+  //
+  // Bug reproducer (Phase 7.I sub-fix): user reported that on AZMADE
+  // plan the dropdown showed AZSEKER children. Root cause: while the
+  // /companies fetch was in-flight, `planCompanyIds === null` and the
+  // memo below fell through to the FULL `companies` array (which
+  // includes both AZMADE + AZSEKER sub-trees). Fix: gate the fallback
+  // on `loaded === true` so during the load window the dropdown is
+  // empty rather than over-broad.
+  type PlanCompanyState =
+    | { status: 'loading' }
+    | { status: 'loaded'; ids: Set<string> | null };
+  const [planCompanyState, setPlanCompanyState] = useState<PlanCompanyState>({ status: 'loading' });
   React.useEffect(() => {
     if (!resolvedPlanId) {
-      setPlanCompanyIds(null)
-      return
+      setPlanCompanyState({ status: 'loaded', ids: null });
+      return;
     }
-    let cancelled = false
+    let cancelled = false;
+    setPlanCompanyState({ status: 'loading' });
     fetch(`/api/budgeting/plans/${encodeURIComponent(resolvedPlanId)}/companies`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { companyIds?: string[] } | null) => {
-        if (cancelled) return
-        const ids = Array.isArray(body?.companyIds) ? body!.companyIds : []
-        // Empty list → leave the dropdown unfiltered so brand-new plans
-        // (no lines yet) don't show an empty "All companies (consolidated)"
-        // selector. The moment a single line lands, the filter activates.
-        setPlanCompanyIds(ids.length > 0 ? new Set(ids) : null)
+        if (cancelled) return;
+        const ids = Array.isArray(body?.companyIds) ? body!.companyIds : [];
+        // Empty list → null `ids` (treat as "no scope, show all available")
+        // post-load. Loading state already over.
+        setPlanCompanyState({
+          status: 'loaded',
+          ids: ids.length > 0 ? new Set(ids) : null,
+        });
       })
       .catch(() => {
-        if (!cancelled) setPlanCompanyIds(null)
-      })
+        if (!cancelled) setPlanCompanyState({ status: 'loaded', ids: null });
+      });
     return () => {
-      cancelled = true
-    }
-  }, [resolvedPlanId])
+      cancelled = true;
+    };
+  }, [resolvedPlanId]);
 
-  // Companies visible in the dropdown: when the plan-scope is known,
-  // include only ids that participate in this plan; otherwise show the
-  // full list. Calculated once per (companies, planCompanyIds) tuple.
+  // Companies visible in the dropdown:
+  //   - loading → empty (prevents cross-plan leak during fetch window).
+  //   - loaded + ids non-null → filter to plan scope.
+  //   - loaded + ids null (plan has no lines OR fetch failed) → full list.
   const visibleCompanies = React.useMemo(() => {
-    if (!planCompanyIds) return companies
-    return companies.filter((c) => planCompanyIds.has(c.id))
-  }, [companies, planCompanyIds])
+    if (planCompanyState.status === 'loading') return [];
+    if (planCompanyState.ids === null) return companies;
+    return companies.filter((c) => planCompanyState.ids!.has(c.id));
+  }, [companies, planCompanyState]);
+  // Legacy alias kept for downstream code paths reading the Set directly.
+  const planCompanyIds = planCompanyState.status === 'loaded' ? planCompanyState.ids : null;
 
   // If the user had a company selected and the active plan no longer
   // contains it, drop the stale selection so they don't see "filter
