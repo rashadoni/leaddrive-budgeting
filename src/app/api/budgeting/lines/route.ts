@@ -9,6 +9,7 @@ import { loadAndCompute } from "@/lib/cost-model/db"
 import { getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
 import { buildDeptFilter } from "@/lib/budgeting/department-access"
 import { processCurrencyFields } from "@/lib/budgeting/currency"
+import { resolveAccountId } from "@/lib/budgeting/chart-of-accounts"
 import type { Role } from "@/lib/permissions"
 
 const createLineSchema = z.object({
@@ -180,6 +181,11 @@ export async function POST(req: NextRequest) {
     exchangeRate != null ? Number(exchangeRate) : null,
   )
 
+  // Phase 2.1 step 2 — populate `accountId` FK when `category` looks
+  // like a SAP code. No-op for free-text categories; FK stays null and
+  // the legacy `category` string drives display until backfill runs.
+  const accountId = await resolveAccountId(prisma, orgId, category)
+
   const line = await prisma.budgetLine.create({
     data: {
       organizationId: orgId,
@@ -200,6 +206,7 @@ export async function POST(req: NextRequest) {
       currencyCode: currencyFields.currencyCode,
       exchangeRate: currencyFields.exchangeRate,
       originalAmount: currencyFields.originalAmount,
+      accountId,
     },
   })
 
