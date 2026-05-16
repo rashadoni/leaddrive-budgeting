@@ -30,7 +30,7 @@
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
-import { PreImportSafetyCheck } from "./PreImportSafetyCheck"
+import { DriftDiffPreview } from "./DriftDiffPreview"
 
 interface CompanyOption {
   id: string
@@ -418,12 +418,15 @@ export function ImportWizardMulti() {
             ))}
           </div>
 
-          {/* Phase C.5 — pre-import safety check. Shows current plan
-              totals for the target company; user must tick confirm
-              before Apply enables if existing data is present. */}
-          {!stagingTerminal && analyzeResult.successCount > 0 && companyId && (
-            <PreImportSafetyCheck
-              companyId={companyId}
+          {/* Phase D follow-up — drift diff preview via server dryRun.
+              Replaces the simpler Phase C.5 PreImportSafetyCheck —
+              shows current vs incoming totals side-by-side with
+              percent delta, so wrong-file imports surface before the
+              destructive delete-then-insert lands. */}
+          {!stagingTerminal && analyzeResult.successCount > 0 && companyId && file && (
+            <DriftDiffPreview
+              stagingId={analyzeResult.stagingId}
+              file={file}
               companyCode={
                 companies.find((c) => c.id === companyId)?.code ?? "(unknown)"
               }

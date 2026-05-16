@@ -264,12 +264,70 @@ export async function POST(
     allLines.push(...r.lines)
   }
 
+  const successCount = perSheet.filter((r) => !isFailure(r)).length
+  const failureCount = perSheet.filter(isFailure).length
+
+  // Phase C.5 / D follow-up — drift diff preview. When ?dryRun=true,
+  // skip the transaction entirely and return aggregated totals (revenue
+  // / cogs / expense) for the parsed xlsx vs the existing DB state for
+  // the same plan + company. UI calls this before flipping the user's
+  // "are you sure?" confirmation so wrong-file or wrong-year imports
+  // surface BEFORE the destructive delete-then-insert lands.
+  if (request.nextUrl.searchParams.get("dryRun") === "true") {
+    const planName = `AI-Imported ${targetYear} Budget`
+    const existingPlan = await prisma.budgetPlan.findFirst({
+      where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
+      select: { id: true },
+    })
+    const currentLines = existingPlan
+      ? await prisma.budgetLine.findMany({
+          where: { organizationId: orgIdLocal, planId: existingPlan.id, companyId },
+          select: { plannedAmount: true, lineType: true },
+        })
+      : []
+    type Tot = { revenue: number; cogs: number; expense: number }
+    const zero = (): Tot => ({ revenue: 0, cogs: 0, expense: 0 })
+    const current: Tot = zero()
+    for (const bl of currentLines) {
+      const lt = bl.lineType as "revenue" | "cogs" | "expense"
+      if (lt === "revenue" || lt === "cogs" || lt === "expense") {
+        current[lt] += bl.plannedAmount
+      }
+    }
+    const incoming: Tot = zero()
+    for (const line of allLines) {
+      const lt: "revenue" | "cogs" | "expense" =
+        line.accountType === "revenue" || line.accountType === "cogs"
+          ? line.accountType
+          : "expense"
+      for (const v of line.perMonth) incoming[lt] += v ?? 0
+    }
+    const pct = (cur: number, inc: number): number =>
+      cur === 0 ? (inc === 0 ? 0 : 100) : ((inc - cur) / Math.abs(cur)) * 100
+    return NextResponse.json({
+      dryRun: true,
+      stagingId: staging.id,
+      year: targetYear,
+      planExisted: !!existingPlan,
+      currentLineCount: currentLines.length,
+      incomingLineCount: allLines.length * 12, // 12 months per line
+      sheetCount: { success: successCount, failure: failureCount },
+      totals: {
+        revenue: { current: current.revenue, incoming: incoming.revenue, deltaPct: pct(current.revenue, incoming.revenue) },
+        cogs:    { current: current.cogs,    incoming: incoming.cogs,    deltaPct: pct(current.cogs, incoming.cogs) },
+        expense: { current: current.expense, incoming: incoming.expense, deltaPct: pct(current.expense, incoming.expense) },
+      },
+      gross_profit: {
+        current: current.revenue - current.cogs,
+        incoming: incoming.revenue - incoming.cogs,
+      },
+    })
+  }
+
   // Transactional delete-then-insert. Identical to single-sheet — operates
   // on flat aggregate from all successful sheets.
   let totalInserted = 0
   let totalDeleted = 0
-  const successCount = perSheet.filter((r) => !isFailure(r)).length
-  const failureCount = perSheet.filter(isFailure).length
   try {
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
