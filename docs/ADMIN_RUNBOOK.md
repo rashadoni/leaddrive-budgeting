@@ -563,6 +563,63 @@ Companion script for the drift-events panel:
 `reconciliation_drift_detected` AuditEvent so the Recent drift events
 section also renders red rows during a demo.
 
+### 6.6 Phase 7.I weather + sugar commodity ingest (AzerSheker pilot)
+
+The Phase 7.I sector-aware indicators `AGRO_WEATHER_RAINFALL` and
+`AGRO_SUGAR_PRICE_TREND` consume real external data:
+
+- **Weather (Open-Meteo)** — per-region rainfall + temperature for
+  Salyan / Imishli / Sabirabad (the Azerbaijani sugar belt). Adapter:
+  `src/lib/intel/commodity/weather-openmeteo.ts`.
+- **Sugar prices (Yahoo Finance Sugar #11)** — monthly raw sugar
+  closes in USD/tonne. Adapter: `src/lib/intel/commodity/sugar-yahoo.ts`.
+
+The scheduler bootstrap pulls both on every run (`runCommodityIngest:
+true` is on by default in `scripts/intel-scheduler-bootstrap.ts`). For
+manual / on-demand bootstrap (e.g. after fresh DB seed) run:
+
+```bash
+npx tsx scripts/ingest-commodity-once.ts                  # FO Holding (first org)
+npx tsx scripts/ingest-commodity-once.ts --org <orgId>    # specific org
+```
+
+The script:
+- pulls all 5 adapters (TCMB FX, WorldBank CPI, Commodities RSS,
+  Open-Meteo, Sugar Yahoo) in parallel,
+- upserts into `IntelDataPoint`,
+- prints per-source counts + errors at exit (idempotent — re-running
+  doesn't duplicate rows).
+
+After ingest, trigger recompute for the affected companies so the
+matrix picks up the new datapoints:
+
+```bash
+# AZSEKER pilot example — agro_crops × 2026:
+npx tsx -e "
+import { PrismaClient } from '@prisma/client';
+import { runRecomputeForCompanies } from './src/lib/risk/recompute-trigger';
+const prisma = new PrismaClient();
+(async () => {
+  const azs = await prisma.company.findMany({
+    where: { code: { startsWith: 'AZSEKER-' }, industry: 'agro_crops' },
+    select: { id: true, organizationId: true },
+  });
+  await runRecomputeForCompanies(
+    prisma, azs[0].organizationId,
+    azs.map((c) => ({ companyId: c.id, year: 2026 })),
+  );
+  await prisma.\$disconnect();
+})();
+"
+```
+
+For the weather resolver to pick the right region for each company,
+set `Company.settings.region` (one of `Salyan` / `Imishli` /
+`Sabirabad`) — the resolver case-insensitively matches the region
+prefix on `<REGION>_RAINFALL_MM_90D` metrics. Likewise
+`Company.settings.cropType` (`sugarcane` / `sugar_beet`) feeds the AI
+Variance Explainer's context.
+
 ---
 
 ## 7. Audit log (Phase 7.F)
