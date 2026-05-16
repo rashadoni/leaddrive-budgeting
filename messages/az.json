@@ -1093,6 +1093,8 @@
     "metaTitle": "Onboarding — AI Data Mapper",
     "pageTitle": "Onboarding",
     "pageSubtitle": "Büdcə xlsx faylını yükləyin — AI Data Mapper onun sütunlarının holdinqin hesablar planı ilə necə uyğunlaşdırılacağını təklif edəcək. Yoxlayın və tətbiq edin.",
+    "tabStatus": "Status",
+    "tabImport": "İmport",
     "wizardModeLegend": "Sehrbaz rejimi",
     "wizardModeMulti": "Çoxlu vərəq",
     "wizardModeSingle": "Bir vərəq",
