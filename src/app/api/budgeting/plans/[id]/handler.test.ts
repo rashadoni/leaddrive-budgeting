@@ -31,6 +31,11 @@ const { prismaMock, costModelMock, notifMock } = vi.hoisted(() => ({
     salesForecast: { findMany: vi.fn() },
     expenseForecast: { findMany: vi.fn() },
     auditEvent: { create: vi.fn() },
+    // Phase L8 finish — PUT now consults Organization.lockedPeriods
+    // before allowing the mutation. Stub returns [] so no lock matches
+    // existing test scenarios; tests that exercise the gate explicitly
+    // override.
+    organization: { findUnique: vi.fn() },
   },
   costModelMock: { loadAndCompute: vi.fn() },
   notifMock: { createNotification: vi.fn() },
@@ -60,6 +65,20 @@ beforeEach(() => {
   prismaMock.budgetApprovalComment.create.mockReset().mockResolvedValue({});
   prismaMock.user.findMany.mockReset().mockResolvedValue([]);
   prismaMock.salesForecast.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] });
+  // Phase L8 finish — PUT now starts with a findFirst to load the plan
+  // for the period-lock check. Default mock returns a plain plan (year
+  // 2026, no lock) so legacy tests keep working; tests that use
+  // mockResolvedValueOnce for their own findFirst chain need to set
+  // this stub BEFORE their own .mockResolvedValueOnce so the gate's
+  // call gets the "no lock" value first, then the priorPlan stub.
+  prismaMock.budgetPlan.findFirst.mockResolvedValue({
+    id: PLAN_ID,
+    periodType: 'yearly',
+    year: 2026,
+    month: null,
+    quarter: null,
+  });
   prismaMock.expenseForecast.findMany.mockReset().mockResolvedValue([]);
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: 'audit_1' });
   costModelMock.loadAndCompute.mockReset().mockResolvedValue(null);
@@ -125,6 +144,11 @@ describe('PUT /api/budgeting/plans/[id] — handler', () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
     // priorPlan fetch (only when status==='approved')
     prismaMock.budgetPlan.findFirst
+      // Phase L8 finish — the approve-branch gate adds an early findFirst
+      // to load period info for the lock check. Returns a plain plan
+      // shape (no year override → fallback "no lock"). Then the original
+      // chain follows.
+      .mockResolvedValueOnce({ id: PLAN_ID, periodType: 'yearly', year: 2026, month: null, quarter: null })
       .mockResolvedValueOnce({ status: 'pending_approval', name: 'AZMADE 2026' }) // priorPlan
       .mockResolvedValueOnce({ id: PLAN_ID, status: 'approved', year: 2026 }); // post-update fetch
     prismaMock.budgetPlan.updateMany.mockResolvedValue({ count: 1 });
@@ -163,6 +187,8 @@ describe('PUT /api/budgeting/plans/[id] — handler', () => {
   it('preserves priorStatus across approve-after-reject (priorStatus="rejected")', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
     prismaMock.budgetPlan.findFirst
+      // Phase L8 finish — gate's findFirst first.
+      .mockResolvedValueOnce({ id: PLAN_ID, periodType: 'yearly', year: 2026, month: null, quarter: null })
       .mockResolvedValueOnce({ status: 'rejected', name: 'AZMADE 2026' })
       .mockResolvedValueOnce({ id: PLAN_ID, status: 'approved', year: 2026 });
     prismaMock.budgetPlan.updateMany.mockResolvedValue({ count: 1 });

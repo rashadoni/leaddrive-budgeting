@@ -6,6 +6,8 @@ import { createNotification } from "@/lib/notifications"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { computePlannedForLine, getPeriodMonths } from "@/lib/budgeting/cost-model-map"
 import { logBudgetPlanApprove } from "@/lib/audit/import-helpers"
+import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const updatePlanSchema = z.object({
   name: z.string().min(1).max(500).optional(),
@@ -56,6 +58,28 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { name, status, notes, rejectedReason } = data
+
+  // Phase L8 finish — period-lock gate on the approve transition.
+  // Non-approve status changes (draft / pending_approval / rejected /
+  // closed) + pure metadata edits (name/notes) don't affect the
+  // financial-state truth — they're skipped. The destructive paths
+  // (DELETE / restore) carry their own gate.
+  if (status === "approved") {
+    const planForLock = await prisma.budgetPlan.findFirst({
+      where: { id, organizationId: orgId, deletedAt: null },
+      select: { id: true, periodType: true, year: true, month: true, quarter: true },
+    })
+    if (planForLock) {
+      const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(planForLock))
+      if (lock)
+        return lockedResponse(lock, {
+          prisma,
+          orgId,
+          userId,
+          route: "PUT /api/budgeting/plans/[id]",
+        })
+    }
+  }
 
   // ── Role-based approval checks ──
   if (status === "approved" || status === "rejected") {
@@ -257,6 +281,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { orgId, userId } = session
 
   const { id } = await params
+
+  // Phase L8 finish — period-lock gate. Plan soft-delete hides the
+  // plan + its locked BudgetLines from every read path; reject 423 if
+  // the plan's period is signed off (admin should explicitly unlock
+  // first, leaving an audit trail).
+  const planForLock = await prisma.budgetPlan.findFirst({
+    where: { id, organizationId: orgId, deletedAt: null },
+    select: { id: true, periodType: true, year: true, month: true, quarter: true },
+  })
+  if (planForLock) {
+    const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(planForLock))
+    if (lock)
+      return lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId,
+        route: "DELETE /api/budgeting/plans/[id]",
+      })
+  }
 
   // Soft-delete: mark the plan as deleted but keep all child rows intact.
   // Every read filters `deletedAt: null`, so the plan disappears from the UI
