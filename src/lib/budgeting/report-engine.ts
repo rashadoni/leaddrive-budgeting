@@ -237,8 +237,13 @@ function buildWhere(orgId: string, planId: string | undefined, config: EntityCon
 }
 
 // ─── Period grouping (month → quarter → year) ─────────────────
+// Exported for direct unit testing. The `executeBudgetReport`
+// orchestrator is Prisma-bound; these two pure helpers carry the
+// non-trivial grouping + computed-field business logic and benefit
+// from focused regression coverage. Re-export keeps the existing
+// caller (`executeBudgetReport`) unchanged.
 
-function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
+export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
   const groups = new Map<string, any>()
 
   for (const row of rows) {
@@ -277,7 +282,7 @@ function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year
 
 // ─── Computed fields (post-processing) ────────────────────────
 
-function applyComputedFields(rows: any[], computedFields: string[]) {
+export function applyComputedFields(rows: any[], computedFields: string[]) {
   for (const row of rows) {
     for (const cf of computedFields) {
       switch (cf) {
