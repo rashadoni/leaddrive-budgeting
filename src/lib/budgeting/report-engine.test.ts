@@ -4,6 +4,9 @@ import {
   applyComputedFields,
   getEntityFields,
   getEntityConfigs,
+  parseNumOrDate,
+  buildWhere,
+  type EntityConfig,
 } from "./report-engine"
 
 /**
@@ -156,5 +159,133 @@ describe("getEntityConfigs", () => {
     const configs = getEntityConfigs()
     expect(configs).toHaveProperty("budgetLines")
     expect(configs).toHaveProperty("budgetActuals")
+  })
+})
+
+describe("parseNumOrDate", () => {
+  const config: EntityConfig = {
+    model: "budgetLine",
+    hasPlanId: true,
+    hasYearMonth: false,
+    fields: [
+      { name: "plannedAmount", label: "Planned", type: "number" },
+      { name: "createdAt", label: "Created", type: "date" },
+      { name: "category", label: "Category", type: "string" },
+    ],
+  }
+
+  it("coerces value to Date for date-typed fields", () => {
+    const result = parseNumOrDate("2026-05-17", "createdAt", config)
+    expect(result).toBeInstanceOf(Date)
+    expect((result as Date).getFullYear()).toBe(2026)
+  })
+
+  it("coerces value to Number for number-typed fields", () => {
+    expect(parseNumOrDate("100", "plannedAmount", config)).toBe(100)
+    expect(parseNumOrDate("100.5", "plannedAmount", config)).toBe(100.5)
+  })
+
+  it("returns raw value for string-typed fields", () => {
+    expect(parseNumOrDate("Travel", "category", config)).toBe("Travel")
+  })
+
+  it("returns raw value for unknown field (defensive fallthrough)", () => {
+    expect(parseNumOrDate("xyz", "nonExistent", config)).toBe("xyz")
+  })
+})
+
+describe("buildWhere", () => {
+  const config: EntityConfig = {
+    model: "budgetLine",
+    hasPlanId: true,
+    hasYearMonth: false,
+    fields: [
+      { name: "plannedAmount", label: "Planned", type: "number" },
+      { name: "category", label: "Category", type: "string" },
+      { name: "createdAt", label: "Created", type: "date" },
+    ],
+  }
+
+  it("always includes organizationId", () => {
+    const where = buildWhere("org_1", undefined, config, [])
+    expect(where.organizationId).toBe("org_1")
+  })
+
+  it("includes planId when entity hasPlanId + planId provided", () => {
+    const where = buildWhere("org_1", "plan_5", config, [])
+    expect(where.planId).toBe("plan_5")
+  })
+
+  it("omits planId when entity hasPlanId but planId undefined", () => {
+    const where = buildWhere("org_1", undefined, config, [])
+    expect(where.planId).toBeUndefined()
+  })
+
+  it("omits planId when entity hasPlanId === false", () => {
+    const noPlanConfig: EntityConfig = { ...config, hasPlanId: false }
+    const where = buildWhere("org_1", "plan_5", noPlanConfig, [])
+    expect(where.planId).toBeUndefined()
+  })
+
+  it("translates eq filter to direct field assignment", () => {
+    const where = buildWhere("org_1", "p1", config, [
+      { field: "category", op: "eq", value: "Rent" },
+    ])
+    expect(where.category).toBe("Rent")
+  })
+
+  it("translates neq filter to { not: value }", () => {
+    const where = buildWhere("org_1", "p1", config, [
+      { field: "category", op: "neq", value: "Rent" },
+    ])
+    expect(where.category).toEqual({ not: "Rent" })
+  })
+
+  it("translates gt/lt/gte/lte filters with Prisma operators", () => {
+    const where = buildWhere("org_1", "p1", config, [
+      { field: "plannedAmount", op: "gt", value: "100" },
+      { field: "plannedAmount", op: "lte", value: "1000" },
+    ])
+    // Second filter overwrites first on same field; verify shape
+    expect(where.plannedAmount).toEqual({ lte: 1000 })
+  })
+
+  it("gt filter coerces value via parseNumOrDate (number field → Number)", () => {
+    const where = buildWhere("org_1", "p1", config, [
+      { field: "plannedAmount", op: "gte", value: "500" },
+    ])
+    expect(where.plannedAmount).toEqual({ gte: 500 }) // string "500" coerced to Number
+  })
+
+  it("contains filter uses Prisma { contains, mode: insensitive }", () => {
+    const where = buildWhere("org_1", "p1", config, [
+      { field: "category", op: "contains", value: "travel" },
+    ])
+    expect(where.category).toEqual({ contains: "travel", mode: "insensitive" })
+  })
+
+  it("in filter wraps non-array value into array", () => {
+    const w1 = buildWhere("org_1", "p1", config, [
+      { field: "category", op: "in", value: ["A", "B"] },
+    ])
+    expect(w1.category).toEqual({ in: ["A", "B"] })
+
+    const w2 = buildWhere("org_1", "p1", config, [
+      { field: "category", op: "in", value: "A" }, // scalar
+    ])
+    expect(w2.category).toEqual({ in: ["A"] })
+  })
+
+  it("between filter requires both from + to (silently drops if missing)", () => {
+    const wValid = buildWhere("org_1", "p1", config, [
+      { field: "plannedAmount", op: "between", value: { from: "10", to: "100" } },
+    ])
+    expect(wValid.plannedAmount).toEqual({ gte: 10, lte: 100 })
+
+    // Missing `to` → filter NOT applied
+    const wMissing = buildWhere("org_1", "p1", config, [
+      { field: "plannedAmount", op: "between", value: { from: "10" } },
+    ])
+    expect(wMissing.plannedAmount).toBeUndefined()
   })
 })

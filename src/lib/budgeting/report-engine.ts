@@ -14,7 +14,7 @@ interface RelationDef {
   fields: string[]
 }
 
-interface EntityConfig {
+export interface EntityConfig {
   model: string
   fields: FieldDef[]
   relations?: RelationDef[]
@@ -203,14 +203,14 @@ export type ReportResult =
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function parseNumOrDate(value: any, field: string, config: EntityConfig) {
+export function parseNumOrDate(value: any, field: string, config: EntityConfig) {
   const fieldDef = config.fields.find(f => f.name === field)
   if (fieldDef?.type === "date") return new Date(value)
   if (fieldDef?.type === "number") return Number(value)
   return value
 }
 
-function buildWhere(orgId: string, planId: string | undefined, config: EntityConfig, filters: BudgetReportConfig["filters"]) {
+export function buildWhere(orgId: string, planId: string | undefined, config: EntityConfig, filters: BudgetReportConfig["filters"]) {
   const where: any = { organizationId: orgId }
   if (config.hasPlanId && planId) {
     where.planId = planId
