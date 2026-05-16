@@ -219,13 +219,12 @@ export function useDeleteBudgetActual() {
 
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
-export interface BudgetSection {
-  id: string
-  planId: string
-  name: string
-  sectionType: string
-  sortOrder: number
-}
+// Phase 3.1 v1.3 cleanup — same pattern as BudgetForecastEntry (ac59359):
+// canonical type lives in ./types with the stricter sectionType union
+// + organizationId + createdAt fields. Re-export so existing call
+// sites keep their import shape.
+export type { BudgetSection } from "./types"
+import type { BudgetSection } from "./types"
 
 export function useBudgetSections(planId: string) {
   const orgId = useOrgId()
