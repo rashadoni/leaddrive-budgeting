@@ -1,3 +1,7 @@
+# Local-only Claude / Truth-Infra artifacts
+.claude/scheduled_tasks.lock
+data/onboarding-source-registry.json
+
 # Dependencies
 node_modules/
 .pnp
