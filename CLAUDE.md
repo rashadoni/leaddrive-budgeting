@@ -130,16 +130,30 @@ Phase 7 scope, progress, and per-task status live in `docs/ROADMAP.md` —
 read that for the current picture, not this file. High-level snapshot:
 
 - **Foundation (7.A) — done:** Prisma schema, core API routes, migrations applied.
-- **Formula engine + recompute pipeline (7.A.0) — foundation landed +
-  budgetLine/currencyRate resolvers live, real matrix populated.** Engine,
-  periods, resolver registry, matrix API, HeatMap + CompanyTree components
-  all built and unit-tested. 5 resolvers registered: `booking`,
-  `company.settings`, `operationalFact`, `currencyRate`, `budgetLine`.
-  Parent-rollup dedup + reconciliation guard on xlsx ingest (196 tests).
-  **Remaining 7.A.0 gaps (source of truth = ROADMAP):** `fact()` / `rollup()`
-  not wired as formula functions (blocks cross-period composites);
-  `sparkline` field never computed; no background scheduler — `POST
-  /api/indicators` runs sync with a 500-pair cap.
+- **Formula engine + recompute pipeline (7.A.0) — feature-complete.**
+  Engine, periods, resolver registry, matrix API, HeatMap + CompanyTree
+  components all built and unit-tested. **11 resolvers registered**
+  today (recompute.ts:2211): `booking`, `companySettings`, `operationalFact`,
+  `newsSentiment`, `currencyRate`, `budgetLine`, `fact` (cross-period
+  reads), `rollup` (cross-company sums), `industryFactor`, `weather`,
+  `commodityPrice`. Parent-rollup dedup + reconciliation guard on xlsx
+  ingest. **Cross-period composites work** via `fact()`/`rollup()`
+  formula functions (Phase 7.E phase 3). **Sparklines computed** inline
+  on single-IV recomputes (`withSparkline:true`) and batched via
+  `scripts/compute-sparklines.ts` — every IV in DB currently carries a
+  12-slot trailing sparkline. **Async fan-out** in `POST /api/indicators`:
+  `SYNC_THRESHOLD=50` runs in-request, larger batches enqueue to the
+  in-process job runner (no 500-pair cap). Background scheduler
+  bootstrap: `scripts/intel-scheduler-bootstrap.ts`.
+- **Truth infrastructure (Phase D + follow-ups) — feature-complete.**
+  Audit-company.cjs + drift-watchdog.cjs + freshness dashboard + period
+  locks all shipped. Pure helpers extracted to `src/lib/audit/audit-helpers.cjs`
+  and `drift-watchdog-helpers.cjs` (32 vitest cases between them).
+  Freshness source list configurable per-org via
+  `Organization.settings.intelFreshnessSources`. Trust-status integration
+  test locks the matrix → CompanyTree → TrustBadge wire-up. Only
+  remaining row in `docs/TRUTH_INFRA_FOLLOWUPS.md` is V1 (DriftDiffPreview
+  UI verification via a real xlsx upload — browser-only).
 - **Onboarding (7.B) — partial.** Done: Excel bulk-import for companies
   (secured), 10 CoA templates, CLI importer for AZMADE budgets with
   transactional replace + auto-recompute. Missing: per-company
@@ -147,9 +161,10 @@ read that for the current picture, not this file. High-level snapshot:
   onboarding wizard UI, AI Data Mapper (Phase 7.B NEW, blocks
   60-company scale — every new xlsx shape currently requires code),
   ~60-company wire-up (13 seeded, 8 operational today).
-- **Phase 7.E NEW AI suite — 0% started.** AI Web Crawler, AI Variance
-  Explainer, Predictive Analytics, Board Deck Generator all exist only
-  in ROADMAP text — no source files yet. Explicit in the audit.
+- **Phase 7.E AI suite — v1 shipped.** All four capabilities (AI Web
+  Crawler, AI Variance Explainer, Predictive Analytics, Board Deck
+  Generator) shipped per ROADMAP changelog 2026-05-12. v2 plans
+  vendor-gated — `~/.claude/plans/phase-7e-ai-suite-v2.md`.
 
 ### Key files
 
