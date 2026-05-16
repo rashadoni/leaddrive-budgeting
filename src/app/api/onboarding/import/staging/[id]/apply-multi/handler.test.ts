@@ -540,4 +540,38 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — ?dryRun=true"
     expect(body.totals.revenue.incoming).toBe(12000)
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
+
+  it("L7 — emits EBITDA with D&A add-back from 703-11 / 721-11 codes", async () => {
+    // Re-stub applier to include a D&A line so we exercise the add-back.
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [
+              { code: "601-01", label: "Sales", accountType: "revenue", perMonth: Array(12).fill(1000) },
+              { code: "701-01", label: "COGS", accountType: "cogs", perMonth: Array(12).fill(600) },
+              { code: "703-11", label: "Depr in COGS", accountType: "cogs", perMonth: Array(12).fill(50) },
+              { code: "721-11", label: "Depr in OpEx", accountType: "expense", perMonth: Array(12).fill(30) },
+            ],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    prismaMock.budgetPlan.findFirst.mockResolvedValue(null)
+    const res = await POST(await makeRequest({ dryRun: true }), paramsFor(STAGING_ID))
+    const body = await res.json()
+    // Incoming: Rev=12000, COGS=12*(600+50)=7800, OpEx=12*30=360, DA_COGS=600, DA_OpEx=360
+    // GrossProfit = 12000 - 7800 = 4200
+    // EBITDA = Rev - (COGS-DA_COGS) - (OpEx-DA_OpEx) = 12000 - 7200 - 0 = 4800
+    expect(body.gross_profit.incoming).toBe(4200)
+    expect(body.ebitda).toBeDefined()
+    expect(body.ebitda.incoming).toBe(4800)
+    expect(body.ebitda.current).toBe(0)
+  })
 })

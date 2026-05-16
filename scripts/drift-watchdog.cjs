@@ -28,6 +28,44 @@ const { PrismaClient } = require('@prisma/client');
 
 const DRIFT_THRESHOLD_PCT = 0.5; // 0.5% considered material drift
 
+/**
+ * Idempotently ensure a service-account user exists for the org and
+ * return its id. Used by drift-watchdog so audit events have a real
+ * actorUserId (L2 closure — replaces actorUserId=null which made the
+ * drift dashboard show "(unknown)" runner).
+ *
+ * Cached per-org for the duration of the watchdog process — avoids
+ * repeated upsert hits when iterating many companies in the same org.
+ */
+const serviceUserCache = new Map();
+async function ensureServiceUser(prisma, orgId) {
+  if (serviceUserCache.has(orgId)) return serviceUserCache.get(orgId);
+  const email = 'system+drift-watchdog@local';
+  const existing = await prisma.user.findFirst({
+    where: { organizationId: orgId, email },
+    select: { id: true },
+  });
+  if (existing) {
+    serviceUserCache.set(orgId, existing.id);
+    return existing.id;
+  }
+  const created = await prisma.user.create({
+    data: {
+      organizationId: orgId,
+      email,
+      name: 'Drift Watchdog (system)',
+      // Password is unused — service user never logs in. Random bytes
+      // to prevent accidental auth bypass if the login flow is ever
+      // misconfigured.
+      passwordHash: require('crypto').randomBytes(32).toString('hex'),
+      role: 'viewer',
+    },
+    select: { id: true },
+  });
+  serviceUserCache.set(orgId, created.id);
+  return created.id;
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i++) {
@@ -153,9 +191,10 @@ function parseArgs(argv) {
               `(${d.valueDriftPct.toFixed(2)}%)`,
           );
         }
-        // Audit-log entry — use `actorUserId=null` since this runs from
-        // a CLI script (no logged-in user); stamp the runner identity
-        // in metadata.runBy so the dashboard can show it.
+        // Audit-log entry — use the service-account user
+        // `drift-watchdog` (upserted on first run per org). Falls back
+        // to actorUserId=null if user-upsert fails (still emits the
+        // event, just without a linked actor).
         try {
           const orgId = (
             await prisma.company.findUnique({
@@ -163,10 +202,11 @@ function parseArgs(argv) {
               select: { organizationId: true },
             })
           ).organizationId;
+          const serviceUserId = await ensureServiceUser(prisma, orgId);
           await prisma.auditEvent.create({
             data: {
               organizationId: orgId,
-              actorUserId: null,
+              actorUserId: serviceUserId,
               action: 'reconciliation_drift_detected',
               entityType: 'Company',
               entityId: company.id,

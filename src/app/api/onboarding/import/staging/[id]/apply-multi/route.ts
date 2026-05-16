@@ -282,11 +282,16 @@ export async function POST(
     const currentLines = existingPlan
       ? await prisma.budgetLine.findMany({
           where: { organizationId: orgIdLocal, planId: existingPlan.id, companyId },
-          select: { plannedAmount: true, lineType: true },
+          select: { plannedAmount: true, lineType: true, category: true },
         })
       : []
-    type Tot = { revenue: number; cogs: number; expense: number }
-    const zero = (): Tot => ({ revenue: 0, cogs: 0, expense: 0 })
+    // Phase L7 — track D&A separately so we can surface EBITDA on the
+    // drift preview. EBITDA = GrossProfit + D&A_in_COGS + D&A_in_OpEx,
+    // because COGS and OpEx already have D&A subtracted via 703-11 /
+    // 721-11 account-code rows. Mirrors src/lib/budgeting/da-codes.ts.
+    const { isDaCode } = await import("@/lib/budgeting/da-codes")
+    type Tot = { revenue: number; cogs: number; expense: number; daInCogs: number; daInOpex: number }
+    const zero = (): Tot => ({ revenue: 0, cogs: 0, expense: 0, daInCogs: 0, daInOpex: 0 })
     // Normalize cogs/expense to absolute values so gross-profit math
     // works regardless of whether the importer stored them as positive
     // (debit convention) or negative (credit convention). Revenue
@@ -294,9 +299,15 @@ export async function POST(
     const current: Tot = zero()
     for (const bl of currentLines) {
       const lt = bl.lineType as "revenue" | "cogs" | "expense"
+      const isDA = bl.category && isDaCode(bl.category)
       if (lt === "revenue") current.revenue += bl.plannedAmount
-      else if (lt === "cogs") current.cogs += Math.abs(bl.plannedAmount)
-      else if (lt === "expense") current.expense += Math.abs(bl.plannedAmount)
+      else if (lt === "cogs") {
+        current.cogs += Math.abs(bl.plannedAmount)
+        if (isDA) current.daInCogs += Math.abs(bl.plannedAmount)
+      } else if (lt === "expense") {
+        current.expense += Math.abs(bl.plannedAmount)
+        if (isDA) current.daInOpex += Math.abs(bl.plannedAmount)
+      }
     }
     const incoming: Tot = zero()
     for (const line of allLines) {
@@ -305,11 +316,20 @@ export async function POST(
           ? line.accountType
           : "expense"
       const total = line.perMonth.reduce((a, v) => a + (v ?? 0), 0)
+      const isDA = isDaCode(line.code)
       if (lt === "revenue") incoming.revenue += total
-      else incoming[lt] += Math.abs(total)
+      else {
+        incoming[lt] += Math.abs(total)
+        if (isDA && lt === "cogs") incoming.daInCogs += Math.abs(total)
+        if (isDA && lt === "expense") incoming.daInOpex += Math.abs(total)
+      }
     }
     const pct = (cur: number, inc: number): number =>
       cur === 0 ? (inc === 0 ? 0 : 100) : ((inc - cur) / Math.abs(cur)) * 100
+    // EBITDA = Revenue - COGS - OpEx + (D&A in COGS) + (D&A in OpEx).
+    // Equivalently: Revenue - (COGS - DA_COGS) - (OpEx - DA_OpEx).
+    const ebitdaOf = (t: Tot) =>
+      t.revenue - (t.cogs - t.daInCogs) - (t.expense - t.daInOpex)
     return NextResponse.json({
       dryRun: true,
       stagingId: staging.id,
@@ -326,6 +346,11 @@ export async function POST(
       gross_profit: {
         current: current.revenue - current.cogs,
         incoming: incoming.revenue - incoming.cogs,
+      },
+      ebitda: {
+        current: ebitdaOf(current),
+        incoming: ebitdaOf(incoming),
+        deltaPct: pct(ebitdaOf(current), ebitdaOf(incoming)),
       },
     })
   }
