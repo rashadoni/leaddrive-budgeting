@@ -15,6 +15,11 @@
 
 import { useEffect } from "react"
 import { X } from "lucide-react"
+// Phase 3.3 v1.2 — pure variance helpers extracted to a shared module
+// so the math is unit-testable and reusable. See variance-helpers.ts
+// for the rationale + 12 unit tests covering normal / edge / combined
+// cases (favorable-sign × variance.abs).
+import { variance, favorableSign } from "@/lib/budgeting/variance-helpers"
 
 const MONTHS_RU = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
@@ -48,24 +53,6 @@ function fmtPct(n: number): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`
 }
 
-function variance(plan: number, actual: number): { abs: number; pct: number } {
-  const abs = actual - plan
-  const pct = plan === 0 ? (actual === 0 ? 0 : 100) : (abs / Math.abs(plan)) * 100
-  return { abs, pct }
-}
-
-/**
- * Phase 3.3 v1.2 — variance sign depends on whether bigger-is-better.
- * For revenue accounts (favorable="up"), positive abs (overshooting plan)
- * is GREEN. For expense / cogs / opex (favorable="down"), positive abs
- * (overspending) is RED — so under-spent expense rows correctly read as
- * green ("we saved money"), not red ("we under-realized"). Returns the
- * direction sign — multiply variance.abs by this before the green/red
- * threshold check.
- */
-function favorableSign(accountType: string): 1 | -1 {
-  return accountType === "revenue" ? 1 : -1
-}
 
 export function BudgetPnlDrillPanel({
   row,
