@@ -33,6 +33,7 @@ import {
   Users,
   ClipboardEdit,
   AlertTriangle,
+  Building2,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -132,6 +133,12 @@ const budgetSubNav = [
       // Phase L4 — drift-watchdog source registry editor (replaces manual
       // JSON edit of data/onboarding-source-registry.json).
       { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, label: "Source Registry", isPage: true },
+      // Phase 7.I Track E — per-company settings editor (industry-shape
+      // form: region/cropType/hectares for agro, totalRooms for hotels,
+      // etc.). Replaces direct SQL on `Company.settings` JSON. 2026-05-16
+      // — page + API + tests already shipped; this is the missing sidebar
+      // entry that made the route unreachable from UI nav.
+      { href: "/budgeting/admin/companies", icon: Building2, label: "Company Settings", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],
