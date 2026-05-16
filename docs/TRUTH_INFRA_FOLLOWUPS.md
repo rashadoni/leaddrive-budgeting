@@ -23,12 +23,12 @@ Last update: 2026-05-16 after Phase E starts.
 | # | Spot | Issue | Fix |
 |---|---|---|---|
 | L1 | ✅ ~~`ImportWizardMulti.tsx` Apply button hard-gate~~ | **Closed 2026-05-16** — DriftDiffPreview now exposes `onHasExistingDataChange` callback; wizard maintains `diffHasExistingData` state and Apply button `disabled={applying \|\| (diffHasExistingData && !safetyConfirmed)}`. Fresh onboarding (no existing data) keeps Apply enabled without confirmation. |
-| L2 | `drift-watchdog.cjs` `actorUserId` | Set to `null` because CLI runs without a session. Production needs a service-account User row to associate with so audit-log filtering by user works. | Create `User.email='system+drift-watchdog@local'` once at setup; pass its id via env or CLI flag. |
+| L2 | ✅ ~~`drift-watchdog.cjs` `actorUserId`~~ | **Closed 2026-05-16** — watchdog now `ensureServiceUser()` upserts `system+drift-watchdog@local` per org (random passwordHash, viewer role, cached for the process), uses its id on every audit event. Falls back to null on upsert failure. |
 | L3 | `freshness.ts` source list `DEFAULT_SOURCES` | Hard-coded array of 5 source codes. New adapters require a code change. | Move to org-settings JSON or a `IntelDataSource` config table. |
-| L4 | `onboarding-source-registry.json` | Hand-maintained mapping `company_code → xlsx_path`. Falls out of sync if user moves files. | UI to edit the registry from `/budgeting/admin/onboarding` (right now you edit JSON by hand). |
+| L4 | ✅ ~~`onboarding-source-registry.json` UI~~ | **Closed 2026-05-16** — admin page `/budgeting/admin/source-registry` provides CRUD over the JSON file via PUT/DELETE on `/api/admin/source-registry`. Atomic write (tmp + rename) protects against concurrent edits. Sidebar entry added under Admin. |
 | L5 | DriftDashboard `stalePending` query | N+1 — for each company, fetches its most recent IV separately. Fine at 20 cos, slow at 60. | Single grouped query OR materialize on a periodic job. |
 | L6 | ✅ ~~Trust badge staleness fallback~~ | **Closed 2026-05-16** — `computeCompanyTrustStatus` now checks `lastReconciledAt` on material cells. If the max audit timestamp across material cells is > 30 days old (or no cell ever audited), degrade verified → partial. Matrix route + HeatMapCell wire field added. 3 new tests cover stale/fresh/never-audited cases. |
-| L7 | EBITDA on the diff preview | Not shown — only revenue/cogs/expense/gross-profit. EBITDA requires D&A row classification which isn't in the dryRun aggregation. | Extend dryRun aggregator to recognize D&A account codes and emit EBITDA delta. |
+| L7 | ✅ ~~EBITDA on the diff preview~~ | **Closed 2026-05-16** — dryRun aggregator now tracks D&A in COGS (703-11) + OpEx (721-11) via the existing `isDaCode` helper, computes EBITDA = Rev - (COGS-DA_COGS) - (OpEx-DA_OpEx). UI renders bold EBITDA row in DriftDiffPreview. Handler test asserts EBITDA = 4800 with D&A add-back of 600+360 from a 12000 revenue scenario. |
 
 ## Verification gaps (passed tsc but no actual end-to-end run)
 

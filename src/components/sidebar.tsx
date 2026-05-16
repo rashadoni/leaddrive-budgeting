@@ -129,6 +129,9 @@ const budgetSubNav = [
       // Phase D.3 — drift dashboard. Recent drift events, reference-feed
       // freshness, stalled onboarding cases. Admin-only.
       { href: "/budgeting/admin/drift", icon: AlertTriangle, label: "Drift Dashboard", isPage: true },
+      // Phase L4 — drift-watchdog source registry editor (replaces manual
+      // JSON edit of data/onboarding-source-registry.json).
+      { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, label: "Source Registry", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],
