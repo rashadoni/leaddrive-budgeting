@@ -28,6 +28,8 @@ interface DryRunResponse {
     expense: { current: number; incoming: number; deltaPct: number };
   };
   gross_profit: { current: number; incoming: number };
+  /** Phase L7 — EBITDA computed with D&A add-back (703-11 / 721-11). */
+  ebitda?: { current: number; incoming: number; deltaPct: number };
 }
 
 function formatMoney(v: number): string {
@@ -188,6 +190,15 @@ export function DriftDiffPreview({
               inc={data.gross_profit.incoming}
               bold
             />
+            {data.ebitda && (
+              <DiffRow
+                label="EBITDA"
+                cur={data.ebitda.current}
+                inc={data.ebitda.incoming}
+                pct={data.ebitda.deltaPct}
+                bold
+              />
+            )}
           </tbody>
         </table>
       </div>
