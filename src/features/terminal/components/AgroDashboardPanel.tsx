@@ -17,7 +17,6 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { useTerminalStore } from "../store/terminalStore"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Sparkline } from "./Sparkline"
 import { Loader2, Sprout, Droplets, Beaker, MapPin } from "lucide-react"
@@ -72,13 +71,46 @@ function fmtNum(n: number | null, fractionDigits = 1): string {
   return n.toFixed(fractionDigits)
 }
 
-const METRIC_LABEL: Record<(typeof TRACKED_METRICS)[number], { en: string; icon: typeof Sprout }> = {
-  yield_per_ha: { en: "Yield (t/ha)", icon: Sprout },
-  sugar_content_pct: { en: "Sugar content (%)", icon: Beaker },
-  water_use_m3_per_ha: { en: "Water (m³/ha)", icon: Droplets },
-  fertilizer_kg_per_ha: { en: "Fertilizer (kg/ha)", icon: Sprout },
-  extraction_rate_pct: { en: "Extraction (%)", icon: Beaker },
-  harvest_tons: { en: "Harvest (tons)", icon: Sprout },
+interface MetricMeta {
+  en: string
+  icon: typeof Sprout
+  /** Single-line hint shown when no observations exist — gives the
+   *  client a target range so the empty state is actionable instead of
+   *  decorative. */
+  hint: string
+}
+
+const METRIC_LABEL: Record<(typeof TRACKED_METRICS)[number], MetricMeta> = {
+  yield_per_ha: {
+    en: "Yield (t/ha)",
+    icon: Sprout,
+    hint: "Sugarcane target 60+ t/ha · sugar beet 40–70",
+  },
+  sugar_content_pct: {
+    en: "Sugar content (%)",
+    icon: Beaker,
+    hint: "Cane: 14%+ green · 10–14 amber · <10 red",
+  },
+  water_use_m3_per_ha: {
+    en: "Water (m³/ha)",
+    icon: Droplets,
+    hint: "Cane: <12,000 efficient · 12–18k typical",
+  },
+  fertilizer_kg_per_ha: {
+    en: "Fertilizer (kg/ha)",
+    icon: Sprout,
+    hint: "Cane: ~300–600 kg/ha NPK or urea",
+  },
+  extraction_rate_pct: {
+    en: "Extraction (%)",
+    icon: Beaker,
+    hint: "Modern cane refineries 85–92%",
+  },
+  harvest_tons: {
+    en: "Harvest (tons)",
+    icon: Sprout,
+    hint: "Total tonnage harvested for the period",
+  },
 }
 
 export function AgroDashboardPanel() {
@@ -173,41 +205,73 @@ export function AgroDashboardPanel() {
   const yieldTarget =
     typeof settingsBag.yieldTarget === "number" ? settingsBag.yieldTarget : null
 
+  const totalObservations = (facts ?? []).length
+  const hasAnyData = totalObservations > 0
+
   return (
-    <div className="space-y-4">
-      {/* Header — sector descriptor */}
-      <div className="flex flex-wrap items-baseline gap-3 px-1">
-        <h2 className="text-base font-bold">{activeCompany?.name ?? activeCompanyCode}</h2>
-        <Badge variant="secondary" className="text-[10px]">
+    <div className="space-y-4 max-w-6xl">
+      {/* Header — sector descriptor.  Bigger title, clearer descriptor chips. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-xl font-bold text-white">{activeCompany?.name ?? activeCompanyCode}</h2>
+        <Badge
+          variant="outline"
+          className="text-[10px] border-[#00D4AA]/40 text-[#00D4AA] bg-[#00D4AA]/10"
+        >
           {activeIndustry ?? "—"}
         </Badge>
         {cropType && (
-          <span className="text-xs text-gray-400">
+          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
             <Sprout className="inline h-3 w-3 mr-1" /> {cropType}
-          </span>
+          </Badge>
         )}
         {region && (
-          <span className="text-xs text-gray-400">
+          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
             <MapPin className="inline h-3 w-3 mr-1" /> {region}
-          </span>
+          </Badge>
         )}
         {hectares != null && (
-          <span className="text-xs text-gray-400">
+          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
             {hectares.toLocaleString("en-US")} ha planted
-          </span>
+          </Badge>
         )}
         {yieldTarget != null && (
-          <span className="text-xs text-gray-400">target {yieldTarget} t/ha</span>
+          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
+            target {yieldTarget} t/ha
+          </Badge>
         )}
       </div>
 
       {factsLoading && (
-        <div className="text-sm text-gray-500 flex items-center gap-2">
+        <div className="text-sm text-gray-400 flex items-center gap-2">
           <Loader2 className="h-3 w-3 animate-spin" /> Loading agronomy data…
         </div>
       )}
 
-      {/* Metric grid — sparklines per tracked metric */}
+      {/* Onboarding call-to-action — shown until at least one fact lands.
+          Bloomberg-terminal style cyan border accent so it reads as
+          "this is what you need to do next" rather than decorative noise. */}
+      {!factsLoading && !hasAnyData && (
+        <div className="rounded-md border border-[#00D4AA]/30 bg-[#00D4AA]/[0.06] px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wider text-[#00D4AA] font-semibold mb-1">
+            No agronomy data yet
+          </div>
+          <div className="text-sm text-gray-200">
+            Enter your first observation via{" "}
+            <code className="text-[11px] bg-black/40 text-[#00D4AA] px-1.5 py-0.5 rounded font-mono">
+              KPI GO
+            </code>{" "}
+            or bulk-import an Excel sheet at{" "}
+            <code className="text-[11px] bg-black/40 text-[#00D4AA] px-1.5 py-0.5 rounded font-mono">
+              /budgeting/admin/data-entry
+            </code>
+            . The cells below light up green / amber / red as soon as values land.
+          </div>
+        </div>
+      )}
+
+      {/* Metric grid — sparklines per tracked metric. Stronger card surface
+          (explicit dark slate vs translucent Card default) so the grid
+          reads as data tiles, not ghost placeholders. */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {TRACKED_METRICS.map((m) => {
           const s = seriesByMetric[m]
@@ -218,61 +282,77 @@ export function AgroDashboardPanel() {
             isYield && yieldTarget != null && s.latest != null && s.latest >= yieldTarget
           const status: "green" | "amber" | "red" | "unknown" =
             s.latest == null ? "unknown" : isYield ? (onTarget ? "green" : "amber") : "unknown"
+          const obsCount = s.values.filter((v) => v != null).length
+          const hasValue = s.latest != null
           return (
-            <Card key={m} className="bg-card/40">
-              <CardContent className="p-3 space-y-2">
-                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-400">
-                  <Icon className="h-3 w-3" />
-                  {label.en}
+            <div
+              key={m}
+              className={`rounded-md border bg-[#0F1535] px-3 py-3 transition-colors ${
+                hasValue
+                  ? "border-gray-700/80"
+                  : "border-gray-800/60 border-dashed"
+              }`}
+            >
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-400">
+                <Icon className="h-3 w-3" />
+                {label.en}
+              </div>
+              <div className={`mt-2 text-2xl font-bold tabular-nums ${hasValue ? "text-white" : "text-gray-600"}`}>
+                {fmtNum(s.latest, m === "harvest_tons" ? 0 : 1)}
+                {s.unit && (
+                  <span className="text-xs font-normal text-gray-500 ml-1">{s.unit}</span>
+                )}
+              </div>
+              {hasValue ? (
+                <>
+                  <div className="mt-2">
+                    <Sparkline data={s.values} status={status} compact={false} />
+                  </div>
+                  <div className="mt-1.5 text-[10px] text-gray-500">
+                    {obsCount} observation{obsCount === 1 ? "" : "s"}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2 text-[10px] leading-snug text-gray-500">
+                  {label.hint}
                 </div>
-                <div className="text-xl font-bold tabular-nums">
-                  {fmtNum(s.latest, m === "harvest_tons" ? 0 : 1)}
-                  {s.unit && <span className="text-xs font-normal text-gray-500 ml-1">{s.unit}</span>}
-                </div>
-                <Sparkline data={s.values} status={status} compact={false} />
-                <div className="text-[10px] text-gray-500">
-                  {s.values.filter((v) => v != null).length} observation(s)
-                </div>
-              </CardContent>
-            </Card>
+              )}
+            </div>
           )
         })}
       </div>
 
       {/* Recent agronomy entries */}
-      <Card>
-        <CardContent className="p-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
-            Recent agronomy entries
+      <div className="rounded-md border border-gray-800/60 bg-[#0F1535] px-3 py-3">
+        <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
+          Recent agronomy entries
+        </div>
+        {!hasAnyData ? (
+          <div className="text-xs text-gray-500">
+            Empty — first KPI entry will appear here as a row with date, metric, value, unit.
           </div>
-          {(facts ?? []).length === 0 ? (
-            <div className="text-xs text-gray-500">
-              No OperationalFact rows yet for this company. Use{" "}
-              <code className="text-[10px] bg-muted px-1 rounded">KPI GO</code> to add.
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-800/60">
-              {(facts ?? [])
-                .slice()
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                .slice(0, 8)
-                .map((f, i) => (
-                  <div
-                    key={`${f.metric}-${f.date}-${i}`}
-                    className="flex items-center gap-3 py-1.5 text-xs"
-                  >
-                    <span className="text-gray-500 w-20 shrink-0 tabular-nums">
-                      {new Date(f.date).toISOString().slice(0, 10)}
-                    </span>
-                    <span className="flex-1 font-mono text-[10px] text-gray-400">{f.metric}</span>
-                    <span className="tabular-nums w-20 text-right">{fmtNum(f.value, 2)}</span>
-                    {f.unit && <span className="w-16 text-[10px] text-gray-500">{f.unit}</span>}
-                  </div>
-                ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        ) : (
+          <div className="divide-y divide-gray-800/60">
+            {(facts ?? [])
+              .slice()
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .slice(0, 8)
+              .map((f, i) => (
+                <div
+                  key={`${f.metric}-${f.date}-${i}`}
+                  className="flex items-center gap-3 py-1.5 text-xs"
+                >
+                  <span className="text-gray-500 w-20 shrink-0 tabular-nums">
+                    {new Date(f.date).toISOString().slice(0, 10)}
+                  </span>
+                  <span className="flex-1 font-mono text-[10px] text-gray-300">{f.metric}</span>
+                  <span className="tabular-nums w-20 text-right text-white">{fmtNum(f.value, 2)}</span>
+                  {f.unit && <span className="w-16 text-[10px] text-gray-500">{f.unit}</span>}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
