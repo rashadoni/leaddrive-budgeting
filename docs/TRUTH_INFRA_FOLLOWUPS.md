@@ -10,7 +10,7 @@ Last update: 2026-05-16 after Phase E starts.
 
 | # | File | Class | Why deferred |
 |---|---|---|---|
-| F1 | `scripts/audit-company.cjs` | CLI script | 🟡 Deferred — scripts are top-level CommonJS with no exported helpers; unit tests require refactor to expose internals. Smoke-verified manually on AZSEKER cluster (sanityBands wrote, verdicts emitted, 5/5 entries processed). Re-prioritize if regression appears. |
+| F1 | ✅ ~~`scripts/audit-company.cjs`~~ | CLI script | **Closed 2026-05-16** — pure helpers (classifyDrift / classifySanityBand / extractAnnualFromSheet / parseArgs / computeVerdict + the SHEET_MAP / INDICATORS_BY_INDUSTRY / SANITY_BANDS / PLF_LINES tables) hoisted into `src/lib/audit/audit-helpers.cjs`; the CLI script `require`s them. 22 vitest cases cover all five helpers + catalog shape. |
 | F2 | `scripts/drift-watchdog.cjs` | CLI script | 🟡 Deferred — same constraint as F1. Smoke-verified with AzərŞəkər registry (0 drifts, ok=5/drift=0/error=0 summary). |
 | F3 | ✅ ~~`src/lib/intel/freshness.ts`~~ | Library | **Closed 2026-05-16** — 5 cases (fresh / stale / critical_stale on daily threshold, monthly day-scale, missing). |
 | F4 | ✅ ~~`src/app/api/admin/drift/route.ts`~~ | Route handler | **Closed 2026-05-16** — 4 cases: 401/403 auth, 200 happy path with stalePending composition, runBy metadata fallback for CLI-origin events. |
