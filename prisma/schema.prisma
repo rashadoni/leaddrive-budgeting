@@ -1818,6 +1818,12 @@ enum AuditAction {
   // totalRooms/seasonality for hospitality, etc.). Metadata captures
   // before/after + changed keys so a reviewer can replay the change.
   company_settings_update
+  // Financial-truth-infra Phase D.1 — nightly drift-watchdog detected
+  // that one or more indicator values diverged from their last-audited
+  // source xlsx (band changed, value drifted > threshold). Metadata
+  // payload: { drifts: Array<{indicatorCode, beforeBand, afterBand,
+  // beforeValue, afterValue, valueDriftPct}> }
+  reconciliation_drift_detected
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

@@ -270,6 +270,18 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: `${code} (${industry}) — ${keys}`,
       };
     }
+    case 'reconciliation_drift_detected': {
+      // Phase D.1 — watchdog drift event. `drifts` is an array of
+      // indicator-level diffs; verbose shows the count + first
+      // indicator-code for at-a-glance triage in the ticker.
+      const drifts = Array.isArray(m.drifts) ? (m.drifts as Array<{ indicatorCode?: string }>) : [];
+      const first = drifts[0]?.indicatorCode ?? '?';
+      const extra = drifts.length > 1 ? ` +${drifts.length - 1}` : '';
+      return {
+        compact: e.action,
+        verbose: `${drifts.length} drift${drifts.length === 1 ? '' : 's'}: ${first}${extra}`,
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was
