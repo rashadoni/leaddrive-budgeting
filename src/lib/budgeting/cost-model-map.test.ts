@@ -3,6 +3,7 @@ import {
   resolvePatternForDept,
   getPeriodMonths,
   resolveCostModelKey,
+  computePlannedForLine,
 } from "./cost-model-map"
 import type { CostModelResult } from "@/lib/cost-model/types"
 
@@ -248,5 +249,192 @@ describe("getPeriodMonths", () => {
     expect(
       getPeriodMonths({ periodType: "weekly" as never, year: 2026 }),
     ).toEqual({ count: 1, months: [] })
+  })
+})
+
+describe("computePlannedForLine", () => {
+  function mk(partial: Record<string, unknown>): CostModelResult {
+    return partial as unknown as CostModelResult
+  }
+
+  // ── EXPENSE BRANCH ─────────────────────────────────────────────
+
+  it("expense + cost model primary: monthly × periodMonths", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: "adminOverhead",
+      departmentId: null,
+    }
+    const costModel = mk({ adminOverhead: 1000 })
+    expect(computePlannedForLine(line, costModel, [], 12, [1,2,3,4,5,6,7,8,9,10,11,12])).toBe(12_000)
+  })
+
+  it("expense + cost model returns 0: falls through to expenseForecast", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: "adminOverhead",
+      costTypeId: "ct-rent",
+      departmentId: "dept-it",
+    }
+    // Cost model has no value for this key
+    const costModel = mk({})
+    const expenseForecasts = [
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 1, amount: 500 },
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 2, amount: 500 },
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 3, amount: 500 },
+      // Different department, should NOT count
+      { costTypeId: "ct-rent", departmentId: "dept-other", month: 1, amount: 999 },
+    ]
+    expect(
+      computePlannedForLine(line, costModel, [], 3, [1, 2, 3], expenseForecasts),
+    ).toBe(1500)
+  })
+
+  it("expense fallback filters by periodMonthNumbers (Q1 only counts Jan-Feb-Mar)", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: null,
+      costTypeId: "ct-rent",
+      departmentId: "dept-it",
+    }
+    const expenseForecasts = [
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 1, amount: 500 },
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 2, amount: 500 },
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 4, amount: 500 }, // outside Q1
+    ]
+    expect(
+      computePlannedForLine(line, null, [], 3, [1, 2, 3], expenseForecasts),
+    ).toBe(1000) // Jan + Feb, not April
+  })
+
+  it("expense + cost model + expenseForecasts: cost model wins when > 0", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: "adminOverhead",
+      costTypeId: "ct-rent",
+      departmentId: "dept-it",
+    }
+    const costModel = mk({ adminOverhead: 1000 })
+    const expenseForecasts = [
+      { costTypeId: "ct-rent", departmentId: "dept-it", month: 1, amount: 999_999 },
+    ]
+    // Cost model returns 1000 × 12 = 12000 (NOT 999_999)
+    expect(
+      computePlannedForLine(line, costModel, [], 12, [1,2,3,4,5,6,7,8,9,10,11,12], expenseForecasts),
+    ).toBe(12_000)
+  })
+
+  it("expense with no cost model and no expenseForecasts → 0", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: null,
+      departmentId: null,
+    }
+    expect(computePlannedForLine(line, null, [], 12, [1, 2, 3])).toBe(0)
+  })
+
+  // ── REVENUE BRANCH ─────────────────────────────────────────────
+
+  it("revenue + cost model primary: monthly × periodMonths", () => {
+    const line = {
+      lineType: "revenue",
+      costModelKey: "serviceRevenues.total",
+      departmentId: null,
+    }
+    const costModel = mk({
+      serviceRevenues: { svcA: 5_000 },
+      summary: { totalRevenue: 10_000 },
+    })
+    // serviceRevenues.total = summary.totalRevenue = 10_000 × 12 months
+    expect(computePlannedForLine(line, costModel, [], 12, [1,2,3,4,5,6,7,8,9,10,11,12])).toBe(120_000)
+  })
+
+  it("revenue + cost model returns 0 → falls through to salesForecasts", () => {
+    const line = {
+      lineType: "revenue",
+      costModelKey: "serviceRevenues.total",
+      departmentId: "dept-sales",
+    }
+    const costModel = mk({}) // empty → 0
+    const salesForecasts = [
+      { departmentId: "dept-sales", month: 1, amount: 10_000 },
+      { departmentId: "dept-sales", month: 2, amount: 12_000 },
+      // Different dept, should NOT count
+      { departmentId: "dept-other", month: 1, amount: 999 },
+    ]
+    expect(
+      computePlannedForLine(line, costModel, salesForecasts, 2, [1, 2]),
+    ).toBe(22_000)
+  })
+
+  it("revenue fallback filters by periodMonthNumbers", () => {
+    const line = {
+      lineType: "revenue",
+      costModelKey: null,
+      departmentId: "dept-sales",
+    }
+    const salesForecasts = [
+      { departmentId: "dept-sales", month: 1, amount: 10_000 },
+      { departmentId: "dept-sales", month: 4, amount: 99_999 }, // outside Q1
+    ]
+    expect(
+      computePlannedForLine(line, null, salesForecasts, 3, [1, 2, 3]),
+    ).toBe(10_000)
+  })
+
+  it("revenue with no costModelKey and no departmentId → 0", () => {
+    const line = {
+      lineType: "revenue",
+      costModelKey: null,
+      departmentId: null,
+    }
+    expect(computePlannedForLine(line, null, [], 12, [1, 2, 3])).toBe(0)
+  })
+
+  it("revenue + cost model primary wins over salesForecasts when monthly > 0", () => {
+    const line = {
+      lineType: "revenue",
+      costModelKey: "serviceRevenues.total",
+      departmentId: "dept-sales",
+    }
+    const costModel = mk({
+      serviceRevenues: { svcA: 5_000 },
+      summary: { totalRevenue: 10_000 },
+    })
+    const salesForecasts = [
+      { departmentId: "dept-sales", month: 1, amount: 999_999 },
+    ]
+    // Cost model wins: 10_000 × 12 = 120_000 (NOT 999_999)
+    expect(
+      computePlannedForLine(line, costModel, salesForecasts, 12, [1,2,3,4,5,6,7,8,9,10,11,12]),
+    ).toBe(120_000)
+  })
+
+  // ── EDGE CASES ─────────────────────────────────────────────────
+
+  it("cogs lineType routes through expense branch (lineType !== 'revenue')", () => {
+    const line = {
+      lineType: "cogs",
+      costModelKey: "coreLabor",
+      departmentId: null,
+    }
+    expect(
+      computePlannedForLine(line, mk({ coreLabor: 500 }), [], 3, [1, 2, 3]),
+    ).toBe(1500)
+  })
+
+  it("null costModel argument routes immediately to fallback", () => {
+    const line = {
+      lineType: "expense",
+      costModelKey: "adminOverhead", // would resolve if model present
+      costTypeId: "ct-x",
+      departmentId: "d-y",
+    }
+    const expenseForecasts = [
+      { costTypeId: "ct-x", departmentId: "d-y", month: 1, amount: 100 },
+    ]
+    expect(
+      computePlannedForLine(line, null, [], 1, [1], expenseForecasts),
+    ).toBe(100)
   })
 })
