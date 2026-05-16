@@ -23,6 +23,8 @@
  * (BullMQ) follow-up. The logger itself does not delete.
  */
 
+import type { Language } from '@/lib/ai/prompts';
+
 // `Prisma` MUST be a value import — `Prisma.JsonNull` is a runtime
 // sentinel object that signals "store SQL NULL in this Json column",
 // distinct from JS `null` (which Prisma rejects on non-nullable Json
@@ -146,7 +148,7 @@ export type AuditEventInput =
         companyId: string;
         period: string;
         status: 'amber' | 'red' | 'unknown';
-        language: 'en' | 'ru' | 'az';
+        language: Language;
         tokensIn: number;
         tokensOut: number;
         durationMs: number;
@@ -172,7 +174,7 @@ export type AuditEventInput =
         indicatorCode: string;
         companyId: string;
         period: string;
-        language: 'en' | 'ru' | 'az';
+        language: Language;
         /** Forecast confidence band (sub-13 v1 categorical: high/medium/low). */
         forecastConfidence: 'high' | 'medium' | 'low';
         /** R² 0-1 from the linear-regression fit. */
