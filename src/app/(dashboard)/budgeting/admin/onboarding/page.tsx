@@ -1,19 +1,14 @@
 /**
- * Financial-truth-infra Phase C.3 — admin route entry.
- *
- * Sidebar link → `/budgeting/admin/onboarding`. Renders the
- * OnboardingCompletenessDashboard which lists every company in the org
- * with its current data-completeness % and per-section breakdown.
- *
- * Auth: route group middleware gates to authenticated users; the
- * underlying API enforces viewer+ role with sub-group scope.
+ * Phase C.4 (Turn after C.3) — this route now redirects to the unified
+ * /budgeting/onboarding?view=status page. Kept so existing bookmarks +
+ * sidebar links don't break; the actual UI lives in OnboardingTabbedPage.
  */
-import { OnboardingCompletenessDashboard } from "@/features/onboarding/components/OnboardingCompletenessDashboard";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Onboarding Completeness · BudgetPro",
 };
 
 export default function OnboardingAdminPage() {
-  return <OnboardingCompletenessDashboard />;
+  redirect("/budgeting/onboarding?view=status");
 }
