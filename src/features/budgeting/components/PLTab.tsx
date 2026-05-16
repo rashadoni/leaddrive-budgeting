@@ -72,6 +72,55 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   const [newSectionType, setNewSectionType] = useState("expense")
   const [drilldown, setDrilldown] = useState<string | null>(null)
   const [allExpanded, setAllExpanded] = useState(false)
+  // Phase 3.3 extension — clicking the Donut slice highlights that
+  // expense category in the table below AND scrolls it into view.
+  // `pulseDrilldown` flashes the active row for 1.5s so the user sees
+  // where they landed when the table is long.
+  const [pulseDrilldown, setPulseDrilldown] = useState(false)
+  function drillToCategory(categoryName: string): void {
+    setDrilldown(categoryName)
+    setPulseDrilldown(true)
+    setTimeout(() => setPulseDrilldown(false), 1500)
+    requestAnimationFrame(() => {
+      const el = document.querySelector(
+        `[data-pl-category="${CSS.escape(categoryName)}"]`,
+      ) as HTMLElement | null
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+    })
+  }
+  // Phase 3.3 extension — clicking a Waterfall bar scrolls to the
+  // matching section anchor. Sections rendered via renderSection() get
+  // an id of `pl-section-<key>`; map waterfallData[].key → that key.
+  const [flashSection, setFlashSection] = useState<string | null>(null)
+  function drillToSection(barKey: string): void {
+    // Map Waterfall entry.key → renderSection sectionId (passed to
+    // `id="pl-section-<id>"`). GP and EBITDA are inline summary blocks
+    // (not renderSection), so they get their own anchor ids.
+    const map: Record<string, string> = {
+      Revenue: "auto-revenue",
+      "Direct Costs": "auto-direct",
+      "Gross Profit": "pl-gp-block",
+      Overhead: "auto-indirect",
+      EBITDA: "pl-ebitda-block",
+    }
+    const sectionId = map[barKey]
+    if (!sectionId) return
+    requestAnimationFrame(() => {
+      // GP / EBITDA blocks use bare ids; renderSection blocks are
+      // prefixed `pl-section-`.
+      const el =
+        document.getElementById(sectionId) ??
+        document.getElementById(`pl-section-${sectionId}`)
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+      setFlashSection(sectionId)
+      setTimeout(
+        () => setFlashSection((cur) => (cur === sectionId ? null : cur)),
+        1500,
+      )
+    })
+  }
   const [plShowMaterialOnly, setPlShowMaterialOnly] = useState(false)
   const [plMaterialityPct, setPlMaterialityPct] = useState(5)
   const [plMaterialityAbs, setPlMaterialityAbs] = useState(500)
@@ -296,7 +345,12 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
     const sectionTotal = secPlanned // for % of total per row
 
     return (
-      <div key={sectionId} className="border border-border rounded-xl overflow-hidden mb-3 shadow-sm transition-all hover:shadow-md">
+      <div
+        key={sectionId}
+        // Phase 3.3 ext — DOM anchor for drillToSection's smooth scroll.
+        id={`pl-section-${sectionId}`}
+        className={`border border-border rounded-xl overflow-hidden mb-3 shadow-sm transition-all hover:shadow-md ${flashSection === sectionId ? "ring-2 ring-indigo-500" : ""}`}
+      >
         <div
           className={`flex items-center justify-between px-4 py-3.5 cursor-pointer transition-colors ${sectionColor}`}
           onClick={() => toggleCollapse(sectionId)}
@@ -380,7 +434,10 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                           const rowPct = gPlanned > 0 ? Math.round((row.planned / gPlanned) * 100) : 0
                           const isActive = drilldown === row.category
                           return (
-                            <tr key={i} className={`border-t border-border/20 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"}`}
+                            <tr
+                              key={i}
+                              data-pl-category={row.category}
+                              className={`border-t border-border/20 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                               onClick={() => setDrilldown(isActive ? null : row.category)}>
                               <td className="px-4 py-2 pl-10">
                                 <div className="flex items-center gap-2 text-muted-foreground">
@@ -406,7 +463,10 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   {grouped.standalone.map((row, i) => {
                     const isActive = drilldown === row.category
                     return (
-                      <tr key={`s-${i}`} className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"}`}
+                      <tr
+                        key={`s-${i}`}
+                        data-pl-category={row.category}
+                        className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                         onClick={() => setDrilldown(isActive ? null : row.category)}>
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
@@ -431,7 +491,10 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                 rows.map((row, i) => {
                   const isActive = drilldown === row.category
                   return (
-                    <tr key={i} className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"}`}
+                    <tr
+                      key={i}
+                      data-pl-category={row.category}
+                      className={`border-t border-border/30 cursor-pointer transition-colors ${isActive ? "bg-primary/5" : "hover:bg-muted/20"} ${isActive && pulseDrilldown ? "shadow-[inset_0_0_0_2px_rgb(99,102,241)]" : ""}`}
                       onClick={() => setDrilldown(isActive ? null : row.category)}>
                       <td className="px-4 py-2">
                         <div className="flex items-center gap-2">
@@ -582,9 +645,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                     <YAxis tick={AXIS_TICK} tickFormatter={v => fmtK(v)} axisLine={false} tickLine={false} />
                     <Tooltip content={<WaterfallTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.3 }} />
                     <Bar dataKey="base" stackId="wf" fill="transparent" animationDuration={0} />
+                    {/* Phase 3.3 ext — onClick drills to the matching section
+                        anchor below. cursor:pointer is the affordance. */}
                     <Bar dataKey="value" stackId="wf" radius={[4, 4, 0, 0]} animationDuration={ANIMATION.duration} animationEasing={ANIMATION.easing}>
-                      {waterfallData.map((_, i) => (
-                        <Cell key={i} fill={`url(#pl-wf-${i})`} />
+                      {waterfallData.map((entry, i) => (
+                        <Cell
+                          key={i}
+                          fill={`url(#pl-wf-${i})`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => drillToSection(entry.key)}
+                        />
                       ))}
                       <LabelList content={WaterfallLabel} />
                     </Bar>
@@ -683,8 +753,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                         labelLine={false}
                         label={DonutLabel}
                       >
-                        {expenseItems.map((_, i) => (
-                          <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                        {/* Phase 3.3 ext — clicking a Donut slice highlights
+                            that category row in the table below + scrolls + flashes
+                            for 1.5s. cursor:pointer is the affordance. */}
+                        {expenseItems.map((item, i) => (
+                          <Cell
+                            key={i}
+                            fill={DONUT_COLORS[i % DONUT_COLORS.length]}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => drillToCategory(item.name)}
+                          />
                         ))}
                       </Pie>
                       <Tooltip content={<DonutTooltip />} />
@@ -771,7 +849,11 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
       {renderSection(t("plSectionDirectCosts"), directExpRows, "auto-direct", <Settings2 className="h-4 w-4" />, "bg-orange-50/60 dark:bg-orange-950/20", false, 0, 0, true, directGrouped)}
 
       {/* Gross Profit = Revenue - Direct Costs */}
-      <div className={`border-2 rounded-xl overflow-hidden mb-3 ${grossProfitActual < 0 ? "border-red-400/50 dark:border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/30" : "border-emerald-500/50 dark:border-emerald-600/50 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30"}`}>
+      {/* Phase 3.3 ext — id targets Waterfall "Gross Profit" bar click. */}
+      <div
+        id="pl-gp-block"
+        className={`border-2 rounded-xl overflow-hidden mb-3 ${grossProfitActual < 0 ? "border-red-400/50 dark:border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/30" : "border-emerald-500/50 dark:border-emerald-600/50 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30"} ${flashSection === "pl-gp-block" ? "ring-2 ring-indigo-500" : ""}`}
+      >
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${grossProfitActual < 0 ? "bg-red-100 dark:bg-red-900/50" : "bg-emerald-100 dark:bg-emerald-900/50"}`}>
@@ -801,7 +883,11 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
       {renderSection(t("plSectionOverheadExpenses"), indirectExpRows, "auto-indirect", <Banknote className="h-4 w-4" />, "bg-amber-50/60 dark:bg-amber-950/20", false, 0, 0, true, indirectGrouped)}
 
       {/* EBITDA */}
-      <div className={`border-2 rounded-xl overflow-hidden mb-3 ${opProfitActual < 0 ? "border-red-400/50 dark:border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/30" : "border-purple-400/50 dark:border-purple-500/50 bg-gradient-to-r from-muted/50 to-purple-50 dark:from-purple-950/30 dark:to-purple-950/30"}`}>
+      {/* Phase 3.3 ext — id targets Waterfall "EBITDA" bar click. */}
+      <div
+        id="pl-ebitda-block"
+        className={`border-2 rounded-xl overflow-hidden mb-3 ${opProfitActual < 0 ? "border-red-400/50 dark:border-red-500/50 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/30" : "border-purple-400/50 dark:border-purple-500/50 bg-gradient-to-r from-muted/50 to-purple-50 dark:from-purple-950/30 dark:to-purple-950/30"} ${flashSection === "pl-ebitda-block" ? "ring-2 ring-indigo-500" : ""}`}
+      >
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${opProfitActual < 0 ? "bg-red-100 dark:bg-red-900/50" : "bg-purple-100 dark:bg-purple-900/50"}`}>
