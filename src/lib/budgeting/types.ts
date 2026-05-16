@@ -61,6 +61,12 @@ export interface BudgetCategoryRow {
   variance: number
   variancePct: number
   parentCategory?: string | null
+  // SAP / ChartOfAccount code if the underlying lines were classified.
+  // Null when ungrouped (e.g., legacy import without account FK).
+  // Emitted by `/api/budgeting/analytics` for every row; UIs use it for
+  // accountCode-prefix-based filtering (D&A / below-EBITDA) and as
+  // part of the row hover-tooltip identifier.
+  accountCode?: string | null
   // Phase 3.1 v1.1 (Turn LIX deferral closure) — 12-month planned
   // distribution for the variance-tab inline sparkline. Indexed 0..11
   // (0=Jan..11=Dec). Optional + nullable per-element: routes built

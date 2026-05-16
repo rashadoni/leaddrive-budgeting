@@ -174,7 +174,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   // displayed "EBITDA" is the real metric, not a mislabelled Net Profit.
   const hasITStructure = directExpRowsRaw.length > 0
   const BELOW_EBITDA_PREFIXES = ["731", "741", "751", "761", "771", "801"]
-  const rowCode = (r: typeof byCategory[number]) => (r as any).accountCode ?? r.category ?? ""
+  const rowCode = (r: typeof byCategory[number]) => r.accountCode ?? r.category ?? ""
   const isBelowEBITDA = (r: typeof byCategory[number]) =>
     BELOW_EBITDA_PREFIXES.some((p) => rowCode(r).startsWith(p))
   const directExpRows = hasITStructure ? directExpRowsRaw : cogsRows
@@ -437,8 +437,8 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                         {isGroupOpen && g.children.map((row, i) => {
                           const rowPct = gPlanned > 0 ? Math.round((row.planned / gPlanned) * 100) : 0
                           const isActive = drilldown === row.category
-                          const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
-                          const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
+                          const rowMonthly = row.monthlyPlanned
+                          const rowMonthlyActual = row.monthlyActual
                           return (
                             <React.Fragment key={i}>
                             <tr
@@ -486,8 +486,8 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   })}
                   {grouped.standalone.map((row, i) => {
                     const isActive = drilldown === row.category
-                    const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
-                    const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
+                    const rowMonthly = row.monthlyPlanned
+                    const rowMonthlyActual = row.monthlyActual
                     return (
                       <React.Fragment key={`s-${i}`}>
                       <tr
@@ -527,8 +527,8 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
               ) : (
                 rows.map((row, i) => {
                   const isActive = drilldown === row.category
-                  const rowMonthly = (row as any).monthlyPlanned as number[] | undefined
-                  const rowMonthlyActual = (row as any).monthlyActual as number[] | undefined
+                  const rowMonthly = row.monthlyPlanned
+                  const rowMonthlyActual = row.monthlyActual
                   return (
                     <React.Fragment key={i}>
                     <tr
