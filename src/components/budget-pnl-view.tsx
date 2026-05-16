@@ -18,7 +18,7 @@ import {
   type ClientReconciliationRow,
   type PnlContributorRow,
 } from "@/features/budgeting/components/ClientReconDrawer"
-import { BudgetPnlDrillPanel } from "./budget-pnl-drill-panel"
+import { BudgetPnlDrillPanel, type DrillRow } from "./budget-pnl-drill-panel"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -60,14 +60,9 @@ function varianceClass(actual: number, plan: number, favorable: "up" | "down"): 
   return good ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
 }
 
-interface PnlRow {
-  accountCode: string
-  accountName: string
-  accountType: string
-  parentCode: string | null
-  monthly: Record<number, number>
-  total: number
-}
+// Phase 3.3 v1.4 — PnlRow IS a DrillRow with parentCode required.
+// Single source of truth: re-use the base shape, narrow parentCode.
+type PnlRow = DrillRow & { parentCode: string | null }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()

@@ -26,12 +26,20 @@ const MONTHS_RU = [
   "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
 ]
 
+/**
+ * Phase 3.3 v1.4 — DrillRow widened to accept any PnlRow superset.
+ * BudgetPnlView's `PnlRow` carries an extra `parentCode` field that
+ * the drill panel doesn't read; we tolerate it via optional. Keeps
+ * the panel's prop type loose enough for both callers without losing
+ * the 5-field contract.
+ */
 export interface DrillRow {
   accountCode: string
   accountName: string
   accountType: string
   monthly: Record<number, number>
   total: number
+  parentCode?: string | null
 }
 
 interface Props {
