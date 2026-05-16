@@ -32,6 +32,8 @@ import {
   matchCompaniesToIndicators,
 } from './targets';
 import { evaluateAndPersistAlertsForPeriods } from './alert-eval-and-persist';
+import { verifyPeriodSnapshot } from '../budgeting/period-snapshot';
+import { parseLockedPeriods, isPeriodLockedInList } from '../budgeting/period-lock';
 
 export interface RecomputeAffected {
   companyId: string;
@@ -417,6 +419,56 @@ export async function runRecomputeForCompanies(
       totalDeleted: 0,
       failed: years.length,
     };
+  }
+
+  // Financial-truth-infra Phase E.5 — post-recompute snapshot verify
+  // for locked periods. If a fiscal period was signed off (PeriodSnapshot
+  // exists) but the recompute just wrote IVs that hash differently,
+  // emit `period_snapshot_drift` audit event. Best-effort: a verify
+  // failure never breaks the recompute pipeline (try/catch around it).
+  //
+  // The locked-period list comes from Organization.lockedPeriods; the
+  // helper matches by string equality against ALL touched periods.
+  try {
+    const org = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { lockedPeriods: true },
+    });
+    if (org) {
+      const locks = parseLockedPeriods(org.lockedPeriods);
+      for (const year of years) {
+        const period = String(year);
+        if (!isPeriodLockedInList(locks, period)) continue;
+        const verifyResult = await verifyPeriodSnapshot(prisma, organizationId, period);
+        if (verifyResult.hasSnapshot && !verifyResult.matches) {
+          await prisma.auditEvent.create({
+            data: {
+              organizationId,
+              actorUserId: null,
+              action: 'period_snapshot_drift',
+              entityType: 'Organization',
+              entityId: organizationId,
+              metadata: {
+                period,
+                ivHashMatched: verifyResult.snapshot?.ivHash === verifyResult.current.ivHash,
+                budgetHashMatched: verifyResult.snapshot?.budgetHash === verifyResult.current.budgetHash,
+                snapshotSignedAt: verifyResult.snapshot?.signedAt.toISOString(),
+                triggeredBy: 'recompute-trigger',
+              },
+            },
+          });
+          logger.alertPersistError?.(period, new Error(
+            `period_snapshot_drift: locked period ${period} hash diverged from signoff baseline`,
+          ));
+        }
+      }
+    }
+  } catch {
+    // Snapshot verify is non-essential — silently swallow any failure
+    // (e.g. mock-Prisma in tests doesn't stub organization.findUnique,
+    // or org row vanished mid-recompute). Real drift is captured via
+    // the audit-event write above; an init failure is not user-visible
+    // drift, so we don't pollute the per-period error stream.
   }
 
   return { ok, unknown, failed, targets: totalPairs, alertEvents };
