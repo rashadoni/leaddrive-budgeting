@@ -422,8 +422,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     <div className="space-y-4">
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Revenue */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">
+        {/* Revenue — Phase 3.3 v1.2 ext: clickable KPI card drills to
+            the corresponding P&L section, mirroring Waterfall bar UX. */}
+        <div
+          onClick={() => drillToSection("Revenue")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4 cursor-pointer hover:ring-2 hover:ring-indigo-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Revenue") } }}
+          aria-label="Open Revenue section"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-200 dark:bg-indigo-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <TrendingUp className="h-3.5 w-3.5" /> Net Revenue
@@ -433,7 +441,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* COGS */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4">
+        <div
+          onClick={() => drillToSection("COGS")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4 cursor-pointer hover:ring-2 hover:ring-cyan-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("COGS") } }}
+          aria-label="Open COGS section"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-200 dark:bg-cyan-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <TrendingDown className="h-3.5 w-3.5" /> Cost of Goods Sold
@@ -446,7 +461,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* Gross Profit */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4">
+        <div
+          onClick={() => drillToSection("Gross Profit")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4 cursor-pointer hover:ring-2 hover:ring-emerald-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Gross Profit") } }}
+          aria-label="Open Gross Profit row"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <DollarSign className="h-3.5 w-3.5" /> Gross Profit
@@ -460,10 +482,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* EBITDA */}
-        <div className={`relative overflow-hidden rounded-xl p-4 ${
+        <div
+          onClick={() => drillToSection("EBITDA")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("EBITDA") } }}
+          aria-label="Open EBITDA row"
+          className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           ebitda >= 0
-            ? "bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 dark:from-purple-950/30 dark:to-purple-900/20 dark:border-purple-800"
-            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
+            ? "bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 dark:from-purple-950/30 dark:to-purple-900/20 dark:border-purple-800 hover:ring-purple-300"
+            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800 hover:ring-red-300"
         }`}>
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${ebitda >= 0 ? "bg-purple-200 dark:bg-purple-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${ebitda >= 0 ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400"}`}>
@@ -472,7 +500,13 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <button
                 type="button"
                 aria-label="Reconcile client EBITDA"
-                onClick={() => setReconOpen(true)}
+                onClick={(e) => {
+                  // Phase 3.3 v1.2 — stop propagation so the parent
+                  // KPI card's drill onClick doesn't fire when the
+                  // user wants the reconciliation pencil.
+                  e.stopPropagation()
+                  setReconOpen(true)
+                }}
                 className="ml-auto relative z-10 rounded p-1 text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-white/10"
               >
                 <Pencil className="h-3 w-3" />
@@ -510,10 +544,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* Net Profit */}
-        <div className={`relative overflow-hidden rounded-xl p-4 ${
+        <div
+          onClick={() => drillToSection("Net Profit")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Net Profit") } }}
+          aria-label="Open Net Profit row"
+          className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           netProfit >= 0
-            ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800"
-            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
+            ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 hover:ring-emerald-300"
+            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800 hover:ring-red-300"
         }`}>
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${netProfit >= 0 ? "bg-emerald-200 dark:bg-emerald-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
