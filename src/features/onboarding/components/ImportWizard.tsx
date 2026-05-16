@@ -39,6 +39,10 @@ interface AnalyzeResponse {
   expiresAt: string
   proposal: MappingProposal
   sourceColumns: SourceColumnHeader[]
+  // Phase 7.B v2 Day 5 — full MapperInput is returned so the wizard
+  // can offer "Save as template" without a re-extract round-trip.
+  // Shape mirrors `src/lib/onboarding/ai-mapper/types.ts:MapperInput`.
+  mapperInput?: unknown
 }
 
 interface ApplyResponse {
@@ -105,6 +109,14 @@ export function ImportWizard() {
   const [editedColumns, setEditedColumns] = useState<ColumnMappingProposal[]>([])
   const [sourceColumns, setSourceColumns] = useState<SourceColumnHeader[]>([])
   const [expiresAt, setExpiresAt] = useState<string | null>(null)
+  // Phase 7.B v2 Day 5 — full MapperInput retained from /analyze for the
+  // "Save as template" flow; unused on /apply (which re-uploads the
+  // xlsx). null when /analyze didn't return it (old API or LLM error).
+  const [mapperInput, setMapperInput] = useState<unknown | null>(null)
+  // Template promotion state.
+  const [promotingTemplate, setPromotingTemplate] = useState(false)
+  const [templatePromotedAs, setTemplatePromotedAs] = useState<string | null>(null)
+  const [templateError, setTemplateError] = useState<string | null>(null)
 
   // Step-2 → /apply
   const [applying, setApplying] = useState(false)
@@ -195,6 +207,9 @@ export function ImportWizard() {
       setEditedColumns(data.proposal.columns.map((c) => ({ ...c })))
       setSourceColumns(data.sourceColumns ?? [])
       setExpiresAt(data.expiresAt)
+      setMapperInput(data.mapperInput ?? null)
+      setTemplatePromotedAs(null)
+      setTemplateError(null)
       setStep("review")
     } catch (err) {
       setAnalyzeError({
@@ -253,6 +268,41 @@ export function ImportWizard() {
     setAnalyzeError(null)
     setFile(null)
     setStagingTerminal(false)
+    setMapperInput(null)
+    setTemplatePromotedAs(null)
+    setTemplateError(null)
+  }
+
+  // Phase 7.B v2 Day 5 — promote the cached proposal to a permanent
+  // template. After this, future xlsx with the same structureHash
+  // (same column shape + same industry + same language) hit the cache
+  // forever, skipping the LLM call (~$0.05 + 10-30s saved per import).
+  async function handlePromoteTemplate(templateName: string) {
+    if (!mapperInput) return
+    setTemplateError(null)
+    setPromotingTemplate(true)
+    try {
+      const res = await fetch("/api/onboarding/ai-mapper/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          input: mapperInput,
+          templateName,
+          // Language defaults server-side to "en"; could be threaded
+          // from the locale in a follow-up.
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setTemplateError(body.error || `HTTP ${res.status}`)
+        return
+      }
+      setTemplatePromotedAs(body.templateName ?? templateName)
+    } catch (err) {
+      setTemplateError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPromotingTemplate(false)
+    }
   }
 
   return (
@@ -290,6 +340,11 @@ export function ImportWizard() {
           stagingTerminal={stagingTerminal}
           onApply={handleApply}
           onBack={resetWizard}
+          canPromoteTemplate={mapperInput !== null}
+          promotingTemplate={promotingTemplate}
+          templatePromotedAs={templatePromotedAs}
+          templateError={templateError}
+          onPromoteTemplate={handlePromoteTemplate}
         />
       )}
 
@@ -513,6 +568,12 @@ function ReviewStep(props: {
   stagingTerminal: boolean
   onApply: () => void
   onBack: () => void
+  // Phase 7.B v2 Day 5 — template promotion UI.
+  canPromoteTemplate: boolean
+  promotingTemplate: boolean
+  templatePromotedAs: string | null
+  templateError: string | null
+  onPromoteTemplate: (name: string) => void
 }) {
   const {
     proposal,
@@ -525,6 +586,11 @@ function ReviewStep(props: {
     stagingTerminal,
     onApply,
     onBack,
+    canPromoteTemplate,
+    promotingTemplate,
+    templatePromotedAs,
+    templateError,
+    onPromoteTemplate,
   } = props
   const headerByIdx = new Map(
     sourceColumns.map((s) => [s.sourceIndex, s.headerText]),
@@ -697,6 +763,54 @@ function ReviewStep(props: {
               The mapping proposal is no longer valid (expired, applied, or
               discarded). Restart from step 1 to create a fresh proposal.
             </p>
+          )}
+        </div>
+      )}
+
+      {/* Phase 7.B v2 Day 5 — Save as template UI. Visible only when
+          /analyze returned mapperInput. After successful promotion,
+          show a green confirmation chip in place of the button. */}
+      {canPromoteTemplate && !stagingTerminal && (
+        <div
+          data-testid="template-promotion-block"
+          className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3"
+        >
+          {templatePromotedAs ? (
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">
+              ✓ Saved as template: <strong>{templatePromotedAs}</strong>
+              <span className="ml-2 text-xs text-muted-foreground">
+                Future imports with the same column shape will skip the LLM call.
+              </span>
+            </p>
+          ) : (
+            <div className="flex items-start gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-medium">Save as reusable template?</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Future workbooks with the same column shape will instantly reuse
+                  this mapping — no LLM call, no review step. Saves ~$0.05 +
+                  10–30s per import.
+                </p>
+                {templateError && (
+                  <p className="mt-2 text-xs text-red-600 dark:text-red-300">
+                    {templateError}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={promotingTemplate}
+                onClick={() => {
+                  const name = window.prompt(
+                    "Template name (e.g. 'AZMADE 2026 P&L')",
+                  )
+                  if (name && name.trim()) onPromoteTemplate(name.trim())
+                }}
+                className="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {promotingTemplate ? "Saving…" : "Save as template"}
+              </button>
+            </div>
           )}
         </div>
       )}

@@ -243,12 +243,20 @@ export async function POST(request: NextRequest) {
     headerText: c.headerText,
   }));
 
+  // Phase 7.B v2 Day 5 — return the full MapperInput that produced this
+  // proposal so the ImportWizard can later promote the cached entry to
+  // a permanent template via POST /api/onboarding/ai-mapper/templates
+  // (which needs the same structureHash inputs to find the cache row).
+  // Adds ~5-20KB to the response on a typical xlsx — acceptable cost
+  // for client-side cache-aware template promotion without a separate
+  // re-extract round-trip.
   return NextResponse.json(
     {
       stagingId: staging.id,
       expiresAt: expiresAt.toISOString(),
       proposal: proposalForUser,
       sourceColumns,
+      mapperInput: inputResult,
     },
     { status: 201 },
   );
