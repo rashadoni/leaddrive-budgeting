@@ -462,11 +462,21 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
             onToggle={toggleStarredCompany}
           />
           <TrustBadge status={trustByCode.get(root.code) ?? 'pending'} />
-          <span className="text-gray-500 uppercase tracking-wider w-20 truncate">
+          <span
+            className="text-gray-500 uppercase tracking-wider w-20 truncate"
+            title={root.code}
+          >
             {root.code}
           </span>
           <CompositeMini score={compositeByCode.get(root.code)?.score ?? null} />
-          <span className="flex-1 truncate">{root.name}</span>
+          <span
+            className="flex-1 truncate"
+            // Phase 3.3 hover pattern — reveals fully-qualified
+            // identifier when the company name truncates.
+            title={`${root.code} — ${root.name}`}
+          >
+            {root.name}
+          </span>
           {hasChildren && (
             <span
               className="text-gray-600 tabular-nums"
@@ -514,7 +524,12 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                       : child.code}
                   </span>
                   <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
-                  <span className="flex-1 truncate">{child.name}</span>
+                  <span
+                    className="flex-1 truncate"
+                    title={`${child.code} — ${child.name}`}
+                  >
+                    {child.name}
+                  </span>
                   {child.industry && (
                     <span className="text-gray-600 text-[10px] uppercase">
                       {child.industry}

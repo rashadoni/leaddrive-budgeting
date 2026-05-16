@@ -174,6 +174,8 @@ export function TodayBrief() {
                 <button
                   type="button"
                   onClick={() => handleOpen(w.companyCode, w.ivId)}
+                  // Phase 3.3 hover pattern — reveal full pair when truncated.
+                  title={`${w.companyCode} · ${w.indicatorCode} — ${w.value.toFixed(1)} ${w.unit}`}
                   className="w-full text-left flex items-baseline gap-2 px-1.5 py-0.5 rounded hover:bg-[#FF4757]/10 hover:text-[#FF4757]"
                 >
                   <span className="font-mono text-cyan-300 text-[10px] w-32 truncate">{w.companyCode}</span>
