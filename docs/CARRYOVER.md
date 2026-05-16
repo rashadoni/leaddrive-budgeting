@@ -33,6 +33,8 @@ gate.
 
 ## OPEN
 
+| 🔄 | 2026-05-16 | 0 | engineering | **Phase 5.2 RLS rollout — `20260512000200_rls_indicator_values` migration written but NOT applied to DB.** Discovered during 2026-05-16 migration-resolve audit: `pg_policies` count = 0 + `relrowsecurity = false` on `indicator_values`. The SQL exists at `prisma/migrations/20260512000200_rls_indicator_values/migration.sql` (idempotent — `ALTER TABLE … ENABLE ROW LEVEL SECURITY` + `CREATE POLICY tenant_isolation`). Marking `--applied` was deliberately skipped because doing so would lock in the security gap (Prisma would skip on future deploys). **Real apply path:** dedicated Phase 5.2 session with architect review per `feedback_no_agents.md` (RLS rollout = high-risk class — silent cross-tenant leak if `withOrgScope()` not consistently called). The other 8 unapplied migrations from 2026-05-12/05-13/05-16 were resolved as `--applied` since their schema is in place. owner=engineering, turn opened 2026-05-16. |
+
 **Last processed: 2026-05-13** (Phase 7.I **Sector-Aware Terminal (AzerSheker pilot)** — backend + AI + admin shipped; Track C UI widgets carried to next session.
 
 Per client wishlist via user: «reasonable indicators / AzerSheker as pilot / all business-related data / AI considers real market+business model / wider analysis incl. qualitative + per-ha productivity». User chose hybrid form-factor, all 4 data sources, production-ready (~2 weeks).
