@@ -54,6 +54,6 @@ Last update: 2026-05-16 after Phase E starts.
 
 | # | Spot | Issue | Fix |
 |---|---|---|---|
-| L8 | ✅ ~~Mutation routes without period-lock gate~~ | **Closed 2026-05-16** — 6 of 9 high-risk routes gated (assumptions, balance-sheet, sales-budget, expense-forecast, sales-forecast, sales-forecast/import). Remaining 3 (plans/[id] PUT/DELETE, plans/[id]/restore, plans POST) reclassified as low-risk: they mutate plan metadata (name/status/notes/deletedAt) NOT period-scoped financial lines. Lock would block delete/restore visibility but not data integrity — recategorized to backlog. |
+| L8 | ✅ ~~Mutation routes without period-lock gate~~ | **Closed 2026-05-16** — all 9 high-risk routes gated. Wave 1: assumptions, balance-sheet, sales-budget. Wave 2: expense-forecast, sales-forecast (+import). Wave 3 (this turn): plans/[id] PUT on approve transition, plans/[id] DELETE soft-delete, plans/[id]/restore. Plans POST (create) genuinely has no period to lock against (the year arrives with the create itself) → out of scope. |
 | L9 | ✅ ~~verifyPeriodSnapshot not yet wired~~ | **Closed 2026-05-16** — wired into runRecomputeForCompanies via parseLockedPeriods + verifyPeriodSnapshot loop at the tail; emits `period_snapshot_drift` AuditEvent on hash divergence. Best-effort with try/catch. |
 | L10 | ✅ ~~Period snapshot UI surface~~ | **Closed 2026-05-16** — GET /api/budgeting/period-locks now enriches each lock with its latest PeriodSnapshot; PeriodLocksAdmin renders signed date + truncated hashes + revenue/cogs/grossProfit aggregates per row. |
