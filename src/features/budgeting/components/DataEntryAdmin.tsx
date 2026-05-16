@@ -643,6 +643,19 @@ function CompanySelect({
   )
 }
 
+// Sector emoji prefix — visual chunking so the dropdown reads like a
+// Bloomberg ticker board instead of a wall of technical strings.
+const SECTOR_EMOJI: Record<MetricValidationRule["sector"], string> = {
+  agro: "🌾",
+  real_estate: "🏢",
+  entertainment: "🎟️",
+  education: "🎓",
+  poultry: "🐔",
+  food_processing: "🏭",
+  hospitality: "🏨",
+  esg: "🌱",
+}
+
 function MetricSelect({
   rules,
   value,
@@ -656,6 +669,10 @@ function MetricSelect({
   label: string
   t: ReturnType<typeof useTranslations>
 }) {
+  // Selected rule drives the helper-line beneath the select — shows
+  // unit + typical-range hint so the operator knows what they're
+  // entering before they tab into the value field.
+  const selected = rules.find((r) => r.metric === value)
   return (
     <label className="text-xs flex flex-col gap-1">
       <span className="text-muted-foreground">{label}</span>
@@ -666,10 +683,20 @@ function MetricSelect({
       >
         {rules.map((r) => (
           <option key={r.metric} value={r.metric}>
-            [{t(`operational.sector.${r.sector}` as never)}] {r.labelRu}
+            {SECTOR_EMOJI[r.sector] ?? ""} {r.labelRu} ({r.unit}) · [
+            {t(`operational.sector.${r.sector}` as never)}]
           </option>
         ))}
       </select>
+      {selected && (
+        <span className="text-[10px] text-muted-foreground/80 leading-snug">
+          {selected.unit} ·{" "}
+          {selected.warnMin != null || selected.warnMax != null
+            ? `типичный диапазон ${selected.warnMin ?? "—"}…${selected.warnMax ?? "—"}`
+            : `диапазон ${selected.min}…${selected.max}`}
+          {selected.hintRu ? ` · ${selected.hintRu}` : ""}
+        </span>
+      )}
     </label>
   )
 }
@@ -687,9 +714,9 @@ function EsgIndicatorSelect({
   label: string
   t: ReturnType<typeof useTranslations>
 }) {
-  // Unused t in this select for now (palette-uniform), but keep the
-  // import so future labels can localize per-rule.
   void t
+  // Selected rule → unit + hint helper line beneath the select.
+  const selected = rules.find((r) => r.indicatorCode === value)
   return (
     <label className="text-xs flex flex-col gap-1">
       <span className="text-muted-foreground">{label}</span>
@@ -699,11 +726,24 @@ function EsgIndicatorSelect({
         className="bg-background border border-border rounded px-2 py-1 text-sm"
       >
         {rules.map((r) => (
+          // Human-readable label FIRST so it's visible before any
+          // truncation; technical indicatorCode follows as muted suffix.
+          // Was "IND_CARBON_SCOPE_1 · Выбросы Scope 1 (прям…" — bad UX.
+          // Now: "🌱 Выбросы Scope 1 (прямые) · IND_CARBON_SCOPE_1".
           <option key={r.indicatorCode} value={r.indicatorCode}>
-            {r.indicatorCode} · {r.labelRu}
+            🌱 {r.labelRu} ({r.unit}) · {r.indicatorCode}
           </option>
         ))}
       </select>
+      {selected && (
+        <span className="text-[10px] text-muted-foreground/80 leading-snug">
+          {selected.unit} ·{" "}
+          {selected.warnMin != null || selected.warnMax != null
+            ? `типичный диапазон ${selected.warnMin ?? "—"}…${selected.warnMax ?? "—"}`
+            : `диапазон ${selected.min}…${selected.max}`}
+          {selected.hintRu ? ` · ${selected.hintRu}` : ""}
+        </span>
+      )}
     </label>
   )
 }
