@@ -331,7 +331,15 @@ export function AuditFeed() {
                   className="hover:bg-muted/20 cursor-pointer align-top"
                   onClick={() => toggleRow(e.id)}
                 >
-                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                  <td
+                    className="px-3 py-2 font-mono text-xs whitespace-nowrap"
+                    // Compliance polish — hover reveals canonical UTC
+                    // timestamp + ISO 8601 form for audit trails / cross-
+                    // referencing log entries from external systems
+                    // running in different time zones. Visible cell stays
+                    // local-TZ short form for readability.
+                    title={new Date(e.createdAt).toISOString()}
+                  >
                     {formatTimestamp(e.createdAt)}
                   </td>
                   <td className="px-3 py-2">
@@ -345,7 +353,15 @@ export function AuditFeed() {
                   <td className="px-3 py-2 text-xs">
                     <span className="font-medium">{e.entityType}</span>
                     {e.entityId && (
-                      <span className="text-muted-foreground"> · {e.entityId}</span>
+                      <span
+                        className="text-muted-foreground font-mono"
+                        // Hover reveals full entity id (cuid strings can
+                        // run 25+ chars; the visible " · id" run-on can
+                        // wrap awkwardly in narrow viewports).
+                        title={`Entity id: ${e.entityId}`}
+                      >
+                        {" · "}{e.entityId}
+                      </span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-xs">
