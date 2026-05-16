@@ -256,10 +256,39 @@ export default function BudgetingPage() {
   //   - loading → empty (prevents cross-plan leak during fetch window).
   //   - loaded + ids non-null → filter to plan scope.
   //   - loaded + ids null (plan has no lines OR fetch failed) → full list.
+  //
+  // Single-child collapse (user feedback 2026-05-16): when a level=1 sub-
+  // group has exactly ONE level=2 child (AAC→AAC-Main, SPARK→SPARK-Main,
+  // ZTP→ZTP-Main, LLS→LLS-Main), the parent rollup equals the child by
+  // definition — they look like duplicates in the dropdown ("AAC" and
+  // "AAC Main" both produce the same P&L). Hide the child, keep the parent
+  // (selecting the parent already auto-rolls-up to the single child via
+  // resolveCompanyFilter's BFS). For multi-child groups like ATL (with
+  // DBZ/MRKZ/PMZ/TAZ), the hierarchy is genuine and both layers stay.
   const visibleCompanies = React.useMemo(() => {
     if (planCompanyState.status === 'loading') return [];
-    if (planCompanyState.ids === null) return companies;
-    return companies.filter((c) => planCompanyState.ids!.has(c.id));
+    const base = planCompanyState.ids === null
+      ? companies
+      : companies.filter((c) => planCompanyState.ids!.has(c.id));
+    // Count children per parent in `base` so the rule respects the
+    // current plan scope (a sub-group with 3 children globally but only
+    // 1 in this plan still gets the collapse).
+    const childCountByParentId = new Map<string, number>();
+    for (const c of base) {
+      if (c.level === 2 && c.parentCompanyId) {
+        childCountByParentId.set(
+          c.parentCompanyId,
+          (childCountByParentId.get(c.parentCompanyId) ?? 0) + 1,
+        );
+      }
+    }
+    return base.filter((c) => {
+      if (c.level !== 2 || !c.parentCompanyId) return true;
+      // Hide this leaf if its parent is in `base` AND has exactly 1 child.
+      const parentInScope = base.some((p) => p.id === c.parentCompanyId);
+      if (!parentInScope) return true;
+      return (childCountByParentId.get(c.parentCompanyId) ?? 0) !== 1;
+    });
   }, [companies, planCompanyState]);
   // Legacy alias kept for downstream code paths reading the Set directly.
   const planCompanyIds = planCompanyState.status === 'loaded' ? planCompanyState.ids : null;
