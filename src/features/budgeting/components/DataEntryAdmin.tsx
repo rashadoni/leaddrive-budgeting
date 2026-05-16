@@ -46,6 +46,30 @@ interface CompanyRow {
   id: string
   code: string
   name: string
+  /**
+   * Nested descendants returned by `/api/companies` (roots + 2 levels
+   * of children). The data-entry dropdown must walk this tree so users
+   * can pick operational leaves (AZSEKER-EDEN, AAC-MAIN, etc.), not
+   * just the top-level holding parents (AZMADE, AZSEKER). 2026-05-16
+   * parity with the fc9c7fb fix that closed the same bug on the
+   * budgeting filter dropdown.
+   */
+  children?: CompanyRow[]
+}
+
+/**
+ * Flatten a roots-with-nested-children tree into a single ordered list
+ * of every company, parents first then descendants depth-first. Stable
+ * order so the dropdown reads top-down (AZMADE → AAC → AAC-MAIN → ATL → …).
+ */
+export function flattenCompanies(roots: CompanyRow[]): CompanyRow[] {
+  const out: CompanyRow[] = []
+  const walk = (c: CompanyRow): void => {
+    out.push({ id: c.id, code: c.code, name: c.name })
+    for (const child of c.children ?? []) walk(child)
+  }
+  for (const r of roots) walk(r)
+  return out
 }
 
 interface OperationalFactRow {
@@ -88,8 +112,13 @@ export function DataEntryAdmin() {
         if (cancelled) return
         // The /api/companies route returns either a flat array or
         // { companies: [...] } depending on the route's shape; tolerate both.
-        const rows = Array.isArray(json) ? json : (json.companies ?? [])
-        setCompanies(rows)
+        const roots = Array.isArray(json) ? json : (json.companies ?? [])
+        // Flatten roots + nested children so the dropdown surfaces every
+        // company (parent + descendants). Without this the dropdown only
+        // shows level-0 roots (AZMADE / AZSEKER), and the operational
+        // entities where data actually lands (AZSEKER-EDEN / AAC-MAIN /
+        // etc.) are unreachable.
+        setCompanies(flattenCompanies(roots))
       })
       .catch(() => {
         if (!cancelled) setCompanies([])
