@@ -74,7 +74,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 })
   }
   const locks = parseLockedPeriods(org.lockedPeriods)
-  return NextResponse.json({ locks })
+
+  // Financial-truth-infra Phase L10 — enrich each lock with its latest
+  // PeriodSnapshot row (signed-off hash + aggregates) so the admin
+  // periods page can show "Revenue 50.6M, signed by X on Y" alongside
+  // the lock entry. One findFirst per locked period — at typical 20-30
+  // locked periods per org this is cheap; if it ever becomes hot we
+  // can batch via findMany + groupBy in-memory.
+  const snapshots = await Promise.all(
+    locks.map(async (lock) => {
+      const snap = await prisma.periodSnapshot.findFirst({
+        where: { organizationId: session.orgId!, period: lock.period },
+        orderBy: { signedAt: "desc" },
+        select: {
+          id: true,
+          signedAt: true,
+          signedBy: true,
+          ivHash: true,
+          budgetHash: true,
+          aggregates: true,
+        },
+      })
+      return { period: lock.period, snapshot: snap }
+    }),
+  )
+  const snapshotByPeriod = Object.fromEntries(
+    snapshots.map((s) => [s.period, s.snapshot]),
+  )
+
+  return NextResponse.json({ locks, snapshots: snapshotByPeriod })
 }
 
 export async function POST(req: NextRequest) {

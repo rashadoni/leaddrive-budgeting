@@ -19,6 +19,13 @@ const { prismaMock, auditMock } = vi.hoisted(() => ({
     auditEvent: {
       create: vi.fn(),
     },
+    // Phase L10 — GET enriches lock list with the latest PeriodSnapshot
+    // per period. Tests pre-stub findFirst to return null so the
+    // existing assertions on { locks: [...] } keep working; new tests
+    // can override to assert snapshot data flow.
+    periodSnapshot: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   },
   auditMock: vi.fn(),
 }))

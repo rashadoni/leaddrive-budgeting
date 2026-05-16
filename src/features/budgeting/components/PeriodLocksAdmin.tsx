@@ -36,13 +36,32 @@ interface ApiAddResponse {
   auditStale?: boolean
 }
 
+interface PeriodSnapshotRow {
+  id: string
+  signedAt: string
+  signedBy: string
+  ivHash: string
+  budgetHash: string
+  aggregates: {
+    ivCount?: number
+    budgetLineCount?: number
+    revenueTotal?: number
+    cogsTotal?: number
+    grossProfit?: number
+  }
+}
+
 interface ApiListResponse {
   locks: LockedPeriod[]
+  snapshots?: Record<string, PeriodSnapshotRow | null>
 }
 
 export function PeriodLocksAdmin() {
   const t = useTranslations("budgeting.periodLocks")
   const [locks, setLocks] = useState<LockedPeriod[]>([])
+  const [snapshots, setSnapshots] = useState<
+    Record<string, PeriodSnapshotRow | null>
+  >({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("")
@@ -60,6 +79,7 @@ export function PeriodLocksAdmin() {
       }
       const data = (await res.json()) as ApiListResponse
       setLocks(data.locks)
+      setSnapshots(data.snapshots ?? {})
     } catch (e: any) {
       setError(e?.message || "Failed to load")
     } finally {
@@ -184,7 +204,9 @@ export function PeriodLocksAdmin() {
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
           ) : (
             <ul className="divide-y divide-border" data-testid="period-locks-list">
-              {locks.map((lock) => (
+              {locks.map((lock) => {
+                const snap = snapshots[lock.period]
+                return (
                 <li key={lock.period} className="flex items-start justify-between gap-4 py-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -200,6 +222,31 @@ export function PeriodLocksAdmin() {
                         by: lock.lockedBy,
                       })}
                     </p>
+                    {/* Phase L10 — snapshot fingerprint. When PeriodSnapshot
+                        exists, render aggregates + truncated hash. Absence
+                        signals "lock created before E.1 / snapshot write
+                        failed" — flagged with a muted "no snapshot" hint. */}
+                    {snap ? (
+                      <div className="mt-2 text-xs space-y-0.5 border-l-2 border-emerald-500/40 pl-2">
+                        <div className="text-emerald-700 dark:text-emerald-400 font-medium">
+                          Snapshot · {new Date(snap.signedAt).toLocaleDateString()}
+                        </div>
+                        <div className="text-muted-foreground font-mono">
+                          IV hash: {snap.ivHash.slice(0, 12)}… · BudgetLine hash: {snap.budgetHash.slice(0, 12)}…
+                        </div>
+                        {snap.aggregates && (
+                          <div className="text-muted-foreground">
+                            Revenue: <span className="font-mono">{(snap.aggregates.revenueTotal ?? 0).toLocaleString()}</span>
+                            {" · COGS: "}<span className="font-mono">{(snap.aggregates.cogsTotal ?? 0).toLocaleString()}</span>
+                            {" · Gross Profit: "}<span className="font-mono">{(snap.aggregates.grossProfit ?? 0).toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-muted-foreground italic">
+                        No snapshot — locked before Phase E.1 or snapshot write failed
+                      </div>
+                    )}
                   </div>
                   <Button
                     type="button"
@@ -212,7 +259,8 @@ export function PeriodLocksAdmin() {
                     {t("unlockButton")}
                   </Button>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
           </DataBoundary>
