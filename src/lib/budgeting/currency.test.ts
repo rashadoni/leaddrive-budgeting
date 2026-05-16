@@ -1,5 +1,20 @@
-import { describe, it, expect } from "vitest"
-import { convertToBase } from "./currency"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { convertToBase, getRate, getBaseCurrency, processCurrencyFields } from "./currency"
+
+vi.mock("@/lib/prisma", () => ({
+  prisma: {
+    currencyRateHistory: {
+      findFirst: vi.fn(),
+    },
+    currency: {
+      findFirst: vi.fn(),
+    },
+  },
+}))
+
+import { prisma } from "@/lib/prisma"
+
+type MockFn = { mockResolvedValue: (v: unknown) => void; mockReset: () => void }
 
 /**
  * Pure-helper coverage for currency.ts. The other exports
@@ -54,5 +69,94 @@ describe("convertToBase", () => {
   it("preserves precision for fractional amounts + rates", () => {
     // 1234.56 EUR × 1.875 AZN/EUR → 2314.8
     expect(convertToBase(1234.56, 1.875)).toBeCloseTo(2314.8, 4)
+  })
+})
+
+describe("getRate (Prisma-bound)", () => {
+  beforeEach(() => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockReset()
+    ;(prisma.currency.findFirst as unknown as MockFn).mockReset()
+  })
+
+  it("returns latest history rate when present", async () => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue({ rate: 1.72 })
+    expect(await getRate("org1", "USD")).toBe(1.72)
+    // Falls through to currency table only if history is empty
+    expect(prisma.currency.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("falls back to Currency table when history is empty", async () => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue(null)
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ exchangeRate: 1.65 })
+    expect(await getRate("org1", "EUR")).toBe(1.65)
+  })
+
+  it("defaults to 1 when neither history nor currency table has the code", async () => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue(null)
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue(null)
+    expect(await getRate("org1", "XYZ")).toBe(1)
+  })
+})
+
+describe("getBaseCurrency (Prisma-bound)", () => {
+  beforeEach(() => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockReset()
+  })
+
+  it("returns base currency code from Currency table", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "USD" })
+    expect(await getBaseCurrency("org1")).toBe("USD")
+  })
+
+  it("defaults to AZN when no base currency set", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue(null)
+    expect(await getBaseCurrency("org1")).toBe("AZN")
+  })
+})
+
+describe("processCurrencyFields (Prisma-bound)", () => {
+  beforeEach(() => {
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockReset()
+    ;(prisma.currency.findFirst as unknown as MockFn).mockReset()
+  })
+
+  it("returns unchanged shape when currencyCode is null/undefined", async () => {
+    const out = await processCurrencyFields("org1", 100, null)
+    expect(out).toEqual({
+      plannedAmount: 100,
+      currencyCode: null,
+      exchangeRate: null,
+      originalAmount: null,
+    })
+  })
+
+  it("returns unchanged shape when currencyCode matches base currency", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "AZN" })
+    const out = await processCurrencyFields("org1", 100, "AZN")
+    expect(out).toEqual({
+      plannedAmount: 100,
+      currencyCode: null,
+      exchangeRate: null,
+      originalAmount: null,
+    })
+  })
+
+  it("uses provided exchangeRate without looking up", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "AZN" }) // base
+    const out = await processCurrencyFields("org1", 100, "USD", 1.85)
+    expect(out.plannedAmount).toBe(185) // 100 USD × 1.85
+    expect(out.exchangeRate).toBe(1.85)
+    expect(out.originalAmount).toBe(100)
+    expect(out.currencyCode).toBe("USD")
+    expect(prisma.currencyRateHistory.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("looks up rate when exchangeRate is not provided", async () => {
+    ;(prisma.currency.findFirst as unknown as MockFn).mockResolvedValue({ code: "AZN" }) // base
+    ;(prisma.currencyRateHistory.findFirst as unknown as MockFn).mockResolvedValue({ rate: 1.70 })
+    const out = await processCurrencyFields("org1", 100, "USD")
+    expect(out.plannedAmount).toBe(170)
+    expect(out.exchangeRate).toBe(1.70)
+    expect(out.originalAmount).toBe(100)
   })
 })
