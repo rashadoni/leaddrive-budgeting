@@ -75,27 +75,41 @@ export async function GET(req: NextRequest) {
   const referenceFreshness = await checkReferenceFreshness(prisma, session.orgId);
 
   // Stale-pending companies (onboarding stalled).
-  // Heuristic: companies that have IVs but the most recent
+  // Heuristic: leaf op-cos (level=2) whose most recent IV
   // lastReconciledAt is null OR older than 7 days.
+  //
+  // Phase L5 — batched query (was N+1). One groupBy over IndicatorValue
+  // computes max(lastReconciledAt) per companyId in a single Postgres
+  // call; then we walk leaf companies in JS comparing against the map.
+  // 20 cos → 1 query (was 20). 60 cos → 1 query (was 60).
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const allCompanies = await prisma.company.findMany({
     where: { organizationId: session.orgId },
     select: { id: true, code: true, name: true, level: true },
   });
+  type CompanyRow2 = (typeof allCompanies)[number];
+  const leafIds = allCompanies.filter((c: CompanyRow2) => c.level === 2).map((c: CompanyRow2) => c.id);
+  const maxReconciledByCompany = new Map<string, Date | null>();
+  if (leafIds.length > 0) {
+    const aggregated = await prisma.indicatorValue.groupBy({
+      by: ["companyId"],
+      where: { organizationId: session.orgId, companyId: { in: leafIds } },
+      _max: { lastReconciledAt: true },
+    });
+    for (const row of aggregated) {
+      maxReconciledByCompany.set(row.companyId, row._max.lastReconciledAt);
+    }
+  }
   const stalePending: Array<{ code: string; name: string; level: number; lastReconciledAt: string | null }> = [];
   for (const c of allCompanies) {
-    if (c.level !== 2) continue; // only check leaf op-cos
-    const latestIv = await prisma.indicatorValue.findFirst({
-      where: { companyId: c.id },
-      orderBy: { lastReconciledAt: "desc" },
-      select: { lastReconciledAt: true },
-    });
-    if (!latestIv || !latestIv.lastReconciledAt || latestIv.lastReconciledAt < sevenDaysAgo) {
+    if (c.level !== 2) continue;
+    const latest = maxReconciledByCompany.get(c.id) ?? null;
+    if (!latest || latest < sevenDaysAgo) {
       stalePending.push({
         code: c.code,
         name: c.name,
         level: c.level,
-        lastReconciledAt: latestIv?.lastReconciledAt?.toISOString() ?? null,
+        lastReconciledAt: latest?.toISOString() ?? null,
       });
     }
   }
