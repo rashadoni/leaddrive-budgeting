@@ -118,6 +118,9 @@ export async function POST(req: NextRequest) {
           // backfilled source row would lose its monthIndex on clone
           // and revert to the legacy `sortOrder % 100` resolver path.
           monthIndex: sl.monthIndex ?? null,
+          // Phase 2.1 step 2 (Turn LI): same pass-through for accountId
+          // FK so ChartOfAccount linkage survives the roll-forward.
+          accountId: sl.accountId ?? null,
           lineSubtype: sl.lineSubtype, parentId: null,
         },
       })
@@ -136,6 +139,9 @@ export async function POST(req: NextRequest) {
           // Phase 7.G Turn XL architect Suggestion: same pass-through
           // for child rows.
           monthIndex: sl.monthIndex ?? null,
+          // Phase 2.1 step 2 (Turn LI): same accountId pass-through
+          // for child rows.
+          accountId: sl.accountId ?? null,
           lineSubtype: sl.lineSubtype, parentId: newParentId,
         },
       })

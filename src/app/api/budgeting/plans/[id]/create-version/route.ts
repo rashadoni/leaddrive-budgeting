@@ -42,6 +42,7 @@ export async function POST(
       isAutoActual: l.isAutoActual,
       costTypeId: l.costTypeId,
       departmentId: l.departmentId,
+      accountId: l.accountId,
       parentId: l.parentId,
       notes: l.notes,
       sortOrder: l.sortOrder,
@@ -100,6 +101,9 @@ export async function POST(
         // its monthIndex on version-bump and revert to the legacy
         // `sortOrder % 100` resolver path.
         monthIndex: line.monthIndex ?? null,
+        // Phase 2.1 step 2 (Turn LI): same accountId pass-through so
+        // ChartOfAccount linkage survives version-bump.
+        accountId: line.accountId ?? null,
         // parentId not cloned — hierarchy re-established separately if needed
       },
     })

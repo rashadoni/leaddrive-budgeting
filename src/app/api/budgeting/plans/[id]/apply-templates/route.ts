@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { resolveAccountId } from "@/lib/budgeting/chart-of-accounts"
 
 const applyTemplatesSchema = z.object({
   templateIds: z.array(z.string().min(1).max(100)).min(1).max(100),
@@ -65,6 +66,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       continue
     }
 
+    // Phase 2.1 step 2 (Turn LI): if the template's name is itself a
+    // SAP-style code (e.g. "601-01-02"), look up the matching CoA row
+    // so the BudgetLine carries the FK; free-text template names get
+    // null and the legacy `category` string drives display.
+    const accountId = await resolveAccountId(prisma, orgId, t.name)
+
     await prisma.budgetLine.create({
       data: {
         organizationId: orgId,
@@ -79,6 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         quantity: t.quantity,
         costModelKey: t.costModelKey,
         notes: `template:${t.id}`,
+        accountId,
       },
     })
     created++

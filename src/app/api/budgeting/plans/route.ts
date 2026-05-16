@@ -181,6 +181,9 @@ export async function POST(req: NextRequest) {
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
+            // Phase 2.1 step 2 (Turn LI): pass through accountId FK so
+            // ChartOfAccount linkage survives the plan-clone path.
+            accountId: sl.accountId ?? null,
             lineSubtype: sl.lineSubtype, parentId: null,
           },
         })
@@ -211,6 +214,9 @@ export async function POST(req: NextRequest) {
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
+            // Phase 2.1 step 2 (Turn LI): same accountId pass-through
+            // for child rows.
+            accountId: sl.accountId ?? null,
             lineSubtype: sl.lineSubtype, parentId: newParentId,
           },
         })
