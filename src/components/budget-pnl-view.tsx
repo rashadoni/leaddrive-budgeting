@@ -198,6 +198,11 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
   const { rows, monthlyRevenue, monthlyCogs } = data
   const actualByKey: Record<string, number> = data.actualByKey ?? {}
+  // Phase 3.3 v1.2 (post-Turn LIX v1.2 wire-up) — per-month actuals
+  // keyed by accountCode::accountName. /pnl route parses BudgetActual
+  // .expenseDate at request time. Drill panel reads this map by row key.
+  const actualMonthlyByKey: Record<string, Record<number, number>> =
+    data.actualMonthlyByKey ?? {}
   const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
   const hasActuals: boolean = Boolean(data.hasActuals)
 
@@ -958,17 +963,18 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       )}
 
       {/* Phase 3.3 — P&L row drill-down. Opens via row onClick. Shows
-          12-month plan vs actual vs Δ for the clicked account. */}
+          12-month plan vs actual vs Δ for the clicked account.
+          Phase 3.3 v1.2 — actualMonthly now wired from the /pnl route's
+          actualMonthlyByKey map (keyed by accountCode::accountName).
+          When no actuals exist for the clicked account, the panel
+          shows zeros across all 12 months (variance = -planned per
+          month, total Δ = -plannedTotal), making "we planned X but
+          haven't spent anything yet" visually obvious. */}
       {drillRow && (
         <BudgetPnlDrillPanel
           row={drillRow}
           actualMonthly={
-            // Build per-month actuals from the actualByKey map. The
-            // current API surfaces actuals as a totals-only map keyed by
-            // accountCode::accountName. Until per-month actuals land,
-            // fall back to {} so the panel shows planned-only — better
-            // than not showing the panel at all.
-            undefined
+            actualMonthlyByKey[`${drillRow.accountCode}::${drillRow.accountName}`] ?? {}
           }
           monthlyRevenue={monthlyRevenue ?? {}}
           onClose={() => setDrillRow(null)}
