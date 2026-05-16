@@ -36,7 +36,7 @@ Last update: 2026-05-16 after Phase E starts.
 |---|---|---|
 | V1 | DriftDiffPreview UI under a real xlsx upload | Code shipped but not actually exercised in browser with a real budget xlsx (smoke only at the `/onboarding?view=import` page-render level). |
 | V2 | ✅ ~~Drift dashboard with REAL drift event in audit log~~ | **Closed 2026-05-16** — new helper `scripts/diag-synthetic-drift.cjs --insert` writes a synthetic `reconciliation_drift_detected` AuditEvent tagged `metadata.synthetic: true` (AZSEKER-AZSF, FP_GROSS_MARGIN normal→high_extreme + FP_OPEX_RATIO no_band→high_extreme). Drift dashboard route returns it; cleanup via `--delete`. |
-| V3 | Drift dashboard with REAL ingested IntelDataPoint | All sources show `missing` because no commodity / weather adapter has run. Verify with a manual seed once. |
+| V3 | ✅ ~~Drift dashboard with REAL ingested IntelDataPoint~~ | **Closed 2026-05-16** — new helper `scripts/diag-seed-intel.cjs --insert` upserts one synthetic IntelDataPoint per source (or `--source <code>` for one) so freshness cards flip `missing → fresh` without waiting for the real adapter scheduler. Idempotent via `raw.synthetic: true`; cleanup via `--delete`. ADMIN_RUNBOOK §6.5 documents the workflow. Smoke-verified against FO Holding: all 5 sources flipped to fresh after one run. |
 | V4 | trust-status.ts with `sanityBand: 'high_extreme'` cell | Tested in unit, but visual badge in CompanyTree wasn't verified via screenshot for a `suspicious` overall company. |
 | V5 | Trust Audit Strip with `lastReconciledAt > 1 year` | Edge case where staleness should degrade trust isn't surfaced yet (per L6). |
 

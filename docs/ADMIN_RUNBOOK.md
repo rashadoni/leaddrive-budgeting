@@ -534,6 +534,35 @@ No UI for editing this yet; admins set it via direct DB update or
 `PATCH /api/organizations/settings`. Future work: add a freshness-source
 editor next to the existing source-registry admin (`/budgeting/admin/source-registry`).
 
+### 6.5 Verifying freshness wiring without waiting for the scheduler (V3 closure)
+
+Fresh installs / dev DBs show every freshness card as `missing` because
+no adapter has run yet. To prove the dashboard renders `fresh` rows
+without sitting through a real scheduler cycle, use the diagnostic
+seeder:
+
+```bash
+# Seed one synthetic IntelDataPoint per source (5 sources by default).
+node scripts/diag-seed-intel.cjs --insert
+
+# Narrow to a single source if you only want to verify one card.
+node scripts/diag-seed-intel.cjs --insert --source weather-openmeteo
+
+# Cleanup — only sweeps rows where raw.synthetic === true.
+node scripts/diag-seed-intel.cjs --delete
+```
+
+After insert, refresh `/budgeting/admin/drift` — every freshness card
+should flip to `fresh` (ageHours ≈ 0). The script is idempotent (uses
+`prisma.intelDataPoint.upsert`) and tags every row with
+`raw.synthetic = true` so the `--delete` mode can't touch real
+production data.
+
+Companion script for the drift-events panel:
+`node scripts/diag-synthetic-drift.cjs --insert` (V2) — seeds a fake
+`reconciliation_drift_detected` AuditEvent so the Recent drift events
+section also renders red rows during a demo.
+
 ---
 
 ## 7. Audit log (Phase 7.F)
