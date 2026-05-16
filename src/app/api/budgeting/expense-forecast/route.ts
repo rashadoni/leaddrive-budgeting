@@ -3,6 +3,8 @@ import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
 const expenseForecastSchema = z.object({
   year: z.number().int().min(2020).max(2050),
@@ -58,6 +60,17 @@ export async function POST(req: NextRequest) {
   }
 
   const { year, entries } = data
+
+  // Phase L8 — period-lock gate. Forecast is org+year scoped; the
+  // canonical period key is the year string. Reject 423 if locked.
+  const lock = await getActivePeriodLock(prisma, orgId, String(year))
+  if (lock)
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: null,
+      route: "POST /api/budgeting/expense-forecast",
+    })
 
   // Verify all referenced costTypeIds and departmentIds belong to caller's org
   const costTypeIds = Array.from(new Set(entries.map(e => e.costTypeId).filter(Boolean)))

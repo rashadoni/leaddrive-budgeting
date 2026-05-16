@@ -232,6 +232,12 @@ export async function GET(request: NextRequest) {
               // promote to 'suspicious' on extreme-band cells without a
               // second round-trip per row.
               sanityBand: true,
+              // Phase L6 — staleness fallback. Trust badge degrades
+              // verified→partial when all material cells were audited
+              // more than 30 days ago; carrying lastReconciledAt on the
+              // wire lets the CompanyTree compute the degradation
+              // client-side without a second round-trip per row.
+              lastReconciledAt: true,
             },
           });
 
@@ -320,6 +326,7 @@ export async function GET(request: NextRequest) {
           // Financial-truth-infra Phase B.2 — sanity-band from latest
           // audit run; null when not yet audited.
           ...(v.sanityBand ? { sanityBand: v.sanityBand as 'normal' | 'low_extreme' | 'high_extreme' | 'missing_input' | 'no_band' } : {}),
+          ...(v.lastReconciledAt ? { lastReconciledAt: v.lastReconciledAt.toISOString() } : {}),
         };
       });
 
@@ -395,6 +402,12 @@ export async function GET(request: NextRequest) {
               // parent rollup cells so a holding-level row inherits the
               // audit verdict from its IV.
               sanityBand: true,
+              // Phase L6 — staleness fallback. Trust badge degrades
+              // verified→partial when all material cells were audited
+              // more than 30 days ago; carrying lastReconciledAt on the
+              // wire lets the CompanyTree compute the degradation
+              // client-side without a second round-trip per row.
+              lastReconciledAt: true,
             },
           });
 

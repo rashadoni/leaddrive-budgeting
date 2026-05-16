@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
+import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
+import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import ExcelJS from "exceljs"
 
 export async function POST(req: NextRequest) {
@@ -15,6 +17,16 @@ export async function POST(req: NextRequest) {
   if (!file) {
     return NextResponse.json({ error: "file required" }, { status: 400 })
   }
+
+  // Phase L8 — period-lock gate (year-scoped forecast import).
+  const lock = await getActivePeriodLock(prisma, orgId, String(year))
+  if (lock)
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: null,
+      route: "POST /api/budgeting/sales-forecast/import",
+    })
 
   // Load departments for this org (revenue-generating)
   const departments = await prisma.budgetDepartment.findMany({
