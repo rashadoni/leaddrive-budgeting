@@ -19,7 +19,7 @@ function fmt(n: number): string {
 
 function useOrgId() {
   const { data: session } = useSession()
-  return (session?.user as any)?.organizationId || ""
+  return session?.user?.organizationId ?? ""
 }
 
 interface MonthlyPlanFact {

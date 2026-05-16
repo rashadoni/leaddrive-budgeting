@@ -25,7 +25,7 @@ interface Department {
 
 export function BudgetDepartmentAccess() {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
 
   const { data: owners = [], isLoading } = useBudgetDeptOwners()
   const assignOwner = useAssignDeptOwner()

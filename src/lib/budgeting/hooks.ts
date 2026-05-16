@@ -22,7 +22,7 @@ import type { BudgetReportConfig, ReportResult } from "./report-engine"
 
 function useOrgId() {
   const { data: session } = useSession()
-  return (session?.user as any)?.organizationId || ""
+  return session?.user?.organizationId ?? ""
 }
 
 async function apiFetch<T>(url: string, orgId: string, options?: RequestInit): Promise<T> {

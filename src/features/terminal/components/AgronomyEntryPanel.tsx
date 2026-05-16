@@ -37,8 +37,8 @@ type MetricKey = (typeof AGRO_METRICS)[number]["key"]
 
 export function AgronomyEntryPanel() {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
-  const userRole = (session?.user as any)?.role as string | undefined
+  const orgId = session?.user?.organizationId
+  const userRole = session?.user?.role
   const canEdit = userRole === "admin" || userRole === "manager"
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode)
   const queryClient = useQueryClient()
@@ -48,7 +48,7 @@ export function AgronomyEntryPanel() {
     enabled: !!orgId,
     queryFn: async () => {
       const res = await fetch("/api/companies", {
-        headers: { "x-organization-id": orgId },
+        headers: { "x-organization-id": orgId ?? "" },
       })
       if (!res.ok) return []
       const body = await res.json()

@@ -26,7 +26,7 @@ function fmtCurrency(n: number): string {
 
 export function COGSCalculator({ planId }: { planId: string }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
   const { data, isLoading } = useQuery({

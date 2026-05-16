@@ -66,8 +66,8 @@ type PnlRow = DrillRow & { parentCode: string | null }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
-  const userRole = (session?.user as any)?.role as string | undefined
+  const orgId = session?.user?.organizationId
+  const userRole = session?.user?.role
   const canEditRecon = userRole === "admin" || userRole === "manager"
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [reconOpen, setReconOpen] = useState(false)

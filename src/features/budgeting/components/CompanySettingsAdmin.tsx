@@ -58,8 +58,8 @@ function fetchSettings(companyId: string): Promise<SettingsBody> {
 
 export function CompanySettingsAdmin() {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId ?? ""
-  const userRole = (session?.user as any)?.role as string | undefined
+  const orgId = session?.user?.organizationId ?? ""
+  const userRole = session?.user?.role
   const canEdit = userRole === "admin" || userRole === "manager"
   const queryClient = useQueryClient()
 
