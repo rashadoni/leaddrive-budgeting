@@ -54,6 +54,19 @@ function variance(plan: number, actual: number): { abs: number; pct: number } {
   return { abs, pct }
 }
 
+/**
+ * Phase 3.3 v1.2 — variance sign depends on whether bigger-is-better.
+ * For revenue accounts (favorable="up"), positive abs (overshooting plan)
+ * is GREEN. For expense / cogs / opex (favorable="down"), positive abs
+ * (overspending) is RED — so under-spent expense rows correctly read as
+ * green ("we saved money"), not red ("we under-realized"). Returns the
+ * direction sign — multiply variance.abs by this before the green/red
+ * threshold check.
+ */
+function favorableSign(accountType: string): 1 | -1 {
+  return accountType === "revenue" ? 1 : -1
+}
+
 export function BudgetPnlDrillPanel({
   row,
   actualMonthly,
@@ -75,6 +88,11 @@ export function BudgetPnlDrillPanel({
     0,
   )
   const totalVariance = variance(plannedTotal, actualTotal)
+  // Phase 3.3 v1.2 — direction sign so under-spent expense rows render
+  // green ("saved money") instead of red ("under-realized"). Revenue
+  // accounts keep the literal sign (higher actual = green).
+  const sign = favorableSign(row.accountType)
+  const favorableTotalAbs = totalVariance.abs * sign
 
   return (
     <>
@@ -143,9 +161,9 @@ export function BudgetPnlDrillPanel({
             </div>
             <div
               className={`text-base font-semibold tabular-nums mt-1 ${
-                totalVariance.abs > 0
+                favorableTotalAbs > 0
                   ? "text-emerald-700 dark:text-emerald-400"
-                  : totalVariance.abs < 0
+                  : favorableTotalAbs < 0
                   ? "text-red-700 dark:text-red-400"
                   : ""
               }`}
@@ -153,7 +171,7 @@ export function BudgetPnlDrillPanel({
               {fmtMoney(totalVariance.abs)}
             </div>
             <div className="text-[10px] text-muted-foreground tabular-nums">
-              {fmtPct(totalVariance.pct)}
+              {fmtPct(totalVariance.pct * sign)}
             </div>
           </div>
         </div>
@@ -198,9 +216,9 @@ export function BudgetPnlDrillPanel({
                     </td>
                     <td
                       className={`px-2 py-1.5 text-right tabular-nums ${
-                        v.abs > 0
+                        v.abs * sign > 0
                           ? "text-emerald-700 dark:text-emerald-400"
-                          : v.abs < 0
+                          : v.abs * sign < 0
                           ? "text-red-700 dark:text-red-400"
                           : "text-muted-foreground/60"
                       }`}
@@ -225,9 +243,9 @@ export function BudgetPnlDrillPanel({
                 </td>
                 <td
                   className={`px-2 py-2 text-right tabular-nums ${
-                    totalVariance.abs > 0
+                    favorableTotalAbs > 0
                       ? "text-emerald-700 dark:text-emerald-400"
-                      : totalVariance.abs < 0
+                      : favorableTotalAbs < 0
                       ? "text-red-700 dark:text-red-400"
                       : ""
                   }`}

@@ -121,4 +121,55 @@ describe("BudgetPnlDrillPanel", () => {
     const dialog = screen.getByRole("dialog")
     expect(dialog.getAttribute("aria-label")).toContain("Net Sales — Domestic")
   })
+
+  it("expense account: under-spent (actual < plan) renders GREEN, not red (v1.2)", () => {
+    // For an expense, spending LESS than budgeted is favorable.
+    // Plan 100K, actual 50K → -50K abs. v1.1 incorrectly painted this
+    // red; v1.2 fix uses favorableSign(accountType) → -1 for expense
+    // → favorableAbs = -50K × -1 = +50K → emerald.
+    const expenseRow = {
+      accountCode: "711-01",
+      accountName: "Office Rent",
+      accountType: "expense",
+      monthly: { 1: 100_000 } as Record<number, number>,
+      total: 100_000,
+    }
+    render(
+      <BudgetPnlDrillPanel
+        row={expenseRow}
+        actualMonthly={{ 1: 50_000 }}
+        onClose={() => {}}
+      />,
+    )
+    const tbody = screen.getByTestId("pnl-drill-monthly-tbody")
+    const janRow = tbody.querySelector('[data-month="1"]')
+    const cells = janRow!.querySelectorAll("td")
+    // Variance cell is td[3]; under-spent expense → emerald
+    expect(cells[3].className).toMatch(/emerald/)
+    expect(cells[3].className).not.toMatch(/text-red/)
+  })
+
+  it("expense account: over-spent (actual > plan) renders RED (v1.2)", () => {
+    // Overspending an expense budget IS bad. Plan 100K, actual 150K →
+    // +50K abs × sign(-1) = -50K → red.
+    const expenseRow = {
+      accountCode: "711-01",
+      accountName: "Office Rent",
+      accountType: "expense",
+      monthly: { 1: 100_000 } as Record<number, number>,
+      total: 100_000,
+    }
+    render(
+      <BudgetPnlDrillPanel
+        row={expenseRow}
+        actualMonthly={{ 1: 150_000 }}
+        onClose={() => {}}
+      />,
+    )
+    const tbody = screen.getByTestId("pnl-drill-monthly-tbody")
+    const janRow = tbody.querySelector('[data-month="1"]')
+    const cells = janRow!.querySelectorAll("td")
+    expect(cells[3].className).toMatch(/red/)
+    expect(cells[3].className).not.toMatch(/emerald/)
+  })
 })
