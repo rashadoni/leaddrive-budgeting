@@ -12,11 +12,11 @@ Last update: 2026-05-16 after Phase E starts.
 |---|---|---|---|
 | F1 | `scripts/audit-company.cjs` | CLI script | Smoke-tested manually on AZSEKER cluster; no Vitest fixture. Need: mock-DB test that asserts drift-major / suspicious verdicts trigger correctly. |
 | F2 | `scripts/drift-watchdog.cjs` | CLI script | Smoke-tested with the AzərŞəkər registry (0 drifts). No fixture for "drift detected" path — need a fake xlsx with mutated values + assert audit_log entry is emitted. |
-| F3 | `src/lib/intel/freshness.ts` | Library | Pure function, no tests yet. Add 4 cases: fresh, stale, critical-stale, missing. |
+| F3 | ✅ ~~`src/lib/intel/freshness.ts`~~ | Library | **Closed 2026-05-16** — 5 cases (fresh / stale / critical_stale on daily threshold, monthly day-scale, missing). |
 | F4 | `src/app/api/admin/drift/route.ts` | Route handler | No handler test. Need: cross-tenant isolation + correct enrichment of `actor` and `company` joins + correct shape of stalePending output. |
 | F5 | `src/features/admin/components/DriftDashboard.tsx` | React component | No vitest. Could mount with stubbed fetch + assert 3 sections + freshness chips render. |
 | F6 | `src/features/onboarding/components/DriftDiffPreview.tsx` | React component | No vitest. Needs: mock fetch dryRun response → assert diff table renders + confirm checkbox toggles. |
-| F7 | `?dryRun=true` branch in apply-multi/route.ts | Route handler | New code path — no handler test. Critical to verify it short-circuits BEFORE the destructive deleteMany. |
+| F7 | ✅ ~~`?dryRun=true` branch in apply-multi/route.ts~~ | Route handler | **Closed 2026-05-16** — 2 cases: existing-plan (current vs incoming totals + asserts \$transaction NEVER called) + fresh-onboarding (planExisted:false, current zero). Plus minor fix to normalize cogs/expense via Math.abs for sign-convention-independent gross profit. |
 
 ## Incomplete / advisory-only
 
