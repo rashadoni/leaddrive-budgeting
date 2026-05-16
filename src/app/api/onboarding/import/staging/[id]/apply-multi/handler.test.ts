@@ -27,6 +27,10 @@ const { prismaMock, applierMocks, recomputeMock, auditMock } = vi.hoisted(() => 
     },
     company: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
+    // Phase D / drift-diff dryRun mode reads existing plan/lines for
+    // current-state aggregation before computing the diff.
+    budgetPlan: { findFirst: vi.fn() },
+    budgetLine: { findMany: vi.fn() },
     $transaction: vi.fn(),
   },
   applierMocks: {
@@ -70,7 +74,7 @@ function paramsFor(id: string) {
   return { params: Promise.resolve({ id }) }
 }
 
-async function makeRequest(): Promise<NextRequestType> {
+async function makeRequest(opts?: { dryRun?: boolean }): Promise<NextRequestType> {
   const fd = new FormData()
   fd.set(
     "file",
@@ -78,8 +82,9 @@ async function makeRequest(): Promise<NextRequestType> {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }),
   )
+  const qs = opts?.dryRun ? "?dryRun=true" : ""
   const base = new Request(
-    `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply-multi`,
+    `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply-multi${qs}`,
     { method: "POST", body: fd },
   )
   const { NextRequest } = await import("next/server")
@@ -471,5 +476,68 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — recompute + a
     const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
     const body = await res.json()
     expect(body.auditStale).toBe(false)
+  })
+})
+
+// Phase D follow-up — `?dryRun=true` returns a diff preview without
+// touching the DB. Critical guard: transaction MUST NOT run on dryRun.
+describe("POST /api/onboarding/import/staging/[id]/apply-multi — ?dryRun=true", () => {
+  beforeEach(async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    prismaMock.importStaging.findFirst.mockResolvedValue(validStagingRow)
+    applierMocks.detectProposalYear.mockReturnValue(2026)
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [
+              { code: "601-01", label: "Sales", accountType: "revenue", perMonth: Array(12).fill(1000) },
+              { code: "701-01", label: "COGS", accountType: "cogs", perMonth: Array(12).fill(600) },
+            ],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    prismaMock.company.findUnique.mockResolvedValue({ baseCurrencyCode: "AZN" })
+  })
+
+  it("returns dryRun:true with current vs incoming totals + does NOT commit transaction", async () => {
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({ id: "plan_42" })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { plannedAmount: 500, lineType: "revenue" }, // current revenue 500
+      { plannedAmount: -300, lineType: "cogs" }, // current cogs 300 (abs)
+    ])
+    const res = await POST(await makeRequest({ dryRun: true }), paramsFor(STAGING_ID))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.dryRun).toBe(true)
+    expect(body.planExisted).toBe(true)
+    // Incoming: revenue 1000×12 = 12000; cogs 600×12 = 7200
+    expect(body.totals.revenue.incoming).toBe(12000)
+    expect(body.totals.revenue.current).toBe(500)
+    expect(body.totals.cogs.incoming).toBe(7200)
+    // Gross profit derived correctly.
+    expect(body.gross_profit.current).toBe(500 - 300) // current rev - abs(cogs); but cogs stored neg so absolute val handled
+    expect(body.gross_profit.incoming).toBe(12000 - 7200)
+    // CRITICAL: no destructive operation.
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+    expect(prismaMock.importStaging.update).not.toHaveBeenCalled()
+  })
+
+  it("dryRun handles fresh onboarding (no existing plan) — planExisted:false, current totals zero", async () => {
+    prismaMock.budgetPlan.findFirst.mockResolvedValue(null)
+    const res = await POST(await makeRequest({ dryRun: true }), paramsFor(STAGING_ID))
+    const body = await res.json()
+    expect(body.dryRun).toBe(true)
+    expect(body.planExisted).toBe(false)
+    expect(body.totals.revenue.current).toBe(0)
+    expect(body.totals.revenue.incoming).toBe(12000)
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 })

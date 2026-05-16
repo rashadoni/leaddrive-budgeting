@@ -287,12 +287,16 @@ export async function POST(
       : []
     type Tot = { revenue: number; cogs: number; expense: number }
     const zero = (): Tot => ({ revenue: 0, cogs: 0, expense: 0 })
+    // Normalize cogs/expense to absolute values so gross-profit math
+    // works regardless of whether the importer stored them as positive
+    // (debit convention) or negative (credit convention). Revenue
+    // stays signed.
     const current: Tot = zero()
     for (const bl of currentLines) {
       const lt = bl.lineType as "revenue" | "cogs" | "expense"
-      if (lt === "revenue" || lt === "cogs" || lt === "expense") {
-        current[lt] += bl.plannedAmount
-      }
+      if (lt === "revenue") current.revenue += bl.plannedAmount
+      else if (lt === "cogs") current.cogs += Math.abs(bl.plannedAmount)
+      else if (lt === "expense") current.expense += Math.abs(bl.plannedAmount)
     }
     const incoming: Tot = zero()
     for (const line of allLines) {
@@ -300,7 +304,9 @@ export async function POST(
         line.accountType === "revenue" || line.accountType === "cogs"
           ? line.accountType
           : "expense"
-      for (const v of line.perMonth) incoming[lt] += v ?? 0
+      const total = line.perMonth.reduce((a, v) => a + (v ?? 0), 0)
+      if (lt === "revenue") incoming.revenue += total
+      else incoming[lt] += Math.abs(total)
     }
     const pct = (cur: number, inc: number): number =>
       cur === 0 ? (inc === 0 ? 0 : 100) : ((inc - cur) / Math.abs(cur)) * 100
