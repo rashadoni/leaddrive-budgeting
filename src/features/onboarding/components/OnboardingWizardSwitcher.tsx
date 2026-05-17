@@ -49,14 +49,20 @@ export function OnboardingWizardSwitcher() {
           onClick={() => setMode("multi")}
           aria-pressed={mode === "multi"}
           data-testid="mode-multi-button"
-          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 active:scale-[0.97] ${
+          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 motion-safe:active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
             mode === "multi"
-              ? "bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40 font-medium shadow-sm"
+              ? "bg-primary text-primary-foreground font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
           }`}
         >
           {t("wizardModeMulti")}
-          <span className="ml-1.5 text-[9px] uppercase tracking-wider opacity-70 font-semibold">
+          <span
+            className={`ml-1.5 text-[9px] uppercase tracking-wider font-semibold ${
+              mode === "multi"
+                ? "text-primary-foreground/80"
+                : "text-muted-foreground/70"
+            }`}
+          >
             {t("wizardModeDefaultBadge")}
           </span>
         </button>
@@ -65,9 +71,9 @@ export function OnboardingWizardSwitcher() {
           onClick={() => setMode("single")}
           aria-pressed={mode === "single"}
           data-testid="mode-single-button"
-          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 active:scale-[0.97] ${
+          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 motion-safe:active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
             mode === "single"
-              ? "bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40 font-medium shadow-sm"
+              ? "bg-primary text-primary-foreground font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
           }`}
         >

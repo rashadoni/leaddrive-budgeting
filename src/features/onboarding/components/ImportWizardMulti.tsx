@@ -276,8 +276,8 @@ export function ImportWizardMulti() {
           data-testid="select-form"
         >
           {/* Section 1 — where the data goes (company + optional industry) */}
-          <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+          <fieldset className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
+            <legend className="ml-2 px-2 text-[11px] font-bold uppercase tracking-wide text-foreground">
               {t("sectionTarget")}
             </legend>
 
@@ -340,8 +340,8 @@ export function ImportWizardMulti() {
           </fieldset>
 
           {/* Section 2 — what to load (file + optional sheet filter) */}
-          <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
+          <fieldset className="space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm">
+            <legend className="ml-2 px-2 text-[11px] font-bold uppercase tracking-wide text-foreground">
               {t("sectionWorkbook")}
             </legend>
 
@@ -725,12 +725,12 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 | 3 }) {
               )}
             </span>
             <span
-              className={`font-medium ${
+              className={`text-sm ${
                 isActive
-                  ? "text-foreground"
+                  ? "text-foreground font-semibold"
                   : isDone
-                    ? "text-muted-foreground"
-                    : "text-muted-foreground/70"
+                    ? "text-foreground/70 font-medium"
+                    : "text-muted-foreground font-medium"
               }`}
             >
               {s.label}
