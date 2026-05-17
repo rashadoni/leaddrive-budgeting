@@ -226,10 +226,15 @@ describe("ImportWizardMulti — analyze-multi POST", () => {
     fireEvent.change(screen.getByTestId("company-select"), {
       target: { value: "co_op_a" },
     })
+    // waitFor so the controlled-state update flushes + re-renders before
+    // reading the hint text. fireEvent dispatches sync but React state
+    // updates and re-render run in the next microtask.
+    await waitFor(() => {
+      const hint = screen.getByTestId("analyze-prereq-hint")
+      expect(hint.textContent?.toLowerCase()).toMatch(/file|xlsx/)
+    })
     const btn = screen.getByTestId("analyze-submit") as HTMLButtonElement
     expect(btn.disabled).toBe(true)
-    const hint = screen.getByTestId("analyze-prereq-hint")
-    expect(hint.textContent?.toLowerCase()).toMatch(/file|xlsx/)
   })
 
   it("submit disabled + hint shown without company", async () => {
@@ -238,10 +243,12 @@ describe("ImportWizardMulti — analyze-multi POST", () => {
     fireEvent.change(screen.getByTestId("file-input"), {
       target: { files: [makeXlsxFile()] },
     })
+    await waitFor(() => {
+      const hint = screen.getByTestId("analyze-prereq-hint")
+      expect(hint.textContent?.toLowerCase()).toMatch(/company/)
+    })
     const btn = screen.getByTestId("analyze-submit") as HTMLButtonElement
     expect(btn.disabled).toBe(true)
-    const hint = screen.getByTestId("analyze-prereq-hint")
-    expect(hint.textContent?.toLowerCase()).toMatch(/company/)
   })
 
   it("happy path: posts FormData with file + companyId; transitions to 'analyzed'", async () => {

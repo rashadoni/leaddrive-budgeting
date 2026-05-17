@@ -31,6 +31,7 @@ import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { DriftDiffPreview } from "./DriftDiffPreview"
+import { Button } from "@/components/ui/button"
 
 interface CompanyOption {
   id: string
@@ -383,21 +384,21 @@ export function ImportWizardMulti() {
             </div>
           </fieldset>
 
-          {/* Submit row — primary button, disabled state visually clear */}
+          {/* Submit row — primary CTA via shared Button component (brand
+              variant = gradient). Replaces a 4-line ad-hoc className with
+              the design-system primitive. */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <button
+            <Button
               type="submit"
+              variant="brand"
+              size="lg"
               disabled={analyzing || !file || !companyId}
               data-testid="analyze-submit"
-              className="inline-flex items-center justify-center gap-2 rounded-md border px-5 py-2 text-sm font-medium transition-all
-                disabled:cursor-not-allowed disabled:opacity-50
-                enabled:border-cyan-500/60 enabled:bg-cyan-500/15 enabled:text-cyan-200 enabled:hover:bg-cyan-500/25 enabled:hover:border-cyan-400
-                border-gray-700 bg-gray-800/40 text-gray-500"
             >
               {analyzing && <Spinner />}
               {analyzing ? t("analyzing") : t("analyzeSheets")}
               {!analyzing && <span aria-hidden="true">→</span>}
-            </button>
+            </Button>
 
             {!analyzing && (
               <p className="text-xs text-muted-foreground" data-testid="analyze-prereq-hint">
@@ -500,18 +501,21 @@ export function ImportWizardMulti() {
             />
           )}
 
-          <div className="flex items-center gap-3 border-t border-gray-800 pt-3">
-            <button
+          <div className="flex items-center gap-3 border-t border-gray-800 pt-4">
+            <Button
               type="button"
+              variant="outline"
+              size="default"
               onClick={resetWizard}
               data-testid="restart"
-              className="rounded border border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-800"
             >
               {t("startOver")}
-            </button>
+            </Button>
             {!stagingTerminal && analyzeResult.successCount > 0 && (
-              <button
+              <Button
                 type="button"
+                variant="default"
+                size="default"
                 onClick={handleApply}
                 /* L1 hard-gate (replaces advisory-only behavior from Phase
                    C.5): Apply disabled while applying OR when DriftDiff
@@ -521,21 +525,22 @@ export function ImportWizardMulti() {
                    requiring confirmation — same UX. */
                 disabled={applying || (diffHasExistingData && !safetyConfirmed)}
                 data-testid="apply-submit"
-                className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 px-4 py-1.5 text-sm hover:bg-emerald-500/20 disabled:opacity-50"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white"
               >
+                {applying && <Spinner />}
                 {applying
                   ? t("applying")
                   : analyzeResult.successCount === 1
                   ? t("applySheets", { n: analyzeResult.successCount })
                   : t("applySheetsPlural", { n: analyzeResult.successCount })}
-              </button>
+              </Button>
             )}
           </div>
 
           {applyError && (
-            <p
+            <div
               role="alert"
-              className="text-sm text-[#FF4757]"
+              className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
               data-testid="apply-error"
             >
               {applyError}
@@ -546,13 +551,13 @@ export function ImportWizardMulti() {
                     type="button"
                     onClick={resetWizard}
                     data-testid="restart-after-terminal"
-                    className="underline text-xs"
+                    className="underline text-xs hover:text-red-200"
                   >
                     {t("restartFromStep1")}
                   </button>
                 </>
               )}
-            </p>
+            </div>
           )}
         </section>
       )}
@@ -643,14 +648,15 @@ export function ImportWizardMulti() {
             })}
           </div>
 
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="default"
             onClick={resetWizard}
             data-testid="another-import"
-            className="rounded border border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-800"
           >
             {t("anotherImport")}
-          </button>
+          </Button>
         </section>
       )}
     </div>
@@ -762,14 +768,16 @@ function FileDropZone({
             </p>
           </div>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => onSelect(null)}
-          className="rounded-md border border-gray-700 px-3 py-1.5 text-xs hover:border-red-500/50 hover:text-red-300 transition-colors"
+          className="hover:border-red-500/50 hover:text-red-300"
           data-testid="file-remove-button"
         >
           {removeLabel}
-        </button>
+        </Button>
       </div>
     )
   }

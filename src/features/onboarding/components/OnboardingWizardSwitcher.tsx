@@ -35,31 +35,40 @@ export function OnboardingWizardSwitcher() {
 
   return (
     <div className="space-y-4" data-testid="onboarding-wizard-switcher">
-      <fieldset className="flex items-center gap-2 rounded-lg border border-gray-700 bg-card p-1 w-fit" aria-label={t("wizardModeLegend")}>
+      {/* Pill-toggle pattern matching OnboardingTabbedPage tab styling
+          (rounded-full + active = primary-tint + shadow). Session 9 redesign
+          unified mode-toggle with the tab system above so user reads it as
+          "second-level filter" not "different control class". */}
+      <fieldset
+        className="flex items-center gap-1 rounded-full border border-border bg-card/50 p-1 w-fit shadow-sm"
+        aria-label={t("wizardModeLegend")}
+      >
         <legend className="sr-only">{t("wizardModeLegend")}</legend>
         <button
           type="button"
           onClick={() => setMode("multi")}
           aria-pressed={mode === "multi"}
           data-testid="mode-multi-button"
-          className={`px-3 py-1.5 text-sm rounded transition-colors ${
+          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 active:scale-[0.97] ${
             mode === "multi"
-              ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40"
-              : "text-muted-foreground hover:bg-gray-800"
+              ? "bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40 font-medium shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
           }`}
         >
           {t("wizardModeMulti")}
-          <span className="ml-1 text-[10px] uppercase tracking-wider opacity-70">{t("wizardModeDefaultBadge")}</span>
+          <span className="ml-1.5 text-[9px] uppercase tracking-wider opacity-70 font-semibold">
+            {t("wizardModeDefaultBadge")}
+          </span>
         </button>
         <button
           type="button"
           onClick={() => setMode("single")}
           aria-pressed={mode === "single"}
           data-testid="mode-single-button"
-          className={`px-3 py-1.5 text-sm rounded transition-colors ${
+          className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 active:scale-[0.97] ${
             mode === "single"
-              ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/40"
-              : "text-muted-foreground hover:bg-gray-800"
+              ? "bg-cyan-500/20 text-cyan-100 ring-1 ring-cyan-500/40 font-medium shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
           }`}
         >
           {t("wizardModeSingle")}

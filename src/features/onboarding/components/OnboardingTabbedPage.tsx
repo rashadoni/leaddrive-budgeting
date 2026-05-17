@@ -46,7 +46,7 @@ export function OnboardingTabbedPage() {
       <div
         role="tablist"
         aria-label="Onboarding view"
-        className="flex items-center gap-1 rounded-lg border border-gray-700 bg-card p-1 w-fit"
+        className="flex items-center gap-1 rounded-full border border-border bg-card/50 p-1 w-fit shadow-sm"
       >
         <TabButton
           active={view === "status"}
@@ -83,16 +83,19 @@ function TabButton({
   onClick: () => void;
   label: string;
 }) {
+  // Pill-tab pattern: rounded-full + active gets primary fill + soft shadow,
+  // matches the design system from src/components/ui/button.tsx
+  // (subtle active:scale tap-feedback shared across the app).
   return (
     <button
       type="button"
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`px-3 py-1.5 text-sm rounded transition-colors ${
+      className={`px-4 py-1.5 text-sm rounded-full transition-all duration-150 active:scale-[0.97] ${
         active
-          ? "bg-[#00D4AA]/15 text-[#00D4AA] font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+          ? "bg-primary text-primary-foreground shadow-sm font-medium"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
       }`}
     >
       {label}
