@@ -33,6 +33,7 @@ import { useMatrix } from "../hooks/use-matrix";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
+import { CompanyImpactForecastsCard } from "./CompanyImpactForecastsCard";
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
@@ -284,6 +285,14 @@ export function CompanySnapshot({ companyCode }: Props) {
       <p className="text-[10px] text-gray-600 mt-1 shrink-0">
         {t("snapshot.footerHint")}
       </p>
+
+      {/* Phase 7.L — feed-crossing impact forecasts. Renders nothing
+       *  when no forecasts exist for this company (empty state handled
+       *  inside the component). Lives below the indicator-card row
+       *  so the existing layout stays unchanged when no events fire. */}
+      <div className="mt-2 pt-2 border-t border-gray-800/40 shrink-0">
+        <CompanyImpactForecastsCard companyCode={companyCode} />
+      </div>
     </div>
   );
 }

@@ -75,6 +75,7 @@ model Organization {
   intelDataPoints       IntelDataPoint[]
   varianceExplanations  VarianceExplanation[]
   predictiveBreaches    PredictiveBreach[]
+  feedImpactForecasts   FeedImpactForecast[]
 }
 
 model User {
@@ -1834,6 +1835,52 @@ model PredictiveBreach {
   @@unique([organizationId, period, companyId, indicatorCode, horizonStep])
   @@index([organizationId, period, horizonStep, confidenceBand])
   @@map("predictive_breaches")
+}
+
+// Phase 7.L — External-feed crossing impact forecaster output.
+// When a feed (FAO, Brent, AZN/USD, etc.) crosses a threshold, an LLM
+// produces 3 scenarios (best/likely/worst) per affected operational
+// company. Persisted both for cache (avoid re-burning tokens on same
+// trigger) and audit (forensic trace of which feed shock predicted
+// what P&L impact).
+model FeedImpactForecast {
+  id                  String       @id @default(cuid())
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  /// Originating adapter (e.g. "fao-food-prices", "eia-energy")
+  triggerSourceCode   String
+  /// Metric code that breached the threshold (e.g. "FAO_FFPI_NOMINAL")
+  triggerMetric       String
+  /// Latest observed value at the moment of trigger
+  triggerValueRounded Float
+  /// UTC datetime of the trigger data point
+  triggerObservedAt   DateTime
+  /// Which crossing-rule fired (cross-references DEFAULT_CROSSING_RULES.id)
+  ruleId              String
+  /// Affected company FK (cascade delete with company)
+  affectedCompanyId   String
+  /// Denormalised for query convenience
+  affectedCompanyCode String
+  /// JSON shape: { best: { projectedIndicatorValue, plDeltaAZN, deltaPct, drivers[], timeHorizon }, likely: {...}, worst: {...} }
+  scenarios           Json
+  /// Exactly 3 actionable recommendations (verb + target)
+  recommendations     Json
+  /// "low" | "medium" | "high"
+  confidence          String
+  /// EN | RU | AZ
+  language            String
+  /// Stable hash of the system prompt — invalidates cache when prompt changes
+  promptVersion       String
+  /// sha256(companyFinancials + costStructure + triggerMetric) — invalidates when financials change
+  snapshotHash        String
+  tokensIn            Int
+  tokensOut           Int
+  generatedAt         DateTime     @default(now())
+
+  @@unique([organizationId, triggerMetric, triggerValueRounded, affectedCompanyId, language, promptVersion, snapshotHash])
+  @@index([organizationId, triggerSourceCode, generatedAt(sort: Desc)])
+  @@index([organizationId, affectedCompanyCode, generatedAt(sort: Desc)])
+  @@map("feed_impact_forecasts")
 }
 
 enum AuditAction {

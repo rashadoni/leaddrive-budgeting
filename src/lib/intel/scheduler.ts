@@ -34,6 +34,10 @@ import { runIntelCrawl } from "./crawler"
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from "./types"
 import { runBreachScanForOrg } from "@/lib/risk/breach-scan-runner"
 import {
+  runCrossingScan,
+  type RunCrossingScanResult,
+} from "@/lib/intel/crossing-scan-runner"
+import {
   ingestCommodityData,
   getCommodityAdapters,
   type CommodityAdapter,
@@ -77,6 +81,8 @@ export type ScheduledCrawlResult =
       breachScan?: ScheduledBreachScanCounts
       /** Phase 7.G Turn CII (D.5b wire) — present when commodity ingest ran. */
       commodityIngest?: ScheduledCommodityIngestCounts
+      /** Phase 7.L — present when external-feed crossing scan ran. */
+      crossingScan?: RunCrossingScanResult
     }
   | { ok: false; error: string }
 
@@ -118,6 +124,13 @@ export type RunScheduledOptions = {
   runCommodityIngest?: boolean
   /** Test seam — override the adapter list (default `getCommodityAdapters()`). */
   commodityAdapters?: CommodityAdapter[]
+  /** Phase 7.L — when true, scan ingested IntelDataPoints for external-
+   *  feed crossings (FAO > 130, Brent > $100, AZN/USD shift >2%, etc.)
+   *  and run impact-forecast LLM per affected operational company.
+   *  Failures recorded under result.crossingScan.errors[]; never abort
+   *  the crawl result. Default: false (opt-in). Runs AFTER breach scan
+   *  so commodity feeds are already ingested. */
+  runCrossingScan?: boolean
 }
 
 /**
@@ -257,7 +270,41 @@ export async function runScheduledIntelCrawl(
       }
     }
 
-    return { ok: true, lastRunAt: now().toISOString(), result, breachScan, commodityIngest }
+    // 7. Phase 7.L — optional external-feed crossing scan + impact forecasts.
+    //    Runs AFTER commodity ingest + breach scan so the freshest
+    //    IntelDataPoint rows are visible. Failures recorded but never
+    //    abort the crawl result.
+    let crossingScan: RunCrossingScanResult | undefined
+    if (opts.runCrossingScan) {
+      try {
+        crossingScan = await runCrossingScan(orgId, {
+          prisma,
+          now: () => now(),
+        })
+      } catch (e) {
+        crossingScan = {
+          ok: false,
+          matchesFound: 0,
+          forecastsAttempted: 0,
+          forecastsGenerated: 0,
+          cacheHits: 0,
+          skippedNoFinancials: 0,
+          skippedBudget: 0,
+          errors: [
+            `crossing-scan threw: ${e instanceof Error ? e.message : String(e)}`,
+          ],
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      lastRunAt: now().toISOString(),
+      result,
+      breachScan,
+      commodityIngest,
+      crossingScan,
+    }
   } finally {
     // 6. Release advisory lock
     if (lockAcquired) {

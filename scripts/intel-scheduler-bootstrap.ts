@@ -45,6 +45,11 @@ interface CliFlags {
   intervalMs?: number
   skipCommodity: boolean
   skipBreach: boolean
+  /** Phase 7.L — gate the impact-forecast feed-crossing scan.
+   *  Default: OFF (opt-in via --with-crossings or
+   *  FEATURE_FEED_IMPACT_FORECASTER=true env). LLM tokens cost real
+   *  money so we want explicit consent before each run. */
+  runCrossings: boolean
 }
 
 function parseFlags(argv: ReadonlyArray<string>): CliFlags {
@@ -52,11 +57,14 @@ function parseFlags(argv: ReadonlyArray<string>): CliFlags {
     once: false,
     skipCommodity: false,
     skipBreach: false,
+    runCrossings: process.env.FEATURE_FEED_IMPACT_FORECASTER === "true",
   }
   for (const arg of argv) {
     if (arg === "--once") flags.once = true
     else if (arg === "--skip-commodity") flags.skipCommodity = true
     else if (arg === "--skip-breach") flags.skipBreach = true
+    else if (arg === "--with-crossings") flags.runCrossings = true
+    else if (arg === "--skip-crossings") flags.runCrossings = false
     else if (arg.startsWith("--interval-ms=")) {
       const n = parseInt(arg.slice("--interval-ms=".length), 10)
       if (Number.isFinite(n) && n > 0) flags.intervalMs = n
@@ -91,6 +99,7 @@ async function runOneCycle(orgId: string, flags: CliFlags): Promise<void> {
     buildInput: buildInputForOrg,
     runCommodityIngest: !flags.skipCommodity,
     runBreachScan: !flags.skipBreach,
+    runCrossingScan: flags.runCrossings,
   }
   const result = await runScheduledIntelCrawl(prisma, orgId, opts)
   if ("ok" in result && result.ok) {

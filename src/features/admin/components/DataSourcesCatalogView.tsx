@@ -18,6 +18,7 @@ import {
   DATA_SOURCES_CATALOG,
   type DataSourceEntry,
 } from "@/lib/intel/sources-catalog"
+import { RecentCrossingsWidget } from "./RecentCrossingsWidget"
 import {
   CheckCircle2,
   Clock,
@@ -221,6 +222,16 @@ function SourceCard({
           <span>
             <strong>Метрик:</strong> {source.metricsEmitted.length}
           </span>
+        </section>
+
+        {/* Phase 7.L — recent feed-crossing events for this source.
+         *  Shows empty state when no crossings have fired yet (most
+         *  demo orgs); fills in as scheduler ticks accumulate breaches. */}
+        <section className="pt-2 border-t border-gray-100">
+          <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
+            Недавние crossing-события
+          </h4>
+          <RecentCrossingsWidget sourceCode={source.sourceCode} />
         </section>
       </div>
     </article>
