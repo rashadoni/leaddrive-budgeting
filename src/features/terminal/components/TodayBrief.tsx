@@ -46,6 +46,48 @@ function pickTop3<T>(items: T[], scoreFn: (t: T) => number): T[] {
     .map(({ t }) => t);
 }
 
+/**
+ * Phase 7.K 2026-05-18 — diversified worst-cells picker.
+ *
+ * Sort all red cells by magnitude (descending), then walk the list and
+ * pick at most ONE per company until we have `topN`. This prevents one
+ * dominant company (e.g. ATL with three -1000%+ margin cells) from
+ * monopolizing the morning brief — the LLM now sees worst-of from
+ * multiple business units and can write a holding-wide narrative
+ * instead of an ATL-only one.
+ *
+ * Falls back to plain magnitude ordering if we exhaust unique companies
+ * before reaching `topN` (small holdings).
+ */
+function pickTopWorstDiversified(
+  items: WorstEntry[],
+  topN: number,
+): WorstEntry[] {
+  const sorted = items
+    .map((t) => ({ t, s: Math.abs(t.value) }))
+    .sort((a, b) => b.s - a.s)
+    .map(({ t }) => t);
+  const seen = new Set<string>();
+  const out: WorstEntry[] = [];
+  for (const r of sorted) {
+    if (seen.has(r.companyCode)) continue;
+    seen.add(r.companyCode);
+    out.push(r);
+    if (out.length >= topN) break;
+  }
+  // Backfill from highest-magnitude leftovers (different cells from
+  // companies already covered) if we couldn't hit topN with unique
+  // companies — keeps the list dense for very small holdings.
+  if (out.length < topN) {
+    for (const r of sorted) {
+      if (out.includes(r)) continue;
+      out.push(r);
+      if (out.length >= topN) break;
+    }
+  }
+  return out;
+}
+
 export function TodayBrief() {
   const t = useTranslations("terminal");
   const { matrix } = useMatrix();
@@ -83,7 +125,12 @@ export function TodayBrief() {
       { topN: 5 },
     );
     return {
-      worst: pickTop3(reds, (r) => Math.abs(r.value)),
+      // Phase 7.K 2026-05-18 — diversified worst cells (top-1 per
+      // company × 7 companies) so the morning brief covers the holding
+      // breadth, not just one outlier. Old pickTop3 picked the absolute
+      // 3 highest-magnitude cells, which were all ATL margins +
+      // crowded out AAC / AZSEKER / SPARK / LLS reds.
+      worst: pickTopWorstDiversified(reds, 7),
       movers: moversTop5,
     };
   }, [matrix]);

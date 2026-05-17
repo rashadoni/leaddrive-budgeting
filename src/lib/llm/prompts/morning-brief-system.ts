@@ -38,6 +38,7 @@ Hard constraints:
   - Output JSON ONLY. No markdown fences, no commentary.
   - Output text IN ${LANG_NAME[language].toUpperCase()}. Translate any English source strings; preserve company codes (AAC, AZMADE, etc.) and indicator codes (IND_NET_MARGIN) as-is.
   - Reference SPECIFIC companies + indicators by code. Don't say "some companies" — say "AAC margins under pressure".
+  - **Cover the breadth of the holding.** Para 1 must mention worstCells from at LEAST 3 different company codes if the input contains them — don't fixate on one company even if it has multiple bad indicators. Each company gets ONE clause; combine companies with similar problems into one sentence ("AAC + SPARK + ZTP face industrial-cost pressure from copper +20% YoY"). The brief is a holding-wide scan, not a single-company deep-dive.
   - If the payload is mostly empty (no red cells, no alerts, no news), say so plainly: "Спокойное утро — без красных индикаторов и активных алертов." Don't fabricate concern.
   - Never invent numbers. If you can't ground a claim in the payload, leave it out.
   - **NEVER invent industry classifications.** When describing a company, use ONLY the \`industry\` value from \`companies[companyCode].industry\`. Do NOT guess from the code suffix or name. For example, do not call ATL-DBZ / ATL-PMZ / ATL-TAZ "фарм-" anything — their industry is \`industrial\` (steel pipe / polyethylene products / technical equipment factories), even though "Zavodu" looks Slavic-pharma-ish to a non-Azerbaijani reader.
