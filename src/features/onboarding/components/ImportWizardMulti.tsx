@@ -276,7 +276,7 @@ export function ImportWizardMulti() {
           data-testid="select-form"
         >
           {/* Section 1 — where the data goes (company + optional industry) */}
-          <fieldset className="space-y-4 rounded-lg border border-gray-800 bg-card/30 p-4">
+          <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t("sectionTarget")}
             </legend>
@@ -340,7 +340,7 @@ export function ImportWizardMulti() {
           </fieldset>
 
           {/* Section 2 — what to load (file + optional sheet filter) */}
-          <fieldset className="space-y-4 rounded-lg border border-gray-800 bg-card/30 p-4">
+          <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t("sectionWorkbook")}
             </legend>
@@ -384,13 +384,17 @@ export function ImportWizardMulti() {
             </div>
           </fieldset>
 
-          {/* Submit row — primary CTA via shared Button component (brand
-              variant = gradient). Replaces a 4-line ad-hoc className with
-              the design-system primitive. */}
+          {/* Submit row — primary CTA via shared Button component.
+              impeccable audit (Session 9): swapped variant="brand"
+              (purple-violet gradient) → variant="default" (solid primary).
+              The `brand` gradient is an AI-tell per impeccable's anti-
+              pattern list — reserved now for AI-feature surfaces
+              (variance-explainer, board-deck narrator), NOT generic
+              forms. Solid primary fits the financial-tool register. */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="submit"
-              variant="brand"
+              variant="default"
               size="lg"
               disabled={analyzing || !file || !companyId}
               data-testid="analyze-submit"
@@ -505,7 +509,7 @@ export function ImportWizardMulti() {
             <Button
               type="button"
               variant="outline"
-              size="default"
+              size="lg"
               onClick={resetWizard}
               data-testid="restart"
             >
@@ -515,7 +519,7 @@ export function ImportWizardMulti() {
               <Button
                 type="button"
                 variant="default"
-                size="default"
+                size="lg"
                 onClick={handleApply}
                 /* L1 hard-gate (replaces advisory-only behavior from Phase
                    C.5): Apply disabled while applying OR when DriftDiff
@@ -651,7 +655,7 @@ export function ImportWizardMulti() {
           <Button
             type="button"
             variant="outline"
-            size="default"
+            size="lg"
             onClick={resetWizard}
             data-testid="another-import"
           >
@@ -792,6 +796,7 @@ function FileDropZone({
           onClick={() => onSelect(null)}
           className="hover:border-red-500/50 hover:text-red-300"
           data-testid="file-remove-button"
+          aria-label={`${removeLabel} ${file.name}`}
         >
           {removeLabel}
         </Button>
