@@ -76,3 +76,4 @@ tmp/
 # Scratch / one-off artifacts
 graphify-out/
 budgetpro-backup-*.sql
+.claude/skills/*/scripts/__pycache__/
