@@ -73,13 +73,20 @@ export async function checkOnboardingCompleteness(
 ): Promise<CompletenessReport> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
-    select: { id: true, code: true, industry: true, settings: true, organizationId: true },
+    select: { id: true, code: true, industry: true, level: true, settings: true, organizationId: true },
   });
   if (!company) {
     throw new Error(`Company ${companyId} not found`);
   }
   const orgId = company.organizationId;
   const yearFromPeriod = Number(period.split("-")[0]);
+  // Holding parents (level 0 = top org, level 1 = sub-group like AZMADE
+  // or AZSEKER) are rollup-only — they don't carry their own P&L /
+  // BalanceSheet / Cash Flow data. Their indicators come from
+  // consolidating children. Sections that count company-scoped rows
+  // (§2/§3/§4/§5/§6/§7) report `n_a` for parents instead of
+  // `missing` — otherwise every holding sits at 20% PENDING forever.
+  const isRollupOnly = company.level !== null && company.level < 2;
 
   // ── §1 Chart of Accounts ────────────────────────────────────────────
   const coaCount = await prisma.chartOfAccount.count({
@@ -204,28 +211,31 @@ export async function checkOnboardingCompleteness(
     {
       code: "§2",
       label: "P&L plan (BudgetLines)",
-      status:
-        revenueLineCount > 0 && cogsLineCount > 0
+      status: isRollupOnly
+        ? "n_a"
+        : revenueLineCount > 0 && cogsLineCount > 0
           ? "complete"
           : revenueLineCount > 0
             ? "partial"
             : "missing",
       rowCount: revenueLineCount + cogsLineCount + expenseLineCount,
-      hint:
-        revenueLineCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — P&L is consolidated from children"
+        : revenueLineCount === 0
           ? "Import P&L budget xlsx — REVENUE/COGS/OPEX lines per month"
           : cogsLineCount === 0
             ? "Revenue loaded but no COGS classification — splits gross margin from 0"
             : "OK",
-      blocking: true,
+      blocking: !isRollupOnly,
     },
     {
       code: "§3",
       label: "Sales budget (product × month)",
-      status: salesBudgetCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : salesBudgetCount > 0 ? "complete" : "missing",
       rowCount: salesBudgetCount,
-      hint:
-        salesBudgetCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — sales budgets live on operational children"
+        : salesBudgetCount === 0
           ? "Import SalesBudget xlsx via /budgeting/import (product/qty/price/month)"
           : "OK",
       blocking: false,
@@ -233,10 +243,11 @@ export async function checkOnboardingCompleteness(
     {
       code: "§4",
       label: "COGS detail (per-product cost)",
-      status: cogsBudgetCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : cogsBudgetCount > 0 ? "complete" : "missing",
       rowCount: cogsBudgetCount,
-      hint:
-        cogsBudgetCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — COGS detail lives on operational children"
+        : cogsBudgetCount === 0
           ? "Import COGS budget xlsx (cost element × product × month)"
           : "OK",
       blocking: false,
@@ -244,10 +255,11 @@ export async function checkOnboardingCompleteness(
     {
       code: "§5",
       label: "Balance Sheet",
-      status: balanceSheetCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : balanceSheetCount > 0 ? "complete" : "missing",
       rowCount: balanceSheetCount,
-      hint:
-        balanceSheetCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — Balance Sheet is consolidated from children"
+        : balanceSheetCount === 0
           ? "Import Balance Sheet xlsx — assets/liabilities/equity, monthly"
           : "OK",
       blocking: false,
@@ -255,10 +267,11 @@ export async function checkOnboardingCompleteness(
     {
       code: "§6",
       label: "Cash Flow",
-      status: cashFlowCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : cashFlowCount > 0 ? "complete" : "missing",
       rowCount: cashFlowCount,
-      hint:
-        cashFlowCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — Cash Flow is consolidated from children"
+        : cashFlowCount === 0
           ? "Import Cash Flow statement (operating/investing/financing)"
           : "OK",
       blocking: false,
@@ -266,10 +279,11 @@ export async function checkOnboardingCompleteness(
     {
       code: "§7",
       label: "Actuals (variance vs plan)",
-      status: actualsCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : actualsCount > 0 ? "complete" : "missing",
       rowCount: actualsCount,
-      hint:
-        actualsCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — actuals are tracked on operational children"
+        : actualsCount === 0
           ? "Import GL extract of real bookings to unlock variance analysis"
           : "OK",
       blocking: false,
@@ -277,10 +291,11 @@ export async function checkOnboardingCompleteness(
     {
       code: "§8",
       label: "Assumptions (FX/inflation/tax)",
-      status: assumptionsCount > 0 ? "complete" : "missing",
+      status: isRollupOnly ? "n_a" : assumptionsCount > 0 ? "complete" : "missing",
       rowCount: assumptionsCount,
-      hint:
-        assumptionsCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — assumptions are plan-scoped (held on children's plans)"
+        : assumptionsCount === 0
           ? "Set assumptions via /budgeting?tab=assumptions"
           : "OK",
       blocking: false,
@@ -288,17 +303,33 @@ export async function checkOnboardingCompleteness(
     {
       code: "§R.0",
       label: "ESG disclosures (Carbon Scope 1/2/3)",
-      status: esgCount >= 3 ? "complete" : esgCount > 0 ? "partial" : "missing",
+      status: isRollupOnly
+        ? "n_a"
+        : esgCount >= 3
+          ? "complete"
+          : esgCount > 0
+            ? "partial"
+            : "missing",
       rowCount: esgCount,
-      hint:
-        esgCount === 0
+      hint: isRollupOnly
+        ? "Rollup-only parent — ESG disclosures are per operational entity"
+        : esgCount === 0
           ? "No ESG data — Scope 1/2 currently modelled from revenue (no disclosed value)"
           : esgCount < 3
             ? "Partial ESG disclosure — Scope 1/2 covered but Scope 3 still modelled"
             : "Disclosed Scope 1+2+3 + ESG composite",
       blocking: false,
     },
-    industrySpecific,
+    isRollupOnly
+      ? {
+          code: "§R.parent",
+          label: "Industry baseline (parent rollup)",
+          status: "n_a",
+          rowCount: 0,
+          hint: "Rollup-only parent — sector KPI baselines live on operational children",
+          blocking: false,
+        }
+      : industrySpecific,
   ];
 
   // ── Aggregate ───────────────────────────────────────────────────────
