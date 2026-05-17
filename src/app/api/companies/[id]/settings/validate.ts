@@ -20,7 +20,21 @@ import { z } from "zod"
 // region table (`WEATHER_REGIONS` in commodity/weather-openmeteo.ts) so
 // the resolver can find IntelDataPoint rows. Adding a region = update
 // both this enum AND the adapter constant.
-export const AGRO_REGIONS = ["salyan", "imishli", "sabirabad", "other"] as const
+//
+// Session 9 expansion: added Yevlax / Şəmkir / Füzuli / Ağcabədi /
+// Beyləqan after AzerSheker's Farming KPI sheet showed EDEN + FARM
+// operate in 8 farming areas (not just the 3-region sugar belt).
+export const AGRO_REGIONS = [
+  "salyan",
+  "imishli",
+  "sabirabad",
+  "yevlax",
+  "shamkir",
+  "fuzuli",
+  "agjabedi",
+  "beylaqan",
+  "other",
+] as const
 export type AgroRegion = (typeof AGRO_REGIONS)[number]
 
 export const AGRO_CROP_TYPES = [

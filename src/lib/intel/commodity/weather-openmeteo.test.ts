@@ -119,8 +119,10 @@ describe("weather-openmeteo — full adapter via mock fetch", () => {
     const result = await adapter.fetch()
     expect(result.errors.length).toBe(1)
     expect(result.errors[0]).toContain("HTTP 503")
-    // 2 successful regions × 2 metrics = 4 points
-    expect(result.dataPoints.length).toBe(4)
+    // Parameterised on region count so adding regions later doesn't break the
+    // test: (N − 1) successful regions × 2 metrics. Session 9 expanded from
+    // 3 → 8 regions, hence 7 × 2 = 14 points; before was 2 × 2 = 4.
+    expect(result.dataPoints.length).toBe((WEATHER_REGIONS.length - 1) * 2)
   })
 
   it("captures network failure as error but keeps fetched=true if any region attempted", async () => {
@@ -130,5 +132,39 @@ describe("weather-openmeteo — full adapter via mock fetch", () => {
     expect(result.dataPoints).toHaveLength(0)
     expect(result.errors.length).toBe(WEATHER_REGIONS.length)
     expect(result.errors[0]).toMatch(/fetch failed.*DNS failure/)
+  })
+})
+
+describe("WEATHER_REGIONS — Session 9 expansion", () => {
+  it("covers all 8 AzerSheker farming areas from Farming KPI sheet", () => {
+    const codes = WEATHER_REGIONS.map((r) => r.code)
+    // Original sugar belt
+    expect(codes).toContain("salyan")
+    expect(codes).toContain("imishli")
+    expect(codes).toContain("sabirabad")
+    // Session 9 additions — central/western AZ farming
+    expect(codes).toContain("yevlax")
+    expect(codes).toContain("shamkir")
+    expect(codes).toContain("fuzuli")
+    expect(codes).toContain("agjabedi")
+    expect(codes).toContain("beylaqan")
+    expect(codes).toHaveLength(8)
+  })
+
+  it("every region has a label + coordinates inside Azerbaijan bounding box", () => {
+    // Azerbaijan rough bbox: lat 38..42, lon 45..51 (covers all 8 regions
+    // including Şəmkir in the NW and Salyan in the SE).
+    for (const r of WEATHER_REGIONS) {
+      expect(r.label.length).toBeGreaterThan(0)
+      expect(r.latitude).toBeGreaterThanOrEqual(38)
+      expect(r.latitude).toBeLessThanOrEqual(42)
+      expect(r.longitude).toBeGreaterThanOrEqual(45)
+      expect(r.longitude).toBeLessThanOrEqual(51)
+    }
+  })
+
+  it("region codes are unique (no accidental duplicates)", () => {
+    const codes = WEATHER_REGIONS.map((r) => r.code)
+    expect(new Set(codes).size).toBe(codes.length)
   })
 })

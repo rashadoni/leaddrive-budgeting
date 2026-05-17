@@ -48,6 +48,22 @@ describe("AgroCropsSettingsSchema", () => {
       AgroCropsSettingsSchema.safeParse({ cropType: "fish" }).success,
     ).toBe(false)
   })
+
+  // Session 9: AGRO_REGIONS extended from 3 → 8 farming areas. New regions
+  // must validate alongside the original sugar belt.
+  it.each([
+    "salyan", "imishli", "sabirabad",       // original sugar belt
+    "yevlax", "shamkir", "fuzuli",          // Session 9 additions
+    "agjabedi", "beylaqan", "other",
+  ])("accepts region=%s", (region) => {
+    expect(AgroCropsSettingsSchema.safeParse({ region }).success).toBe(true)
+  })
+
+  it("rejects unknown region (must match enum)", () => {
+    expect(
+      AgroCropsSettingsSchema.safeParse({ region: "moscow" }).success,
+    ).toBe(false)
+  })
 })
 
 describe("HospitalitySettingsSchema", () => {

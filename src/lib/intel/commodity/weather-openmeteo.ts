@@ -31,9 +31,22 @@ const WEATHER_SOURCE = "weather-openmeteo"
 const WEATHER_LABEL = "Open-Meteo Weather (AZ sugar belt)"
 
 /**
- * Azerbaijani sugar-growing regions with their representative coordinates.
- * Centroid of the agricultural area, not the city centre — irrigated fields
- * sit south of Salyan town, west of Imishli town, around Sabirabad town.
+ * Azerbaijani farming regions for Azərşəkər operations with representative
+ * coordinates. Centroid of the agricultural area, not the city centre —
+ * irrigated fields sit south of Salyan town, west of Imishli town, around
+ * Sabirabad town, etc.
+ *
+ * Region inventory grew from the original 3 (Salyan/Imishli/Sabirabad — sugar
+ * belt) to 8 after Session 9 audit of `Copy of Guvven Fin.xlsx`'s Farming KPI
+ * sheet revealed AZSEKER-EDEN + AZSEKER-FARM also operate in Yevlax, Şəmkir,
+ * Füzuli, Ağcabədi, and Beyləqan farms (Qarabağ Taxıl cost center).
+ *
+ * Crops by region (per Farming KPI 2026):
+ *   Salyan / Imishli / Sabirabad → sugar beet (Şəkər Çuğunduru) — original 3
+ *   Yevlax / Şəmkir              → wheat (Buğda), barley (Arpa), cotton, corn
+ *   Füzuli                       → wheat, barley, corn, cotton, sugar beet
+ *   Ağcabədi                     → corn, wheat, sugar beet
+ *   Beyləqan (Qarabağ Taxıl)     → wheat, barley, corn
  *
  * Adding a region = append a row + ship the seed-side `region` enum that
  * `company.settings.region` accepts. No adapter code change needed.
@@ -42,6 +55,12 @@ export const WEATHER_REGIONS = [
   { code: "salyan", latitude: 39.5, longitude: 48.95, label: "Salyan" },
   { code: "imishli", latitude: 39.85, longitude: 48.05, label: "İmişli" },
   { code: "sabirabad", latitude: 39.97, longitude: 48.43, label: "Sabirabad" },
+  // Session 9 additions — central + western Azerbaijan farming.
+  { code: "yevlax", latitude: 40.62, longitude: 47.15, label: "Yevlax" },
+  { code: "shamkir", latitude: 40.83, longitude: 46.01, label: "Şəmkir" },
+  { code: "fuzuli", latitude: 39.60, longitude: 47.14, label: "Füzuli" },
+  { code: "agjabedi", latitude: 40.04, longitude: 47.46, label: "Ağcabədi" },
+  { code: "beylaqan", latitude: 39.77, longitude: 47.62, label: "Beyləqan" },
 ] as const
 
 export type WeatherRegionCode = (typeof WEATHER_REGIONS)[number]["code"]
