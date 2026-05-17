@@ -19,6 +19,12 @@ import { createYahooGrainsAdapter } from "./yahoo-grains"
 import { createYahooMetalsAdapter } from "./yahoo-metals"
 import { createOpenMeteoForecastAdapter } from "./openmeteo-forecast"
 import { createAzStatCpiAdapter } from "./az-stat-cpi"
+// Phase 7.K — Phase 3: sector-specific feeds (poultry / logistics / services / hospitality+edu / retail).
+import { createUSDANassAdapter } from "./usda-nass"
+import { createYahooFuelBdiAdapter } from "./yahoo-fuel-bdi"
+import { createUnComtradeAzAdapter } from "./un-comtrade-az"
+import { createWbIndicatorsAdapter } from "./wb-indicators"
+import { createGoogleTrendsAzAdapter } from "./google-trends-az"
 import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
 
 /** Extended adapter options. Phase 7.K Phase 5a wires per-org API keys
@@ -26,8 +32,13 @@ import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
  *  its own credentials (EIA / Google Trends / future paid sources). */
 export interface ExtendedAdapterOptions extends CommodityAdapterOptions {
   /** Per-org API keys keyed by source name. Loaded from
-   *  `Organization.settings.apiKeys` by the scheduler factory. */
-  apiKeys?: Partial<Record<"eia" | "gtrends", string | null>>
+   *  `Organization.settings.apiKeys` by the scheduler factory.
+   *  - `eia`: EIA Energy v2 free key
+   *  - `usda`: USDA NASS Quick Stats free key
+   *  - `gtrends`: SerpAPI / ScrapingDog proxy key (paid bridge for
+   *    Google Trends; null disables the adapter gracefully)
+   */
+  apiKeys?: Partial<Record<"eia" | "usda" | "gtrends", string | null>>
 }
 
 export function getCommodityAdapters(
@@ -44,6 +55,12 @@ export function getCommodityAdapters(
     createYahooMetalsAdapter(opts),
     createOpenMeteoForecastAdapter(opts),
     createAzStatCpiAdapter(opts),
+    // Phase 7.K Phase 3 — Sector-specific feeds.
+    createUSDANassAdapter({ ...opts, apiKey: opts.apiKeys?.usda ?? null }),
+    createYahooFuelBdiAdapter(opts),
+    createUnComtradeAzAdapter(opts),
+    createWbIndicatorsAdapter(opts),
+    createGoogleTrendsAzAdapter({ ...opts, apiKey: opts.apiKeys?.gtrends ?? null }),
     // Phase 7.I — sector-aware feeds for AzerSheker pilot.
     createOpenMeteoWeatherAdapter(opts),
     createSugarYahooAdapter(opts),
@@ -87,6 +104,39 @@ export {
   parseAzCpiCsv,
   azCpiRowsToDataPoints,
 } from "./az-stat-cpi"
+// Phase 7.K Phase 3 sector-specific adapters:
+export {
+  createUSDANassAdapter,
+  USDA_NASS_SOURCE,
+  USDA_SERIES,
+  buildUsdaUrl,
+  usdaResponseToDataPoint,
+} from "./usda-nass"
+export {
+  createYahooFuelBdiAdapter,
+  YAHOO_FUEL_BDI_SOURCE,
+  FUEL_BDI_SYMBOLS,
+  fuelBdiResponseToDataPoints,
+} from "./yahoo-fuel-bdi"
+export {
+  createUnComtradeAzAdapter,
+  UN_COMTRADE_AZ_SOURCE,
+  buildComtradeUrl,
+  comtradeResponseToDataPoints,
+} from "./un-comtrade-az"
+export {
+  createWbIndicatorsAdapter,
+  WB_INDICATORS_SOURCE,
+  WB_INDICATORS,
+  wbIndicatorResponseToDataPoint,
+} from "./wb-indicators"
+export {
+  createGoogleTrendsAzAdapter,
+  GOOGLE_TRENDS_AZ_SOURCE,
+  TRENDS_CATEGORIES,
+  buildTrendsUrl,
+  trendsResponseToDataPoint,
+} from "./google-trends-az"
 export {
   createOpenMeteoWeatherAdapter,
   WEATHER_OPENMETEO_SOURCE,
