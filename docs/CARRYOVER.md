@@ -72,7 +72,12 @@ Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (
 - [8f23dce] **`groupByParent` helper extracted** from PLTab (4th helper extracted this session) + 8 unit tests covering empty/standalone/grouped/mixed/null parentCategory/order preservation/generic shape
 - [6446064] **ForecastTab** `months` useMemo replaced with shared `getPeriodMonths` helper — drops duplicate inline period→months logic; helper already has 7 unit tests in cost-model-map.test.ts
 
-**Cumulative session totals: 47 commits.**
+**Session-4 (autonomous, post «не жди моего одобрения»):** +3 more handler tests.
+- [ec4cd71] `/api/users` handler test × 11 (Phase 7.F admin RBAC; email normalization + tempPassword path)
+- [7b8743b] `/api/intel/data-points` handler test × 9 (Phase 7.I commodity/weather; P2021 graceful degradation)
+- [24353cc] `/api/budgeting/balance-sheet` handler test × 10 (GET groups by lineType, POST single+array, cross-tenant plan guard)
+
+**Cumulative session totals: 51 commits.** Tests 3537 → **3766/3774 passing** (+229 net).
 - Test count 3537 → **3736/3744 passing (+199 net)**
 - 5 helpers extracted (derive-month-index, elapsed-months, variance-helpers, group-by-parent + analytics route uses computeElapsedMonthIndices/getPeriodMonths)
 - 11 lib modules now have direct pure-helper test coverage
