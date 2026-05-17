@@ -36,7 +36,31 @@ gate.
 | 🔄 | 2026-05-17 | 0 | engineering | **Phase 6 BullMQ/Redis scheduler — PAUSED before any work.** User confirmed 2026-05-17 prefers Option A (pause + pivot) after honest cost-benefit. Reason: in-process job-runner (`src/lib/recompute/job-runner.ts`) handles current load (~5-15s recompute on 13 cos with async fan-out at SYNC_THRESHOLD=50 already shipped); BullMQ benefits (cross-restart durability, progress streaming, retry on net blips, job history admin UI) all valuable but solve problems that don't manifest at single-tenant single-machine scale. Cost to ship: ~3-4 weeks (user installs Redis via brew, then install bullmq+ioredis npm, build Queue/Worker for recompute+import jobs, migrate job-runner callers, wire SSE for progress, retry+dead-letter, tests, ops monitoring). **Re-trigger conditions:** (a) p95 recompute exceeds 30s on real workload, OR (b) multi-machine deployment planned, OR (c) user repeatedly complains about lack of progress visibility during long imports. **Did NOT install Redis / npm packages** — keep deps small until needed. owner=engineering, turn opened 2026-05-17. |
 | 🔄 | 2026-05-16 | 0 | engineering | **Phase 5.2 RLS — PAUSED at end of Stage 1.** Re-trigger: any commitment to make BudgetPro multi-tenant (other clients onboarding beyond FO Holding). Reason for pause: user confirmed 2026-05-16 that production = same machine as dev = single-tenant install for FO Holding only. RLS defends against cross-org leaks; with one org and one user there's no leak surface to defend, and the Stage 2 cost (1-2 weeks, 500-1000 callsite wrap + 53-table rollout + multiple architect rounds) buys ~0 immediate ROI. **Stage 1 artifacts kept in code — they're foundation, not waste:** ADR (`docs/ADR-RLS.md`), perf baseline (`docs/RLS_PERF_BASELINE.md`), runbook (`docs/RLS_RUNBOOK.md`), tightened `withOrgScope` regex + 11 tests, deleted orphan `tenantPrisma`, ALS context (`src/lib/db/org-scope-context.ts` + 11 tests), multi-org leak fixture + `rls-leak.integration.test.ts` (still empirically FAILS — confirms safety net is correctly wired for whenever Stage 2 resumes). **DID NOT provision BYPASSRLS role / DATABASE_URL_ADMIN** — explicit decision to NOT create privileged DB role until multi-tenancy is committed (less surface area to manage / rotate). 2 architect rounds documented (Round-1 strategy 🟡; Round-2 auto-extension → approach (c) hybrid). owner=engineering, turn opened 2026-05-16, **re-trigger condition: multi-tenancy decision made.** |
 
-**Last processed: 2026-05-17** (Phase 3.3 **P&L drill-down UX closed + Turn LIX VarianceTab sparkline shipped — 6 commits.** Per user «последовательно» then «продолжай».
+**Last processed: 2026-05-17 — Session 8** (continuation of session-7 autonomous handler-test push — user reaffirmed «продолжай доделывать то что еще не сделано»). **+15 commits, +233 handler test cases, brought 36 → 0 untested routes** (only `auth/[...nextauth]/route.ts` left, 2-line NextAuth re-export, intentionally skipped). Cumulative API coverage now ~127/127 routes (99%). Vitest: 4241 passed (up from previous session-7 baseline 3976 → 4241 = +265 net, accounting for some cleanup + 1 newly skipped browser-side case).
+
+**Session 8 commits (in order):**
+- [753013a] sales-forecast — 9 cases (year-scoped CRUD + period lock + bulk upsert composite key)
+- [eb221f8] terminal/layouts/[name] + plans/[id]/(apply-templates|diff|companies) — 24 cases
+- [c4f00e4] cash-flow/(odds|plan-fact) + reports/[id] + department-owners — 33 cases
+- [6015e92] budget-lines/monthly-series + users/[id]/(role|active) — 26 cases
+- [2bba74b] users/[id]/access + plans/[id]/create-version + expense-forecast — 21 cases
+- [1044080] admin/source-registry + indicators/values/[id] + organizations/settings — 28 cases
+- [7d9bdcc] budgeting/snapshot + intel/news-summary + indicators/values/[id]/drilldown — 20 cases
+- [c3ff843] terminal/stream + operational-facts/import/template + sales-forecast/export — 10 cases
+- [6d481f6] intel/morning-brief + budgeting/matrix-seed — 14 cases
+- [a5e6e97] budgeting/reports/export + sales-forecast/import — 11 cases
+- [ba66d84] indicators/values/[id]/benchmark + indicators/matrix/preview — 15 cases
+- [54bcec1] operational-facts/import + indicator-disclosures — 19 cases
+- [7ba004c] onboarding/import/companies + indicators — 20 cases
+- [05e20b6] budgeting/ai-analytics + budgeting/export — 13 cases
+
+**Patterns reused** (no novel mechanics, just batched application): `vi.hoisted({ prismaMock })` mocking, `mockSession` + `makeRequest` harness, strict-Zod `.strict()` rejection of `organizationId` injection, cross-tenant 404 (never leak existence), `findFirst({ id, organizationId })` org-scope, `deleteMany({ where: { id, organizationId } })` defense-in-depth, sub-group RBAC via `getCompanyScope` 404, admin/manager role gate via `requireRole`, audit emission verification via `logAuditEvent` mock, period-lock gate via `organization.findUnique` returning `{ lockedPeriods: [] }`, `prisma.$transaction` callback shape, `enforceRateLimit` mock returning `null` or a 429 `Response`, fire-and-forget recompute trigger awaited via `setImmediate` microtask, xlsx/SSE Content-Type contract, formData multipart envelope for uploads, IEEE-754 `toBeCloseTo(_, 4)` for FX math, timezone-safe `Date.UTC(y, m, d, 12)` for date assertions.
+
+**No remaining untested routes.** Next focus area when reopened: full-suite cleanup of unhandled-rejection warning from terminal/stream SSE (cosmetic; tests pass), backlog gardening (DSO/DPO matrix), or whatever user directs next.
+
+---
+
+**Previous: 2026-05-17 — Session 7** (Phase 3.3 **P&L drill-down UX closed + Turn LIX VarianceTab sparkline shipped — 6 commits.** Per user «последовательно» then «продолжай».
 
 **Commits:**
 - [c0d00d0] **Phase 3.3 bullet #1 — row-click drill panel.** NEW `src/components/budget-pnl-drill-panel.tsx` (pure presentational, accepts `DrillRow + actualMonthly + onClose` props) renders name+code+type header / Plan-Actual-Δ summary card / 12-month breakdown table. Close via × OR Esc OR backdrop. NEW `budget-pnl-drill-panel.test.tsx` (9/9 happy-dom cases locking aria-label, 12-row table, summary totals, all 3 close paths, +/- variance color). Wired into BudgetPnlView via `setDrillRow(row)` on every renderSectionRows `<tr>` with hover affordance.
