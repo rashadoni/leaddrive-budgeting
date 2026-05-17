@@ -78,6 +78,25 @@ Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (
 - [24353cc] `/api/budgeting/balance-sheet` handler test × 10 (GET groups by lineType, POST single+array, cross-tenant plan guard)
 
 **Cumulative session totals: 51 commits.** Tests 3537 → **3766/3774 passing** (+229 net).
+
+**Session-5 (autonomous continuation):** +12 more commits. Handler tests for 9 more routes:
+- ec4cd71 /api/users (11 cases) — Phase 7.F admin RBAC
+- 7b8743b /api/intel/data-points (9) — Phase 7.I commodity feed
+- 24353cc /api/budgeting/balance-sheet (10)
+- f53676d /api/budgeting/sales-budget (9)
+- f4ad8bf /api/market/ticker (8) — FX + commodity strip
+- 23a95f2 /api/budgeting/lines/count + /api/companies/sub-groups (8 total)
+- 45190c9 /api/budgeting/reports (10) — SavedBudgetReport CRUD
+- ba30f33 + 8e877e7 /api/terminal/layouts (8) — phase 7.D layout persistence
+- 378e2b6 /api/budgeting/analytics smoke (5) — 692-LOC route auth+early-return envelope
+- 6de1561 /api/budgeting/chart-of-accounts + csv-template (12 total) — CSV formula-injection guard locked
+- 4b8d3b0 /api/budgeting/cash-flow/alerts (7)
+- 9d70b1e /api/budgeting/assumptions (9)
+- 8147ded /api/budgeting/templates (8)
+
+**Cumulative: 63 commits. Tests 3537 → 3850/3858 passing (+313 net).** 22 of 127 routes now have handler tests (was 51 before this session; now 64).
+
+All pre-commit clean × 63 commits.
 - Test count 3537 → **3736/3744 passing (+199 net)**
 - 5 helpers extracted (derive-month-index, elapsed-months, variance-helpers, group-by-parent + analytics route uses computeElapsedMonthIndices/getPeriodMonths)
 - 11 lib modules now have direct pure-helper test coverage
