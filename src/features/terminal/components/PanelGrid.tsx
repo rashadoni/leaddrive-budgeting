@@ -508,14 +508,27 @@ function PanelShell(props: {
   const tPanels = useTranslations('terminal.panels');
   const tPopOutTitle = tPanels('popOutTitle');
   const tPopOutAria = tPanels('popOutAria');
+  // Phase 7.K 2026-05-18 — popped windows are a separate JS process and
+  // share NO state with the main terminal. Without these params the
+  // popout opens "cold" and IndicatorDetail falls back to the morning-
+  // brief summary instead of showing the cell the user just clicked.
+  // We read the relevant slices here so the popout URL carries enough
+  // context for /terminal-panel/[id]/page.tsx to re-hydrate.
+  const popoutActiveCompany = useTerminalStore((s) => s.activeCompanyCode);
+  const popoutActiveIv = useTerminalStore((s) => s.activeIndicatorValueId);
   const handlePopOut = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Period from current URL — preserves whatever the user had selected.
     const period =
       typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('period')
         : null;
-    const params = period ? `?period=${encodeURIComponent(period)}` : '';
+    const usp = new URLSearchParams();
+    if (period) usp.set('period', period);
+    // Carry active selection to the popped window so it renders the
+    // SAME indicator the user was looking at, not a generic summary.
+    if (popoutActiveCompany) usp.set('company', popoutActiveCompany);
+    if (popoutActiveIv) usp.set('iv', popoutActiveIv);
+    const params = usp.toString() ? `?${usp.toString()}` : '';
     window.open(
       `/terminal-panel/${panelKind}${params}`,
       `terminal-panel-${panelKind}`,

@@ -94,8 +94,18 @@ export default function PoppedOutPanelPage() {
   const kind = typeof params.id === "string" ? params.id : "matrix";
   const period = search?.get("period");
   const companyFromUrl = search?.get("company");
+  // Phase 7.K 2026-05-18 — also accept `?iv=<id>` so popping out from a
+  // selected HeatMap cell preserves the indicator focus instead of
+  // falling back to the morning-brief summary view.
+  const ivFromUrl = search?.get("iv");
   const setCompany = useTerminalStore((s) => s.setCompany);
+  const setActiveIndicatorValue = useTerminalStore(
+    (s) => s.setActiveIndicatorValue,
+  );
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
+  const activeIndicatorValueId = useTerminalStore(
+    (s) => s.activeIndicatorValueId,
+  );
 
   // Phase 7.I — hydrate popped window's terminalStore from URL `?company=<code>`
   // on first mount so Agro/Commodity/Agronomy widgets land on the right
@@ -107,6 +117,17 @@ export default function PoppedOutPanelPage() {
       setCompany(companyFromUrl);
     }
   }, [companyFromUrl, activeCompanyCode, setCompany]);
+
+  // Phase 7.K 2026-05-18 — hydrate active indicator-value id from URL
+  // so the detail popout shows the exact cell that was clicked in the
+  // main window. Without this, IndicatorDetail renders its no-selection
+  // fallback (morning brief + sector movers), confusing users who
+  // expect "show me this number bigger".
+  useEffect(() => {
+    if (ivFromUrl && !activeIndicatorValueId) {
+      setActiveIndicatorValue(ivFromUrl);
+    }
+  }, [ivFromUrl, activeIndicatorValueId, setActiveIndicatorValue]);
 
   const title = PANEL_TITLES[kind] ?? kind;
 
