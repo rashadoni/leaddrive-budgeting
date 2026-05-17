@@ -17,12 +17,12 @@
  * Monthly plan: a single `[plan.month - 1]` slot (matches the actual
  * elapsed counter which is always 1 for an in-progress monthly plan).
  */
-export type PlanPeriodInput = {
-  periodType: "monthly" | "quarterly" | "annual" | string
-  year: number
-  quarter?: number | null
-  month?: number | null
-}
+// Phase 3.1 v1.3 cleanup — re-export the canonical PlanPeriodInput
+// from period-lock.ts so the two helpers (computeElapsedMonthIndices
+// here + derivePeriodKey there) share one shape. period-lock owns the
+// type because it landed first.
+export type { PlanPeriodInput } from "./period-lock"
+import type { PlanPeriodInput } from "./period-lock"
 
 export function computeElapsedMonthIndices(
   plan: PlanPeriodInput,
