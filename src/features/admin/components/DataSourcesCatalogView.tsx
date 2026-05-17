@@ -238,6 +238,57 @@ function SourceCard({
   )
 }
 
+function RunImpactScanButton() {
+  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const onClick = async () => {
+    if (running) return
+    setRunning(true)
+    setError(null)
+    setResult(null)
+    try {
+      const res = await fetch("/api/admin/run-crossing-scan", {
+        method: "POST",
+      })
+      const body = (await res.json()) as Record<string, unknown>
+      if (!res.ok) {
+        setError(String(body.error ?? `HTTP ${res.status}`))
+      } else {
+        setResult(
+          `${body.matchesFound} matches · ${body.forecastsGenerated} new forecasts · ${body.cacheHits} cache hits · ${body.skippedNoFinancials} skipped · ${body.errors ? (body.errors as string[]).length : 0} errors · ${body.durationMs}ms`,
+        )
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3 text-sm">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={running}
+        className={`px-3 py-1.5 rounded font-medium ${
+          running
+            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+            : "bg-blue-600 text-white hover:bg-blue-700"
+        }`}
+      >
+        {running ? "Запуск…" : "▶ Запустить impact-scan сейчас"}
+      </button>
+      {result && (
+        <span className="text-xs text-emerald-700 font-mono">{result}</span>
+      )}
+      {error && <span className="text-xs text-red-600">⚠ {error}</span>}
+    </div>
+  )
+}
+
 export function DataSourcesCatalogView() {
   const [freshness, setFreshness] = useState<Record<string, FreshnessSnapshot>>(
     {},
@@ -279,6 +330,13 @@ export function DataSourcesCatalogView() {
             источников…
           </div>
         )}
+        {/* Phase 7.L — manual trigger for the impact-forecast scan.
+         *  Dev server has ANTHROPIC_API_KEY in its env; clicking this
+         *  fires the scan in the server process (no CLI / no shell-
+         *  history leak). Result counts + duration shown inline. */}
+        <div className="mt-4">
+          <RunImpactScanButton />
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
