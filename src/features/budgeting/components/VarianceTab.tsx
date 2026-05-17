@@ -115,10 +115,15 @@ export function VarianceTab() {
                 type="button"
                 data-testid={`variance-plan-${p.id}`}
                 onClick={() => setSelectedPlanId(p.id)}
-                className={`relative rounded-xl p-4 text-left transition-all duration-200 border-2 ${
+                // impeccable polish: replaced purple gradient (AI tell #1)
+                // with primary-token solid surface. Tactile motion-safe
+                // scale + shadow preserved. Plan-selector card kept as
+                // raw <button> because the whole-card-tappable affordance
+                // doesn't fit <Button>'s pill geometry.
+                className={`relative rounded-xl p-4 text-left transition-all duration-200 border-2 motion-safe:hover:scale-[1.01] motion-safe:focus-visible:scale-[1.01] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
                   isSelected
-                    ? "shadow-lg scale-[1.02] border-purple-500 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/20"
-                    : "shadow-sm hover:shadow-md hover:scale-[1.01] border-transparent bg-card text-card-foreground"
+                    ? "shadow-lg motion-safe:scale-[1.02] border-primary bg-primary/5 dark:bg-primary/10"
+                    : "shadow-sm hover:shadow-md border-transparent bg-card text-card-foreground"
                 }`}
               >
                 {isSelected && (

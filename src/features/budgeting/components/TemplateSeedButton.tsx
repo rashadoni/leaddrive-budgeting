@@ -9,6 +9,7 @@
 
 import { useState } from "react"
 import { useTranslations } from "next-intl"
+import { Button } from "@/components/ui/button"
 import { useCreateBudgetLine, useBudgetLineCount } from "@/lib/budgeting/hooks"
 import {
   DEFAULT_EXPENSE_CATEGORIES, DEFAULT_REVENUE_CATEGORIES,
@@ -82,9 +83,15 @@ export function TemplateSeedButton({ planId }: { planId: string }) {
   }
 
   return (
-    <button onClick={seed} disabled={seeding}
-      className="ml-2 text-xs text-purple-600 dark:text-purple-400 underline underline-offset-2 hover:no-underline disabled:opacity-50">
+    <Button
+      type="button"
+      variant="link"
+      size="sm"
+      onClick={seed}
+      disabled={seeding}
+      className="ml-2 h-auto p-0 text-xs"
+    >
       {seeding ? t("templateLoading") : t("templateReady")}
-    </button>
+    </Button>
   )
 }

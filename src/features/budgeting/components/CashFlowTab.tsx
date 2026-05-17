@@ -47,11 +47,17 @@ export function CashFlowTab() {
           ].map(({ key, label }) => (
             <button
               key={key}
+              type="button"
+              role="tab"
+              aria-selected={subView === key}
               onClick={() => setSubView(key)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              // Sub-view tab pattern (similar to OnboardingTabbedPage).
+              // motion-safe scale tap + focus ring + cursor pointer
+              // applied directly to match Button conventions.
+              className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 motion-safe:active:scale-[0.97] ${
                 subView === key
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/60"
               }`}
             >
               {label}

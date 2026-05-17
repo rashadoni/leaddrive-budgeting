@@ -175,7 +175,11 @@ export function ComparisonTab() {
               <button key={p.id} onClick={() => togglePlan(p.id)}
                 // Phase 3.3 hover pattern — full plan name on hover.
                 title={`${p.year} · ${p.name}`}
-                className={`relative rounded-xl p-4 text-left transition-all duration-200 border-2 ${isSelected ? "shadow-lg scale-[1.02]" : "shadow-sm hover:shadow-md hover:scale-[1.01]"} ${isSelected ? "bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/20" : "bg-card text-card-foreground"}`}
+                // impeccable polish: violet AI-gradient → primary-tint
+                // surface; selection state communicated via border color
+                // (per-plan from COMPARISON_COLORS) + scale, not via
+                // bg gradient. Whole-card-tappable = raw <button>.
+                className={`relative rounded-xl p-4 text-left transition-all duration-200 border-2 motion-safe:hover:scale-[1.01] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 cursor-pointer ${isSelected ? "shadow-lg motion-safe:scale-[1.02] bg-primary/5 dark:bg-primary/10" : "shadow-sm hover:shadow-md bg-card text-card-foreground"}`}
                 style={{ borderColor }}>
                 {isSelected && (
                   <div className="absolute top-2 right-2">

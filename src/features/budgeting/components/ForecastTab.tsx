@@ -251,7 +251,11 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
                   onKeyDown={e => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditCell(null) }} />
               ) : (
                 <button type="button"
-                  className={`font-mono text-sm cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 px-1 rounded border border-transparent hover:border-purple-300 dark:hover:border-purple-700 transition-colors ${isDefault ? "text-muted-foreground italic" : ""}`}
+                  // impeccable polish: purple-50/900 → primary tokens
+                  // (AI-tell removal). Inline table-cell button kept
+                  // as raw <button> — design-system <Button> doesn't
+                  // fit editable-cell pattern.
+                  className={`font-mono text-sm cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 px-1 rounded border border-transparent hover:border-primary/40 transition-colors ${isDefault ? "text-muted-foreground italic" : ""}`}
                   onClick={() => startEdit(line.category, line.lineType, m)}>
                   {fmt(value)}
                 </button>
@@ -351,10 +355,15 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
       ) : (
         <tr className="border-t border-dashed border-border/30">
           <td colSpan={months.length + 2} className="px-3 py-1.5">
-            <button onClick={() => { setIsAdding(true); setNewCategory("") }}
-              className="text-xs text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1">
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => { setIsAdding(true); setNewCategory("") }}
+              className="h-auto p-0 text-xs"
+            >
               <Plus className="h-3.5 w-3.5" /> {t("btnAddRow")}
-            </button>
+            </Button>
           </td>
         </tr>
       ))}

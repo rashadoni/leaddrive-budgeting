@@ -203,8 +203,16 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
                         onBlur={() => saveRename()}
                         onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setRenamingId(null) }} />
                     ) : (
-                      <button onClick={() => startRename(plan)} className="text-left group" title={t("plansClickToRename")}>
-                        <h3 className="text-sm font-bold leading-tight text-violet-700 dark:text-violet-300 group-hover:text-purple-500 dark:group-hover:text-purple-300 transition-colors">{plan.name}</h3>
+                      <button
+                        type="button"
+                        onClick={() => startRename(plan)}
+                        className="text-left group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 rounded"
+                        title={t("plansClickToRename")}
+                      >
+                        {/* impeccable polish: violet/purple AI palette →
+                            primary token. Click-to-rename pattern kept
+                            as raw <button> (text trigger, not pill). */}
+                        <h3 className="text-sm font-bold leading-tight text-primary group-hover:text-primary/80 transition-colors">{plan.name}</h3>
                       </button>
                     )}
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -245,19 +253,33 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
                   <Button size="sm" variant={isActive ? "default" : "outline"} onClick={() => onSelect(plan.id)} className="flex-1 text-xs h-8">
                     {isActive ? <><CheckCircle className="h-3 w-3 mr-1" /> {t("btnActive")}</> : t("btnSelect")}
                   </Button>
-                  <button onClick={() => clonePlan(plan)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground border border-border transition-colors" title={t("plansClonePlan")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => clonePlan(plan)}
+                    className="h-8 w-8"
+                    title={t("plansClonePlan")}
+                    aria-label={t("plansClonePlan")}
+                  >
                     <Plus className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => {
-                    const msg = isImported
-                      ? t("plansDeleteImportedConfirm", { name: plan.name })
-                      : t("plansDeleteRegularConfirm", { name: plan.name })
-                    if (confirm(msg)) deletePlan.mutate({ id: plan.id, deleteAll: isImported })
-                  }}
-                    className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 border border-border transition-colors"
-                    title={t("plansDeletePlan")}>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      const msg = isImported
+                        ? t("plansDeleteImportedConfirm", { name: plan.name })
+                        : t("plansDeleteRegularConfirm", { name: plan.name })
+                      if (confirm(msg)) deletePlan.mutate({ id: plan.id, deleteAll: isImported })
+                    }}
+                    className="h-8 w-8 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 hover:border-red-500/50"
+                    title={t("plansDeletePlan")}
+                    aria-label={t("plansDeletePlan")}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             )

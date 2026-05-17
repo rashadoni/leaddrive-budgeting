@@ -35,7 +35,7 @@ import {
 import {
   Banknote, ChevronDown, ChevronRight, DollarSign, LayoutGrid,
   List, Loader2, PiggyBank, Plus, Settings, Target, Trash2,
-  TrendingDown, TrendingUp,
+  TrendingDown, TrendingUp, X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -1001,10 +1001,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         <div key={sec.id} className="border border-border rounded-xl overflow-hidden mb-3">
           <div className="flex items-center justify-between px-4 py-3 bg-muted/40">
             <span className="font-medium text-sm">{sec.name}</span>
-            <button onClick={() => deleteSection.mutate({ id: sec.id, planId })}
-              className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => deleteSection.mutate({ id: sec.id, planId })}
+              className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+              aria-label={`Delete ${sec.name}`}
+            >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
         </div>
       ))}
@@ -1018,7 +1024,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                 <BarChart2 className="h-4 w-4" />
                 {drilldown}
               </CardTitle>
-              <button onClick={() => setDrilldown(null)} className="text-muted-foreground hover:text-foreground text-xs px-2 py-1 rounded hover:bg-muted transition-colors">✕ {t("btnClose")}</button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDrilldown(null)}
+                className="h-7 text-xs"
+                aria-label={t("btnClose")}
+              >
+                <X className="h-3 w-3" /> {t("btnClose")}
+              </Button>
             </div>
           </CardHeader>
           <CardContent>

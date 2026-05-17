@@ -149,7 +149,16 @@ export function TemplatesTab() {
                     <td className="px-2 py-1.5 text-xs text-muted-foreground">{subtypeLabel(tpl.lineSubtype)}</td>
                     <td className="px-2 py-1.5 text-xs text-right font-mono">{fmt(tpl.defaultAmount)}</td>
                     <td className="px-2 py-1.5 text-center">
-                      <button onClick={() => toggleActive(tpl)} className={`inline-block w-8 h-4 rounded-full transition-colors ${tpl.isActive ? "bg-green-500" : "bg-muted-foreground/40"}`}>
+                      {/* Switch toggle — kept as raw <button> (Button
+                          component is pill not switch geometry). Added
+                          aria-pressed + focus ring + cursor pointer. */}
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(tpl)}
+                        aria-pressed={tpl.isActive}
+                        aria-label={tpl.isActive ? "Deactivate template" : "Activate template"}
+                        className={`inline-block w-8 h-4 rounded-full transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${tpl.isActive ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+                      >
                         <span className={`block w-3 h-3 rounded-full bg-white transition-transform mx-0.5 ${tpl.isActive ? "translate-x-4" : "translate-x-0"}`} />
                       </button>
                     </td>
