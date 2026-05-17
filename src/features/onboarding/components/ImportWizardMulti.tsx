@@ -652,19 +652,53 @@ export function ImportWizardMulti() {
             })}
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            onClick={resetWizard}
-            data-testid="another-import"
-          >
-            {t("anotherImport")}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="default"
+              size="lg"
+              onClick={() => {
+                // Auto-redirect to Status dashboard. The completeness
+                // queries refetch on mount so the user immediately sees
+                // their newly-imported company's updated %.
+                const url = new URL(window.location.href)
+                url.searchParams.set("view", "status")
+                window.location.href = url.toString()
+              }}
+              data-testid="view-status-after-apply"
+            >
+              {safeT(t, "viewStatus", "View status →")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              onClick={resetWizard}
+              data-testid="another-import"
+            >
+              {t("anotherImport")}
+            </Button>
+          </div>
         </section>
       )}
     </div>
   )
+}
+
+// Resilient translator — falls back to the second arg if the i18n key
+// isn't in the messages bundle yet. Mirrors the helper in
+// OnboardingTabbedPage so we can introduce new strings without a
+// translation-bundle migration step blocking the UI.
+function safeT(
+  t: ReturnType<typeof useTranslations>,
+  key: string,
+  fallback: string,
+): string {
+  try {
+    return t(key as never)
+  } catch {
+    return fallback
+  }
 }
 
 // ─── Session 9 UX helpers ──────────────────────────────────────────────────

@@ -51,6 +51,16 @@ import {
 import type { ParseResult, ParsedBudgetLine } from "@/lib/onboarding/adapters/azmade-sopl"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
+// Phase 7.I Turn — Guvven-shape deterministic fallback. When AI Mapper
+// produces a structurally-valid proposal but extraction returns 0 leaves
+// (typical for multi-year sheets where AI Mapper picked the wrong year's
+// columns), run the proven `parsePlfPlSheet` adapter as a deterministic
+// retry using the requested targetYear as preferYear hint.
+import {
+  parsePlfPlSheet,
+  type ParsedPlfLine,
+} from "@/lib/onboarding/adapters/azseker-plf"
+import { classifyGuvvenSheetFamily } from "@/lib/onboarding/azseker-guvven-mapping"
 
 export const maxDuration = 120 // larger than single-sheet — N parallel writes
 
@@ -222,18 +232,58 @@ export async function POST(
     (s) => s.sheetName === firstSuccess.sheetName,
   )?.proposal
   let targetYear = currentBakuYearNumber()
-  if (firstSheetProposal) {
+  // Year override via `?year=2026` query param. The wizard form passes
+  // this when the workbook is known to span multiple years (e.g. Guvven
+  // Fin file has 2022-2026 columns; the user is uploading their 2026
+  // budget plan, not 2022 actuals). Override skips `detectProposalYear`
+  // so multi-year sheets don't reject with a "conflict" 400.
+  const yearOverrideRaw = request.nextUrl.searchParams.get("year")
+  const yearOverride = yearOverrideRaw != null ? Number(yearOverrideRaw) : null
+  const yearOverrideValid =
+    yearOverride !== null && Number.isInteger(yearOverride) && yearOverride >= 2020 && yearOverride <= 2031
+  if (yearOverrideValid) {
+    targetYear = yearOverride
+  } else if (firstSheetProposal) {
     const yearHint = detectProposalYear(firstSheetProposal.columns)
     if (typeof yearHint === "number") {
       targetYear = yearHint
     } else if (yearHint && typeof yearHint === "object" && "conflict" in yearHint) {
       return NextResponse.json(
         {
-          error: `First sheet has columns referencing multiple years (${yearHint.conflict.join(", ")}). MVP requires single-year workbooks.`,
+          error: `First sheet has columns referencing multiple years (${yearHint.conflict.join(", ")}). MVP requires single-year workbooks or a ?year=YYYY override.`,
         },
         { status: 400 },
       )
     }
+  }
+
+  // Guvven-shape deterministic fallback. After AI Mapper applier runs,
+  // any sheet that yielded 0 leaves AND looks Guvven-shaped (PLF.* code
+  // family in sheet name like "PLF CPC" / "PL Malt") gets re-parsed via
+  // the proven `parsePlfPlSheet` adapter with preferYear=targetYear.
+  // This recovers the multi-year case where AI Mapper structurally
+  // succeeded (12 monthly columns proposed) but picked the wrong year.
+  const plfToBudgetLine = (line: ParsedPlfLine): ParsedBudgetLine => ({
+    code: line.code,
+    label: line.label,
+    accountType: line.accountType,
+    plannedAnnual: line.totalAnnual,
+    perMonth: line.perMonth,
+  })
+  for (const sheetResult of multiResult.perSheet) {
+    if ("error" in sheetResult) continue
+    if (sheetResult.result.lines.length > 0) continue
+    const family = classifyGuvvenSheetFamily(sheetResult.sheetName)
+    if (family !== "PLF") continue
+    const fallback = parsePlfPlSheet(workbook, sheetResult.sheetName, XLSX, {
+      preferYear: targetYear,
+    })
+    if (fallback.lines.length === 0) continue
+    sheetResult.result.lines = fallback.lines.map(plfToBudgetLine)
+    sheetResult.result.warnings.push({
+      row: 0,
+      reason: `AI Mapper produced 0 leaves; deterministic Guvven adapter recovered ${fallback.lines.length} for year ${targetYear}.`,
+    })
   }
 
   const orgIdLocal = orgId
@@ -463,6 +513,25 @@ export async function POST(
       },
       { status: 500 },
     )
+  }
+
+  // Phase 7.I follow-up — auto-transition Company.status pending → active
+  // on first data arrival. The C.3 terminal gate hides indicators for
+  // `status='pending'` companies; once budget lines land the company is
+  // ready to surface. Catches the "Aze Sheker-MALT was seeded but never
+  // populated → terminal shows ◇9? on every column" failure mode that
+  // required manual psql intervention before.
+  if (totalInserted > 0) {
+    try {
+      await prisma.company.updateMany({
+        where: { id: companyId, status: "pending" },
+        data: { status: "active" },
+      })
+    } catch (err) {
+      // Non-fatal — already-active is the common case; don't roll back
+      // the import for a status-flip failure.
+      console.warn("[apply-multi] Company.status flip failed:", err)
+    }
   }
 
   // Phase 7.G Turn CXI — recompute trigger + audit emit. Mirrors single-

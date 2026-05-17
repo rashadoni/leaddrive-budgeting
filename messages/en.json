@@ -1154,6 +1154,7 @@
       "indicatorsStaleWarn": "⚠ One or more indicators failed to recompute — Risk Terminal matrix may be stale until you re-run recompute manually.",
       "auditStaleWarn": "⚠ Audit row for this import did not persist — compliance trail incomplete. Notify ops to investigate.",
       "anotherImport": "Import another workbook",
+      "viewStatus": "View status →",
       "statusOk": "OK",
       "statusError": "ERROR",
       "perSheetSummary": "{cols} columns · {headers} source headers · confidence {pct}%",

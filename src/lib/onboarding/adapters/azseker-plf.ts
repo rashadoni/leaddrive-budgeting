@@ -50,7 +50,7 @@
  */
 
 import type * as XLSX from "xlsx"
-import { excelSerialToMonth, toNumberOrNull } from "./azmade-sopl"
+import { toNumberOrNull } from "./azmade-sopl"
 
 export type PlfAccountType = "revenue" | "cogs" | "expense"
 export type CfActivityType = "operating" | "investing" | "financing"
@@ -112,40 +112,95 @@ function cfActivityType(code: string): CfActivityType | null {
   return null
 }
 
-// Find header row + month column positions by scanning for 12 consecutive
-// Date-typed cells (or Excel serial numbers in 2025-2027 range).
-export function findPlfHeaderRow(aoa: unknown[][]): { row: number; monthCols: number[] } | null {
+/** Excel serial → {year, month0Based} or null. Wrapping `excelSerialToMonth`
+ *  but keeping the year too — needed for multi-year-coverage sheets where
+ *  picking the FIRST 12 dates gives the WRONG year (e.g. Guvven Fin has
+ *  PL Malt = 2025-Jan..2026-Dec; first-12 picks 2025, but the user is
+ *  loading the 2026 budget).
+ */
+function excelSerialToYearMonth(cell: unknown): { year: number; month: number } | null {
+  let date: Date | null = null
+  if (cell instanceof Date) date = cell
+  else if (typeof cell === "number" && Number.isFinite(cell)) {
+    if (cell < 44000 || cell > 48000) return null
+    date = new Date((cell - 25569) * 86400 * 1000)
+  }
+  if (!date || isNaN(date.getTime())) return null
+  const y = date.getUTCFullYear()
+  if (y < 2020 || y > 2031) return null
+  return { year: y, month: date.getUTCMonth() }
+}
+
+/** Find header row + month column positions.
+ *
+ *  Accepts optional `preferYear` — when present, only collect candidate
+ *  date cells with that calendar year. When absent, pick the year with
+ *  the largest count of distinct months (covers single-year sheets and
+ *  multi-year where one year dominates).
+ *
+ *  Why this matters: the Guvven Fin xlsx has sheets that cover multiple
+ *  years (e.g. PLF CPC spans 2022..2026). The original implementation
+ *  picked the FIRST 12 valid date cells which always meant the earliest
+ *  year — for a 2026 budget upload, that produced all-zero rows because
+ *  2022 actuals weren't populated. Year-aware detection fixes this.
+ */
+export function findPlfHeaderRow(
+  aoa: unknown[][],
+  opts?: { preferYear?: number },
+): { row: number; monthCols: number[]; year: number } | null {
   for (let i = 0; i < Math.min(aoa.length, 20); i++) {
     const row = aoa[i] ?? []
-    const candidates: Array<{ col: number; month: number }> = []
+    const byYear = new Map<number, number[]>() // year → cols[12] (-1 default)
     for (let c = 0; c < row.length; c++) {
-      const m = excelSerialToMonth(row[c])
-      if (m === null) continue
-      candidates.push({ col: c, month: m })
+      const ym = excelSerialToYearMonth(row[c])
+      if (!ym) continue
+      let cols = byYear.get(ym.year)
+      if (!cols) {
+        cols = Array(12).fill(-1)
+        byYear.set(ym.year, cols)
+      }
+      if (cols[ym.month] === -1) cols[ym.month] = c
     }
-    if (candidates.length < 12) continue
-    // Pick first 12 in monotonic-month order to ensure Jan..Dec sequence
-    const cols: number[] = Array(12).fill(-1)
-    for (const cand of candidates) {
-      if (cols[cand.month] === -1) cols[cand.month] = cand.col
-    }
-    if (cols.every((v) => v !== -1)) {
-      // Sanity: monotonic
-      let mono = true
-      for (let k = 1; k < 12; k++) if (cols[k] <= cols[k - 1]) { mono = false; break }
-      if (mono) return { row: i, monthCols: cols }
-    }
+    if (byYear.size === 0) continue
+
+    // Prefer requested year if it has all 12; else pick year with most months;
+    // tie-break by latest year (the user is more likely loading next year's
+    // budget than ancient history).
+    const candidates = Array.from(byYear.entries())
+      .map(([year, cols]) => ({ year, cols, filled: cols.filter((v) => v !== -1).length }))
+      .filter((c) => c.filled === 12)
+    if (candidates.length === 0) continue
+    candidates.sort((a, b) => {
+      if (opts?.preferYear !== undefined) {
+        if (a.year === opts.preferYear && b.year !== opts.preferYear) return -1
+        if (b.year === opts.preferYear && a.year !== opts.preferYear) return 1
+      }
+      if (a.filled !== b.filled) return b.filled - a.filled
+      return b.year - a.year
+    })
+    const pick = candidates[0]
+
+    // Sanity: monotonic ascending col indices for Jan..Dec
+    let mono = true
+    for (let k = 1; k < 12; k++) if (pick.cols[k] <= pick.cols[k - 1]) { mono = false; break }
+    if (mono) return { row: i, monthCols: pick.cols, year: pick.year }
   }
   return null
 }
 
 const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.\d{1,2}$/
 
-/** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves). */
+/** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves).
+ *
+ *  Optional `preferYear` — for workbooks where one sheet covers multiple
+ *  years (e.g. Guvven Fin's PLF CPC spans 2022..2026), this hint scopes
+ *  the column lookup to the user's intended budget year.
+ */
 export function parsePlfPlSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,
+  opts?: { preferYear?: number },
 ): PlfParseResult {
   const sheet = workbook.Sheets[sheetName]
   if (!sheet) {
@@ -153,7 +208,7 @@ export function parsePlfPlSheet(
   }
   const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, blankrows: false }) as unknown[][]
 
-  const header = findPlfHeaderRow(aoa)
+  const header = findPlfHeaderRow(aoa, { preferYear: opts?.preferYear })
   if (!header) {
     return { sheetName, lines: [], warnings: [{ row: 0, reason: "No 12-month date header row found" }] }
   }
@@ -200,11 +255,14 @@ export function parsePlfPlSheet(
   return { sheetName, lines, warnings }
 }
 
-/** Parse CF_X sheet → ParsedCfLine[] (only leaves). */
+/** Parse CF_X sheet → ParsedCfLine[] (only leaves).
+ *  Same `preferYear` hint as `parsePlfPlSheet`.
+ */
 export function parsePlfCfSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,
+  opts?: { preferYear?: number },
 ): CfParseResult {
   const sheet = workbook.Sheets[sheetName]
   if (!sheet) {
@@ -212,7 +270,7 @@ export function parsePlfCfSheet(
   }
   const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: true, blankrows: false }) as unknown[][]
 
-  const header = findPlfHeaderRow(aoa)
+  const header = findPlfHeaderRow(aoa, { preferYear: opts?.preferYear })
   if (!header) {
     return { sheetName, entries: [], warnings: [{ row: 0, reason: "No 12-month date header row found" }] }
   }

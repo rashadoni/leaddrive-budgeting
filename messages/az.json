@@ -1154,6 +1154,7 @@
       "indicatorsStaleWarn": "⚠ Bir və ya bir neçə indikator yenidən hesablanmadı — siz əl ilə yenidən hesablama işlədənə qədər Risk Terminal matrisi köhnə qala bilər.",
       "auditStaleWarn": "⚠ Bu idxal üçün audit qeydi saxlanılmadı — uyğunluq jurnalı natamamdır. Əməliyyat komandasına bildirin.",
       "anotherImport": "Başqa kitabı idxal et",
+      "viewStatus": "Statusa keç →",
       "statusOk": "OK",
       "statusError": "XƏTA",
       "perSheetSummary": "{cols} sütun · {headers} mənbə başlığı · etibarlılıq {pct}%",
