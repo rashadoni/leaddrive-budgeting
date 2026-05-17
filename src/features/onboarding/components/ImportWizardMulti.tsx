@@ -701,7 +701,24 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 | 3 }) {
                     : "border-gray-700 bg-background text-gray-500"
               }`}
             >
-              {isDone ? "✓" : s.id}
+              {isDone ? (
+                // ui-ux-pro-max no-emoji-icons rule: SVG checkmark instead
+                // of Unicode ✓ glyph (font-dependent rendering otherwise).
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                  aria-hidden="true"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                s.id
+              )}
             </span>
             <span
               className={`uppercase tracking-wider ${
