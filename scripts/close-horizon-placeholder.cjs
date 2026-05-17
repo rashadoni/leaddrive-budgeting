@@ -238,6 +238,30 @@ async function main() {
     console.log("  ✓ Company.status: pending → active")
   }
 
+  // Phase 7.J — audit trail for compliance.
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        organizationId: org.id, actorUserId: null,
+        action: "company_settings_update",
+        entityType: "Company",
+        entityId: horizon.id,
+        metadata: {
+          script: "close-horizon-placeholder.cjs",
+          period: String(TARGET_YEAR),
+          budgetLineRows: plRows,
+          balanceSheetRows: bsRows,
+          cashFlowRows: cfRows,
+          actualsRows: actuals,
+          tag: "horizon-placeholder",
+        },
+        context: { source: "cli-seed" },
+      },
+    })
+    console.log("✓ AuditEvent recorded")
+  } catch (err) {
+    console.warn("⚠ AuditEvent failed (non-fatal):", err.message || err)
+  }
   console.log("\nNext: run close-azseker-onboarding.cjs to seed §3/§4/§8/§R.3 + run RECOMPUTE in terminal.")
   await prisma.$disconnect()
 }

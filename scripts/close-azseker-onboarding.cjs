@@ -393,10 +393,32 @@ async function main() {
   }
   console.log(`  ✓ ${actualsCreated} BudgetActual placeholder rows`)
 
-  // ── Trigger recompute via internal call ────────────────────────
+  // ── Audit trail + recompute hint ────────────────────────────────
+  // Phase 7.J — audit compliance event.
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        organizationId: org.id, actorUserId: null,
+        action: "company_settings_update",
+        entityType: "Company",
+        entityId: null,
+        metadata: {
+          script: "close-azseker-onboarding.cjs",
+          period: String(TARGET_YEAR),
+          assumptionsRows: ASSUMPTIONS.length * plans.length,
+          salesRows: salesRowsCreated,
+          cogsRows: cogsRowsCreated,
+          actualsRows: actualsCreated,
+          entitiesUpdated: Object.keys(ENTITY_DEFAULTS),
+        },
+        context: { source: "cli-seed" },
+      },
+    })
+    console.log("\n✓ AuditEvent recorded")
+  } catch (err) {
+    console.warn("\n⚠ AuditEvent failed (non-fatal):", err.message || err)
+  }
   console.log("\n--- Recompute trigger ---")
-  // Direct trigger is non-trivial outside Next.js context; simplest is
-  // to bump the user to RECOMPUTE via the UI. Log a hint.
   console.log(`  → Open /budgeting/terminal and click RECOMPUTE, or wait for next nightly job.`)
 
   console.log("\n=== DONE ===")

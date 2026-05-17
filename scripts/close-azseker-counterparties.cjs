@@ -247,7 +247,7 @@ async function main() {
       data: {
         organizationId: org.id,
         actorUserId: null,
-        action: "system_seed_run",
+        action: "company_settings_update",
         entityType: "Counterparty",
         entityId: null,
         metadata: {

@@ -233,6 +233,26 @@ async function main() {
     console.log("  ✓ " + totalRows + " SalesBudgetLine rows for MALT (aggregated across customers)")
   }
 
+  // Phase 7.J — audit trail.
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        organizationId: org.id, actorUserId: null,
+        action: "company_settings_update",
+        entityType: "SalesBudgetLine",
+        entityId: null,
+        metadata: {
+          script: "close-azseker-sales.cjs",
+          period: String(TARGET_YEAR),
+          productLines: allDefs.length,
+        },
+        context: { source: "cli-seed" },
+      },
+    })
+    console.log("✓ AuditEvent recorded")
+  } catch (err) {
+    console.warn("⚠ AuditEvent failed (non-fatal):", err.message || err)
+  }
   console.log("\n=== DONE ===")
   await prisma.$disconnect()
 }
