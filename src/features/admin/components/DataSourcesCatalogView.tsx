@@ -240,12 +240,13 @@ function SourceCard({
 }
 
 function RunImpactScanButton() {
-  const locale = useLocale()
-  // Pass UI locale to the LLM so forecasts generate in the language
-  // the user is currently reading. Normalise to one of the supported
-  // codes — next-intl can technically return other strings.
-  const llmLanguage: "en" | "ru" | "az" =
-    locale === "en" || locale === "az" ? locale : "ru"
+  // Phase 7.L 2026-05-18 — single admin click generates forecasts in
+  // ALL 3 locales (EN/RU/AZ) so the user doesn't have to switch UI
+  // language and re-run. Cost: ~3× tokens (~$1.20 per scan vs $0.40
+  // for one locale) — acceptable trade-off for one-click UX. Cache
+  // layer (7-day TTL per language) absorbs repeat scans.
+  void useLocale() // keep hook called for parity with other parts of
+                    // the page that read locale; not used here.
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -259,14 +260,17 @@ function RunImpactScanButton() {
       const res = await fetch("/api/admin/run-crossing-scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ language: llmLanguage }),
+        body: JSON.stringify({ languages: ["en", "ru", "az"] }),
       })
       const body = (await res.json()) as Record<string, unknown>
       if (!res.ok) {
         setError(String(body.error ?? `HTTP ${res.status}`))
       } else {
+        const langs = Array.isArray(body.languages)
+          ? (body.languages as string[]).join("/")
+          : "?"
         setResult(
-          `${body.matchesFound} matches · ${body.forecastsGenerated} new forecasts · ${body.cacheHits} cache hits · ${body.skippedNoFinancials} skipped · ${body.errors ? (body.errors as string[]).length : 0} errors · ${body.durationMs}ms`,
+          `[${langs}] ${body.matchesFound} matches · ${body.forecastsGenerated} new forecasts · ${body.cacheHits} cache hits · ${body.skippedNoFinancials} skipped · ${body.errors ? (body.errors as string[]).length : 0} errors · ${body.durationMs}ms`,
         )
       }
     } catch (e) {
@@ -288,7 +292,9 @@ function RunImpactScanButton() {
             : "bg-blue-600 text-white hover:bg-blue-700"
         }`}
       >
-        {running ? "Запуск…" : "▶ Запустить impact-scan сейчас"}
+        {running
+          ? "Запуск… (EN + RU + AZ)"
+          : "▶ Запустить impact-scan сейчас (EN/RU/AZ)"}
       </button>
       {result && (
         <span className="text-xs text-emerald-700 font-mono">{result}</span>

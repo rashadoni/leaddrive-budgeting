@@ -22,7 +22,10 @@ import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
 import { runCrossingScan } from "@/lib/intel/crossing-scan-runner"
 
-export const maxDuration = 60
+// Phase 7.L 2026-05-18 — 3× language passes mean total runtime can
+// hit ~3 × 3 min = 9 min worst-case. Set to 10 min ceiling; cache
+// hits on repeat clicks make subsequent calls <30s.
+export const maxDuration = 600
 
 const RATE_LIMIT = { name: "crossing-scan", max: 3, windowMs: 60_000 }
 
@@ -53,29 +56,78 @@ export async function POST(request: NextRequest) {
   )
   if (rateLimitError) return rateLimitError
 
-  // Phase 7.L 2026-05-18 — accept language in POST body so the LLM
-  // generates output in the user's UI locale (was hardcoded 'en' in
-  // crossing-scan-runner; user reported RU UI showing EN forecasts).
-  // Falls back to 'ru' (FO Holding's primary locale) when body absent
-  // / language invalid. Cache key includes language so EN + RU forecasts
-  // for the same trigger persist independently.
-  let language: "en" | "ru" | "az" = "ru"
+  // Phase 7.L 2026-05-18 — accept languages array in POST body so a
+  // single admin click can generate forecasts in all locales at once
+  // (~3× tokens vs single-locale but eliminates "switch UI + re-click"
+  // friction). Body shape:
+  //   { languages: ["en","ru","az"] }   ← preferred, generates all
+  //   { language: "ru" }                 ← legacy single-locale
+  //   (no body)                          ← defaults to ["en","ru","az"]
+  type Lang = "en" | "ru" | "az"
+  const ALL_LANGUAGES: readonly Lang[] = ["en", "ru", "az"]
+  let languages: Lang[] = [...ALL_LANGUAGES]
   try {
     const body = (await request.json().catch(() => ({}))) as {
+      languages?: unknown
       language?: unknown
     }
-    if (body.language === "en" || body.language === "ru" || body.language === "az") {
-      language = body.language
+    if (Array.isArray(body.languages)) {
+      const valid = body.languages.filter(
+        (l): l is Lang => l === "en" || l === "ru" || l === "az",
+      )
+      if (valid.length > 0) languages = valid
+    } else if (
+      body.language === "en" ||
+      body.language === "ru" ||
+      body.language === "az"
+    ) {
+      languages = [body.language]
     }
   } catch {
-    // ignore — use default
+    // ignore — use default (all 3)
   }
 
   const startedAt = Date.now()
   try {
-    const result = await runCrossingScan(orgId, { prisma, language })
+    // Aggregate per-language results into one summary. Cache layer
+    // dedupes within a language (7-day TTL) so this is mostly cost-
+    // free on re-runs; first run for a new prompt-version pays full.
+    const perLang: Record<Lang, Awaited<ReturnType<typeof runCrossingScan>>> =
+      {} as Record<Lang, Awaited<ReturnType<typeof runCrossingScan>>>
+    for (const lang of languages) {
+      perLang[lang] = await runCrossingScan(orgId, { prisma, language: lang })
+    }
+    const aggregate = {
+      matchesFound: perLang[languages[0]].matchesFound,
+      forecastsAttempted: Object.values(perLang).reduce(
+        (s, r) => s + r.forecastsAttempted,
+        0,
+      ),
+      forecastsGenerated: Object.values(perLang).reduce(
+        (s, r) => s + r.forecastsGenerated,
+        0,
+      ),
+      cacheHits: Object.values(perLang).reduce(
+        (s, r) => s + r.cacheHits,
+        0,
+      ),
+      skippedNoFinancials: Object.values(perLang).reduce(
+        (s, r) => s + r.skippedNoFinancials,
+        0,
+      ),
+      skippedBudget: Object.values(perLang).reduce(
+        (s, r) => s + r.skippedBudget,
+        0,
+      ),
+      errors: Object.values(perLang).flatMap((r) => r.errors),
+    }
     const durationMs = Date.now() - startedAt
-    return NextResponse.json({ ...result, durationMs, language })
+    return NextResponse.json({
+      ...aggregate,
+      durationMs,
+      languages,
+      perLang,
+    })
   } catch (err) {
     console.error("[crossing-scan POST] failed:", err)
     return NextResponse.json(
