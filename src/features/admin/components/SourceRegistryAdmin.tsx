@@ -13,6 +13,7 @@
  */
 import React from "react";
 import { Loader2, Plus, Trash2, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Entry {
   xlsx: string;
@@ -165,22 +166,26 @@ export function SourceRegistryAdmin() {
                       </td>
                       <td className="py-2 px-2 font-mono text-xs">{entry.period}</td>
                       <td className="py-2 px-2 text-right space-x-1">
-                        <button
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
                           onClick={() => handleEdit(code, entry)}
-                          className="text-xs px-2 py-1 rounded border border-border hover:bg-accent"
+                          className="h-7 text-xs"
                         >
                           Edit
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="outline"
+                          size="icon"
                           onClick={() => handleDelete(code)}
                           disabled={saving}
-                          className="text-xs px-2 py-1 rounded border border-red-500/40 text-red-600 hover:bg-red-500/10"
+                          className="h-7 w-7 border-red-500/40 text-red-600 hover:bg-red-500/10 hover:text-red-700"
                           aria-label={`Remove ${code}`}
                         >
                           <Trash2 size={12} />
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -254,21 +259,18 @@ export function SourceRegistryAdmin() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 text-sm"
-            >
+            <Button type="submit" variant="default" size="default" disabled={saving}>
               {saving ? <Loader2 className="animate-spin h-3 w-3" /> : <Save size={14} />}
               {entries[form.companyCode] ? "Save edit" : "Add entry"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="default"
               onClick={() => setForm({ companyCode: "", xlsx: "", sheet: "", period: "2026" })}
-              className="text-sm px-3 py-1.5 rounded border border-border hover:bg-accent"
             >
               Clear
-            </button>
+            </Button>
           </div>
         </form>
       </section>

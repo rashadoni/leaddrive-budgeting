@@ -588,19 +588,23 @@ export function UsersAccessAdmin() {
                                 {t("save")}
                               </Button>
                             )}
-                            <button
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               onClick={() => resetPassword(u.id, u.email)}
-                              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
                               title={t("resetPassword")}
                               aria-label={t("resetPassword")}
                             >
                               <KeyRound className="h-3.5 w-3.5" />
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               type="button"
+                              variant="ghost"
+                              size="icon"
                               onClick={() => toggleActive(u.id, u.isActive)}
-                              className={`p-1.5 rounded transition-colors ${
+                              className={`h-8 w-8 ${
                                 u.isActive
                                   ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                   : "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
@@ -609,7 +613,7 @@ export function UsersAccessAdmin() {
                               aria-label={u.isActive ? t("deactivate") : t("activate")}
                             >
                               <Power className="h-3.5 w-3.5" />
-                            </button>
+                            </Button>
                           </div>
                         </td>
                       </tr>
@@ -747,10 +751,12 @@ export function UsersAccessAdmin() {
                 <code className="font-mono text-base font-semibold tracking-wider select-all">
                   {tempPasswordModal.password}
                 </code>
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={copyPassword}
-                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border border-border/60 hover:bg-muted transition-colors"
+                  className="h-7"
                 >
                   {copyState === "copied" ? (
                     <>
@@ -761,7 +767,7 @@ export function UsersAccessAdmin() {
                       <Copy className="h-3 w-3" /> {t("copy")}
                     </>
                   )}
-                </button>
+                </Button>
               </div>
               <p className="text-[10px] text-amber-700 dark:text-amber-300 leading-snug">
                 {t("passwordCreated.warning")}

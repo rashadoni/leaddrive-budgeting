@@ -14,6 +14,7 @@
  */
 import React from "react";
 import { RefreshCw, AlertTriangle, Clock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface DriftEvent {
   id: string;
@@ -104,15 +105,16 @@ export function DriftDashboard() {
             and stalled onboarding cases. Refresh re-pulls live state.
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="default"
           onClick={fetchReport}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-border hover:bg-accent text-sm disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
-        </button>
+        </Button>
       </header>
 
       {error && (
