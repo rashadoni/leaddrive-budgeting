@@ -46,6 +46,7 @@ import {
   Sprout,
   Star,
   Upload,
+  Zap,
 } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { useMatrix } from "../hooks/use-matrix";
@@ -182,6 +183,48 @@ export function HotkeyToolbar() {
       setter.call(input, prefix);
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    return true;
+  };
+
+  // Phase 7.L 2026-05-18 — impact-scan quick action wired into the
+  // terminal toolbar so admins don't need to navigate to
+  // /budgeting/admin/data-sources to fire a scan. Single click runs
+  // all 3 locales (EN/RU/AZ); status shown inline on the button
+  // ("Запуск 1/3") until done. Fires terminal:impact-scan-done event
+  // so CompanyImpactForecastsCard can refetch.
+  const [impactScanning, setImpactScanning] = useState(false);
+  const [impactScanResult, setImpactScanResult] = useState<string | null>(null);
+  const triggerImpactScan = (): boolean => {
+    if (impactScanning) return false;
+    setImpactScanning(true);
+    setImpactScanResult(null);
+    fetch("/api/admin/run-crossing-scan", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ languages: ["en", "ru", "az"] }),
+    })
+      .then(async (res) => {
+        const body = (await res.json()) as Record<string, unknown>;
+        if (!res.ok) {
+          setImpactScanResult(`ERR ${res.status}`);
+        } else {
+          const gen = Number(body.forecastsGenerated ?? 0);
+          const hit = Number(body.cacheHits ?? 0);
+          setImpactScanResult(`+${gen} (cache ${hit})`);
+          window.dispatchEvent(
+            new CustomEvent("terminal:impact-scan-done", {
+              detail: body,
+            }),
+          );
+        }
+      })
+      .catch((e) => setImpactScanResult(`ERR ${(e as Error).message ?? "?"}`))
+      .finally(() => {
+        setImpactScanning(false);
+        // Clear result label after 30s so toolbar doesn't stay
+        // permanently advertising last run.
+        window.setTimeout(() => setImpactScanResult(null), 30_000);
+      });
     return true;
   };
 
@@ -445,6 +488,26 @@ export function HotkeyToolbar() {
         ] as HotkeyDef[])
       : []),
     // ─── Ops: system actions ──────────────────────────────────────────
+    // Phase 7.L 2026-05-18 — impact-scan quick action. Generates EN +
+    // RU + AZ forecasts in one click (~8-12 min cold cache, <30s warm).
+    // Pinned so admins fire from the main toolbar without navigating
+    // to /budgeting/admin/data-sources.
+    {
+      key: "impact-scan",
+      label: impactScanning
+        ? "Импакт…"
+        : impactScanResult
+          ? `Импакт ${impactScanResult}`
+          : "Импакт",
+      icon: Zap,
+      title: impactScanning
+        ? "Запускается impact-forecast scan на EN + RU + AZ (~8-12 мин)"
+        : "Запустить impact-forecast scan для всех external feed crossings (FAO / Brent / AZN-USD / CPI). Генерирует прогнозы на EN + RU + AZ за один клик.",
+      group: "ops",
+      priority: "pinned",
+      action: triggerImpactScan,
+      disabled: impactScanning,
+    },
     {
       key: "recompute",
       label: recomputeProgress

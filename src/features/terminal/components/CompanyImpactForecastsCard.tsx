@@ -180,6 +180,16 @@ export function CompanyImpactForecastsCard({
   const [rows, setRows] = useState<ImpactForecastRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Phase 7.L 2026-05-18 — bump counter to force re-fetch when the
+  // user clicks the "Импакт" hotkey toolbar button. HotkeyToolbar
+  // fires `terminal:impact-scan-done` on scan completion → this
+  // component re-fetches without a page reload.
+  const [refetchTick, setRefetchTick] = useState(0)
+  useEffect(() => {
+    const handler = () => setRefetchTick((t) => t + 1)
+    window.addEventListener("terminal:impact-scan-done", handler)
+    return () => window.removeEventListener("terminal:impact-scan-done", handler)
+  }, [])
 
   useEffect(() => {
     if (!companyCode) return
@@ -203,7 +213,7 @@ export function CompanyImpactForecastsCard({
     return () => {
       cancelled = true
     }
-  }, [companyCode, langParam])
+  }, [companyCode, langParam, refetchTick])
 
   if (loading && rows.length === 0) {
     return (
