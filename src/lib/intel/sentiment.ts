@@ -68,9 +68,68 @@ AGRO / FOOD_PROCESSING (Phase 7.I — sugar/cane heuristics for AzerSheker pilot
   - "Government raises sugar import tariff" → protects domestic producers (food_processing) → +0.5
   - "EU sugar quota relaxation" → competitor flood, headwind for domestic refiners → -0.4
   - "Genetically engineered cane variety boosts sucrose yield 8%" → R&D tailwind → +0.4
+
+HOSPITALITY (Phase 7.K):
+  - "AZ tourism arrivals +18% YoY" → positive occupancy demand → +0.6
+  - "Visa restrictions added for AZ tourists" → demand drag → -0.5
+  - "Hilton Baku opens additional 60 rooms" → competitor capacity expansion → -0.3
+  - "F1 / IGF / SOCAR conference confirmed for Baku" → event-driven RevPAR boost → +0.5
+  - "Currency devaluation makes AZ destinations cheaper for foreigners" → inbound tourism tailwind → +0.4
+
+PHARMA (Phase 7.K):
+  - "MoH AZ approves new drug for hypertension" → portfolio expansion opportunity → +0.4
+  - "FDA recalls API supplier batch — AZ market affected" → supply disruption → -0.7
+  - "Pharmacheck warns on counterfeit generic batch" → reputational + sales risk → -0.5
+  - "Türkiye pharma manufacturer signs AZ distribution deal" → competitive intensity up → -0.3
+  - "AZ govt removes pharma import VAT" → cost-side win → +0.4
+
+RETAIL / BEVERAGE (Phase 7.K):
+  - "AZ food CPI +12% YoY" → margin compression on staples → -0.4
+  - "Bravo opens 8 new stores in regional cities" → competitive intensity up → -0.3
+  - "Coca-Cola AZ raises wholesale prices 10%" → demand-side cost pressure → -0.2
+  - "Sugar tax draft circulating in Milli Majlis" → potential demand drag for sugary drinks → -0.5
+  - "AZN strengthens vs USD" → import-heavy retail margin tailwind → +0.4
+
+CONSTRUCTION / REAL ESTATE (Phase 7.K):
+  - "Steel HRC futures up 8% on China demand" → input cost pressure for construction → -0.5
+  - "AZ govt awards $2bn highway tender" → backlog opportunity for general contractors → +0.6
+  - "Baku CBD office cap rate compresses to 9.5%" → real-estate valuation tailwind → +0.4
+  - "Akkord wins Caspian port expansion contract" → competitor backlog up → -0.2
+  - "Cement plant explosion in Gəncə cuts regional supply 30%" → supply shock, mixed effect → 0.0
+
+POULTRY (Phase 7.K):
+  - "Corn futures up 12% on US drought" → feed cost pressure for AZ poultry → -0.6
+  - "Avian flu outbreak in Iran near AZ border" → biosecurity risk + import substitution opp → -0.3
+  - "Azersun poultry capacity expansion announced" → domestic price floor pressure → -0.4
+  - "Wholesale broiler price falls 7%" → margin compression on integrated producers → -0.5
+
+LOGISTICS (Phase 7.K):
+  - "Baltic Dry Index drops 18% on China import weakness" → freight margin compression → -0.3
+  - "Brent crude up 9% on Mideast tension" → diesel pass-through cost up → -0.5
+  - "BTC pipeline volumes record-high" → AZ logistics activity tailwind → +0.5
+  - "Caspian port congestion delays cargo 5 days" → revenue + cost-side hit → -0.4
+  - "AZ Railways raises tariff 6%" → cost pass-through opportunity for trucking → +0.2
+
+EDUCATION (Phase 7.K):
+  - "ADA University tuition freeze announced" → margin compression for tier-1 private → -0.4
+  - "AZ govt subsidy for STEM graduates announced" → enrollment tailwind → +0.4
+  - "Population age 0-14 falls 1.2% YoY in AZ census" → long-term enrollment headwind → -0.3
+  - "Khazar accreditation review extended" → reputational tail risk → -0.5
+
+ENTERTAINMENT (Phase 7.K):
+  - "Baku F1 weekend confirmed, ticketing opens" → hospitality + venue demand → +0.7
+  - "Crystal Hall concert series announced" → utilization tailwind → +0.5
+  - "Heavy rain forecast for AZ outdoor festival" → outdoor-venue demand drag → -0.4
+
+INDUSTRIAL (Phase 7.K):
+  - "SOCAR Petkim earnings beat by 18%" → benchmark for AZ petrochem peers → +0.3
+  - "Copper futures down 6% on China cooling" → industrial demand softness → -0.4
+  - "Baku Steel announces 200kt expansion" → domestic supply up, price pressure → -0.3
+  - "Natural gas prices spike on cold snap" → industrial input cost up → -0.5
+
   - Pure macro stat with no actionable angle → 0.0
 
-Context clues to attend to: explicit mention of "sugar", "cane", "beet", "yield", "harvest", "fertilizer", "irrigation", "drought", "frost", "ICE", "Pink Sheet", "extraction rate", "Salyan/Imishli/Sabirabad" → bump up specificity of score (more positive OR more negative).
+Context clues to attend to: explicit mention of "sugar", "cane", "beet", "yield", "harvest", "fertilizer", "irrigation", "drought", "frost", "ICE", "Pink Sheet", "extraction rate", "Salyan/Imishli/Sabirabad" → bump up specificity of score (more positive OR more negative). Same for sector-specific keywords from the heuristics above (e.g. "Brent", "Baltic Dry", "F1 Baku", "Pharmacheck", "stat.gov.az", "CPI", "tariff").
 
 Output JSON ONLY: { "scores": [{ "id": "...", "score": -0.4 }, ...] }
   - One entry per input item, in the same order.

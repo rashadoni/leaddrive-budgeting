@@ -32,8 +32,10 @@ import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './t
 
 /** Bump on any change to SYSTEM_PROMPT or buildIntelPrompt structure.
  *  v1 = initial Phase D.2 ship.
- *  v2 = Phase 7.G Turn LXXXXIII (D.5c) — language parameter added. */
-export const INTEL_PROMPT_VERSION = 'v2';
+ *  v2 = Phase 7.G Turn LXXXXIII (D.5c) — language parameter added.
+ *  v3 = Phase 7.K Phase 4 — sector-specific tag list + search heuristics
+ *       for all 14 holding sectors (was AzerSheker-only). */
+export const INTEL_PROMPT_VERSION = 'v3';
 
 /** Per-crawl item cap. The model is instructed to return ≤10; this is
  *  a safety belt against runaway responses. */
@@ -65,13 +67,40 @@ What counts as relevant:
   - Sector-level news affecting any of the listed industries (regulatory, macro, supply-chain, demand-side).
   - Company-specific news mentioning any of the listed company codes or their full names.
   - Cross-cutting Azerbaijani / Caucasus / regional news that materially affects the holding (currency, energy, trade policy).
-  - **Sugar / agro thematic** (AzerSheker pilot — explicit topical tags expected):
+  - **Sector thematic tags** — emit one or more in industryTags[] for each item:
+    Food processing / agro:
     * "azerbaijan-agro" — Azerbaijani agriculture sector news (crop conditions, subsidies, irrigation, weather alerts in Salyan/Imishli/Sabirabad/Yevlax)
     * "sugar-policy" — sugar tariffs, import quotas, refined-sugar price controls (AZ or major exporters: BR/IN/EU/TH)
     * "ice-11-future" — ICE Sugar No. 11 futures movements ≥3% intraday or with named catalyst
-    * "competitor:baki-sirniyyat" — Bakı Şirniyyat (domestic sugar competitor) — pricing, capacity, M&A
-    * "competitor:*" — any other Azerbaijani sugar/starch producer (use "competitor:<name>")
-    Emit each tag as a SEPARATE STRING in industryTags[] (e.g. ["food_processing", "azerbaijan-agro", "ice-11-future"]).
+    Hospitality:
+    * "az-tourism" — AZ tourism arrivals, conference bookings, F1 weekend, holiday/visa policy
+    Pharma:
+    * "drug-approval-az" — drug approvals from MoH AZ, EMA/FDA actions affecting AZ supply, recall events, Pharmacheck warnings
+    Retail / beverage:
+    * "food-cpi-az" — stat.gov.az food CPI breakdown moves; staples pricing pressure, foot-traffic / e-commerce penetration
+    Construction / real estate:
+    * "construction-permit-az" — new permit issuance, state-financed project tenders, materials shortage alerts, AZ housing market trends
+    Logistics:
+    * "logistics-az" — fuel price changes (Brent / diesel / gasoline), customs delays, BTC pipeline, Caspian shipping rates, Baltic Dry Index moves
+    Education:
+    * "education-policy-az" — Ministry of Education tuition caps, accreditation actions, student loan policy
+    Competitor moves:
+    * "competitor:<slug>" — any named competitor for AZ portfolio (e.g. "competitor:hilton-az", "competitor:akkord", "competitor:bravo", "competitor:nobel-ilac", "competitor:azersun-poultry", "competitor:coca-cola-az", "competitor:pasha-property", "competitor:ada-university", "competitor:baku-steel"). Use the explicit slug from the holding's competitor list when known.
+    Emit each tag as a SEPARATE STRING in industryTags[] (e.g. ["food_processing", "azerbaijan-agro", "ice-11-future"] or ["hospitality", "az-tourism", "competitor:hilton-az"]).
+
+  - **Sector-specific search heuristics** — use these to guide your web searches:
+    * **Hospitality**: AZ tourism arrivals, hotel occupancy trends in Baku/Ganja/Quba, ADR moves, BTC hotel news, conference cycle (F1/IGF/SOCAR)
+    * **Pharma**: drug approval announcements (AZ MoH, FDA/EMA actions on AZ-imported drugs), API supply disruptions, Türkiye pharma manufacturers, Sanofi/Gedeon Richter AZ
+    * **Retail**: foot-traffic reports, Bravo/Bizim/Bolmart pricing & expansion, e-commerce penetration, AZ food-CPI breakdown moves
+    * **Construction**: state-funded infrastructure tenders, cement/steel/lumber price spikes, Akkord/Azkons/MSCM project announcements, housing permit data
+    * **Poultry**: feed-grain cost pressure, Azersun poultry capacity, broiler/egg wholesale price moves, avian-flu / biosecurity alerts
+    * **Beverage**: Coca-Cola/Efes pricing, sugar tax discussions, Caspian Mineral water bottling capacity
+    * **Logistics**: diesel/gasoline price moves, BTC pipeline volume, Caspian port congestion, Baltic Dry Index, AZ railway tariffs
+    * **Real estate**: PASHA Property launches, Baku CBD office cap-rate trends, residential pricing, mortgage rate moves
+    * **Education**: ADA / Khazar / Baku Higher Oil School news, tuition policy, AZ enrollment trends
+    * **Entertainment**: Crystal Hall / Baku F1 / concert announcements, weather-sensitive outdoor venues
+    * **Industrial**: SOCAR Petkim, Baku Steel, AZ manufacturing PMI, energy input costs
+    * **Services**: cross-border services trade, AZ professional services market
 
 Hard constraints:
   - You MUST call web_search at least once before producing the feed. Do not return items without searching.
