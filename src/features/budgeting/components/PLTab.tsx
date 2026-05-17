@@ -46,6 +46,9 @@ import { DataBoundary } from "@/components/ui/data-boundary"
 // Mounted as a colSpan={6} expansion row under the active drilldown
 // row so the user sees the monthly distribution without leaving PLTab.
 import { MonthlySparkline } from "./monthly-sparkline"
+// Phase 3.1 v1.3 — `buildGrouped` extracted to shared helper for
+// direct unit testing. See group-by-parent.ts for the 9-case test.
+import { groupByParent } from "@/lib/budgeting/group-by-parent"
 import {
   useBudgetAnalytics,
   useBudgetSections,
@@ -191,29 +194,11 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
     return parentRow?.actual ?? 0
   }
 
-  const buildGrouped = (rows: typeof byCategory) => {
-    const groups: { parent: string; children: typeof byCategory }[] = []
-    const standalone: typeof byCategory = []
-    const groupMap = new Map<string, typeof byCategory>()
-    for (const r of rows) {
-      if (r.parentCategory) {
-        const existing = groupMap.get(r.parentCategory) ?? []
-        existing.push(r)
-        groupMap.set(r.parentCategory, existing)
-      } else {
-        standalone.push(r)
-      }
-    }
-    for (const [parent, children] of groupMap) {
-      groups.push({ parent, children })
-    }
-    return { groups, standalone }
-  }
-
-  const revGrouped = buildGrouped(revRows)
-  const directGrouped = buildGrouped(directExpRows)
-  const indirectGrouped = buildGrouped(indirectExpRows)
-  const belowEbitdaGrouped = buildGrouped(belowEbitdaRows)
+  // Phase 3.1 v1.3 — `groupByParent` extracted to shared helper.
+  const revGrouped = groupByParent(revRows)
+  const directGrouped = groupByParent(directExpRows)
+  const indirectGrouped = groupByParent(indirectExpRows)
+  const belowEbitdaGrouped = groupByParent(belowEbitdaRows)
 
   const categoryCount = byCategory.length
   const sectionCount = sections.length
