@@ -48,10 +48,18 @@ export async function withOrgScope<T>(
   }
   // Validate to prevent SQL injection — the orgId is interpolated
   // into a SET LOCAL statement (parameterized form not supported by
-  // SET). cuid() ids are alphanumeric only; reject anything else.
-  if (!/^[a-z0-9]+$/i.test(organizationId)) {
+  // SET). cuid() ids are alphanumeric, 20-32 chars (default cuid is 25).
+  //
+  // Phase 5.2 architect review 2026-05-16 — tightened from `[a-z0-9]+`
+  // to length-bound `{20,32}` to prevent a misconfigured test fixture
+  // passing a single-char id like "x". A short id passes the original
+  // charset guard, runs without error, but matches zero rows once RLS
+  // is enabled — silent breakage (empty arrays returned where data was
+  // expected). The length bound catches this fixture-class footgun
+  // at the helper boundary.
+  if (!/^[a-z0-9]{20,32}$/i.test(organizationId)) {
     throw new Error(
-      `withOrgScope: organizationId contains illegal characters: ${JSON.stringify(organizationId)}`,
+      `withOrgScope: organizationId must be a 20-32 char cuid-shaped string; got ${JSON.stringify(organizationId)}`,
     )
   }
 

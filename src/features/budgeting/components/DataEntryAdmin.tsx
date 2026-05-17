@@ -391,7 +391,10 @@ function OperationalFactsTab({
                   <td className="py-1">{r.date.slice(0, 10)}</td>
                   <td className="py-1 text-right">{r.value.toLocaleString()}</td>
                   <td className="py-1 text-muted-foreground">{r.unit}</td>
-                  <td className="py-1 text-muted-foreground truncate max-w-[200px]">
+                  <td
+                    className="py-1 text-muted-foreground truncate max-w-[200px]"
+                    title={r.source ?? undefined}
+                  >
                     {r.source ?? "-"}
                   </td>
                 </tr>
@@ -591,7 +594,10 @@ function EsgDisclosuresTab({
                   <td className="py-1">{r.period}</td>
                   <td className="py-1 text-right">{r.value.toLocaleString()}</td>
                   <td className="py-1 text-muted-foreground">{r.unit}</td>
-                  <td className="py-1 text-muted-foreground truncate max-w-[300px]">
+                  <td
+                    className="py-1 text-muted-foreground truncate max-w-[300px]"
+                    title={r.sourceNote ?? undefined}
+                  >
                     {r.sourceNote ?? "-"}
                   </td>
                 </tr>

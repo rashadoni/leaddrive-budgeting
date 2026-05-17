@@ -61,6 +61,22 @@ export interface BudgetCategoryRow {
   variance: number
   variancePct: number
   parentCategory?: string | null
+  // SAP / ChartOfAccount code if the underlying lines were classified.
+  // Null when ungrouped (e.g., legacy import without account FK).
+  // Emitted by `/api/budgeting/analytics` for every row; UIs use it for
+  // accountCode-prefix-based filtering (D&A / below-EBITDA) and as
+  // part of the row hover-tooltip identifier.
+  accountCode?: string | null
+  // Phase 3.1 v1.1 (Turn LIX deferral closure) — 12-month planned
+  // distribution for the variance-tab inline sparkline. Indexed 0..11
+  // (0=Jan..11=Dec). Optional + nullable per-element: routes built
+  // before this field shipped won't carry it; consumers must guard.
+  monthlyPlanned?: number[]
+  // Phase 3.1 v1.2 — actual analog of monthlyPlanned. Auto-actuals
+  // attributed to the months "elapsed" at request time (uniform spread
+  // across qStart..curMonth or 1..curMonth); manual actuals bucketed by
+  // BudgetActual.monthIndex. Optional for same back-compat reason.
+  monthlyActual?: number[]
 }
 
 export interface BudgetDepartmentRow {

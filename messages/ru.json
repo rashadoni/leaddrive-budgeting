@@ -473,6 +473,7 @@
     "varianceColActual": "Факт",
     "varianceColVariance": "Отклонение",
     "varianceColPct": "%",
+    "varianceColTrend": "Динамика",
     "periodAnnual": "Годовой",
     "periodQuarterly": "Кв.{n}",
     "periodMonthly": "М.{n}",

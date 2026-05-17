@@ -58,8 +58,8 @@ function fetchSettings(companyId: string): Promise<SettingsBody> {
 
 export function CompanySettingsAdmin() {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId ?? ""
-  const userRole = (session?.user as any)?.role as string | undefined
+  const orgId = session?.user?.organizationId ?? ""
+  const userRole = session?.user?.role
   const canEdit = userRole === "admin" || userRole === "manager"
   const queryClient = useQueryClient()
 
@@ -108,6 +108,10 @@ export function CompanySettingsAdmin() {
                 <button
                   type="button"
                   onClick={() => setSelectedCompanyId(isOpen ? null : c.id)}
+                  // Phase 3.3 pattern — hover reveals the fully-qualified
+                  // "<code> — <name> · <industry>" identifier when the
+                  // name truncates in the flex-1 cell.
+                  title={`${c.code} — ${c.name}${c.industry ? ` · ${c.industry}` : ""}`}
                   className="w-full flex items-center gap-3 p-3 hover:bg-muted/40 text-left"
                 >
                   <ChevronRight

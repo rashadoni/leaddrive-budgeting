@@ -48,6 +48,11 @@ import {
   VARIANCE_BAND_TEXT,
 } from "@/lib/risk/status-bands"
 import { DataBoundary } from "@/components/ui/data-boundary"
+// Phase 3.1 v1.1+v1.2 sparkline component — extracted to shared file
+// so PLTab + future analytics surfaces can render the same 12-month
+// distribution polyline. See `./monthly-sparkline.tsx` for the
+// rendering contract + tooltip / accessibility notes.
+import { MonthlySparkline } from "./monthly-sparkline"
 
 export function VarianceTab() {
   const t = useTranslations("budgeting")
@@ -273,6 +278,13 @@ export function VarianceTab() {
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColActual")}</th>
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColVariance")}</th>
                     <th className="text-right px-4 py-2 font-semibold">{t("varianceColPct")}</th>
+                    {/* Phase 3.1 v1.1 (Turn LIX closure) — 12-month planned
+                        distribution sparkline. Helps users see seasonality
+                        (year-end loaded? quarter-start spike? steady?)
+                        without leaving the variance table. */}
+                    <th className="text-left px-3 py-2 font-semibold" title="12-month planned distribution">
+                      {t("varianceColTrend")}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -331,6 +343,12 @@ export function VarianceTab() {
                         <td className={`text-right px-4 py-2 tabular-nums font-semibold ${VARIANCE_BAND_TEXT[band]}`}>
                           {sign}
                           {(row.variancePct ?? 0).toFixed(1)}%
+                        </td>
+                        <td className="px-3 py-2">
+                          <MonthlySparkline
+                            values={row.monthlyPlanned}
+                            actuals={row.monthlyActual}
+                          />
                         </td>
                       </tr>
                     )

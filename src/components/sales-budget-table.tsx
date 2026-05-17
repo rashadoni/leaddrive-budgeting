@@ -35,7 +35,7 @@ interface SalesLine {
 
 export function SalesBudgetTable({ planId }: { planId: string }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
   const { data: lines, isLoading } = useQuery({

@@ -35,6 +35,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useBudgetPlans, useBudgetAnalytics } from "@/lib/budgeting/hooks"
+// Phase 3.1 v1.2 ext — shared 12-month sparkline. ComparisonTab uses
+// the first selected plan's distribution as a single trend column.
+import { MonthlySparkline } from "./monthly-sparkline"
 import { BUDGET_COLORS, ANIMATION, AXIS_TICK, VBarGradient, fmtK } from "@/lib/budget-chart-theme"
 import { BudgetChartTooltip } from "@/components/budget-chart-tooltip"
 import { BudgetBarLabel } from "@/components/budget-bar-label"
@@ -122,6 +125,14 @@ export function ComparisonTab() {
       row[`p${i}_actual`] = found?.actual ?? 0
       row[`p${i}_variance`] = found?.variance ?? 0
       row[`p${i}_pct`] = found?.variancePct ?? 0
+      // Phase 3.1 v1.2 ext — carry first-selected-plan's monthly arrays
+      // through to the table render so the Trend column can render a
+      // 12-month sparkline per row. Only the first plan to keep visual
+      // density manageable across N-plan comparisons.
+      if (i === 0) {
+        row.monthlyPlanned = found?.monthlyPlanned
+        row.monthlyActual = found?.monthlyActual
+      }
     })
     return row
   })
@@ -162,6 +173,8 @@ export function ComparisonTab() {
             const borderColor = isSelected ? COMPARISON_COLORS[colorIdx] : "transparent"
             return (
               <button key={p.id} onClick={() => togglePlan(p.id)}
+                // Phase 3.3 hover pattern — full plan name on hover.
+                title={`${p.year} · ${p.name}`}
                 className={`relative rounded-xl p-4 text-left transition-all duration-200 border-2 ${isSelected ? "shadow-lg scale-[1.02]" : "shadow-sm hover:shadow-md hover:scale-[1.01]"} ${isSelected ? "bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-950/30 dark:to-violet-900/20" : "bg-card text-card-foreground"}`}
                 style={{ borderColor }}>
                 {isSelected && (
@@ -350,6 +363,16 @@ export function ComparisonTab() {
                           <th key={`${id}-v`} className="px-2 py-3 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: COMPARISON_COLORS[i] }}>{t("colVarianceShort")} %</th>,
                         ]
                       })}
+                      {/* Phase 3.1 v1.2 ext — 12-month sparkline of first
+                          selected plan. Single column kept density
+                          manageable for N-plan comparisons; user can
+                          re-order plans to put the "reference" plan first. */}
+                      <th
+                        className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-white/70"
+                        title="12-month distribution from the first selected plan"
+                      >
+                        {t("varianceColTrend")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -363,6 +386,12 @@ export function ComparisonTab() {
                             {(row[`p${i}_pct`] ?? 0).toFixed(1)}%
                           </td>,
                         ])}
+                        <td className="px-3 py-1.5">
+                          <MonthlySparkline
+                            values={row.monthlyPlanned}
+                            actuals={row.monthlyActual}
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -379,6 +408,7 @@ export function ComparisonTab() {
                           </td>,
                         ]
                       })}
+                      <td className="px-3 py-2" />
                     </tr>
                   </tfoot>
                 </table>

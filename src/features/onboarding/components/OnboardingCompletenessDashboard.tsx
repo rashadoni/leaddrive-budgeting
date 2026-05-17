@@ -142,6 +142,8 @@ function CompanyCompletenessCard({ company }: { company: CompanyRow }) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
+        // Phase 3.3 hover pattern — full identifier on hover when name truncates.
+        title={`${company.code} — ${company.name}${company.industry ? ` · ${company.industry}` : ""}`}
         className="w-full p-4 flex items-start justify-between gap-3 text-left hover:bg-accent/30 transition-colors rounded-t-lg"
       >
         <div className="min-w-0 flex-1">
@@ -249,7 +251,12 @@ function SectionRow({ section }: { section: SectionResult }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="font-mono text-muted-foreground shrink-0">{section.code}</span>
-          <span className="font-medium truncate">{section.label}</span>
+          <span
+            className="font-medium truncate"
+            title={`${section.code} — ${section.label}`}
+          >
+            {section.label}
+          </span>
           <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${pill.color}`}>
             {pill.label}
           </span>

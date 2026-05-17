@@ -202,3 +202,63 @@ describe("ComparisonTab — KPI cards rendered when 2+ selected", () => {
     expect(document.body.textContent).toContain("₼")
   })
 })
+
+describe("ComparisonTab — sparkline trend column (Phase 3.1 v1.2 ext)", () => {
+  // Locks the ship in e46d0a1 — the first-selected-plan's monthly
+  // distribution renders as a sparkline in the new Trend column.
+  it("renders MonthlySparkline polyline when first plan has monthlyPlanned + monthlyActual", () => {
+    hooksMock.useBudgetPlans.mockReset().mockReturnValue({
+      data: [PLAN("p1", 2025, "FY2025"), PLAN("p2", 2024, "FY2024")],
+      isLoading: false,
+    })
+    const q1Heavy = [40_000, 50_000, 60_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 20_000, 30_000, 80_000]
+    const elapsed3 = [38_000, 52_000, 58_000, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    hooksMock.useBudgetAnalytics
+      .mockReset()
+      .mockImplementation((planId: string) => {
+        if (planId === "") return { data: undefined, isLoading: false }
+        // Both plans share fixture, but only the FIRST plan's row data
+        // gets attached to row.monthlyPlanned / row.monthlyActual per the
+        // ComparisonTab table-row builder.
+        return {
+          data: {
+            totalPlanned: 400_000,
+            totalActual: 148_000,
+            totalVariance: -252_000,
+            byCategory: [
+              {
+                category: "Sales",
+                planned: 400_000,
+                actual: 148_000,
+                variance: -252_000,
+                variancePct: -63,
+                monthlyPlanned: q1Heavy,
+                monthlyActual: elapsed3,
+              },
+            ],
+          },
+        }
+      })
+
+    render(<ComparisonTab />)
+    const planButtons = document.querySelectorAll(
+      "button.relative.rounded-xl",
+    ) as NodeListOf<HTMLButtonElement>
+    fireEvent.click(planButtons[0]) // select p1 (first)
+    fireEvent.click(planButtons[1]) // select p2
+
+    // The variance table emits one `variance-sparkline` SVG per row +
+    // a plan polyline. With actuals present, the actual-overlay polyline
+    // also renders.
+    const sparkline = document.querySelector('[data-testid="variance-sparkline"]')
+    expect(sparkline).toBeTruthy()
+    const planLine = document.querySelector('[data-testid="variance-sparkline-plan"]')
+    const actualLine = document.querySelector('[data-testid="variance-sparkline-actual"]')
+    expect(planLine).toBeTruthy()
+    expect(actualLine).toBeTruthy()
+    // Tooltip mentions plan + actual labels
+    const title = sparkline!.querySelector("title")
+    expect(title?.textContent ?? "").toContain("plan")
+    expect(title?.textContent ?? "").toContain("actual")
+  })
+})

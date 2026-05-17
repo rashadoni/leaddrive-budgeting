@@ -48,7 +48,7 @@ export function BudgetExcelImport({ onImported }: { onImported?: (planId: string
   const t = useTranslations("budgeting")
   const tCommon = useTranslations("common")
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const queryClient = useQueryClient()
 
   const [file, setFile] = useState<File | null>(null)

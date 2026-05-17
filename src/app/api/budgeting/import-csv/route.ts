@@ -4,6 +4,7 @@ import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 
 const importCsvSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -117,6 +118,7 @@ export async function POST(req: NextRequest) {
         continue
       }
 
+      const expenseDate = row.date || row.Date || null
       await prisma.budgetActual.create({
         data: {
           organizationId: orgId,
@@ -125,7 +127,9 @@ export async function POST(req: NextRequest) {
           department: row.department || row.Department || null,
           lineType: row.lineType || row.type || "expense",
           actualAmount: Math.abs(amount),
-          expenseDate: row.date || row.Date || null,
+          expenseDate,
+          // Phase 3.1 v1.2 — derive monthIndex for VarianceTab sparkline.
+          monthIndex: deriveMonthIndex(expenseDate),
           description: row.description || row.Description || row.memo || null,
         },
       })

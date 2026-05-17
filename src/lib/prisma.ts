@@ -50,53 +50,13 @@ if (
     })
 }
 
-/**
- * Create a tenant-scoped prisma client.
- * All queries automatically filter by organizationId.
- * All creates automatically inject organizationId.
- */
-export function tenantPrisma(organizationId: string) {
-  return basePrisma.$extends({
-    query: {
-      $allModels: {
-        async findMany({ args, query }: any) {
-          args.where = { ...args.where, organizationId }
-          return query(args)
-        },
-        async findFirst({ args, query }: any) {
-          args.where = { ...args.where, organizationId }
-          return query(args)
-        },
-        async findUnique({ args, query }: any) {
-          const result = await query(args)
-          // Verify tenant isolation: reject if result belongs to a different org
-          if (result && "organizationId" in result && result.organizationId !== organizationId) {
-            return null
-          }
-          return result
-        },
-        async create({ args, query }: any) {
-          if (args.data && typeof args.data === "object" && !Array.isArray(args.data)) {
-            args.data.organizationId = organizationId
-          }
-          return query(args)
-        },
-        async update({ args, query }: any) {
-          args.where = { ...args.where, organizationId }
-          return query(args)
-        },
-        async delete({ args, query }: any) {
-          args.where = { ...args.where, organizationId }
-          return query(args)
-        },
-        async count({ args, query }: any) {
-          args.where = { ...args.where, organizationId }
-          return query(args)
-        },
-      },
-    },
-  })
-}
+// Phase 5.2 architect review 2026-05-16 — REMOVED `tenantPrisma()` orphan
+// abstraction (0 production callers found via grep). It was a first-draft
+// app-layer tenant guard that competed with the new Postgres-RLS direction
+// (`src/lib/db/with-org-scope.ts` + the ALS+$extends middleware per
+// `docs/ADR-RLS.md`). Keeping the orphan around would mislead future
+// contributors into a third tenant-isolation pattern. RLS is the chosen
+// path; explicit `withOrgScope()` is the cron/admin escape hatch.
 
 /** Fire-and-forget audit log entry */
 export function logAudit(orgId: string, action: string, entityType: string, entityId: string, entityName?: string, extra?: { oldValue?: any; newValue?: any }) {

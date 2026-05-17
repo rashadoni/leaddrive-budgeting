@@ -34,6 +34,7 @@ import {
   ClipboardEdit,
   AlertTriangle,
   Building2,
+  Sparkles,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -139,6 +140,10 @@ const budgetSubNav = [
       // — page + API + tests already shipped; this is the missing sidebar
       // entry that made the route unreachable from UI nav.
       { href: "/budgeting/admin/companies", icon: Building2, label: "Company Settings", isPage: true },
+      // Phase 7.B v2 Day 6 — AI token usage dashboard. Daily / monthly
+      // burn against the org budget + 30-day trend sparkline. Admin
+      // visibility for LLM spend.
+      { href: "/budgeting/admin/ai-usage", icon: Sparkles, label: "AI Usage", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],

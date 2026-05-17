@@ -502,7 +502,10 @@ export function AISubscriptions() {
                         >
                           {glyph}
                         </span>
-                        <span className="font-semibold text-sm text-gray-200 truncate">
+                        <span
+                          className="font-semibold text-sm text-gray-200 truncate"
+                          title={s.label}
+                        >
                           {s.label}
                         </span>
                         <span className="font-mono text-[10px] text-gray-500 truncate">

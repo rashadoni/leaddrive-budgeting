@@ -7,6 +7,7 @@ import { looksLikeSapCode } from "@/lib/import/keywords"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
+import { computeElapsedMonthIndices } from "@/lib/budgeting/elapsed-months"
 
 /**
  * GET /api/budgeting/analytics
@@ -124,33 +125,20 @@ export async function GET(req: NextRequest) {
   // Simple: monthly cost model value × elapsed months in the plan period.
   // Q1 completed = ×3, Q2 just started (April) = ×1, Annual in March = ×3.
   const autoActualByCategory = new Map<string, number>()
+  // Phase 3.1 v1.2 — sister map for per-month attribution (12 floats per
+  // category key). Drives the VarianceTab sparkline actual-overlay.
+  const autoActualMonthlyByCategory = new Map<string, number[]>()
   let autoActualTotal = 0
 
   if (hasAutoActual && costModel && plan) {
     const { year: curYear, month: curMonth } = currentBakuYearMonth()
 
-    let elapsedMonths = 1
-    if (plan.periodType === "monthly") {
-      elapsedMonths = 1
-    } else if (plan.periodType === "quarterly" && plan.quarter) {
-      const qStart = (plan.quarter - 1) * 3 + 1
-      const qEnd = qStart + 2
-      if (curYear > plan.year || (curYear === plan.year && curMonth > qEnd)) {
-        elapsedMonths = 3 // quarter fully completed
-      } else if (curYear === plan.year && curMonth >= qStart) {
-        elapsedMonths = curMonth - qStart + 1 // inside quarter
-      } else {
-        elapsedMonths = 0 // quarter hasn't started
-      }
-    } else if (plan.periodType === "annual") {
-      if (curYear > plan.year) {
-        elapsedMonths = 12
-      } else if (curYear === plan.year) {
-        elapsedMonths = curMonth
-      } else {
-        elapsedMonths = 0
-      }
-    }
+    // Phase 3.1 v1.2 — pure helper computes the elapsed-month indices
+    // (0-indexed) for the plan's period. The legacy `elapsedMonths`
+    // count is derived from the array length for back-compat with the
+    // existing autoActualByCategory year-total fan-out below.
+    const elapsedMonthIndices = computeElapsedMonthIndices(plan, curYear, curMonth)
+    const elapsedMonths = elapsedMonthIndices.length
 
     for (const line of lines) {
       if (line.isAutoActual && line.costModelKey) {
@@ -158,6 +146,10 @@ export async function GET(req: NextRequest) {
         const amount = monthlyAmount * elapsedMonths
         const key = `${line.category}||${line.lineType}`
         autoActualByCategory.set(key, (autoActualByCategory.get(key) ?? 0) + amount)
+        // Phase 3.1 v1.2 — attribute one monthlyAmount per elapsed month.
+        const monthly = autoActualMonthlyByCategory.get(key) ?? Array(12).fill(0)
+        for (const idx of elapsedMonthIndices) monthly[idx] += monthlyAmount
+        autoActualMonthlyByCategory.set(key, monthly)
         autoActualTotal += amount
       }
     }
@@ -319,15 +311,26 @@ export async function GET(req: NextRequest) {
   // the same human-readable category name (e.g. "Sair xərclər" appears under
   // 711-09-99, 721-09-99 and 731-01-99). Merging them by name misclassifies
   // OpEx vs below-EBITDA by thousands of manat.
-  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null; displayCategory: string }>()
+  const categoryMap = new Map<string, { planned: number; forecast: number; actual: number; lineType: string; accountCode: string | null; displayCategory: string; monthlyPlanned: number[]; monthlyActual: number[] }>()
 
   for (const l of lines) {
     if (!isLeaf(l)) continue
     const code = (l as any).account?.code ?? l.department ?? null
     const key = `${code ?? l.category}||${l.lineType}`
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category }
-    existing.planned += getEffectivePlanned(l)
-    existing.forecast += l.forecastAmount ?? getEffectivePlanned(l)
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category, monthlyPlanned: Array(12).fill(0), monthlyActual: Array(12).fill(0) }
+    const planned = getEffectivePlanned(l)
+    existing.planned += planned
+    existing.forecast += l.forecastAmount ?? planned
+    // Phase 3.1 v1.1 (Turn LIX deferral closure) — bucket the planned
+    // amount into the correct month for sparkline rendering. `monthIndex`
+    // is 0-indexed (0=Jan..11=Dec). Pre-Phase-A rows fall back to
+    // `sortOrder % 100` per the schema docstring. Out-of-range or null →
+    // bucket 0 (Jan) as a defensive default; better than dropping the
+    // row's planned amount from the sparkline entirely.
+    const lAny = l as { monthIndex?: number | null; sortOrder?: number | null }
+    const rawIdx = lAny.monthIndex ?? (typeof lAny.sortOrder === "number" ? lAny.sortOrder % 100 : null)
+    const monthIdx = rawIdx != null && rawIdx >= 0 && rawIdx < 12 ? rawIdx : 0
+    existing.monthlyPlanned[monthIdx] += planned
     categoryMap.set(key, existing)
   }
 
@@ -347,15 +350,22 @@ export async function GET(req: NextRequest) {
   for (const [legacyKey, amount] of autoActualByCategory) {
     const codeKeys = categoryToKeysIndex.get(legacyKey) ?? []
     const totalPlanned = codeKeys.reduce((s, k) => s + (categoryMap.get(k)?.planned ?? 0), 0)
+    // Phase 3.1 v1.2 — paired monthly amounts (12 floats) per legacy
+    // key. Same proportional-spread strategy as the annual amount, but
+    // attributed per month so the sparkline overlay shows real shape.
+    const monthlyArr = autoActualMonthlyByCategory.get(legacyKey) ?? Array(12).fill(0)
     if (totalPlanned > 0) {
       for (const k of codeKeys) {
         const entry = categoryMap.get(k)!
         const share = entry.planned / totalPlanned
         entry.actual += amount * share
+        for (let i = 0; i < 12; i++) entry.monthlyActual[i] += monthlyArr[i] * share
       }
     } else if (codeKeys.length > 0) {
       // Fallback: put all of it on the first matching entry
-      categoryMap.get(codeKeys[0])!.actual += amount
+      const entry = categoryMap.get(codeKeys[0])!
+      entry.actual += amount
+      for (let i = 0; i < 12; i++) entry.monthlyActual[i] += monthlyArr[i]
     }
   }
 
@@ -365,14 +375,23 @@ export async function GET(req: NextRequest) {
     if (autoActualByCategory.has(legacyKey)) continue
     const codeKeys = categoryToKeysIndex.get(legacyKey) ?? []
     const totalPlanned = codeKeys.reduce((s, k) => s + (categoryMap.get(k)?.planned ?? 0), 0)
+    // Phase 3.1 v1.2 — manual actuals carry monthIndex (post-migration
+    // writers stamp it; pre-migration legacy rows are null and skip the
+    // sparkline attribution). When null, the year-aggregate still
+    // contributes via the existing `entry.actual` path.
+    const aRow = a as { monthIndex?: number | null }
+    const mIdx = typeof aRow.monthIndex === "number" && aRow.monthIndex >= 0 && aRow.monthIndex < 12 ? aRow.monthIndex : null
     if (totalPlanned > 0) {
       for (const k of codeKeys) {
         const entry = categoryMap.get(k)!
         const share = entry.planned / totalPlanned
         entry.actual += a.actualAmount * share
+        if (mIdx != null) entry.monthlyActual[mIdx] += a.actualAmount * share
       }
     } else if (codeKeys.length > 0) {
-      categoryMap.get(codeKeys[0])!.actual += a.actualAmount
+      const entry = categoryMap.get(codeKeys[0])!
+      entry.actual += a.actualAmount
+      if (mIdx != null) entry.monthlyActual[mIdx] += a.actualAmount
     }
   }
 
@@ -386,7 +405,7 @@ export async function GET(req: NextRequest) {
     // legacy key from our display name so existing children/parent wiring holds.
     const legacyKey = `${val.displayCategory}||${val.lineType}`
     const parentCategory = parentLookup.get(legacyKey) ?? null
-    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode }
+    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual: val.monthlyActual }
   })
 
   // By department — track expense and revenue separately for correct variance

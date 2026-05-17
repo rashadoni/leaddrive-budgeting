@@ -22,7 +22,7 @@ import type { BudgetReportConfig, ReportResult } from "./report-engine"
 
 function useOrgId() {
   const { data: session } = useSession()
-  return (session?.user as any)?.organizationId || ""
+  return session?.user?.organizationId ?? ""
 }
 
 async function apiFetch<T>(url: string, orgId: string, options?: RequestInit): Promise<T> {
@@ -219,13 +219,12 @@ export function useDeleteBudgetActual() {
 
 // ─── Sections ─────────────────────────────────────────────────────────────────
 
-export interface BudgetSection {
-  id: string
-  planId: string
-  name: string
-  sectionType: string
-  sortOrder: number
-}
+// Phase 3.1 v1.3 cleanup — same pattern as BudgetForecastEntry (ac59359):
+// canonical type lives in ./types with the stricter sectionType union
+// + organizationId + createdAt fields. Re-export so existing call
+// sites keep their import shape.
+export type { BudgetSection } from "./types"
+import type { BudgetSection } from "./types"
 
 export function useBudgetSections(planId: string) {
   const orgId = useOrgId()
@@ -263,14 +262,14 @@ export function useDeleteBudgetSection() {
 
 // ─── Forecast Entries ─────────────────────────────────────────────────────────
 
-export interface BudgetForecastEntry {
-  id: string
-  planId: string
-  month: number
-  year: number
-  category: string
-  forecastAmount: number
-}
+// Phase 3.1 v1.3 cleanup — the duplicate local interface that omitted
+// `lineType` is gone. Single source of truth is the same canonical
+// BudgetForecastEntry in @/lib/budgeting/types (includes lineType +
+// organizationId + createdAt + updatedAt). Re-export so existing
+// `import { BudgetForecastEntry } from "@/lib/budgeting/hooks"`
+// call sites keep working without a code-mod sweep.
+export type { BudgetForecastEntry } from "./types"
+import type { BudgetForecastEntry } from "./types"
 
 export function useBudgetForecastEntries(planId: string) {
   const orgId = useOrgId()

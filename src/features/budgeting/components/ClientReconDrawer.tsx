@@ -360,7 +360,13 @@ export function ClientReconDrawer({
               <div className="p-3 text-sm text-muted-foreground">{t("noRows")}</div>
             ) : (
               contributors.map((r) => (
-                <div key={`${r.accountCode}-${r.accountName}`} className="p-3 flex items-center gap-2">
+                <div
+                  key={`${r.accountCode}-${r.accountName}`}
+                  className="p-3 flex items-center gap-2"
+                  // Phase 3.3 — hover reveals qualified identifier even when
+                  // accountName truncates in the flex-1 cell.
+                  title={`${r.accountCode} — ${r.accountName}`}
+                >
                   <span className="text-[10px] font-mono text-muted-foreground w-16 shrink-0">
                     {r.accountCode}
                   </span>

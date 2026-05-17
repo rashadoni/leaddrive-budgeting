@@ -18,6 +18,7 @@ import {
   type ClientReconciliationRow,
   type PnlContributorRow,
 } from "@/features/budgeting/components/ClientReconDrawer"
+import { BudgetPnlDrillPanel, type DrillRow } from "./budget-pnl-drill-panel"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -59,22 +60,62 @@ function varianceClass(actual: number, plan: number, favorable: "up" | "down"): 
   return good ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
 }
 
-interface PnlRow {
-  accountCode: string
-  accountName: string
-  accountType: string
-  parentCode: string | null
-  monthly: Record<number, number>
-  total: number
-}
+// Phase 3.3 v1.4 — PnlRow IS a DrillRow with parentCode required.
+// Single source of truth: re-use the base shape, narrow parentCode.
+type PnlRow = DrillRow & { parentCode: string | null }
 
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
-  const userRole = (session?.user as any)?.role as string | undefined
+  const orgId = session?.user?.organizationId
+  const userRole = session?.user?.role
   const canEditRecon = userRole === "admin" || userRole === "manager"
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [reconOpen, setReconOpen] = useState(false)
+  // Phase 3.3 — clicked-row drill-down side panel state. Holds the
+  // PnlRow currently expanded into month-by-month detail. null = closed.
+  const [drillRow, setDrillRow] = useState<PnlRow | null>(null)
+
+  // Phase 3.3 — chart-category drill: clicking a Waterfall bar scrolls
+  // to + briefly highlights the corresponding section in the table
+  // below. Auto-expands collapsed sections so the rows are visible
+  // after the scroll lands. `flashSection` holds the section key
+  // currently pulsing (auto-clears after 1.5s via the timer in
+  // drillToSection).
+  const [flashSection, setFlashSection] = useState<string | null>(null)
+  function drillToSection(chartCategory: string): void {
+    // Map waterfallData[].name → section key + DOM id.
+    const map: Record<string, string> = {
+      Revenue: "revenue",
+      COGS: "cogs",
+      "Gross Profit": "gross-profit",
+      OpEx: "opex",
+      EBITDA: "ebitda",
+      "D&A/Tax": "below-ebitda",
+      "Net Profit": "net-profit",
+    }
+    const key = map[chartCategory]
+    if (!key) return
+    // Auto-expand the expandable sections (revenue/cogs/opex/below-ebitda)
+    // so the detail rows are visible after the scroll. GP / EBITDA / Net
+    // Profit are summary rows — already visible, no expand needed.
+    if (key === "revenue" || key === "cogs" || key === "opex" || key === "below-ebitda") {
+      setExpandedSections((prev) => {
+        const next = new Set(prev)
+        next.add(key)
+        return next
+      })
+    }
+    // Scroll + flash on the next paint so the expand-induced layout
+    // shift has happened.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`pnl-section-${key}`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" })
+      }
+      setFlashSection(key)
+      setTimeout(() => setFlashSection((cur) => (cur === key ? null : cur)), 1500)
+    })
+  }
   // Turn 38 sub-turn 4: Margin Trends chart toggle. "management" smooths
   // year-end accounting lumps (FX losses, interest, tax, D&A true-ups
   // booked 100% in one month per AZ SAP practice) by spreading them
@@ -152,6 +193,11 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
   const { rows, monthlyRevenue, monthlyCogs } = data
   const actualByKey: Record<string, number> = data.actualByKey ?? {}
+  // Phase 3.3 v1.2 (post-Turn LIX v1.2 wire-up) — per-month actuals
+  // keyed by accountCode::accountName. /pnl route parses BudgetActual
+  // .expenseDate at request time. Drill panel reads this map by row key.
+  const actualMonthlyByKey: Record<string, Record<number, number>> =
+    data.actualMonthlyByKey ?? {}
   const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
   const hasActuals: boolean = Boolean(data.hasActuals)
 
@@ -310,9 +356,29 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       const rowKey = `${row.accountCode}::${row.accountName}`
       const actual = actualByKey[rowKey] || 0
       return (
-        <tr key={rowKey} className={`border-b hover:bg-muted/30 ${isParent ? "font-medium" : "text-muted-foreground"}`}>
-          <td className="sticky left-0 bg-card px-3 py-1.5 text-xs">
-            <span className="text-[10px] text-muted-foreground/60 mr-2 font-mono">{row.accountCode}</span>
+        <tr
+          key={rowKey}
+          // Phase 3.3 — click any row to open the month-by-month
+          // drill-down side panel. Cursor + hover-bg-stronger affordance
+          // so users discover the clickability without a tutorial.
+          onClick={() => setDrillRow(row)}
+          className={`border-b cursor-pointer hover:bg-primary/5 ${isParent ? "font-medium" : "text-muted-foreground"}`}
+          data-drill-row-code={row.accountCode}
+        >
+          <td
+            className="sticky left-0 bg-card px-3 py-1.5 text-xs"
+            // Phase 3.3 third bullet — hover anywhere on the first
+            // column reveals the qualified identifier (code — name).
+            // Useful when CoA names are long and truncated, or when
+            // the user wants to copy the code into a search box.
+            title={`${row.accountCode} — ${row.accountName}`}
+          >
+            <span
+              className="text-[10px] text-muted-foreground/60 mr-2 font-mono"
+              title={`Account code: ${row.accountCode}`}
+            >
+              {row.accountCode}
+            </span>
             {row.accountName}
           </td>
           {Array.from({ length: 12 }, (_, i) => {
@@ -351,8 +417,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     <div className="space-y-4">
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Revenue */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">
+        {/* Revenue — Phase 3.3 v1.2 ext: clickable KPI card drills to
+            the corresponding P&L section, mirroring Waterfall bar UX. */}
+        <div
+          onClick={() => drillToSection("Revenue")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4 cursor-pointer hover:ring-2 hover:ring-indigo-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Revenue") } }}
+          aria-label="Open Revenue section"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-indigo-200 dark:bg-indigo-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <TrendingUp className="h-3.5 w-3.5" /> Net Revenue
@@ -362,7 +436,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* COGS */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4">
+        <div
+          onClick={() => drillToSection("COGS")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4 cursor-pointer hover:ring-2 hover:ring-cyan-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("COGS") } }}
+          aria-label="Open COGS section"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-200 dark:bg-cyan-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-cyan-600 dark:text-cyan-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <TrendingDown className="h-3.5 w-3.5" /> Cost of Goods Sold
@@ -375,7 +456,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* Gross Profit */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4">
+        <div
+          onClick={() => drillToSection("Gross Profit")}
+          className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4 cursor-pointer hover:ring-2 hover:ring-emerald-300 transition"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Gross Profit") } }}
+          aria-label="Open Gross Profit row"
+        >
           <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-200 dark:bg-emerald-800 rounded-full -mr-6 -mt-6" />
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold uppercase tracking-widest mb-2">
             <DollarSign className="h-3.5 w-3.5" /> Gross Profit
@@ -389,10 +477,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* EBITDA */}
-        <div className={`relative overflow-hidden rounded-xl p-4 ${
+        <div
+          onClick={() => drillToSection("EBITDA")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("EBITDA") } }}
+          aria-label="Open EBITDA row"
+          className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           ebitda >= 0
-            ? "bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 dark:from-purple-950/30 dark:to-purple-900/20 dark:border-purple-800"
-            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
+            ? "bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 dark:from-purple-950/30 dark:to-purple-900/20 dark:border-purple-800 hover:ring-purple-300"
+            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800 hover:ring-red-300"
         }`}>
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${ebitda >= 0 ? "bg-purple-200 dark:bg-purple-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${ebitda >= 0 ? "text-purple-600 dark:text-purple-400" : "text-red-600 dark:text-red-400"}`}>
@@ -401,7 +495,13 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               <button
                 type="button"
                 aria-label="Reconcile client EBITDA"
-                onClick={() => setReconOpen(true)}
+                onClick={(e) => {
+                  // Phase 3.3 v1.2 — stop propagation so the parent
+                  // KPI card's drill onClick doesn't fire when the
+                  // user wants the reconciliation pencil.
+                  e.stopPropagation()
+                  setReconOpen(true)
+                }}
                 className="ml-auto relative z-10 rounded p-1 text-muted-foreground hover:bg-white/40 hover:text-foreground dark:hover:bg-white/10"
               >
                 <Pencil className="h-3 w-3" />
@@ -439,10 +539,16 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
 
         {/* Net Profit */}
-        <div className={`relative overflow-hidden rounded-xl p-4 ${
+        <div
+          onClick={() => drillToSection("Net Profit")}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); drillToSection("Net Profit") } }}
+          aria-label="Open Net Profit row"
+          className={`relative overflow-hidden rounded-xl p-4 cursor-pointer hover:ring-2 transition ${
           netProfit >= 0
-            ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800"
-            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
+            ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 hover:ring-emerald-300"
+            : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800 hover:ring-red-300"
         }`}>
           <div className={`absolute top-0 right-0 w-20 h-20 rounded-full -mr-6 -mt-6 ${netProfit >= 0 ? "bg-emerald-200 dark:bg-emerald-800" : "bg-red-200 dark:bg-red-800"}`} />
           <div className={`flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest mb-2 ${netProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
@@ -544,9 +650,18 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
             <Tooltip formatter={((v: number) => fmtCurrency(Math.abs(v)) + " AZN") as never} />
+            {/* Phase 3.3 — Cell onClick fires drillToSection with the
+                category name; auto-expands the table section + scrolls
+                to it + briefly pulses the section header. cursor:pointer
+                tells users the bars are clickable. */}
             <Bar dataKey="value" radius={[4, 4, 0, 0]}>
               {waterfallData.map((entry, i) => (
-                <Cell key={i} fill={entry.fill} />
+                <Cell
+                  key={i}
+                  fill={entry.fill}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => drillToSection(entry.name)}
+                />
               ))}
             </Bar>
           </BarChart>
@@ -582,7 +697,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <tbody>
               {/* Revenue */}
               <tr
-                className="bg-emerald-50 dark:bg-emerald-950/30 font-semibold border-b cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-950/40"
+                id="pnl-section-revenue"
+                className={`bg-emerald-50 dark:bg-emerald-950/30 font-semibold border-b cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-950/40 transition-shadow ${flashSection === "revenue" ? "shadow-[inset_0_0_0_3px_rgb(16,185,129)]" : ""}`}
                 onClick={() => toggleSection("revenue")}
               >
                 <td className="sticky left-0 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2 flex items-center gap-1">
@@ -608,7 +724,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
               {/* COGS */}
               <tr
-                className="bg-red-50 dark:bg-red-950/30 font-semibold border-b cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40"
+                id="pnl-section-cogs"
+                className={`bg-red-50 dark:bg-red-950/30 font-semibold border-b cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40 transition-shadow ${flashSection === "cogs" ? "shadow-[inset_0_0_0_3px_rgb(239,68,68)]" : ""}`}
                 onClick={() => toggleSection("cogs")}
               >
                 <td className="sticky left-0 bg-red-50 dark:bg-red-950/30 px-3 py-2 flex items-center gap-1">
@@ -646,7 +763,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("cogs") && renderSectionRows(cogsRows, "text-red-600")}
 
               {/* Gross Profit */}
-              <tr className="bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800">
+              <tr
+                id="pnl-section-gross-profit"
+                className={`bg-blue-50 dark:bg-blue-950/30 font-bold border-b-2 border-blue-200 dark:border-blue-800 transition-shadow ${flashSection === "gross-profit" ? "shadow-[inset_0_0_0_3px_rgb(59,130,246)]" : ""}`}
+              >
                 <td className="sticky left-0 bg-blue-50 dark:bg-blue-950/30 px-3 py-2.5 pl-6">Gross Profit</td>
                 {Array.from({ length: 12 }, (_, i) => {
                   const rev = monthlyRevenue?.[i + 1] || 0
@@ -685,7 +805,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
 
               {/* Operating Expenses */}
               <tr
-                className="bg-amber-50 dark:bg-amber-950/30 font-semibold border-b cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                id="pnl-section-opex"
+                className={`bg-amber-50 dark:bg-amber-950/30 font-semibold border-b cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-950/40 transition-shadow ${flashSection === "opex" ? "shadow-[inset_0_0_0_3px_rgb(245,158,11)]" : ""}`}
                 onClick={() => toggleSection("opex")}
               >
                 <td className="sticky left-0 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 flex items-center gap-1">
@@ -723,7 +844,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("opex") && renderSectionRows(opexRows, "text-amber-600")}
 
               {/* EBITDA */}
-              <tr className={`font-bold border-t-2 ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"}`}>
+              <tr
+                id="pnl-section-ebitda"
+                className={`font-bold border-t-2 transition-shadow ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800" : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"} ${flashSection === "ebitda" ? "shadow-[inset_0_0_0_3px_rgb(139,92,246)]" : ""}`}
+              >
                 <td className={`sticky left-0 px-3 py-2.5 pl-6 text-sm ${ebitda >= 0 ? "bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-400" : "bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400"}`}>
                   EBITDA
                 </td>
@@ -769,7 +893,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {/* D&A, Finance, Tax — below EBITDA items */}
               {belowEbitdaRows.length > 0 && (
                 <tr
-                  className="bg-slate-50 dark:bg-slate-950/30 font-semibold border-b cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-950/40"
+                  id="pnl-section-below-ebitda"
+                  className={`bg-slate-50 dark:bg-slate-950/30 font-semibold border-b cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-950/40 transition-shadow ${flashSection === "below-ebitda" ? "shadow-[inset_0_0_0_3px_rgb(100,116,139)]" : ""}`}
                   onClick={() => toggleSection("below-ebitda")}
                 >
                   <td className="sticky left-0 bg-slate-50 dark:bg-slate-950/30 px-3 py-2 flex items-center gap-1">
@@ -808,7 +933,10 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
               {expandedSections.has("below-ebitda") && renderSectionRows(belowEbitdaRows, "text-slate-600")}
 
               {/* Net Profit */}
-              <tr className={`font-bold border-t-2 ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
+              <tr
+                id="pnl-section-net-profit"
+                className={`font-bold border-t-2 transition-shadow ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"} ${flashSection === "net-profit" ? "shadow-[inset_0_0_0_3px_rgb(16,185,129)]" : ""}`}
+              >
                 <td className={`sticky left-0 px-3 py-3 pl-6 text-sm ${netProfit >= 0 ? "bg-emerald-100 dark:bg-emerald-950/40" : "bg-red-100 dark:bg-red-950/40"}`}>
                   Net Profit / (Loss)
                 </td>
@@ -867,6 +995,25 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
           systemEbitda={ebitda}
           contributors={contributors}
           canEdit={canEditRecon}
+        />
+      )}
+
+      {/* Phase 3.3 — P&L row drill-down. Opens via row onClick. Shows
+          12-month plan vs actual vs Δ for the clicked account.
+          Phase 3.3 v1.2 — actualMonthly now wired from the /pnl route's
+          actualMonthlyByKey map (keyed by accountCode::accountName).
+          When no actuals exist for the clicked account, the panel
+          shows zeros across all 12 months (variance = -planned per
+          month, total Δ = -plannedTotal), making "we planned X but
+          haven't spent anything yet" visually obvious. */}
+      {drillRow && (
+        <BudgetPnlDrillPanel
+          row={drillRow}
+          actualMonthly={
+            actualMonthlyByKey[`${drillRow.accountCode}::${drillRow.accountName}`] ?? {}
+          }
+          monthlyRevenue={monthlyRevenue ?? {}}
+          onClose={() => setDrillRow(null)}
         />
       )}
     </div>

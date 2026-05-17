@@ -88,10 +88,14 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    // Phase 3.1 v1.2 — stamp monthIndex (0-indexed) so VarianceTab
+    // sparkline can attribute the actual to its month. `month` is
+    // 1-indexed from `currentBakuYearMonth()`, hence -1.
+    const monthIndex = month - 1
     if (existing) {
       await prisma.budgetActual.update({
         where: { id: existing.id },
-        data: { actualAmount: amount, expenseDate: currentDate },
+        data: { actualAmount: amount, expenseDate: currentDate, monthIndex },
       })
     } else {
       await prisma.budgetActual.create({
@@ -103,6 +107,7 @@ export async function POST(req: NextRequest) {
           lineType: line.lineType,
           actualAmount: amount,
           expenseDate: currentDate,
+          monthIndex,
           description: `auto-sync: ${line.costModelKey}`,
         },
       })

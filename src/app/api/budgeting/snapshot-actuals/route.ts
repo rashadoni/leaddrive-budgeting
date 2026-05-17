@@ -6,6 +6,7 @@ import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 
 /**
  * POST /api/budgeting/snapshot-actuals
@@ -126,7 +127,9 @@ export async function POST(req: NextRequest) {
         // Resolve current value from cost model
         const amount = resolveCostModelKey(costModel, line.costModelKey)
 
-        // Create BudgetActual record
+        // Create BudgetActual record (Phase 3.1 v1.2 — stamp monthIndex
+        // from targetMonth so the variance sparkline overlay attributes
+        // this snapshot to the correct calendar month).
         await prisma.budgetActual.create({
           data: {
             organizationId: orgId,
@@ -136,6 +139,7 @@ export async function POST(req: NextRequest) {
             lineType: line.lineType,
             actualAmount: amount,
             expenseDate: targetMonth,
+            monthIndex: deriveMonthIndex(targetMonth),
             description: "Auto-snapshot",
           },
         })

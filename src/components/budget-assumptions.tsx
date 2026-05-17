@@ -116,7 +116,7 @@ function TreemapContent(props: any) {
 
 export function BudgetAssumptions({ planId }: { planId: string }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const [search, setSearch] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)

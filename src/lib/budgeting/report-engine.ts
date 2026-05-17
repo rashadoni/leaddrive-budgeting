@@ -14,7 +14,7 @@ interface RelationDef {
   fields: string[]
 }
 
-interface EntityConfig {
+export interface EntityConfig {
   model: string
   fields: FieldDef[]
   relations?: RelationDef[]
@@ -203,14 +203,14 @@ export type ReportResult =
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-function parseNumOrDate(value: any, field: string, config: EntityConfig) {
+export function parseNumOrDate(value: any, field: string, config: EntityConfig) {
   const fieldDef = config.fields.find(f => f.name === field)
   if (fieldDef?.type === "date") return new Date(value)
   if (fieldDef?.type === "number") return Number(value)
   return value
 }
 
-function buildWhere(orgId: string, planId: string | undefined, config: EntityConfig, filters: BudgetReportConfig["filters"]) {
+export function buildWhere(orgId: string, planId: string | undefined, config: EntityConfig, filters: BudgetReportConfig["filters"]) {
   const where: any = { organizationId: orgId }
   if (config.hasPlanId && planId) {
     where.planId = planId
@@ -237,8 +237,13 @@ function buildWhere(orgId: string, planId: string | undefined, config: EntityCon
 }
 
 // ─── Period grouping (month → quarter → year) ─────────────────
+// Exported for direct unit testing. The `executeBudgetReport`
+// orchestrator is Prisma-bound; these two pure helpers carry the
+// non-trivial grouping + computed-field business logic and benefit
+// from focused regression coverage. Re-export keeps the existing
+// caller (`executeBudgetReport`) unchanged.
 
-function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
+export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
   const groups = new Map<string, any>()
 
   for (const row of rows) {
@@ -277,7 +282,7 @@ function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year
 
 // ─── Computed fields (post-processing) ────────────────────────
 
-function applyComputedFields(rows: any[], computedFields: string[]) {
+export function applyComputedFields(rows: any[], computedFields: string[]) {
   for (const row of rows) {
     for (const cf of computedFields) {
       switch (cf) {

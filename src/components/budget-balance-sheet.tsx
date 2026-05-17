@@ -49,7 +49,7 @@ function getSectionData(lines: BSLine[]) {
 
 export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["assets", "liabilities", "equity"]))
 
   const { data, isLoading } = useQuery({

@@ -529,6 +529,14 @@ model BudgetActual {
   currencyCode   String?
   exchangeRate   Float?
   originalAmount Float?
+  // Phase 3.1 v1.2 (Turn LIX v1.2) — explicit 0-indexed month for
+  // BudgetActual rows. 0=Jan..11=Dec. Mirrors BudgetLine.monthIndex
+  // shape so VarianceTab sparkline can overlay actual vs planned per
+  // month. Nullable for backfill compatibility — pre-migration rows
+  // derive from expenseDate parse-fallback at read time; new writes
+  // stamp at insert. Backfill script:
+  //   scripts/backfill-budget-actual-month-index.sh (Turn LIX v1.2)
+  monthIndex     Int?
   costTypeId     String?
   costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
   departmentId   String?

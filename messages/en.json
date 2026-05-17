@@ -473,6 +473,7 @@
     "varianceColActual": "Actual",
     "varianceColVariance": "Variance",
     "varianceColPct": "%",
+    "varianceColTrend": "Trend",
     "periodAnnual": "Annual",
     "periodQuarterly": "Q{n}",
     "periodMonthly": "M{n}",

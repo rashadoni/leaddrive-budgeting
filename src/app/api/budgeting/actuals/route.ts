@@ -7,6 +7,7 @@ import { processCurrencyFields } from "@/lib/budgeting/currency"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
+import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 import type { Role } from "@/lib/permissions"
 
 const createActualSchema = z.object({
@@ -126,6 +127,10 @@ export async function POST(req: NextRequest) {
     exchangeRate != null ? Number(exchangeRate) : null,
   )
 
+  // Phase 3.1 v1.2 — derive monthIndex (0-indexed) from expense date
+  // if it parses as YYYY-MM-DD; null fallback for free-form dates.
+  // VarianceTab sparkline reads this to overlay actual vs planned.
+  const monthIndex = deriveMonthIndex(resolvedDate)
   const actual = await prisma.budgetActual.create({
     data: {
       organizationId: orgId,
@@ -135,6 +140,7 @@ export async function POST(req: NextRequest) {
       lineType: resolvedLineType,
       actualAmount: currencyFields.plannedAmount, // converted to base currency
       expenseDate: resolvedDate || null,
+      monthIndex,
       description: description || null,
       currencyCode: currencyFields.currencyCode,
       exchangeRate: currencyFields.exchangeRate,

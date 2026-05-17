@@ -115,7 +115,7 @@ const METRIC_LABEL: Record<(typeof TRACKED_METRICS)[number], MetricMeta> = {
 
 export function AgroDashboardPanel() {
   const { data: session } = useSession()
-  const orgId = (session?.user as any)?.organizationId
+  const orgId = session?.user?.organizationId
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode)
 
   // Resolve company id by code via /api/companies (org-scoped).
@@ -124,7 +124,7 @@ export function AgroDashboardPanel() {
     enabled: !!orgId,
     queryFn: async () => {
       const res = await fetch("/api/companies", {
-        headers: { "x-organization-id": orgId },
+        headers: { "x-organization-id": orgId ?? "" },
       })
       if (!res.ok) return []
       const body = await res.json()

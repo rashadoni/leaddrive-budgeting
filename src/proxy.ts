@@ -77,7 +77,7 @@ export async function proxy(req: NextRequest) {
   // Per-org rate limit for mutation endpoints
   const rule = matchRule(pathname, req.method)
   if (rule) {
-    const orgId = (session.user as any).organizationId || "unknown"
+    const orgId = session.user.organizationId || "unknown"
     const result = checkRateLimit(orgId, rule.cfg)
     if (!result.ok) {
       return NextResponse.json(
@@ -107,7 +107,7 @@ export async function proxy(req: NextRequest) {
   // Cookie name MUST match the LanguageSwitcher writer (`NEXT_LOCALE`).
   const locale = req.cookies.get(LOCALE_COOKIE_NAME)?.value || "en"
   const requestHeaders = new Headers(req.headers)
-  requestHeaders.set("x-organization-id", (session.user as any).organizationId || "")
+  requestHeaders.set("x-organization-id", session.user.organizationId || "")
   requestHeaders.set("x-locale", locale)
 
   return NextResponse.next({

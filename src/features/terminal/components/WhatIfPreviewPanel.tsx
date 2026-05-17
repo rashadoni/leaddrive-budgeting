@@ -274,7 +274,10 @@ export function WhatIfPreviewPanel() {
                             key={c.indicatorId}
                             className="px-3 py-2 grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 items-center text-[11px]"
                           >
-                            <div className="font-mono text-gray-400 truncate">
+                            <div
+                              className="font-mono text-gray-400 truncate"
+                              title={c.indicatorCode}
+                            >
                               {c.indicatorCode}
                             </div>
                             <div className="text-right tabular-nums font-mono">

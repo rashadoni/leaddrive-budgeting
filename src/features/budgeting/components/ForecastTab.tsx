@@ -26,6 +26,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DataBoundary } from "@/components/ui/data-boundary"
 import { AnimatedNumber } from "@/components/animated-number"
+// Phase 3.1 v1.3 — shared period→months helper. Replaces inline logic
+// that duplicated cost-model-map.getPeriodMonths semantics.
+import { getPeriodMonths } from "@/lib/budgeting/cost-model-map"
 import { ANIMATION, AXIS_TICK, fmtK } from "@/lib/budget-chart-theme"
 import {
   useBudgetAnalytics, useBudgetForecastEntries, useBudgetLines,
@@ -66,17 +69,14 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
   const plan = analytics?.plan
   const year = plan?.year ?? new Date().getFullYear()
 
-  // Determine months for this period
+  // Determine months for this period. Phase 3.1 v1.3 — uses shared
+  // `getPeriodMonths` helper (already covered by 7 unit tests in
+  // cost-model-map.test.ts) instead of inline logic. Pre-plan fallback
+  // = full year so the table doesn't collapse to 1 column on first
+  // render before analytics resolves.
   const months = useMemo(() => {
     if (!plan) return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    if (plan.periodType === "quarterly" && plan.quarter) {
-      const start = (plan.quarter - 1) * 3 + 1
-      return [start, start + 1, start + 2]
-    }
-    if (plan.periodType === "monthly" && plan.month) {
-      return [plan.month]
-    }
-    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    return getPeriodMonths(plan).months
   }, [plan])
 
   const periodMonths = months.length
@@ -91,7 +91,10 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
     const m = new Map<string, number>()
     for (const e of forecastEntries) {
       if (e.category === "__total__") continue
-      const lt = (e as any).lineType || "expense"
+      // `BudgetForecastEntry.lineType` is non-optional `string` per the
+      // Prisma model + zod-validated route — defensively coerce empty
+      // string to "expense" without an `as any` escape hatch.
+      const lt = e.lineType || "expense"
       const key = `${e.category}||${lt}||${e.month}`
       m.set(key, (m.get(key) ?? 0) + e.forecastAmount)
     }
