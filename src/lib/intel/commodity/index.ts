@@ -100,9 +100,8 @@ export {
 export {
   createAzStatCpiAdapter,
   AZ_STAT_CPI_SOURCE,
-  AZ_CPI_CATEGORY_MAP,
-  parseAzCpiCsv,
-  azCpiRowsToDataPoints,
+  parseAzCpiXlsx,
+  rowsToYoYDataPoints,
 } from "./az-stat-cpi"
 // Phase 7.K Phase 3 sector-specific adapters:
 export {

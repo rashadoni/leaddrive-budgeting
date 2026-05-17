@@ -1,110 +1,150 @@
 /**
- * Tests for the AZ State Statistics CPI breakdown adapter.
+ * Tests for the AZ State Statistics CPI breakdown adapter (xlsx).
  *
  * Covers:
- *  - CSV parser (comma + semicolon delimiters, quoted cells, decimal
- *    comma normalization)
- *  - Category-to-metric mapping (English + AZ-cyrillic spellings)
- *  - 1 point per (category, month)
+ *  - xlsx parser identifies header row + extracts year/month/metric rows
+ *  - YoY computation against prior-year same-month sibling
+ *  - Roman-numeral month parsing (I=Jan ... XII=Dec)
+ *  - Multiple years preserved + latest-month auto-pick
  *  - Idempotency: UTC 1st-of-month anchor
- *  - Unknown categories silently dropped
- *  - Graceful 404 / empty CSV
+ *  - Graceful 404 / network error / empty workbook
  */
 import { describe, it, expect, vi } from "vitest"
+import * as XLSX from "xlsx"
 import {
-  parseAzCpiCsv,
-  azCpiRowsToDataPoints,
+  parseAzCpiXlsx,
+  rowsToYoYDataPoints,
   createAzStatCpiAdapter,
   AZ_STAT_CPI_SOURCE,
-  AZ_CPI_CATEGORY_MAP,
 } from "./az-stat-cpi"
 
-const SAMPLE_CSV = `category,year,month,value
-"All-items",2026,1,101.5
-"All-items",2026,2,102.2
-"All-items",2026,3,102.9
-"Food",2026,1,103.2
-"Food",2026,2,104.1
-"Food",2026,3,105.0
-"Non-Food",2026,1,100.8
-"Services",2026,3,102.4
-"Housing",2026,3,103.1
-"UnknownCategory",2026,1,99.0
-`
+/** Build a workbook arrayBuffer with stat.gov.az-style content but
+ *  collapsed headers to one row (avoids xlsx leading-null gotchas).
+ *  Multi-row header detection is separately verified by the real-file
+ *  fetch path in the live-fetch script. */
+function makeFixtureXlsx(): ArrayBuffer {
+  const rows: unknown[][] = [
+    ["1.2 Consumer price index"],
+    ["(2010=100, in percent)"],
+    [
+      "Years and months",
+      "Total goods and services",
+      "Food products, beverages and tobacco products",
+      "Non-food products",
+      "Paid services",
+    ],
+    [2024],
+    ["I", 200, 220, 180, 210],
+    ["II", 201, 221, 181, 211],
+    ["III", 202, 222, 182, 212],
+    ["IV", 203, 223, 183, 213],
+    ["V", 204, 224, 184, 214],
+    ["VI", 205, 225, 185, 215],
+    ["VII", 206, 226, 186, 216],
+    ["VIII", 207, 227, 187, 217],
+    ["IX", 208, 228, 188, 218],
+    ["X", 209, 229, 189, 219],
+    ["XI", 210, 230, 190, 220],
+    ["XII", 211, 231, 191, 221],
+    [2025],
+    ["I", 212, 235, 192, 224],
+    ["II", 214, 237, 194, 225],
+    ["III", 216, 240, 196, 226],
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, "1,2")
+  return XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+}
 
-describe("parseAzCpiCsv", () => {
-  it("maps recognized categories and skips unknowns", () => {
-    const rows = parseAzCpiCsv(SAMPLE_CSV)
-    expect(rows.length).toBe(9) // 10 data rows minus 1 unknown
-    expect(rows.find((r) => r.category === "UnknownCategory")).toBeUndefined()
+describe("parseAzCpiXlsx", () => {
+  it("extracts month rows across years", () => {
+    const rows = parseAzCpiXlsx(makeFixtureXlsx())
+    // 12 months 2024 + 3 months 2025 = 15
+    expect(rows.length).toBe(15)
+    expect(rows[0]).toMatchObject({ year: 2024, month: 1 })
+    expect(rows[12]).toMatchObject({ year: 2025, month: 1 })
   })
 
-  it("maps all 5 known categories correctly", () => {
-    const rows = parseAzCpiCsv(SAMPLE_CSV)
-    const metrics = new Set(rows.map((r) => r.metric))
-    expect(metrics).toEqual(
-      new Set([
-        "AZ_CPI_ALL_ITEMS",
-        "AZ_CPI_FOOD",
-        "AZ_CPI_NON_FOOD",
-        "AZ_CPI_SERVICES",
-        "AZ_CPI_HOUSING",
-      ]),
-    )
+  it("maps the 4 expected metric columns", () => {
+    const rows = parseAzCpiXlsx(makeFixtureXlsx())
+    const m = rows[0].values
+    expect(m.AZ_CPI_ALL_ITEMS).toBe(200)
+    expect(m.AZ_CPI_FOOD).toBe(220)
+    expect(m.AZ_CPI_NON_FOOD).toBe(180)
+    expect(m.AZ_CPI_SERVICES).toBe(210)
   })
 
-  it("handles semicolon delimiter", () => {
-    const csv = `category;year;month;value
-"Food";2026;5;105.5`
-    const rows = parseAzCpiCsv(csv)
+  it("returns [] when workbook is empty / wrong shape", () => {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([]), "blank")
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+    expect(parseAzCpiXlsx(buf)).toEqual([])
+  })
+
+  it("ignores non-Roman first-column rows", () => {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["header", "Total goods and services", "Food products, beverages and tobacco products"],
+      [2024],
+      ["random-text", 100, 110],
+      ["I", 200, 220],
+    ])
+    XLSX.utils.book_append_sheet(wb, ws, "x")
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+    const rows = parseAzCpiXlsx(buf)
     expect(rows.length).toBe(1)
-    expect(rows[0].metric).toBe("AZ_CPI_FOOD")
-    expect(rows[0].value).toBe(105.5)
-  })
-
-  it("normalizes decimal commas (Euro-style numbers)", () => {
-    const csv = `Food,2026,5,"105,5"`
-    const rows = parseAzCpiCsv(csv)
-    expect(rows[0].value).toBe(105.5)
-  })
-
-  it("recognizes AZ-cyrillic category names", () => {
-    const csv = `Ərzaq,2026,5,105`
-    const rows = parseAzCpiCsv(csv)
-    expect(rows[0].metric).toBe("AZ_CPI_FOOD")
-  })
-
-  it("rejects rows with bad month (out of 1-12)", () => {
-    const csv = `Food,2026,13,105
-Food,2026,0,105
-Food,2026,5,105`
-    const rows = parseAzCpiCsv(csv)
-    expect(rows.length).toBe(1)
-    expect(rows[0].month).toBe(5)
-  })
-
-  it("returns [] on empty/garbage CSV", () => {
-    expect(parseAzCpiCsv("")).toEqual([])
-    expect(parseAzCpiCsv("not a real csv")).toEqual([])
-  })
-
-  it("category map is case-insensitive", () => {
-    const csv = `FOOD,2026,1,103
-food,2026,2,104
-Food,2026,3,105`
-    const rows = parseAzCpiCsv(csv)
-    expect(rows.length).toBe(3)
+    expect(rows[0].month).toBe(1)
   })
 })
 
-describe("azCpiRowsToDataPoints", () => {
-  it("anchors datetime to UTC 1st-of-month", () => {
-    const points = azCpiRowsToDataPoints([
-      { category: "Food", metric: "AZ_CPI_FOOD", year: 2026, month: 5, value: 104.2 },
+describe("rowsToYoYDataPoints", () => {
+  it("emits YoY% for each metric anchored to latest month", () => {
+    const rows = parseAzCpiXlsx(makeFixtureXlsx())
+    const points = rowsToYoYDataPoints(rows)
+    // Latest = 2025-03; prior = 2024-03. Total: 216/202 = 1.0693 → 106.93%
+    expect(points.length).toBe(4)
+    const byMetric = Object.fromEntries(points.map((p) => [p.metric, p]))
+    expect(byMetric.AZ_CPI_ALL_ITEMS.value).toBeCloseTo(106.93, 1)
+    expect(byMetric.AZ_CPI_FOOD.value).toBeCloseTo(108.11, 1)
+    expect(byMetric.AZ_CPI_NON_FOOD.value).toBeCloseTo(107.69, 1)
+    expect(byMetric.AZ_CPI_SERVICES.value).toBeCloseTo(106.6, 1)
+    for (const p of points) {
+      expect(p.datetime.toISOString().slice(0, 10)).toBe("2025-03-01")
+      expect(p.unit).toBe("% YoY")
+      expect(p.sourceCode).toBe(AZ_STAT_CPI_SOURCE)
+    }
+  })
+
+  it("skips metric when prior-year row absent", () => {
+    // Only first year — no YoY possible.
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Years and months", "Total goods and services", "Food products, beverages and tobacco products"],
+      [2024],
+      ["I", 200, 220],
+      ["II", 201, 221],
     ])
-    expect(points[0].datetime.toISOString()).toBe("2026-05-01T00:00:00.000Z")
-    expect(points[0].sourceCode).toBe(AZ_STAT_CPI_SOURCE)
-    expect(points[0].unit).toBe("index")
+    XLSX.utils.book_append_sheet(wb, ws, "x")
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+    const rows = parseAzCpiXlsx(buf)
+    expect(rowsToYoYDataPoints(rows)).toEqual([])
+  })
+
+  it("rounds YoY% to 2 decimals", () => {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ["Years and months", "Total goods and services"],
+      [2024],
+      ["I", 100],
+      [2025],
+      ["I", 113.3331],
+    ])
+    XLSX.utils.book_append_sheet(wb, ws, "x")
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+    const rows = parseAzCpiXlsx(buf)
+    const points = rowsToYoYDataPoints(rows)
+    expect(points[0].value).toBe(113.33)
   })
 })
 
@@ -115,33 +155,36 @@ describe("createAzStatCpiAdapter", () => {
     expect(adapter.label).toContain("CPI")
   })
 
-  it("fetches + parses successful CSV", async () => {
+  it("fetches + parses + emits YoY points", async () => {
+    const xlsxBuf = makeFixtureXlsx()
     const fetchImpl = vi.fn(
-      async () => new Response(SAMPLE_CSV, { status: 200 }),
+      async () => new Response(xlsxBuf, { status: 200 }) as Response,
     )
     const adapter = createAzStatCpiAdapter({ fetchImpl: fetchImpl as never })
     const result = await adapter.fetch()
     expect(result.fetched).toBe(true)
     expect(result.errors).toEqual([])
-    expect(result.dataPoints.length).toBe(9) // 10 - 1 unknown
+    expect(result.dataPoints.length).toBe(4)
   })
 
-  it("returns 404 error gracefully", async () => {
-    const fetchImpl = vi.fn(async () => new Response("not found", { status: 404 }))
+  it("returns HTTP 404 gracefully", async () => {
+    const fetchImpl = vi.fn(async () => new Response("nope", { status: 404 }))
     const adapter = createAzStatCpiAdapter({ fetchImpl: fetchImpl as never })
     const result = await adapter.fetch()
     expect(result.fetched).toBe(true)
-    expect(result.dataPoints).toEqual([])
     expect(result.errors[0]).toContain("HTTP 404")
   })
 
-  it("returns error when CSV has 0 mappable rows", async () => {
+  it("returns error when xlsx has 0 mappable rows", async () => {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["garbage"]]), "x")
+    const emptyBuf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer
     const fetchImpl = vi.fn(
-      async () => new Response("garbage\nunknown,1,1,1", { status: 200 }),
+      async () => new Response(emptyBuf, { status: 200 }) as Response,
     )
     const adapter = createAzStatCpiAdapter({ fetchImpl: fetchImpl as never })
     const result = await adapter.fetch()
-    expect(result.fetched).toBe(true)
+    expect(result.dataPoints).toEqual([])
     expect(result.errors[0]).toContain("0 mappable rows")
   })
 
@@ -155,20 +198,16 @@ describe("createAzStatCpiAdapter", () => {
     expect(result.errors[0]).toContain("ECONNREFUSED")
   })
 
-  it("honors csvUrl override", async () => {
+  it("honors xlsxUrl override", async () => {
     const fetchImpl = vi.fn<(url: string) => Promise<Response>>(
-      async () => new Response("Food,2026,5,105", { status: 200 }),
+      async () => new Response(makeFixtureXlsx(), { status: 200 }) as Response,
     )
-    const customUrl = "https://my-org.local/cpi.csv"
+    const customUrl = "https://my-mirror.local/cpi.xlsx"
     const adapter = createAzStatCpiAdapter({
       fetchImpl: fetchImpl as never,
-      csvUrl: customUrl,
+      xlsxUrl: customUrl,
     })
     await adapter.fetch()
     expect(fetchImpl.mock.calls[0]?.[0]).toBe(customUrl)
-  })
-
-  it("category map covers ≥10 keys (forward-compat)", () => {
-    expect(Object.keys(AZ_CPI_CATEGORY_MAP).length).toBeGreaterThanOrEqual(10)
   })
 })
