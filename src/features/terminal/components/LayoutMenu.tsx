@@ -36,9 +36,13 @@ interface Props {
   readCurrent: () => LayoutSizes;
   /** Push a layout into the live UI (used by Load). */
   applyLayout: (sizes: LayoutSizes) => void;
+  /** Phase 7.K 2026-05-18 — render as inline header element (no
+   *  absolute positioning) so it can live inside a panel toolbar
+   *  without overlaying the panel's own popout button. */
+  inline?: boolean;
 }
 
-export function LayoutMenu({ readCurrent, applyLayout }: Props) {
+export function LayoutMenu({ readCurrent, applyLayout, inline = false }: Props) {
   const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const [layouts, setLayouts] = useState<LayoutListItem[]>([]);
@@ -152,11 +156,17 @@ export function LayoutMenu({ readCurrent, applyLayout }: Props) {
     }
   };
 
+  const containerClass = inline
+    ? "relative font-mono text-[10px]"
+    : "absolute top-2 right-2 z-30 font-mono text-[10px]";
   return (
-    <div className="absolute top-2 right-2 z-30 font-mono text-[10px]">
+    <div className={containerClass}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         className="px-2 py-0.5 rounded border border-gray-800 bg-[#0A0E27] text-gray-400 hover:text-white hover:border-[#00D4AA]/60"
         aria-haspopup="dialog"
         aria-expanded={open}

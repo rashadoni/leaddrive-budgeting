@@ -254,11 +254,10 @@ export function PanelGrid() {
 
   return (
     <div className="flex-1 bg-gray-800 relative flex flex-col">
-      <CompactModeToggle />
-      <LayoutMenu
-        readCurrent={readSizesFromGroups}
-        applyLayout={applySizesToGroups}
-      />
+      {/* CompactModeToggle + LayoutMenu were absolute-positioned floats
+       *  at top-2 right-{2,24}; they overlapped Panel 2's popout button
+       *  in the PanelShell header. Phase 7.K 2026-05-18 — moved inline
+       *  into Panel 2's header via the `headerExtra` slot below. */}
       {/* Phase 7.F (Turn 13) — opens on `terminal:open-audit` event
           fired by CommandBar's `AUD GO` dispatch + AuditTicker click.
           Renders nothing when closed; Escape / backdrop / Close all dismiss. */}
@@ -374,6 +373,16 @@ export function PanelGrid() {
                 panelLabel={`${PANEL_LABEL} 2`}
                 panelTitle={PANEL_TITLES_T[2]}
                 panelKind="matrix"
+                headerExtra={
+                  <>
+                    <CompactModeToggle inline />
+                    <LayoutMenu
+                      readCurrent={readSizesFromGroups}
+                      applyLayout={applySizesToGroups}
+                      inline
+                    />
+                  </>
+                }
               >
                 <HeatMap />
               </PanelShell>
@@ -430,28 +439,37 @@ export function PanelGrid() {
  * via PanelGrid's keydown effect — this button just makes the affordance
  * discoverable to users who didn't read the help.
  */
-function CompactModeToggle() {
+function CompactModeToggle({ inline = false }: { inline?: boolean }) {
   const compactMode = useTerminalStore((s) => s.compactMode);
   const toggle = useTerminalStore((s) => s.toggleCompactMode);
+  const button = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        toggle();
+      }}
+      className={`px-2 py-0.5 rounded border bg-[#0A0E27] hover:text-white hover:border-[#00D4AA]/60 ${
+        compactMode
+          ? 'border-[#00D4AA]/60 text-[#00D4AA]'
+          : 'border-gray-800 text-gray-400'
+      }`}
+      title={
+        compactMode
+          ? 'Compact mode ON — Ctrl+/ to expand'
+          : 'Compact mode OFF — Ctrl+/ to densify'
+      }
+      aria-pressed={compactMode}
+    >
+      ▦ {compactMode ? 'Compact' : 'Normal'}
+    </button>
+  );
+  if (inline) return <span className="font-mono text-[10px]">{button}</span>;
+  // Legacy floating-absolute mode — left for callers outside the
+  // Panel 2 toolbar refactor (Phase 7.K 2026-05-18). Not used today.
   return (
     <div className="absolute top-2 right-24 z-30 font-mono text-[10px]">
-      <button
-        type="button"
-        onClick={toggle}
-        className={`px-2 py-0.5 rounded border bg-[#0A0E27] hover:text-white hover:border-[#00D4AA]/60 ${
-          compactMode
-            ? 'border-[#00D4AA]/60 text-[#00D4AA]'
-            : 'border-gray-800 text-gray-400'
-        }`}
-        title={
-          compactMode
-            ? 'Compact mode ON — Ctrl+/ to expand'
-            : 'Compact mode OFF — Ctrl+/ to densify'
-        }
-        aria-pressed={compactMode}
-      >
-        ▦ {compactMode ? 'Compact' : 'Normal'}
-      </button>
+      {button}
     </div>
   );
 }
@@ -477,9 +495,16 @@ function PanelShell(props: {
   /** Phase 7.H Bloomberg-multi-window — kind id used to construct
    *  the pop-out URL `/budgeting/terminal/panel/<kind>`. */
   panelKind: string;
+  /** Optional inline header content rendered between the title and
+   *  the popout button. Used by Panel 2 (matrix) to host the
+   *  CompactModeToggle + LayoutMenu so they don't overlay the
+   *  panel's own popout button as floating absolute-positioned
+   *  siblings (UX issue caught 2026-05-18: user couldn't see the
+   *  Panel 2 popout icon because the floating buttons sat on top). */
+  headerExtra?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const { id, isActive, onActivate, panelLabel, panelTitle, panelKind, children } = props;
+  const { id, isActive, onActivate, panelLabel, panelTitle, panelKind, headerExtra, children } = props;
   const tPanels = useTranslations('terminal.panels');
   const tPopOutTitle = tPanels('popOutTitle');
   const tPopOutAria = tPanels('popOutAria');
@@ -524,6 +549,7 @@ function PanelShell(props: {
           <span>{panelTitle}</span>
         </h3>
         <div className="flex items-center gap-2">
+          {headerExtra}
           {isActive && <span className="w-2 h-2 rounded-full bg-[#00D4AA]" />}
           <button
             type="button"
