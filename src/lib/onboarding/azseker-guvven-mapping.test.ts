@@ -190,9 +190,20 @@ describe("classifyGuvvenSheetFamily", () => {
     expect(classifyGuvvenSheetFamily(sheet)).toBe(fam)
   })
 
-  it("returns null for non-statement sheets", () => {
+  it("returns null for non-statement / non-KPI sheets", () => {
+    // Sales plan dispatch deferred — stays null until SALES_PLAN adapter wired.
     expect(classifyGuvvenSheetFamily("Farming Budget sales plan")).toBeNull()
-    expect(classifyGuvvenSheetFamily("CPC KPI")).toBeNull()
     expect(classifyGuvvenSheetFamily("Actual >>>")).toBeNull()
+  })
+
+  it("maps KPI sheets to KPI_FARMING / KPI_PROCESSING (Phase 7.I)", () => {
+    expect(classifyGuvvenSheetFamily("Farming KPI")).toBe("KPI_FARMING")
+    // Single-entity processing KPI sheets (entity encoded in name prefix).
+    expect(classifyGuvvenSheetFamily("CPC KPI")).toBe("KPI_PROCESSING")
+    expect(classifyGuvvenSheetFamily("AZSF KPI")).toBe("KPI_PROCESSING")
+    expect(classifyGuvvenSheetFamily("EDEN KPI")).toBe("KPI_PROCESSING")
+    expect(classifyGuvvenSheetFamily("MALT KPI")).toBe("KPI_PROCESSING")
+    // Unknown prefix → still null (would need a map extension)
+    expect(classifyGuvvenSheetFamily("Unknown KPI")).toBeNull()
   })
 })

@@ -207,15 +207,96 @@ export function resolveEntityFromSheetName(
 }
 
 /**
- * Sheet name → statement family (PLF / BS / CF). Returns null for
- * sheets that aren't a financial statement.
+ * Cost-center label prefix → AZSEKER child entity code. Used by the
+ * Farming KPI parser to route per-row data (multiple farms per sheet)
+ * to the right operational entity. Driven entirely by config — to
+ * onboard a new farm, add one row here.
+ *
+ * Cost-center labels in Farming KPI look like:
+ *   "EDN – Füzuli Qayıdış Əkinçilik"     ← prefix EDN
+ *   "AZS- Əkinçilik Yevlax təsərrüfatı"  ← prefix AZS
+ *   "QT - Beyləqan təsərrufatı …"         ← prefix QT (Qarabağ Taxıl)
+ *   "DAS- Əkinçilik Yevlax …"             ← prefix DAS (Dastan)
+ *   "Ağcabədi təsərrüfatı - BO"           ← suffix BO (Əkinçi BO)
+ *
+ * The matcher (`resolveEntityFromCostCenter`) scans the label for any
+ * 2-5 letter uppercase token (word-bounded) and looks it up in this
+ * map. First match wins.
+ */
+export const GUVVEN_COST_CENTER_PREFIX_TO_ENTITY: Readonly<Record<string, string>> = {
+  EDN: "AZSEKER-EDEN",
+  AZS: "AZSEKER-AZSF",
+  QT: "AZSEKER-FARM",   // Qarabağ Taxıl
+  DAS: "AZSEKER-FARM",  // Dastan
+  BO: "AZSEKER-FARM",   // Əkinçi BO
+  CPC: "AZSEKER-CPC",
+  MALT: "AZSEKER-MALT",
+};
+
+/**
+ * Resolve a cost-center / farm-name label to an AZSEKER child entity
+ * code via prefix-token lookup. Returns null if no recognised token
+ * appears.
+ */
+export function resolveEntityFromCostCenter(label: string): string | null {
+  if (typeof label !== "string" || label.trim() === "") return null;
+  // Match any 2-5 uppercase letter token at a word boundary
+  const tokens = label.match(/\b[A-Z]{2,5}\b/g) ?? [];
+  for (const t of tokens) {
+    const entity = GUVVEN_COST_CENTER_PREFIX_TO_ENTITY[t];
+    if (entity) return entity;
+  }
+  return null;
+}
+
+/**
+ * Sheet name → statement / KPI family. Returns null for sheets that
+ * don't match a known scenario.
+ *
+ *   "PLF CPC" / "PL Malt"  → PLF (P&L)
+ *   "BS CPC" / "BS Malt"   → BS  (Balance Sheet)
+ *   "CF CPC" / "CF Malt"   → CF  (Cash Flow)
+ *   "Farming KPI"           → KPI_FARMING (per-row multi-entity yield data)
+ *   "CPC KPI"               → KPI_PROCESSING (single-entity processing metrics)
+ *
+ * Sales plan sheets ("Farming Budget sales plan",
+ * "Production Budget sales plan", "Satış ProMalt") are recognised but
+ * not yet dispatched — returned as null until the SALES_PLAN adapter
+ * is wired in a follow-up.
  */
 export function classifyGuvvenSheetFamily(
   name: string,
-): "PLF" | "BS" | "CF" | null {
+): "PLF" | "BS" | "CF" | "KPI_FARMING" | "KPI_PROCESSING" | null {
   const trimmed = name.trim();
   if (/^PLF?\s+\w+/.test(trimmed)) return "PLF"; // both "PLF" and "PL Malt"
   if (/^BS\s+\w+/.test(trimmed)) return "BS";
   if (/^CF\s+\w+/.test(trimmed)) return "CF";
+  // KPI sheet families:
+  // "Farming KPI" — multi-entity per-row farm yield data (header row
+  //   has İl/Məhsul/Sezon/...). Per-row entity resolution via
+  //   `resolveEntityFromCostCenter`.
+  if (/^Farming\s+KPI\s*$/i.test(trimmed)) return "KPI_FARMING";
+  // "<Entity> KPI" — single-entity processing/operational metrics.
+  // The entity is encoded in the sheet name prefix and matched by the
+  // same prefix table the cost-center resolver uses.
+  if (/^(?:CPC|AZSF|EDEN|MALT|Farm|Farming|Sugarbeet|Horizon)\s+KPI\s*$/i.test(trimmed)) {
+    return "KPI_PROCESSING";
+  }
   return null;
+}
+
+/**
+ * Resolve the entity for a `KPI_PROCESSING` sheet (single-entity).
+ * Sheet name pattern: "<ENTITY> KPI" — pull the token before "KPI"
+ * and run it through the same prefix-to-entity map. Returns null if
+ * no match.
+ */
+export function resolveEntityFromProcessingKpiSheet(
+  sheetName: string,
+): string | null {
+  const trimmed = sheetName.trim();
+  const m = /^([A-Za-z]+)\s+KPI\s*$/i.exec(trimmed);
+  if (!m) return null;
+  const token = m[1].toUpperCase();
+  return GUVVEN_COST_CENTER_PREFIX_TO_ENTITY[token] ?? null;
 }

@@ -61,6 +61,14 @@ import {
   type ParsedPlfLine,
 } from "@/lib/onboarding/adapters/azseker-plf"
 import { classifyGuvvenSheetFamily } from "@/lib/onboarding/azseker-guvven-mapping"
+// Phase 7.I Turn — KPI sheet dispatcher. Scans every workbook sheet
+// (regardless of AI Mapper's filter) and writes OperationalFact rows
+// from KPI families.
+import {
+  parseGuvvenFarmingKpiSheet,
+  parseGuvvenProcessingKpiSheet,
+  type ParsedKpiFact,
+} from "@/lib/onboarding/adapters/azseker-guvven-kpi"
 
 export const maxDuration = 120 // larger than single-sheet — N parallel writes
 
@@ -534,16 +542,187 @@ export async function POST(
     }
   }
 
+  // Phase 7.I follow-up — KPI sheet dispatcher. Scans EVERY workbook
+  // sheet (not just AI-Mapper-targeted) for KPI families; deterministic
+  // adapters emit ParsedKpiFact[] which lands in OperationalFact. Runs
+  // in its own try/catch — KPI failures don't roll back budget data
+  // already committed above.
+  //
+  // Three families covered today:
+  //   - KPI_FARMING   → multi-entity Farming KPI sheet (per-row
+  //                     resolution via cost-center prefix map)
+  //   - KPI_PROCESSING → "<ENTITY> KPI" sheet (entity from sheet name)
+  //   - PLF/BS/CF      → handled by AI Mapper applier above; no-op here
+  //
+  // The dispatcher operates org-wide (multi-entity): a single Farming
+  // KPI sheet writes facts for EDEN+AZSF+FARM simultaneously, so the
+  // route's `companyId` (staging target) is NOT a filter for this pass.
+  interface KpiPerSheetResult {
+    sheetName: string
+    family: "KPI_FARMING" | "KPI_PROCESSING"
+    factsInserted: number
+    entitiesTouched: string[]
+    warnings: number
+    error?: string
+  }
+  const kpiResults: KpiPerSheetResult[] = []
+  const kpiTouchedCompanyIds = new Set<string>()
+  try {
+    for (const sheetName of workbook.SheetNames) {
+      const family = classifyGuvvenSheetFamily(sheetName)
+      if (family !== "KPI_FARMING" && family !== "KPI_PROCESSING") continue
+
+      const parsed =
+        family === "KPI_FARMING"
+          ? parseGuvvenFarmingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+          : parseGuvvenProcessingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+      if (parsed.facts.length === 0) {
+        kpiResults.push({
+          sheetName,
+          family,
+          factsInserted: 0,
+          entitiesTouched: [],
+          warnings: parsed.warnings.length,
+        })
+        continue
+      }
+
+      // Resolve all company codes mentioned in the facts to ids.
+      const codes = Array.from(new Set(parsed.facts.map((f) => f.companyCode)))
+      const companies = await prisma.company.findMany({
+        where: { organizationId: orgIdLocal, code: { in: codes } },
+        select: { id: true, code: true, status: true },
+      })
+      const idByCode = new Map<string, string>()
+      for (const c of companies) idByCode.set(c.code, c.id)
+      const unresolvedCodes = codes.filter((c) => !idByCode.has(c))
+      if (unresolvedCodes.length > 0) {
+        console.warn(
+          `[apply-multi/kpi] ${sheetName}: ${unresolvedCodes.length} entities not in DB, skipping (${unresolvedCodes.join(", ")})`,
+        )
+      }
+      const resolvedFacts = parsed.facts.filter((f) => idByCode.has(f.companyCode))
+
+      // Idempotent delete-then-insert per (companyId × metric × date).
+      // Same-sheet re-applies must produce identical state.
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        for (const code of codes) {
+          const companyIdResolved = idByCode.get(code)
+          if (!companyIdResolved) continue
+          kpiTouchedCompanyIds.add(companyIdResolved)
+          const metricsForThisCompany = Array.from(
+            new Set(resolvedFacts.filter((f) => f.companyCode === code).map((f) => f.metric)),
+          )
+          if (metricsForThisCompany.length === 0) continue
+          // Per-(company × metric × date) idempotency: delete same-sheet
+          // facts then re-insert. Only narrow the date window to what
+          // this sheet emits to avoid touching unrelated entries.
+          const datesForThisCompany = Array.from(
+            new Set(
+              resolvedFacts
+                .filter((f) => f.companyCode === code)
+                .map((f) => f.date),
+            ),
+          ).map((d) => new Date(d))
+          await tx.operationalFact.deleteMany({
+            where: {
+              organizationId: orgIdLocal,
+              companyId: companyIdResolved,
+              metric: { in: metricsForThisCompany },
+              date: { in: datesForThisCompany },
+              source: "xlsx_import",
+            },
+          })
+        }
+        const rows: Array<{
+          organizationId: string
+          companyId: string
+          metric: string
+          date: Date
+          value: number
+          unit: string
+          source: string
+        }> = []
+        for (const fact of resolvedFacts) {
+          const companyIdResolved = idByCode.get(fact.companyCode)
+          if (!companyIdResolved) continue
+          rows.push({
+            organizationId: orgIdLocal,
+            companyId: companyIdResolved,
+            metric: fact.metric,
+            date: new Date(fact.date),
+            value: fact.value,
+            unit: fact.unit,
+            source: "xlsx_import",
+          })
+        }
+        if (rows.length > 0) await tx.operationalFact.createMany({ data: rows })
+      })
+
+      const entitiesTouched = Array.from(
+        new Set(resolvedFacts.map((f) => f.companyCode)),
+      )
+      kpiResults.push({
+        sheetName,
+        family,
+        factsInserted: resolvedFacts.length,
+        entitiesTouched,
+        warnings: parsed.warnings.length,
+      })
+    }
+  } catch (err) {
+    // KPI dispatch failure is non-fatal — budget data is already
+    // committed. Log + surface in response so the user knows the agro
+    // indicators won't have data this round.
+    console.error("[apply-multi/kpi] dispatcher failed:", err)
+    kpiResults.push({
+      sheetName: "<dispatcher>",
+      family: "KPI_FARMING",
+      factsInserted: 0,
+      entitiesTouched: [],
+      warnings: 0,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Auto-flip Company.status for KPI-touched companies too — same logic
+  // as the BudgetLine path. New entities seeded with status='pending'
+  // get flipped once first operational data lands.
+  if (kpiTouchedCompanyIds.size > 0) {
+    try {
+      await prisma.company.updateMany({
+        where: {
+          id: { in: Array.from(kpiTouchedCompanyIds) },
+          status: "pending",
+        },
+        data: { status: "active" },
+      })
+    } catch (err) {
+      console.warn("[apply-multi/kpi] Company.status flip failed:", err)
+    }
+  }
+
   // Phase 7.G Turn CXI — recompute trigger + audit emit. Mirrors single-
   // sheet `/apply` route's post-transaction wiring. Recompute runs on the
   // (companyId, year) the apply-multi just touched; failures surface as
   // `indicatorsStale: true` instead of aborting the already-committed
   // transaction. Audit failure surfaces as `auditStale: true`.
+  //
+  // Phase 7.I follow-up — also recompute every KPI-touched company. The
+  // Farming KPI sheet writes facts for EDEN/AZSF/FARM in one pass, so the
+  // recompute pair set fans out beyond the staging target.
+  const recomputePairs = new Set<string>([`${companyId}:${targetYear}`])
+  for (const kpiCompanyId of kpiTouchedCompanyIds) {
+    recomputePairs.add(`${kpiCompanyId}:${targetYear}`)
+  }
   const { runRecomputeForCompanies } = await import("@/lib/risk/recompute-trigger")
   const recomputeResult = await runRecomputeForCompanies(
     prisma,
     orgIdLocal,
-    [{ companyId, year: targetYear }],
+    Array.from(recomputePairs).map((key) => {
+      const [cid, y] = key.split(":")
+      return { companyId: cid, year: Number(y) }
+    }),
     {
       pairError: (label, err) => console.error(`[apply-multi/recompute] ${label}:`, err),
     },
@@ -597,6 +776,7 @@ export async function POST(
   })
   const auditStale = !auditResult.ok
 
+  const kpiTotalFacts = kpiResults.reduce((s, r) => s + r.factsInserted, 0)
   return NextResponse.json(
     {
       stagingId: staging.id,
@@ -607,6 +787,10 @@ export async function POST(
       successCount,
       failureCount,
       perSheet,
+      // Phase 7.I — per-sheet outcome for sector adapter pass (KPI
+      // dispatcher). Empty when no Guvven-shape KPI sheets found.
+      sectorSheets: kpiResults,
+      sectorFactsInserted: kpiTotalFacts,
       recompute: recomputeResult,
       indicatorsStale,
       auditStale,
