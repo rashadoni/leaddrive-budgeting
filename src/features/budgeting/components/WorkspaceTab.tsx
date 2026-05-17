@@ -356,7 +356,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
               onBlur={() => saveEdit()}
               onKeyDown={e => { if (e.key === "Enter") saveEdit() }} />
           ) : (
-            <button type="button" className="font-mono text-sm cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 px-1 rounded border border-transparent hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+            <button type="button" className="font-mono text-sm cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 px-1 rounded border border-transparent hover:border-primary/40 transition-colors"
               onClick={() => startEdit(line.id, "plannedAmount", line.plannedAmount)}>
               {fmt(line.plannedAmount)}
               <Pencil className="h-2.5 w-2.5 inline ml-1 opacity-0 group-hover:opacity-40" />
@@ -403,11 +403,17 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         </td>
         {/* Actions */}
         <td className="px-2 py-2 text-center">
-          <button onClick={() => { if (confirm(t("confirmDeleteLine") + " «" + line.category + "» " + t("confirmDeleteLineSuffix"))) deleteLine.mutate({ id: line.id, planId }) }}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => { if (confirm(t("confirmDeleteLine") + " «" + line.category + "» " + t("confirmDeleteLineSuffix"))) deleteLine.mutate({ id: line.id, planId }) }}
             title={t("hintDeleteLine")}
-            className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+            aria-label={t("hintDeleteLine")}
+            className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </td>
       </tr>
     )
@@ -428,8 +434,17 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 <span className="font-mono">{fmt(a.actualAmount)}</span>
                 <span className="text-muted-foreground">{a.expenseDate || "—"}</span>
                 <span className="text-muted-foreground flex-1">{a.description || ""}</span>
-                <button onClick={() => deleteActual.mutate({ id: a.id, planId })}
-                  title={t("hintDeleteLine")} className="text-red-400 hover:text-red-600"><Trash2 className="h-3 w-3" /></button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => deleteActual.mutate({ id: a.id, planId })}
+                  title={t("hintDeleteLine")}
+                  aria-label={t("hintDeleteLine")}
+                  className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
               </div>
             ))}
             <div className="flex items-center gap-2 pt-1 border-t border-border/50">
@@ -512,24 +527,34 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         </td>
         <td className="px-2 py-2.5 text-center" onClick={e => e.stopPropagation()}>
           <div className="flex items-center gap-1 justify-center">
-            <button
-              className="p-1 rounded hover:bg-purple-50 dark:hover:bg-purple-900/20 text-muted-foreground hover:text-purple-600 opacity-60 hover:opacity-100"
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/5 dark:hover:bg-primary/10 opacity-60 hover:opacity-100"
               title={t("hintAddSubItem")}
-              onClick={() => setAddingSubItem(addingSubItem === line.id ? null : line.id)}>
+              aria-label={t("hintAddSubItem")}
+              onClick={() => setAddingSubItem(addingSubItem === line.id ? null : line.id)}
+            >
               <Plus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity"
               title={t("hintDeleteLine")}
+              aria-label={t("hintDeleteLine")}
               onClick={() => {
                 const childCount = children.length
                 const msg = childCount > 0
                   ? `${t("confirmDeleteLine")} «${line.category}» (${childCount} subcategories will be detached)?`
                   : `${t("confirmDeleteLine")} «${line.category}»?`
                 if (confirm(msg)) deleteLine.mutate({ id: line.id, planId })
-              }}>
+              }}
+            >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </div>
         </td>
       </tr>
@@ -562,7 +587,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 onChange={e => setEditValue(e.target.value)}
                 onBlur={() => saveEdit()} onKeyDown={e => { if (e.key === "Enter") saveEdit() }} />
             ) : (
-              <button type="button" className="font-mono text-sm cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-900/20 px-1 rounded border border-transparent hover:border-purple-300 dark:hover:border-purple-700 transition-colors"
+              <button type="button" className="font-mono text-sm cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 px-1 rounded border border-transparent hover:border-primary/40 transition-colors"
                 onClick={() => startEdit(child.id, "plannedAmount", child.plannedAmount)}>
                 {fmt(child.plannedAmount)}
                 <Pencil className="h-2.5 w-2.5 inline ml-1 opacity-0 group-hover:opacity-40" />
@@ -600,11 +625,17 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
             </div>
           </td>
           <td className="px-2 py-1.5 text-center">
-            <button onClick={() => { if (confirm(t("confirmDeleteLine") + " «" + child.category + "»?")) deleteLine.mutate({ id: child.id, planId }) }}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => { if (confirm(t("confirmDeleteLine") + " «" + child.category + "»?")) deleteLine.mutate({ id: child.id, planId }) }}
               title={t("hintDeleteLine")}
-              className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              aria-label={t("hintDeleteLine")}
+              className="h-7 w-7 text-muted-foreground hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
               <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            </Button>
           </td>
         </tr>
         {renderExpand(child)}
@@ -616,7 +647,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const renderAddSubItemForm = (parentLine: BudgetLine) => {
     if (addingSubItem !== parentLine.id) return null
     return (
-      <tr key={`add-sub-${parentLine.id}`} className="bg-purple-50 dark:bg-purple-900/10 border-t border-border/30">
+      <tr key={`add-sub-${parentLine.id}`} className="bg-primary/5 dark:bg-primary/10 border-t border-border/30">
         <td className="px-3 py-1.5">
           <div className="pl-6 flex items-center gap-2">
             <Input placeholder={t("placeholderCategoryShort")} className="h-6 text-xs flex-1" autoFocus value={newSubItem.category}
@@ -882,9 +913,15 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         ) : (!isCollapsed && sectionLineType) ? (
           <tr className="border-t border-dashed border-border/20">
             <td colSpan={6} className="px-3 py-1">
-              <button onClick={() => { setAddingSection(sectionLineType); setAddMode("line"); setNewRow(d => ({ ...d, parentId: "" })) }} className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1">
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                onClick={() => { setAddingSection(sectionLineType); setAddMode("line"); setNewRow(d => ({ ...d, parentId: "" })) }}
+                className="h-auto p-0 text-[11px]"
+              >
                 <Plus className="h-3 w-3" /> {t("btnAddRow")}
-              </button>
+              </Button>
             </td>
           </tr>
         ) : null}
@@ -1252,7 +1289,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                   const opNeg = opActual < 0
                   const opVarPct = varPct(opActual, opPlanned)
                   return (
-                  <tr className={`border-y-2 ${opNeg ? "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/10" : "border-purple-300 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/10"}`}>
+                  <tr className={`border-y-2 ${opNeg ? "border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/10" : "border-primary/40 bg-primary/5 dark:bg-primary/10"}`}>
                     <td className="px-3 py-2" colSpan={2}>
                       <div className="font-bold text-sm">{t("operatingProfit")}</div>
                       <div className="text-[10px] text-muted-foreground/60 font-normal">{t("hintOperatingProfit")}</div>
