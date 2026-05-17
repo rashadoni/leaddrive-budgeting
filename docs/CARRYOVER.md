@@ -63,6 +63,28 @@ gate.
 
 Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (tsc + M7) ✓ × 40 commits this entire session.
 
+**Session-3 continuation (post «иди по порядку. пока не закроешь все открытые задачи»):** +7 more commits closing remaining polish ledges. **Tests 3698 → 3736/3744 passing (+38).**
+
+- [d32f4b3] **3rd duplicate-type closure** — `PlanPeriodInput` (elapsed-months + period-lock) → re-export from period-lock canonical
+- [8fa52b8] **Handler test** for `/api/scenarios` — 9 cases (GET list + POST apply, locks 2026-04-26 Phase A security audit fixes)
+- [f6c454c] **Handler test** for `/api/companies` — 12 cases (3-level holding-tree include + manager+ POST + Turn 14 reframe for level=2 direct-org-child)
+- [67cb014] **Handler test** for `/api/operational-facts` — 9 cases (auth + Zod envelope; anomaly logic covered separately in metric-validation-rules.test.ts)
+- [8f23dce] **`groupByParent` helper extracted** from PLTab (4th helper extracted this session) + 8 unit tests covering empty/standalone/grouped/mixed/null parentCategory/order preservation/generic shape
+- [6446064] **ForecastTab** `months` useMemo replaced with shared `getPeriodMonths` helper — drops duplicate inline period→months logic; helper already has 7 unit tests in cost-model-map.test.ts
+
+**Cumulative session totals: 47 commits.**
+- Test count 3537 → **3736/3744 passing (+199 net)**
+- 5 helpers extracted (derive-month-index, elapsed-months, variance-helpers, group-by-parent + analytics route uses computeElapsedMonthIndices/getPeriodMonths)
+- 11 lib modules now have direct pure-helper test coverage
+- 5 handler tests added (scenarios, companies, operational-facts + earlier work)
+- 3 duplicate types resolved (BudgetForecastEntry, BudgetSection, PlanPeriodInput)
+- 22 `as any` casts dropped + 7 PLTab + 14 session.user
+- 15 hover-tooltip surfaces total
+- 1 schema migration applied
+- 1 shared component extracted (MonthlySparkline)
+- All commits pre-commit clean (tsc + M7)
+- 0 new 🔄 rows opened. -2 net (Turn LIX v1.1 + v1.2).
+
 **Tracker scan note:** Phase 7.I sector-aware terminal Track C UI widgets (AgroDashboardPanel / CommodityTickerPanel / AgronomyEntryPanel) verified present and fully wired in this session — CommandBar verbs (`agro`/`wx`/`price`/`kpi`), HotkeyToolbar buttons, terminal-panel/[id] switch, and PanelGrid event listeners all in place. Prior CARRYOVER entry «Track C carried to next session» was stale at compaction time.)
 
 --
