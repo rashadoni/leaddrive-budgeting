@@ -615,3 +615,46 @@ describe('GET /api/indicators/matrix — handler', () => {
     expect(res.headers.get('cache-control')).toBe('private, max-age=10');
   });
 });
+
+describe('GET /api/indicators/matrix — truth-infra C.3 pending filter', () => {
+  beforeEach(() => {
+    prismaMock.company.findMany.mockReset().mockResolvedValue([]);
+    prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([]);
+    prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
+    prismaMock.user.findFirst.mockReset().mockResolvedValue({ allowedSubGroupIds: [] });
+  });
+
+  it('default request excludes pending companies (status filter applied)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    await GET(makeRequest('/api/indicators/matrix?period=2026'));
+    // First findMany call = top-level companies query
+    const where = prismaMock.company.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      organizationId: ORG_ID,
+      isActive: true,
+      status: { not: 'pending' },
+    });
+  });
+
+  it('?includePending=true drops the status filter', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    await GET(
+      makeRequest('/api/indicators/matrix?period=2026&includePending=true'),
+    );
+    const where = prismaMock.company.findMany.mock.calls[0][0].where;
+    expect(where).toEqual(
+      expect.objectContaining({ organizationId: ORG_ID, isActive: true }),
+    );
+    // Status filter should NOT be in the where object when includePending=true
+    expect(where).not.toHaveProperty('status');
+  });
+
+  it('?includePending=false (explicit) keeps the status filter', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    await GET(
+      makeRequest('/api/indicators/matrix?period=2026&includePending=false'),
+    );
+    const where = prismaMock.company.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ status: { not: 'pending' } });
+  });
+});

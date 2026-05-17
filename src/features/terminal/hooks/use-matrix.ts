@@ -46,6 +46,13 @@ export interface MatrixCompanyRow {
   industry: string;
   /** Set true on sub-group rollup rows (Turn 33.5); leaf ops cos omit. */
   isSubgroup?: boolean;
+  /**
+   * Truth-infra C.1 — onboarding readiness gate. Default matrix excludes
+   * `'pending'` companies; only present in response when the matrix was
+   * fetched with `?includePending=true` (admin "Show pending" toggle).
+   * Values: `'pending' | 'active' | 'archived'`.
+   */
+  status?: string;
 }
 
 export type MatrixIndicatorDirection = "higher_better" | "lower_better" | "band";
@@ -100,10 +107,13 @@ interface CacheState {
 
 const cacheByPeriod = new Map<string, CacheState>();
 
-function buildUrl(period: string | undefined): string {
-  return period
+function buildUrl(period: string | undefined, includePending: boolean): string {
+  const base = period
     ? `/api/indicators/matrix?period=${encodeURIComponent(period)}`
     : `/api/indicators/matrix`;
+  return includePending
+    ? `${base}${period ? '&' : '?'}includePending=true`
+    : base;
 }
 
 function isMatrixResponseShape(v: unknown): v is MatrixResponse {
@@ -122,8 +132,11 @@ function isMatrixResponseShape(v: unknown): v is MatrixResponse {
   );
 }
 
-function fetchMatrix(period: string | undefined): Promise<MatrixResponse> {
-  return fetch(buildUrl(period))
+function fetchMatrix(
+  period: string | undefined,
+  includePending: boolean,
+): Promise<MatrixResponse> {
+  return fetch(buildUrl(period, includePending))
     .then((r) => {
       if (!r.ok) throw new Error(`/api/indicators/matrix ${r.status}`);
       return r.json() as Promise<unknown>;
@@ -138,8 +151,12 @@ function fetchMatrix(period: string | undefined): Promise<MatrixResponse> {
     });
 }
 
-function cacheKey(period: string | undefined): string {
-  return period ?? "__default__";
+function cacheKey(period: string | undefined, includePending: boolean): string {
+  // Truth-infra C.3 — cache key includes includePending so the admin
+  // toggle gets its own cached response (independent of the default
+  // operating-view cache).
+  const base = period ?? "__default__";
+  return includePending ? `${base}:pending` : base;
 }
 
 /**
@@ -149,11 +166,12 @@ function cacheKey(period: string | undefined): string {
  */
 export function ensureMatrix(
   period?: string,
+  includePending: boolean = false,
 ): Promise<MatrixResponse> {
-  const key = cacheKey(period);
+  const key = cacheKey(period, includePending);
   let entry = cacheByPeriod.get(key);
   if (!entry) {
-    const promise = fetchMatrix(period);
+    const promise = fetchMatrix(period, includePending);
     entry = { promise, data: null, error: null };
     cacheByPeriod.set(key, entry);
     promise
@@ -175,12 +193,18 @@ export function ensureMatrix(
  * keyboard handlers) where the caller already knows the cache should
  * be primed by an upstream consumer.
  */
-export function getMatrixSync(period?: string): MatrixResponse | null {
-  return cacheByPeriod.get(cacheKey(period))?.data ?? null;
+export function getMatrixSync(
+  period?: string,
+  includePending: boolean = false,
+): MatrixResponse | null {
+  return cacheByPeriod.get(cacheKey(period, includePending))?.data ?? null;
 }
 
-export function useMatrix(period?: string): UseMatrixResult {
-  const key = cacheKey(period);
+export function useMatrix(
+  period?: string,
+  includePending: boolean = false,
+): UseMatrixResult {
+  const key = cacheKey(period, includePending);
   const [matrix, setMatrix] = useState<MatrixResponse | null>(
     () => cacheByPeriod.get(key)?.data ?? null,
   );
@@ -194,7 +218,7 @@ export function useMatrix(period?: string): UseMatrixResult {
 
   useEffect(() => {
     let cancelled = false;
-    ensureMatrix(period)
+    ensureMatrix(period, includePending)
       .then((data) => {
         if (cancelled) return;
         setMatrix(data);
@@ -208,20 +232,17 @@ export function useMatrix(period?: string): UseMatrixResult {
     return () => {
       cancelled = true;
     };
-    // `period` is the cache key — depending on it triggers a re-fetch
-    // when the panel's period prop changes (HeatMap doesn't currently
-    // change period mid-session, but ComparePanel could in v2).
-  }, [period]);
+    // `period` + `includePending` together form the cache key — toggling
+    // includePending triggers a separate fetch (admin "Show pending" view).
+  }, [period, includePending]);
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
-      // `key` is derived from `period` via cacheKey() — single dep
-      // suffices (architect sub-20 💡 closure).
-      cacheByPeriod.delete(cacheKey(period));
+      cacheByPeriod.delete(cacheKey(period, includePending));
       setLoading(true);
       setError(null);
       try {
-        const data = await ensureMatrix(period);
+        const data = await ensureMatrix(period, includePending);
         setMatrix(data);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -229,7 +250,7 @@ export function useMatrix(period?: string): UseMatrixResult {
         setLoading(false);
       }
     },
-    [period],
+    [period, includePending],
   );
 
   return { matrix, loading, error, refresh };

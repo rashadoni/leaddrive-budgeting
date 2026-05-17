@@ -1081,6 +1081,17 @@ model Company {
   baseCurrencyCode String?
   settings         Json? // per-industry config: { totalRooms?, feedSpecies?, ... }
   isActive         Boolean      @default(true)
+  // Truth-infra C.1 — onboarding readiness gate.
+  //   'pending' (default for new rows) — company exists in tree but
+  //              no data ingested yet; terminal CompanyTree hides by
+  //              default to avoid showing empty cells.
+  //   'active'  — at least one IndicatorValue or BudgetLine recorded;
+  //              terminal surfaces normally.
+  //   'archived' — formerly active, manually retired; terminal hides
+  //              same as 'pending' (but visible to admin).
+  // Set via /api/companies/[id]/status PATCH (admin) or auto-promoted
+  // pending→active by the onboarding-completion reconciler.
+  status           String       @default("pending")
   sortOrder        Int          @default(0)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt

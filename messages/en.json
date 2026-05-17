@@ -1821,7 +1821,13 @@
       "alertedAriaLabel": "Alerted companies",
       "allRowLabel": "ALL",
       "allRowDescription": "Show every company on the HeatMap",
-      "allRowAriaLabel": "Show all companies on the HeatMap"
+      "allRowAriaLabel": "Show all companies on the HeatMap",
+      "pendingHidden": "+pending",
+      "pendingShown": "−pending",
+      "pendingPill": "pending",
+      "pendingPillAriaLabel": "Onboarding pending",
+      "showPendingAriaLabel": "Toggle visibility of onboarding-pending companies",
+      "showPendingTitle": "Show / hide onboarding-pending companies (admin)"
     },
     "peer": {
       "title": "Peer Comparison ({count} companies)",

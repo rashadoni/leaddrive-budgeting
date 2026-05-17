@@ -74,6 +74,12 @@ export async function GET(request: NextRequest) {
   }
   const period = rawPeriod;
 
+  // Truth-infra C.3 — admin opt-in toggle. When `?includePending=true`
+  // the matrix returns pending-status companies alongside active ones
+  // (CompanyTree renders them with a dim pill). Default behaviour
+  // (no param OR `false`) hides pending — clean operating view.
+  const includePending = searchParams.get('includePending') === 'true';
+
   // Phase 7.F sub-group RBAC — narrow visible companies to the user's
   // allowed sub-groups + their children. Admins / unrestricted users
   // get scope.ids === null and pass the full org through unchanged.
@@ -89,6 +95,14 @@ export async function GET(request: NextRequest) {
         where: {
           organizationId: session.orgId,
           isActive: true,
+          // Truth-infra C.3 — hide onboarding-pending companies from the
+          // terminal by default. `?includePending=true` admin toggle
+          // (CompanyTree.tsx "Show pending" button) opts back in. New
+          // companies onboarded via wizard start `status='pending'`; an
+          // admin flips them to 'active' once data is ready.
+          ...(includePending
+            ? {}
+            : { status: { not: 'pending' } }),
           ...(scope.ids ? { id: { in: Array.from(scope.ids) } } : {}),
         },
         select: {
@@ -106,6 +120,9 @@ export async function GET(request: NextRequest) {
           // the operational matrix so OpEx ratios on a pure HQ entity
           // don't false-red the holding view.
           role: true,
+          // Truth-infra C.1 — surface to CompanyTree so pending rows
+          // visible under admin toggle render with a "pending" pill.
+          status: true,
           sortOrder: true,
           // CLI follow-up — surface parentCompanyId so the CompanyTree can
           // derive composite scores for sub-groups + holding umbrella from
@@ -363,7 +380,16 @@ export async function GET(request: NextRequest) {
     const childToSubgroup = new Map<string, string>();
     const subgroupIds = new Set(subgroups.map((s: CompanyRawShape) => s.id));
     const fullCompaniesRaw = await prisma.company.findMany({
-      where: { organizationId: session.orgId, isActive: true, parentCompanyId: { in: Array.from(subgroupIds) } },
+      where: {
+        organizationId: session.orgId,
+        isActive: true,
+        // Truth-infra C.3 — same pending-exclusion as the top-level
+        // findMany so pending children don't propagate into subgroup
+        // composite scores. Admin toggle includes them via the same
+        // `includePending` flag.
+        ...(includePending ? {} : { status: { not: 'pending' } }),
+        parentCompanyId: { in: Array.from(subgroupIds) },
+      },
       select: { id: true, parentCompanyId: true },
     });
     for (const c of fullCompaniesRaw) {

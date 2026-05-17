@@ -38,12 +38,30 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   const t = useTranslations('terminal');
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
 
+  // Truth-infra C.3 — admin "Show pending" toggle. Default off → matrix
+  // excludes onboarding-pending companies (the cleanest operating view).
+  // When toggled on, useMatrix refetches with `?includePending=true` and
+  // the tree renders newly-visible companies with a small "pending" pill.
+  const [showPending, setShowPending] = useState(false);
+
   // Sub-27 cont'd Round-5 — composite score per company on tree node.
   // Same shared module-cache hook HeatMap uses; one source of truth for
   // matrix data across panels. Lookup by company.code (CompanyNode shape)
   // → company.id via the matrix; fallback null for unmatched (e.g. before
   // matrix lands).
-  const { matrix } = useMatrix();
+  const { matrix } = useMatrix(undefined, showPending);
+
+  // Truth-infra C.3 — pendingCodes derived from matrix.companies. Only
+  // populated when showPending is on (otherwise matrix excludes pending
+  // entirely). Used to render the "pending" pill next to TrustBadge.
+  const pendingCodes = useMemo(() => {
+    if (!matrix || !showPending) return new Set<string>();
+    return new Set(
+      matrix.companies
+        .filter((co) => co.status === 'pending')
+        .map((co) => co.code),
+    );
+  }, [matrix, showPending]);
   const compositeByCode = useMemo(() => {
     if (!matrix) return new Map<string, CompositeScore>();
     const byId = computeCompositeByCompany(matrix.cells);
@@ -362,6 +380,24 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           spellCheck={false}
           aria-label={t('companyTree.filterAriaLabel')}
         />
+        {/* Truth-infra C.3 — admin "Show pending" toggle. Defaults to off
+            (matrix excludes pending companies). Press to include pending
+            entities (rendered with "pending" pill). */}
+        <button
+          type="button"
+          onClick={() => setShowPending((v) => !v)}
+          className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+            showPending
+              ? 'border-amber-700 bg-amber-950/40 text-amber-300'
+              : 'border-gray-800 text-gray-600 hover:text-gray-400'
+          }`}
+          data-testid="company-tree-show-pending-toggle"
+          aria-pressed={showPending}
+          aria-label={t('companyTree.showPendingAriaLabel')}
+          title={t('companyTree.showPendingTitle')}
+        >
+          {showPending ? t('companyTree.pendingShown') : t('companyTree.pendingHidden')}
+        </button>
       </div>
       {watchlistTab === 'alerted' && alertedCompanyCodes === null ? (
         // Architect Round-1 closure (sub-4 💡): distinguished loading
@@ -462,6 +498,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
             onToggle={toggleStarredCompany}
           />
           <TrustBadge status={trustByCode.get(root.code) ?? 'pending'} />
+          {pendingCodes.has(root.code) && <PendingPill label={t("companyTree.pendingPill")} ariaLabel={t("companyTree.pendingPillAriaLabel")} />}
           <span
             className="text-gray-500 uppercase tracking-wider w-20 truncate"
             title={root.code}
@@ -512,6 +549,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                     onToggle={toggleStarredCompany}
                   />
                   <TrustBadge status={trustByCode.get(child.code) ?? 'pending'} />
+                  {pendingCodes.has(child.code) && <PendingPill label={t("companyTree.pendingPill")} ariaLabel={t("companyTree.pendingPillAriaLabel")} />}
                   <span
                     className="text-gray-500 uppercase tracking-wider w-20 truncate"
                     title={child.code}
@@ -754,6 +792,24 @@ function TrustBadge({ status }: { status: TrustStatus }) {
         boxShadow: `0 0 0 1px ${TRUST_COLOR[status]}30`,
       }}
     />
+  );
+}
+
+/**
+ * Truth-infra C.3 — tiny "pending" pill rendered next to TrustBadge when
+ * a company is in onboarding-pending state. Only appears when the admin
+ * has toggled "Show pending" — otherwise pending companies are excluded
+ * by the matrix endpoint altogether.
+ */
+function PendingPill({ label, ariaLabel }: { label: string; ariaLabel: string }) {
+  return (
+    <span
+      data-testid="company-tree-pending-pill"
+      className="text-[8px] uppercase tracking-wider px-1 py-px rounded bg-amber-950/60 border border-amber-800/50 text-amber-300 shrink-0"
+      aria-label={ariaLabel}
+    >
+      {label}
+    </span>
   );
 }
 

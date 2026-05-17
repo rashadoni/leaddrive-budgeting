@@ -230,7 +230,7 @@ Unsigned current period shows "Live data — not yet signed off".
 
 ## Status tracker
 
-**Last refresh: 2026-05-17 (Session 9 docs-hygiene pass).** Table reconstructed by cross-referencing actual codebase artefacts + `docs/TRUTH_INFRA_FOLLOWUPS.md` + CARRYOVER changelog 2026-05-16. Phases A/B/D/E mostly shipped through the truth-infra closure session (Phase 7.G Turn LXVII–LXXX + 2026-05-16 wave). **Single remaining ⬜:** C.3 + E.4 (UI-gate items not surfaced) and V1 (browser-side smoke, tracked in `TRUTH_INFRA_FOLLOWUPS.md`).
+**Last refresh: 2026-05-17 (Session 9 closure pass).** Table reconstructed by cross-referencing actual codebase artefacts + `docs/TRUTH_INFRA_FOLLOWUPS.md` + CARRYOVER changelog 2026-05-16. Phases A/B/C/D/E shipped through truth-infra closure session (Phase 7.G Turn LXVII–LXXX + 2026-05-16 wave + 2026-05-17 Session 9 finish — E.4 banner + C.1 schema field + C.3 terminal gate). **Single remaining ⬜:** V1 (browser-side smoke, tracked in `TRUTH_INFRA_FOLLOWUPS.md`). 15 of 16 phase items ✅.
 
 | Phase | Component | Status | Evidence |
 |---|---|---|---|
@@ -240,9 +240,9 @@ Unsigned current period shows "Live data — not yet signed off".
 | B.1 | CompanyTree status badge | ✅ Done | `TrustBadge` component in `CompanyTree.tsx` (lines 464, 514, 742) + integration test `CompanyTree.trust-badge.test.tsx` |
 | B.2 | IndicatorDetail provenance panel | ✅ Done | `IndicatorDetail.tsx` surfaces `valueSource` + `sourceDocument` + `lastReconciledAt` + `sanityBand` (14 grep hits) |
 | B.3 | Audit log events for reconciliation | ✅ Done | `reconciliation_drift_detected` enum value in `prisma/schema.prisma`; emitted by `scripts/drift-watchdog.cjs` |
-| C.1 | `Company.status` field + migration | ⬜ Pending | **Schema drift caught Session 9 docs-refresh:** `prisma/schema.prisma` does NOT declare `Company.status`; DB `\d companies` confirms no column. Session 9 prior pass marked ✅ in error (grep matched `AccountingImport.status` line 230, not `Company` model line 1052+). Field never shipped. C.3 + alt onboarding-status surfaces (OnboardingCompletenessDashboard) work today via derived counts, not a persisted field. |
+| C.1 | `Company.status` field + migration | ✅ Done | Session 9 closure — added `status String @default("pending")` to `Company` model (schema line 1083+). Migration `20260517084450_truth_infra_c1_company_status` applied to DB (ALTER TABLE + idempotent IF NOT EXISTS + transactional UPDATE backfill: all 16 existing companies → `'active'`). Recorded in `_prisma_migrations`. Values: `pending` (default for new rows) / `active` (data ingested) / `archived` (manually retired). |
 | C.2 | Onboarding checklist UI | ✅ Done | `/api/companies/[id]/onboarding/route.ts` + `OnboardingCompletenessDashboard.tsx` + `OnboardingTabbedPage.tsx` + `OnboardingWizardSwitcher.tsx` |
-| C.3 | Terminal gate for pending companies | ⬜ Blocked on C.1 | Requires `Company.status` schema field to filter. Alternative: derive readiness from data counts at matrix-fetch time. Defer until C.1 ships OR product decision to use derived gate. |
+| C.3 | Terminal gate for pending companies | ✅ Done | Session 9 closure — matrix endpoint filters `status: { not: 'pending' }` by default; `?includePending=true` admin opt-in. `useMatrix(period, includePending)` hook cache-keyed by both. `CompanyTree` adds "Show pending" toggle (testid `company-tree-show-pending-toggle`); pending companies render with `PendingPill` (testid `company-tree-pending-pill`). 7 i18n keys × 3 locales. 3 new matrix handler tests + 6 new pending-toggle tests. |
 | D.1 | Drift watchdog cron | ✅ Done | `scripts/drift-watchdog.cjs` + `src/lib/audit/drift-watchdog-helpers.cjs` + 10 vitest cases (closure: TRUTH_INFRA F2, 2026-05-16) |
 | D.2 | Reference-data freshness checks | ✅ Done | `src/lib/intel/freshness.ts` + `resolveFreshnessSources()` reads `Organization.settings.intelFreshnessSources`; 5+7 vitest cases (closure: TRUTH_INFRA F3 + L3, 2026-05-16) |
 | D.3 | Drift dashboard | ✅ Done | `src/features/admin/components/DriftDashboard.tsx` + `DriftDashboard.test.tsx` + `/api/admin/drift/route.ts` + handler tests (closure: TRUTH_INFRA F4 + F5, 2026-05-16) |

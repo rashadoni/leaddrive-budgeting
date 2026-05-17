@@ -1821,7 +1821,13 @@
       "alertedAriaLabel": "Компании с алертами",
       "allRowLabel": "ВСЕ",
       "allRowDescription": "Показать все компании на HeatMap",
-      "allRowAriaLabel": "Показать все компании на HeatMap"
+      "allRowAriaLabel": "Показать все компании на HeatMap",
+      "pendingHidden": "+pending",
+      "pendingShown": "−pending",
+      "pendingPill": "pending",
+      "pendingPillAriaLabel": "В процессе онбординга",
+      "showPendingAriaLabel": "Переключить видимость компаний в процессе онбординга",
+      "showPendingTitle": "Показать / скрыть компании в процессе онбординга (admin)"
     },
     "peer": {
       "title": "Сравнение peer ({count} компаний)",
