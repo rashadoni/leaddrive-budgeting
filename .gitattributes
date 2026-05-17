@@ -1,0 +1,21 @@
+# Force text classification on TS/TSX source files so git diff never
+# treats them as binary even when a stray control byte (escaped string
+# literal, \x07-like) lands in the source. Without this, git's auto-
+# detection sticks "binary" on the file across subsequent commits;
+# diffs show "Bin" instead of actual changes, breaking code review.
+#
+# Triggered after commit ba30f33 (terminal layouts handler test) which
+# accidentally landed with literal NULL + 0x1F bytes from a copy-paste.
+# Cleanup commit 8e877e7 stripped the bytes but git kept the binary
+# attribute; this .gitattributes is the proper fix.
+*.ts text
+*.tsx text
+*.js text
+*.jsx text
+*.json text
+*.md text
+*.sql text
+*.css text
+*.html text
+*.yml text
+*.yaml text
