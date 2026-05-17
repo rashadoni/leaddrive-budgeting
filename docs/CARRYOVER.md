@@ -96,6 +96,18 @@ Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (
 
 **Cumulative: 63 commits. Tests 3537 → 3850/3858 passing (+313 net).** 22 of 127 routes now have handler tests (was 51 before this session; now 64).
 
+**Session-6 (continuation):** +9 more commits.
+- 0f0905b — `.gitattributes` fix for binary-file misclassification (TS/TSX/JSON forced text)
+- c64379f — `/api/budgeting/plans/[id]/versions` (4) + `restore` (4) handler tests
+- fd7e182 — `/api/budgeting/resolve-costs` (7) handler test
+- c57ef27 — `/api/budgeting/reports/preview` (9) handler test
+- 64df362 — `/api/budgeting/plans/[id]/purge` (5) handler test (most-destructive 12-table cascade)
+- 5edbb3c — `/api/users/[id]/password-reset` (6) handler test (Phase 7.F admin v3)
+- 838a602 — `/api/budgeting/product-lines` (8) — locks Phase 7.G LXII organizationId-injection guard
+- 4ea4a94 — `/api/budgeting/exchange-rates` (10) — currency rate CRUD
+
+**Cumulative: 72 commits. Tests 3537 → 3903/3911 passing (+366 net).** 51 → **73 of 127 routes** with handler tests (~57% coverage of API surface).
+
 All pre-commit clean × 63 commits.
 - Test count 3537 → **3736/3744 passing (+199 net)**
 - 5 helpers extracted (derive-month-index, elapsed-months, variance-helpers, group-by-parent + analytics route uses computeElapsedMonthIndices/getPeriodMonths)
