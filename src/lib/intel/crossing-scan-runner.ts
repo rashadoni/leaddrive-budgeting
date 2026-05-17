@@ -36,7 +36,20 @@ import {
 import type { ImpactForecastLanguage } from "@/lib/risk/impact-forecast"
 
 const MAX_FORECASTS_PER_CYCLE = 20
-const RECENT_DAYS = 30
+/**
+ * Days of IntelDataPoint history to load into the crossing context.
+ * Calibrated for the slowest-cadence feeds we have:
+ *   - FAO Food Price Index → monthly (datetime stamped at 1st-of-month)
+ *   - AZ CPI → monthly
+ *   - UN Comtrade → annual
+ *   - WB Indicators → annual
+ * 90 days covers ~3 monthly points so 7-day-shift rules have enough
+ * lookback AND monthly feeds aren't filtered out for being "stale"
+ * (datetime is the OBSERVATION date, not the fetch date). Annual
+ * feeds will only have the latest point in window which is fine for
+ * threshold rules.
+ */
+const RECENT_DAYS = 90
 const DEFAULT_LANGUAGE: ImpactForecastLanguage = "en"
 
 export interface RunCrossingScanResult {
