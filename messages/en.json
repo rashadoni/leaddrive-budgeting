@@ -1919,7 +1919,7 @@
       "emptyOrTypeSuffix": "in the command bar.",
       "missingCellHint": "{indicator} has no computed value for {company} yet.",
       "missingCellAction": "Onboard data via /budgeting/onboarding or trigger a recompute.",
-      "rollupHint": "{indicator} for {company} is a sub-group rollup — averaged across {count} operational children. Click an operational sub-co (e.g. {company}-MAIN) for the canonical drill-down.",
+      "rollupHint": "{indicator} for {company} is a sub-group rollup — averaged across {count} operational children. Click an operational sub-co in the tree on the left for the canonical drill-down.",
       "rollupAction": "Sub-group cells aggregate child values (avg + worst-of-children status). No single canonical IV row exists at the parent level.",
       "loading": "Loading...",
       "error": "Error:",

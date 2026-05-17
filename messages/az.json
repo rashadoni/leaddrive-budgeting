@@ -1919,7 +1919,7 @@
       "emptyOrTypeSuffix": "komanda sətrində.",
       "missingCellHint": "{indicator} hələ {company} üçün hesablanmayıb.",
       "missingCellAction": "/budgeting/onboarding vasitəsilə məlumat yükləyin və ya yenidən hesablayın.",
-      "rollupHint": "{indicator} {company} üçün alt-qrup birləşməsidir — {count} əməliyyat törəmə şirkət üzrə orta. Kanonik drill-down üçün əməliyyat törəməsinə (məs. {company}-MAIN) klikləyin.",
+      "rollupHint": "{indicator} {company} üçün alt-qrup birləşməsidir — {count} əməliyyat törəmə şirkət üzrə orta. Kanonik drill-down üçün soldakı ağacda əməliyyat törəməsinə klikləyin.",
       "rollupAction": "Alt-qrup xanaları törəmə dəyərləri birləşdirir (orta + worst-of-children status). Valideyn səviyyəsində kanonik IV sətri mövcud deyil.",
       "loading": "Yüklənir...",
       "error": "Xəta:",
