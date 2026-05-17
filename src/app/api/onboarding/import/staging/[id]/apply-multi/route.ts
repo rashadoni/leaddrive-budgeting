@@ -221,9 +221,104 @@ export async function POST(
   // Apply the multi-sheet proposal to the workbook.
   const multiResult = applyMultiSheetProposal(workbook, multi, XLSX)
 
-  // Year resolution: derive from FIRST sheet's columns; if any other sheet
-  // disagrees, reject (same constraint as single-sheet). Use the first
-  // SUCCESSFUL sheet's proposal for year hint.
+  // Year resolution. Order of precedence:
+  //   1. `?year=YYYY` query override — explicit user intent. Skips
+  //      `detectProposalYear` rejection on multi-year workbooks.
+  //   2. First successful sheet's proposal — single-year inference.
+  //   3. `currentBakuYearNumber()` fallback when no AI-Mapper proposal
+  //      survived (e.g. all sheets fell to applier errors and Guvven
+  //      adapter will rescue them).
+  let targetYear = currentBakuYearNumber()
+  const yearOverrideRaw = request.nextUrl.searchParams.get("year")
+  const yearOverride = yearOverrideRaw != null ? Number(yearOverrideRaw) : null
+  const yearOverrideValid =
+    yearOverride !== null && Number.isInteger(yearOverride) && yearOverride >= 2020 && yearOverride <= 2031
+  if (yearOverrideValid) {
+    targetYear = yearOverride
+  } else {
+    const firstSuccessForYear = multiResult.perSheet.find(
+      (s): s is { sheetName: string; result: ParseResult } => "result" in s,
+    )
+    const firstSheetProposalForYear = firstSuccessForYear
+      ? multi.sheets.find((s) => s.sheetName === firstSuccessForYear.sheetName)?.proposal
+      : undefined
+    if (firstSheetProposalForYear) {
+      const yearHint = detectProposalYear(firstSheetProposalForYear.columns)
+      if (typeof yearHint === "number") {
+        targetYear = yearHint
+      } else if (yearHint && typeof yearHint === "object" && "conflict" in yearHint) {
+        return NextResponse.json(
+          {
+            error: `First sheet has columns referencing multiple years (${yearHint.conflict.join(", ")}). MVP requires single-year workbooks or a ?year=YYYY override.`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+  }
+
+  // Guvven-shape deterministic fallback — runs BEFORE the all-failed
+  // gate so it can rescue 422-style applier errors that the multi-year
+  // Guvven Fin xlsx triggers ("Multiple columns mapped to month jan").
+  //
+  // Two rescue paths:
+  //   - Sheet errored in applier (typically duplicate-month-column
+  //     rejection): replace the error entry with a synthetic success
+  //     entry built from the deterministic adapter.
+  //   - Sheet returned 0 leaves (year-mismatch case): swap in the
+  //     adapter's lines.
+  //
+  // Only PLF/PL sheets are rescued today. CF rescue + BS routing are
+  // separate adapter wiring tasks.
+  const plfToBudgetLine = (line: ParsedPlfLine): ParsedBudgetLine => ({
+    code: line.code,
+    label: line.label,
+    accountType: line.accountType,
+    plannedAnnual: line.totalAnnual,
+    perMonth: line.perMonth,
+  })
+  for (let i = 0; i < multiResult.perSheet.length; i++) {
+    const entry = multiResult.perSheet[i]
+    const sheetName = entry.sheetName
+    const family = classifyGuvvenSheetFamily(sheetName)
+    if (family !== "PLF") continue
+
+    const hasError = "error" in entry
+    const hasZeroLines = !hasError && entry.result.lines.length === 0
+    if (!hasError && !hasZeroLines) continue
+
+    const fallback = parsePlfPlSheet(workbook, sheetName, XLSX, {
+      preferYear: targetYear,
+    })
+    if (fallback.lines.length === 0) continue
+
+    if (hasError) {
+      // Replace the error with a synthetic ParseResult so downstream
+      // counters + the all-failed gate count this sheet as a success.
+      const synth: ParseResult = {
+        sheetName,
+        lines: fallback.lines.map(plfToBudgetLine),
+        warnings: [
+          {
+            row: 0,
+            reason: `AI Mapper applier errored ("${(entry as { sheetName: string; error: string }).error}"); deterministic Guvven adapter recovered ${fallback.lines.length} leaves for year ${targetYear}.`,
+          },
+        ],
+        skippedRowCount: 0,
+        parentRollupsDropped: [],
+        parentRollupsUnallocated: [],
+      }
+      multiResult.perSheet[i] = { sheetName, result: synth }
+    } else {
+      entry.result.lines = fallback.lines.map(plfToBudgetLine)
+      entry.result.warnings.push({
+        row: 0,
+        reason: `AI Mapper produced 0 leaves; deterministic Guvven adapter recovered ${fallback.lines.length} for year ${targetYear}.`,
+      })
+    }
+  }
+
+  // All-failed gate runs AFTER Guvven rescue.
   const firstSuccess = multiResult.perSheet.find(
     (s): s is { sheetName: string; result: ParseResult } => "result" in s,
   )
@@ -235,63 +330,6 @@ export async function POST(
       },
       { status: 422 },
     )
-  }
-  const firstSheetProposal = multi.sheets.find(
-    (s) => s.sheetName === firstSuccess.sheetName,
-  )?.proposal
-  let targetYear = currentBakuYearNumber()
-  // Year override via `?year=2026` query param. The wizard form passes
-  // this when the workbook is known to span multiple years (e.g. Guvven
-  // Fin file has 2022-2026 columns; the user is uploading their 2026
-  // budget plan, not 2022 actuals). Override skips `detectProposalYear`
-  // so multi-year sheets don't reject with a "conflict" 400.
-  const yearOverrideRaw = request.nextUrl.searchParams.get("year")
-  const yearOverride = yearOverrideRaw != null ? Number(yearOverrideRaw) : null
-  const yearOverrideValid =
-    yearOverride !== null && Number.isInteger(yearOverride) && yearOverride >= 2020 && yearOverride <= 2031
-  if (yearOverrideValid) {
-    targetYear = yearOverride
-  } else if (firstSheetProposal) {
-    const yearHint = detectProposalYear(firstSheetProposal.columns)
-    if (typeof yearHint === "number") {
-      targetYear = yearHint
-    } else if (yearHint && typeof yearHint === "object" && "conflict" in yearHint) {
-      return NextResponse.json(
-        {
-          error: `First sheet has columns referencing multiple years (${yearHint.conflict.join(", ")}). MVP requires single-year workbooks or a ?year=YYYY override.`,
-        },
-        { status: 400 },
-      )
-    }
-  }
-
-  // Guvven-shape deterministic fallback. After AI Mapper applier runs,
-  // any sheet that yielded 0 leaves AND looks Guvven-shaped (PLF.* code
-  // family in sheet name like "PLF CPC" / "PL Malt") gets re-parsed via
-  // the proven `parsePlfPlSheet` adapter with preferYear=targetYear.
-  // This recovers the multi-year case where AI Mapper structurally
-  // succeeded (12 monthly columns proposed) but picked the wrong year.
-  const plfToBudgetLine = (line: ParsedPlfLine): ParsedBudgetLine => ({
-    code: line.code,
-    label: line.label,
-    accountType: line.accountType,
-    plannedAnnual: line.totalAnnual,
-    perMonth: line.perMonth,
-  })
-  for (const sheetResult of multiResult.perSheet) {
-    if ("error" in sheetResult) continue
-    if (sheetResult.result.lines.length > 0) continue
-    const family = classifyGuvvenSheetFamily(sheetResult.sheetName)
-    if (family !== "PLF") continue
-    const fallback = parsePlfPlSheet(workbook, sheetResult.sheetName, XLSX, {
-      preferYear: targetYear,
-    })
-    if (fallback.lines.length === 0) continue
-    sheetResult.result.lines = fallback.lines.map(plfToBudgetLine)
-    sheetResult.result.warnings.push({
-      row: 0,
-      reason: `AI Mapper produced 0 leaves; deterministic Guvven adapter recovered ${fallback.lines.length} for year ${targetYear}.`,
-    })
   }
 
   const orgIdLocal = orgId
