@@ -36,19 +36,31 @@ export interface SourceFreshness {
 export type FreshnessSource = { sourceCode: string; cadence: "daily" | "monthly" };
 
 export const DEFAULT_SOURCES: ReadonlyArray<FreshnessSource> = [
-  // Phase 7.E #1 commodity / FX adapters.
-  { sourceCode: "tcmb-fx-rates", cadence: "daily" },
+  // ── Phase 7.G/7.I survivors (3 sources) — still active ────────────
   { sourceCode: "worldbank-cpi", cadence: "monthly" },
-  { sourceCode: "commodities-rss-brent", cadence: "daily" },
-  // Phase 7.I sector-aware sources.
   { sourceCode: "weather-openmeteo", cadence: "daily" },
-  { sourceCode: "worldbank-sugar", cadence: "monthly" },
-  // Live Yahoo Finance sugar futures — feeds AGRO_SUGAR_PRICE_TREND on
-  // the Risk Terminal. Added 2026-05-16 after the AzerSheker pilot e2e
-  // smoke surfaced the gap: the adapter was already running daily but
-  // invisible on the freshness dashboard. Daily cadence matches Yahoo's
-  // refresh frequency.
   { sourceCode: "sugar-yahoo-sb-f", cadence: "daily" },
+
+  // ── Phase 7.K Phase 1: replacements for the 3 broken adapters ────
+  // (tcmb-fx-rates / commodities-rss-brent / worldbank-sugar removed
+  //  from defaults; they're deprecated. Listed in DEPRECATED_SOURCES
+  //  below if a board wants to keep MISSING-tracking as historical.)
+  { sourceCode: "cbar-official-fx", cadence: "daily" },
+  { sourceCode: "eia-energy", cadence: "monthly" },
+  { sourceCode: "fao-food-prices", cadence: "monthly" },
+
+  // ── Phase 7.K Phase 2: cross-sector commodity / weather / CPI ────
+  { sourceCode: "yahoo-grains", cadence: "monthly" },
+  { sourceCode: "yahoo-metals", cadence: "monthly" },
+  { sourceCode: "yahoo-fuel-bdi", cadence: "monthly" },
+  { sourceCode: "openmeteo-forecast", cadence: "daily" },
+  { sourceCode: "az-stat-cpi", cadence: "monthly" },
+
+  // ── Phase 7.K Phase 3: sector-specific feeds ─────────────────────
+  { sourceCode: "usda-nass", cadence: "monthly" },
+  { sourceCode: "un-comtrade-az", cadence: "monthly" },
+  { sourceCode: "wb-indicators", cadence: "monthly" },
+  { sourceCode: "google-trends-az", cadence: "daily" },
 ];
 
 /**
