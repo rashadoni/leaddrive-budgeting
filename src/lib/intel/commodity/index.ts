@@ -14,6 +14,11 @@ import { createCBARForwardAdapter } from "./cbar-fx-forward"
 import { createCBARFXAdapter } from "./cbar-fx"
 import { createEIAEnergyAdapter } from "./eia-energy"
 import { createFAOFoodPricesAdapter } from "./fao-food-prices"
+// Phase 7.K — Phase 2: cross-sector data feeds covering ≥5 sectors each.
+import { createYahooGrainsAdapter } from "./yahoo-grains"
+import { createYahooMetalsAdapter } from "./yahoo-metals"
+import { createOpenMeteoForecastAdapter } from "./openmeteo-forecast"
+import { createAzStatCpiAdapter } from "./az-stat-cpi"
 import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
 
 /** Extended adapter options. Phase 7.K Phase 5a wires per-org API keys
@@ -34,6 +39,11 @@ export function getCommodityAdapters(
     createWorldBankCPIAdapter(opts),
     createFAOFoodPricesAdapter(opts),
     createEIAEnergyAdapter({ ...opts, apiKey: opts.apiKeys?.eia ?? null }),
+    // Phase 7.K Phase 2 — Cross-sector grains / metals / weather / CPI.
+    createYahooGrainsAdapter(opts),
+    createYahooMetalsAdapter(opts),
+    createOpenMeteoForecastAdapter(opts),
+    createAzStatCpiAdapter(opts),
     // Phase 7.I — sector-aware feeds for AzerSheker pilot.
     createOpenMeteoWeatherAdapter(opts),
     createSugarYahooAdapter(opts),
@@ -52,6 +62,31 @@ export { createCommoditiesRSSAdapter, COMMODITIES_RSS_SOURCE } from "./commoditi
 export { createCBARFXAdapter, CBAR_FX_SOURCE } from "./cbar-fx"
 export { createEIAEnergyAdapter, EIA_ENERGY_SOURCE } from "./eia-energy"
 export { createFAOFoodPricesAdapter, FAO_FOOD_PRICES_SOURCE } from "./fao-food-prices"
+// Phase 7.K Phase 2 cross-sector adapters:
+export {
+  createYahooGrainsAdapter,
+  YAHOO_GRAINS_SOURCE_CODE,
+  YAHOO_GRAINS_SYMBOLS,
+  yahooGrainsResponseToDataPoints,
+} from "./yahoo-grains"
+export {
+  createYahooMetalsAdapter,
+  YAHOO_METALS_SOURCE_CODE,
+  YAHOO_METALS_SYMBOLS,
+  yahooMetalsResponseToDataPoints,
+} from "./yahoo-metals"
+export {
+  createOpenMeteoForecastAdapter,
+  OPENMETEO_FORECAST_SOURCE,
+  openMeteoForecastToDataPoints,
+} from "./openmeteo-forecast"
+export {
+  createAzStatCpiAdapter,
+  AZ_STAT_CPI_SOURCE,
+  AZ_CPI_CATEGORY_MAP,
+  parseAzCpiCsv,
+  azCpiRowsToDataPoints,
+} from "./az-stat-cpi"
 export {
   createOpenMeteoWeatherAdapter,
   WEATHER_OPENMETEO_SOURCE,
