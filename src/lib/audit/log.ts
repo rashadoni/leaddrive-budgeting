@@ -544,6 +544,21 @@ export type AuditEventInput =
         before: Record<string, unknown> | null;
         after: Record<string, unknown>;
       };
+    }
+  | {
+      // Phase 7.K Phase 5a — admin set/cleared an external API key in
+      // Organization.settings.apiKeys (EIA / USDA / Google Trends
+      // proxy). NEVER carries the key value — only source names that
+      // changed, so a leaked audit log can't expose secrets.
+      action: 'api_key_update';
+      entityType: 'Organization';
+      entityId: string; // organizationId
+      metadata: {
+        /** Sources whose keys were set/replaced. */
+        updated: string[];
+        /** Sources whose keys were cleared. */
+        cleared: string[];
+      };
     };
 
 /**

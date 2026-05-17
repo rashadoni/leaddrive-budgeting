@@ -1904,6 +1904,11 @@ enum AuditAction {
   // log + drift dashboard. Metadata: { period, ivHashMatched,
   // budgetHashMatched, snapshotSignedAt }.
   period_snapshot_drift
+  // Phase 7.K Phase 5a — admin set/cleared an external API key in
+  // Organization.settings.apiKeys (EIA / USDA / Google Trends proxy).
+  // Metadata: { updated: ["eia",…], cleared: ["usda",…] } — never the
+  // key value itself, only which sources changed.
+  api_key_update
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

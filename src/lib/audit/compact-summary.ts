@@ -294,6 +294,20 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: `${period} · diverged: ${which}`,
       };
     }
+    case 'api_key_update': {
+      // Phase 7.K Phase 5a — admin set/cleared an external API key.
+      // Verbose: which sources changed (set vs cleared). Metadata
+      // never carries the key value itself.
+      const updated = Array.isArray(m.updated) ? (m.updated as string[]) : [];
+      const cleared = Array.isArray(m.cleared) ? (m.cleared as string[]) : [];
+      const parts: string[] = [];
+      if (updated.length > 0) parts.push(`set: ${updated.join(', ')}`);
+      if (cleared.length > 0) parts.push(`cleared: ${cleared.join(', ')}`);
+      return {
+        compact: e.action,
+        verbose: parts.length > 0 ? parts.join(' · ') : 'no changes',
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

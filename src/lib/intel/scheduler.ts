@@ -204,10 +204,22 @@ export async function runScheduledIntelCrawl(
     //     Pulls FX/CPI/RSS data points for E.1b intel-fusion. Runs BEFORE
     //     breach scan so fresh data is available to downstream consumers.
     //     Failures never abort the crawl OK result.
+    //
+    //     Phase 7.K Phase 5a — per-org API keys are loaded from
+    //     Organization.settings.apiKeys and threaded through to adapter
+    //     factories that need them (EIA / USDA / Google Trends proxy).
+    //     Missing keys → adapter returns api_key_missing gracefully.
     let commodityIngest: ScheduledCommodityIngestCounts | undefined
     if (opts.runCommodityIngest) {
       try {
-        const adapters = opts.commodityAdapters ?? getCommodityAdapters()
+        let adapters = opts.commodityAdapters
+        if (!adapters) {
+          // Load per-org API keys then construct adapters with them.
+          // Lazy-imported to avoid a hard cycle.
+          const { listApiKeys } = await import("@/lib/intel/api-keys")
+          const apiKeys = await listApiKeys(prisma as never, orgId)
+          adapters = getCommodityAdapters({ apiKeys })
+        }
         const ingest = await ingestCommodityData(orgId, adapters, { prisma }, now())
         commodityIngest = {
           sources: adapters.map((a) => a.source),

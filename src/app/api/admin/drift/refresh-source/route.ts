@@ -56,7 +56,15 @@ export async function POST(request: NextRequest) {
   const rateLimitError = enforceRateLimit(`${orgId}:${sourceCode}`, RATE_LIMIT)
   if (rateLimitError) return rateLimitError
 
-  const adapters = getCommodityAdapters().filter((a) => a.source === sourceCode)
+  // Phase 7.K Phase 5a — thread per-org API keys through adapter
+  // construction. Without this the manual "Refresh now" button would
+  // bypass the key wiring and the EIA / USDA / GTrends adapters would
+  // emit api_key_missing even when the admin has set a key.
+  const { listApiKeys } = await import("@/lib/intel/api-keys")
+  const apiKeys = await listApiKeys(prisma as never, orgId)
+  const adapters = getCommodityAdapters({ apiKeys }).filter(
+    (a) => a.source === sourceCode,
+  )
   if (adapters.length === 0) {
     return NextResponse.json(
       {

@@ -62,6 +62,8 @@ const ALL_ACTIONS = [
   "reconciliation_drift_detected",
   // Financial-truth-infra Phase E.5 — locked period hash diverged.
   "period_snapshot_drift",
+  // Phase 7.K Phase 5a — admin set/cleared an external API key.
+  "api_key_update",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.
