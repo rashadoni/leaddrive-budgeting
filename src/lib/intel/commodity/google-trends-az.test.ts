@@ -150,6 +150,30 @@ describe("trendsResponseToDataPoint", () => {
     )
     expect(point!.value).toBe(65)
   })
+
+  it("aggregates multi-keyword values[] by SUM (combo query)", () => {
+    // "moda,одежда,fashion" → 3 normalized 0-100 scores; we sum to
+    // get total category demand across language variants.
+    const point = trendsResponseToDataPoint(
+      {
+        interest_over_time: {
+          timeline_data: [
+            {
+              timestamp: "1778976000",
+              date: "May 17 – 23, 2026",
+              values: [
+                { query: "moda", extracted_value: 10 },
+                { query: "одежда", extracted_value: 8 },
+                { query: "fashion", extracted_value: 17 },
+              ],
+            },
+          ],
+        },
+      },
+      FOOD_CAT,
+    )
+    expect(point!.value).toBe(35) // 10 + 8 + 17
+  })
 })
 
 describe("createGoogleTrendsAzAdapter", () => {

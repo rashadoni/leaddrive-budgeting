@@ -165,8 +165,22 @@ export function trendsResponseToDataPoint(
       }
     }
     if (!d || Number.isNaN(d.getTime())) continue
-    const v = Number(entry.values[0].extracted_value ?? entry.values[0].value)
-    if (!Number.isFinite(v)) continue
+    // For multi-keyword combo queries ("moda,одежда,fashion"), Google
+    // Trends returns one normalized 0-100 value per term in `values[]`.
+    // Aggregate by SUM to capture the total category demand across all
+    // language spellings — a single low value on one term doesn't hide
+    // strong demand on a sibling term. Single-keyword queries naturally
+    // give the same result (1-element array).
+    let v = 0
+    let validValues = 0
+    for (const valEntry of entry.values) {
+      const n = Number(valEntry.extracted_value ?? valEntry.value)
+      if (Number.isFinite(n)) {
+        v += n
+        validValues++
+      }
+    }
+    if (validValues === 0) continue
     if (!best || d.getTime() > best.d.getTime()) best = { d, v }
   }
   if (!best) return null
