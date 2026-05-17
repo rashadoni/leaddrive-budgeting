@@ -44,7 +44,16 @@ interface FuelSymbol {
 const GAL_TO_LITRE = 0.264172
 
 export const FUEL_BDI_SYMBOLS: readonly FuelSymbol[] = [
-  { yahoo: "^BDIY", metric: "BALTIC_DRY_INDEX", unit: "index", factor: 1.0 },
+  // ^BDIY (Baltic Dry Index spot) returns HTTP 404 from Yahoo's
+  // public Chart API — indices below `^DJI` / `^GSPC` tier are
+  // gated. `BDRY` is the Breakwave Dry Bulk Shipping ETF created
+  // explicitly to track the BDI via 3-month rolling futures
+  // contracts; ETF unit is USD/share (~$8-25 historical range)
+  // instead of index points (~500-3000), but the *signal* (rising
+  // = freight demand strong, falling = freight slowdown) is the
+  // same. Indicator thresholds in phase-7k-seeds.ts are calibrated
+  // for ETF scale (green ≥ 20, amber ≥ 10, red < 10).
+  { yahoo: "BDRY", metric: "BALTIC_DRY_INDEX", unit: "USD/share", factor: 1.0 },
   { yahoo: "HO=F", metric: "DIESEL_USD_LITRE", unit: "USD/L", factor: GAL_TO_LITRE },
   { yahoo: "RB=F", metric: "GASOLINE_USD_LITRE", unit: "USD/L", factor: GAL_TO_LITRE },
 ]

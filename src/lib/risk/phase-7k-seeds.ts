@@ -236,21 +236,25 @@ export const phase7kSeeds: IndicatorSeed[] = [
   },
   {
     code: "LOG_BDI_FREIGHT_SIGNAL",
-    nameEn: "Baltic Dry Index Freight Signal",
-    nameAz: "Baltic Dry Indeks siqnalı",
-    nameRu: "Сигнал индекса Baltic Dry",
+    nameEn: "Baltic Dry Freight Signal (BDRY ETF proxy)",
+    nameAz: "Baltic Dry yük siqnalı (BDRY ETF)",
+    nameRu: "Сигнал фрахта Baltic Dry (BDRY ETF)",
     category: "commodity",
     industries: ["logistics"],
-    unit: "index",
+    unit: "USD/share",
     direction: "higher_better",
     formula: "baltic_dry_latest",
     thresholds: {
-      green: { op: ">=", value: 1500 },
-      amber: { op: ">=", value: 1000 },
-      red: { op: "<", value: 1000 },
+      // Calibrated for the BDRY ETF (Breakwave Dry Bulk Shipping
+      // Fund) which tracks BDI via 3-month rolling futures. ETF
+      // historical range $5-30 covers the BDI's ~500-3000 point
+      // range. Yahoo blocks ^BDIY itself so this is the proxy.
+      green: { op: ">=", value: 20 },
+      amber: { op: ">=", value: 10 },
+      red: { op: "<", value: 10 },
     },
     hintTemplateEn:
-      "BDI at {value}. <1000 = global freight slowdown (negative for logistics revenue); >1500 = freight demand strength.",
+      "BDRY ETF at {value} USD/share — proxy for Baltic Dry Index. <$10 = global freight slowdown (negative for logistics revenue); ≥$20 = freight demand strength.",
     requiredInputs: ["commodityPrice:baltic_dry_latest"],
     sortOrder: 796,
     defaultValueSource: "macro",

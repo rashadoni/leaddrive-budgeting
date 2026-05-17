@@ -127,10 +127,10 @@ const FIXTURES: Record<string, BandFixture> = {
     red: { diesel_price_latest: 1.1 },
   },
   LOG_BDI_FREIGHT_SIGNAL: {
-    // green ≥ 1500, amber ≥ 1000, red < 1000
-    green: { baltic_dry_latest: 1800 },
-    amber: { baltic_dry_latest: 1200 },
-    red: { baltic_dry_latest: 800 },
+    // BDRY ETF scale: green ≥ 20, amber ≥ 10, red < 10
+    green: { baltic_dry_latest: 25 },
+    amber: { baltic_dry_latest: 15 },
+    red: { baltic_dry_latest: 7 },
   },
   LOG_BRENT_OIL_SIGNAL: {
     // green ≤ 80, amber ≤ 100, red > 100

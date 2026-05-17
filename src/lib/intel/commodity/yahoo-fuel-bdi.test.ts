@@ -25,11 +25,11 @@ function makeYahooResponse(prices: Array<number | null>) {
 }
 
 describe("fuelBdiResponseToDataPoints", () => {
-  it("emits BDI as raw points (factor 1.0)", () => {
+  it("emits BDI (BDRY ETF proxy) as raw points (factor 1.0)", () => {
     const bdi = FUEL_BDI_SYMBOLS.find((s) => s.metric === "BALTIC_DRY_INDEX")!
-    const points = fuelBdiResponseToDataPoints(makeYahooResponse([1500]), bdi)
-    expect(points[0].value).toBe(1500)
-    expect(points[0].unit).toBe("index")
+    const points = fuelBdiResponseToDataPoints(makeYahooResponse([15]), bdi)
+    expect(points[0].value).toBe(15)
+    expect(points[0].unit).toBe("USD/share") // ETF proxy unit
   })
 
   it("converts ULSD USD/gal → USD/litre", () => {
