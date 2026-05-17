@@ -215,30 +215,33 @@ describe("ImportWizardMulti — initial render + companies fetch", () => {
 })
 
 describe("ImportWizardMulti — analyze-multi POST", () => {
-  it("submit without file shows analyze-error", async () => {
+  // Session 9 UX redesign: the submit button is now disabled until BOTH
+  // company and file are picked, so erroneous submits can't fire. The
+  // prerequisite-hint text below the button replaces the previous
+  // error-after-submit pattern. Tests are updated to assert the new
+  // contract (better UX: blocked before user clicks vs error after).
+  it("submit disabled + hint shown without file", async () => {
     render(<ImportWizardMulti />)
     await waitFor(() => expect(screen.queryByTestId("companies-loading")).toBeNull())
     fireEvent.change(screen.getByTestId("company-select"), {
       target: { value: "co_op_a" },
     })
-    fireEvent.click(screen.getByTestId("analyze-submit"))
-    await waitFor(() => {
-      const err = screen.getByTestId("analyze-error")
-      expect(err.textContent).toMatch(/.xlsx file/)
-    })
+    const btn = screen.getByTestId("analyze-submit") as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    const hint = screen.getByTestId("analyze-prereq-hint")
+    expect(hint.textContent?.toLowerCase()).toMatch(/file|xlsx/)
   })
 
-  it("submit without company shows analyze-error", async () => {
+  it("submit disabled + hint shown without company", async () => {
     render(<ImportWizardMulti />)
     await waitFor(() => expect(screen.queryByTestId("companies-loading")).toBeNull())
     fireEvent.change(screen.getByTestId("file-input"), {
       target: { files: [makeXlsxFile()] },
     })
-    fireEvent.click(screen.getByTestId("analyze-submit"))
-    await waitFor(() => {
-      const err = screen.getByTestId("analyze-error")
-      expect(err.textContent).toMatch(/target company/)
-    })
+    const btn = screen.getByTestId("analyze-submit") as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    const hint = screen.getByTestId("analyze-prereq-hint")
+    expect(hint.textContent?.toLowerCase()).toMatch(/company/)
   })
 
   it("happy path: posts FormData with file + companyId; transitions to 'analyzed'", async () => {

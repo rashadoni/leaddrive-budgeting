@@ -259,111 +259,167 @@ export function ImportWizardMulti() {
 
   return (
     <div className="space-y-6" data-testid="import-wizard-multi">
+      {/* Session 9 UX redesign: stepper at top so user sees flow
+          (Upload → Review → Apply) before any control. */}
+      <WizardStepper currentStep={step === "select" ? 1 : step === "analyzed" ? 2 : 3} />
+
       <header>
         <h2 className="text-lg font-semibold">{t("title")}</h2>
         <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
 
       {step === "select" && (
-        <form onSubmit={handleAnalyze} className="space-y-4" data-testid="select-form">
-          <div className="space-y-1">
-            <label htmlFor="company" className="text-sm font-medium block">
-              {t("targetCompany")}
-            </label>
-            <select
-              id="company"
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full px-2 py-1 rounded border border-gray-700 bg-background text-sm font-mono"
-              data-testid="company-select"
-              disabled={companiesLoading}
+        <form
+          onSubmit={handleAnalyze}
+          className="space-y-5"
+          data-testid="select-form"
+        >
+          {/* Section 1 — where the data goes (company + optional industry) */}
+          <fieldset className="space-y-4 rounded-lg border border-gray-800 bg-card/30 p-4">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("sectionTarget")}
+            </legend>
+
+            <div className="space-y-1.5">
+              <label htmlFor="company" className="text-sm font-medium flex items-center gap-1">
+                {t("targetCompany")}
+                <span className="text-red-400" aria-label="required">*</span>
+              </label>
+              <select
+                id="company"
+                value={companyId}
+                onChange={(e) => {
+                  setCompanyId(e.target.value)
+                  if (analyzeError) setAnalyzeError(null)
+                }}
+                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm font-mono focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors disabled:opacity-50"
+                data-testid="company-select"
+                disabled={companiesLoading}
+              >
+                <option value="">{companiesLoading ? t("loadingCompanies") : t("selectPlaceholder")}</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} · {c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t("targetCompanyHelp")}
+              </p>
+              {companiesError && (
+                <p className="text-xs text-red-400" data-testid="companies-error">
+                  {companiesError}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="industry" className="text-sm font-medium">
+                {t("industryHint")}{" "}
+                <span className="text-xs text-muted-foreground font-normal">{t("optional")}</span>
+              </label>
+              <select
+                id="industry"
+                value={industryHint}
+                onChange={(e) => setIndustryHint(e.target.value)}
+                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors"
+                data-testid="industry-select"
+              >
+                <option value="">{t("deriveFromCompany")}</option>
+                {INDUSTRIES_FALLBACK.map((ind) => (
+                  <option key={ind} value={ind}>
+                    {ind.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t("industryHintHelp")}
+              </p>
+            </div>
+          </fieldset>
+
+          {/* Section 2 — what to load (file + optional sheet filter) */}
+          <fieldset className="space-y-4 rounded-lg border border-gray-800 bg-card/30 p-4">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("sectionWorkbook")}
+            </legend>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1">
+                {t("xlsxWorkbook")}
+                <span className="text-red-400" aria-label="required">*</span>
+              </label>
+              <FileDropZone
+                file={file}
+                onSelect={(f) => {
+                  setFile(f)
+                  if (analyzeError) setAnalyzeError(null)
+                }}
+                helpText={t("fileDropHelp")}
+                dropHere={t("fileDropHere")}
+                orClickToBrowse={t("fileOrClickToBrowse")}
+                limitsText={t("fileLimits")}
+                removeLabel={t("fileRemove")}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="sheet-filter" className="text-sm font-medium">
+                {t("sheetFilter")}{" "}
+                <span className="text-xs text-muted-foreground font-normal">{t("optional")}</span>
+              </label>
+              <input
+                id="sheet-filter"
+                type="text"
+                value={sheetNamesFilter}
+                onChange={(e) => setSheetNamesFilter(e.target.value)}
+                placeholder={t("sheetFilterPlaceholder")}
+                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm font-mono focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors"
+                data-testid="sheet-filter-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("sheetFilterHelp")}
+              </p>
+            </div>
+          </fieldset>
+
+          {/* Submit row — primary button, disabled state visually clear */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="submit"
+              disabled={analyzing || !file || !companyId}
+              data-testid="analyze-submit"
+              className="inline-flex items-center justify-center gap-2 rounded-md border px-5 py-2 text-sm font-medium transition-all
+                disabled:cursor-not-allowed disabled:opacity-50
+                enabled:border-cyan-500/60 enabled:bg-cyan-500/15 enabled:text-cyan-200 enabled:hover:bg-cyan-500/25 enabled:hover:border-cyan-400
+                border-gray-700 bg-gray-800/40 text-gray-500"
             >
-              <option value="">{t("selectPlaceholder")}</option>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code} · {c.name}
-                </option>
-              ))}
-            </select>
-            {companiesLoading && (
-              <p className="text-xs text-muted-foreground" data-testid="companies-loading">
-                {t("loadingCompanies")}
+              {analyzing && <Spinner />}
+              {analyzing ? t("analyzing") : t("analyzeSheets")}
+              {!analyzing && <span aria-hidden="true">→</span>}
+            </button>
+
+            {!analyzing && (
+              <p className="text-xs text-muted-foreground" data-testid="analyze-prereq-hint">
+                {!companyId && !file
+                  ? t("hintNeedBoth")
+                  : !companyId
+                  ? t("hintNeedCompany")
+                  : !file
+                  ? t("hintNeedFile")
+                  : t("hintReady")}
               </p>
             )}
-            {companiesError && (
-              <p className="text-xs text-[#FF4757]" data-testid="companies-error">
-                {companiesError}
-              </p>
-            )}
           </div>
-
-          <div className="space-y-1">
-            <label htmlFor="industry" className="text-sm font-medium block">
-              {t("industryHint")} <span className="text-muted-foreground">{t("optional")}</span>
-            </label>
-            <select
-              id="industry"
-              value={industryHint}
-              onChange={(e) => setIndustryHint(e.target.value)}
-              className="w-full px-2 py-1 rounded border border-gray-700 bg-background text-sm"
-              data-testid="industry-select"
-            >
-              <option value="">{t("deriveFromCompany")}</option>
-              {INDUSTRIES_FALLBACK.map((ind) => (
-                <option key={ind} value={ind}>
-                  {ind}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="sheet-filter" className="text-sm font-medium block">
-              {t("sheetFilter")}{" "}
-              <span className="text-muted-foreground">{t("sheetFilterHint")}</span>
-            </label>
-            <input
-              id="sheet-filter"
-              type="text"
-              value={sheetNamesFilter}
-              onChange={(e) => setSheetNamesFilter(e.target.value)}
-              placeholder={t("sheetFilterPlaceholder")}
-              className="w-full px-2 py-1 rounded border border-gray-700 bg-background text-sm font-mono"
-              data-testid="sheet-filter-input"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="file" className="text-sm font-medium block">
-              {t("xlsxWorkbook")}
-            </label>
-            <input
-              id="file"
-              type="file"
-              accept=".xlsx"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              data-testid="file-input"
-              className="block text-sm"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={analyzing}
-            data-testid="analyze-submit"
-            className="rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 px-4 py-1.5 text-sm hover:bg-cyan-500/20 disabled:opacity-50"
-          >
-            {analyzing ? t("analyzing") : t("analyzeSheets")}
-          </button>
 
           {analyzeError && (
-            <p
+            <div
               role="alert"
-              className="text-sm text-[#FF4757]"
+              className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
               data-testid="analyze-error"
             >
-              {analyzeError}
-            </p>
+              <strong className="font-semibold">{t("errorPrefix")}</strong> {analyzeError}
+            </div>
           )}
         </form>
       )}
@@ -598,5 +654,176 @@ export function ImportWizardMulti() {
         </section>
       )}
     </div>
+  )
+}
+
+// ─── Session 9 UX helpers ──────────────────────────────────────────────────
+
+/**
+ * Wizard progress indicator. Renders 3 numbered steps with the current
+ * one highlighted; previous steps marked complete with a checkmark.
+ * Pure presentation — no state, just shows where the user is.
+ */
+function WizardStepper({ currentStep }: { currentStep: 1 | 2 | 3 }) {
+  const t = useTranslations("onboarding.multi")
+  const steps: Array<{ id: 1 | 2 | 3; label: string }> = [
+    { id: 1, label: t("stepUpload") },
+    { id: 2, label: t("stepReview") },
+    { id: 3, label: t("stepApply") },
+  ]
+  return (
+    <ol
+      role="list"
+      aria-label={t("stepperAriaLabel")}
+      data-testid="wizard-stepper"
+      className="flex items-center gap-2 text-xs"
+    >
+      {steps.map((s, idx) => {
+        const isDone = s.id < currentStep
+        const isActive = s.id === currentStep
+        return (
+          <li key={s.id} className="flex items-center gap-2">
+            <span
+              data-testid={`step-${s.id}`}
+              data-active={isActive}
+              data-done={isDone}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${
+                isDone
+                  ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                  : isActive
+                    ? "border-cyan-500/60 bg-cyan-500/20 text-cyan-200"
+                    : "border-gray-700 bg-background text-gray-500"
+              }`}
+            >
+              {isDone ? "✓" : s.id}
+            </span>
+            <span
+              className={`uppercase tracking-wider ${
+                isActive ? "text-cyan-200 font-medium" : isDone ? "text-emerald-400/70" : "text-muted-foreground"
+              }`}
+            >
+              {s.label}
+            </span>
+            {idx < steps.length - 1 && (
+              <span className="mx-1 h-px w-6 bg-gray-800" aria-hidden="true" />
+            )}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/**
+ * Drag-and-drop file zone with friendly empty state + selected-file pill.
+ * Replaces the bare `<input type="file">` with a 2-state visual:
+ *   - empty: dashed outline + upload icon + "drop here or click to browse"
+ *   - selected: file pill (name + KB) + remove button
+ *
+ * Falls back to a hidden native input so accessibility + keyboard focus
+ * remain standard browser behaviour.
+ */
+function FileDropZone({
+  file,
+  onSelect,
+  helpText,
+  dropHere,
+  orClickToBrowse,
+  limitsText,
+  removeLabel,
+}: {
+  file: File | null
+  onSelect: (file: File | null) => void
+  helpText: string
+  dropHere: string
+  orClickToBrowse: string
+  limitsText: string
+  removeLabel: string
+}) {
+  const [dragOver, setDragOver] = useState(false)
+
+  if (file) {
+    return (
+      <div
+        data-testid="file-drop-zone"
+        data-state="selected"
+        className="flex items-center justify-between rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-300" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+              <path d="M14 3v4a1 1 0 0 0 1 1h4M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium truncate">{file.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {(file.size / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 })} KB
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onSelect(null)}
+          className="rounded-md border border-gray-700 px-3 py-1.5 text-xs hover:border-red-500/50 hover:text-red-300 transition-colors"
+          data-testid="file-remove-button"
+        >
+          {removeLabel}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <label
+      htmlFor="file"
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragOver(false)
+        const dropped = e.dataTransfer.files?.[0]
+        if (dropped && /\.xlsx$/i.test(dropped.name)) onSelect(dropped)
+      }}
+      data-testid="file-drop-zone"
+      data-state={dragOver ? "drag-over" : "empty"}
+      className={`flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-4 py-8 text-center cursor-pointer transition-colors ${
+        dragOver
+          ? "border-cyan-500 bg-cyan-500/10"
+          : "border-gray-700 bg-background hover:border-gray-600 hover:bg-gray-900/30"
+      }`}
+    >
+      <input
+        id="file"
+        type="file"
+        accept=".xlsx"
+        onChange={(e) => onSelect(e.target.files?.[0] ?? null)}
+        data-testid="file-input"
+        className="sr-only"
+      />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-8 w-8 text-gray-500" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+      <p className="text-sm font-medium">{dropHere}</p>
+      <p className="text-xs text-muted-foreground">{orClickToBrowse}</p>
+      <p className="text-[11px] text-muted-foreground/70 mt-1">{limitsText}</p>
+      {helpText && <p className="text-xs text-muted-foreground mt-2 max-w-md">{helpText}</p>}
+    </label>
+  )
+}
+
+/**
+ * Tiny spinner for inline button-state. CSS-only animation; matches
+ * cyan submit-button accent.
+ */
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400"
+    />
   )
 }
