@@ -64,6 +64,29 @@ describe("parseFaoCsv", () => {
     expect(rows[0].ffpi).toBe(1250.4)
     expect(rows[0].sugar).toBe(1027.5)
   })
+
+  it("handles ISO YYYY-MM date format (FAO 2026-05+ schema)", () => {
+    // FAO migrated date column from "Jan 2026" to "2026-01" mid-2026.
+    // Parser supports both shapes; rows are emitted with identical
+    // month/year regardless of how the date was spelled.
+    const csv = `Date,Food Price Index,Meat,Dairy,Cereals,Oils,Sugar
+2026-01,125.4,118.2,140.5,128.3,135.8,102.7
+2026-05,128.1,120.5,142.8,130.9,138.0,104.2`
+    const rows = parseFaoCsv(csv)
+    expect(rows.length).toBe(2)
+    expect(rows[0]).toMatchObject({ year: 2026, month: 1, ffpi: 125.4 })
+    expect(rows[1]).toMatchObject({ year: 2026, month: 5, ffpi: 128.1 })
+  })
+
+  it("rejects rows where month part of ISO date is out of range", () => {
+    const csv = `Date,FFPI,Meat,Dairy,Cereals,Oils,Sugar
+2026-13,125,118,140,128,135,102
+2026-00,126,118,140,128,135,102
+2026-05,128,120,142,130,138,104`
+    const rows = parseFaoCsv(csv)
+    expect(rows.length).toBe(1)
+    expect(rows[0].month).toBe(5)
+  })
 })
 
 describe("faoRowToDataPoints", () => {

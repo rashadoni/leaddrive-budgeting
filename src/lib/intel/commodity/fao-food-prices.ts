@@ -37,9 +37,16 @@ const FAO_LABEL = "FAO Food Price Index"
 
 /** FAO maintains the CSV at this stable path. If it 404s, the
  *  scheduler will surface the error in the Drift Dashboard and admin
- *  can re-check FAO's page for a new URL. */
+ *  can re-check FAO's page for a new URL.
+ *
+ *  2026-05-17 update: FAO migrated their CDN. Previous URL was
+ *  /fileadmin/templates/worldfood/Reports_and_docs/Food_price_indices_data_dec.csv;
+ *  new URL is /media/docs/worldfoodsituationlibraries/.... If they
+ *  migrate again, admin should pull the latest from
+ *  https://www.fao.org/worldfoodsituation/foodpricesindex/en/ and
+ *  override via a config setting. */
 const FAO_CSV_URL =
-  "https://www.fao.org/fileadmin/templates/worldfood/Reports_and_docs/Food_price_indices_data_dec.csv"
+  "https://www.fao.org/media/docs/worldfoodsituationlibraries/default-document-library/food_price_indices_data.csv"
 
 interface FaoCsvRow {
   year: number
@@ -88,10 +95,23 @@ export function parseFaoCsv(csv: string): FaoCsvRow[] {
     const cols = splitCsvLine(line)
     if (cols.length < 7) continue
     const dateCol = cols[0]
-    const m = /^([A-Za-z]+)\s+(\d{4})$/.exec(dateCol)
-    if (!m) continue
-    const month = MONTHS[m[1].slice(0, 3).toLowerCase()]
-    const year = Number(m[2])
+    // Support two FAO date formats:
+    //   Legacy (pre-2026-05): "Jan 2026" / "May 2026" — month-word + year
+    //   Current (2026-05+):   "2026-01" / "2026-05" — ISO YYYY-MM
+    let month: number | undefined
+    let year: number = NaN
+    const mNamed = /^([A-Za-z]+)\s+(\d{4})$/.exec(dateCol)
+    const mIso = /^(\d{4})-(\d{1,2})$/.exec(dateCol)
+    if (mNamed) {
+      month = MONTHS[mNamed[1].slice(0, 3).toLowerCase()]
+      year = Number(mNamed[2])
+    } else if (mIso) {
+      year = Number(mIso[1])
+      const mNum = Number(mIso[2])
+      if (mNum >= 1 && mNum <= 12) month = mNum
+    } else {
+      continue
+    }
     if (!month || !Number.isFinite(year)) continue
     const parseCell = (s: string): number | null => {
       // Strip thousand separators (commas) — inside quotes they

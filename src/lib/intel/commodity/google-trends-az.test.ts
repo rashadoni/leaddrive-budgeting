@@ -13,21 +13,43 @@ import {
 const FOOD_CAT = TRENDS_CATEGORIES.find((c) => c.metric === "AZ_TREND_FOOD_RETAIL")!
 
 describe("buildTrendsUrl", () => {
-  it("appends q + api_key with proper separators", () => {
+  it("default URL (ScrapingDog) uses `query=` param", () => {
     const url = buildTrendsUrl(FOOD_CAT, "KEY_123")
-    expect(url).toContain("q=")
+    expect(url).toContain("query=")
+    expect(url).not.toMatch(/[?&]q=/) // not the SerpAPI `q=` form
     expect(url).toContain("api_key=KEY_123")
     expect(url).toContain("geo=AZ")
+    expect(url).toContain("scrapingdog.com")
+  })
+
+  it("SerpAPI hostname overrides to `q=` param", () => {
+    const url = buildTrendsUrl(
+      FOOD_CAT,
+      "K",
+      "https://serpapi.com/search.json?engine=google_trends&geo=AZ",
+    )
+    expect(url).toContain("&q=")
+    expect(url).not.toMatch(/[?&]query=/)
+  })
+
+  it("ScrapingDog hostname uses `query=` param", () => {
+    const url = buildTrendsUrl(
+      FOOD_CAT,
+      "K",
+      "https://api.scrapingdog.com/google_trends?geo=AZ",
+    )
+    expect(url).toContain("&query=")
+    expect(url).not.toMatch(/[?&]q=/)
+  })
+
+  it("unknown vendor defaults to SerpAPI-compat `q=`", () => {
+    const url = buildTrendsUrl(FOOD_CAT, "K", "https://noquery.proxy/api")
+    expect(url).toContain("https://noquery.proxy/api?q=")
   })
 
   it("respects custom proxyUrl, handles `?` already present", () => {
     const url = buildTrendsUrl(FOOD_CAT, "K", "https://custom.proxy/api?geo=AZ")
     expect(url).toContain("https://custom.proxy/api?geo=AZ&q=")
-  })
-
-  it("adds `?` when proxyUrl has none", () => {
-    const url = buildTrendsUrl(FOOD_CAT, "K", "https://noquery.proxy/api")
-    expect(url).toContain("https://noquery.proxy/api?q=")
   })
 })
 
@@ -63,6 +85,48 @@ describe("trendsResponseToDataPoint", () => {
     )
     // Tuesday 2026-05-12 → Monday 2026-05-11
     expect(point!.datetime.toISOString().slice(0, 10)).toBe("2026-05-11")
+  })
+
+  it("uses unix `timestamp` field when present (ScrapingDog format)", () => {
+    // ScrapingDog emits weekly ranges in `date` like "May 11 – 17, 2025"
+    // which Date.parse cannot handle. The `timestamp` field is unix
+    // seconds for the week-start. Parser must prefer timestamp.
+    const point = trendsResponseToDataPoint(
+      {
+        interest_over_time: {
+          timeline_data: [
+            {
+              date: "May 17 – 23, 2026",
+              timestamp: "1779129600", // 2026-05-18T00:00:00Z (Monday)
+              values: [{ extracted_value: "49" }],
+            },
+          ],
+        },
+      },
+      FOOD_CAT,
+    )
+    expect(point).toBeTruthy()
+    expect(point!.value).toBe(49)
+    // 2026-05-18 is already Monday → anchored to itself
+    expect(point!.datetime.toISOString().slice(0, 10)).toBe("2026-05-18")
+  })
+
+  it("falls back to date parsing when timestamp invalid", () => {
+    const point = trendsResponseToDataPoint(
+      {
+        interest_over_time: {
+          timeline_data: [
+            {
+              date: "2026-05-12",
+              timestamp: "not-a-number",
+              values: [{ extracted_value: 65 }],
+            },
+          ],
+        },
+      },
+      FOOD_CAT,
+    )
+    expect(point!.value).toBe(65)
   })
 
   it("returns null on missing timeline", () => {

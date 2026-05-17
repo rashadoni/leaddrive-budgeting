@@ -53,11 +53,20 @@ import type {
 const TRENDS_SOURCE = "google-trends-az"
 const TRENDS_LABEL = "Google Trends — Azerbaijan (proxy-gated)"
 
-/** Default proxy base. Override via `opts.proxyUrl`. Example fills:
+/** Default proxy base. Override via `opts.proxyUrl`. Examples:
  *    "https://serpapi.com/search.json?engine=google_trends&geo=AZ"
- *    "https://api.scrapingdog.com/google-trends/?geo=AZ"
- *  The adapter appends `&q=<query>&api_key=<KEY>` per category. */
-const DEFAULT_PROXY_URL = "https://serpapi.com/search.json?engine=google_trends&geo=AZ"
+ *    "https://api.scrapingdog.com/google_trends?geo=AZ&data_type=TIMESERIES"
+ *
+ *  ScrapingDog is the current default since SerpAPI requires phone-SMS
+ *  verification that fails for VoIP / virtual numbers — ScrapingDog
+ *  signs up with email only and offers 1000 free credits/month.
+ *
+ *  The two proxies share the same JSON response shape
+ *  (`interest_over_time.timeline_data[]`) but use DIFFERENT query
+ *  parameter names: SerpAPI = `q`, ScrapingDog = `query`. The
+ *  buildTrendsUrl helper below auto-detects via hostname and emits
+ *  the correct param name. */
+const DEFAULT_PROXY_URL = "https://api.scrapingdog.com/google_trends?geo=AZ&data_type=TIMESERIES"
 
 interface TrendsCategory {
   metric: string
@@ -77,10 +86,15 @@ export const TRENDS_CATEGORIES: readonly TrendsCategory[] = [
 interface SerpApiTimelineValue {
   query?: string
   value?: number | string
-  extracted_value?: number
+  extracted_value?: number | string
 }
 interface SerpApiTimelineEntry {
   date?: string
+  /** Unix epoch seconds as string (provided by both SerpAPI and
+   *  ScrapingDog). Preferred over `date` because some proxies emit
+   *  weekly ranges like "May 11 – 17, 2025" which JS Date.parse fails
+   *  to handle. */
+  timestamp?: string
   values?: SerpApiTimelineValue[]
 }
 interface SerpApiResponse {
@@ -99,14 +113,21 @@ export interface GoogleTrendsAdapterOptions extends CommodityAdapterOptions {
 
 /**
  * Build the per-category URL. Pure helper for testability.
+ *
+ * Auto-detects the proxy vendor by hostname and emits the correct
+ * query parameter name:
+ *   - scrapingdog.com → `query=`
+ *   - serpapi.com     → `q=`
+ *   - everything else → `q=` (SerpAPI-compat default)
  */
 export function buildTrendsUrl(
   category: TrendsCategory,
   apiKey: string,
   proxyUrl: string = DEFAULT_PROXY_URL,
 ): string {
+  const queryParam = /scrapingdog\.com/i.test(proxyUrl) ? "query" : "q"
   const sep = proxyUrl.includes("?") ? "&" : "?"
-  return `${proxyUrl}${sep}q=${encodeURIComponent(category.query)}&api_key=${encodeURIComponent(apiKey)}`
+  return `${proxyUrl}${sep}${queryParam}=${encodeURIComponent(category.query)}&api_key=${encodeURIComponent(apiKey)}`
 }
 
 /**
@@ -122,15 +143,26 @@ export function trendsResponseToDataPoint(
   // Pick latest entry with a numeric value.
   let best: { d: Date; v: number } | null = null
   for (const entry of timeline) {
-    if (!entry.date || !Array.isArray(entry.values) || entry.values.length === 0) continue
-    // SerpAPI Google Trends date format varies. Common: "May 10, 2026"
-    // or "2026-05-10". Try both.
+    if (!Array.isArray(entry.values) || entry.values.length === 0) continue
+    // Resolve datetime — prefer the unix `timestamp` field (both
+    // SerpAPI and ScrapingDog emit it; format is seconds-since-epoch
+    // as string). Falls back to `date` parsing for proxies that omit
+    // timestamp. ScrapingDog uses weekly ranges like "May 11 – 17,
+    // 2025" with em-dash that Date.parse cannot handle.
     let d: Date | null = null
-    if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
-      d = new Date(`${entry.date}T00:00:00Z`)
-    } else {
-      const parsed = Date.parse(entry.date)
-      if (!Number.isNaN(parsed)) d = new Date(parsed)
+    if (entry.timestamp) {
+      const sec = Number(entry.timestamp)
+      if (Number.isFinite(sec) && sec > 0) {
+        d = new Date(sec * 1000)
+      }
+    }
+    if (!d && entry.date) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
+        d = new Date(`${entry.date}T00:00:00Z`)
+      } else {
+        const parsed = Date.parse(entry.date)
+        if (!Number.isNaN(parsed)) d = new Date(parsed)
+      }
     }
     if (!d || Number.isNaN(d.getTime())) continue
     const v = Number(entry.values[0].extracted_value ?? entry.values[0].value)
