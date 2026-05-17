@@ -31,12 +31,17 @@ function makeYahooResponse(prices: Array<number | null>) {
 }
 
 describe("yahooMetalsResponseToDataPoints", () => {
-  it("converts copper cents/lb → USD/tonne", () => {
+  it("converts copper USD/lb → USD/tonne", () => {
     const sym = YAHOO_METALS_SYMBOLS.find((s) => s.metric === "COPPER_USD_TONNE")!
-    const points = yahooMetalsResponseToDataPoints(makeYahooResponse([450]), sym)
+    // Yahoo HG=F returns USD/lb (currency=USD), NOT cents/lb. Factor
+    // is 2204.62 (lb per metric tonne). Earlier this test used 450
+    // (treating input as cents/lb) which was wrong by 100×; modern
+    // input is e.g. $6.30/lb → $13,889/tonne.
+    const sym2204 = sym
+    const points = yahooMetalsResponseToDataPoints(makeYahooResponse([6.30]), sym2204)
     expect(points.length).toBe(1)
-    // 450 × 22.0462 = 9920.79 → 9920.8
-    expect(points[0].value).toBe(9920.8)
+    // 6.30 × 2204.62 = 13889.106 → 13889.1
+    expect(points[0].value).toBe(13889.1)
     expect(points[0].unit).toBe("USD/tonne")
   })
 

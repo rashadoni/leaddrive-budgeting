@@ -53,8 +53,12 @@ interface MetalSymbol {
 }
 
 export const YAHOO_METALS_SYMBOLS: readonly MetalSymbol[] = [
-  // Copper HG=F: cents/lb → USD/tonne is × 2204.62 / 100 = 22.0462
-  { yahoo: "HG=F", metric: "COPPER_USD_TONNE", unit: "USD/tonne", factor: 22.0462 },
+  // Copper HG=F: Yahoo returns USD/lb (currency=USD, NOT USX/cents).
+  // Convert to USD/tonne: × 2204.62 lb/tonne. Earlier the factor was
+  // 22.0462 (treating Yahoo as cents/lb) which made copper read out
+  // 100x too low (e.g. $138 instead of $13,878/tonne). Probed
+  // 2026-05-17: HG=F currency field is "USD" not "USX".
+  { yahoo: "HG=F", metric: "COPPER_USD_TONNE", unit: "USD/tonne", factor: 2204.62 },
   // Aluminum ALI=F: already USD/tonne (Comex micro aluminum is in USD/lb,
   // but ALI=F front-month is the LME-equivalent quote in USD/tonne).
   // If Yahoo's payload changes to cents/lb we'd see ALI fall to ~80-100
