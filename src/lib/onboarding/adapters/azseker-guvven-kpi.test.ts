@@ -123,9 +123,10 @@ describe("parseGuvvenProcessingKpiSheet", () => {
     ]
     const wb = buildWb("CPC KPI", rows)
     const result = parseGuvvenProcessingKpiSheet(wb, "CPC KPI", XLSX, { preferYear: 2026 })
-    // "Daily crushing capacity" not in v1 whitelist → skipped.
-    // "Capacity utilization rate %" maps to cane_hectares_harvested_pct.
-    const utilFacts = result.facts.filter((f) => f.metric === "cane_hectares_harvested_pct")
+    // Phase 7.J extended whitelist:
+    //   "Daily crushing capacity" → metric "capacity"
+    //   "Capacity utilization rate %" → metric "extraction_rate_pct"
+    const utilFacts = result.facts.filter((f) => f.metric === "extraction_rate_pct")
     // 11 non-zero months (one is 0)
     expect(utilFacts.length).toBe(11)
     // First month value 0.87 → 87% after fraction-conversion
@@ -134,6 +135,10 @@ describe("parseGuvvenProcessingKpiSheet", () => {
       expect(f.companyCode).toBe("AZSEKER-CPC")
       expect(f.unit).toBe("%")
     }
+    // "Daily crushing capacity" — extended whitelist captures it
+    const capacityFacts = result.facts.filter((f) => f.metric === "capacity")
+    expect(capacityFacts.length).toBe(12)
+    expect(capacityFacts[0].value).toBe(84.2)
   })
 
   it("returns warning when entity cannot be resolved from sheet name", () => {

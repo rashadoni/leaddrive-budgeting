@@ -54,6 +54,8 @@ model Organization {
   cogsCostDetails        COGSCostDetail[]
   balanceSheetLines      BalanceSheetLine[]
   budgetAssumptions      BudgetAssumption[]
+  // Phase 7.J — top customers / suppliers register
+  counterparties         Counterparty[]
 
   // Phase 7 — Risk & Performance Indicators (FO Holding foundation)
   companies             Company[]
@@ -1108,6 +1110,11 @@ model Company {
   clientReconciliations ClientReconciliation[]
   companyIndicators     CompanyIndicator[]
   importStaging         ImportStaging[]
+  // Phase 7.J — top customers / suppliers register (HHI, contract
+  // expiry, single-source dependencies). Drives the Concentration
+  // panel + AI Variance Explainer's "what if X customer leaves"
+  // narrative.
+  counterparties        Counterparty[]
 
   @@unique([organizationId, code])
   @@index([organizationId, parentCompanyId, industry])
@@ -1375,6 +1382,52 @@ model OperationalFact {
   @@index([companyId, date, metric])
   @@index([organizationId])
   @@map("operational_facts")
+}
+
+// Phase 7.J — Counterparty register (customers + suppliers). Captures
+// top-N concentration ahead of HHI: % of revenue from each customer,
+// contract expiry dates, payment-term days, single-source supplier
+// dependencies. One row per (company × counterparty × role) pair.
+// Annual snapshot — updated quarterly via admin form.
+model Counterparty {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /** "customer" | "supplier". The same physical counterparty can hold
+   *  both roles (e.g. trade partner that buys and sells) — store two
+   *  rows in that case. */
+  role           String
+  /** Human-readable name (e.g. "Bakı Şirniyyat", "Coca-Cola Azerbaijan"). */
+  name           String
+  /** % of company's annual revenue (customer) or COGS (supplier).
+   *  Stored as 0-100 (not 0-1) for direct display. */
+  sharePct       Float        @default(0)
+  /** Annual amount in baseCurrencyCode. Optional; derived from sharePct
+   *  × total revenue/cogs at read time when null. */
+  annualAmount   Float?
+  /** Contract expiry date (ISO yyyy-mm-dd). Null = open-ended /
+   *  rolling contract. */
+  contractExpiry DateTime?
+  /** Days from invoice → payment (net terms). Typical: 30, 45, 60, 90. */
+  paymentTermsDays Int?
+  /** True for single-source suppliers (no qualified alternate). Risk
+   *  flag — appears in "Top-3 risks register" auto-derivations. */
+  singleSource   Boolean      @default(false)
+  /** Sugar pricing-escalator clauses, FX-pegged contracts, etc.
+   *  Free-text. */
+  notes          String?
+  /** Period the snapshot is for (e.g. "2026" or "2026-Q1"). */
+  period         String       @default("2026")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([companyId, role, name, period])
+  @@index([organizationId])
+  @@index([companyId, role])
+  @@index([role, sharePct])
+  @@map("counterparties")
 }
 
 // Alert — triggered events from indicator thresholds, composite rules, or AI briefs.

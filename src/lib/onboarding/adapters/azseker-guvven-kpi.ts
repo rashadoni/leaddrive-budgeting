@@ -332,15 +332,44 @@ interface ProcessingKpiMetricSpec {
 }
 
 const PROCESSING_KPI_METRICS: readonly ProcessingKpiMetricSpec[] = [
-  // CPC sheet uses Azerbaijani-domain labels; v1 covers the rate +
-  // capacity metrics that map to existing OperationalFact keys. The
-  // sheet has many more rows (raw-material yields, prices) — those
-  // need new metric keys before they can be persisted.
+  // CPC KPI sheet uses Azerbaijani-domain labels; whitelist maps each
+  // row to a canonical OperationalFact metric key. Unmatched rows
+  // skip silently (review-then-extend pattern). Phase 7.I 7.J turn:
+  // extended whitelist to capture the CPC processing-step metrics
+  // that drive food-processing indicators in the Risk Terminal.
   {
     labelPattern: /capacity utilization rate/i,
     unitPattern: /%/,
-    metric: "cane_hectares_harvested_pct", // closest existing % metric
+    metric: "extraction_rate_pct",
     unit: "%",
+  },
+  {
+    // "Daily crushing capacity" — daily input throughput in tons.
+    labelPattern: /daily crushing capacity|daily.*capacity|production capacity/i,
+    unitPattern: /ton/i,
+    metric: "capacity",
+    unit: "tons/day",
+  },
+  {
+    // "Monthly crushing capacity" — monthly aggregate.
+    labelPattern: /monthly crushing capacity|monthly capacity/i,
+    unitPattern: /ton/i,
+    metric: "capacity",
+    unit: "tons/month",
+  },
+  {
+    // "Monthly corn processing volume" / "Monthly cane processing volume"
+    // — actual throughput in tons (not capacity).
+    labelPattern: /monthly.*processing volume|monthly.*throughput/i,
+    unitPattern: /ton/i,
+    metric: "harvest_tons", // reuse — represents processed quantity
+    unit: "tons",
+  },
+  {
+    labelPattern: /working days per month/i,
+    unitPattern: /day/i,
+    metric: "cane_harvest_season_progress", // closest metric — % of plan
+    unit: "days",
   },
 ]
 

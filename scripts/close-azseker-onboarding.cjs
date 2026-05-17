@@ -40,27 +40,42 @@ const TARGET_YEAR = 2026
 
 // Industry + per-entity settings defaults (data-driven; tweak here if
 // the client provides updated numbers).
+// Business model (per Phase 7.I plan): vertically-integrated sugar group.
+//   EDEN + FARM grow cane / mixed crops  → industry: agro_crops
+//   AZSF + CPC process cane → sugar      → industry: food_processing
+//   MALT processes barley → malt          → industry: food_processing
+//   HORIZON shared services              → industry: services
 const ENTITY_DEFAULTS = {
   "AZSEKER-EDEN": {
     industry: "agro_crops",
     settings: { hectaresPlanted: 4000, region: "Salyan", cropType: "sugarcane", yieldTarget: 65 },
   },
   "AZSEKER-AZSF": {
-    industry: "agro_crops",
-    settings: { hectaresPlanted: 3500, region: "Imishli", cropType: "sugar_beet", yieldTarget: 50 },
+    // Azərşəkər Sugar — sugar mill, processes cane delivered by EDEN/FARM.
+    industry: "food_processing",
+    settings: {
+      processingCapacityTonsYr: 350_000,
+      extractionRateTarget: 0.12, // ~12% sugar yield from raw cane
+      mainInputCommodity: "sugarcane",
+    },
   },
   "AZSEKER-FARM": {
     industry: "agro_crops",
     settings: { hectaresPlanted: 5500, region: "Beyləqan", cropType: "mixed_cereal", yieldTarget: 5 },
   },
   "AZSEKER-CPC": {
-    industry: "agro_crops",
-    settings: { hectaresPlanted: 2500, region: "Ağcabədi", cropType: "corn", yieldTarget: 9 },
+    // Caspian Production Center — corn/wheat starch & glucose syrup.
+    industry: "food_processing",
+    settings: {
+      processingCapacityTonsYr: 30_700, // 84.2 t/day × 365 from CPC KPI sheet
+      extractionRateTarget: 0.87, // capacity utilization from KPI sheet
+      mainInputCommodity: "corn",
+    },
   },
   "AZSEKER-MALT": {
     industry: "food_processing",
     settings: {
-      processingCapacityTonsYr: 24000,
+      processingCapacityTonsYr: 24_000,
       extractionRateTarget: 0.78,
       mainInputCommodity: "barley",
     },
@@ -116,11 +131,15 @@ async function main() {
       continue
     }
     const merged = { ...(co.settings ?? {}), ...cfg.settings }
+    // Force-update industry to the config value: the original CLI
+    // seed mis-classified AZSF + CPC as agro_crops; per the Phase 7.I
+    // business model they are sugar/starch mills (food_processing).
+    // Override the stored industry to match config every run.
     await prisma.company.update({
       where: { id: co.id },
-      data: { industry: co.industry || cfg.industry, settings: merged },
+      data: { industry: cfg.industry, settings: merged },
     })
-    console.log(`  ✓ ${code}: industry=${co.industry || cfg.industry}, settings keys: ${Object.keys(merged).join(", ")}`)
+    console.log(`  ✓ ${code}: industry=${cfg.industry}, settings keys: ${Object.keys(merged).join(", ")}`)
   }
 
   // ── Resolve plans that own AzerSheker BudgetLines ───────────────

@@ -65,6 +65,13 @@ What counts as relevant:
   - Sector-level news affecting any of the listed industries (regulatory, macro, supply-chain, demand-side).
   - Company-specific news mentioning any of the listed company codes or their full names.
   - Cross-cutting Azerbaijani / Caucasus / regional news that materially affects the holding (currency, energy, trade policy).
+  - **Sugar / agro thematic** (AzerSheker pilot — explicit topical tags expected):
+    * "azerbaijan-agro" — Azerbaijani agriculture sector news (crop conditions, subsidies, irrigation, weather alerts in Salyan/Imishli/Sabirabad/Yevlax)
+    * "sugar-policy" — sugar tariffs, import quotas, refined-sugar price controls (AZ or major exporters: BR/IN/EU/TH)
+    * "ice-11-future" — ICE Sugar No. 11 futures movements ≥3% intraday or with named catalyst
+    * "competitor:baki-sirniyyat" — Bakı Şirniyyat (domestic sugar competitor) — pricing, capacity, M&A
+    * "competitor:*" — any other Azerbaijani sugar/starch producer (use "competitor:<name>")
+    Emit each tag as a SEPARATE STRING in industryTags[] (e.g. ["food_processing", "azerbaijan-agro", "ice-11-future"]).
 
 Hard constraints:
   - You MUST call web_search at least once before producing the feed. Do not return items without searching.
