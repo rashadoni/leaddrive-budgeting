@@ -108,6 +108,19 @@ Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (
 
 **Cumulative: 72 commits. Tests 3537 → 3903/3911 passing (+366 net).** 51 → **73 of 127 routes** with handler tests (~57% coverage of API surface).
 
+**Session-7 (autonomous, +10 more commits):**
+- d5c48c5 — `/api/budgeting/plans/[id]/comments` (9)
+- 328c08a — `/api/budgeting/category-mapping` + `/api/operational-facts/[id]` (14 total)
+- 8c74823 — `/api/budgeting/templates/seed` (7)
+- 1d68225 — `/api/budgeting/templates/[id]` (7)
+- 680098e — `/api/recompute/jobs/[jobId]` (5)
+- 195fa5c — `/api/companies/[id]/onboarding` (6)
+- b671399 — `/api/indicator-disclosures/[id]` (5)
+- c99fff4 — `/api/budgeting/changelog` (11)
+- a71af06 — `/api/budgeting/integrations` (9)
+
+**Cumulative: 82 commits. Tests 3537 → 3976/3984 passing (+439 net).** 51 → **90 of 127 routes** with handler tests (**~71% API surface coverage**). All pre-commit clean × 82 commits.
+
 All pre-commit clean × 63 commits.
 - Test count 3537 → **3736/3744 passing (+199 net)**
 - 5 helpers extracted (derive-month-index, elapsed-months, variance-helpers, group-by-parent + analytics route uses computeElapsedMonthIndices/getPeriodMonths)
