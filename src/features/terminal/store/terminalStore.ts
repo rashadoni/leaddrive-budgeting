@@ -323,20 +323,47 @@ const actions: TerminalActions = {
     // No-track variant — sets active without LRU side-effect. Use for
     // programmatic dispatch (URL hydration, panel-switch hooks, future
     // Compare-panel lhs/rhs toggling).
-    setGlobalState({ activeCompanyCode: code });
+    //
+    // Phase 7.L 2026-05-18 — when switching companies, also clear any
+    // stale `activeIndicatorValueId` so Panel 3 doesn't keep showing
+    // the previous company's IV detail. Pending hints cleared too
+    // (mirror setActiveIndicatorValue mutual-exclusion invariant).
+    setGlobalState({
+      activeCompanyCode: code,
+      activeIndicatorValueId: null,
+      pendingMissingCell: null,
+      pendingRollupCell: null,
+    });
   },
   selectCompany: (code) => {
     // User-driven variant — sets active AND pushes to LRU recent stack
     // (most-recent-first, dedupe, capped at RECENT_LIMIT).
+    //
+    // Phase 7.L 2026-05-18 — same Panel-3-reset invariant as setCompany
+    // (user clicked a different row in CompanyTree; current IV detail
+    // is stale by definition).
     const prev = globalState.recentCompanyCodes;
     const filtered = prev.filter((c) => c !== code);
     const next = [code, ...filtered].slice(0, RECENT_LIMIT);
-    setGlobalState({ activeCompanyCode: code, recentCompanyCodes: next });
+    setGlobalState({
+      activeCompanyCode: code,
+      recentCompanyCodes: next,
+      activeIndicatorValueId: null,
+      pendingMissingCell: null,
+      pendingRollupCell: null,
+    });
     writeJsonToStorage(RECENT_LS_KEY, next);
   },
   clearCompany: () => {
     // Phase 7.I — clear active company (ALL mode). No LRU side-effect.
-    setGlobalState({ activeCompanyCode: null });
+    // Phase 7.L 2026-05-18 — also clears Panel 3 state for the same
+    // reason as setCompany / selectCompany above.
+    setGlobalState({
+      activeCompanyCode: null,
+      activeIndicatorValueId: null,
+      pendingMissingCell: null,
+      pendingRollupCell: null,
+    });
   },
   setActiveIndicatorValue: (id) =>
     // Mutual-exclusion invariant (Turn VI extends): setting an active IV
