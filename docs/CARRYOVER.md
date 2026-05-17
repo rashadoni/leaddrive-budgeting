@@ -53,6 +53,16 @@ gate.
 
 **🔄 deltas:** -2 (Turn LIX v1.1 + v1.2 both closed same session). Net -2.
 
+**Session-2 marathon (post «не жди»):** 32 more commits after the user signed off on autonomous mode. No 🔄 opened, no 🔄 closed (queue genuinely empty of dev-actionable rows). Work was:
+- Pure-helper test coverage × 10 modules (~140 unit tests added) covering currency / cost-model-map / forecast / time-machine / report-engine / department-access / indicator-seeds + 3 newly-extracted helpers (derive-month-index, elapsed-months, variance-helpers).
+- Type debt: 22 `as any` casts dropped (8 PLTab + 14 `session.user as any`). 2 duplicate types resolved (BudgetForecastEntry, BudgetSection — both `hooks.ts` local subsets shadowing canonical `./types`). PnlRow + DrillRow unified.
+- Shared component extracted: `MonthlySparkline` (3 consumers: VarianceTab / PLTab / ComparisonTab).
+- Quality fixes: drill-panel favorable-direction variance (under-spent expense → green); empty-state "No actuals yet" placeholder; below-ebitda Waterfall anchor fix.
+- A11y: 5 KPI cards click-drillable with full keyboard + aria support; hover-tooltip pattern on 15 surfaces total.
+- Inline PLTab sparkline drill expansion under active drilldown row.
+
+Test count 3537 → **3698/3706 passing** (+161). tsc 0 throughout. Pre-commit (tsc + M7) ✓ × 40 commits this entire session.
+
 **Tracker scan note:** Phase 7.I sector-aware terminal Track C UI widgets (AgroDashboardPanel / CommodityTickerPanel / AgronomyEntryPanel) verified present and fully wired in this session — CommandBar verbs (`agro`/`wx`/`price`/`kpi`), HotkeyToolbar buttons, terminal-panel/[id] switch, and PanelGrid event listeners all in place. Prior CARRYOVER entry «Track C carried to next session» was stale at compaction time.)
 
 --
