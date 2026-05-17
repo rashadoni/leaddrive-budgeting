@@ -99,11 +99,14 @@ export function CoARolesAdmin() {
               {ACCOUNT_TYPE_FILTERS.map(ft => (
                 <button
                   key={ft}
+                  type="button"
+                  role="tab"
+                  aria-selected={filterType === ft}
                   onClick={() => setFilterType(ft)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150 cursor-pointer motion-safe:active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 ${
                     filterType === ft
                       ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                   }`}
                 >
                   {t(`filterType_${ft}`)}

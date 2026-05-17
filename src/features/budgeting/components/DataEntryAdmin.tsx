@@ -41,6 +41,7 @@ import {
   type MetricValidationRule,
   type EsgDisclosureRule,
 } from "@/lib/risk/metric-validation-rules"
+import { Button } from "@/components/ui/button"
 
 interface CompanyRow {
   id: string
@@ -182,12 +183,14 @@ function TabButton({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       data-testid={`data-entry-tab-${active ? "active" : "inactive"}`}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-all duration-150 cursor-pointer motion-safe:active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:rounded-sm ${
         active
-          ? "border-[#00D4AA] text-[#00D4AA]"
-          : "border-transparent text-muted-foreground hover:text-foreground"
+          ? "border-primary text-primary"
+          : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
       }`}
     >
       {label}
@@ -810,7 +813,7 @@ function FormControls({
       {feedback.kind === "confirm" && (
         <div
           role="alert"
-          className="border border-[#FFB020]/60 bg-[#FFB020]/10 text-[#FFB020] rounded p-2 text-xs"
+          className="border border-amber-500/60 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded p-2 text-xs"
           data-testid="data-entry-confirm"
         >
           <div className="font-semibold mb-1">{t("confirmTitle")}</div>
@@ -825,7 +828,7 @@ function FormControls({
       {feedback.kind === "error" && (
         <div
           role="alert"
-          className="border border-[#FF4757]/60 bg-[#FF4757]/10 text-[#FF4757] rounded p-2 text-xs"
+          className="border border-red-500/60 bg-red-500/10 text-red-600 dark:text-red-400 rounded p-2 text-xs"
           data-testid="data-entry-error"
         >
           {feedback.message}
@@ -833,7 +836,7 @@ function FormControls({
       )}
       {feedback.kind === "saved" && (
         <div
-          className="border border-[#00D4AA]/60 bg-[#00D4AA]/10 text-[#00D4AA] rounded p-2 text-xs"
+          className="border border-emerald-500/60 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded p-2 text-xs"
           data-testid="data-entry-saved"
         >
           {feedback.message}
@@ -842,32 +845,36 @@ function FormControls({
       <div className="flex gap-2">
         {feedback.kind === "confirm" ? (
           <>
-            <button
+            <Button
               type="button"
+              variant="default"
+              size="sm"
               onClick={onConfirm}
               data-testid="data-entry-confirm-save"
-              className="bg-[#FFB020] text-[#050814] px-3 py-1.5 rounded font-semibold text-xs"
+              className="bg-amber-500 text-amber-50 hover:bg-amber-500/90"
             >
               {t("confirmSave")}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={onCancel}
-              className="bg-transparent border border-border text-foreground px-3 py-1.5 rounded text-xs"
             >
               {t("cancel")}
-            </button>
+            </Button>
           </>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="default"
+            size="sm"
             onClick={onSave}
             disabled={disabled || feedback.kind === "saving"}
             data-testid="data-entry-save"
-            className="bg-[#00D4AA] text-[#050814] px-3 py-1.5 rounded font-semibold text-xs disabled:bg-gray-700 disabled:text-gray-500"
           >
             {feedback.kind === "saving" ? t("saving") : t("save")}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -1031,7 +1038,7 @@ function BulkImportSection({
           </div>
           {stage.errorCount > 0 && (
             <div
-              className="border border-[#FF4757]/40 bg-[#FF4757]/10 text-[#FF4757] rounded p-2 text-xs space-y-1 max-h-40 overflow-y-auto"
+              className="border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 rounded p-2 text-xs space-y-1 max-h-40 overflow-y-auto"
               role="alert"
             >
               <div className="font-semibold">
@@ -1051,7 +1058,7 @@ function BulkImportSection({
             </div>
           )}
           {stage.warningCount > 0 && (
-            <div className="border border-[#FFB020]/40 bg-[#FFB020]/10 text-[#FFB020] rounded p-2 text-xs space-y-1 max-h-32 overflow-y-auto">
+            <div className="border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded p-2 text-xs space-y-1 max-h-32 overflow-y-auto">
               <div className="font-semibold">
                 {t("operational.bulkImport.warningsHeading")}
               </div>
@@ -1066,19 +1073,21 @@ function BulkImportSection({
             </div>
           )}
           <div className="flex gap-2">
-            <button
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setStage({ kind: "idle" })}
-              className="text-xs px-3 py-1.5 border border-border rounded"
             >
               {t("cancel")}
-            </button>
+            </Button>
             {stage.errorCount === 0 && (
-              <button
+              <Button
                 type="button"
+                variant="default"
+                size="sm"
                 onClick={confirmApply}
                 data-testid="bulk-import-apply"
-                className="text-xs px-3 py-1.5 bg-[#00D4AA] text-[#050814] rounded font-semibold"
               >
                 {stage.warningCount > 0
                   ? t("operational.bulkImport.confirmApplyWithWarnings", {
@@ -1087,7 +1096,7 @@ function BulkImportSection({
                   : t("operational.bulkImport.confirmApply", {
                       rows: stage.rowCount,
                     })}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -1101,7 +1110,7 @@ function BulkImportSection({
 
       {stage.kind === "applied" && (
         <div
-          className="mt-3 border border-[#00D4AA]/40 bg-[#00D4AA]/10 text-[#00D4AA] rounded p-2 text-xs"
+          className="mt-3 border border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded p-2 text-xs"
           data-testid="bulk-import-applied"
         >
           {t("operational.bulkImport.appliedSummary", {
@@ -1122,7 +1131,7 @@ function BulkImportSection({
 
       {stage.kind === "error" && (
         <div
-          className="mt-3 border border-[#FF4757]/40 bg-[#FF4757]/10 text-[#FF4757] rounded p-2 text-xs"
+          className="mt-3 border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 rounded p-2 text-xs"
           role="alert"
           data-testid="bulk-import-error"
         >
