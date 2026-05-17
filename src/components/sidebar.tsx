@@ -201,14 +201,19 @@ export function Sidebar() {
   // Terminal doesn't double-light Budgeting too).
   const isBudgetingLegacy =
     pathname === "/budgeting" || pathname === "/budgeting/reports"
-  // Section-wide test — when ANY /budgeting/* route is active, surface
-  // the Budgeting sub-nav so the user keeps a consistent set of links.
-  // Previously the sub-nav only rendered on the legacy URL, which made
-  // half the menu visually disappear when the user crossed into Risk
-  // Terminal / Onboarding / Board Deck / Admin. The sub-nav remains a
-  // child of the Budgeting row but is now always visible inside the
-  // /budgeting section.
+  // Section-wide test — when ANY /budgeting/* route is active, the
+  // Budgeting sub-nav is OFFERED but collapsed by default outside the
+  // legacy page. Without collapsing the 20-item sub-list would push
+  // Risk Terminal / Board Deck / Onboarding / Audit Log / Settings
+  // below the viewport fold. Click the chevron next to Budgeting to
+  // toggle.
   const isBudgetingSection = pathname.startsWith("/budgeting")
+  // Auto-open on legacy /budgeting (sub-tabs ARE the page's main UI),
+  // auto-closed on /budgeting/terminal | /onboarding | /board-deck |
+  // /admin/* (the page itself is the destination — sub-nav is a quick
+  // jump-back to the legacy planner). User toggle persists for the
+  // session.
+  const [budgetExpanded, setBudgetExpanded] = useState(isBudgetingLegacy)
   const activeTab = searchParams.get("tab") || "workspace"
 
   return (
@@ -246,28 +251,49 @@ export function Sidebar() {
             item.href === "/budgeting"
               ? isBudgetingLegacy
               : pathname === item.href || pathname.startsWith(item.href + "/")
+          // Budget row has an inline chevron toggle when we're anywhere
+          // in /budgeting/* — clicking it expands/collapses the sub-nav
+          // without navigating. The Link still navigates to /budgeting.
+          const isBudgetingRow = item.href === "/budgeting"
           return (
             <div key={item.href}>
-              <Link
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                  isActive
-                    ? "bg-sidebar-active text-white font-medium"
-                    : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white"
+              <div className="flex items-center">
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                    isActive
+                      ? "bg-sidebar-active text-white font-medium"
+                      : "text-[hsl(var(--sidebar-text))] hover:bg-sidebar-hover hover:text-white"
+                  )}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  {!collapsed && <span>{item.label ?? (item.labelKey ? t(item.labelKey) : item.href)}</span>}
+                </Link>
+                {isBudgetingRow && isBudgetingSection && !collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setBudgetExpanded((v) => !v)}
+                    aria-expanded={budgetExpanded}
+                    aria-label="Toggle budgeting sub-menu"
+                    className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft
+                      className={cn(
+                        "h-3.5 w-3.5 transition-transform",
+                        budgetExpanded ? "-rotate-90" : "rotate-180"
+                      )}
+                    />
+                  </button>
                 )}
-              >
-                <item.icon className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>{item.label ?? (item.labelKey ? t(item.labelKey) : item.href)}</span>}
-              </Link>
+              </div>
 
-              {/* Budget sub-navigation — visible across the whole
+              {/* Budget sub-navigation — togglable across the whole
                   /budgeting section (legacy /budgeting page + nested
                   routes like /terminal, /onboarding, /board-deck,
-                  /admin/*). Previously only rendered on the legacy
-                  URL which caused the nav to "lose" half its items
-                  when crossing into Risk Terminal / Onboarding. */}
-              {item.href === "/budgeting" && isBudgetingSection && !collapsed && (
+                  /admin/*). User can collapse to avoid pushing other
+                  top-level items below the viewport fold. */}
+              {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav
                     // Phase 7.G Turn LXXXXII: filter groups by minRole
