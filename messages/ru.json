@@ -1568,6 +1568,15 @@
     }
   },
   "terminal": {
+    "lockedPeriodBanner": {
+      "title": "Период {period} заблокирован",
+      "subtitle": "Изменения отклоняются",
+      "locked": "Период {period} заблокирован",
+      "reason": "Причина: {reason}",
+      "by": "Заблокировал: {who}",
+      "at": "Заблокировано: {when}",
+      "ariaLabel": "Активный период {period} заблокирован — изменения отклоняются"
+    },
     "periodChips": {
       "ariaLabel": "Выбор периода",
       "annualHint": "Полный год {year}",

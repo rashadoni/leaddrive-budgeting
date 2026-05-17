@@ -1568,6 +1568,15 @@
     }
   },
   "terminal": {
+    "lockedPeriodBanner": {
+      "title": "{period} dövrü kilidlənib",
+      "subtitle": "Dəyişikliklər rədd edilir",
+      "locked": "{period} dövrü kilidlənib",
+      "reason": "Səbəb: {reason}",
+      "by": "Kilidləyən: {who}",
+      "at": "Kilidlənmə vaxtı: {when}",
+      "ariaLabel": "Aktiv dövr {period} kilidlənib — dəyişikliklər rədd edilir"
+    },
     "periodChips": {
       "ariaLabel": "Dövr seçici",
       "annualHint": "Tam il {year}",

@@ -1568,6 +1568,15 @@
     }
   },
   "terminal": {
+    "lockedPeriodBanner": {
+      "title": "Period {period} is locked",
+      "subtitle": "Mutations rejected",
+      "locked": "Period {period} is locked",
+      "reason": "Reason: {reason}",
+      "by": "Locked by: {who}",
+      "at": "Locked at: {when}",
+      "ariaLabel": "Active matrix period {period} is locked — mutations rejected"
+    },
     "periodChips": {
       "ariaLabel": "Period selector",
       "annualHint": "Full year {year}",

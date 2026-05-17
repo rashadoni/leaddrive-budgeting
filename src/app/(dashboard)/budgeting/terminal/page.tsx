@@ -3,6 +3,7 @@ import { CommandBar } from '@/features/terminal/components/CommandBar';
 import { PanelGrid } from '@/features/terminal/components/PanelGrid';
 import { HotkeyToolbar } from '@/features/terminal/components/HotkeyToolbar';
 import { TerminalDeepLinkHandler } from '@/features/terminal/components/TerminalDeepLinkHandler';
+import { TerminalLockedPeriodBanner } from '@/features/terminal/components/TerminalLockedPeriodBanner';
 
 // Import Google Font for Terminal UI
 import { JetBrains_Mono } from 'next/font/google';
@@ -24,6 +25,10 @@ export default function TerminalPage() {
       <Suspense fallback={null}>
         <TerminalDeepLinkHandler />
       </Suspense>
+
+      {/* Truth-infra E.4 — terminal-wide locked-period banner.
+          Renders null when the matrix's active period isn't locked. */}
+      <TerminalLockedPeriodBanner />
 
       {/* Phase B6 — top hotkey toolbar (8 quick-actions). Sits above
           CommandBar; user-configurability is v2 (🔄). */}
