@@ -141,8 +141,8 @@ export function WhatIfPreviewPanel() {
         if (e.target === e.currentTarget) setOpen(false)
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <FlaskConical size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
@@ -158,15 +158,15 @@ export function WhatIfPreviewPanel() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("whatif.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
           </button>
         </header>
 
         {/* FX sliders */}
-        <section className="px-6 py-4 border-b border-gray-800">
-          <h3 className="text-[11px] uppercase tracking-wider text-gray-500 mb-2">
+        <section className="px-6 py-4 border-b border-border">
+          <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2">
             {t("whatif.fxOverridesHeader")}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -177,7 +177,7 @@ export function WhatIfPreviewPanel() {
               const deltaPct = ((value - baseline) / baseline) * 100
               return (
                 <label key={key} className="flex items-center gap-3 text-xs">
-                  <span className="font-mono text-gray-400 w-16">AZN/{code}</span>
+                  <span className="font-mono text-muted-foreground w-16">AZN/{code}</span>
                   <input
                     type="number"
                     step="0.001"
@@ -189,10 +189,10 @@ export function WhatIfPreviewPanel() {
                         [key]: Number.parseFloat(e.target.value) || 0,
                       }))
                     }
-                    className="font-mono w-24 px-2 py-1 rounded border border-gray-700 bg-black/30 text-sm tabular-nums"
+                    className="font-mono w-24 px-2 py-1 rounded border border-input bg-black/30 text-sm tabular-nums"
                   />
                   <span
-                    className={`font-mono text-[10px] tabular-nums w-20 ${deltaPct === 0 ? "text-gray-600" : deltaPct > 0 ? "text-amber-400" : "text-emerald-400"}`}
+                    className={`font-mono text-[10px] tabular-nums w-20 ${deltaPct === 0 ? "text-muted-foreground" : deltaPct > 0 ? "text-amber-400" : "text-emerald-400"}`}
                   >
                     {deltaPct >= 0 ? "+" : ""}
                     {deltaPct.toFixed(1)}% vs base
@@ -216,11 +216,11 @@ export function WhatIfPreviewPanel() {
             <button
               type="button"
               onClick={() => setOverrides(FX_DEFAULTS)}
-              className="text-[11px] text-gray-500 hover:text-gray-300"
+              className="text-[11px] text-muted-foreground hover:text-muted-foreground"
             >
               {t("whatif.resetToBase")}
             </button>
-            <span className="ml-auto text-[10px] text-gray-600 font-mono">
+            <span className="ml-auto text-[10px] text-muted-foreground font-mono">
               {t("whatif.periodLabel")}: {period}
             </span>
           </div>
@@ -229,7 +229,7 @@ export function WhatIfPreviewPanel() {
         {/* Results */}
         <section className="px-6 py-4">
           {state.kind === "idle" && (
-            <p className="text-[11px] text-gray-600 italic">
+            <p className="text-[11px] text-muted-foreground italic">
               {t("whatif.idleHint")}
             </p>
           )}
@@ -239,13 +239,13 @@ export function WhatIfPreviewPanel() {
             </p>
           )}
           {state.kind === "error" && (
-            <p className="text-[11px] text-[#FF4757]" role="alert">
+            <p className="text-[11px] text-red-600 dark:text-red-400" role="alert">
               {state.message}
             </p>
           )}
           {state.kind === "loaded" && (
             <div data-testid="whatif-results">
-              <p className="text-[11px] text-gray-500 mb-3">
+              <p className="text-[11px] text-muted-foreground mb-3">
                 {t("whatif.summaryLine", {
                   affected: state.data.affectedIndicatorCount,
                   cells: state.data.cells.length,
@@ -253,7 +253,7 @@ export function WhatIfPreviewPanel() {
                 })}
               </p>
               {state.data.cells.length === 0 ? (
-                <p className="text-[11px] text-gray-600 italic">
+                <p className="text-[11px] text-muted-foreground italic">
                   {t("whatif.noAffected")}
                 </p>
               ) : (
@@ -261,9 +261,9 @@ export function WhatIfPreviewPanel() {
                   {Array.from(cellsByCompany.entries()).map(([co, rows]) => (
                     <div
                       key={co}
-                      className="rounded border border-gray-800 bg-black/20"
+                      className="rounded border border-border bg-black/20"
                     >
-                      <header className="px-3 py-1.5 border-b border-gray-800 bg-black/30">
+                      <header className="px-3 py-1.5 border-b border-border bg-black/30">
                         <h4 className="text-[11px] font-mono font-semibold tracking-wide text-cyan-300">
                           {co}
                         </h4>
@@ -275,21 +275,21 @@ export function WhatIfPreviewPanel() {
                             className="px-3 py-2 grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 items-center text-[11px]"
                           >
                             <div
-                              className="font-mono text-gray-400 truncate"
+                              className="font-mono text-muted-foreground truncate"
                               title={c.indicatorCode}
                             >
                               {c.indicatorCode}
                             </div>
                             <div className="text-right tabular-nums font-mono">
                               <span
-                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${c.baselineStatus ? STATUS_PILL[c.baselineStatus] : "text-gray-600"}`}
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${c.baselineStatus ? STATUS_PILL[c.baselineStatus] : "text-muted-foreground"}`}
                               >
                                 {formatValue(c.baselineValue, c.unit)}
                               </span>
                             </div>
                             <div className="text-right tabular-nums font-mono">
                               <span
-                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${c.scenarioStatus ? STATUS_PILL[c.scenarioStatus] : "text-gray-600"}`}
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${c.scenarioStatus ? STATUS_PILL[c.scenarioStatus] : "text-muted-foreground"}`}
                               >
                                 {formatValue(c.scenarioValue, c.unit)}
                               </span>
@@ -297,9 +297,9 @@ export function WhatIfPreviewPanel() {
                             <div
                               className={`text-right tabular-nums font-mono text-[10px] ${
                                 c.deltaPct === null
-                                  ? "text-gray-600"
+                                  ? "text-muted-foreground"
                                   : Math.abs(c.deltaPct) < 0.5
-                                    ? "text-gray-500"
+                                    ? "text-muted-foreground"
                                     : c.deltaPct > 0
                                       ? "text-amber-400"
                                       : "text-emerald-400"
@@ -320,7 +320,7 @@ export function WhatIfPreviewPanel() {
           )}
         </section>
 
-        <footer className="px-6 py-2 border-t border-gray-800 text-[10px] text-gray-600">
+        <footer className="px-6 py-2 border-t border-border text-[10px] text-muted-foreground">
           {t("whatif.footerNote")}
         </footer>
       </div>

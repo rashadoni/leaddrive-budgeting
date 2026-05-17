@@ -25,6 +25,7 @@ import {
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 import { PeerBenchmarkModal } from "./PeerBenchmarkModal";
+import { Button } from "@/components/ui/button";
 
 interface IndicatorMeta {
   id: string;
@@ -215,12 +216,12 @@ export function IndicatorDetail() {
     if (pendingRollup) {
       const statusTone =
         pendingRollup.status === 'red'
-          ? 'text-[#FF4757]'
+          ? 'text-red-600 dark:text-red-400'
           : pendingRollup.status === 'amber'
             ? 'text-[#FFB800]'
             : pendingRollup.status === 'green'
-              ? 'text-[#00D4AA]'
-              : 'text-gray-500';
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-muted-foreground';
       const formattedValue = Number.isFinite(pendingRollup.value)
         ? pendingRollup.value.toFixed(1)
         : '—';
@@ -229,7 +230,7 @@ export function IndicatorDetail() {
           data-testid="indicator-detail-rollup"
           className="font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
         >
-          <div className="text-gray-400">
+          <div className="text-muted-foreground">
             <span className="text-[#FFB800] font-semibold">
               {pendingRollup.companyCode}
             </span>{' '}
@@ -253,14 +254,14 @@ export function IndicatorDetail() {
               {pendingRollup.status}
             </span>
           </div>
-          <div className="text-gray-500 max-w-md">
+          <div className="text-muted-foreground max-w-md">
             {t('indicatorDetail.rollupHint', {
               indicator: pendingRollup.indicatorName,
               company: pendingRollup.companyCode,
               count: pendingRollup.contributingChildCount,
             })}
           </div>
-          <div className="text-gray-700 text-[10px]">
+          <div className="text-muted-foreground text-[10px]">
             {t('indicatorDetail.rollupAction')}
           </div>
         </div>
@@ -280,7 +281,7 @@ export function IndicatorDetail() {
           data-testid="indicator-detail-no-data"
           className="font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
         >
-          <div className="text-gray-400">
+          <div className="text-muted-foreground">
             <span className="text-[#FFB800] font-semibold">
               {pendingMissing.companyCode}
             </span>{' '}
@@ -289,13 +290,13 @@ export function IndicatorDetail() {
               {pendingMissing.indicatorCode}
             </span>
           </div>
-          <div className="text-gray-500 max-w-md">
+          <div className="text-muted-foreground max-w-md">
             {t('indicatorDetail.missingCellHint', {
               indicator: pendingMissing.indicatorName,
               company: pendingMissing.companyCode,
             })}
           </div>
-          <div className="text-gray-700 text-[10px]">
+          <div className="text-muted-foreground text-[10px]">
             {t('indicatorDetail.missingCellAction')}
           </div>
         </div>
@@ -320,7 +321,7 @@ export function IndicatorDetail() {
     return (
       <div
         data-testid="indicator-detail-loading"
-        className="text-gray-700 font-mono text-xs h-full w-full flex items-center justify-center"
+        className="text-muted-foreground font-mono text-xs h-full w-full flex items-center justify-center"
       >
         {t('indicatorDetail.loading')}
       </div>
@@ -330,7 +331,7 @@ export function IndicatorDetail() {
     return (
       <div
         data-testid="indicator-detail-error"
-        className="text-[#FF4757] font-mono text-xs h-full w-full flex items-center justify-center"
+        className="text-red-600 dark:text-red-400 font-mono text-xs h-full w-full flex items-center justify-center"
       >
         {t('indicatorDetail.error')} {error}
       </div>
@@ -374,13 +375,13 @@ export function IndicatorDetail() {
     : null;
 
   return (
-    <div className="font-mono text-[11px] text-gray-300 w-full h-full flex flex-col gap-2 overflow-auto">
-      <header className="shrink-0 flex items-start justify-between gap-2 pb-1.5 border-b border-gray-800/60">
+    <div className="font-mono text-[11px] text-muted-foreground w-full h-full flex flex-col gap-2 overflow-auto">
+      <header className="shrink-0 flex items-start justify-between gap-2 pb-1.5 border-b border-border/60">
         <div>
-          <div className="text-gray-500 uppercase tracking-wider text-[9px]">
+          <div className="text-muted-foreground uppercase tracking-wider text-[9px]">
             {co.code} · {co.name}
             {co.industry && (
-              <span className="ml-2 text-gray-700">
+              <span className="ml-2 text-muted-foreground">
                 ({(() => {
                   // Phase 7.G Turn VII — localize industry code via the
                   // `industries.*` namespace shipped Turn G. Defensive
@@ -396,7 +397,7 @@ export function IndicatorDetail() {
             )}
           </div>
           <div className="text-[#E8EDF5] font-semibold text-sm tracking-tight mt-0.5">
-            <span className="text-gray-500 font-normal text-[10px]" title={ind.code}>
+            <span className="text-muted-foreground font-normal text-[10px]" title={ind.code}>
               {ind.code}
             </span>{' '}
             <span className="text-[#E8EDF5]">
@@ -404,7 +405,7 @@ export function IndicatorDetail() {
               {resolveIndicatorLabel(ind, locale)}
             </span>
           </div>
-          <div className="text-gray-600 text-[10px] mt-0.5">
+          <div className="text-muted-foreground text-[10px] mt-0.5">
             {/* Phase 7.G Turn VII — meta-line labels + direction value
                 localized. Pre-Turn-VII rendered raw "period 2026 · direction
                 higher_better · unit %" — labels and the direction enum
@@ -496,7 +497,7 @@ export function IndicatorDetail() {
                   "terminal-panel-commodity-ticker",
                 );
               }}
-              className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 transition-colors text-gray-500"
+              className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-border hover:border-emerald-500/60 hover:text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/5 transition-colors text-muted-foreground"
               title={t('indicatorDetail.openSourceTitle')}
             >
               <ExternalLink size={10} aria-hidden="true" />
@@ -522,7 +523,7 @@ export function IndicatorDetail() {
             disabled={recomputeState.kind === 'running'}
             title={t('indicatorDetail.recomputeTitle')}
             aria-describedby="indicator-detail-recompute-desc"
-            className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors text-gray-500"
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-border hover:border-emerald-500/60 hover:text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/5 disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground disabled:hover:bg-transparent transition-colors text-muted-foreground"
           >
             <RefreshCw
               size={10}
@@ -544,7 +545,7 @@ export function IndicatorDetail() {
           </span>
           {recomputeState.kind === 'error' && (
             <div
-              className="text-[9px] text-[#FF4757] max-w-[180px] text-right leading-tight"
+              className="text-[9px] text-red-600 dark:text-red-400 max-w-[180px] text-right leading-tight"
               role="alert"
             >
               {recomputeState.message}
@@ -567,15 +568,15 @@ export function IndicatorDetail() {
       />
 
       {hint && (
-        <p className="text-gray-300 leading-snug">{hint}</p>
+        <p className="text-muted-foreground leading-snug">{hint}</p>
       )}
 
       {/* Phase B3 — trailing 12-month sparkline. Renders empty baseline
           when sparkline is null/empty (IV pre-dates B2 batch run); user
           sees the column slot reserved without misleading "0" data. */}
       {detail.sparkline && detail.sparkline.length > 0 && (
-        <div className="flex items-center gap-2 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5">
-          <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+        <div className="flex items-center gap-2 rounded border border-border/60 bg-[#0A0E27]/40 px-2 py-1.5">
+          <span className="text-[9px] uppercase tracking-wider text-muted-foreground shrink-0">
             {t('snapshot.trend12mo')}
           </span>
           <Sparkline
@@ -596,7 +597,7 @@ export function IndicatorDetail() {
             const delta = last - first;
             const sign = delta > 0 ? "+" : "";
             return (
-              <span className="text-[10px] text-gray-500 ml-auto tabular-nums">
+              <span className="text-[10px] text-muted-foreground ml-auto tabular-nums">
                 {/* Phase 7.G Turn VII — reuse forecastPts key for the
                     trend "pts" label so it tracks RU "точек" / AZ "xal"
                     instead of staying raw EN. */}
@@ -635,38 +636,38 @@ export function IndicatorDetail() {
 
       {errPayload && (
         <div className="rounded border border-[#6B7280]/40 bg-[#6B7280]/10 px-2 py-1.5">
-          <div className="text-[#FFB020] text-[10px] uppercase tracking-wider mb-0.5">
+          <div className="text-amber-600 dark:text-amber-400 text-[10px] uppercase tracking-wider mb-0.5">
             {t('indicatorDetail.pipelineNote')}
           </div>
-          <div className="text-gray-300 text-[11px]">
-            <span className="text-gray-500">{errPayload.code}:</span> {errPayload.reason}
+          <div className="text-muted-foreground text-[11px]">
+            <span className="text-muted-foreground">{errPayload.code}:</span> {errPayload.reason}
           </div>
         </div>
       )}
 
       <section>
-        <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+        <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
           {t('indicatorDetail.formula')}
         </div>
-        <code className="block bg-[#050814] rounded border border-gray-800 px-2 py-1 text-[#00D4AA] text-[11px] whitespace-pre-wrap break-all">
+        <code className="block bg-foreground/95 dark:bg-background rounded border border-border px-2 py-1 text-emerald-600 dark:text-emerald-400 text-[11px] whitespace-pre-wrap break-all">
           {ind.formula}
         </code>
       </section>
 
       <section>
-        <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+        <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
           {t('indicatorDetail.resolvedVariables')}
         </div>
         {Object.keys(resolved).length === 0 ? (
-          <p className="text-gray-700 text-[11px]">
+          <p className="text-muted-foreground text-[11px]">
             {t('indicatorDetail.noneMissingData')}
           </p>
         ) : (
           <table className="text-[11px] tabular-nums w-full">
             <tbody>
               {Object.entries(resolved).map(([k, v]) => (
-                <tr key={k} className="border-b border-gray-800/30 last:border-b-0">
-                  <td className="py-0.5 pr-3 text-gray-400 font-mono">{k}</td>
+                <tr key={k} className="border-b border-border/30 last:border-b-0">
+                  <td className="py-0.5 pr-3 text-muted-foreground font-mono">{k}</td>
                   <td
                     className="py-0.5 text-gray-200 text-right"
                     title={Number.isFinite(v) ? v.toLocaleString("ru-RU") : undefined}
@@ -681,16 +682,16 @@ export function IndicatorDetail() {
       </section>
 
       <section>
-        <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+        <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
           {t('indicatorDetail.aggregates')}
         </div>
         {Object.keys(aggregates).length === 0 ? (
-          <p className="text-gray-700 text-[11px]">{t('indicatorDetail.none')}</p>
+          <p className="text-muted-foreground text-[11px]">{t('indicatorDetail.none')}</p>
         ) : (
           <ul className="space-y-2">
             {Object.entries(aggregates).map(([ns, data]) => (
               <li key={ns} className="text-[10px]">
-                <div className="text-gray-500 uppercase mb-0.5">{ns}</div>
+                <div className="text-muted-foreground uppercase mb-0.5">{ns}</div>
                 <AggregateBlock data={data} t={t} />
               </li>
             ))}
@@ -700,31 +701,37 @@ export function IndicatorDetail() {
 
       <DrillDownSection ivId={detail.id} t={t} />
 
-      <section className="shrink-0 pt-1.5 border-t border-gray-800/60 flex justify-end gap-2 flex-wrap">
-        <button
+      <section className="shrink-0 pt-1.5 border-t border-border/60 flex justify-end gap-2 flex-wrap">
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => {
             // Opens the per-cell Comments overlay. The store already
             // knows the active cell from `setActiveIv`, so the modal
             // auto-selects this thread on open — no extra args needed.
             window.dispatchEvent(new CustomEvent("terminal:open-comments"));
           }}
-          className="bg-transparent border border-[#00D4AA]/60 text-[#00D4AA] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider hover:bg-[#00D4AA]/10"
+          className="h-7 text-[11px]"
           title={t('indicatorDetail.commentsButtonTitle')}
           data-testid="indicator-detail-comments"
         >
           {t('indicatorDetail.commentsButton')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => setBenchmarkOpen(true)}
-          className="bg-transparent border border-[#00D4AA] text-[#00D4AA] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider hover:bg-[#00D4AA]/10"
+          className="h-7 text-[11px]"
           title={t('indicatorDetail.benchmarkTitle')}
         >
           {t('indicatorDetail.benchmarkButton')}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="default"
+          size="sm"
           onClick={() => {
             // Switch focus to Panel 4 AND dispatch the explainer trigger.
             // Panel 4's listener is what actually fires the LLM call —
@@ -738,7 +745,7 @@ export function IndicatorDetail() {
             );
           }}
           disabled={status === "green"}
-          className="bg-[#00D4AA] text-[#050814] px-3 py-1 rounded font-semibold text-[11px] uppercase tracking-wider disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed hover:bg-[#00E5BB]"
+          className="h-7 text-[11px]"
           title={
             status === "green"
               ? t('indicatorDetail.explainGreenDisabled')
@@ -746,7 +753,7 @@ export function IndicatorDetail() {
           }
         >
           {t('indicatorDetail.explainButton')}
-        </button>
+        </Button>
       </section>
       {benchmarkOpen && (
         <PeerBenchmarkModal ivId={detail.id} onClose={() => setBenchmarkOpen(false)} />
@@ -832,11 +839,11 @@ function ProvenanceBadge({
   }
   const palette: Record<NonNullable<IndicatorValueDetail["valueSource"]>, string> = {
     disclosed:
-      "border-[#00D4AA]/60 text-[#00D4AA] bg-[#00D4AA]/5",
+      "border-emerald-500/60 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5",
     modeled_industry:
-      "border-[#FFB020]/60 text-[#FFB020] bg-[#FFB020]/5",
+      "border-amber-500/60 text-amber-600 dark:text-amber-400 bg-amber-500/5",
     modeled_generic:
-      "border-gray-500/60 text-gray-300 bg-gray-500/10",
+      "border-gray-500/60 text-muted-foreground bg-gray-500/10",
     macro:
       "border-[#5B9DFF]/60 text-[#5B9DFF] bg-[#5B9DFF]/5",
     // `computed` never renders (guarded above) but keep the entry
@@ -903,8 +910,8 @@ function MaterialityBadge({
   }
   const tone =
     rating === "not_material"
-      ? "border-gray-600/60 text-gray-400 bg-gray-700/15"
-      : "border-[#FFB020]/40 text-[#FFB020]/80 bg-[#FFB020]/5";
+      ? "border-gray-600/60 text-muted-foreground bg-gray-700/15"
+      : "border-amber-500/40 text-amber-600 dark:text-amber-400/80 bg-amber-500/5";
   return (
     <span
       data-testid="materiality-badge"
@@ -956,11 +963,11 @@ function TrustAuditStrip(props: {
     no_band: 'no band',
   };
   const sanityTone: Record<NonNullable<typeof sanityBand>, string> = {
-    normal: 'border-[#00D4AA]/40 text-[#00D4AA]/80 bg-[#00D4AA]/5',
-    low_extreme: 'border-[#FF4757]/40 text-[#FF4757]/90 bg-[#FF4757]/5',
-    high_extreme: 'border-[#FF4757]/40 text-[#FF4757]/90 bg-[#FF4757]/5',
-    missing_input: 'border-gray-600/60 text-gray-400 bg-gray-700/15',
-    no_band: 'border-gray-700/60 text-gray-500 bg-gray-800/15',
+    normal: 'border-emerald-500/40 text-emerald-600 dark:text-emerald-400/80 bg-emerald-500/5',
+    low_extreme: 'border-red-500/40 text-red-600 dark:text-red-400/90 bg-red-500/5',
+    high_extreme: 'border-red-500/40 text-red-600 dark:text-red-400/90 bg-red-500/5',
+    missing_input: 'border-gray-600/60 text-muted-foreground bg-gray-700/15',
+    no_band: 'border-input/60 text-muted-foreground bg-muted/50/15',
   };
 
   const auditDate = lastReconciledAt
@@ -972,30 +979,30 @@ function TrustAuditStrip(props: {
   return (
     <div
       data-testid="trust-audit-strip"
-      className="flex items-start gap-3 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5 text-[10px] text-gray-500 leading-snug flex-wrap"
+      className="flex items-start gap-3 rounded border border-border/60 bg-[#0A0E27]/40 px-2 py-1.5 text-[10px] text-muted-foreground leading-snug flex-wrap"
     >
       <div className="flex items-start gap-1 min-w-0 flex-1">
-        <span className="text-gray-600 uppercase tracking-wider shrink-0">
+        <span className="text-muted-foreground uppercase tracking-wider shrink-0">
           {sourceLabel}:
         </span>
         <span
-          className={sourceDocument ? 'text-gray-300 font-mono truncate' : 'italic text-gray-600'}
+          className={sourceDocument ? 'text-muted-foreground font-mono truncate' : 'italic text-muted-foreground'}
           title={sourceDocument ?? sourceNotRecorded}
         >
           {sourceDocument ?? sourceNotRecorded}
         </span>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <span className="text-gray-600 uppercase tracking-wider">
+        <span className="text-muted-foreground uppercase tracking-wider">
           {lastAuditedLabel}:
         </span>
         {auditDate ? (
-          <span className="text-gray-300">
+          <span className="text-muted-foreground">
             {auditDate}
-            {reconciledBy ? <span className="text-gray-600"> · {reconciledBy}</span> : null}
+            {reconciledBy ? <span className="text-muted-foreground"> · {reconciledBy}</span> : null}
           </span>
         ) : (
-          <span className="italic text-gray-600">{notReconciledLabel}</span>
+          <span className="italic text-muted-foreground">{notReconciledLabel}</span>
         )}
       </div>
       {sanityBand && sanityBand !== 'no_band' && (
@@ -1063,19 +1070,19 @@ function renderRollupAggregate(
   }
   if (parsed.length === 0) return null;
   return (
-    <div className="space-y-1 bg-[#050814] rounded border border-gray-800 px-2 py-1.5">
+    <div className="space-y-1 bg-foreground/95 dark:bg-background rounded border border-border px-2 py-1.5">
       <table className="text-[10px] tabular-nums w-full">
         <tbody>
           {parsed.map((p) => (
             <tr key={p.code}>
-              <td className="text-gray-400 pr-2 font-mono">{p.code}</td>
+              <td className="text-muted-foreground pr-2 font-mono">{p.code}</td>
               <td
                 className="text-gray-200 text-right pr-2"
                 title={p.sum.toLocaleString("ru-RU")}
               >
                 {formatAggValue(p.sum, "money")}
               </td>
-              <td className="text-gray-600 text-right text-[9px] w-12">
+              <td className="text-muted-foreground text-right text-[9px] w-12">
                 ({p.matchedCount})
               </td>
             </tr>
@@ -1083,8 +1090,8 @@ function renderRollupAggregate(
         </tbody>
       </table>
       {childrenCount != null && (
-        <div className="text-gray-600 text-[9px] pt-1 border-t border-gray-800/40">
-          children_count: <span className="text-gray-400">{childrenCount}</span>
+        <div className="text-muted-foreground text-[9px] pt-1 border-t border-border/40">
+          children_count: <span className="text-muted-foreground">{childrenCount}</span>
         </div>
       )}
     </div>
@@ -1134,7 +1141,7 @@ function AggregateBlock({
   // Non-record fallback — show raw JSON for nested / non-flat payloads.
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
     return (
-      <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1">
+      <pre className="text-muted-foreground text-[10px] whitespace-pre-wrap break-words bg-foreground/95 dark:bg-background rounded border border-border px-1.5 py-1">
         {JSON.stringify(data, null, 2)}
       </pre>
     );
@@ -1150,13 +1157,13 @@ function AggregateBlock({
     const rollupView = renderRollupAggregate(data as Record<string, unknown>);
     if (rollupView) return rollupView;
     return (
-      <pre className="text-gray-400 text-[10px] whitespace-pre-wrap break-words bg-[#050814] rounded border border-gray-800 px-1.5 py-1">
+      <pre className="text-muted-foreground text-[10px] whitespace-pre-wrap break-words bg-foreground/95 dark:bg-background rounded border border-border px-1.5 py-1">
         {JSON.stringify(data, null, 2)}
       </pre>
     );
   }
   return (
-    <table className="text-[10px] tabular-nums w-full bg-[#050814] rounded border border-gray-800">
+    <table className="text-[10px] tabular-nums w-full bg-foreground/95 dark:bg-background rounded border border-border">
       <tbody>
         {entries.map(([k, v]) => {
           const hint = typeof v === "number" ? hintForKey(k) : "money";
@@ -1168,7 +1175,7 @@ function AggregateBlock({
                 : String(v);
           return (
             <tr key={k} className="border-b border-gray-900 last:border-b-0">
-              <td className="px-2 py-0.5 text-gray-400 font-mono">{k}</td>
+              <td className="px-2 py-0.5 text-muted-foreground font-mono">{k}</td>
               <td className="px-2 py-0.5 text-gray-200 text-right">{display}</td>
             </tr>
           );
@@ -1179,9 +1186,9 @@ function AggregateBlock({
 }
 
 function forecastColor(confidence: ForecastConfidence): string {
-  if (confidence === "high") return "text-[#00D4AA]";
-  if (confidence === "medium") return "text-[#FFB800]";
-  return "text-gray-400";
+  if (confidence === "high") return "text-emerald-600 dark:text-emerald-400";
+  if (confidence === "medium") return "text-amber-600 dark:text-amber-400";
+  return "text-muted-foreground";
 }
 
 /**
@@ -1299,12 +1306,12 @@ function ForecastSection(props: {
 
   return (
     <div
-      className="flex flex-col gap-1 rounded border border-gray-800/60 bg-[#0A0E27]/40 px-2 py-1.5"
+      className="flex flex-col gap-1 rounded border border-border/60 bg-[#0A0E27]/40 px-2 py-1.5"
       data-testid="indicator-forecast"
     >
       {/* Row 1 — always-visible badge (sub-13 v1 contract). */}
       <div className="flex items-center gap-2">
-        <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+        <span className="text-[9px] uppercase tracking-wider text-muted-foreground shrink-0">
           {t('indicatorDetail.forecastNextPeriod')}
         </span>
         <span
@@ -1323,14 +1330,14 @@ function ForecastSection(props: {
             re-render (different IV with different residuals). */}
         {showCi && (
           <span
-            className="text-[10px] font-mono tabular-nums text-gray-500"
+            className="text-[10px] font-mono tabular-nums text-muted-foreground"
             data-testid="forecast-ci"
             title={`${t('indicatorDetail.forecastCITitle')} (n=${forecast.contributingCount}, df=${ci.degreesOfFreedom})`}
           >
             ±{formatValue(ci.marginOfError)}
           </span>
         )}
-        <span className="text-[9px] text-gray-500 ml-auto">
+        <span className="text-[9px] text-muted-foreground ml-auto">
           {isFlat
             ? t('indicatorDetail.forecastNoChange')
             : (() => {
@@ -1372,8 +1379,8 @@ function ForecastSection(props: {
               data-testid={`forecast-lang-${lang}`}
               className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border transition-colors ${
                 language === lang
-                  ? "border-[#00D4AA] text-[#00D4AA] bg-[#00D4AA]/10"
-                  : "border-gray-800 text-gray-500 hover:border-gray-700 hover:text-gray-400"
+                  ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+                  : "border-border text-muted-foreground hover:border-input hover:text-foreground"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               {lang}
@@ -1384,7 +1391,7 @@ function ForecastSection(props: {
             onClick={runExplain}
             disabled={explain.kind === "loading"}
             data-testid="forecast-explain-button"
-            className="text-[10px] font-mono px-2 py-0.5 rounded border border-[#00D4AA]/40 bg-[#00D4AA]/5 text-[#00D4AA] hover:bg-[#00D4AA]/15 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+            className="text-[10px] font-mono px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/15 disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
           >
             {explain.kind === "loading"
               ? t('indicatorDetail.explaining')
@@ -1398,7 +1405,7 @@ function ForecastSection(props: {
       {/* Row 3 — narrative card (only after successful response). */}
       {explain.kind === "ok" && (
         <div
-          className="mt-1 border-t border-gray-800/40 pt-1.5 space-y-1.5"
+          className="mt-1 border-t border-border/40 pt-1.5 space-y-1.5"
           data-testid="forecast-narrative"
         >
           {/* Sub-23 — multi-step horizon strip (3 future steps).
@@ -1410,23 +1417,23 @@ function ForecastSection(props: {
               className="flex items-center gap-1.5 flex-wrap"
               data-testid="forecast-horizon"
             >
-              <span className="text-[9px] uppercase tracking-wider text-gray-500 shrink-0">
+              <span className="text-[9px] uppercase tracking-wider text-muted-foreground shrink-0">
                 {t('indicatorDetail.forecastHorizon')}
               </span>
               {explain.data.horizon.map((h) => (
                 <span
                   key={h.step}
-                  className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-800/60 bg-[#0A0E27]/60 text-gray-300"
+                  className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border/60 bg-[#0A0E27]/60 text-muted-foreground"
                   data-testid={`forecast-horizon-step-${h.step}`}
                 >
-                  <span className="text-gray-500">t+{h.step}</span>{" "}
+                  <span className="text-muted-foreground">t+{h.step}</span>{" "}
                   <span className="tabular-nums">
                     {h.predicted > 0 ? "+" : ""}
                     {formatValue(h.predicted)}
                   </span>
                 </span>
               ))}
-              <span className="text-[9px] text-gray-600 ml-auto">
+              <span className="text-[9px] text-muted-foreground ml-auto">
                 {t('indicatorDetail.extrapolationCaveat')}
               </span>
             </div>
@@ -1436,10 +1443,10 @@ function ForecastSection(props: {
           </p>
           {explain.data.driverHypotheses.length > 0 && (
             <div>
-              <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
                 {t('indicatorDetail.likelyDrivers')}
               </div>
-              <ul className="text-[10px] text-gray-300 space-y-0.5 list-disc pl-4">
+              <ul className="text-[10px] text-muted-foreground space-y-0.5 list-disc pl-4">
                 {explain.data.driverHypotheses.map((h, i) => (
                   <li key={i}>{h}</li>
                 ))}
@@ -1448,7 +1455,7 @@ function ForecastSection(props: {
           )}
           {explain.data.riskFactors.length > 0 && (
             <div>
-              <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
                 {t('indicatorDetail.riskFactors')}
               </div>
               <ul className="text-[10px] text-[#FFB800] space-y-0.5 list-disc pl-4">
@@ -1458,7 +1465,7 @@ function ForecastSection(props: {
               </ul>
             </div>
           )}
-          <div className="text-[9px] text-gray-500 mt-1 flex items-center gap-2">
+          <div className="text-[9px] text-muted-foreground mt-1 flex items-center gap-2">
             <span>
               {t('indicatorDetail.llmConfidence')}: {(explain.data.confidence * 100).toFixed(0)}%
             </span>
@@ -1480,7 +1487,7 @@ function ForecastSection(props: {
       {explain.kind === "error" && (
         <p
           role="alert"
-          className="text-[10px] text-[#FF4757] mt-1"
+          className="text-[10px] text-red-600 dark:text-red-400 mt-1"
           data-testid="forecast-explain-error"
         >
           {t('indicatorDetail.forecastExplainFailed')}: {explain.message}
@@ -1562,14 +1569,14 @@ function DrillDownSection({
   return (
     <section>
       <div className="flex items-center justify-between mb-0.5">
-        <div className="text-gray-500 uppercase tracking-wider text-[9px]">
+        <div className="text-muted-foreground uppercase tracking-wider text-[9px]">
           {t("indicatorDetail.drilldown.title")}
         </div>
         {state.kind === "collapsed" && (
           <button
             type="button"
             onClick={expand}
-            className="text-[10px] text-[#00D4AA] hover:text-[#00E5BB] uppercase tracking-wider"
+            className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:text-[#00E5BB] uppercase tracking-wider"
             data-testid="drilldown-expand"
           >
             {t("indicatorDetail.drilldown.show")}
@@ -1579,19 +1586,19 @@ function DrillDownSection({
           <button
             type="button"
             onClick={() => setState({ kind: "collapsed" })}
-            className="text-[10px] text-gray-500 hover:text-gray-300 uppercase tracking-wider"
+            className="text-[10px] text-muted-foreground hover:text-muted-foreground uppercase tracking-wider"
           >
             {t("indicatorDetail.drilldown.hide")}
           </button>
         )}
       </div>
       {state.kind === "loading" && (
-        <p className="text-gray-700 text-[11px]">
+        <p className="text-muted-foreground text-[11px]">
           {t("indicatorDetail.drilldown.loading")}
         </p>
       )}
       {state.kind === "error" && (
-        <p className="text-[#FF4757] text-[11px]" role="alert">
+        <p className="text-red-600 dark:text-red-400 text-[11px]" role="alert">
           {state.message}
         </p>
       )}
@@ -1619,7 +1626,7 @@ function DrillDownTable({
 
   if (data.lines.length === 0) {
     return (
-      <p className="text-gray-700 text-[11px]">
+      <p className="text-muted-foreground text-[11px]">
         {t("indicatorDetail.drilldown.empty")}
       </p>
     );
@@ -1666,21 +1673,21 @@ function DrillDownTable({
   return (
     <div className="space-y-1.5">
       {Object.keys(data.summary).length > 0 && (
-        <div className="flex items-center gap-3 text-[10px] text-gray-400 border-b border-gray-800/40 pb-1">
+        <div className="flex items-center gap-3 text-[10px] text-muted-foreground border-b border-border/40 pb-1">
           {Object.entries(data.summary).map(([type, info]) => (
             <span key={type}>
-              <span className="text-gray-600 uppercase">{type}</span>{" "}
-              <span className="text-gray-300 tabular-nums">
+              <span className="text-muted-foreground uppercase">{type}</span>{" "}
+              <span className="text-muted-foreground tabular-nums">
                 {formatThousands(info.total)}
               </span>{" "}
-              <span className="text-gray-700">({info.count})</span>
+              <span className="text-muted-foreground">({info.count})</span>
             </span>
           ))}
         </div>
       )}
       <table className="w-full text-[10px] tabular-nums">
         <thead>
-          <tr className="text-gray-600 uppercase text-[9px]">
+          <tr className="text-muted-foreground uppercase text-[9px]">
             <th className="text-left font-normal py-0.5 w-3"></th>
             <th className="text-left font-normal py-0.5">
               {t("indicatorDetail.drilldown.code")}
@@ -1699,22 +1706,22 @@ function DrillDownTable({
             return (
               <React.Fragment key={l.id}>
                 <tr
-                  className="border-t border-gray-800/30 hover:bg-gray-800/20 cursor-pointer"
+                  className="border-t border-border/30 hover:bg-muted/50/20 cursor-pointer"
                   onClick={() => toggle(l)}
                   data-testid={isExpanded ? "drilldown-row-expanded" : undefined}
                 >
-                  <td className="text-gray-500 py-0.5 pr-0.5 text-center w-3">
+                  <td className="text-muted-foreground py-0.5 pr-0.5 text-center w-3">
                     {isExpanded ? "▾" : "▸"}
                   </td>
                   <td
-                    className="text-gray-500 py-0.5 pr-1 max-w-[60px] truncate"
+                    className="text-muted-foreground py-0.5 pr-1 max-w-[60px] truncate"
                     // Phase 3.3 — hover reveals full code when truncated.
                     title={l.accountCode ?? undefined}
                   >
                     {l.accountCode ?? "—"}
                   </td>
                   <td
-                    className="text-gray-300 py-0.5 pr-1 truncate"
+                    className="text-muted-foreground py-0.5 pr-1 truncate"
                     // Phase 3.3 — hover reveals qualified identifier so users
                     // can see "<code> — <name>" without expanding the row.
                     title={
@@ -1735,18 +1742,18 @@ function DrillDownTable({
                   </td>
                 </tr>
                 {isExpanded && (
-                  <tr className="border-t border-gray-800/20 bg-gray-800/10">
+                  <tr className="border-t border-border/20 bg-muted/50/10">
                     <td colSpan={4} className="py-1.5 px-2">
                       {seriesState.kind === "loading" &&
                         seriesState.id === l.id && (
-                          <span className="text-gray-700 text-[10px]">
+                          <span className="text-muted-foreground text-[10px]">
                             {t("indicatorDetail.drilldown.loading")}
                           </span>
                         )}
                       {seriesState.kind === "error" &&
                         seriesState.id === l.id && (
                           <span
-                            className="text-[#FF4757] text-[10px]"
+                            className="text-red-600 dark:text-red-400 text-[10px]"
                             role="alert"
                           >
                             {seriesState.message}
@@ -1787,7 +1794,7 @@ function MonthlyBars({
   const maxAbs = Math.max(1, ...amounts.map((a) => Math.abs(a)));
   return (
     <div className="space-y-1">
-      <div className="text-gray-600 uppercase tracking-wider text-[8px]">
+      <div className="text-muted-foreground uppercase tracking-wider text-[8px]">
         {t("indicatorDetail.drilldown.monthlySeries")}
       </div>
       <div className="flex items-end gap-1 h-10">
@@ -1802,18 +1809,18 @@ function MonthlyBars({
             >
               <div className="w-full h-8 flex items-end justify-center">
                 <div
-                  className={`w-full ${isPositive ? "bg-[#00D4AA]/60" : "bg-[#FF4757]/60"} rounded-sm`}
+                  className={`w-full ${isPositive ? "bg-emerald-500/60" : "bg-red-500/60"} rounded-sm`}
                   style={{ height: `${Math.max(2, heightPct)}%` }}
                 />
               </div>
-              <span className="text-gray-600 text-[8px]">
+              <span className="text-muted-foreground text-[8px]">
                 M{m.monthIndex + 1}
               </span>
             </div>
           );
         })}
       </div>
-      <div className="flex items-center gap-2 text-[9px] text-gray-500 pt-1 border-t border-gray-800/40">
+      <div className="flex items-center gap-2 text-[9px] text-muted-foreground pt-1 border-t border-border/40">
         {data.months.map((m) => (
           <span key={m.monthIndex} className="flex-1 text-center">
             {formatThousands(m.amountBase)}

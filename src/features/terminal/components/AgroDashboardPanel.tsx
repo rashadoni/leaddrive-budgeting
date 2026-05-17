@@ -177,7 +177,7 @@ export function AgroDashboardPanel() {
 
   if (!activeCompanyCode) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
+      <div className="p-6 text-center text-sm text-muted-foreground">
         Select a company in the company tree to view agro dashboard.
       </div>
     )
@@ -185,7 +185,7 @@ export function AgroDashboardPanel() {
 
   if (activeIndustry && !AGRO_INDUSTRIES.has(activeIndustry)) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
+      <div className="p-6 text-center text-sm text-muted-foreground">
         Agro dashboard applies to <strong>agro_crops</strong> and <strong>food_processing</strong> companies.
         <br />
         Active company {activeCompanyCode} is{" "}
@@ -215,34 +215,34 @@ export function AgroDashboardPanel() {
         <h2 className="text-xl font-bold text-white">{activeCompany?.name ?? activeCompanyCode}</h2>
         <Badge
           variant="outline"
-          className="text-[10px] border-[#00D4AA]/40 text-[#00D4AA] bg-[#00D4AA]/10"
+          className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
         >
           {activeIndustry ?? "—"}
         </Badge>
         {cropType && (
-          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
+          <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
             <Sprout className="inline h-3 w-3 mr-1" /> {cropType}
           </Badge>
         )}
         {region && (
-          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
+          <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
             <MapPin className="inline h-3 w-3 mr-1" /> {region}
           </Badge>
         )}
         {hectares != null && (
-          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
+          <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
             {hectares.toLocaleString("en-US")} ha planted
           </Badge>
         )}
         {yieldTarget != null && (
-          <Badge variant="outline" className="text-[10px] text-gray-300 border-gray-700">
+          <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
             target {yieldTarget} t/ha
           </Badge>
         )}
       </div>
 
       {factsLoading && (
-        <div className="text-sm text-gray-400 flex items-center gap-2">
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
           <Loader2 className="h-3 w-3 animate-spin" /> Loading agronomy data…
         </div>
       )}
@@ -251,17 +251,17 @@ export function AgroDashboardPanel() {
           Bloomberg-terminal style cyan border accent so it reads as
           "this is what you need to do next" rather than decorative noise. */}
       {!factsLoading && !hasAnyData && (
-        <div className="rounded-md border border-[#00D4AA]/30 bg-[#00D4AA]/[0.06] px-4 py-3">
-          <div className="text-[11px] uppercase tracking-wider text-[#00D4AA] font-semibold mb-1">
+        <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
             No agronomy data yet
           </div>
           <div className="text-sm text-gray-200">
             Enter your first observation via{" "}
-            <code className="text-[11px] bg-black/40 text-[#00D4AA] px-1.5 py-0.5 rounded font-mono">
+            <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
               KPI GO
             </code>{" "}
             or bulk-import an Excel sheet at{" "}
-            <code className="text-[11px] bg-black/40 text-[#00D4AA] px-1.5 py-0.5 rounded font-mono">
+            <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
               /budgeting/admin/data-entry
             </code>
             . The cells below light up green / amber / red as soon as values land.
@@ -289,18 +289,18 @@ export function AgroDashboardPanel() {
               key={m}
               className={`rounded-md border bg-[#0F1535] px-3 py-3 transition-colors ${
                 hasValue
-                  ? "border-gray-700/80"
-                  : "border-gray-800/60 border-dashed"
+                  ? "border-input/80"
+                  : "border-border/60 border-dashed"
               }`}
             >
-              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-400">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                 <Icon className="h-3 w-3" />
                 {label.en}
               </div>
-              <div className={`mt-2 text-2xl font-bold tabular-nums ${hasValue ? "text-white" : "text-gray-600"}`}>
+              <div className={`mt-2 text-2xl font-bold tabular-nums ${hasValue ? "text-white" : "text-muted-foreground"}`}>
                 {fmtNum(s.latest, m === "harvest_tons" ? 0 : 1)}
                 {s.unit && (
-                  <span className="text-xs font-normal text-gray-500 ml-1">{s.unit}</span>
+                  <span className="text-xs font-normal text-muted-foreground ml-1">{s.unit}</span>
                 )}
               </div>
               {hasValue ? (
@@ -308,12 +308,12 @@ export function AgroDashboardPanel() {
                   <div className="mt-2">
                     <Sparkline data={s.values} status={status} compact={false} />
                   </div>
-                  <div className="mt-1.5 text-[10px] text-gray-500">
+                  <div className="mt-1.5 text-[10px] text-muted-foreground">
                     {obsCount} observation{obsCount === 1 ? "" : "s"}
                   </div>
                 </>
               ) : (
-                <div className="mt-2 text-[10px] leading-snug text-gray-500">
+                <div className="mt-2 text-[10px] leading-snug text-muted-foreground">
                   {label.hint}
                 </div>
               )}
@@ -323,12 +323,12 @@ export function AgroDashboardPanel() {
       </div>
 
       {/* Recent agronomy entries */}
-      <div className="rounded-md border border-gray-800/60 bg-[#0F1535] px-3 py-3">
-        <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
+      <div className="rounded-md border border-border/60 bg-[#0F1535] px-3 py-3">
+        <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
           Recent agronomy entries
         </div>
         {!hasAnyData ? (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             Empty — first KPI entry will appear here as a row with date, metric, value, unit.
           </div>
         ) : (
@@ -342,12 +342,12 @@ export function AgroDashboardPanel() {
                   key={`${f.metric}-${f.date}-${i}`}
                   className="flex items-center gap-3 py-1.5 text-xs"
                 >
-                  <span className="text-gray-500 w-20 shrink-0 tabular-nums">
+                  <span className="text-muted-foreground w-20 shrink-0 tabular-nums">
                     {new Date(f.date).toISOString().slice(0, 10)}
                   </span>
-                  <span className="flex-1 font-mono text-[10px] text-gray-300">{f.metric}</span>
+                  <span className="flex-1 font-mono text-[10px] text-muted-foreground">{f.metric}</span>
                   <span className="tabular-nums w-20 text-right text-white">{fmtNum(f.value, 2)}</span>
-                  {f.unit && <span className="w-16 text-[10px] text-gray-500">{f.unit}</span>}
+                  {f.unit && <span className="w-16 text-[10px] text-muted-foreground">{f.unit}</span>}
                 </div>
               ))}
           </div>

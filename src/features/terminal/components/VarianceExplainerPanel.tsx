@@ -194,8 +194,8 @@ export function VarianceExplainerPanel() {
           <div className="flex-1 min-h-0">
             <CompanySnapshot companyCode={activeCompanyCode} />
           </div>
-          <div className="text-[10px] text-gray-700 leading-snug pt-1 border-t border-gray-800/40 shrink-0">
-            <span className="text-gray-600">
+          <div className="text-[10px] text-muted-foreground leading-snug pt-1 border-t border-border/40 shrink-0">
+            <span className="text-muted-foreground">
               {t("varianceExplainer.shortHint")}{" "}
               <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>.
             </span>
@@ -213,13 +213,13 @@ export function VarianceExplainerPanel() {
     return (
       <div
         data-testid="variance-explainer-empty"
-        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4"
+        className="text-muted-foreground font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4"
       >
         <div>
           {t("varianceExplainer.pickCellPrefix")} <span className="text-[#FFB800]">{t("varianceExplainer.explainArrow")}</span>
           <br />
           <br />
-          <span className="text-gray-600">
+          <span className="text-muted-foreground">
             {t("varianceExplainer.fullHint")}
           </span>
         </div>
@@ -232,7 +232,7 @@ export function VarianceExplainerPanel() {
     return (
       <div
         data-testid="variance-explainer-no-data"
-        className="text-gray-700 font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
+        className="text-muted-foreground font-mono text-xs leading-relaxed h-full w-full flex flex-col items-center justify-center text-center px-4 gap-3"
       >
         <div>
           {t("varianceExplainer.clickPrefix")}{" "}
@@ -242,10 +242,10 @@ export function VarianceExplainerPanel() {
           {t("varianceExplainer.clickSuffix")}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase tracking-wider text-gray-500">
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {t("varianceExplainer.runFor")}
           </span>
-          <div role="radiogroup" className="flex border border-[#00D4AA]/50 rounded overflow-hidden text-[10px]">
+          <div role="radiogroup" className="flex border border-emerald-500/50 rounded overflow-hidden text-[10px]">
             {LANGUAGE_OPTIONS.map((opt) => {
               const active = opt.value === language;
               return (
@@ -258,8 +258,8 @@ export function VarianceExplainerPanel() {
                   }}
                   className={`px-2 py-1 uppercase tracking-wider ${
                     active
-                      ? "bg-[#00D4AA] text-[#050814] hover:bg-[#00E5BB]"
-                      : "bg-transparent text-[#00D4AA] hover:bg-[#00D4AA]/10"
+                      ? "bg-emerald-600 text-white hover:bg-emerald-600"
+                      : "bg-transparent text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
                   }`}
                 >
                   {opt.label}
@@ -289,10 +289,10 @@ export function VarianceExplainerPanel() {
       : statusShape("red");
 
   return (
-    <div className="font-mono text-[11px] text-gray-300 w-full h-full flex flex-col gap-2 overflow-auto">
-      <header className="shrink-0 flex items-center justify-between gap-2 pb-1.5 border-b border-gray-800/60">
+    <div className="font-mono text-[11px] text-muted-foreground w-full h-full flex flex-col gap-2 overflow-auto">
+      <header className="shrink-0 flex items-center justify-between gap-2 pb-1.5 border-b border-border/60">
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 uppercase tracking-wider text-[9px]">
+          <span className="text-muted-foreground uppercase tracking-wider text-[9px]">
             {t("varianceExplainer.title")}
           </span>
           {confidencePct !== null && (
@@ -309,7 +309,7 @@ export function VarianceExplainerPanel() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <div role="radiogroup" className="flex border border-gray-800 rounded overflow-hidden text-[10px]">
+          <div role="radiogroup" className="flex border border-border rounded overflow-hidden text-[10px]">
             {LANGUAGE_OPTIONS.map((opt) => {
               const active = opt.value === language;
               return (
@@ -321,8 +321,8 @@ export function VarianceExplainerPanel() {
                   onClick={() => setLanguage(opt.value)}
                   className={`px-1.5 py-0.5 ${
                     active
-                      ? "bg-[#00D4AA]/20 text-[#00D4AA]"
-                      : "text-gray-500 hover:bg-gray-800/40"
+                      ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground hover:bg-muted/50/40"
                   }`}
                 >
                   {opt.label}
@@ -334,7 +334,7 @@ export function VarianceExplainerPanel() {
             type="button"
             onClick={() => ivId && run(ivId, language, { force: true })}
             disabled={loading || !ivId}
-            className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-muted/50 text-muted-foreground hover:bg-gray-700 disabled:opacity-50"
             title={t("varianceExplainer.reRunTitle")}
           >
             {loading ? "…" : t("varianceExplainer.reRun")}
@@ -343,12 +343,12 @@ export function VarianceExplainerPanel() {
       </header>
 
       {loading && !data && (
-        <span className="text-gray-700 text-[11px]">{t("varianceExplainer.askingModel")}</span>
+        <span className="text-muted-foreground text-[11px]">{t("varianceExplainer.askingModel")}</span>
       )}
 
       {error && (
-        <div className="rounded border border-[#FF4757]/40 bg-[#FF4757]/10 px-2 py-1.5">
-          <div className="text-[#FF4757] text-[10px] uppercase tracking-wider mb-0.5">
+        <div className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1.5">
+          <div className="text-red-600 dark:text-red-400 text-[10px] uppercase tracking-wider mb-0.5">
             {errorCode === "STATUS_NOT_EXPLAINABLE"
               ? t("varianceExplainer.greenNoVariance.title")
               : t("varianceExplainer.error")}
@@ -364,7 +364,7 @@ export function VarianceExplainerPanel() {
       {data && (
         <>
           <section>
-            <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+            <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
               {t("varianceExplainer.narrative")}
             </div>
             <p className="text-gray-200 text-[12px] leading-snug">
@@ -373,7 +373,7 @@ export function VarianceExplainerPanel() {
           </section>
 
           <section>
-            <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+            <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
               {t("varianceExplainer.recommendations")}
             </div>
             <ol className="list-none space-y-1.5">
@@ -382,7 +382,7 @@ export function VarianceExplainerPanel() {
                   key={i}
                   className="flex gap-2 text-[11px] leading-snug"
                 >
-                  <span className="text-[#00D4AA] tabular-nums shrink-0">
+                  <span className="text-emerald-600 dark:text-emerald-400 tabular-nums shrink-0">
                     {i + 1}.
                   </span>
                   <span className="text-gray-200">{r}</span>
@@ -393,7 +393,7 @@ export function VarianceExplainerPanel() {
 
           {data.topDrivers.length > 0 && (
             <section>
-              <div className="text-gray-500 uppercase tracking-wider text-[9px] mb-0.5">
+              <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
                 {t("varianceExplainer.topDrivers")}
               </div>
               <div className="flex flex-wrap gap-1">
@@ -410,7 +410,7 @@ export function VarianceExplainerPanel() {
           )}
 
           {data.usage && (
-            <p className="text-gray-700 text-[9px] mt-auto pt-1">
+            <p className="text-muted-foreground text-[9px] mt-auto pt-1">
               {t("varianceExplainer.tokens")}: {data.usage.inputTokens} {t("varianceExplainer.tokensIn")} / {data.usage.outputTokens} {t("varianceExplainer.tokensOut")}
             </p>
           )}

@@ -194,8 +194,8 @@ export function ScenarioPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
@@ -211,7 +211,7 @@ export function ScenarioPanel() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("scenario.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
           </button>
@@ -219,7 +219,7 @@ export function ScenarioPanel() {
 
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
           <aside aria-label={t("scenario.listAriaLabel")}>
-            <h3 className="text-xs font-mono uppercase tracking-wider text-gray-500 mb-2">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">
               {t("scenario.available")} ({scenarios?.length ?? 0})
             </h3>
             {scenarios === null && !fetchError ? (
@@ -256,7 +256,7 @@ export function ScenarioPanel() {
                         className={`w-full text-left px-2 py-1.5 rounded border text-xs font-mono ${
                           isSelected
                             ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
-                            : "border-gray-700 hover:bg-gray-800 text-gray-300"
+                            : "border-input hover:bg-muted/50 text-muted-foreground"
                         }`}
                         data-testid={`scenario-row-${s.code}`}
                       >
@@ -273,7 +273,7 @@ export function ScenarioPanel() {
             {fetchError && (
               <p
                 role="alert"
-                className="text-xs text-[#FF4757] mt-2"
+                className="text-xs text-red-600 dark:text-red-400 mt-2"
                 data-testid="scenarios-fetch-error"
               >
                 {fetchError}
@@ -294,27 +294,27 @@ export function ScenarioPanel() {
                   <h3 className="text-base font-semibold">
                     {resolveScenarioLabel(selectedScenario, locale)}
                   </h3>
-                  <p className="text-xs text-gray-500 font-mono">
+                  <p className="text-xs text-muted-foreground font-mono">
                     {selectedScenario.code}
                   </p>
                 </div>
                 {selectedScenario.description && (
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm text-muted-foreground">
                     {selectedScenario.description}
                   </p>
                 )}
                 <div>
-                  <h4 className="text-xs uppercase tracking-wider text-gray-500 mb-1">
+                  <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
                     {t("scenario.overrides")}
                   </h4>
                   <pre
-                    className="text-xs font-mono bg-black/30 border border-gray-800 rounded p-3 overflow-x-auto"
+                    className="text-xs font-mono bg-black/30 border border-border rounded p-3 overflow-x-auto"
                     data-testid="scenario-overrides"
                   >
                     {formattedOverrides}
                   </pre>
                 </div>
-                <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+                <div className="flex items-center gap-3 pt-2 border-t border-border">
                   <button
                     type="button"
                     onClick={handleApply}
@@ -324,13 +324,13 @@ export function ScenarioPanel() {
                   >
                     {applyState.kind === "applying" ? t("scenario.applying") : t("scenario.apply")}
                   </button>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-muted-foreground">
                     {t("scenario.period")}: <span className="font-mono">{period}</span>
                   </span>
                 </div>
                 {applyState.kind === "queued" && (
                   <p
-                    className="text-sm text-[#00D4AA]"
+                    className="text-sm text-emerald-600 dark:text-emerald-400"
                     data-testid="scenario-applied"
                   >
                     ✓ {applyState.scenarioCode}: {applyState.message}.
@@ -341,7 +341,7 @@ export function ScenarioPanel() {
                 {applyState.kind === "error" && (
                   <p
                     role="alert"
-                    className="text-sm text-[#FF4757]"
+                    className="text-sm text-red-600 dark:text-red-400"
                     data-testid="scenario-apply-error"
                   >
                     {t("scenario.applyFailed")}: {applyState.message}

@@ -119,13 +119,13 @@ export function CommodityTickerPanel() {
           </div>
 
           {sugarLoading && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-3 w-3 animate-spin" /> Loading…
             </div>
           )}
 
           {!sugarLoading && sugarSeries.values.length === 0 && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-muted-foreground">
               No sugar data yet. Adapter runs daily via the intel scheduler;
               first row lands after the next ingest.
             </div>
@@ -134,16 +134,16 @@ export function CommodityTickerPanel() {
           {sugarSeries.values.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
               <div className="space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-gray-400">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Latest
                 </div>
                 <div className="text-2xl font-bold tabular-nums">
                   ${fmtNum(sugarSeries.latest, 1)}
                 </div>
-                <div className="text-[10px] text-gray-500">USD/tonne</div>
+                <div className="text-[10px] text-muted-foreground">USD/tonne</div>
               </div>
               <div className="space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-gray-400">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   12M mean
                 </div>
                 <div className="text-lg font-semibold tabular-nums">
@@ -168,7 +168,7 @@ export function CommodityTickerPanel() {
                 )}
               </div>
               <div className="space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-gray-400">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Trailing 24M
                 </div>
                 <Sparkline
@@ -182,7 +182,7 @@ export function CommodityTickerPanel() {
                   }
                   compact={false}
                 />
-                <div className="text-[10px] text-gray-500">
+                <div className="text-[10px] text-muted-foreground">
                   {sugarSeries.values.length} obs
                 </div>
               </div>
@@ -207,18 +207,18 @@ export function CommodityTickerPanel() {
               return (
                 <div
                   key={region}
-                  className="rounded border border-gray-800/60 p-2 space-y-1"
+                  className="rounded border border-border/60 p-2 space-y-1"
                 >
                   <div className="text-[11px] font-semibold uppercase tracking-wider">
                     {region.charAt(0) + region.slice(1).toLowerCase()}
                   </div>
                   {loading && (
-                    <div className="text-[10px] text-gray-500">
+                    <div className="text-[10px] text-muted-foreground">
                       <Loader2 className="inline h-2.5 w-2.5 animate-spin" /> Loading
                     </div>
                   )}
                   {!loading && !rainfallRow && !tempRow && (
-                    <div className="text-[10px] text-gray-500">No data yet.</div>
+                    <div className="text-[10px] text-muted-foreground">No data yet.</div>
                   )}
                   {rainfallRow && (
                     <div className="flex items-center gap-1.5 text-xs">
@@ -226,7 +226,7 @@ export function CommodityTickerPanel() {
                       <span className="tabular-nums font-semibold">
                         {fmtNum(rainfallRow.value, 0)}
                       </span>
-                      <span className="text-[10px] text-gray-500">
+                      <span className="text-[10px] text-muted-foreground">
                         mm / 90d
                       </span>
                     </div>
@@ -237,7 +237,7 @@ export function CommodityTickerPanel() {
                       <span className="tabular-nums font-semibold">
                         {fmtNum(tempRow.value, 1)}
                       </span>
-                      <span className="text-[10px] text-gray-500">
+                      <span className="text-[10px] text-muted-foreground">
                         °C / 30d
                       </span>
                     </div>
@@ -246,7 +246,7 @@ export function CommodityTickerPanel() {
               )
             })}
           </div>
-          <div className="text-[10px] text-gray-500">
+          <div className="text-[10px] text-muted-foreground">
             Source: Open-Meteo archive · refreshed daily by the intel scheduler.
           </div>
         </CardContent>

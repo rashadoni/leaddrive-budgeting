@@ -75,8 +75,8 @@ const SEVERITY_ORDER: Record<"red" | "amber", number> = {
 };
 
 const SEVERITY_TONE: Record<"red" | "amber", string> = {
-  red: "text-[#FF4757] border-[#FF4757]/40 bg-[#FF4757]/10",
-  amber: "text-[#FFB020] border-[#FFB020]/40 bg-[#FFB020]/10",
+  red: "text-red-600 dark:text-red-400 border-red-500/40 bg-red-500/10",
+  amber: "text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10",
 };
 
 /** Sub-31 — alertMatches → IndicatorStatus mapping for shape glyph
@@ -92,9 +92,9 @@ const ALERT_SEVERITY_STATUS: Record<
 };
 
 const ALERT_SEVERITY_TONE: Record<AlertSeverity, string> = {
-  critical: "text-[#FF4757] border-[#FF4757]/40 bg-[#FF4757]/10",
-  warning: "text-[#FFB020] border-[#FFB020]/40 bg-[#FFB020]/10",
-  info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
+  critical: "text-red-600 dark:text-red-400 border-red-500/40 bg-red-500/10",
+  warning: "text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10",
+  info: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
 };
 
 /** Round-26 closure — hoisted from per-render set construction.
@@ -222,12 +222,12 @@ export function ActionCenterPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <ListChecks
               size={16}
-              className="text-[#FFB020]"
+              className="text-amber-600 dark:text-amber-400"
               aria-hidden="true"
             />
             <div>
@@ -243,7 +243,7 @@ export function ActionCenterPanel() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("actionCenter.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
           </button>
@@ -261,10 +261,10 @@ export function ActionCenterPanel() {
               aria-label={t("actionCenter.alertsSectionAriaLabel")}
               data-testid="action-center-alerts-section"
             >
-              <h3 className="text-xs font-mono uppercase tracking-wider mb-2 text-[#FFB020] flex items-center gap-1.5">
+              <h3 className="text-xs font-mono uppercase tracking-wider mb-2 text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
                 <AlertTriangle
                   size={12}
-                  className="text-[#FFB020]"
+                  className="text-amber-600 dark:text-amber-400"
                   aria-hidden="true"
                 />
                 {t("actionCenter.alertsSectionTitle", {
@@ -344,7 +344,7 @@ export function ActionCenterPanel() {
                                           })
                                         : undefined
                                     }
-                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
                                     data-testid={`action-center-alert-chip-${id}`}
                                   >
                                     {code ?? id.slice(0, 8) + "…"}
@@ -370,7 +370,7 @@ export function ActionCenterPanel() {
             </p>
           ) : items.length === 0 ? (
             <p
-              className="text-sm text-[#00D4AA]"
+              className="text-sm text-emerald-600 dark:text-emerald-400"
               data-testid="action-center-empty"
             >
               {t("actionCenter.noWorkItems")}
@@ -418,7 +418,7 @@ export function ActionCenterPanel() {
                             company: it.companyCode,
                             indicator: it.indicatorCode,
                           })}
-                          className={`w-full text-left rounded border px-3 py-2 transition-colors hover:bg-gray-800/40 ${SEVERITY_TONE[sev]}`}
+                          className={`w-full text-left rounded border px-3 py-2 transition-colors hover:bg-muted/50/40 ${SEVERITY_TONE[sev]}`}
                         >
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="font-mono text-[11px] font-semibold">

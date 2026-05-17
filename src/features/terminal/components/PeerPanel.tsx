@@ -124,20 +124,20 @@ export function PeerPanel() {
       data-testid="peer-panel"
     >
       <div
-        className="relative bg-[#0A0E27] border border-gray-700 rounded-lg shadow-2xl w-[1100px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col"
+        className="relative bg-[#0A0E27] border border-input rounded-lg shadow-2xl w-[1100px] max-w-[95vw] max-h-[85vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-start justify-between px-5 py-3 border-b border-gray-800">
+        <header className="flex items-start justify-between px-5 py-3 border-b border-border">
           <div>
             <h2 className="text-sm font-mono font-semibold text-cyan-300 uppercase tracking-wider">
               {t("peer.title", { count: codes.length })}
             </h2>
-            <p className="text-[10px] text-gray-500 mt-0.5">{t("peer.subtitle")}</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{t("peer.subtitle")}</p>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="text-gray-500 hover:text-gray-200 transition-colors text-xl leading-none px-1"
+            className="text-muted-foreground hover:text-gray-200 transition-colors text-xl leading-none px-1"
             aria-label={t("peer.close")}
           >
             ×
@@ -145,7 +145,7 @@ export function PeerPanel() {
         </header>
         <div className="flex-1 overflow-auto p-3">
           {!tableData ? (
-            <p className="text-[11px] text-gray-500 text-center py-10">{t("peer.loading")}</p>
+            <p className="text-[11px] text-muted-foreground text-center py-10">{t("peer.loading")}</p>
           ) : tableData.selectedCos.length < codes.length ? (
             <p className="text-[11px] text-amber-400 text-center py-2">
               {t("peer.someNotFound", { found: tableData.selectedCos.length, total: codes.length })}
@@ -153,9 +153,9 @@ export function PeerPanel() {
           ) : null}
           {tableData && tableData.rows.length > 0 && (
             <table className="w-full text-[10px] font-mono tabular-nums">
-              <thead className="sticky top-0 bg-[#0A0E27] border-b border-gray-800">
+              <thead className="sticky top-0 bg-[#0A0E27] border-b border-border">
                 <tr>
-                  <th className="text-left px-2 py-1.5 text-gray-500 uppercase">{t("peer.colIndicator")}</th>
+                  <th className="text-left px-2 py-1.5 text-muted-foreground uppercase">{t("peer.colIndicator")}</th>
                   {tableData.selectedCos.map((co) => (
                     <th key={co.id} className="text-right px-2 py-1.5 text-cyan-300">{co.code}</th>
                   ))}
@@ -167,14 +167,14 @@ export function PeerPanel() {
                   return (
                     <tr key={row.ind.id} className="border-b border-gray-900 hover:bg-cyan-500/5">
                       <td className="px-2 py-1 text-gray-200">
-                        <span className="text-gray-600 mr-1">{dir}</span>{row.ind.code}
-                        <span className="text-gray-600 ml-2 text-[9px]">
+                        <span className="text-muted-foreground mr-1">{dir}</span>{row.ind.code}
+                        <span className="text-muted-foreground ml-2 text-[9px]">
                           {resolveIndicatorLabel(row.ind, locale).slice(0, 30)}
                         </span>
                       </td>
                       {row.cells.map((cell, i) => {
                         if (!cell || !Number.isFinite(cell.value)) {
-                          return <td key={i} className="px-2 py-1 text-right text-gray-700">—</td>;
+                          return <td key={i} className="px-2 py-1 text-right text-muted-foreground/50">—</td>;
                         }
                         const isBest = i === row.bestIdx;
                         const isWorst = i === row.worstIdx;

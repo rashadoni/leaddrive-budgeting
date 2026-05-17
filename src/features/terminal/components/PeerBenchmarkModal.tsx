@@ -214,7 +214,7 @@ function BenchmarkBody({
           <div className="text-xs text-muted-foreground uppercase tracking-wider">
             {t("benchmark.you")}
           </div>
-          <div className="text-2xl font-semibold tabular-nums text-[#00D4AA]">
+          <div className="text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
             {fmt(ownLast, unit)}
           </div>
         </div>
@@ -222,7 +222,7 @@ function BenchmarkBody({
           <div className="text-xs text-muted-foreground uppercase tracking-wider">
             {t("benchmark.median")}
           </div>
-          <div className="text-lg tabular-nums text-[#FFB020]">
+          <div className="text-lg tabular-nums text-amber-600 dark:text-amber-400">
             {fmt(medianLast, unit)}
           </div>
         </div>

@@ -48,9 +48,9 @@ const SEVERITY_KEY: Record<AlertSeverity, string> = {
 };
 
 const SEVERITY_TONE: Record<AlertSeverity, string> = {
-  critical: "text-[#FF4757] border-[#FF4757]/40 bg-[#FF4757]/10",
+  critical: "text-red-600 dark:text-red-400 border-red-500/40 bg-red-500/10",
   warning: "text-[#FFB800] border-[#FFB800]/40 bg-[#FFB800]/10",
-  info: "text-[#00D4AA] border-[#00D4AA]/40 bg-[#00D4AA]/10",
+  info: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
 };
 
 /** Tier-3 sub-29 M7 sweep — color-blind safe redundant signal for
@@ -126,8 +126,8 @@ export function AlertsPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
@@ -143,7 +143,7 @@ export function AlertsPanel() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("alertsPanel.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
           </button>
@@ -155,7 +155,7 @@ export function AlertsPanel() {
               {t("alertsPanel.matrixLoading")}
             </p>
           ) : matches.length === 0 ? (
-            <p className="text-sm text-[#00D4AA]" data-testid="alerts-empty">
+            <p className="text-sm text-emerald-600 dark:text-emerald-400" data-testid="alerts-empty">
               {t("alertsPanel.noAlerts")}
             </p>
           ) : (
@@ -240,7 +240,7 @@ export function AlertsPanel() {
                                 that flash for ~50-200ms on first open. */}
                             {!companiesFetched && !companyFetchError ? (
                               <span
-                                className="text-[10px] text-gray-500 italic"
+                                className="text-[10px] text-muted-foreground italic"
                                 data-testid="alerts-codes-loading"
                               >
                                 {t("alertsPanel.loadingCodes")}
@@ -259,7 +259,7 @@ export function AlertsPanel() {
                                       }
                                     }}
                                     disabled={!code}
-                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="font-mono text-[10px] px-1.5 py-0.5 rounded border border-gray-600 hover:bg-muted/50 disabled:opacity-50 disabled:cursor-not-allowed"
                                     title={
                                       code
                                         ? t("alertsPanel.jumpToCompany", { code })
@@ -284,7 +284,7 @@ export function AlertsPanel() {
           {companyFetchError && (
             <p
               role="alert"
-              className="text-xs text-[#FF4757]"
+              className="text-xs text-red-600 dark:text-red-400"
               data-testid="alerts-fetch-error"
             >
               {t("alertsPanel.couldNotLoadCodes", { error: companyFetchError })}

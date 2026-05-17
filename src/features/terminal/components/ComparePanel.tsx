@@ -125,14 +125,14 @@ export function ComparePanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">
               {t("compare.headerTitle")}{" "}
-              <span className="font-mono text-[#FFB020]">{pair.lhs}</span>{" "}
+              <span className="font-mono text-amber-600 dark:text-amber-400">{pair.lhs}</span>{" "}
               {t("compare.headerVs")}{" "}
-              <span className="font-mono text-[#00D4AA]">{pair.rhs}</span>
+              <span className="font-mono text-emerald-600 dark:text-emerald-400">{pair.rhs}</span>
             </h2>
             <p className="text-xs text-muted-foreground">
               {t("compare.subtitle")}
@@ -142,7 +142,7 @@ export function ComparePanel() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("compare.closeAriaLabel")}
-            className="rounded border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-3 py-1 text-sm hover:bg-muted/50"
           >
             {t("compare.close")}
           </button>
@@ -152,7 +152,7 @@ export function ComparePanel() {
             <div className="text-sm text-muted-foreground">{t("compare.loadingMatrix")}</div>
           )}
           {error && (
-            <div className="text-sm text-[#FF4757]" role="alert">
+            <div className="text-sm text-red-600 dark:text-red-400" role="alert">
               {t("compare.error")}: {error}
             </div>
           )}
@@ -175,7 +175,7 @@ function CompareTable({
   const rhsCo = data.companies.find((c) => c.code === pair.rhs);
   if (!lhsCo || !rhsCo) {
     return (
-      <div className="text-sm text-[#FF4757]" role="alert">
+      <div className="text-sm text-red-600 dark:text-red-400" role="alert">
         Could not resolve company codes:{" "}
         {!lhsCo && <code>{pair.lhs}</code>}
         {!lhsCo && !rhsCo && " and "}
@@ -209,7 +209,7 @@ function CompareTable({
   return (
     <table className="w-full text-sm font-mono border-collapse">
       <thead>
-        <tr className="border-b border-gray-800/60 text-[10px] uppercase tracking-wider text-gray-500">
+        <tr className="border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground">
           <th className="text-left px-2 py-2">{t("compare.indicatorColumn")}</th>
           <th className="text-right px-2 py-2 w-32">{lhsCo.code}</th>
           <th className="text-right px-2 py-2 w-32">{rhsCo.code}</th>
@@ -261,7 +261,7 @@ function CompareRow({
         <div className="font-semibold text-gray-200">{indicator.code}</div>
         <div className="text-[10px] text-muted-foreground">
           {resolveIndicatorLabel(indicator, locale)}
-          <span className="ml-1 text-gray-700">· {indicator.unit}</span>
+          <span className="ml-1 text-muted-foreground">· {indicator.unit}</span>
         </div>
       </td>
       <td

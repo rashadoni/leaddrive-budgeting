@@ -277,14 +277,14 @@ export function ImportWizardMulti() {
         >
           {/* Section 1 — where the data goes (company + optional industry) */}
           <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-            <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
               {t("sectionTarget")}
             </legend>
 
             <div className="space-y-1.5">
               <label htmlFor="company" className="text-sm font-medium flex items-center gap-1">
                 {t("targetCompany")}
-                <span className="text-red-400" aria-label="required">*</span>
+                <span className="text-destructive" aria-label="required">*</span>
               </label>
               <select
                 id="company"
@@ -293,7 +293,7 @@ export function ImportWizardMulti() {
                   setCompanyId(e.target.value)
                   if (analyzeError) setAnalyzeError(null)
                 }}
-                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm font-mono focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors disabled:opacity-50"
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm font-mono focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 transition-colors disabled:opacity-50"
                 data-testid="company-select"
                 disabled={companiesLoading}
               >
@@ -308,7 +308,7 @@ export function ImportWizardMulti() {
                 {t("targetCompanyHelp")}
               </p>
               {companiesError && (
-                <p className="text-xs text-red-400" data-testid="companies-error">
+                <p className="text-xs text-destructive" data-testid="companies-error">
                   {companiesError}
                 </p>
               )}
@@ -323,7 +323,7 @@ export function ImportWizardMulti() {
                 id="industry"
                 value={industryHint}
                 onChange={(e) => setIndustryHint(e.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors"
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 transition-colors"
                 data-testid="industry-select"
               >
                 <option value="">{t("deriveFromCompany")}</option>
@@ -341,14 +341,14 @@ export function ImportWizardMulti() {
 
           {/* Section 2 — what to load (file + optional sheet filter) */}
           <fieldset className="space-y-4 rounded-lg border border-border/60 bg-card/60 p-4">
-            <legend className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">
               {t("sectionWorkbook")}
             </legend>
 
             <div className="space-y-1.5">
               <label className="text-sm font-medium flex items-center gap-1">
                 {t("xlsxWorkbook")}
-                <span className="text-red-400" aria-label="required">*</span>
+                <span className="text-destructive" aria-label="required">*</span>
               </label>
               <FileDropZone
                 file={file}
@@ -375,7 +375,7 @@ export function ImportWizardMulti() {
                 value={sheetNamesFilter}
                 onChange={(e) => setSheetNamesFilter(e.target.value)}
                 placeholder={t("sheetFilterPlaceholder")}
-                className="w-full px-3 py-2 rounded-md border border-gray-700 bg-background text-sm font-mono focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500/40 transition-colors"
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm font-mono focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 transition-colors"
                 data-testid="sheet-filter-input"
               />
               <p className="text-xs text-muted-foreground">
@@ -431,7 +431,7 @@ export function ImportWizardMulti() {
 
       {step === "analyzed" && analyzeResult && (
         <section className="space-y-4" data-testid="analyzed-results">
-          <div className="rounded border border-gray-800 bg-card p-4">
+          <div className="rounded border border-border bg-card p-4">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">{t("summary")}</p>
             <p className="mt-1 text-sm">
               <span className="font-mono font-semibold text-emerald-400">
@@ -505,7 +505,7 @@ export function ImportWizardMulti() {
             />
           )}
 
-          <div className="flex items-center gap-3 border-t border-gray-800 pt-4">
+          <div className="flex items-center gap-3 border-t border-border pt-4">
             <Button
               type="button"
               variant="outline"
@@ -686,23 +686,23 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 | 3 }) {
       role="list"
       aria-label={t("stepperAriaLabel")}
       data-testid="wizard-stepper"
-      className="flex items-center gap-2 text-xs"
+      className="flex items-center gap-3 text-sm"
     >
       {steps.map((s, idx) => {
         const isDone = s.id < currentStep
         const isActive = s.id === currentStep
         return (
-          <li key={s.id} className="flex items-center gap-2">
+          <li key={s.id} className="flex items-center gap-3">
             <span
               data-testid={`step-${s.id}`}
               data-active={isActive}
               data-done={isDone}
-              className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors ${
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold transition-colors ${
                 isDone
-                  ? "border-emerald-500/50 bg-emerald-500/20 text-emerald-300"
+                  ? "border-emerald-600 bg-emerald-600 text-white"
                   : isActive
-                    ? "border-cyan-500/60 bg-cyan-500/20 text-cyan-200"
-                    : "border-gray-700 bg-background text-gray-500"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "border-border bg-background text-muted-foreground"
               }`}
             >
               {isDone ? (
@@ -725,14 +725,18 @@ function WizardStepper({ currentStep }: { currentStep: 1 | 2 | 3 }) {
               )}
             </span>
             <span
-              className={`uppercase tracking-wider ${
-                isActive ? "text-cyan-200 font-medium" : isDone ? "text-emerald-400/70" : "text-muted-foreground"
+              className={`font-medium ${
+                isActive
+                  ? "text-foreground"
+                  : isDone
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/70"
               }`}
             >
               {s.label}
             </span>
             {idx < steps.length - 1 && (
-              <span className="mx-1 h-px w-6 bg-gray-800" aria-hidden="true" />
+              <span className="mx-1 h-px w-8 bg-border" aria-hidden="true" />
             )}
           </li>
         )
@@ -777,7 +781,7 @@ function FileDropZone({
         className="flex items-center justify-between rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 py-3"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/20 text-emerald-300" aria-hidden="true">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
               <path d="M14 3v4a1 1 0 0 0 1 1h4M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z" />
             </svg>
@@ -823,7 +827,7 @@ function FileDropZone({
       className={`flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-4 py-8 text-center cursor-pointer transition-colors ${
         dragOver
           ? "border-cyan-500 bg-cyan-500/10"
-          : "border-gray-700 bg-background hover:border-gray-600 hover:bg-gray-900/30"
+          : "border-border bg-background hover:border-primary/40 hover:bg-primary/5"
       }`}
     >
       <input

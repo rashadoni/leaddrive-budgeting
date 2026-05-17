@@ -199,8 +199,10 @@ describe("IndicatorDetail forecast surface (Phase C2 v1)", () => {
     });
     const section = screen.getByTestId("indicator-forecast");
     // The predicted-value <span> carries the forecastColor class.
+    // High confidence resolves to emerald in both light + dark mode
+    // (was hex `text-[#00D4AA]` pre Session 9 token sweep).
     const valueSpan = section.querySelector("span.font-mono");
-    expect(valueSpan?.className).toContain("text-[#00D4AA]");
+    expect(valueSpan?.className).toContain("text-emerald-600");
   });
 
   it("medium-confidence forecast renders amber text class", async () => {
@@ -217,7 +219,9 @@ describe("IndicatorDetail forecast surface (Phase C2 v1)", () => {
     });
     const section = screen.getByTestId("indicator-forecast");
     const valueSpan = section.querySelector("span.font-mono");
-    expect(valueSpan?.className).toContain("text-[#FFB800]");
+    // Medium-confidence resolves to amber tokens (was raw `text-[#FFB800]`
+    // pre Session 9 token sweep).
+    expect(valueSpan?.className).toContain("text-amber-600");
   });
 
   it("low-confidence (flat) forecast renders gray text class", async () => {
@@ -234,7 +238,9 @@ describe("IndicatorDetail forecast surface (Phase C2 v1)", () => {
     });
     const section = screen.getByTestId("indicator-forecast");
     const valueSpan = section.querySelector("span.font-mono");
-    expect(valueSpan?.className).toContain("text-gray-400");
+    // Low-confidence resolves to the muted-foreground token (was raw
+    // `text-gray-400` pre Session 9 token sweep).
+    expect(valueSpan?.className).toContain("text-muted-foreground");
   });
 });
 
@@ -458,9 +464,11 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     // explicitly re-click Explain to fetch the RU version).
     fe.click(screen.getByTestId("forecast-lang-ru"));
     expect(screen.queryByTestId("forecast-narrative")).toBeNull();
-    // Active tab visually flips.
+    // Active tab visually flips. Was hex `text-[#00D4AA]` pre Session 9
+    // token sweep — now resolves via `text-emerald-600` (light) + dark
+    // mode supplement (`dark:text-emerald-400`).
     expect(screen.getByTestId("forecast-lang-ru").className).toContain(
-      "text-[#00D4AA]",
+      "text-emerald-600",
     );
   });
 

@@ -62,8 +62,8 @@ export function AuditModal() {
         if (e.target === e.currentTarget) setOpen(false)
       }}
     >
-      <div className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">{t("auditModal.title")}</h2>
             <p className="text-xs text-muted-foreground">
@@ -74,7 +74,7 @@ export function AuditModal() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("auditModal.closeAriaLabel")}
-            className="rounded border border-gray-700 px-3 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-3 py-1 text-sm hover:bg-muted/50"
           >
             {t("auditModal.close")}
           </button>

@@ -163,10 +163,10 @@ export function BreachForecastPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-[#FF4757]" aria-hidden="true" />
+            <AlertTriangle size={16} className="text-red-600 dark:text-red-400" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">{t("breach.title")}</h2>
               <p className="text-xs text-muted-foreground">
@@ -179,14 +179,14 @@ export function BreachForecastPanel() {
             onClick={() => setOpen(false)}
             aria-label={t("breach.closeAriaLabel")}
             data-testid="breach-close"
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
           </button>
         </header>
 
         {/* Filter row */}
-        <section className="px-6 py-3 border-b border-gray-800 flex flex-wrap items-center gap-4">
+        <section className="px-6 py-3 border-b border-border flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-xs">
             <span className="text-muted-foreground uppercase tracking-wider">{t("breach.periodLabel")}</span>
             <input
@@ -195,7 +195,7 @@ export function BreachForecastPanel() {
               onChange={(e) => setPeriod(e.target.value)}
               placeholder={t("breach.periodPlaceholder")}
               data-testid="breach-period-input"
-              className="font-mono px-2 py-1 rounded border border-gray-700 bg-black/30 text-sm w-40"
+              className="font-mono px-2 py-1 rounded border border-input bg-black/30 text-sm w-40"
             />
           </label>
           <label className="flex items-center gap-2 text-xs">
@@ -204,7 +204,7 @@ export function BreachForecastPanel() {
               value={minBand}
               onChange={(e) => setMinBand(e.target.value as ConfidenceFilter)}
               data-testid="breach-band-select"
-              className="font-mono px-2 py-1 rounded border border-gray-700 bg-black/30 text-sm"
+              className="font-mono px-2 py-1 rounded border border-input bg-black/30 text-sm"
             >
               <option value="low">{t("breach.bandLow")}</option>
               <option value="medium">{t("breach.bandMedium")}</option>
@@ -231,7 +231,7 @@ export function BreachForecastPanel() {
           ) : fetchError ? (
             <p
               role="alert"
-              className="text-sm text-[#FF4757]"
+              className="text-sm text-red-600 dark:text-red-400"
               data-testid="breach-fetch-error"
             >
               {fetchError}
@@ -253,10 +253,10 @@ export function BreachForecastPanel() {
               {Array.from(grouped.entries()).map(([companyId, rows]) => (
                 <div
                   key={companyId}
-                  className="rounded border border-gray-800 bg-black/20"
+                  className="rounded border border-border bg-black/20"
                   data-testid={`breach-group-${companyId}`}
                 >
-                  <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-black/30">
+                  <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-black/30">
                     <h3 className="text-sm font-mono font-semibold tracking-wide">{companyId}</h3>
                     <span className="text-xs text-muted-foreground">
                       {rows.length}{" "}
@@ -316,7 +316,7 @@ export function BreachForecastPanel() {
           )}
         </section>
 
-        <footer className="px-6 py-3 border-t border-gray-800 text-xs text-muted-foreground">
+        <footer className="px-6 py-3 border-t border-border text-xs text-muted-foreground">
           {t("breach.footerNote")}
         </footer>
       </div>

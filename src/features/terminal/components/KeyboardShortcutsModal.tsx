@@ -114,10 +114,10 @@ export function KeyboardShortcutsModal() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
-            <Keyboard size={16} className="text-[#00D4AA]" aria-hidden="true" />
+            <Keyboard size={16} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
                 {t("shortcuts.title")}
@@ -132,7 +132,7 @@ export function KeyboardShortcutsModal() {
             onClick={() => setOpen(false)}
             aria-label={t("shortcuts.closeAriaLabel")}
             autoFocus
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00D4AA]"
+            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             <X size={14} aria-hidden="true" />
           </button>
@@ -140,28 +140,28 @@ export function KeyboardShortcutsModal() {
         <div className="px-6 py-4 space-y-4 font-mono text-xs">
           {SHORTCUT_GROUPS.map((group) => (
             <section key={group.titleKey}>
-              <h3 className="text-[10px] uppercase tracking-wider text-[#FFB020] mb-2">
+              <h3 className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-2">
                 {t(group.titleKey)}
               </h3>
               <ul className="space-y-1">
                 {group.rows.map((row, i) => (
                   <li
                     key={i}
-                    className="flex items-baseline gap-3 py-0.5 border-b border-gray-800/30 last:border-b-0"
+                    className="flex items-baseline gap-3 py-0.5 border-b border-border/30 last:border-b-0"
                   >
                     <span className="flex items-center gap-1 shrink-0 min-w-[180px]">
                       {row.keys.map((k, j) => (
                         <React.Fragment key={j}>
-                          <kbd className="font-sans inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded border border-gray-700 bg-gray-800/40 text-[10px] font-semibold text-gray-300">
+                          <kbd className="font-sans inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded border border-input bg-muted/50/40 text-[10px] font-semibold text-muted-foreground">
                             {k}
                           </kbd>
                           {j < row.keys.length - 1 && (
-                            <span className="text-gray-600">+</span>
+                            <span className="text-muted-foreground">+</span>
                           )}
                         </React.Fragment>
                       ))}
                     </span>
-                    <span className="text-gray-300 leading-snug">
+                    <span className="text-muted-foreground leading-snug">
                       {t(row.descKey)}
                     </span>
                   </li>
@@ -170,7 +170,7 @@ export function KeyboardShortcutsModal() {
             </section>
           ))}
         </div>
-        <footer className="sticky bottom-0 px-6 py-2 border-t border-gray-800 bg-background/95 backdrop-blur text-[10px] text-gray-600">
+        <footer className="sticky bottom-0 px-6 py-2 border-t border-border bg-background/95 backdrop-blur text-[10px] text-muted-foreground">
           {t("shortcuts.footer")}
         </footer>
       </div>
