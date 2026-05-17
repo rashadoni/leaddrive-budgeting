@@ -44,40 +44,53 @@ interface UsdaSeries {
   metric: string
   unit: string
   params: Record<string, string>
+  /** Apply this divisor to the raw NASS value before emitting. Used
+   *  when NASS returns raw counts (e.g. HEAD) but our metric is named
+   *  for a scaled unit (e.g. THOUSAND). Default 1.0. */
+  divisor?: number
 }
 
-/** Series catalog. Each entry → 1 API call. Filters chosen to return
- *  a small (≤ 50 rows) NATIONAL aggregate so we can pick the latest. */
+/** Series catalog. Each entry → 1 API call. Uses `short_desc` (NASS's
+ *  exact-match series identifier) to nail down a single time-series
+ *  per query — avoids ambiguity that broader filters (commodity_desc +
+ *  statisticcat_desc) produced before (HTTP 400 from over-broad
+ *  combinations, or duplicate rows for parity / 10-year-avg variants).
+ *
+ *  Probed against NASS `param_GET` on 2026-05-17. Canonical strings:
+ *    PRICE RECEIVED $/LB → "CHICKENS, BROILERS - PRICE RECEIVED, MEASURED IN $ / LB"
+ *    EGG PRICE $/DOZ    → "EGGS - PRICE RECEIVED, MEASURED IN $ / DOZEN"
+ *    PLACEMENTS HEAD    → "CHICKENS, BROILERS - PLACEMENTS, MEASURED IN HEAD"
+ *
+ *  We rename PLACEMENT_THOUSAND → PLACEMENT_HEAD since NASS returns
+ *  raw head counts (no thousand divisor); update indicator threshold
+ *  if/when it switches downstream. */
 export const USDA_SERIES: readonly UsdaSeries[] = [
   {
     metric: "BROILER_PRICE_USD_LB",
     unit: "USD/lb",
     params: {
-      commodity_desc: "BROILERS",
-      statisticcat_desc: "PRICE RECEIVED",
+      short_desc: "CHICKENS, BROILERS - PRICE RECEIVED, MEASURED IN $ / LB",
       agg_level_desc: "NATIONAL",
-      freq_desc: "MONTHLY",
     },
   },
   {
     metric: "EGG_PRICE_USD_DOZ",
     unit: "USD/dozen",
     params: {
-      commodity_desc: "EGGS",
-      statisticcat_desc: "PRICE RECEIVED",
+      short_desc: "EGGS - PRICE RECEIVED, MEASURED IN $ / DOZEN",
       agg_level_desc: "NATIONAL",
-      freq_desc: "MONTHLY",
     },
   },
   {
     metric: "CHICK_PLACEMENT_THOUSAND",
     unit: "thousand head",
     params: {
-      commodity_desc: "CHICKENS, BROILERS",
-      statisticcat_desc: "PLACEMENTS",
+      short_desc: "CHICKENS, BROILERS - PLACEMENTS, MEASURED IN HEAD",
       agg_level_desc: "NATIONAL",
-      freq_desc: "WEEKLY",
     },
+    /** NASS reports raw head count; we emit thousand-head so threshold
+     *  values stay in a manageable order of magnitude. */
+    divisor: 1000,
   },
 ]
 
@@ -150,13 +163,14 @@ export function usdaResponseToDataPoint(
     }
   }
   if (!best) return null
+  const divisor = series.divisor ?? 1
   return {
     sourceCode: USDA_SOURCE,
     metric: series.metric,
     datetime: best.d,
-    value: best.v,
+    value: divisor === 1 ? best.v : Math.round((best.v / divisor) * 100) / 100,
     unit: series.unit,
-    raw: { row: best.raw },
+    raw: { row: best.raw, divisorApplied: divisor },
   }
 }
 

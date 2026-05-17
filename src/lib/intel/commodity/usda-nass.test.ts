@@ -13,11 +13,13 @@ import {
 const BROILER_SERIES = USDA_SERIES.find((s) => s.metric === "BROILER_PRICE_USD_LB")!
 
 describe("buildUsdaUrl", () => {
-  it("includes api key + commodity_desc in querystring", () => {
+  it("includes api key + short_desc in querystring", () => {
     const url = buildUsdaUrl(BROILER_SERIES, "KEY_123")
     expect(url).toContain("key=KEY_123")
-    expect(url).toContain("commodity_desc=BROILERS")
+    expect(url).toContain("short_desc=")
+    expect(url).toContain("PRICE+RECEIVED")
     expect(url).toContain("format=JSON")
+    expect(url).toContain("agg_level_desc=NATIONAL")
   })
 })
 
@@ -64,6 +66,23 @@ describe("usdaResponseToDataPoint", () => {
       BROILER_SERIES,
     )
     expect(point!.value).toBe(1250.5)
+  })
+
+  it("applies divisor when series declares one (HEAD → thousand-head)", () => {
+    // CHICK_PLACEMENT series uses divisor: 1000 — NASS reports raw
+    // head count, we emit thousand-head so threshold values stay in
+    // a manageable range.
+    const placementSeries = USDA_SERIES.find(
+      (s) => s.metric === "CHICK_PLACEMENT_THOUSAND",
+    )!
+    expect(placementSeries.divisor).toBe(1000)
+    const point = usdaResponseToDataPoint(
+      { data: [{ week_ending: "2026-05-10", Value: "187,500,000" }] },
+      placementSeries,
+    )
+    // 187.5M head / 1000 = 187500 thousand-head
+    expect(point!.value).toBe(187500)
+    expect((point!.raw as Record<string, unknown>).divisorApplied).toBe(1000)
   })
 })
 
