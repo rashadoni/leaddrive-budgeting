@@ -2135,6 +2135,7 @@ export const RETIRED_CODES: readonly string[] = [
  */
 import { esgIndicators } from "./esg-seeds";
 import { newsIndicators } from "./news-seeds";
+import { phase7kSeeds } from "./phase-7k-seeds";
 
 export const ALL_INDICATOR_SEEDS: readonly IndicatorSeed[] = [
   ...hospitalityIndicators,
@@ -2156,4 +2157,9 @@ export const ALL_INDICATOR_SEEDS: readonly IndicatorSeed[] = [
   ...esgIndicators,
   // Phase 7.H Feature B — news-derived indicators (sentiment).
   ...newsIndicators,
+  // Phase 7.K Phase 5b — sector-specific indicators powered by the
+  // new external data feeds (CBAR FX, EIA, FAO, Yahoo Grains+Metals+
+  // Fuel-BDI, WB Indicators, UN Comtrade, USDA NASS, AZ Stat CPI,
+  // OpenMeteo Forecast, Google Trends).
+  ...phase7kSeeds,
 ];

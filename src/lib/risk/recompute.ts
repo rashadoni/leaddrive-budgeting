@@ -1316,6 +1316,7 @@ interface CommodityAlias {
   aggregator: 'latest' | 'mean_12m' | 'stdev_12m';
 }
 const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
+  // Phase 7.I — sugar (AzerSheker pilot)
   {
     varName: 'sugar_price_latest',
     sourceCode: 'sugar-yahoo-sb-f',
@@ -1334,6 +1335,63 @@ const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
     metric: 'SUGAR_RAW_USD_TONNE',
     aggregator: 'stdev_12m',
   },
+  // Phase 7.K Phase 5b — global feeds wired into formula vars.
+  // Grains (yahoo-grains; cents/bushel → USD/tonne).
+  { varName: 'corn_price_latest', sourceCode: 'yahoo-grains', metric: 'CORN_USD_TONNE', aggregator: 'latest' },
+  { varName: 'corn_price_mean_12m', sourceCode: 'yahoo-grains', metric: 'CORN_USD_TONNE', aggregator: 'mean_12m' },
+  { varName: 'wheat_price_latest', sourceCode: 'yahoo-grains', metric: 'WHEAT_USD_TONNE', aggregator: 'latest' },
+  { varName: 'wheat_price_mean_12m', sourceCode: 'yahoo-grains', metric: 'WHEAT_USD_TONNE', aggregator: 'mean_12m' },
+  { varName: 'soybean_price_latest', sourceCode: 'yahoo-grains', metric: 'SOYBEAN_USD_TONNE', aggregator: 'latest' },
+  { varName: 'oats_price_latest', sourceCode: 'yahoo-grains', metric: 'OATS_USD_TONNE', aggregator: 'latest' },
+  { varName: 'cotton_price_latest', sourceCode: 'yahoo-grains', metric: 'COTTON_USD_TONNE', aggregator: 'latest' },
+  // Metals + lumber (yahoo-metals).
+  { varName: 'steel_price_latest', sourceCode: 'yahoo-metals', metric: 'STEEL_USD_TONNE', aggregator: 'latest' },
+  { varName: 'steel_price_mean_12m', sourceCode: 'yahoo-metals', metric: 'STEEL_USD_TONNE', aggregator: 'mean_12m' },
+  { varName: 'copper_price_latest', sourceCode: 'yahoo-metals', metric: 'COPPER_USD_TONNE', aggregator: 'latest' },
+  { varName: 'aluminum_price_latest', sourceCode: 'yahoo-metals', metric: 'ALUMINUM_USD_TONNE', aggregator: 'latest' },
+  { varName: 'lumber_price_latest', sourceCode: 'yahoo-metals', metric: 'LUMBER_USD_MBF', aggregator: 'latest' },
+  // Energy (eia-energy; requires apiKey).
+  { varName: 'brent_price_latest', sourceCode: 'eia-energy', metric: 'BRENT_USD_BBL', aggregator: 'latest' },
+  { varName: 'wti_price_latest', sourceCode: 'eia-energy', metric: 'WTI_USD_BBL', aggregator: 'latest' },
+  { varName: 'natgas_price_latest', sourceCode: 'eia-energy', metric: 'NATGAS_USD_MMBTU', aggregator: 'latest' },
+  // Shipping + retail fuel (yahoo-fuel-bdi).
+  { varName: 'baltic_dry_latest', sourceCode: 'yahoo-fuel-bdi', metric: 'BALTIC_DRY_INDEX', aggregator: 'latest' },
+  { varName: 'baltic_dry_mean_12m', sourceCode: 'yahoo-fuel-bdi', metric: 'BALTIC_DRY_INDEX', aggregator: 'mean_12m' },
+  { varName: 'diesel_price_latest', sourceCode: 'yahoo-fuel-bdi', metric: 'DIESEL_USD_LITRE', aggregator: 'latest' },
+  { varName: 'gasoline_price_latest', sourceCode: 'yahoo-fuel-bdi', metric: 'GASOLINE_USD_LITRE', aggregator: 'latest' },
+  // FX (cbar-official-fx).
+  { varName: 'azn_usd_latest', sourceCode: 'cbar-official-fx', metric: 'AZN_USD', aggregator: 'latest' },
+  { varName: 'azn_eur_latest', sourceCode: 'cbar-official-fx', metric: 'AZN_EUR', aggregator: 'latest' },
+  { varName: 'azn_rub_latest', sourceCode: 'cbar-official-fx', metric: 'AZN_RUB', aggregator: 'latest' },
+  { varName: 'azn_try_latest', sourceCode: 'cbar-official-fx', metric: 'AZN_TRY', aggregator: 'latest' },
+  // Food price index (fao-food-prices).
+  { varName: 'fao_ffpi_latest', sourceCode: 'fao-food-prices', metric: 'FAO_FFPI_NOMINAL', aggregator: 'latest' },
+  { varName: 'fao_meat_latest', sourceCode: 'fao-food-prices', metric: 'FAO_MEAT_INDEX', aggregator: 'latest' },
+  { varName: 'fao_dairy_latest', sourceCode: 'fao-food-prices', metric: 'FAO_DAIRY_INDEX', aggregator: 'latest' },
+  { varName: 'fao_cereal_latest', sourceCode: 'fao-food-prices', metric: 'FAO_CEREAL_INDEX', aggregator: 'latest' },
+  { varName: 'fao_sugar_latest', sourceCode: 'fao-food-prices', metric: 'FAO_SUGAR_INDEX', aggregator: 'latest' },
+  // AZ CPI breakdown (az-stat-cpi).
+  { varName: 'az_cpi_all_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_ALL_ITEMS', aggregator: 'latest' },
+  { varName: 'az_cpi_food_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_FOOD', aggregator: 'latest' },
+  { varName: 'az_cpi_housing_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_HOUSING', aggregator: 'latest' },
+  // Poultry (usda-nass; requires apiKey).
+  { varName: 'broiler_price_latest', sourceCode: 'usda-nass', metric: 'BROILER_PRICE_USD_LB', aggregator: 'latest' },
+  { varName: 'egg_price_latest', sourceCode: 'usda-nass', metric: 'EGG_PRICE_USD_DOZ', aggregator: 'latest' },
+  { varName: 'chick_placement_latest', sourceCode: 'usda-nass', metric: 'CHICK_PLACEMENT_THOUSAND', aggregator: 'latest' },
+  // Trade (un-comtrade-az).
+  { varName: 'az_trade_exports_latest', sourceCode: 'un-comtrade-az', metric: 'AZ_GOODS_EXPORTS_USD', aggregator: 'latest' },
+  { varName: 'az_trade_imports_latest', sourceCode: 'un-comtrade-az', metric: 'AZ_GOODS_IMPORTS_USD', aggregator: 'latest' },
+  { varName: 'az_trade_balance_latest', sourceCode: 'un-comtrade-az', metric: 'AZ_TRADE_BALANCE_USD', aggregator: 'latest' },
+  // Tourism + education (wb-indicators).
+  { varName: 'az_tourism_arrivals_latest', sourceCode: 'wb-indicators', metric: 'AZ_TOURISM_ARRIVALS', aggregator: 'latest' },
+  { varName: 'az_tourism_receipts_latest', sourceCode: 'wb-indicators', metric: 'AZ_TOURISM_RECEIPTS_USD', aggregator: 'latest' },
+  { varName: 'az_school_enroll_latest', sourceCode: 'wb-indicators', metric: 'AZ_SCHOOL_ENROLL_SEC_PCT', aggregator: 'latest' },
+  { varName: 'az_pop_age_0_14_latest', sourceCode: 'wb-indicators', metric: 'AZ_POP_AGE_0_14_PCT', aggregator: 'latest' },
+  // Search trends (google-trends-az; requires proxy apiKey).
+  { varName: 'az_trend_food_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_FOOD_RETAIL', aggregator: 'latest' },
+  { varName: 'az_trend_fashion_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_FASHION', aggregator: 'latest' },
+  { varName: 'az_trend_electronics_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_ELECTRONICS', aggregator: 'latest' },
+  { varName: 'az_trend_travel_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_TRAVEL', aggregator: 'latest' },
 ];
 
 function aggregateCommodity(
