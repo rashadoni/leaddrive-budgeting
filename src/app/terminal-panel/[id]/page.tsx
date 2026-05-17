@@ -19,7 +19,7 @@
  * Bloomberg-style window autonomy.
  */
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { CompanyTree } from "@/features/terminal/components/CompanyTree";
 import { HeatMap } from "@/features/terminal/components/HeatMap";
@@ -129,6 +129,21 @@ export default function PoppedOutPanelPage() {
     }
   }, [ivFromUrl, activeIndicatorValueId, setActiveIndicatorValue]);
 
+  // Phase 7.L 2026-05-18 — `mounted` gate to prevent hydration
+  // mismatch. The store-hydration useEffects above flip
+  // `activeCompanyCode` / `activeIndicatorValueId` from null → URL
+  // values on first client effect. Panels that branch on these
+  // (VarianceExplainerPanel renders different DOM trees depending
+  // on activeCompanyCode) trigger a hydration warning when the
+  // server-rendered HTML (state=null) doesn't match the post-effect
+  // client render. Holding back PanelContent until after first
+  // useEffect ensures server + first-client-paint both render the
+  // skeleton; the populated state appears in the next render cycle.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const title = PANEL_TITLES[kind] ?? kind;
 
   return (
@@ -144,9 +159,13 @@ export default function PoppedOutPanelPage() {
         </div>
       </header>
       <main className="flex-1 overflow-auto p-3">
+        {!mounted ? (
+          <div className="text-gray-500 text-xs">Загрузка панели…</div>
+        ) : (
         <Suspense fallback={<div className="text-gray-500">Loading…</div>}>
           <PanelContent kind={kind} />
         </Suspense>
+        )}
       </main>
     </div>
   );
