@@ -1370,10 +1370,16 @@ const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
   { varName: 'fao_dairy_latest', sourceCode: 'fao-food-prices', metric: 'FAO_DAIRY_INDEX', aggregator: 'latest' },
   { varName: 'fao_cereal_latest', sourceCode: 'fao-food-prices', metric: 'FAO_CEREAL_INDEX', aggregator: 'latest' },
   { varName: 'fao_sugar_latest', sourceCode: 'fao-food-prices', metric: 'FAO_SUGAR_INDEX', aggregator: 'latest' },
-  // AZ CPI breakdown (az-stat-cpi).
+  // AZ CPI breakdown (az-stat-cpi). 001_2en.xlsx has 4 categories
+  // (all-items / food / non-food / services). Housing/utilities is
+  // only in annual 001_4en — no monthly breakout. We proxy
+  // `az_cpi_housing_latest` from AZ_CPI_SERVICES because "Paid
+  // services" in AZ CPI methodology includes rent + communal + utility
+  // tariffs (it's the closest monthly proxy). If we ever wire 001_4en
+  // separately, this alias flips to the dedicated metric.
   { varName: 'az_cpi_all_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_ALL_ITEMS', aggregator: 'latest' },
   { varName: 'az_cpi_food_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_FOOD', aggregator: 'latest' },
-  { varName: 'az_cpi_housing_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_HOUSING', aggregator: 'latest' },
+  { varName: 'az_cpi_housing_latest', sourceCode: 'az-stat-cpi', metric: 'AZ_CPI_SERVICES', aggregator: 'latest' },
   // Poultry (usda-nass; requires apiKey).
   { varName: 'broiler_price_latest', sourceCode: 'usda-nass', metric: 'BROILER_PRICE_USD_LB', aggregator: 'latest' },
   { varName: 'egg_price_latest', sourceCode: 'usda-nass', metric: 'EGG_PRICE_USD_DOZ', aggregator: 'latest' },
@@ -1392,6 +1398,11 @@ const COMMODITY_PRICE_ALIASES: readonly CommodityAlias[] = [
   { varName: 'az_trend_fashion_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_FASHION', aggregator: 'latest' },
   { varName: 'az_trend_electronics_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_ELECTRONICS', aggregator: 'latest' },
   { varName: 'az_trend_travel_latest', sourceCode: 'google-trends-az', metric: 'AZ_TREND_TRAVEL', aggregator: 'latest' },
+  // Weather forecast (openmeteo-forecast). Lives under commodityPrice
+  // namespace because we don't have a dedicated `weather:forecast:`
+  // resolver — the existing weatherResolver only handles archive
+  // metrics (RAINFALL_MM_90D / TEMP_AVG_C_30D).
+  { varName: 'salyan_rainfall_forecast_14d', sourceCode: 'openmeteo-forecast', metric: 'SALYAN_RAINFALL_MM_14D_FCST', aggregator: 'latest' },
 ];
 
 function aggregateCommodity(

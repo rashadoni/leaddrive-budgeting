@@ -98,21 +98,24 @@ export const phase7kSeeds: IndicatorSeed[] = [
   // ──────────────────────────────────────────────────────────────────
   {
     code: "RE_HOUSING_CPI_PRESSURE",
-    nameEn: "AZ Housing CPI",
-    nameAz: "Mənzil İPI",
-    nameRu: "ИПЦ жилья AZ",
+    nameEn: "AZ Housing/Services CPI Pressure",
+    nameAz: "Mənzil + xidmət İPI təzyiqi",
+    nameRu: "Давление ИПЦ жилья и услуг AZ",
     category: "macro",
     industries: ["real_estate"],
-    unit: "index",
+    unit: "% YoY",
     direction: "higher_better",
     formula: "az_cpi_housing_latest",
     thresholds: {
+      // AZ_CPI_SERVICES (paid services — rent + utility tariffs +
+      // communal payments) is the monthly proxy until stat.gov.az
+      // 001_4en housing-specific monthly file gets wired.
       green: { op: ">=", value: 105 },
       amber: { op: ">=", value: 100 },
       red: { op: "<", value: 100 },
     },
     hintTemplateEn:
-      "AZ housing CPI {value}. ≥105 indicates rising rent + house prices (tailwind for real-estate revenue); <100 means deflationary headwind.",
+      "AZ Services CPI (rent + utilities proxy) at {value}% YoY. ≥105 indicates rising occupancy + utility cost pass-through (tailwind for real-estate revenue); <100 = deflationary headwind.",
     requiredInputs: ["commodityPrice:az_cpi_housing_latest"],
     sortOrder: 365,
     defaultValueSource: "macro",
@@ -552,7 +555,11 @@ export const phase7kSeeds: IndicatorSeed[] = [
     },
     hintTemplateEn:
       "Salyan 14-day rainfall forecast {value} mm. <10mm = irrigation pressure for cane fields; ≥30mm = good moisture window.",
-    requiredInputs: ["weather:salyan:rainfall_forecast_14d"],
+    // Maps via COMMODITY_PRICE_ALIASES → openmeteo-forecast source +
+    // SALYAN_RAINFALL_MM_14D_FCST metric. Uses commodityPrice
+    // namespace because we don't have a dedicated `weather:` resolver
+    // for forecast metrics (only the historical-archive weatherResolver).
+    requiredInputs: ["commodityPrice:salyan_rainfall_forecast_14d"],
     sortOrder: 1155,
     defaultValueSource: "macro",
   },

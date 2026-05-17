@@ -55,6 +55,8 @@ const PHASE_7K_ALIAS_VARS = new Set<string>([
   // Google Trends
   "az_trend_food_latest", "az_trend_fashion_latest",
   "az_trend_electronics_latest", "az_trend_travel_latest",
+  // Weather forecast (openmeteo-forecast)
+  "salyan_rainfall_forecast_14d",
 ])
 
 /** Per-indicator fixture: three sample contexts that should land in
@@ -86,6 +88,8 @@ const FIXTURES: Record<string, BandFixture> = {
   // ── REAL ESTATE ──────────────────────────────────────────────────
   RE_HOUSING_CPI_PRESSURE: {
     // formula: az_cpi_housing_latest. green ≥ 105, amber ≥ 100, red < 100
+    // Alias resolves to AZ_CPI_SERVICES (paid services = rent +
+    // utilities proxy) until stat.gov.az 001_4en monthly file wired.
     green: { az_cpi_housing_latest: 108 },
     amber: { az_cpi_housing_latest: 102 },
     red: { az_cpi_housing_latest: 95 },
