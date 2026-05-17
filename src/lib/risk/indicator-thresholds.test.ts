@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("74 active indicator seeds (Phase 7.I sugar/agro pack + 2026-05-16 cane-seller trio: AGRO_CUT_TO_MILL, AGRO_BUYER_CONCENTRATION, AGRO_HARVEST_PROGRESS)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(74)
+  it("76 active indicator seeds (Phase 7.I sugar/agro pack + cane-seller trio + Phase 7.J concentration pair: CUSTOMER_HHI, SUPPLIER_HHI)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(76)
   })
 
   it("every indicator has a unique code", () => {

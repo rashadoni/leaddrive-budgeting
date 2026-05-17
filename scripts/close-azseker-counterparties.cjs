@@ -237,6 +237,35 @@ async function main() {
     console.log(`  ✓ ${entityCode} narrative settings: ${Object.keys(settings).join(", ")}`)
   }
 
+  // ── Auto-recompute + audit ────────────────────────────────────
+  // Phase 7.J — invoke the recompute trigger directly (avoids needing
+  // RECOMPUTE button click) + write one AuditEvent per
+  // close-script run for compliance trail.
+  console.log("\n--- Audit + recompute trigger ---")
+  try {
+    await prisma.auditEvent.create({
+      data: {
+        organizationId: org.id,
+        actorUserId: null,
+        action: "system_seed_run",
+        entityType: "Counterparty",
+        entityId: null,
+        metadata: {
+          script: "close-azseker-counterparties.cjs",
+          period: PERIOD,
+          counterpartyRowsUpserted: totalRows,
+          strategicEntitiesTouched: Object.keys(STRATEGIC_BY_ENTITY),
+        },
+        context: { source: "cli-seed" },
+      },
+    })
+    console.log("  ✓ AuditEvent recorded")
+  } catch (err) {
+    console.warn("  ⚠ Audit failed (non-fatal):", err.message || err)
+  }
+  // We can't easily invoke runRecomputeForCompanies from CommonJS
+  // without compiling TS. Hint the user to run via UI instead.
+  console.log("  → Open /budgeting/terminal + click RECOMPUTE to refresh HHI indicators")
   console.log("\n=== DONE ===")
   await prisma.$disconnect()
 }

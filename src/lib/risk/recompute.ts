@@ -231,6 +231,21 @@ export interface RecomputeDataSource {
   >;
 
   /**
+   * Phase 7.J — Counterparty register lookup.
+   *
+   * Returns the rows for a given (company × role × period) so the HHI
+   * resolver can compute Σ(sharePct/100)². Optional on the interface
+   * so legacy fixtures keep working without implementing it — resolver
+   * checks for absence and returns an empty array.
+   */
+  listCounterparties?(args: {
+    organizationId: string;
+    companyId: string;
+    role: 'customer' | 'supplier';
+    period: string;
+  }): Promise<Array<{ sharePct: number; singleSource: boolean; name: string }>>;
+
+  /**
    * Phase 7.H F4.v2.3 — disclosure lookup. Returns the disclosed value
    * if a row exists in `IndicatorDisclosure` for the (companyId,
    * indicatorCode, period) triple, else null. When non-null, the
@@ -602,6 +617,26 @@ export function createPrismaDataSource(
         const msg = err instanceof Error ? err.message : String(err);
         if (
           msg.includes('relation "intel_data_points"') ||
+          msg.includes('does not exist') ||
+          msg.includes('P2021')
+        ) {
+          return [];
+        }
+        throw err;
+      }
+    },
+
+    async listCounterparties({ organizationId, companyId, role, period }) {
+      try {
+        const rows = await prisma.counterparty.findMany({
+          where: { organizationId, companyId, role, period },
+          select: { sharePct: true, singleSource: true, name: true },
+        });
+        return rows;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.includes('relation "counterparties"') ||
           msg.includes('does not exist') ||
           msg.includes('P2021')
         ) {
@@ -2208,6 +2243,44 @@ const industryFactorResolver: NamespaceResolver = {
   },
 };
 
+// Phase 7.J — counterparty HHI resolver. Reads the Counterparty
+// register for a company/role/period and computes
+// HHI = Σ(sharePct/100)² for use in CUSTOMER_HHI / SUPPLIER_HHI
+// indicators. The requiredInputs key shape is
+// `counterparty:<role>` (no period — period derives from
+// IndicatorValue.period; default 2026).
+const counterpartyHhiResolver: NamespaceResolver = {
+  name: 'counterparty.hhi',
+  matches: (r) => r.startsWith('counterparty:'),
+  async resolve(matched, ctx, state) {
+    // Stub adapters don't implement listCounterparties — quietly skip
+    // so the formula evaluates to NaN → IV status='unknown' (the right
+    // honest answer when the register isn't wired yet).
+    if (!ctx.ds.listCounterparties) return;
+    // Counterparty register is annual; key off the year only.
+    const period = String(ctx.period.year);
+    for (const raw of matched) {
+      const role = raw.slice('counterparty:'.length);
+      if (role !== 'customer' && role !== 'supplier') continue;
+      const rows = await ctx.ds.listCounterparties({
+        organizationId: ctx.organizationId,
+        companyId: ctx.companyId,
+        role,
+        period,
+      });
+      if (rows.length === 0) continue;
+      const hhi = rows.reduce((s, r) => s + (r.sharePct / 100) ** 2, 0);
+      const rounded = Math.round(hhi * 10000) / 10000;
+      // Two context keys: the colon-namespaced one (matches the
+      // resolver match prefix) + a flat alias so seeds can reference
+      // `counterparty_hhi_customer` without colon-handling.
+      state.context[`counterparty_hhi:${role}`] = rounded;
+      state.context[`counterparty_hhi_${role}`] = rounded;
+      state.inputs.resolved[`counterparty_hhi_${role}`] = rounded;
+    }
+  },
+};
+
 const RESOLVERS: readonly NamespaceResolver[] = [
   bookingResolver,
   companySettingsResolver,
@@ -2222,6 +2295,8 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   // to "data not available" cleanly when no rows / no region set.
   weatherResolver,
   commodityPriceResolver,
+  // Phase 7.J — Counterparty register HHI for concentration indicators.
+  counterpartyHhiResolver,
 ];
 
 // --- Seed-load-time requiredInputs validator -------------------------------

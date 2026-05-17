@@ -551,6 +551,81 @@ export const agroIndicators: IndicatorSeed[] = [
 // ─── Cross-sector pack (4) ─────────────────────────────────────────────────
 
 export const crossSectorIndicators: IndicatorSeed[] = [
+  // Phase 7.J — counterparty concentration indicators driven by the
+  // Counterparty register. HHI (Herfindahl-Hirschman Index) measures
+  // market concentration as Σ(share_i)² where share_i is each
+  // counterparty's % expressed as 0-1. Below 0.15 = competitive, 0.15-
+  // 0.25 = moderate concentration, above 0.25 = high concentration.
+  {
+    code: "CUSTOMER_HHI",
+    nameEn: "Customer Concentration (HHI)",
+    nameAz: "Müştəri Konsentrasiyası (HHI)",
+    nameRu: "Концентрация клиентов (HHI)",
+    category: "concentration",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+    ],
+    unit: "index",
+    direction: "lower_better",
+    formula: "counterparty_hhi:customer",
+    thresholds: {
+      green: { op: "<=", value: 0.15 },
+      amber: { op: "<=", value: 0.25 },
+      red: { op: ">", value: 0.25 },
+    },
+    hintTemplateEn:
+      "Customer HHI is {value}. Above 0.25 = one buyer holds enough share to threaten cash flow on a single delayed payment.",
+    hintTemplateRu:
+      "HHI клиентов = {value}. Выше 0.25 — один покупатель держит достаточно доли, чтобы поставить под угрозу cash flow при единственной задержке платежа.",
+    hintTemplateAz:
+      "Müştəri HHI = {value}. 0.25-dən yuxarı — bir alıcının payı bir gecikmiş ödənişlə pul axınını təhdid etmək üçün kifayət edir.",
+    requiredInputs: ["counterparty:customer"],
+    sortOrder: 2,
+  },
+  {
+    code: "SUPPLIER_HHI",
+    nameEn: "Supplier Concentration (HHI)",
+    nameAz: "Tədarükçü Konsentrasiyası (HHI)",
+    nameRu: "Концентрация поставщиков (HHI)",
+    category: "concentration",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+    ],
+    unit: "index",
+    direction: "lower_better",
+    formula: "counterparty_hhi:supplier",
+    thresholds: {
+      green: { op: "<=", value: 0.2 },
+      amber: { op: "<=", value: 0.35 },
+      red: { op: ">", value: 0.35 },
+    },
+    hintTemplateEn:
+      "Supplier HHI is {value}. Above 0.35 + presence of single-source suppliers makes COGS extremely fragile.",
+    hintTemplateRu:
+      "HHI поставщиков = {value}. Выше 0.35 + наличие single-source поставщиков делает COGS крайне хрупким.",
+    hintTemplateAz:
+      "Tədarükçü HHI = {value}. 0.35-dən yuxarı + tək mənbəli tədarükçülərin olması COGS-i çox kövrək edir.",
+    requiredInputs: ["counterparty:supplier"],
+    sortOrder: 3,
+  },
   {
     code: "FX_IMPORTED_INPUT",
     nameEn: "Imported-Input FX Exposure",

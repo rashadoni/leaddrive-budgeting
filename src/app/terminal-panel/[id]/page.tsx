@@ -30,6 +30,8 @@ import { NewsSummarySection } from "@/features/terminal/components/NewsSummarySe
 import { AgroDashboardPanel } from "@/features/terminal/components/AgroDashboardPanel";
 import { CommodityTickerPanel } from "@/features/terminal/components/CommodityTickerPanel";
 import { AgronomyEntryPanel } from "@/features/terminal/components/AgronomyEntryPanel";
+import { ConcentrationPanel } from "@/features/terminal/components/ConcentrationPanel";
+import { FxExposurePanel } from "@/features/terminal/components/FxExposurePanel";
 import { useCompanies } from "@/features/terminal/hooks/use-companies";
 import { useTerminalStore } from "@/features/terminal/store/terminalStore";
 
@@ -44,6 +46,9 @@ const PANEL_TITLES: Record<string, string> = {
   "agro-dashboard": "Agro Dashboard",
   "commodity-ticker": "Commodity & Weather",
   "agronomy-entry": "Agronomy Entry",
+  // Phase 7.J — counterparty + FX widgets
+  "concentration": "Concentration · Customers / Suppliers",
+  "fx-exposure": "FX Exposure · Net by Currency",
 };
 
 function PanelContent({ kind }: { kind: string }) {
@@ -70,6 +75,10 @@ function PanelContent({ kind }: { kind: string }) {
       return <CommodityTickerPanel />;
     case "agronomy-entry":
       return <AgronomyEntryPanel />;
+    case "concentration":
+      return <ConcentrationPanel />;
+    case "fx-exposure":
+      return <FxExposurePanel />;
     default:
       return (
         <div className="text-gray-500 p-6">

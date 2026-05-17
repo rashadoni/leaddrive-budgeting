@@ -10,6 +10,7 @@ import { createWorldBankCPIAdapter } from "./worldbank-cpi"
 import { createCommoditiesRSSAdapter } from "./commodities-rss"
 import { createOpenMeteoWeatherAdapter } from "./weather-openmeteo"
 import { createSugarYahooAdapter } from "./sugar-yahoo"
+import { createCBARForwardAdapter } from "./cbar-fx-forward"
 import type { CommodityAdapter, CommodityAdapterOptions } from "./types"
 
 export function getCommodityAdapters(opts: CommodityAdapterOptions = {}): CommodityAdapter[] {
@@ -20,6 +21,8 @@ export function getCommodityAdapters(opts: CommodityAdapterOptions = {}): Commod
     // Phase 7.I — sector-aware feeds for AzerSheker pilot.
     createOpenMeteoWeatherAdapter(opts),
     createSugarYahooAdapter(opts),
+    // Phase 7.J — IRP-derived AZN forward curve for hedge sizing.
+    createCBARForwardAdapter(opts),
   ]
 }
 
@@ -38,6 +41,10 @@ export {
   SUGAR_YAHOO_SOURCE,
   SUGAR_YAHOO_METRIC,
 } from "./sugar-yahoo"
+export {
+  createCBARForwardAdapter,
+  buildForwardCurve,
+} from "./cbar-fx-forward"
 export {
   ingestCommodityData,
   clearCommodityMemoryForTests,
