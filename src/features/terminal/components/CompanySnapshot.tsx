@@ -148,7 +148,15 @@ export function CompanySnapshot({ companyCode }: Props) {
   const noPLIndicators = cards.length === 0;
 
   return (
-    <div className="font-mono text-xs flex flex-col gap-2 h-full w-full">
+    // Phase 7.L 2026-05-18 — root made scrollable + min-h-0 so the
+    // impact-forecasts section (which can grow to 3 sizable cards
+    // per forecast × N forecasts) doesn't overflow out of Panel 4's
+    // slot and overlap with the adjacent Panel 3 / Panel 2 panels.
+    // Prior layout was `flex flex-col gap-2 h-full w-full` — fine
+    // for fixed-height snapshot content but breaks once we append
+    // variable-length forecast cards. Vertical scroll keeps the
+    // existing layout AND surfaces the new section gracefully.
+    <div className="font-mono text-xs flex flex-col gap-2 h-full w-full overflow-y-auto min-h-0">
       <div className="text-[10px] uppercase tracking-wider text-gray-500 flex items-center justify-between shrink-0">
         <span>
           {t("snapshot.title")} · <span className="text-[#FFB020]">{company.code}</span>
@@ -267,8 +275,13 @@ export function CompanySnapshot({ companyCode }: Props) {
           works for current Panel 4 width (≥ ⅓ screen, no wrap risk);
           flex-row chosen for simplicity. Don't reintroduce `flex-wrap`
           thinking it's safer — wrap+stretch only stretches per-row. */}
+      {/* Phase 7.L 2026-05-18 — was `flex-1 min-h-0` which made cards
+       *  grab ALL remaining vertical space + crowded out the new
+       *  impact-forecasts section below. Switched to `shrink-0` with
+       *  explicit min-height so cards keep their natural sparkline
+       *  footprint and the scrollable root handles overflow. */}
       {!noPLIndicators ? (
-        <div className="flex gap-2 flex-1 min-h-0">
+        <div className="flex gap-2 shrink-0 min-h-[140px]">
           {cards.map(({ indicator, cell }) => (
             <div key={indicator.id} className="flex-1 min-w-0 h-full">
               <SnapshotCard indicator={indicator} cell={cell} locale={locale} />
@@ -276,7 +289,7 @@ export function CompanySnapshot({ companyCode }: Props) {
           ))}
         </div>
       ) : (
-        <div className="text-gray-700 text-[11px] leading-relaxed flex-1 min-h-0">
+        <div className="text-gray-700 text-[11px] leading-relaxed shrink-0">
           {t("snapshot.noPlIndicators")}{" "}
           <span className="text-[#FFB020]">{companyCode}</span>.
         </div>
@@ -289,8 +302,13 @@ export function CompanySnapshot({ companyCode }: Props) {
       {/* Phase 7.L — feed-crossing impact forecasts. Renders nothing
        *  when no forecasts exist for this company (empty state handled
        *  inside the component). Lives below the indicator-card row
-       *  so the existing layout stays unchanged when no events fire. */}
-      <div className="mt-2 pt-2 border-t border-gray-800/40 shrink-0">
+       *  so the existing layout stays unchanged when no events fire.
+       *
+       *  No `shrink-0` here — let the section grow naturally; the
+       *  parent's `overflow-y-auto` (added 2026-05-18) absorbs the
+       *  extra height via scroll instead of crashing into adjacent
+       *  panels. */}
+      <div className="mt-2 pt-2 border-t border-gray-800/40">
         <CompanyImpactForecastsCard companyCode={companyCode} />
       </div>
     </div>
