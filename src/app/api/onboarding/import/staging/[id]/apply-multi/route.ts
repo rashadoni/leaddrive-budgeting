@@ -60,7 +60,10 @@ import {
   parsePlfPlSheet,
   type ParsedPlfLine,
 } from "@/lib/onboarding/adapters/azseker-plf"
-import { classifyGuvvenSheetFamily } from "@/lib/onboarding/azseker-guvven-mapping"
+import {
+  classifyGuvvenSheetFamily,
+  resolveEntityFromSheetName,
+} from "@/lib/onboarding/azseker-guvven-mapping"
 // Phase 7.I Turn — KPI sheet dispatcher. Scans every workbook sheet
 // (regardless of AI Mapper's filter) and writes OperationalFact rows
 // from KPI families.
@@ -69,6 +72,9 @@ import {
   parseGuvvenProcessingKpiSheet,
   type ParsedKpiFact,
 } from "@/lib/onboarding/adapters/azseker-guvven-kpi"
+// Phase 7.I Turn — BS (balance sheet) dispatcher. Same scan-every-
+// sheet pattern as KPI; writes BalanceSheetLine rows.
+import { parseGuvvenBsSheet } from "@/lib/onboarding/adapters/azseker-guvven-bs"
 
 export const maxDuration = 120 // larger than single-sheet — N parallel writes
 
@@ -740,6 +746,214 @@ export async function POST(
     }
   }
 
+  // Phase 7.I follow-up — BS sheet dispatcher. Same scan-every-sheet
+  // pattern as KPI. For each "BS <ENTITY>" sheet in the workbook,
+  // run parseGuvvenBsSheet → BalanceSheetLine rows. The Guvven file
+  // covers partial-year BS data (e.g. only Jan-Mar 2026 for Malt);
+  // adapter writes only the months present in the sheet.
+  //
+  // Each leaf × month → one BalanceSheetLine row, idempotent per
+  // (planId × accountCode × year × month).
+  interface BsPerSheetResult {
+    sheetName: string
+    companyCode: string | null
+    rowsInserted: number
+    leavesTouched: number
+    warnings: number
+    error?: string
+  }
+  const bsResults: BsPerSheetResult[] = []
+  const bsTouchedCompanyIds = new Set<string>()
+  try {
+    // Ensure the BalanceSheetLine plan exists. Reuse the same
+    // AI-Imported plan id created by the BudgetLine transaction
+    // above; if it doesn't exist yet (all-error path that the
+    // Guvven rescue happened to miss) create a "BS-Imported" plan.
+    const planName = `AI-Imported ${targetYear} Budget`
+    let bsPlanId: string | null = null
+    for (const sheetName of workbook.SheetNames) {
+      const family = classifyGuvvenSheetFamily(sheetName)
+      if (family !== "BS") continue
+
+      const entityCode = resolveEntityFromSheetName(sheetName)
+      if (!entityCode) {
+        bsResults.push({
+          sheetName,
+          companyCode: null,
+          rowsInserted: 0,
+          leavesTouched: 0,
+          warnings: 1,
+          error: `Cannot resolve entity from sheet name "${sheetName}"`,
+        })
+        continue
+      }
+      const company = await prisma.company.findFirst({
+        where: { organizationId: orgIdLocal, code: entityCode },
+        select: { id: true, baseCurrencyCode: true },
+      })
+      if (!company) {
+        bsResults.push({
+          sheetName,
+          companyCode: entityCode,
+          rowsInserted: 0,
+          leavesTouched: 0,
+          warnings: 1,
+          error: `Company ${entityCode} not in DB`,
+        })
+        continue
+      }
+
+      const parsed = parseGuvvenBsSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+      if (parsed.lines.length === 0) {
+        bsResults.push({
+          sheetName,
+          companyCode: entityCode,
+          rowsInserted: 0,
+          leavesTouched: 0,
+          warnings: parsed.warnings.length,
+        })
+        continue
+      }
+
+      if (!bsPlanId) {
+        const existing = await prisma.budgetPlan.findFirst({
+          where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
+          select: { id: true },
+        })
+        if (existing) bsPlanId = existing.id
+        else {
+          const created = await prisma.budgetPlan.create({
+            data: {
+              organizationId: orgIdLocal,
+              name: planName,
+              year: targetYear,
+              periodType: "yearly",
+              status: "active",
+            },
+            select: { id: true },
+          })
+          bsPlanId = created.id
+        }
+      }
+
+      let rowsInserted = 0
+      await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Idempotent: delete same (planId × accountCode × year ×
+        // month) rows for this entity then re-insert.
+        const codesInSheet = parsed.lines.map((l) => l.code)
+        const monthsInSheet = Array.from(
+          new Set(
+            parsed.lines.flatMap((l) => Object.keys(l.monthlyAmounts)),
+          ),
+        ).map((k) => Number(k.split("-")[1]))
+        await tx.balanceSheetLine.deleteMany({
+          where: {
+            organizationId: orgIdLocal,
+            planId: bsPlanId!,
+            accountCode: { in: codesInSheet },
+            year: targetYear,
+            month: { in: monthsInSheet },
+          },
+        })
+        // Ensure CoA entries exist for each BS code (prefixed by
+        // entity to avoid cross-entity overwrite, same pattern as
+        // PLF import).
+        const coaCache = new Map<string, string>()
+        const rows: Array<{
+          organizationId: string
+          planId: string
+          accountCode: string
+          accountName: string
+          accountId: string | null
+          lineType: string
+          subType: string | null
+          year: number
+          month: number
+          amount: number
+        }> = []
+        for (const line of parsed.lines) {
+          const codeKey = `${entityCode}-${line.code}`
+          let coaId = coaCache.get(codeKey) ?? null
+          if (!coaId) {
+            const existingCoa = await tx.chartOfAccount.findUnique({
+              where: { organizationId_code: { organizationId: orgIdLocal, code: codeKey } },
+              select: { id: true },
+            })
+            if (existingCoa) coaId = existingCoa.id
+            else {
+              const created = await tx.chartOfAccount.create({
+                data: {
+                  organizationId: orgIdLocal,
+                  code: codeKey,
+                  name: line.label || line.code,
+                  nameEn: line.label || line.code,
+                  accountType: line.lineType,
+                  sortOrder: 0,
+                  isActive: true,
+                },
+                select: { id: true },
+              })
+              coaId = created.id
+            }
+            coaCache.set(codeKey, coaId)
+          }
+          for (const [periodKey, amount] of Object.entries(line.monthlyAmounts)) {
+            const [yStr, mStr] = periodKey.split("-")
+            rows.push({
+              organizationId: orgIdLocal,
+              planId: bsPlanId!,
+              accountCode: codeKey,
+              accountName: line.label || line.code,
+              accountId: coaId,
+              lineType: line.lineType,
+              subType: line.subType,
+              year: Number(yStr),
+              month: Number(mStr),
+              amount,
+            })
+          }
+        }
+        if (rows.length > 0) await tx.balanceSheetLine.createMany({ data: rows })
+        rowsInserted = rows.length
+      })
+
+      bsResults.push({
+        sheetName,
+        companyCode: entityCode,
+        rowsInserted,
+        leavesTouched: parsed.lines.length,
+        warnings: parsed.warnings.length,
+      })
+      bsTouchedCompanyIds.add(company.id)
+    }
+  } catch (err) {
+    console.error("[apply-multi/bs] dispatcher failed:", err)
+    bsResults.push({
+      sheetName: "<dispatcher>",
+      companyCode: null,
+      rowsInserted: 0,
+      leavesTouched: 0,
+      warnings: 0,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+
+  // Auto-flip Company.status for BS-touched companies — same logic
+  // as the BudgetLine + KPI paths.
+  if (bsTouchedCompanyIds.size > 0) {
+    try {
+      await prisma.company.updateMany({
+        where: {
+          id: { in: Array.from(bsTouchedCompanyIds) },
+          status: "pending",
+        },
+        data: { status: "active" },
+      })
+    } catch (err) {
+      console.warn("[apply-multi/bs] Company.status flip failed:", err)
+    }
+  }
+
   // Phase 7.G Turn CXI — recompute trigger + audit emit. Mirrors single-
   // sheet `/apply` route's post-transaction wiring. Recompute runs on the
   // (companyId, year) the apply-multi just touched; failures surface as
@@ -752,6 +966,9 @@ export async function POST(
   const recomputePairs = new Set<string>([`${companyId}:${targetYear}`])
   for (const kpiCompanyId of kpiTouchedCompanyIds) {
     recomputePairs.add(`${kpiCompanyId}:${targetYear}`)
+  }
+  for (const bsCompanyId of bsTouchedCompanyIds) {
+    recomputePairs.add(`${bsCompanyId}:${targetYear}`)
   }
   const { runRecomputeForCompanies } = await import("@/lib/risk/recompute-trigger")
   const recomputeResult = await runRecomputeForCompanies(
@@ -815,6 +1032,7 @@ export async function POST(
   const auditStale = !auditResult.ok
 
   const kpiTotalFacts = kpiResults.reduce((s, r) => s + r.factsInserted, 0)
+  const bsTotalRows = bsResults.reduce((s, r) => s + r.rowsInserted, 0)
   return NextResponse.json(
     {
       stagingId: staging.id,
@@ -829,6 +1047,8 @@ export async function POST(
       // dispatcher). Empty when no Guvven-shape KPI sheets found.
       sectorSheets: kpiResults,
       sectorFactsInserted: kpiTotalFacts,
+      bsSheets: bsResults,
+      bsRowsInserted: bsTotalRows,
       recompute: recomputeResult,
       indicatorsStale,
       auditStale,
