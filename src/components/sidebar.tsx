@@ -131,6 +131,13 @@ const budgetSubNav = [
       // Phase D.3 — drift dashboard. Recent drift events, reference-feed
       // freshness, stalled onboarding cases. Admin-only.
       { href: "/budgeting/admin/drift", icon: AlertTriangle, label: "Drift Dashboard", isPage: true },
+      // Phase 7.K 2026-05-18 — client-facing data-source catalog. Renders
+      // sources-catalog.ts as cards explaining what each external feed is,
+      // its business value, sample live value + indicator dependencies.
+      // Used during client demos when asked "where does this number come
+      // from?". Sits between Drift (freshness state) and Source Registry
+      // (onboarding-import source allowlist) since both are catalog-like.
+      { href: "/budgeting/admin/data-sources", icon: FileSpreadsheet, label: "Data Sources", isPage: true },
       // Phase L4 — drift-watchdog source registry editor (replaces manual
       // JSON edit of data/onboarding-source-registry.json).
       { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, label: "Source Registry", isPage: true },

@@ -26,6 +26,7 @@ import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 import { PeerBenchmarkModal } from "./PeerBenchmarkModal";
 import { Button } from "@/components/ui/button";
+import { getDataSourcesForIndicator } from "@/lib/intel/sources-catalog";
 
 interface IndicatorMeta {
   id: string;
@@ -653,6 +654,61 @@ export function IndicatorDetail() {
           {ind.formula}
         </code>
       </section>
+
+      {/* Phase 7.K 2026-05-18 — external-source provenance. Surfaces
+       *  the API + vendor + cadence behind every commodityPrice-fed
+       *  indicator so client demos can answer "where does this number
+       *  come from?" without leaving Risk Terminal. Falls through
+       *  silently for indicators that don't depend on external feeds
+       *  (pure financial / ESG / operational). */}
+      {(() => {
+        const sources = getDataSourcesForIndicator(ind.code);
+        if (sources.length === 0) return null;
+        return (
+          <section>
+            <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
+              Источник
+            </div>
+            <div className="space-y-1.5">
+              {sources.map((src) => (
+                <div
+                  key={src.sourceCode}
+                  className="rounded border border-border/50 bg-foreground/5 px-2 py-1.5 text-[11px]"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className="font-medium text-gray-200">
+                      {src.displayNameRu}
+                    </span>
+                    <a
+                      href={src.vendorUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-cyan-400 hover:text-cyan-300 text-[10px] underline-offset-2 hover:underline"
+                    >
+                      {new URL(src.vendorUrl).hostname.replace("www.", "")} ↗
+                    </a>
+                  </div>
+                  <div className="text-gray-400 text-[10px] leading-snug">
+                    {src.vendor} · {src.cadenceRu}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[10px]">
+                    <a
+                      href="/budgeting/admin/data-sources"
+                      className="text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline"
+                    >
+                      Что это?
+                    </a>
+                    <span className="text-gray-600">·</span>
+                    <code className="font-mono text-gray-500">
+                      {src.sourceCode}
+                    </code>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       <section>
         <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
