@@ -318,6 +318,39 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     return sorted.map(([industry, roots]) => ({ industry, roots }));
   }, [filteredRoots]);
 
+  /**
+   * Phase 7.K 2026-05-18 — pin real sub-groups before macro placeholders.
+   *
+   * `filteredRoots` arrives in DB-insertion order which interleaves the
+   * 10 DEMO-* macro placeholders (created later) with the 2 real
+   * sub-groups (AZSEKER + AZMADE). The user-facing tree should lead
+   * with real operating companies; placeholders are context-only and
+   * belong at the bottom of the list.
+   *
+   * Priority bands:
+   *   0 — AZSEKER (largest sub-group, food/agro pilot)
+   *   1 — AZMADE (industrial sub-group)
+   *   2 — any other real top-level (ATL standalone, etc.) — alphabetic
+   *   3 — DEMO-* macro placeholders — alphabetic
+   *
+   * Watchlist filter passed-roots are sorted in place by priority then
+   * by original DB position within the same priority band.
+   */
+  const sortedFilteredRoots = useMemo<CompanyNode[]>(() => {
+    const priority = (c: CompanyNode): number => {
+      if (c.code === 'AZSEKER') return 0;
+      if (c.code === 'AZMADE') return 1;
+      if (c.code.startsWith('DEMO-')) return 3;
+      return 2;
+    };
+    return [...filteredRoots].sort((a, b) => {
+      const pa = priority(a);
+      const pb = priority(b);
+      if (pa !== pb) return pa - pb;
+      return a.code.localeCompare(b.code);
+    });
+  }, [filteredRoots]);
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (id: string) =>
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -445,7 +478,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           className="self-start space-y-0.5 w-full"
         >
           <AllRow active={activeCompanyCode === null} onSelect={clearCompany} />
-          {filteredRoots.map((root) => renderRoot(root))}
+          {sortedFilteredRoots.map((root) => renderRoot(root))}
         </ul>
       )}
     </div>
@@ -459,11 +492,16 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     const isCollapsed = !!collapsed[root.id];
     const hasChildren = children.length > 0;
     const isActive = root.code === activeCompanyCode;
+    // Phase 7.K 2026-05-18 — visual dim for macro-placeholder rows so
+    // client demos can distinguish them at a glance from real
+    // operational entities. Pure CSS opacity; row stays interactive.
+    const isPlaceholder = root.code.startsWith('DEMO-');
     return (
       <li
         key={root.id}
         role="treeitem"
         aria-expanded={hasChildren ? !isCollapsed : undefined}
+        className={isPlaceholder ? 'opacity-50' : undefined}
       >
         <div
           data-testid="company-tree-row"
