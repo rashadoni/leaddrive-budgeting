@@ -230,21 +230,24 @@ Unsigned current period shows "Live data — not yet signed off".
 
 ## Status tracker
 
-| Phase | Component | Status | Commit |
+**Last refresh: 2026-05-17 (Session 9 docs-hygiene pass).** Table reconstructed by cross-referencing actual codebase artefacts + `docs/TRUTH_INFRA_FOLLOWUPS.md` + CARRYOVER changelog 2026-05-16. Phases A/B/D/E mostly shipped through the truth-infra closure session (Phase 7.G Turn LXVII–LXXX + 2026-05-16 wave). **Single remaining ⬜:** C.3 + E.4 (UI-gate items not surfaced) and V1 (browser-side smoke, tracked in `TRUTH_INFRA_FOLLOWUPS.md`).
+
+| Phase | Component | Status | Evidence |
 |---|---|---|---|
-| A.1 | `audit-company.cjs` | ⬜ Pending | — |
-| A.2 | IV/BudgetLine provenance migration | ⬜ Pending | — |
-| A.3 | HeatMap `unknown → —` rendering | ⬜ Pending | — |
-| B.1 | CompanyTree status badge | ⬜ Pending | — |
-| B.2 | IndicatorDetail provenance panel | ⬜ Pending | — |
-| B.3 | Audit log events for reconciliation | ⬜ Pending | — |
-| C.1 | `Company.status` field + migration | ⬜ Pending | — |
-| C.2 | Onboarding checklist UI | ⬜ Pending | — |
-| C.3 | Terminal gate for pending companies | ⬜ Pending | — |
-| D.1 | Drift watchdog cron | ⬜ Pending | — |
-| D.2 | Reference-data freshness checks | ⬜ Pending | — |
-| D.3 | Drift dashboard | ⬜ Pending | — |
-| E.1 | Quarter snapshot table + hash | ⬜ Pending | — |
-| E.2 | Lock mode on BudgetLine mutations | ⬜ Pending | — |
-| E.3 | Unlock workflow | ⬜ Pending | — |
-| E.4 | Terminal locked-period banner | ⬜ Pending | — |
+| A.1 | `audit-company.cjs` | ✅ Done | `scripts/audit-company.cjs` + `src/lib/audit/audit-helpers.cjs` hoisted helpers + 22 vitest cases (closure: TRUTH_INFRA F1, 2026-05-16) |
+| A.2 | IV/BudgetLine provenance migration | ✅ Done | `IndicatorValue` carries `valueSource` + `confidence` + `sourceDocument` + `lastReconciledAt` + `reconciledBy` + `sanityBand`; schema rows present + surfaced by `/api/indicators/values/[id]` |
+| A.3 | HeatMap `unknown → —` rendering | ✅ Done | `HeatMap.tsx` renders em-dash for `status === "unknown"` cells (98 grep hits across UI logic) |
+| B.1 | CompanyTree status badge | ✅ Done | `TrustBadge` component in `CompanyTree.tsx` (lines 464, 514, 742) + integration test `CompanyTree.trust-badge.test.tsx` |
+| B.2 | IndicatorDetail provenance panel | ✅ Done | `IndicatorDetail.tsx` surfaces `valueSource` + `sourceDocument` + `lastReconciledAt` + `sanityBand` (14 grep hits) |
+| B.3 | Audit log events for reconciliation | ✅ Done | `reconciliation_drift_detected` enum value in `prisma/schema.prisma`; emitted by `scripts/drift-watchdog.cjs` |
+| C.1 | `Company.status` field + migration | ✅ Done | `Company.status String @default("pending")` (schema line 230) |
+| C.2 | Onboarding checklist UI | ✅ Done | `/api/companies/[id]/onboarding/route.ts` + `OnboardingCompletenessDashboard.tsx` + `OnboardingTabbedPage.tsx` + `OnboardingWizardSwitcher.tsx` |
+| C.3 | Terminal gate for pending companies | ⬜ Pending | Schema field exists; CompanyTree does not yet filter `status === "pending"` by default. `TrustBadge` surfaces status but doesn't gate visibility. |
+| D.1 | Drift watchdog cron | ✅ Done | `scripts/drift-watchdog.cjs` + `src/lib/audit/drift-watchdog-helpers.cjs` + 10 vitest cases (closure: TRUTH_INFRA F2, 2026-05-16) |
+| D.2 | Reference-data freshness checks | ✅ Done | `src/lib/intel/freshness.ts` + `resolveFreshnessSources()` reads `Organization.settings.intelFreshnessSources`; 5+7 vitest cases (closure: TRUTH_INFRA F3 + L3, 2026-05-16) |
+| D.3 | Drift dashboard | ✅ Done | `src/features/admin/components/DriftDashboard.tsx` + `DriftDashboard.test.tsx` + `/api/admin/drift/route.ts` + handler tests (closure: TRUTH_INFRA F4 + F5, 2026-05-16) |
+| E.1 | Quarter snapshot table + hash | ✅ Done | `PeriodSnapshot` Prisma model (schema line 1897) + `/admin/periods` UI |
+| E.2 | Lock mode on BudgetLine mutations | ✅ Done | `src/lib/budgeting/period-lock.ts` + `period-lock-http.ts` gate 24+ mutation handlers with 423 response (Phase 4.2 closed Turn LXX) |
+| E.3 | Unlock workflow | ✅ Done | `PeriodLocksAdmin.tsx` admin UI + audit on add/remove + lock-API |
+| E.4 | Terminal locked-period banner | ⬜ Pending | `PeriodLockBadge.tsx` exists for plan-row badges, but no terminal-wide banner showing "Q1 2026 is locked, mutations rejected". |
+| V1 | DriftDiffPreview browser smoke | ⬜ Pending | Tracked in `docs/TRUTH_INFRA_FOLLOWUPS.md` — code shipped, browser-side verification with real xlsx upload pending. |
