@@ -132,7 +132,7 @@ export function DriftDashboard() {
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {report.referenceFreshness.map((s) => (
-                <FreshnessCard key={s.sourceCode} source={s} />
+                <FreshnessCard key={s.sourceCode} source={s} onRefreshed={fetchReport} />
               ))}
             </div>
           </Section>
@@ -218,9 +218,43 @@ function Section({
   );
 }
 
-function FreshnessCard({ source }: { source: SourceFreshness }) {
+function FreshnessCard({
+  source,
+  onRefreshed,
+}: {
+  source: SourceFreshness;
+  onRefreshed: () => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [lastResult, setLastResult] = React.useState<string | null>(null);
+
+  const refresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBusy(true);
+    setErr(null);
+    setLastResult(null);
+    try {
+      const res = await fetch(`/api/admin/drift/refresh-source?source=${encodeURIComponent(source.sourceCode)}`, {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => ({} as Record<string, unknown>));
+      if (!res.ok) {
+        throw new Error(typeof body.error === "string" ? body.error : `HTTP ${res.status}`);
+      }
+      const inserted = typeof body.inserted === "number" ? body.inserted : 0;
+      const errors = Array.isArray(body.errors) ? body.errors.length : 0;
+      setLastResult(`+${inserted} points${errors > 0 ? `, ${errors} errors` : ""}`);
+      onRefreshed();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div className={`rounded border p-3 text-xs ${FRESH_COLOR[source.status]}`}>
+    <div className={`rounded border p-3 text-xs ${FRESH_COLOR[source.status]} relative group`}>
       <div className="flex items-center justify-between mb-1">
         <span className="font-mono font-semibold uppercase text-[11px]">{source.sourceCode}</span>
         <span className="uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded border border-current">
@@ -236,6 +270,21 @@ function FreshnessCard({ source }: { source: SourceFreshness }) {
         <div className="text-[10px] opacity-70 mt-1">
           {new Date(source.lastFetchedAt).toLocaleString()}
         </div>
+      )}
+      <button
+        type="button"
+        onClick={refresh}
+        disabled={busy}
+        title={`Fetch ${source.sourceCode} now`}
+        className="mt-2 w-full rounded border border-current/40 px-2 py-1 text-[10px] uppercase tracking-wider font-semibold hover:bg-current/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+      >
+        {busy ? "Fetching…" : "Refresh now"}
+      </button>
+      {lastResult && (
+        <div className="mt-1 text-[10px] text-emerald-700 dark:text-emerald-400">{lastResult}</div>
+      )}
+      {err && (
+        <div className="mt-1 text-[10px] text-red-700 dark:text-red-400">{err}</div>
       )}
     </div>
   );
