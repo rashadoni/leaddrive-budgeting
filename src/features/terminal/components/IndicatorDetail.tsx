@@ -1100,6 +1100,78 @@ function formatHeadlineValue(v: number, unit: string): string {
   return `${v.toFixed(abs >= 10 ? 1 : 2)}${u ? " " + u : ""}`;
 }
 
+/** Pretty-renderer for the commodityPrice-resolver aggregate shape:
+ *  { alias_name: { value, samples, aggregator, sourceCode } }.
+ *  Used by Phase 7.K external-feed indicators. Returns null if shape
+ *  doesn't match → caller tries renderRollupAggregate then falls back
+ *  to JSON. */
+function renderCommodityPriceAggregate(
+  data: Record<string, unknown>,
+): React.ReactElement | null {
+  const entries = Object.entries(data)
+  if (entries.length === 0) return null
+  // Validate every value matches the {value, sourceCode, ...} contract.
+  type AliasEntry = {
+    alias: string
+    value: number
+    samples: number | null
+    aggregator: string | null
+    sourceCode: string | null
+  }
+  const parsed: AliasEntry[] = []
+  for (const [alias, raw] of entries) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+    const r = raw as Record<string, unknown>
+    if (typeof r.value !== "number") return null
+    if (typeof r.sourceCode !== "string") return null
+    parsed.push({
+      alias,
+      value: r.value,
+      samples: typeof r.samples === "number" ? r.samples : null,
+      aggregator: typeof r.aggregator === "string" ? r.aggregator : null,
+      sourceCode: r.sourceCode,
+    })
+  }
+  return (
+    <div className="space-y-1 bg-foreground/95 dark:bg-background rounded border border-border px-2 py-1.5">
+      <table className="text-[10px] tabular-nums w-full">
+        <tbody>
+          {parsed.map((p) => (
+            <tr
+              key={p.alias}
+              className="border-b border-border/30 last:border-b-0"
+            >
+              <td className="text-muted-foreground pr-2 font-mono align-top py-0.5">
+                {p.alias}
+              </td>
+              <td
+                className="text-gray-200 text-right pr-2 align-top py-0.5"
+                title={p.value.toLocaleString("ru-RU")}
+              >
+                {Number.isFinite(p.value)
+                  ? Math.abs(p.value) >= 1e6
+                    ? p.value.toLocaleString("ru-RU", {
+                        maximumFractionDigits: 0,
+                      })
+                    : p.value.toLocaleString("ru-RU", {
+                        maximumFractionDigits: 4,
+                      })
+                  : "—"}
+              </td>
+              <td className="text-muted-foreground text-[9px] text-right pl-1 align-top py-0.5 w-32">
+                <code className="font-mono">{p.sourceCode}</code>
+                {p.aggregator && p.aggregator !== "latest" && (
+                  <span className="ml-1 opacity-70">· {p.aggregator}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /** Pretty-renderer for the rollup-resolver aggregate shape:
  *  { sums: { INDICATOR_CODE: { sum, matched_count } }, children_count }.
  *  Returns null if shape doesn't match → caller falls back to JSON. */
@@ -1210,6 +1282,12 @@ function AggregateBlock({
     ([, v]) => v === null || ["number", "string", "boolean"].includes(typeof v),
   );
   if (!allPrimitive) {
+    // Try specific structured renderers in priority order. The first
+    // that recognizes the shape wins; raw JSON only as last resort.
+    const commodityView = renderCommodityPriceAggregate(
+      data as Record<string, unknown>,
+    );
+    if (commodityView) return commodityView;
     const rollupView = renderRollupAggregate(data as Record<string, unknown>);
     if (rollupView) return rollupView;
     return (
