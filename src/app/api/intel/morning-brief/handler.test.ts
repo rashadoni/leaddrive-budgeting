@@ -12,6 +12,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 const { prismaMock, hasAnthropicKeyMock, runMorningBriefMock, logAuditEventMock, enforceRateLimitMock } = vi.hoisted(() => ({
   prismaMock: {
     auditEvent: { create: vi.fn() },
+    // Phase 7.K: route now hits prisma.company.findMany to enrich the
+    // LLM payload with authoritative company name+industry so the LLM
+    // doesn't hallucinate sector classifications. Default empty array
+    // covers the no-companies-in-payload edge case.
+    company: { findMany: vi.fn().mockResolvedValue([]) },
   },
   hasAnthropicKeyMock: vi.fn(),
   runMorningBriefMock: vi.fn(),

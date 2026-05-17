@@ -186,6 +186,26 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // Enrich payload with authoritative company name + industry so the
+  // LLM doesn't invent classifications (e.g. mis-calling ATL-DBZ /
+  // ATL-PMZ / ATL-TAZ "фарм-заводы" — they're industrial, not pharma).
+  // One DB hit per request, scoped by the company codes the client
+  // actually referenced in worstCells/topMovers.
+  const referencedCodes = new Set<string>([
+    ...shaped.worstCells.map((c) => c.companyCode),
+    ...shaped.topMovers.map((m) => m.companyCode),
+  ])
+  if (referencedCodes.size > 0) {
+    const rows = await prisma.company.findMany({
+      where: { organizationId: orgId, code: { in: [...referencedCodes] } },
+      select: { code: true, name: true, industry: true },
+    })
+    const companies: Record<string, { name: string; industry: string | null }> =
+      {}
+    for (const r of rows) companies[r.code] = { name: r.name, industry: r.industry }
+    shaped.companies = companies
+  }
+
   let result
   try {
     result = await runMorningBrief(shaped)

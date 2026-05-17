@@ -36,6 +36,13 @@ export interface MorningBriefInput {
     message: string
   }>
   newsBullets: string[]
+  /** Company lookup so the LLM can use authoritative names + industries
+   *  in the narrative instead of guessing from the code. Without this
+   *  the LLM hallucinates classifications (e.g. inventing "фармзаводы"
+   *  for ATL-DBZ / ATL-PMZ / ATL-TAZ because the codes end in "Z" /
+   *  "Zavodu" without context). Keys = companyCode used in
+   *  worstCells/topMovers. */
+  companies?: Record<string, { name: string; industry: string | null }>
   language: MorningBriefLanguage
 }
 
@@ -66,6 +73,9 @@ export async function runMorningBrief(
     topMovers: input.topMovers.slice(0, 10),
     activeAlerts: input.activeAlerts.slice(0, 10),
     newsBullets: input.newsBullets.slice(0, 10),
+    // Pass company lookup so LLM uses authoritative name+industry
+    // rather than inventing classifications from the code suffix.
+    companies: input.companies ?? {},
   }
 
   const res = await client.messages.create({

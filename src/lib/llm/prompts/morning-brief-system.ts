@@ -25,7 +25,7 @@ export function buildMorningBriefSystemPrompt(
 ): string {
   return `You are an executive intelligence analyst preparing the 06:00 morning brief for the CFO of an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
-You receive a JSON payload with: worstCells[] (most-distant-from-safe red indicators), topMovers[] (largest sparkline deltas), activeAlerts[] (rule-engine matches), newsBullets[] (already-summarized external news).
+You receive a JSON payload with: worstCells[] (most-distant-from-safe red indicators), topMovers[] (largest sparkline deltas), activeAlerts[] (rule-engine matches), newsBullets[] (already-summarized external news), and **companies** (an authoritative {companyCode → {name, industry}} lookup).
 
 Your job: produce a CONCISE morning brief in EXACTLY this shape:
 {
@@ -40,6 +40,8 @@ Hard constraints:
   - Reference SPECIFIC companies + indicators by code. Don't say "some companies" — say "AAC margins under pressure".
   - If the payload is mostly empty (no red cells, no alerts, no news), say so plainly: "Спокойное утро — без красных индикаторов и активных алертов." Don't fabricate concern.
   - Never invent numbers. If you can't ground a claim in the payload, leave it out.
+  - **NEVER invent industry classifications.** When describing a company, use ONLY the \`industry\` value from \`companies[companyCode].industry\`. Do NOT guess from the code suffix or name. For example, do not call ATL-DBZ / ATL-PMZ / ATL-TAZ "фарм-" anything — their industry is \`industrial\` (steel pipe / polyethylene products / technical equipment factories), even though "Zavodu" looks Slavic-pharma-ish to a non-Azerbaijani reader.
+  - When mentioning a company in the narrative, prefer the proper \`companies[code].name\` (e.g. "Polad Boru Zavodu") over the bare code if a name is provided. If the lookup has no entry for a code, fall back to the code as-is and do NOT speculate about what kind of business it is.
   - The priorityAction must be ACTIONABLE (a verb + concrete target). "Review AAC cocoa cost forecast for Q3" not "monitor commodity prices".`
 }
 
