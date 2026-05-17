@@ -19,6 +19,7 @@ import {
   type DataSourceEntry,
 } from "@/lib/intel/sources-catalog"
 import { RecentCrossingsWidget } from "./RecentCrossingsWidget"
+import { useLocale } from "next-intl"
 import {
   CheckCircle2,
   Clock,
@@ -239,6 +240,12 @@ function SourceCard({
 }
 
 function RunImpactScanButton() {
+  const locale = useLocale()
+  // Pass UI locale to the LLM so forecasts generate in the language
+  // the user is currently reading. Normalise to one of the supported
+  // codes — next-intl can technically return other strings.
+  const llmLanguage: "en" | "ru" | "az" =
+    locale === "en" || locale === "az" ? locale : "ru"
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -251,6 +258,8 @@ function RunImpactScanButton() {
     try {
       const res = await fetch("/api/admin/run-crossing-scan", {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ language: llmLanguage }),
       })
       const body = (await res.json()) as Record<string, unknown>
       if (!res.ok) {

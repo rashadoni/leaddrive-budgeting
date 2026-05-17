@@ -53,11 +53,29 @@ export async function POST(request: NextRequest) {
   )
   if (rateLimitError) return rateLimitError
 
+  // Phase 7.L 2026-05-18 — accept language in POST body so the LLM
+  // generates output in the user's UI locale (was hardcoded 'en' in
+  // crossing-scan-runner; user reported RU UI showing EN forecasts).
+  // Falls back to 'ru' (FO Holding's primary locale) when body absent
+  // / language invalid. Cache key includes language so EN + RU forecasts
+  // for the same trigger persist independently.
+  let language: "en" | "ru" | "az" = "ru"
+  try {
+    const body = (await request.json().catch(() => ({}))) as {
+      language?: unknown
+    }
+    if (body.language === "en" || body.language === "ru" || body.language === "az") {
+      language = body.language
+    }
+  } catch {
+    // ignore — use default
+  }
+
   const startedAt = Date.now()
   try {
-    const result = await runCrossingScan(orgId, { prisma })
+    const result = await runCrossingScan(orgId, { prisma, language })
     const durationMs = Date.now() - startedAt
-    return NextResponse.json({ ...result, durationMs })
+    return NextResponse.json({ ...result, durationMs, language })
   } catch (err) {
     console.error("[crossing-scan POST] failed:", err)
     return NextResponse.json(

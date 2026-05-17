@@ -50,7 +50,12 @@ const MAX_FORECASTS_PER_CYCLE = 20
  * threshold rules.
  */
 const RECENT_DAYS = 90
-const DEFAULT_LANGUAGE: ImpactForecastLanguage = "en"
+// Default language switched 'en' → 'ru' (Phase 7.L 2026-05-18). FO
+// Holding's primary UI locale is Russian; English default produced
+// EN forecasts on the RU-locale Risk Terminal, surfacing as a
+// language mismatch in Panel 4. Callers (admin button + scheduler
+// hook) can override per-call via opts.language.
+const DEFAULT_LANGUAGE: ImpactForecastLanguage = "ru"
 
 export interface RunCrossingScanResult {
   ok: boolean

@@ -29,11 +29,13 @@ export async function getCompanyImpactForecasts(
   organizationId: string,
   companyCode: string,
   limit = 3,
+  language?: "en" | "ru" | "az",
 ): Promise<CompanyImpactForecastRow[]> {
   const rows = await prisma.feedImpactForecast.findMany({
     where: {
       organizationId,
       affectedCompanyCode: companyCode,
+      ...(language ? { language } : {}),
     },
     orderBy: { generatedAt: "desc" },
     take: limit,

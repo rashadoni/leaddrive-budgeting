@@ -14,6 +14,7 @@
  * companies will have 0 rows until a feed crossing fires).
  */
 import React, { useEffect, useState } from "react"
+import { useLocale } from "next-intl"
 import { getDataSourceByCode } from "@/lib/intel/sources-catalog"
 
 interface ImpactScenario {
@@ -169,6 +170,13 @@ export function CompanyImpactForecastsCard({
 }: {
   companyCode: string
 }) {
+  const locale = useLocale()
+  // Phase 7.L 2026-05-18 — filter forecasts by current UI locale so a
+  // RU user doesn't see EN narratives. If no row exists for the
+  // current locale, empty state surfaces; admin can re-run the scan
+  // via /budgeting/admin/data-sources button to generate it.
+  const langParam: "en" | "ru" | "az" =
+    locale === "en" || locale === "az" ? locale : "ru"
   const [rows, setRows] = useState<ImpactForecastRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -178,7 +186,9 @@ export function CompanyImpactForecastsCard({
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetch(`/api/terminal/impact-forecasts/${encodeURIComponent(companyCode)}?limit=3`)
+    fetch(
+      `/api/terminal/impact-forecasts/${encodeURIComponent(companyCode)}?limit=3&language=${langParam}`,
+    )
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
         const data = (await r.json()) as { forecasts: ImpactForecastRow[] }
@@ -193,7 +203,7 @@ export function CompanyImpactForecastsCard({
     return () => {
       cancelled = true
     }
-  }, [companyCode])
+  }, [companyCode, langParam])
 
   if (loading && rows.length === 0) {
     return (

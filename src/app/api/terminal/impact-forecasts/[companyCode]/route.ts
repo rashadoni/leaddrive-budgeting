@@ -29,8 +29,18 @@ export async function GET(
     return NextResponse.json({ error: "companyCode required" }, { status: 400 })
   }
 
-  const limitRaw = new URL(request.url).searchParams.get("limit")
+  const urlParams = new URL(request.url).searchParams
+  const limitRaw = urlParams.get("limit")
   const limit = limitRaw ? Math.max(1, Math.min(20, parseInt(limitRaw, 10))) : 3
+  // Phase 7.L 2026-05-18 — filter by language so Panel 4 only shows
+  // forecasts matching the user's current UI locale. Optional —
+  // omit `?language=` to get all rows regardless of language (admin
+  // diagnostic).
+  const languageRaw = urlParams.get("language")
+  const language =
+    languageRaw === "en" || languageRaw === "ru" || languageRaw === "az"
+      ? languageRaw
+      : undefined
 
   try {
     const rows = await getCompanyImpactForecasts(
@@ -38,6 +48,7 @@ export async function GET(
       session.orgId,
       companyCode,
       limit,
+      language,
     )
     return NextResponse.json({ forecasts: rows })
   } catch (err) {
