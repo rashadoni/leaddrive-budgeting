@@ -205,6 +205,44 @@ export const OPERATIONAL_METRIC_RULES: readonly MetricValidationRule[] = [
     hintRu: "Содержание сахарозы в собранном тростнике/свёкле. Тростник: 10–18%; свёкла: 16–20%.",
     hintAz: "Yığılan qamış/çuğundurda saxaroza miqdarı. Qamış: 10–18%; çuğundur: 16–20%.",
   },
+  // Phase 7.M Tier 4 (2026-05-19) — Sugar beet specific KPIs.
+  // Brix = total soluble solids (sucrose + other non-sugar solids).
+  // Pol  = pure sucrose %. Always ≤ Brix.
+  // Purity = (Pol/Brix) × 100 — typically 80–90% for mature beet.
+  // Azik confirmed in docx these will be added to Farming KPI sheet in
+  // next workbook update; parser auto-detects column when present.
+  {
+    metric: "sugar_brix_pct",
+    unit: "°Brix",
+    min: 0,
+    max: 30,
+    warnMin: 12,
+    warnMax: 22,
+    anomalyDeltaPct: 25,
+    sector: "agro",
+    labelEn: "Brix (sugar beet, °)",
+    labelRu: "Брикс (сахарная свёкла, °)",
+    labelAz: "Briks (şəkər çuğunduru, °)",
+    hintEn: "Total soluble solids in sugar beet juice. Mature beet: 12–22 °Brix.",
+    hintRu: "Общие растворимые сухие вещества в соке свёклы. Зрелая свёкла: 12–22°.",
+    hintAz: "Şəkər çuğundurunun şirəsində ümumi həll olunmuş bərk maddələr. Yetişmiş çuğundur: 12–22°.",
+  },
+  {
+    metric: "sugar_pol_pct",
+    unit: "%",
+    min: 0,
+    max: 25,
+    warnMin: 10,
+    warnMax: 18,
+    anomalyDeltaPct: 25,
+    sector: "agro",
+    labelEn: "Polarization / Pol (%)",
+    labelRu: "Поляризация / Пол (%)",
+    labelAz: "Polyarizasiya / Pol (%)",
+    hintEn: "Pure sucrose % measured by polarimeter. Always ≤ Brix. Mature beet: 14–18%.",
+    hintRu: "Чистая сахароза, измеренная поляриметром. Всегда ≤ Brix. Зрелая свёкла: 14–18%.",
+    hintAz: "Polyarimetrlə ölçülmüş təmiz saxaroza %. Həmişə Briks-dən az. Yetişmiş çuğundur: 14–18%.",
+  },
   {
     metric: "water_use_m3_per_ha",
     unit: "m³/ha",

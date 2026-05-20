@@ -1,0 +1,305 @@
+/**
+ * Phase 7.M Tier 4 (2026-05-19) — AI Import: Sheet classifier.
+ *
+ * Takes a batch of sheet metadata (from `sheet-meta-extractor.ts`) and
+ * asks the LLM to classify each one (P&L / BS / CF / KPI / CAPEX / Land /
+ * Sales / Descriptions / Unknown) AND extract the entity code it belongs
+ * to (AZSEKER-CPC etc.).
+ *
+ * Design:
+ *   • One LLM call per workbook (batched across all sheets) — keeps token
+ *     spend bounded at ~3-5k input + ~2k output tokens regardless of
+ *     workbook size.
+ *   • SDK seam (`anthropicClient` injected) for test isolation.
+ *   • JSON-only output with strict shape validation.
+ *   • Section separators (sheets with `>>>` in name) are skipped
+ *     pre-LLM — emit INFO_SUMMARY directly without burning tokens.
+ *   • Empty workbooks emit zero classifications, no LLM call.
+ *
+ * Mirrors `AnthropicLLMService.generateMapping()` pattern.
+ */
+import { extractJsonFromText } from "@/lib/onboarding/ai-mapper/json-extract"
+import {
+  SHEET_CLASSIFIER_SYSTEM_PROMPT,
+  SHEET_CLASSIFIER_PROMPT_VERSION,
+  buildSheetClassifierUserMessage,
+} from "@/lib/llm/prompts/sheet-classifier-system"
+import type { SheetMeta } from "./sheet-meta-extractor"
+import type { LLMUsage } from "@/lib/llm/types"
+
+export type SheetDataType =
+  | "PLF"
+  | "BS"
+  | "CF"
+  | "KPI_FARMING"
+  | "KPI_PROCESSING"
+  | "CAPEX"
+  | "SALES"
+  | "LAND_REGISTRY"
+  | "DESCRIPTIONS"
+  | "INFO_SUMMARY"
+  | "UNKNOWN"
+
+export interface SheetClassification {
+  sheetName: string
+  dataType: SheetDataType
+  /** Resolved canonical entity code (e.g. AZSEKER-CPC) or null for cross-entity sheets. */
+  entityCode: string | null
+  /** 0..1 — below 0.6 means LLM was guessing. */
+  confidence: number
+  /** One-line explanation citing the signal. */
+  reasoning: string
+}
+
+export interface SheetClassifierInput {
+  sheetMetas: SheetMeta[]
+  /** Optional: known entity codes in this org (e.g. ['AZSEKER-CPC',...]). */
+  knownEntityCodes?: string[]
+  /** Optional: org primary industry hint. */
+  orgIndustry?: string
+}
+
+export interface SheetClassifierResult {
+  classifications: SheetClassification[]
+  usage: LLMUsage
+  /** True if no LLM call was made (e.g. all sheets were separators). */
+  skippedLLM: boolean
+}
+
+/** Anthropic-style client seam — minimal interface so we can test with a stub. */
+export interface SheetClassifierAnthropicLike {
+  messages: {
+    create: (params: {
+      model: string
+      max_tokens: number
+      system: string
+      messages: Array<{ role: "user"; content: string }>
+    }) => Promise<{
+      stop_reason: string | null
+      content: Array<{ type: string; text?: string }>
+      usage?: { input_tokens: number; output_tokens: number }
+    }>
+  }
+}
+
+export interface ClassifySheetsOptions {
+  model?: string
+  maxTokens?: number
+}
+
+const VALID_DATA_TYPES = new Set<SheetDataType>([
+  "PLF",
+  "BS",
+  "CF",
+  "KPI_FARMING",
+  "KPI_PROCESSING",
+  "CAPEX",
+  "SALES",
+  "LAND_REGISTRY",
+  "DESCRIPTIONS",
+  "INFO_SUMMARY",
+  "UNKNOWN",
+])
+
+/**
+ * Reduce a `SheetMeta` to the compact shape the LLM needs to see. Trims
+ * cell content + column profiles to keep payload small.
+ */
+function metaForLLM(meta: SheetMeta) {
+  return {
+    sheetName: meta.sheetName,
+    totalRows: meta.totalRows,
+    totalColumns: meta.totalColumns,
+    headers: meta.headers.slice(0, 12),
+    sample: meta.sample.slice(0, 3).map((row) => row.slice(0, 12)),
+    columnProfiles: meta.columnProfiles.slice(0, 12).map((p) => ({
+      header: p.header,
+      types: p.types,
+      sampleValues: p.sampleValues.slice(0, 3),
+    })),
+  }
+}
+
+/**
+ * Pre-LLM classification for sheets that don't need AI:
+ *   • Section separators (sheet name has `>>>`) → INFO_SUMMARY
+ *   • Empty sheets → UNKNOWN with confidence 0.0
+ */
+function preClassify(meta: SheetMeta): SheetClassification | null {
+  if (meta.isSectionSeparator) {
+    return {
+      sheetName: meta.sheetName,
+      dataType: "INFO_SUMMARY",
+      entityCode: null,
+      confidence: 1.0,
+      reasoning: "Section separator pattern '>>>' in sheet name",
+    }
+  }
+  if (meta.totalRows === 0) {
+    return {
+      sheetName: meta.sheetName,
+      dataType: "UNKNOWN",
+      entityCode: null,
+      confidence: 0.0,
+      reasoning: "Sheet is empty",
+    }
+  }
+  return null
+}
+
+function validateClassification(
+  raw: unknown,
+  index: number,
+): SheetClassification {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(
+      `Classification[${index}] is not an object (got: ${typeof raw})`,
+    )
+  }
+  const r = raw as Record<string, unknown>
+  const sheetName = typeof r.sheetName === "string" ? r.sheetName : null
+  if (!sheetName)
+    throw new Error(
+      `Classification[${index}]: missing or non-string sheetName`,
+    )
+  const dataType = String(r.dataType) as SheetDataType
+  if (!VALID_DATA_TYPES.has(dataType))
+    throw new Error(
+      `Classification[${index}] sheetName="${sheetName}" has invalid dataType "${r.dataType}"`,
+    )
+  const entityCode =
+    r.entityCode === null || r.entityCode === undefined
+      ? null
+      : typeof r.entityCode === "string"
+        ? r.entityCode
+        : null
+  const confidence =
+    typeof r.confidence === "number" && Number.isFinite(r.confidence)
+      ? Math.max(0, Math.min(1, r.confidence))
+      : 0
+  const reasoning =
+    typeof r.reasoning === "string" ? r.reasoning : "(no reasoning supplied)"
+  return { sheetName, dataType, entityCode, confidence, reasoning }
+}
+
+/**
+ * Main entry: classify a batch of sheets via one LLM call. Pure function
+ * relative to (input, anthropicClient, opts) — no DB writes, no global
+ * state.
+ */
+export async function classifySheets(
+  input: SheetClassifierInput,
+  anthropicClient: SheetClassifierAnthropicLike,
+  model: string,
+  opts: ClassifySheetsOptions = {},
+): Promise<SheetClassifierResult> {
+  // Pre-classify separators + empty sheets locally.
+  const preClassified: SheetClassification[] = []
+  const needsLLM: SheetMeta[] = []
+  for (const meta of input.sheetMetas) {
+    const pre = preClassify(meta)
+    if (pre) preClassified.push(pre)
+    else needsLLM.push(meta)
+  }
+
+  if (needsLLM.length === 0) {
+    return {
+      classifications: preClassified,
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        modelName: opts.model ?? model,
+        promptVersion: SHEET_CLASSIFIER_PROMPT_VERSION,
+      },
+      skippedLLM: true,
+    }
+  }
+
+  const maxTokens = opts.maxTokens ?? 8192
+  const usedModel = opts.model ?? model
+
+  const userMessage = buildSheetClassifierUserMessage({
+    sheets: needsLLM.map(metaForLLM),
+    knownEntityCodes: input.knownEntityCodes,
+    orgIndustry: input.orgIndustry,
+  })
+
+  const response = await anthropicClient.messages.create({
+    model: usedModel,
+    max_tokens: maxTokens,
+    system: SHEET_CLASSIFIER_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userMessage }],
+  })
+
+  if (response.stop_reason === "max_tokens") {
+    throw new Error(
+      `Sheet classifier truncated at max_tokens=${maxTokens}. Re-run with higher maxTokens (response clipped mid-JSON).`,
+    )
+  }
+  const textBlocks = response.content
+    .filter((b) => b.type === "text")
+    .map((b) => (b as { type: "text"; text: string }).text)
+  if (textBlocks.length === 0) {
+    throw new Error("Sheet classifier response had no text content")
+  }
+  const raw = textBlocks.join("\n").trim()
+  const jsonText = extractJsonFromText(raw)
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch (err) {
+    throw new Error(
+      `Sheet classifier returned invalid JSON: ${err instanceof Error ? err.message : err}.\nFirst 300 chars: ${jsonText.slice(0, 300)}`,
+    )
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`Sheet classifier returned non-object: ${typeof parsed}`)
+  }
+  const root = parsed as Record<string, unknown>
+  if (!Array.isArray(root.classifications)) {
+    throw new Error(
+      `Sheet classifier response missing "classifications" array (keys: ${Object.keys(root).join(", ")})`,
+    )
+  }
+  const llmClassifications: SheetClassification[] = root.classifications.map(
+    (raw, i) => validateClassification(raw, i),
+  )
+
+  // Cross-check: every sheet sent to LLM should be in response.
+  const llmSheetNames = new Set(llmClassifications.map((c) => c.sheetName))
+  for (const meta of needsLLM) {
+    if (!llmSheetNames.has(meta.sheetName)) {
+      // LLM dropped this sheet — fill with UNKNOWN so caller doesn't
+      // silently lose data.
+      llmClassifications.push({
+        sheetName: meta.sheetName,
+        dataType: "UNKNOWN",
+        entityCode: null,
+        confidence: 0,
+        reasoning: "LLM did not return a classification for this sheet",
+      })
+    }
+  }
+
+  // Merge: pre-classified + LLM, preserving original sheet order.
+  const byName = new Map<string, SheetClassification>()
+  for (const c of preClassified) byName.set(c.sheetName, c)
+  for (const c of llmClassifications) byName.set(c.sheetName, c)
+  const ordered: SheetClassification[] = []
+  for (const meta of input.sheetMetas) {
+    const c = byName.get(meta.sheetName)
+    if (c) ordered.push(c)
+  }
+
+  return {
+    classifications: ordered,
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+      modelName: usedModel,
+      promptVersion: SHEET_CLASSIFIER_PROMPT_VERSION,
+    },
+    skippedLLM: false,
+  }
+}

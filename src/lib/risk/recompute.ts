@@ -386,7 +386,11 @@ export interface BookingAggregate {
 export interface OperationalFactAggregate {
   [metric: string]: { count: number; avg: number | null };
 }
-export type CompanySettingsAggregate = Record<string, number>;
+// Phase 7.M Tier 4 (2026-05-19) — widened to `number | string` so the
+// companySettingsResolver can emit string flags (e.g. fxExposureSource).
+// Formula expressions still see numbers only via state.context — strings
+// stay in aggregates for use by guard logic.
+export type CompanySettingsAggregate = Record<string, number | string>;
 
 export interface CurrencyRateAggregate {
   base_currency: string | null;
@@ -397,6 +401,14 @@ export interface CurrencyRateAggregate {
 
 export interface BudgetLineAggregate {
   line_count: number;
+  /** Phase 7.M Step 4 (2026-05-19) — count of lines that carry an
+   *  explicit non-base currencyCode + exchangeRate. Used by the
+   *  zombie-row guard to distinguish "genuinely 100% domestic" from
+   *  "xlsx importer dropped the currency column". When `line_count > 0`
+   *  but `foreign_line_count === 0`, any FX-share formula evaluates
+   *  to a structurally meaningless 0 and the guard demotes the cell
+   *  to `unknown`. */
+  foreign_line_count: number;
   revenue: number;
   cogs: number;
   opex: number;
@@ -629,7 +641,12 @@ export function createPrismaDataSource(
     async listCounterparties({ organizationId, companyId, role, period }) {
       try {
         const rows = await prisma.counterparty.findMany({
-          where: { organizationId, companyId, role, period },
+          // Phase 7.M Step 4 — exclude soft-deleted (archived) counter-
+          // parties from the recompute pipeline. Indicators like
+          // customer-concentration HHI must reflect the active
+          // counterparty register only; archived rows would silently
+          // dilute the share-of-revenue math.
+          where: { organizationId, companyId, role, period, deletedAt: null },
           select: { sharePct: true, singleSource: true, name: true },
         });
         return rows;
@@ -745,6 +762,12 @@ export function createPrismaDataSource(
           companyId,
           plan: { year: period.year },
           ...(sortOrderFilter ? { sortOrder: sortOrderFilter } : {}),
+          // Phase 7.M Step 4 — exclude soft-deleted (archived) budget
+          // lines. Without this, archiving a single period's rows
+          // would still leave them flowing into revenue / cogs / opex
+          // aggregates → no observable effect on HeatMap. The whole
+          // point of the admin archive UI is reversible removal.
+          deletedAt: null,
         },
         select: {
           plannedAmount: true,
@@ -1154,7 +1177,7 @@ const companySettingsResolver: NamespaceResolver = {
       organizationId: ctx.organizationId,
       companyId: ctx.companyId,
     });
-    const plucked: Record<string, number> = {};
+    const plucked: Record<string, number | string> = {};
     for (const raw of matched) {
       const key = raw.slice('company.settings.'.length);
       const value = settings?.[key];
@@ -1162,6 +1185,13 @@ const companySettingsResolver: NamespaceResolver = {
         const snake = toSnakeCase(key);
         state.context[snake] = value;
         state.inputs.resolved[snake] = value;
+        plucked[snake] = value;
+      } else if (typeof value === 'string') {
+        // Phase 7.M Tier 4 (2026-05-19) — string flags (e.g.
+        // `fxExposureSource`) into aggregates only. Don't pollute
+        // formula context (strings would crash expr-eval). The fx-guard
+        // reads via `aggregates.company_settings.fx_exposure_source`.
+        const snake = toSnakeCase(key);
         plucked[snake] = value;
       }
     }
@@ -1633,8 +1663,23 @@ const budgetLineResolver: NamespaceResolver = {
     state.inputs.resolved.gross_profit = gross_profit;
     state.inputs.resolved.net_income = net_income;
 
+    // Phase 7.M Step 4 follow-up (2026-05-19) — count foreign-tagged
+    // lines explicitly so the zombie-row guard can distinguish "this
+    // company is genuinely 100% domestic" from "the importer didn't
+    // populate currencyCode on any line, so imported_* defaulted to 0".
+    // Without the count, FX_IMPORTED_INPUT cells everywhere read as
+    // false-green ("0% imported — healthy!") on holdings whose xlsx
+    // import dropped the currency column.
+    const foreign_line_count = lines.filter(
+      (l) =>
+        l.currencyCode != null &&
+        l.currencyCode !== baseCcy &&
+        l.exchangeRate != null,
+    ).length;
+
     state.inputs.aggregates.budget_line = {
       line_count: lines.length,
+      foreign_line_count,
       revenue,
       cogs,
       opex,
@@ -2845,6 +2890,107 @@ export async function recomputeIndicator(
     value = result.value;
     const thresholds = args.definition.thresholds as Thresholds;
     status = classifyValue(value, thresholds);
+
+    // Phase 7.L 2026-05-18 — zombie-row guard. When a formula evaluates
+    // to a numeric 0 because all of its inputs were structurally empty
+    // (no children to roll up, no budget lines to read), `classifyValue`
+    // happily paints that 0 green/amber because raw 0 falls within
+    // some threshold band. The result is HeatMap cells that look like
+    // a measurement ("0% imported inputs — healthy!") when in fact
+    // there's nothing being measured.
+    //
+    // The audit on 2026-05-18 surfaced three concrete instances:
+    //   • IND_HOLDING_REVENUE on every leaf company (rollup of 0
+    //     children → 0 → amber). 250 zombie rows.
+    //   • IND_CARBON_SCOPE_1/2/3 on the DEMO-* sector stubs that
+    //     have 0 budget lines (0 revenue × factor = 0 → green).
+    //   • FX_IMPORTED_INPUT on every entity (no foreign-currency
+    //     lines tagged in budget_lines → 0% imported → green).
+    //
+    // The guard demotes those cells to `unknown` so finance users
+    // know data is missing, not "good".
+    //
+    // The check fires whenever the relevant aggregate signals emptiness,
+    // regardless of computed value. Originally narrowed to value===0
+    // but a max(0, ...) / min(100, ...) cap formula can produce 0 or
+    // 100 from empty inputs (e.g. IND_ESG_COMPOSITE saturates to 100
+    // when revenue=0). The guard is safe to widen because each branch
+    // already checks an empty-input signal — a legitimate measurement
+    // on populated inputs can't trigger it.
+    {
+      const formulaText = String(args.definition.formula ?? '');
+      const rollupAgg = finalInputs.aggregates?.rollup as
+        | { children_count?: number }
+        | undefined;
+      const budgetLineAgg = finalInputs.aggregates?.budget_line as
+        | { line_count?: number; foreign_line_count?: number }
+        | undefined;
+      const bookingAgg = finalInputs.aggregates?.booking as
+        | { booking_count?: number; rooms_sold?: number }
+        | undefined;
+      const usesRollup = formulaText.includes('rollup(');
+      const usesBudget =
+        /\b(revenue|cogs|opex|gross_profit|net_income|total_cost|imported_input_cost|domestic_input_cost|total_input_cost)\b/.test(
+          formulaText,
+        );
+      // Phase 7.M Step 4 follow-up (2026-05-19) — detect the FX-shaped
+      // formula. When the company has budget lines but NO foreign-tagged
+      // lines, the numerator is structurally 0 (importer dropped the
+      // currency column). Demote so HeatMap doesn't paint false-green.
+      const usesImportedInput = /\bimported_input_cost\b/.test(formulaText);
+      // Phase 7.M Step 4 follow-up — hospitality / booking-based
+      // formulas (HOSP_*). When the company has no booking rows at
+      // all, `rooms_sold` / `room_revenue` / `source_*` aggregates
+      // resolve to 0 and any HOSP_* formula evaluates to a meaningless
+      // 0 or HHI-saturated value. Demote so DEMO-HOSP and other
+      // hospitality stubs without booking data don't look "healthy".
+      const usesBooking =
+        /\b(rooms_sold|nights_sold|room_revenue|booking_count|source_country_hhi|fx_revenue_share|rooms_available)\b/.test(
+          formulaText,
+        );
+      const rollupEmpty =
+        usesRollup && (rollupAgg?.children_count ?? 0) === 0;
+      const budgetEmpty =
+        usesBudget && (budgetLineAgg?.line_count ?? 0) === 0;
+      // Phase 7.M Tier 4 (2026-05-19) — fxExposureSource opt-in. When
+      // Company.settings.fxExposureSource === "all_domestic", the entity
+      // explicitly declares zero FX exposure (e.g. AzerSheker confirmed
+      // all-AZN workbook). The guard skips → formula computes 0/X * 100
+      // = 0% → status='green'. Default behaviour (no setting / "tagged_lines")
+      // preserves the conservative "unknown" — better safe than wrong.
+      // Resolver writes settings keys in snake_case (toSnakeCase helper).
+      const companySettingsAgg = finalInputs.aggregates?.company_settings as
+        | { fx_exposure_source?: string }
+        | undefined;
+      const fxAllDomestic =
+        companySettingsAgg?.fx_exposure_source === 'all_domestic';
+      const fxUntagged =
+        usesImportedInput &&
+        !fxAllDomestic &&
+        (budgetLineAgg?.line_count ?? 0) > 0 &&
+        (budgetLineAgg?.foreign_line_count ?? 0) === 0;
+      const bookingEmpty =
+        usesBooking && (bookingAgg?.booking_count ?? 0) === 0;
+      if (rollupEmpty || budgetEmpty || fxUntagged || bookingEmpty) {
+        status = 'unknown';
+        finalInputs.error = {
+          code: rollupEmpty
+            ? 'rollup_no_children'
+            : budgetEmpty
+              ? 'no_budget_lines'
+              : fxUntagged
+                ? 'no_foreign_currency_lines'
+                : 'no_bookings',
+          reason: rollupEmpty
+            ? 'Rollup indicator on entity with no children to aggregate'
+            : budgetEmpty
+              ? 'Formula references budget-line aggregates but the entity has no budget lines for this period'
+              : fxUntagged
+                ? 'FX-share formula references imported_input_cost but no foreign-currency lines are tagged (xlsx importer dropped the currency column?)'
+                : 'Hospitality formula references booking aggregates but the entity has no booking rows for this period',
+        };
+      }
+    }
 
     // Plausibility cap for ratio-type indicators. Override to `unknown` so
     // a misclassified revenue row doesn't show up as a red alert on the

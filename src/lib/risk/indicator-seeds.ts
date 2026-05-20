@@ -576,7 +576,11 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     ],
     unit: "index",
     direction: "lower_better",
-    formula: "counterparty_hhi:customer",
+    // Phase 7.M Tier 4 (2026-05-19) bugfix — was "counterparty_hhi:customer"
+    // (parse error, colon invalid in expression). Resolver writes a flat
+    // alias `counterparty_hhi_customer` to context that the formula
+    // engine reads as a variable. See recompute.ts:2381.
+    formula: "counterparty_hhi_customer",
     thresholds: {
       green: { op: "<=", value: 0.15 },
       amber: { op: "<=", value: 0.25 },
@@ -611,7 +615,8 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     ],
     unit: "index",
     direction: "lower_better",
-    formula: "counterparty_hhi:supplier",
+    // Phase 7.M Tier 4 (2026-05-19) bugfix — see CUSTOMER_HHI comment.
+    formula: "counterparty_hhi_supplier",
     thresholds: {
       green: { op: "<=", value: 0.2 },
       amber: { op: "<=", value: 0.35 },
@@ -653,7 +658,12 @@ export const crossSectorIndicators: IndicatorSeed[] = [
       "{value}% затрат на сырьё — импорт. Ослабление AZN бьёт по валовой марже напрямую.",
     hintTemplateAz:
       "Giriş xərclərinin {value}%-i idxaldır. AZN-in zəifləməsi ümumi mənfəətə birbaşa təsir edir.",
-    requiredInputs: ["budgetLine", "currencyRate"],
+    // Phase 7.M Tier 4 (2026-05-19) — fxExposureSource opt-in. Lets
+    // companies that confirm 100% AZN exposure resolve to 0% green
+    // (instead of unknown) via Company.settings.fxExposureSource =
+    // "all_domestic". Default ("tagged_lines" or absent) keeps the
+    // conservative unknown behaviour. See recompute.ts:2944 fx-guard.
+    requiredInputs: ["budgetLine", "currencyRate", "company.settings.fxExposureSource"],
     sortOrder: 5,
   },
   // ── Phase 7.E phase 3 — building blocks for `rollup()` and `fact()` ────

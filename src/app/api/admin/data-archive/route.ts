@@ -1,0 +1,181 @@
+/**
+ * Phase 7.M Step 4d (2026-05-18) — self-service archive API.
+ *
+ * POST /api/admin/data-archive
+ *   body: {
+ *     mode: "archive" | "restore",
+ *     entityKind: "BudgetLine" | "BalanceSheetLine" | "CashFlowEntry"
+ *               | "Counterparty",
+ *     companyCode?: string,
+ *     year?: number,
+ *     period?: string,
+ *     reason?: string,
+ *     confirmCode: string,   // must equal companyCode (or "ALL" for org-wide)
+ *   }
+ *
+ * Behaviour
+ * ─────────
+ *  • Admin-role only (LLM-token-equivalent cost: re-recompute fires
+ *    on archived periods).
+ *  • Rate limited 5/min/org so a stuck UI loop can't blast 100 archives.
+ *  • `confirmCode` must match the scope being archived — a strong
+ *    visual safety net (the page asks the user to type the entity
+ *    code before the Archive button enables). Mismatch = 400.
+ *  • Returns `{ ok: true, rowsAffected, auditEventId }`.
+ *  • All writes happen in `archiveRows()` which wraps the soft-delete
+ *    UPDATE + audit-event INSERT in a single `prisma.$transaction`.
+ *  • Never deletes physically. The cleanup job (separate cron, not in
+ *    this route) purges rows past the 90-day retention window.
+ *
+ * Why a single endpoint for archive + restore
+ * ───────────────────────────────────────────
+ * The scope payload is identical; only the verb differs. One route
+ * with a `mode` discriminator keeps the surface small and lets a
+ * future "undo last archive" feature share validation.
+ */
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+import { requireRole, isAuthError } from "@/lib/api-auth"
+import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { archiveRows, restoreRows } from "@/lib/server/archive"
+
+const RATE_LIMIT = { name: "data-archive", max: 5, windowMs: 60_000 }
+
+const VALID_KINDS = new Set([
+  "BudgetLine",
+  "BalanceSheetLine",
+  "CashFlowEntry",
+  "Counterparty",
+])
+
+interface ArchiveBody {
+  mode?: unknown
+  entityKind?: unknown
+  companyCode?: unknown
+  year?: unknown
+  period?: unknown
+  reason?: unknown
+  confirmCode?: unknown
+}
+
+export async function POST(request: NextRequest) {
+  const session = await requireRole(request, "admin")
+  if (isAuthError(session)) return session
+  if (!session.orgId) {
+    return NextResponse.json(
+      { error: "User has no organization" },
+      { status: 403 },
+    )
+  }
+  const orgId = session.orgId
+
+  const rateLimitError = enforceRateLimit(
+    `${RATE_LIMIT.name}:${orgId}:${session.userId}:${getClientIp(request)}`,
+    RATE_LIMIT,
+  )
+  if (rateLimitError) return rateLimitError
+
+  let body: ArchiveBody
+  try {
+    body = (await request.json()) as ArchiveBody
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 },
+    )
+  }
+
+  const mode = body.mode
+  if (mode !== "archive" && mode !== "restore") {
+    return NextResponse.json(
+      { error: "mode must be 'archive' or 'restore'" },
+      { status: 400 },
+    )
+  }
+
+  const entityKind = body.entityKind
+  if (typeof entityKind !== "string" || !VALID_KINDS.has(entityKind)) {
+    return NextResponse.json(
+      {
+        error:
+          "entityKind must be one of: BudgetLine, BalanceSheetLine, CashFlowEntry, Counterparty",
+      },
+      { status: 400 },
+    )
+  }
+
+  const companyCode =
+    typeof body.companyCode === "string" && body.companyCode.length > 0
+      ? body.companyCode
+      : undefined
+  const year =
+    typeof body.year === "number" && Number.isInteger(body.year)
+      ? body.year
+      : undefined
+  const period =
+    typeof body.period === "string" && body.period.length > 0
+      ? body.period
+      : undefined
+  const reason =
+    typeof body.reason === "string" && body.reason.length > 0
+      ? body.reason.slice(0, 500)
+      : undefined
+  const confirmCode =
+    typeof body.confirmCode === "string" ? body.confirmCode : ""
+
+  // Defensive: confirmCode acts as the "type the entity code to
+  // confirm" safety pattern. For org-wide scopes (no companyCode)
+  // we require the literal string "ALL".
+  const expectedConfirm = companyCode ?? "ALL"
+  if (confirmCode !== expectedConfirm) {
+    return NextResponse.json(
+      {
+        error: `confirmCode must equal "${expectedConfirm}" — type the entity code to confirm`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const scope = {
+    organizationId: orgId,
+    entityKind: entityKind as
+      | "BudgetLine"
+      | "BalanceSheetLine"
+      | "CashFlowEntry"
+      | "Counterparty",
+    companyCode,
+    year,
+    period,
+  }
+
+  try {
+    const result =
+      mode === "archive"
+        ? await archiveRows({
+            prisma,
+            actorUserId: session.userId,
+            reason,
+            scope,
+          })
+        : await restoreRows({
+            prisma,
+            actorUserId: session.userId,
+            reason,
+            scope,
+          })
+    return NextResponse.json({
+      ok: true,
+      mode,
+      rowsAffected: result.rowsAffected,
+      auditEventId: result.auditEventId,
+    })
+  } catch (err) {
+    console.error(`[admin/data-archive ${mode}] failed:`, err)
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
+    )
+  }
+}

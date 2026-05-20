@@ -34,6 +34,7 @@ import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanyImpactForecastsCard } from "./CompanyImpactForecastsCard";
+import { CompanyStrategicContextCard } from "./CompanyStrategicContextCard";
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
@@ -310,6 +311,13 @@ export function CompanySnapshot({ companyCode }: Props) {
        *  panels. */}
       <div className="mt-2 pt-2 border-t border-gray-800/40">
         <CompanyImpactForecastsCard companyCode={companyCode} />
+      </div>
+
+      {/* Phase 7.M Tier 4 (2026-05-19) — Strategic context (Təsvir
+       *  description, Land Registry, CAPEX 2026, Forward Forecast).
+       *  Renders nothing when entity has no settings populated. */}
+      <div className="mt-2 pt-2 border-t border-gray-800/40">
+        <CompanyStrategicContextCard companyCode={companyCode} />
       </div>
     </div>
   );

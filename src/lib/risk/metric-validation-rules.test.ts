@@ -20,7 +20,7 @@ import {
 } from "./metric-validation-rules"
 
 describe("metric-validation-rules — catalog shape", () => {
-  it("ships 31 operational metric rules (13 base indicators + 6 Phase 7.I sugar/agro + 4 cane-seller 2026-05-16)", () => {
+  it("ships 33 operational metric rules (13 base + 6 Phase 7.I + 4 cane-seller + 2 Phase 7.M Tier4 sugar beet Brix/Pol)", () => {
     // 13 operational indicators consume between 1 and 5 distinct
     // metrics each (e.g. AGRO_YIELD reads `harvest_tons` ÷
     // `area_hectares` = 2; some single-metric like AGRO_DROUGHT_RISK).
@@ -31,7 +31,9 @@ describe("metric-validation-rules — catalog shape", () => {
     // 2026-05-16 cane-seller pilot added 4 metrics:
     // cane_cut_to_mill_hours, cane_buyer_concentration_pct,
     // cane_hectares_harvested_pct, cane_harvest_season_progress → 31.
-    expect(OPERATIONAL_METRIC_RULES).toHaveLength(31)
+    // Phase 7.M Tier 4 (2026-05-19) added 2 sugar-beet-specific metrics:
+    // sugar_brix_pct, sugar_pol_pct → 33.
+    expect(OPERATIONAL_METRIC_RULES).toHaveLength(33)
     const codes = OPERATIONAL_METRIC_RULES.map((r) => r.metric)
     // Spot-check the canonical metrics the F4 audit identified —
     // dropping one of these (e.g. removing `harvest_tons`) silently
