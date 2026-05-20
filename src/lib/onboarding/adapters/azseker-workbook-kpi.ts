@@ -1,5 +1,5 @@
 /**
- * AzerSheker × Guvven KPI sheet adapters.
+ * AzerSheker × Workbook KPI sheet adapters.
  *
  * Two sheet shapes:
  *
@@ -39,7 +39,7 @@
  * **Why a separate adapter (vs AI Mapper)**: the KPI rows aren't a
  * leaf-account chart of accounts. The AI Mapper expects PL/CF code
  * leaves with monthly columns and infers an account_type — it would
- * produce nonsense for an "agronomy KPI baseline" sheet. The Guvven
+ * produce nonsense for an "agronomy KPI baseline" sheet. The Workbook
  * coding convention is fully knowable from the file structure, so a
  * deterministic adapter is more reliable, faster, and cheaper than an
  * LLM round-trip.
@@ -48,7 +48,7 @@ import type * as XLSX from "xlsx"
 import {
   resolveEntityFromCostCenter,
   resolveEntityFromProcessingKpiSheet,
-} from "../azseker-guvven-mapping"
+} from "../azseker-workbook-mapping"
 
 /** One row written to OperationalFact. */
 export interface ParsedKpiFact {
@@ -100,7 +100,12 @@ function toNumber(cell: unknown): number | null {
  *  classification columns (year, crop, season, irrigation, farm,
  *  cost-center, unique-code, check). Cols 8..10 are the agronomy
  *  metrics. The detector locates the header by looking for the col-A
- *  cell value "İl" / "Year" (case-insensitive Azerbaijani/English). */
+ *  cell value "İl" / "Year" (case-insensitive Azerbaijani/English).
+ *
+ *  Phase 7.M Tier 4: brixCol + polCol are OPTIONAL (-1 when absent).
+ *  Auto-detected when Azik adds Briks / Pol columns in future workbook
+ *  updates. Only emit sugar_brix_pct / sugar_pol_pct metrics for sugar
+ *  beet rows (crop = "Şəkər çuğunduru"). */
 interface FarmingKpiLayout {
   headerRow: number
   yearCol: number
@@ -109,6 +114,8 @@ interface FarmingKpiLayout {
   areaCol: number      // → area_hectares
   yieldPerHaCol: number // → yield_per_ha
   harvestCol: number   // → harvest_tons
+  brixCol: number      // → sugar_brix_pct (optional, -1 if absent)
+  polCol: number       // → sugar_pol_pct (optional, -1 if absent)
 }
 
 /** Fold Azerbaijani column headers to ASCII-lowercase so the regex
@@ -165,6 +172,20 @@ function findFarmingKpiLayout(aoa: unknown[][]): FarmingKpiLayout | null {
     const harvestCol = row.findIndex((v) =>
       /(cemi mehsuldarliq|total yield|harvest.*ton)/.test(normalizeCell(v)),
     )
+    // Phase 7.M Tier 4 — optional Brix/Pol detection.
+    // Match Azerbaijani "Briks", "Polyarizasiya", "Pol %", English
+    // "Brix", "Polarization", "Pol", Russian "брикс", "поляризация".
+    const brixCol = row.findIndex((v) => {
+      const s = normalizeCell(v)
+      return /\bbrix\b|briks|брикс/.test(s)
+    })
+    const polCol = row.findIndex((v) => {
+      const s = normalizeCell(v)
+      // Match standalone "pol" but NOT "polyarizasiya" alone — we want
+      // "pol %" / "pol pct" / "polarization" / "polyarizasiya". The
+      // \b ensures we don't match e.g. "policy".
+      return /\bpol\b|polarization|polyarizasiya|поляризация/.test(s)
+    })
     if (yearCol < 0 || costCenterCol < 0 || areaCol < 0 || yieldPerHaCol < 0 || harvestCol < 0) {
       continue
     }
@@ -176,9 +197,22 @@ function findFarmingKpiLayout(aoa: unknown[][]): FarmingKpiLayout | null {
       areaCol,
       yieldPerHaCol,
       harvestCol,
+      brixCol,
+      polCol,
     }
   }
   return null
+}
+
+/** Sugar beet crop label recognition — Azerbaijani / English / Russian.
+ *  Brix + Pol metrics are emitted only for sugar beet rows; other crops
+ *  (wheat, barley, corn, cotton, almonds) don't carry these measurements. */
+function isSugarBeetCrop(cropRaw: string): boolean {
+  const s = cropRaw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  return (
+    /şəkər|seker|sugar|сахарн|чугундур|cugundur/.test(cropRaw.toLowerCase()) ||
+    /sugar.?beet|sugar.?cane/.test(s)
+  )
 }
 
 /**
@@ -188,7 +222,7 @@ function findFarmingKpiLayout(aoa: unknown[][]): FarmingKpiLayout | null {
  * The `preferYear` option filters rows to only that year. When absent
  * we emit one fact-set per year present in the data.
  */
-export function parseGuvvenFarmingKpiSheet(
+export function parseWorkbookFarmingKpiSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,
@@ -225,6 +259,12 @@ export function parseGuvvenFarmingKpiSheet(
     totalHarvest: number
     rowCount: number
     cropsSeen: Set<string>
+    // Phase 7.M Tier 4 — sugar beet Brix/Pol aggregation. All three are
+    // accumulated only when (a) crop is sugar beet (b) Brix/Pol columns
+    // are present in the layout. Otherwise stay 0 and no facts emitted.
+    sugarBeetArea: number
+    sumBrixWeighted: number
+    sumPolWeighted: number
   }
   const buckets = new Map<string, Bucket>()
   const warnings: KpiParseWarning[] = []
@@ -243,7 +283,7 @@ export function parseGuvvenFarmingKpiSheet(
     if (!entity) {
       warnings.push({
         row: r + 1,
-        reason: `Could not resolve entity from cost-center "${costCenter}". Add the prefix to GUVVEN_COST_CENTER_PREFIX_TO_ENTITY if it's a new farm.`,
+        reason: `Could not resolve entity from cost-center "${costCenter}". Add the prefix to WORKBOOK_COST_CENTER_PREFIX_TO_ENTITY if it's a new farm.`,
       })
       continue
     }
@@ -266,6 +306,9 @@ export function parseGuvvenFarmingKpiSheet(
         totalHarvest: 0,
         rowCount: 0,
         cropsSeen: new Set<string>(),
+        sugarBeetArea: 0,
+        sumBrixWeighted: 0,
+        sumPolWeighted: 0,
       }
       buckets.set(key, bucket)
     }
@@ -273,6 +316,23 @@ export function parseGuvvenFarmingKpiSheet(
     bucket.totalHarvest += harvest
     bucket.rowCount += 1
     if (crop !== "") bucket.cropsSeen.add(crop)
+
+    // Phase 7.M Tier 4 — sugar beet Brix/Pol aggregation. Only meaningful
+    // when (a) cost-center is sugar beet AND (b) optional Brix/Pol columns
+    // were detected in the layout. Area-weighted to handle multi-farm
+    // aggregation correctly (large beet field with low Brix matters more
+    // than tiny plot with high Brix).
+    if (isSugarBeetCrop(crop) && area > 0) {
+      bucket.sugarBeetArea += area
+      if (layout.brixCol >= 0) {
+        const brix = toNumber(row[layout.brixCol]) ?? 0
+        if (brix > 0) bucket.sumBrixWeighted += brix * area
+      }
+      if (layout.polCol >= 0) {
+        const pol = toNumber(row[layout.polCol]) ?? 0
+        if (pol > 0) bucket.sumPolWeighted += pol * area
+      }
+    }
   }
 
   const facts: ParsedKpiFact[] = []
@@ -313,6 +373,31 @@ export function parseGuvvenFarmingKpiSheet(
         value: Math.round(weighted * 100) / 100,
         sourceNote: `${sourceNote} — yield_per_ha = Σharvest ÷ Σarea`,
       })
+    }
+    // Phase 7.M Tier 4 — sugar beet Brix/Pol aggregated facts.
+    if (bucket.sugarBeetArea > 0) {
+      if (bucket.sumBrixWeighted > 0) {
+        const avgBrix = bucket.sumBrixWeighted / bucket.sugarBeetArea
+        facts.push({
+          companyCode: bucket.entity,
+          metric: "sugar_brix_pct",
+          unit: "°Brix",
+          date,
+          value: Math.round(avgBrix * 100) / 100,
+          sourceNote: `${sourceNote} — Brix = ΣBrix×area ÷ Σbeet_area (${bucket.sugarBeetArea} ha)`,
+        })
+      }
+      if (bucket.sumPolWeighted > 0) {
+        const avgPol = bucket.sumPolWeighted / bucket.sugarBeetArea
+        facts.push({
+          companyCode: bucket.entity,
+          metric: "sugar_pol_pct",
+          unit: "%",
+          date,
+          value: Math.round(avgPol * 100) / 100,
+          sourceNote: `${sourceNote} — Pol = ΣPol×area ÷ Σbeet_area (${bucket.sugarBeetArea} ha)`,
+        })
+      }
     }
   }
   return { sheetName, facts, warnings }
@@ -434,7 +519,7 @@ function findProcessingKpiLayout(
  * skipped — they're processing-step labels (not actual data) or
  * metrics we don't yet model. Counter-bumps go in v2.
  */
-export function parseGuvvenProcessingKpiSheet(
+export function parseWorkbookProcessingKpiSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,
@@ -455,7 +540,7 @@ export function parseGuvvenProcessingKpiSheet(
       facts: [],
       warnings: [{
         row: 0,
-        reason: `Cannot resolve entity from sheet name "${sheetName}". Add the prefix to GUVVEN_COST_CENTER_PREFIX_TO_ENTITY.`,
+        reason: `Cannot resolve entity from sheet name "${sheetName}". Add the prefix to WORKBOOK_COST_CENTER_PREFIX_TO_ENTITY.`,
       }],
     }
   }

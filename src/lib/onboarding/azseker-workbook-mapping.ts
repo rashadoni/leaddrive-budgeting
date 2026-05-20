@@ -1,7 +1,7 @@
 /**
- * AzerSheker × Guvven CoA mapping.
+ * AzerSheker × Workbook CoA mapping.
  *
- * Guvven Consulting prepared a 5-year consolidated financial forecast
+ * Workbook Consulting prepared a 5-year consolidated financial forecast
  * (P&L + Balance Sheet + Cash Flow) for 4 AzerSheker entities (CPC,
  * AZSF, EDEN, Malt) using their own hierarchical coding convention:
  *
@@ -11,15 +11,15 @@
  *   BS.01.01          NON-CURRENT ASSETS
  *   CF.01.01          INFLOW FROM OPERATING ACTIVITIES
  *
- * This module ships **pure classifiers** that map any Guvven code →
+ * This module ships **pure classifiers** that map any Workbook code →
  * BudgetPro's internal taxonomy. Consumed by:
- *   - AI Data Mapper's anomaly-rules.ts (recognises Guvven prefix
+ *   - AI Data Mapper's anomaly-rules.ts (recognises Workbook prefix
  *     pattern → bypasses generic anomaly classification)
  *   - applier.ts when writing BudgetLine.lineType / BalanceSheetLine /
- *     CashFlowEntry.activityType from a Guvven-shaped upload
+ *     CashFlowEntry.activityType from a Workbook-shaped upload
  *
  * All 681 distinct codes across 4 entities share the same prefix tree;
- * one classifier covers every entity. New leaf-codes added by Guvven
+ * one classifier covers every entity. New leaf-codes added by Workbook
  * inherit their parent's classification automatically.
  *
  * Code map (top-level sections):
@@ -48,7 +48,7 @@
  *   CF.04-07  SKIP — bridge rows (FX change, net change, opening, closing)
  */
 
-export type GuvvenAccountType =
+export type WorkbookAccountType =
   | "revenue"
   | "cogs"
   | "expense"
@@ -63,10 +63,10 @@ export type CashFlowActivity =
   | "financing"
   | "skip";
 
-const GUVVEN_PREFIX_RE = /^(PLF|BS|CF)\.\d/;
+const WORKBOOK_PREFIX_RE = /^(PLF|BS|CF)\.\d/;
 
 /**
- * Detects whether a string looks like a Guvven-format code.
+ * Detects whether a string looks like a Workbook-format code.
  *
  * Examples that match: "PLF.01", "PLF.01.01", "PLF.01.01.05",
  *   "BS.01.01.01.01", "CF.01.02.03", "PLF.05.R" (regions section).
@@ -74,21 +74,21 @@ const GUVVEN_PREFIX_RE = /^(PLF|BS|CF)\.\d/;
  * Used by AI Data Mapper anomaly-rules to short-circuit on recognised
  * customer-specific coding conventions.
  */
-export function isGuvvenCode(code: string | null | undefined): boolean {
+export function isWorkbookCode(code: string | null | undefined): boolean {
   if (!code) return false;
-  return GUVVEN_PREFIX_RE.test(code.trim());
+  return WORKBOOK_PREFIX_RE.test(code.trim());
 }
 
 /**
- * Maps a Guvven PLF.* / BS.* / CF.* code to BudgetPro's internal
+ * Maps a Workbook PLF.* / BS.* / CF.* code to BudgetPro's internal
  * account-type taxonomy.
  *
  * Returns "skip" for computed totals (gross margin / EBITDA / net
  * profit) and CF bridge rows (FX change / opening / closing balance) —
  * caller should NOT persist these as BudgetLine / BalanceSheetLine.
  */
-export function classifyGuvvenCode(code: string): GuvvenAccountType {
-  if (!isGuvvenCode(code)) return "skip";
+export function classifyWorkbookCode(code: string): WorkbookAccountType {
+  if (!isWorkbookCode(code)) return "skip";
   const norm = code.trim();
 
   // PLF — P&L Forecast
@@ -143,7 +143,7 @@ export function classifyGuvvenCode(code: string): GuvvenAccountType {
     return "skip";
   }
 
-  // CF — Cash Flow — handled via classifyGuvvenCashFlowActivity().
+  // CF — Cash Flow — handled via classifyWorkbookCashFlowActivity().
   // For the BudgetLine taxonomy CF rows are skipped (they live in the
   // CashFlowEntry table, not BudgetLine).
   if (norm.startsWith("CF.")) return "skip";
@@ -152,12 +152,12 @@ export function classifyGuvvenCode(code: string): GuvvenAccountType {
 }
 
 /**
- * Maps a Guvven CF.* code to the operating/investing/financing taxonomy
+ * Maps a Workbook CF.* code to the operating/investing/financing taxonomy
  * BudgetPro uses on `CashFlowEntry.activityType`. Non-CF codes + CF
  * bridge rows return "skip".
  */
-export function classifyGuvvenCashFlowActivity(code: string): CashFlowActivity {
-  if (!isGuvvenCode(code) || !code.startsWith("CF.")) return "skip";
+export function classifyWorkbookCashFlowActivity(code: string): CashFlowActivity {
+  if (!isWorkbookCode(code) || !code.startsWith("CF.")) return "skip";
   const norm = code.trim();
   // CF.04 NET FOREX CHANGE / CF.05 NET / CF.06 OPENING / CF.07 CLOSING
   // are bridge/total rows — not single-activity entries.
@@ -180,7 +180,7 @@ export function classifyGuvvenCashFlowActivity(code: string): CashFlowActivity {
 }
 
 /**
- * Sheet name → entity company code resolution for the Guvven workbook.
+ * Sheet name → entity company code resolution for the Workbook workbook.
  * Each financial sheet is named "<FAMILY> <ENTITY>":
  *   "PLF CPC" / "BS CPC" / "CF CPC" → AZSEKER-CPC
  *   "PLF AZSF" / "BS AZSF" / "CF AZSF" → AZSEKER-AZSF
@@ -222,13 +222,17 @@ export function resolveEntityFromSheetName(
  * The matcher (`resolveEntityFromCostCenter`) scans the label for any
  * 2-5 letter uppercase token (word-bounded) and looks it up in this
  * map. First match wins.
+ *
+ * Phase 7.M (2026-05-19, Azik confirmation): QT/DAS/BO farms are
+ * operated under Eden Agro (= AZSEKER-EDEN) — there is no separate
+ * "AZSEKER-FARM" legal entity. All farming cost-centers route to EDEN.
  */
-export const GUVVEN_COST_CENTER_PREFIX_TO_ENTITY: Readonly<Record<string, string>> = {
+export const WORKBOOK_COST_CENTER_PREFIX_TO_ENTITY: Readonly<Record<string, string>> = {
   EDN: "AZSEKER-EDEN",
   AZS: "AZSEKER-AZSF",
-  QT: "AZSEKER-FARM",   // Qarabağ Taxıl
-  DAS: "AZSEKER-FARM",  // Dastan
-  BO: "AZSEKER-FARM",   // Əkinçi BO
+  QT: "AZSEKER-EDEN",   // Qarabağ Taxıl — operated under Eden Agro
+  DAS: "AZSEKER-EDEN",  // Dastan — operated under Eden Agro
+  BO: "AZSEKER-EDEN",   // Əkinçi BO — operated under Eden Agro
   CPC: "AZSEKER-CPC",
   MALT: "AZSEKER-MALT",
 };
@@ -243,7 +247,7 @@ export function resolveEntityFromCostCenter(label: string): string | null {
   // Match any 2-5 uppercase letter token at a word boundary
   const tokens = label.match(/\b[A-Z]{2,5}\b/g) ?? [];
   for (const t of tokens) {
-    const entity = GUVVEN_COST_CENTER_PREFIX_TO_ENTITY[t];
+    const entity = WORKBOOK_COST_CENTER_PREFIX_TO_ENTITY[t];
     if (entity) return entity;
   }
   return null;
@@ -264,7 +268,7 @@ export function resolveEntityFromCostCenter(label: string): string | null {
  * not yet dispatched — returned as null until the SALES_PLAN adapter
  * is wired in a follow-up.
  */
-export function classifyGuvvenSheetFamily(
+export function classifyWorkbookSheetFamily(
   name: string,
 ): "PLF" | "BS" | "CF" | "KPI_FARMING" | "KPI_PROCESSING" | null {
   const trimmed = name.trim();
@@ -298,5 +302,5 @@ export function resolveEntityFromProcessingKpiSheet(
   const m = /^([A-Za-z]+)\s+KPI\s*$/i.exec(trimmed);
   if (!m) return null;
   const token = m[1].toUpperCase();
-  return GUVVEN_COST_CENTER_PREFIX_TO_ENTITY[token] ?? null;
+  return WORKBOOK_COST_CENTER_PREFIX_TO_ENTITY[token] ?? null;
 }
