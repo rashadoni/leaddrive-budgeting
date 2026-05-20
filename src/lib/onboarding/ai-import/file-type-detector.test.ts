@@ -105,6 +105,30 @@ describe("detectFileType", () => {
     expect(result.reasoning).toMatch(/forward[- ]?forecast/)
   })
 
+  it("classifies a file with COMPANIES sheet and no financials as company-setup (Phase 7.M Tier 6)", () => {
+    const result = detectFileType(
+      [cls("Companies", "COMPANIES")],
+      "Company-tree.xlsx",
+    )
+    expect(result.fileType).toBe("company-setup")
+    expect(result.sheetCounts.companies).toBe(1)
+    expect(result.reasoning).toMatch(/entity-tree setup/)
+  })
+
+  it("COMPANIES sheet mixed with PLF/BS/CF falls through to main-financial (financial intent dominates)", () => {
+    const result = detectFileType(
+      [
+        cls("Companies", "COMPANIES"),
+        cls("PLF X", "PLF", "X"),
+        cls("BS X", "BS", "X"),
+        cls("CF X", "CF", "X"),
+      ],
+      "Mixed.xlsx",
+    )
+    expect(result.fileType).toBe("main-financial")
+    expect(result.sheetCounts.companies).toBe(1)
+  })
+
   it("filename hint flips mis-classified PLF sheets to forward-forecast (Phase 7.M Tier 5 fix)", () => {
     // Real-world Farming strategy.xlsx case: AI per-sheet classifier
     // mis-labels İcmal/PL Support/Taxes/GDX as PLF (because of "PL" /
@@ -179,7 +203,8 @@ describe("detectFileType", () => {
         cls("h", "LAND_REGISTRY"),
         cls("i", "DESCRIPTIONS"),
         cls("j", "INFO_SUMMARY"),
-        cls("k", "UNKNOWN"),
+        cls("k", "COMPANIES"),
+        cls("l", "UNKNOWN"),
       ],
       "AllShapes.xlsx",
     )
@@ -194,6 +219,7 @@ describe("detectFileType", () => {
       landRegistry: 1,
       descriptions: 1,
       infoSummary: 1,
+      companies: 1,
       unknown: 1,
     })
   })

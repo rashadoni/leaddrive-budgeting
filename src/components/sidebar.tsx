@@ -156,14 +156,12 @@ const budgetSubNav = [
       // burn against the org budget + 30-day trend sparkline. Admin
       // visibility for LLM spend.
       { href: "/budgeting/admin/ai-usage", icon: Sparkles, label: "AI Usage", isPage: true },
-      // Phase 7.M Tier 3 (2026-05-19) — bit-perfect AzerSheker workbook
-      // import with 5-phase reconciliation (P&L / BS / KPI / CF /
-      // recompute). Reuses the same parsers via xlsx upload + auth.
-      { href: "/budgeting/admin/import-workbook", icon: Upload, label: "Import Workbook", isPage: true },
-      // Phase 7.M Tier 4 (2026-05-19) — AI Auto Import. Drag-drop any
-      // xlsx → AI classifies each sheet → bit-perfect import. Universal
-      // entry point that doesn't require pre-knowing the file shape.
-      { href: "/budgeting/admin/ai-import", icon: Brain, label: "AI Auto Import", isPage: true },
+      // Phase 7.M Tier 6 (2026-05-21) — single AI Import entry point.
+      // Replaces former /budgeting/admin/import-workbook + the
+      // /budgeting/onboarding "Import" tab — AI classifier now also
+      // recognises COMPANIES setup sheets, so one UI handles financial
+      // data + entity-tree bootstrap + everything between.
+      { href: "/budgeting/admin/ai-import", icon: Brain, label: "AI Import", isPage: true },
       // Phase 7.M Tier 4 (2026-05-19) — Indicator Health dashboard.
       // Shows per-indicator green/amber/red/unknown breakdown with
       // remediation guidance for unknowns. Use before client demo to

@@ -60,6 +60,12 @@ import {
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
 import { parseIcmalSheet } from "../adapters/azseker-farming-strategy"
 import {
+  canonicalizeHeaders,
+  normalizeRow,
+  findWorkbookDuplicates,
+  type NormalizedRow,
+} from "../companies-import"
+import {
   runImportBatch,
   type ImportBatchRow,
 } from "../import-batch"
@@ -800,6 +806,129 @@ function makeForwardForecastHandler(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// COMPANIES handler — bulk upsert of org entity tree.
+// Reuses `companies-import` pure helpers (canonicalize → normalize →
+// dedupe) so the validation surface is identical to the legacy
+// /api/onboarding/import/companies route.
+// ──────────────────────────────────────────────────────────────────────
+
+function makeCompaniesHandler(prisma: PrismaClient): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const sheet = input.workbook.Sheets[input.sheetName]
+    if (!sheet) {
+      return {
+        summary: `COMPANIES sheet "${input.sheetName}" not in workbook`,
+        itemCount: 0,
+        warnings: [`Sheet "${input.sheetName}" not found`],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    const rawRows = input.XLSX.utils.sheet_to_json(sheet, {
+      defval: null,
+    }) as Record<string, unknown>[]
+    const canonical = canonicalizeHeaders(rawRows)
+    const normalized: NormalizedRow[] = []
+    const warnings: string[] = []
+    canonical.forEach((row, idx) => {
+      const out = normalizeRow(row, idx)
+      if ("reason" in out) {
+        warnings.push(`row ${out.row}: ${out.reason}`)
+      } else {
+        normalized.push(out)
+      }
+    })
+    const dupes = findWorkbookDuplicates(normalized)
+    for (const d of dupes) warnings.push(`row ${d.row}: ${d.reason}`)
+    const validRows = normalized.filter(
+      (r) => !dupes.some((d) => d.row === normalized.indexOf(r) + 2),
+    )
+    return {
+      summary: `${validRows.length} companies parsed (${warnings.length} row warnings)`,
+      itemCount: validRows.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (validRows.length === 0) return { rowsInserted: 0 }
+        // Resolve parent codes → parentCompanyId (parents must already exist
+        // or be in the same batch). Two-pass: insert level=1 first, then
+        // level=2 with parent ids resolved.
+        const level1 = validRows.filter((r) => r.level === 1)
+        const level2 = validRows.filter((r) => r.level === 2)
+        let inserted = 0
+        for (const r of level1) {
+          await tx.company.upsert({
+            where: {
+              organizationId_code: {
+                organizationId: input.organizationId,
+                code: r.code,
+              },
+            },
+            create: {
+              organizationId: input.organizationId,
+              code: r.code,
+              name: r.name,
+              industryCode: r.industry,
+              level: 1,
+              isActive: true,
+            },
+            update: {
+              name: r.name,
+              industryCode: r.industry,
+            },
+          })
+          inserted++
+        }
+        if (level2.length > 0) {
+          const parentCodes = Array.from(
+            new Set(level2.map((r) => r.parentCompanyCode!)),
+          )
+          const parents = await tx.company.findMany({
+            where: {
+              organizationId: input.organizationId,
+              code: { in: parentCodes },
+            },
+            select: { id: true, code: true },
+          })
+          const parentByCode = new Map(parents.map((p) => [p.code, p.id]))
+          for (const r of level2) {
+            const parentId = parentByCode.get(r.parentCompanyCode!)
+            if (!parentId) {
+              warnings.push(
+                `row code=${r.code}: parent ${r.parentCompanyCode} not found`,
+              )
+              continue
+            }
+            await tx.company.upsert({
+              where: {
+                organizationId_code: {
+                  organizationId: input.organizationId,
+                  code: r.code,
+                },
+              },
+              create: {
+                organizationId: input.organizationId,
+                parentCompanyId: parentId,
+                code: r.code,
+                name: r.name,
+                industryCode: r.industry,
+                level: 2,
+                isActive: true,
+              },
+              update: {
+                parentCompanyId: parentId,
+                name: r.name,
+                industryCode: r.industry,
+              },
+            })
+            inserted++
+          }
+        }
+        return { rowsInserted: inserted }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // noop — for INFO_SUMMARY / UNKNOWN
 // ──────────────────────────────────────────────────────────────────────
 
@@ -879,6 +1008,10 @@ export function buildProductionAdapterRegistry(
     // safer than nothing, and the handler is a noop for sheets that
     // aren't actually İcmal-shape.
     INFO_SUMMARY: wrap(makeForwardForecastHandler),
+    // Phase 7.M Tier 6 — onboarding consolidation. COMPANIES doesn't
+    // need org context (it's bootstrapping companies, not writing data
+    // into existing ones), so we don't wrap it with the ensureCtx helper.
+    COMPANIES: makeCompaniesHandler(prisma),
     UNKNOWN: noopHandler,
   })
 }

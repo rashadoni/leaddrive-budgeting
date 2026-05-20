@@ -254,6 +254,29 @@ describe("classifySheets", () => {
     expect(result.classifications[0].dataType).toBe("CF")
   })
 
+  it("accepts COMPANIES dataType from LLM (Phase 7.M Tier 6)", async () => {
+    const client = stubClient(
+      JSON.stringify({
+        classifications: [
+          {
+            sheetName: "Companies",
+            dataType: "COMPANIES",
+            entityCode: null,
+            confidence: 0.92,
+            reasoning: "headers code/name/industry/level/parentCompanyCode",
+          },
+        ],
+      }),
+    )
+    const result = await classifySheets(
+      { sheetMetas: [meta("Companies")] },
+      client,
+      "claude-test",
+    )
+    expect(result.classifications[0].dataType).toBe("COMPANIES")
+    expect(result.classifications[0].entityCode).toBeNull()
+  })
+
   it("classifies entity code as null for cross-entity sheets", async () => {
     const client = stubClient(
       JSON.stringify({

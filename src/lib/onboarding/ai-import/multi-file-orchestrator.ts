@@ -86,6 +86,10 @@ const LLM_CONCURRENCY = 3
 /** Apply-order dependency graph (lower index = applied first). See
  *  module header for rationale. unknown is always last (skipped). */
 const APPLY_ORDER: Record<FileType, number> = {
+  // company-setup applies FIRST — bootstraps the entity tree so subsequent
+  // financial-data writes can resolve companyId by code without falling
+  // through to a "company not in DB" warning.
+  "company-setup": -1,
   "strategic-descriptions": 0,
   "main-financial": 1,
   "kpi-only": 2,
@@ -396,6 +400,7 @@ export async function runMultiFileImport(
           landRegistry: 0,
           descriptions: 0,
           infoSummary: 0,
+          companies: 0,
           unknown: 0,
         },
       })

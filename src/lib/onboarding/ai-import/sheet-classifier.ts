@@ -38,6 +38,11 @@ export type SheetDataType =
   | "LAND_REGISTRY"
   | "DESCRIPTIONS"
   | "INFO_SUMMARY"
+  // Phase 7.M Tier 6 — onboarding consolidation. COMPANIES is a
+  // structural sheet listing the org's entity tree (code / name /
+  // industry / level / parentCompanyCode). Detected by header shape —
+  // see companies-import.canonicalizeHeaders for the canonical column set.
+  | "COMPANIES"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -102,6 +107,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "LAND_REGISTRY",
   "DESCRIPTIONS",
   "INFO_SUMMARY",
+  "COMPANIES",
   "UNKNOWN",
 ])
 

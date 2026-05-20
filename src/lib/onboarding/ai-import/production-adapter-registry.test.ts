@@ -390,6 +390,99 @@ describe("buildProductionAdapterRegistry", () => {
     ).toHaveLength(1)
   })
 
+  it("COMPANIES handler parses xlsx rows and upserts into Company table via tx (Phase 7.M Tier 6)", async () => {
+    const prisma = buildPrismaStub()
+    const registry = buildProductionAdapterRegistry(prisma)
+    const handler = registry.get("COMPANIES")!
+    // Simulate XLSX.sheet_to_json producing 2 rows: 1 parent + 1 child.
+    const xlsxStub = {
+      utils: {
+        sheet_to_json: () => [
+          {
+            code: "ROOT",
+            name: "Root Holding",
+            industry: "agriculture_grains",
+            level: "1",
+            parentCompanyCode: "",
+          },
+          {
+            code: "SUB1",
+            name: "Sub Co 1",
+            industry: "agriculture_grains",
+            level: "2",
+            parentCompanyCode: "ROOT",
+          },
+        ],
+      },
+    }
+    const result = await handler({
+      workbook: { Sheets: { Companies: {} }, SheetNames: ["Companies"] },
+      sheetName: "Companies",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: xlsxStub,
+    })
+    expect(result.itemCount).toBe(2)
+    expect(result.warnings).toEqual([])
+
+    const upsertCalls: Array<{ where: unknown; create: unknown; update: unknown }> = []
+    const fakeTx = {
+      company: {
+        upsert: vi.fn(
+          async (args: { where: unknown; create: unknown; update: unknown }) => {
+            upsertCalls.push(args)
+            return { id: "c_" + upsertCalls.length, code: "x" }
+          },
+        ),
+        findMany: vi.fn(async () => [{ id: "c_1", code: "ROOT" }]),
+      },
+    } as never
+    const apply = await result.applyToDb(fakeTx)
+    expect(apply.rowsInserted).toBe(2)
+    expect(upsertCalls).toHaveLength(2) // 1 level=1 + 1 level=2
+    // Level 1 upserted first
+    expect((upsertCalls[0].create as { level: number }).level).toBe(1)
+    expect((upsertCalls[1].create as { level: number; parentCompanyId: string }).level).toBe(2)
+    expect((upsertCalls[1].create as { parentCompanyId: string }).parentCompanyId).toBe("c_1")
+  })
+
+  it("COMPANIES handler emits warning when parent code is missing from DB or batch", async () => {
+    const prisma = buildPrismaStub()
+    const registry = buildProductionAdapterRegistry(prisma)
+    const handler = registry.get("COMPANIES")!
+    const xlsxStub = {
+      utils: {
+        sheet_to_json: () => [
+          {
+            code: "ORPHAN",
+            name: "Orphan",
+            industry: "services",
+            level: "2",
+            parentCompanyCode: "MISSING_PARENT",
+          },
+        ],
+      },
+    }
+    const result = await handler({
+      workbook: { Sheets: { Companies: {} }, SheetNames: ["Companies"] },
+      sheetName: "Companies",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: xlsxStub,
+    })
+    const fakeTx = {
+      company: {
+        upsert: vi.fn(async () => ({ id: "c_x", code: "x" })),
+        findMany: vi.fn(async () => []), // parent not in DB
+      },
+    } as never
+    const apply = await result.applyToDb(fakeTx)
+    expect(apply.rowsInserted).toBe(0)
+    expect(result.warnings.some((w) => w.includes("MISSING_PARENT"))).toBe(true)
+  })
+
   it("UNKNOWN/INFO_SUMMARY noop handlers don't crash on missing entity", async () => {
     const prisma = buildPrismaStub({ plan: { id: "plan_2026" } })
     const registry = buildProductionAdapterRegistry(prisma)

@@ -25,6 +25,7 @@ For each sheet, given its name, headers, sample rows, and column type profiles, 
    - "LAND_REGISTRY" = Land lease registry (hectares, lessor, registry numbers)
    - "DESCRIPTIONS"  = Strategic narrative / company description text
    - "INFO_SUMMARY"  = High-level summary / index of other sheets
+   - "COMPANIES"     = Org-structure sheet listing entity tree (headers include some of: code, name, industry, level, parentCompanyCode — case/whitespace insensitive). NOT a financial sheet — used to bootstrap or update the company hierarchy.
    - "UNKNOWN"       = Cannot determine; reviewer must classify manually
 
 2. **entityCode** — the AZSEKER-* (or other) operational entity this sheet belongs to:
@@ -105,7 +106,7 @@ Return STRICT JSON in this exact shape (no markdown, no extra prose):
   "classifications": [
     {
       "sheetName": "<exactly as in input>",
-      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|UNKNOWN",
+      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|COMPANIES|UNKNOWN",
       "entityCode": "AZSEKER-CPC" | null,
       "confidence": 0.0,
       "reasoning": "one line — what signal drove this"

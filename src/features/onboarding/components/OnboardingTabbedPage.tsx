@@ -1,28 +1,20 @@
 "use client";
 /**
  * Financial-truth-infra Phase C.4 — unified onboarding page.
+ * Phase 7.M Tier 6 (2026-05-21) — Import tab now redirects to the
+ * single AI Import surface at /budgeting/admin/ai-import. The
+ * AI classifier added a COMPANIES dataType so the entity-tree
+ * bootstrap (this tab's former job) is now the same drag-drop flow
+ * as financial-data import — one mental model instead of three.
  *
- * Combines the two previously-separate onboarding surfaces into one
- * tabbed view so the user has a single mental model:
- *   - **Status** (default) — per-company completeness dashboard
- *     (formerly /budgeting/admin/onboarding). Re-derives from DB on
- *     every visit.
- *   - **Import** — AI-mapper xlsx upload wizard (the existing
- *     OnboardingWizardSwitcher, formerly the only content on
- *     /budgeting/onboarding).
- *
- * Tab choice persists in URL (`?view=import` / `?view=status`) so a
- * bookmarked link lands on the same tab.
- *
- * Why default to Status: typical workflow is "what's missing? → load
- * the file → re-check." Showing completeness first means the user
- * sees context before deciding what to upload, and the cycle closes
- * naturally without page nav.
+ * Status tab stays here — it's a derived dashboard, not an upload
+ * surface, so consolidation doesn't apply.
  */
 import React from "react";
 import { useTranslations } from "next-intl";
 import { useSearchParams, useRouter } from "next/navigation";
-import { OnboardingWizardSwitcher } from "./OnboardingWizardSwitcher";
+import Link from "next/link";
+import { Brain, ArrowRight } from "lucide-react";
 import { OnboardingCompletenessDashboard } from "./OnboardingCompletenessDashboard";
 
 type View = "status" | "import";
@@ -67,7 +59,7 @@ export function OnboardingTabbedPage() {
         {view === "status" ? (
           <OnboardingCompletenessDashboard />
         ) : (
-          <OnboardingWizardSwitcher />
+          <ImportRedirectPanel />
         )}
       </div>
     </div>
@@ -115,4 +107,31 @@ function safeT(
   } catch {
     return fallback;
   }
+}
+
+// Phase 7.M Tier 6 — Import tab now redirects to the unified AI Import.
+function ImportRedirectPanel() {
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-6 space-y-4">
+      <div className="flex items-start gap-3">
+        <Brain className="size-6 text-primary mt-0.5" />
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">Импорт теперь в одном месте</h2>
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Загрузка любых xlsx (данные, структура компаний, KPI, земля,
+            описания) — через единый AI Import. AI определяет тип файла и
+            маршрутизирует на правильный adapter, бывшие 3 отдельных экрана
+            больше не нужны.
+          </p>
+        </div>
+      </div>
+      <Link
+        href="/budgeting/admin/ai-import"
+        className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity text-sm font-medium"
+      >
+        Перейти к AI Import
+        <ArrowRight className="size-4" />
+      </Link>
+    </div>
+  );
 }

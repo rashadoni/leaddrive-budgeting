@@ -52,25 +52,11 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
     tools: [
       {
         href: "/budgeting/admin/ai-import",
-        title: "AI Auto Import",
-        desc: "Drag-drop любой xlsx → AI классифицирует листы → bit-perfect импорт с reconciliation.",
+        title: "AI Import (единый)",
+        desc: "Drag-drop любой xlsx — финансы, KPI, землю, описания, ИЛИ структуру компаний. AI определяет тип и роутит на правильный adapter. Один UI вместо трёх.",
         icon: Brain,
-        badge: "🆕 Phase 7.M",
+        badge: "🆕 Phase 7.M Tier 6",
         recentlyAdded: true,
-      },
-      {
-        href: "/budgeting/admin/import-workbook",
-        title: "Import Workbook",
-        desc: "AzerSheker workbook bit-perfect 5-phase import (P&L → BS → KPI → CF → recompute).",
-        icon: Upload,
-        badge: "🆕 Phase 7.M",
-        recentlyAdded: true,
-      },
-      {
-        href: "/budgeting/onboarding",
-        title: "Onboarding (AI-mapper)",
-        desc: "Single-sheet xlsx upload + AI column mapping. Для общего use case (не AzerSheker shape).",
-        icon: ClipboardEdit,
       },
       {
         href: "/budgeting/admin/data-entry",

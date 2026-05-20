@@ -38,6 +38,10 @@ export type FileType =
   | "strategic-descriptions"
   | "capex-plan"
   | "kpi-only"
+  // Phase 7.M Tier 6 — onboarding consolidation. company-setup file
+  // bootstraps / updates the org's entity hierarchy. Detected by a
+  // COMPANIES-classified sheet without any financial sheets.
+  | "company-setup"
   | "unknown"
 
 export interface FileTypeResult {
@@ -61,6 +65,7 @@ export interface FileTypeResult {
     landRegistry: number
     descriptions: number
     infoSummary: number
+    companies: number
     unknown: number
   }
 }
@@ -80,6 +85,7 @@ function bucketSheets(
     landRegistry: 0,
     descriptions: 0,
     infoSummary: 0,
+    companies: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -113,6 +119,9 @@ function bucketSheets(
         break
       case "INFO_SUMMARY":
         counts.infoSummary++
+        break
+      case "COMPANIES":
+        counts.companies++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -229,6 +238,29 @@ export function detectFileType(
       fileType: "forward-forecast",
       confidence: conf,
       reasoning: `Filename "${filename}" matches forward-forecast keyword; ${forecastShapeCount} forecast-shape sheets without BS+CF trio → multi-year projection`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 0.5: company-setup — file contains a COMPANIES sheet AND
+  // no financial sheets. Setup files are bootstrapping the org's entity
+  // tree (e.g. for a fresh tenant) so they must NOT trip the financial
+  // pipeline. If a file mixes COMPANIES with PLF/BS/CF, the financial
+  // intent dominates (it's a workbook that happens to also list entities).
+  if (
+    counts.companies >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(
+      classifications,
+      (c) => c.dataType === "COMPANIES",
+    )
+    return {
+      fileType: "company-setup",
+      confidence: conf,
+      reasoning: `${counts.companies} COMPANIES sheet(s), no PLF/BS/CF → entity-tree setup file`,
       sheetCounts: counts,
     }
   }
