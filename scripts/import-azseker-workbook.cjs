@@ -1,7 +1,7 @@
 /**
  * AzerSheker 2026 budget import from `Copy of Guvven Fin.xlsx`.
  *
- * The Guvven file differs from the original Consolidated file:
+ * The Workbook file differs from the original Consolidated file:
  *   - Sheet names are space-separated (`PLF CPC`, `PL Malt`) instead
  *     of underscore (`PLF_CPC`, `PL_MALT`).
  *   - Date headers cover multiple years (R1 has 24-60 monthly date
@@ -15,7 +15,7 @@
  *     transitions it to active by populating data.
  *
  * What this script does:
- *   1. Open the Guvven xlsx
+ *   1. Open the Workbook xlsx
  *   2. For each AZSEKER child (CPC, AZSF, EDEN, MALT):
  *      - Parse PLF sheet → BudgetLine for year 2026 (12 months)
  *      - Parse CF sheet → CashFlowEntry for year 2026
@@ -28,19 +28,20 @@
  *      unblock the C.3 terminal gate.
  *   7. Print summary; user runs recompute separately.
  *
- * Run: `node scripts/import-azseker-guvven.cjs`
+ * Run: `node scripts/import-azseker-workbook.cjs`
  * Idempotent: safe to re-run.
  */
 const { PrismaClient } = require("@prisma/client")
 const XLSX = require("xlsx")
 const prisma = new PrismaClient()
 
-const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Copy of Guvven Fin.xlsx"
+// Phase 7.M Tier 3 (2026-05-19): switched to newer "Guvven Fin.xlsx" (May 19)
+const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Guvven Fin.xlsx"
 const ORG_SLUG = "azmade"
 const TARGET_YEAR = 2026
 const PLAN_NAME = "Azərşəkər 2026 Budget"
 
-// 4 entities present in the Guvven file. HORIZON/FARM are not in this
+// 4 entities present in the Workbook file. HORIZON/FARM are not in this
 // workbook — they retain whatever data the prior Consolidated import wrote.
 const ENTITIES = [
   { code: "AZSEKER-CPC",  plSheet: "PLF CPC",  cfSheet: "CF CPC"  },
@@ -165,7 +166,7 @@ function parseCf(aoa, header) {
 }
 
 async function main() {
-  console.log("\n=== AzerSheker (Guvven Fin) import — year " + TARGET_YEAR + " ===\n")
+  console.log("\n=== AzerSheker (Workbook Fin) import — year " + TARGET_YEAR + " ===\n")
 
   const org = await prisma.organization.findFirst({ where: { slug: ORG_SLUG }, select: { id: true, name: true } })
   if (!org) throw new Error(`Org "${ORG_SLUG}" not found`)

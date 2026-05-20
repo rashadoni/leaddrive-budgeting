@@ -59,11 +59,16 @@ const JOBS: JobSpec[] = [
   // companyId scope already isolates them, so no extra filter needed.
   { file: AZSEKER_PATH, sheet: "PL_EDEN", companyCode: "AZSEKER-EDEN", parser: "azseker-plf" },
   { file: AZSEKER_PATH, sheet: "PLF_AZSF", companyCode: "AZSEKER-AZSF", parser: "azseker-plf" },
-  { file: AZSEKER_PATH, sheet: "PLF_Farm", companyCode: "AZSEKER-FARM", parser: "azseker-plf" },
   { file: AZSEKER_PATH, sheet: "PLF_CPC", companyCode: "AZSEKER-CPC", parser: "azseker-plf" },
+  // Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed — there
+  // is no such legal entity; the farms (Qarabağ Taxıl, Dastan, Əkinçi
+  // BO) operate under AZSEKER-EDEN.
   // AZSEKER-HORIZON: per import-azseker.cjs `plSheet: null` — no P&L in
   // source workbook, only Cash Flow. Skip P&L verification; CF
   // verification is a separate workstream.
+  // AZSEKER-PROMALT (Promalt MMC malt sales) has no P&L sheet in the
+  // workbook — only its "Satış ProMalt" sales sheet, verified via the
+  // sales reconciliation, not this P&L verifier.
 ]
 
 interface CompareRow {

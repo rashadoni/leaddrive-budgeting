@@ -29,22 +29,28 @@ const TARGET_CODES = [
   "ATL-TAZ",
   "ATL-MRKZ",
   "AAC-MAIN",
-  // AZSEKER 5 (HORIZON gets recomputed too — indicators will return
-  // unknown until its first xlsx, which is the right state).
+  // AZSEKER 5 leaves (HORIZON gets recomputed too — indicators will
+  // return unknown until its first xlsx, which is the right state).
+  // Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed (no such
+  // legal entity), AZSEKER-PROMALT added (Promalt MMC malt-sales).
+  // AZSEKER-MALT remains the malt-production sub.
   "AZSEKER-EDEN",
   "AZSEKER-AZSF",
   "AZSEKER-HORIZON",
-  "AZSEKER-FARM",
+  "AZSEKER-MALT",
+  "AZSEKER-PROMALT",
   "AZSEKER-CPC",
 ]
 
 async function main() {
-  // Resolve org via any one company (the AZMADE org is shared by all FO entities).
+  // Resolve org via any AZSEKER child company (FO org shared across all entities).
+  // Was AAC-MAIN — replaced 2026-05-19 because AAC-MAIN doesn't exist in the
+  // current AzerSheker-focused DB state (only AAC parent shell).
   const sample = await prisma.company.findFirst({
-    where: { code: "AAC-MAIN" },
+    where: { code: { in: ["AZSEKER-CPC", "AAC", "AAC-MAIN"] } },
     select: { organizationId: true },
   })
-  if (!sample) throw new Error("AAC-MAIN not found — wrong env?")
+  if (!sample) throw new Error("No anchor company found — wrong env?")
   const orgId = sample.organizationId
 
   const companies = await prisma.company.findMany({

@@ -70,12 +70,9 @@ const CUSTOMERS_BY_ENTITY = {
     { name: "Cotton trader (TBN — local)", sharePct: 8, paymentTermsDays: 30, contractExpiry: "2026-09-30", notes: "Cotton bale offtake" },
     { name: "Spot wholesale grain", sharePct: 7, paymentTermsDays: 0, contractExpiry: null, notes: "Cash spot" },
   ],
-  "AZSEKER-FARM": [
-    { name: "AZSEKER-CPC (intra-group)", sharePct: 55, paymentTermsDays: 60, contractExpiry: null, notes: "Mixed cereal intra-group" },
-    { name: "AZSEKER-MALT (intra-group)", sharePct: 25, paymentTermsDays: 60, contractExpiry: null, notes: "Barley to malt house" },
-    { name: "State grain procurement", sharePct: 12, paymentTermsDays: 90, contractExpiry: "2026-12-31", notes: "Government wheat purchase program" },
-    { name: "Open market", sharePct: 8, paymentTermsDays: 14, contractExpiry: null, notes: "Spot" },
-  ],
+  // Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed — the
+  // farms (Qarabağ Taxıl, Dastan, Əkinçi BO) operate under AZSEKER-EDEN.
+  // Customer mix for those farms folds into AZSEKER-EDEN above.
   "AZSEKER-HORIZON": [
     { name: "AZSEKER (intra-group)", sharePct: 80, paymentTermsDays: 30, contractExpiry: null, notes: "Internal shared-services charge to parent + sub-entities" },
     { name: "External legal / IT clients", sharePct: 20, paymentTermsDays: 30, contractExpiry: null, notes: "Small external book" },
@@ -84,8 +81,7 @@ const CUSTOMERS_BY_ENTITY = {
 
 const SUPPLIERS_BY_ENTITY = {
   "AZSEKER-AZSF": [
-    { name: "AZSEKER-EDEN (intra-group cane)", sharePct: 48, singleSource: false, paymentTermsDays: 60, notes: "Primary cane supplier; cut-to-mill ≤24h SLA" },
-    { name: "AZSEKER-FARM (intra-group)", sharePct: 12, singleSource: false, paymentTermsDays: 60, notes: "Supplementary cane" },
+    { name: "AZSEKER-EDEN (intra-group cane)", sharePct: 60, singleSource: false, paymentTermsDays: 60, notes: "Primary cane supplier; cut-to-mill ≤24h SLA. Incorporates QT/DAS/BO farms which operate under EDEN (Azik confirm 2026-05-19)" },
     { name: "Socar Industrial Gas", sharePct: 8, singleSource: true, paymentTermsDays: 30, contractExpiry: "2026-12-31", notes: "Process steam — single qualified domestic supplier" },
     { name: "Azərenerji", sharePct: 14, singleSource: true, paymentTermsDays: 14, notes: "Power utility — natural single-source (grid monopoly)" },
     { name: "Fertilizer trader (BASF agent)", sharePct: 6, singleSource: false, paymentTermsDays: 60, notes: "NPK / urea — multiple alternates" },
@@ -104,7 +100,7 @@ const SUPPLIERS_BY_ENTITY = {
     { name: "Process labor (contractors)", sharePct: 9, singleSource: false, paymentTermsDays: 14, notes: "" },
   ],
   "AZSEKER-MALT": [
-    { name: "AZSEKER-FARM (intra-group barley)", sharePct: 38, singleSource: false, paymentTermsDays: 60, notes: "Primary barley input" },
+    { name: "AZSEKER-EDEN (intra-group barley)", sharePct: 38, singleSource: false, paymentTermsDays: 60, notes: "Primary barley input — Eden Agro farms (QT/DAS/BO; Azik confirm 2026-05-19)" },
     { name: "Open-market barley (regional)", sharePct: 22, singleSource: false, paymentTermsDays: 14, notes: "Spot market top-up" },
     { name: "Azərenerji", sharePct: 14, singleSource: true, paymentTermsDays: 14, notes: "Power utility" },
     { name: "SOCAR natural gas (kilning)", sharePct: 8, singleSource: true, paymentTermsDays: 30, notes: "Process heat — gas pipeline single-source" },

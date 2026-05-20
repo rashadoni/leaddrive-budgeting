@@ -3,7 +3,7 @@
  *
  * HORIZON is the services sub-entity of AzerSheker (internal consulting /
  * shared services). It was seeded by the original AzerSheker import script
- * but the Guvven Fin xlsx the client provided doesn't include HORIZON
+ * but the Workbook Fin xlsx the client provided doesn't include HORIZON
  * sheets — it covers only the agro/processing entities (EDEN/AZSF/CPC/MALT).
  *
  * This script seeds plausible-magnitude placeholder financials so the

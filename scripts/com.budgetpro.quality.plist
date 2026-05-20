@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Phase 7.M Step 4 follow-up (2026-05-19) — daily-quality LaunchAgent.
+
+  Install:
+    cp scripts/com.budgetpro.quality.plist ~/Library/LaunchAgents/
+    launchctl load -w ~/Library/LaunchAgents/com.budgetpro.quality.plist
+
+  Verify the agent is registered:
+    launchctl list | grep com.budgetpro.quality
+
+  Trigger a manual run (without waiting for 6 AM):
+    launchctl kickstart -k gui/$(id -u)/com.budgetpro.quality
+
+  Unload / pause:
+    launchctl unload -w ~/Library/LaunchAgents/com.budgetpro.quality.plist
+
+  Logs:
+    tail -f ~/Library/Logs/budgetpro-quality.log
+
+  Schedule: 06:00 local time every day. macOS LaunchAgent honors the
+  user's current timezone, so 06:00 in Baku stays 06:00 even after
+  daylight-saving shifts elsewhere. If the Mac is asleep at 06:00 the
+  job fires on the next wake (LaunchAgent default behaviour).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.budgetpro.quality</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/rashadrahimov/Documents/leaddrive-budgeting/scripts/daily-quality-check.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- Catch up if the Mac was asleep at 06:00 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <!-- Single-instance — LaunchAgent enforces this in addition to the
+         script-level PID lock. -->
+    <key>KeepAlive</key>
+    <false/>
+
+    <!-- Stay quiet in the foreground; stdout/stderr go through the
+         script's own log file. -->
+    <key>StandardOutPath</key>
+    <string>/dev/null</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/rashadrahimov/Library/Logs/budgetpro-quality.err.log</string>
+
+    <!-- nice-level: don't hog the CPU if user is working -->
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <!-- Set PATH so node + npx are findable in the agent environment.
+         Defaults to /usr/bin:/bin which doesn't include Homebrew. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/rashadrahimov</string>
+    </dict>
+</dict>
+</plist>

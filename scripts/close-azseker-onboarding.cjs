@@ -34,7 +34,8 @@ const { PrismaClient } = require("@prisma/client")
 const XLSX = require("xlsx")
 const prisma = new PrismaClient()
 
-const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Copy of Guvven Fin.xlsx"
+// Phase 7.M Tier 3 (2026-05-19): switched to newer "Guvven Fin.xlsx" (May 19)
+const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Guvven Fin.xlsx"
 const ORG_SLUG = "azmade"
 const TARGET_YEAR = 2026
 
@@ -59,9 +60,15 @@ const ENTITY_DEFAULTS = {
       mainInputCommodity: "sugarcane",
     },
   },
-  "AZSEKER-FARM": {
-    industry: "agro_crops",
-    settings: { hectaresPlanted: 5500, region: "Beyləqan", cropType: "mixed_cereal", yieldTarget: 5 },
+  // Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed — there
+  // is no such legal entity. The farms (Qarabağ Taxıl, Dastan, Əkinçi
+  // BO) operate under AZSEKER-EDEN.
+  // AZSEKER-PROMALT (Promalt MMC) was added — separate legal entity
+  // that handles malt sales, distinct from the malt-production sub
+  // AZSEKER-MALT. Settings live in scripts/sync-azseker-entities.ts.
+  "AZSEKER-PROMALT": {
+    industry: "food_processing",
+    settings: { legalEntity: "Promalt MMC", productCategory: "malt_sales", topCustomerHhiTarget: 0.4 },
   },
   "AZSEKER-CPC": {
     // Caspian Production Center — corn/wheat starch & glucose syrup.

@@ -1,6 +1,6 @@
 /**
  * Phase 7.J — extend AzerSheker §3 Sales budget with Production +
- * Promalt sales plans from the Guvven Fin xlsx.
+ * Promalt sales plans from the Workbook Fin xlsx.
  *
  * The base `close-azseker-onboarding.cjs` only parsed the "Farming
  * Budget sales plan" sheet (4 row-crop products). This script picks
@@ -38,7 +38,8 @@ const { PrismaClient } = require("@prisma/client")
 const XLSX = require("xlsx")
 const prisma = new PrismaClient()
 
-const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Copy of Guvven Fin.xlsx"
+// Phase 7.M Tier 3 (2026-05-19): switched to newer "Guvven Fin.xlsx" (May 19)
+const FILE = "/Users/rashadrahimov/Documents/budget azersheker/Guvven Fin.xlsx"
 const ORG_SLUG = "azmade"
 const TARGET_YEAR = 2026
 

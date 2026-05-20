@@ -25,12 +25,16 @@ const FILE = "/Users/rashadrahimov/Downloads/azmade budget/Consolidated budget 2
 const ORG_SLUG = "azmade" // keep slug for backward compat; rename only display name
 
 // 5 entities with mapping
+// Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed — there is
+// no such legal entity. AZSEKER-PROMALT (Promalt MMC, malt-sales) added.
+// AZSEKER-MALT remains the malt-production sub.
 const ENTITIES = [
-  { code: "AZSEKER-EDEN",    name: "Eden Agro",     industry: "agro_crops",     plSheet: "PL_EDEN",  cfSheet: "CF_EDEN" },
+  { code: "AZSEKER-EDEN",    name: "Eden Agro",       industry: "agro_crops",     plSheet: "PL_EDEN",  cfSheet: "CF_EDEN" },
   { code: "AZSEKER-AZSF",    name: "Azərşəkər Sugar", industry: "food_processing", plSheet: "PLF_AZSF", cfSheet: "CF_AZSF" },
-  { code: "AZSEKER-HORIZON", name: "Horizon",       industry: "services",       plSheet: null,       cfSheet: "CF_HORIZON" },
-  { code: "AZSEKER-FARM",    name: "Farm",          industry: "agro_crops",     plSheet: "PLF_Farm", cfSheet: "CF_Farm" },
-  { code: "AZSEKER-CPC",     name: "CPC",           industry: "food_processing", plSheet: "PLF_CPC",  cfSheet: "CF_CPC" },
+  { code: "AZSEKER-HORIZON", name: "Horizon",         industry: "services",       plSheet: null,       cfSheet: "CF_HORIZON" },
+  { code: "AZSEKER-MALT",    name: "Malt",            industry: "food_processing", plSheet: "PL Malt",  cfSheet: "CF Malt" },
+  { code: "AZSEKER-PROMALT", name: "Promalt MMC",     industry: "food_processing", plSheet: null,       cfSheet: null },
+  { code: "AZSEKER-CPC",     name: "CPC",             industry: "food_processing", plSheet: "PLF_CPC",  cfSheet: "CF_CPC" },
 ]
 
 const LEAF_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.\d{1,2}$/
