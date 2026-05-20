@@ -13,7 +13,7 @@ import { useTranslations, useLocale } from 'next-intl';
  * "see why" is a single click each.
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { TodayBrief } from "./TodayBrief";
@@ -147,6 +147,18 @@ export function IndicatorDetail() {
   // but the panel keeps showing stale data).
   const [refetchTick, setRefetchTick] = useState(0);
 
+  // Track the auto-clear timeout so we can cancel it on unmount and avoid
+  // state-on-unmounted-component noise during teardown (test gate flake).
+  const recomputePillTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (recomputePillTimeoutRef.current !== null) {
+        clearTimeout(recomputePillTimeoutRef.current);
+        recomputePillTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!ivId) {
       setDetail(null);
@@ -196,8 +208,12 @@ export function IndicatorDetail() {
       // Auto-clear the "Updated" pill after 1.5s so it doesn't linger.
       // Uses the functional-set form so a parallel running-state from a
       // rapid second click can't accidentally roll back to idle.
-      setTimeout(() => {
+      if (recomputePillTimeoutRef.current !== null) {
+        clearTimeout(recomputePillTimeoutRef.current);
+      }
+      recomputePillTimeoutRef.current = setTimeout(() => {
         setRecomputeState((s) => (s.kind === 'done' ? { kind: 'idle' } : s));
+        recomputePillTimeoutRef.current = null;
       }, 1500);
     } catch (err) {
       setRecomputeState({
