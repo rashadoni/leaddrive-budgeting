@@ -45,5 +45,10 @@ export const newsIndicators: IndicatorSeed[] = [
       "Xəbər tonallığı {value}/100 son 30 gün — {status}. AI-qiymətləndirmə şirkət haqqında {n_items} məqalədən.",
     requiredInputs: ["news.sentiment30d"],
     sortOrder: 950,
+    // Phase 7.H — sentiment is broadcast org-wide (same value across all
+    // companies in the org) since it derives from intel items tagged at
+    // the org / sector level. Tag as `macro` so the smoke gate doesn't
+    // flag it as a misconfigured per-company indicator.
+    defaultValueSource: "macro",
   },
 ]

@@ -271,6 +271,14 @@ async function checkLowReadiness(orgId: string): Promise<CheckResult> {
   // Filter out rollup parents (level=1) — they're aggregators by design
   // and inherit their data from children via rollup() formulas. Counting
   // their own budget_lines is a false positive.
+  //
+  // Phase 7.M Tier 5 — also skip sales-only entities (have substantial
+  // operational_facts but no P&L by design; e.g. AZSEKER-PROMALT —
+  // Promalt MMC sells beer, full P&L is managed outside this workbook).
+  // Threshold: ≥50 operational_facts treated as "has data, just not via
+  // budget_lines" — same scale as the P&L threshold so AI Variance
+  // Explainer still has enough context.
+  const SALES_ONLY_OPS_THRESHOLD = 50
   const companies = await prisma.company.findMany({
     where: {
       organizationId: orgId,
@@ -281,22 +289,34 @@ async function checkLowReadiness(orgId: string): Promise<CheckResult> {
     select: {
       id: true,
       code: true,
-      _count: { select: { budgetLines: true } },
+      _count: {
+        select: {
+          budgetLines: true,
+          operationalFacts: true,
+        },
+      },
     },
   })
-  const low = companies.filter((c) => c._count.budgetLines < 50)
+  const low = companies.filter(
+    (c) =>
+      c._count.budgetLines < 50 &&
+      c._count.operationalFacts < SALES_ONLY_OPS_THRESHOLD,
+  )
   return {
     id: "low-readiness",
-    title: "Companies with <50 budget_lines (AI may hallucinate)",
+    title: "Companies with <50 budget_lines AND <50 operational_facts (AI may hallucinate)",
     severity: low.length === 0 ? "green" : low.length < 3 ? "yellow" : "red",
     count: low.length,
     message:
       low.length === 0
-        ? "All active companies have ≥50 budget_lines."
+        ? "All active companies have ≥50 budget_lines or ≥50 operational_facts (sales-only entities OK)."
         : `${low.length} active companies have thin data — consider hiding from demo or labelling as 'preview'.`,
     samples: low
       .slice(0, 8)
-      .map((c) => `  ${c.code.padEnd(22)} ${c._count.budgetLines} budget_lines`),
+      .map(
+        (c) =>
+          `  ${c.code.padEnd(22)} ${c._count.budgetLines} budget_lines · ${c._count.operationalFacts} ops_facts`,
+      ),
   }
 }
 
