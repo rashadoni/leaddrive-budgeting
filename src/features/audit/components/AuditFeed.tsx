@@ -64,6 +64,9 @@ const ALL_ACTIONS = [
   "period_snapshot_drift",
   // Phase 7.K Phase 5a — admin set/cleared an external API key.
   "api_key_update",
+  // Phase 7.M Step 4 — self-service archive trail.
+  "data_archive",
+  "data_restore",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

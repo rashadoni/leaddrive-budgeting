@@ -17,8 +17,16 @@ import {
   waitFor,
   fireEvent,
   act,
+  configure,
 } from "@testing-library/react"
 import { ImportWizardMulti } from "./ImportWizardMulti"
+
+// Phase 7.M Tier 4 (2026-05-19) — testing-library `waitFor` defaults to
+// 5000ms which trips under full-sweep CPU contention (passes 16/16 in
+// isolation). Bump global default to 20s for this file — bare
+// `await waitFor(() => …)` calls now inherit the higher ceiling without
+// per-call `{ timeout: … }`.
+configure({ asyncUtilTimeout: 20_000 })
 
 const COMPANIES_PAYLOAD = {
   companies: [
@@ -343,7 +351,10 @@ describe("ImportWizardMulti — analyze-multi POST", () => {
 describe("ImportWizardMulti — analyzed step rendering", () => {
   async function reachAnalyzedStep() {
     render(<ImportWizardMulti />)
-    await waitFor(() => expect(screen.queryByTestId("companies-loading")).toBeNull())
+    await waitFor(
+      () => expect(screen.queryByTestId("companies-loading")).toBeNull(),
+      { timeout: 20_000 },
+    )
     fireEvent.change(screen.getByTestId("company-select"), {
       target: { value: "co_op_a" },
     })
@@ -353,7 +364,10 @@ describe("ImportWizardMulti — analyzed step rendering", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("analyze-submit"))
     })
-    await waitFor(() => expect(screen.getByTestId("analyzed-results")).toBeTruthy())
+    await waitFor(
+      () => expect(screen.getByTestId("analyzed-results")).toBeTruthy(),
+      { timeout: 20_000 },
+    )
   }
 
   it("renders OK chip for each successful sheet + ERROR chip for failures", async () => {
@@ -408,7 +422,14 @@ describe("ImportWizardMulti — apply-multi flow (slice 2)", () => {
   async function reachAnalyzedStep(extraOverrides: RouteOverrides = {}) {
     installFetchMock(extraOverrides)
     render(<ImportWizardMulti />)
-    await waitFor(() => expect(screen.queryByTestId("companies-loading")).toBeNull())
+    // Phase 7.M Tier4 (2026-05-19) — extended waitFor timeouts to
+    // 5000ms so happy-dom contention under the full vitest sweep
+    // can't time out before React's analyze-step transition finishes.
+    // The default 1000ms occasionally tripped this file under load.
+    await waitFor(
+      () => expect(screen.queryByTestId("companies-loading")).toBeNull(),
+      { timeout: 20_000 },
+    )
     fireEvent.change(screen.getByTestId("company-select"), {
       target: { value: "co_op_a" },
     })
@@ -418,7 +439,10 @@ describe("ImportWizardMulti — apply-multi flow (slice 2)", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("analyze-submit"))
     })
-    await waitFor(() => expect(screen.getByTestId("analyzed-results")).toBeTruthy())
+    await waitFor(
+      () => expect(screen.getByTestId("analyzed-results")).toBeTruthy(),
+      { timeout: 20_000 },
+    )
   }
 
   it("Apply button NOT rendered when successCount=0 (nothing to apply)", async () => {
@@ -468,7 +492,11 @@ describe("ImportWizardMulti — apply-multi flow (slice 2)", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("apply-submit"))
     })
-    await waitFor(() => expect(screen.getByTestId("applied-results")).toBeTruthy())
+    // Phase 7.M Tier 4 (2026-05-19) — bumped 5s → 20s. The 5s timeout
+    // tripped under full-sweep CPU contention (passes 16/16 in isolation).
+    await waitFor(() => expect(screen.getByTestId("applied-results")).toBeTruthy(), {
+      timeout: 20_000,
+    })
 
     // URL targets apply-multi for the right stagingId
     expect(capturedUrl).toContain("/api/onboarding/import/staging/")
@@ -494,9 +522,14 @@ describe("ImportWizardMulti — apply-multi flow (slice 2)", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("apply-submit"))
     })
-    await waitFor(() => {
-      expect(screen.getByTestId("apply-error")).toBeTruthy()
-    })
+    // Phase 7.M Tier 4 (2026-05-19) — bumped to 20s for the same CPU
+    // contention reason as the happy-path test above.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("apply-error")).toBeTruthy()
+      },
+      { timeout: 20_000 },
+    )
     // Apply button hidden (stagingTerminal=true gate); Restart link shown
     expect(screen.queryByTestId("apply-submit")).toBeNull()
     const restartAfter = screen.getByTestId("restart-after-terminal")

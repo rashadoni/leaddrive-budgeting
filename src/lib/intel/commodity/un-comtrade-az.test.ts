@@ -6,6 +6,8 @@ import {
   buildComtradeUrl,
   comtradeResponseToDataPoints,
   createUnComtradeAzAdapter,
+  isComtradeYearPlausible,
+  COMTRADE_MIN_LEG_USD,
   UN_COMTRADE_AZ_SOURCE,
 } from "./un-comtrade-az"
 
@@ -19,8 +21,30 @@ describe("buildComtradeUrl", () => {
   })
 })
 
+describe("isComtradeYearPlausible", () => {
+  it("accepts realistic AZ figures (X≈$30B, M≈$14B)", () => {
+    expect(isComtradeYearPlausible(30_000_000_000, 14_000_000_000).ok).toBe(true)
+  })
+
+  it("rejects partial-year exports (X=$1B, M=$24B)", () => {
+    const r = isComtradeYearPlausible(1_180_000_000, 24_400_000_000)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toContain("below")
+  })
+
+  it("rejects when X/M ratio is absurdly skewed (X=$6B, M=$30B)", () => {
+    const r = isComtradeYearPlausible(6_000_000_000, 30_000_000_000)
+    expect(r.ok).toBe(false)
+    expect(r.reason).toContain("ratio")
+  })
+
+  it("rejects when both legs below floor", () => {
+    expect(isComtradeYearPlausible(1_000_000, 1_000_000).ok).toBe(false)
+  })
+})
+
 describe("comtradeResponseToDataPoints", () => {
-  it("returns 3 points (exports + imports + balance) for latest complete year", () => {
+  it("returns 3 points (exports + imports + balance) for latest plausible year", () => {
     const response = {
       data: [
         { period: 2025, flowCode: "X", primaryValue: 30_000_000_000 },
@@ -29,9 +53,10 @@ describe("comtradeResponseToDataPoints", () => {
         { period: 2024, flowCode: "M", primaryValue: 12_000_000_000 },
       ],
     }
-    const points = comtradeResponseToDataPoints(response)
-    expect(points.length).toBe(3)
-    const byMetric = Object.fromEntries(points.map((p) => [p.metric, p]))
+    const { dataPoints, skipped } = comtradeResponseToDataPoints(response)
+    expect(dataPoints.length).toBe(3)
+    expect(skipped).toEqual([])
+    const byMetric = Object.fromEntries(dataPoints.map((p) => [p.metric, p]))
     expect(byMetric["AZ_GOODS_EXPORTS_USD"].value).toBe(30_000_000_000)
     expect(byMetric["AZ_GOODS_IMPORTS_USD"].value).toBe(14_000_000_000)
     expect(byMetric["AZ_TRADE_BALANCE_USD"].value).toBe(16_000_000_000)
@@ -40,46 +65,73 @@ describe("comtradeResponseToDataPoints", () => {
   it("falls back to prior year when latest has only one leg", () => {
     const response = {
       data: [
-        { period: 2025, flowCode: "X", primaryValue: 30_000_000_000 }, // only exports
+        { period: 2025, flowCode: "X", primaryValue: 30_000_000_000 },
         { period: 2024, flowCode: "X", primaryValue: 28_000_000_000 },
         { period: 2024, flowCode: "M", primaryValue: 12_000_000_000 },
       ],
     }
-    const points = comtradeResponseToDataPoints(response)
-    expect(points.length).toBe(3)
-    // Should pick 2024 since 2025 is missing imports
-    expect(points[0].datetime.getUTCFullYear()).toBe(2024)
+    const { dataPoints } = comtradeResponseToDataPoints(response)
+    expect(dataPoints.length).toBe(3)
+    expect(dataPoints[0].datetime.getUTCFullYear()).toBe(2024)
   })
 
-  it("recognizes flowDesc verbiage (Export/Import)", () => {
+  it("regression: skips partial-year 2025 ($1.2B X / $24.4B M) and falls back to plausible 2024", () => {
+    // This is the exact pattern that produced the -$23B "balance"
+    // that broadcast across the holding's services entities and
+    // dominated the Top-3 Worst panel. Both legs in 2024 are
+    // realistic; both legs in 2025 are partial-year fragments.
     const response = {
       data: [
-        { period: 2025, flowDesc: "Export", primaryValue: 100 },
-        { period: 2025, flowDesc: "Import", primaryValue: 60 },
+        { period: 2025, flowCode: "X", primaryValue: 1_180_000_000 },
+        { period: 2025, flowCode: "M", primaryValue: 24_400_000_000 },
+        { period: 2024, flowCode: "X", primaryValue: 28_000_000_000 },
+        { period: 2024, flowCode: "M", primaryValue: 12_000_000_000 },
       ],
     }
-    const points = comtradeResponseToDataPoints(response)
-    expect(points.length).toBe(3)
+    const { dataPoints, skipped } = comtradeResponseToDataPoints(response)
+    expect(dataPoints.length).toBe(3)
+    expect(dataPoints[0].datetime.getUTCFullYear()).toBe(2024)
+    const balance = dataPoints.find((p) => p.metric === "AZ_TRADE_BALANCE_USD")
+    expect(balance?.value).toBeGreaterThan(0)
+    expect(skipped).toHaveLength(1)
+    expect(skipped[0].year).toBe(2025)
+  })
+
+  it("recognizes flowDesc verbiage (Export/Import) when both legs are plausible", () => {
+    const response = {
+      data: [
+        { period: 2025, flowDesc: "Export", primaryValue: 30_000_000_000 },
+        { period: 2025, flowDesc: "Import", primaryValue: 14_000_000_000 },
+      ],
+    }
+    const { dataPoints } = comtradeResponseToDataPoints(response)
+    expect(dataPoints.length).toBe(3)
   })
 
   it("anchors datetime to UTC 1st-of-January", () => {
-    const points = comtradeResponseToDataPoints({
+    const { dataPoints } = comtradeResponseToDataPoints({
       data: [
-        { period: 2025, flowCode: "X", primaryValue: 100 },
-        { period: 2025, flowCode: "M", primaryValue: 50 },
+        { period: 2025, flowCode: "X", primaryValue: 30_000_000_000 },
+        { period: 2025, flowCode: "M", primaryValue: 14_000_000_000 },
       ],
     })
-    expect(points[0].datetime.toISOString()).toBe("2025-01-01T00:00:00.000Z")
+    expect(dataPoints[0].datetime.toISOString()).toBe(
+      "2025-01-01T00:00:00.000Z",
+    )
   })
 
   it("returns [] when no year has both legs", () => {
     expect(
       comtradeResponseToDataPoints({
         data: [{ period: 2025, flowCode: "X", primaryValue: 100 }],
-      }),
+      }).dataPoints,
     ).toEqual([])
-    expect(comtradeResponseToDataPoints({})).toEqual([])
-    expect(comtradeResponseToDataPoints({ data: [] })).toEqual([])
+    expect(comtradeResponseToDataPoints({}).dataPoints).toEqual([])
+    expect(comtradeResponseToDataPoints({ data: [] }).dataPoints).toEqual([])
+  })
+
+  it("re-exports the floor constant for downstream visibility", () => {
+    expect(COMTRADE_MIN_LEG_USD).toBe(5_000_000_000)
   })
 })
 
@@ -118,12 +170,15 @@ describe("createUnComtradeAzAdapter", () => {
     expect(result.errors[0]).toContain("HTTP 404")
   })
 
-  it("returns informative error when neither year has both legs", async () => {
+  it("returns informative error when no plausible year exists", async () => {
     const fetchImpl = vi.fn(
       async () =>
         new Response(
           JSON.stringify({
-            data: [{ period: 2025, flowCode: "X", primaryValue: 100 }],
+            data: [
+              { period: 2025, flowCode: "X", primaryValue: 1_180_000_000 },
+              { period: 2025, flowCode: "M", primaryValue: 24_400_000_000 },
+            ],
           }),
           { status: 200 },
         ),
@@ -131,6 +186,7 @@ describe("createUnComtradeAzAdapter", () => {
     const adapter = createUnComtradeAzAdapter({ fetchImpl: fetchImpl as never })
     const result = await adapter.fetch()
     expect(result.dataPoints).toEqual([])
-    expect(result.errors[0]).toContain("publishing lag")
+    expect(result.errors.join(" ")).toContain("skipped 2025")
+    expect(result.errors.join(" ")).toContain("plausibility")
   })
 })

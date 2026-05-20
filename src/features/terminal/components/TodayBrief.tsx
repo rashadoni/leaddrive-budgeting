@@ -58,12 +58,21 @@ function pickTop3<T>(items: T[], scoreFn: (t: T) => number): T[] {
  *
  * Falls back to plain magnitude ordering if we exhaust unique companies
  * before reaching `topN` (small holdings).
+ *
+ * Phase 7.L 2026-05-18 — `broadcastIndicators` skip-set lets the caller
+ * suppress country-wide macro signals (FX, CPI, trade balance) that
+ * broadcast a single value to every company. Without this, a $23B
+ * macro number outranked every per-company red cell by raw magnitude
+ * — and listed the same broadcast value seven times in the panel
+ * (one per services-tagged entity), which is meaningless ranking.
  */
-function pickTopWorstDiversified(
+export function pickTopWorstDiversified(
   items: WorstEntry[],
   topN: number,
+  broadcastIndicators?: ReadonlySet<string>,
 ): WorstEntry[] {
   const sorted = items
+    .filter((t) => !broadcastIndicators?.has(t.indicatorCode))
     .map((t) => ({ t, s: Math.abs(t.value) }))
     .sort((a, b) => b.s - a.s)
     .map(({ t }) => t);
@@ -86,6 +95,51 @@ function pickTopWorstDiversified(
     }
   }
   return out;
+}
+
+/**
+ * Detect macro broadcast indicators: indicators where the same value
+ * appears across ≥3 companies (or ≥50% of subscribers, whichever is
+ * larger). These are usually country-wide macro signals — FX, CPI,
+ * trade balance — that broadcast one number into every subscriber.
+ * They poison the per-company "worst" ranking; see
+ * `pickTopWorstDiversified` for the suppression mechanism.
+ *
+ * Floating-point round-trip noise from the recompute pipeline is
+ * absorbed by rounding to 6 significant digits before counting.
+ */
+export function detectBroadcastIndicators(
+  cells: ReadonlyArray<{
+    indicatorId: string
+    value: number | null
+    status?: string
+  }>,
+  indicators: ReadonlyArray<{ id: string; code: string }>,
+): ReadonlySet<string> {
+  const indCodeById = new Map(indicators.map((i) => [i.id, i.code]))
+  const freq = new Map<string, Map<string, number>>()
+  for (const cell of cells) {
+    if (cell.value == null || !Number.isFinite(cell.value)) continue
+    const code = indCodeById.get(cell.indicatorId)
+    if (!code) continue
+    const bucketKey = cell.value.toPrecision(6)
+    if (!freq.has(code)) freq.set(code, new Map())
+    const m = freq.get(code)!
+    m.set(bucketKey, (m.get(bucketKey) ?? 0) + 1)
+  }
+  const broadcast = new Set<string>()
+  for (const [code, m] of freq) {
+    // Total companies subscribed to this indicator = sum of buckets.
+    const subscribers = Array.from(m.values()).reduce((a, b) => a + b, 0)
+    const floor = Math.max(3, Math.floor(subscribers * 0.5))
+    for (const count of m.values()) {
+      if (count >= floor) {
+        broadcast.add(code)
+        break
+      }
+    }
+  }
+  return broadcast
 }
 
 export function TodayBrief() {
@@ -124,13 +178,21 @@ export function TodayBrief() {
       matrix.indicators,
       { topN: 5 },
     );
+    // Phase 7.L 2026-05-18 — derive broadcast-indicator set first so the
+    // worst-picker can skip macro signals (FX / CPI / trade-balance).
+    // Without this, a $23B trade-balance number broadcasts to every
+    // services entity and dominates the panel by raw magnitude.
+    const broadcastIndicators = detectBroadcastIndicators(
+      matrix.cells,
+      matrix.indicators,
+    );
     return {
       // Phase 7.K 2026-05-18 — diversified worst cells (top-1 per
       // company × 7 companies) so the morning brief covers the holding
       // breadth, not just one outlier. Old pickTop3 picked the absolute
       // 3 highest-magnitude cells, which were all ATL margins +
       // crowded out AAC / AZSEKER / SPARK / LLS reds.
-      worst: pickTopWorstDiversified(reds, 7),
+      worst: pickTopWorstDiversified(reds, 7, broadcastIndicators),
       movers: moversTop5,
     };
   }, [matrix]);

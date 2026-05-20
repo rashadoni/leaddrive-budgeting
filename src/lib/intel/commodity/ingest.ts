@@ -27,6 +27,7 @@
 import { prisma as defaultPrisma } from "@/lib/prisma"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import type { CommodityAdapter, CommodityDataPoint, CommodityFetchResult } from "./types"
+import { checkPlausibility } from "./plausibility"
 
 /** In-memory fallback map. Key = `${orgId}:${sourceCode}:${metric}:${ISO datetime}`. */
 const memoryStore = new Map<string, CommodityDataPoint & { organizationId: string }>()
@@ -116,6 +117,22 @@ export async function ingestCommodityData(
       // Skip non-finite values defensively (adapters should pre-filter)
       if (!Number.isFinite(point.value)) {
         errors.push(`${adapter.source}: dropped non-finite value for ${point.metric}`)
+        continue
+      }
+
+      // Phase 7.M Step 1 (2026-05-18) — plausibility gate. Centralised
+      // last-line-of-defence against structurally impossible values
+      // (e.g. UN Comtrade 2025-partial-year writing −$23B "balance").
+      // A point that fails the registry is rejected here, BEFORE the
+      // Prisma upsert; no recompute, no UI display, no false signal.
+      // The rule id + value land in `errors[]` so the scheduler audit
+      // surfaces which feed is misbehaving without silently corrupting
+      // the holding's risk picture.
+      const plaus = checkPlausibility(point.metric, point.value)
+      if (!plaus.ok) {
+        errors.push(
+          `${adapter.source}: REJECTED ${point.metric}=${point.value} [rule:${plaus.ruleId}] ${plaus.reason ?? ""}`,
+        )
         continue
       }
       try {

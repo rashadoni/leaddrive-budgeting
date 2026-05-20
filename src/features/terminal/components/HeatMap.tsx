@@ -507,6 +507,26 @@ export function HeatMap({ period }: Props) {
   // doesn't tag "2026-Q1" per period-lock.ts semantics).
   const activeLock = lockedPeriods.find((l) => l.period === renderedPeriod);
 
+  // Phase 7.M Step 5 (2026-05-19) — readiness for the active company.
+  // When a user drills into a single entity (CompanyTree click → only
+  // that row renders), we surface a banner above the grid if readiness
+  // is partial/thin/empty. The intent is to tell the finance reviewer
+  // "the cells you're about to read are based on incomplete data —
+  // don't anchor on these numbers as authoritative". Hides when:
+  //   - readiness data unavailable
+  //   - tier is good/complete (no warning needed)
+  //   - no active company drill-down (full-holding view doesn't carry
+  //     a single readiness signal)
+  const activeReadiness = data && activeCompanyCode
+    ? data.companies.find((c) => c.code === activeCompanyCode)?.readiness ?? null
+    : null;
+  const showReadinessBanner =
+    activeReadiness !== null &&
+    activeReadiness !== undefined &&
+    (activeReadiness.tier === 'partial' ||
+      activeReadiness.tier === 'thin' ||
+      activeReadiness.tier === 'empty');
+
   return (
     <div className="font-mono text-[10px] text-gray-300 w-full h-full flex flex-col">
       <div className="flex items-center justify-between mb-2 text-[10px] text-gray-500 shrink-0 gap-2">
@@ -604,6 +624,36 @@ export function HeatMap({ period }: Props) {
           onChange={(p) => setSelectedPeriod(p)}
         />
       </div>
+      {showReadinessBanner && activeReadiness && (
+        <div
+          data-testid="heatmap-readiness-banner"
+          data-readiness-tier={activeReadiness.tier}
+          className={`mb-2 shrink-0 px-2 py-1.5 rounded border text-[11px] leading-relaxed ${
+            activeReadiness.tier === 'empty'
+              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+              : activeReadiness.tier === 'thin'
+                ? 'border-orange-500/40 bg-orange-500/10 text-orange-300'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="font-semibold">Data readiness {activeReadiness.score}%.</span>{' '}
+          {activeReadiness.tier === 'empty'
+            ? 'No real data for this entity — cells below are placeholder or model-derived. Do not anchor analysis on these numbers.'
+            : activeReadiness.tier === 'thin'
+              ? 'Sparse data — AI Variance Explainer may hallucinate. Treat amber/red cells as directional, not authoritative.'
+              : 'Multiple data areas have gaps — review the readiness chip on this entity for what is missing.'}
+          {' '}
+          <span className="text-[10px] opacity-80">
+            Missing: {activeReadiness.areas
+              .filter((a) => a.missing)
+              .slice(0, 3)
+              .map((a) => a.label.toLowerCase())
+              .join(', ') || '—'}
+          </span>
+        </div>
+      )}
       {loading && (
         <span className="text-gray-700 text-[11px] py-2">{t('heatMap.loadingHeatmap')}</span>
       )}
@@ -1198,13 +1248,33 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
         : 1;
   const materialityBackground =
     cell?.materiality === 'not_material' ? '#1F2937' : color;
+  // Phase 7.M Step 2 (2026-05-18) — `signalConfidence` visual cue.
+  // Only `low` cells get a marker; `medium` and `high` render normally
+  // so the HeatMap doesn't drown in noise. The marker is an inset
+  // 1px ring in muted amber (#F59E0B at 40% alpha) — clearly visible
+  // but doesn't compete with the status color, the modeled-source `e`
+  // glyph at top-left or the materiality dimming above.
+  //
+  // What "low" means: the recompute pipeline flagged this cell with an
+  // `error.code` such as `no_budget_lines`, `rollup_no_children` or
+  // `out_of_range`. The numeric value is unreliable — finance users
+  // should treat the cell as "data missing, not a measurement".
+  //
+  // Flashing animation takes precedence (orange ring would look stale
+  // against the green flash); when not flashing the confidence ring
+  // shows.
+  const isLowConfidence = cell?.signalConfidence === 'low';
   return (
     <td
       onClick={onCellClick}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
       className={`cursor-pointer border-b border-gray-800/40 p-0 transition-shadow ${
-        flashing ? 'shadow-[inset_0_0_0_2px_#00D4AA]' : ''
+        flashing
+          ? 'shadow-[inset_0_0_0_2px_#00D4AA]'
+          : isLowConfidence
+            ? 'shadow-[inset_0_0_0_1px_rgba(245,158,11,0.55)]'
+            : ''
       }`}
       style={{
         backgroundColor: materialityBackground,
@@ -1217,11 +1287,12 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
           materialityOpacityScale,
       }}
       data-materiality={cell?.materiality ?? undefined}
+      data-signal-confidence={cell?.signalConfidence ?? undefined}
       aria-label={`${co.code} ${ind.code} ${status === 'na' ? 'not applicable' : `${status} ${statusShape(status)}`}${
         cell?.materiality && cell.materiality !== 'material'
           ? ` (${cell.materiality})`
           : ''
-      }`}
+      }${isLowConfidence ? ' (low data confidence)' : ''}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>

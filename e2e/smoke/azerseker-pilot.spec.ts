@@ -62,10 +62,12 @@ test.describe('Phase 7.I AzerSheker pilot smoke', () => {
       .toHaveCount(1, { timeout: 10_000 });
 
     const optionTexts = await page.locator('select').first().locator('option').allTextContents();
-    // The load-bearing assertion: the 4 AZSEKER agro leaves appear
-    // (these are the cane-grower entities the pilot targets).
+    // The load-bearing assertion: the 4 AZSEKER operational entities
+    // confirmed by Azik (2026-05-19) appear. AZSEKER-FARM was removed
+    // (legal entity does not exist); ProMalt MMC was added as
+    // AZSEKER-PROMALT (separate from the malt-production sub MALT).
     expect(optionTexts.join('|')).toContain('AZSEKER-EDEN');
-    expect(optionTexts.join('|')).toContain('AZSEKER-FARM');
+    expect(optionTexts.join('|')).toContain('AZSEKER-MALT');
     expect(optionTexts.join('|')).toContain('AZSEKER-AZSF');
     expect(optionTexts.join('|')).toContain('AZSEKER-CPC');
     // At least one ATL leaf (level=2) — confirms flatten works across

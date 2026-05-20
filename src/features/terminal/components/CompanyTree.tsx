@@ -117,6 +117,73 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     }
     return out;
   }, [matrix]);
+  // Phase 7.M Step 5 (2026-05-19) — per-company readiness map keyed by
+  // code. Direct from `co.readiness` for ops cos; parents inherit the
+  // WORST tier of their direct children (a holding with one empty
+  // subsidiary should read "thin", not the average). Tier propagation
+  // mirrors the trust-status worst-child pattern.
+  const readinessByCode = useMemo<
+    Map<
+      string,
+      { score: number; tier: 'complete' | 'good' | 'partial' | 'thin' | 'empty' }
+    >
+  >(() => {
+    if (!matrix) return new Map();
+    const direct = new Map<
+      string,
+      { score: number; tier: 'complete' | 'good' | 'partial' | 'thin' | 'empty' }
+    >();
+    type MatrixCo = (typeof matrix.companies)[number] & {
+      parentCompanyId?: string | null;
+    };
+    const cos = matrix.companies as ReadonlyArray<MatrixCo>;
+    for (const co of cos) {
+      if (co.readiness) {
+        direct.set(co.code, { score: co.readiness.score, tier: co.readiness.tier });
+      }
+    }
+    // Parent worst-of-children pass.
+    const childrenByParentId = new Map<string, MatrixCo[]>();
+    for (const co of cos) {
+      const pid = co.parentCompanyId ?? null;
+      if (pid === null) continue;
+      const list = childrenByParentId.get(pid);
+      if (list) list.push(co);
+      else childrenByParentId.set(pid, [co]);
+    }
+    const tierRank = {
+      empty: 0,
+      thin: 1,
+      partial: 2,
+      good: 3,
+      complete: 4,
+    } as const;
+    let safety = 5;
+    let progressed = true;
+    while (progressed && safety-- > 0) {
+      progressed = false;
+      for (const [parentId, kids] of childrenByParentId) {
+        const parentCo = cos.find((c) => c.id === parentId);
+        if (!parentCo) continue;
+        if (direct.has(parentCo.code)) continue;
+        const kidEntries = kids
+          .map((k) => direct.get(k.code))
+          .filter((e): e is { score: number; tier: 'complete' | 'good' | 'partial' | 'thin' | 'empty' } => !!e);
+        if (kidEntries.length === 0) continue;
+        // Worst-of-children: lowest tierRank wins.
+        let worst = kidEntries[0];
+        for (const e of kidEntries) {
+          if (tierRank[e.tier] < tierRank[worst.tier]) worst = e;
+        }
+        const avgScore = Math.round(
+          kidEntries.reduce((a, b) => a + b.score, 0) / kidEntries.length,
+        );
+        direct.set(parentCo.code, { score: avgScore, tier: worst.tier });
+        progressed = true;
+      }
+    }
+    return direct;
+  }, [matrix]);
   // Financial-truth-infra Phase B.1 — per-company trust status badge.
   // Walks the cell list once per matrix change, returns a Map keyed by
   // company.code so row render is O(1) lookup. For sub-groups whose own
@@ -543,6 +610,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           >
             {root.code}
           </span>
+          <ReadinessChip data={readinessByCode.get(root.code) ?? null} />
           <CompositeMini score={compositeByCode.get(root.code)?.score ?? null} />
           <span
             className="flex-1 truncate"
@@ -599,6 +667,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                       ? child.code.slice(root.code.length + 1)
                       : child.code}
                   </span>
+                  <ReadinessChip data={readinessByCode.get(child.code) ?? null} />
                   <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
                   <span
                     className="flex-1 truncate"
@@ -730,6 +799,64 @@ function WatchlistTabs(props: {
  * tree-row density). Suppresses zero-state visual when no score (rollup
  * rows + sub-groups without scoreable cells render the badge dimmed).
  */
+/**
+ * Phase 7.M Step 5 (2026-05-19) — per-company readiness chip.
+ *
+ * Renders a 2-character percent + a 1-character tier glyph (●/◐/○)
+ * coloured by tier. Tooltip carries the score + tier label. The chip
+ * sits between TrustBadge and CompositeMini in the row so a finance
+ * reviewer scanning the tree sees three independent signals at once:
+ *
+ *   trust  ·  data readiness  ·  composite risk
+ *   (do I  ·  (is there enough · (given the data
+ *    trust ·   data to compute  ·  we have, how
+ *    the   ·   anything trust-  ·  risky is this
+ *    cell  ·   worthy here?)    ·  entity?)
+ *    audit)
+ *
+ * Empty/thin entities render full opacity so they're not invisible —
+ * the colour conveys the warning, not the visibility.
+ */
+function ReadinessChip({
+  data,
+}: {
+  data: { score: number; tier: 'complete' | 'good' | 'partial' | 'thin' | 'empty' } | null;
+}) {
+  if (!data) return null;
+  const palette = {
+    complete: { color: '#00D4AA', glyph: '●' },
+    good: { color: '#7ED957', glyph: '●' },
+    partial: { color: '#FFB020', glyph: '◐' },
+    thin: { color: '#FF8C42', glyph: '◐' },
+    empty: { color: '#FF4757', glyph: '○' },
+  } as const;
+  const tierLabel = {
+    complete: 'Complete — all data areas present',
+    good: 'Good — most areas covered, minor gaps',
+    partial: 'Partial — multiple areas have gaps',
+    thin: 'Thin — sparse data, AI may hallucinate',
+    empty: 'Empty — no real data, demo unsafe',
+  } as const;
+  const { color, glyph } = palette[data.tier];
+  return (
+    <span
+      className="font-mono tabular-nums text-[9px] px-1 py-0 rounded shrink-0 font-bold"
+      style={{
+        color,
+        backgroundColor: `${color}1A`,
+        border: `1px solid ${color}33`,
+      }}
+      title={`Data readiness ${data.score}% — ${tierLabel[data.tier]}`}
+      aria-label={`Data readiness ${data.score} percent, tier ${data.tier}`}
+    >
+      <span aria-hidden="true" className="mr-0.5 opacity-80">
+        {glyph}
+      </span>
+      {data.score}%
+    </span>
+  );
+}
+
 function CompositeMini({ score }: { score: number | null }) {
   if (score === null) {
     return null;

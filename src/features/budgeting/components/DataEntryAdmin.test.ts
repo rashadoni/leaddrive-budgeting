@@ -26,14 +26,14 @@ describe("flattenCompanies", () => {
         name: "AzərŞəkər",
         children: [
           { id: "eden", code: "AZSEKER-EDEN", name: "Eden" },
-          { id: "farm", code: "AZSEKER-FARM", name: "Farm" },
+          { id: "promalt", code: "AZSEKER-PROMALT", name: "Promalt MMC" },
         ],
       },
     ]);
     expect(result.map((c) => c.code)).toEqual([
       "AZSEKER",
       "AZSEKER-EDEN",
-      "AZSEKER-FARM",
+      "AZSEKER-PROMALT",
     ]);
   });
 

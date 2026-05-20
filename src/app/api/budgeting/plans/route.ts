@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   const includeDeleted = searchParams.get("includeDeleted") === "true"
   const onlyDeleted = searchParams.get("onlyDeleted") === "true"
 
-  const plans = await prisma.budgetPlan.findMany({
+  const plansRaw = await prisma.budgetPlan.findMany({
     where: {
       organizationId: orgId,
       ...(onlyDeleted
@@ -50,6 +50,31 @@ export async function GET(req: NextRequest) {
           : { deletedAt: null }),
     },
     orderBy: [{ year: "desc" }, { month: "desc" }],
+    include: {
+      _count: {
+        select: {
+          // Phase 7.M follow-up (2026-05-19) — include LIVE line count
+          // so the page's `plans[0]` default-pick skips empty plans.
+          // Without this, a leftover empty "Rolling Forecast 2026"
+          // plan with `month=5` sorted ahead of populated plans and
+          // landed the user on an empty workspace (zero P&L / cash
+          // flow / etc.). The frontend re-orders by `_count.budgetLines
+          // desc` as the FIRST sort key — non-empty plans always win
+          // — and the existing year/month order acts as the secondary
+          // tiebreaker.
+          budgetLines: { where: { deletedAt: null } },
+        },
+      },
+    },
+  })
+
+  // Re-order: non-empty plans first, then preserve the year/month
+  // server-side ordering as the secondary key. Stable sort keeps
+  // same-bucket items in their original DB order.
+  const plans = [...plansRaw].sort((a, b) => {
+    const aHas = a._count.budgetLines > 0 ? 1 : 0
+    const bHas = b._count.budgetLines > 0 ? 1 : 0
+    return bHas - aHas // 1 (non-empty) wins; 0 (empty) loses
   })
 
   return NextResponse.json({ success: true, data: plans })

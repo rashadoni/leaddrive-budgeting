@@ -11,6 +11,21 @@
 
 import { vi } from 'vitest';
 
+// Phase 7.M Tier 4 (2026-05-19) — testing-library `waitFor` defaults to
+// 5000ms which trips under full-sweep CPU contention (some tests pass in
+// isolation but fail under heavy parallel-runner load — symptom:
+// `Test timed out in 5000ms`). Bump global default to 30s via top-level
+// await so the configure() call fires BEFORE any test imports
+// @testing-library/react. Per-test explicit `{ timeout: N }` still wins.
+try {
+  const tl = await import('@testing-library/dom');
+  if (typeof tl.configure === 'function') {
+    tl.configure({ asyncUtilTimeout: 30_000 });
+  }
+} catch {
+  // testing-library/dom not installed — skip for pure-TS environments.
+}
+
 // Provides a deterministic test fallback: takes the LAST dot-segment of the
 // key, splits camelCase to spaced words, uppercases it. Most label strings
 // in the messages files (`HOTKEYS`, `NEW PLAN`, `ALERTS`, `ALL`, etc) follow

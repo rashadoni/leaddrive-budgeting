@@ -25,6 +25,15 @@ interface ImpactScenario {
   timeHorizon: string
 }
 
+interface RelatedNewsItem {
+  id: string
+  title: string
+  url: string
+  sourceLabel: string
+  publishedAt: string | null
+  relevanceScore: number
+}
+
 interface ImpactForecastRow {
   id: string
   triggerSourceCode: string
@@ -37,6 +46,7 @@ interface ImpactForecastRow {
   confidence: "low" | "medium" | "high"
   language: string
   generatedAt: string
+  relatedNews?: RelatedNewsItem[]
 }
 
 function fmtAZN(v: number): string {
@@ -154,9 +164,58 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
         </ol>
       </div>
 
+      {/*
+        Phase 7.L 2026-05-18 — restore the clickable news citations that
+        users had on the older intel feed surface. Two blocks:
+          1. "Связанные новости" — 0-3 IntelItem rows whose industryTag
+             matches the affected company's industry and that were
+             published within ±14 days of the trigger observation. Each
+             title is a real outbound link (target=_blank).
+          2. Footer — vendor source name is now itself a clickable
+             link (to sources-catalog.vendorUrl) so admins can audit
+             the underlying feed without leaving the terminal.
+      */}
+      {row.relatedNews && row.relatedNews.length > 0 && (
+        <div className="mt-1.5 border-t border-gray-800/60 pt-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
+            Связанные новости
+          </div>
+          <ul className="text-[11px] text-gray-300 space-y-1">
+            {row.relatedNews.map((n) => (
+              <li key={n.id} className="leading-snug">
+                <a
+                  href={n.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#00D4AA] hover:underline break-words"
+                >
+                  {n.title}
+                </a>
+                <span className="text-[9px] text-gray-600 ml-1">
+                  · {n.sourceLabel}
+                  {n.publishedAt ? ` · ${fmtDate(n.publishedAt)}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <footer className="mt-1.5 flex justify-between items-center text-[9px] text-gray-600">
         <span>
-          {source ? source.displayNameRu : row.triggerSourceCode} ·{" "}
+          {source?.vendorUrl ? (
+            <a
+              href={source.vendorUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#00D4AA] hover:underline"
+            >
+              {source.displayNameRu}
+            </a>
+          ) : (
+            <span>{source ? source.displayNameRu : row.triggerSourceCode}</span>
+          )}
+          {" · "}
           {fmtDate(row.triggerObservedAt)}
         </span>
         <span className="font-mono">{fmtDate(row.generatedAt)}</span>

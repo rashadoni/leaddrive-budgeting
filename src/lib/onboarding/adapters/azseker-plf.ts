@@ -114,7 +114,7 @@ function cfActivityType(code: string): CfActivityType | null {
 
 /** Excel serial → {year, month0Based} or null. Wrapping `excelSerialToMonth`
  *  but keeping the year too — needed for multi-year-coverage sheets where
- *  picking the FIRST 12 dates gives the WRONG year (e.g. Guvven Fin has
+ *  picking the FIRST 12 dates gives the WRONG year (e.g. Workbook Fin has
  *  PL Malt = 2025-Jan..2026-Dec; first-12 picks 2025, but the user is
  *  loading the 2026 budget).
  */
@@ -138,7 +138,7 @@ function excelSerialToYearMonth(cell: unknown): { year: number; month: number } 
  *  the largest count of distinct months (covers single-year sheets and
  *  multi-year where one year dominates).
  *
- *  Why this matters: the Guvven Fin xlsx has sheets that cover multiple
+ *  Why this matters: the Workbook Fin xlsx has sheets that cover multiple
  *  years (e.g. PLF CPC spans 2022..2026). The original implementation
  *  picked the FIRST 12 valid date cells which always meant the earliest
  *  year — for a 2026 budget upload, that produced all-zero rows because
@@ -193,7 +193,7 @@ const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.\d{1,2}$/
 /** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves).
  *
  *  Optional `preferYear` — for workbooks where one sheet covers multiple
- *  years (e.g. Guvven Fin's PLF CPC spans 2022..2026), this hint scopes
+ *  years (e.g. Workbook Fin's PLF CPC spans 2022..2026), this hint scopes
  *  the column lookup to the user's intended budget year.
  */
 export function parsePlfPlSheet(

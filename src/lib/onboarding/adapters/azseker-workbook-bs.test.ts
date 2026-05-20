@@ -1,6 +1,6 @@
 /**
- * Unit tests for parseGuvvenBsSheet — BS (balance sheet) deterministic
- * adapter for AzerSheker × Guvven workbook.
+ * Unit tests for parseWorkbookBsSheet — BS (balance sheet) deterministic
+ * adapter for AzerSheker × Workbook workbook.
  *
  * Covers:
  *  - Header detection for the target year only (multi-year sheet with
@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { parseGuvvenBsSheet } from "./azseker-guvven-bs"
+import { parseWorkbookBsSheet } from "./azseker-workbook-bs"
 
 function buildWb(name: string, rows: unknown[][]): XLSX.WorkBook {
   const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -25,7 +25,7 @@ function serial(year: number, month0: number): number {
   return Date.UTC(year, month0, 1) / 86400_000 + 25569
 }
 
-describe("parseGuvvenBsSheet", () => {
+describe("parseWorkbookBsSheet", () => {
   it("parses leaves with sparse 2026 month coverage (Malt-style)", () => {
     // Real BS Malt layout: col D = 2025-Jan ... col O = 2025-Dec,
     // then col P = 2026-Jan, col Q = 2026-Feb, col R = 2026-Mar.
@@ -42,7 +42,7 @@ describe("parseGuvvenBsSheet", () => {
       ["BS.03.02.01", "ST Loan", null, 100, 100, 100, 80, 70, 60],
     ]
     const wb = buildWb("BS Malt", rows)
-    const result = parseGuvvenBsSheet(wb, "BS Malt", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookBsSheet(wb, "BS Malt", XLSX, { preferYear: 2026 })
     expect(result.year).toBe(2026)
     expect(result.warnings).toEqual([])
     expect(result.lines.length).toBe(5)
@@ -76,7 +76,7 @@ describe("parseGuvvenBsSheet", () => {
       ["BS.01.02.01", "Cash", null, 100, 200],
     ]
     const wb = buildWb("BS X", rows)
-    const result = parseGuvvenBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
     expect(result.lines.length).toBe(1)
     expect(result.lines[0].code).toBe("BS.01.02.01")
   })
@@ -87,7 +87,7 @@ describe("parseGuvvenBsSheet", () => {
       ["BS.01.01.01", "Stuff", null, 100, 200],
     ]
     const wb = buildWb("BS X", rows)
-    const result = parseGuvvenBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
     expect(result.year).toBeNull()
     expect(result.lines).toEqual([])
     expect(result.warnings.length).toBe(1)
@@ -101,7 +101,7 @@ describe("parseGuvvenBsSheet", () => {
       ["BS.01.01.01", "Real", null, 50],
     ]
     const wb = buildWb("BS X", rows)
-    const result = parseGuvvenBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
     expect(result.lines.length).toBe(1)
     expect(result.lines[0].code).toBe("BS.01.01.01")
     expect(result.warnings.length).toBe(1)
@@ -116,7 +116,7 @@ describe("parseGuvvenBsSheet", () => {
       ["BS.01.01.01", "Cash", null, 100],
     ]
     const wb = buildWb("BS X", rows)
-    const result = parseGuvvenBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookBsSheet(wb, "BS X", XLSX, { preferYear: 2026 })
     // Parent rows skipped — only the leaf matters
     expect(result.lines.length).toBe(1)
     expect(result.lines[0].code).toBe("BS.01.01.01")

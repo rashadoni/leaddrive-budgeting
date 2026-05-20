@@ -93,6 +93,17 @@ export interface VarianceExplainerInput {
    *  or empty, the explainer falls back to inputs-only narrative (v1
    *  behaviour). */
   intelContext?: IntelContextSnapshot
+  /**
+   * Phase 7.M Step 5 (2026-05-19) — per-company data readiness signal.
+   * When this is below `good` tier, the explainer is instructed to
+   * caveat its narrative: "data insufficient for an accurate analysis"
+   * instead of hallucinating numbers. Setting this on every call is
+   * the route's responsibility — the explainer just honours it.
+   */
+  readiness?: {
+    score: number
+    tier: "complete" | "good" | "partial" | "thin" | "empty"
+  }
 }
 
 export interface VarianceExplainerOutput {
@@ -262,6 +273,18 @@ export function buildExplainerPrompt(input: VarianceExplainerInput): string {
     ? `\n\nIntel context (latest macro / FX / commodity observations):\n${intelBlock}\n`
     : ""
 
+  // Phase 7.M Step 5 (2026-05-19) — readiness block injected when
+  // the per-company data score is below `good`. The LLM is told to
+  // caveat the analysis ("data insufficient ...") rather than invent
+  // numbers from a half-populated entity.
+  const readinessSection =
+    input.readiness &&
+    (input.readiness.tier === "partial" ||
+      input.readiness.tier === "thin" ||
+      input.readiness.tier === "empty")
+      ? `\n\nData readiness for this company: ${input.readiness.score}% (${input.readiness.tier}). CRITICAL: when readiness is partial/thin/empty, lead the narrative with a one-sentence caveat — e.g. "Data coverage is limited (${input.readiness.score}%), so this analysis is directional." Recommendations should prioritise filling data gaps before any other action.`
+      : ""
+
   const settingsLine = formatCompanySettings(input.company.industry, input.company.settings ?? null)
 
   return `Indicator: ${input.indicator.code} (${input.indicator.nameEn})
@@ -283,7 +306,7 @@ Resolved variables (the formula context):
 ${resolvedLines || "  (none — likely missing-data status=unknown)"}
 
 Aggregates (drill-down breakdowns):
-${summarizeAggregates(input.aggregates)}${intelSection}
+${summarizeAggregates(input.aggregates)}${intelSection}${readinessSection}
 
 Output language: ${LANGUAGE_LABEL[input.language]}.
 

@@ -29,6 +29,11 @@ import { extractJsonFromText } from '@/lib/onboarding/ai-mapper/json-extract';
 import { prisma as defaultPrisma } from '@/lib/prisma';
 import { runSentimentBatch } from './sentiment';
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from './types';
+import {
+  buildEntityPatternsFromCompanies,
+  inferCompanyTags,
+  mergeCompanyTags,
+} from './infer-company-tags';
 
 /** Bump on any change to SYSTEM_PROMPT or buildIntelPrompt structure.
  *  v1 = initial Phase D.2 ship.
@@ -283,6 +288,12 @@ type CrawlerPrisma = {
     create: PrismaClient['intelItem']['create'];
     update: PrismaClient['intelItem']['update'];
   };
+  /** Phase 7.M Tier2 #1 — fetch companies once per crawl to build
+   *  the entity-pattern dictionary used by `inferCompanyTags`. Tests
+   *  can omit this and the inference step silently no-ops. */
+  company?: {
+    findMany: PrismaClient['company']['findMany'];
+  };
 };
 
 export interface RunIntelCrawlOptions {
@@ -446,6 +457,44 @@ export async function runIntelCrawl(
           }
         : undefined,
     };
+  }
+
+  // Phase 7.M Tier2 #1 (2026-05-19) — deterministic companyTags inference.
+  // LLM-emitted companyTags[] turned out to be empty on 100% of audited
+  // rows. We supplement by scanning each item's title+summary for known
+  // entity name patterns (Latin / Azerbaijani / Cyrillic, transliter-
+  // ation-aware). Merged with whatever the LLM did emit. Tests that
+  // don't inject `prisma.company` skip this step gracefully.
+  if (prismaClient.company && validated.length > 0) {
+    try {
+      const companies = await prismaClient.company.findMany({
+        where: {
+          organizationId: input.organizationId,
+          isActive: true,
+        },
+        select: {
+          code: true,
+          name: true,
+          nameAz: true,
+          nameRu: true,
+          nameEn: true,
+        },
+      });
+      const patterns = buildEntityPatternsFromCompanies(companies);
+      if (patterns.length > 0) {
+        validated = validated.map((it) => {
+          const text = `${it.title} ${it.summary}`;
+          const inferred = inferCompanyTags(text, patterns);
+          if (inferred.length === 0) return it;
+          return { ...it, companyTags: mergeCompanyTags(it.companyTags, inferred) };
+        });
+      }
+    } catch (err) {
+      // Inference is best-effort; a DB blip shouldn't fail the crawl.
+      errors.push(
+        `companyTags inference skipped (${err instanceof Error ? err.message : String(err)})`,
+      );
+    }
   }
 
   // Persist. Per-item try/catch — one DB failure shouldn't abort the

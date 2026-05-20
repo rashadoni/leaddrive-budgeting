@@ -308,6 +308,27 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: parts.length > 0 ? parts.join(' · ') : 'no changes',
       };
     }
+    case 'data_archive':
+    case 'data_restore': {
+      // Phase 7.M Step 4 — self-service archive trail. Verbose:
+      // entityKind · scope · N rows · reason.
+      const kind =
+        typeof m.entityKind === 'string' ? m.entityKind : 'rows';
+      const scope =
+        typeof m.companyCode === 'string'
+          ? `${m.companyCode}${m.year ? ` ${m.year}` : ''}${m.period ? ` ${m.period}` : ''}`
+          : m.year
+            ? String(m.year)
+            : m.period
+              ? String(m.period)
+              : 'all';
+      const rows = typeof m.rowsAffected === 'number' ? m.rowsAffected : 0;
+      const reason = typeof m.reason === 'string' ? ` · "${m.reason}"` : '';
+      return {
+        compact: e.action,
+        verbose: `${kind} · ${scope} · ${rows} rows${reason}`,
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

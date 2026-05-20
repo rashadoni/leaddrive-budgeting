@@ -559,6 +559,33 @@ export type AuditEventInput =
         /** Sources whose keys were cleared. */
         cleared: string[];
       };
+    }
+  | {
+      // Phase 7.M Step 4 (2026-05-18) — self-service archive trail.
+      // Used by both the admin Archive UI and the recovery flow; the
+      // discriminating field is `metadata.entityKind`. Each invocation
+      // captures the scope (companyCode + year/period) + rows affected
+      // + an optional finance-user reason string so the IFRS 7-year
+      // audit can reconstruct who archived what and why.
+      action: 'data_archive' | 'data_restore';
+      entityType:
+        | 'BudgetLine'
+        | 'BalanceSheetLine'
+        | 'CashFlowEntry'
+        | 'Counterparty';
+      entityId: string; // companyCode + ":" + scope key (e.g. "AZSEKER-AZSF:2025")
+      metadata: {
+        entityKind:
+          | 'BudgetLine'
+          | 'BalanceSheetLine'
+          | 'CashFlowEntry'
+          | 'Counterparty';
+        companyCode?: string;
+        year?: number;
+        period?: string;
+        rowsAffected: number;
+        reason?: string;
+      };
     };
 
 /**

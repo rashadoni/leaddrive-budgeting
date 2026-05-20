@@ -129,6 +129,69 @@ export interface HeatMapCell {
    * parse with `Date.parse()` or `new Date()`.
    */
   lastReconciledAt?: string;
+  /**
+   * Phase 7.M Step 2 (2026-05-18) — signal-quality confidence tier
+   * surfaced to finance users. Derived (not stored): the matrix endpoint
+   * computes this from `valueSource` + presence of `error` so the UI
+   * can visually distinguish gold-standard cells from proxy / modeled
+   * cells, and demote cells that fired the zombie-row guard.
+   *
+   *  - `high`   : disclosed by finance OR computed from real budget /
+   *               operational / booking data; no recompute error.
+   *  - `medium` : computed but from industry-modeled or macro-broadcast
+   *               inputs (not entity-specific facts). Treat as
+   *               "indicative, not authoritative".
+   *  - `low`    : zombie guard fired (no_budget_lines / rollup_no_children
+   *               / out_of_range plausibility clamp). Numeric value is
+   *               unreliable; consumers should hide or grey-out.
+   *
+   * Optional + back-compat — old clients ignore the field.
+   */
+  signalConfidence?: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Phase 7.M Step 2 — pure derive function for `signalConfidence`.
+ *
+ * Called by the matrix endpoint per-cell to stamp a finance-friendly
+ * confidence tier on the wire. Pure / synchronous so it can be unit-
+ * tested without React, Prisma or HTTP.
+ *
+ * Decision table (first match wins, top to bottom):
+ *
+ *   error present ............................. → 'low'
+ *   valueSource = 'modeled_industry|generic'    → 'medium'
+ *   valueSource = 'macro' ...................... → 'medium'
+ *   valueSource = 'disclosed' .................. → 'high'
+ *   valueSource = 'computed' (default) ......... → 'high'
+ *
+ * The dimension this measures is *signal quality* — "how much can I,
+ * the finance user, trust this number as a real measurement of the
+ * entity's reality". It's deliberately distinct from the existing
+ * `IndicatorValue.confidence` (A/B/C/D industry-model tier) which is
+ * an internal model-strength rating, not a user-facing data-trust
+ * rating.
+ */
+export function deriveSignalConfidence(args: {
+  valueSource?:
+    | 'disclosed'
+    | 'modeled_industry'
+    | 'modeled_generic'
+    | 'macro'
+    | 'computed';
+  error?: { code: string; reason: string };
+}): 'high' | 'medium' | 'low' {
+  if (args.error) return 'low';
+  switch (args.valueSource) {
+    case 'modeled_industry':
+    case 'modeled_generic':
+    case 'macro':
+      return 'medium';
+    case 'disclosed':
+    case 'computed':
+    default:
+      return 'high';
+  }
 }
 
 /**

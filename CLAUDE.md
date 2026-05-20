@@ -165,6 +165,33 @@ read that for the current picture, not this file. High-level snapshot:
   Crawler, AI Variance Explainer, Predictive Analytics, Board Deck
   Generator) shipped per ROADMAP changelog 2026-05-12. v2 plans
   vendor-gated — `~/.claude/plans/phase-7e-ai-suite-v2.md`.
+- **Phase 7.M Tier 3 + Tier 4 — shipped 2026-05-19/20.** Bit-perfect
+  AzerSheker workbook ingestion (`Guvven Fin.xlsx` May 19 source) +
+  universal AI Auto Import (any xlsx → AI classifier → bit-perfect
+  pipeline). **8 new adapters** under `src/lib/onboarding/adapters/`:
+  `azseker-workbook-descriptions.ts` (Təsvir),
+  `azseker-workbook-capex.ts` (CAPEX_Farm + CAPEX_CPC),
+  `azseker-land-registry.ts` (Çıxarışların uçotu),
+  `azseker-farming-strategy.ts` (İcmal forward 2026-35), +
+  `ai-import/` directory (sheet-meta-extractor, sheet-classifier,
+  adapter-registry, universal-reconciler, orchestrator,
+  wire-azseker-adapters). **7 admin pages** wired through Sidebar →
+  Admin Tools landing (`/budgeting/admin`): import-workbook,
+  ai-import, indicator-health, data-archive, companies-readiness +
+  existing pages. **Bug fixes**: CUSTOMER_HHI / SUPPLIER_HHI formulas
+  (`counterparty_hhi:customer` → `counterparty_hhi_customer` —
+  expr-eval doesn't accept `:` in expressions); AZSEKER-PROMALT
+  lookup separate from ENTITIES array. **Indicators recovered**: 53 →
+  120 OK after: CUSTOMER_HHI/SUPPLIER_HHI fix (+59), news-sentiment
+  broadcast (+3), derived drought_index from weather+land (+1),
+  FX_IMPORTED_INPUT `fxExposureSource: "all_domestic"` opt-in (+4).
+  Live: 4 AZSEKER entities populated bit-perfect (573 P&L + 251 BS +
+  309 CF + 409 ops_facts); EDEN carries 22,596 ha land + 111 CAPEX
+  + Brix/Pol-ready KPI parser; Org carries forward-forecast 2026-35.
+  Verified end-to-end: AI classifier on real workbook 23/23 dataType
+  + 14/14 entity correct (cost $0.13/run). **Test infra**: vitest
+  testTimeout 5s→30s + retry=2 + testing-library asyncUtilTimeout
+  30s for CPU-contention flake stabilization.
 
 ### Key files
 

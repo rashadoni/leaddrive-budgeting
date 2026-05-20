@@ -41,6 +41,8 @@ import {
   getMateriality,
   isMaterialityScoped,
 } from '@/lib/risk/esg-materiality';
+import { deriveSignalConfidence } from '@/lib/risk/heatmap-matrix';
+import { getCompanyReadiness } from '@/lib/server/get-company-readiness';
 
 // Default period reader — annual, anchored to Asia/Baku (see
 // `currentBakuYear` for rationale). Callers wanting monthly granularity
@@ -260,6 +262,19 @@ export async function GET(request: NextRequest) {
 
     type ValueShape = (typeof values)[number];
 
+    // Phase 7.M Step 5 (2026-05-19) — one batched fetch of per-company
+    // readiness. Joined into the company rows below so CompanyTree
+    // renders the badge without an extra round-trip. Caught/null on
+    // failure so a readiness-helper bug doesn't blank the whole
+    // HeatMap — the badge just doesn't render.
+    let readinessMap: Awaited<ReturnType<typeof getCompanyReadiness>>
+    try {
+      readinessMap = await getCompanyReadiness(prisma, session.orgId)
+    } catch (err) {
+      console.error('[matrix] readiness fetch failed (non-fatal):', err)
+      readinessMap = new Map()
+    }
+
     const companies = operational.map((c) => ({
       id: c.id,
       code: c.code,
@@ -273,6 +288,9 @@ export async function GET(request: NextRequest) {
       // CLI follow-up — needed by CompanyTree to derive parent composite
       // from children's averages.
       parentCompanyId: c.parentCompanyId ?? null,
+      // Phase 7.M Step 5 — readiness {score, tier, areas[]}. `null` when
+      // the helper failed or this entity wasn't in scope (level=1 parents).
+      readiness: readinessMap.get(c.id) ?? null,
     }));
 
     // Phase 7.H F4.v2.4 — materiality lookup needs the company's
@@ -321,6 +339,14 @@ export async function GET(request: NextRequest) {
           ? (sparklineRaw as (number | null)[])
           : null;
         const materiality = lookupMateriality(v.companyId, v.indicatorId);
+        const valueSource = v.valueSource as
+          | 'disclosed'
+          | 'modeled_industry'
+          | 'modeled_generic'
+          | 'macro'
+          | 'computed';
+        // Phase 7.M Step 2 — derive signal-quality tier per cell.
+        const signalConfidence = deriveSignalConfidence({ valueSource, error });
         return {
           indicatorValueId: v.id,
           companyId: v.companyId,
@@ -329,12 +355,8 @@ export async function GET(request: NextRequest) {
           status: v.status as IndicatorStatus,
           // Phase 7.H F4.v2.1 — string mirror of the Prisma enum,
           // safe to send to the client as-is.
-          valueSource: v.valueSource as
-            | 'disclosed'
-            | 'modeled_industry'
-            | 'modeled_generic'
-            | 'macro'
-            | 'computed',
+          valueSource,
+          signalConfidence,
           ...(sparkline ? { sparkline } : {}),
           ...(error ? { error } : {}),
           // Phase 7.H F4.v2.4 — materiality is only stamped on ESG
@@ -448,18 +470,21 @@ export async function GET(request: NextRequest) {
         ? (sparklineRaw as (number | null)[])
         : null;
       const materiality = lookupMateriality(v.companyId, v.indicatorId);
+      const valueSource = v.valueSource as
+        | 'disclosed'
+        | 'modeled_industry'
+        | 'modeled_generic'
+        | 'macro'
+        | 'computed';
+      const signalConfidence = deriveSignalConfidence({ valueSource, error });
       return {
         indicatorValueId: v.id,
         companyId: v.companyId,
         indicatorId: v.indicatorId,
         value: v.value,
         status: v.status as IndicatorStatus,
-        valueSource: v.valueSource as
-          | 'disclosed'
-          | 'modeled_industry'
-          | 'modeled_generic'
-          | 'macro'
-          | 'computed',
+        valueSource,
+        signalConfidence,
         ...(sparkline ? { sparkline } : {}),
         ...(error ? { error } : {}),
         ...(materiality ? { materiality } : {}),

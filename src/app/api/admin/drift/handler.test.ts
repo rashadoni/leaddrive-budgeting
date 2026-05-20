@@ -81,7 +81,7 @@ describe("GET /api/admin/drift", () => {
     // the stalePending walk. Mock the SAME instance returns same array.
     prismaMock.company.findMany.mockResolvedValueOnce([
       { id: "co1", code: "AZSEKER-EDEN", name: "Eden", level: 2 },
-      { id: "co2", code: "AZSEKER-FARM", name: "Farm", level: 2 },
+      { id: "co2", code: "AZSEKER-PROMALT", name: "Promalt MMC", level: 2 },
       { id: "co3", code: "AZSEKER", name: "AzərŞəkər", level: 1 }, // level=1 skipped
     ]);
     // L5 batched: one groupBy returns max(lastReconciledAt) per leaf
@@ -104,7 +104,7 @@ describe("GET /api/admin/drift", () => {
     // stalePending: co2 (never audited) included; co3 (level 1) skipped
     // by the route's `if (c.level !== 2) continue`.
     const codes = body.stalePending.map((c: { code: string }) => c.code);
-    expect(codes).toContain("AZSEKER-FARM");
+    expect(codes).toContain("AZSEKER-PROMALT");
     expect(codes).not.toContain("AZSEKER"); // level=1 filtered
   });
 

@@ -53,6 +53,25 @@ export interface MatrixCompanyRow {
    * Values: `'pending' | 'active' | 'archived'`.
    */
   status?: string;
+  /**
+   * Phase 7.M Step 5 (2026-05-19) — per-company data-completeness score.
+   * Drives the CompanyTree badge, a low-readiness banner in the
+   * HeatMap header for the active entity, and the Variance Explainer
+   * prompt context. `null` when the readiness helper failed or this
+   * row is a sub-group rollup (level=1 parents aren't scored —
+   * CompanyTree derives their tier from worst-of-children).
+   */
+  readiness?: {
+    score: number;
+    tier: "complete" | "good" | "partial" | "thin" | "empty";
+    areas: ReadonlyArray<{
+      id: string;
+      weight: number;
+      earned: number;
+      label: string;
+      missing: string | null;
+    }>;
+  } | null;
 }
 
 export type MatrixIndicatorDirection = "higher_better" | "lower_better" | "band";

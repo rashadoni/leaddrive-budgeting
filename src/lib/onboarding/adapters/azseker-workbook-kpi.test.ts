@@ -1,5 +1,5 @@
 /**
- * Unit tests for Guvven KPI sheet adapters.
+ * Unit tests for Workbook KPI sheet adapters.
  *
  * Builds in-memory mock workbooks to exercise:
  *   - Farming KPI: header detection, cost-center→entity resolution,
@@ -9,9 +9,9 @@
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
 import {
-  parseGuvvenFarmingKpiSheet,
-  parseGuvvenProcessingKpiSheet,
-} from "./azseker-guvven-kpi"
+  parseWorkbookFarmingKpiSheet,
+  parseWorkbookProcessingKpiSheet,
+} from "./azseker-workbook-kpi"
 
 function buildWb(sheetName: string, rows: unknown[][]): XLSX.WorkBook {
   const ws = XLSX.utils.aoa_to_sheet(rows)
@@ -27,7 +27,7 @@ function serial(year: number, month0: number): number {
   return ms / 86400_000 + 25569
 }
 
-describe("parseGuvvenFarmingKpiSheet", () => {
+describe("parseWorkbookFarmingKpiSheet", () => {
   it("aggregates per-entity harvest and computes weighted yield_per_ha", () => {
     // Mimic Farming KPI shape (Russian-ish header for predictability).
     // Cols: 0 İl, 1 Məhsul, 2 Sezon, 3 Suvarma, 4 Təsərrüfatlar,
@@ -49,7 +49,7 @@ describe("parseGuvvenFarmingKpiSheet", () => {
       [2025, "Buğda", "Payız-24", "Pivot", "Füzuli", "EDN – Füzuli Qayıdış", "k4", "YES", 100, 4, 400],
     ]
     const wb = buildWb("Farming KPI", rows)
-    const result = parseGuvvenFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
     expect(result.warnings).toEqual([])
     // EDEN expected: area=1300, harvest=9150, yield=9150/1300≈7.04
     const eden = result.facts.filter((f) => f.companyCode === "AZSEKER-EDEN")
@@ -76,7 +76,7 @@ describe("parseGuvvenFarmingKpiSheet", () => {
       [2026, "X", "Y", "Pivot", "Z", "Unknown-Farm-Label", "k1", "YES", 100, 5, 500],
     ]
     const wb = buildWb("Farming KPI", rows)
-    const result = parseGuvvenFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
     expect(result.facts).toEqual([])
     expect(result.warnings.length).toBe(1)
     expect(result.warnings[0].reason).toContain("Unknown-Farm-Label")
@@ -85,7 +85,7 @@ describe("parseGuvvenFarmingKpiSheet", () => {
   it("returns warning when header row not found", () => {
     const rows = [["junk", null, null], [null, null, null]]
     const wb = buildWb("Farming KPI", rows)
-    const result = parseGuvvenFarmingKpiSheet(wb, "Farming KPI", XLSX)
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX)
     expect(result.facts).toEqual([])
     expect(result.warnings.length).toBe(1)
     expect(result.warnings[0].reason).toContain("header")
@@ -102,15 +102,100 @@ describe("parseGuvvenFarmingKpiSheet", () => {
       [2026, "X", "Y", "Pivot", "Z", "EDN – Test", "k2", "YES", 100, 5, 500],
     ]
     const wb = buildWb("Farming KPI", rows)
-    const result = parseGuvvenFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
     const eden = result.facts.filter((f) => f.companyCode === "AZSEKER-EDEN")
     // Only the non-zero row aggregates in
     expect(eden.find((f) => f.metric === "area_hectares")?.value).toBe(100)
     expect(eden.find((f) => f.metric === "harvest_tons")?.value).toBe(500)
   })
+
+  // Phase 7.M Tier 4 — Brix/Pol detection (sugar beet only)
+  it("auto-detects Brix/Pol columns and emits sugar_brix_pct + sugar_pol_pct", () => {
+    const rows: unknown[][] = [
+      [
+        "İl",
+        "Məhsul",
+        "Sezon",
+        "Suvarma növü",
+        "Təsərrüfatlar",
+        "Xərc mərkəzi 1C",
+        "Unikal Kod",
+        "Check",
+        "Sahə həcmi. HA",
+        "Net Məhsuldarlıq Ton/HA",
+        "Cəmi məhsuldarlıq",
+        "Briks",
+        "Pol %",
+      ],
+      // Sugar beet 100 ha @ Brix=18, Pol=15
+      [2026, "Şəkər çuğunduru", "Yaz", "Pivot", "Yevlax", "EDN – Yevlax", "k1", "YES", 100, 50, 5000, 18, 15],
+      // Sugar beet 50 ha @ Brix=20, Pol=17 (different farm, weighted)
+      [2026, "Şəkər çuğunduru", "Yaz", "Pivot", "Ağcabədi", "EDN – Ağcabədi", "k2", "YES", 50, 55, 2750, 20, 17],
+      // Wheat 200 ha — Brix/Pol cells present but should NOT contribute
+      [2026, "Buğda", "Payız", "Pivot", "Yevlax", "EDN – Yevlax", "k3", "YES", 200, 5.5, 1100, 99, 99],
+    ]
+    const wb = buildWb("Farming KPI", rows)
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    const eden = result.facts.filter((f) => f.companyCode === "AZSEKER-EDEN")
+    const brix = eden.find((f) => f.metric === "sugar_brix_pct")
+    const pol = eden.find((f) => f.metric === "sugar_pol_pct")
+    expect(brix).toBeDefined()
+    expect(pol).toBeDefined()
+    // Area-weighted: (18×100 + 20×50) / 150 = (1800+1000)/150 = 18.67
+    expect(brix!.value).toBeCloseTo(18.67, 1)
+    // (15×100 + 17×50) / 150 = (1500+850)/150 = 15.67
+    expect(pol!.value).toBeCloseTo(15.67, 1)
+    // Wheat row's 99/99 must not pollute averages
+    expect(brix!.value).toBeLessThan(25)
+    expect(pol!.value).toBeLessThan(20)
+    // Unit + sourceNote sanity
+    expect(brix!.unit).toBe("°Brix")
+    expect(pol!.unit).toBe("%")
+  })
+
+  it("Brix/Pol absent → no Brix/Pol facts emitted (back-compat)", () => {
+    const rows: unknown[][] = [
+      [
+        "İl",
+        "Məhsul",
+        "Sezon",
+        "Suvarma növü",
+        "Təsərrüfatlar",
+        "Xərc mərkəzi 1C",
+        "Unikal Kod",
+        "Check",
+        "Sahə həcmi. HA",
+        "Net Məhsuldarlıq Ton/HA",
+        "Cəmi məhsuldarlıq",
+      ],
+      [2026, "Şəkər çuğunduru", "Yaz", "Pivot", "Yevlax", "EDN – Yevlax", "k1", "YES", 100, 50, 5000],
+    ]
+    const wb = buildWb("Farming KPI", rows)
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    expect(result.facts.find((f) => f.metric === "sugar_brix_pct")).toBeUndefined()
+    expect(result.facts.find((f) => f.metric === "sugar_pol_pct")).toBeUndefined()
+    // Other metrics still emit
+    expect(result.facts.find((f) => f.metric === "area_hectares")?.value).toBe(100)
+  })
+
+  it("Brix column present but only for non-sugar crops → no Brix fact", () => {
+    const rows: unknown[][] = [
+      [
+        "İl", "Məhsul", "Sezon", "Suvarma növü", "Təsərrüfatlar",
+        "Xərc mərkəzi 1C", "Unikal Kod", "Check",
+        "Sahə həcmi. HA", "Net Məhsuldarlıq Ton/HA", "Cəmi məhsuldarlıq",
+        "Briks",
+      ],
+      [2026, "Buğda", "Payız", "Pivot", "Yevlax", "EDN – Yevlax", "k1", "YES", 200, 5.5, 1100, 18],
+    ]
+    const wb = buildWb("Farming KPI", rows)
+    const result = parseWorkbookFarmingKpiSheet(wb, "Farming KPI", XLSX, { preferYear: 2026 })
+    // Wheat row had Brix=18 in column but should NOT emit sugar_brix_pct
+    expect(result.facts.find((f) => f.metric === "sugar_brix_pct")).toBeUndefined()
+  })
 })
 
-describe("parseGuvvenProcessingKpiSheet", () => {
+describe("parseWorkbookProcessingKpiSheet", () => {
   it("emits 12 monthly facts for whitelisted metrics", () => {
     // CPC KPI shape: R1 has 12 monthly date cells starting at col 6.
     // R3 = "Capacity utilization rate" / "%" / ... with 12 values.
@@ -122,7 +207,7 @@ describe("parseGuvvenProcessingKpiSheet", () => {
       ["Capacity utilization rate", null, "%", null, null, null, ...[0.87, 0.96, 0.87, 0.89, 0.87, 0.89, 0.87, 0, 0.87, 0.89, 0.87, 0.89]],
     ]
     const wb = buildWb("CPC KPI", rows)
-    const result = parseGuvvenProcessingKpiSheet(wb, "CPC KPI", XLSX, { preferYear: 2026 })
+    const result = parseWorkbookProcessingKpiSheet(wb, "CPC KPI", XLSX, { preferYear: 2026 })
     // Phase 7.J extended whitelist:
     //   "Daily crushing capacity" → metric "capacity"
     //   "Capacity utilization rate %" → metric "extraction_rate_pct"
@@ -143,7 +228,7 @@ describe("parseGuvvenProcessingKpiSheet", () => {
 
   it("returns warning when entity cannot be resolved from sheet name", () => {
     const wb = buildWb("Unknown KPI", [["x"]])
-    const result = parseGuvvenProcessingKpiSheet(wb, "Unknown KPI", XLSX)
+    const result = parseWorkbookProcessingKpiSheet(wb, "Unknown KPI", XLSX)
     expect(result.facts).toEqual([])
     expect(result.warnings.length).toBe(1)
     expect(result.warnings[0].reason).toMatch(/Unknown/i)

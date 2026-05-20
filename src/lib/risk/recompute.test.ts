@@ -3058,3 +3058,143 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
     expect(ds.state.upserts[0].value).toBeCloseTo(4.76, 1);
   });
 });
+
+// --- Phase 7.L 2026-05-18 — zombie-row guard ---------------------------------
+//
+// When a formula evaluates to numeric 0 only because its inputs were
+// structurally empty (no children to roll up, no budget lines to read),
+// the classifier would otherwise paint that 0 as green/amber. The guard
+// demotes such cells to `unknown`.
+
+const HOLDING_REVENUE_ROLLUP_GUARD: IndicatorDefinitionLike = {
+  id: 'ind_holding_rev_guard',
+  formula: 'rollup("IND_REVENUE_TOTAL")',
+  thresholds: {
+    green: { op: '>=', value: 0 },
+    amber: { op: '>=', value: -1 },
+    red: { op: '<', value: -1 },
+  },
+  requiredInputs: ['rollup:IND_REVENUE_TOTAL'],
+};
+
+const REVENUE_FROM_BUDGET_GUARD: IndicatorDefinitionLike = {
+  id: 'ind_rev_total_guard',
+  formula: 'revenue',
+  thresholds: {
+    green: { op: '>=', value: 1_000_000 },
+    amber: { op: '>=', value: 0 },
+    red: { op: '<', value: 0 },
+  },
+  requiredInputs: ['budgetLine'],
+};
+
+describe('recomputeIndicator — zombie-row guard (Phase 7.L)', () => {
+  it('marks rollup() on a childless leaf as unknown', async () => {
+    const ds = mockDs({ children: {} });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_leaf',
+      definition: HOLDING_REVENUE_ROLLUP_GUARD,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(0);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'rollup_no_children',
+    });
+  });
+
+  it('keeps rollup() at classified status when children contribute', async () => {
+    const ds = mockDs({
+      children: { c_parent: ['c_child_a', 'c_child_b'] },
+      ivReads: {
+        'c_child_a:IND_REVENUE_TOTAL@2026': 500_000,
+        'c_child_b:IND_REVENUE_TOTAL@2026': 750_000,
+      },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_parent',
+      definition: HOLDING_REVENUE_ROLLUP_GUARD,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(1_250_000);
+    expect(result.status).toBe('green');
+  });
+
+  it('marks budget-line indicator on entity with 0 lines as unknown', async () => {
+    const ds = mockDs({ budgetLines: [] });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c_demo',
+      definition: REVENUE_FROM_BUDGET_GUARD,
+      period: '2026',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(0);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'no_budget_lines',
+    });
+  });
+});
+
+// --- Phase 7.M Step 4 follow-up — FX zombie-guard ---------------------------
+
+const FX_IMPORTED_INPUT_TEST: IndicatorDefinitionLike = {
+  id: 'ind_fx_imp',
+  formula: 'imported_input_cost / total_input_cost * 100',
+  thresholds: {
+    green: { op: '<=', value: 25 },
+    amber: { op: '<=', value: 50 },
+    red: { op: '>', value: 50 },
+  },
+  requiredInputs: ['budgetLine', 'currencyRate'],
+};
+
+describe('recomputeIndicator — FX zombie-guard (Phase 7.M Step 4)', () => {
+  it('marks FX_IMPORTED_INPUT as unknown when entity has lines but none in foreign currency', async () => {
+    // 2 AZN cogs lines, 0 foreign lines → imported_input_cost = 0
+    // → formula = 0/X*100 = 0. Pre-guard this was green ("0% imported").
+    const ds = mockDs({
+      budgetLines: [
+        { id: 'l1', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 1000, currencyCode: 'AZN', exchangeRate: null, year: 2026, month: 4 } as never,
+        { id: 'l2', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 500, currencyCode: 'AZN', exchangeRate: null, year: 2026, month: 4 } as never,
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: FX_IMPORTED_INPUT_TEST,
+      period: '2026-04',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(0);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'no_foreign_currency_lines',
+    });
+  });
+
+  it('keeps FX_IMPORTED_INPUT at classified status when at least one foreign line exists', async () => {
+    // 1 AZN cogs line + 1 USD cogs line with exchangeRate → imported>0
+    const ds = mockDs({
+      budgetLines: [
+        { id: 'l1', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 1000, currencyCode: 'AZN', exchangeRate: null, year: 2026, month: 4 } as never,
+        { id: 'l2', planId: 'p', companyId: 'c1', accountType: 'cogs', plannedAmount: 100, currencyCode: 'USD', exchangeRate: 1.7, year: 2026, month: 4 } as never,
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: FX_IMPORTED_INPUT_TEST,
+      period: '2026-04',
+    });
+    expect(result.ok).toBe(true);
+    // imported = 170 (100 * 1.7), total = 1170, share = 14.5%
+    expect(result.value).toBeCloseTo(14.5, 1);
+    expect(result.status).toBe('green');
+  });
+});

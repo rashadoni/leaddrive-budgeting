@@ -1,5 +1,5 @@
 /**
- * AzerSheker × Guvven Balance Sheet adapter.
+ * AzerSheker × Workbook Balance Sheet adapter.
  *
  * BS sheets ("BS Malt" / "BS CPC" / "BS AZSF" / "BS EDEN") shape:
  *   - R1: 12+ monthly date headers starting at col D (or C — varies).
@@ -12,7 +12,7 @@
  *     year coverage is fine — only months with data get written.
  *
  * Code → lineType / subType convention (lifted from
- * `classifyGuvvenCode` + Guvven CoA hierarchy):
+ * `classifyWorkbookCode` + Workbook CoA hierarchy):
  *   BS.01.*    → asset
  *     BS.01.01.* → non-current asset (subType: "non_current")
  *     BS.01.02.* → current asset     (subType: "current")
@@ -27,7 +27,7 @@
  * re-applies safe).
  *
  * Why a deterministic adapter (not AI Mapper): same reasoning as
- * `parsePlfPlSheet` — Guvven coding is fully knowable from the
+ * `parsePlfPlSheet` — Workbook coding is fully knowable from the
  * file shape; LLM cost adds nothing.
  */
 import type * as XLSX from "xlsx"
@@ -150,7 +150,7 @@ function findBsLayout(
  * `ParsedBsLine[]` — one entry per leaf code that has at least one
  * non-zero monthly amount.
  */
-export function parseGuvvenBsSheet(
+export function parseWorkbookBsSheet(
   workbook: XLSX.WorkBook,
   sheetName: string,
   xlsx: typeof XLSX,

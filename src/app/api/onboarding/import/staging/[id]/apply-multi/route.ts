@@ -51,7 +51,7 @@ import {
 import type { ParseResult, ParsedBudgetLine } from "@/lib/onboarding/adapters/azmade-sopl"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
-// Phase 7.I Turn — Guvven-shape deterministic fallback. When AI Mapper
+// Phase 7.I Turn — Workbook-shape deterministic fallback. When AI Mapper
 // produces a structurally-valid proposal but extraction returns 0 leaves
 // (typical for multi-year sheets where AI Mapper picked the wrong year's
 // columns), run the proven `parsePlfPlSheet` adapter as a deterministic
@@ -61,20 +61,20 @@ import {
   type ParsedPlfLine,
 } from "@/lib/onboarding/adapters/azseker-plf"
 import {
-  classifyGuvvenSheetFamily,
+  classifyWorkbookSheetFamily,
   resolveEntityFromSheetName,
-} from "@/lib/onboarding/azseker-guvven-mapping"
+} from "@/lib/onboarding/azseker-workbook-mapping"
 // Phase 7.I Turn — KPI sheet dispatcher. Scans every workbook sheet
 // (regardless of AI Mapper's filter) and writes OperationalFact rows
 // from KPI families.
 import {
-  parseGuvvenFarmingKpiSheet,
-  parseGuvvenProcessingKpiSheet,
+  parseWorkbookFarmingKpiSheet,
+  parseWorkbookProcessingKpiSheet,
   type ParsedKpiFact,
-} from "@/lib/onboarding/adapters/azseker-guvven-kpi"
+} from "@/lib/onboarding/adapters/azseker-workbook-kpi"
 // Phase 7.I Turn — BS (balance sheet) dispatcher. Same scan-every-
 // sheet pattern as KPI; writes BalanceSheetLine rows.
-import { parseGuvvenBsSheet } from "@/lib/onboarding/adapters/azseker-guvven-bs"
+import { parseWorkbookBsSheet } from "@/lib/onboarding/adapters/azseker-workbook-bs"
 
 export const maxDuration = 120 // larger than single-sheet — N parallel writes
 
@@ -232,7 +232,7 @@ export async function POST(
   //      `detectProposalYear` rejection on multi-year workbooks.
   //   2. First successful sheet's proposal — single-year inference.
   //   3. `currentBakuYearNumber()` fallback when no AI-Mapper proposal
-  //      survived (e.g. all sheets fell to applier errors and Guvven
+  //      survived (e.g. all sheets fell to applier errors and Workbook
   //      adapter will rescue them).
   let targetYear = currentBakuYearNumber()
   const yearOverrideRaw = request.nextUrl.searchParams.get("year")
@@ -263,9 +263,9 @@ export async function POST(
     }
   }
 
-  // Guvven-shape deterministic fallback — runs BEFORE the all-failed
+  // Workbook-shape deterministic fallback — runs BEFORE the all-failed
   // gate so it can rescue 422-style applier errors that the multi-year
-  // Guvven Fin xlsx triggers ("Multiple columns mapped to month jan").
+  // Workbook Fin xlsx triggers ("Multiple columns mapped to month jan").
   //
   // Two rescue paths:
   //   - Sheet errored in applier (typically duplicate-month-column
@@ -286,7 +286,7 @@ export async function POST(
   for (let i = 0; i < multiResult.perSheet.length; i++) {
     const entry = multiResult.perSheet[i]
     const sheetName = entry.sheetName
-    const family = classifyGuvvenSheetFamily(sheetName)
+    const family = classifyWorkbookSheetFamily(sheetName)
     if (family !== "PLF") continue
 
     const hasError = "error" in entry
@@ -307,7 +307,7 @@ export async function POST(
         warnings: [
           {
             row: 0,
-            reason: `AI Mapper applier errored ("${(entry as { sheetName: string; error: string }).error}"); deterministic Guvven adapter recovered ${fallback.lines.length} leaves for year ${targetYear}.`,
+            reason: `AI Mapper applier errored ("${(entry as { sheetName: string; error: string }).error}"); deterministic Workbook adapter recovered ${fallback.lines.length} leaves for year ${targetYear}.`,
           },
         ],
         skippedRowCount: 0,
@@ -319,12 +319,12 @@ export async function POST(
       entry.result.lines = fallback.lines.map(plfToBudgetLine)
       entry.result.warnings.push({
         row: 0,
-        reason: `AI Mapper produced 0 leaves; deterministic Guvven adapter recovered ${fallback.lines.length} for year ${targetYear}.`,
+        reason: `AI Mapper produced 0 leaves; deterministic Workbook adapter recovered ${fallback.lines.length} for year ${targetYear}.`,
       })
     }
   }
 
-  // All-failed gate runs AFTER Guvven rescue.
+  // All-failed gate runs AFTER Workbook rescue.
   const firstSuccess = multiResult.perSheet.find(
     (s): s is { sheetName: string; result: ParseResult } => "result" in s,
   )
@@ -613,13 +613,13 @@ export async function POST(
   const kpiTouchedCompanyIds = new Set<string>()
   try {
     for (const sheetName of workbook.SheetNames) {
-      const family = classifyGuvvenSheetFamily(sheetName)
+      const family = classifyWorkbookSheetFamily(sheetName)
       if (family !== "KPI_FARMING" && family !== "KPI_PROCESSING") continue
 
       const parsed =
         family === "KPI_FARMING"
-          ? parseGuvvenFarmingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
-          : parseGuvvenProcessingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+          ? parseWorkbookFarmingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+          : parseWorkbookProcessingKpiSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
       if (parsed.facts.length === 0) {
         kpiResults.push({
           sheetName,
@@ -748,7 +748,7 @@ export async function POST(
 
   // Phase 7.I follow-up — BS sheet dispatcher. Same scan-every-sheet
   // pattern as KPI. For each "BS <ENTITY>" sheet in the workbook,
-  // run parseGuvvenBsSheet → BalanceSheetLine rows. The Guvven file
+  // run parseWorkbookBsSheet → BalanceSheetLine rows. The Workbook file
   // covers partial-year BS data (e.g. only Jan-Mar 2026 for Malt);
   // adapter writes only the months present in the sheet.
   //
@@ -768,11 +768,11 @@ export async function POST(
     // Ensure the BalanceSheetLine plan exists. Reuse the same
     // AI-Imported plan id created by the BudgetLine transaction
     // above; if it doesn't exist yet (all-error path that the
-    // Guvven rescue happened to miss) create a "BS-Imported" plan.
+    // Workbook rescue happened to miss) create a "BS-Imported" plan.
     const planName = `AI-Imported ${targetYear} Budget`
     let bsPlanId: string | null = null
     for (const sheetName of workbook.SheetNames) {
-      const family = classifyGuvvenSheetFamily(sheetName)
+      const family = classifyWorkbookSheetFamily(sheetName)
       if (family !== "BS") continue
 
       const entityCode = resolveEntityFromSheetName(sheetName)
@@ -803,7 +803,7 @@ export async function POST(
         continue
       }
 
-      const parsed = parseGuvvenBsSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
+      const parsed = parseWorkbookBsSheet(workbook, sheetName, XLSX, { preferYear: targetYear })
       if (parsed.lines.length === 0) {
         bsResults.push({
           sheetName,
@@ -1044,7 +1044,7 @@ export async function POST(
       failureCount,
       perSheet,
       // Phase 7.I — per-sheet outcome for sector adapter pass (KPI
-      // dispatcher). Empty when no Guvven-shape KPI sheets found.
+      // dispatcher). Empty when no Workbook-shape KPI sheets found.
       sectorSheets: kpiResults,
       sectorFactsInserted: kpiTotalFacts,
       bsSheets: bsResults,

@@ -288,10 +288,14 @@ model CashFlowEntry {
   counterpartyId String?
   plannedAmount  Float?
   createdAt      DateTime        @default(now())
+  // Phase 7.M Step 4 (2026-05-18) — soft-delete for self-service archive.
+  deletedAt      DateTime?
+  deletedBy      String?
 
   @@index([organizationId, year, month])
   @@index([organizationId, activityType])
   @@index([accountId])
+  @@index([organizationId, deletedAt])
   @@map("cash_flow_entries")
 }
 
@@ -494,6 +498,13 @@ model BudgetLine {
   // ships as a user-owned 🔄 (mass UPDATE on shared DB needs explicit
   // permission, same boundary as Turn XXXIX currencyCode backfill).
   monthIndex     Int?
+  // Phase 7.M Step 4 (2026-05-18) — soft-delete for self-service archive.
+  // Mirrors the pattern on `BudgetPlan.deletedAt` (line ~419). Read
+  // paths filter via `where: { deletedAt: null }` through the helper
+  // in `src/lib/server/soft-delete.ts`; archived rows stay queryable
+  // for 90 days via the admin restore UI, then a cleanup job purges.
+  deletedAt      DateTime?
+  deletedBy      String?
   parentId       String?
   parent         BudgetLine?       @relation("LineChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children       BudgetLine[]      @relation("LineChildren")
@@ -982,11 +993,15 @@ model BalanceSheetLine {
   notes          String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  // Phase 7.M Step 4 (2026-05-18) — soft-delete for self-service archive.
+  deletedAt      DateTime?
+  deletedBy      String?
 
   @@index([organizationId])
   @@index([planId])
   @@index([planId, year, month])
   @@index([accountId])
+  @@index([organizationId, deletedAt])
   @@map("balance_sheet_lines")
 }
 
@@ -1423,11 +1438,15 @@ model Counterparty {
   period         String       @default("2026")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  // Phase 7.M Step 4 (2026-05-18) — soft-delete for self-service archive.
+  deletedAt      DateTime?
+  deletedBy      String?
 
   @@unique([companyId, role, name, period])
   @@index([organizationId])
   @@index([companyId, role])
   @@index([role, sharePct])
+  @@index([organizationId, deletedAt])
   @@map("counterparties")
 }
 
@@ -1956,6 +1975,15 @@ enum AuditAction {
   // Metadata: { updated: ["eia",…], cleared: ["usda",…] } — never the
   // key value itself, only which sources changed.
   api_key_update
+  // Phase 7.M Step 4 (2026-05-18) — self-service archive trail.
+  // `data_archive` flips deletedAt+deletedBy on a scope; `data_restore`
+  // is the inverse. Metadata: { entityKind: "BudgetLine" |
+  // "BalanceSheetLine" | "CashFlowEntry" | "Counterparty",
+  // companyCode?, year?, period?, rowsAffected, reason? }. The
+  // reason field is finance-user-supplied free text for the IFRS
+  // 7-year audit trail.
+  data_archive
+  data_restore
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

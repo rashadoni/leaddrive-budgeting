@@ -13,11 +13,16 @@
 const xlsx = require('xlsx');
 
 // ── Sheet name resolution per child company code ────────────────────────────
+// Phase 7.M 2026-05-19 (Azik confirm): AZSEKER-FARM removed (no such
+// legal entity). AZSEKER-MALT added (has its own PL Malt sheet in the
+// new workbook). AZSEKER-PROMALT has only sales sheet, no P&L sheet —
+// stays null here.
 const SHEET_MAP = {
   'AZSEKER-EDEN': 'PL_EDEN',
   'AZSEKER-AZSF': 'PLF_AZSF',
   'AZSEKER-CPC': 'PLF_CPC',
-  'AZSEKER-FARM': 'PLF_Farm',
+  'AZSEKER-MALT': 'PL Malt',
+  'AZSEKER-PROMALT': null,
   'AZSEKER-HORIZON': null,
   'AAC-MAIN': null,
   'ATL-DBZ': null,

@@ -38,8 +38,10 @@ const WEATHER_LABEL = "Open-Meteo Weather (AZ sugar belt)"
  *
  * Region inventory grew from the original 3 (Salyan/Imishli/Sabirabad — sugar
  * belt) to 8 after Session 9 audit of `Copy of Guvven Fin.xlsx`'s Farming KPI
- * sheet revealed AZSEKER-EDEN + AZSEKER-FARM also operate in Yevlax, Şəmkir,
- * Füzuli, Ağcabədi, and Beyləqan farms (Qarabağ Taxıl cost center).
+ * sheet revealed AZSEKER-EDEN also operates in Yevlax, Şəmkir, Füzuli,
+ * Ağcabədi, and Beyləqan farms (Qarabağ Taxıl / Dastan / Əkinçi BO cost
+ * centers; Phase 7.M 2026-05-19 Azik confirm: all under EDEN, no separate
+ * AZSEKER-FARM legal entity).
  *
  * Crops by region (per Farming KPI 2026):
  *   Salyan / Imishli / Sabirabad → sugar beet (Şəkər Çuğunduru) — original 3
