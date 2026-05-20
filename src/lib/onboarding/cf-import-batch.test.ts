@@ -233,3 +233,64 @@ describe("runCashFlowBatch — round-trip", () => {
     expect(r.reconciliation.verdict).toBe("red")
   })
 })
+
+// ─── Phase 7.M Tier 5 — outer transaction support ─────────────────────────────
+
+describe("runCashFlowBatch — outer-transaction mode (Phase 7.M Tier 5)", () => {
+  it("call with PrismaClient still wraps own $transaction (back-compat)", async () => {
+    const prisma = makeFakePrisma()
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([E("AZSF", "CF.01.01", 100)])
+    const result = await runCashFlowBatch(prisma, plan)
+    expect(txSpy).toHaveBeenCalledTimes(1)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("call with TransactionClient (no $transaction method) does NOT wrap", async () => {
+    const prisma = makeFakePrisma()
+    const tx = new Proxy(prisma, {
+      get(target, prop) {
+        if (prop === "$transaction") return undefined
+        return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+      },
+    })
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([E("AZSF", "CF.01.01", 100)])
+    const result = await runCashFlowBatch(
+      tx as unknown as PrismaClient,
+      plan,
+    )
+    expect(txSpy).not.toHaveBeenCalled()
+    expect(result.reconciliation.verdict).toBe("green")
+    expect(prisma.__cf.filter((r) => r.deletedAt === null)).toHaveLength(1)
+  })
+
+  it("two batches inside the same outer $transaction share visibility", async () => {
+    const prisma = makeFakePrisma()
+    // Different sourceTags so the second batch's reset doesn't archive
+    // the first batch's writes — multi-file pattern uses one source
+    // per file.
+    const planA = planFor(
+      [{ ...E("AZSF", "CF.01.01", 100), source: "fileA-source" }],
+      { label: "fileA", sourceTag: "fileA-source" },
+    )
+    const planB = planFor(
+      [{ ...E("CPC", "CF.02.01", 200), source: "fileB-source" }],
+      { label: "fileB", sourceTag: "fileB-source" },
+    )
+    const results = await prisma.$transaction(async (tx) => {
+      const txClient = new Proxy(tx as unknown as PrismaClient, {
+        get(target, prop) {
+          if (prop === "$transaction") return undefined
+          return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+        },
+      }) as unknown as PrismaClient
+      const ra = await runCashFlowBatch(txClient, planA)
+      const rb = await runCashFlowBatch(txClient, planB)
+      return [ra, rb]
+    })
+    expect(results[0].reconciliation.verdict).toBe("green")
+    expect(results[1].reconciliation.verdict).toBe("green")
+    expect(prisma.__cf.filter((r) => r.deletedAt === null)).toHaveLength(2)
+  })
+})

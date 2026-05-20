@@ -98,7 +98,13 @@ export interface BsImportResult {
 }
 
 export async function runBalanceSheetBatch(
-  prisma: PrismaClient,
+  /**
+   * Phase 7.M Tier 5 — accepts PrismaClient (legacy single-file path:
+   * opens own tx) OR Prisma.TransactionClient (multi-file orchestrator
+   * path: caller-managed outer tx). Detected at runtime via
+   * `$transaction` method presence.
+   */
+  prismaOrTx: PrismaClient | Prisma.TransactionClient,
   plan: BsImportPlan,
   opts: {
     /** Reconciliation hook — caller provides the DB read for the
@@ -106,7 +112,7 @@ export async function runBalanceSheetBatch(
      *  .findMany` with `EXCLUDE_DELETED`. Tests pass a synthetic
      *  implementation. */
     readActualSums?: (
-      prismaClient: PrismaClient,
+      prismaClient: PrismaClient | Prisma.TransactionClient,
       input: {
         organizationId: string
         planIds: ReadonlyArray<string>
@@ -117,6 +123,9 @@ export async function runBalanceSheetBatch(
     batchIdFactory?: () => string
   } = {},
 ): Promise<BsImportResult> {
+  const isOuterTx =
+    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
+  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
   const startedAt = new Date()
   const batchId =
     opts.batchIdFactory?.() ??
@@ -131,8 +140,9 @@ export async function runBalanceSheetBatch(
   )
 
   // ── Phase 1+2: reset & write inside one transaction ────────────
-  const { resetArchived, resetPurged, rowsInserted } =
-    await prisma.$transaction(async (tx) => {
+  // When inside an outer tx (Phase 7.M Tier 5), skip the wrapper so
+  // the multi-file orchestrator gets group-level atomicity.
+  const writePhase = async (tx: Prisma.TransactionClient) => {
       const yearFilter =
         yearScope.length > 0 ? { year: { in: yearScope } } : {}
 
@@ -179,16 +189,19 @@ export async function runBalanceSheetBatch(
         inserted = result.count
       }
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
-    })
+  }
+  const { resetArchived, resetPurged, rowsInserted } = isOuterTx
+    ? await writePhase(dbHandle as Prisma.TransactionClient)
+    : await (prismaOrTx as PrismaClient).$transaction(writePhase)
 
   // ── Phase 4: reconcile expected vs actual sums ─────────────────
   const actualSums = opts.readActualSums
-    ? await opts.readActualSums(prisma, {
+    ? await opts.readActualSums(dbHandle, {
         organizationId: plan.organizationId,
         planIds: plan.planIds,
         periodScope: plan.periodScope,
       })
-    : await defaultReadActualBsSums(prisma, plan)
+    : await defaultReadActualBsSums(dbHandle, plan)
 
   const reconciliation = reconcile(
     plan.expectedSums,
@@ -223,7 +236,7 @@ export async function runBalanceSheetBatch(
  * tests.
  */
 async function defaultReadActualBsSums(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   plan: BsImportPlan,
 ): Promise<Map<ReconciliationKey, number>> {
   const yearScope = Array.from(

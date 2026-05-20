@@ -1,0 +1,261 @@
+/**
+ * Phase 7.M Tier 5 (2026-05-20) — Multi-file AI Auto Import endpoint.
+ *
+ * Universal endpoint for uploading N (1-10) xlsx files at once. The
+ * orchestrator (`runMultiFileImport`) handles per-file classification,
+ * file-type detection, cross-file conflict gating, and group-atomic
+ * commit.
+ *
+ * Contract
+ * ────────
+ *   POST /api/import/ai-auto-multi
+ *   Content-Type: multipart/form-data
+ *   Fields:
+ *     files            — repeated xlsx blob (1-10 files)
+ *     year             — target year (default current year)
+ *     apply            — "1"/"true" to commit (default: dry-run preview)
+ *     forceOverride    — "1" to ignore cross-file conflicts (USE WITH CAUTION)
+ *     allowYellow      — "1" to commit even if a group is yellow
+ *
+ * Response (200):
+ *   MultiFileImportResult shape (see multi-file-orchestrator.ts)
+ *
+ * Response (409):
+ *   { ok: false, error: "Cross-file conflicts detected", conflicts: [...] }
+ *
+ * Response (429):
+ *   { ok: false, error: "LLM budget exceeded" } or rate-limit
+ *
+ * Auth: admin role. Rate-limit: 3/hour/org (each request can use up to
+ * 10 × 35K = 350K tokens, so heavier than single-file 6/hour).
+ *
+ * Cost guard: per-request estimate = N × 35K input. Pre-checked against
+ * org budget; 429 if exceeded.
+ */
+import { NextRequest, NextResponse } from "next/server"
+import * as XLSX from "xlsx"
+import { requireRole, isAuthError } from "@/lib/api-auth"
+import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
+import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
+import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
+import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
+import { prisma } from "@/lib/prisma"
+
+export const maxDuration = 120
+
+/** Hard caps protecting the LLM budget + dev server liveness. */
+const MAX_FILES = 10
+const MAX_TOTAL_BYTES = 20 * 1024 * 1024 // 20 MB sum across all files
+const PER_FILE_TOKEN_BUDGET = 35_000 // Phase 7.M Tier 4 measured cost
+
+const RATE_LIMIT = {
+  name: "import-ai-auto-multi",
+  max: 3,
+  windowMs: 60 * 60_000,
+}
+
+export async function POST(request: NextRequest) {
+  const t0 = Date.now()
+
+  // ── Auth ─────────────────────────────────────────────────────────
+  const session = await requireRole(request, "admin")
+  if (isAuthError(session)) return session
+  if (!session.orgId) {
+    return NextResponse.json(
+      { ok: false, error: "No organization in session" },
+      { status: 400 },
+    )
+  }
+  const orgId = session.orgId
+
+  // ── Rate limit ──────────────────────────────────────────────────
+  const rlError = enforceRateLimit(
+    `${RATE_LIMIT.name}:${orgId}:${session.userId}:${getClientIp(request)}`,
+    RATE_LIMIT,
+  )
+  if (rlError) return rlError
+
+  // ── Parse form ──────────────────────────────────────────────────
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Body must be multipart/form-data: ${err instanceof Error ? err.message : String(err)}`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const fileEntries = form.getAll("files").filter((v) => v instanceof Blob) as Blob[]
+  if (fileEntries.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "Provide at least one file via 'files' field" },
+      { status: 400 },
+    )
+  }
+  if (fileEntries.length > MAX_FILES) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Max ${MAX_FILES} files per upload (got ${fileEntries.length})`,
+      },
+      { status: 400 },
+    )
+  }
+  const totalBytes = fileEntries.reduce((sum, f) => sum + f.size, 0)
+  if (totalBytes > MAX_TOTAL_BYTES) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Total file size ${(totalBytes / 1024 / 1024).toFixed(1)} MB exceeds ${MAX_TOTAL_BYTES / 1024 / 1024} MB cap`,
+      },
+      { status: 400 },
+    )
+  }
+
+  const yearStr = (form.get("year") as string | null) ?? String(new Date().getFullYear())
+  const year = Number(yearStr) || new Date().getFullYear()
+  if (!Number.isInteger(year) || year < 2020 || year > 2050) {
+    return NextResponse.json(
+      { ok: false, error: "Field 'year' must be an integer 2020-2050" },
+      { status: 400 },
+    )
+  }
+  const applyVal = String(form.get("apply") ?? "").toLowerCase()
+  const shouldApply = applyVal === "1" || applyVal === "true"
+  const forceOverride =
+    String(form.get("forceOverride") ?? "").toLowerCase() === "1" ||
+    String(form.get("forceOverride") ?? "").toLowerCase() === "true"
+  const allowYellow =
+    String(form.get("allowYellow") ?? "").toLowerCase() === "1" ||
+    String(form.get("allowYellow") ?? "").toLowerCase() === "true"
+
+  // ── Cost-budget gate ────────────────────────────────────────────
+  // Each file uses ~35K tokens (input + output). Pre-check before
+  // burning any spend.
+  const estTokens = fileEntries.length * PER_FILE_TOKEN_BUDGET
+  const budgetCheck = await checkBudget(orgId, undefined, estTokens)
+  if (!budgetCheck.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `LLM budget exceeded (${budgetCheck.reason}). Resets at ${budgetCheck.resetAt.toISOString()}`,
+      },
+      { status: 429 },
+    )
+  }
+
+  // ── Parse all workbooks before LLM call ─────────────────────────
+  // If any xlsx is malformed, fail fast with 400 — no LLM cost burned.
+  const files: Array<{
+    filename: string
+    workbook: XLSX.WorkBook
+  }> = []
+  for (const blob of fileEntries) {
+    const filename = blob instanceof File ? blob.name : "uploaded.xlsx"
+    try {
+      const buf = Buffer.from(await blob.arrayBuffer())
+      const wb = XLSX.read(buf, {
+        cellFormula: false,
+        cellHTML: false,
+        type: "buffer",
+      })
+      files.push({ filename, workbook: wb })
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid xlsx in '${filename}': ${err instanceof Error ? err.message : String(err)}`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+
+  // ── Context: known entity codes + org industry hint ─────────────
+  const entities = await prisma.company.findMany({
+    where: { organizationId: orgId, status: { not: "archived" } },
+    select: { code: true },
+  })
+  const knownEntityCodes = entities.map((e: { code: string }) => e.code)
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { settings: true },
+  })
+  const orgIndustry =
+    org?.settings && typeof org.settings === "object"
+      ? ((org.settings as Record<string, unknown>).industry as string | undefined)
+      : undefined
+
+  // ── Run the orchestrator ────────────────────────────────────────
+  let result
+  try {
+    result = await runMultiFileImport(
+      {
+        files,
+        organizationId: orgId,
+        year,
+        knownEntityCodes,
+        orgIndustry,
+        allowYellow,
+        forceOverride,
+        // Apply only when caller asked explicitly. Default: preview-only
+        // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
+        dryRun: !shouldApply,
+      },
+      {
+        prisma,
+        anthropicClient: getAnthropicClient(),
+        model: AI_MODEL,
+        registry: buildProductionAdapterRegistry(prisma),
+        XLSX,
+      },
+    )
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Multi-file import failed: ${err instanceof Error ? err.message : String(err)}`,
+      },
+      { status: 500 },
+    )
+  }
+
+  // ── Record token spend (non-fatal) ──────────────────────────────
+  if (result.llmUsage.inputTokens + result.llmUsage.outputTokens > 0) {
+    await recordUsage(orgId, {
+      inputTokens: result.llmUsage.inputTokens,
+      outputTokens: result.llmUsage.outputTokens,
+    }).catch(() => {
+      /* non-fatal */
+    })
+  }
+
+  // ── Conflict short-circuit → 409 ────────────────────────────────
+  // The orchestrator already returned early when conflicts were
+  // detected (without opening any tx). Surface as 409 so the UI can
+  // render the diff and the user can decide.
+  if (result.conflicts.length > 0 && !forceOverride) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Cross-file conflicts detected",
+        ...result,
+        durationMs: Date.now() - t0,
+      },
+      { status: 409 },
+    )
+  }
+
+  // ── Normal path ─────────────────────────────────────────────────
+  return NextResponse.json({
+    ok: true,
+    mode: shouldApply ? ("applied" as const) : ("preview" as const),
+    ...result,
+    durationMs: Date.now() - t0,
+  })
+}

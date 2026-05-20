@@ -24,7 +24,7 @@
  *                  indicators via the `operationalFact` resolver).
  *   4. RECONCILE — file vs DB sums per `${companyId}::${metric}::${date}`.
  */
-import type { PrismaClient } from "@prisma/client"
+import type { PrismaClient, Prisma } from "@prisma/client"
 import {
   reconcile,
   buildReconKey,
@@ -78,11 +78,17 @@ export interface KpiImportResult {
 }
 
 export async function runKpiBatch(
-  prisma: PrismaClient,
+  /**
+   * Phase 7.M Tier 5 — accepts PrismaClient (legacy single-file path:
+   * opens own tx) OR Prisma.TransactionClient (multi-file orchestrator
+   * path: caller-managed outer tx). Detected at runtime via
+   * `$transaction` method presence.
+   */
+  prismaOrTx: PrismaClient | Prisma.TransactionClient,
   plan: KpiImportPlan,
   opts: {
     readActualSums?: (
-      prismaClient: PrismaClient,
+      prismaClient: PrismaClient | Prisma.TransactionClient,
       input: {
         organizationId: string
         companyIds: ReadonlyArray<string>
@@ -92,6 +98,9 @@ export async function runKpiBatch(
     batchIdFactory?: () => string
   } = {},
 ): Promise<KpiImportResult> {
+  const isOuterTx =
+    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
+  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
   const startedAt = new Date()
   const batchId =
     opts.batchIdFactory?.() ??
@@ -109,8 +118,7 @@ export async function runKpiBatch(
   )
   const explicitDates = plan.dateScope.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
 
-  const { resetDeleted, rowsInserted } = await prisma.$transaction(
-    async (tx) => {
+  const writePhase = async (tx: Prisma.TransactionClient) => {
       const filter: Record<string, unknown> = {
         organizationId: plan.organizationId,
         companyId: { in: [...plan.companyIds] },
@@ -141,16 +149,18 @@ export async function runKpiBatch(
         inserted = result.count
       }
       return { resetDeleted: del.count, rowsInserted: inserted }
-    },
-  )
+  }
+  const { resetDeleted, rowsInserted } = isOuterTx
+    ? await writePhase(dbHandle as Prisma.TransactionClient)
+    : await (prismaOrTx as PrismaClient).$transaction(writePhase)
 
   const actualSums = opts.readActualSums
-    ? await opts.readActualSums(prisma, {
+    ? await opts.readActualSums(dbHandle, {
         organizationId: plan.organizationId,
         companyIds: plan.companyIds,
         dateScope: plan.dateScope,
       })
-    : await defaultReadActualKpiSums(prisma, plan)
+    : await defaultReadActualKpiSums(dbHandle, plan)
 
   const reconciliation = reconcile(
     plan.expectedSums,
@@ -179,7 +189,7 @@ export async function runKpiBatch(
 }
 
 async function defaultReadActualKpiSums(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   plan: KpiImportPlan,
 ): Promise<Map<ReconciliationKey, number>> {
   const yearScope = Array.from(

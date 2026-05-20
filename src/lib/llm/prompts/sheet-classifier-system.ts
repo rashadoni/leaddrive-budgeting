@@ -77,6 +77,11 @@ export function buildSheetClassifierUserMessage(payload: {
   }>
   knownEntityCodes?: string[]
   orgIndustry?: string
+  /** Phase 7.M Tier 5 (2026-05-20) — filename hint as soft prior.
+   *  E.g. "Farming strategy - Guvven.xlsx" suggests forward-forecast
+   *  shape (10-year projection in İcmal). Use only when sheet evidence
+   *  is ambiguous; do NOT override clear sheet-shape evidence. */
+  filenameHint?: string
 }): string {
   const hint =
     payload.knownEntityCodes && payload.knownEntityCodes.length
@@ -85,8 +90,11 @@ export function buildSheetClassifierUserMessage(payload: {
   const industryLine = payload.orgIndustry
     ? `\nOrg primary industry: ${payload.orgIndustry}`
     : ""
+  const filenameLine = payload.filenameHint
+    ? `\nSource filename: "${payload.filenameHint}" — use as soft prior when sheet content is ambiguous (e.g. "Farming strategy" or "strategy" in name → likely forward-forecast file; "land" / "Çıxar" → land registry; "actuals" → actual financial data). Do NOT override clear sheet-shape evidence.`
+    : ""
   const sheetsJson = JSON.stringify(payload.sheets, null, 2)
-  return `Classify each of these ${payload.sheets.length} sheets.${hint}${industryLine}
+  return `Classify each of these ${payload.sheets.length} sheets.${hint}${industryLine}${filenameLine}
 
 Sheets:
 ${sheetsJson}

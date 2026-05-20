@@ -143,7 +143,14 @@ export interface ImportBatchResult {
  * caller needs to know the import did not happen).
  */
 export async function runImportBatch(
-  prisma: PrismaClient,
+  /**
+   * Either a full PrismaClient (legacy single-file path — opens own
+   * transaction) OR a Prisma.TransactionClient (Phase 7.M Tier 5
+   * multi-file orchestrator path — caller already owns the outer
+   * transaction). Detected at runtime via `$transaction` method
+   * presence (TransactionClient cannot nest, lacks the method).
+   */
+  prismaOrTx: PrismaClient | Prisma.TransactionClient,
   plan: ImportBatchPlan,
   opts: {
     /** Forced-recompute hook — caller provides the function so this
@@ -156,9 +163,11 @@ export async function runImportBatch(
     }) => Promise<number>
     /** Reconciliation hook — caller provides the DB read for the
      *  `actualSums` side. Default reads via `prisma.budgetLine.groupBy`
-     *  with `EXCLUDE_DELETED`. Tests pass a synthetic implementation. */
+     *  with `EXCLUDE_DELETED`. Tests pass a synthetic implementation.
+     *  The signature accepts a tx-or-client so it can read uncommitted
+     *  writes when called inside an outer transaction. */
     readActualSums?: (
-      prismaClient: PrismaClient,
+      prismaClient: PrismaClient | Prisma.TransactionClient,
       input: {
         organizationId: string
         companyIds: ReadonlyArray<string>
@@ -169,6 +178,13 @@ export async function runImportBatch(
     batchIdFactory?: () => string
   } = {},
 ): Promise<ImportBatchResult> {
+  // Detect mode: PrismaClient has $transaction; TransactionClient doesn't.
+  const isOuterTx =
+    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
+  // For reconciliation reads + default-read fallback, use the
+  // tx-or-client directly. When inside an outer tx, this gives us
+  // snapshot-isolation visibility into our own uncommitted writes.
+  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
   const startedAt = new Date()
   const batchId =
     opts.batchIdFactory?.() ??
@@ -177,9 +193,11 @@ export async function runImportBatch(
   // ── Phase 1+2: reset & write inside a single transaction ───────
   // The TX scope guarantees that a write-side failure rolls the
   // archive back too — finance never sees a half-state.
+  // Phase 7.M Tier 5: when invoked with an outer tx, we DO NOT open
+  // a new one — we use the caller's. This lets multi-file orchestrator
+  // wrap multiple batch calls in ONE atomic group commit.
   const planIds = Array.from(new Set(plan.rows.map((r) => r.planId)))
-  const { resetArchived, resetPurged, rowsInserted } =
-    await prisma.$transaction(async (tx) => {
+  const writePhase = async (tx: Prisma.TransactionClient) => {
       const periodFilter =
         plan.periodScope.length > 0
           ? {
@@ -252,7 +270,11 @@ export async function runImportBatch(
       }
 
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
-    })
+  }
+  // Execute write phase either via existing outer tx or new one.
+  const { resetArchived, resetPurged, rowsInserted } = isOuterTx
+    ? await writePhase(dbHandle as Prisma.TransactionClient)
+    : await (prismaOrTx as PrismaClient).$transaction(writePhase)
 
   // ── Phase 3: recompute IVs touched by the new rows ─────────────
   let recomputedIvCount = 0
@@ -278,13 +300,16 @@ export async function runImportBatch(
   }
 
   // ── Phase 4: reconcile expected vs actual sums ─────────────────
+  // Use dbHandle so reconciliation observes uncommitted writes when
+  // running inside an outer transaction (Phase 7.M Tier 5 multi-file
+  // path); otherwise it reads committed data via the PrismaClient.
   const actualSums = opts.readActualSums
-    ? await opts.readActualSums(prisma, {
+    ? await opts.readActualSums(dbHandle, {
         organizationId: plan.organizationId,
         companyIds: plan.companyIds,
         periodScope: plan.periodScope,
       })
-    : await defaultReadActualSums(prisma, plan)
+    : await defaultReadActualSums(dbHandle, plan)
 
   const reconciliation = reconcile(
     plan.expectedSums,
@@ -322,7 +347,7 @@ export async function runImportBatch(
  * synthetic map instead.
  */
 async function defaultReadActualSums(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   plan: ImportBatchPlan,
 ): Promise<Map<ReconciliationKey, number>> {
   const rows = await prisma.budgetLine.findMany({

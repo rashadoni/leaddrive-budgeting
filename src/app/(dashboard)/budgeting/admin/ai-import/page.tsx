@@ -9,7 +9,7 @@
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
-import { AIImportForm } from "./AIImportForm"
+import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
   title: "AI Auto Import · Admin · BudgetPro",
@@ -26,7 +26,7 @@ export default async function AIImportPage() {
     <div className="container mx-auto py-8 px-4 max-w-4xl">
       <h1 className="text-2xl font-bold mb-2">AI Auto Import</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Загрузите любой xlsx — ИИ автоматически определит, что в каждом
+        Загрузите xlsx файл(ы) — ИИ автоматически определит, что в каждом
         листе (P&amp;L / Balance Sheet / Cash Flow / KPI / CAPEX / Sales /
         Land Registry / Strategic descriptions) и к какой компании он
         относится. Затем подтвердите план — система запустит bit-perfect
@@ -38,7 +38,7 @@ export default async function AIImportPage() {
         verdict reconciliation report.
       </p>
 
-      <AIImportForm />
+      <AIImportTabs />
     </div>
   )
 }

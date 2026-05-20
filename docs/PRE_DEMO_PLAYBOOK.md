@@ -224,6 +224,65 @@ npx tsx scripts/import-azseker-workbook-batch.ts --purge --year=2026
 npx tsx scripts/clean-slate-azseker.ts
 ```
 
+## 8. Multi-file AI Auto Import (Phase 7.M Tier 5 — 2026-05-20)
+
+For full AzerSheker refresh (or any client whose data lives in 2-3 separate xlsx files instead of one consolidated workbook), use the multi-file mode:
+
+**UI path**: `/budgeting/admin/ai-import` → click "Несколько файлов" tab.
+
+**Workflow** (browser-side):
+
+1. **Drop 1-10 xlsx files** into the drop zone. Each file row shows name + size + ✕ remove button.
+2. **Step 1 — "Анализ AI"** button (POST `/api/import/ai-auto-multi`, dryRun mode):
+   - Each file gets one LLM classifier call (concurrent, cap=3)
+   - AI determines file-type (`main-financial` / `forward-forecast` / `land-registry` / `strategic-descriptions` / `capex-plan` / `kpi-only` / `unknown`)
+   - Pre-apply expected sums computed from adapter parse phase (no DB writes)
+   - **Cross-file conflict gate**: if two files report different values for the same `(entity::account::period)` cell, the response is **409 with a diff table**. Zero DB writes happen. UI shows the conflict rows + a "force override" checkbox.
+3. **Step 2 — "Применить группы"** (POST same files with `apply=1`):
+   - Files grouped by file-type, applied in dependency order: `strategic-descriptions` → `main-financial` → `kpi-only` → `capex-plan` → `land-registry` → `forward-forecast`.
+   - Each group commits in **one outer `$transaction`** — group-level atomicity. If a file in the group throws inside the tx, the entire group rolls back; other groups continue independently.
+   - Single recompute pass at the end across all touched companies.
+
+**Safety guarantees**:
+- Auth: admin role.
+- Rate limit: 3/hour/org (each request can burn up to 10 × 35K = 350K tokens).
+- Cost gate: pre-checked `checkBudget(orgId, undefined, N × 35K)`. If exceeded → 429.
+- Hard caps: max 10 files; max 20 MB total.
+- Conflict gate runs BEFORE any tx opens — 409 = 0 DB writes.
+
+**Verifying after apply** (CLI):
+
+```bash
+# Live row counts per AZSEKER entity (P&L + BS + CF + KPI)
+DATABASE_URL=… npx tsx scripts/companies-readiness.ts | grep AZSEKER
+
+# Recompute targets that ran
+psql $DATABASE_URL -c "SELECT period, COUNT(*) FROM indicator_values WHERE updated_at > NOW() - INTERVAL '5 min' GROUP BY period;"
+
+# Audit trail
+psql $DATABASE_URL -c "SELECT created_at, action, metadata FROM audit_events WHERE action = 'data_import' AND created_at > NOW() - INTERVAL '1 hour' ORDER BY created_at DESC;"
+```
+
+**Cost & duration estimates**:
+
+| Scenario | LLM calls | Total tokens | Cost | Duration |
+|---|---|---|---|---|
+| 1 file | 1 | ~35K | $0.13 | ~30s |
+| 3 files (AzerSheker typical) | 3 parallel | ~100K | $0.40 | ~60s |
+| 10 files (max) | 10 (p-limit=3) | ~350K | $1.35 | ~120s |
+
+**E2E smoke test** (apply mode — writes to DB):
+
+```bash
+# Dry-run: preview only, no DB writes (recommended first)
+DATABASE_URL=… ANTHROPIC_API_KEY=… npx tsx scripts/test-multi-file-import-e2e.ts
+
+# Apply mode — commits all 3 Azik files via group-atomic tx
+DATABASE_URL=… ANTHROPIC_API_KEY=… npx tsx scripts/test-multi-file-import-e2e.ts --apply
+```
+
+The E2E script asserts: 3 files correctly classified, 0 conflicts, 3 groups commit in dependency order, recompute targets > 0, total cost < $0.50, total duration < 120s.
+
 ## 6. Quick reference
 
 ```bash

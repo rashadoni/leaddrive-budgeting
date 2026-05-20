@@ -211,3 +211,74 @@ describe("runBalanceSheetBatch — round-trip", () => {
     expect(r.reconciliation.verdict).toBe("red")
   })
 })
+
+// ─── Phase 7.M Tier 5 — outer transaction support ─────────────────────────────
+
+describe("runBalanceSheetBatch — outer-transaction mode (Phase 7.M Tier 5)", () => {
+  it("call with PrismaClient still wraps own $transaction (back-compat)", async () => {
+    const prisma = makeFakePrisma()
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([R("BS.01.01.01", 100)])
+    const result = await runBalanceSheetBatch(prisma, plan)
+    expect(txSpy).toHaveBeenCalledTimes(1)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("call with TransactionClient (no $transaction method) does NOT wrap", async () => {
+    const prisma = makeFakePrisma()
+    const tx = new Proxy(prisma, {
+      get(target, prop) {
+        if (prop === "$transaction") return undefined
+        return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+      },
+    })
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([R("BS.01.01.01", 100)])
+    const result = await runBalanceSheetBatch(
+      tx as unknown as PrismaClient,
+      plan,
+    )
+    expect(txSpy).not.toHaveBeenCalled()
+    expect(result.reconciliation.verdict).toBe("green")
+    expect(prisma.__bs.filter((r) => r.deletedAt === null)).toHaveLength(1)
+  })
+
+  it("two batches inside the same outer $transaction share visibility", async () => {
+    const prisma = makeFakePrisma()
+    // Different planIds so the second batch's reset doesn't archive
+    // the first batch's writes — mirrors the real multi-file pattern
+    // where each entity gets its own plan slice.
+    const planA = planFor(
+      [
+        {
+          ...R("BS.01.01.01", 100),
+          planId: "plan_A",
+        },
+      ],
+      { label: "fileA", planIds: ["plan_A"] },
+    )
+    const planB = planFor(
+      [
+        {
+          ...R("BS.02.01.01", 200),
+          planId: "plan_B",
+        },
+      ],
+      { label: "fileB", planIds: ["plan_B"] },
+    )
+    const results = await prisma.$transaction(async (tx) => {
+      const txClient = new Proxy(tx as unknown as PrismaClient, {
+        get(target, prop) {
+          if (prop === "$transaction") return undefined
+          return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+        },
+      }) as unknown as PrismaClient
+      const ra = await runBalanceSheetBatch(txClient, planA)
+      const rb = await runBalanceSheetBatch(txClient, planB)
+      return [ra, rb]
+    })
+    expect(results[0].reconciliation.verdict).toBe("green")
+    expect(results[1].reconciliation.verdict).toBe("green")
+    expect(prisma.__bs.filter((r) => r.deletedAt === null)).toHaveLength(2)
+  })
+})

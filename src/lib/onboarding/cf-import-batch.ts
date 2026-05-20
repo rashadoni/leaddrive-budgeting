@@ -85,11 +85,17 @@ export interface CfImportResult {
 }
 
 export async function runCashFlowBatch(
-  prisma: PrismaClient,
+  /**
+   * Phase 7.M Tier 5 — accepts PrismaClient (legacy single-file path:
+   * opens own tx) OR Prisma.TransactionClient (multi-file orchestrator
+   * path: caller-managed outer tx). Detected at runtime via
+   * `$transaction` method presence.
+   */
+  prismaOrTx: PrismaClient | Prisma.TransactionClient,
   plan: CfImportPlan,
   opts: {
     readActualSums?: (
-      prismaClient: PrismaClient,
+      prismaClient: PrismaClient | Prisma.TransactionClient,
       input: {
         organizationId: string
         sourceTag: string
@@ -99,6 +105,9 @@ export async function runCashFlowBatch(
     batchIdFactory?: () => string
   } = {},
 ): Promise<CfImportResult> {
+  const isOuterTx =
+    typeof (prismaOrTx as PrismaClient).$transaction !== "function"
+  const dbHandle = prismaOrTx as PrismaClient & Prisma.TransactionClient
   const startedAt = new Date()
   const batchId =
     opts.batchIdFactory?.() ??
@@ -112,8 +121,7 @@ export async function runCashFlowBatch(
     ),
   )
 
-  const { resetArchived, resetPurged, rowsInserted } =
-    await prisma.$transaction(async (tx) => {
+  const writePhase = async (tx: Prisma.TransactionClient) => {
       const yearFilter =
         yearScope.length > 0 ? { year: { in: yearScope } } : {}
 
@@ -162,15 +170,18 @@ export async function runCashFlowBatch(
         inserted = result.count
       }
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
-    })
+  }
+  const { resetArchived, resetPurged, rowsInserted } = isOuterTx
+    ? await writePhase(dbHandle as Prisma.TransactionClient)
+    : await (prismaOrTx as PrismaClient).$transaction(writePhase)
 
   const actualSums = opts.readActualSums
-    ? await opts.readActualSums(prisma, {
+    ? await opts.readActualSums(dbHandle, {
         organizationId: plan.organizationId,
         sourceTag: plan.sourceTag,
         periodScope: plan.periodScope,
       })
-    : await defaultReadActualCfSums(prisma, plan)
+    : await defaultReadActualCfSums(dbHandle, plan)
 
   const reconciliation = reconcile(
     plan.expectedSums,
@@ -200,7 +211,7 @@ export async function runCashFlowBatch(
 }
 
 async function defaultReadActualCfSums(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   plan: CfImportPlan,
 ): Promise<Map<ReconciliationKey, number>> {
   const yearScope = Array.from(

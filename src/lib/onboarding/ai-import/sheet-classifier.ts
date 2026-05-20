@@ -57,6 +57,10 @@ export interface SheetClassifierInput {
   knownEntityCodes?: string[]
   /** Optional: org primary industry hint. */
   orgIndustry?: string
+  /** Phase 7.M Tier 5 — optional filename hint as soft prior for the
+   *  classifier (e.g. "Farming strategy - Guvven.xlsx" → suggests
+   *  forward-forecast). Does NOT override sheet-shape evidence. */
+  filenameHint?: string
 }
 
 export interface SheetClassifierResult {
@@ -222,6 +226,7 @@ export async function classifySheets(
     sheets: needsLLM.map(metaForLLM),
     knownEntityCodes: input.knownEntityCodes,
     orgIndustry: input.orgIndustry,
+    filenameHint: input.filenameHint,
   })
 
   const response = await anthropicClient.messages.create({

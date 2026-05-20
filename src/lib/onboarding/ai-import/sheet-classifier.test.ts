@@ -276,4 +276,50 @@ describe("classifySheets", () => {
     expect(result.classifications[0].entityCode).toBeNull()
     expect(result.classifications[0].dataType).toBe("KPI_FARMING")
   })
+
+  // Phase 7.M Tier 5 — filename hint propagation
+  it("passes filenameHint through to user message", async () => {
+    let capturedSystem = ""
+    let capturedUserMsg = ""
+    const client: SheetClassifierAnthropicLike = {
+      messages: {
+        create: vi.fn(async (params) => {
+          capturedSystem = params.system
+          capturedUserMsg = params.messages[0].content
+          return {
+            stop_reason: "end_turn",
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  classifications: [
+                    {
+                      sheetName: "Sheet1",
+                      dataType: "PLF",
+                      entityCode: null,
+                      confidence: 0.9,
+                      reasoning: "x",
+                    },
+                  ],
+                }),
+              },
+            ],
+            usage: { input_tokens: 10, output_tokens: 5 },
+          }
+        }),
+      },
+    }
+    await classifySheets(
+      {
+        sheetMetas: [meta("Sheet1")],
+        filenameHint: "Farming strategy - Guvven.xlsx",
+      },
+      client,
+      "claude-test",
+    )
+    // Filename hint should appear in user message verbatim
+    expect(capturedUserMsg).toContain("Farming strategy - Guvven.xlsx")
+    expect(capturedUserMsg).toContain("forward-forecast")
+    expect(capturedSystem).toBeTruthy() // system prompt still applied
+  })
 })

@@ -192,6 +192,41 @@ read that for the current picture, not this file. High-level snapshot:
   + 14/14 entity correct (cost $0.13/run). **Test infra**: vitest
   testTimeout 5s→30s + retry=2 + testing-library asyncUtilTimeout
   30s for CPU-contention flake stabilization.
+- **Phase 7.M Tier 5 — shipped 2026-05-20.** Multi-file AI Import
+  with group-level atomicity + cross-file conflict detection,
+  end-to-end functional (apply mode writes real data).
+  Plan archived: `~/.claude/plans/jazzy-spinning-noodle.md`. **New
+  modules**: `ai-import/file-type-detector.ts` (7 file-types),
+  `ai-import/conflict-detector.ts` (cell-level cross-file diff),
+  `ai-import/multi-file-orchestrator.ts` (parallel meta+classify
+  → conflict gate → group-atomic apply → single recompute),
+  `ai-import/production-adapter-registry.ts` (770+ LOC — wires
+  ALL 11 dataTypes into AdapterRegistry shape; PLF/BS/CF/KPI/SALES
+  via `run*Batch(tx, ...)`, soft-data Land/CAPEX/Descriptions/
+  ForwardForecast via direct `tx.company.update` / `tx.organization
+  .update`; closure caches plan+companies per orchestrator call).
+  **Batch fns extended** (import-batch / bs / cf / kpi): accept
+  `PrismaClient | Prisma.TransactionClient` for caller-managed
+  outer tx — back-compat preserved (detection via `$transaction`
+  method presence). **New endpoint**: `POST /api/import/ai-auto-multi`
+  — 1-10 files, admin-gated, 3/hour/org rate-limit, 20 MB total
+  cap, pre-checked cost budget (N × 35K tokens), 409 with diff
+  payload when conflicts found (zero DB writes). **New UI**:
+  `MultiFileForm.tsx` + tabs wrapper on `/budgeting/admin/ai-import`
+  (toggle "1 файл" / "Несколько файлов"). **Filename hint**:
+  classifier system prompt + `buildSheetClassifierUserMessage`
+  now accept `filenameHint` as soft prior (e.g. "Farming strategy"
+  → forward-forecast). **Apply-order graph**: descriptions →
+  main-financial → kpi-only → capex-plan → land-registry →
+  forward-forecast (deps respect bedrock data ordering).
+  **E2E test**: `scripts/test-multi-file-import-e2e.ts` —
+  uploads 3 real Azik files (Guvven Fin / Çıxarışların / Farming
+  strategy), validates classifications + conflict-free + 3 groups
+  commit + recompute fires + cost <$0.50 + duration <120s.
+  **Tests added**: 11 file-type-detector + 10 conflict-detector +
+  9 outer-tx (import/bs/cf/kpi) + 9 multi-file-orchestrator +
+  11 handler + 9 UI + 9 production-adapter-registry + 1 filename-hint
+  = 70 new cases; full suite 5042 passing.
 
 ### Key files
 

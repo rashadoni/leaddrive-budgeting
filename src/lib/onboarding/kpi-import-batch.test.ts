@@ -179,3 +179,64 @@ describe("runKpiBatch — round-trip", () => {
     expect(r.reconciliation.verdict).toBe("red")
   })
 })
+
+// ─── Phase 7.M Tier 5 — outer transaction support ─────────────────────────────
+
+describe("runKpiBatch — outer-transaction mode (Phase 7.M Tier 5)", () => {
+  it("call with PrismaClient still wraps own $transaction (back-compat)", async () => {
+    const prisma = makeFakePrisma()
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([F("area_hectares", 100)])
+    const result = await runKpiBatch(prisma, plan)
+    expect(txSpy).toHaveBeenCalledTimes(1)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("call with TransactionClient (no $transaction method) does NOT wrap", async () => {
+    const prisma = makeFakePrisma()
+    const tx = new Proxy(prisma, {
+      get(target, prop) {
+        if (prop === "$transaction") return undefined
+        return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+      },
+    })
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([F("area_hectares", 100)])
+    const result = await runKpiBatch(
+      tx as unknown as PrismaClient,
+      plan,
+    )
+    expect(txSpy).not.toHaveBeenCalled()
+    expect(result.reconciliation.verdict).toBe("green")
+    expect(prisma.__kpi).toHaveLength(1)
+  })
+
+  it("two batches inside the same outer $transaction share visibility", async () => {
+    const prisma = makeFakePrisma()
+    // Different companyIds so the second batch's reset doesn't archive
+    // the first batch's writes — multi-file pattern uses one company
+    // per file's adapter handler.
+    const planA = planFor(
+      [{ ...F("area_hectares", 100), companyId: "c_eden" }],
+      { label: "fileA", companyIds: ["c_eden"] },
+    )
+    const planB = planFor(
+      [{ ...F("yield_per_ha", 5.5, "2026-11-30"), companyId: "c_cpc" }],
+      { label: "fileB", companyIds: ["c_cpc"] },
+    )
+    const results = await prisma.$transaction(async (tx) => {
+      const txClient = new Proxy(tx as unknown as PrismaClient, {
+        get(target, prop) {
+          if (prop === "$transaction") return undefined
+          return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+        },
+      }) as unknown as PrismaClient
+      const ra = await runKpiBatch(txClient, planA)
+      const rb = await runKpiBatch(txClient, planB)
+      return [ra, rb]
+    })
+    expect(results[0].reconciliation.verdict).toBe("green")
+    expect(results[1].reconciliation.verdict).toBe("green")
+    expect(prisma.__kpi).toHaveLength(2)
+  })
+})

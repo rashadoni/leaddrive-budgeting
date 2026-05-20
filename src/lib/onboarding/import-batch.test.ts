@@ -321,3 +321,120 @@ describe("runImportBatch — recompute hook is invoked exactly once per affected
     expect(result.reconciliation.verdict).toBe("green")
   })
 })
+
+// ─── Phase 7.M Tier 5 — outer transaction support ─────────────────────────────
+
+describe("runImportBatch — outer-transaction mode (Phase 7.M Tier 5)", () => {
+  it("call with PrismaClient still wraps own $transaction (back-compat)", async () => {
+    const prisma = makeFakePrisma()
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([R("PLF.01.01.01", 100)])
+    const result = await runImportBatch(prisma, plan)
+    expect(txSpy).toHaveBeenCalledTimes(1)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("call with TransactionClient (no $transaction method) does NOT wrap", async () => {
+    const prisma = makeFakePrisma()
+    // Simulate a Prisma.TransactionClient: it lacks the $transaction
+    // method by definition (the type strips it). We mimic that by
+    // creating a proxy that delegates everything to the underlying
+    // fake EXCEPT $transaction.
+    const tx = new Proxy(prisma, {
+      get(target, prop) {
+        if (prop === "$transaction") return undefined
+        return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+      },
+    })
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    const plan = planFor([R("PLF.01.01.01", 100)])
+    const result = await runImportBatch(
+      tx as unknown as PrismaClient,
+      plan,
+    )
+    // The outer-tx path must NOT open a new $transaction.
+    expect(txSpy).not.toHaveBeenCalled()
+    // The write still landed and reconciles green.
+    expect(result.reconciliation.verdict).toBe("green")
+    expect(prisma.__budgetLines.filter((b) => b.deletedAt === null)).toHaveLength(1)
+  })
+
+  it("two batches inside the same outer $transaction share write visibility", async () => {
+    const prisma = makeFakePrisma({
+      companyCodeById: { c_azsf: "AZSEKER-AZSF", c_cpc: "AZSEKER-CPC" },
+    })
+    const planA = planFor([R("PLF.01.01.01", 100)], { label: "fileA" })
+    const planB = planFor(
+      [
+        {
+          companyId: "c_cpc",
+          category: "PLF.02.01.01",
+          lineType: "revenue",
+          period: "2026-04",
+          monthIndex: 3,
+          plannedAmount: 200,
+          currencyCode: "AZN",
+          exchangeRate: null,
+          planId: "plan_2026",
+          sourceCell: "fileB.xlsx#Sheet1!A1",
+        },
+      ],
+      {
+        label: "fileB",
+        companyIds: ["c_cpc"],
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.02.01.01", "2026-04"), 200],
+        ]),
+      },
+    )
+    // Run both inside one outer $transaction (the orchestrator pattern).
+    const results = await prisma.$transaction(async (tx) => {
+      // Strip $transaction so the runner takes the outer-tx path.
+      const txClient = new Proxy(tx as unknown as PrismaClient, {
+        get(target, prop) {
+          if (prop === "$transaction") return undefined
+          return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+        },
+      }) as unknown as PrismaClient
+      const ra = await runImportBatch(txClient, planA)
+      const rb = await runImportBatch(txClient, planB)
+      return [ra, rb]
+    })
+    expect(results[0].reconciliation.verdict).toBe("green")
+    expect(results[1].reconciliation.verdict).toBe("green")
+    expect(prisma.__budgetLines.filter((b) => b.deletedAt === null)).toHaveLength(2)
+  })
+
+  it("outer-tx mode: a failing later phase short-circuits (caller's tx rolls back)", async () => {
+    const prisma = makeFakePrisma()
+    const txClient = new Proxy(prisma, {
+      get(target, prop) {
+        if (prop === "$transaction") return undefined
+        return (target as unknown as Record<string | symbol, unknown>)[prop as string]
+      },
+    }) as unknown as PrismaClient
+    const plan = planFor([R("PLF.01.01.01", 100)])
+    // Hook into outer code: run two batches inside one $transaction;
+    // make the second batch throw, verify the orchestrator sees it.
+    let observedError: unknown = null
+    try {
+      await prisma.$transaction(async () => {
+        await runImportBatch(txClient, plan)
+        // Force a failure mid-group (simulates a write error in batch 2).
+        throw new Error("synthetic mid-group failure")
+      })
+    } catch (e) {
+      observedError = e
+    }
+    expect(observedError).toBeInstanceOf(Error)
+    expect((observedError as Error).message).toMatch(/synthetic mid-group/i)
+    // Our fake prisma doesn't actually roll back (mock limitation), but
+    // the contract that matters here is: the inner batch did NOT open
+    // its own tx (so a real Postgres would roll back the entire outer
+    // tx including the first batch's writes).
+    const txSpy = prisma.$transaction as unknown as ReturnType<typeof vi.fn>
+    // One outer call → the orchestrator's tx. Zero inner calls from
+    // runImportBatch (because we passed the txClient proxy).
+    expect(txSpy).toHaveBeenCalledTimes(1)
+  })
+})

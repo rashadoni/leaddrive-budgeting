@@ -1,0 +1,791 @@
+/**
+ * Phase 7.M Tier 5 (2026-05-20) — Multi-file orchestrator tests.
+ *
+ * Hermetic: in-memory prisma + anthropic + xlsx stubs. Tests cover the
+ * 8 scenarios from the plan:
+ *   1. 1 file (main-financial) → green commit
+ *   2. 3 files (main + land + forward) → 3 groups all green
+ *   3. 2 files same type + conflict → 409 (no DB writes)
+ *   4. 1 file main fails (parse error) → group rolled back, others OK
+ *   5. LLM classify fails for one file → other files still processed
+ *   6. dryRun=true → no DB writes, preview only
+ *   7. forceOverride=true → commits despite conflict
+ *   8. unknown file-type → skipped with warning
+ */
+import { describe, it, expect, vi } from "vitest"
+import {
+  runMultiFileImport,
+  type MultiFileImportDependencies,
+  type MultiFileImportInput,
+} from "./multi-file-orchestrator"
+import { buildRegistryWith, type AdapterHandler } from "./adapter-registry"
+import type { SheetClassifierAnthropicLike } from "./sheet-classifier"
+import type { PrismaClient } from "@prisma/client"
+import { buildReconKey } from "../reconciliation"
+
+// ─── Stubs ──────────────────────────────────────────────────────────────
+
+function classifyResponse(classifications: unknown[]) {
+  return {
+    stop_reason: "end_turn" as const,
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify({ classifications }),
+      },
+    ],
+    usage: { input_tokens: 100, output_tokens: 50 },
+  }
+}
+
+/** Anthropic stub that returns a different classification per call,
+ *  based on the order of files in the input. */
+function stubClientPerCall(
+  responses: unknown[][],
+): SheetClassifierAnthropicLike {
+  let i = 0
+  return {
+    messages: {
+      create: vi.fn(async () => {
+        if (i >= responses.length) {
+          throw new Error(`Stub exhausted at call ${i + 1}`)
+        }
+        return classifyResponse(responses[i++])
+      }),
+    },
+  }
+}
+
+/** Prisma stub: $transaction passes a fake tx, $company.findMany returns
+ *  whatever map you provide. */
+function stubPrisma(
+  opts: { companies?: Array<{ id: string; code: string }>; failTx?: boolean } = {},
+): PrismaClient & { __txCallCount: { n: number } } {
+  const counters = { n: 0 }
+  const fake = {
+    __txCallCount: counters,
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<void>) => {
+      counters.n++
+      if (opts.failTx) throw new Error("synthetic tx failure")
+      await cb({})
+    }),
+    company: {
+      findMany: vi.fn(async () => opts.companies ?? []),
+      // recompute-trigger expects company.findMany to return a richer
+      // shape — we keep it minimal because we override the recompute
+      // trigger via the `RunRecomputeResult` mock below.
+    },
+    indicatorDefinition: {
+      findMany: vi.fn(async () => []),
+    },
+  } as unknown as PrismaClient & { __txCallCount: { n: number } }
+  return fake
+}
+
+const fakeWorkbook = (sheetName: string) => ({
+  Sheets: { [sheetName]: { "!ref": "A1:C3" } },
+  SheetNames: [sheetName],
+})
+
+const fakeXLSX = {
+  utils: {
+    sheet_to_json: () => [
+      ["x1", "y1", 100],
+      ["x2", "y2", 200],
+    ],
+  },
+}
+
+function plfHandler(rowsInserted = 2): AdapterHandler {
+  return async () => ({
+    summary: "PLF ok",
+    itemCount: rowsInserted,
+    warnings: [],
+    applyToDb: vi.fn(async () => ({ rowsInserted })),
+    // expectedSums for cross-file conflict detection
+    expectedSums: new Map([
+      [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), 100],
+    ]),
+  } as unknown as Awaited<ReturnType<AdapterHandler>>)
+}
+
+function landHandler(rowsInserted = 17): AdapterHandler {
+  return async () => ({
+    summary: "land ok",
+    itemCount: rowsInserted,
+    warnings: [],
+    applyToDb: vi.fn(async () => ({ rowsInserted })),
+  })
+}
+
+function descHandler(rowsInserted = 1): AdapterHandler {
+  return async () => ({
+    summary: "desc ok",
+    itemCount: rowsInserted,
+    warnings: [],
+    applyToDb: vi.fn(async () => ({ rowsInserted })),
+  })
+}
+
+// ─── Tests ──────────────────────────────────────────────────────────────
+
+describe("runMultiFileImport", () => {
+  it("1 file (main-financial) → committed green", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "PLF prefix",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "BS prefix",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "Guvven Fin.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+
+    expect(result.overallVerdict).toBe("green")
+    expect(result.perFile).toHaveLength(1)
+    expect(result.perFile[0].fileTypeResult.fileType).toBe("main-financial")
+    expect(result.perGroup).toHaveLength(1)
+    expect(result.perGroup[0].committed).toBe(true)
+    expect(result.perGroup[0].verdict).toBe("green")
+    expect(prisma.__txCallCount.n).toBe(1) // one tx for one group
+    expect(result.conflicts).toEqual([])
+  })
+
+  it("3 files (descriptions + main + land) → 3 groups commit in dependency order", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      // file 1: descriptions
+      [
+        {
+          sheetName: "Təsvir",
+          dataType: "DESCRIPTIONS",
+          entityCode: null,
+          confidence: 0.92,
+          reasoning: "narrative",
+        },
+      ],
+      // file 2: main-financial
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "PLF prefix",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "BS prefix",
+        },
+      ],
+      // file 3: land registry
+      [
+        {
+          sheetName: "Çıxarış",
+          dataType: "LAND_REGISTRY",
+          entityCode: "AZSEKER-EDEN",
+          confidence: 0.9,
+          reasoning: "parcels",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        { filename: "Descriptions.xlsx", workbook: fakeWorkbook("Təsvir") },
+        {
+          filename: "Guvven Fin.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+        {
+          filename: "Çıxarışların uçotu.xlsx",
+          workbook: fakeWorkbook("Çıxarış"),
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        DESCRIPTIONS: descHandler(1),
+        PLF: plfHandler(2),
+        BS: plfHandler(1),
+        LAND_REGISTRY: landHandler(17),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+
+    expect(result.overallVerdict).toBe("green")
+    expect(result.perGroup).toHaveLength(3)
+    // Apply order: strategic-descriptions (0) → main-financial (1) → land-registry (4)
+    expect(result.perGroup.map((g) => g.fileType)).toEqual([
+      "strategic-descriptions",
+      "main-financial",
+      "land-registry",
+    ])
+    expect(result.perGroup.every((g) => g.committed)).toBe(true)
+    expect(prisma.__txCallCount.n).toBe(3) // one tx per group
+  })
+
+  it("2 files same file-type with cell conflict → returns conflicts[], 0 DB writes", async () => {
+    const prisma = stubPrisma()
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    // Handler returns different expected sums per file (simulates
+    // conflicting xlsx values)
+    let callCount = 0
+    const conflictingPlf: AdapterHandler = async () => {
+      callCount++
+      const value = callCount === 1 ? 100 : 150
+      return {
+        summary: "x",
+        itemCount: 1,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: 1 })),
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), value],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "fileA.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+        {
+          filename: "fileB.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: conflictingPlf,
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+
+    expect(result.conflicts).toHaveLength(1)
+    expect(result.overallVerdict).toBe("red")
+    expect(result.perGroup).toEqual([]) // no groups attempted
+    expect(prisma.__txCallCount.n).toBe(0) // ZERO tx opens
+    // Both files were classified — that's not why we aborted
+    expect(result.perFile).toHaveLength(2)
+  })
+
+  it("forceOverride=true commits despite conflict", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    let callCount = 0
+    const conflictingPlf: AdapterHandler = async () => {
+      callCount++
+      const value = callCount === 1 ? 100 : 150
+      return {
+        summary: "x",
+        itemCount: 1,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: 1 })),
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), value],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "fileA.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+        {
+          filename: "fileB.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      forceOverride: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: conflictingPlf,
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    // Conflicts still surfaced for audit, but commit proceeds.
+    expect(result.conflicts.length).toBeGreaterThan(0)
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0) // tx opened
+    expect(result.perGroup.length).toBeGreaterThan(0)
+  })
+
+  it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {
+    const prisma = stubPrisma()
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "Guvven Fin.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+
+    expect(result.perGroup).toHaveLength(1)
+    expect(result.perGroup[0].committed).toBe(false)
+    expect(result.perGroup[0].skipReason).toMatch(/dryRun/i)
+    expect(prisma.__txCallCount.n).toBe(0)
+  })
+
+  it("classify error on one file does not abort other files", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    // First call throws (rate-limit / network) → second call succeeds.
+    let callCount = 0
+    const client: SheetClassifierAnthropicLike = {
+      messages: {
+        create: vi.fn(async () => {
+          callCount++
+          if (callCount === 1) throw new Error("rate_limit_error")
+          return classifyResponse([
+            {
+              sheetName: "PLF CPC",
+              dataType: "PLF",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.95,
+              reasoning: "x",
+            },
+            {
+              sheetName: "BS CPC",
+              dataType: "BS",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.9,
+              reasoning: "y",
+            },
+          ])
+        }),
+      },
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        { filename: "fail.xlsx", workbook: fakeWorkbook("X") },
+        {
+          filename: "ok.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+
+    // file 1: error captured
+    const failFile = result.perFile.find((f) => f.filename === "fail.xlsx")!
+    expect(failFile.error).toMatch(/rate_limit/i)
+    expect(failFile.fileTypeResult.fileType).toBe("unknown")
+    // file 2: still classified + committed
+    const okFile = result.perFile.find((f) => f.filename === "ok.xlsx")!
+    expect(okFile.error).toBeNull()
+    expect(okFile.fileTypeResult.fileType).toBe("main-financial")
+    // ok.xlsx group should have committed
+    const mainGroup = result.perGroup.find(
+      (g) => g.fileType === "main-financial",
+    )
+    expect(mainGroup?.committed).toBe(true)
+  })
+
+  it("unknown file-type is skipped, not committed", async () => {
+    const prisma = stubPrisma()
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "Strange",
+          dataType: "UNKNOWN",
+          entityCode: null,
+          confidence: 0.2,
+          reasoning: "unclear",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        { filename: "mystery.xlsx", workbook: fakeWorkbook("Strange") },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({}),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    expect(result.perFile[0].fileTypeResult.fileType).toBe("unknown")
+    expect(result.perGroup).toHaveLength(1)
+    expect(result.perGroup[0].verdict).toBe("skipped")
+    expect(result.perGroup[0].committed).toBe(false)
+    expect(prisma.__txCallCount.n).toBe(0)
+  })
+
+  it("adapter throws inside group tx → that group's writes roll back, others continue", async () => {
+    // Simulate: 2 files, group A (descriptions) commits, group B (main-financial) throws.
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "Təsvir",
+          dataType: "DESCRIPTIONS",
+          entityCode: null,
+          confidence: 0.95,
+          reasoning: "x",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    const throwingPlf: AdapterHandler = async () => ({
+      summary: "ok parse",
+      itemCount: 1,
+      warnings: [],
+      applyToDb: vi.fn(async () => {
+        throw new Error("DB constraint blew up")
+      }),
+    })
+    const input: MultiFileImportInput = {
+      files: [
+        { filename: "Descriptions.xlsx", workbook: fakeWorkbook("Təsvir") },
+        {
+          filename: "Guvven Fin.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        DESCRIPTIONS: descHandler(1),
+        PLF: throwingPlf,
+        BS: plfHandler(1),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    // descriptions group commits
+    const descGroup = result.perGroup.find(
+      (g) => g.fileType === "strategic-descriptions",
+    )
+    expect(descGroup?.committed).toBe(true)
+    // main-financial group fails
+    const mainGroup = result.perGroup.find(
+      (g) => g.fileType === "main-financial",
+    )
+    expect(mainGroup?.committed).toBe(false)
+    expect(mainGroup?.verdict).toBe("red")
+    expect(result.overallVerdict).toBe("red") // worst dominates
+    // Two tx opens — one for desc (success), one for main (rolled back).
+    expect(prisma.__txCallCount.n).toBe(2)
+  })
+
+  it("aggregates LLM usage across files", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "Çıxarış",
+          dataType: "LAND_REGISTRY",
+          entityCode: "AZSEKER-EDEN",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "fin.xlsx",
+          workbook: {
+            Sheets: {
+              "PLF CPC": { "!ref": "A1:C3" },
+              "BS CPC": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["PLF CPC", "BS CPC"],
+          },
+        },
+        { filename: "land.xlsx", workbook: fakeWorkbook("Çıxarış") },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BS: plfHandler(1),
+        LAND_REGISTRY: landHandler(17),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    // 2 files × 100 input + 50 output per file
+    expect(result.llmUsage.inputTokens).toBe(200)
+    expect(result.llmUsage.outputTokens).toBe(100)
+    expect(result.llmUsage.modelName).toBe("claude-test")
+  })
+})
