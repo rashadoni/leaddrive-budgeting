@@ -117,6 +117,10 @@ interface OrgContext {
   // SALES_FORECAST handler. Lower-cased label → id map matches the
   // /api/budgeting/sales-forecast/import resolution shape.
   deptLabelToId: Map<string, string>
+  /** Map: ChartOfAccount.code → ChartOfAccount.id. Used by PLF/BS/CF
+   *  handlers to populate accountId on every imported row so P&L
+   *  classification is exact (no regex heuristics needed). */
+  coaByCode: Map<string, string>
 }
 
 /**
@@ -175,6 +179,14 @@ async function resolveOrgContext(
     ]),
   )
 
+  const coaEntries = await prisma.chartOfAccount.findMany({
+    where: { organizationId },
+    select: { id: true, code: true },
+  })
+  const coaByCode = new Map<string, string>(
+    coaEntries.map((a: { id: string; code: string }) => [a.code, a.id]),
+  )
+
   return {
     organizationId,
     year,
@@ -182,6 +194,7 @@ async function resolveOrgContext(
     planId: plan.id,
     azsekerCompanies,
     deptLabelToId,
+    coaByCode,
   }
 }
 
@@ -244,9 +257,10 @@ function makePlfHandler(
         const amount = line.perMonth[m]
         if (amount === 0) continue
         const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
+        const categoryCode = `${input.entityCode}-${line.code}`
         rows.push({
           companyId,
-          category: `${input.entityCode}-${line.code}`,
+          category: categoryCode,
           lineType: line.accountType,
           period,
           monthIndex: m,
@@ -254,6 +268,7 @@ function makePlfHandler(
           currencyCode: "AZN",
           exchangeRate: null,
           planId: ctx.planId,
+          accountId: ctx.coaByCode.get(categoryCode) ?? null,
           sourceCell: `multi-import#${input.sheetName}!${line.code}@${period}`,
         })
         const key = buildReconKey(

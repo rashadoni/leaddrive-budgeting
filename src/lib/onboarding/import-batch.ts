@@ -81,6 +81,9 @@ export interface ImportBatchRow {
   currencyCode: string | null
   exchangeRate: number | null
   planId: string
+  /** FK to ChartOfAccount. When set, P&L classification is exact
+   *  (uses account.accountType) — no regex heuristics needed. */
+  accountId?: string | null
   /** Free-form provenance — typically `Filename.xlsx#Sheet!A1:F123`. */
   sourceCell: string
 }
@@ -254,6 +257,7 @@ export async function runImportBatch(
         currencyCode: r.currencyCode,
         exchangeRate: r.exchangeRate,
         monthIndex: r.monthIndex,
+        accountId: r.accountId ?? null,
         sourceDocument: r.sourceCell,
       }))
       let inserted = 0

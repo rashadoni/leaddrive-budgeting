@@ -101,6 +101,7 @@ function buildPrismaStub(overrides: {
   companies?: Array<{ id: string; code: string }>
   plan?: { id: string } | null
   departments?: Array<{ id: string; label: string }>
+  coa?: Array<{ id: string; code: string }>
 } = {}): PrismaClient {
   const fake = {
     company: {
@@ -120,6 +121,9 @@ function buildPrismaStub(overrides: {
     // revenue-generating BudgetDepartments to build label → id map.
     budgetDepartment: {
       findMany: vi.fn(async () => overrides.departments ?? []),
+    },
+    chartOfAccount: {
+      findMany: vi.fn(async () => overrides.coa ?? []),
     },
   } as unknown as PrismaClient
   return fake
