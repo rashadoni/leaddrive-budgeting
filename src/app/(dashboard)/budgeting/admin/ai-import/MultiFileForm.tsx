@@ -172,6 +172,17 @@ export function MultiFileForm() {
     setApplyResult(null)
   }
 
+  function resetAll(): void {
+    setFiles([])
+    setPreviewResult(null)
+    setApplyResult(null)
+    setError(null)
+    setForceOverride(false)
+    setResolutions({})
+    if (inputRef.current) inputRef.current.value = ""
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   async function submit(apply: boolean): Promise<void> {
     if (files.length === 0) return
     setIsProcessing(true)
@@ -524,6 +535,36 @@ export function MultiFileForm() {
               успешно
             </p>
           )}
+        </div>
+      )}
+
+      {/* Step 3 — shown after successful apply */}
+      {applyResult && applyResult.overallVerdict !== "red" && (
+        <div
+          className="rounded-lg border-2 border-emerald-400 bg-emerald-50 p-5 space-y-3"
+          data-testid="step3-done"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="font-semibold text-emerald-800">Шаг 3 — Импорт завершён</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                {applyResult.perGroup
+                  .filter((g) => g.committed)
+                  .reduce((s, g) => s + g.totalRowsInserted, 0)}{" "}
+                строк записано ·{" "}
+                {applyResult.perGroup.filter((g) => g.committed).length} группа(ы) применены
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={resetAll}
+            className="px-4 py-2 bg-emerald-600 text-white rounded font-medium hover:bg-emerald-700 text-sm"
+            data-testid="btn-reset"
+          >
+            ↩ Начать заново (загрузить следующие файлы)
+          </button>
         </div>
       )}
     </div>
