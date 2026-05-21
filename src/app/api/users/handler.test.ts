@@ -17,6 +17,11 @@ const { prismaMock } = vi.hoisted(() => ({
       create: vi.fn(),
     },
     auditEvent: { create: vi.fn() },
+    // Phase 5.2 Stage 2 Tier 4 — withOrgScope wraps users reads/writes.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }))
 
@@ -30,7 +35,8 @@ vi.mock("bcryptjs", () => ({
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = "cm3rlsusers00000001abc"
 
 beforeEach(() => {
   prismaMock.user.findMany.mockReset().mockResolvedValue([])

@@ -14,6 +14,8 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import bcrypt from "bcryptjs"
 import { randomBytes } from "crypto"
+// Phase 5.2 Stage 2 Tier 4 (2026-05-21) — RLS wrap for users reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const ALLOWED_ROLES = ["admin", "manager", "editor", "viewer"] as const
 type Role = (typeof ALLOWED_ROLES)[number]
@@ -37,19 +39,21 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const users = await prisma.user.findMany({
-    where: { organizationId: session.orgId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      isActive: true,
-      lastLogin: true,
-      allowedSubGroupIds: true,
-    },
-    orderBy: [{ role: "asc" }, { name: "asc" }],
-  })
+  const users = await withOrgScope(session.orgId, async (tx) =>
+    tx.user.findMany({
+      where: { organizationId: session.orgId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        lastLogin: true,
+        allowedSubGroupIds: true,
+      },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    })
+  )
 
   return NextResponse.json({ users })
 }
@@ -87,40 +91,48 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Duplicate email guard — same org cannot have two users with the same email.
-  const existing = await prisma.user.findFirst({
-    where: { organizationId: orgId, email },
-    select: { id: true },
+  const tempPassword = generateTempPassword()
+  const passwordHash = await bcrypt.hash(tempPassword, 10)
+
+  // Duplicate-email check + create in one RLS-scoped transaction.
+  const result = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.user.findFirst({
+      where: { organizationId: orgId, email },
+      select: { id: true },
+    })
+    if (existing) return { emailTaken: true } as const
+
+    const created = await tx.user.create({
+      data: {
+        organizationId: orgId,
+        email,
+        name,
+        role,
+        passwordHash,
+        allowedSubGroupIds: [],
+        isActive: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isActive: true,
+        lastLogin: true,
+        allowedSubGroupIds: true,
+      },
+    })
+    return { created }
   })
-  if (existing) {
+
+  if ("emailTaken" in result) {
     return NextResponse.json(
       { error: "User with this email already exists in your organization", code: "EMAIL_TAKEN" },
       { status: 409 },
     )
   }
 
-  const tempPassword = generateTempPassword()
-  const passwordHash = await bcrypt.hash(tempPassword, 10)
-  const created = await prisma.user.create({
-    data: {
-      organizationId: orgId,
-      email,
-      name,
-      role,
-      passwordHash,
-      allowedSubGroupIds: [],
-      isActive: true,
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-      isActive: true,
-      lastLogin: true,
-      allowedSubGroupIds: true,
-    },
-  })
+  const created = result.created
 
   await logAuditEvent(prisma, {
     organizationId: orgId,

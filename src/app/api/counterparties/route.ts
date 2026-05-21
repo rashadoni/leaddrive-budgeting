@@ -11,6 +11,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+// Phase 5.2 Stage 2 Tier 4 (2026-05-21) — RLS wrap for counterparties reads.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function GET(request: NextRequest) {
   const session = await requireRole(request, "viewer")
@@ -27,16 +29,18 @@ export async function GET(request: NextRequest) {
   if (companyId) where.companyId = companyId
   if (role === "customer" || role === "supplier") where.role = role
 
-  const rows = await prisma.counterparty.findMany({
-    where,
-    orderBy: [{ role: "asc" }, { sharePct: "desc" }],
-    select: {
-      id: true, companyId: true, role: true, name: true,
-      sharePct: true, annualAmount: true,
-      contractExpiry: true, paymentTermsDays: true,
-      singleSource: true, notes: true, period: true,
-    },
-  })
+  const rows = await withOrgScope(session.orgId, async (tx) =>
+    tx.counterparty.findMany({
+      where,
+      orderBy: [{ role: "asc" }, { sharePct: "desc" }],
+      select: {
+        id: true, companyId: true, role: true, name: true,
+        sharePct: true, annualAmount: true,
+        contractExpiry: true, paymentTermsDays: true,
+        singleSource: true, notes: true, period: true,
+      },
+    })
+  )
 
   // Aggregate HHI per role for the requested company (or whole org)
   type Row = (typeof rows)[number]

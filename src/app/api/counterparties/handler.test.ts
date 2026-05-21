@@ -15,6 +15,11 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     counterparty: { findMany: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
+    // Phase 5.2 Stage 2 Tier 4 — withOrgScope wraps counterparty reads.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }))
 
@@ -24,7 +29,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = "cm3rlscounterp00001abc"
 
 beforeEach(() => {
   prismaMock.counterparty.findMany.mockReset().mockResolvedValue([])

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
+// Phase 5.2 Stage 2 Tier 4 (2026-05-21) — RLS wrap for companies reads/writes.
+import { withOrgScope } from '@/lib/db/with-org-scope';
 
 // GET: Companies for the caller's organization (roots + 2 levels of descendants)
 //
@@ -24,21 +26,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const companies = await prisma.company.findMany({
-      where: {
-        organizationId: session.orgId,
-        parentCompanyId: null,
-      },
-      include: {
-        children: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            children: { orderBy: { sortOrder: 'asc' } },
+    const companies = await withOrgScope(session.orgId, async (tx) =>
+      tx.company.findMany({
+        where: {
+          organizationId: session.orgId,
+          parentCompanyId: null,
+        },
+        include: {
+          children: {
+            orderBy: { sortOrder: 'asc' },
+            include: {
+              children: { orderBy: { sortOrder: 'asc' } },
+            },
           },
         },
-      },
-      orderBy: { sortOrder: 'asc' },
-    });
+        orderBy: { sortOrder: 'asc' },
+      })
+    );
 
     // Architect Round-1 closure (Turn 40-sub5 / Turn 42-sub10) —
     // multiple terminal panels self-fetch /api/companies on mount
@@ -108,32 +112,37 @@ export async function POST(request: NextRequest) {
       // resolvable and same-org — checked below.
     }
 
-    // If a parent is specified, ensure it belongs to the caller's org
-    if (parentCompanyId) {
-      const parent = await prisma.company.findFirst({
-        where: { id: parentCompanyId, organizationId: session.orgId },
-        select: { id: true },
-      });
-      if (!parent) {
-        return NextResponse.json({ error: 'Invalid parentCompanyId' }, { status: 400 });
+    // If a parent is specified, ensure it belongs to the caller's org;
+    // then create — both in the same RLS-scoped transaction.
+    const result = await withOrgScope(session.orgId, async (tx) => {
+      if (parentCompanyId) {
+        const parent = await tx.company.findFirst({
+          where: { id: parentCompanyId, organizationId: session.orgId },
+          select: { id: true },
+        });
+        if (!parent) return { invalidParent: true } as const;
       }
-    }
-
-    const company = await prisma.company.create({
-      data: {
-        organizationId: session.orgId,
-        parentCompanyId: parentCompanyId || null,
-        code,
-        name,
-        industry: industry || null,
-        level: level ?? (parentCompanyId ? 2 : 1),
-        country: country || null,
-        baseCurrencyCode: baseCurrencyCode || null,
-        isActive: true,
-      },
+      const company = await tx.company.create({
+        data: {
+          organizationId: session.orgId,
+          parentCompanyId: parentCompanyId || null,
+          code,
+          name,
+          industry: industry || null,
+          level: level ?? (parentCompanyId ? 2 : 1),
+          country: country || null,
+          baseCurrencyCode: baseCurrencyCode || null,
+          isActive: true,
+        },
+      });
+      return { company };
     });
 
-    return NextResponse.json(company, { status: 201 });
+    if ('invalidParent' in result) {
+      return NextResponse.json({ error: 'Invalid parentCompanyId' }, { status: 400 });
+    }
+
+    return NextResponse.json(result.company, { status: 201 });
   } catch (error) {
     console.error('Error creating company:', error);
     return NextResponse.json({ error: 'Failed to create company' }, { status: 500 });
