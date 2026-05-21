@@ -25,17 +25,25 @@
  * tables first (indicator_values, companies, audit_events).
  */
 
-import { prisma } from "@/lib/prisma"
-import type { Prisma } from "@prisma/client"
+import { prisma as defaultPrisma } from "@/lib/prisma"
+import type { Prisma, PrismaClient } from "@prisma/client"
 
 type Tx = Omit<
-  ReturnType<typeof prisma.$transaction>,
+  ReturnType<typeof defaultPrisma.$transaction>,
   "$on" | "$connect" | "$disconnect" | "$use" | "$extends" | "$transaction"
 >
 
 interface WithOrgScopeOpts {
   /** When true, sets app.bypass_rls=true so policies short-circuit. */
   bypass?: boolean
+  /**
+   * Override the Prisma client used for the transaction.
+   * Defaults to the global `prisma` singleton. Pass a non-superuser
+   * PrismaClient (e.g. backed by DATABASE_URL_APP) to exercise real
+   * RLS enforcement in integration tests — the dev DATABASE_URL typically
+   * connects as a superuser with BYPASSRLS which silently skips policies.
+   */
+  client?: PrismaClient
 }
 
 export async function withOrgScope<T>(
@@ -43,6 +51,7 @@ export async function withOrgScope<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   opts: WithOrgScopeOpts = {},
 ): Promise<T> {
+  const prisma = opts.client ?? defaultPrisma
   if (!organizationId || organizationId.trim() === "") {
     throw new Error("withOrgScope: organizationId is required")
   }
