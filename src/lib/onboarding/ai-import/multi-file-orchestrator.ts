@@ -97,6 +97,10 @@ const APPLY_ORDER: Record<FileType, number> = {
   // resolution. Mirrors the dependency arrow Plan → Actuals.
   // Phase 7.M Tier 7 (Phase 3).
   "budget-actuals": 1.5,
+  // sales-forecast is org-scoped (no plan dep), but BudgetDepartment
+  // must be seeded (typically already exists for the org). Same tier
+  // as budget-actuals for simplicity. Phase 7.M Tier 7 (Phase 4).
+  "sales-forecast": 1.7,
   "kpi-only": 2,
   // ops-facts shares the operational_facts table with kpi-only; same
   // dependency tier (companies seeded, plf-bs-cf optional) — placed
@@ -423,6 +427,7 @@ export async function runMultiFileImport(
           companies: 0,
           opsFacts: 0,
           budgetActuals: 0,
+          salesForecast: 0,
           unknown: 0,
         },
       })

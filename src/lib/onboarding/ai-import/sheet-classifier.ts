@@ -58,6 +58,14 @@ export type SheetDataType =
   // per transaction with date in a column. Writes to `budget_actuals`
   // table (separate from BudgetLine/PLF) via runActualsBatch.
   | "BUDGET_ACTUALS"
+  // Phase 7.M Tier 7 — import consolidation (Phase 4 of 5). SALES_FORECAST
+  // is a department×month forecast grid: col 1 = department label, cols
+  // 2-13 = 12 month columns (Jan..Dec, full or short, EN/RU/AZ accepted).
+  // Each cell = forecast amount for (department, month). Distinct from
+  // PLF (whose rows are P&L line items like Revenue/COGS/Gross Profit),
+  // and from existing SALES dataType (which writes operational_facts via
+  // Azik KPI handler). Writes to `sales_forecasts` table via runSalesForecastBatch.
+  | "SALES_FORECAST"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -125,6 +133,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "COMPANIES",
   "OPS_FACTS",
   "BUDGET_ACTUALS",
+  "SALES_FORECAST",
   "UNKNOWN",
 ])
 

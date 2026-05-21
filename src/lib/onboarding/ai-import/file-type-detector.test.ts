@@ -206,6 +206,7 @@ describe("detectFileType", () => {
         cls("k", "COMPANIES"),
         cls("m", "OPS_FACTS"),
         cls("n", "BUDGET_ACTUALS"),
+        cls("o", "SALES_FORECAST"),
         cls("l", "UNKNOWN"),
       ],
       "AllShapes.xlsx",
@@ -224,6 +225,7 @@ describe("detectFileType", () => {
       companies: 1,
       opsFacts: 1,
       budgetActuals: 1,
+      salesForecast: 1,
       unknown: 1,
     })
   })
@@ -306,5 +308,44 @@ describe("detectFileType", () => {
     )
     expect(result.fileType).toBe("main-financial")
     expect(result.sheetCounts.budgetActuals).toBe(1)
+  })
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 (Phase 4) — SALES_FORECAST file-type detection
+  // ──────────────────────────────────────────────────────────────────
+
+  it("classifies file with only SALES_FORECAST sheet as sales-forecast (Phase 7.M Tier 7 Phase 4)", () => {
+    const result = detectFileType(
+      [cls("Forecast2026", "SALES_FORECAST")],
+      "sales-forecast.xlsx",
+    )
+    expect(result.fileType).toBe("sales-forecast")
+    expect(result.sheetCounts.salesForecast).toBe(1)
+    expect(result.reasoning).toMatch(/department×month forecast file/)
+  })
+
+  it("classifies multiple SALES_FORECAST sheets as sales-forecast", () => {
+    const result = detectFileType(
+      [
+        cls("Q1 Fcst", "SALES_FORECAST"),
+        cls("Q2 Fcst", "SALES_FORECAST"),
+      ],
+      "quarterly-forecast.xlsx",
+    )
+    expect(result.fileType).toBe("sales-forecast")
+    expect(result.sheetCounts.salesForecast).toBe(2)
+  })
+
+  it("SALES_FORECAST mixed with PLF/BS/CF falls through to main-financial", () => {
+    const result = detectFileType(
+      [
+        cls("Forecast", "SALES_FORECAST"),
+        cls("PLF X", "PLF", "X"),
+        cls("BS X", "BS", "X"),
+      ],
+      "Mixed.xlsx",
+    )
+    expect(result.fileType).toBe("main-financial")
+    expect(result.sheetCounts.salesForecast).toBe(1)
   })
 })

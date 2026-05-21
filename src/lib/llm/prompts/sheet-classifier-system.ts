@@ -28,6 +28,7 @@ For each sheet, given its name, headers, sample rows, and column type profiles, 
    - "COMPANIES"     = Org-structure sheet listing entity tree (headers include some of: code, name, industry, level, parentCompanyCode — case/whitespace insensitive). NOT a financial sheet — used to bootstrap or update the company hierarchy.
    - "OPS_FACTS"     = Generic flat operational-facts sheet. Headers MUST include all of: companyCode (or "company"/"code"), metric (or "kpi"), date (or "period"), value (or "amount"/"qty"), unit — case/whitespace insensitive. Each row is one (company, metric, date, value, unit) fact. Distinct from KPI_FARMING / KPI_PROCESSING which are Azik-shape sheets with hardcoded metric positions per row/column. If a sheet has these exact five+ headers and one fact per row, classify as OPS_FACTS regardless of which metrics appear.
    - "BUDGET_ACTUALS" = Flat tabular budget-actuals sheet. Headers MUST include: category (or "account"), amount (or "sum"), date (or "period"); MAY also include department, description (or "memo"), lineType (or "type"), companyCode (or "company"). Each row is one expense/revenue actual transaction (e.g. "Office rent | Admin | 5000 | 2026-03-15 | March rent"). Distinct from PLF which has month columns spanning Jan-Dec — BUDGET_ACTUALS has DATE in a column, one row per transaction. Classify as BUDGET_ACTUALS when sheet has these row-shape signals AND no Jan/Feb/Mar/.../Dec or 2026-01/2026-02/... period columns.
+   - "SALES_FORECAST" = Department × month forecast grid. Col 1 = department/team label (e.g. "Sales", "Marketing", "Online", "Retail", "B2B", "Wholesale", "Direct"), cols 2-13 = 12 month columns (Jan/Feb/.../Dec full or short, EN/RU/AZ; or 1/2/.../12; or "Yan"/"Fev" etc.). Each cell = forecast amount for (department, month). Distinct from PLF whose rows are P&L line items (Revenue/COGS/Gross Profit/OPEX/EBITDA). Distinct from SALES (which has product-line volumes in Azik-shape Sales sheets, written to operational_facts). Classify as SALES_FORECAST when col-1 labels are department-like (not P&L line items) AND remaining columns are months.
    - "UNKNOWN"       = Cannot determine; reviewer must classify manually
 
 2. **entityCode** — the AZSEKER-* (or other) operational entity this sheet belongs to:
@@ -108,7 +109,7 @@ Return STRICT JSON in this exact shape (no markdown, no extra prose):
   "classifications": [
     {
       "sheetName": "<exactly as in input>",
-      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|COMPANIES|OPS_FACTS|BUDGET_ACTUALS|UNKNOWN",
+      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|COMPANIES|OPS_FACTS|BUDGET_ACTUALS|SALES_FORECAST|UNKNOWN",
       "entityCode": "AZSEKER-CPC" | null,
       "confidence": 0.0,
       "reasoning": "one line — what signal drove this"

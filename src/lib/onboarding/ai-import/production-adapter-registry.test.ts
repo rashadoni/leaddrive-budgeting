@@ -70,6 +70,12 @@ vi.mock("../budget-actuals-import", () => ({
 vi.mock("../actuals-import-batch", () => ({
   runActualsBatch: vi.fn(),
 }))
+vi.mock("../sales-forecast-import", () => ({
+  parseSalesForecastWorkbook: vi.fn(),
+}))
+vi.mock("../sales-forecast-batch", () => ({
+  runSalesForecastBatch: vi.fn(),
+}))
 
 import { buildProductionAdapterRegistry } from "./production-adapter-registry"
 import { parsePlfPlSheet, parsePlfCfSheet } from "../adapters/azseker-plf"
@@ -94,6 +100,7 @@ const fakeWorkbook = {
 function buildPrismaStub(overrides: {
   companies?: Array<{ id: string; code: string }>
   plan?: { id: string } | null
+  departments?: Array<{ id: string; label: string }>
 } = {}): PrismaClient {
   const fake = {
     company: {
@@ -108,6 +115,11 @@ function buildPrismaStub(overrides: {
     organization: {
       findUnique: vi.fn(async () => ({ settings: {} })),
       update: vi.fn(async () => ({})),
+    },
+    // Phase 7.M Tier 7 (Phase 4) — SALES_FORECAST handler reads
+    // revenue-generating BudgetDepartments to build label → id map.
+    budgetDepartment: {
+      findMany: vi.fn(async () => overrides.departments ?? []),
     },
   } as unknown as PrismaClient
   return fake
@@ -136,6 +148,8 @@ describe("buildProductionAdapterRegistry", () => {
     expect(registry.get("OPS_FACTS")).toBeTruthy()
     // Phase 7.M Tier 7 Phase 3 — BUDGET_ACTUALS handler registered.
     expect(registry.get("BUDGET_ACTUALS")).toBeTruthy()
+    // Phase 7.M Tier 7 Phase 4 — SALES_FORECAST handler registered.
+    expect(registry.get("SALES_FORECAST")).toBeTruthy()
     expect(registry.get("UNKNOWN")).toBeTruthy()
   })
 
@@ -927,5 +941,132 @@ describe("buildProductionAdapterRegistry", () => {
     expect(result.warnings).toEqual([`Sheet "MissingSheet" not found`])
     const apply = await result.applyToDb({} as never)
     expect(apply.rowsInserted).toBe(0)
+  })
+
+  // ────────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 (Phase 4) — SALES_FORECAST handler
+  // ────────────────────────────────────────────────────────────────────
+
+  it("SALES_FORECAST handler resolves dept labels via ctx, calls runSalesForecastBatch with outer tx", async () => {
+    const { parseSalesForecastWorkbook } = await import(
+      "../sales-forecast-import"
+    )
+    ;(parseSalesForecastWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      entries: [
+        { rowNumber: 2, departmentLabel: "sales", month: 1, amount: 1000 },
+        { rowNumber: 2, departmentLabel: "sales", month: 2, amount: 1100 },
+        { rowNumber: 3, departmentLabel: "marketing", month: 1, amount: 500 },
+      ],
+      errors: [],
+      warnings: [],
+    })
+    const { runSalesForecastBatch } = await import("../sales-forecast-batch")
+    ;(runSalesForecastBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsUpserted: 3 },
+    })
+    const prisma = buildPrismaStub({
+      plan: { id: "plan_2026" },
+      departments: [
+        { id: "d_sales", label: "Sales" },
+        { id: "d_mk", label: "Marketing" },
+      ],
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("SALES_FORECAST")!({
+      workbook: { Sheets: { Forecast: {} }, SheetNames: ["Forecast"] },
+      sheetName: "Forecast",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(3)
+    expect(result.warnings).toEqual([])
+
+    const fakeTx = { _tx: true } as never
+    await result.applyToDb(fakeTx)
+    expect(runSalesForecastBatch).toHaveBeenCalledOnce()
+    const [txArg, payload] = (runSalesForecastBatch as ReturnType<typeof vi.fn>)
+      .mock.calls[0] as [
+      unknown,
+      {
+        year: number
+        organizationId: string
+        rows: Array<{ departmentId: string; month: number; amount: number }>
+      },
+    ]
+    expect(txArg).toBe(fakeTx)
+    expect(payload.year).toBe(2026)
+    expect(payload.organizationId).toBe("org_1")
+    expect(payload.rows).toHaveLength(3)
+    expect(payload.rows[0]).toMatchObject({
+      departmentId: "d_sales",
+      month: 1,
+      amount: 1000,
+    })
+    expect(payload.rows[2]).toMatchObject({
+      departmentId: "d_mk",
+      month: 1,
+      amount: 500,
+    })
+  })
+
+  it("SALES_FORECAST handler warns once per unknown dept label, skips its rows", async () => {
+    const { parseSalesForecastWorkbook } = await import(
+      "../sales-forecast-import"
+    )
+    ;(parseSalesForecastWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      entries: [
+        { rowNumber: 2, departmentLabel: "sales", month: 1, amount: 1000 },
+        { rowNumber: 3, departmentLabel: "unknown-dept", month: 1, amount: 500 },
+        { rowNumber: 3, departmentLabel: "unknown-dept", month: 2, amount: 600 },
+        { rowNumber: 4, departmentLabel: "another-missing", month: 1, amount: 700 },
+      ],
+      errors: [],
+      warnings: [],
+    })
+    const { runSalesForecastBatch } = await import("../sales-forecast-batch")
+    ;(runSalesForecastBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsUpserted: 1 },
+    })
+    const prisma = buildPrismaStub({
+      plan: { id: "plan_2026" },
+      departments: [{ id: "d_sales", label: "Sales" }],
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("SALES_FORECAST")!({
+      workbook: { Sheets: { Forecast: {} }, SheetNames: ["Forecast"] },
+      sheetName: "Forecast",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    // Only the "sales" row kept
+    expect(result.itemCount).toBe(1)
+    // 2 unique unknown labels → 2 warnings (deduplicated per label)
+    expect(result.warnings).toHaveLength(2)
+    expect(result.warnings.some((w) => w.includes("unknown-dept"))).toBe(true)
+    expect(result.warnings.some((w) => w.includes("another-missing"))).toBe(
+      true,
+    )
+  })
+
+  it("SALES_FORECAST handler returns warning when sheet missing", async () => {
+    const prisma = buildPrismaStub({
+      plan: { id: "plan_2026" },
+      departments: [],
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("SALES_FORECAST")!({
+      workbook: { Sheets: {}, SheetNames: [] },
+      sheetName: "MissingSheet",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(0)
+    expect(result.warnings).toEqual([`Sheet "MissingSheet" not found`])
   })
 })

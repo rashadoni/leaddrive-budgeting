@@ -54,6 +54,11 @@ export type FileType =
   // date|...). Writes to `budget_actuals` table (separate from BudgetLine/
   // PLF). Detected by BUDGET_ACTUALS-classified sheet(s) without PLF/BS/CF.
   | "budget-actuals"
+  // Phase 7.M Tier 7 — import consolidation (Phase 4). sales-forecast
+  // file holds department × month forecast grid(s). Writes to
+  // `sales_forecasts` table. Detected by SALES_FORECAST-classified sheet(s)
+  // without PLF/BS/CF.
+  | "sales-forecast"
   | "unknown"
 
 export interface FileTypeResult {
@@ -80,6 +85,7 @@ export interface FileTypeResult {
     companies: number
     opsFacts: number
     budgetActuals: number
+    salesForecast: number
     unknown: number
   }
 }
@@ -102,6 +108,7 @@ function bucketSheets(
     companies: 0,
     opsFacts: 0,
     budgetActuals: 0,
+    salesForecast: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -144,6 +151,9 @@ function bucketSheets(
         break
       case "BUDGET_ACTUALS":
         counts.budgetActuals++
+        break
+      case "SALES_FORECAST":
+        counts.salesForecast++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -401,6 +411,30 @@ export function detectFileType(
       fileType: "budget-actuals",
       confidence: conf,
       reasoning: `${counts.budgetActuals} budget-actuals sheet(s), no PLF/BS/CF → standalone actuals file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.8: sales-forecast — department × month forecast grid(s)
+  // without PLF/BS/CF. Writes to `sales_forecasts` table (org-scoped,
+  // no plan dependency). Mixed with PLF/BS/CF → falls through to
+  // main-financial (the AzerSheker workbook already carries forecast
+  // structure via PLF rows; SALES_FORECAST is the standalone-upload
+  // path for a department-grid forecast file).
+  if (
+    counts.salesForecast >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(
+      classifications,
+      (c) => c.dataType === "SALES_FORECAST",
+    )
+    return {
+      fileType: "sales-forecast",
+      confidence: conf,
+      reasoning: `${counts.salesForecast} sales-forecast sheet(s), no PLF/BS/CF → department×month forecast file`,
       sheetCounts: counts,
     }
   }

@@ -323,6 +323,30 @@ describe("classifySheets", () => {
     expect(result.classifications[0].entityCode).toBeNull()
   })
 
+  it("accepts SALES_FORECAST dataType from LLM (Phase 7.M Tier 7 Phase 4)", async () => {
+    const client = stubClient(
+      JSON.stringify({
+        classifications: [
+          {
+            sheetName: "SalesForecast2026",
+            dataType: "SALES_FORECAST",
+            entityCode: null,
+            confidence: 0.94,
+            reasoning:
+              "col 1 department labels (Sales/Marketing), cols 2-13 = Jan..Dec",
+          },
+        ],
+      }),
+    )
+    const result = await classifySheets(
+      { sheetMetas: [meta("SalesForecast2026")] },
+      client,
+      "claude-test",
+    )
+    expect(result.classifications[0].dataType).toBe("SALES_FORECAST")
+    expect(result.classifications[0].entityCode).toBeNull()
+  })
+
   it("classifies entity code as null for cross-entity sheets", async () => {
     const client = stubClient(
       JSON.stringify({

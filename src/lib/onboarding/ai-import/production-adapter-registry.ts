@@ -90,6 +90,11 @@ import {
   runActualsBatch,
   type ActualsImportRow,
 } from "../actuals-import-batch"
+import { parseSalesForecastWorkbook } from "../sales-forecast-import"
+import {
+  runSalesForecastBatch,
+  type SalesForecastRow,
+} from "../sales-forecast-batch"
 import {
   buildReconKey,
   type ReconciliationKey,
@@ -108,6 +113,10 @@ interface OrgContext {
   planId: string
   /** Cached AZSEKER-* company id list for sales-target resolution. */
   azsekerCompanies: Array<{ id: string; code: string }>
+  // Phase 7.M Tier 7 (Phase 4) — revenue-generating BudgetDepartments for
+  // SALES_FORECAST handler. Lower-cased label → id map matches the
+  // /api/budgeting/sales-forecast/import resolution shape.
+  deptLabelToId: Map<string, string>
 }
 
 /**
@@ -152,12 +161,27 @@ async function resolveOrgContext(
       select: { id: true },
     })
   }
+  // Phase 7.M Tier 7 (Phase 4) — load revenue-generating departments for
+  // SALES_FORECAST handler. Same filter as /api/budgeting/sales-forecast/import.
+  const departments = await prisma.budgetDepartment.findMany({
+    where: { organizationId, hasRevenue: true, isActive: true },
+    select: { id: true, label: true },
+    orderBy: { sortOrder: "asc" },
+  })
+  const deptLabelToId = new Map<string, string>(
+    departments.map((d: { id: string; label: string }) => [
+      d.label.trim().toLowerCase(),
+      d.id,
+    ]),
+  )
+
   return {
     organizationId,
     year,
     codeToId,
     planId: plan.id,
     azsekerCompanies,
+    deptLabelToId,
   }
 }
 
@@ -1211,6 +1235,90 @@ function makeBudgetActualsHandler(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// SALES_FORECAST handler — department×month grid. Phase 7.M Tier 7
+// (Phase 4): replaces /api/budgeting/sales-forecast/import. Writes
+// SalesForecast rows scoped to (org, year) via upsert by
+// (organizationId, departmentId, year, month) unique key. Department
+// labels resolved via ctx.deptLabelToId (case-insensitive). Unknown
+// labels emit warnings and skip — same convention as the legacy route.
+// ──────────────────────────────────────────────────────────────────────
+
+function makeSalesForecastHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = ctxRef.value ?? (await ensureCtx())
+    const sheet = input.workbook.Sheets[input.sheetName]
+    if (!sheet) {
+      return {
+        summary: `SALES_FORECAST sheet "${input.sheetName}" not in workbook`,
+        itemCount: 0,
+        warnings: [`Sheet "${input.sheetName}" not found`],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    const wrappedWorkbook = {
+      Sheets: { [input.sheetName]: sheet },
+      SheetNames: [input.sheetName],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    const parsed = parseSalesForecastWorkbook(wrappedWorkbook, input.XLSX)
+    const warnings: string[] = []
+    for (const e of parsed.errors) {
+      warnings.push(`row ${e.rowNumber}: ${e.reason}`)
+    }
+    for (const w of parsed.warnings) {
+      warnings.push(`row ${w.rowNumber}: ${w.message}`)
+    }
+
+    // Resolve departmentLabel → departmentId via ctx; skip + warn on unknown
+    const rows: SalesForecastRow[] = []
+    const expectedSums = new Map<ReconciliationKey, number>()
+    const unknownLabels = new Set<string>()
+    for (const e of parsed.entries) {
+      const deptId = ctx.deptLabelToId.get(e.departmentLabel)
+      if (!deptId) {
+        if (!unknownLabels.has(e.departmentLabel)) {
+          warnings.push(
+            `row ${e.rowNumber}: department label "${e.departmentLabel}" not in org (must match a BudgetDepartment.label with hasRevenue=true)`,
+          )
+          unknownLabels.add(e.departmentLabel)
+        }
+        continue
+      }
+      rows.push({
+        departmentId: deptId,
+        month: e.month,
+        amount: e.amount,
+      })
+      const key = buildReconKey(deptId, String(e.month), "")
+      expectedSums.set(key, (expectedSums.get(key) ?? 0) + e.amount)
+    }
+
+    return {
+      summary: `${rows.length} sales-forecast cells (${warnings.length} warnings)`,
+      itemCount: rows.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (rows.length === 0) return { rowsInserted: 0 }
+        const result = await runSalesForecastBatch(tx, {
+          organizationId: input.organizationId,
+          year: input.year,
+          label: `ai-import SALES_FORECAST ${input.sheetName}`,
+          actorUserId: "ai-import",
+          sourceDocument: `sales-forecast-sheet:${input.sheetName}`,
+          rows,
+          expectedSums,
+        })
+        return { rowsInserted: result.metrics.rowsUpserted }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // noop — for INFO_SUMMARY / UNKNOWN
 // ──────────────────────────────────────────────────────────────────────
 
@@ -1300,6 +1408,10 @@ export function buildProductionAdapterRegistry(
     // Phase 7.M Tier 7 (Phase 3) — BUDGET_ACTUALS writes to budget_actuals
     // table via planId resolved from shared org-context.
     BUDGET_ACTUALS: wrap(makeBudgetActualsHandler),
+    // Phase 7.M Tier 7 (Phase 4) — SALES_FORECAST writes to sales_forecasts
+    // table via departmentLabel → departmentId resolved from shared
+    // org-context (deptLabelToId map).
+    SALES_FORECAST: wrap(makeSalesForecastHandler),
     UNKNOWN: noopHandler,
   })
 }
