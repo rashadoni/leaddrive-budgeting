@@ -135,6 +135,8 @@ export function MultiFileForm() {
     | { mode: "skip" }
   const [resolutions, setResolutions] = useState<Record<string, Resolution>>({})
   const inputRef = useRef<HTMLInputElement>(null)
+  const applyResultRef = useRef<HTMLDivElement>(null)
+  const conflictBannerRef = useRef<HTMLDivElement>(null)
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0)
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
@@ -200,8 +202,16 @@ export function MultiFileForm() {
         setError(data.error ?? `HTTP ${res.status}`)
         return
       }
-      if (apply) setApplyResult(data)
-      else setPreviewResult(data)
+      if (apply) {
+        setApplyResult(data)
+        setTimeout(() => applyResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
+      } else {
+        setPreviewResult(data)
+        // Scroll to conflict banner if conflicts exist, otherwise to the analysis section
+        if ((data.conflicts?.length ?? 0) > 0) {
+          setTimeout(() => conflictBannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -312,6 +322,17 @@ export function MultiFileForm() {
         )}
       </div>
 
+      {/* Processing banner — shown while Step 2 is running */}
+      {isProcessing && previewResult && (
+        <div className="rounded border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm flex items-center gap-2">
+          <svg className="animate-spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+          </svg>
+          <span>Применяю данные… это займёт 30-90 секунд. Не закрывайте страницу.</span>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
@@ -322,6 +343,7 @@ export function MultiFileForm() {
       {/* Conflict banner */}
       {previewResult && hasConflicts && (
         <div
+          ref={conflictBannerRef}
           className="rounded border border-red-300 bg-red-50 p-4 space-y-3"
           data-testid="conflict-banner"
         >
@@ -466,7 +488,7 @@ export function MultiFileForm() {
 
       {/* Apply result */}
       {applyResult && (
-        <div className="space-y-3" data-testid="apply-result">
+        <div ref={applyResultRef} className="space-y-3" data-testid="apply-result">
           <h3 className="font-semibold text-sm">
             {verdictEmoji(applyResult.overallVerdict)} Результат применения ·{" "}
             {applyResult.durationMs}ms
