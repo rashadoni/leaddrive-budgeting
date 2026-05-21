@@ -33,6 +33,9 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { isValidProposedChange } from "@/lib/budgeting/approval-request"
 import { notifyApprovalCreated } from "@/lib/budgeting/approval-notifications"
 import type { Prisma } from "@prisma/client"
+// Phase 5.2 Stage 2 Tier 2 (2026-05-21) — RLS wrap for
+// approval_requests + budget_plans table access.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const RATE_LIMIT = { name: "approval-requests-create", max: 30, windowMs: 60_000 }
 const LIST_TAKE = 50
@@ -88,13 +91,14 @@ export async function GET(req: NextRequest) {
     ...(planIdRaw ? { planId: planIdRaw } : {}),
   }
 
-  const requests = await prisma.approvalRequest.findMany({
-    where,
-    orderBy: [{ requestedAt: "desc" }],
-    take: LIST_TAKE,
+  return withOrgScope(session.orgId, async (tx) => {
+    const requests = await tx.approvalRequest.findMany({
+      where,
+      orderBy: [{ requestedAt: "desc" }],
+      take: LIST_TAKE,
+    })
+    return NextResponse.json({ requests })
   })
-
-  return NextResponse.json({ requests })
 }
 
 export async function POST(req: NextRequest) {
@@ -139,42 +143,43 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Cross-tenant guard for planId (when provided). Don't let a user
-  // request approval against a plan in another org.
-  if (parsed.planId) {
-    const planOwned = await prisma.budgetPlan.findFirst({
-      where: { id: parsed.planId, organizationId: session.orgId },
-      select: { id: true },
-    })
-    if (!planOwned) {
-      return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+  return withOrgScope(session.orgId, async (tx) => {
+    // Cross-tenant guard for planId (when provided). Don't let a user
+    // request approval against a plan in another org.
+    if (parsed.planId) {
+      const planOwned = await tx.budgetPlan.findFirst({
+        where: { id: parsed.planId, organizationId: session.orgId },
+        select: { id: true },
+      })
+      if (!planOwned) {
+        return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
+      }
     }
-  }
 
-  const created = await prisma.approvalRequest.create({
-    data: {
-      organizationId: session.orgId,
-      planId: parsed.planId ?? null,
+    const created = await tx.approvalRequest.create({
+      data: {
+        organizationId: session.orgId,
+        planId: parsed.planId ?? null,
+        requestType: parsed.requestType,
+        targetType: parsed.targetType ?? null,
+        targetId: parsed.targetId ?? null,
+        proposedChange: parsed.proposedChange as Prisma.InputJsonValue,
+        reason: parsed.reason ?? null,
+        requestedBy: session.userId,
+      },
+    })
+
+    // Notification fires outside the tx — uses global prisma client for
+    // cross-user recipient lookup (notification audience may span more
+    // than the requester's org).
+    void notifyApprovalCreated(prisma, {
+      orgId: session.orgId,
       requestType: parsed.requestType,
-      targetType: parsed.targetType ?? null,
-      targetId: parsed.targetId ?? null,
-      proposedChange: parsed.proposedChange as Prisma.InputJsonValue,
+      requesterUserId: session.userId,
+      requesterName: session.name || session.email || session.userId,
       reason: parsed.reason ?? null,
-      requestedBy: session.userId,
-      // status defaults to 'pending' via schema
-    },
+    }).catch(() => {})
+
+    return NextResponse.json({ request: created }, { status: 201 })
   })
-
-  // Phase 7.G Turn LXXIII (Phase 4.3 sub-3 — email notifications).
-  // Best-effort fire-and-forget; failures don't surface in the response
-  // (the request was created either way, audit trail is intact).
-  void notifyApprovalCreated(prisma, {
-    orgId: session.orgId,
-    requestType: parsed.requestType,
-    requesterUserId: session.userId,
-    requesterName: session.name || session.email || session.userId,
-    reason: parsed.reason ?? null,
-  }).catch(() => {})
-
-  return NextResponse.json({ request: created }, { status: 201 })
 }

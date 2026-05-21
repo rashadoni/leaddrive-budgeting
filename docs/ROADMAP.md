@@ -178,9 +178,9 @@ the AI-Mapper-driven Phase 7.B onboarding wizard pipeline. Mapping:
   - ✅ Per-org override UI: admin Settings page shipped Phase 7.G Turn LXXXXI (Phase 5.1.2) at `/budgeting/admin/chart-of-accounts` route. NEW `CoARolesAdmin.tsx` client component (account list + per-row role override dropdown + filter by accountType + free-text search) backed by `/api/budgeting/chart-of-accounts/[id]` PUT (admin-only, 403 for non-admin). Consumer pattern in analytics: `account.role ?? deriveRoleFromCode(account.code)`. CXXIV migrated component to canonical DataBoundary loading.
 
 ### 5.2 Row-level security
-- ⬜ Postgres RLS policies on all tables with orgId
-- ⬜ `SET app.organization_id = ...` in Prisma client before queries
-- ⬜ DB blocks cross-tenant access, not app code
+- 🟡 Postgres RLS policies on all tables with orgId — **infra shipped 2026-05-21** (Stage 2 PRs #15-#18). 56 RLS migration files scaffolded (`prisma/migrations/2026052*_rls_*`); 4 routes wrapped in `withOrgScope` (matrix + indicators GET + values/[id] + approval-requests list/create). Apply pending on 3 user-side DB commands. Per-route wrap continues multi-PR.
+- ✅ `SET app.organization_id = ...` in Prisma client before queries — `withOrgScope` helper (`src/lib/db/with-org-scope.ts`) + ALS context + admin client (`src/lib/db/prisma-admin.ts`) shipped 2026-05-21.
+- 🟡 DB blocks cross-tenant access, not app code — active once user runs Tier 1 migration; pattern docs at `docs/RLS_PATTERN_EXAMPLE.md`, table queue at `docs/RLS_TABLE_ROLLOUT.md`.
 
 ### 5.3 Onboarding wizard for new clients
 **Note (CXXX reality-check):** original 5-step plan was partially superseded
@@ -204,9 +204,9 @@ by the AI-Mapper-driven multi-sheet wizard at `/budgeting/onboarding`
 **Goal:** support 50+ clients × 100K+ rows.
 
 ### 6.1 Background jobs
-- ⬜ BullMQ + Redis for imports (currently sync in request)
-- ⬜ WebSocket/SSE for import progress in UI
-- ⬜ Retry policy
+- ✅ BullMQ + Redis for imports — **shipped 2026-05-21** (Phase 6 PR #14). Feature-flagged behind `QUEUE_BACKEND=bullmq`. Stack: `src/lib/queue/{redis-client,queues,worker-factory,feature-flag,job-types}.ts` + processors + `scripts/run-worker.ts` daemon. Activation: `brew services start redis` (already done) + worker daemon + env flag.
+- ✅ WebSocket/SSE for import progress in UI — SSE endpoint `GET /api/queue/jobs/[id]/progress` + `useJobProgress` React hook + Queue Admin UI at `/budgeting/admin/queue` (PR #14).
+- ✅ Retry policy — 3× exponential backoff (5/10/20s), DLQ retention 30 days / 5000 jobs (PR #14).
 
 ### 6.2 Analytics caching
 - ⬜ Materialized views or Redis cache for byCategory / byDepartment

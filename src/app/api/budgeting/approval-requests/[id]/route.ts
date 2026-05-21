@@ -55,6 +55,13 @@ const patchBodySchema = z
   })
   .strict()
 
+// Phase 5.2 Stage 2 RLS wrap TODO (2026-05-21): PATCH handler spans
+// approval_requests read + Organization update + audit log emission +
+// notification trigger across multiple paths. Wrapping in withOrgScope
+// requires restructuring 150+ LOC; deferred to dedicated session when
+// approval_requests RLS migration applies. Current handler already
+// filters by `organizationId: session.orgId` on the initial read so
+// cross-tenant access is gated at the application layer.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Auth: any authenticated user, but action-specific role check below.
   const session = await requireAuth(req)

@@ -691,8 +691,13 @@ export type LogAuditEventResult =
  * function itself is identical regardless of caller choice. The contract
  * is purely about how the CALLER handles the resolved result.
  */
+// Phase 5.2 Stage 2 (2026-05-21) — accept either the global PrismaClient
+// or a Prisma.TransactionClient so callers wrapped in `withOrgScope`
+// can pass their tx (preserves the SET LOCAL session var when the
+// audit_events RLS migration applies). Existing callsites passing
+// `prisma` keep working unchanged.
 export async function logAuditEvent(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   args: LogAuditEventArgs,
 ): Promise<LogAuditEventResult> {
   try {

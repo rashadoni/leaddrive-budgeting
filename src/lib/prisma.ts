@@ -85,8 +85,16 @@ export function logBudgetChange(opts: {
   newValue?: any
   snapshot?: any
   userId?: string
+  // Phase 5.2 Stage 2 (2026-05-21) — optional tx so callers wrapped
+  // in `withOrgScope` can route the write through their transaction
+  // (SET LOCAL "app.organization_id" applies to RLS-protected
+  // budget_change_logs once the migration lands). When omitted, falls
+  // back to the global prisma client — preserves the fire-and-forget
+  // contract for ~20 existing callsites.
+  db?: typeof prisma
 }) {
-  prisma.budgetChangeLog.create({
+  const client = opts.db ?? prisma
+  client.budgetChangeLog.create({
     data: {
       organizationId: opts.orgId,
       planId: opts.planId,

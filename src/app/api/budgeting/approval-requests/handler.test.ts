@@ -18,6 +18,11 @@ const { prismaMock, notifyCreatedMock } = vi.hoisted(() => ({
     budgetPlan: {
       findFirst: vi.fn(),
     },
+    // Phase 5.2 Stage 2 (2026-05-21) — withOrgScope wraps GET + POST.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
   notifyCreatedMock: vi.fn().mockResolvedValue(undefined),
 }))
@@ -31,7 +36,7 @@ vi.mock("@/lib/budgeting/approval-notifications", () => ({
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
 
-const ORG_ID = "org_demo"
+const ORG_ID = "cm3rlswraporg00000001demo"
 
 beforeEach(() => {
   prismaMock.approvalRequest.findMany.mockReset().mockResolvedValue([])
