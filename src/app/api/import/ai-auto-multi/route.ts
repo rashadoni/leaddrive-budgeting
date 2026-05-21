@@ -51,7 +51,7 @@ const PER_FILE_TOKEN_BUDGET = 35_000 // Phase 7.M Tier 4 measured cost
 
 const RATE_LIMIT = {
   name: "import-ai-auto-multi",
-  max: 3,
+  max: 10,
   windowMs: 60 * 60_000,
 }
 

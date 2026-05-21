@@ -137,6 +137,7 @@ export function MultiFileForm() {
   const inputRef = useRef<HTMLInputElement>(null)
   const applyResultRef = useRef<HTMLDivElement>(null)
   const conflictBannerRef = useRef<HTMLDivElement>(null)
+  const errorRef = useRef<HTMLDivElement>(null)
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0)
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
@@ -200,6 +201,7 @@ export function MultiFileForm() {
       const data = (await res.json()) as MultiFileApiResponse
       if (!res.ok && res.status !== 409) {
         setError(data.error ?? `HTTP ${res.status}`)
+        setTimeout(() => errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 50)
         return
       }
       if (apply) {
@@ -322,6 +324,17 @@ export function MultiFileForm() {
         )}
       </div>
 
+      {/* Error banner — sits right below buttons so it's always visible */}
+      {error && (
+        <div
+          ref={errorRef}
+          className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm"
+          data-testid="error-banner"
+        >
+          ❌ {error}
+        </div>
+      )}
+
       {/* Processing banner — shown while Step 2 is running */}
       {isProcessing && previewResult && (
         <div className="rounded border border-emerald-300 bg-emerald-50 text-emerald-800 p-3 text-sm flex items-center gap-2">
@@ -330,13 +343,6 @@ export function MultiFileForm() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
           <span>Применяю данные… это займёт 30-90 секунд. Не закрывайте страницу.</span>
-        </div>
-      )}
-
-      {/* Error banner */}
-      {error && (
-        <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
-          ❌ {error}
         </div>
       )}
 
