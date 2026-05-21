@@ -52,10 +52,10 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
     tools: [
       {
         href: "/budgeting/admin/ai-import",
-        title: "AI Import (единый)",
-        desc: "Drag-drop любой xlsx — финансы, KPI, землю, описания, ИЛИ структуру компаний. AI определяет тип и роутит на правильный adapter. Один UI вместо трёх.",
+        title: "Импорт данных",
+        desc: "Drag-drop любой xlsx — финансы (P&L/BS/CF), KPI, land, descriptions, структура компаний, бюджетные актуалы, sales forecast. AI определяет тип и роутит на правильный adapter. Один экран вместо 5 разных форм.",
         icon: Brain,
-        badge: "🆕 Phase 7.M Tier 6",
+        badge: "🆕 Phase 7.M Tier 7",
         recentlyAdded: true,
       },
       {

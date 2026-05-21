@@ -8,9 +8,10 @@
 // the local mode toggle. No cross-tab dependencies.
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
 import { useTranslations } from "next-intl"
-import { FileSpreadsheet } from "lucide-react"
+import { FileSpreadsheet, Brain, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BudgetCsvImport } from "@/components/budget-csv-import"
 import { BudgetImportHistory } from "@/components/budget-import-history"
@@ -58,6 +59,34 @@ export function ImportTab({
   const [importMode, setImportMode] = useState<"csv" | "excel">("csv")
   return (
     <div className="space-y-4">
+      {/* Phase 7.M Tier 7 Phase 5 — consolidation banner. Old CSV/Excel
+          forms still functional but secondary; AI Import is the new
+          single entry point recognising 14 dataTypes including
+          BUDGET_ACTUALS (replaces this CSV form). */}
+      <div
+        className="rounded-lg border border-primary/30 bg-primary/5 p-4 flex items-start gap-3"
+        data-testid="ai-import-deprecation-banner"
+      >
+        <Brain className="size-5 text-primary mt-0.5 shrink-0" />
+        <div className="flex-1 space-y-2">
+          <div className="font-semibold text-sm">
+            Используйте единый «Импорт данных» для xlsx/CSV актуалов
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            AI Import теперь распознаёт BUDGET_ACTUALS shape (category | amount |
+            date | department | description | lineType | companyCode) — один
+            экран на все импорты. Эта форма остаётся как backup, но скоро будет
+            убрана.
+          </p>
+          <Link
+            href="/budgeting/admin/ai-import"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            Перейти к Импорту данных
+            <ArrowRight className="size-3" />
+          </Link>
+        </div>
+      </div>
       <div className="flex gap-2">
         <Button
           size="sm"

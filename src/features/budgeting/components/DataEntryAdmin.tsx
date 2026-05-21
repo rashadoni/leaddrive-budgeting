@@ -33,8 +33,10 @@
  * batch-bulk-overwriting data.
  */
 
+import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
 import { useTranslations } from "next-intl"
+import { Brain, ArrowRight } from "lucide-react"
 import {
   OPERATIONAL_METRIC_RULES,
   ESG_DISCLOSURE_RULES,
@@ -985,6 +987,32 @@ function BulkImportSection({
 
   return (
     <section className="bg-card border border-border rounded-md p-4" data-testid="bulk-import-section">
+      {/* Phase 7.M Tier 7 Phase 5 — consolidation banner. AI Import now
+          recognises OPS_FACTS shape and routes to runKpiBatch, same as
+          this form's POST /api/operational-facts/import endpoint. Form
+          remains as backup for non-AI workflows. */}
+      <div
+        className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-start gap-2"
+        data-testid="ai-import-deprecation-banner"
+      >
+        <Brain className="size-4 text-primary mt-0.5 shrink-0" />
+        <div className="flex-1 space-y-1">
+          <div className="font-semibold text-xs">
+            Используйте единый «Импорт данных» для xlsx KPI
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            AI Import распознаёт OPS_FACTS shape (companyCode | metric | date |
+            value | unit) — один экран на все импорты данных.
+          </p>
+          <Link
+            href="/budgeting/admin/ai-import"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Перейти к Импорту данных
+            <ArrowRight className="size-3" />
+          </Link>
+        </div>
+      </div>
       <header className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-sm font-semibold">

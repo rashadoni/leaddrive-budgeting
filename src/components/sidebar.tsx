@@ -156,12 +156,15 @@ const budgetSubNav = [
       // burn against the org budget + 30-day trend sparkline. Admin
       // visibility for LLM spend.
       { href: "/budgeting/admin/ai-usage", icon: Sparkles, label: "AI Usage", isPage: true },
-      // Phase 7.M Tier 6 (2026-05-21) — single AI Import entry point.
-      // Replaces former /budgeting/admin/import-workbook + the
-      // /budgeting/onboarding "Import" tab — AI classifier now also
-      // recognises COMPANIES setup sheets, so one UI handles financial
-      // data + entity-tree bootstrap + everything between.
-      { href: "/budgeting/admin/ai-import", icon: Brain, label: "AI Import", isPage: true },
+      // Phase 7.M Tier 7 (2026-05-21) — SOLE import entry point. AI
+      // classifier now covers all 14 dataTypes (PLF/BS/CF/KPI/CAPEX/SALES/
+      // LAND/DESCRIPTIONS/INFO/COMPANIES/OPS_FACTS/BUDGET_ACTUALS/
+      // SALES_FORECAST + UNKNOWN). Old /budgeting/admin/import-workbook,
+      // operational-facts bulk-upload, ImportTab CSV, sales-forecast
+      // upload — all consolidated here. Renamed from "AI Import" →
+      // "Импорт данных" to signal it's the ONE import screen, not one of
+      // many.
+      { href: "/budgeting/admin/ai-import", icon: Brain, label: "Импорт данных", isPage: true },
       // Phase 7.M Tier 4 (2026-05-19) — Indicator Health dashboard.
       // Shows per-indicator green/amber/red/unknown breakdown with
       // remediation guidance for unknowns. Use before client demo to

@@ -12,7 +12,7 @@ import { hasRole } from "@/lib/api-auth"
 import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
-  title: "AI Auto Import · Admin · BudgetPro",
+  title: "Импорт данных · Admin · BudgetPro",
 }
 
 export default async function AIImportPage() {
@@ -24,14 +24,19 @@ export default async function AIImportPage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-2">AI Auto Import</h1>
-      <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Загрузите xlsx файл(ы) — ИИ автоматически определит, что в каждом
-        листе (P&amp;L / Balance Sheet / Cash Flow / KPI / CAPEX / Sales /
-        Land Registry / Strategic descriptions) и к какой компании он
-        относится. Затем подтвердите план — система запустит bit-perfect
-        импорт с обязательной сверкой.
-      </p>
+      <div className="mb-6">
+        <div className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
+          ЕДИНАЯ ТОЧКА ВХОДА
+        </div>
+        <h1 className="text-2xl font-bold mb-2">Импорт данных</h1>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Загрузите любой xlsx — AI автоматически определит тип данных
+          (P&amp;L, Balance Sheet, Cash Flow, операционные KPI, CAPEX,
+          продажи, земля, описания компаний, структура холдинга, бюджетные
+          актуалы, sales forecast) и маршрутизирует на правильный adapter.
+          Никаких отдельных форм под каждый тип данных — один экран на всё.
+        </p>
+      </div>
       <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
         Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import →
         Mandatory Reconciliation. Никаких изменений в БД без 🟢 GREEN
