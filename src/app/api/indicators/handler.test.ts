@@ -20,6 +20,13 @@ const {
   prismaMock: {
     indicatorDefinition: { findMany: vi.fn() },
     company: { findMany: vi.fn() },
+    // Phase 5.2 Stage 2 (2026-05-21) — withOrgScope wraps GET handler.
+    $transaction: vi.fn(
+      async (
+        fn: (tx: typeof prismaMock) => Promise<unknown>,
+      ): Promise<unknown> => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
   recomputeIndicatorMock: vi.fn(),
   createPrismaDataSourceMock: vi.fn(),
@@ -43,7 +50,7 @@ vi.mock("@/lib/recompute/job-runner", () => ({
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
 
-const ORG_ID = "org_demo"
+const ORG_ID = "cm3rlswraporg00000001demo"
 
 beforeEach(() => {
   prismaMock.indicatorDefinition.findMany.mockReset().mockResolvedValue([])

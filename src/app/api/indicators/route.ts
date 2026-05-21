@@ -22,6 +22,10 @@ import {
 } from '@/lib/risk/recompute';
 import { filterOperationalCompanies } from '@/lib/risk/targets';
 import { enqueue as enqueueRecomputeJob } from '@/lib/recompute/job-runner';
+// Phase 5.2 Stage 2 (2026-05-21) — RLS wrap for GET + POST sync paths.
+// Async (BullMQ) path runs in the worker process; wrap inside the
+// processor instead (recompute-processor.ts TODO).
+import { withOrgScope } from '@/lib/db/with-org-scope';
 
 // Phase 6.1 — sync vs async threshold. Targets ≤ this run synchronously
 // in the request handler (drill-down style: single cell, instant feedback).
@@ -36,11 +40,17 @@ const SYNC_THRESHOLD = 50;
 // batch and leave IndicatorValue rows in an inconsistent state.
 export const maxDuration = 60;
 
+// Phase 5.2 Stage 2 (2026-05-21) — resolveTargets accepts an optional
+// `db` argument so callers wrapped in `withOrgScope` can pass the tx
+// (preserves the SET LOCAL session var across both queries). When `db`
+// is omitted, falls back to the global `prisma` — keeps existing
+// internal callers working unchanged.
 async function resolveTargets(
   organizationId: string,
   filter: { companyId?: string; indicatorCode?: string },
+  db: typeof prisma = prisma,
 ) {
-  const companies = await prisma.company.findMany({
+  const companies = await db.company.findMany({
     where: {
       organizationId,
       isActive: true,
@@ -57,7 +67,7 @@ async function resolveTargets(
   });
   const operational = filterOperationalCompanies(companies);
 
-  const allDefs = await prisma.indicatorDefinition.findMany({
+  const allDefs = await db.indicatorDefinition.findMany({
     where: {
       isActive: true,
       OR: [{ organizationId: null }, { organizationId }],
@@ -124,30 +134,35 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // UI list view — omit heavy implementation fields (formula, thresholds,
-    // requiredInputs, sparklineFormula, hintTemplates). Detail endpoint can
-    // hydrate the rest when we add one.
-    const indicators = await prisma.indicatorDefinition.findMany({
-      where: {
-        isActive: true,
-        OR: [{ organizationId: null }, { organizationId: session.orgId }],
-      },
-      orderBy: { sortOrder: 'asc' },
-      select: {
-        id: true,
-        organizationId: true,
-        code: true,
-        nameEn: true,
-        nameAz: true,
-        nameRu: true,
-        category: true,
-        industries: true,
-        unit: true,
-        direction: true,
-        sortOrder: true,
-      },
+    // Phase 5.2 Stage 2 — wrap so indicator_definitions RLS policy
+    // (nullable-aware variant — global seeds + org overrides) sees
+    // app.organization_id once enabled.
+    return await withOrgScope(session.orgId, async (tx) => {
+      // UI list view — omit heavy implementation fields (formula, thresholds,
+      // requiredInputs, sparklineFormula, hintTemplates). Detail endpoint can
+      // hydrate the rest when we add one.
+      const indicators = await tx.indicatorDefinition.findMany({
+        where: {
+          isActive: true,
+          OR: [{ organizationId: null }, { organizationId: session.orgId }],
+        },
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          id: true,
+          organizationId: true,
+          code: true,
+          nameEn: true,
+          nameAz: true,
+          nameRu: true,
+          category: true,
+          industries: true,
+          unit: true,
+          direction: true,
+          sortOrder: true,
+        },
+      });
+      return NextResponse.json(indicators);
     });
-    return NextResponse.json(indicators);
   } catch (error) {
     console.error('Error fetching indicators:', error);
     return NextResponse.json(
@@ -335,6 +350,15 @@ export async function POST(request: NextRequest) {
   }
 
   // Sync path — small fan-outs (drill-down style, ≤ SYNC_THRESHOLD pairs).
+  //
+  // Phase 5.2 Stage 2 RLS wrap TODO (2026-05-21): the sync path runs
+  // through `recomputeIndicator(ds, ...)` where `ds` =
+  // createPrismaDataSource(prisma). To get withOrgScope coverage we
+  // need ds to accept Prisma.TransactionClient. Refactor lives at
+  // src/lib/risk/recompute.ts; deferred to the per-tier rollout
+  // (touches Booking/Currency/BudgetLine/IndicatorValue resolvers in
+  // one go — best done with all those tables' migrations applying
+  // together, not piecemeal).
   const results: Outcome[] = [];
   for (const { company, definition } of targets) {
     const defLike: IndicatorDefinitionLike = {

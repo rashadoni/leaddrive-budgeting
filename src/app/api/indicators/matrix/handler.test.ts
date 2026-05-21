@@ -28,6 +28,11 @@ const { prismaMock } = vi.hoisted(() => ({
     // Phase 7.F sub-group RBAC — getCompanyScope reads user.allowedSubGroupIds
     // for non-admin roles. Default empty array = full access (legacy behavior).
     user: { findFirst: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps the GET handler body.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }));
 
@@ -37,7 +42,7 @@ vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 import { mockSession, makeRequest } from '@/test/api-harness';
 import { GET } from './route';
 
-const ORG_ID = 'org_az';
+const ORG_ID = 'cm3rlswraporg00000001matrx';
 
 beforeEach(() => {
   prismaMock.company.findMany.mockReset().mockResolvedValue([]);

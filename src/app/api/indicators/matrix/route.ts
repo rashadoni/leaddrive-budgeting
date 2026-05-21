@@ -33,6 +33,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
+// Phase 5.2 Stage 2 (2026-05-21) — RLS wrap. Every Prisma call below
+// runs through `tx` so when indicator_values RLS migration applies,
+// rows are filtered by `app.organization_id` at the DB layer rather
+// than relying on the JS-side WHERE clauses below. The WHERE clauses
+// stay as a defence-in-depth narrowing (companyIds + period etc.) —
+// they're not removed, just no longer the sole protection.
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
 import { currentBakuYear, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
@@ -88,12 +95,15 @@ export async function GET(request: NextRequest) {
   const scope = await getCompanyScope(session.orgId, session.userId, session.role)
 
   try {
+    // Phase 5.2 Stage 2 — wrap every DB call in withOrgScope. The
+    // returned NextResponse propagates up through the closure.
+    return await withOrgScope(session.orgId, async (tx) => {
     // Load companies + indicators first, then fetch only the IndicatorValue
     // rows scoped to their ids — avoids pulling orphan values for disabled
     // companies / retired indicators even though tenant scoping would keep
     // them inside the org.
     const [companiesRaw, indicators] = await Promise.all([
-      prisma.company.findMany({
+      tx.company.findMany({
         where: {
           organizationId: session.orgId,
           isActive: true,
@@ -135,7 +145,7 @@ export async function GET(request: NextRequest) {
         },
         orderBy: { sortOrder: 'asc' },
       }),
-      prisma.indicatorDefinition.findMany({
+      tx.indicatorDefinition.findMany({
         where: {
           isActive: true,
           OR: [{ organizationId: null }, { organizationId: session.orgId }],
@@ -216,7 +226,7 @@ export async function GET(request: NextRequest) {
     const values =
       operationalIds.length === 0 || indicatorIds.length === 0
         ? []
-        : await prisma.indicatorValue.findMany({
+        : await tx.indicatorValue.findMany({
             where: {
               organizationId: session.orgId,
               period,
@@ -296,9 +306,13 @@ export async function GET(request: NextRequest) {
     // Phase 7.H F4.v2.4 — materiality lookup needs the company's
     // industry + indicator's code. Pre-build maps so the per-cell
     // emission stays O(1).
+    // Phase 5.2 Stage 2 wrap follow-up — tx's stricter inference exposed
+    // that `c.industry` is `string | null` (Company.industry is nullable
+    // for level=1 rollup entities). Filter out nulls — they're holding
+    // companies that don't contribute to materiality lookups anyway.
     const companyIndustryById = new Map<string, string>();
     for (const c of companiesRaw) {
-      companyIndustryById.set(c.id, c.industry);
+      if (c.industry) companyIndustryById.set(c.id, c.industry);
     }
     const indicatorCodeById = new Map<string, string>();
     for (const i of indicatorsForRender) {
@@ -401,7 +415,7 @@ export async function GET(request: NextRequest) {
     // companies whose parentCompanyId points to a sub-group's id.
     const childToSubgroup = new Map<string, string>();
     const subgroupIds = new Set(subgroups.map((s: CompanyRawShape) => s.id));
-    const fullCompaniesRaw = await prisma.company.findMany({
+    const fullCompaniesRaw = await tx.company.findMany({
       where: {
         organizationId: session.orgId,
         isActive: true,
@@ -427,7 +441,7 @@ export async function GET(request: NextRequest) {
     const parentValues =
       subgroupIds.size === 0 || indicatorIds.length === 0
         ? []
-        : await prisma.indicatorValue.findMany({
+        : await tx.indicatorValue.findMany({
             where: {
               organizationId: session.orgId,
               period,
@@ -572,6 +586,7 @@ export async function GET(request: NextRequest) {
       },
       { headers: { 'Cache-Control': 'private, max-age=10' } },
     );
+    });
   } catch (error) {
     console.error('Error building indicator matrix:', error);
     return NextResponse.json(

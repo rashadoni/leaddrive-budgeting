@@ -14,6 +14,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+// Phase 5.2 Stage 2 (2026-05-21) — RLS wrap.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import {
   getMateriality,
   getMaterialityNote,
@@ -38,7 +40,8 @@ export async function GET(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 })
   }
 
-  const iv = await prisma.indicatorValue.findFirst({
+  return withOrgScope(session.orgId, async (tx) => {
+  const iv = await tx.indicatorValue.findFirst({
     where: { id, organizationId: session.orgId },
     select: {
       id: true,
@@ -131,5 +134,6 @@ export async function GET(
     sanityBand: iv.sanityBand,
     indicator: iv.indicator,
     company: iv.company,
+  })
   })
 }

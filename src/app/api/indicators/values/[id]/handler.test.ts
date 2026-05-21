@@ -11,6 +11,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 const { prismaMock, getCompanyScopeMock, getMaterialityMock, isMaterialityScopedMock } = vi.hoisted(() => ({
   prismaMock: {
     indicatorValue: { findFirst: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps handler in $transaction.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
   getCompanyScopeMock: vi.fn(),
   getMaterialityMock: vi.fn(),
@@ -31,7 +36,7 @@ vi.mock("@/lib/risk/esg-materiality", () => ({
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET } from "./route"
 
-const ORG_ID = "org_demo"
+const ORG_ID = "cm3rlswraporg00000001demo"
 
 beforeEach(() => {
   prismaMock.indicatorValue.findFirst.mockReset().mockResolvedValue(null)
