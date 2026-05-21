@@ -26,6 +26,7 @@ For each sheet, given its name, headers, sample rows, and column type profiles, 
    - "DESCRIPTIONS"  = Strategic narrative / company description text
    - "INFO_SUMMARY"  = High-level summary / index of other sheets
    - "COMPANIES"     = Org-structure sheet listing entity tree (headers include some of: code, name, industry, level, parentCompanyCode — case/whitespace insensitive). NOT a financial sheet — used to bootstrap or update the company hierarchy.
+   - "OPS_FACTS"     = Generic flat operational-facts sheet. Headers MUST include all of: companyCode (or "company"/"code"), metric (or "kpi"), date (or "period"), value (or "amount"/"qty"), unit — case/whitespace insensitive. Each row is one (company, metric, date, value, unit) fact. Distinct from KPI_FARMING / KPI_PROCESSING which are Azik-shape sheets with hardcoded metric positions per row/column. If a sheet has these exact five+ headers and one fact per row, classify as OPS_FACTS regardless of which metrics appear.
    - "UNKNOWN"       = Cannot determine; reviewer must classify manually
 
 2. **entityCode** — the AZSEKER-* (or other) operational entity this sheet belongs to:
@@ -106,7 +107,7 @@ Return STRICT JSON in this exact shape (no markdown, no extra prose):
   "classifications": [
     {
       "sheetName": "<exactly as in input>",
-      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|COMPANIES|UNKNOWN",
+      "dataType": "PLF|BS|CF|KPI_FARMING|KPI_PROCESSING|CAPEX|SALES|LAND_REGISTRY|DESCRIPTIONS|INFO_SUMMARY|COMPANIES|OPS_FACTS|UNKNOWN",
       "entityCode": "AZSEKER-CPC" | null,
       "confidence": 0.0,
       "reasoning": "one line — what signal drove this"

@@ -43,6 +43,13 @@ export type SheetDataType =
   // industry / level / parentCompanyCode). Detected by header shape —
   // see companies-import.canonicalizeHeaders for the canonical column set.
   | "COMPANIES"
+  // Phase 7.M Tier 7 — import consolidation. OPS_FACTS is a flat
+  // tabular operational-facts sheet (headers: companyCode | metric |
+  // date | value | unit | sourceNote). Distinct from KPI_FARMING /
+  // KPI_PROCESSING / SALES which are Azik-shape sheets with hardcoded
+  // metric positions. Writes to the same `operational_facts` table via
+  // runKpiBatch — see operational-facts-import.parseOperationalFactsWorkbook.
+  | "OPS_FACTS"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -108,6 +115,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "DESCRIPTIONS",
   "INFO_SUMMARY",
   "COMPANIES",
+  "OPS_FACTS",
   "UNKNOWN",
 ])
 

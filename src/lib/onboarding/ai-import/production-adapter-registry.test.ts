@@ -61,6 +61,9 @@ vi.mock("../cf-import-batch", () => ({
 vi.mock("../kpi-import-batch", () => ({
   runKpiBatch: vi.fn(),
 }))
+vi.mock("../operational-facts-import", () => ({
+  parseOperationalFactsWorkbook: vi.fn(),
+}))
 
 import { buildProductionAdapterRegistry } from "./production-adapter-registry"
 import { parsePlfPlSheet, parsePlfCfSheet } from "../adapters/azseker-plf"
@@ -122,6 +125,9 @@ describe("buildProductionAdapterRegistry", () => {
     expect(registry.get("CAPEX")).toBeTruthy()
     expect(registry.get("DESCRIPTIONS")).toBeTruthy()
     expect(registry.get("INFO_SUMMARY")).toBeTruthy()
+    expect(registry.get("COMPANIES")).toBeTruthy()
+    // Phase 7.M Tier 7 — OPS_FACTS handler registered.
+    expect(registry.get("OPS_FACTS")).toBeTruthy()
     expect(registry.get("UNKNOWN")).toBeTruthy()
   })
 
@@ -560,6 +566,182 @@ describe("buildProductionAdapterRegistry", () => {
       XLSX: fakeXLSX,
     })
     expect(result.itemCount).toBe(0)
+    const apply = await result.applyToDb({} as never)
+    expect(apply.rowsInserted).toBe(0)
+  })
+
+  // ────────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 — OPS_FACTS handler (generic flat ops-facts sheet)
+  // ────────────────────────────────────────────────────────────────────
+
+  it("OPS_FACTS handler parses sheet, resolves companyCode via ctx, calls runKpiBatch with outer tx", async () => {
+    const { parseOperationalFactsWorkbook } = await import(
+      "../operational-facts-import"
+    )
+    ;(parseOperationalFactsWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      rows: [
+        {
+          rowNumber: 2,
+          companyCode: "AZSEKER-CPC",
+          metric: "broiler_weight_avg_kg",
+          date: "2026-03-15",
+          value: 2.45,
+          unit: "kg",
+          sourceNote: null,
+        },
+        {
+          rowNumber: 3,
+          companyCode: "AZSEKER-EDEN",
+          metric: "yield_per_hectare",
+          date: "2026-06-01",
+          value: 4.2,
+          unit: "t/ha",
+          sourceNote: null,
+        },
+      ],
+      errors: [],
+      warnings: [],
+    })
+    const { runKpiBatch } = await import("../kpi-import-batch")
+    ;(runKpiBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 2 },
+    })
+    const prisma = buildPrismaStub({
+      companies: [
+        { id: "c_cpc", code: "AZSEKER-CPC" },
+        { id: "c_eden", code: "AZSEKER-EDEN" },
+      ],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("OPS_FACTS")!({
+      workbook: { Sheets: { OpsFacts: {} }, SheetNames: ["OpsFacts"] },
+      sheetName: "OpsFacts",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(2)
+    expect(result.warnings).toEqual([])
+
+    const fakeTx = { _tx: true } as never
+    await result.applyToDb(fakeTx)
+    expect(runKpiBatch).toHaveBeenCalledOnce()
+    const [txArg, payload] = (runKpiBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [
+      unknown,
+      {
+        rows: Array<{
+          companyId: string
+          metric: string
+          date: string
+          value: number
+          source: string
+        }>
+        companyIds: ReadonlyArray<string>
+        dateScope: ReadonlyArray<string>
+      },
+    ]
+    expect(txArg).toBe(fakeTx)
+    expect(payload.rows).toHaveLength(2)
+    expect(payload.rows[0]).toMatchObject({
+      companyId: "c_cpc",
+      metric: "broiler_weight_avg_kg",
+      date: "2026-03-15",
+      value: 2.45,
+      source: "ai_import_ops_facts",
+    })
+    expect(payload.rows[1]).toMatchObject({
+      companyId: "c_eden",
+      metric: "yield_per_hectare",
+      value: 4.2,
+    })
+    expect(payload.dateScope).toEqual(["2026"])
+    expect(payload.companyIds).toEqual(
+      expect.arrayContaining(["c_cpc", "c_eden"]),
+    )
+  })
+
+  it("OPS_FACTS handler warns when companyCode is not in org, skips year-mismatch rows", async () => {
+    const { parseOperationalFactsWorkbook } = await import(
+      "../operational-facts-import"
+    )
+    ;(parseOperationalFactsWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      rows: [
+        {
+          rowNumber: 2,
+          companyCode: "AZSEKER-CPC",
+          metric: "broiler_weight_avg_kg",
+          date: "2026-03-15",
+          value: 2.45,
+          unit: "kg",
+          sourceNote: null,
+        },
+        {
+          rowNumber: 3,
+          companyCode: "AZSEKER-UNKNOWN",
+          metric: "broiler_weight_avg_kg",
+          date: "2026-04-15",
+          value: 2.5,
+          unit: "kg",
+          sourceNote: null,
+        },
+        {
+          rowNumber: 4,
+          companyCode: "AZSEKER-CPC",
+          metric: "broiler_weight_avg_kg",
+          date: "2025-12-15",
+          value: 2.4,
+          unit: "kg",
+          sourceNote: null,
+        },
+      ],
+      errors: [{ rowNumber: 5, reason: "bad unit" }],
+      warnings: [{ rowNumber: 6, message: "value high" }],
+    })
+    const { runKpiBatch } = await import("../kpi-import-batch")
+    ;(runKpiBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+    })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("OPS_FACTS")!({
+      workbook: { Sheets: { OpsFacts: {} }, SheetNames: ["OpsFacts"] },
+      sheetName: "OpsFacts",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(1) // only c_cpc 2026-03-15 row
+    // 4 warnings: 1 hard error from parser, 1 soft warning from parser,
+    // 1 unknown company, 1 year-out-of-scope
+    expect(result.warnings).toHaveLength(4)
+    expect(result.warnings.some((w) => w.includes("AZSEKER-UNKNOWN"))).toBe(true)
+    expect(result.warnings.some((w) => w.includes("outside year 2026"))).toBe(
+      true,
+    )
+    expect(result.warnings.some((w) => w.includes("bad unit"))).toBe(true)
+    expect(result.warnings.some((w) => w.includes("value high"))).toBe(true)
+  })
+
+  it("OPS_FACTS handler returns warning when sheet missing from workbook", async () => {
+    const prisma = buildPrismaStub({ plan: { id: "plan_2026" } })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("OPS_FACTS")!({
+      workbook: { Sheets: {}, SheetNames: [] },
+      sheetName: "MissingSheet",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(0)
+    expect(result.warnings).toEqual([`Sheet "MissingSheet" not found`])
     const apply = await result.applyToDb({} as never)
     expect(apply.rowsInserted).toBe(0)
   })

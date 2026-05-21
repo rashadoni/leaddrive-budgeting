@@ -93,6 +93,11 @@ const APPLY_ORDER: Record<FileType, number> = {
   "strategic-descriptions": 0,
   "main-financial": 1,
   "kpi-only": 2,
+  // ops-facts shares the operational_facts table with kpi-only; same
+  // dependency tier (companies seeded, plf-bs-cf optional) — placed
+  // right after kpi-only so KPI Azik-shape sheets get the first write
+  // and OPS_FACTS appends without conflicts. Phase 7.M Tier 7.
+  "ops-facts": 2.5,
   "capex-plan": 3,
   "land-registry": 4,
   "forward-forecast": 5,
@@ -411,6 +416,7 @@ export async function runMultiFileImport(
           descriptions: 0,
           infoSummary: 0,
           companies: 0,
+          opsFacts: 0,
           unknown: 0,
         },
       })

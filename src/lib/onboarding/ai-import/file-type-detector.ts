@@ -42,6 +42,13 @@ export type FileType =
   // bootstraps / updates the org's entity hierarchy. Detected by a
   // COMPANIES-classified sheet without any financial sheets.
   | "company-setup"
+  // Phase 7.M Tier 7 — import consolidation. ops-facts file holds one
+  // or more generic flat operational-facts sheets (companyCode|metric|
+  // date|value|unit). Same target table as KPI sheets (operational_facts)
+  // but a different shape — Azik KPI sheets have hardcoded metric layout;
+  // OPS_FACTS sheets carry the metric name in a column. Detected by
+  // OPS_FACTS-classified sheet(s) without any PLF/BS/CF.
+  | "ops-facts"
   | "unknown"
 
 export interface FileTypeResult {
@@ -66,6 +73,7 @@ export interface FileTypeResult {
     descriptions: number
     infoSummary: number
     companies: number
+    opsFacts: number
     unknown: number
   }
 }
@@ -86,6 +94,7 @@ function bucketSheets(
     descriptions: 0,
     infoSummary: 0,
     companies: 0,
+    opsFacts: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -122,6 +131,9 @@ function bucketSheets(
         break
       case "COMPANIES":
         counts.companies++
+        break
+      case "OPS_FACTS":
+        counts.opsFacts++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -337,6 +349,24 @@ export function detectFileType(
       fileType: "kpi-only",
       confidence: conf,
       reasoning: `${kpiCount} KPI sheet(s), no PLF/BS/CF → standalone KPI file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.5: ops-facts — generic flat operational-facts sheet(s)
+  // without PLF/BS/CF. Same target table as KPI sheets (operational_facts)
+  // but different shape — companyCode|metric|date|value|unit columns.
+  // Mixed with PLF/BS/CF → falls through to main-financial (financial
+  // intent dominates, mirrors the COMPANIES heuristic).
+  if (counts.opsFacts >= 1 && counts.plf === 0 && counts.bs === 0 && counts.cf === 0) {
+    const conf = avgConfidenceOver(
+      classifications,
+      (c) => c.dataType === "OPS_FACTS",
+    )
+    return {
+      fileType: "ops-facts",
+      confidence: conf,
+      reasoning: `${counts.opsFacts} ops-facts sheet(s), no PLF/BS/CF → standalone operational-facts file`,
       sheetCounts: counts,
     }
   }

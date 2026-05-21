@@ -84,6 +84,7 @@ import {
   runKpiBatch,
   type KpiImportRow,
 } from "../kpi-import-batch"
+import { parseOperationalFactsWorkbook } from "../operational-facts-import"
 import {
   buildReconKey,
   type ReconciliationKey,
@@ -1008,6 +1009,100 @@ function makeCompaniesHandler(prisma: PrismaClient): AdapterHandler {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// OPS_FACTS handler — generic flat operational-facts sheet
+// (companyCode|metric|date|value|unit|sourceNote). Phase 7.M Tier 7
+// import consolidation: same target table as KPI handlers, but a
+// different shape (metric in a column vs hardcoded layout). Reuses
+// parseOperationalFactsWorkbook from /api/operational-facts/import.
+// ──────────────────────────────────────────────────────────────────────
+
+function makeOpsFactsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = ctxRef.value ?? (await ensureCtx())
+    const sheet = input.workbook.Sheets[input.sheetName]
+    if (!sheet) {
+      return {
+        summary: `OPS_FACTS sheet "${input.sheetName}" not in workbook`,
+        itemCount: 0,
+        warnings: [`Sheet "${input.sheetName}" not found`],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    // parseOperationalFactsWorkbook reads SheetNames[0]. We wrap the
+    // target sheet into a single-sheet workbook so the parser sees
+    // exactly the sheet AI classified as OPS_FACTS — no dependence on
+    // ordering in the source xlsx.
+    const wrappedWorkbook = {
+      Sheets: { [input.sheetName]: sheet },
+      SheetNames: [input.sheetName],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    const parsed = parseOperationalFactsWorkbook(wrappedWorkbook, input.XLSX)
+    const warnings: string[] = []
+    for (const e of parsed.errors) {
+      warnings.push(`row ${e.rowNumber}: ${e.reason}`)
+    }
+    for (const w of parsed.warnings) {
+      warnings.push(`row ${w.rowNumber}: ${w.message}`)
+    }
+    // Resolve companyCode → companyId via cached org context.
+    const rows: KpiImportRow[] = []
+    const expectedSums = new Map<ReconciliationKey, number>()
+    const yearFilter = String(input.year)
+    for (const p of parsed.rows) {
+      const companyId = ctx.codeToId.get(p.companyCode)
+      if (!companyId) {
+        warnings.push(
+          `row ${p.rowNumber}: companyCode "${p.companyCode}" not in org`,
+        )
+        continue
+      }
+      if (!p.date.startsWith(yearFilter)) {
+        warnings.push(
+          `row ${p.rowNumber}: date ${p.date} outside year ${yearFilter} — skipped`,
+        )
+        continue
+      }
+      rows.push({
+        companyId,
+        metric: p.metric,
+        date: p.date,
+        value: p.value,
+        unit: p.unit || null,
+        source: "ai_import_ops_facts",
+      })
+      const key = buildReconKey(companyId, p.metric, p.date)
+      expectedSums.set(key, (expectedSums.get(key) ?? 0) + p.value)
+    }
+    return {
+      summary: `${rows.length} ops-facts rows (${warnings.length} warnings)`,
+      itemCount: rows.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (rows.length === 0) return { rowsInserted: 0 }
+        // Pass tx so runKpiBatch uses the outer (multi-file) transaction
+        // — atomicity with sibling sheets in the same file group.
+        const result = await runKpiBatch(tx, {
+          organizationId: input.organizationId,
+          label: `ai-import OPS_FACTS ${input.sheetName}`,
+          actorUserId: "ai-import",
+          sourceDocument: `ops-facts-sheet:${input.sheetName}`,
+          companyIds: Array.from(new Set(rows.map((r) => r.companyId))),
+          dateScope: [yearFilter],
+          rows,
+          expectedSums,
+        })
+        return { rowsInserted: result.metrics.rowsInserted }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // noop — for INFO_SUMMARY / UNKNOWN
 // ──────────────────────────────────────────────────────────────────────
 
@@ -1091,6 +1186,9 @@ export function buildProductionAdapterRegistry(
     // need org context (it's bootstrapping companies, not writing data
     // into existing ones), so we don't wrap it with the ensureCtx helper.
     COMPANIES: makeCompaniesHandler(prisma),
+    // Phase 7.M Tier 7 — import consolidation. OPS_FACTS reuses the
+    // shared org-context (companyCode → companyId map) like KPI handlers.
+    OPS_FACTS: wrap(makeOpsFactsHandler),
     UNKNOWN: noopHandler,
   })
 }

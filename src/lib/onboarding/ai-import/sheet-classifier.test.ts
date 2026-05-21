@@ -277,6 +277,29 @@ describe("classifySheets", () => {
     expect(result.classifications[0].entityCode).toBeNull()
   })
 
+  it("accepts OPS_FACTS dataType from LLM (Phase 7.M Tier 7)", async () => {
+    const client = stubClient(
+      JSON.stringify({
+        classifications: [
+          {
+            sheetName: "OperationalFacts",
+            dataType: "OPS_FACTS",
+            entityCode: null,
+            confidence: 0.91,
+            reasoning: "headers companyCode/metric/date/value/unit",
+          },
+        ],
+      }),
+    )
+    const result = await classifySheets(
+      { sheetMetas: [meta("OperationalFacts")] },
+      client,
+      "claude-test",
+    )
+    expect(result.classifications[0].dataType).toBe("OPS_FACTS")
+    expect(result.classifications[0].entityCode).toBeNull()
+  })
+
   it("classifies entity code as null for cross-entity sheets", async () => {
     const client = stubClient(
       JSON.stringify({

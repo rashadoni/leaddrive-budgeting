@@ -204,6 +204,7 @@ describe("detectFileType", () => {
         cls("i", "DESCRIPTIONS"),
         cls("j", "INFO_SUMMARY"),
         cls("k", "COMPANIES"),
+        cls("m", "OPS_FACTS"),
         cls("l", "UNKNOWN"),
       ],
       "AllShapes.xlsx",
@@ -220,7 +221,49 @@ describe("detectFileType", () => {
       descriptions: 1,
       infoSummary: 1,
       companies: 1,
+      opsFacts: 1,
       unknown: 1,
     })
+  })
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 — OPS_FACTS file-type detection
+  // ──────────────────────────────────────────────────────────────────
+
+  it("classifies file with only OPS_FACTS sheet as ops-facts (Phase 7.M Tier 7)", () => {
+    const result = detectFileType(
+      [cls("OperationalFacts", "OPS_FACTS")],
+      "ops-facts-batch.xlsx",
+    )
+    expect(result.fileType).toBe("ops-facts")
+    expect(result.sheetCounts.opsFacts).toBe(1)
+    expect(result.reasoning).toMatch(/operational-facts file/)
+  })
+
+  it("classifies multiple OPS_FACTS sheets without financials as ops-facts", () => {
+    const result = detectFileType(
+      [
+        cls("Q1 Facts", "OPS_FACTS"),
+        cls("Q2 Facts", "OPS_FACTS"),
+        cls(">>>", "INFO_SUMMARY"),
+      ],
+      "quarterly-ops.xlsx",
+    )
+    expect(result.fileType).toBe("ops-facts")
+    expect(result.sheetCounts.opsFacts).toBe(2)
+  })
+
+  it("OPS_FACTS mixed with PLF/BS/CF falls through to main-financial (financial intent dominates)", () => {
+    const result = detectFileType(
+      [
+        cls("OperationalFacts", "OPS_FACTS"),
+        cls("PLF X", "PLF", "X"),
+        cls("BS X", "BS", "X"),
+        cls("CF X", "CF", "X"),
+      ],
+      "Mixed.xlsx",
+    )
+    expect(result.fileType).toBe("main-financial")
+    expect(result.sheetCounts.opsFacts).toBe(1)
   })
 })
