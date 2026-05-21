@@ -101,4 +101,62 @@ describeIntegration("RLS cross-tenant leak (Phase 5.2 safety net)", () => {
     const orgIds = result.map((r) => r.organizationId).sort();
     expect(orgIds).toEqual([fixture.orgA.id, fixture.orgB.id].sort());
   });
+
+  // ── Phase 5.2 Stage 2 Tier 2 (2026-05-21) — compliance-tier leaks ──
+  // These assertions are failing-by-design until the corresponding
+  // RLS migrations apply. Same shape as the indicator_values pair
+  // above — the per-table loop spec from docs/RLS_TABLE_ROLLOUT.md.
+
+  it("withOrgScope(orgA.id) returns ONLY orgA's audit_events (Tier 2)", async () => {
+    const result = await withOrgScope(fixture.orgA.id, async (tx) => {
+      return tx.auditEvent.findMany({
+        where: { entityType: "RLSLeakTest" },
+        select: { id: true, organizationId: true },
+      });
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].organizationId).toBe(fixture.orgA.id);
+    expect(result[0].id).toBe(fixture.auditA.id);
+  });
+
+  it("withOrgScope(orgA.id) returns ONLY orgA's budget_change_logs (Tier 2)", async () => {
+    const result = await withOrgScope(fixture.orgA.id, async (tx) => {
+      return tx.budgetChangeLog.findMany({
+        where: {
+          entityType: "BudgetLine",
+          entityId: { startsWith: "__RLS_LEAK_TEST_" },
+        },
+        select: { id: true, organizationId: true },
+      });
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].organizationId).toBe(fixture.orgA.id);
+    expect(result[0].id).toBe(fixture.budgetChangeA.id);
+  });
+
+  it("withOrgScope(orgA.id) returns ONLY orgA's approval_requests (Tier 2)", async () => {
+    const result = await withOrgScope(fixture.orgA.id, async (tx) => {
+      return tx.approvalRequest.findMany({
+        where: { requestedBy: "system", requestType: "budget_line_create" },
+        select: { id: true, organizationId: true },
+      });
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].organizationId).toBe(fixture.orgA.id);
+    expect(result[0].id).toBe(fixture.approvalA.id);
+  });
+
+  it("Tier 2 bypass escape hatch returns BOTH orgs (admin cross-org)", async () => {
+    const result = await withOrgScope(
+      fixture.orgA.id,
+      async (tx) => {
+        return tx.auditEvent.findMany({
+          where: { entityType: "RLSLeakTest" },
+          select: { id: true, organizationId: true },
+        });
+      },
+      { bypass: true },
+    );
+    expect(result).toHaveLength(2);
+  });
 });

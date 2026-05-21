@@ -42,6 +42,16 @@ export interface MultiOrgFixture {
   indicator: { id: string; code: string };
   ivA: { id: string };
   ivB: { id: string };
+  // Phase 5.2 Stage 2 Tier 2 (2026-05-21) — leak-test rows for the
+  // compliance-tier tables (audit_events / budget_change_logs /
+  // approval_requests). One row per table per org so assertions can
+  // compare `findMany({orgA scope}).length === 1` (no cross-org bleed).
+  auditA: { id: string };
+  auditB: { id: string };
+  budgetChangeA: { id: string };
+  budgetChangeB: { id: string };
+  approvalA: { id: string };
+  approvalB: { id: string };
 }
 
 export async function cleanupMultiOrg(prisma: PrismaClient): Promise<void> {
@@ -55,12 +65,29 @@ export async function cleanupMultiOrg(prisma: PrismaClient): Promise<void> {
   const ids = orgs.map((o) => o.id);
   // Belt + suspenders: explicitly delete the test indicator + IVs +
   // companies in case the schema's cascade rules ever change. Order
-  // matters — IVs reference indicator + company.
+  // matters — IVs reference indicator + company; budget_change_log +
+  // approval_requests reference budget_plan; everything references org.
   await prisma.indicatorValue.deleteMany({
     where: { organizationId: { in: ids } },
   });
   await prisma.indicatorDefinition.deleteMany({
     where: { code: { startsWith: PREFIX } },
+  });
+  // Phase 5.2 Stage 2 Tier 2 — compliance-tier teardown.
+  await prisma.budgetChangeLog.deleteMany({
+    where: { organizationId: { in: ids } },
+  });
+  await prisma.approvalRequest.deleteMany({
+    where: { organizationId: { in: ids } },
+  });
+  await prisma.auditEvent.deleteMany({
+    where: {
+      organizationId: { in: ids },
+      entityType: "RLSLeakTest",
+    },
+  });
+  await prisma.budgetPlan.deleteMany({
+    where: { organizationId: { in: ids } },
   });
   await prisma.company.deleteMany({
     where: { organizationId: { in: ids } },
@@ -155,5 +182,122 @@ export async function seedMultiOrg(prisma: PrismaClient): Promise<MultiOrgFixtur
     select: { id: true },
   });
 
-  return { orgA, orgB, companyA, companyB, indicator, ivA, ivB };
+  // ── Phase 5.2 Stage 2 Tier 2 — compliance-tier leak rows ──────────
+  const [auditA, auditB] = await Promise.all([
+    prisma.auditEvent.create({
+      data: {
+        organizationId: orgA.id,
+        actorUserId: null,
+        action: "indicator_override_create",
+        entityType: "RLSLeakTest",
+        entityId: `${PREFIX}A`,
+        metadata: {},
+        context: {},
+      },
+      select: { id: true },
+    }),
+    prisma.auditEvent.create({
+      data: {
+        organizationId: orgB.id,
+        actorUserId: null,
+        action: "indicator_override_create",
+        entityType: "RLSLeakTest",
+        entityId: `${PREFIX}B`,
+        metadata: {},
+        context: {},
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const [planA, planB] = await Promise.all([
+    prisma.budgetPlan.create({
+      data: {
+        organizationId: orgA.id,
+        name: `${PREFIX}PLAN_A`,
+        periodType: "annual",
+        year: 2026,
+        status: "draft",
+      },
+      select: { id: true },
+    }),
+    prisma.budgetPlan.create({
+      data: {
+        organizationId: orgB.id,
+        name: `${PREFIX}PLAN_B`,
+        periodType: "annual",
+        year: 2026,
+        status: "draft",
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const [budgetChangeA, budgetChangeB] = await Promise.all([
+    prisma.budgetChangeLog.create({
+      data: {
+        organizationId: orgA.id,
+        planId: planA.id,
+        action: "create",
+        entityType: "BudgetLine",
+        entityId: `${PREFIX}A`,
+        changes: {},
+        actorUserId: null,
+      },
+      select: { id: true },
+    }),
+    prisma.budgetChangeLog.create({
+      data: {
+        organizationId: orgB.id,
+        planId: planB.id,
+        action: "create",
+        entityType: "BudgetLine",
+        entityId: `${PREFIX}B`,
+        changes: {},
+        actorUserId: null,
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const [approvalA, approvalB] = await Promise.all([
+    prisma.approvalRequest.create({
+      data: {
+        organizationId: orgA.id,
+        planId: planA.id,
+        requestType: "budget_line_create",
+        status: "pending",
+        proposedChange: {},
+        requestedBy: "system",
+      },
+      select: { id: true },
+    }),
+    prisma.approvalRequest.create({
+      data: {
+        organizationId: orgB.id,
+        planId: planB.id,
+        requestType: "budget_line_create",
+        status: "pending",
+        proposedChange: {},
+        requestedBy: "system",
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return {
+    orgA,
+    orgB,
+    companyA,
+    companyB,
+    indicator,
+    ivA,
+    ivB,
+    auditA,
+    auditB,
+    budgetChangeA,
+    budgetChangeB,
+    approvalA,
+    approvalB,
+  };
 }

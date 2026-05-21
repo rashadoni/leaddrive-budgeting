@@ -62,9 +62,9 @@ can batch; big-traffic tables ship solo for tight regression control).
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 2 | `AuditEvent` | `audit_events` | ⬜ |
-| 3 | `BudgetChangeLog` | `budget_change_log` | ⬜ |
-| 4 | `ApprovalRequest` | `approval_requests` | ⬜ |
+| 2 | `AuditEvent` | `audit_events` | 🟡 migration scaffolded (`20260521120000_rls_audit_events`), leak test added, **NOT applied** |
+| 3 | `BudgetChangeLog` | `budget_change_logs` | 🟡 migration scaffolded (`20260521120100_rls_budget_change_logs`), leak test added, **NOT applied** |
+| 4 | `ApprovalRequest` | `approval_requests` | 🟡 migration scaffolded (`20260521120200_rls_approval_requests`), leak test added, **NOT applied** |
 
 ### Tier 3 — financial truth (6 tables)
 
