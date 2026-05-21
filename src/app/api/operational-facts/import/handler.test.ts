@@ -156,6 +156,18 @@ describe("POST /api/operational-facts/import", () => {
     expect(body.rejected[0].reason).toContain("EVIL-CO")
   })
 
+  it("stamps Deprecation / Sunset / Link headers on 200 dryRun response", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    const fd = new FormData()
+    fd.set("file", new Blob(["x"]), "x.xlsx")
+    const res = await POST(makeMultipartRequest(fd) as never)
+    expect(res.status).toBe(200)
+    expect(res.headers.get("Deprecation")).toBe("true")
+    expect(res.headers.get("Sunset")).toBe("Thu, 21 May 2026 00:00:00 GMT")
+    expect(res.headers.get("Link")).toContain("successor-version")
+    expect(res.headers.get("X-Replaced-By")).toBe("/api/import/ai-auto-multi")
+  })
+
   it("200 apply path — update when row exists, create when new", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
     parseOperationalFactsWorkbookMock.mockReturnValue({

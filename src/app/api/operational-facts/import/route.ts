@@ -30,8 +30,9 @@ import {
   parseOperationalFactsWorkbook,
   type ImportParseResult,
 } from "@/lib/onboarding/operational-facts-import"
+import { withDeprecation } from "@/lib/api-deprecation"
 
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await requireRole(req, "manager")
   if (isAuthError(session)) return session
   if (!session.orgId) {
@@ -232,3 +233,11 @@ export async function POST(req: NextRequest) {
     rejected: rejectedRows,
   })
 }
+
+// Phase 7.M Tier 7 Phase 6 — advertise replacement while keeping the route live.
+// Clients receive Sunset / Deprecation / Link headers on every response.
+export const POST = withDeprecation({
+  replacedBy: "/api/import/ai-auto-multi",
+  reason:
+    "use AI Import - recognises OPS_FACTS shape (companyCode|metric|date|value|unit); route at /budgeting/admin/ai-import",
+})(_POST)

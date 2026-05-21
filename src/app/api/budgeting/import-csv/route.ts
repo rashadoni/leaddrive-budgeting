@@ -5,6 +5,7 @@ import { prisma, logBudgetChange } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
+import { withDeprecation } from "@/lib/api-deprecation"
 
 const importCsvSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -15,7 +16,7 @@ const importCsvSchema = z.object({
 
 // POST — import CSV data as budget actuals
 // Accepts JSON array of rows: [{ category, department, amount, date, description, lineType }]
-export async function POST(req: NextRequest) {
+async function _POST(req: NextRequest) {
   const session = await getSession(req)
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   const { orgId, userId } = session
@@ -182,6 +183,13 @@ export async function POST(req: NextRequest) {
     errors: errors.slice(0, 20), // limit errors in response
   })
 }
+
+// Phase 7.M Tier 7 Phase 6 — advertise replacement while keeping the route live.
+export const POST = withDeprecation({
+  replacedBy: "/api/import/ai-auto-multi",
+  reason:
+    "use AI Import - recognises BUDGET_ACTUALS shape (category|amount|date|department|description|lineType|companyCode); route at /budgeting/admin/ai-import",
+})(_POST)
 
 // GET — list import history
 export async function GET(req: NextRequest) {

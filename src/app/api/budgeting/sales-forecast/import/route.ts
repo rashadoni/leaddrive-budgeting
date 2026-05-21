@@ -1,111 +1,58 @@
+/**
+ * Phase 7.M Tier 7 Phase 6 (2026-05-21) — DEPRECATED route.
+ *
+ * Original purpose: bulk Excel upload of department × month sales
+ * forecast grid. ~111 LOC ExcelJS-based parser + per-row upsert into
+ * SalesForecast table.
+ *
+ * Replacement: `POST /api/import/ai-auto-multi` — drop the same xlsx
+ * onto the AI Import page (/budgeting/admin/ai-import). The classifier
+ * recognises the department×month grid shape as `SALES_FORECAST`
+ * dataType (added Tier 7 Phase 4) and the universal multi-file
+ * orchestrator routes it to `makeSalesForecastHandler` →
+ * `runSalesForecastBatch`. Same target table (SalesForecast), same
+ * upsert semantics by (orgId, deptId, year, month) unique key.
+ *
+ * UI surface audit (Phase 5): this route had ZERO UI callers — the
+ * SalesForecastTab uses inline edit via `POST /api/budgeting/sales-forecast`
+ * (the non-import endpoint), not this bulk upload. Safe to return 410.
+ *
+ * Clients hitting this URL get:
+ *   • 410 Gone status (per RFC 9110 — semantically "this resource is
+ *     intentionally and permanently removed; do not retry")
+ *   • `Sunset` header (RFC 8594) timestamped at the deprecation date
+ *   • `Deprecation: true` header (RFC 9745)
+ *   • `Link: rel="successor-version"` pointing to the replacement
+ */
 import { NextRequest, NextResponse } from "next/server"
-import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
-import { currentBakuYearNumber } from "@/lib/risk/periods"
-import { getActivePeriodLock } from "@/lib/budgeting/period-lock"
-import { lockedResponse } from "@/lib/budgeting/period-lock-http"
-import ExcelJS from "exceljs"
 
-export async function POST(req: NextRequest) {
-  const orgId = await getOrgId(req)
-  if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+const SUNSET_HEADERS = {
+  // RFC 8594 Sunset: when this resource will (or has) stopped being
+  // available. Set to the deprecation date itself — the route is gone
+  // NOW, not eventually.
+  Sunset: "Thu, 21 May 2026 00:00:00 GMT",
+  // RFC 9745 Deprecation flag — boolean signal for tooling.
+  Deprecation: "true",
+  // RFC 8288 successor-version Link relation. Clients should retry
+  // the upload via the AI Import multi-file endpoint.
+  Link: '</api/import/ai-auto-multi>; rel="successor-version"',
+  // Custom header for human operators reading logs/curl output.
+  "X-Replaced-By": "/api/import/ai-auto-multi",
+}
 
-  const formData = await req.formData()
-  const file = formData.get("file") as File | null
-  const year = Number(formData.get("year") || currentBakuYearNumber())
-
-  if (!file) {
-    return NextResponse.json({ error: "file required" }, { status: 400 })
-  }
-
-  // Phase L8 — period-lock gate (year-scoped forecast import).
-  const lock = await getActivePeriodLock(prisma, orgId, String(year))
-  if (lock)
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: null,
-      route: "POST /api/budgeting/sales-forecast/import",
-    })
-
-  // Load departments for this org (revenue-generating)
-  const departments = await prisma.budgetDepartment.findMany({
-    where: { organizationId: orgId, hasRevenue: true, isActive: true },
-    orderBy: { sortOrder: "asc" },
-  })
-
-  // Build label → id map (case-insensitive, trimmed)
-  const labelToId: Record<string, string> = {}
-  for (const d of departments) {
-    labelToId[d.label.trim().toLowerCase()] = d.id
-  }
-
-  const arrayBuffer = await file.arrayBuffer()
-  const wb = new ExcelJS.Workbook()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await wb.xlsx.load(Buffer.from(arrayBuffer) as any)
-
-  const ws = wb.worksheets[0]
-  if (!ws) {
-    return NextResponse.json({ error: "Empty workbook" }, { status: 400 })
-  }
-
-  const entries: Array<{ departmentId: string; month: number; amount: number }> = []
-
-  const MAX_ROWS = 50000
-  let rowCount = 0
-
-  // Skip header row (row 1), read data rows
-  ws.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return // skip header
-    rowCount++
-    if (rowCount > MAX_ROWS) return // stop processing beyond limit
-
-    const label = String(row.getCell(1).value || "").trim().toLowerCase()
-    if (label === "total" || label === "итого" || !label) return // skip total row
-
-    const deptId = labelToId[label]
-    if (!deptId) return // unknown department — skip
-
-    for (let col = 2; col <= 13; col++) {
-      const month = col - 1
-      const cellValue = row.getCell(col).value
-      const amount = Number(cellValue) || 0
-      entries.push({ departmentId: deptId, month, amount })
-    }
-  })
-
-  if (rowCount > MAX_ROWS) {
-    return NextResponse.json({ error: `Maximum ${MAX_ROWS} rows allowed` }, { status: 400 })
-  }
-
-  if (entries.length === 0) {
-    return NextResponse.json({ error: "No valid data found in file" }, { status: 400 })
-  }
-
-  // Upsert all entries
-  const results = await prisma.$transaction(
-    entries.map((e) =>
-      prisma.salesForecast.upsert({
-        where: {
-          organizationId_departmentId_year_month: {
-            organizationId: orgId,
-            departmentId: e.departmentId,
-            year,
-            month: e.month,
-          },
-        },
-        update: { amount: e.amount },
-        create: {
-          organizationId: orgId,
-          departmentId: e.departmentId,
-          year,
-          month: e.month,
-          amount: e.amount,
-        },
-      })
-    )
+export async function POST(_req: NextRequest) {
+  return NextResponse.json(
+    {
+      error:
+        "This endpoint is deprecated and no longer accepts uploads. Use /api/import/ai-auto-multi via /budgeting/admin/ai-import — the AI classifier recognises the department×month grid as SALES_FORECAST and routes to the same SalesForecast table.",
+      replacement: "/api/import/ai-auto-multi",
+      ui: "/budgeting/admin/ai-import",
+      replacedAt: "2026-05-21",
+      phase: "Phase 7.M Tier 7 Phase 6",
+    },
+    {
+      status: 410,
+      headers: SUNSET_HEADERS,
+    },
   )
-
-  return NextResponse.json({ success: true, count: results.length })
 }

@@ -63,4 +63,14 @@ describe("POST /api/budgeting/import-csv — period lock (Turn LXIX)", () => {
     expect(res.status).toBe(200)
     expect(prismaMock.budgetActual.create).toHaveBeenCalledTimes(1)
   })
+
+  it("stamps Deprecation / Sunset / Link headers on 200 response", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    const res = await POST(makeRequest("/api/budgeting/import-csv", { method: "POST", json: validBody }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get("Deprecation")).toBe("true")
+    expect(res.headers.get("Sunset")).toBe("Thu, 21 May 2026 00:00:00 GMT")
+    expect(res.headers.get("Link")).toContain("successor-version")
+    expect(res.headers.get("X-Replaced-By")).toBe("/api/import/ai-auto-multi")
+  })
 })

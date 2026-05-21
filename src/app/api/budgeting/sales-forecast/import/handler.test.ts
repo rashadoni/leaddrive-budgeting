@@ -1,61 +1,41 @@
 // @vitest-environment node
 /**
- * Handler test for `/api/budgeting/sales-forecast/import` (POST).
+ * Phase 7.M Tier 7 Phase 6 — handler tests for the DEPRECATED
+ * `/api/budgeting/sales-forecast/import` route.
  *
- * Locks xlsx upload contract: missing-file 400, label→deptId lookup,
- * 12-month iteration, period-lock gate, and bulk-upsert envelope.
- *
- * Note: tests focus on auth/validation gates rather than running real
- * ExcelJS load — full xlsx fixtures live in scripts/ for e2e.
+ * Route was rewritten to a static 410 Gone (zero UI callers found in
+ * Phase 5 audit). Tests lock the 410 status, deprecation headers, and
+ * the JSON body shape pointing to the replacement.
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest"
-
-const { prismaMock } = vi.hoisted(() => ({
-  prismaMock: {
-    budgetDepartment: { findMany: vi.fn() },
-    salesForecast: { upsert: vi.fn() },
-    organization: { findUnique: vi.fn() },
-    auditEvent: { create: vi.fn() },
-    $transaction: vi.fn(),
-  },
-}))
-
-vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
-vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
-
-import { mockSession, makeRequest } from "@/test/api-harness"
+import { describe, it, expect } from "vitest"
 import { POST } from "./route"
 
-beforeEach(() => {
-  prismaMock.budgetDepartment.findMany.mockReset().mockResolvedValue([])
-  prismaMock.salesForecast.upsert.mockReset().mockResolvedValue({ id: "s1" })
-  prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
-  prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "a1" })
-  prismaMock.$transaction.mockReset().mockImplementation((promises: unknown[]) => Promise.resolve(promises.map(() => ({ id: "s1" }))))
-})
-
-function makeFormDataRequest(form: FormData): Request {
+function makeRequest(): Request {
   return new Request("http://localhost/api/budgeting/sales-forecast/import", {
     method: "POST",
-    body: form,
   })
 }
 
-describe("POST /api/budgeting/sales-forecast/import", () => {
-  it("401 unauthenticated", async () => {
-    await mockSession(null)
-    const fd = new FormData()
-    fd.set("year", "2026")
-    const res = await POST(makeFormDataRequest(fd) as never)
-    expect(res.status).toBe(401)
+describe("POST /api/budgeting/sales-forecast/import — 410 Gone", () => {
+  it("returns 410 for any request regardless of auth state", async () => {
+    const res = await POST(makeRequest() as never)
+    expect(res.status).toBe(410)
   })
 
-  it("400 when no file provided", async () => {
-    await mockSession({ orgId: "org_demo", userId: "u1", role: "editor" })
-    const fd = new FormData()
-    fd.set("year", "2026")
-    const res = await POST(makeFormDataRequest(fd) as never)
-    expect(res.status).toBe(400)
+  it("response body contains replacement path and UI link", async () => {
+    const res = await POST(makeRequest() as never)
+    const body = await res.json()
+    expect(body.replacement).toBe("/api/import/ai-auto-multi")
+    expect(body.ui).toBe("/budgeting/admin/ai-import")
+    expect(typeof body.error).toBe("string")
+  })
+
+  it("response carries RFC 8594 Sunset + RFC 9745 Deprecation headers", async () => {
+    const res = await POST(makeRequest() as never)
+    expect(res.headers.get("Deprecation")).toBe("true")
+    expect(res.headers.get("Sunset")).toBe("Thu, 21 May 2026 00:00:00 GMT")
+    expect(res.headers.get("Link")).toContain("successor-version")
+    expect(res.headers.get("X-Replaced-By")).toBe("/api/import/ai-auto-multi")
   })
 })
