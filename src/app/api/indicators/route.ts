@@ -239,6 +239,33 @@ export async function POST(request: NextRequest) {
   // ceiling — workloads of 5000+ pairs are now safe.
   if (targets.length > SYNC_THRESHOLD) {
     const orgId = session.orgId;
+    // Phase 6 (2026-05-21) — BullMQ-backed path. Activates only when
+    // QUEUE_BACKEND=bullmq AND a worker process is running. Defaults
+    // to inprocess so the legacy job-runner stays the production
+    // hot-path until the worker daemon is rolled out.
+    const { isBullMqEnabled } = await import("@/lib/queue/feature-flag");
+    if (isBullMqEnabled()) {
+      const { enqueueRecomputeBatch } = await import("@/lib/queue/queues");
+      // Derive year from period — supports "2026" / "2026-04" / "2026-Q2"
+      const periodYear = parseInt(period.slice(0, 4), 10);
+      const queueJobId = await enqueueRecomputeBatch({
+        organizationId: orgId,
+        targets: targets.map((t) => ({ companyId: t.company.id, year: periodYear })),
+        actorUserId: session.userId,
+        reason: "POST /api/indicators (async fan-out)",
+      });
+      return NextResponse.json(
+        {
+          async: true,
+          jobId: queueJobId,
+          backend: "bullmq",
+          period,
+          total: targets.length,
+          statusUrl: `/api/queue/jobs/${queueJobId}`,
+        },
+        { status: 202 },
+      );
+    }
     const job = enqueueRecomputeJob(orgId, targets.length, async (state, report) => {
       let processed = 0;
       for (const { company, definition } of targets) {

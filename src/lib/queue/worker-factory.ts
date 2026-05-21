@@ -1,0 +1,63 @@
+/**
+ * Phase 6 — Worker factory.
+ *
+ * Constructs BullMQ Worker instances bound to a processor function.
+ * Workers are ONLY instantiated by the dedicated worker process
+ * (scripts/run-worker.ts) — never by Next.js HTTP routes. Importing
+ * this file from a route is harmless (constructors lazy); calling
+ * `buildAllWorkers()` from a route is a bug (would spawn workers in
+ * the Next.js process and double-process jobs).
+ */
+import { Worker, type WorkerOptions } from "bullmq"
+import { getRedis } from "./redis-client"
+import { QUEUE_NAMES } from "./job-types"
+import {
+  processRecomputePair,
+  processRecomputeBatch,
+} from "./processors/recompute-processor"
+
+/** Default per-worker concurrency. 4 = matches our 60-company target
+ *  scale without saturating the Postgres pool (Prisma defaults to 10
+ *  connections; recompute can run 2-3 queries in parallel internally). */
+const DEFAULT_CONCURRENCY = 4
+
+/** Default WorkerOptions applied to every worker. */
+function baseOpts(): WorkerOptions {
+  return {
+    connection: getRedis(),
+    concurrency: DEFAULT_CONCURRENCY,
+    // Lock auto-renewal: extend the lock every 15s so long recomputes
+    // (~30s) don't lose their lock and trigger a duplicate run.
+    lockDuration: 30_000,
+    lockRenewTime: 15_000,
+  }
+}
+
+/** Build and return all 2 recompute workers. Caller is responsible
+ *  for awaiting `worker.close()` on SIGTERM. */
+export function buildAllWorkers(): Worker[] {
+  const workers: Worker[] = [
+    new Worker(QUEUE_NAMES.recomputePair, processRecomputePair, baseOpts()),
+    new Worker(QUEUE_NAMES.recomputeBatch, processRecomputeBatch, baseOpts()),
+    // import + sparkline workers wire up in Phase 5+
+  ]
+  // Attach lightweight event logging so operators see job lifecycle
+  // in stdout (LaunchAgent log). Detailed admin UI lives in Phase 9.
+  for (const w of workers) {
+    w.on("completed", (job) =>
+      console.log(
+        `[worker:${w.name}] job ${job.id} completed in ${Date.now() - job.timestamp}ms`,
+      ),
+    )
+    w.on("failed", (job, err) =>
+      console.error(
+        `[worker:${w.name}] job ${job?.id} failed:`,
+        err.message,
+      ),
+    )
+    w.on("error", (err) =>
+      console.error(`[worker:${w.name}] worker error:`, err.message),
+    )
+  }
+  return workers
+}
