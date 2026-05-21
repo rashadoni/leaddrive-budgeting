@@ -91,9 +91,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const blWhere: { organizationId: string; planId: string; companyId?: { in: string[] } } = {
+  const blWhere: { organizationId: string; planId: string; deletedAt: null; companyId?: { in: string[] } } = {
     organizationId: orgId,
     planId,
+    deletedAt: null,
   }
   // For org-wide queries on a restricted user, narrow to scoped companies.
   if (companyFilter.kind === "all" && scope.ids != null) {
