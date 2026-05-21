@@ -187,7 +187,14 @@ export async function GET(req: NextRequest) {
       code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
       name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
     }
-    const mapKey = `${code}::${name}` // unique key per code+name
+    // When code falls back to "other" (non-SAP category like PLF codes),
+    // include lineType + raw category in the key so revenue/cogs/expense
+    // lines don't collapse into one "other::other" bucket and steal each
+    // other's type (e.g. PLF revenue being misclassified as expense because
+    // an expense line with the same "other" key was processed first).
+    const mapKey = (code === "other")
+      ? `other::${bl.lineType}::${bl.category || bl.department || "unknown"}`
+      : `${code}::${name}`
 
     if (!accountMap.has(mapKey)) {
       let accountType = bl.account?.accountType ?? "expense"
@@ -219,8 +226,13 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // PLF/imported lines carry month in monthIndex (sortOrder is always 0).
+    // Legacy SAP-code lines encode month as sortOrder % 100. Prefer monthIndex
+    // when it is non-null and in range; fall back to sortOrder.
+    const monthFromIndex = bl.monthIndex != null && bl.monthIndex >= 0 && bl.monthIndex < 12
+      ? bl.monthIndex + 1 : null
     const monthFromSort = bl.sortOrder % 100
-    const month = monthFromSort >= 0 && monthFromSort < 12 ? monthFromSort + 1 : 0
+    const month = monthFromIndex ?? (monthFromSort >= 0 && monthFromSort < 12 ? monthFromSort + 1 : 0)
     if (month >= 1 && month <= 12) {
       const acct = accountMap.get(mapKey)!
       acct.monthlyAmounts[month] = (acct.monthlyAmounts[month] || 0) + bl.plannedAmount
