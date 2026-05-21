@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 
 const { prismaMock, costBudgetMock } = vi.hoisted(() => ({
   prismaMock: {
-    aiTokenUsage: { findMany: vi.fn() },
+    aITokenUsage: { findMany: vi.fn() },
   },
   costBudgetMock: {
     getDailyUsage: vi.fn(),
@@ -27,7 +27,7 @@ import { GET } from "./route"
 const ORG_ID = "cmtestaiusagedevorg00000001"
 
 beforeEach(() => {
-  prismaMock.aiTokenUsage.findMany.mockReset().mockResolvedValue([])
+  prismaMock.aITokenUsage.findMany.mockReset().mockResolvedValue([])
   costBudgetMock.getDailyUsage.mockReset().mockResolvedValue({
     tokensIn: 0,
     tokensOut: 0,
@@ -100,7 +100,7 @@ describe("GET /api/admin/ai-usage", () => {
     const today = new Date()
     const yesterday = new Date(today)
     yesterday.setUTCDate(yesterday.getUTCDate() - 1)
-    prismaMock.aiTokenUsage.findMany.mockResolvedValue([
+    prismaMock.aITokenUsage.findMany.mockResolvedValue([
       {
         date: yesterday.toISOString().slice(0, 10),
         tokensIn: 1_000,
@@ -121,7 +121,7 @@ describe("GET /api/admin/ai-usage", () => {
 
   it("Prisma error on last30 read degrades to all-zero series (no 500)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
-    prismaMock.aiTokenUsage.findMany.mockRejectedValue(new Error("DB blip"))
+    prismaMock.aITokenUsage.findMany.mockRejectedValue(new Error("DB blip"))
     const res = await GET(makeRequest("/api/admin/ai-usage"))
     expect(res.status).toBe(200)
     const body = await res.json()

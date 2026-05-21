@@ -14,6 +14,11 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     cashFlowEntry: { create: vi.fn() },
     organization: { findUnique: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps cash_flow_entries reads/writes.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }))
 
@@ -23,7 +28,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { POST } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = "cm3rlscashflow000001abc"
 const validBody = { year: 2026, month: 1, entryType: "inflow" as const, amount: 1000 }
 
 beforeEach(() => {

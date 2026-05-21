@@ -4,6 +4,8 @@ import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma, logBudgetChange } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_forecast_entries + budget_plans reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const forecastEntrySchema = z.object({
   planId: z.string().min(1).max(100),
@@ -31,10 +33,12 @@ export async function GET(req: NextRequest) {
   const planId = req.nextUrl.searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const entries = await prisma.budgetForecastEntry.findMany({
-    where: { planId, organizationId: orgId },
-    orderBy: [{ year: "asc" }, { month: "asc" }, { category: "asc" }],
-  })
+  const entries = await withOrgScope(orgId, async (tx) =>
+    tx.budgetForecastEntry.findMany({
+      where: { planId, organizationId: orgId },
+      orderBy: [{ year: "asc" }, { month: "asc" }, { category: "asc" }],
+    })
+  )
 
   return NextResponse.json({ success: true, data: entries })
 }
@@ -70,10 +74,12 @@ export async function POST(req: NextRequest) {
   if (uniquePlanIds.length === 0) {
     return NextResponse.json({ error: "No planId in request" }, { status: 400 })
   }
-  const ownedPlans = await prisma.budgetPlan.findMany({
-    where: { id: { in: uniquePlanIds }, organizationId: orgId },
-    select: { id: true, status: true, periodType: true, year: true, month: true, quarter: true },
-  })
+  const ownedPlans = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findMany({
+      where: { id: { in: uniquePlanIds }, organizationId: orgId },
+      select: { id: true, status: true, periodType: true, year: true, month: true, quarter: true },
+    })
+  )
   if (ownedPlans.length !== uniquePlanIds.length) {
     return NextResponse.json({ error: "One or more plans not found in this organization" }, { status: 404 })
   }
@@ -96,44 +102,47 @@ export async function POST(req: NextRequest) {
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/forecast" })
 
-  const results = []
-  for (const entry of entries) {
-    const { planId, month, year, category, lineType, forecastAmount } = entry
-    if (!planId || !month || !year || !category) continue
-    const lt = lineType || "expense"
+  const results = await withOrgScope(orgId, async (tx) => {
+    const res = []
+    for (const entry of entries) {
+      const { planId, month, year, category, lineType, forecastAmount } = entry
+      if (!planId || !month || !year || !category) continue
+      const lt = lineType || "expense"
 
-    const existing = await prisma.budgetForecastEntry.findUnique({
-      where: { planId_year_month_category_lineType: { planId, year, month, category, lineType: lt } },
-    })
+      const existing = await tx.budgetForecastEntry.findUnique({
+        where: { planId_year_month_category_lineType: { planId, year, month, category, lineType: lt } },
+      })
 
-    const upserted = await prisma.budgetForecastEntry.upsert({
-      where: { planId_year_month_category_lineType: { planId, year, month, category, lineType: lt } },
-      update: { forecastAmount: Number(forecastAmount) ?? 0 },
-      create: {
-        organizationId: orgId,
+      const upserted = await tx.budgetForecastEntry.upsert({
+        where: { planId_year_month_category_lineType: { planId, year, month, category, lineType: lt } },
+        update: { forecastAmount: Number(forecastAmount) ?? 0 },
+        create: {
+          organizationId: orgId,
+          planId,
+          month,
+          year,
+          category,
+          lineType: lt,
+          forecastAmount: Number(forecastAmount) ?? 0,
+        },
+      })
+
+      logBudgetChange({
+        orgId,
         planId,
-        month,
-        year,
-        category,
-        lineType: lt,
-        forecastAmount: Number(forecastAmount) ?? 0,
-      },
-    })
+        entityType: "forecast",
+        entityId: upserted.id,
+        action: existing ? "update" : "create",
+        field: existing ? "forecastAmount" : undefined,
+        oldValue: existing?.forecastAmount ?? undefined,
+        newValue: upserted.forecastAmount,
+        snapshot: upserted,
+      })
 
-    logBudgetChange({
-      orgId,
-      planId,
-      entityType: "forecast",
-      entityId: upserted.id,
-      action: existing ? "update" : "create",
-      field: existing ? "forecastAmount" : undefined,
-      oldValue: existing?.forecastAmount ?? undefined,
-      newValue: upserted.forecastAmount,
-      snapshot: upserted,
-    })
-
-    results.push(upserted)
-  }
+      res.push(upserted)
+    }
+    return res
+  })
 
   return NextResponse.json({ success: true, data: results }, { status: 201 })
 }

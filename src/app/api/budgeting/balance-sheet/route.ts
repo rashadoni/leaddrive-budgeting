@@ -3,6 +3,8 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for balance_sheet_lines + budget_plans reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -12,10 +14,12 @@ export async function GET(req: NextRequest) {
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const lines = await prisma.balanceSheetLine.findMany({
-    where: { organizationId: orgId, planId },
-    orderBy: [{ lineType: "asc" }, { accountCode: "asc" }, { month: "asc" }],
-  })
+  const lines = await withOrgScope(orgId, async (tx) =>
+    tx.balanceSheetLine.findMany({
+      where: { organizationId: orgId, planId },
+      orderBy: [{ lineType: "asc" }, { accountCode: "asc" }, { month: "asc" }],
+    })
+  )
 
   // Group by lineType
   type BSRow = (typeof lines)[number]
@@ -42,10 +46,12 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     )
   }
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
-    select: { id: true, periodType: true, year: true, month: true, quarter: true },
-  })
+  const plan = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId },
+      select: { id: true, periodType: true, year: true, month: true, quarter: true },
+    })
+  )
   if (!plan) {
     return NextResponse.json({ error: "Plan not found in this organization" }, { status: 404 })
   }
@@ -59,15 +65,19 @@ export async function POST(req: NextRequest) {
     })
 
   if (Array.isArray(body)) {
-    const results = await prisma.balanceSheetLine.createMany({
-      data: body.map((item: any) => ({ ...item, organizationId: orgId })),
-      skipDuplicates: true,
-    })
+    const results = await withOrgScope(orgId, async (tx) =>
+      tx.balanceSheetLine.createMany({
+        data: body.map((item: any) => ({ ...item, organizationId: orgId })),
+        skipDuplicates: true,
+      })
+    )
     return NextResponse.json(results, { status: 201 })
   }
 
-  const line = await prisma.balanceSheetLine.create({
-    data: { ...body, organizationId: orgId },
-  })
+  const line = await withOrgScope(orgId, async (tx) =>
+    tx.balanceSheetLine.create({
+      data: { ...body, organizationId: orgId },
+    })
+  )
   return NextResponse.json(line, { status: 201 })
 }

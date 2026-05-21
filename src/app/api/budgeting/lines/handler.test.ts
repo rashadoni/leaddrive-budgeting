@@ -18,6 +18,11 @@ const { prismaMock } = vi.hoisted(() => ({
       updateMany: vi.fn(),
     },
     currencyRate: { findFirst: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps budget_lines + budget_plans reads/writes.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }))
 
@@ -38,7 +43,8 @@ vi.mock("@/lib/budgeting/currency", () => ({
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { POST } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = "cm3rlslines00000001abc"
 const validBody = { planId: "p1", category: "Sales", lineType: "revenue", plannedAmount: 100 }
 
 beforeEach(() => {

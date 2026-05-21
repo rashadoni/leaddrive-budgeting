@@ -11,6 +11,8 @@ import { buildDeptFilter } from "@/lib/budgeting/department-access"
 import { processCurrencyFields } from "@/lib/budgeting/currency"
 import { resolveAccountId } from "@/lib/budgeting/chart-of-accounts"
 import type { Role } from "@/lib/permissions"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_lines + budget_plans reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createLineSchema = z.object({
   plan_id: z.string().max(100).optional(),
@@ -46,19 +48,21 @@ export async function GET(req: NextRequest) {
   const deptFilter = await buildDeptFilter(orgId, userId, role as Role)
 
   // Return top-level lines with nested children
-  const [lines, plan] = await Promise.all([
-    prisma.budgetLine.findMany({
-      where: { planId, organizationId: orgId, parentId: null, ...deptFilter },
-      orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
-      include: {
-        children: {
-          orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
-          ...(deptFilter ? { where: deptFilter } : {}),
+  const [lines, plan] = await withOrgScope(orgId, async (tx) =>
+    Promise.all([
+      tx.budgetLine.findMany({
+        where: { planId, organizationId: orgId, parentId: null, ...deptFilter },
+        orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
+        include: {
+          children: {
+            orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
+            ...(deptFilter ? { where: deptFilter } : {}),
+          },
         },
-      },
-    }),
-    prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-  ])
+      }),
+      tx.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
+    ])
+  )
 
   // Compute dynamic planned amounts for isAutoPlanned lines
   const allLines = lines.flatMap((l: any) => [l, ...(l.children ?? [])])
@@ -150,7 +154,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Check plan is not approved
-  const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
+  const plan = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
+  )
   if (plan?.status === "approved" && !bypassRequest) {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
   }
@@ -186,29 +192,31 @@ export async function POST(req: NextRequest) {
   // the legacy `category` string drives display until backfill runs.
   const accountId = await resolveAccountId(prisma, orgId, category)
 
-  const line = await prisma.budgetLine.create({
-    data: {
-      organizationId: orgId,
-      planId: resolvedPlanId,
-      category,
-      department: department || null,
-      lineType: resolvedLineType,
-      lineSubtype: lineSubtype || null,
-      plannedAmount: currencyFields.plannedAmount,
-      forecastAmount: forecastAmount != null ? Number(forecastAmount) : null,
-      unitPrice: unitPrice != null ? Number(unitPrice) : null,
-      unitCost: unitCost != null ? Number(unitCost) : null,
-      quantity: quantity != null ? Number(quantity) : null,
-      costModelKey: costModelKey || null,
-      isAutoActual: isAutoActual === true,
-      notes: notes || null,
-      parentId: parentId || null,
-      currencyCode: currencyFields.currencyCode,
-      exchangeRate: currencyFields.exchangeRate,
-      originalAmount: currencyFields.originalAmount,
-      accountId,
-    },
-  })
+  const line = await withOrgScope(orgId, async (tx) =>
+    tx.budgetLine.create({
+      data: {
+        organizationId: orgId,
+        planId: resolvedPlanId,
+        category,
+        department: department || null,
+        lineType: resolvedLineType,
+        lineSubtype: lineSubtype || null,
+        plannedAmount: currencyFields.plannedAmount,
+        forecastAmount: forecastAmount != null ? Number(forecastAmount) : null,
+        unitPrice: unitPrice != null ? Number(unitPrice) : null,
+        unitCost: unitCost != null ? Number(unitCost) : null,
+        quantity: quantity != null ? Number(quantity) : null,
+        costModelKey: costModelKey || null,
+        isAutoActual: isAutoActual === true,
+        notes: notes || null,
+        parentId: parentId || null,
+        currencyCode: currencyFields.currencyCode,
+        exchangeRate: currencyFields.exchangeRate,
+        originalAmount: currencyFields.originalAmount,
+        accountId,
+      },
+    })
+  )
 
   logBudgetChange({ orgId, planId: resolvedPlanId, entityType: "line", entityId: line.id, action: "create", snapshot: line })
 

@@ -6,6 +6,8 @@ import { currentBakuYear } from "@/lib/risk/periods"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 import type { CashFlowEntry } from "@prisma/client"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for cash_flow_entries reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createCashFlowSchema = z.object({
   year: z.number().int().min(2020).max(2050),
@@ -27,19 +29,20 @@ export async function GET(req: NextRequest) {
 
   const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
-  const entries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year },
-    orderBy: [{ month: "asc" }, { entryType: "asc" }],
+  const { entries, prevYearEntries } = await withOrgScope(orgId, async (tx) => {
+    const entries = await tx.cashFlowEntry.findMany({
+      where: { organizationId: orgId, year },
+      orderBy: [{ month: "asc" }, { entryType: "asc" }],
+    })
+    const prevYearEntries = await tx.cashFlowEntry.findMany({
+      where: { organizationId: orgId, year: year - 1 },
+    })
+    return { entries, prevYearEntries }
   })
 
   // Build monthly summary
   const monthlyData = []
   let runningBalance = 0
-
-  // Get opening balance from previous year's last month
-  const prevYearEntries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year: year - 1 },
-  })
   const prevInflows = prevYearEntries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
   const prevOutflows = prevYearEntries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0)
   runningBalance = prevInflows - prevOutflows
@@ -109,21 +112,23 @@ export async function POST(req: NextRequest) {
   const lock = await findFirstActiveLockInPeriods(prisma, orgId, containingPeriodKeys(year, month))
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cash-flow" })
 
-  const entry = await prisma.cashFlowEntry.create({
-    data: {
-      organizationId: orgId,
-      year,
-      month,
-      entryType,
-      source: source || "manual",
-      sourceId: sourceId || null,
-      amount: typeof amount === "string" ? parseFloat(amount) : amount,
-      description: description || null,
-      paymentDate: paymentDate ? new Date(paymentDate) : null,
-      currencyCode: currencyCode || "AZN",
-      isProjected: isProjected ?? true,
-    },
-  })
+  const entry = await withOrgScope(orgId, async (tx) =>
+    tx.cashFlowEntry.create({
+      data: {
+        organizationId: orgId,
+        year,
+        month,
+        entryType,
+        source: source || "manual",
+        sourceId: sourceId || null,
+        amount: typeof amount === "string" ? parseFloat(amount) : amount,
+        description: description || null,
+        paymentDate: paymentDate ? new Date(paymentDate) : null,
+        currencyCode: currencyCode || "AZN",
+        isProjected: isProjected ?? true,
+      },
+    })
+  )
 
   return NextResponse.json(entry, { status: 201 })
 }

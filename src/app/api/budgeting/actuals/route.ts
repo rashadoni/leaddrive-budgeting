@@ -9,6 +9,8 @@ import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { consumeApprovalRequest, claimApprovalRequest } from "@/lib/budgeting/approval-request"
 import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 import type { Role } from "@/lib/permissions"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_actuals + budget_plans reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createActualSchema = z.object({
   plan_id: z.string().max(100).optional(),
@@ -37,10 +39,12 @@ export async function GET(req: NextRequest) {
   // Department access filter
   const deptFilter = await buildDeptFilter(orgId, userId, role as Role)
 
-  const actuals = await prisma.budgetActual.findMany({
-    where: { planId, organizationId: orgId, ...deptFilter },
-    orderBy: { createdAt: "desc" },
-  })
+  const actuals = await withOrgScope(orgId, async (tx) =>
+    tx.budgetActual.findMany({
+      where: { planId, organizationId: orgId, ...deptFilter },
+      orderBy: { createdAt: "desc" },
+    })
+  )
 
   return NextResponse.json({ success: true, data: actuals })
 }
@@ -101,7 +105,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Check plan is not approved
-  const plan = await prisma.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
+  const plan = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findFirst({ where: { id: resolvedPlanId, organizationId: orgId } })
+  )
   if (plan?.status === "approved" && !bypassRequest) {
     return NextResponse.json({ error: "Plan is approved — changes are not allowed" }, { status: 403 })
   }
@@ -131,22 +137,24 @@ export async function POST(req: NextRequest) {
   // if it parses as YYYY-MM-DD; null fallback for free-form dates.
   // VarianceTab sparkline reads this to overlay actual vs planned.
   const monthIndex = deriveMonthIndex(resolvedDate)
-  const actual = await prisma.budgetActual.create({
-    data: {
-      organizationId: orgId,
-      planId: resolvedPlanId,
-      category,
-      department: department || null,
-      lineType: resolvedLineType,
-      actualAmount: currencyFields.plannedAmount, // converted to base currency
-      expenseDate: resolvedDate || null,
-      monthIndex,
-      description: description || null,
-      currencyCode: currencyFields.currencyCode,
-      exchangeRate: currencyFields.exchangeRate,
-      originalAmount: currencyFields.originalAmount,
-    },
-  })
+  const actual = await withOrgScope(orgId, async (tx) =>
+    tx.budgetActual.create({
+      data: {
+        organizationId: orgId,
+        planId: resolvedPlanId,
+        category,
+        department: department || null,
+        lineType: resolvedLineType,
+        actualAmount: currencyFields.plannedAmount, // converted to base currency
+        expenseDate: resolvedDate || null,
+        monthIndex,
+        description: description || null,
+        currencyCode: currencyFields.currencyCode,
+        exchangeRate: currencyFields.exchangeRate,
+        originalAmount: currencyFields.originalAmount,
+      },
+    })
+  )
 
   logBudgetChange({ orgId, planId: resolvedPlanId, entityType: "actual", entityId: actual.id, action: "create", snapshot: actual })
 

@@ -4,6 +4,8 @@ import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { logBudgetPlanCreate } from "@/lib/audit/import-helpers"
+// Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_plans reads/writes.
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const createPlanSchema = z.object({
   name: z.string().min(1).max(500),
@@ -40,40 +42,43 @@ export async function GET(req: NextRequest) {
   const includeDeleted = searchParams.get("includeDeleted") === "true"
   const onlyDeleted = searchParams.get("onlyDeleted") === "true"
 
-  const plansRaw = await prisma.budgetPlan.findMany({
-    where: {
-      organizationId: orgId,
-      ...(onlyDeleted
-        ? { deletedAt: { not: null } }
-        : includeDeleted
-          ? {}
-          : { deletedAt: null }),
-    },
-    orderBy: [{ year: "desc" }, { month: "desc" }],
-    include: {
-      _count: {
-        select: {
-          // Phase 7.M follow-up (2026-05-19) — include LIVE line count
-          // so the page's `plans[0]` default-pick skips empty plans.
-          // Without this, a leftover empty "Rolling Forecast 2026"
-          // plan with `month=5` sorted ahead of populated plans and
-          // landed the user on an empty workspace (zero P&L / cash
-          // flow / etc.). The frontend re-orders by `_count.budgetLines
-          // desc` as the FIRST sort key — non-empty plans always win
-          // — and the existing year/month order acts as the secondary
-          // tiebreaker.
-          budgetLines: { where: { deletedAt: null } },
+  const plansRaw = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findMany({
+      where: {
+        organizationId: orgId,
+        ...(onlyDeleted
+          ? { deletedAt: { not: null } }
+          : includeDeleted
+            ? {}
+            : { deletedAt: null }),
+      },
+      orderBy: [{ year: "desc" }, { month: "desc" }],
+      include: {
+        _count: {
+          select: {
+            // Phase 7.M follow-up (2026-05-19) — include LIVE line count
+            // so the page's `plans[0]` default-pick skips empty plans.
+            // Without this, a leftover empty "Rolling Forecast 2026"
+            // plan with `month=5` sorted ahead of populated plans and
+            // landed the user on an empty workspace (zero P&L / cash
+            // flow / etc.). The frontend re-orders by `_count.lines
+            // desc` as the FIRST sort key — non-empty plans always win
+            // — and the existing year/month order acts as the secondary
+            // tiebreaker.
+            // Note: relation field is `lines` on BudgetPlan (not `budgetLines`).
+            lines: { where: { deletedAt: null } },
+          },
         },
       },
-    },
-  })
+    })
+  )
 
   // Re-order: non-empty plans first, then preserve the year/month
   // server-side ordering as the secondary key. Stable sort keeps
   // same-bucket items in their original DB order.
   const plans = [...plansRaw].sort((a, b) => {
-    const aHas = a._count.budgetLines > 0 ? 1 : 0
-    const bHas = b._count.budgetLines > 0 ? 1 : 0
+    const aHas = a._count.lines > 0 ? 1 : 0
+    const bHas = b._count.lines > 0 ? 1 : 0
     return bHas - aHas // 1 (non-empty) wins; 0 (empty) loses
   })
 
@@ -106,31 +111,35 @@ export async function POST(req: NextRequest) {
 
   // Check for duplicate plan in same period — ignore soft-deleted plans,
   // otherwise user can't re-create after a Reset/Delete.
-  const duplicate = await prisma.budgetPlan.findFirst({
-    where: {
-      organizationId: orgId,
-      periodType,
-      year,
-      deletedAt: null,
-      ...(month ? { month } : {}),
-      ...(quarter ? { quarter } : {}),
-    },
-  })
+  const duplicate = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.findFirst({
+      where: {
+        organizationId: orgId,
+        periodType,
+        year,
+        deletedAt: null,
+        ...(month ? { month } : {}),
+        ...(quarter ? { quarter } : {}),
+      },
+    })
+  )
   if (duplicate) {
     return NextResponse.json({ error: `A plan for this period already exists: "${duplicate.name}"` }, { status: 409 })
   }
 
-  const plan = await prisma.budgetPlan.create({
-    data: {
-      organizationId: orgId,
-      name,
-      periodType,
-      year,
-      month: month ?? null,
-      quarter: quarter ?? null,
-      notes: notes || null,
-    },
-  })
+  const plan = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.create({
+      data: {
+        organizationId: orgId,
+        name,
+        periodType,
+        year,
+        month: month ?? null,
+        quarter: quarter ?? null,
+        notes: notes || null,
+      },
+    })
+  )
 
   // Auto-populate: clone lines from existing plan + fill from sales forecast & cost model
   try {
@@ -369,20 +378,24 @@ export async function DELETE(req: NextRequest) {
   // everything back. A background cleanup job physically removes plans whose
   // `deletedAt` is older than 30 days.
   if (deleteAll && !planId) {
-    const result = await prisma.budgetPlan.updateMany({
-      where: { organizationId: orgId, deletedAt: null },
-      data: { deletedAt: new Date(), deletedBy: userId },
-    })
+    const result = await withOrgScope(orgId, async (tx) =>
+      tx.budgetPlan.updateMany({
+        where: { organizationId: orgId, deletedAt: null },
+        data: { deletedAt: new Date(), deletedBy: userId },
+      })
+    )
     return NextResponse.json({ success: true, deletedPlans: result.count, deletedAll: true })
   }
 
   // DELETE single plan
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  const result = await prisma.budgetPlan.updateMany({
-    where: { id: planId, organizationId: orgId, deletedAt: null },
-    data: { deletedAt: new Date(), deletedBy: userId },
-  })
+  const result = await withOrgScope(orgId, async (tx) =>
+    tx.budgetPlan.updateMany({
+      where: { id: planId, organizationId: orgId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedBy: userId },
+    })
+  )
   if (result.count === 0) {
     return NextResponse.json({ error: "Plan not found or already deleted" }, { status: 404 })
   }

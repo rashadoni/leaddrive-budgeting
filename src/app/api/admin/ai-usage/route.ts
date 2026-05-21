@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
     tokensOut: number
     calls: number
   }
-  const rows = (await prisma.aiTokenUsage
+  const rows = (await prisma.aITokenUsage
     .findMany({
       where: {
         organizationId: orgId,

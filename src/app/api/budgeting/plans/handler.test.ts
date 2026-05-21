@@ -27,6 +27,11 @@ const { prismaMock, costModelMock } = vi.hoisted(() => ({
     salesForecast: { findMany: vi.fn() },
     expenseForecast: { findMany: vi.fn() },
     auditEvent: { create: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps budget_plans reads/writes.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
   costModelMock: { loadAndCompute: vi.fn() },
 }));
@@ -38,7 +43,8 @@ vi.mock('@/lib/cost-model/db', () => costModelMock);
 import { mockSession, makeRequest } from '@/test/api-harness';
 import { POST, GET } from './route';
 
-const ORG_ID = 'org_az';
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = 'cm3rlsplans0000001abc';
 const PLAN_ID = 'plan_new_2026';
 
 beforeEach(() => {

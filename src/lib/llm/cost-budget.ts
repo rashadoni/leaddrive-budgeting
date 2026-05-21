@@ -80,7 +80,7 @@ export async function getDailyUsage(orgId: string, date: Date = new Date()): Pro
   const dateStr = date.toISOString().slice(0, 10)
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
-      const row = await defaultPrisma.aiTokenUsage.findUnique({
+      const row = await defaultPrisma.aITokenUsage.findUnique({
         where: {
           organizationId_date: { organizationId: orgId, date: dateStr },
         },
@@ -115,7 +115,7 @@ export async function getMonthlyUsage(orgId: string, date: Date = new Date()): P
   return await tryPrismaThenFallback<UsageStats>(
     async () => {
       // Prisma string startsWith filter — efficient with the (orgId, date desc) index
-      const rows = await defaultPrisma.aiTokenUsage.findMany({
+      const rows = await defaultPrisma.aITokenUsage.findMany({
         where: {
           organizationId: orgId,
           date: { startsWith: month },
@@ -207,7 +207,7 @@ export async function recordUsage(
   await tryPrismaThenFallback<void>(
     async () => {
       // Atomic upsert with increment — race-safe across concurrent LLM calls.
-      const row = await defaultPrisma.aiTokenUsage.upsert({
+      const row = await defaultPrisma.aITokenUsage.upsert({
         where: {
           organizationId_date: { organizationId: orgId, date: dateStr },
         },

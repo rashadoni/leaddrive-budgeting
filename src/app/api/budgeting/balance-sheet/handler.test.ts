@@ -19,6 +19,11 @@ const { prismaMock } = vi.hoisted(() => ({
     budgetPlan: { findFirst: vi.fn() },
     organization: { findFirst: vi.fn(), findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
+    // Phase 5.2 Stage 2 — withOrgScope wraps balance_sheet_lines + budget_plans reads/writes.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }))
 
@@ -28,7 +33,8 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = "cm3rlsbalancesht000001a"
 
 beforeEach(() => {
   prismaMock.balanceSheetLine.findMany.mockReset().mockResolvedValue([])
