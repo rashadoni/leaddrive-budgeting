@@ -121,6 +121,16 @@ export interface MultiFileImportInput {
   /** Force commit even if cross-file conflicts exist (USE WITH CAUTION —
    *  caller takes responsibility for the conflict). Default: false. */
   forceOverride?: boolean
+  /** Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
+   *  (`buildReconKey(...)`); value picks a winning file or drops the cell.
+   *  When set: orchestrator rewrites the per-file expectedSums map for
+   *  every keyed conflict BEFORE the group-atomic apply phase, so the
+   *  committed value matches the user's choice. Conflicts NOT in the
+   *  map still block apply unless `forceOverride=true`. */
+  conflictResolutions?: Record<
+    string,
+    { mode: "pick"; filename: string } | { mode: "skip" }
+  >
 }
 
 export interface PerFileResult {
@@ -471,6 +481,54 @@ export async function runMultiFileImport(
     ),
     modelName: deps.model,
     promptVersion: classifyResults[0]?.usage.promptVersion ?? "n/a",
+  }
+
+  // Phase 7.M Tier 6 — apply per-conflict resolutions BEFORE the
+  // short-circuit. For each conflict that has a resolution: rewrite the
+  // per-file expectedSums map so the chosen value wins (or drop the cell
+  // entirely for "skip"). After rewriting, re-detect — fully-resolved
+  // conflicts disappear from the list, so the short-circuit only fires
+  // for unresolved conflicts.
+  const resolutionMap = input.conflictResolutions
+  if (resolutionMap && Object.keys(resolutionMap).length > 0 && conflicts.length > 0) {
+    for (const conflict of conflicts) {
+      const r = resolutionMap[conflict.key]
+      if (!r) continue
+      if (r.mode === "skip") {
+        // Remove the conflicting cell from EVERY file's expected map
+        // so no adapter writes it.
+        for (const fileMap of perFileExpected.values()) {
+          fileMap.delete(conflict.key)
+        }
+      } else if (r.mode === "pick") {
+        const winningOccurrence = conflict.occurrences.find(
+          (o) => o.filename === r.filename,
+        )
+        if (!winningOccurrence) continue // unknown filename — leave unresolved
+        // Set the winning value on every file that had a value for this
+        // key, dropping it from the losing files so duplicate-cell write
+        // collisions don't happen at apply time.
+        for (const [fn, fileMap] of perFileExpected.entries()) {
+          if (!fileMap.has(conflict.key)) continue
+          if (fn === r.filename) {
+            fileMap.set(conflict.key, winningOccurrence.value)
+          } else {
+            fileMap.delete(conflict.key)
+          }
+        }
+      }
+    }
+    // Refresh perFile.expectedSums views to match the mutated maps.
+    for (const f of perFile) {
+      f.expectedSums = perFileExpected.get(f.filename) ?? new Map()
+    }
+    // Re-run the cross-file conflict detector. Anything still in the
+    // returned list is unresolved and will hit the short-circuit below.
+    conflicts.splice(
+      0,
+      conflicts.length,
+      ...detectCrossFileConflicts(perFileExpected),
+    )
   }
 
   // Conflict short-circuit: if non-empty AND not forceOverride → abort

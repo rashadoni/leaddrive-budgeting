@@ -255,6 +255,136 @@ describe("MultiFileForm", () => {
     expect(applyBtn.disabled).toBe(false)
   })
 
+  // Phase 7.M Tier 6 — per-conflict resolution.
+  it("per-conflict select dropdown enables Apply when every conflict resolved", async () => {
+    mockFetchOnce(409, {
+      ok: false,
+      error: "Cross-file conflicts detected",
+      perFile: [
+        {
+          filename: "a.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [],
+          error: null,
+        },
+      ],
+      conflicts: [
+        {
+          key: "k1",
+          occurrences: [
+            { filename: "a.xlsx", value: 100 },
+            { filename: "b.xlsx", value: 150 },
+          ],
+          spread: 50,
+          spreadPct: 0.5,
+        },
+      ],
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("conflict-banner")).toBeTruthy()
+    })
+    const applyBtn = screen.getByTestId("btn-apply") as HTMLButtonElement
+    expect(applyBtn.disabled).toBe(true)
+    // Pick fileA's value for the conflict — Apply becomes enabled
+    fireEvent.change(screen.getByTestId("resolution-k1"), {
+      target: { value: "a.xlsx" },
+    })
+    expect(applyBtn.disabled).toBe(false)
+    expect(screen.getByTestId("all-resolved")).toBeTruthy()
+  })
+
+  it("per-conflict resolution sent in apply payload as conflictResolutions JSON", async () => {
+    // First fetch: 409 with the conflict
+    mockFetchOnce(409, {
+      ok: false,
+      error: "Cross-file conflicts detected",
+      perFile: [
+        {
+          filename: "a.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [],
+          error: null,
+        },
+      ],
+      conflicts: [
+        {
+          key: "AZSEKER-CPC::PLF.01::2026-01",
+          occurrences: [
+            { filename: "a.xlsx", value: 100 },
+            { filename: "b.xlsx", value: 150 },
+          ],
+          spread: 50,
+          spreadPct: 0.5,
+        },
+      ],
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    // Second fetch (apply): success
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "apply",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 1, unknown: 0, failed: 0, targets: 1 },
+      warnings: [],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("conflict-banner")).toBeTruthy()
+    })
+    fireEvent.change(
+      screen.getByTestId("resolution-AZSEKER-CPC::PLF.01::2026-01"),
+      { target: { value: "b.xlsx" } },
+    )
+    fireEvent.click(screen.getByTestId("btn-apply"))
+    await waitFor(() => {
+      // 2nd fetch fired
+      expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
+    const lastCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+      .calls[1] as [string, { body: FormData }]
+    const sentBody = lastCall[1].body
+    expect(sentBody.get("conflictResolutions")).toBe(
+      JSON.stringify({
+        "AZSEKER-CPC::PLF.01::2026-01": { mode: "pick", filename: "b.xlsx" },
+      }),
+    )
+  })
+
   it("Apply click POSTs with apply=1 + renders per-group results", async () => {
     mockFetchOnce(200, {
       ok: true,

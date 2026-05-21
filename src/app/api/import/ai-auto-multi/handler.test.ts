@@ -60,6 +60,7 @@ function makeMultipartRequest(opts: {
   year?: string
   apply?: string
   forceOverride?: string
+  conflictResolutions?: string
 }): Request {
   const form = new FormData()
   for (let i = 0; i < opts.fileCount; i++) {
@@ -72,6 +73,8 @@ function makeMultipartRequest(opts: {
   if (opts.year) form.append("year", opts.year)
   if (opts.apply) form.append("apply", opts.apply)
   if (opts.forceOverride) form.append("forceOverride", opts.forceOverride)
+  if (opts.conflictResolutions)
+    form.append("conflictResolutions", opts.conflictResolutions)
   return new Request("http://localhost/api/import/ai-auto-multi", {
     method: "POST",
     body: form,
@@ -264,6 +267,61 @@ describe("POST /api/import/ai-auto-multi", () => {
       }) as never,
     )
     expect(res.status).toBe(200)
+  })
+
+  // Phase 7.M Tier 6 — per-conflict resolution map.
+  it("conflictResolutions JSON bypasses 409 and is forwarded to the orchestrator", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    // Orchestrator resolved the conflict thanks to the resolution map →
+    // returned conflicts:[] (empty) so the route shouldn't 409.
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+    const resolutions = {
+      "AZSEKER-CPC::PLF.01::2026-01": {
+        mode: "pick",
+        filename: "fileA.xlsx",
+      },
+    }
+    const res = await POST(
+      makeMultipartRequest({
+        fileCount: 2,
+        apply: "1",
+        conflictResolutions: JSON.stringify(resolutions),
+      }) as never,
+    )
+    expect(res.status).toBe(200)
+    const call = orchestratorMock.runMultiFileImport.mock.calls[0]
+    expect(call[0].conflictResolutions).toEqual(resolutions)
+  })
+
+  it("invalid conflictResolutions JSON rejects with 400", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const res = await POST(
+      makeMultipartRequest({
+        fileCount: 2,
+        apply: "1",
+        conflictResolutions: "{not valid json",
+      }) as never,
+    )
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/conflictResolutions JSON/i)
+  })
+
+  it("conflictResolutions with invalid entry shape rejects with 400", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const res = await POST(
+      makeMultipartRequest({
+        fileCount: 2,
+        apply: "1",
+        conflictResolutions: JSON.stringify({
+          k1: { mode: "garbage" },
+        }),
+      }) as never,
+    )
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/conflictResolutions\[k1\]/i)
   })
 
   it("apply=true switches mode to 'applied' and propagates dryRun=false to orchestrator", async () => {

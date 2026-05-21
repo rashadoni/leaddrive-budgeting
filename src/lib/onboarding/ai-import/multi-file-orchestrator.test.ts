@@ -378,6 +378,292 @@ describe("runMultiFileImport", () => {
     expect(result.perFile).toHaveLength(2)
   })
 
+  // Phase 7.M Tier 6 — per-conflict resolution map.
+  it("per-conflict resolution (mode=pick) overrides forceOverride and commits chosen value", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    let callCount = 0
+    const conflictingPlf: AdapterHandler = async () => {
+      callCount++
+      const value = callCount === 1 ? 100 : 150
+      return {
+        summary: "x",
+        itemCount: 1,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: 1 })),
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), value],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const conflictKey = buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01")
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "fileA.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+          {
+            filename: "fileB.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        // Pick fileB's value (150) as the winner.
+        conflictResolutions: {
+          [conflictKey]: { mode: "pick", filename: "fileB.xlsx" },
+        },
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({
+          PLF: conflictingPlf,
+          BS: plfHandler(1),
+        }),
+        XLSX: fakeXLSX,
+      },
+    )
+    // Conflict should be resolved → no short-circuit, normal commit path.
+    expect(result.conflicts).toEqual([])
+    expect(result.overallVerdict).not.toBe("red")
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
+  it("per-conflict resolution (mode=skip) drops cell from all files, no conflict remains", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    let callCount = 0
+    const conflictingPlf: AdapterHandler = async () => {
+      callCount++
+      const value = callCount === 1 ? 100 : 150
+      return {
+        summary: "x",
+        itemCount: 1,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: 1 })),
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), value],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const conflictKey = buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01")
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "fileA.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+          {
+            filename: "fileB.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        conflictResolutions: {
+          [conflictKey]: { mode: "skip" },
+        },
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({
+          PLF: conflictingPlf,
+          BS: plfHandler(1),
+        }),
+        XLSX: fakeXLSX,
+      },
+    )
+    expect(result.conflicts).toEqual([])
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
+  it("partial resolutions still short-circuit when at least one conflict remains", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+      ],
+    ])
+    let callCount = 0
+    const twoConflicts: AdapterHandler = async () => {
+      callCount++
+      const v1 = callCount === 1 ? 100 : 150
+      const v2 = callCount === 1 ? 200 : 250
+      return {
+        summary: "x",
+        itemCount: 2,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: 2 })),
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), v1],
+          [buildReconKey("AZSEKER-CPC", "PLF.02", "2026-01"), v2],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "fileA.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+          {
+            filename: "fileB.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        // Only resolve PLF.01 — PLF.02 stays unresolved.
+        conflictResolutions: {
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01")]: {
+            mode: "pick",
+            filename: "fileA.xlsx",
+          },
+        },
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: twoConflicts }),
+        XLSX: fakeXLSX,
+      },
+    )
+    expect(result.conflicts).toHaveLength(1) // PLF.02 still conflicts
+    expect(prisma.__txCallCount.n).toBe(0) // short-circuited, no commit
+  })
+
   it("forceOverride=true commits despite conflict", async () => {
     const prisma = stubPrisma({
       companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],

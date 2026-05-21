@@ -123,12 +123,26 @@ export function MultiFileForm() {
     useState<MultiFileApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [forceOverride, setForceOverride] = useState(false)
+  // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
+  // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
+  //   { mode: "pick", filename: <filename to win> }  — use that file's value
+  //   { mode: "skip" }                                — drop the cell entirely
+  // Empty / undefined entries leave the conflict unresolved; the apply
+  // button stays disabled until every conflict either has a resolution
+  // OR `forceOverride` is checked (legacy escape hatch).
+  type Resolution =
+    | { mode: "pick"; filename: string }
+    | { mode: "skip" }
+  const [resolutions, setResolutions] = useState<Record<string, Resolution>>({})
   const inputRef = useRef<HTMLInputElement>(null)
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0)
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
   const overCountCap = files.length > MAX_FILES
   const hasConflicts = (previewResult?.conflicts.length ?? 0) > 0
+  const allConflictsResolved =
+    hasConflicts &&
+    (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
 
   function handleFiles(newFiles: FileList | File[]): void {
     const incoming = Array.from(newFiles).filter((f) =>
@@ -170,6 +184,13 @@ export function MultiFileForm() {
       form.append("year", String(new Date().getFullYear()))
       if (apply) form.append("apply", "1")
       if (forceOverride) form.append("forceOverride", "1")
+      // Per-conflict resolutions take precedence over forceOverride —
+      // when both are present the orchestrator honors the resolution
+      // map first, then falls back to last-write-wins for any conflict
+      // not in the map.
+      if (apply && Object.keys(resolutions).length > 0) {
+        form.append("conflictResolutions", JSON.stringify(resolutions))
+      }
       const res = await fetch("/api/import/ai-auto-multi", {
         method: "POST",
         body: form,
@@ -277,7 +298,8 @@ export function MultiFileForm() {
           <button
             type="button"
             disabled={
-              isProcessing || (hasConflicts && !forceOverride)
+              isProcessing ||
+              (hasConflicts && !forceOverride && !allConflictsResolved)
             }
             onClick={() => submit(true)}
             className="px-4 py-2 bg-emerald-600 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700"
@@ -318,31 +340,69 @@ export function MultiFileForm() {
                   <th className="py-1 pr-2">Ячейка</th>
                   <th className="py-1 pr-2">Значения</th>
                   <th className="py-1 pr-2 text-right">Разница</th>
+                  <th className="py-1 pr-2">Решение</th>
                 </tr>
               </thead>
               <tbody>
-                {previewResult.conflicts.slice(0, 20).map((c) => (
-                  <tr
-                    key={c.key}
-                    className="border-b last:border-b-0"
-                    data-testid={`conflict-row-${c.key}`}
-                  >
-                    <td className="py-1 pr-2 font-mono">{c.key}</td>
-                    <td className="py-1 pr-2">
-                      {c.occurrences
-                        .map(
-                          (o) =>
-                            `${o.filename}=${o.value.toLocaleString(undefined, {
-                              maximumFractionDigits: 0,
-                            })}`,
-                        )
-                        .join(", ")}
-                    </td>
-                    <td className="py-1 pr-2 text-right font-medium">
-                      {(c.spreadPct * 100).toFixed(2)}%
-                    </td>
-                  </tr>
-                ))}
+                {previewResult.conflicts.slice(0, 20).map((c) => {
+                  const current = resolutions[c.key]
+                  const selectValue = !current
+                    ? ""
+                    : current.mode === "skip"
+                      ? "__skip__"
+                      : current.filename
+                  return (
+                    <tr
+                      key={c.key}
+                      className="border-b last:border-b-0"
+                      data-testid={`conflict-row-${c.key}`}
+                    >
+                      <td className="py-1 pr-2 font-mono">{c.key}</td>
+                      <td className="py-1 pr-2">
+                        {c.occurrences
+                          .map(
+                            (o) =>
+                              `${o.filename}=${o.value.toLocaleString(undefined, {
+                                maximumFractionDigits: 0,
+                              })}`,
+                          )
+                          .join(", ")}
+                      </td>
+                      <td className="py-1 pr-2 text-right font-medium">
+                        {(c.spreadPct * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-1 pr-2">
+                        <select
+                          value={selectValue}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setResolutions((prev) => {
+                              const next = { ...prev }
+                              if (v === "") {
+                                delete next[c.key]
+                              } else if (v === "__skip__") {
+                                next[c.key] = { mode: "skip" }
+                              } else {
+                                next[c.key] = { mode: "pick", filename: v }
+                              }
+                              return next
+                            })
+                          }}
+                          data-testid={`resolution-${c.key}`}
+                          className="text-xs border rounded px-1 py-0.5 bg-white"
+                        >
+                          <option value="">— выбрать —</option>
+                          {c.occurrences.map((o) => (
+                            <option key={o.filename} value={o.filename}>
+                              использовать {o.filename}
+                            </option>
+                          ))}
+                          <option value="__skip__">пропустить ячейку</option>
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {previewResult.conflicts.length > 20 && (
@@ -351,7 +411,12 @@ export function MultiFileForm() {
               </p>
             )}
           </div>
-          <label className="flex items-center gap-2 text-xs">
+          {allConflictsResolved && (
+            <p className="text-xs text-emerald-700 font-medium" data-testid="all-resolved">
+              ✓ Все конфликты разрешены — можно применять.
+            </p>
+          )}
+          <label className="flex items-center gap-2 text-xs text-slate-700 border-t pt-2">
             <input
               type="checkbox"
               checked={forceOverride}
@@ -359,7 +424,8 @@ export function MultiFileForm() {
               data-testid="force-override"
             />
             <span>
-              Я понимаю риск и хочу применить несмотря на конфликт (last-write-wins)
+              Запасной вариант: применить все конфликты по last-write-wins (если
+              не хочу выбирать по одному)
             </span>
           </label>
         </div>

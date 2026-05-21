@@ -134,6 +134,48 @@ export async function POST(request: NextRequest) {
     String(form.get("allowYellow") ?? "").toLowerCase() === "1" ||
     String(form.get("allowYellow") ?? "").toLowerCase() === "true"
 
+  // Phase 7.M Tier 6 — per-conflict resolution map. JSON:
+  //   { "<conflict-key>": { "mode": "pick", "filename": "fileA.xlsx" } }
+  // OR
+  //   { "<conflict-key>": { "mode": "skip" } }
+  // Apply path passes this to the orchestrator which uses it to rewrite
+  // expected sums / drop cells before group commit. Unparseable JSON
+  // rejects with 400 — better to fail loud than to silently fall back
+  // to forceOverride.
+  let conflictResolutions:
+    | Record<string, { mode: "pick"; filename: string } | { mode: "skip" }>
+    | undefined
+  const rawResolutions = form.get("conflictResolutions")
+  if (typeof rawResolutions === "string" && rawResolutions.length > 0) {
+    try {
+      const parsed = JSON.parse(rawResolutions)
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        // Validate each entry shape — defence against malformed input.
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          const r = v as { mode?: string; filename?: string }
+          if (r?.mode === "pick" && typeof r.filename === "string") continue
+          if (r?.mode === "skip") continue
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `conflictResolutions[${k}] must be {mode:"pick",filename:string} or {mode:"skip"}`,
+            },
+            { status: 400 },
+          )
+        }
+        conflictResolutions = parsed as typeof conflictResolutions
+      }
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid conflictResolutions JSON: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   // ── Cost-budget gate ────────────────────────────────────────────
   // Each file uses ~35K tokens (input + output). Pre-check before
   // burning any spend.
@@ -203,6 +245,7 @@ export async function POST(request: NextRequest) {
         orgIndustry,
         allowYellow,
         forceOverride,
+        conflictResolutions,
         // Apply only when caller asked explicitly. Default: preview-only
         // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
         dryRun: !shouldApply,
@@ -239,7 +282,17 @@ export async function POST(request: NextRequest) {
   // The orchestrator already returned early when conflicts were
   // detected (without opening any tx). Surface as 409 so the UI can
   // render the diff and the user can decide.
-  if (result.conflicts.length > 0 && !forceOverride) {
+  // Phase 7.M Tier 6 — per-conflict resolutions also bypass the 409
+  // gate (each provided resolution = explicit user decision). The
+  // orchestrator validates that every conflict has a resolution before
+  // committing, so an incomplete map still falls through to 409.
+  const hasResolutions =
+    !!conflictResolutions && Object.keys(conflictResolutions).length > 0
+  if (
+    result.conflicts.length > 0 &&
+    !forceOverride &&
+    !hasResolutions
+  ) {
     return NextResponse.json(
       {
         ok: false,
