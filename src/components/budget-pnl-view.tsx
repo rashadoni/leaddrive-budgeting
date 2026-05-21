@@ -351,13 +351,13 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   ) => {
     const showPct = opts.showPct ?? true
     const favorable = opts.favorable ?? "down"
-    return sectionRows.map((row: PnlRow) => {
+    return sectionRows.map((row: PnlRow, idx: number) => {
       const isParent = !row.parentCode
       const rowKey = `${row.accountCode}::${row.accountName}`
       const actual = actualByKey[rowKey] || 0
       return (
         <tr
-          key={rowKey}
+          key={`${rowKey}::${idx}`}
           // Phase 3.3 — click any row to open the month-by-month
           // drill-down side panel. Cursor + hover-bg-stronger affordance
           // so users discover the clickability without a tutorial.
