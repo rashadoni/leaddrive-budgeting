@@ -26,6 +26,11 @@ const { prismaMock } = vi.hoisted(() => ({
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
     // Audit-log RBAC bulk-fetches IV → companyId for IndicatorValue events.
     indicatorValue: { findMany: vi.fn().mockResolvedValue([]) },
+    // Phase 5.2 Stage 2 — withOrgScope wraps auditEvent + indicatorValue reads.
+    $transaction: vi.fn(
+      async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+    ),
+    $executeRawUnsafe: vi.fn(async () => 1),
   },
 }));
 
@@ -35,7 +40,8 @@ vi.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 import { mockSession, makeRequest } from '@/test/api-harness';
 import { GET } from './route';
 
-const ORG_ID = 'org_demo';
+// Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
+const ORG_ID = 'cm3rlsauditevt00000001a';
 
 beforeEach(() => {
   prismaMock.auditEvent.findMany.mockReset().mockResolvedValue([]);
