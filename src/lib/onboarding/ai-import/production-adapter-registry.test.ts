@@ -47,6 +47,7 @@ vi.mock("../adapters/azseker-workbook-descriptions", () => ({
 }))
 vi.mock("../adapters/azseker-farming-strategy", () => ({
   parseIcmalSheet: vi.fn(),
+  parseSalesPlanSheet: vi.fn(),
 }))
 vi.mock("../import-batch", () => ({
   runImportBatch: vi.fn(),
@@ -481,6 +482,70 @@ describe("buildProductionAdapterRegistry", () => {
     const apply = await result.applyToDb(fakeTx)
     expect(apply.rowsInserted).toBe(0)
     expect(result.warnings.some((w) => w.includes("MISSING_PARENT"))).toBe(true)
+  })
+
+  it("SALES handler routes 'Sales plan' sheet to per-product forward-volume parser (Phase 7.M Tier 6)", async () => {
+    const { parseSalesPlanSheet } = await import(
+      "../adapters/azseker-farming-strategy"
+    )
+    ;(parseSalesPlanSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      facts: [
+        {
+          year: 2027,
+          productLabel: "Glucose Pack",
+          productSlug: "glucose_pack",
+          group: "Qlukoza",
+          location: "Azerbaijan",
+          volumeTons: 3500,
+        },
+        {
+          year: 2028,
+          productLabel: "Glucose Pack",
+          productSlug: "glucose_pack",
+          group: "Qlukoza",
+          location: "Export",
+          volumeTons: 1000,
+        },
+      ],
+      warnings: [],
+      rowsExamined: 2,
+    })
+    const { runKpiBatch } = await import("../kpi-import-batch")
+    ;(runKpiBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 2 },
+    })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("SALES")!({
+      workbook: fakeWorkbook,
+      sheetName: "Sales plan",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(2)
+    const fakeTx = { _tx: true } as never
+    await result.applyToDb(fakeTx)
+    expect(runKpiBatch).toHaveBeenCalledOnce()
+    const [txArg, payload] = (runKpiBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [unknown, { rows: Array<{ companyId: string; metric: string; date: string; value: number }> }]
+    expect(txArg).toBe(fakeTx)
+    expect(payload.rows).toHaveLength(2)
+    expect(payload.rows[0]).toMatchObject({
+      companyId: "c_cpc",
+      metric: "sales_volume_glucose_pack_azerbaijan",
+      date: "2027-12-31",
+      value: 3500,
+    })
+    expect(payload.rows[1]).toMatchObject({
+      metric: "sales_volume_glucose_pack_export",
+      date: "2028-12-31",
+      value: 1000,
+    })
   })
 
   it("UNKNOWN/INFO_SUMMARY noop handlers don't crash on missing entity", async () => {

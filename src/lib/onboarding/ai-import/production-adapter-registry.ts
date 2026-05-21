@@ -58,7 +58,10 @@ import {
   parseCapexCpcSheetFromAoa,
 } from "../adapters/azseker-workbook-capex"
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
-import { parseIcmalSheet } from "../adapters/azseker-farming-strategy"
+import {
+  parseIcmalSheet,
+  parseSalesPlanSheet,
+} from "../adapters/azseker-farming-strategy"
 import {
   canonicalizeHeaders,
   normalizeRow,
@@ -484,11 +487,87 @@ function makeKpiHandler(
       //   Farming sales → AZSEKER-EDEN
       //   Production sales → AZSEKER-CPC
       //   ProMalt sales → AZSEKER-PROMALT
+      //   "Sales plan" (forward-forecast per-product volumes 2027-2035)
+      //                → AZSEKER-CPC, metric=sales_volume_<slug>,
+      //                  date=`<year>-12-31` (Phase 7.M Tier 6)
       // We detect which sales parser to invoke based on sheet name.
       const sheetLower = input.sheetName.toLowerCase()
       const edenId = ctx.codeToId.get("AZSEKER-EDEN")
       const cpcId = ctx.codeToId.get("AZSEKER-CPC")
       const promaltId = ctx.codeToId.get("AZSEKER-PROMALT")
+
+      // Phase 7.M Tier 6 — "Sales plan" sheet from Farming strategy.xlsx.
+      // Branched FIRST so it doesn't fall through to the generic
+      // production-sales parser (which would mis-parse the year-column
+      // layout).
+      if (sheetLower === "sales plan" || sheetLower.startsWith("sales plan")) {
+        if (!cpcId) {
+          warnings.push(
+            `Sales plan sheet "${input.sheetName}": AZSEKER-CPC not in DB — skipped`,
+          )
+        } else {
+          const salesPlan = parseSalesPlanSheet(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            input.workbook as any,
+            input.sheetName,
+            input.XLSX,
+          )
+          warnings.push(...salesPlan.warnings)
+          for (const fact of salesPlan.facts) {
+            const metric = `sales_volume_${fact.productSlug}${
+              fact.location ? `_${fact.location.toLowerCase()}` : ""
+            }`
+            const date = `${fact.year}-12-31`
+            rows.push({
+              companyId: cpcId,
+              metric,
+              date,
+              value: fact.volumeTons,
+              unit: "tons",
+              source: "xlsx_multi_import",
+            })
+            const key = buildReconKey(cpcId, metric, date)
+            expectedSums.set(
+              key,
+              (expectedSums.get(key) ?? 0) + fact.volumeTons,
+            )
+          }
+        }
+        // Skip the rest of the sales routing — Sales plan is its own
+        // shape; no other parser should run on the same sheet.
+        return {
+          summary: `${rows.length} sales-plan product-year facts`,
+          itemCount: rows.length,
+          warnings,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+          applyToDb: async (tx: Prisma.TransactionClient) => {
+            if (rows.length === 0) return { rowsInserted: 0 }
+            const touchedCompanyIds = Array.from(
+              new Set(rows.map((r) => r.companyId)),
+            )
+            // dateScope spans every year present in the rows so the
+            // reset filter doesn't accidentally clobber unrelated
+            // sales_volume_* rows from prior imports.
+            const years = Array.from(
+              new Set(rows.map((r) => r.date.slice(0, 4))),
+            )
+            const result = await runKpiBatch(tx, {
+              organizationId: ctx.organizationId,
+              label: `WB Sales plan ${input.sheetName}`,
+              actorUserId: "ai-multi-import",
+              sourceDocument: `multi-import:${input.sheetName}`,
+              companyIds: touchedCompanyIds,
+              dateScope: years,
+              rows,
+              expectedSums,
+            })
+            return { rowsInserted: result.metrics.rowsInserted }
+          },
+        } as AdapterRunResult & {
+          expectedSums?: Map<ReconciliationKey, number>
+        }
+      }
       let parsed:
         | ReturnType<typeof parseFarmingSalesSheet>
         | ReturnType<typeof parseProductionSalesSheet>

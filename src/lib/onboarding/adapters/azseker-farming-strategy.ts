@@ -210,3 +210,192 @@ export function parseIcmalSheet(
   }) as unknown[][]
   return parseIcmalFromAoa(aoa)
 }
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 7.M Tier 6 — "Sales plan" sheet parser (CPC per-product
+// forward volumes 2027-2035).
+// ──────────────────────────────────────────────────────────────────────
+
+export interface SalesPlanProductFact {
+  /** Calendar year (2027-2035). */
+  year: number
+  /** Canonical product label (col "Product (Sales)" in the workbook). */
+  productLabel: string
+  /** Stable slug derived from productLabel — used as part of the
+   *  operational_facts metric name. */
+  productSlug: string
+  /** Top-level group from col "Group" (Qlukoza / Fruktoza / Nişasta /
+   *  Yan məhsul). */
+  group: string
+  /** Sales channel from col "Location" (Azerbaijan / Export / ---).
+   *  Empty string when "---" (byproduct, no destination). */
+  location: string
+  /** Volume in tons. */
+  volumeTons: number
+}
+
+export interface SalesPlanParseResult {
+  facts: SalesPlanProductFact[]
+  warnings: string[]
+  /** Total data rows examined (excludes header). */
+  rowsExamined: number
+}
+
+/** Convert a free-text product label into a stable slug suitable for
+ *  embedding into a metric name. Strips non-alphanumerics, lowercases,
+ *  collapses runs of `_`. Mirror of the slug rule in
+ *  `azseker-workbook-sales.ts` so downstream metric names stay
+ *  consistent across the two sales-data shapes. */
+function slugifyProduct(label: string): string {
+  return label
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    // Keep azerbaijani-extended letters (ə / ş / ç / ğ / ı / ö / ü) as
+    // basic latin substitutions so we don't blow up the slug.
+    .replace(/ə/g, "e")
+    .replace(/ş/g, "s")
+    .replace(/ç/g, "c")
+    .replace(/ğ/g, "g")
+    .replace(/ı/g, "i")
+    .replace(/ö/g, "o")
+    .replace(/ü/g, "u")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64)
+}
+
+/**
+ * Parse the "Sales plan" sheet AOA. Layout (from May 19 workbook):
+ *   row 0: separator
+ *   row 1: header
+ *     col 0 "For PLF" | col 1 "Group" | col 2 "Location" | col 3 "For PL"
+ *     col 4 Production Step 3 | col 5 Production Step 4
+ *     col 6 "Product (Sales)" — canonical label
+ *     col 7 null
+ *     cols 8..16: VOLUME years 2027..2035
+ *     (cols 17+ are cost / price / revenue sections — out of scope)
+ *   row 2+: data rows
+ */
+export function parseSalesPlanFromAoa(aoa: unknown[][]): SalesPlanParseResult {
+  const warnings: string[] = []
+  const facts: SalesPlanProductFact[] = []
+  if (aoa.length < 2) {
+    warnings.push("Sales plan has fewer than 2 rows — no data to parse")
+    return { facts, warnings, rowsExamined: 0 }
+  }
+
+  // Locate the header row. Heuristic: scan first 5 rows for one that
+  // contains the literal "Product (Sales)" string at any column index;
+  // the year columns are the 9 immediate-following numeric cells (allow
+  // 1-cell gap for the null separator).
+  let headerRow = -1
+  let productCol = -1
+  let yearStartCol = -1
+  for (let r = 0; r < Math.min(5, aoa.length); r++) {
+    const row = aoa[r] ?? []
+    for (let c = 0; c < row.length; c++) {
+      const cell = row[c]
+      if (
+        typeof cell === "string" &&
+        cell.trim().toLowerCase().startsWith("product (sales)")
+      ) {
+        headerRow = r
+        productCol = c
+        break
+      }
+    }
+    if (headerRow >= 0) break
+  }
+  if (headerRow < 0) {
+    warnings.push(
+      'Header cell "Product (Sales)" not found in first 5 rows — sheet shape changed?',
+    )
+    return { facts, warnings, rowsExamined: 0 }
+  }
+
+  // Find year columns to the right of the product col.
+  const headerRowVals = aoa[headerRow] ?? []
+  const yearCols: Array<{ col: number; year: number }> = []
+  for (let c = productCol + 1; c < headerRowVals.length; c++) {
+    const cell = headerRowVals[c]
+    if (typeof cell === "number" && cell >= 2026 && cell <= 2099) {
+      yearCols.push({ col: c, year: cell })
+      if (yearStartCol < 0) yearStartCol = c
+    } else if (yearCols.length > 0) {
+      // Stop at the first non-year cell AFTER we've collected at least
+      // one — protects against picking up the second 2027..2035 block
+      // (production volumes, cost, etc.).
+      break
+    }
+  }
+  if (yearCols.length === 0) {
+    warnings.push(
+      `No year columns (2026..2099) found to the right of "Product (Sales)" at col ${productCol}`,
+    )
+    return { facts, warnings, rowsExamined: 0 }
+  }
+
+  // Data rows start one below the header.
+  let rowsExamined = 0
+  for (let r = headerRow + 1; r < aoa.length; r++) {
+    const row = aoa[r] ?? []
+    const productLabel = row[productCol]
+    if (typeof productLabel !== "string" || productLabel.trim() === "") {
+      continue
+    }
+    rowsExamined++
+    const groupRaw = row[1]
+    const locationRaw = row[2]
+    const group =
+      typeof groupRaw === "string" ? groupRaw.trim() : String(groupRaw ?? "")
+    const locationStr =
+      typeof locationRaw === "string"
+        ? locationRaw.trim()
+        : String(locationRaw ?? "")
+    const location = locationStr === "---" ? "" : locationStr
+    const slug = slugifyProduct(productLabel)
+    if (!slug) {
+      warnings.push(
+        `row ${r + 1}: product "${productLabel}" produced empty slug — skipped`,
+      )
+      continue
+    }
+    for (const { col, year } of yearCols) {
+      const v = num(row[col])
+      if (v === 0) continue // skip zero-volume cells to avoid noise
+      facts.push({
+        year,
+        productLabel: productLabel.trim(),
+        productSlug: slug,
+        group,
+        location,
+        volumeTons: v,
+      })
+    }
+  }
+  return { facts, warnings, rowsExamined }
+}
+
+/** Convenience wrapper — load + parse the Sales plan sheet from a
+ *  workbook by name. */
+export function parseSalesPlanSheet(
+  workbook: { Sheets: Record<string, unknown>; SheetNames: string[] },
+  sheetName: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  XLSX: any,
+): SalesPlanParseResult {
+  const sheet = workbook.Sheets[sheetName]
+  if (!sheet) {
+    return {
+      facts: [],
+      warnings: [`Sheet "${sheetName}" not found`],
+      rowsExamined: 0,
+    }
+  }
+  const aoa = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    blankrows: true,
+  }) as unknown[][]
+  return parseSalesPlanFromAoa(aoa)
+}

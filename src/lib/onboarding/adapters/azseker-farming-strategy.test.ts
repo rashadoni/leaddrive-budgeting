@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest"
-import { parseIcmalFromAoa } from "./azseker-farming-strategy"
+import {
+  parseIcmalFromAoa,
+  parseSalesPlanFromAoa,
+} from "./azseker-farming-strategy"
 
 describe("parseIcmalFromAoa", () => {
   it("parses real-world layout — year header at row 3, Revenue rows below", () => {
@@ -92,5 +95,135 @@ describe("parseIcmalFromAoa", () => {
     const f2026 = result.forecast.find((f) => f.year === 2026)!
     expect(f2026.breakdown.length).toBe(0)
     expect(f2026.totalRevenueAzn).toBe(0)
+  })
+})
+
+// Phase 7.M Tier 6 — Sales plan parser (per-product 2027-2032).
+describe("parseSalesPlanFromAoa", () => {
+  const makeHeader = (productCol: number) => {
+    const row: unknown[] = []
+    row[0] = "For PLF"
+    row[1] = "Group"
+    row[2] = "Location"
+    row[3] = "For PL"
+    row[productCol] = "Product (Sales)"
+    // Year columns: 9 contiguous numeric cells starting at productCol+2
+    // (1-cell gap to match real workbook layout).
+    let c = productCol + 2
+    for (let y = 2027; y <= 2035; y++) {
+      row[c++] = y
+    }
+    return row
+  }
+
+  it("parses 1 product × 9 years → 9 facts with stable slug + year + volume", () => {
+    const productCol = 6
+    const header = makeHeader(productCol)
+    const dataRow: unknown[] = []
+    dataRow[0] = "Ana məhsul"
+    dataRow[1] = "Qlukoza"
+    dataRow[2] = "Azerbaijan"
+    dataRow[3] = "Glucose"
+    dataRow[productCol] = "Qlükoza-G40 Çəki ilə"
+    let c = productCol + 2
+    let v = 3500
+    for (let y = 2027; y <= 2035; y++) {
+      dataRow[c++] = v
+      v -= 100 // 3500, 3400, ..., 2700
+    }
+    const result = parseSalesPlanFromAoa([[], header, dataRow])
+    expect(result.warnings).toEqual([])
+    expect(result.facts).toHaveLength(9)
+    expect(result.facts[0]).toMatchObject({
+      year: 2027,
+      productLabel: "Qlükoza-G40 Çəki ilə",
+      productSlug: "qlukoza_g40_ceki_ile",
+      group: "Qlukoza",
+      location: "Azerbaijan",
+      volumeTons: 3500,
+    })
+    expect(result.facts[8]).toMatchObject({ year: 2035, volumeTons: 2700 })
+  })
+
+  it("skips zero-volume cells to avoid noise (typical for not-yet-launched products)", () => {
+    const productCol = 6
+    const header = makeHeader(productCol)
+    const dataRow: unknown[] = []
+    dataRow[0] = "Ana məhsul"
+    dataRow[1] = "Fruktoza"
+    dataRow[2] = "Azerbaijan"
+    dataRow[productCol] = "Fruktoza F-55"
+    // Years 2027-2028 are 0 (not launched yet), 2029-2035 ramp up
+    let c = productCol + 2
+    for (let y = 2027; y <= 2035; y++) {
+      dataRow[c++] = y >= 2029 ? 1000 : 0
+    }
+    const result = parseSalesPlanFromAoa([[], header, dataRow])
+    expect(result.facts).toHaveLength(7) // 9 - 2 zeros
+    expect(result.facts.every((f) => f.year >= 2029)).toBe(true)
+  })
+
+  it("treats Location='---' as empty string (used for byproducts)", () => {
+    const productCol = 6
+    const header = makeHeader(productCol)
+    const dataRow: unknown[] = []
+    dataRow[0] = "Yan məhsul"
+    dataRow[1] = "Yan məhsul"
+    dataRow[2] = "---"
+    dataRow[productCol] = "Qlüten Çəki ilə"
+    dataRow[productCol + 2] = 1275
+    const result = parseSalesPlanFromAoa([[], header, dataRow])
+    expect(result.facts[0].location).toBe("")
+    expect(result.facts[0].group).toBe("Yan məhsul")
+  })
+
+  it("skips rows without a product label (filters out blank trailing rows)", () => {
+    const productCol = 6
+    const header = makeHeader(productCol)
+    const blankRow: unknown[] = []
+    blankRow[1] = "Qlukoza"
+    blankRow[productCol + 2] = 1000 // value present but no product label
+    const result = parseSalesPlanFromAoa([[], header, blankRow])
+    expect(result.facts).toEqual([])
+    expect(result.rowsExamined).toBe(0)
+  })
+
+  it("returns warning when 'Product (Sales)' header not found", () => {
+    const result = parseSalesPlanFromAoa([
+      [],
+      ["wrong", "headers", "here"],
+      ["data", 1, 2],
+    ])
+    expect(result.facts).toEqual([])
+    expect(result.warnings[0]).toMatch(/Product \(Sales\).*not found/)
+  })
+
+  it("stops collecting year cols at first non-year cell to avoid second 2027-2035 block (cost / price)", () => {
+    // Real workbook has VOLUME 2027-2035, then null, then "2026", then
+    // null, then PRODUCTION 2027-2035, etc. The parser must only pick
+    // up the FIRST contiguous run of year cells.
+    const productCol = 6
+    const header: unknown[] = []
+    header[productCol] = "Product (Sales)"
+    let c = productCol + 2
+    for (let y = 2027; y <= 2035; y++) header[c++] = y
+    header[c++] = null
+    header[c++] = "2026" // string, not number — defensive against re-pick
+    header[c++] = null
+    for (let y = 2027; y <= 2035; y++) header[c++] = y
+
+    const dataRow: unknown[] = []
+    dataRow[1] = "X"
+    dataRow[productCol] = "TestProduct"
+    let dc = productCol + 2
+    for (let y = 2027; y <= 2035; y++) dataRow[dc++] = 100
+    dc++ // null gap
+    dc++ // "2026" col
+    dc++ // null gap
+    for (let y = 2027; y <= 2035; y++) dataRow[dc++] = 999 // these MUST be ignored
+
+    const result = parseSalesPlanFromAoa([[], header, dataRow])
+    expect(result.facts).toHaveLength(9)
+    expect(result.facts.every((f) => f.volumeTons === 100)).toBe(true)
   })
 })
