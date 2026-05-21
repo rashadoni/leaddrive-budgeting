@@ -68,6 +68,17 @@ export async function withOrgScope<T>(
       `SET LOCAL "app.organization_id" = '${organizationId}'`,
     )
     if (opts.bypass) {
+      // Phase 5.2 Stage 2 Round-2 verdict (2026-05-21) — bypass via
+      // `withOrgScope` is deprecated. Use the dedicated `prismaAdmin`
+      // client (`src/lib/db/prisma-admin.ts`) backed by the
+      // `DATABASE_URL_ADMIN` connection string. The bypass flag stays
+      // wired for 2 weeks so existing cron / migration callers keep
+      // working; remove on the Stage 2 closure PR (2026-06-04).
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[withOrgScope] bypass:true is deprecated. Use `prismaAdmin` from " +
+          "@/lib/db/prisma-admin for cross-org / cron / migration paths.",
+      )
       await tx.$executeRawUnsafe(`SET LOCAL "app.bypass_rls" = 'true'`)
     }
     return fn(tx)

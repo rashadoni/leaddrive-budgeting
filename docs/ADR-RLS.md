@@ -84,3 +84,23 @@ Abort threshold per architect: **>10% p95 regression** on `/api/indicators/matri
 
 - **Q (deferred):** does `ALSContext` survive across Next.js streaming responses (`app router` streaming)? Empirical test in Stage 2.
 - **Q (deferred):** what's the test pattern for Prisma `$extends` middleware in vitest? Need a way to assert `SET LOCAL` was emitted before each query.
+
+## Architect Round-2 verdict (2026-05-21)
+
+**Decision: commit to the EXPLICIT-WRAPPER-PER-ROUTE approach. Drop the `$extends` middleware idea.**
+
+Rationale (synthesised from Stage 1 work + Phase 6 BullMQ experience):
+
+1. **Prisma `$extends({query})` limitations confirmed** (per `org-scope-context.ts` jsdoc): the query callback fires INSIDE the implicit transaction Prisma opens; we cannot wrap a `SET LOCAL` statement around it without batching into raw `$transaction([...])` arrays at every call site — which defeats the "automatic" promise.
+
+2. **Phase 7.M Tier 5 + Phase 6 set the precedent**: batch functions (`runImportBatch`, `runBalanceSheetBatch`, etc.) and BullMQ processors already accept `Prisma.TransactionClient` as their first arg. The explicit-tx pattern is already woven through 4 critical write paths; extending it to RLS-protected reads is mechanical.
+
+3. **Risk asymmetry**: an undetected silent leak in a `$extends` middleware (e.g. ALS context lost across async boundaries in streaming responses, server actions, or worker processes) ships unnoticed for weeks. An UNWRAPPED route is immediately visible because RLS returns 0 rows (UI shows empty / 401) — fail-loud beats fail-silent for compliance code.
+
+4. **Bypass story stays clean**: cron / background workers / migrations explicitly use the `DATABASE_URL_ADMIN` connection (separate Postgres role with `BYPASSRLS`). No `bypass: true` hack inside withOrgScope; that flag becomes deprecated as part of Round-2 (use the dedicated admin client).
+
+5. **Cost**: explicit-wrap = 500-1000 mechanical edits but each is auditable and gradual. `$extends` approach was 2-3 weeks of build + uncertain feasibility. Explicit-wrap delivers per-table value continuously, doesn't require a Big-Bang switchover.
+
+**Implementation rules:** see `docs/RLS_PATTERN_EXAMPLE.md` for the canonical wrapped-route pattern + write-endpoint shape + cron/worker pattern using `prismaAdmin`.
+
+**withOrgScope.bypass deprecation**: keep the flag wired for 2 more weeks, emit a `console.warn` when used, then remove in Stage 2 closure PR (target 2026-06-04).

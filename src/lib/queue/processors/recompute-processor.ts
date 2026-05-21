@@ -25,6 +25,14 @@ import type {
 // One shared Prisma client per worker process. Workers are long-running
 // daemons; creating a fresh client per job would exhaust connection
 // pool. Workers should set DATABASE_URL with reasonable pool_size.
+//
+// Phase 5.2 Stage 2 RLS rollout note (2026-05-21): when per-table RLS
+// migrations land, `runRecomputeForCompanies` callers from THIS
+// processor will need to wrap individual writes in
+// `withOrgScope(job.data.organizationId, ...)` — the orgId is already
+// in the job payload. Until the per-table migrations apply, the
+// processor uses the regular prisma client and writes ignore RLS
+// (table-level RLS is OFF). See docs/RLS_PATTERN_EXAMPLE.md.
 let prismaInstance: PrismaClient | null = null
 function getPrisma(): PrismaClient {
   if (!prismaInstance) prismaInstance = new PrismaClient()
