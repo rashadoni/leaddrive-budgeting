@@ -38,6 +38,7 @@ import {
   type AdapterRunInput,
   type AdapterRunResult,
 } from "./adapter-registry"
+import { runDynamicPlfAdapter } from "./dynamic-plf-adapter"
 import {
   parsePlfPlSheet,
   parsePlfCfSheet,
@@ -279,6 +280,22 @@ function makePlfHandler(
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
       }
     }
+    // ── Dynamic fallback: hard-coded parser returned 0 rows on a non-empty sheet ──
+    // Triggers when the sheet uses a layout the AZSEKER adapter doesn't recognise
+    // (different column positions, different year placement, non-serial date headers).
+    // One Claude call detects the structure; result cached 24h in AIMapperProposalCache.
+    if (rows.length === 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sheet = (input.workbook as any).Sheets[input.sheetName]
+      const hasData = sheet != null && Object.keys(sheet).length > 1 // >1: !ref alone = empty
+      if (hasData) {
+        console.log(
+          `[prod-adapter] PLF "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
+        )
+        return runDynamicPlfAdapter(input, ctx.planId, companyId, prisma)
+      }
+    }
+
     return {
       summary: `${parsed.lines.length} PLF lines for ${input.entityCode}`,
       itemCount: rows.length,
