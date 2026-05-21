@@ -64,6 +64,12 @@ vi.mock("../kpi-import-batch", () => ({
 vi.mock("../operational-facts-import", () => ({
   parseOperationalFactsWorkbook: vi.fn(),
 }))
+vi.mock("../budget-actuals-import", () => ({
+  parseBudgetActualsWorkbook: vi.fn(),
+}))
+vi.mock("../actuals-import-batch", () => ({
+  runActualsBatch: vi.fn(),
+}))
 
 import { buildProductionAdapterRegistry } from "./production-adapter-registry"
 import { parsePlfPlSheet, parsePlfCfSheet } from "../adapters/azseker-plf"
@@ -128,6 +134,8 @@ describe("buildProductionAdapterRegistry", () => {
     expect(registry.get("COMPANIES")).toBeTruthy()
     // Phase 7.M Tier 7 — OPS_FACTS handler registered.
     expect(registry.get("OPS_FACTS")).toBeTruthy()
+    // Phase 7.M Tier 7 Phase 3 — BUDGET_ACTUALS handler registered.
+    expect(registry.get("BUDGET_ACTUALS")).toBeTruthy()
     expect(registry.get("UNKNOWN")).toBeTruthy()
   })
 
@@ -733,6 +741,181 @@ describe("buildProductionAdapterRegistry", () => {
     const prisma = buildPrismaStub({ plan: { id: "plan_2026" } })
     const registry = buildProductionAdapterRegistry(prisma)
     const result = await registry.get("OPS_FACTS")!({
+      workbook: { Sheets: {}, SheetNames: [] },
+      sheetName: "MissingSheet",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(0)
+    expect(result.warnings).toEqual([`Sheet "MissingSheet" not found`])
+    const apply = await result.applyToDb({} as never)
+    expect(apply.rowsInserted).toBe(0)
+  })
+
+  // ────────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 (Phase 3) — BUDGET_ACTUALS handler
+  // ────────────────────────────────────────────────────────────────────
+
+  it("BUDGET_ACTUALS handler parses sheet, resolves planId via ctx, calls runActualsBatch with outer tx", async () => {
+    const { parseBudgetActualsWorkbook } = await import(
+      "../budget-actuals-import"
+    )
+    ;(parseBudgetActualsWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      rows: [
+        {
+          rowNumber: 2,
+          category: "Office Rent",
+          amount: 5000,
+          date: "2026-03-15",
+          monthIndex: 2,
+          department: "Admin",
+          description: "March rent",
+          lineType: "expense",
+          companyCode: null,
+        },
+        {
+          rowNumber: 3,
+          category: "Sales Revenue",
+          amount: 12000,
+          date: "2026-03-20",
+          monthIndex: 2,
+          department: "Sales",
+          description: "Q1 revenue",
+          lineType: "revenue",
+          companyCode: "AZSEKER-CPC",
+        },
+      ],
+      errors: [],
+      warnings: [],
+    })
+    const { runActualsBatch } = await import("../actuals-import-batch")
+    ;(runActualsBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 2 },
+    })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("BUDGET_ACTUALS")!({
+      workbook: { Sheets: { Actuals: {} }, SheetNames: ["Actuals"] },
+      sheetName: "Actuals",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    expect(result.itemCount).toBe(2)
+    expect(result.warnings).toEqual([])
+
+    const fakeTx = { _tx: true } as never
+    await result.applyToDb(fakeTx)
+    expect(runActualsBatch).toHaveBeenCalledOnce()
+    const [txArg, payload] = (runActualsBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0] as [
+      unknown,
+      {
+        planId: string
+        rows: Array<{
+          category: string
+          amount: number
+          date: string
+          monthIndex: number
+          lineType: string
+          companyId: string | null
+        }>
+        dateScope: ReadonlyArray<string>
+      },
+    ]
+    expect(txArg).toBe(fakeTx)
+    expect(payload.planId).toBe("plan_2026")
+    expect(payload.rows).toHaveLength(2)
+    expect(payload.rows[0]).toMatchObject({
+      category: "Office Rent",
+      amount: 5000,
+      date: "2026-03-15",
+      monthIndex: 2,
+      department: "Admin",
+      lineType: "expense",
+      companyId: null,
+    })
+    expect(payload.rows[1]).toMatchObject({
+      category: "Sales Revenue",
+      lineType: "revenue",
+      companyId: "c_cpc",
+    })
+    expect(payload.dateScope).toEqual(["2026"])
+  })
+
+  it("BUDGET_ACTUALS handler warns on year-out-of-scope + unknown companyCode (keeps row, companyId null)", async () => {
+    const { parseBudgetActualsWorkbook } = await import(
+      "../budget-actuals-import"
+    )
+    ;(parseBudgetActualsWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      rows: [
+        {
+          rowNumber: 2,
+          category: "Cat1",
+          amount: 100,
+          date: "2026-01-15",
+          monthIndex: 0,
+          department: null,
+          description: null,
+          lineType: "expense",
+          companyCode: "AZSEKER-MISSING",
+        },
+        {
+          rowNumber: 3,
+          category: "Cat2",
+          amount: 200,
+          date: "2025-12-31",
+          monthIndex: 11,
+          department: null,
+          description: null,
+          lineType: "expense",
+          companyCode: null,
+        },
+      ],
+      errors: [{ rowNumber: 4, reason: "bad date" }],
+      warnings: [{ rowNumber: 5, message: "description truncated" }],
+    })
+    const { runActualsBatch } = await import("../actuals-import-batch")
+    ;(runActualsBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+    })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("BUDGET_ACTUALS")!({
+      workbook: { Sheets: { Actuals: {} }, SheetNames: ["Actuals"] },
+      sheetName: "Actuals",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    // 1 row kept (Cat1 in-year, unknown company → companyId null),
+    // 1 row dropped (Cat2 wrong year)
+    expect(result.itemCount).toBe(1)
+    // 4 warnings: 1 parser error + 1 parser warning + 1 unknown-company +
+    // 1 year-out-of-scope
+    expect(result.warnings).toHaveLength(4)
+    expect(result.warnings.some((w) => w.includes("AZSEKER-MISSING"))).toBe(
+      true,
+    )
+    expect(result.warnings.some((w) => w.includes("outside year 2026"))).toBe(
+      true,
+    )
+  })
+
+  it("BUDGET_ACTUALS handler returns warning when sheet missing from workbook", async () => {
+    const prisma = buildPrismaStub({ plan: { id: "plan_2026" } })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("BUDGET_ACTUALS")!({
       workbook: { Sheets: {}, SheetNames: [] },
       sheetName: "MissingSheet",
       entityCode: null,

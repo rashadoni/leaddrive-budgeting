@@ -92,6 +92,11 @@ const APPLY_ORDER: Record<FileType, number> = {
   "company-setup": -1,
   "strategic-descriptions": 0,
   "main-financial": 1,
+  // budget-actuals applies right after main-financial — actuals need a
+  // BudgetPlan to attach to; main-financial seeds the plan via PLF
+  // resolution. Mirrors the dependency arrow Plan → Actuals.
+  // Phase 7.M Tier 7 (Phase 3).
+  "budget-actuals": 1.5,
   "kpi-only": 2,
   // ops-facts shares the operational_facts table with kpi-only; same
   // dependency tier (companies seeded, plf-bs-cf optional) — placed
@@ -417,6 +422,7 @@ export async function runMultiFileImport(
           infoSummary: 0,
           companies: 0,
           opsFacts: 0,
+          budgetActuals: 0,
           unknown: 0,
         },
       })

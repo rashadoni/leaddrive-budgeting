@@ -205,6 +205,7 @@ describe("detectFileType", () => {
         cls("j", "INFO_SUMMARY"),
         cls("k", "COMPANIES"),
         cls("m", "OPS_FACTS"),
+        cls("n", "BUDGET_ACTUALS"),
         cls("l", "UNKNOWN"),
       ],
       "AllShapes.xlsx",
@@ -222,6 +223,7 @@ describe("detectFileType", () => {
       infoSummary: 1,
       companies: 1,
       opsFacts: 1,
+      budgetActuals: 1,
       unknown: 1,
     })
   })
@@ -265,5 +267,44 @@ describe("detectFileType", () => {
     )
     expect(result.fileType).toBe("main-financial")
     expect(result.sheetCounts.opsFacts).toBe(1)
+  })
+
+  // ──────────────────────────────────────────────────────────────────
+  // Phase 7.M Tier 7 (Phase 3) — BUDGET_ACTUALS file-type detection
+  // ──────────────────────────────────────────────────────────────────
+
+  it("classifies file with only BUDGET_ACTUALS sheet as budget-actuals (Phase 7.M Tier 7 Phase 3)", () => {
+    const result = detectFileType(
+      [cls("Actuals2026", "BUDGET_ACTUALS")],
+      "march-actuals.xlsx",
+    )
+    expect(result.fileType).toBe("budget-actuals")
+    expect(result.sheetCounts.budgetActuals).toBe(1)
+    expect(result.reasoning).toMatch(/standalone actuals file/)
+  })
+
+  it("classifies multiple BUDGET_ACTUALS sheets without financials as budget-actuals", () => {
+    const result = detectFileType(
+      [
+        cls("Q1 Actuals", "BUDGET_ACTUALS"),
+        cls("Q2 Actuals", "BUDGET_ACTUALS"),
+      ],
+      "quarterly-actuals.xlsx",
+    )
+    expect(result.fileType).toBe("budget-actuals")
+    expect(result.sheetCounts.budgetActuals).toBe(2)
+  })
+
+  it("BUDGET_ACTUALS mixed with PLF/BS/CF falls through to main-financial", () => {
+    const result = detectFileType(
+      [
+        cls("Actuals", "BUDGET_ACTUALS"),
+        cls("PLF X", "PLF", "X"),
+        cls("BS X", "BS", "X"),
+      ],
+      "Mixed.xlsx",
+    )
+    expect(result.fileType).toBe("main-financial")
+    expect(result.sheetCounts.budgetActuals).toBe(1)
   })
 })

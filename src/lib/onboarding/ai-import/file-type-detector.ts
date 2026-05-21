@@ -49,6 +49,11 @@ export type FileType =
   // OPS_FACTS sheets carry the metric name in a column. Detected by
   // OPS_FACTS-classified sheet(s) without any PLF/BS/CF.
   | "ops-facts"
+  // Phase 7.M Tier 7 — import consolidation (Phase 3). budget-actuals
+  // file holds one or more flat budget-actuals sheets (category|amount|
+  // date|...). Writes to `budget_actuals` table (separate from BudgetLine/
+  // PLF). Detected by BUDGET_ACTUALS-classified sheet(s) without PLF/BS/CF.
+  | "budget-actuals"
   | "unknown"
 
 export interface FileTypeResult {
@@ -74,6 +79,7 @@ export interface FileTypeResult {
     infoSummary: number
     companies: number
     opsFacts: number
+    budgetActuals: number
     unknown: number
   }
 }
@@ -95,6 +101,7 @@ function bucketSheets(
     infoSummary: 0,
     companies: 0,
     opsFacts: 0,
+    budgetActuals: 0,
     unknown: 0,
   }
   for (const c of classifications) {
@@ -134,6 +141,9 @@ function bucketSheets(
         break
       case "OPS_FACTS":
         counts.opsFacts++
+        break
+      case "BUDGET_ACTUALS":
+        counts.budgetActuals++
         break
       case "UNKNOWN":
         counts.unknown++
@@ -367,6 +377,30 @@ export function detectFileType(
       fileType: "ops-facts",
       confidence: conf,
       reasoning: `${counts.opsFacts} ops-facts sheet(s), no PLF/BS/CF → standalone operational-facts file`,
+      sheetCounts: counts,
+    }
+  }
+
+  // Priority 5.7: budget-actuals — flat budget-actuals sheet(s) without
+  // PLF/BS/CF. Writes to `budget_actuals` table. Mixed with PLF/BS/CF
+  // → falls through to main-financial (PLF carries the forecast plan,
+  // BUDGET_ACTUALS imports the historical actuals against that plan —
+  // typically uploaded separately, so we never expect them in the same
+  // workbook anyway).
+  if (
+    counts.budgetActuals >= 1 &&
+    counts.plf === 0 &&
+    counts.bs === 0 &&
+    counts.cf === 0
+  ) {
+    const conf = avgConfidenceOver(
+      classifications,
+      (c) => c.dataType === "BUDGET_ACTUALS",
+    )
+    return {
+      fileType: "budget-actuals",
+      confidence: conf,
+      reasoning: `${counts.budgetActuals} budget-actuals sheet(s), no PLF/BS/CF → standalone actuals file`,
       sheetCounts: counts,
     }
   }

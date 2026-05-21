@@ -300,6 +300,29 @@ describe("classifySheets", () => {
     expect(result.classifications[0].entityCode).toBeNull()
   })
 
+  it("accepts BUDGET_ACTUALS dataType from LLM (Phase 7.M Tier 7 Phase 3)", async () => {
+    const client = stubClient(
+      JSON.stringify({
+        classifications: [
+          {
+            sheetName: "Actuals2026",
+            dataType: "BUDGET_ACTUALS",
+            entityCode: null,
+            confidence: 0.93,
+            reasoning: "headers category/amount/date, row-per-transaction",
+          },
+        ],
+      }),
+    )
+    const result = await classifySheets(
+      { sheetMetas: [meta("Actuals2026")] },
+      client,
+      "claude-test",
+    )
+    expect(result.classifications[0].dataType).toBe("BUDGET_ACTUALS")
+    expect(result.classifications[0].entityCode).toBeNull()
+  })
+
   it("classifies entity code as null for cross-entity sheets", async () => {
     const client = stubClient(
       JSON.stringify({

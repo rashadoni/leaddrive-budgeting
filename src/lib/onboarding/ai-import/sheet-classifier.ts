@@ -50,6 +50,14 @@ export type SheetDataType =
   // metric positions. Writes to the same `operational_facts` table via
   // runKpiBatch — see operational-facts-import.parseOperationalFactsWorkbook.
   | "OPS_FACTS"
+  // Phase 7.M Tier 7 — import consolidation (Phase 3 of 5). BUDGET_ACTUALS
+  // is a flat tabular budget-actuals sheet (headers: category | department |
+  // amount | date | description | lineType [optional: companyCode]).
+  // Each row = one expense/revenue actual transaction. Distinct from PLF
+  // (which has rows × period-month columns) — BUDGET_ACTUALS has one row
+  // per transaction with date in a column. Writes to `budget_actuals`
+  // table (separate from BudgetLine/PLF) via runActualsBatch.
+  | "BUDGET_ACTUALS"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -116,6 +124,7 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "INFO_SUMMARY",
   "COMPANIES",
   "OPS_FACTS",
+  "BUDGET_ACTUALS",
   "UNKNOWN",
 ])
 

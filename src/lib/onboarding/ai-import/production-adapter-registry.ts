@@ -85,6 +85,11 @@ import {
   type KpiImportRow,
 } from "../kpi-import-batch"
 import { parseOperationalFactsWorkbook } from "../operational-facts-import"
+import { parseBudgetActualsWorkbook } from "../budget-actuals-import"
+import {
+  runActualsBatch,
+  type ActualsImportRow,
+} from "../actuals-import-batch"
 import {
   buildReconKey,
   type ReconciliationKey,
@@ -1103,6 +1108,109 @@ function makeOpsFactsHandler(
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// BUDGET_ACTUALS handler — flat budget-actuals sheet (category|amount|
+// date|department|description|lineType|companyCode). Phase 7.M Tier 7
+// (Phase 3): replaces /api/budgeting/import-csv. Writes BudgetActual
+// rows scoped to the active BudgetPlan resolved via shared org context.
+// REPLACE semantics by (planId, year) — purges prior actuals in scope
+// before bulk-inserting the new batch (matches Phase 7.M bit-perfect
+// re-import pattern).
+// ──────────────────────────────────────────────────────────────────────
+
+function makeBudgetActualsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = ctxRef.value ?? (await ensureCtx())
+    const sheet = input.workbook.Sheets[input.sheetName]
+    if (!sheet) {
+      return {
+        summary: `BUDGET_ACTUALS sheet "${input.sheetName}" not in workbook`,
+        itemCount: 0,
+        warnings: [`Sheet "${input.sheetName}" not found`],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    // Single-sheet wrap so the parser sees exactly the AI-classified sheet
+    const wrappedWorkbook = {
+      Sheets: { [input.sheetName]: sheet },
+      SheetNames: [input.sheetName],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any
+    const parsed = parseBudgetActualsWorkbook(wrappedWorkbook, input.XLSX)
+    const warnings: string[] = []
+    for (const e of parsed.errors) {
+      warnings.push(`row ${e.rowNumber}: ${e.reason}`)
+    }
+    for (const w of parsed.warnings) {
+      warnings.push(`row ${w.rowNumber}: ${w.message}`)
+    }
+
+    // Resolve optional companyCode → companyId via ctx; year-filter rows
+    const yearFilter = String(input.year)
+    const rows: ActualsImportRow[] = []
+    const expectedSums = new Map<ReconciliationKey, number>()
+    for (const p of parsed.rows) {
+      if (!p.date.startsWith(yearFilter)) {
+        warnings.push(
+          `row ${p.rowNumber}: date ${p.date} outside year ${yearFilter} — skipped`,
+        )
+        continue
+      }
+      let companyId: string | null = null
+      if (p.companyCode) {
+        const resolved = ctx.codeToId.get(p.companyCode)
+        if (!resolved) {
+          warnings.push(
+            `row ${p.rowNumber}: companyCode "${p.companyCode}" not in org — leaving companyId null`,
+          )
+        } else {
+          companyId = resolved
+        }
+      }
+      rows.push({
+        category: p.category,
+        amount: p.amount,
+        date: p.date,
+        monthIndex: p.monthIndex,
+        department: p.department,
+        description: p.description,
+        lineType: p.lineType,
+        companyId,
+      })
+      const key = buildReconKey(
+        ctx.planId,
+        p.category,
+        String(p.monthIndex),
+      )
+      expectedSums.set(key, (expectedSums.get(key) ?? 0) + p.amount)
+    }
+
+    return {
+      summary: `${rows.length} budget-actuals rows (${warnings.length} warnings)`,
+      itemCount: rows.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (rows.length === 0) return { rowsInserted: 0 }
+        const result = await runActualsBatch(tx, {
+          organizationId: input.organizationId,
+          planId: ctx.planId,
+          label: `ai-import BUDGET_ACTUALS ${input.sheetName}`,
+          actorUserId: "ai-import",
+          sourceDocument: `budget-actuals-sheet:${input.sheetName}`,
+          dateScope: [yearFilter],
+          rows,
+          expectedSums,
+        })
+        return { rowsInserted: result.metrics.rowsInserted }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // noop — for INFO_SUMMARY / UNKNOWN
 // ──────────────────────────────────────────────────────────────────────
 
@@ -1189,6 +1297,9 @@ export function buildProductionAdapterRegistry(
     // Phase 7.M Tier 7 — import consolidation. OPS_FACTS reuses the
     // shared org-context (companyCode → companyId map) like KPI handlers.
     OPS_FACTS: wrap(makeOpsFactsHandler),
+    // Phase 7.M Tier 7 (Phase 3) — BUDGET_ACTUALS writes to budget_actuals
+    // table via planId resolved from shared org-context.
+    BUDGET_ACTUALS: wrap(makeBudgetActualsHandler),
     UNKNOWN: noopHandler,
   })
 }
