@@ -70,83 +70,83 @@ can batch; big-traffic tables ship solo for tight regression control).
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 5 | `BudgetPlan` | `budget_plans` | ⬜ |
-| 6 | `BudgetLine` | `budget_lines` | ⬜ |
-| 7 | `BalanceSheetLine` | `balance_sheet_lines` | ⬜ |
-| 8 | `CashFlowEntry` | `cash_flow_entries` | ⬜ |
-| 9 | `BudgetActual` | `budget_actuals` | ⬜ |
-| 10 | `BudgetForecastEntry` | `budget_forecast_entries` | ⬜ |
+| 5 | `BudgetPlan` | `budget_plans` | 🟡 scaffolded |
+| 6 | `BudgetLine` | `budget_lines` | 🟡 scaffolded |
+| 7 | `BalanceSheetLine` | `balance_sheet_lines` | 🟡 scaffolded |
+| 8 | `CashFlowEntry` | `cash_flow_entries` | 🟡 scaffolded |
+| 9 | `BudgetActual` | `budget_actuals` | 🟡 scaffolded |
+| 10 | `BudgetForecastEntry` | `budget_forecast_entries` | 🟡 scaffolded |
 
 ### Tier 4 — core entity (3 tables, careful — used across admin UIs)
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 11 | `Company` | `companies` | ⬜ |
-| 12 | `User` | `users` | ⬜ |
-| 13 | `Counterparty` | `counterparties` | ⬜ |
+| 11 | `Company` | `companies` | 🟡 scaffolded |
+| 12 | `User` | `users` | 🟡 scaffolded |
+| 13 | `Counterparty` | `counterparties` | 🟡 scaffolded |
 
 ### Tier 5 — operational facts (8 tables)
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 14 | `OperationalFact` | `operational_facts` | ⬜ |
-| 15 | `Booking` | `bookings` | ⬜ |
-| 16 | `IndicatorDisclosure` | `indicator_disclosures` | ⬜ |
-| 17 | `ClientReconciliation` | `client_reconciliations` | ⬜ |
-| 18 | `BudgetCostType` | `budget_cost_types` | ⬜ |
-| 19 | `COGSBudgetLine` | `cogs_budget_lines` | ⬜ |
-| 20 | `COGSCostDetail` | `cogs_cost_details` | ⬜ |
-| 21 | `SalesBudgetLine` | `sales_budget_lines` | ⬜ |
+| 14 | `OperationalFact` | `operational_facts` | 🟡 scaffolded |
+| 15 | `Booking` | `bookings` | 🟡 scaffolded |
+| 16 | `IndicatorDisclosure` | `indicator_disclosures` | 🟡 scaffolded |
+| 17 | `ClientReconciliation` | `client_reconciliations` | 🟡 scaffolded |
+| 18 | `BudgetCostType` | `budget_cost_types` | 🟡 scaffolded |
+| 19 | `COGSBudgetLine` | `cogs_budget_lines` | 🟡 scaffolded |
+| 20 | `COGSCostDetail` | `cogs_cost_details` | 🟡 scaffolded |
+| 21 | `SalesBudgetLine` | `sales_budget_lines` | 🟡 scaffolded |
 
 ### Tier 6 — AI / cache / forecasts (10 tables)
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 22 | `AIMapperProposalCache` | `ai_mapper_proposal_cache` | ⬜ |
-| 23 | `AITokenUsage` | `ai_token_usage` | ⬜ |
-| 24 | `BoardDeckNarration` | `board_deck_narrations` | ⬜ |
-| 25 | `VarianceExplanation` | `variance_explanations` | ⬜ |
-| 26 | `PredictiveBreach` | `predictive_breaches` | ⬜ |
-| 27 | `IntelDataPoint` | `intel_data_points` | ⬜ |
-| 28 | `IntelItem` | `intel_items` | ⬜ |
-| 29 | `FeedImpactForecast` | `feed_impact_forecasts` | ⬜ |
-| 30 | `RollingForecastMonth` | `rolling_forecast_months` | ⬜ |
-| 31 | `ExpenseForecast` | `expense_forecasts` | ⬜ |
+| 22 | `AIMapperProposalCache` | `ai_mapper_proposal_cache` | 🟡 scaffolded |
+| 23 | `AITokenUsage` | `ai_token_usage` | 🟡 scaffolded |
+| 24 | `BoardDeckNarration` | `board_deck_narrations` | 🟡 scaffolded |
+| 25 | `VarianceExplanation` | `variance_explanations` | 🟡 scaffolded |
+| 26 | `PredictiveBreach` | `predictive_breaches` | 🟡 scaffolded |
+| 27 | `IntelDataPoint` | `intel_data_points` | 🟡 scaffolded |
+| 28 | `IntelItem` | `intel_items` | 🟡 scaffolded |
+| 29 | `FeedImpactForecast` | `feed_impact_forecasts` | 🟡 scaffolded |
+| 30 | `RollingForecastMonth` | `rolling_forecast_months` | 🟡 scaffolded |
+| 31 | `ExpenseForecast` | `expense_forecasts` | 🟡 scaffolded |
 
 ### Tier 7 — config / metadata (10 tables)
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 32 | `IndicatorDefinition` | `indicator_definitions` | ⬜ |
-| 33 | `ChartOfAccount` | `chart_of_accounts` | ⬜ |
-| 34 | `Industry` | `industries` | ⬜ |
-| 35 | `Currency` | `currencies` | ⬜ |
-| 36 | `CurrencyRateHistory` | `currency_rate_history` | ⬜ |
-| 37 | `Scenario` | `scenarios` | ⬜ |
-| 38 | `BudgetAssumption` | `budget_assumptions` | ⬜ |
-| 39 | `BudgetDirectionTemplate` | `budget_direction_templates` | ⬜ |
-| 40 | `BudgetDepartment` | `budget_departments` | ⬜ |
-| 41 | `BudgetDepartmentOwner` | `budget_department_owners` | ⬜ |
+| 32 | `IndicatorDefinition` | `indicator_definitions` | 🟡 scaffolded |
+| 33 | `ChartOfAccount` | `chart_of_accounts` | 🟡 scaffolded |
+| 34 | `Industry` | `industries` | 🟡 scaffolded |
+| 35 | `Currency` | `currencies` | 🟡 scaffolded |
+| 36 | `CurrencyRateHistory` | `currency_rate_history` | 🟡 scaffolded |
+| 37 | `Scenario` | `scenarios` | 🟡 scaffolded |
+| 38 | `BudgetAssumption` | `budget_assumptions` | 🟡 scaffolded |
+| 39 | `BudgetDirectionTemplate` | `budget_direction_templates` | 🟡 scaffolded |
+| 40 | `BudgetDepartment` | `budget_departments` | 🟡 scaffolded |
+| 41 | `BudgetDepartmentOwner` | `budget_department_owners` | 🟡 scaffolded |
 
 ### Tier 8 — UI / reports / misc (15 tables)
 
 | # | Model | DB table | Status |
 |---|---|---|---|
-| 42 | `Alert` | `alerts` | ⬜ |
-| 43 | `AlertEvent` | `alert_events` | ⬜ |
-| 44 | `AlertRule` | `alert_rules` | ⬜ |
-| 45 | `CashFlowAlert` | `cash_flow_alerts` | ⬜ |
-| 46 | `PeriodSnapshot` | `period_snapshots` | ⬜ |
-| 47 | `ProductLine` | `product_lines` | ⬜ |
-| 48 | `SalesForecast` | `sales_forecasts` | ⬜ |
-| 49 | `SavedBudgetReport` | `saved_budget_reports` | ⬜ |
-| 50 | `BudgetApprovalComment` | `budget_approval_comments` | ⬜ |
-| 51 | `BudgetSection` | `budget_sections` | ⬜ |
-| 52 | `CostComponent` | `cost_components` | ⬜ |
-| 53 | `ImportStaging` | `import_staging` | ⬜ |
-| 54 | `AccountingImport` | `accounting_imports` | ⬜ |
-| 55 | `AccountingIntegration` | `accounting_integrations` | ⬜ |
-| 56 | `UserLayoutPreference` | `user_layout_preferences` | ⬜ |
+| 42 | `Alert` | `alerts` | 🟡 scaffolded |
+| 43 | `AlertEvent` | `alert_events` | 🟡 scaffolded |
+| 44 | `AlertRule` | `alert_rules` | 🟡 scaffolded |
+| 45 | `CashFlowAlert` | `cash_flow_alerts` | 🟡 scaffolded |
+| 46 | `PeriodSnapshot` | `period_snapshots` | 🟡 scaffolded |
+| 47 | `ProductLine` | `product_lines` | 🟡 scaffolded |
+| 48 | `SalesForecast` | `sales_forecasts` | 🟡 scaffolded |
+| 49 | `SavedBudgetReport` | `saved_budget_reports` | 🟡 scaffolded |
+| 50 | `BudgetApprovalComment` | `budget_approval_comments` | 🟡 scaffolded |
+| 51 | `BudgetSection` | `budget_sections` | 🟡 scaffolded |
+| 52 | `CostComponent` | `cost_components` | 🟡 scaffolded |
+| 53 | `ImportStaging` | `import_staging` | 🟡 scaffolded |
+| 54 | `AccountingImport` | `accounting_imports` | 🟡 scaffolded |
+| 55 | `AccountingIntegration` | `accounting_integrations` | 🟡 scaffolded |
+| 56 | `UserLayoutPreference` | `user_layout_preferences` | 🟡 scaffolded |
 
 ## Estimate
 
