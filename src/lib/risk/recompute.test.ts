@@ -1589,7 +1589,12 @@ describe('recomputeIndicator — error paths produce status=unknown', () => {
     expect(stored.inputs.error?.reason).toMatch(/rooms_available/);
   });
 
-  it('zero total_rooms → 0/0 → non_finite → unknown', async () => {
+  it('zero total_rooms + no bookings → 0/0 → unknown with specific no_bookings code (Phase 7.M Tier 6)', async () => {
+    // Pre-Tier 6 this surfaced as generic 'non_finite'. Now the
+    // non_finite → specific-code swap recognises the booking-shaped
+    // formula has 0 bookings and stamps the more-informative
+    // 'no_bookings' code so IndicatorHealth Dashboard categorises
+    // it as an ingest gap rather than a formula bug.
     const ds = mockDs({
       settings: { totalRooms: 0 },
       bookings: [],
@@ -1601,7 +1606,7 @@ describe('recomputeIndicator — error paths produce status=unknown', () => {
       period: '2026-04',
     });
     expect(result.status).toBe('unknown');
-    expect(ds.state.upserts[0].inputs.error?.code).toBe('non_finite');
+    expect(ds.state.upserts[0].inputs.error?.code).toBe('no_bookings');
   });
 
   it('empty operationalFact → missing var → unknown', async () => {
@@ -3196,5 +3201,55 @@ describe('recomputeIndicator — FX zombie-guard (Phase 7.M Step 4)', () => {
     // imported = 170 (100 * 1.7), total = 1170, share = 14.5%
     expect(result.value).toBeCloseTo(14.5, 1);
     expect(result.status).toBe('green');
+  });
+
+  // Phase 7.M Tier 6 (2026-05-21) — non_finite → specific code swap.
+  // When budget_lines are absent for the period (typical partial-year data
+  // where Jan-Apr are loaded but May-Dec aren't), the formula evaluates
+  // 0/0 = NaN. Pre-fix this surfaced as a generic 'non_finite' code in
+  // IndicatorHealth Dashboard. Now we swap to the more-informative
+  // 'no_budget_lines' so users see "ingest gap" remediation guidance.
+  it('non_finite formula swaps to no_budget_lines code when period has no budget lines', async () => {
+    const ds = mockDs({ budgetLines: [] });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: FX_IMPORTED_INPUT_TEST,
+      period: '2026-05', // future period, no budget lines yet
+    });
+    // result.ok=false because formula 0/0 evaluates to NaN. The fix is
+    // about the error CODE stored on the IV row, not about flipping
+    // result.ok itself.
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('unknown');
+    expect(ds.state.upserts[0].inputs.error).toMatchObject({
+      code: 'no_budget_lines',
+    });
+    expect(ds.state.upserts[0].inputs.error?.reason).toMatch(/2026-05/);
+  });
+
+  // Belt-and-braces — formula errors that are NOT non_finite (parse/eval)
+  // must keep their original code so devs can spot real formula bugs in
+  // the IndicatorHealth Dashboard rather than mistaking them for ingest gaps.
+  it('parse / eval errors keep original code (not silently swapped)', async () => {
+    const BROKEN_FORMULA: IndicatorDefinitionLike = {
+      id: 'ind_broken',
+      formula: 'this is not valid expr-eval syntax @@',
+      thresholds: { red: { op: '>', value: 0 } },
+      requiredInputs: [],
+    };
+    const ds = mockDs({ budgetLines: [] });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'c1',
+      definition: BROKEN_FORMULA,
+      period: '2026-05',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('unknown');
+    // Should be 'parse' or 'eval' — NOT 'no_budget_lines' even though
+    // the period has none. Formula bugs deserve their own diagnosis.
+    const code = ds.state.upserts[0].inputs.error?.code;
+    expect(code === 'parse' || code === 'eval').toBe(true);
   });
 });

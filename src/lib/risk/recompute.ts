@@ -3011,7 +3011,80 @@ export async function recomputeIndicator(
   } else {
     value = 0;
     status = 'unknown';
-    finalInputs.error = { code: result.code, reason: result.reason };
+    // Phase 7.M Tier 6 (2026-05-21) — when formula fails with
+    // `non_finite` (typically 0/0 because budget_lines are absent for
+    // this period), prefer the more-specific aggregate-empty code so
+    // IndicatorHealth Dashboard categorises it correctly (Ingest gap /
+    // Data not entered) rather than as a generic non-finite math error.
+    //
+    // Scope: only `non_finite`. `parse` / `eval` reflect formula bugs
+    // and must keep their original codes so devs can spot them in the
+    // dashboard.
+    if (result.code === 'non_finite') {
+      const formulaText = String(args.definition.formula ?? '');
+      const rollupAgg = finalInputs.aggregates?.rollup as
+        | { children_count?: number }
+        | undefined;
+      const budgetLineAgg = finalInputs.aggregates?.budget_line as
+        | { line_count?: number; foreign_line_count?: number }
+        | undefined;
+      const bookingAgg = finalInputs.aggregates?.booking as
+        | { booking_count?: number }
+        | undefined;
+      const usesRollup = formulaText.includes('rollup(');
+      const usesBudget =
+        /\b(revenue|cogs|opex|gross_profit|net_income|total_cost|imported_input_cost|domestic_input_cost|total_input_cost)\b/.test(
+          formulaText,
+        );
+      const usesImportedInput = /\bimported_input_cost\b/.test(formulaText);
+      const usesBooking =
+        /\b(rooms_sold|nights_sold|room_revenue|booking_count|source_country_hhi|fx_revenue_share|rooms_available)\b/.test(
+          formulaText,
+        );
+      const companySettingsAgg = finalInputs.aggregates?.company_settings as
+        | { fx_exposure_source?: string }
+        | undefined;
+      const fxAllDomestic =
+        companySettingsAgg?.fx_exposure_source === 'all_domestic';
+      const rollupEmpty =
+        usesRollup && (rollupAgg?.children_count ?? 0) === 0;
+      const budgetEmpty =
+        usesBudget && (budgetLineAgg?.line_count ?? 0) === 0;
+      const fxUntagged =
+        usesImportedInput &&
+        !fxAllDomestic &&
+        (budgetLineAgg?.line_count ?? 0) > 0 &&
+        (budgetLineAgg?.foreign_line_count ?? 0) === 0;
+      const bookingEmpty =
+        usesBooking && (bookingAgg?.booking_count ?? 0) === 0;
+      if (rollupEmpty) {
+        finalInputs.error = {
+          code: 'rollup_no_children',
+          reason:
+            'Rollup indicator on entity with no children to aggregate (formula returned non-finite)',
+        };
+      } else if (budgetEmpty) {
+        finalInputs.error = {
+          code: 'no_budget_lines',
+          reason: `Formula references budget-line aggregates but the entity has no budget lines for period ${args.period}`,
+        };
+      } else if (fxUntagged) {
+        finalInputs.error = {
+          code: 'no_foreign_currency_lines',
+          reason:
+            'FX-share formula references imported_input_cost but no foreign-currency lines are tagged (xlsx importer dropped the currency column?)',
+        };
+      } else if (bookingEmpty) {
+        finalInputs.error = {
+          code: 'no_bookings',
+          reason: `Hospitality formula references booking aggregates but the entity has no booking rows for period ${args.period}`,
+        };
+      } else {
+        finalInputs.error = { code: result.code, reason: result.reason };
+      }
+    } else {
+      finalInputs.error = { code: result.code, reason: result.reason };
+    }
   }
 
   // Phase 7.E phase 2 — opt-in sparkline. Computed BEFORE upsert so a
