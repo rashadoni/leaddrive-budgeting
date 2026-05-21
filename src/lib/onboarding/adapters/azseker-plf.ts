@@ -96,8 +96,9 @@ function plfAccountType(code: string): PlfAccountType | null {
   const section = m[1]
   if (section === "01") return "revenue"
   if (section === "02") return "cogs"
-  if (section === "10") return null // skip computed Net Profit
+  if (section === "10") return null // computed Net Profit — skip
   if (/^0[3-9]$/.test(section)) return "expense"
+  if (section === "12") return "expense" // PROVISIONS (Unused Vacations, Impairment, etc.)
   return null
 }
 
@@ -188,7 +189,8 @@ export function findPlfHeaderRow(
   return null
 }
 
-const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.\d{1,2}$/
+// Leaf items: numeric like PLF.05.01.01 OR letter-keyed like PLF.05.01.R (G&A rollup lines)
+const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.([0-9]{1,2}|[A-Za-z]{1,2})$/
 
 /** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves).
  *
@@ -234,15 +236,15 @@ export function parsePlfPlSheet(
     let allZero = true
     // CXLIX sign normalization: source xlsx stores cogs/expense as NEGATIVE
     // (additive convention: gross_margin = revenue + cogs in the sheet).
-    // The risk resolver expects positive magnitudes (formula:
-    // gross_profit = revenue - cogs). Take ABS for cogs/expense to bridge.
-    // Revenue rows kept as-is (negative revenue = legitimate returns/discounts
-    // that net out correctly in the sum).
+    // The risk resolver expects positive amounts for charges, negative for
+    // reversals. Negate (not abs) so provision reversals (positive in Excel)
+    // correctly land as negative expense in DB — abs would inflate their sum.
+    // Revenue rows kept as-is (negative revenue = returns that net correctly).
     const normalizeSign = accountType === "cogs" || accountType === "expense"
     for (let m = 0; m < 12; m++) {
       const v = toNumberOrNull(row[monthCols[m]])
       const raw = v ?? 0
-      const num = normalizeSign ? Math.abs(raw) : raw
+      const num = normalizeSign ? -raw : raw
       perMonth.push(num)
       totalAnnual += num
       if (num !== 0) allZero = false
