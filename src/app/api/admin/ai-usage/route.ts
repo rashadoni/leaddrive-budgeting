@@ -22,6 +22,7 @@ import {
   getMonthlyUsage,
   DEFAULT_BUDGET,
 } from "@/lib/llm/cost-budget"
+import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
 export async function GET(req: NextRequest) {
   const session = await requireRole(req, "admin")
@@ -52,16 +53,21 @@ export async function GET(req: NextRequest) {
     tokensOut: number
     calls: number
   }
-  const rows = (await prisma.aITokenUsage
-    .findMany({
-      where: {
-        organizationId: orgId,
-        date: { gte: thirtyDaysAgoStr, lte: todayStr },
-      },
-      orderBy: { date: "asc" },
-      select: { date: true, tokensIn: true, tokensOut: true, calls: true },
-    })
-    .catch(() => [] as UsageRow[])) as UsageRow[]
+  // Use tryPrismaThenFallback so a stale Prisma client (model undefined)
+  // or a missing table (P2021) silently returns [] instead of crashing with
+  // "Cannot read properties of undefined (reading 'findMany')".
+  const rows: UsageRow[] = await tryPrismaThenFallback(
+    () =>
+      prisma.aITokenUsage.findMany({
+        where: {
+          organizationId: orgId,
+          date: { gte: thirtyDaysAgoStr, lte: todayStr },
+        },
+        orderBy: { date: "asc" },
+        select: { date: true, tokensIn: true, tokensOut: true, calls: true },
+      }) as Promise<UsageRow[]>,
+    () => [],
+  )
 
   const byDate = new Map(rows.map((r) => [r.date, r]))
   const last30: Array<{ date: string; total: number; calls: number }> = []
