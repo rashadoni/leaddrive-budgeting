@@ -21,12 +21,31 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Save, ChevronRight, AlertCircle, Check } from "lucide-react"
+import { Loader2, Save, ChevronRight, AlertCircle, Check, ShieldAlert } from "lucide-react"
 import {
   AGRO_REGIONS,
   AGRO_CROP_TYPES,
   FP_MAIN_COMMODITIES,
 } from "@/app/api/companies/[id]/settings/validate"
+import { type RiskTag } from "@/app/api/companies/[id]/risk-tags/route"
+
+const RISK_TAG_META: Record<RiskTag, { label: string; description: string; chipColor: string }> = {
+  subsidy_dependency: {
+    label: "Subsidy dependency",
+    description: "Entity revenue or margins depend materially on state subsidies or regulated pricing.",
+    chipColor: "bg-orange-950/70 text-orange-300 border-orange-700/50",
+  },
+  non_transparent_structure: {
+    label: "Non-transparent structure",
+    description: "Ownership, related-party flows, or cost allocation are opaque or unaudited.",
+    chipColor: "bg-yellow-950/70 text-yellow-300 border-yellow-700/50",
+  },
+  data_absence: {
+    label: "Data absence",
+    description: "Key financial or operational data is missing, estimated, or not yet ingested.",
+    chipColor: "bg-slate-700/60 text-slate-400 border-slate-600/50",
+  },
+}
 
 interface CompanyRow {
   id: string
@@ -154,6 +173,135 @@ export function CompanySettingsAdmin() {
   )
 }
 
+function RiskTagsPanel({
+  companyId,
+  canEdit,
+}: {
+  companyId: string
+  canEdit: boolean
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["company-risk-tags", companyId],
+    queryFn: () =>
+      fetch(`/api/companies/${companyId}/risk-tags`)
+        .then((r) => r.json())
+        .then((b: { riskTags?: string[] }) => b.riskTags ?? []),
+  })
+
+  const [draft, setDraft] = useState<RiskTag[] | null>(null)
+  const current = draft ?? (data as RiskTag[] | undefined) ?? []
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const queryClient = useQueryClient()
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/companies/${companyId}/risk-tags`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ riskTags: current }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`)
+      }
+      return res.json() as Promise<{ riskTags: RiskTag[] }>
+    },
+    onSuccess: (result) => {
+      setSaveError(null)
+      setSavedAt(Date.now())
+      setDraft(result.riskTags)
+      queryClient.setQueryData(["company-risk-tags", companyId], result.riskTags)
+    },
+    onError: (err: Error) => setSaveError(err.message),
+  })
+
+  function toggle(tag: RiskTag) {
+    const next = current.includes(tag)
+      ? current.filter((t) => t !== tag)
+      : [...current, tag]
+    setDraft(next)
+  }
+
+  return (
+    <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20 space-y-3">
+      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+        <ShieldAlert className="h-3.5 w-3.5" />
+        Risk flags
+      </div>
+      {isLoading ? (
+        <div className="text-xs text-muted-foreground flex items-center gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {(Object.entries(RISK_TAG_META) as [RiskTag, (typeof RISK_TAG_META)[RiskTag]][]).map(
+            ([tag, meta]) => (
+              <label
+                key={tag}
+                className="flex items-start gap-2.5 cursor-pointer group"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-orange-500"
+                  checked={current.includes(tag)}
+                  onChange={() => toggle(tag)}
+                  disabled={!canEdit || saveMutation.isPending}
+                />
+                <div className="space-y-0.5">
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[9px] font-mono px-1 border rounded leading-[14px] ${meta.chipColor}`}
+                    >
+                      {tag === "subsidy_dependency"
+                        ? "Sub"
+                        : tag === "non_transparent_structure"
+                          ? "Opq"
+                          : "NoD"}
+                    </span>
+                    <span className="text-sm">{meta.label}</span>
+                  </span>
+                  <p className="text-[10px] text-muted-foreground">
+                    {meta.description}
+                  </p>
+                </div>
+              </label>
+            ),
+          )}
+        </div>
+      )}
+
+      {saveError && (
+        <div className="rounded border border-red-300 bg-red-50 dark:bg-red-950/30 p-2 text-xs text-red-700 dark:text-red-300 flex items-start gap-2">
+          <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+          <span>{saveError}</span>
+        </div>
+      )}
+      {savedAt && !saveError && (
+        <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+          <Check className="h-3 w-3" /> Risk flags saved
+        </div>
+      )}
+
+      {canEdit && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending || isLoading}
+        >
+          {saveMutation.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin mr-2" />
+          ) : (
+            <Save className="h-3 w-3 mr-2" />
+          )}
+          Save risk flags
+        </Button>
+      )}
+    </div>
+  )
+}
+
 interface CompanySettingsFormProps {
   companyId: string
   companyCode: string
@@ -258,6 +406,8 @@ function CompanySettingsForm({
           </Button>
         </div>
       )}
+
+      <RiskTagsPanel companyId={companyId} canEdit={canEdit} />
     </div>
   )
 }
