@@ -125,6 +125,20 @@ export async function runCashFlowBatch(
       const yearFilter =
         yearScope.length > 0 ? { year: { in: yearScope } } : {}
 
+      // ── Entity breakdown from incoming rows ───────────────────────
+      const incomingByEntity = new Map<string, number>()
+      for (const r of plan.rows) {
+        incomingByEntity.set(r.entityCode, (incomingByEntity.get(r.entityCode) ?? 0) + 1)
+      }
+      const incomingBreakdown = [...incomingByEntity.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([e, n]) => `${e}(${n})`)
+        .join(", ")
+      console.log(
+        `[cf-batch] "${plan.label}" scope=sourceTag="${plan.sourceTag}" years=[${yearScope.join(",")}]` +
+        ` incoming=${plan.rows.length} rows — ${incomingBreakdown || "(none)"}`,
+      )
+
       let archived = 0
       let purged = 0
       if (plan.purgeArchivedFirst) {
@@ -149,6 +163,13 @@ export async function runCashFlowBatch(
         data: stamp as unknown as Prisma.CashFlowEntryUpdateManyMutationInput,
       })
       archived = archiveResult.count
+      console.log(`[cf-batch] archive phase: archived=${archived} purged=${purged}`)
+      if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
+        console.warn(
+          `[cf-batch] ⚠️  archived ${archived} rows but only inserting ${plan.rows.length}` +
+          ` (${(archived / plan.rows.length).toFixed(1)}x) — check sourceTag "${plan.sourceTag}" is entity-specific`,
+        )
+      }
 
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
@@ -169,6 +190,7 @@ export async function runCashFlowBatch(
         const result = await tx.cashFlowEntry.createMany({ data: payload })
         inserted = result.count
       }
+      console.log(`[cf-batch] insert phase: inserted=${inserted}`)
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
   }
   const { resetArchived, resetPurged, rowsInserted } = isOuterTx
