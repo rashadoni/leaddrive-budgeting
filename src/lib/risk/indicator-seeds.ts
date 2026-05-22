@@ -546,6 +546,87 @@ export const agroIndicators: IndicatorSeed[] = [
     sortOrder: 97,
     defaultValueSource: "disclosed",
   },
+  // ─ Phase 7.N — AzerSheker pilot "per ha" economics ───────────────────────
+  // Three sister indicators anchored on `company.settings.hectaresPlanted`
+  // so any agro company that has set that setting gets them for free.
+  // Thresholds calibrated from AZSEKER-EDEN Q2-Q4 2026 actuals (4 000 ha).
+  {
+    code: "AGRO_REVENUE_PER_HA",
+    nameEn: "Revenue per Hectare",
+    nameAz: "Hektara düşən Gəlir",
+    nameRu: "Выручка на гектар",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "AZN/ha",
+    direction: "higher_better",
+    formula: "revenue / hectares_planted",
+    thresholds: {
+      green: { op: ">=", value: 3000 },
+      amber: { op: ">=", value: 1500 },
+      red: { op: "<", value: 1500 },
+    },
+    hintTemplateEn:
+      "Revenue {value} AZN/ha — {status}. Below 1 500 AZN/ha per quarter usually signals under-planted area or weak farmgate pricing.",
+    hintTemplateRu:
+      "Выручка {value} AZN/га — {status}. Ниже 1 500 AZN/га в квартал: либо незасеянная площадь, либо слабая закупочная цена.",
+    hintTemplateAz:
+      "Gəlir {value} AZN/ha — {status}. Rübdə 1 500 AZN/ha-dan aşağı: əkilməmiş sahə və ya zəif əkin qiyməti.",
+    requiredInputs: ["budgetLine", "company.settings.hectaresPlanted"],
+    sortOrder: 98,
+  },
+  {
+    code: "AGRO_COST_PER_HA",
+    nameEn: "Input Cost per Hectare",
+    nameAz: "Hektara düşən Dəyər",
+    nameRu: "Себестоимость на гектар",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "AZN/ha",
+    direction: "lower_better",
+    formula: "cogs / hectares_planted",
+    thresholds: {
+      green: { op: "<=", value: 2500 },
+      amber: { op: "<=", value: 3500 },
+      red: { op: ">", value: 3500 },
+    },
+    hintTemplateEn:
+      "Input cost {value} AZN/ha — {status}. Above 3 500 AZN/ha per quarter means direct production costs are outpacing revenue; audit seed, labour, and irrigation spend.",
+    hintTemplateRu:
+      "Себестоимость {value} AZN/га — {status}. Выше 3 500 AZN/га в квартал — прямые затраты опережают выручку; проверьте семена, труд и орошение.",
+    hintTemplateAz:
+      "Dəyər {value} AZN/ha — {status}. Rübdə 3 500 AZN/ha-dan yuxarı — birbaşa xərclər gəliri üstəlir; toxum, əmək, suvarma xərclərini yoxlayın.",
+    requiredInputs: ["budgetLine", "company.settings.hectaresPlanted"],
+    sortOrder: 99,
+  },
+  {
+    code: "AGRO_YIELD_EFFICIENCY",
+    nameEn: "Gross Profit per Hectare",
+    nameAz: "Hektara düşən Ümumi Mənfəət",
+    nameRu: "Валовая прибыль на гектар",
+    category: "operational",
+    industries: ["agro_crops"],
+    unit: "AZN/ha",
+    direction: "higher_better",
+    // Gross profit per ha = (revenue − cogs) / planted_ha.
+    // A direct measure of how much economic value each hectare generates
+    // after stripping direct production inputs. Named "yield_efficiency"
+    // in the client request — the nearest single-number proxy for that
+    // concept without requiring a separate yield benchmark input.
+    formula: "gross_profit / hectares_planted",
+    thresholds: {
+      green: { op: ">=", value: 1000 },
+      amber: { op: ">=", value: 500 },
+      red: { op: "<", value: 500 },
+    },
+    hintTemplateEn:
+      "Gross profit {value} AZN/ha — {status}. Below 500 AZN/ha per quarter the land generates insufficient margin to cover overhead and capital costs.",
+    hintTemplateRu:
+      "Валовая прибыль {value} AZN/га — {status}. Ниже 500 AZN/га в квартал — земля не покрывает накладные и капитальные расходы.",
+    hintTemplateAz:
+      "Ümumi mənfəət {value} AZN/ha — {status}. Rübdə 500 AZN/ha-dan aşağı — ərazi yük və kapital xərclərini ödəmək üçün kifayət qədər marja yaratmır.",
+    requiredInputs: ["budgetLine", "company.settings.hectaresPlanted"],
+    sortOrder: 100,
+  },
 ];
 
 // ─── Cross-sector pack (4) ─────────────────────────────────────────────────

@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("99 active indicator seeds (76 base + Phase 7.K Phase 5b sector-feed pack: 23 new seeds across hospitality/pharma/real-estate/industrial/construction/logistics/poultry/food-processing/beverage/retail/education/entertainment/services/agro)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(99)
+  it("102 active indicator seeds (99 base + Phase 7.N: AGRO_REVENUE_PER_HA, AGRO_COST_PER_HA, AGRO_YIELD_EFFICIENCY)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(102)
   })
 
   it("every indicator has a unique code", () => {

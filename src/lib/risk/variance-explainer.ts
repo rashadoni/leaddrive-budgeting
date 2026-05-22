@@ -104,6 +104,14 @@ export interface VarianceExplainerInput {
     score: number
     tier: "complete" | "good" | "partial" | "thin" | "empty"
   }
+  /**
+   * Phase 7.N — optional holding/org-level business context from
+   * `Organization.settings.aiExplainerContext`. When present the LLM
+   * gets concrete background (industry, products, regulatory environment,
+   * entity roles) and can write holding-specific recommendations.
+   * Plain prose, ≤ 500 chars. Absent → prompt section omitted.
+   */
+  orgContext?: string
 }
 
 export interface VarianceExplainerOutput {
@@ -142,9 +150,12 @@ const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
  *  v3 = Phase 7.I — company.settings descriptor passed to prompt for
  *       sector-aware recommendations (sugar producer with hectares,
  *       region, crop type cited explicitly).
- *  Bumping invalidates v2-cached explanations; CFO sees richer
+ *  v4 = Phase 7.N — org-level business context block (aiExplainerContext)
+ *       injected before the Company section so LLM knows the holding
+ *       identity, product lines and regulatory environment.
+ *  Bumping invalidates v3-cached explanations; CFO sees richer
  *  narratives on next request. */
-export const EXPLAINER_PROMPT_VERSION = "v3"
+export const EXPLAINER_PROMPT_VERSION = "v4"
 
 const SYSTEM_PROMPT = `You are a senior financial analyst producing variance explanations for a CFO at an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
@@ -287,11 +298,17 @@ export function buildExplainerPrompt(input: VarianceExplainerInput): string {
 
   const settingsLine = formatCompanySettings(input.company.industry, input.company.settings ?? null)
 
+  // Phase 7.N — org context block: injected when the holding provides a
+  // plain-prose descriptor (≤ 500 chars) in org.settings.aiExplainerContext.
+  const orgContextSection = input.orgContext
+    ? `\nHolding context: ${input.orgContext.slice(0, 500)}\n`
+    : ""
+
   return `Indicator: ${input.indicator.code} (${input.indicator.nameEn})
 Direction: ${input.indicator.direction}
 Unit: ${input.indicator.unit}
 Hint template: ${input.indicator.hintTemplateEn ?? "(none)"}
-
+${orgContextSection}
 Company: ${input.company.name}
 Industry: ${input.company.industry ?? "(none)"}
 ${tagsLine}

@@ -103,6 +103,21 @@ export async function POST(
       ? (body.language as ExplainerLanguage)
       : "en"
 
+  // Org-level business context for the explainer prompt. Stored in
+  // Organization.settings.aiExplainerContext (plain prose ≤ 500 chars).
+  // Absent → field omitted from explainer input; prompt falls back to
+  // generic holding description in SYSTEM_PROMPT.
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { settings: true },
+  })
+  const orgSettings = (org?.settings ?? {}) as Record<string, unknown>
+  const orgContext =
+    typeof orgSettings.aiExplainerContext === "string" &&
+    orgSettings.aiExplainerContext.trim().length > 0
+      ? orgSettings.aiExplainerContext
+      : undefined
+
   // Org-scoped fetch. 404 on either missing OR cross-tenant — same
   // response, never leak existence.
   const iv = await prisma.indicatorValue.findFirst({
@@ -228,6 +243,7 @@ export async function POST(
       settings: (iv.company.settings as Record<string, unknown> | null) ?? null,
     },
     language,
+    orgContext,
   }
 
   try {
