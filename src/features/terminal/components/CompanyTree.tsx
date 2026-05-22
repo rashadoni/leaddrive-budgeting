@@ -620,6 +620,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           >
             {root.name}
           </span>
+          <RiskTagChips tags={root.riskTags} />
           {hasChildren && (
             <span
               className="text-gray-600 tabular-nums"
@@ -675,6 +676,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                   >
                     {child.name}
                   </span>
+                  <RiskTagChips tags={child.riskTags} />
                   {child.industry && (
                     <span className="text-gray-600 text-[10px] uppercase">
                       {child.industry}
@@ -958,6 +960,54 @@ function TrustBadge({ status }: { status: TrustStatus }) {
       }}
     />
   );
+}
+
+/**
+ * Phase 7.N — qualitative risk tag chips. Rendered after company name on
+ * each tree row. Tags are stored in Company.settings.riskTags and surfaced
+ * by the use-companies hook. Three canonical tags today:
+ *   subsidy_dependency, non_transparent_structure, data_absence
+ */
+const RISK_TAG_CONFIG: Record<
+  string,
+  { label: string; color: string; title: string }
+> = {
+  subsidy_dependency: {
+    label: "Sub",
+    color: "bg-orange-950/70 text-orange-300 border-orange-700/50",
+    title: "Subsidy dependency",
+  },
+  non_transparent_structure: {
+    label: "Opq",
+    color: "bg-yellow-950/70 text-yellow-300 border-yellow-700/50",
+    title: "Non-transparent structure",
+  },
+  data_absence: {
+    label: "NoD",
+    color: "bg-slate-700/60 text-slate-400 border-slate-600/50",
+    title: "Data absence",
+  },
+}
+
+function RiskTagChips({ tags }: { tags?: string[] }) {
+  if (!tags || tags.length === 0) return null
+  return (
+    <>
+      {tags.map((tag) => {
+        const cfg = RISK_TAG_CONFIG[tag]
+        if (!cfg) return null
+        return (
+          <span
+            key={tag}
+            title={cfg.title}
+            className={`shrink-0 text-[8px] font-mono px-1 py-0 border rounded leading-[13px] ${cfg.color}`}
+          >
+            {cfg.label}
+          </span>
+        )
+      })}
+    </>
+  )
 }
 
 /**

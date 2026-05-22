@@ -53,6 +53,10 @@ export interface CompanyTreeNode {
   level?: number;
   parentCompanyId?: string | null;
   children?: CompanyTreeNode[];
+  /** Phase 7.N — qualitative risk tags stored in Company.settings.riskTags.
+   *  Examples: "subsidy_dependency", "non_transparent_structure", "data_absence".
+   *  Rendered as small colored chips on CompanyTree rows. */
+  riskTags?: string[];
 }
 
 export interface UseCompaniesResult {
@@ -89,6 +93,29 @@ function isCompanyNode(v: unknown): v is CompanyTreeNode {
   );
 }
 
+/** Extract Company.settings.riskTags from the raw API response object. */
+function extractRiskTags(raw: unknown): string[] | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const settings = (raw as { settings?: unknown }).settings;
+  if (typeof settings !== "object" || settings === null) return undefined;
+  const tags = (settings as { riskTags?: unknown }).riskTags;
+  if (!Array.isArray(tags)) return undefined;
+  return tags.filter((t): t is string => typeof t === "string");
+}
+
+/** Recursively map a raw API company node to CompanyTreeNode. */
+function mapCompanyNode(raw: unknown): CompanyTreeNode | null {
+  if (!isCompanyNode(raw)) return null;
+  const r = raw as CompanyTreeNode & { children?: unknown[]; settings?: unknown };
+  return {
+    ...r,
+    riskTags: extractRiskTags(raw),
+    children: r.children
+      ? (r.children.map(mapCompanyNode).filter(Boolean) as CompanyTreeNode[])
+      : undefined,
+  };
+}
+
 function fetchCompanies(): Promise<readonly CompanyTreeNode[]> {
   return fetch("/api/companies")
     .then((r) => {
@@ -99,20 +126,17 @@ function fetchCompanies(): Promise<readonly CompanyTreeNode[]> {
       // /api/companies returns a flat-array of roots with embedded
       // `children`. Defensive shape-check to handle a future {companies}
       // wrapper without breaking the hook.
-      if (Array.isArray(data)) {
-        return data.filter(isCompanyNode);
-      }
-      if (
-        typeof data === "object" &&
-        data !== null &&
-        "companies" in data &&
-        Array.isArray((data as { companies: unknown }).companies)
-      ) {
-        return (data as { companies: unknown[] }).companies.filter(
-          isCompanyNode,
-        );
-      }
-      return [];
+      const rawArr = Array.isArray(data)
+        ? data
+        : typeof data === "object" &&
+            data !== null &&
+            "companies" in data &&
+            Array.isArray((data as { companies: unknown }).companies)
+          ? (data as { companies: unknown[] }).companies
+          : [];
+      return rawArr
+        .map(mapCompanyNode)
+        .filter((n): n is CompanyTreeNode => n !== null);
     });
 }
 
