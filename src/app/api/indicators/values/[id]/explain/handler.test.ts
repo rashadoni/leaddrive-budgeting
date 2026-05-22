@@ -25,6 +25,8 @@ const { prismaMock } = vi.hoisted(() => ({
     indicatorValue: { findFirst: vi.fn() },
     auditEvent: { create: vi.fn() },
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
+    // Phase 7.N — org context fetch added to explain route
+    organization: { findUnique: vi.fn().mockResolvedValue(null) },
   },
 }));
 
