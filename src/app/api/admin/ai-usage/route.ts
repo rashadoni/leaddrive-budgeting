@@ -22,7 +22,6 @@ import {
   getMonthlyUsage,
   DEFAULT_BUDGET,
 } from "@/lib/llm/cost-budget"
-import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 
 export async function GET(req: NextRequest) {
   const session = await requireRole(req, "admin")
@@ -53,21 +52,21 @@ export async function GET(req: NextRequest) {
     tokensOut: number
     calls: number
   }
-  // Use tryPrismaThenFallback so a stale Prisma client (model undefined)
-  // or a missing table (P2021) silently returns [] instead of crashing with
-  // "Cannot read properties of undefined (reading 'findMany')".
-  const rows: UsageRow[] = await tryPrismaThenFallback(
-    () =>
-      prisma.aITokenUsage.findMany({
-        where: {
-          organizationId: orgId,
-          date: { gte: thirtyDaysAgoStr, lte: todayStr },
-        },
-        orderBy: { date: "asc" },
-        select: { date: true, tokensIn: true, tokensOut: true, calls: true },
-      }) as Promise<UsageRow[]>,
-    () => [],
-  )
+  // try/catch catches both a synchronous TypeError (stale Prisma client where
+  // aITokenUsage is undefined) and any rejected-promise DB error — degrade to [].
+  let rows: UsageRow[] = []
+  try {
+    rows = (await prisma.aITokenUsage.findMany({
+      where: {
+        organizationId: orgId,
+        date: { gte: thirtyDaysAgoStr, lte: todayStr },
+      },
+      orderBy: { date: "asc" },
+      select: { date: true, tokensIn: true, tokensOut: true, calls: true },
+    })) as UsageRow[]
+  } catch {
+    // stale client, missing table, or transient DB error — last30 series stays []
+  }
 
   const byDate = new Map(rows.map((r) => [r.date, r]))
   const last30: Array<{ date: string; total: number; calls: number }> = []
