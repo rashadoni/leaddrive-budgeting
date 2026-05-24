@@ -57,6 +57,7 @@ import {
 import { parsePeriod, daysInPeriod, type Period } from './periods';
 import { computeSparkline, bridgeRecomputeBuildContext } from './sparkline';
 import { isDaCode } from '../budgeting/da-codes';
+import { WEATHER_REGIONS } from '../intel/commodity/weather-openmeteo';
 import {
   getIndustryEmissionFactor,
   type EmissionScope,
@@ -1364,6 +1365,35 @@ const newsSentimentResolver: NamespaceResolver = {
  * (the right "honest" answer; no synthetic placeholder).
  */
 const WEATHER_SOURCE_CODE = 'weather-openmeteo';
+
+/**
+ * Resolve a company.settings.region value to the canonical ASCII code
+ * used by the weather-openmeteo adapter as the metric-key prefix
+ * (e.g. "Beyləqan" → "beylaqan", "Ağcabədi" → "agjabedi").
+ *
+ * Strategy (in priority order):
+ *  1. Exact code match (already lowercase ASCII — fast path).
+ *  2. Case-insensitive label match in WEATHER_REGIONS — covers the common
+ *     case where company.settings.region stores the display label
+ *     ("Beyləqan", "Salyan", etc.) rather than the adapter code.
+ *  3. Simple lowercase fallback — for regions added after this module was
+ *     written; may still miss if the adapter uses non-trivial transliteration,
+ *     but that's the graceful-degradation ("no data → unknown") path.
+ */
+function resolveWeatherRegionCode(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  // Fast path: already a known code
+  const byCode = WEATHER_REGIONS.find((r) => r.code === lower);
+  if (byCode) return byCode.code;
+  // Label match: covers "Beyləqan", "Salyan", "İmişli", etc.
+  const byLabel = WEATHER_REGIONS.find(
+    (r) => r.label.toLowerCase() === lower,
+  );
+  if (byLabel) return byLabel.code;
+  // Fallback: just lowercase (works for ASCII-only labels)
+  return lower;
+}
+
 const weatherResolver: NamespaceResolver = {
   name: 'weather',
   matches: (r) => r.startsWith('weather:'),
@@ -1375,7 +1405,7 @@ const weatherResolver: NamespaceResolver = {
     });
     const region =
       settings && typeof settings.region === 'string'
-        ? settings.region.toLowerCase()
+        ? resolveWeatherRegionCode(settings.region)
         : null;
     const perMetric: Record<string, { value: number | null; region: string | null }> = {};
     if (!ctx.ds.listIntelDataPoints || !region) {

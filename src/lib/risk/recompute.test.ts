@@ -2989,6 +2989,34 @@ describe('recomputeIndicator — weatherResolver (Phase 7.I)', () => {
     });
     expect(ds.state.upserts[0].status).toBe('unknown');
   });
+
+  it('normalizes Azerbaijani diacritics in region key (Beyləqan → BEYLAQAN)', async () => {
+    // AZSEKER-FARM has settings.region = "Beyləqan" (ə diacritic).
+    // IntelDataPoint uses ASCII key "BEYLAQAN_RAINFALL_MM_90D".
+    // Without normalization the lookup produces BEYLƏQAN_* → miss → unknown.
+    const ds = mockDs({
+      settings: { region: 'Beyləqan', cropType: 'mixed_cereal' },
+      intelDataPoints: {
+        'weather-openmeteo:BEYLAQAN_RAINFALL_MM_90D': [
+          { metric: 'BEYLAQAN_RAINFALL_MM_90D', datetime: new Date('2026-04-01'), value: 72, unit: 'mm' },
+        ],
+      },
+    });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_farm',
+      definition: AGRO_WEATHER_RAINFALL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    expect(ds.state.upserts[0].value).toBe(72);
+    expect(ds.state.upserts[0].status).toBe('green'); // ≥60 → green
+    // Aggregate records the normalized region for drilldown
+    const agg = ds.state.upserts[0].inputs.aggregates as Record<string, unknown>;
+    expect(agg.weather).toMatchObject({
+      rainfall_mm_90d: { value: 72, region: 'beylaqan' },
+    });
+  });
 });
 
 describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {

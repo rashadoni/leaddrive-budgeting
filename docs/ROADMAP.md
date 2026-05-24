@@ -1204,3 +1204,10 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **`indicator-thresholds.test.ts`** — catalog count updated 106 → 107.
   - **DB applied:** `npx tsx scripts/seed-indicators.ts` → 1 created / 106 updated = 107 total. 2026 recompute fired for all 5 AZSEKER entities. Sparklines refreshed: 1127/1127, 0 errors.
   - tsc clean · vitest 5168/5168 passing.
+
+- **2026-05-25 (Phase 7.O — weatherResolver region normalization + AGRO_DROUGHT_RISK fix)**
+  - **`recompute.ts` `weatherResolver`** — replaced ad-hoc diacritic map with `resolveWeatherRegionCode()`: looks up `company.settings.region` in `WEATHER_REGIONS` by label (case-insensitive) to get the canonical ASCII code (e.g. "Beyləqan" → "beylaqan", "İmişli" → "imishli"). Fallback to lowercase for future regions. Closes FARM/EDEN `unknown` on `AGRO_DROUGHT_RISK` due to ə-diacritic mismatch (`BEYLƏQAN_` vs `BEYLAQAN_`).
+  - **`scripts/derive-azseker-drought-index.ts`** — uses `lessor` as region fallback when `landParcels[].region` is null (all EDEN parcels store district in `lessor`). Added variant mappings: "Beyləqan -E", "Beyləqan -Q", "Beyləqan -E (2)", "Dastan Agro" → BEYLAQAN.
+  - **DB applied:** ran derive script → `drought_index=11.4` (green) written for AZSEKER-EDEN 2026. AGRO_DROUGHT_RISK recomputed → 11.4/100, status=green.
+  - **`recompute.test.ts`** — 1 new test: `normalizes Azerbaijani diacritics in region key (Beyləqan → BEYLAQAN)`.
+  - tsc clean · vitest 5169/5169 passing.

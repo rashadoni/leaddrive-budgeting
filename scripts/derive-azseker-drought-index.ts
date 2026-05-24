@@ -41,6 +41,8 @@ const TEMP_WEIGHT = 0.4
 
 interface LandParcel {
   region: string | null
+  /** District/city name — used as region fallback when `region` is null. */
+  lessor?: string | null
   hectares: number
 }
 
@@ -48,11 +50,18 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }
 
-/** Map region label from land registry → weather adapter region code. */
+/** Map region label from land registry → weather adapter region code.
+ *  Includes suffix variants for EDEN's cost-centre-based naming (e.g.
+ *  "Beyləqan -E" / "Beyləqan -Q" / "Beyləqan -E (2)" all map to BEYLAQAN;
+ *  "Dastan Agro" is an operational sub-unit in the Beyləqan area). */
 const REGION_TO_WEATHER_CODE: Record<string, string> = {
   Yevlax: "YEVLAX",
   Ağcabədi: "AGJABEDI",
   Beyləqan: "BEYLAQAN",
+  "Beyləqan -E": "BEYLAQAN",
+  "Beyləqan -Q": "BEYLAQAN",
+  "Beyləqan -E (2)": "BEYLAQAN",
+  "Dastan Agro": "BEYLAQAN", // operational sub-unit; Beyləqan area
   Şəmkir: "SHAMKIR",
   Füzuli: "FUZULI",
   İmişli: "IMISHLI",
@@ -94,13 +103,17 @@ async function main(): Promise<number> {
     return 1
   }
 
-  // Aggregate hectares per region
+  // Aggregate hectares per region.
+  // `region` is the canonical field; `lessor` is used as fallback because
+  // the AzerSheker land import populates lessor with the district name
+  // (e.g. "Ağcabədi", "Beyləqan") but leaves `region` null.
   const hectaresByRegion = new Map<string, number>()
   for (const p of parcels) {
-    if (!p.region) continue
+    const regionKey = p.region ?? p.lessor ?? null
+    if (!regionKey) continue
     hectaresByRegion.set(
-      p.region,
-      (hectaresByRegion.get(p.region) ?? 0) + (p.hectares ?? 0),
+      regionKey,
+      (hectaresByRegion.get(regionKey) ?? 0) + (p.hectares ?? 0),
     )
   }
   console.log(`Land registry regions for ${TARGET_COMPANY}:`)
