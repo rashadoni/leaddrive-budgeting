@@ -1123,3 +1123,12 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - Scripts: `import-risk-registry.ts` + `import-court-disputes.ts` (both idempotent, --dry-run flag).
   - **PLF coverage audit**: confirmed Guvven Fin.xlsx 2026 data is Q1-only (Jan–Apr populated, May–Dec empty). Re-import won't add months — waiting on updated source file from Azik.
   - tsc clean · vitest 5096/5097 passing (1 EPERM network skip, sandbox-only).
+
+- **2026-05-24 (Phase 7.N — Historical data import 2022-2025)**
+  - Deep audit of all XLSX files confirmed Guvven Fin.xlsx contains **multi-year historical data** going back to 2022 (CPC P&L), 2021 (CPC Balance Sheet), 2023 (AZSF/EDEN).
+  - **16,372 historical rows imported** into DB via `/tmp/claude/import-historical.mjs` (idempotent, re-runnable):
+    - **PLF (P&L):** 6,272 rows — CPC 2022-2025, AZSF 2023-2025, EDEN 2023-2025, MALT 2025
+    - **BS (Balance Sheet):** 7,859 rows — CPC 2021-2025, AZSF 2023-2025, EDEN 2025, MALT 2025
+    - **CF (Cash Flow):** 2,241 rows — CPC 2022-2025, AZSF 2023-2025, EDEN 2023-2025, MALT 2025
+  - Created 5 new BudgetPlan records for historical years: `Azərşəkər 2021/2022/2023/2024/2025 Actuals`.
+  - Indicator recompute for historical periods (2022-2025) will be needed to see trend data in Risk Terminal HeatMap — run via `/api/indicators` with `forceRefresh=true` per period.
