@@ -31,18 +31,18 @@ import { type RiskTag } from "@/app/api/companies/[id]/risk-tags/route"
 
 const RISK_TAG_META: Record<RiskTag, { label: string; description: string; chipColor: string }> = {
   subsidy_dependency: {
-    label: "Subsidy dependency",
-    description: "Entity revenue or margins depend materially on state subsidies or regulated pricing.",
+    label: "Зависимость от субсидий",
+    description: "Выручка или маржа существенно зависят от государственных субсидий или регулируемых цен.",
     chipColor: "bg-orange-950/70 text-orange-300 border-orange-700/50",
   },
   non_transparent_structure: {
-    label: "Non-transparent structure",
-    description: "Ownership, related-party flows, or cost allocation are opaque or unaudited.",
+    label: "Непрозрачная структура",
+    description: "Структура собственности, связанные стороны или распределение затрат непрозрачны или не проверены аудитом.",
     chipColor: "bg-yellow-950/70 text-yellow-300 border-yellow-700/50",
   },
   data_absence: {
-    label: "Data absence",
-    description: "Key financial or operational data is missing, estimated, or not yet ingested.",
+    label: "Отсутствие данных",
+    description: "Ключевые финансовые или операционные данные отсутствуют, оценочные или ещё не загружены.",
     chipColor: "bg-slate-700/60 text-slate-400 border-slate-600/50",
   },
 }
@@ -68,7 +68,22 @@ function fetchCompanies(orgId: string): Promise<CompanyRow[]> {
     headers: { "x-organization-id": orgId },
   })
     .then((r) => r.json())
-    .then((b) => (Array.isArray(b) ? b : (b.rows ?? b.companies ?? [])))
+    .then((b) => {
+      const raw: CompanyRow[] = Array.isArray(b) ? b : (b.rows ?? b.companies ?? [])
+      // API returns nested structure (parent + children[]). Flatten all levels
+      // so every company (including subsidiaries) appears as a separate row.
+      const flat: CompanyRow[] = []
+      for (const c of raw) {
+        flat.push(c)
+        const children = (c as unknown as { children?: CompanyRow[] }).children ?? []
+        for (const child of children) {
+          flat.push(child)
+          const grandchildren = (child as unknown as { children?: CompanyRow[] }).children ?? []
+          flat.push(...grandchildren)
+        }
+      }
+      return flat
+    })
 }
 
 function fetchSettings(companyId: string): Promise<SettingsBody> {
@@ -102,19 +117,19 @@ export function CompanySettingsAdmin() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Company Settings</h1>
+          <h1 className="text-2xl font-bold">Настройки компаний</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Per-industry operational descriptors (hectares, region, capacity, etc.). Drives sector-aware indicators and AI explanations.
+            Отраслевые операционные параметры (га, регион, мощность и др.). Влияют на индикаторы и объяснения AI.
           </p>
         </div>
         {!canEdit && (
-          <Badge variant="outline">Read-only (viewer/editor role)</Badge>
+          <Badge variant="outline">Только чтение (роль viewer/editor)</Badge>
         )}
       </div>
 
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading companies…
+          <Loader2 className="h-4 w-4 animate-spin" /> Загрузка компаний…
         </div>
       )}
 
@@ -227,11 +242,11 @@ function RiskTagsPanel({
     <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20 space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
         <ShieldAlert className="h-3.5 w-3.5" />
-        Risk flags
+        Флаги рисков
       </div>
       {isLoading ? (
         <div className="text-xs text-muted-foreground flex items-center gap-1">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading…
+          <Loader2 className="h-3 w-3 animate-spin" /> Загрузка…
         </div>
       ) : (
         <div className="space-y-2">
@@ -279,7 +294,7 @@ function RiskTagsPanel({
       )}
       {savedAt && !saveError && (
         <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-          <Check className="h-3 w-3" /> Risk flags saved
+          <Check className="h-3 w-3" /> Флаги сохранены
         </div>
       )}
 
@@ -295,7 +310,7 @@ function RiskTagsPanel({
           ) : (
             <Save className="h-3 w-3 mr-2" />
           )}
-          Save risk flags
+          Сохранить флаги
         </Button>
       )}
     </div>
@@ -511,7 +526,7 @@ function CompanySettingsForm({
             ) : (
               <Save className="h-3 w-3 mr-2" />
             )}
-            Save settings
+            Сохранить настройки
           </Button>
         </div>
       )}
@@ -600,15 +615,15 @@ function AgroSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
         setDraft={setDraft}
         canEdit={canEdit}
         field="hectaresPlanted"
-        label="Hectares planted"
-        hint="Total cultivated area for the active crop cycle."
+        label="Посевная площадь (га)"
+        hint="Общая обрабатываемая площадь в текущем посевном цикле."
       />
       <SelectField
         draft={draft}
         setDraft={setDraft}
         canEdit={canEdit}
         field="region"
-        label="Region"
+        label="Регион"
         options={AGRO_REGIONS}
       />
       <SelectField
@@ -616,7 +631,7 @@ function AgroSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
         setDraft={setDraft}
         canEdit={canEdit}
         field="cropType"
-        label="Crop type"
+        label="Тип культуры"
         options={AGRO_CROP_TYPES}
       />
       <NumberField
@@ -624,8 +639,8 @@ function AgroSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
         setDraft={setDraft}
         canEdit={canEdit}
         field="yieldTarget"
-        label="Yield target (t/ha)"
-        hint="Drives AGRO_YIELD_PER_HA threshold context."
+        label="Целевая урожайность (т/га)"
+        hint="Контекст порога для индикатора AGRO_YIELD_PER_HA."
       />
     </div>
   )
@@ -639,19 +654,19 @@ function HospitalitySettingsFields({ draft, setDraft, canEdit }: FieldProps) {
         setDraft={setDraft}
         canEdit={canEdit}
         field="totalRooms"
-        label="Total rooms"
-        hint="Used by HOSP_OCC / RevPAR computations."
+        label="Количество номеров"
+        hint="Используется для расчёта HOSP_OCC / RevPAR."
       />
       <SelectField
         draft={draft}
         setDraft={setDraft}
         canEdit={canEdit}
         field="seasonalityProfile"
-        label="Seasonality"
+        label="Сезонность"
         options={["summer_peak", "winter_peak", "year_round", "weekday_only"]}
       />
       <div className="space-y-1 col-span-2">
-        <Label htmlFor="region">Region (free text)</Label>
+        <Label htmlFor="region">Регион (свободный ввод)</Label>
         <Input
           id="region"
           value={typeof draft.region === "string" ? draft.region : ""}
@@ -676,22 +691,22 @@ function FoodProcessingSettingsFields({ draft, setDraft, canEdit }: FieldProps) 
         setDraft={setDraft}
         canEdit={canEdit}
         field="processingCapacityTonsYr"
-        label="Capacity (tons/yr)"
+        label="Мощность переработки (тонн/год)"
       />
       <NumberField
         draft={draft}
         setDraft={setDraft}
         canEdit={canEdit}
         field="extractionRateTarget"
-        label="Extraction rate target (%)"
-        hint="Target benchmark for FP_EXTRACTION_RATE."
+        label="Целевой коэффициент извлечения (%)"
+        hint="Эталонный показатель для FP_EXTRACTION_RATE."
       />
       <SelectField
         draft={draft}
         setDraft={setDraft}
         canEdit={canEdit}
         field="mainInputCommodity"
-        label="Main input commodity"
+        label="Основное сырьё"
         options={FP_MAIN_COMMODITIES}
       />
     </div>
@@ -704,7 +719,7 @@ function GenericSettingsFields({ draft, setDraft, canEdit }: FieldProps) {
   const text = JSON.stringify(draft, null, 2)
   return (
     <div className="space-y-1">
-      <Label htmlFor="generic-json">Settings JSON (free-form)</Label>
+      <Label htmlFor="generic-json">Настройки JSON (свободная форма)</Label>
       <textarea
         id="generic-json"
         className="w-full font-mono text-xs rounded border bg-background p-2 min-h-[160px]"
