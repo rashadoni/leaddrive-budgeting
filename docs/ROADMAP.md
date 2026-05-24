@@ -419,7 +419,7 @@ billing and i18n plumbing are out of scope).
 - **C3 v2.1 — composite bar chart on slide 2** (originally CARRYOVER, opened 2026-05-04, 16 turns-open). PPTX slide 2 native pptxgenjs bar-chart of composite scores (one bar per operational sub-co, color-banded). YAGNI'd until user asks. ~30-60min: `addChart(ChartType.bar, [...])` on slide 2 above the table.
 - **C3 v3 — scheduled email** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Bloomberg-style "every Monday 8am, deck to board@...". Needs cron + SMTP queue + recipient list per-org. ~2-3d. Lower priority than v2 server-PDF.
 - **C3 v2 — status grid scale at Phase F (60×80)** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). C3 status grid uses 16×16px cells; at 60-co × 80-ind Phase F = 4800 cells × 64 px² = 19.2k px² (tight on A4 portrait). Decision needed before Phase F migrations land.
-- **C4 v2 — scenario CRUD UI** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). v1 ships read-only inspector — scenarios managed via seed only. Add `<ScenarioFormModal/>` with overrides JSON editor + tenant-scoped POST/PATCH/DELETE. ~1-2d.
+- ✅ **C4 v2 — scenario CRUD UI (shipped 2026-05-24).** `ScenarioFormModal.tsx` with JSON overrides editor + live parse validation. `POST /api/scenarios` repurposed to create (admin-only, Zod); new `GET/PATCH/DELETE /api/scenarios/[id]` (soft-delete preserves history). "+ Новый" button + hover edit/delete icons in ScenarioPanel. 22 handler tests.
 - **C4 v2 — Apply→queued→HeatMap update feedback loop** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Apply 202 + queued message but HeatMap doesn't reflect scenario in cell values (Phase 6 BullMQ worker not shipped). Either banner "Scenario X queued — applying…" with poll, or real-time SSE on scenario job state.
 - **Phase C5 v2 — weighted composite score** (originally CARRYOVER, opened 2026-04-28, 64 turns-open). Plan §C5 promised "weighted aggregation"; v1 ships UNWEIGHTED. Needs per-indicator weight scheme — design call (liquidity > efficiency > growth?) plus data work to assign weights to each of 53 indicators across 15 sectors. ~1-2d design + impl.
 
@@ -1143,3 +1143,9 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **SCN command fix** — parser now accepts user-friendly `SCN <code> GO` (function-first) as alias for Bloomberg-canonical `<code> SCN GO`. Normalization swaps token order when `body[0]` is a function code and `body[1]` is not.
   - **Tests**: 19/19 ScenarioPanel tests, 46/46 parser tests. Root fix: 4 missing `data-testid` attributes added (`scenarios-loading`, `scenarios-empty`, `scenarios-fetch-error`, `scenario-apply-error`). Test runtime 360s → 269ms.
   - tsc clean · vitest 5096→5115 passing.
+
+- **2026-05-24 (Phase 7.N — Scenario CRUD UI + SCN command alias)**
+  - **Scenario CRUD UI** — `ScenarioFormModal.tsx` create/edit modal with JSON overrides editor (live parse validation, 409 duplicate-code, 403 need-admin surfaced inline). `POST /api/scenarios` repurposed from dead "apply-202" stub to create-scenario (admin-only, Zod). `GET/PATCH/DELETE /api/scenarios/[id]` added; DELETE is soft (isActive=false, row preserved). ScenarioPanel wired: "+ Новый" button in sidebar header; hover → pencil (edit) + trash (soft-delete) per row. 22 API handler tests.
+  - **SCN command alias** — parser now accepts `SCN <code> GO` (function-first) as alias for Bloomberg-canonical `<code> SCN GO`; 46/46 parser tests unchanged.
+  - **Test fix** — 19/19 ScenarioPanel tests (was 5 failing / 360s timeout): added 4 missing data-testid attrs (`scenarios-loading`, `scenarios-empty`, `scenarios-fetch-error`, `scenario-apply-error`). Test runtime 360s → 269ms.
+  - tsc clean · vitest 5113/5113 passing.
