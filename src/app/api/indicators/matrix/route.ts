@@ -175,6 +175,8 @@ export async function GET(request: NextRequest) {
           // not applicable to this industry" from "unknown — applicable but
           // no computed value". UI renders the two states differently.
           industries: true,
+          // Phase 7.N C5 v2 — composite weight (1.0 default → ESG 0.7 → profitability 1.5)
+          weight: true,
         },
         orderBy: { sortOrder: 'asc' },
       }),
@@ -204,6 +206,12 @@ export async function GET(request: NextRequest) {
     // Re-bind so downstream code uses the filtered list. Original
     // variable name kept (`indicators`) to minimize churn.
     const indicatorsForRender = visibleIndicators;
+
+    // Phase 7.N C5 v2 — weight lookup map: indicatorId → weight.
+    // Built once per request; used below when assembling cells.
+    const indicatorWeightMap = new Map<string, number>(
+      indicatorsForRender.map((ind) => [ind.id, (ind as typeof ind & { weight?: number }).weight ?? 1.0]),
+    );
 
     type CompanyRawShape = (typeof companiesRaw)[number];
     type IndicatorShape = (typeof indicatorsForRender)[number];
@@ -367,6 +375,8 @@ export async function GET(request: NextRequest) {
           indicatorId: v.indicatorId,
           value: v.value,
           status: v.status as IndicatorStatus,
+          // Phase 7.N C5 v2 — per-indicator weight for weighted composite.
+          weight: indicatorWeightMap.get(v.indicatorId) ?? 1.0,
           // Phase 7.H F4.v2.1 — string mirror of the Prisma enum,
           // safe to send to the client as-is.
           valueSource,

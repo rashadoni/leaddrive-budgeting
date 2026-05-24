@@ -1214,6 +1214,10 @@ model IndicatorDefinition {
   // `macro`; financial / operational defaults to `computed`. Optional at
   // the seed level — null falls back to `computed` in recompute.
   defaultValueSource IndicatorValueSource @default(computed)
+  // Phase 7.N C5 v2 — per-indicator weight for composite-risk-score.
+  // Higher = more impact on the 0-100 health score.
+  // Scale: 0.7 (ESG/sentiment — directional) → 1.0 (default) → 1.5 (profitability / liquidity — survival).
+  weight             Float                @default(1.0)
   isActive           Boolean              @default(true)
   sortOrder          Int                  @default(0)
   createdAt          DateTime             @default(now())

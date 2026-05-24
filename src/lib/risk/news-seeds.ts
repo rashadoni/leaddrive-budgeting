@@ -50,5 +50,6 @@ export const newsIndicators: IndicatorSeed[] = [
     // the org / sector level. Tag as `macro` so the smoke gate doesn't
     // flag it as a misconfigured per-company indicator.
     defaultValueSource: "macro",
+    weight: 0.8, // news / sentiment — directional signal, not authoritative
   },
 ]

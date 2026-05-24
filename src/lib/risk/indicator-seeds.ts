@@ -71,6 +71,13 @@ export interface IndicatorSeed {
    * set `macro`.
    */
   defaultValueSource?: SeedValueSource;
+  /**
+   * Phase 7.N C5 v2 — per-indicator composite weight (default 1.0 if omitted).
+   * Controls how strongly this indicator influences the 0-100 health score.
+   * Scale: 0.7 (ESG/sentiment) → 1.0 (default) → 1.5 (profitability/liquidity).
+   * See composite-score.ts for the full weight scheme rationale.
+   */
+  weight?: number;
 }
 
 // ─── Hospitality pack (5) ──────────────────────────────────────────────────
@@ -166,6 +173,7 @@ export const hospitalityIndicators: IndicatorSeed[] = [
       "Gəlirin {value}%-i FX-də. AZN-in 10% devalvasiyası EBITDA-nı təxminən eyni payda hərəkət etdirir.",
     requiredInputs: ["booking", "currencyRate"],
     sortOrder: 40,
+    weight: 1.3, // FX / macro exposure
   },
   {
     code: "HOSP_SOURCE_HHI",
@@ -246,6 +254,7 @@ export const agroIndicators: IndicatorSeed[] = [
       "Quraqlıq indeksi {value}/100 — 60-dan yuxarı bölgə üçün >20% məhsul itkisinin tarixi həddi.",
     requiredInputs: ["operationalFact:drought_index"],
     sortOrder: 20,
+    weight: 1.3, // FX / macro exposure — drought is an existential agro macro risk
   },
   {
     code: "AGRO_COMMODITY_VOL",
@@ -451,6 +460,7 @@ export const agroIndicators: IndicatorSeed[] = [
     ],
     sortOrder: 90,
     defaultValueSource: "macro",
+    weight: 1.3, // FX / macro exposure — commodity tailwind/headwind signal
   },
   // ─ Phase 7.I cane-grower/seller indicators (AzerSheker pilot, 2026-05-16).
   //   AzerSheker grows and sells sugarcane to external sugar mills — they
@@ -746,6 +756,8 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     // conservative unknown behaviour. See recompute.ts:2944 fx-guard.
     requiredInputs: ["budgetLine", "currencyRate", "company.settings.fxExposureSource"],
     sortOrder: 5,
+    // FX shock is an external amplifier of profitability risk — weight above default.
+    weight: 1.3,
   },
   // ── Phase 7.E phase 3 — building blocks for `rollup()` and `fact()` ────
   // demonstrations (sub-42, 2026-04-30). These indicators persist raw $$
@@ -993,6 +1005,7 @@ export const industrialIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}% — gəlirin COGS-dan sonrakı qalığı. Sənaye benchmark 25–35%; 15%-dən aşağı qiymətləmə və ya giriş-xərc nizamı pozulub.",
     requiredInputs: ["budgetLine"],
     sortOrder: 10,
+    weight: 1.4, // Core profitability — highest composite weight
   },
   {
     code: "IND_NET_MARGIN",
@@ -1017,6 +1030,7 @@ export const industrialIndicators: IndicatorSeed[] = [
       "Xalis mənfəət {value}%. 3%-dən aşağı — bir giriş-xərc sıçrayışı və ya FX hərəkəti mənfəəti silir. OpEx-i və ya gəlir miksini düzəltməlisiniz.",
     requiredInputs: ["budgetLine"],
     sortOrder: 20,
+    weight: 1.4, // Core profitability — highest composite weight
   },
   {
     code: "IND_OPEX_RATIO",
@@ -1041,6 +1055,7 @@ export const industrialIndicators: IndicatorSeed[] = [
       "Əməliyyat xərcləri gəlirin {value}%-dir. 35%-dən yuxarı şişmiş overhead — əmək haqqı fondu, icarə, SG&A-nı yoxlayın.",
     requiredInputs: ["budgetLine"],
     sortOrder: 30,
+    weight: 1.2, // Core operational efficiency
   },
   {
     code: "IND_COGS_INTENSITY",
@@ -1186,6 +1201,7 @@ export const servicesIndicators: IndicatorSeed[] = [
       "Xidmət ümumi mənfəəti {value}%. Sağlam benchmark 40–60%; 25%-dən aşağı — qiymətləmə gücü aşınır və ya birbaşa xidmət-çatdırılma xərcləri sıradan çıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 110,
+    weight: 1.4, // Core profitability — highest composite weight
   },
   {
     code: "SVC_NET_MARGIN",
@@ -1210,6 +1226,7 @@ export const servicesIndicators: IndicatorSeed[] = [
       "Xalis mənfəət {value}%. 0%-dən aşağı xidmət bizneslər əməliyyatlarda pul itirir — qiymətləmə, utilizasiya və overhead bölgüsünü yoxlayın.",
     requiredInputs: ["budgetLine"],
     sortOrder: 120,
+    weight: 1.4, // Core profitability
   },
   {
     code: "SVC_OPEX_RATIO",
@@ -1311,6 +1328,7 @@ export const pharmaIndicators: IndicatorSeed[] = [
       "Pharma ümumi mənfəəti {value}%. Brendli 70–80%, generics 40–55%, saf distribusiya 10–20%; 8%-dən aşağı — adətən distribütor modeli qiymətləri sıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 210,
+    weight: 1.4, // Core profitability
   },
   {
     code: "PHARMA_NET_MARGIN",
@@ -1335,6 +1353,7 @@ export const pharmaIndicators: IndicatorSeed[] = [
       "Xalis mənfəət {value}%. Tənzimləyici + R&D amortizasiyası net margin-i sıxır; 2%-dən aşağı — strukturca zərərlidir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 220,
+    weight: 1.4, // Core profitability
   },
   {
     code: "PHARMA_RD_INTENSITY",
@@ -1436,6 +1455,7 @@ export const realEstateIndicators: IndicatorSeed[] = [
       "NOI marja {value}%. Kommersiya daşınmaz əmlak baseline 65–85%; 45%-dən aşağı — yüksək əməliyyat xərcləri və ya icarənin zəifləməsi.",
     requiredInputs: ["budgetLine"],
     sortOrder: 310,
+    weight: 1.4, // Core profitability
   },
   {
     code: "RE_OCCUPANCY",
@@ -1487,6 +1507,7 @@ export const realEstateIndicators: IndicatorSeed[] = [
       "DSCR {value}. 1.15-dən aşağı — NOI faizləri + əsas borcu çətinliklə örtür; istənilən icarə azalması default-u tetikləyir.",
     requiredInputs: ["budgetLine.debt_service"],
     sortOrder: 330,
+    weight: 1.5, // Liquidity / debt coverage — highest tier
   },
   {
     code: "RE_RENT_COLLECTION",
@@ -1615,6 +1636,7 @@ export const entertainmentIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Əyləncə 50–65%; 30%-dən aşağı — çatdırılma xərcləri (kontent, məkan) nəzarətdən çıxır.",
     requiredInputs: ["budgetLine"],
     sortOrder: 430,
+    weight: 1.4, // Core profitability
   },
   {
     code: "ENT_SEASONALITY_CONCENTRATION",
@@ -1727,6 +1749,7 @@ export const educationIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Özəl təhsil baseline 40–55%; 20%-dən aşağı — müəllim xərci + tikili təhsil haqqı gəlirini üstələyir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 530,
+    weight: 1.4, // Core profitability
   },
   {
     code: "EDU_STUDENT_TEACHER_RATIO",
@@ -1837,6 +1860,7 @@ export const poultryIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Quş əti incə-marjalı əmtəədir (tipik 12–20%); 5%-dən aşağı yem-qiymət sıçrayışı zərərə çevirir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 630,
+    weight: 1.4, // Core profitability
   },
   {
     code: "POULTRY_FEED_COST_SHARE",
@@ -1917,6 +1941,7 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Brendli 30–40%, private-label 20–28%, əmtəə 10–18%. 12%-dən aşağı — qiymətləmə gücü yoxdur, məhsul əmtəədir.",
     requiredInputs: ["budgetLine"],
     sortOrder: 720,
+    weight: 1.4, // Core profitability
   },
   {
     code: "FP_INVENTORY_TURNS",
@@ -2040,6 +2065,7 @@ export const beverageIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Cross-segment alt həddi: brendli 50–60%, alkoqol 35–50%, əmtəə 25–35%. 20%-dən aşağı — əmtəə-seqmentinə keçid.",
     requiredInputs: ["budgetLine"],
     sortOrder: 810,
+    weight: 1.4, // Core profitability
   },
   {
     code: "BEV_OPEX_RATIO",
@@ -2101,6 +2127,7 @@ export const retailIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Grocery 20–28%, electronics 18–25%, moda 45–55%, specialty 35–50%. 12%-dən aşağı — qiymətləmə təzyiqi və ya miks dəyişikliyi.",
     requiredInputs: ["budgetLine"],
     sortOrder: 910,
+    weight: 1.4, // Core profitability
   },
   {
     code: "RETAIL_INVENTORY_TURNS",
@@ -2202,6 +2229,7 @@ export const logisticsIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. 3PL 12–20%, freight forwarding 8–15%, specialty 18–25%. 7%-dən aşağı — çox güman ki zərərli müqavilələr.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1020,
+    weight: 1.4, // Core profitability
   },
 ];
 
@@ -2238,6 +2266,7 @@ export const constructionIndicators: IndicatorSeed[] = [
       "Ümumi mənfəət {value}%. Ağır mülki 8–14%, tikili 10–18%, ixtisaslaşmış 18–25%. 8%-dən aşağı — xərc aşımı və ya yanlış qiymətləndirilmiş təkliflər.",
     requiredInputs: ["budgetLine"],
     sortOrder: 1110,
+    weight: 1.4, // Core profitability
   },
   {
     code: "CONSTR_OPEX_RATIO",

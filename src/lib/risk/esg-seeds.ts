@@ -64,6 +64,7 @@ export const esgIndicators: IndicatorSeed[] = [
     sortOrder: 900,
     // v2.2 — industry-specific modeled, not generic.
     defaultValueSource: "modeled_industry",
+    weight: 0.7, // ESG — compliance signal, lower urgency for composite
   },
   {
     code: "IND_CARBON_SCOPE_2",
@@ -89,6 +90,7 @@ export const esgIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine", "industryFactor:scope_2"],
     sortOrder: 901,
     defaultValueSource: "modeled_industry",
+    weight: 0.7, // ESG
   },
   {
     code: "IND_CARBON_SCOPE_3",
@@ -116,6 +118,7 @@ export const esgIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine", "industryFactor:scope_3"],
     sortOrder: 902,
     defaultValueSource: "modeled_industry",
+    weight: 0.7, // ESG
   },
   {
     code: "IND_ESG_COMPOSITE",
@@ -149,6 +152,7 @@ export const esgIndicators: IndicatorSeed[] = [
     ],
     sortOrder: 903,
     defaultValueSource: "modeled_industry",
+    weight: 0.7, // ESG composite
   },
   {
     code: "IND_GOV_CLIMATE_SCORE",
@@ -176,5 +180,6 @@ export const esgIndicators: IndicatorSeed[] = [
     requiredInputs: [],
     sortOrder: 904,
     defaultValueSource: "macro",
+    weight: 0.7, // ESG / macro context
   },
 ]

@@ -19,6 +19,14 @@ export interface HeatMapCell {
   indicatorId: string;
   value: number;
   status: IndicatorStatus;
+  /**
+   * Phase 7.N C5 v2 — per-indicator composite weight.
+   * Carried from `IndicatorDefinition.weight` via the matrix API.
+   * Optional for back-compat — cells without a weight are treated as 1.0
+   * in `computeCompositeScore`.
+   * Scale: 0.7 (ESG/sentiment) → 1.0 (default) → 1.5 (profitability/liquidity).
+   */
+  weight?: number;
   /** Present only when the recompute pipeline stored an `error` in
    *  `IndicatorValue.inputs`. Gray cells on HeatMap use this to explain
    *  WHY to finance users (formula failure, missing data, out-of-range

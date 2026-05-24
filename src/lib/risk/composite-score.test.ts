@@ -285,3 +285,70 @@ describe('scoreToBand (Phase C5)', () => {
     expect(scoreToBand(0)).toBe('red');
   });
 });
+
+describe('Phase 7.N C5 v2 — weighted composite', () => {
+  function wcell(
+    status: HeatMapCell['status'],
+    weight: number,
+    id?: string,
+  ): HeatMapCell {
+    return {
+      companyId: 'c',
+      indicatorId: id ?? `ind-${Math.random()}`,
+      value: 0,
+      status,
+      weight,
+    };
+  }
+
+  it('equal weights behave identically to unweighted average', () => {
+    // 1g + 1r with weight=1 → (100×1 + 0×1) / 2 = 50 → amber
+    const result = computeCompositeScore([wcell('green', 1.0), wcell('red', 1.0)]);
+    expect(result.score).toBe(50);
+    expect(result.band).toBe('amber');
+  });
+
+  it('high-weight red pulls score lower than low-weight red', () => {
+    // Scenario A: 1g(w=1.5) + 1r(w=0.7)
+    //   = (100×1.5 + 0×0.7) / (1.5+0.7) = 150/2.2 ≈ 68 → green
+    const a = computeCompositeScore([wcell('green', 1.5), wcell('red', 0.7)]);
+    // Scenario B: 1g(w=0.7) + 1r(w=1.5)
+    //   = (100×0.7 + 0×1.5) / (0.7+1.5) = 70/2.2 ≈ 32 → red
+    const b = computeCompositeScore([wcell('green', 0.7), wcell('red', 1.5)]);
+    expect(a.score).toBeGreaterThan(b.score!);
+    expect(a.band).toBe('green');
+    expect(b.band).toBe('red');
+  });
+
+  it('cells without weight field treated as 1.0 (back-compat)', () => {
+    // 1 unweighted green + 1 unweighted red → same as weight=1 both
+    const cellA = cell('green'); // no weight field
+    const cellB = cell('red');   // no weight field
+    const r1 = computeCompositeScore([cellA, cellB]);
+    const r2 = computeCompositeScore([wcell('green', 1.0), wcell('red', 1.0)]);
+    expect(r1.score).toBe(r2.score);
+  });
+
+  it('single heavy-weight red among many greens drags composite below unweighted result', () => {
+    // 4g(w=1.0) + 1r(w=1.5) → weighted = (400+0)/(4+1.5) = 400/5.5 ≈ 73 → green
+    // vs unweighted: (400+0)/5 = 80 → green
+    // The point: red at 1.5 contributes proportionally more than at 1.0
+    const weighted = computeCompositeScore([
+      wcell('green', 1.0), wcell('green', 1.0), wcell('green', 1.0), wcell('green', 1.0),
+      wcell('red', 1.5),
+    ]);
+    const unweighted = computeCompositeScore([
+      wcell('green', 1.0), wcell('green', 1.0), wcell('green', 1.0), wcell('green', 1.0),
+      wcell('red', 1.0),
+    ]);
+    expect(weighted.score).toBeLessThan(unweighted.score!);
+  });
+
+  it('unknown cells excluded from weighted sum AND from total weight denominator', () => {
+    // 1g(w=1.4) + 1unknown(w=1.4) → score = 100×1.4 / 1.4 = 100 (unknown excluded)
+    const result = computeCompositeScore([wcell('green', 1.4), wcell('unknown', 1.4)]);
+    expect(result.score).toBe(100);
+    expect(result.contributingCount).toBe(1);
+    expect(result.totalCount).toBe(2);
+  });
+});

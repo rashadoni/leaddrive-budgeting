@@ -11,19 +11,23 @@
  *   - red    → 0 pts
  *   - unknown / missing → ignored (no penalty for "data gap")
  *
- * Final score = average of contributing pts. If a company has zero
- * scoreable cells (all unknown/missing), `score = null` — UI should
- * render a neutral "—" rather than fabricating a 0 (which would mean
- * "all red" — the worst possible signal, the opposite of "no data").
+ * Phase 7.N C5 v2 — weighted average.
+ * Each cell carries a `weight` (from `IndicatorDefinition.weight`, default 1.0).
+ * Score = Σ(pts_i × weight_i) / Σ(weight_i) — only over scoreable cells.
+ * Backward-compat: cells without `weight` field are treated as weight=1.0.
+ *
+ * Weight scheme:
+ *   1.5 — profitability + liquidity (gross margin, net margin, debt coverage)
+ *   1.3 — FX / macro exposure (FX_IMPORTED_INPUT, sector FX indicators)
+ *   1.2 — core operational efficiency (EBITDA margin, OpEx ratio)
+ *   1.0 — default (everything not explicitly weighted)
+ *   0.8 — news / sentiment (directional signal only)
+ *   0.7 — ESG / emissions (important for compliance; lower urgency for composite)
  *
  * Band classifier:
  *   - score ≥ 67 → 'green'  (healthy)
  *   - score ≥ 34 → 'amber'  (watch)
  *   - score <  34 → 'red'   (urgent)
- *
- * v1 is unweighted (simple average). Phase 7.E may introduce per-
- * indicator weights (e.g. liquidity > efficiency > growth) — kept as
- * a 🔄 in CARRYOVER if needed.
  */
 
 import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
@@ -58,16 +62,23 @@ const STATUS_PTS: Record<IndicatorStatus, number | null> = {
  * Compute a company's composite score from a list of cells (typically
  * filtered to one company already, but the helper itself is agnostic
  * — it just averages whatever it's given).
+ *
+ * Phase 7.N C5 v2: weighted average using `cell.weight` (default 1.0).
+ * Back-compat: cells without `weight` are treated as weight=1.0 so
+ * existing callers and tests continue to work unchanged.
  */
 export function computeCompositeScore(
   cells: readonly HeatMapCell[],
 ): CompositeScore {
-  let sum = 0;
+  let weightedSum = 0;
+  let totalWeight = 0;
   let contributingCount = 0;
   for (const c of cells) {
     const pts = STATUS_PTS[c.status];
     if (pts !== null) {
-      sum += pts;
+      const w = c.weight ?? 1.0;
+      weightedSum += pts * w;
+      totalWeight += w;
       contributingCount++;
     }
   }
@@ -79,7 +90,7 @@ export function computeCompositeScore(
       totalCount: cells.length,
     };
   }
-  const score = Math.round(sum / contributingCount);
+  const score = Math.round(weightedSum / totalWeight);
   return {
     score,
     band: scoreToBand(score),
