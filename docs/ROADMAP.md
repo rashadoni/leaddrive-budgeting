@@ -1115,3 +1115,11 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
 
 <!-- Append entries here as tasks complete. Format: -->
 <!-- - YYYY-MM-DD — Phase X.Y: short description of what was done -->
+
+- **2026-05-24 (Phase 7.N — Risk registry + Legal exposure data for AzerSheker)**
+  - **Risk registry imported** from `Top risk - EDEN AGRO MMC.xlsx` (15 structured risks) into `AZSEKER-EDEN.settings.riskRegistry`. `RiskRegistryPanel` added to CompanySettingsAdmin — collapsible list color-coded by risk category (Environmental/Financial/Operational/Regulatory/Strategic/Technology), each row expandable to show KRI + description.
+  - **Court disputes imported** from `Açıq məhkəmə mübahisələri.xlsx` (54 cases, 37 active / 17 closed) into: (a) `Organization.settings.courtDisputes` (full JSON registry), (b) `OperationalFact` per company: `LEGAL_CASES_TOTAL` + `LEGAL_CASES_ACTIVE` — AZSEKER: 41/27, EDEN: 5/4, CPC: 8/6.
+  - **New indicator seeds** (2): `LEGAL_CASES_ACTIVE` + `LEGAL_CASES_TOTAL` in `crossSectorIndicators`. Category=governance, lower_better, thresholds calibrated to SME litigation benchmarks (active: ≤2=green, 3-9=amber, ≥10=red; total: ≤5/≤20/20+). Will appear in Risk Terminal HeatMap for AZSEKER entities on next page load.
+  - Scripts: `import-risk-registry.ts` + `import-court-disputes.ts` (both idempotent, --dry-run flag).
+  - **PLF coverage audit**: confirmed Guvven Fin.xlsx 2026 data is Q1-only (Jan–Apr populated, May–Dec empty). Re-import won't add months — waiting on updated source file from Azik.
+  - tsc clean · vitest 5096/5097 passing (1 EPERM network skip, sandbox-only).
