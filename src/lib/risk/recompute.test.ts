@@ -3253,3 +3253,244 @@ describe('recomputeIndicator — FX zombie-guard (Phase 7.M Step 4)', () => {
     expect(code === 'parse' || code === 'eval').toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 7.O — balanceSheetLine resolver (inventory turns / days)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** BS row factory for balanceSheetLine resolver tests. */
+function bsRow(overrides: {
+  accountCode?: string;
+  accountName?: string;
+  lineType?: string;
+  subType?: string | null;
+  year?: number;
+  month?: number;
+  amount: number;
+}) {
+  return {
+    accountCode: 'AZSEKER-CPC-BS.01.02.01',
+    accountName: 'Xammal (Raw materials)',
+    lineType: 'asset',
+    subType: 'current',
+    year: 2025,
+    month: 12,
+    ...overrides,
+  };
+}
+
+/** Makes a data source with listBalanceSheetLines wired. */
+function makeDsWithBs(
+  bsRows: ReturnType<typeof bsRow>[],
+  budgetLines: BudgetLineRow[] = [],
+): RecomputeDataSource {
+  const base = mockDs({ budgetLines });
+  return {
+    ...base,
+    listBalanceSheetLines: async () => bsRows,
+  };
+}
+
+const FP_INVENTORY_TURNS_DEF: IndicatorDefinitionLike = {
+  id: 'ind_fp_inventory_turns',
+  formula: 'cogs / inventory',
+  thresholds: {
+    green: { op: '>=', value: 12 },
+    amber: { op: '>=', value: 8 },
+    red: { op: '<', value: 8 },
+  },
+  requiredInputs: ['budgetLine.cogs', 'balanceSheetLine.inventory'],
+};
+
+describe('recomputeIndicator — balanceSheetLine resolver (Phase 7.O)', () => {
+  it('resolves inventory from current-asset BS rows by code pattern (BS.01.02.*)', async () => {
+    const cogs = 1_200_000; // annual COGS
+    const inventory = 100_000; // Dec BS snapshot
+    const ds = makeDsWithBs(
+      [bsRow({ accountCode: 'AZSEKER-CPC-BS.01.02.01', amount: inventory })],
+      // COGS budget line
+      [
+        {
+          plannedAmount: cogs,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'Cost of goods sold',
+          monthIndex: null,
+        },
+      ],
+    );
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.status).not.toBe('unknown');
+    // cogs / inventory = 1_200_000 / 100_000 = 12 → green
+    expect(result.value).toBeCloseTo(12, 4);
+  });
+
+  it('resolves inventory by Azerbaijani name keyword (ehtiyat)', async () => {
+    const ds = makeDsWithBs(
+      [bsRow({ accountCode: 'OTHER-001', accountName: 'Ehtiyatlar (stoklar)', amount: 50_000 })],
+      [
+        {
+          plannedAmount: 400_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'COGS',
+          monthIndex: null,
+        },
+      ],
+    );
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(8, 4); // 400_000 / 50_000 = 8
+  });
+
+  it('skips non-current assets (fixed assets) — subType non_current excluded', async () => {
+    const ds = makeDsWithBs(
+      [
+        // Fixed asset — should be excluded
+        bsRow({
+          accountCode: 'AZSEKER-CPC-BS.01.01.01',
+          accountName: 'Property Plant Equipment',
+          subType: 'non_current',
+          amount: 999_999,
+        }),
+        // Current inventory — should be included
+        bsRow({ accountCode: 'AZSEKER-CPC-BS.01.02.01', amount: 80_000 }),
+      ],
+      [
+        {
+          plannedAmount: 960_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'COGS',
+          monthIndex: null,
+        },
+      ],
+    );
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    // Only 80_000 counted — fixed asset excluded
+    expect(result.value).toBeCloseTo(12, 4); // 960_000 / 80_000 = 12
+  });
+
+  it('returns unknown when listBalanceSheetLines is absent (legacy fixture)', async () => {
+    // mockDs does NOT implement listBalanceSheetLines → resolver silently skips
+    const ds = mockDs({
+      budgetLines: [
+        {
+          plannedAmount: 600_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'COGS',
+          monthIndex: null,
+        },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    // inventory context var missing → formula evaluates to NaN → unknown
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('unknown');
+  });
+
+  it('returns unknown when BS rows exist but none match inventory heuristics', async () => {
+    const ds = makeDsWithBs(
+      [
+        // Receivable — not inventory
+        bsRow({
+          accountCode: 'AZSEKER-CPC-BS.01.02.05',
+          accountName: 'Trade receivables',
+          amount: 200_000,
+        }),
+        // Cash — not inventory
+        bsRow({
+          accountCode: 'AZSEKER-CPC-BS.01.02.10',
+          accountName: 'Cash and equivalents',
+          amount: 50_000,
+        }),
+      ],
+      [
+        {
+          plannedAmount: 800_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'COGS',
+          monthIndex: null,
+        },
+      ],
+    );
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('unknown');
+  });
+
+  it('sums multiple inventory sub-lines (raw materials + WIP + finished goods)', async () => {
+    const ds = makeDsWithBs(
+      [
+        bsRow({ accountCode: 'AZSEKER-CPC-BS.01.02.01', accountName: 'Xammal', amount: 30_000 }),
+        bsRow({ accountCode: 'AZSEKER-CPC-BS.01.02.02', accountName: 'Yarımfabrikat', amount: 10_000 }),
+        bsRow({ accountCode: 'AZSEKER-CPC-BS.01.02.03', accountName: 'Hazır məhsul', amount: 60_000 }),
+      ],
+      [
+        {
+          plannedAmount: 1_200_000,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'cogs',
+          accountCode: '600',
+          accountCategory: null,
+          accountName: 'COGS',
+          monthIndex: null,
+        },
+      ],
+    );
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'cpc_1',
+      definition: FP_INVENTORY_TURNS_DEF,
+      period: '2025',
+    });
+    // inventory = 30_000 + 10_000 + 60_000 = 100_000; turns = 1_200_000 / 100_000 = 12
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(12, 4);
+  });
+});

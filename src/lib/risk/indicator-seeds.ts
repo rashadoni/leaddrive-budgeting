@@ -1400,7 +1400,10 @@ export const pharmaIndicators: IndicatorSeed[] = [
       "Inventory days = {value}. Выше 120 — продукт лежит на складе; проверьте near-expiry и pricing.",
     hintTemplateAz:
       "Anbar günləri = {value}. 120-dən yuxarı — məhsul rəfdə yatır; istifadə-müddəti yaxınlaşan və qiymətləməni yoxlayın.",
-    requiredInputs: ["budgetLine.inventory"],
+    // Phase 7.O — switched from "budgetLine.inventory" (dormant — no
+    // accountType='asset' BudgetLine rows ever written) to
+    // "balanceSheetLine.inventory" (reads BalanceSheetLine.companyId rows).
+    requiredInputs: ["budgetLine.cogs", "balanceSheetLine.inventory"],
     sortOrder: 240,
   },
   {
@@ -1964,7 +1967,9 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
       "Оборот инвентаря {value}/год. Скоропортящаяся еда target 12–24; ниже 8 = риск порчи.",
     hintTemplateAz:
       "Anbar dövriyyəsi {value}/il. Tezxarabolan qida hədəfi 12–24; 8-dən aşağı = xarablanma riski.",
-    requiredInputs: ["budgetLine.inventory"],
+    // Phase 7.O — switched from "budgetLine.inventory" (dormant) to
+    // "balanceSheetLine.inventory" (reads BalanceSheetLine.companyId rows).
+    requiredInputs: ["budgetLine.cogs", "balanceSheetLine.inventory"],
     sortOrder: 730,
   },
   {
@@ -2163,7 +2168,9 @@ export const retailIndicators: IndicatorSeed[] = [
       "Оборот инвентаря {value}/год. Cross-segment floor: grocery 14–26, electronics 6–12, fashion 4–8, specialty 3–6. Ниже floor — обычно мёртвый запас.",
     hintTemplateAz:
       "Anbar dövriyyəsi {value}/il. Cross-segment alt həddi: grocery 14–26, electronics 6–12, moda 4–8, specialty 3–6. Alt həddən aşağı — adətən ölü ehtiyat.",
-    requiredInputs: ["budgetLine.inventory"],
+    // Phase 7.O — switched from "budgetLine.inventory" (dormant) to
+    // "balanceSheetLine.inventory" (reads BalanceSheetLine.companyId rows).
+    requiredInputs: ["budgetLine.cogs", "balanceSheetLine.inventory"],
     sortOrder: 920,
   },
 ];

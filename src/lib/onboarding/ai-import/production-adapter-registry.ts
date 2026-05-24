@@ -353,6 +353,7 @@ function makeBsHandler(
       input.XLSX,
       { preferYear: input.year },
     )
+    const companyId = ctx.codeToId.get(input.entityCode)
     const rows: BsImportRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
     for (const line of parsed.lines) {
@@ -363,6 +364,7 @@ function makeBsHandler(
         if (!Number.isFinite(month)) continue
         rows.push({
           planId: ctx.planId,
+          companyId: companyId ?? null, // Phase 7.O — company scope for resolver queries
           accountCode: `${input.entityCode}-${line.code}`,
           accountName: line.label,
           lineType: line.lineType,
@@ -388,7 +390,7 @@ function makeBsHandler(
         console.log(
           `[prod-adapter] BS "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
         )
-        return runDynamicBsAdapter(input, ctx.planId, prisma)
+        return runDynamicBsAdapter(input, ctx.planId, prisma, companyId ?? null)
       }
     }
 

@@ -246,6 +246,34 @@ export interface RecomputeDataSource {
   }): Promise<Array<{ sharePct: number; singleSource: boolean; name: string }>>;
 
   /**
+   * Phase 7.O (2026-05-24) — Balance-sheet line lookup for per-entity
+   * BS aggregations (inventory, equity, current-ratio, etc.).
+   *
+   * Filters `BalanceSheetLine` by companyId (Phase 7.O nullable column)
+   * and period.year. For period.kind='year', returns December (month=12)
+   * rows for a year-end balance snapshot; for 'month', returns the
+   * specific month's rows.
+   *
+   * Optional on the interface: legacy fixtures without listBalanceSheetLines
+   * degrade cleanly (resolver silently skips, indicators stay 'unknown').
+   */
+  listBalanceSheetLines?(args: {
+    organizationId: string;
+    companyId: string;
+    period: Period;
+  }): Promise<
+    Array<{
+      accountCode: string;
+      accountName: string;
+      lineType: string;  // 'asset' | 'liability' | 'equity'
+      subType: string | null;  // 'non_current' | 'current' | 'long_term' | 'short_term' | null
+      year: number;
+      month: number;
+      amount: number;
+    }>
+  >;
+
+  /**
    * Phase 7.H F4.v2.3 — disclosure lookup. Returns the disclosed value
    * if a row exists in `IndicatorDisclosure` for the (companyId,
    * indicatorCode, period) triple, else null. When non-null, the
@@ -654,6 +682,67 @@ export function createPrismaDataSource(
         const msg = err instanceof Error ? err.message : String(err);
         if (
           msg.includes('relation "counterparties"') ||
+          msg.includes('does not exist') ||
+          msg.includes('P2021')
+        ) {
+          return [];
+        }
+        throw err;
+      }
+    },
+
+    // Phase 7.O (2026-05-24) — balance-sheet line lookup for per-entity
+    // BS aggregations (inventory, equity, current-ratio).
+    //
+    // Period semantics:
+    //   year    → December snapshot (balance sheets are point-in-time;
+    //             using the fiscal year-end is the standard approach for
+    //             annual indicator computation like inventory turns).
+    //   month   → that month's snapshot.
+    //   quarter → last month of the quarter (e.g. Q1 → month 3).
+    //
+    // Only rows with companyId set (Phase 7.O imports) are returned.
+    // Legacy rows with companyId=null are excluded — they cannot be
+    // company-scoped and would cross-contaminate multi-entity plans.
+    async listBalanceSheetLines({ organizationId, companyId, period }) {
+      // Determine the target month for point-in-time BS snapshot
+      let targetMonth: number;
+      if (period.kind === 'year') {
+        targetMonth = 12; // year-end balance
+      } else if (period.kind === 'quarter') {
+        // Last month of the quarter: Q1→3, Q2→6, Q3→9, Q4→12
+        targetMonth = period.start.getUTCMonth() + 3;
+      } else {
+        // month period: 0-indexed UTC month → 1-indexed DB month
+        targetMonth = period.start.getUTCMonth() + 1;
+      }
+      try {
+        const rows = await prisma.balanceSheetLine.findMany({
+          where: {
+            organizationId,
+            companyId,
+            year: period.year,
+            month: targetMonth,
+            deletedAt: null,
+          },
+          select: {
+            accountCode: true,
+            accountName: true,
+            lineType: true,
+            subType: true,
+            year: true,
+            month: true,
+            amount: true,
+          },
+        });
+        return rows;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Graceful degradation if table or column doesn't exist yet
+        // (pre-migration environment).
+        if (
+          msg.includes('column "companyId"') ||
+          msg.includes('relation "balance_sheet_lines"') ||
           msg.includes('does not exist') ||
           msg.includes('P2021')
         ) {
@@ -2395,6 +2484,95 @@ const counterpartyHhiResolver: NamespaceResolver = {
   },
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 7.O (2026-05-24) — Balance-sheet line resolver.
+//
+// Handles the `balanceSheetLine.*` namespace. Currently supports one
+// sub-aggregation: `inventory` — sums current-asset rows whose name or
+// code matches inventory heuristics.
+//
+// Used by:
+//   • PHARMA_INVENTORY_DAYS  (requiredInputs: ["balanceSheetLine.inventory"])
+//   • FP_INVENTORY_TURNS     (requiredInputs: ["balanceSheetLine.inventory"])
+//   • RETAIL_INVENTORY_TURNS (requiredInputs: ["balanceSheetLine.inventory"])
+//
+// Cost: 1 DB query per recompute (when the resolver fires). Degrades
+// gracefully when listBalanceSheetLines is absent from the data source
+// (legacy fixtures) or when companyId is not set on the BS rows
+// (pre-Phase-7.O imports).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Inventory detection for BalanceSheetLine rows.
+ *
+ * Inventory lives under current assets (subType='current', BS.01.02.*).
+ * Within current assets we distinguish inventory from receivables / cash / prepayments
+ * via name keywords covering English + Russian + Azerbaijani finance vocabulary.
+ *
+ * No code-pattern matching — CoA numbering varies by company and CoA version.
+ * Names are the only reliable discriminator across schemas.
+ */
+function bsIsInventoryLine(_accountCode: string, accountName: string): boolean {
+  const name = accountName.toLowerCase();
+  return (
+    name.includes('inventory') ||
+    name.includes('ehtiyat') ||   // AZ: reserve / stock
+    name.includes('xammal') ||    // AZ: raw material
+    name.includes('yarım') ||     // AZ: work-in-progress (yarımfabrikat)
+    name.includes('hazır mal') || // AZ: finished goods
+    name.includes('hazır məhsul') || // AZ: finished product
+    name.includes('mallar') ||    // AZ: goods
+    name.includes('запас') ||     // RU: stock / inventory
+    name.includes('материал') ||  // RU: material
+    name.includes('незаверш') ||  // RU: work-in-progress (незавершенное)
+    name.includes('готовая') ||   // RU: finished goods (готовая продукция)
+    name.includes('stock') ||
+    name.includes('raw material') ||
+    name.includes('товар')        // RU: goods / merchandise
+  );
+}
+
+const balanceSheetLineResolver: NamespaceResolver = {
+  name: 'balanceSheetLine',
+  matches: (r) => r === 'balanceSheetLine' || r.startsWith('balanceSheetLine.'),
+  async resolve(matched, ctx, state) {
+    // Degrade gracefully when the data source doesn't implement
+    // listBalanceSheetLines (legacy fixtures, pre-Phase-7.O envs).
+    if (!ctx.ds.listBalanceSheetLines) return;
+
+    const subs = matched
+      .filter((r) => r.startsWith('balanceSheetLine.'))
+      .map((r) => r.slice('balanceSheetLine.'.length));
+    if (subs.length === 0) return;
+
+    const rows = await ctx.ds.listBalanceSheetLines({
+      organizationId: ctx.organizationId,
+      companyId: ctx.companyId,
+      period: ctx.period,
+    });
+
+    if (rows.length === 0) return;
+
+    if (subs.includes('inventory')) {
+      // Sum current-asset rows that match inventory heuristics.
+      // lineType='asset' + subType='current' narrows to current assets;
+      // bsIsInventoryLine then filters to inventory-specific rows.
+      const inventorySum = rows
+        .filter(
+          (r) =>
+            r.lineType === 'asset' &&
+            r.subType === 'current' &&
+            bsIsInventoryLine(r.accountCode, r.accountName),
+        )
+        .reduce((sum, r) => sum + r.amount, 0);
+
+      if (inventorySum > 0) {
+        state.context['inventory'] = inventorySum;
+        state.inputs.resolved['inventory'] = inventorySum;
+      }
+    }
+  },
+};
+
 const RESOLVERS: readonly NamespaceResolver[] = [
   bookingResolver,
   companySettingsResolver,
@@ -2411,6 +2589,8 @@ const RESOLVERS: readonly NamespaceResolver[] = [
   commodityPriceResolver,
   // Phase 7.J — Counterparty register HHI for concentration indicators.
   counterpartyHhiResolver,
+  // Phase 7.O — Balance-sheet line aggregations (inventory turns etc.).
+  balanceSheetLineResolver,
 ];
 
 // --- Seed-load-time requiredInputs validator -------------------------------

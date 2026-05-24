@@ -981,12 +981,17 @@ model BalanceSheetLine {
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   planId         String
   plan           BudgetPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  // Phase 7.O (2026-05-24) — company scoping for per-entity BS queries.
+  // Optional so legacy rows (pre-Phase-7.O imports) remain valid.
+  // Set by all adapters going forward; null = "unscoped / all-company".
+  companyId      String?
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   accountCode    String
   accountName    String
   accountId      String?
   account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   lineType       String // asset | liability | equity
-  subType        String? // current_asset | fixed_asset | current_liability | long_term
+  subType        String? // non_current | current (assets); long_term | short_term (liabilities)
   year           Int
   month          Int
   amount         Float           @default(0)
@@ -1001,6 +1006,8 @@ model BalanceSheetLine {
   @@index([planId])
   @@index([planId, year, month])
   @@index([accountId])
+  @@index([companyId])
+  @@index([companyId, year, month])
   @@index([organizationId, deletedAt])
   @@map("balance_sheet_lines")
 }
@@ -1131,6 +1138,9 @@ model Company {
   // panel + AI Variance Explainer's "what if X customer leaves"
   // narrative.
   counterparties        Counterparty[]
+  // Phase 7.O — company-scoped balance sheet lines for per-entity
+  // resolver queries (inventory, equity, etc).
+  balanceSheetLines     BalanceSheetLine[]
 
   @@unique([organizationId, code])
   @@index([organizationId, parentCompanyId, industry])

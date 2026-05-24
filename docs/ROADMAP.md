@@ -249,7 +249,7 @@ by the AI-Mapper-driven multi-sheet wizard at `/budgeting/onboarding`
 ### 7.C — Indicator packs (5 weeks) — ✅ 52+ indicators shipped
 - ✅ **52+ indicators across 14 sectors** (hospitality 5, agro 3, industrial 4, services 5, pharma 5, real_estate 5, entertainment 4, education 4, poultry 4, food_processing 4, beverage 2, retail 2, logistics 2, construction 2, cross-sector + ESG + news + Phase 7.K live-data packs). All in `src/lib/risk/indicator-seeds.ts` + `ALL_INDICATOR_SEEDS`. Run `npx tsx scripts/seed-indicators.ts` after schema changes to sync DB.
 - ✅ AI-assisted drafting with calibrated thresholds (industry benchmark citations in comments per each pack). RU + AZ hint translations added Turn XI 2026-05-05 (56/58 coverage).
-- ⬜ Stub-resolver debt (~12 indicators return `status=unknown` until Phase 7.C resolver extension lands; tracked in Phase 7.M section below; only 1 affects a live company today).
+- ✅ **Stub-resolver debt — Phase 7.O (2026-05-24).** `balanceSheetLine.inventory` resolver unblocks `FP_INVENTORY_TURNS`, `PHARMA_INVENTORY_DAYS`, `RETAIL_INVENTORY_TURNS`. All 3 seeds updated from dormant `budgetLine.inventory` → `balanceSheetLine.inventory`. Remaining resolvers (`operationalFact:*` metrics) are DATA gaps, not code gaps — those indicators compute correctly once the corresponding operational-fact rows are ingested.
 
 ### 7.D — Bloomberg-style UX (3 weeks) — ✅ all 5 bullets shipped
 - ✅ Dark theme + JetBrains Mono monospace for numbers — wired in `src/app/globals.css` + Risk Terminal at `/budgeting/terminal` page; HeroSection / CompositeTrendChart use mono numerics.
@@ -1165,6 +1165,19 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **`composite-score.test.ts`** — 5 new tests: equal weights = unweighted, high-weight red pulls score lower, back-compat (no weight = 1.0), heavy-weight drag, unknown excluded from denominator. 29 total passing.
   - Run `npx tsx scripts/seed-indicators.ts` to apply weights to DB (idempotent upsert of all 120+ indicators).
   - tsc clean · vitest 5118 passing.
+
+- **2026-05-24 (Phase 7.O — BalanceSheetLine company scoping + `balanceSheetLine` resolver)**
+  - **Problem:** `FP_INVENTORY_TURNS`, `PHARMA_INVENTORY_DAYS`, `RETAIL_INVENTORY_TURNS` were permanently `unknown` because the dormant `budgetLine.inventory` sub-matcher requires `accountType='asset'` BudgetLine rows — but BS data is ingested into the separate `BalanceSheetLine` table, not `BudgetLine`.
+  - **Root cause:** `BalanceSheetLine` had no `companyId` column, making per-company BS queries impossible without a plan-to-company join.
+  - **Schema migration** (`20260524140000_phase7o_balance_sheet_company_id`) — adds optional `companyId String?` + FK to `BalanceSheetLine` + 2 covering indexes. Additive, null-safe; all existing rows remain valid.
+  - **`bs-import-batch.ts`** — `BsImportRow` gains optional `companyId?`; `createMany` payload includes it when present.
+  - **`dynamic-bs-adapter.ts`** — accepts new optional `companyId` parameter; passes to each `BsImportRow`.
+  - **`production-adapter-registry.ts`** — `makeBsHandler` resolves `companyId = ctx.codeToId.get(entityCode)` and passes to both hand-written rows and `runDynamicBsAdapter` call.
+  - **`recompute.ts`** — new `listBalanceSheetLines` method on `RecomputeDataSource` interface (optional for back-compat) + Prisma implementation (year-period → `month=12` year-end snapshot; month-period → specific month; graceful degradation on pre-migration environments) + new `balanceSheetLineResolver` (name-keyword inventory detection: xammal / ehtiyat / yarım / hazır mal / запас / материал / inventory / stock / товар) + added to `RESOLVERS`.
+  - **`indicator-seeds.ts`** — 3 seeds updated: `requiredInputs: ["budgetLine.inventory"]` → `["budgetLine.cogs", "balanceSheetLine.inventory"]`.
+  - **`recompute.test.ts`** — 6 new `balanceSheetLine` resolver tests (happy path / name keyword / non-current excluded / legacy fixture degrades / no inventory matches / multi-line sum).
+  - **ROADMAP §7.C stub-resolver debt** — closed. All resolver code is implemented; remaining `unknown` indicators are DATA gaps (operational-fact rows not yet in DB for non-AZSEKER companies).
+  - tsc clean · vitest **5145/5145 passing** (+6 net new).
 
 - **2026-05-24 (Phase 7.M — Dynamic BS + CF adapters: AI-powered fallback for balance sheets and cash flows)**
   - **Mirrors the Dynamic PLF adapter** — same LLM + 24h `AIMapperProposalCache` pipeline, now for BS and CF sheets.

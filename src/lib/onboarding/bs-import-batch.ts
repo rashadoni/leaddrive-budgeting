@@ -45,13 +45,21 @@ import {
 export interface BsImportRow {
   /** Always inherits from the BudgetPlan that owns the company group. */
   planId: string
+  /**
+   * Phase 7.O (2026-05-24) — company scope for per-entity resolver queries.
+   * Optional so callers that don't have a companyId (e.g. legacy imports)
+   * can omit it without breaking the batch. When set, the row can be
+   * queried by the `balanceSheetLine` resolver for inventory / equity etc.
+   * When null / undefined, the row is only accessible via plan-scoped reads.
+   */
+  companyId?: string | null
   /** BS.XX.XX.XX leaf code. Used as the recon key part. */
   accountCode: string
   /** English label (what the file said). */
   accountName: string
   /** asset | liability | equity */
   lineType: string
-  /** current_asset | fixed_asset | current_liability | long_term | null */
+  /** non_current | current (assets); long_term | short_term (liabilities) */
   subType: string | null
   year: number
   month: number // 1-12
@@ -197,6 +205,10 @@ export async function runBalanceSheetBatch(
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
         planId: r.planId,
+        // Phase 7.O — pass companyId when available; null/undefined = omit
+        // (Prisma treats undefined as "don't set", which leaves the DB
+        // column NULL — correct for rows without explicit company scope).
+        ...(r.companyId != null ? { companyId: r.companyId } : {}),
         accountCode: r.accountCode,
         accountName: r.accountName,
         lineType: r.lineType,

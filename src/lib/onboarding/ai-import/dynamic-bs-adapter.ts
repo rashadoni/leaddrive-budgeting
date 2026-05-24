@@ -168,12 +168,16 @@ function resolveColumnsPartial(
  * @param input      Standard adapter input (workbook, sheetName, XLSX, …).
  * @param planId     Budget-plan ID — resolved by the calling handler from OrgContext.
  * @param _prisma    Injected for future CoA lookups; not used in v1.
+ * @param companyId  Phase 7.O — optional company scope for per-entity resolver
+ *                   queries (inventory, equity ratios, etc.). Pass null when
+ *                   entityCode cannot be resolved to a company DB row.
  */
 export async function runDynamicBsAdapter(
   input: AdapterRunInput,
   planId: string,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _prisma: PrismaClient,
+  companyId?: string | null,
 ): Promise<AdapterRunResult> {
   // ── Guard: cross-entity sheets have no entityCode ─────────────────────────
   if (!input.entityCode) {
@@ -333,6 +337,7 @@ export async function runDynamicBsAdapter(
 
       rows.push({
         planId,
+        companyId: companyId ?? null, // Phase 7.O — company scope for resolver queries
         accountCode,
         accountName: label,
         lineType: classification.lineType,
