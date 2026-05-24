@@ -884,6 +884,87 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine", "fact:IND_NET_MARGIN@2025"],
     sortOrder: 3,
   },
+  // Phase 7.N — Legal exposure indicators. Sourced from court-disputes
+  // registry imported via scripts/import-court-disputes.ts into OperationalFact.
+  // Both are cross-sector (any industry with court exposure).
+  {
+    code: "LEGAL_CASES_ACTIVE",
+    nameEn: "Active Court Cases",
+    nameAz: "Aktiv Məhkəmə İşləri",
+    nameRu: "Активные судебные дела",
+    category: "governance",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "cases",
+    direction: "lower_better",
+    formula: "LEGAL_CASES_ACTIVE",
+    thresholds: {
+      // Benchmarks: 0-2 = normal for SME, 3-9 = elevated (active litigation),
+      // 10+ = systemic legal risk (resource drain + reputational overhang).
+      green: { op: "<=", value: 2 },
+      amber: { op: "<=", value: 9 },
+      red: { op: ">", value: 9 },
+    },
+    hintTemplateEn:
+      "Active court cases: {value}. ≤2 = normal SME exposure; 3-9 = elevated; ≥10 = systemic legal risk (staff + legal fees + reputation drain).",
+    hintTemplateRu:
+      "Активных судебных дел: {value}. ≤2 — норма для СМБ; 3-9 — повышенная нагрузка; ≥10 — системный правовой риск (ресурсы + репутация).",
+    hintTemplateAz:
+      "Aktiv məhkəmə işləri: {value}. ≤2 — KOS üçün norm; 3-9 — yüksəlmiş; ≥10 — sistemli hüquqi risk (xərclər + nüfuz).",
+    requiredInputs: ["operationalFact:LEGAL_CASES_ACTIVE"],
+    sortOrder: 4,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "LEGAL_CASES_TOTAL",
+    nameEn: "Total Court Cases (YTD)",
+    nameAz: "Ümumi Məhkəmə İşləri (İlin başından)",
+    nameRu: "Всего судебных дел (с начала года)",
+    category: "governance",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "cases",
+    direction: "lower_better",
+    formula: "LEGAL_CASES_TOTAL",
+    thresholds: {
+      green: { op: "<=", value: 5 },
+      amber: { op: "<=", value: 20 },
+      red: { op: ">", value: 20 },
+    },
+    hintTemplateEn:
+      "Total court cases YTD: {value}. High count signals litigation-prone relationships or regulatory non-compliance.",
+    hintTemplateRu:
+      "Всего судебных дел с начала года: {value}. Высокое число — признак конфликтных отношений или нарушений регуляторики.",
+    hintTemplateAz:
+      "Ümumi məhkəmə işləri (il ərzində): {value}. Yüksək say — münaqişəli münasibətlər və ya normativ pozuntular.",
+    requiredInputs: ["operationalFact:LEGAL_CASES_TOTAL"],
+    sortOrder: 5,
+    defaultValueSource: "disclosed",
+  },
 ];
 
 // ─── Industrial pack (4) ───────────────────────────────────────────────────

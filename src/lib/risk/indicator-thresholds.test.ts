@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("102 active indicator seeds (99 base + Phase 7.N: AGRO_REVENUE_PER_HA, AGRO_COST_PER_HA, AGRO_YIELD_EFFICIENCY)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(102)
+  it("104 active indicator seeds (102 base + Phase 7.N legal: LEGAL_CASES_ACTIVE, LEGAL_CASES_TOTAL)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(104)
   })
 
   it("every indicator has a unique code", () => {
