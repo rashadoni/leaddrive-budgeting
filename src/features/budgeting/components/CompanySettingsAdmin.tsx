@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Save, ChevronRight, AlertCircle, Check, ShieldAlert } from "lucide-react"
+import { Loader2, Save, ChevronRight, AlertCircle, Check, ShieldAlert, BookOpen, ChevronDown, ChevronUp } from "lucide-react"
 import {
   AGRO_REGIONS,
   AGRO_CROP_TYPES,
@@ -302,6 +302,115 @@ function RiskTagsPanel({
   )
 }
 
+interface RiskItem {
+  level1: string
+  level2: string
+  level3: string
+  kri: string
+  criticality: number
+  description: string
+  note?: string
+}
+
+const LEVEL1_COLORS: Record<string, string> = {
+  "Environmental risk":          "text-emerald-400",
+  "Financial risk":              "text-blue-400",
+  "Human capital risk":          "text-purple-400",
+  "Market & commercial risk":    "text-yellow-400",
+  "Operational risk":            "text-orange-400",
+  "Regulatory & compliance risk":"text-red-400",
+  "Strategic & reputational risk":"text-pink-400",
+  "Technology & data risk":      "text-cyan-400",
+}
+
+function RiskRegistryPanel({ companyId }: { companyId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["company-settings", companyId],
+    queryFn: () => fetchSettings(companyId),
+  })
+
+  const [expanded, setExpanded] = useState(false)
+  const [openRow, setOpenRow] = useState<number | null>(null)
+
+  const registry = Array.isArray((data?.settings as Record<string, unknown> | undefined)?.riskRegistry)
+    ? ((data!.settings as Record<string, unknown>).riskRegistry as RiskItem[])
+    : null
+
+  if (isLoading || !registry || registry.length === 0) return null
+
+  return (
+    <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20 space-y-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+      >
+        <BookOpen className="h-3.5 w-3.5" />
+        Risk registry
+        <span className="ml-1 text-xs text-muted-foreground/70">({registry.length})</span>
+        {expanded ? (
+          <ChevronUp className="h-3 w-3 ml-auto" />
+        ) : (
+          <ChevronDown className="h-3 w-3 ml-auto" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="space-y-1 pt-1">
+          {registry.map((item, idx) => {
+            const isOpen = openRow === idx
+            const color = LEVEL1_COLORS[item.level1] ?? "text-muted-foreground"
+            return (
+              <div key={idx} className="rounded border border-border/50 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setOpenRow(isOpen ? null : idx)}
+                  className="w-full text-left px-3 py-2 flex items-start gap-2 hover:bg-muted/30 transition-colors"
+                >
+                  <span className={`text-[9px] font-mono mt-0.5 shrink-0 ${color}`}>
+                    L{item.criticality}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{item.level3}</p>
+                    <p className={`text-[10px] ${color} truncate`}>
+                      {item.level1} › {item.level2}
+                    </p>
+                  </div>
+                  {isOpen ? (
+                    <ChevronUp className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground" />
+                  )}
+                </button>
+                {isOpen && (
+                  <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-border/40 bg-muted/10">
+                    <div className="pt-2">
+                      <span className="text-[9px] uppercase tracking-wider text-muted-foreground">KRI</span>
+                      <p className="text-xs mt-0.5">{item.kri}</p>
+                    </div>
+                    {item.description && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Description</span>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
+                      </div>
+                    )}
+                    {item.note && (
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Note</span>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.note}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface CompanySettingsFormProps {
   companyId: string
   companyCode: string
@@ -408,6 +517,7 @@ function CompanySettingsForm({
       )}
 
       <RiskTagsPanel companyId={companyId} canEdit={canEdit} />
+      <RiskRegistryPanel companyId={companyId} />
     </div>
   )
 }
