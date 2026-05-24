@@ -1179,6 +1179,15 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **ROADMAP §7.C stub-resolver debt** — closed. All resolver code is implemented; remaining `unknown` indicators are DATA gaps (operational-fact rows not yet in DB for non-AZSEKER companies).
   - tsc clean · vitest **5145/5145 passing** (+6 net new).
 
+- **2026-05-24 (Phase 7.O — Data applied + Audit follow-up import)**
+  - **Phase 7.O migration applied** (`20260524140000_phase7o_balance_sheet_company_id` + `20260524120000_phase7n_indicator_weight`) via `prisma migrate deploy`. Prisma client regenerated.
+  - **`companyId` backfilled** on all 306 existing AZSEKER BS rows via precise SQL (`accountCode LIKE '<code>-BS.%'`); sub-entities correctly separated (CPC=64, AZSF=72, EDEN=80, MALT=90). Parent `AZSEKER` code excluded (no direct BS rows).
+  - **Indicators re-seeded**: `npx tsx scripts/seed-indicators.ts` → 104 updated (including 3 inventory-turn indicators now using `balanceSheetLine.inventory` resolver).
+  - **Risk registry applied**: `scripts/import-risk-registry.ts` — 15 structured risks → `AZSEKER-EDEN.settings.riskRegistry`.
+  - **Court disputes applied**: `scripts/import-court-disputes.ts` — 54 cases (37 active) → `org.settings.courtDisputes` + OperationalFacts (LEGAL_CASES_TOTAL/ACTIVE per company).
+  - **NEW: `scripts/import-audit-followup.ts`** — imports PBC audit tracker from `Follow up - For GTC.xlsx` (217 rows, 2 companies). Writes 6 OperationalFact metrics per company: `AUDIT_MAJOR_OPEN`, `AUDIT_MINOR_OPEN`, `AUDIT_OBSERVATION_OPEN`, `AUDIT_OFI_OPEN`, `AUDIT_TOTAL`, `AUDIT_CLOSED_PCT`. Applied: Azərşəkər (total=158, closed=67%), CPC (total=59, closed=80%). `org.settings.auditFollowup` snapshot also stored.
+  - vitest 5145/5145 passing · tsc clean.
+
 - **2026-05-24 (Phase 7.M — Dynamic BS + CF adapters: AI-powered fallback for balance sheets and cash flows)**
   - **Mirrors the Dynamic PLF adapter** — same LLM + 24h `AIMapperProposalCache` pipeline, now for BS and CF sheets.
   - **`dynamic-bs-adapter.ts`** (NEW, ~260 LOC) — `runDynamicBsAdapter(input, planId, prisma)`: extracts mapper input → LLM proposal → `resolveColumnsPartial` (accepts partial month coverage, unlike PLF's strict 12-month requirement) → detects year → walks BS leaf codes (`BS.XX.XX.XX`) → classifies lineType (asset/equity/liability) + subType (non_current/current/long_term/short_term) → stores amounts as-is (no sign inversion — BS values are point-in-time snapshots) → calls `runBalanceSheetBatch`.
