@@ -977,6 +977,89 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     sortOrder: 5,
     defaultValueSource: "disclosed",
   },
+  // Phase 7.O (2026-05-24) — PBC audit-follow-up indicators. Sourced from
+  // "Follow up - For GTC.xlsx" imported via scripts/import-audit-followup.ts.
+  // Governance tier — tracks internal-audit finding resolution rate.
+  {
+    code: "AUDIT_CLOSED_PCT",
+    nameEn: "Audit Findings Closed (%)",
+    nameAz: "Audit Tapıntılarının Bağlanması (%)",
+    nameRu: "Закрытые аудиторские замечания (%)",
+    category: "governance",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "%",
+    direction: "higher_better",
+    formula: "AUDIT_CLOSED_PCT",
+    thresholds: {
+      // ≥80 % → management is on top of audit remediation
+      // 60-79 % → acceptable but lagging — escalation warranted
+      // <60 % → systemic non-remediation: audit value destroyed
+      green: { op: ">=", value: 80 },
+      amber: { op: ">=", value: 60 },
+      red: { op: "<", value: 60 },
+    },
+    hintTemplateEn:
+      "PBC audit findings closed: {value}%. ≥80% = on-track remediation; 60-79% = lagging; <60% = systemic non-compliance with audit actions.",
+    hintTemplateRu:
+      "Закрыто аудиторских замечаний: {value}%. ≥80% — своевременное устранение; 60-79% — отставание; <60% — системная неустранимость замечаний.",
+    hintTemplateAz:
+      "Audit tapıntılarından bağlananlar: {value}%. ≥80% — vaxtında aradan qaldırma; 60-79% — gecikmə; <60% — sistemli uyumsuzluq.",
+    requiredInputs: ["operationalFact:AUDIT_CLOSED_PCT"],
+    sortOrder: 6,
+    defaultValueSource: "disclosed",
+  },
+  {
+    code: "AUDIT_MAJOR_OPEN",
+    nameEn: "Open Major Audit Findings",
+    nameAz: "Açıq Əsas Audit Tapıntıları",
+    nameRu: "Открытые серьёзные аудиторские замечания",
+    category: "governance",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "count",
+    direction: "lower_better",
+    formula: "AUDIT_MAJOR_OPEN",
+    thresholds: {
+      // Major = control deficiencies; even 1 is yellow; >5 = systemic
+      green: { op: "<=", value: 1 },
+      amber: { op: "<=", value: 5 },
+      red: { op: ">", value: 5 },
+    },
+    hintTemplateEn:
+      "Open major audit findings: {value}. 0-1 = controlled; 2-5 = elevated control risk; >5 = systemic weakness requiring board escalation.",
+    hintTemplateRu:
+      "Открытых серьёзных замечаний: {value}. 0-1 — под контролем; 2-5 — повышенный риск; >5 — системные недостатки, требуют эскалации.",
+    hintTemplateAz:
+      "Açıq əsas audit tapıntıları: {value}. 0-1 — nəzarət altında; 2-5 — yüksəlmiş risk; >5 — sistemli zəiflik, idarə heyətinə çatdırılmalı.",
+    requiredInputs: ["operationalFact:AUDIT_MAJOR_OPEN"],
+    sortOrder: 7,
+    defaultValueSource: "disclosed",
+  },
 ];
 
 // ─── Industrial pack (4) ───────────────────────────────────────────────────
