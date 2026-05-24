@@ -102,6 +102,10 @@ export function HeatMap({ period }: Props) {
   const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
   const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
   const compactMode = useTerminalStore((s) => s.compactMode);
+  // Phase 7.N — scenario overlay
+  const scenarioDelta = useTerminalStore((s) => s.scenarioDelta);
+  const activeScenarioLabel = useTerminalStore((s) => s.activeScenarioLabel);
+  const clearScenarioDelta = useTerminalStore((s) => s.clearScenarioDelta);
   // Financial-truth-infra Phase E.4 — pull org-level lockedPeriods so the
   // HeatMap header surfaces a 🔒 badge when the current period is signed
   // off. Hand-rolled fetch (no useQuery) so existing test harnesses don't
@@ -605,6 +609,20 @@ export function HeatMap({ period }: Props) {
             )}
           </span>
         )}
+        {/* Phase 7.N — scenario mode badge */}
+        {activeScenarioLabel && (
+          <span className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border border-[#FFB800]/50 bg-[#FFB800]/10 text-[#FFB800] text-[9px] uppercase tracking-wider font-semibold">
+            <span>⚡ СЦЕНАРИЙ: {activeScenarioLabel}</span>
+            <button
+              type="button"
+              onClick={() => clearScenarioDelta()}
+              className="ml-1 opacity-70 hover:opacity-100"
+              title="Вернуться к базовым данным"
+            >
+              ×
+            </button>
+          </span>
+        )}
       </div>
 
       {/* CLI Bloomberg-sweep: period chip row — annual / quarters / months.
@@ -827,6 +845,7 @@ export function HeatMap({ period }: Props) {
                     </th>
                     {indicators.map((ind) => {
                       const c = cellMap.get(cellKey(co.id, ind.id));
+                      const scenarioStatus = scenarioDelta?.get(`${co.id}:${ind.code}`) ?? undefined;
                       return (
                         <HeatMapCellTd
                           key={ind.id}
@@ -834,6 +853,7 @@ export function HeatMap({ period }: Props) {
                           ind={ind}
                           cell={c}
                           compactMode={compactMode}
+                          scenarioStatus={scenarioStatus}
                           onCellClick={() => {
                             // Cell click ALWAYS selects company. Two
                             // panel-3 paths split on whether the cell
@@ -1042,6 +1062,8 @@ type HeatMapCellTdProps = {
   cell: HeatMapCell | undefined;
   compactMode: boolean;
   onCellClick: () => void;
+  /** Phase 7.N — scenario delta: scenario status for this cell, or undefined if unchanged. */
+  scenarioStatus?: string;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1156,7 +1178,7 @@ function useAISummary(ivId: string | undefined, locale: string): AISummaryEntry 
 // nodes. Earlier `defaultOpen` lazy-mount caused tooltip pile-up on cursor
 // sweep (each cell's Tooltip initialized to open=true and Radix did not
 // transition to closed on pointerleave from the forced-open initial state).
-function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellTdProps) {
+function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick }: HeatMapCellTdProps) {
   // CLI Tier 2 — distinguish "N/A" (indicator not applicable to this
   // company's industry — e.g. AGRO_YIELD on services entity) from
   // "missing" (applicable but no computed value). Empty industries[]
@@ -1209,12 +1231,19 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
   // tooltip text. `missing` is also kept neutral.
   const baseColor = statusColor(status === 'na' || status === 'unknown' ? 'missing' : status);
   const color = status === 'na' || status === 'unknown' ? '#0A0E27' : baseColor;
+  // Phase 7.N — scenario overlay: if scenarioStatus set, use it as the effective color.
+  // M7 gate: scenarioShape companion ensures color-blind safe glyph is rendered in the
+  // scenario badge span below (aria-hidden=true, bottom-left corner of cell).
+  const effectiveStatus = scenarioStatus ?? status;
+  const scenarioColor = scenarioStatus ? statusColor(scenarioStatus as 'green' | 'amber' | 'red') : null;
+  const scenarioShape = scenarioStatus ? statusShape(scenarioStatus as Parameters<typeof statusShape>[0]) : null; // M7 shape companion
+  const cellBgColor = scenarioColor ?? color;
   const statusColorClass =
-    status === 'red'
+    effectiveStatus === 'red'
       ? 'text-[#FF4757]'
-      : status === 'amber'
+      : effectiveStatus === 'amber'
       ? 'text-[#FFA502]'
-      : status === 'green'
+      : effectiveStatus === 'green'
       ? 'text-[#00D4AA]'
       : 'text-muted-foreground';
 
@@ -1246,8 +1275,9 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
       : cell?.materiality === 'low_materiality'
         ? 0.45
         : 1;
+  // Phase 7.N — use scenarioColor for background when scenario active
   const materialityBackground =
-    cell?.materiality === 'not_material' ? '#1F2937' : color;
+    cell?.materiality === 'not_material' ? '#1F2937' : cellBgColor;
   // Phase 7.M Step 2 (2026-05-18) — `signalConfidence` visual cue.
   // Only `low` cells get a marker; `medium` and `high` render normally
   // so the HeatMap doesn't drown in noise. The marker is an inset
@@ -1336,6 +1366,26 @@ function HeatMapCellTd({ co, ind, cell, compactMode, onCellClick }: HeatMapCellT
                 }}
               >
                 {statusShape(status)}
+              </span>
+            )}
+            {/* Phase 7.N — scenario shape glyph (M7 companion for scenarioColor).
+                Renders a tiny shape at bottom-left when scenario is active on this
+                cell. Gives color-blind users a redundant signal that the cell status
+                changed under the scenario. */}
+            {scenarioShape && (
+              <span
+                aria-hidden="true"
+                data-testid="heatmap-scenario-shape"
+                className="absolute bottom-0 left-0.5 leading-none"
+                style={{
+                  fontSize: compactMode ? 6 : 8,
+                  opacity: 0.9,
+                  color: '#FFFFFF',
+                  mixBlendMode: 'difference',
+                  pointerEvents: 'none',
+                }}
+              >
+                {scenarioShape}
               </span>
             )}
             {/* Phase 7.H F4.v2.1 — modeled-source marker at top-LEFT

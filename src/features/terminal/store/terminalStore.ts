@@ -123,6 +123,15 @@ export interface TerminalState {
    * `null` until first matrix lands; empty array = no alerts triggered.
    */
   alertMatches: readonly AlertMatch[] | null;
+  /**
+   * Phase 7.N — active scenario simulation overlay.
+   * `scenarioDelta` maps `"${companyId}:${indicatorCode}"` → scenario status.
+   * Only changed cells are in the map. HeatMap renders delta color when key present.
+   * `null` = no scenario active (baseline mode).
+   */
+  scenarioDelta: ReadonlyMap<string, string> | null;
+  /** Name shown in HeatMap scenario badge. */
+  activeScenarioLabel: string | null;
 }
 
 export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent' | 'sector';
@@ -184,6 +193,10 @@ export interface TerminalActions {
   toggleStarredCompany: (code: string) => void;
   setAlertedCompanyCodes: (codes: ReadonlySet<string> | null) => void;
   setAlertMatches: (matches: readonly AlertMatch[] | null) => void;
+  /** Phase 7.N — apply scenario delta overlay to HeatMap. */
+  setScenarioDelta: (delta: ReadonlyMap<string, string> | null, label: string | null) => void;
+  /** Phase 7.N — clear scenario overlay (return to baseline). */
+  clearScenarioDelta: () => void;
   clearState: () => void;
 }
 
@@ -266,6 +279,8 @@ let globalState: TerminalState = {
   recentCompanyCodes: [],
   alertedCompanyCodes: null,
   alertMatches: null,
+  scenarioDelta: null,
+  activeScenarioLabel: null,
 };
 
 /**
@@ -418,6 +433,10 @@ const actions: TerminalActions = {
   setAlertedCompanyCodes: (codes) =>
     setGlobalState({ alertedCompanyCodes: codes }),
   setAlertMatches: (matches) => setGlobalState({ alertMatches: matches }),
+  setScenarioDelta: (delta, label) =>
+    setGlobalState({ scenarioDelta: delta, activeScenarioLabel: label }),
+  clearScenarioDelta: () =>
+    setGlobalState({ scenarioDelta: null, activeScenarioLabel: null }),
   setCompactMode: (mode) => {
     setGlobalState({ compactMode: mode });
     writeCompactModeToStorage(mode);
@@ -447,6 +466,8 @@ const actions: TerminalActions = {
       recentCompanyCodes: [],
       alertedCompanyCodes: null,
       alertMatches: null,
+      scenarioDelta: null,
+      activeScenarioLabel: null,
     });
     if (typeof window !== 'undefined') {
       try {

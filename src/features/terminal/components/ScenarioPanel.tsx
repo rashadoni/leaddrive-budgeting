@@ -1,40 +1,24 @@
 "use client";
 
 /**
- * Phase C4 v1 — Scenario runner modal for Risk Terminal.
+ * Phase 7.N — Scenario runner modal (live What-if).
  *
- * Bloomberg-style overlay listing every scenario in the org's catalog
- * (`Scenario` Prisma model — keyed by `code`, carries an `overrides`
- * JSON blob describing the what-if shifts). Opens on the
- * `terminal:open-scenario` window event (CommandBar `SCN <code> GO`
- * dispatch) OR when the user manually mounts the modal via future
- * hotkey-toolbar `SCENARIOS` button.
- *
- * v1 scope (Phase C4 — visible inspector):
- *  - Lists scenarios (GET /api/scenarios; tenant-scoped server-side).
- *  - Pre-selects the scenario whose `code` matches `activeScenarioCode`
- *    in the store when the SCN dispatch event fires.
- *  - Shows the selected scenario's `overrides` JSON in human-readable
- *    pre-formatted form (no spreadsheet-style editor in v1).
- *  - "Apply" button POSTs to /api/scenarios with `{scenarioId, period}`
- *    — the route returns 202 (queued) per the existing stub; we surface
- *    the queued response so users see the system accepted the request
- *    even though Phase 6 BullMQ scheduler hasn't shipped the worker.
- *
- * v2 follow-ups (already 🔄'd in CARRYOVER as part of plan §C4):
- *  - Live HeatMap recompute under scenario overrides (needs Phase 6
- *    BullMQ + worker + IndicatorValue overlay layer in matrix endpoint).
- *  - Scenario CRUD UI (create/edit/disable from terminal — currently
- *    seed-only).
- *  - Side-by-side baseline vs scenario indicator delta view.
+ * v2 replaces the v1 "queued" stub with:
+ *  1. GET /api/scenarios/[id]/simulate  — real post-hoc indicator delta
+ *  2. Delta table: shows which indicators change color (baseline → scenario)
+ *  3. "Применить к HeatMap" — stores delta in terminalStore; HeatMap
+ *     overlays scenario colors on changed cells instantly (no reload).
+ *  4. Scenario badge on HeatMap with "×" to return to baseline.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslations, useLocale } from "next-intl";
+import { useLocale } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
-import { Beaker, X } from "lucide-react";
+import { Beaker, X, TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Scenario {
   id: string;
@@ -47,41 +31,103 @@ interface Scenario {
   isActive: boolean;
 }
 
-type ApplyState =
+interface IndicatorDelta {
+  companyId: string;
+  companyCode: string;
+  companyName: string;
+  code: string;
+  baselineStatus: string;
+  scenarioStatus: string;
+  baselineValue: number;
+  scenarioValue: number;
+  changed: boolean;
+  note?: string;
+}
+
+interface SimulationResult {
+  scenarioCode: string;
+  scenarioId: string;
+  scenarioNameRu: string;
+  scenarioNameEn: string;
+  period: string;
+  deltas: IndicatorDelta[];
+  changed: number;
+  unchanged: number;
+  worsened: number;
+  improved: number;
+  deltaMap: Record<string, string>;
+}
+
+type SimState =
   | { kind: "idle" }
-  | { kind: "applying" }
-  | { kind: "queued"; message: string; scenarioCode: string }
+  | { kind: "loading" }
+  | { kind: "done"; result: SimulationResult }
+  | { kind: "unsupported" }
   | { kind: "error"; message: string };
 
+// ─── Status helpers ───────────────────────────────────────────────────────────
+
+const STATUS_COLOR: Record<string, string> = {
+  green: "text-emerald-500",
+  amber: "text-[#FFB800]",
+  red: "text-red-500",
+  unknown: "text-muted-foreground",
+};
+
+const STATUS_BG: Record<string, string> = {
+  green: "bg-emerald-500/15 border-emerald-500/30",
+  amber: "bg-[#FFB800]/15 border-[#FFB800]/30",
+  red: "bg-red-500/15 border-red-500/30",
+  unknown: "bg-muted/20 border-border",
+};
+
+const STATUS_DOT: Record<string, string> = {
+  green: "bg-emerald-500",
+  amber: "bg-[#FFB800]",
+  red: "bg-red-500",
+  unknown: "bg-muted-foreground",
+};
+
+function StatusDot({ status }: { status: string }) {
+  return (
+    <span
+      className={`inline-block w-2 h-2 rounded-full ${STATUS_DOT[status] ?? STATUS_DOT.unknown}`}
+    />
+  );
+}
+
+function fmt(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  return Math.abs(v) >= 1000
+    ? v.toLocaleString("ru-RU", { maximumFractionDigits: 0 })
+    : v.toFixed(2);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function ScenarioPanel() {
-  const t = useTranslations("terminal");
-  // Phase 7.G Turn K (closes Turn-H' filed Scenario.nameEn migration 🔄)
-  // — locale-aware scenario labels via the new resolveScenarioLabel
-  // helper. Mirrors the resolveIndicatorLabel pattern at HeatMap.tsx /
-  // IndicatorDetail.tsx / CommandBar.tsx etc. Schema + seed already
-  // populate nameRu/nameAz for all named scenarios; this turn wires
-  // the consumers.
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [applyState, setApplyState] = useState<ApplyState>({ kind: "idle" });
-  const activeScenarioCode = useTerminalStore((s) => s.activeScenarioCode);
+  const [simState, setSimState] = useState<SimState>({ kind: "idle" });
 
-  // Default period for apply — matches the canonical `currentBakuYear()`
-  // reader used by the matrix endpoint and recompute pipeline (Asia/Baku
-  // anchored; closes Phase 7.G Turn XXXIII paired-row L416/L433). v2 can
-  // switch to user-selectable period / company scope; v1 ships the same
-  // default the rest of the terminal uses.
+  const activeScenarioCode = useTerminalStore((s) => s.activeScenarioCode);
+  const setScenarioDelta = useTerminalStore((s) => s.setScenarioDelta);
+  const clearScenarioDelta = useTerminalStore((s) => s.clearScenarioDelta);
+  const activeScenarioLabel = useTerminalStore((s) => s.activeScenarioLabel);
+
   const period = useMemo(() => currentBakuYear(), []);
 
+  // Open/close on global event
   useEffect(() => {
     const onOpen = () => setOpen(true);
     window.addEventListener("terminal:open-scenario", onOpen);
     return () => window.removeEventListener("terminal:open-scenario", onOpen);
   }, []);
 
+  // Escape to close
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -94,7 +140,7 @@ export function ScenarioPanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  // Fetch scenarios on first open.
+  // Fetch scenario list on first open
   useEffect(() => {
     if (!open || scenarios !== null) return;
     let aborted = false;
@@ -104,30 +150,18 @@ export function ScenarioPanel() {
         return r.json();
       })
       .then((data: Scenario[]) => {
-        if (aborted) return;
-        setScenarios(Array.isArray(data) ? data : []);
+        if (!aborted) setScenarios(Array.isArray(data) ? data : []);
       })
       .catch((e: unknown) => {
-        if (aborted) return;
-        // Architect Round-1 ⚠️ closure: leave `scenarios=null` on error
-        // so the empty-state copy ("No scenarios seeded") doesn't render
-        // alongside the red fetchError chip — empty + error were
-        // contradictory. Render now treats null+error as the error
-        // branch; loading-state suppressed when fetchError set.
-        setFetchError(e instanceof Error ? e.message : String(e));
+        if (!aborted)
+          setFetchError(e instanceof Error ? e.message : String(e));
       });
     return () => {
       aborted = true;
     };
   }, [open, scenarios]);
 
-  // When scenarios list lands AND the SCN dispatch pinned a code, auto-
-  // select that scenario by code → id. Architect Round-1 ⚠️ closure:
-  // tracks `lastSyncedCode` ref so re-firing the effect (scenarios memo
-  // change) doesn't clobber the user's manual row click. The effect
-  // RE-syncs only when `activeScenarioCode` itself changes (e.g. user
-  // types another `SCN OTHER GO` mid-open) — that's the desired re-pin.
-  // Modal close resets the ref so the next open auto-syncs again.
+  // Auto-select when SCN <code> GO fires
   const lastSyncedCode = useRef<string | null>(null);
   useEffect(() => {
     if (!open) {
@@ -139,6 +173,7 @@ export function ScenarioPanel() {
     const match = scenarios.find((s) => s.code === activeScenarioCode);
     if (match) {
       setSelectedId(match.id);
+      setSimState({ kind: "idle" });
       lastSyncedCode.current = activeScenarioCode;
     }
   }, [open, scenarios, activeScenarioCode]);
@@ -148,100 +183,113 @@ export function ScenarioPanel() {
     [scenarios, selectedId],
   );
 
-  const handleApply = useCallback(async () => {
-    if (!selectedScenario || applyState.kind === "applying") return;
-    setApplyState({ kind: "applying" });
+  // ── Run simulation ──────────────────────────────────────────────────────────
+  const handleSimulate = useCallback(async () => {
+    if (!selectedScenario || simState.kind === "loading") return;
+    setSimState({ kind: "loading" });
     try {
-      const res = await fetch("/api/scenarios", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ scenarioId: selectedScenario.id, period }),
-      });
+      const res = await fetch(
+        `/api/scenarios/${selectedScenario.id}/simulate?period=${period}`,
+      );
+      if (res.status === 422) {
+        setSimState({ kind: "unsupported" });
+        return;
+      }
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(`POST /api/scenarios ${res.status}: ${body}`);
+        throw new Error(`simulate ${res.status}: ${body}`);
       }
-      const json = (await res.json()) as {
-        message?: string;
-        scenarioCode?: string;
-      };
-      setApplyState({
-        kind: "queued",
-        message: json.message ?? "Queued",
-        scenarioCode: json.scenarioCode ?? selectedScenario.code,
-      });
+      const result = (await res.json()) as SimulationResult;
+      setSimState({ kind: "done", result });
     } catch (e: unknown) {
-      setApplyState({
+      setSimState({
         kind: "error",
         message: e instanceof Error ? e.message : String(e),
       });
     }
-  }, [selectedScenario, applyState.kind, period]);
+  }, [selectedScenario, simState.kind, period]);
+
+  // ── Apply delta to HeatMap ──────────────────────────────────────────────────
+  const handleApplyToHeatMap = useCallback(() => {
+    if (simState.kind !== "done") return;
+    const { result } = simState;
+    const map = new Map<string, string>(Object.entries(result.deltaMap));
+    const label =
+      locale === "ru"
+        ? result.scenarioNameRu
+        : result.scenarioNameEn;
+    setScenarioDelta(map, label);
+    setOpen(false);
+  }, [simState, locale, setScenarioDelta]);
 
   if (!open) return null;
 
-  const formattedOverrides = selectedScenario
-    ? JSON.stringify(selectedScenario.overrides, null, 2)
-    : "";
+  const changedDeltas =
+    simState.kind === "done"
+      ? simState.result.deltas.filter((d) => d.changed)
+      : [];
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("scenario.dialogAriaLabel")}
+      aria-label="Сценарный анализ"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+      <div className="relative w-full max-w-5xl max-h-[88vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+        {/* Header */}
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
             <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                {t("scenario.title")}
+                Сценарный анализ (What-if)
               </h2>
               <p className="text-xs text-muted-foreground">
-                {t("scenario.subtitle")}
+                Живое моделирование — выбери сценарий → Смоделировать → Применить к HeatMap
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label={t("scenario.closeAriaLabel")}
-            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
+          <div className="flex items-center gap-2">
+            {activeScenarioLabel && (
+              <button
+                type="button"
+                onClick={() => clearScenarioDelta()}
+                className="rounded border border-red-500/30 bg-red-500/10 text-red-400 px-2 py-1 text-xs hover:bg-red-500/20"
+              >
+                Сбросить: {activeScenarioLabel}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Закрыть"
+              className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
+            >
+              <X size={14} aria-hidden="true" />
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
-          <aside aria-label={t("scenario.listAriaLabel")}>
+          {/* Scenario list */}
+          <aside>
             <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">
-              {t("scenario.available")} ({scenarios?.length ?? 0})
+              Сценарии ({scenarios?.length ?? 0})
             </h3>
-            {scenarios === null && !fetchError ? (
-              <p
-                className="text-sm text-muted-foreground"
-                data-testid="scenarios-loading"
-              >
-                {t("scenario.loading")}
-              </p>
-            ) : scenarios !== null && scenarios.length === 0 ? (
-              <p
-                className="text-sm text-muted-foreground"
-                data-testid="scenarios-empty"
-              >
-                {t("scenario.noScenarios")}
-              </p>
-            ) : scenarios === null && fetchError ? (
-              // Error path: scenarios stayed null on fetch fail; the
-              // fetchError chip below carries the message. Render
-              // nothing here so empty + error don't both show.
-              null
-            ) : scenarios !== null && scenarios.length > 0 ? (
+            {scenarios === null && !fetchError && (
+              <p className="text-sm text-muted-foreground">Загрузка…</p>
+            )}
+            {fetchError && (
+              <p className="text-xs text-red-500 mt-2">{fetchError}</p>
+            )}
+            {scenarios !== null && scenarios.length === 0 && (
+              <p className="text-sm text-muted-foreground">Сценарии не найдены</p>
+            )}
+            {scenarios && scenarios.length > 0 && (
               <ul className="space-y-1">
                 {scenarios.map((s) => {
                   const isSelected = s.id === selectedId;
@@ -251,9 +299,9 @@ export function ScenarioPanel() {
                         type="button"
                         onClick={() => {
                           setSelectedId(s.id);
-                          setApplyState({ kind: "idle" });
+                          setSimState({ kind: "idle" });
                         }}
-                        className={`w-full text-left px-2 py-1.5 rounded border text-xs font-mono ${
+                        className={`w-full text-left px-2 py-1.5 rounded border text-xs font-mono transition-colors ${
                           isSelected
                             ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
                             : "border-input hover:bg-muted/50 text-muted-foreground"
@@ -261,7 +309,7 @@ export function ScenarioPanel() {
                         data-testid={`scenario-row-${s.code}`}
                       >
                         <div className="font-semibold">{s.code}</div>
-                        <div className="opacity-70 text-[10px] mt-0.5 line-clamp-1">
+                        <div className="opacity-70 text-[10px] mt-0.5 line-clamp-2">
                           {resolveScenarioLabel(s, locale)}
                         </div>
                       </button>
@@ -269,33 +317,26 @@ export function ScenarioPanel() {
                   );
                 })}
               </ul>
-            ) : null}
-            {fetchError && (
-              <p
-                role="alert"
-                className="text-xs text-red-600 dark:text-red-400 mt-2"
-                data-testid="scenarios-fetch-error"
-              >
-                {fetchError}
-              </p>
             )}
           </aside>
 
-          <section aria-label={t("scenario.detailAriaLabel")}>
+          {/* Detail + simulation */}
+          <section>
             {selectedScenario === null ? (
               <p className="text-sm text-muted-foreground">
                 {scenarios && scenarios.length > 0
-                  ? t("scenario.selectFromList")
-                  : t("scenario.noSelected")}
+                  ? "Выбери сценарий слева"
+                  : "Нет доступных сценариев"}
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Scenario header */}
                 <div>
                   <h3 className="text-base font-semibold">
                     {resolveScenarioLabel(selectedScenario, locale)}
                   </h3>
                   <p className="text-xs text-muted-foreground font-mono">
-                    {selectedScenario.code}
+                    {selectedScenario.code} · период: {period}
                   </p>
                 </div>
                 {selectedScenario.description && (
@@ -303,49 +344,151 @@ export function ScenarioPanel() {
                     {selectedScenario.description}
                   </p>
                 )}
-                <div>
-                  <h4 className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
-                    {t("scenario.overrides")}
-                  </h4>
-                  <pre
-                    className="text-xs font-mono bg-black/30 border border-border rounded p-3 overflow-x-auto"
-                    data-testid="scenario-overrides"
-                  >
-                    {formattedOverrides}
-                  </pre>
-                </div>
-                <div className="flex items-center gap-3 pt-2 border-t border-border">
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-1">
                   <button
                     type="button"
-                    onClick={handleApply}
-                    disabled={applyState.kind === "applying"}
-                    className="rounded border border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800] px-3 py-1.5 text-sm hover:bg-[#FFB800]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="scenario-apply-button"
+                    onClick={handleSimulate}
+                    disabled={simState.kind === "loading"}
+                    className="rounded border border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800] px-4 py-1.5 text-sm font-medium hover:bg-[#FFB800]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="scenario-simulate-button"
                   >
-                    {applyState.kind === "applying" ? t("scenario.applying") : t("scenario.apply")}
+                    {simState.kind === "loading" ? "Моделирование…" : "⚡ Смоделировать"}
                   </button>
-                  <span className="text-xs text-muted-foreground">
-                    {t("scenario.period")}: <span className="font-mono">{period}</span>
-                  </span>
+
+                  {simState.kind === "done" && (
+                    <button
+                      type="button"
+                      onClick={handleApplyToHeatMap}
+                      className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 px-4 py-1.5 text-sm font-medium hover:bg-emerald-500/20"
+                      data-testid="scenario-apply-heatmap"
+                    >
+                      ✓ Применить к HeatMap
+                    </button>
+                  )}
                 </div>
-                {applyState.kind === "queued" && (
-                  <p
-                    className="text-sm text-emerald-600 dark:text-emerald-400"
-                    data-testid="scenario-applied"
-                  >
-                    ✓ {applyState.scenarioCode}: {applyState.message}.
-                    {" "}Live recompute lands with Phase 6 BullMQ worker; v1
-                    surfaces the queue acknowledgement only.
+
+                {/* Simulation results */}
+                {simState.kind === "unsupported" && (
+                  <p className="text-sm text-amber-500">
+                    ⚠ Этот сценарий не поддерживает симуляцию (нет поля adjustments).
+                    Обновите сценарий командой seed-scenarios.
                   </p>
                 )}
-                {applyState.kind === "error" && (
-                  <p
-                    role="alert"
-                    className="text-sm text-red-600 dark:text-red-400"
-                    data-testid="scenario-apply-error"
-                  >
-                    {t("scenario.applyFailed")}: {applyState.message}
+                {simState.kind === "error" && (
+                  <p className="text-sm text-red-500">
+                    Ошибка: {simState.message}
                   </p>
+                )}
+
+                {simState.kind === "done" && (
+                  <div className="space-y-3">
+                    {/* Summary chips */}
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="px-2 py-0.5 rounded border border-border bg-muted/30">
+                        Проверено: <strong>{simState.result.deltas.length + simState.result.unchanged}</strong> индикаторов
+                      </span>
+                      <span className="px-2 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-red-400">
+                        <TrendingDown size={10} className="inline mr-1" />
+                        Ухудшились: <strong>{simState.result.worsened}</strong>
+                      </span>
+                      {simState.result.improved > 0 && (
+                        <span className="px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                          <TrendingUp size={10} className="inline mr-1" />
+                          Улучшились: <strong>{simState.result.improved}</strong>
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded border border-border bg-muted/20 text-muted-foreground">
+                        <Minus size={10} className="inline mr-1" />
+                        Без изменений: <strong>{simState.result.unchanged}</strong>
+                      </span>
+                    </div>
+
+                    {/* Delta table */}
+                    {changedDeltas.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Ни один индикатор не меняет цвет при этом сценарии.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-border text-muted-foreground">
+                              <th className="text-left py-1.5 pr-3 font-medium">Компания</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">Индикатор</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">Базовый</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">Сценарий</th>
+                              <th className="text-right py-1.5 pr-3 font-medium">Значение было</th>
+                              <th className="text-right py-1.5 font-medium">Значение стало</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {changedDeltas.map((d, i) => {
+                              const worsened =
+                                (d.scenarioStatus === "red" && d.baselineStatus !== "red") ||
+                                (d.scenarioStatus === "amber" && d.baselineStatus === "green");
+                              return (
+                                <tr
+                                  key={i}
+                                  className={`border-b border-border/40 ${
+                                    worsened
+                                      ? "bg-red-500/5"
+                                      : "bg-emerald-500/5"
+                                  }`}
+                                >
+                                  <td className="py-1.5 pr-3 font-mono text-[10px] text-muted-foreground">
+                                    {d.companyCode}
+                                  </td>
+                                  <td className="py-1.5 pr-3 font-mono text-[10px]">
+                                    {d.code}
+                                    {d.note && (
+                                      <div className="text-muted-foreground opacity-70 text-[9px]">
+                                        {d.note}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${STATUS_BG[d.baselineStatus] ?? STATUS_BG.unknown}`}
+                                    >
+                                      <StatusDot status={d.baselineStatus} />
+                                      <span className={STATUS_COLOR[d.baselineStatus] ?? ""}>
+                                        {d.baselineStatus}
+                                      </span>
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 pr-3">
+                                    <span
+                                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${STATUS_BG[d.scenarioStatus] ?? STATUS_BG.unknown}`}
+                                    >
+                                      <StatusDot status={d.scenarioStatus} />
+                                      <span className={STATUS_COLOR[d.scenarioStatus] ?? ""}>
+                                        {d.scenarioStatus}
+                                      </span>
+                                      {worsened ? (
+                                        <TrendingDown size={9} className="ml-0.5 text-red-400" />
+                                      ) : (
+                                        <TrendingUp size={9} className="ml-0.5 text-emerald-400" />
+                                      )}
+                                    </span>
+                                  </td>
+                                  <td className="py-1.5 pr-3 text-right font-mono text-muted-foreground">
+                                    {fmt(d.baselineValue)}
+                                  </td>
+                                  <td className="py-1.5 text-right font-mono">
+                                    <span className={worsened ? "text-red-400" : "text-emerald-400"}>
+                                      {fmt(d.scenarioValue)}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
