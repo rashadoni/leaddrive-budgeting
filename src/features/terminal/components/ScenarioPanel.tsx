@@ -14,9 +14,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
-import { Beaker, X, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2 } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
+import { ScenarioFormModal, type ScenarioFormValues } from "./ScenarioFormModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,6 +113,11 @@ export function ScenarioPanel() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [simState, setSimState] = useState<SimState>({ kind: "idle" });
+
+  // CRUD form state
+  const [formScenario, setFormScenario] = useState<ScenarioFormValues | undefined>(undefined);
+  const [formOpen, setFormOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const activeScenarioCode = useTerminalStore((s) => s.activeScenarioCode);
   const setScenarioDelta = useTerminalStore((s) => s.setScenarioDelta);
@@ -222,6 +228,52 @@ export function ScenarioPanel() {
     setOpen(false);
   }, [simState, locale, setScenarioDelta]);
 
+  // ── CRUD helpers ─────────────────────────────────────────────────────────────
+  const openCreateForm = useCallback(() => {
+    setFormScenario(undefined);
+    setFormOpen(true);
+  }, []);
+
+  const openEditForm = useCallback((s: Scenario) => {
+    setFormScenario({
+      id: s.id,
+      code: s.code,
+      nameEn: s.nameEn,
+      nameRu: s.nameRu ?? "",
+      description: s.description ?? "",
+      overrides: JSON.stringify(s.overrides, null, 2),
+    });
+    setFormOpen(true);
+  }, []);
+
+  const handleFormSaved = useCallback(
+    (saved: { id: string; code: string; nameEn: string }) => {
+      // Refresh the scenario list so edits are reflected immediately.
+      setScenarios(null);
+      // Re-select the saved scenario so the panel stays focused.
+      setSelectedId(saved.id);
+      setSimState({ kind: "idle" });
+    },
+    [],
+  );
+
+  const handleDelete = useCallback(async (id: string) => {
+    if (!confirm("Удалить этот сценарий? Он будет скрыт, но данные сохранятся.")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/scenarios/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        setScenarios((prev) => prev?.filter((s) => s.id !== id) ?? null);
+        if (selectedId === id) {
+          setSelectedId(null);
+          setSimState({ kind: "idle" });
+        }
+      }
+    } finally {
+      setDeletingId(null);
+    }
+  }, [selectedId]);
+
   if (!open) return null;
 
   const changedDeltas =
@@ -230,6 +282,7 @@ export function ScenarioPanel() {
       : [];
 
   return (
+  <>
     <div
       role="dialog"
       aria-modal="true"
@@ -277,9 +330,21 @@ export function ScenarioPanel() {
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
           {/* Scenario list */}
           <aside>
-            <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2">
-              Сценарии ({scenarios?.length ?? 0})
-            </h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+                Сценарии ({scenarios?.length ?? 0})
+              </h3>
+              <button
+                type="button"
+                onClick={openCreateForm}
+                aria-label="Создать сценарий"
+                data-testid="scenario-create-button"
+                className="flex items-center gap-0.5 rounded border border-[#FFB800]/40 bg-[#FFB800]/8 text-[#FFB800] px-1.5 py-0.5 text-[10px] hover:bg-[#FFB800]/20"
+              >
+                <Plus size={10} aria-hidden="true" />
+                Новый
+              </button>
+            </div>
             {scenarios === null && !fetchError && (
               <p className="text-sm text-muted-foreground" data-testid="scenarios-loading">Загрузка…</p>
             )}
@@ -294,14 +359,14 @@ export function ScenarioPanel() {
                 {scenarios.map((s) => {
                   const isSelected = s.id === selectedId;
                   return (
-                    <li key={s.id}>
+                    <li key={s.id} className="group relative">
                       <button
                         type="button"
                         onClick={() => {
                           setSelectedId(s.id);
                           setSimState({ kind: "idle" });
                         }}
-                        className={`w-full text-left px-2 py-1.5 rounded border text-xs font-mono transition-colors ${
+                        className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
                           isSelected
                             ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
                             : "border-input hover:bg-muted/50 text-muted-foreground"
@@ -313,6 +378,28 @@ export function ScenarioPanel() {
                           {resolveScenarioLabel(s, locale)}
                         </div>
                       </button>
+                      {/* Edit / delete icons — shown on hover */}
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); openEditForm(s); }}
+                          aria-label={`Редактировать ${s.code}`}
+                          data-testid={`scenario-edit-${s.code}`}
+                          className="rounded p-1 hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil size={10} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); }}
+                          disabled={deletingId === s.id}
+                          aria-label={`Удалить ${s.code}`}
+                          data-testid={`scenario-delete-${s.code}`}
+                          className="rounded p-1 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-40"
+                        >
+                          <Trash2 size={10} />
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -496,5 +583,15 @@ export function ScenarioPanel() {
         </div>
       </div>
     </div>
+
+    {/* Create / edit form — rendered above the panel (z-[60]) */}
+    {formOpen && (
+      <ScenarioFormModal
+        initial={formScenario}
+        onClose={() => setFormOpen(false)}
+        onSaved={handleFormSaved}
+      />
+    )}
+  </>
   );
 }

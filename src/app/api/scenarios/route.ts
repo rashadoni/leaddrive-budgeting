@@ -1,20 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
 
-// Scenario apply queues a compute run — moderate rate-limit to prevent
-// abuse while keeping room for legitimate "what-if" exploration.
-// Phase A P2 (Turn 25 cont'd Day 1).
-const SCENARIO_APPLY_RATE_LIMIT = { name: 'scenarios-apply', max: 20, windowMs: 60_000 };
+// Phase 7.N — POST now creates a new scenario (admin-only).
+// The old "apply/queue 202" path is replaced by GET /api/scenarios/[id]/simulate
+// (Phase 7.N live What-if engine).
+const CREATE_RATE_LIMIT = { name: 'scenarios-create', max: 10, windowMs: 60_000 };
 
-// GET: Fetch available scenarios for the caller's organization.
-//
-// SECURITY (Phase A audit fix, 2026-04-26): the previous implementation
-// accepted `organizationId` as a query-string parameter with no auth
-// check at all — any unauthenticated caller could read scenarios from
-// any org by guessing the orgId. Now `requireAuth` resolves the orgId
-// from the session; query-string `organizationId` is ignored.
+// ─── Validation schema ────────────────────────────────────────────────────────
+
+const AdjustmentSchema = z.object({
+  codes: z.array(z.string().min(1)).min(1),
+  multiply: z.number().positive().optional(),
+  delta: z.number().optional(),
+  note: z.string().max(256).optional(),
+});
+
+const ScenarioCreateSchema = z.object({
+  code: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Z0-9_]+$/, 'Code must be uppercase letters, digits, and underscores only'),
+  nameEn: z.string().min(1).max(256),
+  nameRu: z.string().max(256).optional(),
+  nameAz: z.string().max(256).optional(),
+  description: z.string().max(2048).optional(),
+  overrides: z.object({
+    adjustments: z.array(AdjustmentSchema).min(1),
+  }),
+  isActive: z.boolean().default(true),
+});
+
+// ─── GET: list active scenarios for the caller's org ─────────────────────────
+
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request);
   if (isAuthError(session)) return session;
@@ -28,32 +49,20 @@ export async function GET(request: NextRequest) {
         organizationId: session.orgId,
         isActive: true,
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json(scenarios);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching scenarios:', error);
     return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 });
   }
 }
 
-// POST: Apply a scenario (Trigger computation with overrides).
-//
-// SECURITY (Phase A audit fix, 2026-04-26): the previous implementation
-// fetched the scenario via `findUnique({ where: { id } })` with no org
-// scoping AND accepted `organizationId` from the body — letting any
-// authenticated user trigger a scenario run against any other org's
-// scenario by passing both ids. Now: orgId comes from the session;
-// scenario lookup is tenant-scoped via `findFirst`.
-//
-// SECURITY (Phase A architect Round-2, 2026-04-26): tightened gate from
-// `requireAuth` to `requireRole("editor")` — POST queues a compute run
-// that consumes resources; viewers should not trigger arbitrary scenario
-// execution. Mirror of `plans/route.ts:59` POST guard for write-class
-// actions.
+// ─── POST: create a new scenario (admin-only) ────────────────────────────────
+
 export async function POST(request: NextRequest) {
-  const session = await requireRole(request, "editor");
+  const session = await requireRole(request, 'admin');
   if (isAuthError(session)) return session;
   if (!session.orgId) {
     return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
@@ -61,37 +70,52 @@ export async function POST(request: NextRequest) {
 
   const rateLimitError = enforceRateLimit(
     `${session.orgId}:${getClientIp(request)}`,
-    SCENARIO_APPLY_RATE_LIMIT,
+    CREATE_RATE_LIMIT,
   );
   if (rateLimitError) return rateLimitError;
 
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { scenarioId, period } = body;
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
 
-    if (!scenarioId || !period) {
-      return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
-    }
+  const parsed = ScenarioCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: 'Validation error', details: parsed.error.issues },
+      { status: 400 },
+    );
+  }
 
-    const scenario = await prisma.scenario.findFirst({
-      where: { id: scenarioId, organizationId: session.orgId }
+  const { code, nameEn, nameRu, nameAz, description, overrides, isActive } = parsed.data;
+
+  try {
+    const scenario = await prisma.scenario.create({
+      data: {
+        organizationId: session.orgId,
+        code,
+        nameEn,
+        nameRu: nameRu ?? null,
+        nameAz: nameAz ?? null,
+        description: description ?? null,
+        overrides,
+        isActive,
+      },
     });
-
-    if (!scenario) {
-      // 404 (not 403) on cross-tenant id — don't leak existence in another org.
-      return NextResponse.json({ error: 'Scenario not found' }, { status: 404 });
+    return NextResponse.json(scenario, { status: 201 });
+  } catch (e: unknown) {
+    if (
+      typeof e === 'object' && e !== null &&
+      'code' in e && (e as { code: string }).code === 'P2002'
+    ) {
+      return NextResponse.json(
+        { error: `Scenario code "${code}" already exists in this organization` },
+        { status: 409 },
+      );
     }
-
-    // Here we would push a job to the queue, passing the scenario.overrides
-    // For now, return accepted status. (Phase 6 BullMQ scheduler ships the queue.)
-
-    return NextResponse.json({
-      message: 'Scenario execution queued',
-      scenarioCode: scenario.code,
-      overrides: scenario.overrides
-    }, { status: 202 });
-  } catch (error: any) {
-    console.error('Error applying scenario:', error);
-    return NextResponse.json({ error: 'Failed to apply scenario' }, { status: 500 });
+    console.error('Error creating scenario:', e);
+    return NextResponse.json({ error: 'Failed to create scenario' }, { status: 500 });
   }
 }

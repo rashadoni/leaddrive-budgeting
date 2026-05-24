@@ -1,15 +1,15 @@
 // @vitest-environment node
 /**
- * Handler test for `/api/scenarios` (GET list + POST apply).
+ * Handler tests for `/api/scenarios` (GET list + POST create).
  *
- * Locks the security audit fixes from 2026-04-26 (Phase A):
- * - GET: 401 unauth / 403 no orgId / 200 with org-scoped results
- * - POST: 401 unauth / 403 below-editor role / 400 missing params /
- *   404 cross-tenant scenario id (no existence leak) / 202 happy path
+ * Phase 7.N: POST now creates a scenario (admin-only) instead of the
+ * old "apply/queue 202" stub which was dead code (Phase 7.N's simulate
+ * endpoint replaced it).
  *
- * Catches: regression where session.orgId stops scoping the query, or
- * where role gate gets relaxed back to `requireAuth`. Both were the
- * original bugs the 2026-04-26 audit fixed.
+ * Locks:
+ * - GET: 401 unauth / 403 no-orgId / 200 org-scoped results / orderBy
+ * - POST: 401 unauth / 403 below-admin / 400 bad schema / 409 duplicate code /
+ *         201 happy path with correct data shape
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
@@ -19,6 +19,7 @@ const { prismaMock } = vi.hoisted(() => ({
     scenario: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
+      create: vi.fn(),
     },
   },
 }))
@@ -30,12 +31,36 @@ import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
 
 const ORG_ID = "org_demo"
-const USER_ID = "u_editor"
+const USER_ID = "u_admin"
+
+const VALID_BODY = {
+  code: "SUGAR_DROP_20",
+  nameEn: "Sugar drops 20%",
+  nameRu: "Сахар −20%",
+  description: "Commodity shock",
+  overrides: {
+    adjustments: [
+      { codes: ["AGRO_SUGAR_PRICE_TREND"], multiply: 0.8, note: "sugar −20%" },
+    ],
+  },
+  isActive: true,
+}
 
 beforeEach(() => {
   prismaMock.scenario.findMany.mockReset().mockResolvedValue([])
   prismaMock.scenario.findFirst.mockReset().mockResolvedValue(null)
+  prismaMock.scenario.create.mockReset().mockResolvedValue({
+    id: "sc_new",
+    organizationId: ORG_ID,
+    ...VALID_BODY,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe("GET /api/scenarios", () => {
   it("401 when unauthenticated", async () => {
@@ -55,7 +80,6 @@ describe("GET /api/scenarios", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toHaveLength(2)
-    // Org-scoped + isActive=true filter is the security-critical bit
     expect(prismaMock.scenario.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { organizationId: ORG_ID, isActive: true },
@@ -72,74 +96,77 @@ describe("GET /api/scenarios", () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST — create scenario (admin-only)
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("POST /api/scenarios", () => {
   it("401 when unauthenticated", async () => {
     await mockSession(null)
-    const res = await POST(
-      makeRequest("/api/scenarios", { method: "POST", json: { scenarioId: "s1", period: "2026" } }),
-    )
+    const res = await POST(makeRequest("/api/scenarios", { method: "POST", json: VALID_BODY }))
     expect(res.status).toBe(401)
+    expect(prismaMock.scenario.create).not.toHaveBeenCalled()
   })
 
-  it("403 when role is below editor (viewer cannot trigger scenarios)", async () => {
-    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "viewer" })
-    const res = await POST(
-      makeRequest("/api/scenarios", { method: "POST", json: { scenarioId: "s1", period: "2026" } }),
-    )
+  it("403 when role is below admin (editor cannot create scenarios)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "editor" })
+    const res = await POST(makeRequest("/api/scenarios", { method: "POST", json: VALID_BODY }))
     expect(res.status).toBe(403)
-    expect(prismaMock.scenario.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.scenario.create).not.toHaveBeenCalled()
   })
 
-  it("400 when scenarioId is missing", async () => {
-    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "editor" })
-    const res = await POST(
-      makeRequest("/api/scenarios", { method: "POST", json: { period: "2026" } }),
-    )
+  it("400 when code is missing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    const { code: _code, ...noCode } = VALID_BODY
+    const res = await POST(makeRequest("/api/scenarios", { method: "POST", json: noCode }))
     expect(res.status).toBe(400)
-    expect(prismaMock.scenario.findFirst).not.toHaveBeenCalled()
+    expect(prismaMock.scenario.create).not.toHaveBeenCalled()
   })
 
-  it("400 when period is missing", async () => {
-    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "editor" })
-    const res = await POST(
-      makeRequest("/api/scenarios", { method: "POST", json: { scenarioId: "s1" } }),
-    )
-    expect(res.status).toBe(400)
-  })
-
-  it("404 on cross-tenant scenarioId (no existence leak as 403)", async () => {
-    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "editor" })
-    prismaMock.scenario.findFirst.mockResolvedValue(null) // scenario exists but in another org
+  it("400 when code has invalid characters (lowercase)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
     const res = await POST(
       makeRequest("/api/scenarios", {
         method: "POST",
-        json: { scenarioId: "s-other-org", period: "2026" },
+        json: { ...VALID_BODY, code: "bad-code-123" },
       }),
     )
-    expect(res.status).toBe(404) // NOT 403 — security audit fix
+    expect(res.status).toBe(400)
   })
 
-  it("202 happy path returns scenario code + overrides", async () => {
-    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "editor" })
-    prismaMock.scenario.findFirst.mockResolvedValue({
-      id: "s1",
-      code: "USD_STRESS",
-      overrides: { fx_usd: 2.0 },
-    })
+  it("400 when overrides.adjustments is empty array", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
     const res = await POST(
       makeRequest("/api/scenarios", {
         method: "POST",
-        json: { scenarioId: "s1", period: "2026" },
+        json: { ...VALID_BODY, overrides: { adjustments: [] } },
       }),
     )
-    expect(res.status).toBe(202)
+    expect(res.status).toBe(400)
+  })
+
+  it("409 on duplicate scenario code within same org (P2002)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    const p2002Err = Object.assign(new Error("Unique constraint"), { code: "P2002" })
+    prismaMock.scenario.create.mockRejectedValue(p2002Err)
+    const res = await POST(makeRequest("/api/scenarios", { method: "POST", json: VALID_BODY }))
+    expect(res.status).toBe(409)
     const body = await res.json()
-    expect(body.scenarioCode).toBe("USD_STRESS")
-    expect(body.overrides).toEqual({ fx_usd: 2.0 })
-    // Scenario lookup must be org-scoped
-    expect(prismaMock.scenario.findFirst).toHaveBeenCalledWith(
+    expect(body.error).toMatch(/already exists/)
+  })
+
+  it("201 happy path — scenario created, org scoped", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    const res = await POST(makeRequest("/api/scenarios", { method: "POST", json: VALID_BODY }))
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.id).toBe("sc_new")
+    expect(prismaMock.scenario.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: "s1", organizationId: ORG_ID },
+        data: expect.objectContaining({
+          organizationId: ORG_ID,
+          code: "SUGAR_DROP_20",
+        }),
       }),
     )
   })
