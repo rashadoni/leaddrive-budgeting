@@ -56,6 +56,7 @@ import {
 } from './formula-engine';
 import { parsePeriod, daysInPeriod, type Period } from './periods';
 import { computeSparkline, bridgeRecomputeBuildContext } from './sparkline';
+import { isDaCode } from '../budgeting/da-codes';
 import {
   getIndustryEmissionFactor,
   type EmissionScope,
@@ -1685,6 +1686,11 @@ const budgetLineResolver: NamespaceResolver = {
     let imported_opex = 0;
     let domestic_opex = 0;
     let missing_rate_count = 0;
+    // Phase 7.O — D&A add-back for true EBITDA.
+    // Scans for SAP codes 703-11 (D&A in COGS) + 721-11 (D&A in OpEx).
+    // For companies without those codes (e.g. PLF-format AZSEKER) da_total=0
+    // so ebitda degrades gracefully to EBIT — honest, not wrong.
+    let da_total = 0;
 
     // Defensive: a line tagged with the company's base currency is NOT
     // foreign — treat as base regardless of whether `exchangeRate` is set.
@@ -1715,6 +1721,11 @@ const budgetLineResolver: NamespaceResolver = {
         if (isForeign) imported_opex += amountBase;
         else domestic_opex += amountBase;
       }
+      // D&A add-back: applies to both cogs and expense lines that are
+      // depreciation/amortization accounts (703-11 / 721-11 SAP codes).
+      if (l.accountCode != null && isDaCode(l.accountCode)) {
+        da_total += Math.abs(amountBase);
+      }
       // asset/liability/equity rows are ignored for P&L-shaped context.
     }
 
@@ -1731,6 +1742,9 @@ const budgetLineResolver: NamespaceResolver = {
     const domestic_input_cost = domestic_cogs;
     const gross_profit = revenue - cogs;
     const net_income = revenue - cogs - opex;
+    // True EBITDA = EBIT + D&A add-back (703-11 + 721-11 SAP codes).
+    // Equals net_income when no D&A lines are identified (PLF-format data).
+    const ebitda = net_income + da_total;
 
     state.context.revenue = revenue;
     state.context.cogs = cogs;
@@ -1741,6 +1755,8 @@ const budgetLineResolver: NamespaceResolver = {
     state.context.domestic_input_cost = domestic_input_cost;
     state.context.gross_profit = gross_profit;
     state.context.net_income = net_income;
+    state.context.ebitda = ebitda;
+    state.context.da_total = da_total;
 
     state.inputs.resolved.revenue = revenue;
     state.inputs.resolved.cogs = cogs;
@@ -1751,6 +1767,8 @@ const budgetLineResolver: NamespaceResolver = {
     state.inputs.resolved.domestic_input_cost = domestic_input_cost;
     state.inputs.resolved.gross_profit = gross_profit;
     state.inputs.resolved.net_income = net_income;
+    state.inputs.resolved.ebitda = ebitda;
+    state.inputs.resolved.da_total = da_total;
 
     // Phase 7.M Step 4 follow-up (2026-05-19) — count foreign-tagged
     // lines explicitly so the zombie-row guard can distinguish "this

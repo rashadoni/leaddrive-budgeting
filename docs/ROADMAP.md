@@ -1196,3 +1196,11 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **`dynamic-bs-adapter.test.ts`** (NEW, 10 tests) + **`dynamic-cf-adapter.test.ts`** (NEW, 11 tests) — 21 new cases. Cover: extract error, confidence gate, cache miss/hit, missing code column, partial month (BS/CF-specific), account classification, sign/abs convention, no entityCode, LLM error.
   - **Cost model:** AZSEKER files → $0 (hard-coded parsers handle); new format first upload → ~$0.05-0.10 one LLM call; subsequent → $0 (cache hit per 24h TTL). Three file types now covered (PLF + BS + CF).
   - tsc clean · vitest 5139/5139 passing.
+
+- **2026-05-25 (Phase 7.O — IND_EBITDA_MARGIN: true EBITDA via D&A add-back)**
+  - **`recompute.ts` `budgetLineResolver`** — added `da_total` accumulator: scans each budget line for SAP codes `703-11` (D&A in COGS) and `721-11` (D&A in OpEx) via `isDaCode()`. `ebitda = net_income + da_total`. Exposed as `state.context.ebitda` + `state.inputs.resolved.ebitda`. For PLF-format AZSEKER data (no SAP codes), `da_total=0` → `ebitda` equals `net_income` — honest EBIT label, no silent inflation.
+  - **`indicator-seeds.ts`** — added `IND_EBITDA_MARGIN` seed: cross-sector, `formula: "ebitda / revenue * 100"`, `higher_better`, `green ≥20% / amber ≥10% / red <10%`, weight 1.4 (same tier as gross/net margin). Hints in EN/RU/AZ explain EBIT degradation when D&A codes are absent.
+  - **`recompute.test.ts`** — 5 new cases: `703-11` COGS add-back, `721-11` OpEx add-back, both streams summed, PLF graceful degradation (`da_total=0`), amber-band check.
+  - **`indicator-thresholds.test.ts`** — catalog count updated 106 → 107.
+  - **DB applied:** `npx tsx scripts/seed-indicators.ts` → 1 created / 106 updated = 107 total. 2026 recompute fired for all 5 AZSEKER entities. Sparklines refreshed: 1127/1127, 0 errors.
+  - tsc clean · vitest 5168/5168 passing.

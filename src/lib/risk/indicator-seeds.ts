@@ -896,6 +896,51 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["budgetLine", "fact:IND_NET_MARGIN@2025"],
     sortOrder: 3,
   },
+  // Phase 7.O — EBITDA margin. Uses `ebitda` context var exposed by
+  // budgetLineResolver (= net_income + D&A add-back via 703-11/721-11 SAP
+  // codes). For PLF-format data without identified D&A lines, ebitda ≈ EBIT;
+  // the indicator is honest but may read slightly lower than true EBITDA for
+  // those companies.
+  {
+    code: "IND_EBITDA_MARGIN",
+    nameEn: "EBITDA Margin",
+    nameAz: "FVƏA Marja",
+    nameRu: "Рентабельность по EBITDA",
+    category: "operational",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "%",
+    direction: "higher_better",
+    formula: "ebitda / revenue * 100",
+    thresholds: {
+      // Standard industry benchmarks (SME / emerging market):
+      // ≥20% = healthy operating leverage; 10-19% = adequate; <10% = thin
+      green: { op: ">=", value: 20 },
+      amber: { op: ">=", value: 10 },
+      red: { op: "<", value: 10 },
+    },
+    hintTemplateEn:
+      "EBITDA margin: {value}%. ≥20% = strong operating leverage; 10-19% = adequate; <10% = thin margin risk. D&A (703-11/721-11) is added back from budget lines — equals EBIT when D&A codes are absent.",
+    hintTemplateRu:
+      "Рентабельность EBITDA: {value}%. ≥20% = сильный операционный рычаг; 10-19% = приемлемо; <10% = риск тонкой маржи. D&A (703-11/721-11) добавляется обратно из бюджетных строк.",
+    hintTemplateAz:
+      "FVƏA marjası: {value}%. ≥20% = güclü əməliyyat leverage; 10-19% = qənaətbəxş; <10% = nazik marja riski. D&A (703-11/721-11) büdcə sətrlərindən geri əlavə edilir.",
+    requiredInputs: ["budgetLine"],
+    weight: 1.4, // same tier as gross/net margin indicators
+    sortOrder: 3,
+  },
   // Phase 7.N — Legal exposure indicators. Sourced from court-disputes
   // registry imported via scripts/import-court-disputes.ts into OperationalFact.
   // Both are cross-sector (any industry with court exposure).

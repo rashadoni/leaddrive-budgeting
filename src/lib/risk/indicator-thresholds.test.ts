@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("106 active indicator seeds (102 base + Phase 7.N legal: LEGAL_CASES_ACTIVE, LEGAL_CASES_TOTAL + Phase 7.O audit: AUDIT_CLOSED_PCT, AUDIT_MAJOR_OPEN)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(106)
+  it("107 active indicator seeds (102 base + Phase 7.N legal: LEGAL_CASES_ACTIVE, LEGAL_CASES_TOTAL + Phase 7.O audit: AUDIT_CLOSED_PCT, AUDIT_MAJOR_OPEN + Phase 7.O EBITDA: IND_EBITDA_MARGIN)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(107)
   })
 
   it("every indicator has a unique code", () => {

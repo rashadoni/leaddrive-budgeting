@@ -3494,3 +3494,168 @@ describe('recomputeIndicator — balanceSheetLine resolver (Phase 7.O)', () => {
     expect(result.value).toBeCloseTo(12, 4);
   });
 });
+
+// ── Phase 7.O — budgetLineResolver D&A add-back for IND_EBITDA_MARGIN ────────
+
+const EBITDA_MARGIN_DEF: IndicatorDefinitionLike = {
+  id: 'ind_ebitda_margin',
+  formula: 'ebitda / revenue * 100',
+  thresholds: {
+    green: { op: '>=', value: 20 },
+    amber: { op: '>=', value: 10 },
+    red: { op: '<', value: 10 },
+  },
+  requiredInputs: ['budgetLine'],
+};
+
+describe('recomputeIndicator — ebitda D&A add-back via budgetLineResolver (Phase 7.O)', () => {
+  it('adds back D&A from COGS (703-11) → ebitda > net_income', async () => {
+    // revenue=1M, cogs=400K (200K is D&A 703-11), opex=200K
+    // net_income = 1M - 400K - 200K = 400K
+    // da_total = 200K → ebitda = 600K → margin = 60% (green ≥20%)
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '715-01', accountCategory: null,
+          accountName: 'Raw materials', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '703-11', accountCategory: null,
+          accountName: 'Depreciation in COGS', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '720-01', accountCategory: null,
+          accountName: 'Operating expense', monthIndex: null },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'azseker_1',
+      definition: EBITDA_MARGIN_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(60, 2);
+    expect(result.status).toBe('green');
+  });
+
+  it('adds back D&A from OpEx (721-11) → ebitda > net_income', async () => {
+    // revenue=500K, cogs=100K, opex=200K (100K is D&A 721-11)
+    // net_income = 200K, da_total = 100K → ebitda = 300K → margin = 60%
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 500_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 100_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '715', accountCategory: null,
+          accountName: 'COGS', monthIndex: null },
+        { plannedAmount: 100_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '720', accountCategory: null,
+          accountName: 'SGA', monthIndex: null },
+        { plannedAmount: 100_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '721-11', accountCategory: null,
+          accountName: 'Amortization', monthIndex: null },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'azseker_1',
+      definition: EBITDA_MARGIN_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(60, 2);
+    expect(result.status).toBe('green');
+  });
+
+  it('ebitda === net_income when no D&A codes present (PLF-format graceful degradation)', async () => {
+    // PLF-format AZSEKER data has no SAP codes at all — da_total stays 0
+    // ebitda = net_income, formula still evaluates correctly (not wrong, just EBIT)
+    const revenue = 800_000;
+    const cogs = 200_000;
+    const opex = 100_000;
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: revenue, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: null, accountCategory: null,
+          accountName: 'Satışlardan gəlir', monthIndex: null },
+        { plannedAmount: cogs, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: null, accountCategory: null,
+          accountName: 'Maya dəyəri', monthIndex: null },
+        { plannedAmount: opex, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: null, accountCategory: null,
+          accountName: 'Kommersiya xərcləri', monthIndex: null },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'azseker_1',
+      definition: EBITDA_MARGIN_DEF,
+      period: '2025',
+    });
+    // da_total = 0 → ebitda = net_income = 500K → margin = 500K / 800K * 100 = 62.5%
+    const expectedMargin = (revenue - cogs - opex) / revenue * 100;
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(expectedMargin, 2);
+    expect(result.status).toBe('green');
+  });
+
+  it('summed D&A from both 703-11 and 721-11 streams', async () => {
+    // revenue=1M, cogs=350K (50K is D&A 703-11), opex=280K (30K is D&A 721-11)
+    // net_income = 1M - 350K - 280K = 370K
+    // da_total = 50K + 30K = 80K → ebitda = 450K → margin = 45%
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 300_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '715', accountCategory: null,
+          accountName: 'Other COGS', monthIndex: null },
+        { plannedAmount: 50_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '703-11', accountCategory: null,
+          accountName: 'Depreciation COGS', monthIndex: null },
+        { plannedAmount: 250_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '720', accountCategory: null,
+          accountName: 'Other OpEx', monthIndex: null },
+        { plannedAmount: 30_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '721-11', accountCategory: null,
+          accountName: 'Amortization OpEx', monthIndex: null },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'azseker_1',
+      definition: EBITDA_MARGIN_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(45, 2);
+    expect(result.status).toBe('green');
+  });
+
+  it('amber band: margin 10–19% → amber status', async () => {
+    // revenue=1M, cogs=850K, no D&A codes → margin = 15% (amber 10–19%)
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 850_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '715', accountCategory: null,
+          accountName: 'COGS', monthIndex: null },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'azseker_1',
+      definition: EBITDA_MARGIN_DEF,
+      period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(15, 2);
+    expect(result.status).toBe('amber');
+  });
+});
