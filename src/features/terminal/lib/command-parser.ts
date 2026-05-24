@@ -203,8 +203,20 @@ export function parseCommand(rawInput: string): ParseResult {
     }
   }
 
+  // Friendly alias: many users type "<VERB> <TARGET> GO" (e.g. "SCN SUGAR_PRICE_DROP_20 GO")
+  // instead of Bloomberg-canonical "<TARGET> <VERB> GO". Detect this pattern (function code
+  // first, non-function last, exactly one target) and silently reorder before parsing.
+  let normalizedBody = body
+  if (
+    body.length === 2 &&
+    isFunctionCode(body[0]) &&
+    !isFunctionCode(body[1])
+  ) {
+    normalizedBody = [body[1], body[0]]
+  }
+
   // Function code is the LAST token of the body. Targets sit before it.
-  const fn = body[body.length - 1]
+  const fn = normalizedBody[normalizedBody.length - 1]
   if (!isFunctionCode(fn)) {
     return {
       ok: false,
@@ -215,7 +227,7 @@ export function parseCommand(rawInput: string): ParseResult {
     }
   }
 
-  const targetsRaw = body.slice(0, -1)
+  const targetsRaw = normalizedBody.slice(0, -1)
   // CMP supports both comma-separated single-token form (`AAC,LLS CMP GO`)
   // AND two-token form (`AAC LLS CMP GO`). Normalise to a flat list.
   const targets: string[] = targetsRaw.flatMap((t) => t.split(",").filter(Boolean))

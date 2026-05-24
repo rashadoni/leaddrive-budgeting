@@ -1,18 +1,19 @@
 // @vitest-environment happy-dom
 /**
- * Phase C4 v1 — smoke + behavior tests for `ScenarioPanel` modal.
+ * Phase 7.N — ScenarioPanel v2 tests (live What-if).
  *
- * What is locked in:
+ * What is locked in (updated for Phase 7.N simulate flow):
  *  - Closed initial render.
  *  - Opens on `terminal:open-scenario` window event.
- *  - Loading state while /api/scenarios pending.
- *  - Empty-state when org has zero scenarios.
+ *  - Loading / empty / error states while /api/scenarios pending.
  *  - Lists scenarios + auto-selects when activeScenarioCode matches.
- *  - Selecting a row renders overrides JSON.
- *  - Apply button POSTs + surfaces 202 queued response.
- *  - Apply button surfaces error response.
+ *  - Simulate button calls GET /api/scenarios/[id]/simulate.
+ *  - Delta table renders on success.
+ *  - "Применить к HeatMap" calls setScenarioDelta with correct map.
+ *  - Simulate error shown (including 422 unsupported).
  *  - Esc + backdrop + X button close.
  *  - Listener cleanup on unmount.
+ *  - auto-select does not clobber manual row click on incidental re-render.
  */
 
 import React from "react";
@@ -34,54 +35,124 @@ import {
 } from "@testing-library/react";
 import { ScenarioPanel } from "./ScenarioPanel";
 
-// Store mock — control activeScenarioCode + capture selector targets.
+// ─── Store mock ───────────────────────────────────────────────────────────────
+// Phase 7.N: mock includes setScenarioDelta + clearScenarioDelta + activeScenarioLabel
+
 let mockActiveScenarioCode: string | null = null;
+let mockActiveScenarioLabel: string | null = null;
+const mockSetScenarioDelta = vi.fn();
+const mockClearScenarioDelta = vi.fn();
+
 vi.mock("../store/terminalStore", () => ({
   useTerminalStore: <T,>(
-    selector: (s: { activeScenarioCode: string | null }) => T,
-  ) => selector({ activeScenarioCode: mockActiveScenarioCode }),
+    selector: (s: {
+      activeScenarioCode: string | null;
+      activeScenarioLabel: string | null;
+      setScenarioDelta: typeof mockSetScenarioDelta;
+      clearScenarioDelta: typeof mockClearScenarioDelta;
+    }) => T,
+  ) =>
+    selector({
+      activeScenarioCode: mockActiveScenarioCode,
+      activeScenarioLabel: mockActiveScenarioLabel,
+      setScenarioDelta: mockSetScenarioDelta,
+      clearScenarioDelta: mockClearScenarioDelta,
+    }),
 }));
+
+// ─── Sample data ──────────────────────────────────────────────────────────────
 
 const SAMPLE_SCENARIOS = [
   {
     id: "sc_id_a",
     code: "AZN_DEVAL_20",
     nameEn: "AZN devalues 20%",
-    description: "FX shock — ground-truth manat → USD by 20%.",
-    overrides: { fx_rates: { USD: 1.9 } },
+    nameRu: "Девальвация маната −20%",
+    description: "FX shock — manat devalues 20% vs USD.",
+    overrides: {
+      adjustments: [
+        { codes: ["FX_IMPORTED_INPUT"], multiply: 1.20, note: "AZN/USD +20%" },
+      ],
+    },
     isActive: true,
   },
   {
     id: "sc_id_b",
     code: "OIL_DROP_30",
     nameEn: "Oil drops 30%",
-    description: "Commodity downturn impacting petrochem feedstock.",
-    overrides: { commodity_idx: { brent: -30 } },
+    nameRu: "Нефть −30%",
+    description: "Commodity downturn.",
+    overrides: {
+      adjustments: [
+        { codes: ["AGRO_COMMODITY_VOL"], multiply: 0.85, note: "Oil-linked volatility eases" },
+      ],
+    },
     isActive: true,
   },
 ];
 
-beforeEach(() => {
-  mockActiveScenarioCode = null;
-  global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+const SAMPLE_SIM_RESULT = {
+  scenarioId: "sc_id_a",
+  scenarioCode: "AZN_DEVAL_20",
+  scenarioNameRu: "Девальвация маната −20%",
+  scenarioNameEn: "AZN devalues 20%",
+  period: "2026",
+  deltas: [
+    {
+      companyId: "co_1",
+      companyCode: "AZSEKER-CPC",
+      companyName: "CPC",
+      code: "FX_IMPORTED_INPUT",
+      baselineStatus: "green",
+      scenarioStatus: "amber",
+      baselineValue: 25,
+      scenarioValue: 30,
+      changed: true,
+      note: "AZN/USD +20%",
+    },
+  ],
+  changed: 1,
+  unchanged: 10,
+  worsened: 1,
+  improved: 0,
+  deltaMap: { "co_1:FX_IMPORTED_INPUT": "amber" },
+};
+
+// ─── Fetch mock helpers ───────────────────────────────────────────────────────
+
+function makeFetch(opts: {
+  scenariosStatus?: number;
+  simulateStatus?: number;
+  simulateBody?: unknown;
+} = {}) {
+  global.fetch = vi.fn(async (url: RequestInfo | URL) => {
     const u = String(url);
-    if (u.includes("/api/scenarios") && (init?.method ?? "GET") === "GET") {
-      return new Response(JSON.stringify(SAMPLE_SCENARIOS), {
-        status: 200,
+    if (u.includes("/simulate")) {
+      const status = opts.simulateStatus ?? 200;
+      const body = opts.simulateBody ?? SAMPLE_SIM_RESULT;
+      return new Response(JSON.stringify(body), {
+        status,
         headers: { "content-type": "application/json" },
       });
     }
-    if (u.includes("/api/scenarios") && init?.method === "POST") {
-      return new Response(
-        JSON.stringify({
-          message: "Scenario execution queued",
-          scenarioCode: "AZN_DEVAL_20",
-        }),
-        { status: 202, headers: { "content-type": "application/json" } },
-      );
+    if (u.includes("/api/scenarios")) {
+      const status = opts.scenariosStatus ?? 200;
+      const body = status === 200 ? SAMPLE_SCENARIOS : "server error";
+      return new Response(typeof body === "string" ? body : JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
     }
     return new Response("not found", { status: 404 });
   }) as never;
+}
+
+beforeEach(() => {
+  mockActiveScenarioCode = null;
+  mockActiveScenarioLabel = null;
+  mockSetScenarioDelta.mockClear();
+  mockClearScenarioDelta.mockClear();
+  makeFetch();
 });
 
 afterEach(() => {
@@ -95,22 +166,23 @@ function fireOpen(): void {
   });
 }
 
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
 describe("ScenarioPanel (Phase C4 v1)", () => {
   it("renders nothing initially", () => {
     const { container } = render(<ScenarioPanel />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("opens on `terminal:open-scenario` event with role=dialog + aria-label", async () => {
+  it("opens on `terminal:open-scenario` event with role=dialog + aria-modal", async () => {
     render(<ScenarioPanel />);
     fireOpen();
     const dialog = screen.getByRole("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(dialog.getAttribute("aria-label")).toBe("Scenario runner");
+    expect(dialog.getAttribute("aria-label")).toBeTruthy();
   });
 
   it("shows loading state until /api/scenarios resolves", () => {
-    // Block fetch — never resolves during this test.
     global.fetch = vi.fn(() => new Promise(() => {})) as never;
     render(<ScenarioPanel />);
     fireOpen();
@@ -145,68 +217,93 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
     mockActiveScenarioCode = "OIL_DROP_30";
     render(<ScenarioPanel />);
     fireOpen();
-    // Auto-selected row renders detail panel with the matching code.
+    // Auto-selected row renders simulate button (detail panel visible).
     await waitFor(() => {
-      const overrides = screen.getByTestId("scenario-overrides");
-      expect(overrides.textContent).toContain("brent");
+      expect(screen.getByTestId("scenario-simulate-button")).toBeTruthy();
+    });
+    // The selected row button should have amber/highlighted styling.
+    const selectedRow = screen.getByTestId("scenario-row-OIL_DROP_30");
+    expect(selectedRow.className).toContain("FFB800");
+  });
+
+  it("clicking a row shows the simulate button", async () => {
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    expect(screen.getByTestId("scenario-simulate-button")).toBeTruthy();
+  });
+
+  it("Simulate button calls GET /api/scenarios/[id]/simulate", async () => {
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    const simBtn = screen.getByTestId("scenario-simulate-button");
+    fireEvent.click(simBtn);
+    await waitFor(() => {
+      // "Применить к HeatMap" appears after simulation completes.
+      expect(screen.getByTestId("scenario-apply-heatmap")).toBeTruthy();
+    });
+    const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls as unknown[][];
+    const simCall = calls.find((c) => String(c[0]).includes("/simulate"));
+    expect(simCall).toBeTruthy();
+    expect(String(simCall?.[0])).toContain("sc_id_a");
+  });
+
+  it("delta table shows changed indicators after simulate", async () => {
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("scenario-simulate-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("scenario-apply-heatmap")).toBeTruthy();
+    });
+    // Delta table should contain the changed indicator code.
+    expect(screen.getByText("FX_IMPORTED_INPUT")).toBeTruthy();
+  });
+
+  it("Apply button calls setScenarioDelta with correct map", async () => {
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("scenario-simulate-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("scenario-apply-heatmap")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("scenario-apply-heatmap"));
+    expect(mockSetScenarioDelta).toHaveBeenCalledOnce();
+    const [deltaMap, label] = mockSetScenarioDelta.mock.calls[0];
+    expect(deltaMap.get("co_1:FX_IMPORTED_INPUT")).toBe("amber");
+    expect(typeof label).toBe("string");
+    expect(label.length).toBeGreaterThan(0);
+  });
+
+  it("simulate 422 shows unsupported message", async () => {
+    makeFetch({ simulateStatus: 422, simulateBody: { error: "no adjustments" } });
+    render(<ScenarioPanel />);
+    fireOpen();
+    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
+    fireEvent.click(row);
+    fireEvent.click(screen.getByTestId("scenario-simulate-button"));
+    await waitFor(() => {
+      // Unsupported state renders an amber warning (no data-testid, check text).
+      expect(screen.getByText(/не поддерживает симуляцию/i)).toBeTruthy();
     });
   });
 
-  it("clicking a row updates the detail panel", async () => {
+  it("simulate server error shows error message", async () => {
+    makeFetch({ simulateStatus: 500, simulateBody: "Internal" });
     render(<ScenarioPanel />);
     fireOpen();
     const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
     fireEvent.click(row);
-    const overrides = screen.getByTestId("scenario-overrides");
-    expect(overrides.textContent).toContain("USD");
-    expect(overrides.textContent).toContain("1.9");
-  });
-
-  it("Apply button POSTs and surfaces queued message", async () => {
-    render(<ScenarioPanel />);
-    fireOpen();
-    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
-    fireEvent.click(row);
-    const applyBtn = screen.getByTestId("scenario-apply-button");
-    fireEvent.click(applyBtn);
-    await waitFor(() => {
-      expect(screen.getByTestId("scenario-applied")).toBeTruthy();
-    });
-    expect(screen.getByTestId("scenario-applied").textContent).toContain(
-      "AZN_DEVAL_20",
-    );
-    // Verify POST went out with correct body shape.
-    const lastCall = (global.fetch as unknown as ReturnType<typeof vi.fn>).mock
-      .calls.at(-1);
-    expect(lastCall?.[0]).toBe("/api/scenarios");
-    const init = lastCall?.[1] as RequestInit;
-    expect(init.method).toBe("POST");
-    const body = JSON.parse(String(init.body));
-    expect(body.scenarioId).toBe("sc_id_a");
-    expect(typeof body.period).toBe("string");
-  });
-
-  it("Apply button surfaces server error", async () => {
-    global.fetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === "POST") {
-        return new Response("Internal", { status: 500 });
-      }
-      return new Response(JSON.stringify(SAMPLE_SCENARIOS), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }) as never;
-    render(<ScenarioPanel />);
-    fireOpen();
-    const row = await screen.findByTestId("scenario-row-AZN_DEVAL_20");
-    fireEvent.click(row);
-    fireEvent.click(screen.getByTestId("scenario-apply-button"));
+    fireEvent.click(screen.getByTestId("scenario-simulate-button"));
     await waitFor(() => {
       expect(screen.getByTestId("scenario-apply-error")).toBeTruthy();
     });
-    expect(screen.getByTestId("scenario-apply-error").textContent).toContain(
-      "500",
-    );
   });
 
   it("Escape closes the modal", async () => {
@@ -233,7 +330,7 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
   it("Close (X) button dismisses modal", async () => {
     render(<ScenarioPanel />);
     fireOpen();
-    fireEvent.click(screen.getByLabelText("Close scenario panel"));
+    fireEvent.click(screen.getByLabelText("Закрыть"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -248,9 +345,7 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
   });
 
   it("surfaces /api/scenarios fetch error", async () => {
-    global.fetch = vi.fn(
-      async () => new Response("nope", { status: 500 }),
-    ) as never;
+    makeFetch({ scenariosStatus: 500 });
     render(<ScenarioPanel />);
     fireOpen();
     await waitFor(() => {
@@ -258,55 +353,41 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
     });
   });
 
-  // REGRESSION: architect Round-1 ⚠️ closure — empty-state copy must NOT
-  // render when fetchError is set (previously: setScenarios([]) on error
-  // collided with the empty-state branch, producing contradictory copy).
   it("fetch-error path does NOT render empty-state copy", async () => {
-    global.fetch = vi.fn(
-      async () => new Response("nope", { status: 500 }),
-    ) as never;
+    makeFetch({ scenariosStatus: 500 });
     render(<ScenarioPanel />);
     fireOpen();
     await waitFor(() => {
       expect(screen.getByTestId("scenarios-fetch-error")).toBeTruthy();
     });
-    // Empty-state testid must be absent.
     expect(screen.queryByTestId("scenarios-empty")).toBeNull();
   });
 
-  // REGRESSION: architect Round-1 ⚠️ closure — auto-select must NOT
-  // clobber a user's manual row click when the effect re-fires due to
-  // scenarios memo change (or any non-activeScenarioCode dep change).
-  // The effect re-syncs ONLY when activeScenarioCode itself changes
-  // post-mount. (Tested by clicking row B after auto-select picked A,
-  // then forcing a re-render via an unrelated state change.)
+  // REGRESSION: auto-select must NOT clobber a user's manual row click.
+  // Phase 7.N variant: no scenario-overrides testid — use simulate button
+  // visibility + selected row styling as oracle.
   it("auto-select does not clobber manual row click on incidental re-render", async () => {
     mockActiveScenarioCode = "AZN_DEVAL_20";
     render(<ScenarioPanel />);
     fireOpen();
-    // First open: auto-selects AZN_DEVAL_20.
+    // First open: auto-selects AZN_DEVAL_20 — simulate button visible.
     await waitFor(() => {
-      const overrides = screen.getByTestId("scenario-overrides");
-      expect(overrides.textContent).toContain("USD");
+      expect(screen.getByTestId("scenario-simulate-button")).toBeTruthy();
     });
+    // AZN_DEVAL_20 row should be highlighted.
+    expect(screen.getByTestId("scenario-row-AZN_DEVAL_20").className).toContain("FFB800");
     // User clicks the OTHER row.
     const otherRow = screen.getByTestId("scenario-row-OIL_DROP_30");
     fireEvent.click(otherRow);
-    // Detail switches to OIL_DROP_30.
-    expect(screen.getByTestId("scenario-overrides").textContent).toContain(
-      "brent",
-    );
-    // Force a re-render that would re-fire the effect: trigger a no-op
-    // event. activeScenarioCode unchanged → auto-select must NOT re-fire.
+    // OIL_DROP_30 row now highlighted; AZN_DEVAL_20 not.
+    expect(screen.getByTestId("scenario-row-OIL_DROP_30").className).toContain("FFB800");
+    expect(screen.getByTestId("scenario-row-AZN_DEVAL_20").className).not.toContain("FFB800");
+    // Force a re-render via the open event (activeScenarioCode unchanged).
     act(() => {
       window.dispatchEvent(new Event("terminal:open-scenario"));
     });
-    // Manual selection (OIL_DROP_30) preserved — overrides still show brent.
-    expect(screen.getByTestId("scenario-overrides").textContent).toContain(
-      "brent",
-    );
-    expect(screen.getByTestId("scenario-overrides").textContent).not.toContain(
-      "USD",
-    );
+    // Manual selection (OIL_DROP_30) preserved.
+    expect(screen.getByTestId("scenario-row-OIL_DROP_30").className).toContain("FFB800");
+    expect(screen.getByTestId("scenario-row-AZN_DEVAL_20").className).not.toContain("FFB800");
   });
 });

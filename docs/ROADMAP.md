@@ -1132,3 +1132,14 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
     - **CF (Cash Flow):** 2,241 rows — CPC 2022-2025, AZSF 2023-2025, EDEN 2023-2025, MALT 2025
   - Created 5 new BudgetPlan records for historical years: `Azərşəkər 2021/2022/2023/2024/2025 Actuals`.
   - Indicator recompute for historical periods (2022-2025) will be needed to see trend data in Risk Terminal HeatMap — run via `/api/indicators` with `forceRefresh=true` per period.
+
+- **2026-05-24 (Phase 7.N — Live What-if scenario simulation + HeatMap overlay)**
+  - **ScenarioPanel v2** — full rewrite from "queued stub" to live simulate flow. Simulate button → `GET /api/scenarios/[id]/simulate` → delta table (changed indicators, baseline vs scenario status) → "Применить к HeatMap" → HeatMap recolors changed cells instantly.
+  - **`src/lib/risk/scenario-simulator.ts`** — pure post-hoc engine. Applies `SimulatableOverrides.adjustments[]` (multiply/delta) to stored IndicatorValues, reclassifies via `classifyValue()`, returns `SimulationResult` + `buildDeltaMap()` (`Map<"companyId:indicatorCode", status>`).
+  - **`GET /api/scenarios/[id]/simulate`** — auth-gated, tenant-scoped. Fetches scenario + current-period IndicatorValues, runs simulation, returns delta payload. Returns 422 if scenario has no `adjustments`.
+  - **terminalStore** extended — `scenarioDelta: ReadonlyMap<string,string> | null`, `activeScenarioLabel: string | null`, `setScenarioDelta()`, `clearScenarioDelta()`.
+  - **HeatMap overlay** — reads `scenarioDelta` from store; `scenarioStatus` overrides `cellBgColor` when key matches. Scenario badge "⚡ СЦЕНАРИЙ: {label}" with "×" clear. M7 guard satisfied via `scenarioShape` companion.
+  - **3 AzerSheker scenarios seeded** via `scripts/seed-scenarios.ts` upsert: `SUGAR_PRICE_DROP_20` (сахар −20%), `DROUGHT_2026` (засуха 2026), `AZN_DEVAL_15` (девальвация маната −15%). Existing 3 macro scenarios updated with `adjustments[]` format.
+  - **SCN command fix** — parser now accepts user-friendly `SCN <code> GO` (function-first) as alias for Bloomberg-canonical `<code> SCN GO`. Normalization swaps token order when `body[0]` is a function code and `body[1]` is not.
+  - **Tests**: 19/19 ScenarioPanel tests, 46/46 parser tests. Root fix: 4 missing `data-testid` attributes added (`scenarios-loading`, `scenarios-empty`, `scenarios-fetch-error`, `scenario-apply-error`). Test runtime 360s → 269ms.
+  - tsc clean · vitest 5096→5115 passing.

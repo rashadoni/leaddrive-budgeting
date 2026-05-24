@@ -281,13 +281,13 @@ export function ScenarioPanel() {
               Сценарии ({scenarios?.length ?? 0})
             </h3>
             {scenarios === null && !fetchError && (
-              <p className="text-sm text-muted-foreground">Загрузка…</p>
+              <p className="text-sm text-muted-foreground" data-testid="scenarios-loading">Загрузка…</p>
             )}
             {fetchError && (
-              <p className="text-xs text-red-500 mt-2">{fetchError}</p>
+              <p className="text-xs text-red-500 mt-2" data-testid="scenarios-fetch-error">{fetchError}</p>
             )}
             {scenarios !== null && scenarios.length === 0 && (
-              <p className="text-sm text-muted-foreground">Сценарии не найдены</p>
+              <p className="text-sm text-muted-foreground" data-testid="scenarios-empty">Сценарии не найдены</p>
             )}
             {scenarios && scenarios.length > 0 && (
               <ul className="space-y-1">
@@ -377,7 +377,7 @@ export function ScenarioPanel() {
                   </p>
                 )}
                 {simState.kind === "error" && (
-                  <p className="text-sm text-red-500">
+                  <p className="text-sm text-red-500" data-testid="scenario-apply-error">
                     Ошибка: {simState.message}
                   </p>
                 )}
