@@ -1149,3 +1149,7 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **SCN command alias** — parser now accepts `SCN <code> GO` (function-first) as alias for Bloomberg-canonical `<code> SCN GO`; 46/46 parser tests unchanged.
   - **Test fix** — 19/19 ScenarioPanel tests (was 5 failing / 360s timeout): added 4 missing data-testid attrs (`scenarios-loading`, `scenarios-empty`, `scenarios-fetch-error`, `scenario-apply-error`). Test runtime 360s → 269ms.
   - tsc clean · vitest 5113/5113 passing.
+
+- **2026-05-24 (Phase 7.N — Historical period recompute script)**
+  - **`scripts/recompute-historical-periods.ts`** — idempotent recompute runner for the 16 372 historical BudgetLine rows imported earlier in this session. Covers AZSEKER-CPC (2020-2025), AZSEKER-AZSF (2022-2025), AZSEKER-EDEN (2023-2025), AZSEKER-MALT (2025). Run: `npx tsx scripts/recompute-historical-periods.ts`, then `npx tsx scripts/compute-sparklines.ts` to populate 12-slot trend arrays. Years with no BudgetLine data return `status=unknown` (correct, not an error). Closes the "Indicator recompute for historical periods will be needed" note from the Phase 7.N historical import changelog entry.
+  - tsc clean.
