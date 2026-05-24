@@ -246,9 +246,10 @@ by the AI-Mapper-driven multi-sheet wizard at `/budgeting/onboarding`
 - ✅ **NEW: AI Data Mapper & Quality Control:** shipped Phase 7.G Turn LXXXXV (Phase 7.B v2 Day 1) — `src/lib/onboarding/ai-mapper/mapper.ts` vendor-agnostic entry wrapping `getLLMService().generateMapping()`. SYSTEM_PROMPT + user-message builder at `src/lib/llm/prompts/mapper-system.ts` (single source of truth across providers). Heuristic anomaly merge inside provider impls. Proposal cache at `proposal-cache.ts` saves ~$0.05+10s per re-analyze. Critical safety: LLM is **advisory** — proposal shown to finance reviewer in onboarding UI; nothing lands in DB until reviewer confirms.
 - 🟡 User loads all ~60 companies (dry-run → real) — 13 seeded today, 8 operational (per CLAUDE.md). User-action item; remaining ~47 require xlsx delivery.
 
-### 7.C — Indicator packs (5 weeks)
-- ~52 indicators across 10 sectors: hospitality, food processing, agro, pharma, industrial, real estate, entertainment, education, beverage, services + 5 cross-sector composites
-- AI-assisted drafting; per-sector validation with user (~1 sector / week after hospitality baseline)
+### 7.C — Indicator packs (5 weeks) — ✅ 52+ indicators shipped
+- ✅ **52+ indicators across 14 sectors** (hospitality 5, agro 3, industrial 4, services 5, pharma 5, real_estate 5, entertainment 4, education 4, poultry 4, food_processing 4, beverage 2, retail 2, logistics 2, construction 2, cross-sector + ESG + news + Phase 7.K live-data packs). All in `src/lib/risk/indicator-seeds.ts` + `ALL_INDICATOR_SEEDS`. Run `npx tsx scripts/seed-indicators.ts` after schema changes to sync DB.
+- ✅ AI-assisted drafting with calibrated thresholds (industry benchmark citations in comments per each pack). RU + AZ hint translations added Turn XI 2026-05-05 (56/58 coverage).
+- ⬜ Stub-resolver debt (~12 indicators return `status=unknown` until Phase 7.C resolver extension lands; tracked in Phase 7.M section below; only 1 affects a live company today).
 
 ### 7.D — Bloomberg-style UX (3 weeks) — ✅ all 5 bullets shipped
 - ✅ Dark theme + JetBrains Mono monospace for numbers — wired in `src/app/globals.css` + Risk Terminal at `/budgeting/terminal` page; HeroSection / CompositeTrendChart use mono numerics.
@@ -1149,6 +1150,9 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **SCN command alias** — parser now accepts `SCN <code> GO` (function-first) as alias for Bloomberg-canonical `<code> SCN GO`; 46/46 parser tests unchanged.
   - **Test fix** — 19/19 ScenarioPanel tests (was 5 failing / 360s timeout): added 4 missing data-testid attrs (`scenarios-loading`, `scenarios-empty`, `scenarios-fetch-error`, `scenario-apply-error`). Test runtime 360s → 269ms.
   - tsc clean · vitest 5113/5113 passing.
+
+- **2026-05-24 (Phase 7.C — Indicator packs ✅ status-correct)**
+  - Phase 7.C section marked ✅. All 4 missing sector packs (beverage 2, retail 2, logistics 2, construction 2) were silently shipped at Phase 7.G Turn XI (2026-05-05) alongside the bulk hint-i18n batch. They have been in `ALL_INDICATOR_SEEDS` since then. The "remaining 8" note in the Phase 7.M changelog (2026-05-19) was a stale copy-paste of the 2026-04-24 state. Total catalog: 52+ indicators across 14 sectors + ESG/news/Phase 7.K live-data packs. Run `npx tsx scripts/seed-indicators.ts` to upsert all indicators into DB (idempotent).
 
 - **2026-05-24 (Phase 7.N — Historical period recompute script)**
   - **`scripts/recompute-historical-periods.ts`** — idempotent recompute runner for the 16 372 historical BudgetLine rows imported earlier in this session. Covers AZSEKER-CPC (2020-2025), AZSEKER-AZSF (2022-2025), AZSEKER-EDEN (2023-2025), AZSEKER-MALT (2025). Run: `npx tsx scripts/recompute-historical-periods.ts`, then `npx tsx scripts/compute-sparklines.ts` to populate 12-slot trend arrays. Years with no BudgetLine data return `status=unknown` (correct, not an error). Closes the "Indicator recompute for historical periods will be needed" note from the Phase 7.N historical import changelog entry.
