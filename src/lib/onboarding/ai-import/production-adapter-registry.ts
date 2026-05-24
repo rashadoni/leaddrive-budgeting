@@ -39,6 +39,8 @@ import {
   type AdapterRunResult,
 } from "./adapter-registry"
 import { runDynamicPlfAdapter } from "./dynamic-plf-adapter"
+import { runDynamicBsAdapter } from "./dynamic-bs-adapter"
+import { runDynamicCfAdapter } from "./dynamic-cf-adapter"
 import {
   parsePlfPlSheet,
   parsePlfCfSheet,
@@ -378,6 +380,18 @@ function makeBsHandler(
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
       }
     }
+    // ── Dynamic fallback: AZSEKER BS parser returned 0 lines on non-empty sheet ──
+    if (rows.length === 0) {
+      const sheet = input.workbook.Sheets[input.sheetName]
+      const hasData = sheet && Object.keys(sheet).length > 1
+      if (hasData) {
+        console.log(
+          `[prod-adapter] BS "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
+        )
+        return runDynamicBsAdapter(input, ctx.planId, prisma)
+      }
+    }
+
     return {
       summary: `${parsed.lines.length} BS lines for ${input.entityCode}`,
       itemCount: rows.length,
@@ -456,6 +470,18 @@ function makeCfHandler(
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
       }
     }
+    // ── Dynamic fallback: AZSEKER CF parser returned 0 entries on non-empty sheet ──
+    if (rows.length === 0) {
+      const sheet = input.workbook.Sheets[input.sheetName]
+      const hasData = sheet && Object.keys(sheet).length > 1
+      if (hasData) {
+        console.log(
+          `[prod-adapter] CF "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
+        )
+        return runDynamicCfAdapter(input, prisma)
+      }
+    }
+
     return {
       summary: `${parsed.entries.length} CF entries for ${input.entityCode}`,
       itemCount: rows.length,

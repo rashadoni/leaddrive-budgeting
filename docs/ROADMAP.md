@@ -1165,3 +1165,12 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **`composite-score.test.ts`** — 5 new tests: equal weights = unweighted, high-weight red pulls score lower, back-compat (no weight = 1.0), heavy-weight drag, unknown excluded from denominator. 29 total passing.
   - Run `npx tsx scripts/seed-indicators.ts` to apply weights to DB (idempotent upsert of all 120+ indicators).
   - tsc clean · vitest 5118 passing.
+
+- **2026-05-24 (Phase 7.M — Dynamic BS + CF adapters: AI-powered fallback for balance sheets and cash flows)**
+  - **Mirrors the Dynamic PLF adapter** — same LLM + 24h `AIMapperProposalCache` pipeline, now for BS and CF sheets.
+  - **`dynamic-bs-adapter.ts`** (NEW, ~260 LOC) — `runDynamicBsAdapter(input, planId, prisma)`: extracts mapper input → LLM proposal → `resolveColumnsPartial` (accepts partial month coverage, unlike PLF's strict 12-month requirement) → detects year → walks BS leaf codes (`BS.XX.XX.XX`) → classifies lineType (asset/equity/liability) + subType (non_current/current/long_term/short_term) → stores amounts as-is (no sign inversion — BS values are point-in-time snapshots) → calls `runBalanceSheetBatch`.
+  - **`dynamic-cf-adapter.ts`** (NEW, ~280 LOC) — `runDynamicCfAdapter(input, prisma)`: same pipeline → walks CF leaf codes (`CF.XX.XX.XX`) → classifies activity type (CF.01→operating, CF.02→investing, CF.03→financing; CF.04-07 bridge rows skipped) → entry type from sub-segment (CF.XX.01.* = inflow, CF.XX.02.* = outflow; fallback to sign-of-sum) → stores Math.abs (direction encoded in entryType) → calls `runCashFlowBatch` with `sourceTag: "dynamic-cf"`.
+  - **`production-adapter-registry.ts`** — added dynamic fallback blocks in `makeBsHandler` and `makeCfHandler` (same `if (rows.length === 0 && sheet && Object.keys(sheet).length > 1)` pattern as PLF).
+  - **`dynamic-bs-adapter.test.ts`** (NEW, 10 tests) + **`dynamic-cf-adapter.test.ts`** (NEW, 11 tests) — 21 new cases. Cover: extract error, confidence gate, cache miss/hit, missing code column, partial month (BS/CF-specific), account classification, sign/abs convention, no entityCode, LLM error.
+  - **Cost model:** AZSEKER files → $0 (hard-coded parsers handle); new format first upload → ~$0.05-0.10 one LLM call; subsequent → $0 (cache hit per 24h TTL). Three file types now covered (PLF + BS + CF).
+  - tsc clean · vitest 5139/5139 passing.
