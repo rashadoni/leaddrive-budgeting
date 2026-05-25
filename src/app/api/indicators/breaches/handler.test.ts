@@ -11,6 +11,10 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     // Phase 7.F sub-group RBAC — getCompanyScope reads user row.
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
+    // Breach route resolves companyId → companyCode for display.
+    company: { findMany: vi.fn().mockResolvedValue([
+      { id: "co_aac", code: "AZSEKER-MALT" },
+    ]) },
   },
 }))
 
