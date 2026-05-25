@@ -78,6 +78,23 @@ function pickTop3<T>(items: T[], scoreFn: (t: T) => number): T[] {
  * — and listed the same broadcast value seven times in the panel
  * (one per services-tagged entity), which is meaningless ranking.
  */
+/**
+ * Indicator code prefixes that are always macro/country-level signals.
+ * The auto-detector (`detectBroadcastIndicators`) catches most of them,
+ * but country signals that only appear in 1-2 companies (below the ≥3
+ * threshold) slip through. Hard-coded prefixes close the gap.
+ */
+const MACRO_SIGNAL_PREFIXES = ["SERV_AZ_", "AZ_MACRO_", "COUNTRY_"]
+
+/**
+ * True when a percentage value is so extreme it is almost certainly a
+ * data artifact (division by near-zero revenue) rather than a real
+ * business problem. Threshold: |value| > 300 % for %-unit indicators.
+ */
+function isExtremePercentArtifact(entry: WorstEntry): boolean {
+  return entry.unit === "%" && Math.abs(entry.value) > 300
+}
+
 export function pickTopWorstDiversified(
   items: WorstEntry[],
   topN: number,
@@ -85,6 +102,10 @@ export function pickTopWorstDiversified(
 ): WorstEntry[] {
   const sorted = items
     .filter((t) => !broadcastIndicators?.has(t.indicatorCode))
+    // Fix C: hard-exclude country-level macro signal indicator codes
+    .filter((t) => !MACRO_SIGNAL_PREFIXES.some((p) => t.indicatorCode.startsWith(p)))
+    // Fix A: hard-exclude extreme % artifacts (e.g. EBITDA -3188% from near-zero revenue)
+    .filter((t) => !isExtremePercentArtifact(t))
     .map((t) => ({ t, s: Math.abs(t.value) }))
     .sort((a, b) => b.s - a.s)
     .map(({ t }) => t);
