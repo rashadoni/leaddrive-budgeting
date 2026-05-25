@@ -158,12 +158,15 @@ describe("CompanyStrategicContextCard", () => {
       hasAnyContent: true,
     })
     render(<CompanyStrategicContextCard companyCode="AZSEKER-CPC" />)
+    // Wait for the forecast section to appear — use exact "2026" to avoid matching
+    // the source string "azseker-farming-strategy-2026-05-19" which also contains "2026"
     await waitFor(() => {
-      expect(screen.getByText(/2026/)).toBeTruthy()
+      expect(screen.getByText("2026")).toBeTruthy()
     })
     expect(screen.getByText(/Terminal value/)).toBeTruthy()
-    expect(screen.getByText(/Buğda/)).toBeTruthy()
-    expect(screen.getByText(/Tekstil/)).toBeTruthy()
+    // BU names are translated AZ→RU in the component (Buğda→Пшеница, Tekstil→Хлопок)
+    expect(screen.getByText(/Пшеница/)).toBeTruthy()
+    expect(screen.getByText(/Хлопок/)).toBeTruthy()
   })
 
   it("shows error state on fetch failure", async () => {
