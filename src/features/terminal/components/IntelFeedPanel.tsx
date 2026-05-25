@@ -52,7 +52,7 @@ function relevanceTone(score: number): { label: string; cls: string } {
   if (score >= 0.7) {
     return {
       label: "high",
-      cls: "text-emerald-600 dark:text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
+      cls: "text-emerald-400 border-emerald-500/40 bg-emerald-500/10",
     };
   }
   if (score >= 0.4) {
@@ -63,7 +63,7 @@ function relevanceTone(score: number): { label: string; cls: string } {
   }
   return {
     label: "low",
-    cls: "text-muted-foreground border-input bg-muted/50/50",
+    cls: "text-gray-500 border-gray-700/60 bg-gray-800/40",
   };
 }
 
@@ -250,18 +250,18 @@ export function IntelFeedPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-3xl max-h-[80vh] overflow-y-auto rounded-lg border border-cyan-500/20 bg-[#0D1117] shadow-2xl shadow-black/60">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800/60 bg-[#0D1117]/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
-            <Globe size={16} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            <Globe size={16} className="text-emerald-400" aria-hidden="true" />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-sm font-semibold tracking-tight text-gray-100">
                 {t("intelFeedPanel.title")}{" "}
-                <span className="text-xs text-muted-foreground font-mono">
+                <span className="text-xs text-gray-600 font-mono">
                   ({items.length})
                 </span>
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-gray-500">
                 {t("intelFeedPanel.subtitle")}
               </p>
             </div>
@@ -274,7 +274,7 @@ export function IntelFeedPanel() {
                 disabled={refreshing}
                 aria-label={t("intelFeedPanel.refreshAriaLabel")}
                 data-testid="intel-refresh-button"
-                className="flex items-center gap-1 rounded border border-input px-2 py-1 text-xs hover:bg-muted/50 disabled:opacity-50"
+                className="flex items-center gap-1 rounded border border-gray-700/60 px-2 py-1 text-xs text-gray-400 hover:bg-gray-800/60 hover:text-gray-200 disabled:opacity-50"
               >
                 {refreshing ? (
                   <Loader2 size={12} className="animate-spin" />
@@ -292,7 +292,7 @@ export function IntelFeedPanel() {
               type="button"
               onClick={() => setOpen(false)}
               aria-label={t("intelFeedPanel.closeAriaLabel")}
-              className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
+              className="rounded border border-gray-700/60 px-2 py-1 text-xs text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
             >
               <X size={14} aria-hidden="true" />
             </button>
@@ -302,7 +302,7 @@ export function IntelFeedPanel() {
         {refreshNotice !== null && (
           <div
             data-testid="intel-refresh-notice"
-            className="border-b border-border bg-emerald-500/5 px-6 py-2 text-xs font-mono text-emerald-600 dark:text-emerald-400"
+            className="border-b border-gray-800/60 bg-emerald-500/5 px-6 py-2 text-xs font-mono text-emerald-400"
           >
             {refreshNotice}
           </div>
@@ -312,7 +312,7 @@ export function IntelFeedPanel() {
           <div
             role="alert"
             data-testid="intel-error"
-            className="border-b border-border bg-red-500/10 px-6 py-2 text-xs text-red-600 dark:text-red-400"
+            className="border-b border-gray-800/60 bg-red-500/10 px-6 py-2 text-xs text-red-400"
           >
             {error}
           </div>
@@ -321,14 +321,14 @@ export function IntelFeedPanel() {
         <div className="px-6 py-4 space-y-3">
           {loading && items.length === 0 ? (
             <p
-              className="text-sm text-muted-foreground"
+              className="text-sm text-gray-500"
               data-testid="intel-loading"
             >
               {t("intelFeedPanel.loading")}
             </p>
           ) : !loading && sortedItems.length === 0 ? (
             <p
-              className="text-sm text-muted-foreground"
+              className="text-sm text-gray-500"
               data-testid="intel-empty"
             >
               {isAdmin
@@ -345,7 +345,7 @@ export function IntelFeedPanel() {
                   className={`rounded border px-3 py-2 ${
                     item.isPinned
                       ? "border-emerald-500/40 bg-emerald-500/5"
-                      : "border-border bg-muted/30"
+                      : "border-gray-800/50 bg-gray-900/20"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -354,15 +354,15 @@ export function IntelFeedPanel() {
                         href={item.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm font-medium hover:underline break-words"
+                        className="text-xs font-medium text-gray-200 hover:text-cyan-300 hover:underline break-words"
                       >
                         {item.title}
                       </a>
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                         {item.summary}
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-mono">
-                        <span className="text-muted-foreground">
+                        <span className="text-gray-500">
                           {item.sourceLabel}
                         </span>
                         <span
@@ -374,7 +374,7 @@ export function IntelFeedPanel() {
                         >
                           {tone.label} · {item.relevanceScore.toFixed(2)}
                         </span>
-                        <span className="text-muted-foreground">
+                        <span className="text-gray-500">
                           {formatRelative(
                             item.publishedAt ?? item.fetchedAt,
                           )}
@@ -382,7 +382,7 @@ export function IntelFeedPanel() {
                         {item.industryTags.map((tag) => (
                           <span
                             key={`ind-${tag}`}
-                            className="rounded bg-muted/50 px-1.5 py-0.5 text-muted-foreground"
+                            className="rounded bg-gray-800/60 px-1.5 py-0.5 text-gray-500"
                           >
                             {tag}
                           </span>
@@ -408,10 +408,10 @@ export function IntelFeedPanel() {
                         }
                         aria-pressed={item.isPinned}
                         data-testid={`intel-pin-${item.id}`}
-                        className={`rounded border px-1.5 py-1 hover:bg-muted/50 ${
+                        className={`rounded border px-1.5 py-1 hover:bg-gray-800/60 ${
                           item.isPinned
-                            ? "border-emerald-500/60 text-emerald-600 dark:text-emerald-400"
-                            : "border-input text-muted-foreground"
+                            ? "border-emerald-500/60 text-emerald-400"
+                            : "border-gray-700/60 text-gray-500"
                         }`}
                       >
                         <Pin size={12} aria-hidden="true" />
@@ -421,7 +421,7 @@ export function IntelFeedPanel() {
                         onClick={() => handleDismiss(item)}
                         aria-label={t("intelFeedPanel.dismissAriaLabel")}
                         data-testid={`intel-dismiss-${item.id}`}
-                        className="rounded border border-input px-1.5 py-1 text-muted-foreground hover:bg-muted/50"
+                        className="rounded border border-gray-700/60 px-1.5 py-1 text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
                       >
                         <X size={12} aria-hidden="true" />
                       </button>
