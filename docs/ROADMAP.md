@@ -1219,3 +1219,9 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **DB applied:** seed-indicators.ts → 0 created / 107 updated. Recompute for all active agro/food_processing companies (EDEN, AZSF, MALT, PROMALT, CPC) 2025+2026 → 10 new green IVs at 6.8% CV (sugar price: mild volatility, low procurement risk). Coverage 43.0% → 43.9%.
   - **`recompute.test.ts`** — 3 new tests: CV% green, no-data unknown, amber band.
   - tsc clean · vitest 5172/5172 passing.
+
+- **2026-05-25 (Phase 7.E — Morning Brief race-condition fix + worst-cells label correction)**
+  - **`MorningBriefIntro.tsx`** — added `matrixReady?: boolean` prop; `useEffect` guard `if (!matrixReady) return` prevents the LLM call from firing with empty worst/movers/alerts while the matrix is still loading. Without this guard, reload produced a false "Спокойное утро" (calm morning) brief on every page load, followed by a second correct call once matrix data arrived — two LLM calls, first always wrong.
+  - **`TodayBrief.tsx`** — passes `matrixReady={!!matrix}` to `MorningBriefIntro`. Brief now fires exactly once, after real data is present.
+  - **`messages/ru.json`, `en.json`, `az.json`** — `worstTitle` label corrected: "Топ-3 худших" → "Топ худших (по секторам)" (actual limit is 7 entries from up to 7 sectors, not 3).
+  - tsc clean.

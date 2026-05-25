@@ -1861,7 +1861,7 @@
     "todayBrief": {
       "title": "Today's Brief",
       "subtitle": "What needs your attention right now",
-      "worstTitle": "Top 3 worst",
+      "worstTitle": "Top worst (by sector)",
       "moversTitle": "Top 5 movers by sector (12-mo)",
       "alertsTitle": "Active alerts",
       "empty": "(no data)",

@@ -1861,7 +1861,7 @@
     "todayBrief": {
       "title": "Bu günkü icmal",
       "subtitle": "İndi diqqətinizi tələb edən",
-      "worstTitle": "Top 3 ən pis",
+      "worstTitle": "Ən pis (sektor üzrə)",
       "moversTitle": "Sektor üzrə Top 5 dəyişən (12 ay)",
       "alertsTitle": "Aktiv xəbərdarlıqlar",
       "empty": "(məlumat yox)",

@@ -53,9 +53,16 @@ type State =
 
 interface Props {
   inputs: BriefInputs
+  /** True once the matrix has loaded — gates the LLM call so we never
+   *  fire the morning brief with empty worst/movers/alerts just because
+   *  the matrix is still fetching. Without this guard the brief fires on
+   *  first render (empty arrays), gets a "calm morning" from the LLM,
+   *  then re-fires when real data arrives — two LLM calls, first one
+   *  always wrong. */
+  matrixReady?: boolean
 }
 
-export function MorningBriefIntro({ inputs }: Props) {
+export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
   const locale = useLocale() as "en" | "ru" | "az"
   const t = useTranslations("terminal")
   const [state, setState] = useState<State>({ kind: "idle" })
@@ -111,6 +118,10 @@ export function MorningBriefIntro({ inputs }: Props) {
   }
 
   useEffect(() => {
+    // Don't fire until the matrix has loaded — prevents "calm morning"
+    // false-positive when worst/movers are still empty because the matrix
+    // fetch hasn't returned yet.
+    if (!matrixReady) return
     // Re-fetch only when the input signature actually changes — avoids
     // useEffect loops on every parent re-render.
     const sig = JSON.stringify({
@@ -124,7 +135,7 @@ export function MorningBriefIntro({ inputs }: Props) {
       void fetchBrief()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputs.worstCells.length, inputs.topMovers.length, inputs.activeAlerts.length, locale])
+  }, [matrixReady, inputs.worstCells.length, inputs.topMovers.length, inputs.activeAlerts.length, locale])
 
   return (
     <section

@@ -285,6 +285,7 @@ export function TodayBrief() {
           worst/movers/alerts + last news bullets. Sits above the
           existing 4 derived sections. */}
       <MorningBriefIntro
+        matrixReady={!!matrix}
         inputs={{
           worstCells: worst.map((w) => ({
             companyCode: w.companyCode,
