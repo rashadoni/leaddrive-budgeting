@@ -65,6 +65,24 @@ function fmtAZN(v: number): string {
   return `₼${v.toFixed(0)}`
 }
 
+/** Translate Azerbaijani crop/business-unit names from the farming
+ *  strategy spreadsheet (İcmal) into Russian for CFO readability. */
+const BU_RU: Record<string, string> = {
+  "Buğda":              "Пшеница",
+  "Tekstil":            "Хлопок",
+  "Pambıq":             "Хлопок",
+  "Şəkər çuğunduru":    "Сах. свёкла",
+  "Qarğıdalı":          "Кукуруза",
+  "Arpa":               "Ячмень",
+  "Torpaq icarəsi":     "Аренда земли",
+  "Lab services":       "Лаб. услуги",
+  "Yem":                "Корма",
+  "Digər":              "Прочее",
+}
+function localBu(raw: string): string {
+  return BU_RU[raw] ?? raw
+}
+
 export function CompanyStrategicContextCard({
   companyCode,
 }: {
@@ -203,11 +221,14 @@ export function CompanyStrategicContextCard({
       {/* ── Forward forecast ───────────────────────────────────── */}
       {data.forwardForecast && data.forwardForecast.years.length > 0 && (
         <div className="border-l-2 border-purple-500/40 pl-2">
-          <div className="text-[9px] text-gray-500 uppercase mb-1">
-            📈 Forward forecast (consolidated holding)
+          <div className="text-[9px] text-gray-500 uppercase mb-1 flex items-baseline gap-2 flex-wrap">
+            <span>📈 Forward forecast (consolidated holding)</span>
             {data.forwardForecast.hasTerminalValue && (
-              <span className="ml-1 text-purple-300">+ Terminal value</span>
+              <span className="text-purple-300">+ Terminal value</span>
             )}
+            <span className="text-gray-600 normal-case not-italic text-[8px]">
+              источник: {data.forwardForecast.source ?? "EDEN İcmal"}
+            </span>
           </div>
           <div className="space-y-0.5">
             {data.forwardForecast.years.slice(0, 5).map((y) => (
@@ -220,8 +241,11 @@ export function CompanyStrategicContextCard({
                   {fmtAZN(y.totalRevenueAzn)}
                 </span>
                 {y.topBu && (
-                  <span className="text-gray-500 truncate text-right">
-                    top: {y.topBu.businessUnit}
+                  <span
+                    className="text-gray-500 truncate text-right"
+                    title={y.topBu.businessUnit}
+                  >
+                    {localBu(y.topBu.businessUnit)}
                   </span>
                 )}
               </div>
