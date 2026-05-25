@@ -23,6 +23,10 @@ export interface MoverRow {
   deltaPct: number;
   /** Last value in the series, kept for tooltip. */
   current: number;
+  /** First non-null value in the series. Used when deltaPct ≈ −100%
+   *  (only one meaningful data point) to show an absolute value instead
+   *  of a meaningless "−100%" change. */
+  firstValue: number;
   /** Status of the underlying cell (green/amber/red/unknown). */
   status: "green" | "amber" | "red" | "unknown";
   /** Compact 12-point series, for inline sparkline rendering. */
@@ -101,6 +105,7 @@ export function computeTopMovers(
       delta,
       deltaPct,
       current: last,
+      firstValue: first,
       status,
       sparkline: cell.sparkline,
     });

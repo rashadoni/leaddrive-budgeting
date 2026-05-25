@@ -16,6 +16,15 @@ interface Props {
   onOpen: (companyCode: string, ivId?: string) => void;
 }
 
+/** Format an absolute indicator value compactly (no sign). */
+function fmtAbs(v: number): string {
+  const a = Math.abs(v)
+  if (a >= 1e9) return `${(v / 1e9).toFixed(1)}B`
+  if (a >= 1e6) return `${(v / 1e6).toFixed(1)}M`
+  if (a >= 1e3) return `${(v / 1e3).toFixed(0)}K`
+  return v.toFixed(1)
+}
+
 export function MoversSection({ movers, onOpen }: Props) {
   const t = useTranslations("terminal");
   if (movers.length === 0) {
@@ -45,6 +54,10 @@ export function MoversSection({ movers, onOpen }: Props) {
             </div>
             <ul className="space-y-0.5">
               {grouped.get(sector)!.map((m) => {
+                // When deltaPct ≈ −100% the sparkline has only one
+                // meaningful data point (no prior year base). Show the
+                // absolute first value instead of a meaningless "−100%".
+                const noBase = m.deltaPct <= -99.5
                 const positive = m.deltaPct > 0;
                 const arrow = positive ? "▲" : "▼";
                 const tone = positive ? "text-[#00D4AA]" : "text-[#FF4757]";
@@ -53,7 +66,7 @@ export function MoversSection({ movers, onOpen }: Props) {
                     key={`${m.companyId}-${m.indicatorId}`}
                     className="flex items-center gap-2 text-[12px] hover:bg-gray-800/30 cursor-pointer transition-colors px-1 py-0.5 rounded"
                     onClick={() => onOpen(m.companyCode, m.ivId)}
-                    title={`${m.companyCode} · ${m.indicatorCode} · ${m.deltaPct.toFixed(1)}%`}
+                    title={`${m.companyCode} · ${m.indicatorCode} · ${noBase ? `= ${fmtAbs(m.firstValue)}` : `${m.deltaPct.toFixed(1)}%`}`}
                   >
                     <span className="text-gray-500 font-mono w-14 truncate flex-shrink-0">
                       {m.companyCode}
@@ -66,10 +79,16 @@ export function MoversSection({ movers, onOpen }: Props) {
                       status={m.status}
                       compact
                     />
-                    <span className={`${tone} tabular-nums w-14 text-right`}>
-                      {arrow} {positive ? "+" : ""}
-                      {m.deltaPct.toFixed(1)}%
-                    </span>
+                    {noBase ? (
+                      <span className="text-gray-400 tabular-nums w-14 text-right">
+                        = {fmtAbs(m.firstValue)}
+                      </span>
+                    ) : (
+                      <span className={`${tone} tabular-nums w-14 text-right`}>
+                        {arrow} {positive ? "+" : ""}
+                        {m.deltaPct.toFixed(1)}%
+                      </span>
+                    )}
                   </li>
                 );
               })}
