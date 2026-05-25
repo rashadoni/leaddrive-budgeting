@@ -26,9 +26,10 @@
 #                                                        grained)
 #   7. Slack tokens         xox[baprs]-[A-Za-z0-9-]{10,}
 #   8. Stripe live key      sk_live_[A-Za-z0-9]{24,}
-#   9. Postgres URL with    postgres(?:ql)?://[^:]+:[^@]+@   (password embedded)
-#      embedded password    — flagged unless host is localhost/127.0.0.1
-#                            (local dev OK)
+#   9. Postgres URL with    postgres(?:ql)?://USER:PASS@HOST  (literal
+#      embedded password    creds only — env-var placeholders
+#                            `${POSTGRES_USER}:${POSTGRES_PASSWORD}` are
+#                            skipped, as are localhost/127.0.0.1 hosts
 #
 # What the scanner deliberately does NOT do:
 #   - Entropy-based heuristics (huge false-positive rate on random hashes,
@@ -127,7 +128,7 @@ patterns=(
   "private_key_block|-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
   "bcrypt_hash|\\\$2[aby]\\\$[0-9]{2}\\\$[A-Za-z0-9./]{53}"
   "hardcoded_password|[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd][[:space:]]*[=:][[:space:]]*[\"'][A-Za-z0-9!@#\$%^&*()_+=-]{6,}[\"']"
-  "postgres_with_password|postgres(ql)?://[^:/]+:[^@\\s]+@(?!(localhost|127\\.0\\.0\\.1|::1))"
+  "postgres_with_password|postgres(ql)?://(?![^:]*\\$\\{)[^:/]+:(?!\\$\\{)[^@\\s]+@(?!(localhost|127\\.0\\.0\\.1|::1))"
 )
 
 found_offenders=0
