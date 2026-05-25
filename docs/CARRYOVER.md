@@ -225,7 +225,7 @@ Per client wishlist via user: «reasonable indicators / AzerSheker as pilot / al
 
 **🔄 OPEN follow-ups (lower priority):**
 - 🔄 **Migration apply** — `npx prisma migrate dev --skip-seed` to land the `company_settings_update` enum + Phase 7.H Feature 5's `client_reconciliations` table. Blocked by pre-existing broken drift migration; user-side resolution required. owner=user.
-- 🔄 **Scheduler enable for FO Holding** — `runScheduledIntelCrawl` exists but isn't bootstrapped for the live org. Per-org `Organization.settings.intelCommodityIngest` flag flip + `scripts/intel-scheduler-bootstrap.ts` deployment. Until then, IntelDataPoint is empty and the new weather/sugar indicators read `unknown` (the honest answer; no synthetic placeholders). owner=engineering+user.
+- ✅ **Scheduler enable for FO Holding** — closed 2026-05-25. `scripts/intel-scheduler-bootstrap.ts --once --skip-breach` run manually; 363 IntelDataPoints (+58 new vs 2026-05-19); all active companies recomputed for 2025+2026; sparklines 1201/1201. Key results: AGRO_DROUGHT_RISK/EDEN=11.4[green], AGRO_SALYAN_RAINFALL_14D_FCST=2.8[red], AGRO_SUGAR_PRICE_TREND=-5.9[amber], FP_GRAIN_COST_PRESSURE_BLEND=209.9[green]. **Long-term**: set up LaunchAgent for daily auto-run (see `scripts/intel-scheduler-bootstrap.ts` — runs continuously with 24h interval; start with `npx tsx scripts/intel-scheduler-bootstrap.ts`). owner=user (LaunchAgent setup).
 
 ---
 
@@ -245,7 +245,7 @@ Per client wishlist via user: «reasonable indicators / AzerSheker as pilot / al
 - 🔄 **Apply migration `20260512120000_phase7h_client_reconciliation`** to dev Postgres. Tool-policy blocked direct `psql` apply this turn; user must run `npx prisma migrate dev --skip-seed` (or `migrate deploy` after resolving pre-existing drift) before the new endpoint can write. Until applied, POST/DELETE will fail at the DB layer; GET returns empty. owner=user, turn opened 2026-05-12.
 
 **🔄 OPEN (new, owner = engineering — separate plan):**
-- 🔄 **Risk Terminal `IND_EBITDA_MARGIN` formula inconsistent with P&L EBITDA.** `budgetLineResolver` in [recompute.ts:1138-1244](src/lib/risk/recompute.ts) exports `revenue`, `cogs`, `gross_profit`, `net_income` but NOT `ebitda` — so the Risk Terminal indicator can't add D&A back. Feature 5 v1 uses the P&L `computeEbitda` as the canonical comparison source; resolver upgrade is a separate plan. Open per Feature 5 plan §Out-of-scope. owner=engineering, turn opened 2026-05-12.
+- ✅ **Risk Terminal `IND_EBITDA_MARGIN` formula** — closed 2026-05-25. `budgetLineResolver` now accumulates `da_total` (703-11 COGS + 721-11 OpEx via `isDaCode()`); `ebitda = net_income + da_total` exposed in context. New `IND_EBITDA_MARGIN` seed shipped (cross-sector, green≥20/amber≥10/red<10, weight 1.4); 107 indicators total. 5 new test cases; DB seeded + 2026 recompute applied.
 
 **File ↔ DB import-fidelity audit — CLOSED 12/12 ✅ (this turn).**
 
