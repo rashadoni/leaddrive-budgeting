@@ -76,15 +76,24 @@ function isAffected(
   if (keys.some((k) => k.startsWith('fx_')) && ri.includes('currencyRate')) return true
 
   // Commodity / macro price overrides → commodityPrice resolver
-  // (brent_price_latest, sugar_price_latest, az_cpi_all_latest, fao_ffpi_latest …)
+  // (brent_price_latest, sugar_price_latest, az_cpi_all_latest, corn_price_latest …)
   if (
     keys.some(
       (k) =>
         k.endsWith('_price_latest') ||
         k.endsWith('_index_latest') ||
         k.startsWith('az_cpi_') ||
-        k.startsWith('fao_'),
+        k.startsWith('fao_') ||
+        k.startsWith('broiler_') ||
+        k.startsWith('egg_'),
     ) &&
+    ri.some((r) => r.startsWith('commodityPrice:'))
+  )
+    return true
+
+  // Trade / tourism overrides → commodityPrice resolver (same alias table)
+  if (
+    keys.some((k) => k.startsWith('az_trade_') || k.startsWith('az_tourism_')) &&
     ri.some((r) => r.startsWith('commodityPrice:'))
   )
     return true

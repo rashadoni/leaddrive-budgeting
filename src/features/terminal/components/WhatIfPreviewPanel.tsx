@@ -89,9 +89,12 @@ const SCENARIO_GROUPS: ScenarioGroup[] = [
     emoji: "💱",
     label: "FX Rates",
     vars: [
+      // AZN is a managed currency — devaluation risk is binary/sudden (2015 precedent)
       { key: "fx_usd", label: "AZN per 1 USD", unit: "AZN", default: 1.70, step: 0.01, min: 0.5, max: 5 },
       { key: "fx_eur", label: "AZN per 1 EUR", unit: "AZN", default: 1.85, step: 0.01, min: 0.5, max: 5 },
+      // Turkey is AZ's #1 trade partner — TRY crash directly affects competitive dynamics
       { key: "fx_try", label: "AZN per 1 TRY", unit: "AZN", default: 0.050, step: 0.001, min: 0.005, max: 0.5 },
+      // RUB matters for trade flows and Russian tourism
       { key: "fx_rub", label: "AZN per 1 RUB", unit: "AZN", default: 0.018, step: 0.001, min: 0.002, max: 0.2 },
     ],
   },
@@ -100,9 +103,17 @@ const SCENARIO_GROUPS: ScenarioGroup[] = [
     emoji: "🛢️",
     label: "Commodities",
     vars: [
+      // Brent drives AZ state revenue → fiscal policy → credit → real economy
       { key: "brent_price_latest", label: "Brent Crude", unit: "USD/bbl", default: 75, step: 1, min: 20, max: 200 },
-      { key: "sugar_price_latest", label: "Sugar", unit: "USD/t", default: 450, step: 5, min: 100, max: 1_200 },
-      { key: "wheat_price_latest", label: "Wheat", unit: "USD/t", default: 210, step: 5, min: 50, max: 800 },
+      // Sugar: AZSEKER core product and raw-material input for processing
+      { key: "sugar_price_latest", label: "Sugar (ICE #11)", unit: "USD/t", default: 450, step: 5, min: 100, max: 1_200 },
+      // Wheat: AZ imports ~60% of domestic needs — price spikes = immediate food inflation
+      { key: "wheat_price_latest", label: "Wheat (CBOT)", unit: "USD/t", default: 210, step: 5, min: 50, max: 800 },
+      // Corn/maize: livestock feed (EDEN cattle/poultry), also ethanol indicator
+      { key: "corn_price_latest", label: "Corn / Maize", unit: "USD/t", default: 200, step: 5, min: 50, max: 600 },
+      // Cotton: historic AZ crop, EDEN still grows; export revenue driver
+      { key: "cotton_price_latest", label: "Cotton (ICE #2)", unit: "¢/lb", default: 80, step: 2, min: 40, max: 200 },
+      // Natural gas: critical energy input for sugar/food processing — very energy-intensive
       { key: "natgas_price_latest", label: "Natural Gas", unit: "USD/MMBtu", default: 3.2, step: 0.1, min: 0.5, max: 20 },
     ],
   },
@@ -111,8 +122,12 @@ const SCENARIO_GROUPS: ScenarioGroup[] = [
     emoji: "📊",
     label: "Macro",
     vars: [
+      // CPI: wage pressure, working capital costs, consumer purchasing power
       { key: "az_cpi_all_latest", label: "AZ CPI (all items)", unit: "% YoY", default: 8.5, step: 0.5, min: 0, max: 50 },
+      // Food CPI: directly affects revenue for food producers selling to domestic market
       { key: "az_cpi_food_latest", label: "AZ Food CPI", unit: "% YoY", default: 10.2, step: 0.5, min: 0, max: 80 },
+      // Housing/construction CPI: affects real estate, construction subsidiary costs
+      { key: "az_cpi_housing_latest", label: "AZ Housing CPI", unit: "% YoY", default: 7.8, step: 0.5, min: 0, max: 40 },
     ],
   },
   {
@@ -120,7 +135,11 @@ const SCENARIO_GROUPS: ScenarioGroup[] = [
     emoji: "🌾",
     label: "Agricultural",
     vars: [
+      // Kura-Araz lowland (EDEN's 22k+ ha) averages 250 mm/yr — semi-arid
+      // Below 80 mm = severe drought; below 30 mm = catastrophic
       { key: "rainfall_mm_90d", label: "Rainfall (90-day)", unit: "mm", default: 180, step: 10, min: 0, max: 600 },
+      // Summer heat stress: Baku regularly exceeds 38°C in July/August
+      // At avg >32°C, sugar beet yield drops sharply; cotton requires heat but not extreme
       { key: "temp_avg_c_30d", label: "Avg Temperature", unit: "°C", default: 22, step: 0.5, min: -10, max: 50 },
     ],
   },
@@ -142,39 +161,99 @@ interface Preset {
 
 const PRESETS: Preset[] = [
   {
-    label: "AZN Stress",
-    desc: "FX −15% across all currencies (AZN devaluation scenario)",
+    label: "AZN Peg Break",
+    // Replay of Feb 2015 devaluation: CBAR lifted the peg after Brent fell from $115→$45.
+    // AZN/USD moved from 0.78 → 1.05 overnight (-34%). All imported inputs (machinery,
+    // chemicals, packaging) immediately repriced. Inflation spiked to 13-15%.
+    desc: "2015 devaluation replay: AZN −15%, inflation +6pp, gas costs rise",
     icon: "💸",
-    overrides: { fx_usd: 1.95, fx_eur: 2.13, fx_try: 0.056, fx_rub: 0.021 },
-  },
-  {
-    label: "Oil Crash $50",
-    desc: "Brent drops to $50/bbl — fiscal shock to AZ economy (−33%)",
-    icon: "🛢️",
-    overrides: { brent_price_latest: 50 },
-  },
-  {
-    label: "Sugar +40%",
-    desc: "Sugar rally to $630/t — key input cost for AZSEKER sugar operations",
-    icon: "🍬",
-    overrides: { sugar_price_latest: 630 },
-  },
-  {
-    label: "Drought Year",
-    desc: "Rainfall −70% (55 mm) + heat stress +6°C — agro yield shock",
-    icon: "☀️",
-    overrides: { rainfall_mm_90d: 55, temp_avg_c_30d: 34 },
-  },
-  {
-    label: "Stagflation",
-    desc: "CPI 18% + AZN −10% + Brent +20% — combined macro stress",
-    icon: "📉",
     overrides: {
-      az_cpi_all_latest: 18,
-      az_cpi_food_latest: 24,
+      fx_usd: 1.95,
+      fx_eur: 2.13,
+      fx_try: 0.056,
+      fx_rub: 0.021,
+      az_cpi_all_latest: 14.0,
+      az_cpi_food_latest: 16.0,
+      natgas_price_latest: 3.8,
+    },
+  },
+  {
+    label: "OPEC+ Breakdown",
+    // AZ fiscal break-even ~$55/bbl. Below that: state capex cut → contractor revenues drop,
+    // credit tightens (IBA NPL rise), construction slows, consumer spending falls.
+    // $40 Brent = ~2016 lows; also triggers partial AZN weakening via SOFAZ depletion.
+    desc: "Brent $40 — below AZ fiscal break-even; partial AZN weakening −10%",
+    icon: "🛢️",
+    overrides: {
+      brent_price_latest: 40,
       fx_usd: 1.87,
       fx_eur: 2.04,
-      brent_price_latest: 90,
+    },
+  },
+  {
+    label: "Black Sea Grain Crisis",
+    // 2022 Ukraine war scenario: wheat spiked to $430/t (+100%), corn +50%, EU natgas +200%.
+    // Azerbaijan imports ~60% of wheat → bread prices up → social pressure → price caps.
+    // Food processors (AZSEKER flour/milling) face input cost + margin squeeze simultaneously.
+    desc: "2022 Ukraine war replay: wheat +81%, corn +45%, gas ×2 — import food shock",
+    icon: "🌾",
+    overrides: {
+      wheat_price_latest: 380,
+      corn_price_latest: 290,
+      natgas_price_latest: 6.5,
+      az_cpi_food_latest: 18.0,
+    },
+  },
+  {
+    label: "Turkish Lira Crash",
+    // Turkey is AZ's #1 trade partner (~30% of imports). TRY crashed -44% in Dec 2021.
+    // Effect: (1) cheaper Turkish goods dump into AZ market → local manufacturers lose margin;
+    // (2) Turkish tourists have less purchasing power → AZ tourism revenue down;
+    // (3) Turkish construction firms (major AZ contractors) cut activity.
+    desc: "TRY −44% (2021 replay) — Turkish import flood + tourism revenue hit",
+    icon: "🇹🇷",
+    overrides: {
+      fx_try: 0.028,
+      az_tourism_arrivals_latest: 1_800_000,
+    },
+  },
+  {
+    label: "Kura-Araz Drought",
+    // EDEN operates 22,596 ha in the Kura-Araz lowland — semi-arid (250 mm/yr avg).
+    // A severe drought year: <30 mm/90-day + extreme summer heat.
+    // Sugar beet yield drops 40-60% below 80mm rainfall; cotton requires warmth but not
+    // >38°C sustained; wheat harvest collapses → AZ import demand rises → wheat price spike.
+    desc: "Catastrophic drought: rainfall −86%, heat +13°C — EDEN agro yield shock",
+    icon: "☀️",
+    overrides: {
+      rainfall_mm_90d: 25,
+      temp_avg_c_30d: 35,
+      wheat_price_latest: 270,
+      corn_price_latest: 260,
+      cotton_price_latest: 92,
+    },
+  },
+  {
+    label: "Full External Shock",
+    // "Perfect storm": oil crash triggers AZN devaluation → inflation spike → credit crunch.
+    // Simultaneously: Ukraine-style grain disruption + European gas crisis.
+    // Drought amplifies the food supply shock. All four risk drivers hit at once.
+    // This is the tail risk scenario boards and lenders model for AZ corporate stress tests.
+    desc: "Oil crash + AZN devaluation + grain crisis + drought — tail risk stress test",
+    icon: "⚡",
+    overrides: {
+      brent_price_latest: 42,
+      fx_usd: 1.98,
+      fx_eur: 2.16,
+      fx_try: 0.032,
+      fx_rub: 0.019,
+      wheat_price_latest: 340,
+      corn_price_latest: 270,
+      natgas_price_latest: 5.5,
+      az_cpi_all_latest: 16,
+      az_cpi_food_latest: 22,
+      rainfall_mm_90d: 60,
+      temp_avg_c_30d: 32,
     },
   },
 ]
