@@ -25,6 +25,7 @@ import { z, ZodError } from "zod"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { getPredictiveBreaches } from "@/lib/risk/breach-persist"
+import { prisma } from "@/lib/prisma"
 
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
 
@@ -78,8 +79,22 @@ export async function GET(req: NextRequest) {
   // Strip organizationId from response — caller already knows their own org.
   const sanitized = scoped.map(({ organizationId: _o, ...rest }) => rest)
 
+  // Resolve companyId → companyCode for display (saves client a join).
+  const uniqueIds = [...new Set(sanitized.map((b) => b.companyId))]
+  const companyRows = uniqueIds.length > 0
+    ? await prisma.company.findMany({
+        where: { id: { in: uniqueIds } },
+        select: { id: true, code: true },
+      })
+    : []
+  const codeById = new Map(companyRows.map((c: { id: string; code: string }) => [c.id, c.code]))
+  const enriched = sanitized.map((b) => ({
+    ...b,
+    companyCode: codeById.get(b.companyId) ?? b.companyId,
+  }))
+
   return NextResponse.json({
-    breaches: sanitized,
+    breaches: enriched,
     filter: {
       period: parsed.period ?? null,
       minConfidenceBand: parsed.minConfidenceBand ?? null,

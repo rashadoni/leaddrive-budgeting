@@ -36,6 +36,7 @@ import { AlertTriangle, X } from "lucide-react";
 
 interface BreachRow {
   companyId: string;
+  companyCode: string;
   indicatorCode: string;
   period: string;
   horizonStep: number;
@@ -143,7 +144,7 @@ export function BreachForecastPanel() {
     if (!data) return new Map<string, BreachRow[]>();
     const m = new Map<string, BreachRow[]>();
     for (const b of data.breaches) {
-      const key = b.companyId;
+      const key = b.companyCode ?? b.companyId;
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(b);
     }
@@ -163,13 +164,13 @@ export function BreachForecastPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
+      <div className="relative w-full max-w-5xl max-h-[85vh] overflow-y-auto rounded-lg border border-cyan-500/20 bg-[#0D1117] shadow-2xl shadow-black/60">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800/60 bg-[#0D1117]/95 px-6 py-3 backdrop-blur">
           <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-red-600 dark:text-red-400" aria-hidden="true" />
+            <AlertTriangle size={16} className="text-red-400" aria-hidden="true" />
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">{t("breach.title")}</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2 className="text-sm font-semibold tracking-tight text-gray-100">{t("breach.title")}</h2>
+              <p className="text-[10px] text-gray-500">
                 {t("breach.subtitle")}
               </p>
             </div>
@@ -179,32 +180,32 @@ export function BreachForecastPanel() {
             onClick={() => setOpen(false)}
             aria-label={t("breach.closeAriaLabel")}
             data-testid="breach-close"
-            className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
+            className="rounded border border-gray-700/60 px-2 py-1 text-xs text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
           >
-            <X size={14} aria-hidden="true" />
+            <X size={12} aria-hidden="true" />
           </button>
         </header>
 
         {/* Filter row */}
-        <section className="px-6 py-3 border-b border-border flex flex-wrap items-center gap-4">
+        <section className="px-6 py-3 border-b border-gray-800/60 flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wider">{t("breach.periodLabel")}</span>
+            <span className="text-gray-500 uppercase tracking-wider">{t("breach.periodLabel")}</span>
             <input
               type="text"
               value={period}
               onChange={(e) => setPeriod(e.target.value)}
               placeholder={t("breach.periodPlaceholder")}
               data-testid="breach-period-input"
-              className="font-mono px-2 py-1 rounded border border-input bg-black/30 text-sm w-40"
+              className="font-mono px-2 py-1 rounded border border-gray-700/60 bg-gray-900/60 text-gray-200 placeholder-gray-600 text-xs w-40"
             />
           </label>
           <label className="flex items-center gap-2 text-xs">
-            <span className="text-muted-foreground uppercase tracking-wider">{t("breach.minConfidenceLabel")}</span>
+            <span className="text-gray-500 uppercase tracking-wider">{t("breach.minConfidenceLabel")}</span>
             <select
               value={minBand}
               onChange={(e) => setMinBand(e.target.value as ConfidenceFilter)}
               data-testid="breach-band-select"
-              className="font-mono px-2 py-1 rounded border border-input bg-black/30 text-sm"
+              className="font-mono px-2 py-1 rounded border border-gray-700/60 bg-gray-900/60 text-gray-200 text-xs"
             >
               <option value="low">{t("breach.bandLow")}</option>
               <option value="medium">{t("breach.bandMedium")}</option>
@@ -225,25 +226,25 @@ export function BreachForecastPanel() {
         {/* Results */}
         <section className="px-6 py-4">
           {loading && data === null ? (
-            <p className="text-sm text-muted-foreground" data-testid="breach-loading">
+            <p className="text-xs text-gray-500" data-testid="breach-loading">
               {t("breach.loadingForecasts")}
             </p>
           ) : fetchError ? (
             <p
               role="alert"
-              className="text-sm text-red-600 dark:text-red-400"
+              className="text-xs text-red-400"
               data-testid="breach-fetch-error"
             >
               {fetchError}
             </p>
           ) : data === null ? null : data.count === 0 ? (
-            <p className="text-sm text-muted-foreground" data-testid="breach-empty">
+            <p className="text-xs text-gray-500 italic" data-testid="breach-empty">
               {t("breach.emptyPrefix")}{" "}
               <span className="font-mono">{t("breach.bandLow")}</span>{t("breach.emptySuffix")}
             </p>
           ) : (
-            <div className="space-y-4" data-testid="breach-results">
-              <p className="text-xs text-muted-foreground">
+            <div className="space-y-3" data-testid="breach-results">
+              <p className="text-[10px] text-gray-500">
                 {data.count}{" "}
                 {pluralize(data.count, t("breach.forecastOne"), t("breach.forecastFew"), t("breach.forecastMany"))}{" "}
                 {t("breach.summaryAcross")}{" "}
@@ -253,26 +254,28 @@ export function BreachForecastPanel() {
               {Array.from(grouped.entries()).map(([companyId, rows]) => (
                 <div
                   key={companyId}
-                  className="rounded border border-border bg-black/20"
+                  className="rounded border border-gray-800/60 bg-gray-900/30"
                   data-testid={`breach-group-${companyId}`}
                 >
-                  <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-black/30">
-                    <h3 className="text-sm font-mono font-semibold tracking-wide">{companyId}</h3>
-                    <span className="text-xs text-muted-foreground">
+                  <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800/60 bg-gray-900/50">
+                    <h3 className="text-xs font-mono font-semibold tracking-wide text-cyan-300">
+                      {rows[0]?.companyCode ?? companyId}
+                    </h3>
+                    <span className="text-[10px] text-gray-500">
                       {rows.length}{" "}
                       {pluralize(rows.length, t("breach.forecastOne"), t("breach.forecastFew"), t("breach.forecastMany"))}
                     </span>
                   </header>
-                  <ul className="divide-y divide-gray-800">
+                  <ul className="divide-y divide-gray-800/40">
                     {rows.map((b, idx) => (
                       <li
                         key={`${b.indicatorCode}-${b.period}-${b.horizonStep}-${idx}`}
-                        className="px-4 py-3 grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_1fr] gap-3 items-center text-sm"
+                        className="px-4 py-2.5 grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_1fr] gap-3 items-center"
                         data-testid={`breach-row-${b.indicatorCode}-${b.horizonStep}`}
                       >
                         <div>
-                          <div className="font-mono font-medium">{b.indicatorCode}</div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="font-mono text-xs font-medium text-gray-200">{b.indicatorCode}</div>
+                          <div className="text-[10px] text-gray-600">
                             {b.period} · {t("breach.stepLabel")} +{b.horizonStep}
                           </div>
                         </div>
@@ -289,10 +292,10 @@ export function BreachForecastPanel() {
                             {b.predictedStatus}
                           </span>
                         </div>
-                        <div className="text-right tabular-nums font-mono text-xs">
+                        <div className="text-right tabular-nums font-mono text-xs text-gray-300">
                           {b.predictedValue.toFixed(2)}
                           {b.predictedLower !== undefined && b.predictedUpper !== undefined && (
-                            <div className="text-muted-foreground">
+                            <div className="text-[10px] text-gray-600">
                               [{b.predictedLower.toFixed(1)}, {b.predictedUpper.toFixed(1)}]
                             </div>
                           )}
@@ -303,7 +306,7 @@ export function BreachForecastPanel() {
                           >
                             {b.confidenceBand}
                           </span>
-                          <div className="text-[10px] text-muted-foreground mt-0.5">
+                          <div className="text-[10px] text-gray-600 mt-0.5">
                             {(b.forecastConfidence * 100).toFixed(0)}%
                           </div>
                         </div>
@@ -316,7 +319,7 @@ export function BreachForecastPanel() {
           )}
         </section>
 
-        <footer className="px-6 py-3 border-t border-border text-xs text-muted-foreground">
+        <footer className="px-6 py-3 border-t border-gray-800/60 text-[10px] text-gray-600">
           {t("breach.footerNote")}
         </footer>
       </div>

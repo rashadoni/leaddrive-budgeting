@@ -22,7 +22,7 @@ const queryClient = new QueryClient({
 export default function TerminalPanelLayout({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="h-screen w-screen bg-[#050814] overflow-hidden">{children}</div>
+      <div className="dark h-screen w-screen bg-[#050814] overflow-hidden">{children}</div>
     </QueryClientProvider>
   );
 }
