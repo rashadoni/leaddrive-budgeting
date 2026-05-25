@@ -1116,6 +1116,47 @@ function formatHeadlineValue(v: number, unit: string): string {
   return `${v.toFixed(abs >= 10 ? 1 : 2)}${u ? " " + u : ""}`;
 }
 
+/** Pretty-renderer for the industryFactor-resolver aggregate shape:
+ *  { scopes: { scope_N: { factor, confidence } }, industry }.
+ *  Used by ESG composite indicators. Returns null if shape doesn't match. */
+function renderIndustryFactorAggregate(
+  data: Record<string, unknown>,
+): React.ReactElement | null {
+  const scopes = data.scopes;
+  const industry = data.industry;
+  if (!scopes || typeof scopes !== "object" || Array.isArray(scopes)) return null;
+  const scopeEntries = Object.entries(scopes as Record<string, unknown>);
+  type ScopeEntry = { key: string; factor: number; confidence: string };
+  const parsed: ScopeEntry[] = [];
+  for (const [key, raw] of scopeEntries) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const r = raw as Record<string, unknown>;
+    if (typeof r.factor !== "number") return null;
+    parsed.push({ key, factor: r.factor, confidence: String(r.confidence ?? "?") });
+  }
+  if (parsed.length === 0) return null;
+  return (
+    <div className="bg-foreground/95 dark:bg-background rounded border border-border px-2 py-1.5 space-y-1">
+      {typeof industry === "string" && (
+        <div className="text-[9px] text-muted-foreground uppercase font-mono mb-1">{industry}</div>
+      )}
+      <table className="text-[10px] tabular-nums w-full">
+        <tbody>
+          {parsed.map((s) => (
+            <tr key={s.key}>
+              <td className="text-muted-foreground pr-2 font-mono">{s.key.replace("_", " ")}</td>
+              <td className="text-gray-200 text-right pr-3">{(s.factor * 100).toFixed(0)}%</td>
+              <td className="text-muted-foreground text-right text-[9px] w-8">
+                <span title="data confidence">{s.confidence}</span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Pretty-renderer for the commodityPrice-resolver aggregate shape:
  *  { alias_name: { value, samples, aggregator, sourceCode } }.
  *  Used by Phase 7.K external-feed indicators. Returns null if shape
@@ -1300,6 +1341,10 @@ function AggregateBlock({
   if (!allPrimitive) {
     // Try specific structured renderers in priority order. The first
     // that recognizes the shape wins; raw JSON only as last resort.
+    const industryView = renderIndustryFactorAggregate(
+      data as Record<string, unknown>,
+    );
+    if (industryView) return industryView;
     const commodityView = renderCommodityPriceAggregate(
       data as Record<string, unknown>,
     );
