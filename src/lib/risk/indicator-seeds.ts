@@ -265,19 +265,19 @@ export const agroIndicators: IndicatorSeed[] = [
     industries: ["agro_crops", "poultry", "food_processing"],
     unit: "%",
     direction: "lower_better",
-    formula: "commodity_price_stdev / commodity_price_mean * 100",
+    formula: "sugar_price_stdev_12m / sugar_price_mean_12m * 100",
     thresholds: {
       green: { op: "<=", value: 10 },
       amber: { op: "<=", value: 25 },
       red: { op: ">", value: 25 },
     },
     hintTemplateEn:
-      "Trailing-12M price volatility is {value}%. Above 25% — consider forward contracts to lock margins.",
+      "Trailing-12M sugar price volatility is {value}% (CV). Above 25% — consider forward contracts to lock refining margins.",
     hintTemplateRu:
-      "Скользящая 12-месячная волатильность цены {value}%. Выше 25% — рассмотрите forward-контракты для фиксации маржи.",
+      "Скользящая 12-месячная волатильность цены сахара {value}% (CV). Выше 25% — рассмотрите форвардные контракты для фиксации маржи переработки.",
     hintTemplateAz:
-      "Sürüşkən 12-aylıq qiymət volatilliyi {value}%. 25%-dən yuxarı — marjanı bağlamaq üçün forvard müqavilələrini nəzərdən keçirin.",
-    requiredInputs: ["operationalFact:commodity_price"],
+      "Sürüşkən 12-aylıq şəkər qiyməti volatilliyi {value}% (CV). 25%-dən yuxarı — emal marjasını bağlamaq üçün forvard müqavilələrini nəzərdən keçirin.",
+    requiredInputs: ["commodityPrice:sugar_price_stdev_12m", "commodityPrice:sugar_price_mean_12m"],
     sortOrder: 40,
   },
   // ─ Phase 7.I — AzerSheker / sugar pilot. Five new agro indicators that

@@ -3092,6 +3092,79 @@ describe('recomputeIndicator — commodityPriceResolver (Phase 7.I)', () => {
   });
 });
 
+const AGRO_COMMODITY_VOL_TEST: IndicatorDefinitionLike = {
+  id: 'ind_agro_commodity_vol',
+  code: 'AGRO_COMMODITY_VOL',
+  formula: 'sugar_price_stdev_12m / sugar_price_mean_12m * 100',
+  thresholds: {
+    green: { op: '<=', value: 10 },
+    amber: { op: '<=', value: 25 },
+    red: { op: '>', value: 25 },
+  },
+  requiredInputs: [
+    'commodityPrice:sugar_price_stdev_12m',
+    'commodityPrice:sugar_price_mean_12m',
+  ],
+  unit: '%',
+  defaultValueSource: 'macro',
+};
+
+describe('recomputeIndicator — AGRO_COMMODITY_VOL stdev/mean (Phase 7.O fix)', () => {
+  it('computes CV% from sugar stdev_12m / mean_12m — green when <10%', async () => {
+    // 12 monthly values trending from 300→410 USD/tonne → CV ≈ 9.7% (green ≤10%)
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(2025, i, 1),
+      value: 300 + i * 10, // 300..410
+      unit: 'USD/tonne',
+    }));
+    const ds = mockDs({ intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series } });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts).toHaveLength(1);
+    // mean=355, stdev≈34.5, CV≈9.7%
+    expect(ds.state.upserts[0].value).toBeCloseTo(9.72, 0);
+    expect(ds.state.upserts[0].status).toBe('green');
+  });
+
+  it('returns unknown when no sugar price data available', async () => {
+    const ds = mockDs({ intelDataPoints: {} });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].status).toBe('unknown');
+  });
+
+  it('amber when CV 10%..25%', async () => {
+    // High-spread series: alternating 200 and 400 → mean=300, stdev=100, CV≈33% → red
+    // Use a more moderate spread for amber: values 270..330 → CV ≈ 6.6% → green
+    // To get amber, use values 200..400 alternating but smaller spread: 250,350 alternating
+    // 6×250 + 6×350 = mean=300, stdev=50, CV=50/300*100=16.7% → amber
+    const series = Array.from({ length: 12 }, (_, i) => ({
+      metric: 'SUGAR_RAW_USD_TONNE',
+      datetime: new Date(2025, i, 1),
+      value: i % 2 === 0 ? 250 : 350,
+      unit: 'USD/tonne',
+    }));
+    const ds = mockDs({ intelDataPoints: { 'sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE': series } });
+    await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_azsf',
+      definition: AGRO_COMMODITY_VOL_TEST,
+      period: '2026',
+    });
+    expect(ds.state.upserts[0].value).toBeCloseTo(16.67, 0);
+    expect(ds.state.upserts[0].status).toBe('amber');
+  });
+});
+
 // --- Phase 7.L 2026-05-18 — zombie-row guard ---------------------------------
 //
 // When a formula evaluates to numeric 0 only because its inputs were

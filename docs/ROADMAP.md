@@ -1211,3 +1211,11 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
   - **DB applied:** ran derive script → `drought_index=11.4` (green) written for AZSEKER-EDEN 2026. AGRO_DROUGHT_RISK recomputed → 11.4/100, status=green.
   - **`recompute.test.ts`** — 1 new test: `normalizes Azerbaijani diacritics in region key (Beyləqan → BEYLAQAN)`.
   - tsc clean · vitest 5169/5169 passing.
+
+- **2026-05-25 (Phase 7.O — AGRO_COMMODITY_VOL formula fix: sugar price volatility)**
+  - **Root cause:** `AGRO_COMMODITY_VOL` formula used undefined variables `commodity_price_stdev / commodity_price_mean` (never existed in any resolver). `requiredInputs: ["operationalFact:commodity_price"]` also wrong — the `operationalFact` resolver exposes bare metric values, not stdev/mean aggregates.
+  - **Fix:** formula → `sugar_price_stdev_12m / sugar_price_mean_12m * 100`; `requiredInputs` → `["commodityPrice:sugar_price_stdev_12m", "commodityPrice:sugar_price_mean_12m"]`. The `commodityPrice` resolver already carries these aliases from Phase 7.I (`sugar-yahoo-sb-f:SUGAR_RAW_USD_TONNE`).
+  - **`indicator-health/route.ts`** — `REMEDIATION_MAP` updated: `commodity_price_stdev` → `sugar_price_stdev_12m` + `sugar_price_mean_12m` entries.
+  - **DB applied:** seed-indicators.ts → 0 created / 107 updated. Recompute for all active agro/food_processing companies (EDEN, AZSF, MALT, PROMALT, CPC) 2025+2026 → 10 new green IVs at 6.8% CV (sugar price: mild volatility, low procurement risk). Coverage 43.0% → 43.9%.
+  - **`recompute.test.ts`** — 3 new tests: CV% green, no-data unknown, amber band.
+  - tsc clean · vitest 5172/5172 passing.

@@ -37,10 +37,15 @@ const REMEDIATION_MAP: Record<string, { category: string; remediation: string }>
     remediation:
       "Wire weather-openmeteo adapter to emit drought_index for each entity's primary region (set Company.settings.region).",
   },
-  commodity_price_stdev: {
+  sugar_price_stdev_12m: {
     category: "external-feed",
     remediation:
-      "Trailing 12-month price standard deviation; needs commodity-price feed to ingest >12 monthly observations.",
+      "Trailing-12M sugar price stdev (for AGRO_COMMODITY_VOL). Run intel-scheduler-bootstrap.ts to ingest sugar-yahoo-sb-f data points.",
+  },
+  sugar_price_mean_12m: {
+    category: "external-feed",
+    remediation:
+      "Trailing-12M sugar price mean (for AGRO_COMMODITY_VOL). Run intel-scheduler-bootstrap.ts to ingest sugar-yahoo-sb-f data points.",
   },
   news_sentiment_30d: {
     category: "external-feed",
