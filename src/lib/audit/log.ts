@@ -586,6 +586,30 @@ export type AuditEventInput =
         rowsAffected: number;
         reason?: string;
       };
+    }
+  | {
+      // Phase 1.4 (2026-05-26) — BullMQ cleanup processor physically
+      // removed soft-deleted rows past the 30-day retention. One audit
+      // event per scheduled run (per-row would explode the table on a
+      // heavy purge; data_archive already captured per-row intent).
+      // Emitted from `cleanup-processor.ts` after the helper completes.
+      action: 'soft_delete_purge';
+      // System-wide event, not scoped to a single entity row. Reuse
+      // "Organization" as a marker so list queries by entityType can
+      // group infra events together.
+      entityType: 'Organization';
+      entityId: string; // organizationId emitting the event (single-org per run today)
+      metadata: {
+        counts: {
+          budgetPlans: number;
+          cashFlowEntries: number;
+          balanceSheetLines: number;
+          counterparties: number;
+          total: number;
+        };
+        cutoffDays: number;
+        durationMs: number;
+      };
     };
 
 /**

@@ -60,6 +60,18 @@ export interface SparklineBackfillJob {
   actorUserId?: string
 }
 
+/** Phase 1.4 (2026-05-26) — daily cron that physically removes
+ *  soft-deleted rows past the 30-day retention. Payload is empty for
+ *  the scheduled run (helper defaults cover both cutoff + scope); the
+ *  optional `cutoffMs` lets ad-hoc admin invocations override the
+ *  retention. The optional `organizationId` is for the audit event
+ *  (system runs use the first active org until a multi-org variant
+ *  lands; see processor docstring). */
+export interface CleanupSoftDeletedJob {
+  cutoffMs?: number
+  organizationId?: string
+}
+
 /** Discriminated union for the admin UI / DLQ rows that need to inspect
  *  job payloads without knowing the specific queue. */
 export type AnyJob =
@@ -67,6 +79,7 @@ export type AnyJob =
   | { kind: "recompute-batch"; data: RecomputeBatchJob }
   | { kind: "import"; data: ImportJob }
   | { kind: "sparkline-backfill"; data: SparklineBackfillJob }
+  | { kind: "cleanup-soft-deleted"; data: CleanupSoftDeletedJob }
 
 /** Queue names — used as Redis key prefix. Keep stable for production
  *  durability (renaming abandons in-flight jobs). */
@@ -75,6 +88,7 @@ export const QUEUE_NAMES = {
   recomputeBatch: "recompute-batch",
   import: "import",
   sparkline: "sparkline-backfill",
+  cleanupSoftDeleted: "cleanup-soft-deleted",
 } as const
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES]

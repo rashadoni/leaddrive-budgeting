@@ -1998,6 +1998,14 @@ enum AuditAction {
   // 7-year audit trail.
   data_archive
   data_restore
+  // Phase 1.4 (2026-05-26) — BullMQ cleanup processor physically
+  // removed soft-deleted rows whose deletedAt is older than the
+  // 30-day retention window. One audit event per scheduled run with
+  // metadata { counts: { budgetPlans, cashFlowEntries,
+  // balanceSheetLines, counterparties, total }, cutoffDays,
+  // durationMs }. Per-row audit was the data_archive event; this
+  // closes the lifecycle.
+  soft_delete_purge
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to

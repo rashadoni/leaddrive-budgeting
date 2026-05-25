@@ -13,7 +13,7 @@
  *     more important to retain than completed ones)
  *   • attempts: 3 with exponential backoff (Phase 8 may tighten per-queue)
  */
-import { Queue, type JobsOptions } from "bullmq"
+import { Queue, type JobsOptions, type RepeatOptions } from "bullmq"
 import { getRedis } from "./redis-client"
 import {
   QUEUE_NAMES,
@@ -21,6 +21,7 @@ import {
   type RecomputeBatchJob,
   type ImportJob,
   type SparklineBackfillJob,
+  type CleanupSoftDeletedJob,
 } from "./job-types"
 
 /** Shared default options applied to every job. Per-queue overrides
@@ -42,6 +43,7 @@ let cached: {
   recomputeBatch: Queue<RecomputeBatchJob>
   import: Queue<ImportJob>
   sparkline: Queue<SparklineBackfillJob>
+  cleanupSoftDeleted: Queue<CleanupSoftDeletedJob>
 } | null = null
 
 export function getQueues(): {
@@ -49,6 +51,7 @@ export function getQueues(): {
   recomputeBatch: Queue<RecomputeBatchJob>
   import: Queue<ImportJob>
   sparkline: Queue<SparklineBackfillJob>
+  cleanupSoftDeleted: Queue<CleanupSoftDeletedJob>
 } {
   if (cached) return cached
   const connection = getRedis()
@@ -75,6 +78,18 @@ export function getQueues(): {
       connection,
       defaultJobOptions: DEFAULT_JOB_OPTIONS,
     }),
+    cleanupSoftDeleted: new Queue<CleanupSoftDeletedJob>(
+      QUEUE_NAMES.cleanupSoftDeleted,
+      {
+        connection,
+        defaultJobOptions: {
+          ...DEFAULT_JOB_OPTIONS,
+          // Cleanup is idempotent; one retry is enough. More would
+          // spam audit log on persistent failure (DB down, etc.).
+          attempts: 2,
+        },
+      },
+    ),
   }
   return cached
 }
@@ -103,6 +118,33 @@ export async function enqueueRecomputeBatch(
   return job.id ?? ""
 }
 
+/** Phase 1.4 — schedule the daily soft-delete physical-purge cron.
+ *  Called from the worker bootstrap (NOT from HTTP routes) so the job
+ *  is registered exactly once per worker process. BullMQ deduplicates
+ *  via the repeat key, so re-calling on worker restart is safe.
+ *
+ *  Default schedule: 03:00 UTC daily (off-peak for AZ-business-hour
+ *  tenants — Baku is UTC+4, so 07:00 local). Override via
+ *  `CLEANUP_CRON` env var (standard 5-field cron) for ops tuning.
+ */
+export const CLEANUP_DEFAULT_CRON = "0 3 * * *"
+export const CLEANUP_REPEAT_KEY = "cleanup-soft-deleted-daily"
+
+export async function scheduleCleanupCron(opts?: {
+  cron?: string
+}): Promise<void> {
+  const q = getQueues().cleanupSoftDeleted
+  const cron = opts?.cron ?? process.env.CLEANUP_CRON ?? CLEANUP_DEFAULT_CRON
+  const repeat: RepeatOptions = { pattern: cron, tz: "UTC" }
+  // BullMQ generates a stable repeat job id from the pattern; passing a
+  // jobId lets us upsert idempotently across worker restarts.
+  await q.add(
+    "cleanup-soft-deleted",
+    {},
+    { repeat, jobId: CLEANUP_REPEAT_KEY },
+  )
+}
+
 /** Async cleanup — used in tests + worker SIGTERM handler. */
 export async function closeQueues(): Promise<void> {
   if (!cached) return
@@ -111,6 +153,7 @@ export async function closeQueues(): Promise<void> {
     cached.recomputeBatch.close(),
     cached.import.close(),
     cached.sparkline.close(),
+    cached.cleanupSoftDeleted.close(),
   ])
   cached = null
 }

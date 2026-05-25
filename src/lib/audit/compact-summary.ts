@@ -329,6 +329,24 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: `${kind} · ${scope} · ${rows} rows${reason}`,
       };
     }
+    case 'soft_delete_purge': {
+      // Phase 1.4 — BullMQ cleanup processor purged soft-deleted rows
+      // past 30-day retention. Verbose: "N rows · 30d · 245ms".
+      const counts = m.counts as
+        | { total?: number }
+        | undefined;
+      const total =
+        counts && typeof counts.total === 'number' ? counts.total : 0;
+      const cutoff =
+        typeof m.cutoffDays === 'number' ? `${m.cutoffDays}d` : '';
+      const duration =
+        typeof m.durationMs === 'number' ? `${m.durationMs}ms` : '';
+      const parts = [`${total} rows`, cutoff, duration].filter(Boolean);
+      return {
+        compact: e.action,
+        verbose: parts.join(' · '),
+      };
+    }
     default: {
       // Compile-time exhaustiveness: assigning the narrowed `e.action`
       // (now type `never` because every other AuditAction member was

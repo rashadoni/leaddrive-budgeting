@@ -67,6 +67,8 @@ const ALL_ACTIONS = [
   // Phase 7.M Step 4 — self-service archive trail.
   "data_archive",
   "data_restore",
+  // Phase 1.4 — BullMQ soft-delete physical-purge cron.
+  "soft_delete_purge",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

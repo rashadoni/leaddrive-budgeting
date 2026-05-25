@@ -15,6 +15,8 @@ import {
   processRecomputePair,
   processRecomputeBatch,
 } from "./processors/recompute-processor"
+import { processCleanupSoftDeleted } from "./processors/cleanup-processor"
+import { scheduleCleanupCron } from "./queues"
 
 /** Default per-worker concurrency. 4 = matches our 60-company target
  *  scale without saturating the Postgres pool (Prisma defaults to 10
@@ -33,12 +35,21 @@ function baseOpts(): WorkerOptions {
   }
 }
 
-/** Build and return all 2 recompute workers. Caller is responsible
- *  for awaiting `worker.close()` on SIGTERM. */
+/** Build and return all workers. Caller is responsible for awaiting
+ *  `worker.close()` on SIGTERM. */
 export function buildAllWorkers(): Worker[] {
   const workers: Worker[] = [
     new Worker(QUEUE_NAMES.recomputePair, processRecomputePair, baseOpts()),
     new Worker(QUEUE_NAMES.recomputeBatch, processRecomputeBatch, baseOpts()),
+    // Phase 1.4 — daily soft-delete physical-purge worker. Concurrency
+    // 1 (job is idempotent + infrequent; one runner is enough). The
+    // scheduled job is enqueued separately via `scheduleCleanupCron`
+    // below — registering the Worker just makes Redis-side dispatch
+    // route the repeating job to a processor.
+    new Worker(QUEUE_NAMES.cleanupSoftDeleted, processCleanupSoftDeleted, {
+      ...baseOpts(),
+      concurrency: 1,
+    }),
     // import + sparkline workers wire up in Phase 5+
   ]
   // Attach lightweight event logging so operators see job lifecycle
@@ -59,5 +70,15 @@ export function buildAllWorkers(): Worker[] {
       console.error(`[worker:${w.name}] worker error:`, err.message),
     )
   }
+
+  // Phase 1.4 — register the daily 03:00-UTC cleanup repeat job. Safe
+  // to call on every worker restart: BullMQ upserts by repeat key.
+  // Fire-and-forget — a Redis blip during bootstrap shouldn't crash
+  // the whole worker process; the next restart will re-register.
+  void scheduleCleanupCron().catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[worker:cleanup] failed to schedule daily cron: ${msg}`)
+  })
+
   return workers
 }
