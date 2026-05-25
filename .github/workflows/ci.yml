@@ -1,0 +1,85 @@
+# Phase 0.7 closure (2026-05-26) — CI pipeline.
+#
+# Mirrors the local pre-commit gate (secret scan + tsc + M7 scanner)
+# and adds the broader suite (vitest + next build) that pre-commit
+# deliberately skips for latency reasons.
+#
+# Intentionally NOT here yet:
+# - Playwright E2E: needs Postgres + dev server + LLM keys; will be a
+#   separate job once those secrets land in repo settings.
+# - Prisma migrate check: needs DATABASE_URL; same blocker.
+#
+# Bypass: nothing — CI cannot be skipped without admin merge override.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Secret scan (all tracked files)
+        # Re-uses the same scanner the pre-commit hook runs, in --scan-files
+        # mode so we sweep every tracked file (not just the diff). xargs -0
+        # splits into multiple invocations if argv overflows (~1600 files
+        # today, well under the limit, but future-proofs the gate).
+        run: |
+          git ls-files -z | xargs -0 bash .githooks/pre-commit-secrets.sh --scan-files
+
+      - name: Prisma generate
+        # Required before tsc / vitest / build — Prisma client types live
+        # in node_modules/.prisma and are referenced by the typed API code.
+        run: npx prisma generate
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      # Lint deliberately skipped: Next.js 16 removed `next lint`, and the
+      # project has no standalone eslint config yet. Re-enable once
+      # eslint.config.{js,ts} lands (separate cleanup task).
+
+      - name: M7 status-band-shape scanner
+        # Same regression gate the pre-commit hook runs (~300ms).
+        run: npx vitest run src/features/terminal/components/m7-status-band-shape.test.ts --reporter=dot
+
+      - name: Unit tests (vitest)
+        # Integration tests requiring real Postgres are gated behind
+        # RLS_INTEGRATION=1 and are intentionally NOT set here.
+        run: npm test
+
+      - name: Next.js build
+        # Locks that the production build compiles end-to-end. Catches
+        # bugs that tsc misses (e.g. server-component-only imports in a
+        # client file). Skips static-page DB calls via build-time
+        # short-circuits already in the routes.
+        env:
+          # next build needs a valid-looking DATABASE_URL even though we
+          # don't query DB at build time; the Prisma client init throws
+          # otherwise. Use a localhost URL that's never connected to.
+          DATABASE_URL: 'postgresql://ci:ci@localhost:5432/ci'
+          NEXTAUTH_SECRET: 'ci-build-only-not-a-real-secret'
+          NEXTAUTH_URL: 'http://localhost:3000'
+        run: npm run build
