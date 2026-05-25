@@ -719,11 +719,9 @@ export function HeatMap({ period }: Props) {
                           </span>
                           {ind.code}
                         </div>
-                        {!compactMode && (
-                          <div className="truncate font-sans text-gray-600 text-[8px] mt-px normal-case">
-                            {resolveIndicatorLabel(ind, locale)}
-                          </div>
-                        )}
+                        <div className="truncate font-sans text-gray-500 text-[8px] mt-px normal-case">
+                          {resolveIndicatorLabel(ind, locale)}
+                        </div>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent

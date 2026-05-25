@@ -634,6 +634,7 @@ export function IndicatorDetail() {
         <ForecastSection
           ivId={detail.id}
           sparkline={detail.sparkline}
+          unit={ind.unit}
         />
       )}
 
@@ -1441,6 +1442,7 @@ type ExplainState =
 function ForecastSection(props: {
   ivId: string;
   sparkline: (number | null)[];
+  unit: string;
 }) {
   const t = useTranslations('terminal');
   const forecast = forecastNextPeriod(props.sparkline);
@@ -1518,7 +1520,7 @@ function ForecastSection(props: {
             {forecastShape(forecast.confidence)}
           </span>
           {trendArrow} {sign}
-          {formatValue(forecast.predicted)}
+          {formatHeadlineValue(forecast.predicted, props.unit)}
         </span>
         {/* Sub-24 — 95% prediction interval as ±range. Tabular-nums to
             keep the badge stable when CI value swaps width on
@@ -1529,7 +1531,7 @@ function ForecastSection(props: {
             data-testid="forecast-ci"
             title={`${t('indicatorDetail.forecastCITitle')} (n=${forecast.contributingCount}, df=${ci.degreesOfFreedom})`}
           >
-            ±{formatValue(ci.marginOfError)}
+            ±{formatHeadlineValue(ci.marginOfError, props.unit)}
           </span>
         )}
         <span className="text-[9px] text-muted-foreground ml-auto">
