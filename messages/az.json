@@ -805,8 +805,6 @@
     "importErrorRow": "Sətir",
     "importErrorReason": "Səbəb",
     "importErrorValue": "Dəyər",
-    "wsImportTabCsv": "CSV idxalı",
-    "wsImportTabExcel": "Excel idxalı",
     "wsAddActualTitle": "Faktiki əlavə etmək üçün klikləyin",
     "wsAddSubcategoryHint": "Məbləğ = 0, alt-kateqoriyaları \"+\" düyməsi ilə əlavə edin",
     "wsViewList": "Siyahı",

@@ -805,8 +805,6 @@
     "importErrorRow": "Строка",
     "importErrorReason": "Причина",
     "importErrorValue": "Значение",
-    "wsImportTabCsv": "Импорт CSV",
-    "wsImportTabExcel": "Импорт Excel",
     "wsAddActualTitle": "Нажмите, чтобы добавить факт",
     "wsAddSubcategoryHint": "Сумма = 0, добавьте подкатегории через \"+\"",
     "wsViewList": "Список",

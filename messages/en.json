@@ -805,8 +805,6 @@
     "importErrorRow": "Row",
     "importErrorReason": "Reason",
     "importErrorValue": "Value",
-    "wsImportTabCsv": "CSV import",
-    "wsImportTabExcel": "Excel import",
     "wsAddActualTitle": "Click to add actual",
     "wsAddSubcategoryHint": "Amount = 0, add subcategories via \"+\"",
     "wsViewList": "List",

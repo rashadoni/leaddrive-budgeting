@@ -69,7 +69,6 @@ import { SalesBudgetTable } from "@/components/sales-budget-table"
 import { COGSCalculator } from "@/components/cogs-calculator"
 import { BudgetBalanceSheet } from "@/components/budget-balance-sheet"
 import { BudgetAssumptions } from "@/components/budget-assumptions"
-import { BudgetExcelImport } from "@/components/budget-excel-import"
 import { toast } from "sonner"
 
 const PIE_COLORS = BUDGET_COLORS.pie
@@ -388,9 +387,7 @@ export default function BudgetingPage() {
 
       {/* No plans state — only render after mount to avoid hydration mismatch with searchParams */}
       {mounted && !plansLoading && plans.length === 0 && (
-        activeTab === "integrations" ? (
-          <BudgetExcelImport onImported={(planId) => { setActivePlanId(planId); setActiveTab("pnl-report") }} />
-        ) : activeTab === "plans" ? (
+        activeTab === "plans" ? (
           <PlansTab activePlanId="" onSelect={id => { setActivePlanId(id); setActiveTab("workspace") }} onShowCreate={() => setShowCreate(true)} />
         ) : (
           <div className="text-center py-20 text-muted-foreground">
