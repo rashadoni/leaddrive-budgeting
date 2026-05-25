@@ -1413,6 +1413,29 @@ function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick
                   e
                 </span>
               )}
+            {/* Missing cell label — no IndicatorValue row exists yet.
+                Shows "н/д" (нет данных) so the cell is not mistaken for
+                a zero or an n/a.  Compact: tiny centered dot instead of
+                text (40×12 px is too narrow for Cyrillic). */}
+            {!cell && status !== 'na' && (
+              compactMode ? (
+                <span
+                  className="absolute inset-0 flex items-center justify-center font-mono leading-none select-none pointer-events-none"
+                  style={{ fontSize: 6, color: 'rgba(156,163,175,0.5)' }}
+                  aria-hidden="true"
+                >
+                  ·
+                </span>
+              ) : (
+                <span
+                  className="absolute inset-0 flex items-center justify-center font-mono leading-none select-none pointer-events-none"
+                  style={{ fontSize: 8, color: 'rgba(156,163,175,0.45)' }}
+                  aria-hidden="true"
+                >
+                  н/д
+                </span>
+              )
+            )}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
                 Bloomberg-class analyst gets trend AT A GLANCE without
                 hovering. Empty-sparkline cells get an identical-height
@@ -1557,7 +1580,7 @@ function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick
             </div>
           ) : (
             <div className="text-[11px] text-muted-foreground mt-1">
-              no value computed
+              нет данных
             </div>
           )}
         </TooltipContent>
