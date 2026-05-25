@@ -69,6 +69,13 @@ export async function proxy(req: NextRequest) {
   // Check authentication
   const session = await auth()
   if (!session?.user) {
+    // API routes must return JSON 401 — never redirect to the HTML login
+    // page. If they redirect, fetch() follows to HTML (status 200) and
+    // res.json() throws "Unexpected token '<', <!DOCTYPE ..." everywhere
+    // in the terminal (MarketTicker, TodayBrief, VarianceExplainer, etc.)
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
     const loginUrl = new URL("/login", req.url)
     loginUrl.searchParams.set("callbackUrl", pathname)
     return NextResponse.redirect(loginUrl)

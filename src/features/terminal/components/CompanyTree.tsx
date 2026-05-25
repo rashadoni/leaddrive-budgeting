@@ -27,6 +27,12 @@ const PANEL_ID = 1;
 // the shape — drift is now compile-checked at the import boundary.
 import type { CompanyTreeNode } from "../hooks/use-companies";
 export type CompanyNode = CompanyTreeNode;
+import { INDUSTRIES } from "@/lib/industries/data";
+
+/** Static code → Russian label map (falls back to code if unknown). */
+const INDUSTRY_LABEL = new Map(
+  INDUSTRIES.map((i) => [i.code, i.nameRu ?? i.nameEn]),
+);
 
 type Props = {
   companies: CompanyNode[];
@@ -530,7 +536,8 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                 className="text-[9px] uppercase tracking-widest text-gray-500 px-1 py-1 mt-1 first:mt-0 border-b border-gray-800/40"
                 data-testid={`sector-header-${industry}`}
               >
-                {industry} <span className="text-gray-600">({roots.length})</span>
+                {INDUSTRY_LABEL.get(industry) ?? industry}{" "}
+                <span className="text-gray-600">({roots.length})</span>
               </div>
               <ul role="group" className="space-y-0.5">
                 {roots.map((root) => renderRoot(root))}
@@ -678,8 +685,8 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                   </span>
                   <RiskTagChips tags={child.riskTags} />
                   {child.industry && (
-                    <span className="text-gray-600 text-[10px] uppercase">
-                      {child.industry}
+                    <span className="text-gray-600 text-[10px]">
+                      {INDUSTRY_LABEL.get(child.industry) ?? child.industry}
                     </span>
                   )}
                 </li>
