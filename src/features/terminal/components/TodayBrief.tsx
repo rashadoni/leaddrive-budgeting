@@ -28,11 +28,23 @@ import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { NewsSummarySection } from "./NewsSummarySection";
 import { MorningBriefIntro } from "./MorningBriefIntro";
 import { MoversSection } from "./MoversSection";
+
+/** Format large numbers compactly: -23189210599 → "-23.2B", 1500000 → "1.5M", 3200 → "3.2K" */
+function fmtValue(v: number, unit: string): string {
+  if (unit === "%") return `${v.toFixed(1)}%`;
+  const abs = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(1)}B ${unit}`.trim();
+  if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(1)}M ${unit}`.trim();
+  if (abs >= 1e3) return `${sign}${(abs / 1e3).toFixed(1)}K ${unit}`.trim();
+  return `${v.toFixed(1)} ${unit}`.trim();
+}
 import { computeTopMovers, type MoverRow } from "@/lib/risk/movers";
 
 interface WorstEntry {
   companyCode: string;
   indicatorCode: string;
+  indicatorName: string;
   ivId?: string;
   value: number;
   unit: string;
@@ -161,9 +173,11 @@ export function TodayBrief() {
       const ind = indById.get(cell.indicatorId);
       if (!co || !ind) continue;
       if (cell.status === "red" && Number.isFinite(cell.value)) {
+        const indFull = ind as typeof ind & { nameRu?: string; nameEn?: string };
         reds.push({
           companyCode: co,
           indicatorCode: ind.code,
+          indicatorName: indFull.nameRu ?? indFull.nameEn ?? ind.code,
           ivId: cell.indicatorValueId,
           value: cell.value,
           unit: ind.unit,
@@ -238,7 +252,7 @@ export function TodayBrief() {
 
   return (
     <div
-      className="font-mono text-[11px] text-gray-300 h-full w-full overflow-y-auto p-3 space-y-3"
+      className="font-mono text-[12px] text-gray-300 h-full w-full overflow-y-auto p-3 space-y-3"
       data-testid="today-brief"
     >
       <header className="border-b border-gray-800 pb-1">
@@ -284,13 +298,13 @@ export function TodayBrief() {
                   type="button"
                   onClick={() => handleOpen(w.companyCode, w.ivId)}
                   // Phase 3.3 hover pattern — reveal full pair when truncated.
-                  title={`${w.companyCode} · ${w.indicatorCode} — ${w.value.toFixed(1)} ${w.unit}`}
-                  className="w-full text-left flex items-baseline gap-2 px-1.5 py-0.5 rounded hover:bg-[#FF4757]/10 hover:text-[#FF4757]"
+                  title={`${w.companyCode} · ${w.indicatorCode} — ${fmtValue(w.value, w.unit)}`}
+                  className="w-full text-left flex items-baseline gap-2 px-1.5 py-1 rounded hover:bg-[#FF4757]/10 hover:text-[#FF4757]"
                 >
-                  <span className="font-mono text-cyan-300 text-[10px] w-32 truncate">{w.companyCode}</span>
-                  <span className="font-mono text-gray-400 text-[10px] flex-1 truncate">{w.indicatorCode}</span>
-                  <span className="font-mono text-[#FF4757] text-[10px] tabular-nums">
-                    {w.value.toFixed(1)} {w.unit}
+                  <span className="font-mono text-cyan-300 text-[11px] w-28 truncate flex-shrink-0">{w.companyCode}</span>
+                  <span className="font-mono text-gray-300 text-[12px] flex-1 truncate" title={w.indicatorCode}>{w.indicatorName}</span>
+                  <span className="font-mono text-[#FF4757] text-[12px] tabular-nums flex-shrink-0">
+                    {fmtValue(w.value, w.unit)}
                   </span>
                 </button>
               </li>

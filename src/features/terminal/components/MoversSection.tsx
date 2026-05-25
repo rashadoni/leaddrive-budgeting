@@ -40,7 +40,7 @@ export function MoversSection({ movers, onOpen }: Props) {
       <div className="space-y-1.5">
         {sectors.map((sector) => (
           <div key={sector}>
-            <div className="text-[8px] uppercase tracking-wider text-gray-600 mb-0.5">
+            <div className="text-[9px] uppercase tracking-wider text-gray-600 mb-0.5">
               {sector}
             </div>
             <ul className="space-y-0.5">
@@ -51,15 +51,15 @@ export function MoversSection({ movers, onOpen }: Props) {
                 return (
                   <li
                     key={`${m.companyId}-${m.indicatorId}`}
-                    className="flex items-center gap-2 text-[11px] hover:bg-gray-800/30 cursor-pointer transition-colors px-1 py-0.5 rounded"
+                    className="flex items-center gap-2 text-[12px] hover:bg-gray-800/30 cursor-pointer transition-colors px-1 py-0.5 rounded"
                     onClick={() => onOpen(m.companyCode, m.ivId)}
                     title={`${m.companyCode} · ${m.indicatorCode} · ${m.deltaPct.toFixed(1)}%`}
                   >
-                    <span className="text-gray-500 font-mono w-12 truncate">
+                    <span className="text-gray-500 font-mono w-14 truncate flex-shrink-0">
                       {m.companyCode}
                     </span>
-                    <span className="text-gray-400 truncate flex-1">
-                      {m.indicatorCode}
+                    <span className="text-gray-300 truncate flex-1" title={m.indicatorCode}>
+                      {m.indicatorName}
                     </span>
                     <Sparkline
                       data={m.sparkline}

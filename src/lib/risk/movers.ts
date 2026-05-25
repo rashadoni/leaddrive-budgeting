@@ -12,6 +12,7 @@ export interface MoverRow {
   companyCode: string;
   companyId: string;
   indicatorCode: string;
+  indicatorName: string;
   indicatorId: string;
   ivId?: string;
   /** Industry of the company; "—" when unknown. */
@@ -46,6 +47,8 @@ interface CompanyLike {
 interface IndicatorLike {
   id: string;
   code: string;
+  nameRu?: string | null;
+  nameEn?: string | null;
 }
 
 export interface ComputeMoversOpts {
@@ -91,6 +94,7 @@ export function computeTopMovers(
       companyCode: co.code,
       companyId: co.id,
       indicatorCode: ind.code,
+      indicatorName: ind.nameRu ?? ind.nameEn ?? ind.code,
       indicatorId: ind.id,
       ivId: cell.indicatorValueId,
       sector: co.industry ?? "—",
