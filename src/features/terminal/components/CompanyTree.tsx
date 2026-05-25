@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations, useLocale } from 'next-intl';
 import { Bell, Star } from 'lucide-react';
 import { useTerminalStore } from '../store/terminalStore';
 import { useMatrix } from '../hooks/use-matrix';
@@ -29,10 +29,6 @@ import type { CompanyTreeNode } from "../hooks/use-companies";
 export type CompanyNode = CompanyTreeNode;
 import { INDUSTRIES } from "@/lib/industries/data";
 
-/** Static code → Russian label map (falls back to code if unknown). */
-const INDUSTRY_LABEL = new Map(
-  INDUSTRIES.map((i) => [i.code, i.nameRu ?? i.nameEn]),
-);
 
 type Props = {
   companies: CompanyNode[];
@@ -42,7 +38,25 @@ type Props = {
 
 export function CompanyTree({ companies, loading, onSelect }: Props) {
   const t = useTranslations('terminal');
+  const locale = useLocale() as 'en' | 'ru' | 'az';
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
+
+  /** Locale-aware code → industry name map. */
+  const INDUSTRY_LABEL = useMemo(
+    () =>
+      new Map(
+        INDUSTRIES.map((i) => {
+          const label =
+            locale === 'en'
+              ? i.nameEn
+              : locale === 'az'
+                ? (i.nameAz ?? i.nameEn)
+                : (i.nameRu ?? i.nameEn)
+          return [i.code, label]
+        }),
+      ),
+    [locale],
+  );
 
   // Truth-infra C.3 — admin "Show pending" toggle. Default off → matrix
   // excludes onboarding-pending companies (the cleanest operating view).
