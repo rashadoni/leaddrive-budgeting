@@ -16,6 +16,25 @@
 import React, { useEffect, useState } from "react"
 import { useLocale } from "next-intl"
 import { getDataSourceByCode } from "@/lib/intel/sources-catalog"
+import { DEFAULT_CROSSING_RULES } from "@/lib/intel/crossing-rules-default-pack"
+
+/** Static rule-id → human name lookup (rule.name from the default pack). */
+const RULE_LABEL = new Map(
+  DEFAULT_CROSSING_RULES.map((r) => [r.id, r.name]),
+)
+
+/** Short Russian labels for the external metric codes used in crossing rules. */
+const METRIC_LABEL_RU: Record<string, string> = {
+  FAO_FFPI_NOMINAL: "Индекс прод. цен FAO",
+  FAO_MEAT_INDEX: "FAO: мясо",
+  FAO_DAIRY_INDEX: "FAO: молочка",
+  FAO_CEREAL_INDEX: "FAO: зерновые",
+  FAO_OILS_INDEX: "FAO: масла",
+  FAO_SUGAR_INDEX: "FAO: сахар",
+  BRENT_USD_BBL: "Brent нефть",
+  AZN_USD: "Курс AZN/USD",
+  AZ_CPI_FOOD: "ИПЦ продовольствие AZ",
+}
 
 interface ImpactScenario {
   projectedIndicatorValue: number
@@ -126,13 +145,15 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
   return (
     <article className="border border-gray-800 rounded p-2 bg-[#050814]">
       <header className="flex items-center justify-between gap-2 mb-1.5">
-        <div className="text-[10px] text-gray-400 truncate flex-1">
+        <div className="text-[10px] text-gray-400 truncate flex-1" title={`${row.triggerMetric} · ${row.ruleId}`}>
           <span className="text-[#00D4AA] font-semibold">
-            {row.triggerMetric}
+            {METRIC_LABEL_RU[row.triggerMetric] ?? row.triggerMetric}
           </span>{" "}
           @ {row.triggerValueRounded}{" "}
           <span className="text-gray-600">·</span>{" "}
-          <span className="font-mono">{row.ruleId}</span>
+          <span className="text-gray-400">
+            {RULE_LABEL.get(row.ruleId) ?? row.ruleId}
+          </span>
         </div>
         <ConfidenceChip confidence={row.confidence} />
       </header>
