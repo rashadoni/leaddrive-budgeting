@@ -136,24 +136,42 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const result = await runNewsSummary({
-    items: (scopedItems as SItem[]).map((i) => ({
-      title: i.title,
-      summary: i.summary,
-      url: i.url,
-      sourceLabel: i.sourceLabel,
-      relevanceScore: i.relevanceScore,
-      industryTags: i.industryTags,
-      companyTags: i.companyTags,
-      publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
-    })),
-    language,
-  })
+  let result: { bullets: string[]; usage: { inputTokens: number; outputTokens: number } }
+  try {
+    result = await runNewsSummary({
+      items: (scopedItems as SItem[]).map((i) => ({
+        title: i.title,
+        summary: i.summary,
+        url: i.url,
+        sourceLabel: i.sourceLabel,
+        relevanceScore: i.relevanceScore,
+        industryTags: i.industryTags,
+        companyTags: i.companyTags,
+        publishedAt: i.publishedAt ? i.publishedAt.toISOString() : null,
+      })),
+      language,
+    })
+  } catch (err) {
+    // LLM errors (non-JSON response, API errors, rate limits) should not
+    // crash the panel with HTTP 500 — return 200 with empty bullets so
+    // NewsSummarySection renders the "нет актуальных новостей" fallback
+    // instead of showing a raw error code to the CFO.
+    console.error("[news-summary] LLM error:", err instanceof Error ? err.message : String(err))
+    return NextResponse.json({
+      bullets: [],
+      language,
+      generatedAt: new Date().toISOString(),
+      itemsConsumed: scopedItems.length,
+      fromCache: false,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
 
   const generatedAt = Date.now()
   cache.set(cacheKey, { bullets: result.bullets, generatedAt })
 
-  await logAuditEvent(prisma, {
+  // Audit log failure must not surface as HTTP 500 — fire-and-forget.
+  logAuditEvent(prisma, {
     organizationId: orgId,
     actorUserId: session.userId,
     event: {
@@ -172,6 +190,8 @@ export async function GET(request: NextRequest) {
       route: "/api/intel/news-summary",
       userAgent: request.headers.get("user-agent") ?? undefined,
     }),
+  }).catch((e: unknown) => {
+    console.error("[news-summary] audit log failed:", e instanceof Error ? e.message : String(e))
   })
 
   return NextResponse.json({
