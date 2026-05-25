@@ -76,7 +76,9 @@ export async function runNewsSummary(
 
   let parsed: unknown
   try {
-    parsed = extractJsonFromText(raw)
+    // extractJsonFromText returns the extracted JSON string — JSON.parse
+    // it into an object before validateAndShape checks typeof.
+    parsed = JSON.parse(extractJsonFromText(raw))
   } catch (err) {
     throw new Error(
       `News summary LLM returned non-JSON: ${err instanceof Error ? err.message : String(err)}`,
