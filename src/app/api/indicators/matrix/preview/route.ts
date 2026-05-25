@@ -57,20 +57,48 @@ function shapeOverrides(raw: unknown): Record<string, number> {
 }
 
 /** Decide whether `indicator.requiredInputs` overlaps with the overrides.
- *  V1 heuristic: any FX override affects indicators that read
- *  `currencyRate`; any other override affects indicators whose required
- *  inputs include that exact variable name (after the resolver's prefix
- *  is stripped). Conservative — recompute when in doubt. */
+ *  Conservative — recompute when in doubt.
+ *
+ *  Mapping logic:
+ *   fx_*         → currencyRate resolver
+ *   *_price_latest | *_index_latest | az_cpi_* | fao_* → commodityPrice: resolver
+ *   rainfall_* | temp_avg_* → weather: resolver
+ *   anything else → direct variable-name hit in requiredInputs
+ */
 function isAffected(
   indicator: { requiredInputs: string[] },
   overrideKeys: Set<string>,
 ): boolean {
-  const hasFxOverride = Array.from(overrideKeys).some((k) => k.startsWith('fx_'))
-  if (hasFxOverride && indicator.requiredInputs.includes('currencyRate'))
+  const keys = Array.from(overrideKeys)
+  const ri = indicator.requiredInputs
+
+  // FX overrides → currencyRate resolver
+  if (keys.some((k) => k.startsWith('fx_')) && ri.includes('currencyRate')) return true
+
+  // Commodity / macro price overrides → commodityPrice resolver
+  // (brent_price_latest, sugar_price_latest, az_cpi_all_latest, fao_ffpi_latest …)
+  if (
+    keys.some(
+      (k) =>
+        k.endsWith('_price_latest') ||
+        k.endsWith('_index_latest') ||
+        k.startsWith('az_cpi_') ||
+        k.startsWith('fao_'),
+    ) &&
+    ri.some((r) => r.startsWith('commodityPrice:'))
+  )
     return true
-  // Direct variable hits (e.g. resolver namespace already produces this name).
-  for (const ri of indicator.requiredInputs) {
-    if (overrideKeys.has(ri)) return true
+
+  // Weather overrides → weather resolver
+  if (
+    keys.some((k) => k.startsWith('rainfall_') || k.startsWith('temp_avg_')) &&
+    ri.some((r) => r.startsWith('weather:'))
+  )
+    return true
+
+  // Direct variable hits (resolver already produces this exact name in context)
+  for (const r of ri) {
+    if (overrideKeys.has(r)) return true
   }
   return false
 }
