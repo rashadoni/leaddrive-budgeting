@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
@@ -177,6 +177,7 @@ export function detectBroadcastIndicators(
 
 export function TodayBrief() {
   const t = useTranslations("terminal");
+  const locale = useLocale() as "en" | "ru" | "az";
   const { matrix } = useMatrix();
   const setActiveIv = useTerminalStore((s) => s.setActiveIndicatorValue);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
@@ -194,11 +195,17 @@ export function TodayBrief() {
       const ind = indById.get(cell.indicatorId);
       if (!co || !ind) continue;
       if (cell.status === "red" && Number.isFinite(cell.value)) {
-        const indFull = ind as typeof ind & { nameRu?: string; nameEn?: string };
+        const indFull = ind as typeof ind & { nameEn?: string; nameAz?: string; nameRu?: string };
+        const indicatorName =
+          locale === "en"
+            ? (indFull.nameEn ?? indFull.nameRu ?? ind.code)
+            : locale === "az"
+              ? (indFull.nameAz ?? indFull.nameEn ?? ind.code)
+              : (indFull.nameRu ?? indFull.nameEn ?? ind.code);
         reds.push({
           companyCode: co,
           indicatorCode: ind.code,
-          indicatorName: indFull.nameRu ?? indFull.nameEn ?? ind.code,
+          indicatorName,
           ivId: cell.indicatorValueId,
           value: cell.value,
           unit: ind.unit,
@@ -211,7 +218,7 @@ export function TodayBrief() {
       matrix.cells,
       matrix.companies,
       matrix.indicators,
-      { topN: 5 },
+      { topN: 5, locale },
     );
     // Phase 7.L 2026-05-18 — derive broadcast-indicator set first so the
     // worst-picker can skip macro signals (FX / CPI / trade-balance).
@@ -230,7 +237,7 @@ export function TodayBrief() {
       worst: pickTopWorstDiversified(reds, 7, broadcastIndicators),
       movers: moversTop5,
     };
-  }, [matrix]);
+  }, [matrix, locale]);
 
   const topAlerts = useMemo(() => {
     if (!alertMatches) return [];

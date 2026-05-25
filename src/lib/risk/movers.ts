@@ -51,8 +51,9 @@ interface CompanyLike {
 interface IndicatorLike {
   id: string;
   code: string;
-  nameRu?: string | null;
   nameEn?: string | null;
+  nameAz?: string | null;
+  nameRu?: string | null;
 }
 
 export interface ComputeMoversOpts {
@@ -60,6 +61,8 @@ export interface ComputeMoversOpts {
   topN?: number;
   /** Default 0.5% — drop noise around zero. */
   minPctMagnitude?: number;
+  /** Locale for indicator name selection. Defaults to "ru". */
+  locale?: "en" | "ru" | "az";
 }
 
 export function computeTopMovers(
@@ -70,6 +73,7 @@ export function computeTopMovers(
 ): MoverRow[] {
   const topN = opts.topN ?? 5;
   const minMag = opts.minPctMagnitude ?? 0.5;
+  const locale = opts.locale ?? "ru";
 
   const coById = new Map(companies.map((c) => [c.id, c]));
   const indById = new Map(indicators.map((i) => [i.id, i]));
@@ -98,7 +102,12 @@ export function computeTopMovers(
       companyCode: co.code,
       companyId: co.id,
       indicatorCode: ind.code,
-      indicatorName: ind.nameRu ?? ind.nameEn ?? ind.code,
+      indicatorName:
+        locale === "en"
+          ? (ind.nameEn ?? ind.nameRu ?? ind.code)
+          : locale === "az"
+            ? (ind.nameAz ?? ind.nameEn ?? ind.code)
+            : (ind.nameRu ?? ind.nameEn ?? ind.code),
       indicatorId: ind.id,
       ivId: cell.indicatorValueId,
       sector: co.industry ?? "—",
