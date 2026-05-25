@@ -301,10 +301,9 @@ export async function POST(
     );
   }
 
-  // Transactional delete-then-insert. Mirrors `import-azmade-budgets.ts`
-  // pattern. Plan lookup-or-create + delete + ChartOfAccount upsert + line
-  // insert + staging.status='applied' all atomic — if any insert fails,
-  // ALL changes roll back.
+  // Transactional delete-then-insert pattern. Plan lookup-or-create +
+  // delete + ChartOfAccount upsert + line insert + staging.status='applied'
+  // all atomic — if any insert fails, ALL changes roll back.
   const orgIdLocal = orgId;
   const companyId = staging.companyId;
 
@@ -391,11 +390,9 @@ export async function POST(
             throw new Error(`Internal: coaId not resolved for code ${line.code}`);
           }
 
-          // Turn 34 monthly-distribution contract: write 12 rows per parsed
+          // Monthly-distribution contract: write 12 rows per parsed
           // line (one per month) with `plannedAmount=perMonth[idx]` +
-          // `sortOrder=monthIdx`. The CLI importer was rewritten in Turn 34
-          // (`scripts/import-azmade-budgets.ts:182-201`) but the Onboarding
-          // /apply route was missed — single-row inserts at sortOrder=0
+          // `sortOrder=monthIdx`. Earlier single-row inserts at sortOrder=0
           // collapsed all 12 months into Jan, so post-/apply P&L charts
           // showed a January spike + zero across Feb-Dec. `perMonth` length
           // is guaranteed 12 by the parser/applier contract; rollup-sourced
@@ -430,9 +427,8 @@ export async function POST(
             await tx.budgetLine.create({ data });
           }
           // `inserted` counts parsed LINES (not DB rows) so audit metadata
-          // stays consistent with CLI's `import-azmade-budgets.ts:295` and
-          // `budget/route.ts:277`. Previously this was inside the month-loop,
-          // which 12× over-counted vs both reference paths.
+          // stays consistent with `budget/route.ts:277`. Previously this
+          // was inside the month-loop, which 12× over-counted.
           inserted += 1;
         }
 

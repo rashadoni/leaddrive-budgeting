@@ -40,7 +40,9 @@ export const DEFAULT_CATEGORY_META: CategoryMeta = {
 }
 
 export const CATEGORY_META: Record<string, CategoryMeta> = {
-  // Original AAC-product-line categories (legacy data shapes)
+  // Legacy product-line categories carried over from earlier tenant data
+  // shapes. Keys are still in use as BudgetCategory.key in DB; renaming
+  // would need a migration. Labels stay descriptive of the category kind.
   returns_transport: { label: "Returns & Transport", color: "#3b82f6", icon: "🚛" },
   mhb_transport: { label: "MHB/Lime Transport", color: "#2563eb", icon: "🏗️" },
   pallet_export: { label: "Pallets / Export", color: "#14b8a6", icon: "📦" },
@@ -56,11 +58,9 @@ export const CATEGORY_META: Record<string, CategoryMeta> = {
   marketing: { label: "Marketing", color: "#ec4899", icon: "📢" },
   depreciation: { label: "Depreciation", color: "#06b6d4", icon: "📉" },
   other: { label: "Other", color: "#9ca3af", icon: "📋" },
-  // Sub-38 — generic FP&A categories surfaced by AZMADE/holding-wide
-  // assumption seeds. Without these the treemap + donut + ranking bars
-  // all fell back to the gray default because the data shape changed but
-  // the color map did not. Tailwind palette hexes with semantic
-  // association.
+  // Generic holding-wide FP&A categories. Without these the treemap +
+  // donut + ranking bars all fall back to the gray default because the
+  // data shape changed but the color map did not.
   operations: { label: "Operations", color: "#3b82f6", icon: "⚙️" }, // blue — primary ops backbone
   commercial: { label: "Commercial", color: "#f97316", icon: "🛒" }, // orange — sales / commerce
   finance: { label: "Finance", color: "#10b981", icon: "💰" },        // emerald — money / fin

@@ -2,16 +2,16 @@
  * Phase 7.E hardening (Turn 10) — single entry point for "after a write,
  * refresh the affected (company × indicator) IndicatorValue rows".
  *
- * Replaces three near-identical inline copies of the same orchestration
- * logic that had drifted slightly across paths:
+ * Replaces near-identical inline copies of the same orchestration logic
+ * that had drifted slightly across paths:
  *
  *   - src/app/api/onboarding/import/budget/route.ts (per-company import)
  *   - src/app/api/onboarding/import/staging/[id]/apply/route.ts (AI-mapper apply)
- *   - scripts/import-azmade-budgets.ts (CLI batch importer)
  *
- * The first two were single-company; the script handled multi-year batches.
- * This module accepts the general `Array<{companyId, year}>` shape — single-
- * company callers pass `[{companyId, year}]` and the loop degenerates.
+ * This module accepts the general `Array<{companyId, year}>` shape —
+ * single-company callers pass `[{companyId, year}]` and the loop
+ * degenerates. Multi-company/multi-year callers (AI Auto Import
+ * orchestrator) get the same code path.
  *
  * Failure policy mirrors the prior copies: per-pair errors are caught and
  * counted, never re-thrown. A single bad indicator formula must not hide

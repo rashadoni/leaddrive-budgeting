@@ -39,11 +39,11 @@
  *
  * 1. Each parsed line carries BOTH `plannedAnnual` (sum across the 12
  *    monthly columns) AND `perMonth: number[]` (length 12, index 0=Jan).
- *    Persistence (CLI `import-azmade-budgets.ts` + Onboarding `/apply`
- *    routes) writes 12 BudgetLine rows per parsed line at sortOrder=0..11
- *    (Turn 34 monthly-distribution contract). The `budgetLine` recompute
- *    resolver scopes by sortOrder for monthly/quarterly anchors (Turn-42-
- *    sub-3) so sparklines reflect real per-month variation.
+ *    Persistence (Onboarding `/apply` route + budget route) writes 12
+ *    BudgetLine rows per parsed line at sortOrder=0..11 (monthly-
+ *    distribution contract). The `budgetLine` recompute resolver scopes
+ *    by sortOrder for monthly/quarterly anchors so sparklines reflect
+ *    real per-month variation.
  * 2. Only `Yanvar`..`Dekabr` columns are read. Annual-total columns like
  *    "Toplam" are ignored to prevent double-counting if the workbook's
  *    formula is broken.

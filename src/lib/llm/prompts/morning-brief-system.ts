@@ -36,14 +36,14 @@ Your job: produce a CONCISE morning brief in EXACTLY this shape:
 
 Hard constraints:
   - Output JSON ONLY. No markdown fences, no commentary.
-  - Output text IN ${LANG_NAME[language].toUpperCase()}. Translate any English source strings; preserve company codes (AAC, AZMADE, etc.) and indicator codes (IND_NET_MARGIN) as-is.
-  - Reference SPECIFIC companies + indicators by code. Don't say "some companies" — say "AAC margins under pressure".
-  - **Cover the breadth of the holding.** Para 1 must mention worstCells from at LEAST 3 different company codes if the input contains them — don't fixate on one company even if it has multiple bad indicators. Each company gets ONE clause; combine companies with similar problems into one sentence ("AAC + SPARK + ZTP face industrial-cost pressure from copper +20% YoY"). The brief is a holding-wide scan, not a single-company deep-dive.
+  - Output text IN ${LANG_NAME[language].toUpperCase()}. Translate any English source strings; preserve company codes (AZSEKER-CPC, AZSEKER-EDEN, etc.) and indicator codes (IND_NET_MARGIN) as-is.
+  - Reference SPECIFIC companies + indicators by code. Don't say "some companies" — say "AZSEKER-CPC margins under pressure".
+  - **Cover the breadth of the holding.** Para 1 must mention worstCells from at LEAST 3 different company codes if the input contains them — don't fixate on one company even if it has multiple bad indicators. Each company gets ONE clause; combine companies with similar problems into one sentence ("AZSEKER-CPC + AZSEKER-EDEN + AZSEKER-FARM face commodity-cost pressure from sugar +20% YoY"). The brief is a holding-wide scan, not a single-company deep-dive.
   - If the payload is mostly empty (no red cells, no alerts, no news), say so plainly: "Спокойное утро — без красных индикаторов и активных алертов." Don't fabricate concern.
   - Never invent numbers. If you can't ground a claim in the payload, leave it out.
-  - **NEVER invent industry classifications.** When describing a company, use ONLY the \`industry\` value from \`companies[companyCode].industry\`. Do NOT guess from the code suffix or name. For example, do not call ATL-DBZ / ATL-PMZ / ATL-TAZ "фарм-" anything — their industry is \`industrial\` (steel pipe / polyethylene products / technical equipment factories), even though "Zavodu" looks Slavic-pharma-ish to a non-Azerbaijani reader.
-  - When mentioning a company in the narrative, prefer the proper \`companies[code].name\` (e.g. "Polad Boru Zavodu") over the bare code if a name is provided. If the lookup has no entry for a code, fall back to the code as-is and do NOT speculate about what kind of business it is.
-  - The priorityAction must be ACTIONABLE (a verb + concrete target). "Review AAC cocoa cost forecast for Q3" not "monitor commodity prices".`
+  - **NEVER invent industry classifications.** When describing a company, use ONLY the \`industry\` value from \`companies[companyCode].industry\`. Do NOT guess from the code suffix or name. Azerbaijani company names (e.g. "Zavod", "MMC") often look superficially like English/Russian words to a non-native reader — always trust the explicit industry tag, never the orthography.
+  - When mentioning a company in the narrative, prefer the proper \`companies[code].name\` (e.g. "Azərşəkər Sugar") over the bare code if a name is provided. If the lookup has no entry for a code, fall back to the code as-is and do NOT speculate about what kind of business it is.
+  - The priorityAction must be ACTIONABLE (a verb + concrete target). "Review AZSEKER-CPC sugar cost forecast for Q3" not "monitor commodity prices".`
 }
 
 /** Stable version hash — auto-bumps on any prompt edit. */

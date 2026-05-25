@@ -19,10 +19,10 @@
  * Auth: `manager` role + caller's org must match the company's
  * organizationId (404 on mismatch — never leak existence).
  *
- * Same financial-safety pattern as `scripts/import-azmade-budgets.ts`:
- * transactional delete-then-insert keyed on `(orgId, planId, companyId)`.
- * Re-uploads converge — either the file lands fully or the pre-existing
- * state is untouched. Auto-recompute fires after a successful import.
+ * Financial-safety pattern: transactional delete-then-insert keyed on
+ * `(orgId, planId, companyId)`. Re-uploads converge — either the file
+ * lands fully or the pre-existing state is untouched. Auto-recompute
+ * fires after a successful import.
  */
 
 import { NextRequest, NextResponse } from "next/server"
@@ -39,7 +39,7 @@ import {
 
 export const maxDuration = 60
 
-// 10 MB — same cap as AI Mapper's analyze endpoint. AZMADE workbooks
+// 10 MB — same cap as AI Mapper's analyze endpoint. Typical workbooks
 // observed at 200-400 KB; this leaves 25× headroom for plan-vs-actual
 // + multi-year sheets without becoming a memory DoS vector.
 const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -230,8 +230,8 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Transactional replace + auto-recompute. Same pattern as
-  // scripts/import-azmade-budgets.ts — see jsdoc there.
+  // Transactional replace + auto-recompute. See jsdoc above for the
+  // safety contract (delete-then-insert + atomic rollback).
   let result: ApplyResult
   try {
     result = await prisma.$transaction(
@@ -412,13 +412,12 @@ async function insertBudgetLineTx(
     parsed.accountType === "revenue" || parsed.accountType === "cogs"
       ? parsed.accountType
       : "expense"
-  // Turn 34 monthly-distribution contract: 12 rows per parsed line
-  // (sortOrder=monthIdx, plannedAmount=perMonth[idx]). Mirrors the CLI
-  // importer at `scripts/import-azmade-budgets.ts:182-201`. Pre-fix
-  // single-row inserts at sortOrder=0 collapsed all 12 months into Jan
-  // → P&L charts showed a January spike + zero across Feb-Dec.
-  // Turn 29 Bug #1b: xlsx-sourced lines have explicit plannedAmount
-  // values; they are NOT auto-planned.
+  // Monthly-distribution contract: 12 rows per parsed line
+  // (sortOrder=monthIdx, plannedAmount=perMonth[idx]). Single-row
+  // inserts at sortOrder=0 would collapse all 12 months into Jan →
+  // P&L charts would show a January spike + zero across Feb-Dec.
+  // xlsx-sourced lines have explicit plannedAmount values; they are
+  // NOT auto-planned.
   for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
     const monthlyAmount = parsed.perMonth[monthIdx] ?? 0
     await tx.budgetLine.create({

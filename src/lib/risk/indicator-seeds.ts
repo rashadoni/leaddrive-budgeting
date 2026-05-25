@@ -1241,13 +1241,12 @@ export const industrialIndicators: IndicatorSeed[] = [
     sortOrder: 50,
   },
   // ── IND_FX_INPUT_RISK retired (sub-27 cont'd Round-7 closure) ──────
-  // Architect Round-6 flagged: AZMADE xlsx import doesn't tag
-  // `currencyCode` on BudgetLines (10169/10169 NULL), so the formula
-  // structurally returned 0% across all op-cos — a fake green that
-  // would mislead demo. Re-enable AFTER `scripts/import-azmade-budgets.ts`
-  // is extended to detect and persist xlsx FX columns. Definition
-  // preserved here as a comment block so a future contributor doesn't
-  // re-derive thresholds from scratch:
+  // Earlier xlsx imports didn't tag `currencyCode` on BudgetLines, so
+  // the formula structurally returned 0% across all op-cos — a fake
+  // green that would mislead demo. Re-enable once imports populate
+  // BudgetLine.currencyCode. Definition preserved here as a comment
+  // block so a future contributor doesn't re-derive thresholds from
+  // scratch:
   //
   //   formula: "imported_input_cost / total_input_cost * 100"
   //   green: <=30 / amber: <=60 / red: >60
@@ -2458,10 +2457,9 @@ export const RETIRED_CODES: readonly string[] = [
   // Re-enabling would clutter the industrial heatmap with two near-
   // duplicate indicators that always agree on the band — net negative
   // for users. The underlying data fix (BudgetLine.currencyCode tagging
-  // via `import-azmade-budgets.ts` + AI-mapper /apply route) ships in
-  // this same turn, but BENEFITS the active `FX_IMPORTED_INPUT`
-  // indicator, not this retired one. Definition preserved above
-  // (formula + thresholds) for institutional memory.
+  // via import routes + AI-mapper /apply) benefits the active
+  // `FX_IMPORTED_INPUT` indicator, not this retired one. Definition
+  // preserved above (formula + thresholds) for institutional memory.
   "IND_FX_INPUT_RISK",
 ];
 

@@ -27,7 +27,7 @@ The top-10 commands you'll run in a typical week.
 | Re-seed indicator catalog | `npx tsx scripts/seed-indicators.ts` |
 | Re-seed industries | `npx tsx scripts/seed-industries.ts` |
 | Recompute (after data change, single co) | UI: `POST /api/indicators` from IndicatorDetail "Recompute" button |
-| Bulk recompute trigger | Implicit via `/api/onboarding/import/budget` POST or `scripts/import-azmade-budgets.ts` |
+| Bulk recompute trigger | Implicit via `/api/onboarding/import/budget` POST or AI Auto Import (`/budgeting/admin/ai-import`) |
 | Historical IV backfill | `npx tsx scripts/backfill-historical-ivs.ts --org=<slug> --years=2025 --dry-run` then drop `--dry-run` |
 | Sparkline batch refresh | `npx tsx scripts/compute-sparklines.ts --orgSlug=<slug>` |
 | Type-check | `npx tsc --noEmit` |
@@ -68,8 +68,7 @@ VALUES (
 ```
 
 The `slug` is what most CLI scripts (`backfill-historical-ivs.ts`,
-`compute-sparklines.ts`, `import-azmade-budgets.ts`) accept via
-`--org=<slug>` / `--orgSlug=<slug>`.
+`compute-sparklines.ts`) accept via `--org=<slug>` / `--orgSlug=<slug>`.
 
 ### 1.2 Create the first admin user
 
@@ -146,10 +145,11 @@ sub-group). Per-row error reporting; transactional; 4/min rate-limited.
 
 **Path B — direct DB insert (preferred for 1-3 companies or scripted):**
 
-See `scripts/seed-azmade-companies.ts` for the canonical pattern. Two-pass
-insert: level=1 sub-groups first, then level=2 operationals with
+Two-pass insert: level=1 sub-groups first, then level=2 operationals with
 `parentCompanyId` set. Each operational company REQUIRES `industry` + `role`
-(usually `'operational'`).
+(usually `'operational'`). The bulk-import endpoint at
+`/api/onboarding/import/companies` (Phase 7.B) follows the same shape and
+is preferred over hand-written scripts for new tenants.
 
 ### 1.5b `Company.settings` JSON — per-industry operational descriptors (Phase 7.I)
 
@@ -246,21 +246,25 @@ Common branches:
 - **Already applied**: apply 409. UI shows the same restart prompt.
 - **Recompute partial failure**: apply succeeds with `indicatorsStale: true` flag. UI shows ⚠ warning; admin can re-trigger from terminal.
 
-### 2.2 CLI batch import (preferred for AZMADE-style multi-company drops)
+### 2.2 Multi-company / multi-sheet batch import
 
-`scripts/import-azmade-budgets.ts` is the reference implementation. Pattern:
+For drops with >1 company or unknown xlsx shapes, use the
+**AI Auto Import** flow at `/budgeting/admin/ai-import` (Phase 7.M
+Tier 7). It runs an LLM classifier across each sheet (14 dataTypes:
+PL/BS/CF/KPI/CAPEX/SALES/LAND/DESCRIPTIONS/INFO/COMPANIES/OPS_FACTS/
+BUDGET_ACTUALS/SALES_FORECAST + UNKNOWN), then routes each sheet to
+the matching batch fn under `src/lib/onboarding/ai-import/`. Multi-file
+mode (1-10 files) detects cross-file conflicts before any DB write.
 
-1. Define a `JOBS: ImportJob[]` array (file path + sheet name + parser
-   choice + year + companyCode + plan label).
-2. Per job: `parseSoplSheet()` or `parseSummaryRollupSheet()` → `ParsedBudgetLine[]`.
-3. Ensure ChartOfAccount rows for every unique `code` × `accountType` pair.
-4. Ensure BudgetPlan exists for `(org, companyCode, year)`.
-5. Transactional `delete`-then-`insert` BudgetLine rows.
-6. Fire `runRecomputeForCompanies` to refresh affected (company × indicator) pairs.
-7. Audit-log via `logImportBudgetCreate` (never-throws).
+The orchestrator's pattern, for reference:
 
-To onboard a new company family using a similar pattern, copy
-`scripts/seed-azmade-actuals.ts` as a template + adapt the `JOBS` array.
+1. `runMetaExtraction` → per-sheet column/type metadata
+2. `runSheetClassifier` (LLM, cached) → `{dataType, entity, year}`
+3. Route to adapter via `production-adapter-registry.ts`
+4. Each adapter delegates to a batch fn that opens its own transaction
+   (`runImportBatch` for P&L, `runBalanceSheetBatch` for BS, etc.)
+5. Single `runRecomputeForCompanies` call after all writes succeed
+6. Audit-log via `logImportBudgetCreate`
 
 ### 2.3 Real-time per-company budget API
 
@@ -351,8 +355,9 @@ into IndicatorValue rows that the HeatMap renders.
 - **xlsx import**: every `/api/onboarding/import/budget` and
   `/staging/[id]/apply` call calls `runRecomputeForCompanies(...)` for
   the affected (company × year) pairs after the BudgetLine writes.
-- **CLI batch importer**: `scripts/import-azmade-budgets.ts` calls the
-  same helper after each job's transactional insert.
+- **AI Auto Import**: the multi-file orchestrator under
+  `src/lib/onboarding/ai-import/` calls the same helper once after all
+  per-sheet batch fns complete.
 - **Manual single-IV recompute**: clicking the "Recompute" button on
   IndicatorDetail (Panel 3) POSTs to `/api/indicators` with `companyId +
   indicatorCode + period` — recomputes that single (company × indicator)
@@ -384,8 +389,8 @@ npx tsx -e "
 "
 ```
 
-For larger scale (60+ companies), consider extending
-`scripts/import-azmade-budgets.ts` pattern instead of inline scripting.
+For larger scale (60+ companies), prefer the AI Auto Import multi-file
+flow at `/budgeting/admin/ai-import` over inline scripting.
 
 ### 4.3 Recompute returns
 
@@ -423,14 +428,14 @@ period — historical periods need a one-shot CLI.
 
 ```bash
 # Dry-run first (no DB writes; prints what would happen)
-npx tsx scripts/backfill-historical-ivs.ts --org=azmade --years=2025 --dry-run
+npx tsx scripts/backfill-historical-ivs.ts --org=<slug> --years=2025 --dry-run
 
 # Full multi-year run
-npx tsx scripts/backfill-historical-ivs.ts --org=azmade --years=2025,2024
+npx tsx scripts/backfill-historical-ivs.ts --org=<slug> --years=2025,2024
 
 # Narrow by company OR indicator code
-npx tsx scripts/backfill-historical-ivs.ts --org=azmade --years=2025 \
-  --companies=AAC-MAIN,ZTP-MAIN \
+npx tsx scripts/backfill-historical-ivs.ts --org=<slug> --years=2025 \
+  --companies=AZSEKER-CPC,AZSEKER-EDEN \
   --codes=IND_NET_MARGIN,IND_GROSS_MARGIN
 ```
 
@@ -854,7 +859,6 @@ LIMIT 5;
 | Migrations | `prisma/migrations/` |
 | Roadmap / status | `docs/ROADMAP.md` |
 | Open debt items | `docs/CARRYOVER.md` |
-| Demo script | `docs/DEMO_SCRIPT.md` |
 | Deployment runbook | `deploy/README.md` |
 
 ---

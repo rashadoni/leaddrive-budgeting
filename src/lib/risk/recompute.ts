@@ -1916,7 +1916,7 @@ const nameIncludes = (line: BudgetLineRow, needle: string): boolean =>
  *
  * `revenueBySeason` (Phase 7.E perMonth chain phase 1, 2026-04-30) reads
  * monthly distribution from the existing 12-row-per-line persistence
- * (apply route + import-azmade-budgets each write 12 BudgetLine rows
+ * (every import path writes 12 BudgetLine rows per parsed line, each
  * carrying one month's value, with `sortOrder` 0..11 = month index).
  * `monthIndex` on the row shape mirrors `sortOrder`; the matcher
  * groups revenue by month and uses the optional `isValid` gate to
@@ -1943,9 +1943,9 @@ const SUB_AGGREGATION_MATCHERS: Record<string, SubMatcher> = {
   inventory: {
     // **Functionally dormant until balance-sheet ingest lands.** This
     // matcher requires `accountType='asset'` because inventory is a
-    // balance, not a P&L flow. The current ingest path
-    // (`scripts/import-azmade-budgets.ts` + `applier.ts`) writes only
-    // revenue/cogs/expense rows from P&L sheets — there are no
+    // balance, not a P&L flow. The current P&L ingest paths
+    // (`/api/onboarding/import/budget` + AI Mapper `applier.ts`) write
+    // only revenue/cogs/expense rows from P&L sheets — there are no
     // `accountType='asset'` BudgetLine rows in production data today.
     // PHARMA_INVENTORY_DAYS / FP_INVENTORY_TURNS therefore land as
     // `unknown` until either (a) a balance-sheet xlsx ingest lands, or

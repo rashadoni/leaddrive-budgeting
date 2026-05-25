@@ -57,7 +57,7 @@ export const AI_TOOLS: Anthropic.Messages.Tool[] = [
           type: "string",
           description:
             "If set, switches the data source to COGSCostDetail and returns monthly COGS totals " +
-            "for the specified product (e.g. 'MHB', 'LIME_BURNT').",
+            "for the specified product code as defined in the tenant's product catalog.",
         },
       },
     },

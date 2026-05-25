@@ -19,7 +19,7 @@ appears in the Company Tree.
 | 0.1 | Legal entity name | string | "Azərşəkər MMC" |
 | 0.2 | Short code | UPPER_CASE | "AZSEKER" — used throughout the app |
 | 0.3 | Tax ID (VÖEN) | string | for audit / reporting compliance |
-| 0.4 | Parent holding | reference | "FO Holding" / "AZMADE" / "AZSEKER" |
+| 0.4 | Parent holding | reference | "FO Holding" / "AZSEKER" |
 | 0.5 | Sub-entities (level-2 op-cos) | list | EDEN, AZSF, CPC, FARM, HORIZON |
 | 0.6 | Industry classification | one of: `agro_crops`, `food_processing`, `services`, `industrial`, `hospitality`, `real_estate`, `pharma`, `entertainment`, `education`, `poultry`, `beverage`, `retail`, `logistics`, `construction` |
 | 0.7 | Reporting currency | ISO code | AZN / USD / EUR |
@@ -347,7 +347,7 @@ Auto-fetched (no client input needed):
 
 ---
 
-## §R.4 — Industrial (AAC-MAIN, ATL-DBZ/MRKZ/PMZ/TAZ, SPARK-MAIN, ZTP-MAIN)
+## §R.4 — Industrial (any operational steel / cement / chemical plant)
 
 | # | Data | Format |
 |---|---|---|
@@ -594,11 +594,11 @@ Already loaded (no need to re-request):
 6. **§R.1 — Agro KPIs**: hectares per region, crop yields, sugar-content actuals (Cost card / KPI sheets in xlsx)
 7. **§R.2 — Food processing**: AZSF/CPC processing capacity, extraction rate, inventory turns
 
-**Still missing for AZMADE entities (ATL, AAC, SPARK, ZTP, LLS):**
+**Still missing for any future industrial-pack op-co onboarding:**
 
 1. **§5 — Balance Sheet** for each level-2 op-co
 2. **§6 — Cash Flow**
-3. **§7 — 2025 actuals**
+3. **§7 — historical actuals**
 4. **§R.4 — Industrial KPIs**: capacity utilization, BOM, top-3 raw-material exposures, defect rate per plant
 5. **§0.10 — ESG Scope 1+2 disclosure** (currently modeled, not disclosed)
 

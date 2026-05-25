@@ -13,9 +13,9 @@
  *     holding root               → all LEAF descendants (BFS through
  *                                    the tree until we hit nodes with
  *                                    no children). Handles 2-level
- *                                    AND 3-level holdings (FO Holding
- *                                    has AZMADE → AAC → AAC-MAIN: a
- *                                    1-hop expansion misses leaves).
+ *                                    AND 3-level holdings (a 3-level
+ *                                    tree root → sub-group → op-co means
+ *                                    a 1-hop expansion misses leaves).
  *   - sub-group with NO descendants → [] (caller treats as no-data)
  *
  * Cross-tenant guard: if the requested companyId doesn't belong to

@@ -589,7 +589,6 @@ formalize on-call rotation, codify TTD/TTR via SLOs.
 - **Operational admin (day-to-day)** → `docs/ADMIN_RUNBOOK.md`
 - **Developer roadmap + status** → `docs/ROADMAP.md`
 - **Open architectural debt** → `docs/CARRYOVER.md`
-- **Demo presentation flow** → `docs/DEMO_SCRIPT.md`
 
 ---
 

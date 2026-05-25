@@ -31,9 +31,9 @@ against the DB, plus a database column to store the result.
 ### A.1 Universal `scripts/audit-company.cjs`
 
 Generalizes the AZSEKER-specific diagnostic. Inputs:
-- `--company AAC-MAIN` (DB company code)
+- `--company AZSEKER-CPC` (DB company code)
 - `--xlsx /path/to/budget.xlsx`
-- `--sheet PL_AAC` (sheet within xlsx)
+- `--sheet PLF` (sheet within xlsx)
 - `--period 2026`
 
 Outputs (per the PLF.01..PLF.10 lines):

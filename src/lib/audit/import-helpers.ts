@@ -1,17 +1,13 @@
 /**
  * Phase 7.F audit-wiring — shared helpers for import paths.
  *
- * Both the API route (`POST /api/onboarding/import/budget`) and the CLI
- * script (`scripts/import-azmade-budgets.ts`) commit BudgetLine writes,
- * trigger an IndicatorValue recompute, then need to emit an
- * `import_budget_create` audit event with identical metadata shape.
- *
- * Without this helper the two paths drift: the CLI script went six months
- * with no emission at all (Turn-17 backfill via psql was the symptom),
- * which broke the `/budgeting/audit` page until manual rows were
- * inserted. Centralising emission here means a future variant — staging
- * applier, rerun-from-cron, third-party importer — can't accidentally
- * skip the audit.
+ * Every import path (`POST /api/onboarding/import/budget`, the AI Mapper
+ * staging-apply route, future AI Auto Import multi-file orchestrator)
+ * commits BudgetLine writes, triggers an IndicatorValue recompute, then
+ * needs to emit an `import_budget_create` audit event with identical
+ * metadata shape. Centralising emission here means a future variant —
+ * staging applier, rerun-from-cron, third-party importer — can't
+ * accidentally skip the audit.
  *
  * Contract:
  *  - never throws (delegates to `logAuditEvent`'s never-throws guarantee).
