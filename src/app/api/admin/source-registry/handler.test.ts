@@ -27,6 +27,9 @@ const { fsMock } = vi.hoisted(() => {
       store[p] = content
     }),
     rename: vi.fn(async (src: string, dst: string): Promise<void> => {
+      if (!Object.prototype.hasOwnProperty.call(store, src)) {
+        throw Object.assign(new Error(`ENOENT: no such file, rename '${src}' -> '${dst}'`), { code: "ENOENT" })
+      }
       store[dst] = store[src]
       delete store[src]
     }),
@@ -39,14 +42,19 @@ const { fsMock } = vi.hoisted(() => {
   return { fsMock }
 })
 
-vi.mock("fs", () => ({
-  promises: {
+// Mock both the named `promises` export AND the default export so that
+// `import { promises as fs } from "fs"` + `import fs from "fs"` both work.
+// Without `default`, a future transitive import of `fs.existsSync` etc.
+// silently returns undefined instead of a function.
+vi.mock("fs", () => {
+  const proms = {
     readFile: fsMock.readFile,
     writeFile: fsMock.writeFile,
     rename: fsMock.rename,
     unlink: fsMock.unlink,
-  },
-}))
+  }
+  return { default: { promises: proms }, promises: proms }
+})
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: {} }))
@@ -75,13 +83,12 @@ describe("GET /api/admin/source-registry", () => {
     expect(res.status).toBe(403)
   })
 
-  it("200 returns entries (empty when no file)", async () => {
+  it("200 returns entries (empty {} when no file)", async () => {
     await mockSession({ orgId: "org_demo", userId: "u1", role: "admin" })
     const res = await GET(makeRequest("/api/admin/source-registry"))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toHaveProperty("entries")
-    expect(typeof body.entries).toBe("object")
+    expect(body.entries).toEqual({})
   })
 })
 
