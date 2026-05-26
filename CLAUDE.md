@@ -250,11 +250,11 @@ read that for the current picture, not this file. High-level snapshot:
 
 ## Key architectural debts (short version — full list in ROADMAP)
 
-1. `BudgetLine.category` / `department` have fuzzy semantics — mix of codes and names. Analytics/pnl use `looksLikeSapCode()` fallbacks to disambiguate. **Fix:** Phase 2.1 — FK to ChartOfAccount.
-2. `budgeting/page.tsx` is 5000+ lines. **Fix:** Phase 3.1.
-3. Import has hardcoded Azerbaijani strings + AAC product codes. **Fix:** Phases 2.2, 2.3.
-4. No audit log, no soft-delete, no period locking. **Fix:** Phase 4.
-5. Pre-existing TypeScript errors ignored (`department-access.ts` missing module). **Fix:** Phase 1.3.
+1. ~~`BudgetLine.category` / `department` fuzzy semantics~~ — **closed 2026-05-26 Phase 2.1**. `category` String dropped from BudgetLine/CashFlowEntry; `accountCode`/`accountName` dropped from COGSBudgetLine/BalanceSheetLine; `accountId` NOT NULL FK to ChartOfAccount across all 4 tables. `looksLikeSapCode`/`looksLikeCostAccount` helpers retired. `looksLikeCode` kept for BudgetActual aggregation (BudgetActual has no FK migration yet — out of 2.1 scope; potential Phase 2.4+ work).
+2. ~~`budgeting/page.tsx` is 5000+ lines~~ — **closed 2026-05-11 Phase 3.1** (page.tsx now 332 LOC; all tabs extracted to `src/features/budgeting/components/`).
+3. ~~Import has hardcoded Azerbaijani strings + AAC product codes~~ — **closed 2026-05-26 Phase 2.3** (AZMADE/AAC legacy removed: route, UI component, 19 scripts, 3 adapters, ~8.6K LOC deleted). Replacement: AI Auto Import (Phase 7.M Tier 7) handles any xlsx shape via classifier. **Phase 2.2 sub-2** (org-specific keyword mappings in Organization.importConfig) deferred until 2nd-customer onboarding surfaces a real difference.
+4. ~~No audit log, no soft-delete, no period locking~~ — all shipped Phase 4 (4.1 audit + 4.2 period locks + 4.3 approvals); soft-delete shipped Phase 1.4 + Phase 7.M Step 4 with daily physical-purge cron (closed 2026-05-26 Phase 1.4).
+5. Pre-existing TypeScript errors — Phase 1.3 ✅ closed earlier; CI now enforces `tsc --noEmit` on every push (Phase 0.7 closure 2026-05-26 GitHub Actions workflow).
 
 ## Safe operations
 
