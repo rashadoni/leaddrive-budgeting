@@ -227,6 +227,10 @@ read that for the current picture, not this file. High-level snapshot:
   9 outer-tx (import/bs/cf/kpi) + 9 multi-file-orchestrator +
   11 handler + 9 UI + 9 production-adapter-registry + 1 filename-hint
   = 70 new cases; full suite 5042 passing.
+- **Phase 7.N — riskTags wired everywhere + Compliance/Legal indicators live (2026-05-26/27).**
+  - **riskTags wiring (commit `4de2bd2`):** `subsidy_dependency`/`non_transparent_structure`/`data_absence` flags now penalize composite-score (−5/−8/−12, max −25, floor 0), thread into AI Morning Brief narrative, AI Variance Explainer system prompt, and Board Deck snapshot. New `RISK_TAG_PENALTY_TABLE` exported from `composite-score.ts`.
+  - **Compliance + Legal indicators (commits `d12771e` + `b848f8b`):** 3 pre-existing seeds (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE) finally have data. 218 audit findings + 54 court cases parsed from client xlsx via `scripts/import-audit-findings.mjs` + `scripts/import-court-disputes-detailed.mjs`; `scripts/wire-compliance-indicators.mjs` aliases descriptive metric names → canonical seed-expected names. Live: AZSF 🔴🔴🔴 / CPC 🔴🟡🟡 / EDEN ⚪⚪🟡 visible in HeatMap. Full ledgers stored in `Company.settings.auditFindings` + `courtDisputes` for future drill-down.
+- **In-app user guide at `/guide` (multi-language EN/RU/AZ).** 655-line `docs/USER_GUIDE.<lang>.md` with sticky TOC, persistent 51-item checklist (per-language `localStorage` key `guide:checks:<lang>`), 14 embedded screenshots, print-to-PDF, language switcher. Server-side reads markdown at request time. Client viewer uses `useSyncExternalStore` for checklist state (no hydration warnings). Re-translate via `ANTHROPIC_API_KEY=... node scripts/translate-guide.mjs [en|az]` (streaming SDK call, ~$0.15 per lang, ~5-6 min per call). Re-capture screenshots via `node scripts/capture-guide-screenshots.mjs`.
 
 ### Key files
 
