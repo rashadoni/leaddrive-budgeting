@@ -22,6 +22,10 @@ import { detectProposalYear } from "../ai-mapper/applier"
 import { runBalanceSheetBatch, type BsImportRow } from "../bs-import-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import type { ColumnMappingProposal } from "../ai-mapper/types"
+import {
+  createCoACache,
+  resolveOrCreateAccountId,
+} from "../upsert-chart-of-account"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BS account classification (mirrors classifyBsLineType in azseker-workbook-bs.ts)
@@ -379,6 +383,32 @@ export async function runDynamicBsAdapter(
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
+      // Phase 2.1 session 1 — resolve CoA FK for every unique BS code.
+      const coaCache = createCoACache()
+      const entityCode = input.entityCode ?? ""
+      const accountIdByLineCode = new Map<string, string>()
+      for (const r of rows) {
+        const lineCode = r.accountCode.startsWith(`${entityCode}-`)
+          ? r.accountCode.slice(entityCode.length + 1)
+          : r.accountCode
+        if (accountIdByLineCode.has(lineCode)) continue
+        const id = await resolveOrCreateAccountId(tx, coaCache, {
+          organizationId: input.organizationId,
+          code: lineCode,
+          defaultName: r.accountName,
+          defaultAccountType: r.lineType,
+        })
+        accountIdByLineCode.set(lineCode, id)
+      }
+      const resolvedRows = rows.map((r) => {
+        const lineCode = r.accountCode.startsWith(`${entityCode}-`)
+          ? r.accountCode.slice(entityCode.length + 1)
+          : r.accountCode
+        return {
+          ...r,
+          accountId: accountIdByLineCode.get(lineCode) ?? null,
+        }
+      })
       const result = await runBalanceSheetBatch(tx, {
         organizationId: input.organizationId,
         label: `Dynamic BS ${input.entityCode} ${effectiveYear}`,
@@ -386,7 +416,7 @@ export async function runDynamicBsAdapter(
         sourceDocument: `dynamic-detect:${input.sheetName}`,
         planIds: [planId],
         periodScope,
-        rows,
+        rows: resolvedRows,
         expectedSums,
       })
       return { rowsInserted: result.metrics.rowsInserted }

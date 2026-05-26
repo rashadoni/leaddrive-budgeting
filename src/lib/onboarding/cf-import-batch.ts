@@ -34,6 +34,12 @@ export interface CfImportRow {
   cfCode: string
   /** Human-readable category (typically `${entityCode}-${cfCode}`). */
   category: string
+  /**
+   * Phase 2.1 session 1 (2026-05-26) — FK to ChartOfAccount. Caller
+   * resolves via `resolveOrCreateAccountId` before passing rows in.
+   * Optional for backward compat; new imports always populate it.
+   */
+  accountId?: string | null
   /** operating | investing | financing */
   activityType: string
   /** inflow | outflow */
@@ -184,6 +190,8 @@ export async function runCashFlowBatch(
         isProjected: false,
         activityType: r.activityType,
         category: r.category,
+        // Phase 2.1 session 1 — write CoA FK when caller populated it.
+        ...(r.accountId != null ? { accountId: r.accountId } : {}),
       }))
       let inserted = 0
       if (payload.length > 0) {

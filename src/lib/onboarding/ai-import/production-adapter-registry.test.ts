@@ -251,7 +251,16 @@ describe("buildProductionAdapterRegistry", () => {
       organizationId: "org_1",
       XLSX: fakeXLSX,
     })
-    const fakeTx = { _tx: true } as never
+    // Phase 2.1 session 1 — BS applyToDb now resolves CoA FK before
+    // runBalanceSheetBatch via tx.chartOfAccount.upsert.
+    const fakeTx = {
+      _tx: true,
+      chartOfAccount: {
+        upsert: vi.fn(async (args: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${args.where.organizationId_code.code}` })),
+      },
+    } as never
     await result.applyToDb(fakeTx)
     expect(runBalanceSheetBatch).toHaveBeenCalledOnce()
     const [txArg] = (runBalanceSheetBatch as ReturnType<typeof vi.fn>).mock
@@ -288,7 +297,15 @@ describe("buildProductionAdapterRegistry", () => {
       organizationId: "org_1",
       XLSX: fakeXLSX,
     })
-    const fakeTx = { _tx: true } as never
+    // Phase 2.1 session 1 — CF applyToDb upserts CoA before runCashFlowBatch.
+    const fakeTx = {
+      _tx: true,
+      chartOfAccount: {
+        upsert: vi.fn(async (args: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${args.where.organizationId_code.code}` })),
+      },
+    } as never
     await result.applyToDb(fakeTx)
     expect(runCashFlowBatch).toHaveBeenCalledOnce()
   })

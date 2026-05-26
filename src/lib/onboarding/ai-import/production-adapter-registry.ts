@@ -412,7 +412,23 @@ function makeBsHandler(
     const companyId = ctx.codeToId.get(input.entityCode)
     const rows: BsImportRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
+    // Phase 2.1 session 1 — per-line metadata so applyToDb can upsert
+    // CoA rows once per unique line.code (BS codes share across entities,
+    // so use raw code as the CoA key — org-wide).
+    const accountSpecs = new Map<
+      string,
+      { code: string; name: string; accountType: string }
+    >()
     for (const line of parsed.lines) {
+      if (!accountSpecs.has(line.code)) {
+        accountSpecs.set(line.code, {
+          code: line.code,
+          name: line.label,
+          // BS line types map to ChartOfAccount.accountType verbatim
+          // (asset|liability|equity are all valid).
+          accountType: line.lineType,
+        })
+      }
       for (const [period, amount] of Object.entries(line.monthlyAmounts)) {
         if (amount === 0) continue
         if (!period.startsWith(String(input.year))) continue
@@ -423,6 +439,7 @@ function makeBsHandler(
           companyId: companyId ?? null, // Phase 7.O — company scope for resolver queries
           accountCode: `${input.entityCode}-${line.code}`,
           accountName: line.label,
+          // accountId resolved in applyToDb via resolveOrCreateAccountId
           lineType: line.lineType,
           subType: line.subType,
           year: input.year,
@@ -458,6 +475,38 @@ function makeBsHandler(
       ...(rows.length > 0 ? { expectedSums } : ({} as any)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
+        // Resolve CoA FK for every unique BS line code.
+        const coaCache = createCoACache()
+        preWarmCoACache(
+          coaCache,
+          ctx.organizationId,
+          Array.from(ctx.coaByCode.entries()).map(([code, id]) => ({
+            code,
+            id,
+          })),
+        )
+        const accountIdByLineCode = new Map<string, string>()
+        for (const spec of accountSpecs.values()) {
+          const id = await resolveOrCreateAccountId(tx, coaCache, {
+            organizationId: ctx.organizationId,
+            code: spec.code,
+            defaultName: spec.name,
+            defaultAccountType: spec.accountType,
+          })
+          accountIdByLineCode.set(spec.code, id)
+        }
+        const entityCode = input.entityCode ?? ""
+        const resolvedRows: BsImportRow[] = rows.map((r) => {
+          // Recover line.code from the entity-prefixed accountCode
+          // (BS rows use `${entity}-${code}` for accountCode display).
+          const lineCode = r.accountCode.startsWith(`${entityCode}-`)
+            ? r.accountCode.slice(entityCode.length + 1)
+            : r.accountCode
+          return {
+            ...r,
+            accountId: accountIdByLineCode.get(lineCode) ?? null,
+          }
+        })
         const result = await runBalanceSheetBatch(tx, {
           organizationId: ctx.organizationId,
           label: `WB BS ${input.entityCode} ${input.year}`,
@@ -465,7 +514,7 @@ function makeBsHandler(
           sourceDocument: `multi-import:${input.sheetName}`,
           planIds: [ctx.planId],
           periodScope: buildPeriodScope(input.year),
-          rows,
+          rows: resolvedRows,
           expectedSums,
         })
         return { rowsInserted: result.metrics.rowsInserted }
@@ -504,7 +553,23 @@ function makeCfHandler(
     )
     const rows: CfImportRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
+    // Phase 2.1 session 1 — per-entry metadata for CoA upsert in
+    // applyToDb. CF codes (CF.XX.XX) are org-wide; CashFlowEntry rows
+    // don't carry asset/liability semantics in the same way as BS, so
+    // CoA accountType defaults to "expense" for outflows and "revenue"
+    // for inflows (admin can reclassify later).
+    const accountSpecs = new Map<
+      string,
+      { code: string; name: string; accountType: string }
+    >()
     for (const entry of parsed.entries) {
+      if (!accountSpecs.has(entry.code)) {
+        accountSpecs.set(entry.code, {
+          code: entry.code,
+          name: entry.label,
+          accountType: entry.entryType === "inflow" ? "revenue" : "expense",
+        })
+      }
       for (let m = 0; m < 12; m++) {
         const amount = entry.perMonth[m]
         if (amount === 0) continue
@@ -514,6 +579,7 @@ function makeCfHandler(
           entityCode: input.entityCode,
           cfCode: entry.code,
           category: `${input.entityCode}-${entry.code}`,
+          // accountId resolved in applyToDb
           activityType: entry.activityType,
           entryType: entry.entryType,
           year: input.year,
@@ -548,6 +614,29 @@ function makeCfHandler(
       ...(rows.length > 0 ? { expectedSums } : ({} as any)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
+        const coaCache = createCoACache()
+        preWarmCoACache(
+          coaCache,
+          ctx.organizationId,
+          Array.from(ctx.coaByCode.entries()).map(([code, id]) => ({
+            code,
+            id,
+          })),
+        )
+        const accountIdByCfCode = new Map<string, string>()
+        for (const spec of accountSpecs.values()) {
+          const id = await resolveOrCreateAccountId(tx, coaCache, {
+            organizationId: ctx.organizationId,
+            code: spec.code,
+            defaultName: spec.name,
+            defaultAccountType: spec.accountType,
+          })
+          accountIdByCfCode.set(spec.code, id)
+        }
+        const resolvedRows: CfImportRow[] = rows.map((r) => ({
+          ...r,
+          accountId: accountIdByCfCode.get(r.cfCode) ?? null,
+        }))
         const result = await runCashFlowBatch(tx, {
           organizationId: ctx.organizationId,
           label: `WB CF ${input.entityCode} ${input.year}`,
@@ -555,7 +644,7 @@ function makeCfHandler(
           sourceDocument: `multi-import:${input.sheetName}`,
           sourceTag: CF_SOURCE_TAG,
           periodScope: buildPeriodScope(input.year),
-          rows,
+          rows: resolvedRows,
           expectedSums,
         })
         return { rowsInserted: result.metrics.rowsInserted }

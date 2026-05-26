@@ -26,6 +26,10 @@ import { detectProposalYear } from "../ai-mapper/applier"
 import { runCashFlowBatch, type CfImportRow } from "../cf-import-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import type { ColumnMappingProposal } from "../ai-mapper/types"
+import {
+  createCoACache,
+  resolveOrCreateAccountId,
+} from "../upsert-chart-of-account"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CF code classification helpers
@@ -392,6 +396,23 @@ export async function runDynamicCfAdapter(
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
+      // Phase 2.1 session 1 — resolve CoA FK for every unique cfCode.
+      const coaCache = createCoACache()
+      const accountIdByCfCode = new Map<string, string>()
+      for (const r of rows) {
+        if (accountIdByCfCode.has(r.cfCode)) continue
+        const id = await resolveOrCreateAccountId(tx, coaCache, {
+          organizationId: input.organizationId,
+          code: r.cfCode,
+          defaultName: r.description,
+          defaultAccountType: r.entryType === "inflow" ? "revenue" : "expense",
+        })
+        accountIdByCfCode.set(r.cfCode, id)
+      }
+      const resolvedRows = rows.map((r) => ({
+        ...r,
+        accountId: accountIdByCfCode.get(r.cfCode) ?? null,
+      }))
       const result = await runCashFlowBatch(tx, {
         organizationId: input.organizationId,
         label: `Dynamic CF ${input.entityCode} ${effectiveYear}`,
@@ -399,7 +420,7 @@ export async function runDynamicCfAdapter(
         sourceDocument: `dynamic-detect:${input.sheetName}`,
         sourceTag: DYNAMIC_CF_SOURCE_TAG,
         periodScope,
-        rows,
+        rows: resolvedRows,
         expectedSums,
       })
       return { rowsInserted: result.metrics.rowsInserted }

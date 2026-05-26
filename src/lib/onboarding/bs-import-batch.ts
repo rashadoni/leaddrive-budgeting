@@ -57,6 +57,13 @@ export interface BsImportRow {
   accountCode: string
   /** English label (what the file said). */
   accountName: string
+  /**
+   * Phase 2.1 session 1 (2026-05-26) — FK to ChartOfAccount. Caller
+   * resolves via `resolveOrCreateAccountId` before passing rows in.
+   * Null is the legacy fallback path that 100% of existing rows used;
+   * new imports always populate it.
+   */
+  accountId?: string | null
   /** asset | liability | equity */
   lineType: string
   /** non_current | current (assets); long_term | short_term (liabilities) */
@@ -211,6 +218,10 @@ export async function runBalanceSheetBatch(
         ...(r.companyId != null ? { companyId: r.companyId } : {}),
         accountCode: r.accountCode,
         accountName: r.accountName,
+        // Phase 2.1 session 1 — write the ChartOfAccount FK when caller
+        // populated it (via resolveOrCreateAccountId). Old callers that
+        // omit it stay backwards-compatible (column remains nullable).
+        ...(r.accountId != null ? { accountId: r.accountId } : {}),
         lineType: r.lineType,
         subType: r.subType,
         year: r.year,

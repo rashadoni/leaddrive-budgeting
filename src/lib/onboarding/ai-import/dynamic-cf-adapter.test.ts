@@ -118,7 +118,15 @@ function makeFakeInput(
 }
 
 const FAKE_PRISMA = {} as PrismaClient
-const FAKE_TX = {} as Prisma.TransactionClient
+// Phase 2.1 session 1 — applyToDb resolves accountId via
+// tx.chartOfAccount.upsert before runCashFlowBatch.
+const FAKE_TX = {
+  chartOfAccount: {
+    upsert: vi.fn(async (args: {
+      where: { organizationId_code: { code: string } }
+    }) => ({ id: `coa_${args.where.organizationId_code.code}` })),
+  },
+} as unknown as Prisma.TransactionClient
 
 const MOCK_MAPPER_INPUT = {
   sourceFile: "test.xlsx",
