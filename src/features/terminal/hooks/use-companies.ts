@@ -37,7 +37,7 @@
  * update in lockstep — single point of truth.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
  * Sub-19: shape mirrors `CompanyTree`'s `CompanyNode` so PanelGrid can
@@ -229,7 +229,13 @@ export function useCompanies(): UseCompaniesResult {
     [companies],
   );
 
-  const refresh = async (): Promise<void> => {
+  // useCallback with empty deps: state setters from useState are stable
+  // references; module-level `cache` is accessed by reference (not captured
+  // as a closure over a local copy). Without the memo, every render
+  // produces a new `refresh` reference, which makes any useCallback that
+  // lists `refresh` as a dep (e.g. handleChange in CompanyManagementAdmin)
+  // rebuild on every render, defeating memoization.
+  const refresh = useCallback(async (): Promise<void> => {
     cache = null;
     setLoading(true);
     setError(null);
@@ -242,7 +248,7 @@ export function useCompanies(): UseCompaniesResult {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   return { companies, idToCode, codeToId, loading, error, refresh };
 }

@@ -4,7 +4,7 @@
  *
  * Covers:
  *  1. Renders the company table with role + status selects for admin users.
- *  2. Role change fires PATCH with correct payload and shows "saved" tick.
+ *  2. Role change fires PATCH with correct payload AND calls refreshTerminalCache().
  *  3. Status change fires PATCH with correct payload and shows "saved" tick.
  *  4. API error rolls back the optimistic update and shows an inline error.
  *  5. Non-admin user sees read-only badges instead of selects.
@@ -27,9 +27,10 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
 }))
 
-// Stub the terminal cache hook — refresh is a no-op in tests
+// Stub the terminal cache hook — expose the refresh spy so tests can assert it.
+const mockTerminalRefresh = vi.fn().mockResolvedValue(undefined)
 vi.mock("@/features/terminal/hooks/use-companies", () => ({
-  useCompanies: vi.fn(() => ({ refresh: vi.fn() })),
+  useCompanies: vi.fn(() => ({ refresh: mockTerminalRefresh })),
 }))
 
 import { useSession } from "next-auth/react"
@@ -67,6 +68,7 @@ const SAMPLE_COMPANIES = [
 ]
 
 beforeEach(() => {
+  mockTerminalRefresh.mockClear()
   mockUseSession.mockReturnValue(ADMIN_SESSION)
   mockUseQuery.mockReturnValue({
     data: SAMPLE_COMPANIES,
@@ -107,7 +109,7 @@ describe("CompanyManagementAdmin", () => {
     expect(screen.getByRole("combobox", { name: /status for AZSF/i })).toBeTruthy()
   })
 
-  it("calls PATCH with role payload on role select change", () => {
+  it("calls PATCH with role payload on role select change and refreshes terminal cache", async () => {
     render(<CompanyManagementAdmin />)
 
     const roleSelect = screen.getByRole("combobox", {
@@ -126,6 +128,13 @@ describe("CompanyManagementAdmin", () => {
         body: JSON.stringify({ role: "holding" }),
       }),
     )
+
+    // Terminal module-cache must be busted after a successful PATCH so
+    // PanelGrid / RelatedFunctionsMenu / AlertsPanel pick up the new role
+    // without a full page reload.
+    await waitFor(() => {
+      expect(mockTerminalRefresh).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("calls PATCH with status payload on status select change", async () => {
