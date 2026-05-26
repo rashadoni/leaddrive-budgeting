@@ -1,27 +1,30 @@
 /**
- * Phase 7.F audit-wiring extension — `/api/companies/[id]` PATCH endpoint.
+ * PATCH /api/companies/[id] — company role + status management.
  *
- * Today the only mutation supported is `role`: operational ↔ admin ↔ holding.
- * Surfaced because Phase 7.E added `CompanyRole` enum + the holding-view
- * filter (`filterOperationalCompanies`), but the only way to flip a company's
- * role was a direct seed/SQL edit — leaving no audit trail. This closes the
- * `company_role_change` enum member that's been wire-ready in
- * `src/lib/audit/log.ts:46-54` since Turn 11.
+ * Supports two independent mutations in a single PATCH; either or both
+ * fields may be present:
  *
- * Auth: admin-only. Role flips reshape the holding view (admin/holding rows
- * disappear from the operational heatmap), so they're a privileged operation
- * — manager+ would let editors hide companies from leadership dashboards by
- * accident.
+ *   { role: "operational"|"admin"|"holding" }
+ *     → changes CompanyRole (Phase 7.E scoring toggle). Emits
+ *       `company_role_change` audit event.
  *
- * Rate-limit: keyed on userId (not orgId) at 10/min. Tighter than the
- * import-budget 5/min because role flips are interactive single-row clicks,
- * not bulk operations; the limit exists to throttle mistakes / runaway
- * scripts, not to bound throughput.
+ *   { status: "pending"|"active"|"archived" }
+ *     → changes Company.status (Truth-infra Phase C.1 — admin manual
+ *       override of the onboarding-readiness gate). Emits
+ *       `company_status_change` audit event.
  *
- * Audit: emits `company_role_change` with `from`/`to`/`companyCode`.
- * Same-role PATCH is a no-op — returns 200 with the existing row, does NOT
- * emit an audit event (audit-trail noise reduction; no state change to
- * record).
+ * Either or both fields may be included in a single request body; an
+ * empty body (no recognised fields) returns 400.
+ *
+ * Auth: admin-only. Both mutations reshape the holding view:
+ *   - role flip removes admin/holding rows from the operational HeatMap.
+ *   - status flip hides/shows the company in the terminal (matrix filters
+ *     out `status='pending'` by default).
+ *
+ * Rate-limit: keyed on userId at 10/min — interactive single-row clicks.
+ *
+ * Audit: same-value PATCH is a true no-op (no DB write, no audit event).
+ *        Changed fields each emit their respective audit action.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -29,7 +32,7 @@ import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logAuditEvent, buildAuditContext } from '@/lib/audit/log';
-import { parsePatchBody, isValidCompanyRole } from './validate';
+import { parsePatchBody, isValidCompanyRole, isValidCompanyStatus } from './validate';
 
 const RATE_LIMIT = { name: 'company-patch', max: 10, windowMs: 60_000 };
 
@@ -73,42 +76,43 @@ export async function PATCH(
   // leak existence of cross-tenant ids.
   const existing = await prisma.company.findFirst({
     where: { id, organizationId: session.orgId },
-    select: { id: true, code: true, role: true },
+    select: { id: true, code: true, role: true, status: true },
   });
   if (!existing) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 });
   }
 
-  // No-op short-circuit: same role → return current row, skip audit.
-  // Audit trail is for *changes*, not idempotent re-submits.
-  if (parsed.value.role && parsed.value.role === existing.role) {
-    return NextResponse.json(existing);
+  // Compute which fields actually changed to skip true no-ops.
+  const roleChanged = parsed.value.role != null && parsed.value.role !== existing.role;
+  const statusChanged = parsed.value.status != null && parsed.value.status !== existing.status;
+
+  if (!roleChanged && !statusChanged) {
+    // Complete no-op: same values submitted. Skip DB write AND audit.
+    return NextResponse.json({ id: existing.id, code: existing.code, role: existing.role, status: existing.status });
   }
+
+  // Build the update data from changed fields only.
+  const updateData: { role?: string; status?: string } = {};
+  if (roleChanged) updateData.role = parsed.value.role;
+  if (statusChanged) updateData.status = parsed.value.status;
 
   const updated = await prisma.company.update({
     where: { id: existing.id },
-    data: {
-      role: parsed.value.role,
-    },
-    select: { id: true, code: true, role: true },
+    data: updateData,
+    select: { id: true, code: true, role: true, status: true },
   });
 
-  // Best-effort audit emission. Mirrors the never-throws contract of every
-  // other call-site: logger failures get surfaced as `auditStale: true`
+  // Best-effort audit emission for each changed field.
+  // Never-throws contract: log failures surface as `auditStale: true`
   // alongside the successful mutation rather than rolling back the change.
-  //
-  // Runtime guard on `existing.role`: Prisma's `CompanyRole` enum is the
-  // source of truth, but `AuditEventInput.metadata.from/to` is a hand-rolled
-  // literal union (`src/lib/audit/log.ts:50-52`). If a future migration adds
-  // a 4th role member without updating BOTH `validate.ts:VALID_ROLES` AND
-  // the audit union, an unguarded cast would silently emit an off-spec
-  // metadata blob. Guard kicks in at runtime: if `existing.role` isn't
-  // recognised, skip emission + flag stale rather than write a malformed row.
   let auditStale = false;
-  if (parsed.value.role && parsed.value.role !== existing.role) {
+  const auditCtx = buildAuditContext({
+    route: '/api/companies/[id]',
+    userAgent: request.headers.get('user-agent') ?? undefined,
+  });
+
+  if (roleChanged) {
     if (!isValidCompanyRole(existing.role)) {
-      // Defensive — schema drift between Prisma enum and audit union.
-      // Action still proceeds (mutation already committed); audit is best-effort.
       console.error(
         `audit/company_role_change: existing.role=${String(existing.role)} not in audit union — skipping emission`,
       );
@@ -123,14 +127,37 @@ export async function PATCH(
           entityId: existing.id,
           metadata: {
             from: existing.role,
-            to: parsed.value.role,
+            to: parsed.value.role!,
             companyCode: existing.code,
           },
         },
-        context: buildAuditContext({
-          route: '/api/companies/[id]',
-          userAgent: request.headers.get('user-agent') ?? undefined,
-        }),
+        context: auditCtx,
+      });
+      if (!auditResult.ok) auditStale = true;
+    }
+  }
+
+  if (statusChanged) {
+    if (!isValidCompanyStatus(existing.status)) {
+      console.error(
+        `audit/company_status_change: existing.status=${String(existing.status)} not in audit union — skipping emission`,
+      );
+      auditStale = true;
+    } else {
+      const auditResult = await logAuditEvent(prisma, {
+        organizationId: session.orgId,
+        actorUserId: session.userId,
+        event: {
+          action: 'company_status_change',
+          entityType: 'Company',
+          entityId: existing.id,
+          metadata: {
+            from: existing.status as 'pending' | 'active' | 'archived',
+            to: parsed.value.status!,
+            companyCode: existing.code,
+          },
+        },
+        context: auditCtx,
       });
       if (!auditResult.ok) auditStale = true;
     }

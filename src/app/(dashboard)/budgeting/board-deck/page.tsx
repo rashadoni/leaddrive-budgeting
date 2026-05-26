@@ -17,6 +17,7 @@ import { CompositeTrendChart } from "@/features/board-deck/components/CompositeT
 import { MetricCard } from "@/features/board-deck/components/MetricCard";
 import { NarrativeSection } from "@/features/board-deck/components/NarrativeSection";
 import { TopAlertsSection } from "@/features/board-deck/components/TopAlertsSection";
+import { RiskFlagsSection } from "@/features/board-deck/components/RiskFlagsSection";
 import { FooterActions } from "@/features/board-deck/components/FooterActions";
 import { prisma } from "@/lib/prisma";
 
@@ -133,6 +134,7 @@ export default async function BoardDeckPage({
     matchesBySeverity,
     totals,
     generatedAt,
+    riskTagsByCompany,
   } = snapshot;
   type IndicatorShape = (typeof indicators)[number];
   // Phase 7.G Turn XLIX (v2 Turn 3) — `totals.*` consumed by the
@@ -262,6 +264,16 @@ export default async function BoardDeckPage({
           by severity, all rules) lives in /budgeting/terminal AlertsPanel
           and is reachable via the FooterActions Terminal CTA. */}
       <TopAlertsSection matchesBySeverity={matchesBySeverity} limit={3} />
+
+      {/* Phase 7.N wiring (2026-05-26) — Qualitative Risk Flags
+          section. Renders only when at least one operational entity
+          carries a Company.settings.riskTags entry; otherwise the
+          deck stays clean. Source: import-risk-registry CLI + admin
+          UI in /budgeting/admin/companies. */}
+      <RiskFlagsSection
+        operational={operational}
+        riskTagsByCompany={riskTagsByCompany}
+      />
 
       {/* Phase 7.G Turn LI (v2 Turn 4) — FooterActions absorbs the
           Turn-XLVIII utility-bar (Print + Export PPTX + Terminal

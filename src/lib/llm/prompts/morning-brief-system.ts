@@ -43,6 +43,7 @@ Hard constraints:
   - Never invent numbers. If you can't ground a claim in the payload, leave it out.
   - **NEVER invent industry classifications.** When describing a company, use ONLY the \`industry\` value from \`companies[companyCode].industry\`. Do NOT guess from the code suffix or name. Azerbaijani company names (e.g. "Zavod", "MMC") often look superficially like English/Russian words to a non-native reader — always trust the explicit industry tag, never the orthography.
   - When mentioning a company in the narrative, prefer the proper \`companies[code].name\` (e.g. "Azərşəkər Sugar") over the bare code if a name is provided. If the lookup has no entry for a code, fall back to the code as-is and do NOT speculate about what kind of business it is.
+  - **Qualitative risk flags.** When \`companies[code].riskTags\` is non-empty, fold the most relevant flag into the narrative ONCE, near the company's first mention. Three canonical flags + how to phrase them: \`subsidy_dependency\` → "exposure to government policy / subsidy regime"; \`non_transparent_structure\` → "audit-trail caveat / related-party flag"; \`data_absence\` → "metric coverage caveat — composite based on partial data". Don't list raw tag identifiers; weave the meaning into the sentence.
   - The priorityAction must be ACTIONABLE (a verb + concrete target). "Review AZSEKER-CPC sugar cost forecast for Q3" not "monitor commodity prices".`
 }
 

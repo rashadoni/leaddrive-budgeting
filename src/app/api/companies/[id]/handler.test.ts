@@ -1,7 +1,9 @@
 /**
- * First end-to-end handler test using the new `src/test/api-harness.ts`
- * scaffold. Covers `PATCH /api/companies/[id]` — the role-flip endpoint
- * landed in Turn 18 — at the handler level (not just the validator).
+ * Handler tests for `PATCH /api/companies/[id]`.
+ *
+ * Covers both mutations:
+ *  - role field  → company_role_change audit event (Phase 7.F)
+ *  - status field → company_status_change audit event (Truth-infra C.1)
  *
  * What this proves end-to-end:
  *  1. The harness can boot a route module that transitively imports
@@ -11,13 +13,12 @@
  *     expected without hitting the DB.
  *  3. Tenant scoping returns 404 (not 403) on cross-org IDs — the
  *     existence-leak guard is enforced.
- *  4. Same-role PATCH is a true no-op: no `prisma.company.update` call
- *     AND no `prisma.auditEvent.create` call.
- *  5. Role change emits a `company_role_change` audit event with
- *     `from`/`to`/`companyCode` metadata matching the discriminated
- *     union in `src/lib/audit/log.ts`.
- *  6. Audit-log failure surfaces as `auditStale: true` in the response
- *     without aborting the mutation (never-throws contract).
+ *  4. Same-value PATCH (role OR status) is a true no-op: no
+ *     `prisma.company.update` call AND no `prisma.auditEvent.create`.
+ *  5. Role change emits `company_role_change`; status change emits
+ *     `company_status_change`; both in one request emits both events.
+ *  6. Audit-log failure surfaces as `auditStale: true` without aborting
+ *     the mutation (never-throws contract).
  *
  * Mocking order matters: `vi.mock` calls are hoisted by vitest, but the
  * mock factories run lazily; we configure return values per test via the
@@ -42,6 +43,15 @@ const { prismaMock } = vi.hoisted(() => ({
     },
   },
 }));
+
+// Shared company fixture with both role AND status fields.
+// Tests that only care about one field can override the other.
+const BASE_COMPANY = {
+  id: '',      // set per describe block
+  code: 'AAC',
+  role: 'operational' as const,
+  status: 'active' as const,
+};
 
 vi.mock('@/lib/auth', () => ({
   auth: vi.fn(),
@@ -137,6 +147,7 @@ describe('PATCH /api/companies/[id] — handler', () => {
       id: COMPANY_ID,
       code: 'AAC',
       role: 'operational',
+      status: 'active',
     });
     const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
       method: 'PATCH',
@@ -154,11 +165,13 @@ describe('PATCH /api/companies/[id] — handler', () => {
       id: COMPANY_ID,
       code: 'AAC',
       role: 'operational',
+      status: 'active',
     });
     prismaMock.company.update.mockResolvedValue({
       id: COMPANY_ID,
       code: 'AAC',
       role: 'admin',
+      status: 'active',
     });
     prismaMock.auditEvent.create.mockResolvedValue({ id: 'audit_1' });
 
@@ -170,7 +183,7 @@ describe('PATCH /api/companies/[id] — handler', () => {
     const res = await PATCH(req, paramsFor(COMPANY_ID));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ id: COMPANY_ID, code: 'AAC', role: 'admin' });
+    expect(body).toMatchObject({ id: COMPANY_ID, code: 'AAC', role: 'admin' });
 
     expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
     expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
@@ -219,11 +232,13 @@ describe('PATCH /api/companies/[id] — handler', () => {
       id: COMPANY_ID,
       code: 'AAC',
       role: 'vendor',
+      status: 'active',
     });
     prismaMock.company.update.mockResolvedValue({
       id: COMPANY_ID,
       code: 'AAC',
       role: 'admin',
+      status: 'active',
     });
     const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
     const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
@@ -246,11 +261,13 @@ describe('PATCH /api/companies/[id] — handler', () => {
       id: COMPANY_ID,
       code: 'AAC',
       role: 'operational',
+      status: 'active',
     });
     prismaMock.company.update.mockResolvedValue({
       id: COMPANY_ID,
       code: 'AAC',
       role: 'admin',
+      status: 'active',
     });
     prismaMock.auditEvent.create.mockRejectedValue(new Error('audit DB down'));
     // Suppress the never-throws console.error so test output stays clean.
@@ -266,6 +283,136 @@ describe('PATCH /api/companies/[id] — handler', () => {
     // Mutation still applied; flag surfaces the soft failure.
     expect(body).toMatchObject({ id: COMPANY_ID, role: 'admin', auditStale: true });
     expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    consoleErr.mockRestore();
+  });
+
+  it('emits company_status_change audit event on real status change', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'pending',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+    });
+    prismaMock.auditEvent.create.mockResolvedValue({ id: 'audit_2' });
+
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { status: 'active' },
+      headers: { 'user-agent': 'TestRunner/1.0' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: COMPANY_ID, status: 'active' });
+
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
+    const auditCall = prismaMock.auditEvent.create.mock.calls[0][0];
+    expect(auditCall.data.action).toBe('company_status_change');
+    expect(auditCall.data.entityType).toBe('Company');
+    expect(auditCall.data.entityId).toBe(COMPANY_ID);
+    expect(auditCall.data.organizationId).toBe(ORG_ID);
+    expect(auditCall.data.actorUserId).toBe('u_admin');
+    expect(auditCall.data.metadata).toEqual({
+      from: 'pending',
+      to: 'active',
+      companyCode: 'AAC',
+    });
+    expect(auditCall.data.context).toMatchObject({
+      route: '/api/companies/[id]',
+      userAgent: 'TestRunner/1.0',
+    });
+  });
+
+  it('returns 200 + skips update + skips audit on same-status no-op', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+    });
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { status: 'active' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    expect(prismaMock.company.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('emits both audit events when role + status both change in one request', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'pending',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'admin',
+      status: 'active',
+    });
+    prismaMock.auditEvent.create
+      .mockResolvedValueOnce({ id: 'audit_role' })
+      .mockResolvedValueOnce({ id: 'audit_status' });
+
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { role: 'admin', status: 'active' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: COMPANY_ID, role: 'admin', status: 'active' });
+
+    // Single DB write with both fields.
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    // Two separate audit events — one per changed field.
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(2);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const actions = (prismaMock.auditEvent.create.mock.calls as any[][]).map(
+      (c) => c[0].data.action as string,
+    );
+    expect(actions).toContain('company_role_change');
+    expect(actions).toContain('company_status_change');
+  });
+
+  it('flags auditStale + skips emission when existing.status is unknown to the audit union (schema-drift guard)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'legacy', // future enum value not yet in audit union
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+    });
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { status: 'active' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ auditStale: true });
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
     consoleErr.mockRestore();
   });
 });

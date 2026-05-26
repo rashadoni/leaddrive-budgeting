@@ -84,7 +84,19 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
   }, [matrix, showPending]);
   const compositeByCode = useMemo(() => {
     if (!matrix) return new Map<string, CompositeScore>();
-    const byId = computeCompositeByCompany(matrix.cells);
+    // Phase 7.N wiring: derive id → riskTags map from the tree prop
+    // so the composite-score helper can apply per-tag penalty
+    // (subsidy_dependency -5, non_transparent_structure -8,
+    // data_absence -12; clamped to ≥0).
+    const riskTagsByCompanyId = new Map<string, readonly string[]>();
+    const walk = (nodes: CompanyNode[]) => {
+      for (const n of nodes) {
+        if (n.riskTags && n.riskTags.length > 0) riskTagsByCompanyId.set(n.id, n.riskTags);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(companies);
+    const byId = computeCompositeByCompany(matrix.cells, undefined, riskTagsByCompanyId);
     const out = new Map<string, CompositeScore>();
     for (const co of matrix.companies) {
       const score = byId.get(co.id);
@@ -136,7 +148,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       }
     }
     return out;
-  }, [matrix]);
+  }, [matrix, companies]);
   // Phase 7.M Step 5 (2026-05-19) — per-company readiness map keyed by
   // code. Direct from `co.readiness` for ops cos; parents inherit the
   // WORST tier of their direct children (a holding with one empty

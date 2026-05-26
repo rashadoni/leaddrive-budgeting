@@ -90,6 +90,14 @@ export interface BoardSnapshot {
   idToCode: Map<string, string>;
   cellByKey: Map<string, HeatMapCell>;
   totals: BoardSnapshotTotals;
+  /**
+   * Phase 7.N wiring (2026-05-26) — per-company qualitative risk
+   * flags from `Company.settings.riskTags`. Keyed by company id;
+   * companies without any tags are absent from the map. Consumed by
+   * the Board Deck "Qualitative Risk Flags" section + downstream
+   * exports.
+   */
+  riskTagsByCompany: Map<string, readonly string[]>;
 }
 
 export async function buildBoardSnapshot(args: {
@@ -114,6 +122,10 @@ export async function buildBoardSnapshot(args: {
         isActive: true,
         role: true,
         sortOrder: true,
+        // Phase 7.N wiring (2026-05-26) — settings holds qualitative
+        // `riskTags` that drive composite-score penalty + a new
+        // Board Deck "Qualitative Risk Flags" section.
+        settings: true,
       },
       orderBy: { sortOrder: 'asc' },
     }),
@@ -174,9 +186,23 @@ export async function buildBoardSnapshot(args: {
     status: v.status,
   }));
 
+  // Phase 7.N wiring — extract per-company riskTags from settings JSON
+  // so the composite-score helper can apply per-tag penalty and the
+  // snapshot can expose them to UI / PPTX consumers.
+  const riskTagsByCompanyId = new Map<string, readonly string[]>();
+  for (const co of operational) {
+    const raw = (co as { settings?: { riskTags?: unknown } | null }).settings
+      ?.riskTags;
+    if (Array.isArray(raw)) {
+      const tags = raw.filter((t): t is string => typeof t === 'string');
+      if (tags.length > 0) riskTagsByCompanyId.set(co.id, tags);
+    }
+  }
+
   const compositeByCompany = computeCompositeByCompany(
     cells,
     operationalIds,
+    riskTagsByCompanyId,
   );
 
   const countsByCompany = new Map<string, BoardSnapshotStatusCounts>();
@@ -251,5 +277,6 @@ export async function buildBoardSnapshot(args: {
     idToCode,
     cellByKey,
     totals,
+    riskTagsByCompany: riskTagsByCompanyId,
   };
 }

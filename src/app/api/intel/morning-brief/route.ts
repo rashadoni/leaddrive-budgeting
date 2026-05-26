@@ -198,11 +198,25 @@ export async function POST(request: NextRequest) {
   if (referencedCodes.size > 0) {
     const rows = await prisma.company.findMany({
       where: { organizationId: orgId, code: { in: [...referencedCodes] } },
-      select: { code: true, name: true, industry: true },
+      // Phase 7.N wiring: include `settings` so we can surface
+      // qualitative riskTags to the LLM narrative.
+      select: { code: true, name: true, industry: true, settings: true },
     })
-    const companies: Record<string, { name: string; industry: string | null }> =
-      {}
-    for (const r of rows) companies[r.code] = { name: r.name, industry: r.industry }
+    const companies: Record<string, {
+      name: string
+      industry: string | null
+      riskTags?: string[]
+    }> = {}
+    for (const r of rows) {
+      const tags = (r.settings as { riskTags?: unknown } | null)?.riskTags
+      companies[r.code] = {
+        name: r.name,
+        industry: r.industry,
+        ...(Array.isArray(tags) && tags.length > 0
+          ? { riskTags: tags.filter((t): t is string => typeof t === "string") }
+          : {}),
+      }
+    }
     shaped.companies = companies
   }
 

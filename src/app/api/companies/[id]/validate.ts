@@ -6,9 +6,14 @@
  *
  * Public surface: `parsePatchBody(unknown)` — see route.ts for caller
  * contract.
+ *
+ * Truth-infra Phase C.1 (2026-05-26): extended to support `status` field
+ * alongside `role`. Either or both may be present in a single PATCH; at
+ * least one must be present.
  */
 
 export type CompanyRoleValue = 'operational' | 'admin' | 'holding';
+export type CompanyStatusValue = 'pending' | 'active' | 'archived';
 
 const VALID_ROLES: ReadonlySet<CompanyRoleValue> = new Set([
   'operational',
@@ -16,8 +21,15 @@ const VALID_ROLES: ReadonlySet<CompanyRoleValue> = new Set([
   'holding',
 ]);
 
+const VALID_STATUSES: ReadonlySet<CompanyStatusValue> = new Set([
+  'pending',
+  'active',
+  'archived',
+]);
+
 export interface ParsedPatchBody {
   role?: CompanyRoleValue;
+  status?: CompanyStatusValue;
 }
 
 /**
@@ -32,6 +44,16 @@ export interface ParsedPatchBody {
  */
 export function isValidCompanyRole(value: unknown): value is CompanyRoleValue {
   return typeof value === 'string' && VALID_ROLES.has(value as CompanyRoleValue);
+}
+
+/**
+ * Runtime guard: is the value a recognised Company status literal?
+ *
+ * Mirrors `isValidCompanyRole` — defends against schema drift between the
+ * Company.status string column and the audit union in `src/lib/audit/log.ts`.
+ */
+export function isValidCompanyStatus(value: unknown): value is CompanyStatusValue {
+  return typeof value === 'string' && VALID_STATUSES.has(value as CompanyStatusValue);
 }
 
 export function parsePatchBody(
@@ -54,10 +76,21 @@ export function parsePatchBody(
     out.role = r as CompanyRoleValue;
   }
 
+  if ('status' in obj) {
+    const s = obj.status;
+    if (typeof s !== 'string' || !VALID_STATUSES.has(s as CompanyStatusValue)) {
+      return {
+        ok: false,
+        error: 'status must be one of: pending, active, archived',
+      };
+    }
+    out.status = s as CompanyStatusValue;
+  }
+
   if (Object.keys(out).length === 0) {
     return {
       ok: false,
-      error: 'No supported fields in body (expected: role)',
+      error: 'No supported fields in body (expected: role, status)',
     };
   }
   return { ok: true, value: out };

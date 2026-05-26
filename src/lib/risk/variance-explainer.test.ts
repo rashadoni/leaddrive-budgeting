@@ -331,7 +331,7 @@ describe("runExplainer — happy path", () => {
     installFakeClient(fakeResponse(json, "end_turn", "claude-sonnet-4-5-20250929"))
     const out = await runExplainer(makeInput())
     expect(out.modelName).toBe("claude-sonnet-4-5-20250929")
-    expect(out.promptVersion).toBe("v4")
+    expect(out.promptVersion).toBe("v5")
   })
 
   it("composer: falls back to request-time AI_MODEL constant when SDK omits model field", async () => {
@@ -346,7 +346,7 @@ describe("runExplainer — happy path", () => {
     const out = await runExplainer(makeInput())
     // AI_MODEL is mocked to "mock-model" at top of this test file.
     expect(out.modelName).toBe("mock-model")
-    expect(out.promptVersion).toBe("v4")
+    expect(out.promptVersion).toBe("v5")
   })
 })
 

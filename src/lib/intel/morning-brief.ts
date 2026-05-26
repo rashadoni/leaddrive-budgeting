@@ -42,7 +42,15 @@ export interface MorningBriefInput {
    *  for ATL-DBZ / ATL-PMZ / ATL-TAZ because the codes end in "Z" /
    *  "Zavodu" without context). Keys = companyCode used in
    *  worstCells/topMovers. */
-  companies?: Record<string, { name: string; industry: string | null }>
+  companies?: Record<string, {
+    name: string
+    industry: string | null
+    /** Phase 7.N wiring (2026-05-26) — qualitative risk flags from
+     *  Company.settings.riskTags. LLM uses these to qualify the
+     *  narrative («AZSEKER-EDEN flagged for subsidy_dependency —
+     *  Q3 policy review elevates exposure»). */
+    riskTags?: string[]
+  }>
   language: MorningBriefLanguage
 }
 

@@ -55,6 +55,20 @@ export type AuditEventInput =
       };
     }
   | {
+      // Truth-infra Phase C.1 — admin manually changed Company.status
+      // (pending ↔ active ↔ archived) via PATCH /api/companies/[id].
+      // Same metadata shape as company_role_change so the audit-log UI
+      // can render both with the same template.
+      action: 'company_status_change';
+      entityType: 'Company';
+      entityId: string;
+      metadata: {
+        from: 'pending' | 'active' | 'archived';
+        to: 'pending' | 'active' | 'archived';
+        companyCode: string;
+      };
+    }
+  | {
       action: 'budget_plan_create';
       entityType: 'BudgetPlan';
       entityId: string;

@@ -155,7 +155,7 @@ const LANGUAGE_LABEL: Record<ExplainerLanguage, string> = {
  *       identity, product lines and regulatory environment.
  *  Bumping invalidates v3-cached explanations; CFO sees richer
  *  narratives on next request. */
-export const EXPLAINER_PROMPT_VERSION = "v4"
+export const EXPLAINER_PROMPT_VERSION = "v5"
 
 const SYSTEM_PROMPT = `You are a senior financial analyst producing variance explanations for a CFO at an Azerbaijani diversified holding (~60 operational companies across 14 sectors: hospitality, agro, food processing, pharma, real estate, services, industrial, etc.).
 
@@ -173,7 +173,8 @@ Constraints:
   - For amber/red on rollup-sourced or admin cost-centre companies (tags include 'admin' or 'cost_centre' or 'rollup_sourced'): factor that into recommendations — don't suggest revenue growth for an admin entity that has none.
   - Recommendations target the SECTOR. Hospitality → ADR/occupancy levers; agro → yield/feed levers; pharma → margin/inventory levers. NEVER suggest cross-sector moves like "diversify into renewable energy" unless explicitly relevant to the indicator.
   - When an "Intel context" section is present (FX rates / CPI / commodity prices), USE it: cite specific external drivers when the indicator's variance correlates (e.g. "AZN/USD fell 4% MoM, inflating USD-denominated COGS"). Do NOT invent external context that isn't shown.
-  - When a "Settings" line gives concrete physical/operational descriptors (hectares, crop, region, room count, processing capacity), CITE them in recommendations. For agro_crops sugar: reference yield-per-ha targets, irrigation in the specific region, fertilizer/water intensity. For food_processing sugar refining: reference extraction-rate target, capacity utilization, raw-input source. Generic-sector advice when this descriptor is present = a worse answer than tailored advice.`
+  - When a "Settings" line gives concrete physical/operational descriptors (hectares, crop, region, room count, processing capacity), CITE them in recommendations. For agro_crops sugar: reference yield-per-ha targets, irrigation in the specific region, fertilizer/water intensity. For food_processing sugar refining: reference extraction-rate target, capacity utilization, raw-input source. Generic-sector advice when this descriptor is present = a worse answer than tailored advice.
+  - When a "Risk flags" line is present (qualitative tags from finance ops), let it qualify the recommendations. Canonical flags: subsidy_dependency (gov-policy exposure — recommendations should avoid moves that assume subsidy continuity); non_transparent_structure (audit / related-party caveat — at least one recommendation must mention strengthening governance / third-party audit); data_absence (metric coverage is partial — drop confidence by 0.2 minimum and lead with "establish baseline" before action recommendations).`
 
 /**
  * Phase 7.I — format the `Company.settings` JSON into a sector-aware
@@ -298,6 +299,17 @@ export function buildExplainerPrompt(input: VarianceExplainerInput): string {
 
   const settingsLine = formatCompanySettings(input.company.industry, input.company.settings ?? null)
 
+  // Phase 7.N wiring — qualitative risk flags from
+  // Company.settings.riskTags. When present, the LLM is instructed
+  // (system prompt v5) to fold the flag into recommendations.
+  const rawTags = (input.company.settings as { riskTags?: unknown } | null)?.riskTags
+  const riskTags = Array.isArray(rawTags)
+    ? rawTags.filter((t): t is string => typeof t === "string")
+    : []
+  const riskFlagsLine = riskTags.length > 0
+    ? `Risk flags: ${riskTags.join(", ")}`
+    : "Risk flags: (none)"
+
   // Phase 7.N — org context block: injected when the holding provides a
   // plain-prose descriptor (≤ 500 chars) in org.settings.aiExplainerContext.
   const orgContextSection = input.orgContext
@@ -313,6 +325,7 @@ Company: ${input.company.name}
 Industry: ${input.company.industry ?? "(none)"}
 ${tagsLine}
 ${settingsLine}
+${riskFlagsLine}
 
 Period: ${input.result.period}
 Status: ${input.result.status}

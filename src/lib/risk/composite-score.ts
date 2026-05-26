@@ -44,6 +44,43 @@ export interface CompositeScore {
   contributingCount: number;
   /** Total cells inspected (for "X of Y indicators" UX). */
   totalCount: number;
+  /**
+   * Phase 7.N wiring (2026-05-26) — qualitative risk-tag penalty.
+   * When riskTags are passed in, the score is reduced by the sum of
+   * per-tag penalties. `scoreBeforeTags` is the un-penalised score so
+   * the UI can show «60 (-15 risk flags)» if it wants to explain the
+   * delta.
+   */
+  scoreBeforeTags?: number;
+  /** Sum of penalties applied (≥0). */
+  riskTagPenalty?: number;
+}
+
+/**
+ * Phase 7.N wiring (2026-05-26) — per-tag composite-score penalty.
+ *
+ * Rationale per tag:
+ *   - `data_absence` (-12): biggest. If key metrics are missing we
+ *     can't trust the rest of the data either; the composite should
+ *     reflect lower confidence.
+ *   - `non_transparent_structure` (-8): related parties / opaque
+ *     ownership = audit risk.
+ *   - `subsidy_dependency` (-5): gov policy exposure; quantifiable
+ *     but not as severe as audit risk.
+ *
+ * Max stacked penalty: 25. Floor: 0 (Math.max in apply).
+ */
+const RISK_TAG_PENALTY: Record<string, number> = {
+  data_absence: 12,
+  non_transparent_structure: 8,
+  subsidy_dependency: 5,
+};
+
+function computeRiskTagPenalty(riskTags: readonly string[] | undefined): number {
+  if (!riskTags || riskTags.length === 0) return 0;
+  let total = 0;
+  for (const t of riskTags) total += RISK_TAG_PENALTY[t] ?? 0;
+  return total;
 }
 
 // 'missing' isn't a real DB-emitted status — `HeatMapCell.status` is
@@ -69,6 +106,13 @@ const STATUS_PTS: Record<IndicatorStatus, number | null> = {
  */
 export function computeCompositeScore(
   cells: readonly HeatMapCell[],
+  /**
+   * Phase 7.N wiring (2026-05-26) — optional qualitative tags from
+   * `Company.settings.riskTags`. When provided, the final score is
+   * reduced by the summed per-tag penalty (clamped to ≥0). Callers
+   * that don't pass tags get identical pre-wiring behaviour.
+   */
+  riskTags?: readonly string[],
 ): CompositeScore {
   let weightedSum = 0;
   let totalWeight = 0;
@@ -90,12 +134,15 @@ export function computeCompositeScore(
       totalCount: cells.length,
     };
   }
-  const score = Math.round(weightedSum / totalWeight);
+  const baseScore = Math.round(weightedSum / totalWeight);
+  const penalty = computeRiskTagPenalty(riskTags);
+  const score = Math.max(0, baseScore - penalty);
   return {
     score,
     band: scoreToBand(score),
     contributingCount,
     totalCount: cells.length,
+    ...(penalty > 0 ? { scoreBeforeTags: baseScore, riskTagPenalty: penalty } : {}),
   };
 }
 
@@ -131,6 +178,11 @@ export function scoreToBand(score: number): CompositeBand {
 export function computeCompositeByCompany(
   cells: readonly HeatMapCell[],
   companyIds?: readonly string[],
+  /**
+   * Phase 7.N wiring (2026-05-26) — per-company qualitative tags.
+   * Look-up by companyId; companies absent from the map get no penalty.
+   */
+  riskTagsByCompany?: ReadonlyMap<string, readonly string[]>,
 ): Map<string, CompositeScore> {
   const byCo = new Map<string, HeatMapCell[]>();
   for (const c of cells) {
@@ -142,12 +194,16 @@ export function computeCompositeByCompany(
   const out = new Map<string, CompositeScore>();
   if (companyIds) {
     for (const id of companyIds) {
-      out.set(id, computeCompositeScore(byCo.get(id) ?? []));
+      out.set(id, computeCompositeScore(byCo.get(id) ?? [], riskTagsByCompany?.get(id)));
     }
   } else {
     for (const [id, list] of byCo) {
-      out.set(id, computeCompositeScore(list));
+      out.set(id, computeCompositeScore(list, riskTagsByCompany?.get(id)));
     }
   }
   return out;
 }
+
+/** Phase 7.N wiring — expose the per-tag penalty table so UIs can
+ *  explain WHY a flag changes the score. Read-only. */
+export const RISK_TAG_PENALTY_TABLE = Object.freeze({ ...RISK_TAG_PENALTY });

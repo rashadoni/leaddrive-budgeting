@@ -2003,6 +2003,11 @@ enum AuditAction {
   // durationMs }. Per-row audit was the data_archive event; this
   // closes the lifecycle.
   soft_delete_purge
+  // Truth-infra Phase C.1 (2026-05-26) — admin manually flipped
+  // Company.status via PATCH /api/companies/[id] { status }.
+  // Metadata: { from, to, companyCode } — same shape as company_role_change
+  // so audit-log UI can render both with the same template.
+  company_status_change
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to
