@@ -23,6 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Loader2, Check, AlertCircle } from "lucide-react"
+import { useCompanies } from "@/features/terminal/hooks/use-companies"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,15 +76,14 @@ const ROLE_PALETTE: Record<CompanyRoleValue, string> = {
 
 function flattenCompanies(raw: CompanyRow[]): CompanyRow[] {
   const out: CompanyRow[] = []
-  for (const c of raw) {
-    out.push(c)
-    const kids = (c as unknown as { children?: CompanyRow[] }).children ?? []
-    for (const k of kids) {
-      out.push(k)
-      const grandkids = (k as unknown as { children?: CompanyRow[] }).children ?? []
-      out.push(...grandkids)
+  function walk(nodes: CompanyRow[]): void {
+    for (const c of nodes) {
+      out.push(c)
+      const children = (c as unknown as { children?: CompanyRow[] }).children ?? []
+      if (children.length > 0) walk(children)
     }
   }
+  walk(raw)
   return out
 }
 
@@ -123,6 +123,8 @@ export function CompanyManagementAdmin() {
   const orgId = session?.user?.organizationId ?? ""
   const canEdit = session?.user?.role === "admin"
   const queryClient = useQueryClient()
+  // Bust the module-level terminal cache (PanelGrid, RelatedFunctionsMenu, etc.)
+  const { refresh: refreshTerminalCache } = useCompanies()
 
   const { data: companies, isLoading, error: fetchError } = useQuery({
     queryKey: ["admin-company-management", orgId],
@@ -155,8 +157,12 @@ export function CompanyManagementAdmin() {
       try {
         await patchCompany(id, { [field]: newValue } as Parameters<typeof patchCompany>[1])
         setSaveStates((prev) => ({ ...prev, [id]: { kind: "saved" } }))
-        // Invalidate the companies cache so the tree re-fetches with new values
+        // Invalidate the react-query cache for this component's own data
         queryClient.invalidateQueries({ queryKey: ["admin-company-management", orgId] })
+        // Also bust the module-level cache used by terminal panels (PanelGrid,
+        // RelatedFunctionsMenu, AlertsPanel, etc.) so they pick up the new
+        // role/status without requiring a full page reload.
+        void refreshTerminalCache()
         // Brief "saved" flash, then back to idle
         setTimeout(
           () => setSaveStates((prev) => ({ ...prev, [id]: { kind: "idle" } })),
@@ -174,7 +180,7 @@ export function CompanyManagementAdmin() {
         }))
       }
     },
-    [orgId, queryClient],
+    [orgId, queryClient, refreshTerminalCache],
   )
 
   const rows = useMemo(() => companies ?? [], [companies])

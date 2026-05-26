@@ -27,6 +27,11 @@ vi.mock("@tanstack/react-query", () => ({
   useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
 }))
 
+// Stub the terminal cache hook — refresh is a no-op in tests
+vi.mock("@/features/terminal/hooks/use-companies", () => ({
+  useCompanies: vi.fn(() => ({ refresh: vi.fn() })),
+}))
+
 import { useSession } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 
