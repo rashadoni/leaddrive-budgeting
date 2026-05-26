@@ -728,8 +728,9 @@ export function createPrismaDataSource(
             deletedAt: null,
           },
           select: {
-            accountCode: true,
-            accountName: true,
+            // Phase 2.1 session 3: accountCode + accountName dropped
+            // from BalanceSheetLine; read via the account FK relation.
+            account: { select: { code: true, name: true } },
             lineType: true,
             subType: true,
             year: true,
@@ -737,7 +738,25 @@ export function createPrismaDataSource(
             amount: true,
           },
         });
-        return rows;
+        // Re-shape to keep downstream consumers (bsIsInventoryLine etc.)
+        // backward-compatible — they expect flat `accountCode`/`accountName`
+        // strings, not the nested `account` object.
+        return rows.map((r: {
+          account: { code: string; name: string };
+          lineType: string;
+          subType: string | null;
+          year: number;
+          month: number;
+          amount: number;
+        }) => ({
+          accountCode: r.account.code,
+          accountName: r.account.name,
+          lineType: r.lineType,
+          subType: r.subType,
+          year: r.year,
+          month: r.month,
+          amount: r.amount,
+        }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         // Graceful degradation if table or column doesn't exist yet
