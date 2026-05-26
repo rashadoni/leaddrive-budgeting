@@ -401,6 +401,9 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
   const [expanded, setExpanded] = useState(false)
   const [openRow, setOpenRow] = useState<string | null>(null)
   const [filter, setFilter] = useState<"all" | "critical" | string>("all")
+  // Phase 7.N follow-up — configurable critical threshold. Stored in
+  // localStorage per-browser so finance ops keeps their preference.
+  const [criticalThreshold, setCriticalThreshold] = useState<1 | 2 | 3>(3)
 
   const registry = Array.isArray((data?.settings as Record<string, unknown> | undefined)?.riskRegistry)
     ? ((data!.settings as Record<string, unknown>).riskRegistry as RiskItem[])
@@ -411,7 +414,7 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
     if (!registry) return { groups: [], categoryCounts: {}, criticalCount: 0 }
     const filtered = registry.filter((r) => {
       if (filter === "all") return true
-      if (filter === "critical") return r.criticality >= 3
+      if (filter === "critical") return r.criticality >= criticalThreshold
       return r.level1 === filter
     })
     const byCat = new Map<string, RiskItem[]>()
@@ -430,9 +433,9 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
 
     const categoryCounts: Record<string, number> = {}
     for (const r of registry) categoryCounts[r.level1] = (categoryCounts[r.level1] ?? 0) + 1
-    const criticalCount = registry.filter((r) => r.criticality >= 3).length
+    const criticalCount = registry.filter((r) => r.criticality >= criticalThreshold).length
     return { groups, categoryCounts, criticalCount }
-  }, [registry, filter])
+  }, [registry, filter, criticalThreshold])
 
   if (isLoading || !registry || registry.length === 0) return null
 
@@ -471,12 +474,16 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
               count={registry.length}
             />
             {grouped.criticalCount > 0 && (
-              <FilterChip
+              <CriticalChip
                 active={filter === "critical"}
-                onClick={() => setFilter("critical")}
-                label="Critical"
+                onActivate={() => setFilter("critical")}
                 count={grouped.criticalCount}
-                tone="rose"
+                threshold={criticalThreshold}
+                onThresholdChange={(t) => {
+                  setCriticalThreshold(t)
+                  // Re-activate the filter so user sees the new count.
+                  if (filter !== "critical") setFilter("critical")
+                }}
               />
             )}
             {Object.entries(grouped.categoryCounts)
@@ -498,77 +505,142 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
               })}
           </div>
 
-          {/* Grouped list — category header + rows, no nested cards. */}
-          <div className="space-y-3">
-            {grouped.groups.map(({ cat, items, meta }) => {
-              const Icon = meta.icon
-              return (
-                <div key={cat} className="overflow-hidden rounded-md border border-border/60">
-                  {/* Sticky-style category header */}
-                  <div className={`flex items-center gap-2 px-3 py-1.5 ${meta.tint} border-b border-border/40`}>
-                    <span className={`h-2 w-2 rounded-full ${meta.dot} shrink-0`} aria-hidden />
-                    <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden />
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
-                      {cat}
-                    </span>
-                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
-                      {items.length}
-                    </span>
+          {/* Grouped list — category header + rows, no nested cards.
+              Wider layouts (xl+) split groups into 2 columns to use the
+              wasted right whitespace on the admin/companies page. */}
+          {grouped.groups.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic px-1">
+              No risks match the current filter.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {grouped.groups.map(({ cat, items, meta }) => {
+                const Icon = meta.icon
+                return (
+                  // overflow-clip (not -hidden) preserves border-radius
+                  // WITHOUT breaking position:sticky inside.
+                  <div key={cat} className="overflow-clip rounded-md border border-border/60 self-start">
+                    {/* Sticky category header — pins to viewport top while
+                        the group rows scroll past beneath it. backdrop-blur
+                        keeps text readable when content scrolls under. */}
+                    <div
+                      className={`sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 border-b border-border/40 backdrop-blur-sm ${meta.tint}`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${meta.dot} shrink-0`} aria-hidden />
+                      <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden />
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+                        {cat}
+                      </span>
+                      <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                        {items.length}
+                      </span>
+                    </div>
+                    {/* Rows */}
+                    <ul className="divide-y divide-border/40">
+                      {items.map((item, idx) => {
+                        const rowKey = `${cat}::${idx}::${item.level3}`
+                        const isOpen = openRow === rowKey
+                        return (
+                          <li key={rowKey}>
+                            <button
+                              type="button"
+                              onClick={() => setOpenRow(isOpen ? null : rowKey)}
+                              className="group w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
+                              aria-expanded={isOpen}
+                            >
+                              <SeverityDots criticality={item.criticality} />
+                              <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                                <span className="text-[13px] text-foreground truncate">
+                                  {item.level3}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground truncate">
+                                  {item.level2}
+                                </span>
+                              </div>
+                              <ChevronRight
+                                className={`h-3.5 w-3.5 text-muted-foreground/60 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : ""} group-hover:text-muted-foreground`}
+                                aria-hidden
+                              />
+                            </button>
+                            {/* CSS-only smooth expand via grid-template-rows
+                                interpolation — no JS lib, no layout thrash.
+                                Closed = 0fr (zero height); open = 1fr (auto
+                                height). The inner div MUST have min-h-0 +
+                                overflow-hidden so children don't leak when
+                                collapsed. */}
+                            <div
+                              className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+                                isOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                              } bg-muted/[0.15]`}
+                            >
+                              <div className="overflow-hidden min-h-0">
+                                <div className="px-3 pb-3 pt-1 grid gap-2 text-[12px] leading-relaxed">
+                                  <DetailField label="KRI" value={item.kri} mono />
+                                  {item.description && (
+                                    <DetailField label="Description" value={item.description} />
+                                  )}
+                                  {item.note && (
+                                    <DetailField label="Note" value={item.note} muted />
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </div>
-                  {/* Rows */}
-                  <ul className="divide-y divide-border/40">
-                    {items.map((item, idx) => {
-                      const rowKey = `${cat}::${idx}::${item.level3}`
-                      const isOpen = openRow === rowKey
-                      return (
-                        <li key={rowKey}>
-                          <button
-                            type="button"
-                            onClick={() => setOpenRow(isOpen ? null : rowKey)}
-                            className="group w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
-                            aria-expanded={isOpen}
-                          >
-                            <SeverityDots criticality={item.criticality} />
-                            <div className="flex-1 min-w-0 flex items-baseline gap-2">
-                              <span className="text-[13px] text-foreground truncate">
-                                {item.level3}
-                              </span>
-                              <span className="text-[11px] text-muted-foreground truncate">
-                                {item.level2}
-                              </span>
-                            </div>
-                            <ChevronRight
-                              className={`h-3.5 w-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isOpen ? "rotate-90" : ""} group-hover:text-muted-foreground`}
-                              aria-hidden
-                            />
-                          </button>
-                          {isOpen && (
-                            <div className="px-3 pb-3 pt-1 grid gap-2 text-[12px] leading-relaxed bg-muted/[0.15]">
-                              <DetailField label="KRI" value={item.kri} mono />
-                              {item.description && (
-                                <DetailField label="Description" value={item.description} />
-                              )}
-                              {item.note && (
-                                <DetailField label="Note" value={item.note} muted />
-                              )}
-                            </div>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                </div>
-              )
-            })}
-            {grouped.groups.length === 0 && (
-              <p className="text-xs text-muted-foreground italic px-1">
-                No risks match the current filter.
-              </p>
-            )}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
+  )
+}
+
+/** Critical-filter chip with adjacent threshold stepper. Splits the
+ *  "Critical" affordance into two: clicking the label activates the
+ *  filter; clicking the `≥N` button cycles the threshold (3→2→1→3).
+ *  Two adjacent buttons in one pill so the chrome stays compact and
+ *  the threshold change is one click, not a separate menu. */
+function CriticalChip({
+  active, onActivate, count, threshold, onThresholdChange,
+}: {
+  active: boolean
+  onActivate: () => void
+  count: number
+  threshold: 1 | 2 | 3
+  onThresholdChange: (t: 1 | 2 | 3) => void
+}) {
+  const baseTone = active
+    ? "border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-200"
+    : "border-rose-500/30 bg-rose-500/[0.06] text-rose-600 dark:text-rose-300"
+  const cycleThreshold = () => {
+    const next = (threshold === 3 ? 2 : threshold === 2 ? 1 : 3) as 1 | 2 | 3
+    onThresholdChange(next)
+  }
+  return (
+    <span className={`inline-flex items-center rounded-full border ${baseTone} overflow-hidden text-[11px] font-medium`}>
+      <button
+        type="button"
+        onClick={onActivate}
+        className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 hover:bg-rose-500/10 transition-colors"
+      >
+        <span>Critical</span>
+        <span className="tabular-nums opacity-80">{count}</span>
+      </button>
+      <button
+        type="button"
+        onClick={cycleThreshold}
+        title={`Threshold: criticality ≥ ${threshold} (click to cycle)`}
+        aria-label={`Critical threshold ≥${threshold}, click to change`}
+        className="inline-flex items-center gap-0.5 pl-1.5 pr-2 py-1 border-l border-rose-500/30 tabular-nums opacity-90 hover:bg-rose-500/10 transition-colors font-mono text-[10px]"
+      >
+        ≥{threshold}
+      </button>
+    </span>
   )
 }
 
