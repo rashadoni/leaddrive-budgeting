@@ -32,7 +32,8 @@ const VALID_STATUSES: ReadonlySet<CompanyStatusValue> = new Set([
 ]);
 
 /**
- * All 14 known industry codes — mirrors indicator-seeds.ts VALID_INDUSTRIES list.
+ * All 14 known industry codes — mirrors the code list in
+ * src/lib/risk/industry-emission-factors.ts (the canonical source).
  * A string not in this set would violate the `Industry.code` FK constraint at
  * the DB level, so rejecting here gives a useful 400 rather than a 500.
  */

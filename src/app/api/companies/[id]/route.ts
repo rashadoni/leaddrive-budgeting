@@ -36,7 +36,7 @@ import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logAuditEvent, buildAuditContext } from '@/lib/audit/log';
-import { parsePatchBody, isValidCompanyRole, isValidCompanyStatus } from './validate';
+import { parsePatchBody, isValidCompanyRole, isValidCompanyStatus, VALID_INDUSTRIES } from './validate';
 
 const RATE_LIMIT = { name: 'company-patch', max: 10, windowMs: 60_000 };
 
@@ -179,24 +179,33 @@ export async function PATCH(
   }
 
   if (industryChanged) {
-    // No schema-drift guard needed: industry is a plain string (nullable),
-    // not a Prisma enum, so there is no union/enum divergence to guard against.
-    const auditResult = await logAuditEvent(prisma, {
-      organizationId: session.orgId,
-      actorUserId: session.userId,
-      event: {
-        action: 'company_industry_change',
-        entityType: 'Company',
-        entityId: existing.id,
-        metadata: {
-          from: existing.industry,
-          to: parsed.value.industry ?? null,
-          companyCode: existing.code,
+    // Guard against off-spec existing.industry values (e.g. typos from bulk
+    // SQL imports). industry is String? — not a Prisma enum — so no compile-
+    // time guarantee that DB rows conform to VALID_INDUSTRIES. null is valid
+    // (unset); any non-null value outside the set means stale/corrupt data.
+    if (existing.industry !== null && !VALID_INDUSTRIES.has(existing.industry)) {
+      console.error(
+        `audit/company_industry_change: existing.industry=${String(existing.industry)} not in VALID_INDUSTRIES — skipping emission`,
+      );
+      auditStale = true;
+    } else {
+      const auditResult = await logAuditEvent(prisma, {
+        organizationId: session.orgId,
+        actorUserId: session.userId,
+        event: {
+          action: 'company_industry_change',
+          entityType: 'Company',
+          entityId: existing.id,
+          metadata: {
+            from: existing.industry,
+            to: parsed.value.industry ?? null,
+            companyCode: existing.code,
+          },
         },
-      },
-      context: auditCtx,
-    });
-    if (!auditResult.ok) auditStale = true;
+        context: auditCtx,
+      });
+      if (!auditResult.ok) auditStale = true;
+    }
   }
 
   return NextResponse.json(auditStale ? { ...updated, auditStale } : updated);

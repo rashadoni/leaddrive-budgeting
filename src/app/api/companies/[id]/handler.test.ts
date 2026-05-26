@@ -526,6 +526,39 @@ describe('PATCH /api/companies/[id] — handler', () => {
     });
   });
 
+  it('flags auditStale + skips emission when existing.industry is off-spec (VALID_INDUSTRIES guard)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    // 'agro_crop' is not in VALID_INDUSTRIES (missing trailing 's') — simulates
+    // a typo written directly via SQL on an otherwise valid-looking company row.
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'agro_crop',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'retail',
+    });
+    const consoleErr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { industry: 'retail' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ auditStale: true });
+    // Mutation still committed; emission skipped (guard fails closed).
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
+    consoleErr.mockRestore();
+  });
+
   it('emits all three audit events when role + status + industry all change in one request', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
     prismaMock.company.findFirst.mockResolvedValue({
