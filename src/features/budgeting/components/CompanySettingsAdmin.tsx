@@ -21,7 +21,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Save, ChevronRight, AlertCircle, Check, ShieldAlert, BookOpen, ChevronDown, ChevronUp } from "lucide-react"
+import {
+  Loader2, Save, ChevronRight, AlertCircle, Check, ShieldAlert,
+  BookOpen, ChevronDown, ChevronUp,
+  // Phase 7.N polish — RiskRegistryPanel redesign category icons.
+  Leaf, Coins, Users, TrendingUp, Activity, Shield, Building2, Cpu,
+  type LucideIcon,
+} from "lucide-react"
 import {
   AGRO_REGIONS,
   AGRO_CROP_TYPES,
@@ -327,15 +333,63 @@ interface RiskItem {
   note?: string
 }
 
-const LEVEL1_COLORS: Record<string, string> = {
-  "Environmental risk":          "text-emerald-400",
-  "Financial risk":              "text-blue-400",
-  "Human capital risk":          "text-purple-400",
-  "Market & commercial risk":    "text-yellow-400",
-  "Operational risk":            "text-orange-400",
-  "Regulatory & compliance risk":"text-red-400",
-  "Strategic & reputational risk":"text-pink-400",
-  "Technology & data risk":      "text-cyan-400",
+/**
+ * Phase 7.N polish (2026-05-26) — RiskRegistryPanel redesign.
+ *
+ * Per-category metadata: icon (lucide) + dot color (8px circle).
+ * Used in the grouped category headers + per-row category dot. Text
+ * itself stays neutral; the colored dot anchors the row visually so
+ * the eye reads the row content first, the category second (instead
+ * of the previous "every row in a different color text" amateur look).
+ *
+ * Severity is conveyed via 3-dot shape (●●○ pattern), not just color
+ * — color-blind safe + works in monochrome print exports.
+ */
+interface CategoryMeta {
+  icon: LucideIcon
+  dot: string       // bg color class for the 8px category dot
+  tint: string      // subtle group-row background
+  order: number     // canonical sort order in headers
+}
+
+const CATEGORY_META: Record<string, CategoryMeta> = {
+  "Regulatory & compliance risk":  { icon: Shield,     dot: "bg-rose-500",    tint: "bg-rose-500/[0.03]",    order: 1 },
+  "Financial risk":                { icon: Coins,      dot: "bg-sky-500",     tint: "bg-sky-500/[0.03]",     order: 2 },
+  "Operational risk":              { icon: Activity,   dot: "bg-amber-500",   tint: "bg-amber-500/[0.03]",   order: 3 },
+  "Strategic & reputational risk": { icon: Building2,  dot: "bg-fuchsia-500", tint: "bg-fuchsia-500/[0.03]", order: 4 },
+  "Market & commercial risk":      { icon: TrendingUp, dot: "bg-yellow-500",  tint: "bg-yellow-500/[0.03]",  order: 5 },
+  "Human capital risk":            { icon: Users,      dot: "bg-violet-500",  tint: "bg-violet-500/[0.03]",  order: 6 },
+  "Environmental risk":            { icon: Leaf,       dot: "bg-emerald-500", tint: "bg-emerald-500/[0.03]", order: 7 },
+  "Technology & data risk":        { icon: Cpu,        dot: "bg-cyan-500",    tint: "bg-cyan-500/[0.03]",    order: 8 },
+}
+
+const FALLBACK_META: CategoryMeta = {
+  icon: BookOpen, dot: "bg-muted-foreground/50", tint: "bg-muted/30", order: 99,
+}
+
+/** 3-dot severity glyph. criticality ∈ {1,2,3}: ●○○ / ●●○ / ●●●.
+ *  Color intensifies with severity but the SHAPE (filled-vs-hollow dots)
+ *  carries the same info color-blind users see. */
+function SeverityDots({ criticality }: { criticality: number }) {
+  const c = Math.max(1, Math.min(3, Math.round(criticality)))
+  const fillColor =
+    c >= 3 ? "bg-rose-500"
+    : c === 2 ? "bg-amber-500"
+    : "bg-emerald-500"
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 shrink-0"
+      aria-label={`Criticality ${c} of 3`}
+      title={`Criticality ${c} of 3`}
+    >
+      {[1, 2, 3].map((d) => (
+        <span
+          key={d}
+          className={`h-1.5 w-1.5 rounded-full ${d <= c ? fillColor : "border border-muted-foreground/40 bg-transparent"}`}
+        />
+      ))}
+    </span>
+  )
 }
 
 function RiskRegistryPanel({ companyId }: { companyId: string }) {
@@ -345,16 +399,45 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
   })
 
   const [expanded, setExpanded] = useState(false)
-  const [openRow, setOpenRow] = useState<number | null>(null)
+  const [openRow, setOpenRow] = useState<string | null>(null)
+  const [filter, setFilter] = useState<"all" | "critical" | string>("all")
 
   const registry = Array.isArray((data?.settings as Record<string, unknown> | undefined)?.riskRegistry)
     ? ((data!.settings as Record<string, unknown>).riskRegistry as RiskItem[])
     : null
 
+  // Group + filter. Memoised so toggling open-row doesn't re-sort.
+  const grouped = useMemo(() => {
+    if (!registry) return { groups: [], categoryCounts: {}, criticalCount: 0 }
+    const filtered = registry.filter((r) => {
+      if (filter === "all") return true
+      if (filter === "critical") return r.criticality >= 3
+      return r.level1 === filter
+    })
+    const byCat = new Map<string, RiskItem[]>()
+    for (const r of filtered) {
+      const cat = r.level1 || "Uncategorized"
+      if (!byCat.has(cat)) byCat.set(cat, [])
+      byCat.get(cat)!.push(r)
+    }
+    // Sort each category internally by criticality desc, then label.
+    for (const arr of byCat.values()) {
+      arr.sort((a, b) => b.criticality - a.criticality || a.level3.localeCompare(b.level3))
+    }
+    const groups = Array.from(byCat.entries())
+      .map(([cat, items]) => ({ cat, items, meta: CATEGORY_META[cat] ?? FALLBACK_META }))
+      .sort((a, b) => a.meta.order - b.meta.order)
+
+    const categoryCounts: Record<string, number> = {}
+    for (const r of registry) categoryCounts[r.level1] = (categoryCounts[r.level1] ?? 0) + 1
+    const criticalCount = registry.filter((r) => r.criticality >= 3).length
+    return { groups, categoryCounts, criticalCount }
+  }, [registry, filter])
+
   if (isLoading || !registry || registry.length === 0) return null
 
   return (
-    <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20 space-y-2">
+    <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
@@ -362,7 +445,13 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
       >
         <BookOpen className="h-3.5 w-3.5" />
         Risk registry
-        <span className="ml-1 text-xs text-muted-foreground/70">({registry.length})</span>
+        <span className="ml-1 text-xs tabular-nums text-muted-foreground/70">{registry.length}</span>
+        {grouped.criticalCount > 0 && (
+          <span className="ml-1 inline-flex items-center gap-1 text-[10px] font-medium tabular-nums text-rose-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            {grouped.criticalCount} critical
+          </span>
+        )}
         {expanded ? (
           <ChevronUp className="h-3 w-3 ml-auto" />
         ) : (
@@ -371,57 +460,172 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
       </button>
 
       {expanded && (
-        <div className="space-y-1 pt-1">
-          {registry.map((item, idx) => {
-            const isOpen = openRow === idx
-            const color = LEVEL1_COLORS[item.level1] ?? "text-muted-foreground"
-            return (
-              <div key={idx} className="rounded border border-border/50 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setOpenRow(isOpen ? null : idx)}
-                  className="w-full text-left px-3 py-2 flex items-start gap-2 hover:bg-muted/30 transition-colors"
-                >
-                  <span className={`text-[9px] font-mono mt-0.5 shrink-0 ${color}`}>
-                    L{item.criticality}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate">{item.level3}</p>
-                    <p className={`text-[10px] ${color} truncate`}>
-                      {item.level1} › {item.level2}
-                    </p>
+        <div className="mt-3 space-y-4">
+          {/* Filter chips — single row, horizontal scroll on overflow.
+              `all` always present + `critical` shortcut + per-category. */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <FilterChip
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+              label="All"
+              count={registry.length}
+            />
+            {grouped.criticalCount > 0 && (
+              <FilterChip
+                active={filter === "critical"}
+                onClick={() => setFilter("critical")}
+                label="Critical"
+                count={grouped.criticalCount}
+                tone="rose"
+              />
+            )}
+            {Object.entries(grouped.categoryCounts)
+              .sort((a, b) => (CATEGORY_META[a[0]]?.order ?? 99) - (CATEGORY_META[b[0]]?.order ?? 99))
+              .map(([cat, count]) => {
+                const meta = CATEGORY_META[cat] ?? FALLBACK_META
+                const Icon = meta.icon
+                return (
+                  <FilterChip
+                    key={cat}
+                    active={filter === cat}
+                    onClick={() => setFilter(cat)}
+                    label={cat.replace(/ risk$/, "")}
+                    count={count}
+                    icon={<Icon className="h-3 w-3" />}
+                    dot={meta.dot}
+                  />
+                )
+              })}
+          </div>
+
+          {/* Grouped list — category header + rows, no nested cards. */}
+          <div className="space-y-3">
+            {grouped.groups.map(({ cat, items, meta }) => {
+              const Icon = meta.icon
+              return (
+                <div key={cat} className="overflow-hidden rounded-md border border-border/60">
+                  {/* Sticky-style category header */}
+                  <div className={`flex items-center gap-2 px-3 py-1.5 ${meta.tint} border-b border-border/40`}>
+                    <span className={`h-2 w-2 rounded-full ${meta.dot} shrink-0`} aria-hidden />
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-foreground/90">
+                      {cat}
+                    </span>
+                    <span className="text-[10px] tabular-nums text-muted-foreground ml-1">
+                      {items.length}
+                    </span>
                   </div>
-                  {isOpen ? (
-                    <ChevronUp className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground" />
-                  ) : (
-                    <ChevronDown className="h-3 w-3 shrink-0 mt-0.5 text-muted-foreground" />
-                  )}
-                </button>
-                {isOpen && (
-                  <div className="px-3 pb-3 pt-0 space-y-1.5 border-t border-border/40 bg-muted/10">
-                    <div className="pt-2">
-                      <span className="text-[9px] uppercase tracking-wider text-muted-foreground">KRI</span>
-                      <p className="text-xs mt-0.5">{item.kri}</p>
-                    </div>
-                    {item.description && (
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Description</span>
-                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{item.description}</p>
-                      </div>
-                    )}
-                    {item.note && (
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground">Note</span>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{item.note}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                  {/* Rows */}
+                  <ul className="divide-y divide-border/40">
+                    {items.map((item, idx) => {
+                      const rowKey = `${cat}::${idx}::${item.level3}`
+                      const isOpen = openRow === rowKey
+                      return (
+                        <li key={rowKey}>
+                          <button
+                            type="button"
+                            onClick={() => setOpenRow(isOpen ? null : rowKey)}
+                            className="group w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
+                            aria-expanded={isOpen}
+                          >
+                            <SeverityDots criticality={item.criticality} />
+                            <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                              <span className="text-[13px] text-foreground truncate">
+                                {item.level3}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground truncate">
+                                {item.level2}
+                              </span>
+                            </div>
+                            <ChevronRight
+                              className={`h-3.5 w-3.5 text-muted-foreground/60 shrink-0 transition-transform ${isOpen ? "rotate-90" : ""} group-hover:text-muted-foreground`}
+                              aria-hidden
+                            />
+                          </button>
+                          {isOpen && (
+                            <div className="px-3 pb-3 pt-1 grid gap-2 text-[12px] leading-relaxed bg-muted/[0.15]">
+                              <DetailField label="KRI" value={item.kri} mono />
+                              {item.description && (
+                                <DetailField label="Description" value={item.description} />
+                              )}
+                              {item.note && (
+                                <DetailField label="Note" value={item.note} muted />
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              )
+            })}
+            {grouped.groups.length === 0 && (
+              <p className="text-xs text-muted-foreground italic px-1">
+                No risks match the current filter.
+              </p>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Compact filter chip — pill button with optional category dot or icon.
+ *  Active state uses a tinted background + border, NOT decorative color
+ *  on text (per product register guidance: state-rich semantic vocab). */
+function FilterChip({
+  active, onClick, label, count, icon, dot, tone,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+  count: number
+  icon?: React.ReactNode
+  dot?: string
+  tone?: "rose"
+}) {
+  const baseTone = tone === "rose"
+    ? "border-rose-500/30 bg-rose-500/[0.06] text-rose-600 dark:text-rose-300"
+    : "border-border/60 bg-background hover:bg-muted/40 text-foreground"
+  const activeTone = tone === "rose"
+    ? "border-rose-500 bg-rose-500/15 text-rose-700 dark:text-rose-200"
+    : "border-foreground/40 bg-muted text-foreground"
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+        active ? activeTone : baseTone
+      }`}
+    >
+      {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden />}
+      {icon}
+      <span>{label}</span>
+      <span className="tabular-nums text-muted-foreground/80">{count}</span>
+    </button>
+  )
+}
+
+function DetailField({
+  label, value, mono, muted,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+  muted?: boolean
+}) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80 mb-0.5">
+        {label}
+      </div>
+      <div
+        className={`${mono ? "font-mono text-[12px]" : "text-[12px]"} ${muted ? "text-muted-foreground" : "text-foreground/90"}`}
+      >
+        {value}
+      </div>
     </div>
   )
 }
