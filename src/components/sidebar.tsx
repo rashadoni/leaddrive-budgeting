@@ -36,6 +36,7 @@ import {
   Building2,
   Sparkles,
   BookText,
+  Shield,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -176,6 +177,11 @@ const budgetSubNav = [
       // remediation guidance for unknowns. Use before client demo to
       // know which gaps to fill.
       { href: "/budgeting/admin/indicator-health", icon: Activity, label: "Indicator Health", isPage: true },
+      // 2026-05-27 — Compliance Hub: per-entity audit findings (218) +
+      // court cases (54), tabbed UI with filters + CSV export. Pure UI
+      // layer over Company.settings.auditFindings + courtDisputes JSON
+      // blobs loaded from client xlsx in Phase 7.N ingestion.
+      { href: "/budgeting/admin/compliance", icon: Shield, label: "Compliance Hub", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],

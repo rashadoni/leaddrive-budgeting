@@ -31,6 +31,7 @@ import {
   Building2,
   Users,
   Stethoscope,
+  Shield,
 } from "lucide-react"
 
 export const metadata = {
@@ -112,6 +113,13 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
         title: "Intel Health",
         desc: "External feed adapter status + recent crawls + news pipeline diagnostics.",
         icon: Activity,
+      },
+      {
+        href: "/budgeting/admin/compliance",
+        title: "Compliance Hub",
+        desc: "Per-entity audit findings (218) + court cases (54) with filters, status, severity, CSV export.",
+        icon: Shield,
+        badge: "new",
       },
     ],
   },

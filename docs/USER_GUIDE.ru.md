@@ -321,6 +321,26 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 Кнопка **Export CSV** копирует gap-list для email.
 
+### 7.3.5 Compliance Hub — единый экран аудит-находок + судов
+
+**URL:** `/budgeting/admin/compliance`
+
+**Цель:** одна страница для compliance/legal officer'а — все 218 аудит-находок (Major/Minor/Observation/OFI) + 54 судебных дела по 6 entity, с фильтрами и CSV-выгрузкой.
+
+**Что внутри:**
+- **2 таба** — Audit findings / Court cases
+- **5 summary-карточек сверху** для активного таба (Total / Open / Major / Minor / Observation для аудита; Total / Open / Defendant / Plaintiff / Money claims для судов)
+- **Таблица с цветовой кодировкой** severity-chip'ов: Major (rose), Minor (amber), Observation (slate), OFI (sky)
+- **Фильтры:** Entity (one of 6) / Severity / Status (Open/Closed/All)
+- **Export CSV** отфильтрованного среза с timestamp в имени файла
+
+**Откуда данные:** уже в БД из Phase 7.N (`Company.settings.auditFindings.items` + `courtDisputes.cases`). Никаких новых таблиц.
+
+**Что проверить:**
+- AZSF aud: 6 Major / 30 Minor / 42 Observation = 159 total → CSV должен дать 159 строк
+- CPC ct: 8 cases, все open, 7 как defendant
+- Фильтр `Status: Open only` + `Entity: AZSEKER-AZSF` + `Severity: Major` → должно быть 6 строк
+
 ### 7.3 Data Archive — soft-delete с restore
 
 **URL:** `/budgeting/admin/data-archive`
