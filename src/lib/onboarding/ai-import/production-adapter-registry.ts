@@ -102,6 +102,11 @@ import {
   buildReconKey,
   type ReconciliationKey,
 } from "../reconciliation"
+import {
+  createCoACache,
+  preWarmCoACache,
+  resolveOrCreateAccountId,
+} from "../upsert-chart-of-account"
 
 const CF_SOURCE_TAG = "azseker-workbook-cf"
 const DEFAULT_PLAN_NAME = "Azərşəkər 2026 Budget"
@@ -255,7 +260,23 @@ function makePlfHandler(
     }
     const rows: ImportBatchRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
+    // Phase 2.1 session 1 (2026-05-26) — per-(line.code) metadata so the
+    // applyToDb pass can auto-upsert the ChartOfAccount row before
+    // attaching accountId to each BudgetLine. Account codes are org-
+    // wide, not entity-scoped: same `PLF.10.10.1` from AZSF and CPC
+    // resolves to the same CoA row.
+    const accountSpecs = new Map<
+      string,
+      { code: string; name: string; accountType: string }
+    >()
     for (const line of parsed.lines) {
+      if (!accountSpecs.has(line.code)) {
+        accountSpecs.set(line.code, {
+          code: line.code,
+          name: line.label ?? line.code,
+          accountType: line.accountType,
+        })
+      }
       for (let m = 0; m < 12; m++) {
         const amount = line.perMonth[m]
         if (amount === 0) continue
@@ -271,7 +292,8 @@ function makePlfHandler(
           currencyCode: "AZN",
           exchangeRate: null,
           planId: ctx.planId,
-          accountId: ctx.coaByCode.get(categoryCode) ?? null,
+          // accountId resolved in applyToDb via resolveOrCreateAccountId
+          accountId: null,
           sourceCell: `multi-import#${input.sheetName}!${line.code}@${period}`,
         })
         const key = buildReconKey(
@@ -309,6 +331,40 @@ function makePlfHandler(
       ...(rows.length > 0 ? { expectedSums } : ({} as any)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
+        // Resolve (or create) one CoA row per unique line.code, then
+        // stamp the resolved id on every BudgetLine. Cache is pre-warmed
+        // from ctx.coaByCode so existing rows hit O(1).
+        const coaCache = createCoACache()
+        preWarmCoACache(
+          coaCache,
+          ctx.organizationId,
+          Array.from(ctx.coaByCode.entries()).map(([code, id]) => ({
+            code,
+            id,
+          })),
+        )
+        const accountIdByLineCode = new Map<string, string>()
+        for (const spec of accountSpecs.values()) {
+          const id = await resolveOrCreateAccountId(tx, coaCache, {
+            organizationId: ctx.organizationId,
+            code: spec.code,
+            defaultName: spec.name,
+            defaultAccountType: spec.accountType,
+          })
+          accountIdByLineCode.set(spec.code, id)
+        }
+        // `input.entityCode` is narrowed to non-null above (line 222
+        // early-returns when null). Pin to a local for the closure so
+        // TS doesn't lose the narrowing across the awaited upsert.
+        const entityCode = input.entityCode ?? ""
+        const resolvedRows: ImportBatchRow[] = rows.map((r) => {
+          // Recover the original line.code from the entity-prefixed
+          // category string (PLF rows are written as `${entity}-${code}`).
+          const lineCode = r.category.startsWith(`${entityCode}-`)
+            ? r.category.slice(entityCode.length + 1)
+            : r.category
+          return { ...r, accountId: accountIdByLineCode.get(lineCode) ?? null }
+        })
         const result = await runImportBatch(tx, {
           organizationId: ctx.organizationId,
           label: `WB P&L ${input.entityCode} ${input.year}`,
@@ -316,7 +372,7 @@ function makePlfHandler(
           sourceDocument: `multi-import:${input.sheetName}`,
           companyIds: [companyId],
           periodScope: buildPeriodScope(input.year),
-          rows,
+          rows: resolvedRows,
           expectedSums,
         })
         return { rowsInserted: result.metrics.rowsInserted }

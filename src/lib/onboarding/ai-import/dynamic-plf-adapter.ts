@@ -21,6 +21,10 @@
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client"
+import {
+  createCoACache,
+  resolveOrCreateAccountId,
+} from "../upsert-chart-of-account"
 import type { AdapterRunInput, AdapterRunResult } from "./adapter-registry"
 import { extractMapperInput } from "../ai-mapper/extract"
 import { getOrCreateProposal } from "../ai-mapper/proposal-cache"
@@ -295,7 +299,8 @@ export async function runDynamicPlfAdapter(
         currencyCode: "AZN",
         exchangeRate: null,
         planId,
-        accountId: null, // CoA FK lookup not available here; falls back to code match
+        // accountId resolved inside applyToDb via resolveOrCreateAccountId
+        accountId: null,
         sourceCell: `dynamic-detect#${input.sheetName}!${code}@${period}`,
       })
 
@@ -332,6 +337,36 @@ export async function runDynamicPlfAdapter(
     ...(extra as any),
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
+      // Phase 2.1 session 1 — resolve every unique line.code to a real
+      // CoA FK before insert. Auto-create with role='unknown' if the
+      // CoA doesn't have a match yet (admin can reclassify via
+      // /budgeting/admin/chart-of-accounts).
+      const coaCache = createCoACache()
+      const entityCode = input.entityCode ?? ""
+      const accountIdByLineCode = new Map<string, string>()
+      // Walk rows to collect unique line codes (recovered from the
+      // entity-prefixed category string).
+      const seenCodes = new Set<string>()
+      for (const r of rows) {
+        const lineCode = r.category.startsWith(`${entityCode}-`)
+          ? r.category.slice(entityCode.length + 1)
+          : r.category
+        if (seenCodes.has(lineCode)) continue
+        seenCodes.add(lineCode)
+        const id = await resolveOrCreateAccountId(tx, coaCache, {
+          organizationId: input.organizationId,
+          code: lineCode,
+          defaultName: lineCode,
+          defaultAccountType: r.lineType,
+        })
+        accountIdByLineCode.set(lineCode, id)
+      }
+      const resolvedRows = rows.map((r) => {
+        const lineCode = r.category.startsWith(`${entityCode}-`)
+          ? r.category.slice(entityCode.length + 1)
+          : r.category
+        return { ...r, accountId: accountIdByLineCode.get(lineCode) ?? null }
+      })
       const result = await runImportBatch(tx, {
         organizationId: input.organizationId,
         label: `Dynamic P&L ${input.entityCode} ${effectiveYear}`,
@@ -339,7 +374,7 @@ export async function runDynamicPlfAdapter(
         sourceDocument: `dynamic-detect:${input.sheetName}`,
         companyIds: [companyId],
         periodScope,
-        rows,
+        rows: resolvedRows,
         expectedSums,
       })
       return { rowsInserted: result.metrics.rowsInserted }

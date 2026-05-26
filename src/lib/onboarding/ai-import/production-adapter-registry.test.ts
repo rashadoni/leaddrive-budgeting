@@ -124,6 +124,18 @@ function buildPrismaStub(overrides: {
     },
     chartOfAccount: {
       findMany: vi.fn(async () => overrides.coa ?? []),
+      // Phase 2.1 session 1 (2026-05-26) — adapters now call upsert
+      // via resolveOrCreateAccountId during applyToDb. Return a
+      // deterministic synthetic id so tests can assert downstream
+      // payload shape without spinning up real Postgres.
+      upsert: vi.fn(
+        async (args: {
+          where: { organizationId_code: { code: string } }
+          create: { code: string }
+        }) => ({
+          id: `coa_${args.where.organizationId_code.code}`,
+        }),
+      ),
     },
   } as unknown as PrismaClient
   return fake
@@ -188,8 +200,17 @@ describe("buildProductionAdapterRegistry", () => {
       XLSX: fakeXLSX,
     })
     expect(result.itemCount).toBe(1)
-    // Now invoke applyToDb with a fake tx
-    const fakeTx = { _tx: true } as never
+    // Phase 2.1 session 1: applyToDb now calls tx.chartOfAccount.upsert
+    // via resolveOrCreateAccountId before runImportBatch. Test tx must
+    // include the upsert stub returning a synthetic CoA id.
+    const fakeTx = {
+      _tx: true,
+      chartOfAccount: {
+        upsert: vi.fn(async (args: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${args.where.organizationId_code.code}` })),
+      },
+    } as never
     const apply = await result.applyToDb(fakeTx)
     expect(apply.rowsInserted).toBe(1)
     // Verify runImportBatch was called with the tx (not the prisma client)
