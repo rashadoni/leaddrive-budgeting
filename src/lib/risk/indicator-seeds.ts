@@ -729,6 +729,53 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["counterparty:customer"],
     sortOrder: 3,
   },
+  // 2026-05-27 — Revenue-side FX exposure. Distinct from FX_IMPORTED_INPUT
+  // (cost-side): this measures what % of revenue is collected in non-AZN
+  // currencies. High = AZN weakness boosts P&L; AZN strength compresses
+  // margin. Symmetric exposure to FX_IMPORTED_INPUT — together they
+  // express NET fx position.
+  {
+    code: "REVENUE_FX_EXPOSURE",
+    nameEn: "Non-AZN Revenue Share (FX exposure)",
+    nameAz: "Qeyri-AZN gəlir payı (FX riski)",
+    nameRu: "Доля выручки не в AZN (FX-риск)",
+    category: "fx",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "%",
+    direction: "lower_better",
+    // 100 - AZN share = non-AZN share = FX exposure on revenue side.
+    // Fallback: if fx_revenue_azn is missing, formula evaluates to NaN
+    // → status='unknown', matching the system's "honest gap" policy.
+    formula: "100 - fx_revenue_azn",
+    thresholds: {
+      // 0-20% non-AZN = mostly domestic, FX risk low
+      // 20-50% = mixed exposure
+      // >50% = majority non-AZN, FX moves dominate revenue translation
+      green: { op: "<=", value: 20 },
+      amber: { op: "<=", value: 50 },
+      red: { op: ">", value: 50 },
+    },
+    hintTemplateEn:
+      "{value}% of revenue is collected in non-AZN currency. ≤20% = domestic dominant; 20-50% = mixed; >50% = FX moves dominate revenue.",
+    hintTemplateRu:
+      "{value}% выручки в валюте отличной от AZN. ≤20% — внутренний рынок доминирует; 20-50% — смешанная; >50% — FX доминирует.",
+    hintTemplateAz:
+      "Gəlirin {value}%-i AZN olmayan valyutadadır. ≤20% — daxili bazar üstünlük təşkil edir; 20-50% — qarışıq; >50% — FX dəyişiklikləri üstünlük təşkil edir.",
+    requiredInputs: ["company.settings.fxRevenueAzn"],
+    sortOrder: 5,
+  },
   {
     code: "TOP3_CUSTOMER_SHARE",
     nameEn: "Top-3 Customers Revenue Share",

@@ -490,6 +490,32 @@ Three new indicators, питаются от файлов клиента (`Follow
 
 ---
 
+## 9.2.5 FX risk — какая часть выручки уязвима к курсу
+
+**Где:** Risk Terminal → HeatMap колонка `REVENUE_FX_EXPOSURE` + Board Deck FX section.
+
+Хранится в `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % выручки в каждой валюте. Формула: **100 − fxRevenueAzn** = % non-AZN = FX-risk side.
+
+| Entity | AZN | USD | EUR | RUB | FX Exposure | Источник |
+|---|---|---|---|---|---|---|
+| AZSF | 95% | 5% | 0% | 0% | 🟢 5% | Crocs Group / Coca-Cola |
+| CPC | 80% | 18% | 2% | 0% | 🟢 20% | DCFTA Georgia exports |
+| MALT | 100% | — | — | — | 🟢 0% | Carlsberg single-buyer AZN |
+| EDEN | 90% | 10% | — | — | 🟢 10% | Salyan sugarcane → Georgia |
+| HORIZON | 100% | — | — | — | 🟢 0% | Domestic services |
+| PROMALT | 100% | — | — | — | 🟢 0% | JV с Azersun, domestic |
+
+**Пороги:**
+- 🟢 ≤ 20% — внутренний рынок доминирует
+- 🟡 20–50% — смешанная экспозиция
+- 🔴 > 50% — FX-колебания доминируют над выручкой
+
+**Текущие значения = educated defaults** на основе известных клиентов. Реальный split per-customer придёт от N. Nəcəfzadə — после файла нужно будет обновить через `/budgeting/admin/companies` → settings panel.
+
+**Связь с `FX_IMPORTED_INPUT`** (impact, cost-side): два показателя вместе показывают **NET FX positon**. Если cost ≈ revenue в одной валюте → natural hedge. Если imported costs USD высокие но AZN revenue 100% → AZN weakness бьёт по марже без compensation.
+
+---
+
 ## 9.2 Concentration — кто держит вашу выручку
 
 **Где:** Risk Terminal → HeatMap (3 колонки) + Board Deck → top movers/alerts.
