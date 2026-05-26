@@ -134,6 +134,7 @@ const E = (
   entityCode: entity,
   cfCode,
   category: `${entity}-${cfCode}`,
+  accountId: `coa_${cfCode}`,
   activityType: "operating",
   entryType: amount >= 0 ? "inflow" : "outflow",
   year: 2026,

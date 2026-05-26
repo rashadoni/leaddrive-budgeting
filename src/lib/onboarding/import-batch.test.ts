@@ -16,10 +16,14 @@ import type { PrismaClient } from "@prisma/client"
 
 // ─── Synthetic Prisma client ────────────────────────────────────────────────
 
+// Phase 2.1 session 3: BudgetLine.category column dropped. Fake stores
+// accountId; defaultReadActualSums reads via `select: { account: { code } }`
+// — mock derives a fake account.code by stripping the `coa_` prefix
+// the R fixture uses (`accountId: coa_${category}`).
 interface FakeBudgetLineRow {
   organizationId: string
   companyId: string
-  category: string
+  accountId: string
   lineType: string
   plannedAmount: number
   currencyCode: string | null
@@ -29,6 +33,10 @@ interface FakeBudgetLineRow {
   sourceDocument: string
   deletedAt: Date | null
   deletedBy: string | null
+}
+
+function accountCodeFromId(accountId: string): string {
+  return accountId.startsWith("coa_") ? accountId.slice(4) : accountId
 }
 
 function makeFakePrisma(opts: {
@@ -75,7 +83,7 @@ function makeFakePrisma(opts: {
           budgetLines.push({
             organizationId: d.organizationId!,
             companyId: d.companyId!,
-            category: d.category!,
+            accountId: d.accountId!,
             lineType: d.lineType!,
             plannedAmount: d.plannedAmount!,
             currencyCode: d.currencyCode ?? null,
@@ -100,10 +108,13 @@ function makeFakePrisma(opts: {
           })
           .map((r) => ({
             companyId: r.companyId,
-            category: r.category,
             plannedAmount: r.plannedAmount,
             monthIndex: r.monthIndex,
             plan: { year: yearById[r.planId] ?? 2026 },
+            // Production read uses `select: { account: { code: true } }`;
+            // mock derives the code from accountId (R fixture sets
+            // `coa_${category}`).
+            account: { code: accountCodeFromId(r.accountId) },
           }))
       }),
     },
@@ -156,6 +167,7 @@ const R = (
 ): ImportBatchRow => ({
   companyId: "c_azsf",
   category,
+  accountId: `coa_${category}`,
   lineType: "revenue",
   period: `2026-${String(monthIndex + 1).padStart(2, "0")}`,
   monthIndex,
@@ -369,6 +381,7 @@ describe("runImportBatch — outer-transaction mode (Phase 7.M Tier 5)", () => {
         {
           companyId: "c_cpc",
           category: "PLF.02.01.01",
+          accountId: "coa_PLF.02.01.01",
           lineType: "revenue",
           period: "2026-04",
           monthIndex: 3,

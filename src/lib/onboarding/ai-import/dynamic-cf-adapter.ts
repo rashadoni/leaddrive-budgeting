@@ -356,6 +356,8 @@ export async function runDynamicCfAdapter(
         entityCode: input.entityCode,
         cfCode,
         category,
+        // Placeholder — overwritten in applyToDb resolution map.
+        accountId: "",
         activityType,
         entryType,
         year: effectiveYear,
@@ -409,10 +411,15 @@ export async function runDynamicCfAdapter(
         })
         accountIdByCfCode.set(r.cfCode, id)
       }
-      const resolvedRows = rows.map((r) => ({
-        ...r,
-        accountId: accountIdByCfCode.get(r.cfCode) ?? null,
-      }))
+      const resolvedRows = rows.map((r) => {
+        const accountId = accountIdByCfCode.get(r.cfCode)
+        if (!accountId) {
+          throw new Error(
+            `[dynamic-cf] accountId not resolved for cfCode="${r.cfCode}"`,
+          )
+        }
+        return { ...r, accountId }
+      })
       const result = await runCashFlowBatch(tx, {
         organizationId: input.organizationId,
         label: `Dynamic CF ${input.entityCode} ${effectiveYear}`,

@@ -70,8 +70,9 @@ describe("GET /api/budgeting/csv-template", () => {
 
   it("CSV formula-injection guard: leading = gets prefixed with apostrophe", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    // Phase 2.1 session 3: category column dropped — mock uses account.code
     prismaMock.budgetLine.findMany.mockResolvedValue([
-      { category: "=SUM(A1)", department: null, lineType: "expense" },
+      { account: { code: "=SUM(A1)" }, department: null, lineType: "expense" },
     ])
     const res = await GET(makeRequest("/api/budgeting/csv-template?planId=p1"))
     const text = await res.text()
@@ -81,8 +82,9 @@ describe("GET /api/budgeting/csv-template", () => {
 
   it("CSV quoting: commas in category get wrapped in double-quotes", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    // Phase 2.1 session 3: category column dropped — mock uses account.code
     prismaMock.budgetLine.findMany.mockResolvedValue([
-      { category: "Rent, Office", department: null, lineType: "expense" },
+      { account: { code: "Rent, Office" }, department: null, lineType: "expense" },
     ])
     const res = await GET(makeRequest("/api/budgeting/csv-template?planId=p1"))
     const text = await res.text()

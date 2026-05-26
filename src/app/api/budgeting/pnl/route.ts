@@ -179,10 +179,9 @@ export async function GET(req: NextRequest) {
       name = bl.account.name
     } else {
       // Legacy rows: after the Phase 0 import refactor we flipped the fields,
-      // so category holds the name and department holds the code — but earlier
-      // rows may still be the other way around. Detect by shape.
+      // so department holds the code — detect by shape.
       const maybeCode = bl.department || ""
-      const maybeName = bl.category || ""
+      const maybeName = bl.account?.name ?? bl.account?.code ?? ""
       // Turn LXV — `looksLikeCode` extracted to `@/lib/import/keywords`
       // (inline lambda was duplicated at line 283 below + analytics route).
       code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
@@ -194,7 +193,7 @@ export async function GET(req: NextRequest) {
     // other's type (e.g. PLF revenue being misclassified as expense because
     // an expense line with the same "other" key was processed first).
     const mapKey = (code === "other")
-      ? `other::${bl.lineType}::${bl.category || bl.department || "unknown"}`
+      ? `other::${bl.lineType}::${bl.account?.code ?? bl.department ?? "unknown"}`
       : `${code}::${name}`
 
     if (!accountMap.has(mapKey)) {

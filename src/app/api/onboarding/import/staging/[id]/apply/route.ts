@@ -407,7 +407,6 @@ export async function POST(
               planId: plan.id,
               companyId,
               accountId: coaId,
-              category: line.code,
               department: null,
               lineType,
               plannedAmount: monthlyAmount,

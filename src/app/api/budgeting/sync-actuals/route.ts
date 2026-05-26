@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const [plan, lines] = await Promise.all([
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true } }),
+    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true }, include: { account: { select: { code: true, name: true } } } }),
   ])
 
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
@@ -78,12 +78,13 @@ export async function POST(req: NextRequest) {
     const amount = resolveCostModelKey(costModel, line.costModelKey)
     if (amount <= 0) continue
 
-    // Upsert: find existing actual for this category+month or create new
+    // Upsert: find existing actual for this account.code+month or create new
+    const lineAccountCode = (line as any).account?.code ?? ""
     const existing = await prisma.budgetActual.findFirst({
       where: {
         planId,
         organizationId: orgId,
-        category: line.category,
+        category: lineAccountCode,
         description: { startsWith: "auto-sync:" },
       },
     })
@@ -102,7 +103,7 @@ export async function POST(req: NextRequest) {
         data: {
           organizationId: orgId,
           planId,
-          category: line.category,
+          category: lineAccountCode,
           department: line.department,
           lineType: line.lineType,
           actualAmount: amount,

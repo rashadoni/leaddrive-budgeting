@@ -238,29 +238,26 @@ async function runGetAccountDrill(raw: unknown, ctx: ToolContext) {
     },
   })
 
-  // BudgetLines referencing this account: prefer FK (accountId), fall back to
-  // legacy string match on category/department for not-yet-backfilled rows.
-  const budgetLineOr: Prisma.BudgetLineWhereInput[] = [
-    { category: accountCode },
-    { department: accountCode },
-  ]
-  if (account) budgetLineOr.push({ accountId: account.id })
+  // BudgetLines referencing this account: match by accountId FK or department code fallback.
+  const budgetLineWhere: Prisma.BudgetLineWhereInput = account
+    ? { accountId: account.id }
+    : { department: accountCode }
 
   const budgetLines = await prisma.budgetLine.findMany({
     where: {
       organizationId: ctx.orgId,
       planId: ctx.planId,
-      OR: budgetLineOr,
+      ...budgetLineWhere,
     },
     take: 20,
     select: {
       id: true,
-      category: true,
       department: true,
       lineType: true,
       plannedAmount: true,
       forecastAmount: true,
       notes: true,
+      account: { select: { code: true, name: true } },
     },
     orderBy: { plannedAmount: "desc" },
   })
@@ -294,7 +291,7 @@ async function runGetAccountDrill(raw: unknown, ctx: ToolContext) {
   return {
     account,
     budgetLines: budgetLines.map((l: BudgetLineRow) => ({
-      category: l.category,
+      category: (l as any).account?.code ?? "",
       department: l.department,
       lineType: l.lineType,
       plannedAmount: Math.round(l.plannedAmount),

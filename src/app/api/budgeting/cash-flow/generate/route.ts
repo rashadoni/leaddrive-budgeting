@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
   for (const plan of plans) {
     const lines = await prisma.budgetLine.findMany({
       where: { planId: plan.id, organizationId: orgId },
+      include: { account: { select: { code: true, name: true } } },
     })
 
     // Determine months for this plan
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
             source: "budget_line",
             sourceId: line.id,
             amount: monthlyAmount,
-            description: `${line.category} (${line.lineType})`,
+            description: `${(line as any).account?.name ?? (line as any).account?.code ?? ""} (${line.lineType})`,
             isProjected: true,
           },
         })

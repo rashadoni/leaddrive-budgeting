@@ -29,12 +29,12 @@ export async function GET(
   }
 
   const [linesA, linesB] = await Promise.all([
-    prisma.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId } }),
+    prisma.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId }, include: { account: { select: { code: true, name: true } } } }),
+    prisma.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId }, include: { account: { select: { code: true, name: true } } } }),
   ])
 
-  // Build maps by composite key: category + department + lineType
-  const keyFn = (l: any) => `${l.category}||${l.department || ""}||${l.lineType}`
+  // Build maps by composite key: account.code + department + lineType
+  const keyFn = (l: any) => `${l.account?.code ?? ""}||${l.department || ""}||${l.lineType}`
 
   const mapA = new Map<string, any>()
   for (const l of linesA) mapA.set(keyFn(l), l)
@@ -51,7 +51,7 @@ export async function GET(
 
     if (a && !b) {
       diff.push({
-        category: a.category,
+        category: a.account?.code ?? "",
         department: a.department,
         lineType: a.lineType,
         planA: a.plannedAmount,
@@ -61,7 +61,7 @@ export async function GET(
       })
     } else if (!a && b) {
       diff.push({
-        category: b.category,
+        category: b.account?.code ?? "",
         department: b.department,
         lineType: b.lineType,
         planA: 0,
@@ -72,7 +72,7 @@ export async function GET(
     } else if (a && b) {
       const delta = b.plannedAmount - a.plannedAmount
       diff.push({
-        category: a.category,
+        category: a.account?.code ?? "",
         department: a.department,
         lineType: a.lineType,
         planA: a.plannedAmount,

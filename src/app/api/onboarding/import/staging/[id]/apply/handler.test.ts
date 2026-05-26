@@ -344,8 +344,10 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     expect(budgetLineCreates).toHaveLength(24); // 2 lines × 12 months
 
     // First parsed line — seasonal (codes 601-*).
+    // Phase 2.1 session 3: filter by accountId (category column dropped);
+    // coaCreate mock returns id=`coa-${data.code}`.
     const seasonalRows = budgetLineCreates.filter(
-      (d) => d.category === '601-01-01',
+      (d) => d.accountId === 'coa-601-01-01',
     );
     expect(seasonalRows).toHaveLength(12);
     // sortOrder 0..11 distinct.
@@ -376,7 +378,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     // level; here the mock returned positive perMonth for simplicity).
     // Symmetric assertions with the seasonal block above (architect Round-2
     // ⚠️ closure: missing sortOrder-distinct + sum invariant for cogs).
-    const cogsRows = budgetLineCreates.filter((d) => d.category === '701-01-01');
+    const cogsRows = budgetLineCreates.filter((d) => d.accountId === 'coa-701-01-01');
     expect(cogsRows).toHaveLength(12);
     const cogsSortOrders = cogsRows
       .map((r) => r.sortOrder)

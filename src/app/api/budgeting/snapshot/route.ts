@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
   const [currentLines, currentActuals] = await Promise.all([
     prisma.budgetLine.findMany({
       where: { planId, organizationId: orgId },
+      include: { account: { select: { code: true, name: true } } },
     }),
     prisma.budgetActual.findMany({
       where: { planId, organizationId: orgId },
@@ -123,7 +124,9 @@ function computeAnalytics(lines: any[], actuals: any[]) {
   for (const l of lines) {
     const planned = Number(l.plannedAmount || 0)
     const forecast = l.forecastAmount != null ? Number(l.forecastAmount) : planned
-    const actual = actualsByCat.get(`${l.category}||${l.lineType}`) || 0
+    // account?.code is the canonical identity key (matches how BudgetActual.category is written by sync-actuals)
+    const lineCode = l.account?.code ?? ""
+    const actual = actualsByCat.get(`${lineCode}||${l.lineType}`) || 0
 
     if (l.lineType === "expense") {
       totalExpensePlanned += planned
@@ -134,7 +137,7 @@ function computeAnalytics(lines: any[], actuals: any[]) {
     }
 
     byCategory.push({
-      category: l.category,
+      category: lineCode,
       lineType: l.lineType,
       planned,
       forecast,

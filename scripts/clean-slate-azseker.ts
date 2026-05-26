@@ -60,22 +60,12 @@ async function main(): Promise<number> {
     where: { companyId: { in: companyIds }, deletedAt: { not: null } },
   })
 
-  // BS scoped via accountCode prefix
+  // BS scoped via companyId (Phase 2.1 session 3: accountCode column dropped).
   const bsLive = await prisma.balanceSheetLine.count({
-    where: {
-      deletedAt: null,
-      OR: companies.map((c: { code: string }) => ({
-        accountCode: { startsWith: c.code + "-" },
-      })),
-    },
+    where: { companyId: { in: companyIds }, deletedAt: null },
   })
   const bsArchived = await prisma.balanceSheetLine.count({
-    where: {
-      deletedAt: { not: null },
-      OR: companies.map((c: { code: string }) => ({
-        accountCode: { startsWith: c.code + "-" },
-      })),
-    },
+    where: { companyId: { in: companyIds }, deletedAt: { not: null } },
   })
 
   // CF scoped via sourceId prefix (no companyId column)
@@ -139,19 +129,14 @@ async function main(): Promise<number> {
     })
     blSoftDeleted = blSoft.count
 
-    // balance_sheet_lines: same
-    const bsCompanyFilter: Prisma.BalanceSheetLineWhereInput["OR"] =
-      companies.map((c: { code: string }) => ({
-        accountCode: { startsWith: c.code + "-" } as const,
-      }))
-
+    // balance_sheet_lines: scoped via companyId (Phase 2.1 session 3).
     const bsHard = await tx.balanceSheetLine.deleteMany({
-      where: { deletedAt: { not: null }, OR: bsCompanyFilter },
+      where: { companyId: { in: companyIds }, deletedAt: { not: null } },
     })
     bsHardDeleted = bsHard.count
 
     const bsSoft = await tx.balanceSheetLine.updateMany({
-      where: { deletedAt: null, OR: bsCompanyFilter },
+      where: { companyId: { in: companyIds }, deletedAt: null },
       data: { deletedAt: now, deletedBy: SYSTEM_ACTOR },
     })
     bsSoftDeleted = bsSoft.count
@@ -214,12 +199,7 @@ async function main(): Promise<number> {
     where: { companyId: { in: companyIds }, deletedAt: null },
   })
   const bsLiveAfter = await prisma.balanceSheetLine.count({
-    where: {
-      deletedAt: null,
-      OR: companies.map((c: { code: string }) => ({
-        accountCode: { startsWith: c.code + "-" },
-      })),
-    },
+    where: { companyId: { in: companyIds }, deletedAt: null },
   })
   const cfLiveAfter = await prisma.cashFlowEntry.count({
     where: {

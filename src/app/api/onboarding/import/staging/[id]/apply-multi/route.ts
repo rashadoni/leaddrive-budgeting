@@ -384,7 +384,7 @@ export async function POST(
     const currentLines = existingPlan
       ? await prisma.budgetLine.findMany({
           where: { organizationId: orgIdLocal, planId: existingPlan.id, companyId },
-          select: { plannedAmount: true, lineType: true, category: true },
+          select: { plannedAmount: true, lineType: true, account: { select: { code: true } } },
         })
       : []
     // Phase L7 — track D&A separately so we can surface EBITDA on the
@@ -401,7 +401,7 @@ export async function POST(
     const current: Tot = zero()
     for (const bl of currentLines) {
       const lt = bl.lineType as "revenue" | "cogs" | "expense"
-      const isDA = bl.category && isDaCode(bl.category)
+      const isDA = bl.account?.code && isDaCode(bl.account.code)
       if (lt === "revenue") current.revenue += bl.plannedAmount
       else if (lt === "cogs") {
         current.cogs += Math.abs(bl.plannedAmount)
@@ -530,7 +530,6 @@ export async function POST(
               planId: plan.id,
               companyId,
               accountId: coaId,
-              category: line.code,
               department: null,
               lineType,
               plannedAmount: monthlyAmount,
@@ -864,7 +863,7 @@ export async function POST(
           planId: string
           accountCode: string
           accountName: string
-          accountId: string | null
+          accountId: string
           lineType: string
           subType: string | null
           year: number
@@ -873,7 +872,7 @@ export async function POST(
         }> = []
         for (const line of parsed.lines) {
           const codeKey = `${entityCode}-${line.code}`
-          let coaId = coaCache.get(codeKey) ?? null
+          let coaId: string | null = coaCache.get(codeKey) ?? null
           if (!coaId) {
             const existingCoa = await tx.chartOfAccount.findUnique({
               where: { organizationId_code: { organizationId: orgIdLocal, code: codeKey } },
@@ -897,6 +896,7 @@ export async function POST(
             }
             coaCache.set(codeKey, coaId)
           }
+          if (!coaId) throw new Error(`Internal: coaId not resolved for BS code ${codeKey}`)
           for (const [periodKey, amount] of Object.entries(line.monthlyAmounts)) {
             const [yStr, mStr] = periodKey.split("-")
             rows.push({

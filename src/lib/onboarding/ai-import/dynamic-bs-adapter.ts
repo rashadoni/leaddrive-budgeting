@@ -343,7 +343,8 @@ export async function runDynamicBsAdapter(
         planId,
         companyId: companyId ?? null, // Phase 7.O — company scope for resolver queries
         accountCode,
-        accountName: label,
+        // Placeholder — overwritten in applyToDb resolution map.
+        accountId: "",
         lineType: classification.lineType,
         subType: classification.subType,
         year: effectiveYear,
@@ -395,7 +396,9 @@ export async function runDynamicBsAdapter(
         const id = await resolveOrCreateAccountId(tx, coaCache, {
           organizationId: input.organizationId,
           code: lineCode,
-          defaultName: r.accountName,
+          // Phase 2.1 session 3: BsImportRow no longer carries accountName
+          // (dropped column); use accountCode as the default display name.
+          defaultName: r.accountCode,
           defaultAccountType: r.lineType,
         })
         accountIdByLineCode.set(lineCode, id)
@@ -404,10 +407,13 @@ export async function runDynamicBsAdapter(
         const lineCode = r.accountCode.startsWith(`${entityCode}-`)
           ? r.accountCode.slice(entityCode.length + 1)
           : r.accountCode
-        return {
-          ...r,
-          accountId: accountIdByLineCode.get(lineCode) ?? null,
+        const accountId = accountIdByLineCode.get(lineCode)
+        if (!accountId) {
+          throw new Error(
+            `[dynamic-bs] accountId not resolved for lineCode="${lineCode}"`,
+          )
         }
+        return { ...r, accountId }
       })
       const result = await runBalanceSheetBatch(tx, {
         organizationId: input.organizationId,

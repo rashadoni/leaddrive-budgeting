@@ -49,12 +49,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     where: { id: { in: templateIds }, organizationId: orgId, isActive: true },
   })
 
-  // Get existing line categories in this plan to skip duplicates
+  // Get existing lines in this plan to skip duplicates (keyed by account.code)
   const existingLines = await prisma.budgetLine.findMany({
     where: { planId, organizationId: orgId },
-    select: { category: true, lineType: true },
+    select: { accountId: true, lineType: true, account: { select: { code: true } } },
   })
-  const existingKeys = new Set(existingLines.map((l: { category: string; lineType: string }) => `${l.category}||${l.lineType}`))
+  const existingKeys = new Set(existingLines.map((l: { accountId: string; lineType: string; account: { code: string } }) => `${l.account?.code ?? l.accountId}||${l.lineType}`))
 
   let created = 0
   let skipped = 0
@@ -76,7 +76,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: {
         organizationId: orgId,
         planId,
-        category: t.name,
         department: t.department,
         lineType: t.lineType,
         lineSubtype: t.lineSubtype,

@@ -52,12 +52,14 @@ export async function GET(req: NextRequest) {
     Promise.all([
       tx.budgetLine.findMany({
         where: { planId, organizationId: orgId, parentId: null, ...deptFilter },
-        orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
+        orderBy: [{ sortOrder: "asc" }],
         include: {
           children: {
-            orderBy: [{ sortOrder: "asc" }, { category: "asc" }],
+            orderBy: [{ sortOrder: "asc" }],
+            include: { account: { select: { code: true, name: true } } },
             ...(deptFilter ? { where: deptFilter } : {}),
           },
+          account: { select: { code: true, name: true } },
         },
       }),
       tx.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
@@ -187,17 +189,26 @@ export async function POST(req: NextRequest) {
     exchangeRate != null ? Number(exchangeRate) : null,
   )
 
-  // Phase 2.1 step 2 — populate `accountId` FK when `category` looks
-  // like a SAP code. No-op for free-text categories; FK stays null and
-  // the legacy `category` string drives display until backfill runs.
+  // Phase 2.1 session 3: `accountId` is now NOT NULL on BudgetLine.
+  // Resolve from `category` (SAP code or name → CoA lookup). If not found,
+  // return 422 — callers must send a valid account code.
   const accountId = await resolveAccountId(prisma, orgId, category)
+  if (!accountId) {
+    return NextResponse.json(
+      { error: `No ChartOfAccount found for category "${category}". Provide a valid account code.` },
+      { status: 422 },
+    )
+  }
 
   const line = await withOrgScope(orgId, async (tx) =>
     tx.budgetLine.create({
       data: {
         organizationId: orgId,
         planId: resolvedPlanId,
-        category,
+        // Phase 2.1 session 3: `category` String dropped from BudgetLine.
+        // `accountId` (NOT NULL) is now the identity — resolved above via
+        // resolveAccountId(). `category` is still accepted in request body
+        // for backward-compat but is not written to the DB.
         department: department || null,
         lineType: resolvedLineType,
         lineSubtype: lineSubtype || null,

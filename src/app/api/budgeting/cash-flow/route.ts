@@ -20,6 +20,10 @@ const createCashFlowSchema = z.object({
   paymentDate: z.string().max(50).optional().nullable(),
   currencyCode: z.string().max(10).optional(),
   isProjected: z.boolean().optional(),
+  // Phase 2.1 session 3: accountId optional (CashFlowEntry.category dropped;
+  // callers that don't yet send accountId get a null FK — safe since the
+  // ChartOfAccount FK on CashFlowEntry is still nullable at the DB level).
+  accountId: z.string().min(1).max(100).optional(),
 }).strict()
 
 // GET — get cash flow data for a year
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const { year, month, entryType, amount, description, source, sourceId, paymentDate, currencyCode, isProjected } = data
+  const { year, month, entryType, amount, description, source, sourceId, paymentDate, currencyCode, isProjected, accountId } = data
 
   // Phase 7.G Turn LXVIII follow-up — period-lock guard. cash-flow direct
   // entries have explicit year+month input (no plan reference). Strict-string
@@ -126,6 +130,7 @@ export async function POST(req: NextRequest) {
         paymentDate: paymentDate ? new Date(paymentDate) : null,
         currencyCode: currencyCode || "AZN",
         isProjected: isProjected ?? true,
+        accountId,
       },
     })
   )

@@ -300,7 +300,8 @@ export async function runDynamicPlfAdapter(
         exchangeRate: null,
         planId,
         // accountId resolved inside applyToDb via resolveOrCreateAccountId
-        accountId: null,
+        // Placeholder — overwritten in applyToDb resolution map.
+        accountId: "",
         sourceCell: `dynamic-detect#${input.sheetName}!${code}@${period}`,
       })
 
@@ -365,7 +366,13 @@ export async function runDynamicPlfAdapter(
         const lineCode = r.category.startsWith(`${entityCode}-`)
           ? r.category.slice(entityCode.length + 1)
           : r.category
-        return { ...r, accountId: accountIdByLineCode.get(lineCode) ?? null }
+        const accountId = accountIdByLineCode.get(lineCode)
+        if (!accountId) {
+          throw new Error(
+            `[dynamic-plf] accountId not resolved for lineCode="${lineCode}"`,
+          )
+        }
+        return { ...r, accountId }
       })
       const result = await runImportBatch(tx, {
         organizationId: input.organizationId,

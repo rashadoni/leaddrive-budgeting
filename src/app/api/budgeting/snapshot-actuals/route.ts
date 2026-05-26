@@ -102,17 +102,19 @@ export async function POST(req: NextRequest) {
       // Get auto-actual lines for this plan
       const autoLines = await prisma.budgetLine.findMany({
         where: { planId: plan.id, organizationId: orgId, isAutoActual: true },
+        include: { account: { select: { code: true, name: true } } },
       })
 
       for (const line of autoLines) {
         if (!line.costModelKey) continue
 
-        // Check if BudgetActual already exists for this month+category+plan
+        // Check if BudgetActual already exists for this month+account.code+plan
+        const lineAccountCode = (line as any).account?.code ?? ""
         const existing = await prisma.budgetActual.findFirst({
           where: {
             planId: plan.id,
             organizationId: orgId,
-            category: line.category,
+            category: lineAccountCode,
             lineType: line.lineType,
             expenseDate: targetMonth,
             description: "Auto-snapshot",
@@ -134,7 +136,7 @@ export async function POST(req: NextRequest) {
           data: {
             organizationId: orgId,
             planId: plan.id,
-            category: line.category,
+            category: lineAccountCode,
             department: line.department,
             lineType: line.lineType,
             actualAmount: amount,

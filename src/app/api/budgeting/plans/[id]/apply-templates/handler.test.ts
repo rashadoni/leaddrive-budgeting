@@ -116,10 +116,17 @@ describe("POST /api/budgeting/plans/[id]/apply-templates", () => {
       { id: "t1", name: "Salaries", lineType: "expense", lineSubtype: null, department: null, defaultAmount: 1000, unitPrice: null, unitCost: null, quantity: null, costModelKey: null },
       { id: "t2", name: "Rent",     lineType: "expense", lineSubtype: null, department: null, defaultAmount: 500,  unitPrice: null, unitCost: null, quantity: null, costModelKey: null },
     ])
-    // Existing line "Salaries||expense" → t1 should be skipped
+    // Phase 2.1 session 3: existing-line dedup keyed by
+    // `${account.code}||${lineType}` now that BudgetLine.category dropped.
     prismaMock.budgetLine.findMany.mockResolvedValue([
-      { category: "Salaries", lineType: "expense" },
+      { accountId: "coa_salaries", account: { code: "Salaries" }, lineType: "expense" },
     ])
+    // Phase 2.1 session 3: route resolves accountId via
+    // resolveAccountId(name) — return distinct ids per template name so
+    // the NOT NULL FK is satisfied and dedup key matches.
+    resolveAccountIdMock.mockImplementation(async (_p: unknown, _o: string, name: string) =>
+      name === "Salaries" ? "coa_salaries" : `coa_${name.toLowerCase()}`,
+    )
     const res = await POST(
       makeRequest("/api/budgeting/plans/p1/apply-templates", {
         method: "POST",

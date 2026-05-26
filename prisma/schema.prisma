@@ -282,7 +282,6 @@ model CashFlowEntry {
   paymentDate    DateTime?
   isProjected    Boolean         @default(true)
   activityType   String          @default("operating")
-  category       String?
   accountId      String?
   account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
   counterpartyId String?
@@ -448,7 +447,6 @@ model BudgetLine {
   organizationId String
   planId         String
   plan           BudgetPlan        @relation(fields: [planId], references: [id], onDelete: Cascade)
-  category       String
   department     String?
   lineType       String            @default("expense")
   lineSubtype    String?
@@ -470,12 +468,10 @@ model BudgetLine {
   costType       BudgetCostType?   @relation(fields: [costTypeId], references: [id], onDelete: SetNull)
   departmentId   String?
   budgetDept     BudgetDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  // Optional FK to the Chart of Accounts entry. Phase 2.1 adds this alongside
-  // the legacy `category`/`department` strings so new imports can join against
-  // ChartOfAccount; existing rows keep working via the string fallback until
-  // the backfill script runs.
-  accountId      String?
-  account        ChartOfAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  // Phase 2.1 session 3: accountId is now NOT NULL. The wipe script removed
+  // all orphan rows (rows without a valid accountId) before this change.
+  accountId      String
+  account        ChartOfAccount    @relation(fields: [accountId], references: [id], onDelete: Restrict)
   // Phase 7 — Risk & Performance Indicators: every BudgetLine belongs to an
   // operational Company (level 2) under a sub-group (level 1) under FO Holding
   // (Organization). Nullable for backward compat; backfilled at 7.A end.
@@ -926,9 +922,10 @@ model COGSBudgetLine {
   plan           BudgetPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
   productLineId  String
   productLine    ProductLine     @relation(fields: [productLineId], references: [id], onDelete: Cascade)
-  accountCode    String? // "701-01-02"
-  accountId      String?
-  account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  // Phase 2.1 session 3 (2026-05-26) — `accountCode` String dropped;
+  // ChartOfAccount FK is the canonical account identifier.
+  accountId      String
+  account        ChartOfAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   year           Int
   month          Int
   productionQty  Float           @default(0)
@@ -986,10 +983,10 @@ model BalanceSheetLine {
   // Set by all adapters going forward; null = "unscoped / all-company".
   companyId      String?
   company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  accountCode    String
-  accountName    String
-  accountId      String?
-  account        ChartOfAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  // Phase 2.1 session 3 (2026-05-26) — `accountCode` + `accountName`
+  // dropped; ChartOfAccount FK is the canonical source for both.
+  accountId      String
+  account        ChartOfAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
   lineType       String // asset | liability | equity
   subType        String? // non_current | current (assets); long_term | short_term (liabilities)
   year           Int

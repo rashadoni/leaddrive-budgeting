@@ -49,11 +49,10 @@ interface IvForHash {
 interface BudgetLineForHash {
   planId: string;
   companyId: string | null;
-  accountId: string | null;
+  accountId: string;
   monthIndex: number | null;
   plannedAmount: number;
   lineType: string;
-  category: string;
 }
 
 function canonicalize<T>(items: T[], orderKeys: Array<keyof T>): string {
@@ -119,7 +118,6 @@ export async function computePeriodHashes(
       monthIndex: true,
       plannedAmount: true,
       lineType: true,
-      category: true,
     },
   });
   const blCanon: BudgetLineForHash[] = lines.map((bl) => ({
@@ -129,13 +127,12 @@ export async function computePeriodHashes(
     monthIndex: bl.monthIndex,
     plannedAmount: bl.plannedAmount,
     lineType: bl.lineType,
-    category: bl.category,
   }));
   const budgetHash = sha256(
     canonicalize<BudgetLineForHash>(blCanon, [
       "planId",
       "companyId",
-      "category",
+      "accountId",
       "monthIndex",
     ]),
   );

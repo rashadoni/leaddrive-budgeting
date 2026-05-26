@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (sourcePlan) {
-      const allSourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id } })
+      const allSourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
       const costModel = await loadAndCompute(orgId)
 
       // Filter source lines to only include months relevant to this plan period
@@ -186,8 +186,9 @@ export async function POST(req: NextRequest) {
         let plannedAmount = 0
 
         if (sl.lineType === "revenue") {
+          const slDisplayName = (sl as any).account?.name ?? (sl as any).account?.code ?? ""
           for (const [deptKey, category] of Object.entries(DEPT_CATEGORY_MAP)) {
-            if (sl.category === category) {
+            if (slDisplayName === category) {
               plannedAmount = forecastByDept[deptKey] ?? 0
               break
             }
@@ -209,15 +210,14 @@ export async function POST(req: NextRequest) {
 
         const created = await prisma.budgetLine.create({
           data: {
-            organizationId: orgId, planId: plan.id, category: sl.category,
+            organizationId: orgId, planId: plan.id,
             department: sl.department, lineType: sl.lineType,
             plannedAmount: Math.round(plannedAmount * 100) / 100,
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
-            // Phase 2.1 step 2 (Turn LI): pass through accountId FK so
-            // ChartOfAccount linkage survives the plan-clone path.
-            accountId: sl.accountId ?? null,
+            // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
+            accountId: sl.accountId,
             lineSubtype: sl.lineSubtype, parentId: null,
           },
         })
@@ -242,15 +242,14 @@ export async function POST(req: NextRequest) {
         const newParentId = sl.parentId ? idMapping.get(sl.parentId) ?? null : null
         await prisma.budgetLine.create({
           data: {
-            organizationId: orgId, planId: plan.id, category: sl.category,
+            organizationId: orgId, planId: plan.id,
             department: sl.department, lineType: sl.lineType,
             plannedAmount: Math.round(plannedAmount * 100) / 100,
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
             notes: sl.notes, sortOrder: sl.sortOrder,
-            // Phase 2.1 step 2 (Turn LI): same accountId pass-through
-            // for child rows.
-            accountId: sl.accountId ?? null,
+            // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
+            accountId: sl.accountId,
             lineSubtype: sl.lineSubtype, parentId: newParentId,
           },
         })

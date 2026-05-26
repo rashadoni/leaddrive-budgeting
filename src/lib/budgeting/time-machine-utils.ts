@@ -48,8 +48,8 @@ export function getChangedCells(
         changed.set(`line:${line.id}:${field}`, newVal > oldVal ? "increase" : "decrease")
       }
     }
-    if (prev.category !== line.category) {
-      changed.set(`line:${line.id}:category`, "other")
+    if ((prev.account?.code ?? prev.accountId) !== (line.account?.code ?? line.accountId)) {
+      changed.set(`line:${line.id}:account`, "other")
     }
   }
 

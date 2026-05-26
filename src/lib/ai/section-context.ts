@@ -102,7 +102,7 @@ async function computePL(
   for (const l of lines) {
     if (!leaf(l)) continue
     const code = l.account?.code ?? l.department ?? "other"
-    const name = l.account?.name ?? l.category ?? code
+    const name = l.account?.name ?? code
     const key = `${code}||${l.lineType}`
     const existing = byCode.get(key) ?? { code, name, total: 0, lineType: l.lineType }
     existing.total += l.plannedAmount

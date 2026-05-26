@@ -18,6 +18,10 @@ const { prismaMock } = vi.hoisted(() => ({
       updateMany: vi.fn(),
     },
     currencyRate: { findFirst: vi.fn() },
+    // Phase 2.1 session 3: resolveAccountId calls chartOfAccount.findUnique
+    // when the category looks like a SAP code (e.g. "601"). Always return a
+    // valid row so the route doesn't 422 before reaching the approval-bypass logic.
+    chartOfAccount: { findUnique: vi.fn().mockResolvedValue({ id: "coa_sales" }) },
     // Phase 5.2 Stage 2 — withOrgScope wraps budget_lines + budget_plans reads/writes.
     $transaction: vi.fn(
       async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
@@ -45,7 +49,10 @@ import { POST } from "./route"
 
 // Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
 const ORG_ID = "cm3rlslines00000001abc"
-const validBody = { planId: "p1", category: "Sales", lineType: "revenue", plannedAmount: 100 }
+// Phase 2.1 session 3: category must be a SAP-code-shaped string so that
+// resolveAccountId() queries chartOfAccount.findUnique (mocked above).
+// Free-text like "Sales" returns null immediately and the route 422s.
+const validBody = { planId: "p1", category: "601", lineType: "revenue", plannedAmount: 100 }
 
 beforeEach(() => {
   prismaMock.budgetLine.create.mockReset().mockResolvedValue({ id: "ln_new" })
@@ -60,6 +67,8 @@ beforeEach(() => {
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
   prismaMock.approvalRequest.findFirst.mockReset().mockResolvedValue(null)
   prismaMock.approvalRequest.updateMany.mockReset().mockResolvedValue({ count: 1 })
+  // Phase 2.1 session 3: always return a valid CoA row so resolveAccountId passes.
+  prismaMock.chartOfAccount.findUnique.mockReset().mockResolvedValue({ id: "coa_sales" })
 })
 
 describe("POST /api/budgeting/lines — approval-request bypass (Turn LXXII ⚠️ #3)", () => {

@@ -50,18 +50,21 @@ describe("GET /api/budgeting/plans/[id]/diff", () => {
 
   it("200 happy path: added / removed / changed / unchanged classification", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    // Phase 2.1 session 3: diff route now keys by `account.code`
+    // (not the dropped `category` String). Mock returns via the
+    // FK relation shape used by include: { account: { select: ... } }.
     prismaMock.budgetLine.findMany
       .mockResolvedValueOnce([
         // planA
-        { category: "Same", department: null, lineType: "expense", plannedAmount: 100 },
-        { category: "Removed", department: null, lineType: "expense", plannedAmount: 50 },
-        { category: "Changed", department: null, lineType: "expense", plannedAmount: 200 },
+        { account: { code: "Same" }, department: null, lineType: "expense", plannedAmount: 100 },
+        { account: { code: "Removed" }, department: null, lineType: "expense", plannedAmount: 50 },
+        { account: { code: "Changed" }, department: null, lineType: "expense", plannedAmount: 200 },
       ])
       .mockResolvedValueOnce([
         // planB
-        { category: "Same", department: null, lineType: "expense", plannedAmount: 100 },
-        { category: "Added", department: null, lineType: "expense", plannedAmount: 75 },
-        { category: "Changed", department: null, lineType: "expense", plannedAmount: 250 },
+        { account: { code: "Same" }, department: null, lineType: "expense", plannedAmount: 100 },
+        { account: { code: "Added" }, department: null, lineType: "expense", plannedAmount: 75 },
+        { account: { code: "Changed" }, department: null, lineType: "expense", plannedAmount: 250 },
       ])
 
     const res = await GET(
@@ -84,8 +87,8 @@ describe("GET /api/budgeting/plans/[id]/diff", () => {
   it("delta < 0.01 → unchanged (tolerance for IEEE-754 noise)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     prismaMock.budgetLine.findMany
-      .mockResolvedValueOnce([{ category: "X", department: null, lineType: "expense", plannedAmount: 100 }])
-      .mockResolvedValueOnce([{ category: "X", department: null, lineType: "expense", plannedAmount: 100.005 }])
+      .mockResolvedValueOnce([{ account: { code: "X" }, department: null, lineType: "expense", plannedAmount: 100 }])
+      .mockResolvedValueOnce([{ account: { code: "X" }, department: null, lineType: "expense", plannedAmount: 100.005 }])
     const res = await GET(
       makeRequest("/api/budgeting/plans/p1/diff?compareWith=p2"),
       makeParams("p1"),

@@ -73,6 +73,13 @@ import {
  */
 export interface ImportBatchRow {
   companyId: string
+  /**
+   * Phase 2.1 session 3 (2026-05-26) — `category` String field on the
+   * row carries a free-form display label used by orchestrator's
+   * reconciliation keys. NOT written to BudgetLine.category (column
+   * dropped); kept here only because adapters group expectedSums by
+   * this composite string.
+   */
   category: string
   lineType: string
   period: string
@@ -81,9 +88,13 @@ export interface ImportBatchRow {
   currencyCode: string | null
   exchangeRate: number | null
   planId: string
-  /** FK to ChartOfAccount. When set, P&L classification is exact
-   *  (uses account.accountType) — no regex heuristics needed. */
-  accountId?: string | null
+  /**
+   * Phase 2.1 session 3 — accountId is REQUIRED. AI Auto Import
+   * handlers resolve it via `resolveOrCreateAccountId` inside applyToDb
+   * before passing rows to runImportBatch. Legacy NULL path removed
+   * (column is NOT NULL since 20260526100000 migration).
+   */
+  accountId: string
   /** Free-form provenance — typically `Filename.xlsx#Sheet!A1:F123`. */
   sourceCell: string
 }
@@ -247,17 +258,18 @@ export async function runImportBatch(
 
       // Insert new rows. `createMany` is one round-trip per chunk; a
       // failure mid-chunk rolls back via the surrounding TX.
+      // Phase 2.1 session 3: `category` String dropped from BudgetLine
+      // schema; `accountId` is required NOT NULL.
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
         planId: r.planId,
         companyId: r.companyId,
-        category: r.category,
         lineType: r.lineType,
         plannedAmount: r.plannedAmount,
         currencyCode: r.currencyCode,
         exchangeRate: r.exchangeRate,
         monthIndex: r.monthIndex,
-        accountId: r.accountId ?? null,
+        accountId: r.accountId,
         sourceDocument: r.sourceCell,
       }))
       let inserted = 0
@@ -362,10 +374,10 @@ async function defaultReadActualSums(
     },
     select: {
       companyId: true,
-      category: true,
       plannedAmount: true,
       monthIndex: true,
       plan: { select: { year: true } },
+      account: { select: { code: true } },
     },
   })
   // We need entity CODE for the key but the rows carry companyId. Pull
@@ -394,7 +406,11 @@ async function defaultReadActualSums(
     ) {
       continue
     }
-    const key = buildReconKey(code, r.category, period)
+    // Phase 2.1 session 3: `category` column dropped; the recon key
+    // middle component is the raw account.code (PLF handler now writes
+    // the same value into ImportBatchRow.category — see Phase 2.1
+    // session 3 handler updates).
+    const key = buildReconKey(code, r.account.code, period)
     out.set(key, (out.get(key) ?? 0) + r.plannedAmount)
   }
   return out

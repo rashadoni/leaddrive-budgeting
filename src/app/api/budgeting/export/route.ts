@@ -116,7 +116,7 @@ export async function GET(req: NextRequest) {
 
   const [plan, lines, manualActuals, forecastEntries] = await Promise.all([
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId }, orderBy: { sortOrder: "asc" } }),
+    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId }, orderBy: { sortOrder: "asc" }, include: { account: { select: { code: true, name: true } } } }),
     prisma.budgetActual.findMany({ where: { planId, organizationId: orgId }, orderBy: { createdAt: "asc" } }),
     prisma.budgetForecastEntry.findMany({ where: { planId, organizationId: orgId }, orderBy: [{ year: "asc" }, { month: "asc" }] }),
   ])
@@ -173,7 +173,7 @@ export async function GET(req: NextRequest) {
       if ((line as any).isAutoActual && (line as any).costModelKey) {
         const monthlyAmount = resolveCostModelKey(costModel, (line as any).costModelKey)
         const amount = monthlyAmount * elapsedMonths
-        const key = `${(line as any).category}||${(line as any).lineType}`
+        const key = `${(line as any).account?.code ?? ""}||${(line as any).lineType}`
         autoActualByCategory.set(key, (autoActualByCategory.get(key) ?? 0) + amount)
         if ((line as any).lineType === "revenue") autoActualRevenue += amount
         else if ((line as any).lineType === "cogs") autoActualCOGS += amount
@@ -403,7 +403,7 @@ export async function GET(req: NextRequest) {
 
     for (const line of typedLines) {
       const l = line as any
-      const catKey = `${l.category}||${l.lineType}`
+      const catKey = `${l.account?.code ?? ""}||${l.lineType}`
       const actual = categoryActuals.get(catKey) ?? 0
       const planned = l.plannedAmount
       const forecast = l.forecastAmount ?? l.plannedAmount
@@ -416,7 +416,7 @@ export async function GET(req: NextRequest) {
       const status = variancePct > 5 ? "+ Savings" : variancePct < -5 ? "! Overspend" : "= On Track"
 
       const row = wsPFA.addRow({
-        category: l.category,
+        category: l.account?.name ?? l.account?.code ?? "",
         lineType: typeLabels[lineType],
         department: l.department || "General",
         planned,
@@ -630,7 +630,7 @@ export async function GET(req: NextRequest) {
       const l = line as any
       if (l.isAutoActual && l.costModelKey) {
         const dept = l.department || "General"
-        const key = `${l.category}||${l.lineType}`
+        const key = `${l.account?.code ?? ""}||${l.lineType}`
         const amount = autoActualByCategory.get(key) ?? 0
         const existing = deptMap.get(dept)!
         if (l.lineType === "revenue") existing.revActual += amount
@@ -710,11 +710,11 @@ export async function GET(req: NextRequest) {
     for (const line of lines) {
       const l = line as any
       if (l.isAutoActual && l.costModelKey) {
-        const catKey = `${l.category}||${l.lineType}`
+        const catKey = `${l.account?.code ?? ""}||${l.lineType}`
         const amount = autoActualByCategory.get(catKey) ?? 0
         if (amount > 0) {
           const row = wsActuals.addRow({
-            category: l.category,
+            category: l.account?.name ?? l.account?.code ?? "",
             department: l.department || "General",
             lineType: typeLabels[l.lineType] || l.lineType,
             amount,
@@ -772,7 +772,7 @@ export async function GET(req: NextRequest) {
   for (const line of lines) {
     const l = line as any
     const row = wsLines.addRow({
-      category: l.category,
+      category: l.account?.name ?? l.account?.code ?? "",
       lineType: typeLabels[l.lineType] || l.lineType,
       department: l.department || "General",
       planned: l.plannedAmount,

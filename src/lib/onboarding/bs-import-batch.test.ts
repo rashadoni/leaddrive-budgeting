@@ -15,11 +15,15 @@ import {
 import { buildReconKey, type ReconciliationKey } from "./reconciliation"
 import type { PrismaClient } from "@prisma/client"
 
+// Phase 2.1 session 3: accountCode + accountName columns dropped from
+// BalanceSheetLine. Test fake stores accountId; we derive a display
+// `accountCode` for reconciliation keys by stripping the `coa_` prefix
+// the R fixture uses (production reads via `select: { account: { code } }`,
+// mocked further down).
 interface FakeBsRow {
   organizationId: string
   planId: string
-  accountCode: string
-  accountName: string
+  accountId: string
   lineType: string
   subType: string | null
   year: number
@@ -28,6 +32,10 @@ interface FakeBsRow {
   notes: string | null
   deletedAt: Date | null
   deletedBy: string | null
+}
+
+function accountCodeFromId(accountId: string): string {
+  return accountId.startsWith("coa_") ? accountId.slice(4) : accountId
 }
 
 function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient & {
@@ -79,8 +87,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
           bs.push({
             organizationId: d.organizationId!,
             planId: d.planId!,
-            accountCode: d.accountCode!,
-            accountName: d.accountName!,
+            accountId: d.accountId!,
             lineType: d.lineType!,
             subType: d.subType ?? null,
             year: d.year!,
@@ -110,7 +117,10 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
           })
           .map((r) => ({
             planId: r.planId,
-            accountCode: r.accountCode,
+            // Phase 2.1 session 3: production read uses
+            // `select: { account: { code: true } }` via the FK; mock
+            // derives the code from the stored accountId.
+            account: { code: accountCodeFromId(r.accountId) },
             year: r.year,
             month: r.month,
             amount: r.amount,
@@ -129,7 +139,7 @@ const R = (
 ): BsImportRow => ({
   planId: "plan_2026",
   accountCode,
-  accountName: `Account ${accountCode}`,
+  accountId: `coa_${accountCode}`,
   lineType: "asset",
   subType: "current_asset",
   year: 2026,

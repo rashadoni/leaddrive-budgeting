@@ -17,12 +17,14 @@ export async function GET(req: NextRequest) {
   const entries = await prisma.cashFlowEntry.findMany({
     where: { organizationId: orgId, year },
     orderBy: [{ month: "asc" }],
+    include: { account: { select: { code: true, name: true } } },
   })
 
   let compareEntries: typeof entries = []
   if (compareYear) {
     compareEntries = await prisma.cashFlowEntry.findMany({
       where: { organizationId: orgId, year: parseInt(compareYear) },
+      include: { account: { select: { code: true, name: true } } },
     })
   }
 
@@ -41,14 +43,14 @@ export async function GET(req: NextRequest) {
 
     // Group by category
     const inflowByCategory: Record<string, number> = {}
-    inflows.forEach((e: CashFlowEntry) => {
-      const cat = e.category || e.source || "Other"
+    inflows.forEach((e: any) => {
+      const cat = e.account?.code ?? e.source ?? "Other"
       inflowByCategory[cat] = (inflowByCategory[cat] || 0) + e.amount
     })
 
     const outflowByCategory: Record<string, number> = {}
-    outflows.forEach((e: CashFlowEntry) => {
-      const cat = e.category || e.source || "Other"
+    outflows.forEach((e: any) => {
+      const cat = e.account?.code ?? e.source ?? "Other"
       outflowByCategory[cat] = (outflowByCategory[cat] || 0) + e.amount
     })
 

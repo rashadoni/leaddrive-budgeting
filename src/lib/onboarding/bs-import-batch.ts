@@ -53,17 +53,19 @@ export interface BsImportRow {
    * When null / undefined, the row is only accessible via plan-scoped reads.
    */
   companyId?: string | null
-  /** BS.XX.XX.XX leaf code. Used as the recon key part. */
-  accountCode: string
-  /** English label (what the file said). */
-  accountName: string
   /**
-   * Phase 2.1 session 1 (2026-05-26) — FK to ChartOfAccount. Caller
-   * resolves via `resolveOrCreateAccountId` before passing rows in.
-   * Null is the legacy fallback path that 100% of existing rows used;
-   * new imports always populate it.
+   * Phase 2.1 session 3 (2026-05-26) — accountCode + accountName String
+   * fields dropped from BalanceSheetLine schema. accountCode kept on the
+   * row interface ONLY because it's used to build reconciliation keys
+   * for cross-file conflict detection; never written to DB.
    */
-  accountId?: string | null
+  accountCode: string
+  /**
+   * Phase 2.1 session 3 — FK to ChartOfAccount. Required NOT NULL.
+   * Resolved via `resolveOrCreateAccountId` inside the BS handler's
+   * applyToDb before passing rows in.
+   */
+  accountId: string
   /** asset | liability | equity */
   lineType: string
   /** non_current | current (assets); long_term | short_term (liabilities) */
@@ -209,19 +211,13 @@ export async function runBalanceSheetBatch(
         )
       }
 
+      // Phase 2.1 session 3: accountCode + accountName columns dropped
+      // from BalanceSheetLine; accountId is required NOT NULL.
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
         planId: r.planId,
-        // Phase 7.O — pass companyId when available; null/undefined = omit
-        // (Prisma treats undefined as "don't set", which leaves the DB
-        // column NULL — correct for rows without explicit company scope).
         ...(r.companyId != null ? { companyId: r.companyId } : {}),
-        accountCode: r.accountCode,
-        accountName: r.accountName,
-        // Phase 2.1 session 1 — write the ChartOfAccount FK when caller
-        // populated it (via resolveOrCreateAccountId). Old callers that
-        // omit it stay backwards-compatible (column remains nullable).
-        ...(r.accountId != null ? { accountId: r.accountId } : {}),
+        accountId: r.accountId,
         lineType: r.lineType,
         subType: r.subType,
         year: r.year,
@@ -294,6 +290,8 @@ async function defaultReadActualBsSums(
     ),
   )
 
+  // Phase 2.1 session 3: accountCode column dropped from BalanceSheetLine;
+  // read via FK relation `account.code` instead.
   const rows = await prisma.balanceSheetLine.findMany({
     where: {
       organizationId: plan.organizationId,
@@ -303,7 +301,7 @@ async function defaultReadActualBsSums(
     },
     select: {
       planId: true,
-      accountCode: true,
+      account: { select: { code: true } },
       year: true,
       month: true,
       amount: true,
@@ -319,7 +317,7 @@ async function defaultReadActualBsSums(
     ) {
       continue
     }
-    const key = buildReconKey(r.planId, r.accountCode, period)
+    const key = buildReconKey(r.planId, r.account.code, period)
     out.set(key, (out.get(key) ?? 0) + r.amount)
   }
   return out

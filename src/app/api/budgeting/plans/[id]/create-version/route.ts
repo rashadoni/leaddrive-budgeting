@@ -18,7 +18,7 @@ export async function POST(
   // Find original plan
   const plan = await prisma.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
-    include: { lines: true },
+    include: { lines: { include: { account: { select: { code: true, name: true } } } } },
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
@@ -31,7 +31,6 @@ export async function POST(
   // Snapshot current plan state
   const snapshot = {
     lines: plan.lines.map((l: any) => ({
-      category: l.category,
       department: l.department,
       lineType: l.lineType,
       lineSubtype: l.lineSubtype,
@@ -82,7 +81,6 @@ export async function POST(
       data: {
         organizationId: orgId,
         planId: newPlan.id,
-        category: line.category,
         department: line.department,
         lineType: line.lineType,
         lineSubtype: line.lineSubtype,
@@ -95,15 +93,11 @@ export async function POST(
         departmentId: line.departmentId,
         notes: line.notes,
         sortOrder: line.sortOrder,
-        // Phase 7.G Turn XL architect Suggestion: pass through
-        // monthIndex on plan-version clone so monthly tagging survives
-        // versioning. Without this, a backfilled source row would lose
-        // its monthIndex on version-bump and revert to the legacy
-        // `sortOrder % 100` resolver path.
+        // Phase 7.G Turn XL architect Suggestion: pass through monthIndex
+        // on plan-version clone so monthly tagging survives versioning.
         monthIndex: line.monthIndex ?? null,
-        // Phase 2.1 step 2 (Turn LI): same accountId pass-through so
-        // ChartOfAccount linkage survives version-bump.
-        accountId: line.accountId ?? null,
+        // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
+        accountId: line.accountId,
         // parentId not cloned — hierarchy re-established separately if needed
       },
     })

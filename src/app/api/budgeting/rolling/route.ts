@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   })
 
   if (sourcePlan) {
-    const sourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id } })
+    const sourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
 
     // Clone parent lines first, then children with mapped parentId
     const parentLines = sourceLines.filter((sl: any) => !sl.parentId)
@@ -107,20 +107,17 @@ export async function POST(req: NextRequest) {
     for (const sl of parentLines) {
       const created = await prisma.budgetLine.create({
         data: {
-          organizationId: orgId, planId: plan.id, category: sl.category,
+          organizationId: orgId, planId: plan.id,
           department: sl.department, lineType: sl.lineType,
           plannedAmount: 0, costModelKey: sl.costModelKey,
           isAutoActual: false, isAutoPlanned: false,
           notes: sl.notes, sortOrder: sl.sortOrder,
           // Phase 7.G Turn XL architect Suggestion: pass through
           // monthIndex on rolling-forecast clone so monthly tagging
-          // survives the rolling roll-forward. Without this, a
-          // backfilled source row would lose its monthIndex on clone
-          // and revert to the legacy `sortOrder % 100` resolver path.
+          // survives the rolling roll-forward.
           monthIndex: sl.monthIndex ?? null,
-          // Phase 2.1 step 2 (Turn LI): same pass-through for accountId
-          // FK so ChartOfAccount linkage survives the roll-forward.
-          accountId: sl.accountId ?? null,
+          // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
+          accountId: sl.accountId,
           lineSubtype: sl.lineSubtype, parentId: null,
         },
       })
@@ -131,17 +128,15 @@ export async function POST(req: NextRequest) {
       const newParentId = sl.parentId ? idMapping.get(sl.parentId) ?? null : null
       await prisma.budgetLine.create({
         data: {
-          organizationId: orgId, planId: plan.id, category: sl.category,
+          organizationId: orgId, planId: plan.id,
           department: sl.department, lineType: sl.lineType,
           plannedAmount: sl.plannedAmount, costModelKey: sl.costModelKey,
           isAutoActual: false, isAutoPlanned: false,
           notes: sl.notes, sortOrder: sl.sortOrder,
-          // Phase 7.G Turn XL architect Suggestion: same pass-through
-          // for child rows.
+          // Phase 7.G Turn XL architect Suggestion: same pass-through for child rows.
           monthIndex: sl.monthIndex ?? null,
-          // Phase 2.1 step 2 (Turn LI): same accountId pass-through
-          // for child rows.
-          accountId: sl.accountId ?? null,
+          // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
+          accountId: sl.accountId,
           lineSubtype: sl.lineSubtype, parentId: newParentId,
         },
       })
@@ -151,16 +146,17 @@ export async function POST(req: NextRequest) {
   // Auto-populate: fill forecast entries from cost model for all 12 months
   try {
     const costModel = await loadAndCompute(orgId)
-    const lines = await prisma.budgetLine.findMany({ where: { planId: plan.id } })
+    const lines = await prisma.budgetLine.findMany({ where: { planId: plan.id }, include: { account: { select: { code: true, name: true } } } })
     const forecastEntries: any[] = []
 
     for (const line of lines) {
       let monthlyAmount = 0
 
       if (line.lineType === "revenue") {
-        // Find matching service revenue
+        // Find matching service revenue by account name (or code as fallback)
+        const lineDisplayName = (line as any).account?.name ?? (line as any).account?.code ?? ""
         for (const [svc, category] of Object.entries(SVC_REVENUE_MAP)) {
-          if (line.category === category) {
+          if (lineDisplayName === category) {
             monthlyAmount = (costModel.serviceRevenues as Record<string, number>)?.[svc] ?? 0
             break
           }
@@ -177,13 +173,16 @@ export async function POST(req: NextRequest) {
       }
 
       if (monthlyAmount > 0) {
+        // BudgetForecastEntry.category is a legacy string field that still exists —
+        // populate with account.code (canonical ID key) instead of the dropped BudgetLine.category.
+        const accountCode = (line as any).account?.code ?? ""
         for (const me of monthEntries) {
           forecastEntries.push({
             organizationId: orgId,
             planId: plan.id,
             year: me.year,
             month: me.month,
-            category: line.category,
+            category: accountCode,
             lineType: line.lineType,
             forecastAmount: Math.round(monthlyAmount * 100) / 100,
           })

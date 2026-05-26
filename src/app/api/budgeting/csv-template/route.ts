@@ -18,14 +18,14 @@ export async function GET(req: NextRequest) {
 
   const lines = await prisma.budgetLine.findMany({
     where: { planId, organizationId: orgId },
-    select: { category: true, department: true, lineType: true, plannedAmount: true },
-    orderBy: [{ lineType: "asc" }, { category: "asc" }, { department: "asc" }],
+    select: { department: true, lineType: true, plannedAmount: true, account: { select: { code: true, name: true } } },
+    orderBy: [{ lineType: "asc" }, { sortOrder: "asc" }, { department: "asc" }],
   })
 
   // Build CSV rows — one row per budget line with example data
   const header = "category,department,amount,date,description,lineType"
   const rows = lines.map((l: any) => {
-    const cat = csvEscape(l.category)
+    const cat = csvEscape(l.account?.code ?? "")
     const dept = csvEscape(l.department || "")
     const type = l.lineType || "expense"
     return `${cat},${dept},,YYYY-MM-DD,,${type}`

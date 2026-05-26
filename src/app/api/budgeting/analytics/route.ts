@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
         // pure helper handles the FALLBACK return; we just log here BEFORE
         // it does so there's a 1:1 log:fallback correspondence.
         console.warn(
-          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} category=${l.category} stored=${l.plannedAmount}`
+          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} accountCode=${(l as any).account?.code ?? ""} stored=${l.plannedAmount}`
         )
       }
       return computed
@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
       if (line.isAutoActual && line.costModelKey) {
         const monthlyAmount = resolveCostModelKey(costModel, line.costModelKey)
         const amount = monthlyAmount * elapsedMonths
-        const key = `${line.category}||${line.lineType}`
+        const key = `${(line as any).account?.code ?? ""}||${line.lineType}`
         autoActualByCategory.set(key, (autoActualByCategory.get(key) ?? 0) + amount)
         // Phase 3.1 v1.2 — attribute one monthlyAmount per elapsed month.
         const monthly = autoActualMonthlyByCategory.get(key) ?? Array(12).fill(0)
@@ -299,7 +299,7 @@ export async function GET(req: NextRequest) {
       // This is a parent line — register its children
       const children = lines.filter((c: any) => c.parentId === l.id)
       for (const c of children) {
-        parentLookup.set(`${c.category}||${c.lineType}`, l.category)
+        parentLookup.set(`${(c as any).account?.code ?? ""}||${c.lineType}`, (l as any).account?.code ?? "")
       }
     }
   }
@@ -316,8 +316,9 @@ export async function GET(req: NextRequest) {
   for (const l of lines) {
     if (!isLeaf(l)) continue
     const code = (l as any).account?.code ?? l.department ?? null
-    const key = `${code ?? l.category}||${l.lineType}`
-    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory: l.category, monthlyPlanned: Array(12).fill(0), monthlyActual: Array(12).fill(0) }
+    const key = `${code ?? ""}||${l.lineType}`
+    const displayCategory = (l as any).account?.name ?? (l as any).account?.code ?? ""
+    const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory, monthlyPlanned: Array(12).fill(0), monthlyActual: Array(12).fill(0) }
     const planned = getEffectivePlanned(l)
     existing.planned += planned
     existing.forecast += l.forecastAmount ?? planned
@@ -418,7 +419,7 @@ export async function GET(req: NextRequest) {
     if (l.account?.name) return l.account.name
     const d = l.department || ""
     if (d && !looksLikeSapCode(d)) return d
-    return l.category || "General"
+    return l.account?.name ?? l.account?.code ?? "General"
   }
 
   for (const l of lines) {
@@ -577,7 +578,7 @@ export async function GET(req: NextRequest) {
       const ct = (line as any).costType
       const dept = (line as any).budgetDept
       const ctKey = line.lineType === "revenue" ? "_revenue" : (ct?.key || "unknown")
-      const ctLabel = line.lineType === "revenue" ? "Revenue" : (ct?.label || line.category)
+      const ctLabel = line.lineType === "revenue" ? "Revenue" : (ct?.label || ((line as any).account?.name ?? (line as any).account?.code ?? ""))
       const cellKey = `${ctKey}||${dept?.key || "_shared"}`
 
       const existing = cellMap.get(cellKey) ?? {
@@ -605,10 +606,11 @@ export async function GET(req: NextRequest) {
         const monthlyAmount = resolveCostModelKey(costModel, line.costModelKey)
         existing.actual += monthlyAmount * elapsedMonths2
       } else if (!line.isAutoActual) {
-        // Manual actuals: look up from BudgetActual records by category+lineType
-        const catKey = `${line.category}||${line.lineType}`
+        // Manual actuals: look up from BudgetActual records by account.code+lineType
+        const lineAccountCode = (line as any).account?.code ?? ""
+        const catKey = `${lineAccountCode}||${line.lineType}`
         const manualAmount = autoActualByCategory.has(catKey) ? 0 : (manualActuals
-          .filter((a: any) => a.category === line.category && a.lineType === line.lineType)
+          .filter((a: any) => a.category === lineAccountCode && a.lineType === line.lineType)
           .reduce((s: number, a: any) => s + a.actualAmount, 0))
         existing.actual += manualAmount
       }

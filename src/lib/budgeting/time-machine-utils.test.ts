@@ -46,10 +46,12 @@ describe("getChangedCells", () => {
   })
 
   it("detects category rename → 'other' (semantic, neither up nor down)", () => {
-    const prev = [{ id: "l1", plannedAmount: 100, forecastAmount: 0, category: "Old Name" }]
-    const curr = [{ id: "l1", plannedAmount: 100, forecastAmount: 0, category: "New Name" }]
+    // Phase 2.1 session 3: category column dropped; reclassification is now
+    // detected by accountId change (CoA FK swap).
+    const prev = [{ id: "l1", plannedAmount: 100, forecastAmount: 0, accountId: "coa_old" }]
+    const curr = [{ id: "l1", plannedAmount: 100, forecastAmount: 0, accountId: "coa_new" }]
     const m = getChangedCells(prev, curr, [], [])
-    expect(m.get("line:l1:category")).toBe("other")
+    expect(m.get("line:l1:account")).toBe("other")
   })
 
   it("aggregates actuals per (category, lineType) and detects shifts", () => {

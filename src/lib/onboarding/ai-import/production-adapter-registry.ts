@@ -281,10 +281,11 @@ function makePlfHandler(
         const amount = line.perMonth[m]
         if (amount === 0) continue
         const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
-        const categoryCode = `${input.entityCode}-${line.code}`
         rows.push({
           companyId,
-          category: categoryCode,
+          // Phase 2.1 session 3: recon key middle is the raw line.code
+          // (CoA codes are org-wide; entity is the key's first arg).
+          category: line.code,
           lineType: line.accountType,
           period,
           monthIndex: m,
@@ -292,15 +293,11 @@ function makePlfHandler(
           currencyCode: "AZN",
           exchangeRate: null,
           planId: ctx.planId,
-          // accountId resolved in applyToDb via resolveOrCreateAccountId
-          accountId: null,
+          // Placeholder — overwritten in applyToDb via resolveOrCreateAccountId.
+          accountId: "",
           sourceCell: `multi-import#${input.sheetName}!${line.code}@${period}`,
         })
-        const key = buildReconKey(
-          input.entityCode,
-          `${input.entityCode}-${line.code}`,
-          period,
-        )
+        const key = buildReconKey(input.entityCode, line.code, period)
         expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
       }
     }
@@ -358,12 +355,15 @@ function makePlfHandler(
         // TS doesn't lose the narrowing across the awaited upsert.
         const entityCode = input.entityCode ?? ""
         const resolvedRows: ImportBatchRow[] = rows.map((r) => {
-          // Recover the original line.code from the entity-prefixed
-          // category string (PLF rows are written as `${entity}-${code}`).
-          const lineCode = r.category.startsWith(`${entityCode}-`)
-            ? r.category.slice(entityCode.length + 1)
-            : r.category
-          return { ...r, accountId: accountIdByLineCode.get(lineCode) ?? null }
+          // Phase 2.1 session 3: row.category IS the raw line.code (no
+          // entity prefix anymore — see row.push above).
+          const accountId = accountIdByLineCode.get(r.category)
+          if (!accountId) {
+            throw new Error(
+              `[PLF] accountId not resolved for lineCode="${r.category}" — upsert pass missed it`,
+            )
+          }
+          return { ...r, accountId }
         })
         const result = await runImportBatch(tx, {
           organizationId: ctx.organizationId,
@@ -438,8 +438,8 @@ function makeBsHandler(
           planId: ctx.planId,
           companyId: companyId ?? null, // Phase 7.O — company scope for resolver queries
           accountCode: `${input.entityCode}-${line.code}`,
-          accountName: line.label,
-          // accountId resolved in applyToDb via resolveOrCreateAccountId
+          // Placeholder — overwritten in applyToDb resolution map.
+          accountId: "",
           lineType: line.lineType,
           subType: line.subType,
           year: input.year,
@@ -502,10 +502,13 @@ function makeBsHandler(
           const lineCode = r.accountCode.startsWith(`${entityCode}-`)
             ? r.accountCode.slice(entityCode.length + 1)
             : r.accountCode
-          return {
-            ...r,
-            accountId: accountIdByLineCode.get(lineCode) ?? null,
+          const accountId = accountIdByLineCode.get(lineCode)
+          if (!accountId) {
+            throw new Error(
+              `[BS] accountId not resolved for lineCode="${lineCode}"`,
+            )
           }
+          return { ...r, accountId }
         })
         const result = await runBalanceSheetBatch(tx, {
           organizationId: ctx.organizationId,
@@ -579,7 +582,8 @@ function makeCfHandler(
           entityCode: input.entityCode,
           cfCode: entry.code,
           category: `${input.entityCode}-${entry.code}`,
-          // accountId resolved in applyToDb
+          // Placeholder — overwritten in applyToDb resolution map.
+          accountId: "",
           activityType: entry.activityType,
           entryType: entry.entryType,
           year: input.year,
@@ -633,10 +637,15 @@ function makeCfHandler(
           })
           accountIdByCfCode.set(spec.code, id)
         }
-        const resolvedRows: CfImportRow[] = rows.map((r) => ({
-          ...r,
-          accountId: accountIdByCfCode.get(r.cfCode) ?? null,
-        }))
+        const resolvedRows: CfImportRow[] = rows.map((r) => {
+          const accountId = accountIdByCfCode.get(r.cfCode)
+          if (!accountId) {
+            throw new Error(
+              `[CF] accountId not resolved for cfCode="${r.cfCode}"`,
+            )
+          }
+          return { ...r, accountId }
+        })
         const result = await runCashFlowBatch(tx, {
           organizationId: ctx.organizationId,
           label: `WB CF ${input.entityCode} ${input.year}`,
