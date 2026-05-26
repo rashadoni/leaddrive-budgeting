@@ -48,20 +48,24 @@ export const SAP_CODE_FULL = /^\d{3}(-\d+)*$/
 /** Cost account: 7xx- prefix (e.g. `703-`, `711-`, `721-`). */
 export const COST_ACCOUNT_PREFIX = /^7\d{2}-/
 
-/** Predicate: is the string SAP-code-shaped (loose)? */
+/**
+ * Predicate: is the string SAP-code-shaped (loose)?
+ *
+ * Phase 2.1 session 3 (2026-05-26) — still consumed by BudgetActual
+ * aggregation in `pnl/route.ts:resolveActualKey` because BudgetActual
+ * does not yet have a ChartOfAccount FK (out-of-Phase-2.1 scope).
+ */
 export function looksLikeCode(s: string): boolean {
   return SAP_CODE_PREFIX.test(s)
 }
 
-/** Predicate: is the string a fully-shaped SAP code? */
-export function looksLikeSapCode(s: string): boolean {
-  return SAP_CODE_FULL.test(s)
-}
-
-/** Predicate: does the string start with a 7xx- cost-account prefix? */
-export function looksLikeCostAccount(s: string): boolean {
-  return COST_ACCOUNT_PREFIX.test(s)
-}
+// Phase 2.1 session 3 — `looksLikeSapCode` + `looksLikeCostAccount`
+// retired. Last consumers (`pnl/route.ts` legacy branch + analytics
+// `resolveDept` fallback + import-excel cost-account regex) removed
+// in this session because all ledger rows now carry a NOT NULL
+// ChartOfAccount FK; SAP-shape heuristics are obsolete. Re-export
+// SAP_CODE_FULL + COST_ACCOUNT_PREFIX above stays in case admin UI
+// validation needs them later.
 
 // ─── AZ section-header content matchers ─────────────────────────────
 // All values are lowercased. Callers do `cellText.toLowerCase().includes(X)`.

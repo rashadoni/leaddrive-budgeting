@@ -3,7 +3,6 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey, resolvePatternForDept, getPeriodMonths, computePlannedForLine } from "@/lib/budgeting/cost-model-map"
-import { looksLikeSapCode } from "@/lib/import/keywords"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
@@ -409,17 +408,13 @@ export async function GET(req: NextRequest) {
     return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual: val.monthlyActual }
   })
 
-  // By department — track expense and revenue separately for correct variance
-  // If department field looks like a SAP code, fall back to category (which holds the name after import refactor)
+  // By department — track expense and revenue separately for correct variance.
+  // Phase 2.1 session 3: accountId NOT NULL + include:account guarantees
+  // l.account is always set; looksLikeSapCode fallback retired.
   const deptMap = new Map<string, { expPlanned: number; expActual: number; revPlanned: number; revActual: number; forecast: number }>()
-  // Turn LXV — `looksLikeSapCode` from shared `@/lib/import/keywords` catalog.
 
   const resolveDept = (l: any): string => {
-    // Prefer canonical account name when FK is populated (Phase 2.1).
-    if (l.account?.name) return l.account.name
-    const d = l.department || ""
-    if (d && !looksLikeSapCode(d)) return d
-    return l.account?.name ?? l.account?.code ?? "General"
+    return l.account?.name ?? l.account?.code ?? l.department ?? "General"
   }
 
   for (const l of lines) {

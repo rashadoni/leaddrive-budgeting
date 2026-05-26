@@ -172,29 +172,11 @@ export async function GET(req: NextRequest) {
     // Preferred path: the FK to Chart of Accounts is set, so use canonical
     // code + name from there. Everything else is fallback for legacy rows
     // imported before Phase 2.1.
-    let code: string
-    let name: string
-    if (bl.account) {
-      code = bl.account.code
-      name = bl.account.name
-    } else {
-      // Legacy rows: after the Phase 0 import refactor we flipped the fields,
-      // so department holds the code — detect by shape.
-      const maybeCode = bl.department || ""
-      const maybeName = bl.account?.name ?? bl.account?.code ?? ""
-      // Turn LXV — `looksLikeCode` extracted to `@/lib/import/keywords`
-      // (inline lambda was duplicated at line 283 below + analytics route).
-      code = looksLikeCode(maybeCode) ? maybeCode : (looksLikeCode(maybeName) ? maybeName : maybeCode || "other")
-      name = code === maybeCode ? (maybeName || code) : (maybeCode || code)
-    }
-    // When code falls back to "other" (non-SAP category like PLF codes),
-    // include lineType + raw category in the key so revenue/cogs/expense
-    // lines don't collapse into one "other::other" bucket and steal each
-    // other's type (e.g. PLF revenue being misclassified as expense because
-    // an expense line with the same "other" key was processed first).
-    const mapKey = (code === "other")
-      ? `other::${bl.lineType}::${bl.account?.code ?? bl.department ?? "unknown"}`
-      : `${code}::${name}`
+    // Phase 2.1 session 3: bl.account is guaranteed by NOT NULL FK +
+    // the include above. The looksLikeCode fallback branch is dead.
+    const code = bl.account.code
+    const name = bl.account.name
+    const mapKey = `${code}::${name}`
 
     if (!accountMap.has(mapKey)) {
       let accountType = bl.account?.accountType ?? "expense"

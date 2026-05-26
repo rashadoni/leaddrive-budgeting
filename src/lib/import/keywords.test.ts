@@ -13,8 +13,6 @@ import {
   SAP_CODE_FULL,
   COST_ACCOUNT_PREFIX,
   looksLikeCode,
-  looksLikeSapCode,
-  looksLikeCostAccount,
   HEADER_COST_CENTER_LOWER,
   HEADER_NON_RAW_MATERIAL_PREFIX_LOWER,
   HEADER_RAW_MATERIAL_PREFIX_LOWER,
@@ -64,10 +62,6 @@ describe("SAP_CODE_FULL (full shape with optional dash-segments)", () => {
     expect(SAP_CODE_FULL.test("12")).toBe(false) // 2-digit
   })
 
-  it("looksLikeSapCode wrapper matches regex", () => {
-    expect(looksLikeSapCode("703-1")).toBe(true)
-    expect(looksLikeSapCode("Salary")).toBe(false)
-  })
 })
 
 describe("COST_ACCOUNT_PREFIX (7xx- specifically)", () => {
@@ -87,10 +81,6 @@ describe("COST_ACCOUNT_PREFIX (7xx- specifically)", () => {
     expect(COST_ACCOUNT_PREFIX.test("711abc")).toBe(false)
   })
 
-  it("looksLikeCostAccount wrapper", () => {
-    expect(looksLikeCostAccount("703-1")).toBe(true)
-    expect(looksLikeCostAccount("601-2")).toBe(false)
-  })
 })
 
 describe("AZ section-header content matchers (lowercased)", () => {
