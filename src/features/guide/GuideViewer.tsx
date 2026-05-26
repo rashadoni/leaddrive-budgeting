@@ -285,7 +285,11 @@ export function GuideViewer({ markdown, lang }: GuideViewerProps) {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    // -m-8 negates the dashboard layout's <main> padding (p-8) so the
+    // sticky header below can extend edge-to-edge of the scroll
+    // container. Without this, content scrolls UP into the 32px
+    // padding-top gap above the sticky header and shows through.
+    <div className="-m-8 min-h-screen bg-background">
       {/* Print-only styles. Hides sidebar/nav for clean PDF export. */}
       <style jsx global>{`
         @media print {
