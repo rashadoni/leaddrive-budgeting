@@ -53,11 +53,9 @@ URL: **`http://localhost:3000/login`** (dev) or your production domain.
 
 ![Login](guide/screenshots/01-login.png)
 
-**Default credentials for test environment:**
-- Email: `admin@budgetpro.com`
-- Password: `Admin123!`
+Credentials are issued by your system administrator. If you are the administrator and just deployed the stand — the password lives in `scripts/create-admin.ts` or your deployment secrets.
 
-> ⚠️ After first client connection — rotate password mandatory (Phase 0.1 ROADMAP).
+> 🔒 Passwords are not published in public documentation.
 
 ### 2.2 Side navigation
 
@@ -508,7 +506,7 @@ Cached on (orgId, period) — one call per hour maximum.
 Go through this list **now**, clicking in the live application. If something doesn't match — there's a bug somewhere, fix needs to be queued.
 
 ### Basic navigation
-- [ ] `/login` → log in with `admin@budgetpro.com` / `Admin123!` → redirect to `/budgeting`
+- [ ] `/login` → log in with admin credentials → redirect to `/budgeting`
 - [ ] Sidebar shows 6 items: Budgeting / Risk Terminal / Board Deck / Onboarding / Audit Log / Admin Tools + Settings
 - [ ] Theme switcher (sun/moon) in top right corner works
 

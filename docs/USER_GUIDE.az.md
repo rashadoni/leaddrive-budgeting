@@ -53,11 +53,9 @@ URL: **`http://localhost:3000/login`** (dev) və ya sizin production domeniniz.
 
 ![Login](guide/screenshots/01-login.png)
 
-**Test stendi üçün defolt məlumatlar:**
-- Email: `admin@budgetpro.com`
-- Password: `Admin123!`
+Kredensiyalar sistem administratoru tərəfindən verilir. Əgər siz administratorsunuz və stendi indicə deploy etmisiniz — şifrə `scripts/create-admin.ts` faylında və ya deploy gizliləri arasındadır.
 
-> ⚠️ İlk müştəri qoşulduqdan sonra — mütləq şifrəni dəyişdirin (Phase 0.1 ROADMAP).
+> 🔒 Şifrələr açıq sənədlərdə dərc edilmir.
 
 ### 2.2 Yan naviqasiya
 
@@ -508,7 +506,7 @@ Qeyd edin — tövsiyə #3 Risk Registry səhifəsindən `subsidy_dependency` ri
 **İndi** canlı tətbiqdə klikləyərək bu siyahıdan keçin. Əgər nəsə uyğun gəlmirsə — hardasa səhv var, düzəlişi növbəyə qoymaq lazımdır.
 
 ### Əsas naviqasiya
-- [ ] `/login` → `admin@budgetpro.com` / `Admin123!` ilə daxil olun → `/budgeting`-ə yönləndirmə
+- [ ] `/login` → admin kredensiyaları ilə daxil olun → `/budgeting`-ə yönləndirmə
 - [ ] Sidebar 6 bənd göstərir: Budgeting / Risk Terminal / Board Deck / Onboarding / Audit Log / Admin Tools + Settings
 - [ ] Tema keçidi (günəş/ay) sağ yuxarı küncdə işləyir
 
