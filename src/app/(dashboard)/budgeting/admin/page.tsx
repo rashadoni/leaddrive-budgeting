@@ -156,7 +156,7 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
       {
         href: "/budgeting/admin/companies",
         title: "Company Settings",
-        desc: "Per-company settings (region, industry, hectaresPlanted, processingCapacityTonsYr, …).",
+        desc: "Role/status (pending→active, operational/holding) + per-company industry settings (region, hectaresPlanted, processingCapacityTonsYr, …).",
         icon: Building2,
       },
       {
