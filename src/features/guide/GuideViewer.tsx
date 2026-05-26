@@ -34,14 +34,81 @@ import {
   ExternalLink,
 } from "lucide-react";
 
+export type GuideLanguage = "en" | "ru" | "az";
+
 interface GuideViewerProps {
   markdown: string;
+  lang: GuideLanguage;
 }
+
+const LANG_META: Record<GuideLanguage, { label: string; flag: string }> = {
+  en: { label: "EN", flag: "English" },
+  ru: { label: "RU", flag: "Русский" },
+  az: { label: "AZ", flag: "Azərbaycan" },
+};
+
+const I18N = {
+  en: {
+    title: "User Guide",
+    progress: "checked",
+    reset: "reset",
+    print: "Print / PDF",
+    toc: "Contents",
+    openTerminal: "Open Risk Terminal",
+    openBoardDeck: "Open Board Deck",
+    openAdmin: "Open Admin Tools",
+    sourceNote: (file: string, script: string) => (
+      <>
+        Source: <code>{file}</code>. Screenshots regenerated via{" "}
+        <code>{script}</code>. Checklist state lives in your browser (
+        <code>localStorage</code>) — never sent to the server.
+      </>
+    ),
+  },
+  ru: {
+    title: "Руководство пользователя",
+    progress: "проверено",
+    reset: "сброс",
+    print: "Печать / PDF",
+    toc: "Содержание",
+    openTerminal: "Открыть Risk Terminal",
+    openBoardDeck: "Открыть Board Deck",
+    openAdmin: "Открыть Admin Tools",
+    sourceNote: (file: string, script: string) => (
+      <>
+        Источник: <code>{file}</code>. Скриншоты переснимаются через{" "}
+        <code>{script}</code>. Состояние чек-листа хранится в локальном
+        браузере (<code>localStorage</code>) и не уходит на сервер.
+      </>
+    ),
+  },
+  az: {
+    title: "İstifadəçi Təlimatı",
+    progress: "yoxlanıldı",
+    reset: "sıfırla",
+    print: "Çap / PDF",
+    toc: "Mündəricat",
+    openTerminal: "Risk Terminal-ı aç",
+    openBoardDeck: "Board Deck-i aç",
+    openAdmin: "Admin Tools aç",
+    sourceNote: (file: string, script: string) => (
+      <>
+        Mənbə: <code>{file}</code>. Skrinşotlar{" "}
+        <code>{script}</code> ilə yenilənir. Yoxlama siyahısının vəziyyəti
+        brauzerinizdə saxlanılır (<code>localStorage</code>) — heç vaxt
+        serverə göndərilmir.
+      </>
+    ),
+  },
+};
 
 interface TocItem {
   level: 2 | 3;
   text: string;
   slug: string;
+  /** 1-indexed line number in the markdown source. Used by the renderer
+   *  to map each heading back to its dedup'd slug via hast `position`. */
+  sourceLine?: number;
 }
 
 /** GitHub-style slugifier — keeps Cyrillic, strips emojis + punctuation. */
@@ -61,23 +128,47 @@ function slugify(text: string): string {
  *  hero. Skipping H4+ to keep the TOC scannable.
  *
  *  Code blocks are stripped first so a `## comment` inside a fenced
- *  block doesn't pollute the TOC. */
+ *  block doesn't pollute the TOC.
+ *
+ *  Slugs are deduplicated with `-2`, `-3`, ... suffixes so multiple
+ *  headings with the same text (e.g. several "Что проверить" H3s)
+ *  produce unique anchors — required for valid HTML + stable React
+ *  keys.
+ */
 function extractToc(md: string): TocItem[] {
-  const withoutCodeBlocks = md.replace(/```[\s\S]*?```/g, "");
+  // Strip code blocks but PRESERVE line numbers (replace fence content
+  // with empty lines) so heading line numbers stay accurate.
+  const withoutCodeBlocks = md.replace(/```[\s\S]*?```/g, (block) =>
+    block
+      .split(/\r?\n/)
+      .map(() => "")
+      .join("\n"),
+  );
   const lines = withoutCodeBlocks.split(/\r?\n/);
   const out: TocItem[] = [];
-  for (const line of lines) {
+  const seen = new Map<string, number>();
+  lines.forEach((line, idx) => {
     const m = /^(#{2,3})\s+(.+?)\s*$/.exec(line);
-    if (!m) continue;
+    if (!m) return;
     const level = m[1].length === 2 ? 2 : 3;
     const text = m[2].replace(/^[\d.\s]+/, "").trim();
-    out.push({ level: level as 2 | 3, text, slug: slugify(m[2]) });
-  }
+    const baseSlug = slugify(m[2]);
+    const seenCount = seen.get(baseSlug) ?? 0;
+    const slug = seenCount === 0 ? baseSlug : `${baseSlug}-${seenCount + 1}`;
+    seen.set(baseSlug, seenCount + 1);
+    out.push({
+      level: level as 2 | 3,
+      text,
+      slug,
+      sourceLine: idx + 1, // 1-indexed to match hast position.start.line
+    });
+  });
   return out;
 }
 
-export function GuideViewer({ markdown }: GuideViewerProps) {
+export function GuideViewer({ markdown, lang }: GuideViewerProps) {
   const toc = useMemo(() => extractToc(markdown), [markdown]);
+  const t = I18N[lang];
 
   // Active section tracking via IntersectionObserver
   const [activeSlug, setActiveSlug] = useState<string>("");
@@ -127,7 +218,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem("guide:checks");
+      const raw = localStorage.getItem(`guide:checks:${lang}`);
       if (raw) setCheckedSet(new Set(JSON.parse(raw)));
     } catch {
       /* localStorage disabled — silent */
@@ -140,7 +231,10 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
       if (next.has(lineIdx)) next.delete(lineIdx);
       else next.add(lineIdx);
       try {
-        localStorage.setItem("guide:checks", JSON.stringify([...next]));
+        localStorage.setItem(
+          `guide:checks:${lang}`,
+          JSON.stringify([...next]),
+        );
       } catch {
         /* silent */
       }
@@ -151,7 +245,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
   const resetChecks = () => {
     setCheckedSet(new Set());
     try {
-      localStorage.removeItem("guide:checks");
+      localStorage.removeItem(`guide:checks:${lang}`);
     } catch {
       /* silent */
     }
@@ -168,9 +262,16 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
   // Memoize the rendered markdown so React doesn't recreate the whole
   // ReactMarkdown tree on every state change (which would blow away
   // the custom checkboxes our useEffect mutates into the DOM).
+  //
+  // Pass the TOC directly — the renderer walks H2/H3 occurrences in
+  // markdown source order and assigns the matching toc[idx].slug to
+  // each heading's `id`. This sidesteps text-based lookup (which broke
+  // when ReactMarkdown internally re-invoked heading components,
+  // double-bumping a per-render counter and collapsing 3 distinct
+  // "Что проверить" H3s onto the same `что-проверить-3` id).
   const renderedMarkdown = useMemo(
-    () => <RenderedGuideMarkdown markdown={markdown} />,
-    [markdown],
+    () => <RenderedGuideMarkdown markdown={markdown} toc={toc} />,
+    [markdown, toc],
   );
 
   // DOM post-processor: transform every `<li class="task-list-item">`
@@ -311,12 +412,37 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
                 BudgetPro
               </div>
               <h1 className="font-serif text-lg tracking-tight text-foreground truncate">
-                Руководство пользователя
+                {t.title}
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
+            {/* Language switcher */}
+            <div
+              role="group"
+              aria-label="Language"
+              className="inline-flex items-center rounded-md border border-border/60 bg-card p-0.5 text-[11px]"
+            >
+              {(["en", "ru", "az"] as const).map((code) => {
+                const isActive = lang === code;
+                return (
+                  <a
+                    key={code}
+                    href={`/guide?lang=${code}`}
+                    title={LANG_META[code].flag}
+                    className={`px-2 py-1 rounded transition-colors font-medium ${
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {LANG_META[code].label}
+                  </a>
+                );
+              })}
+            </div>
+
             {totalChecks > 0 && (
               <div className="hidden sm:flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs">
                 <CheckCircle2
@@ -329,14 +455,14 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
                 <span className="font-mono tabular-nums text-foreground">
                   {checkedCount}/{totalChecks}
                 </span>
-                <span className="text-muted-foreground">проверено</span>
+                <span className="text-muted-foreground">{t.progress}</span>
                 {checkedCount > 0 && (
                   <button
                     type="button"
                     onClick={resetChecks}
                     className="ml-1 text-[10px] text-muted-foreground/70 hover:text-foreground transition-colors"
                   >
-                    сброс
+                    {t.reset}
                   </button>
                 )}
               </div>
@@ -347,7 +473,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
               className="inline-flex items-center gap-2 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
             >
               <Printer className="h-4 w-4" />
-              <span>Печать / PDF</span>
+              <span>{t.print}</span>
             </button>
           </div>
         </div>
@@ -369,14 +495,14 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
         <aside data-guide-toc className="hidden lg:block">
           <nav className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pr-2">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80 mb-3">
-              Содержание
+              {t.toc}
             </div>
             <ul className="space-y-1 text-sm">
-              {toc.map((item) => {
+              {toc.map((item, idx) => {
                 const isActive = activeSlug === item.slug;
                 return (
                   <li
-                    key={`${item.slug}-${item.level}`}
+                    key={`toc-${idx}-${item.slug}`}
                     className={item.level === 3 ? "pl-3" : ""}
                   >
                     <a
@@ -405,7 +531,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ExternalLink className="h-3 w-3" />
-                Открыть Risk Terminal
+                {t.openTerminal}
               </a>
               <a
                 href="/budgeting/board-deck?period=2026"
@@ -414,7 +540,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ExternalLink className="h-3 w-3" />
-                Открыть Board Deck
+                {t.openBoardDeck}
               </a>
               <a
                 href="/budgeting/admin"
@@ -423,7 +549,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
                 className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ExternalLink className="h-3 w-3" />
-                Открыть Admin Tools
+                {t.openAdmin}
               </a>
             </div>
           </nav>
@@ -439,11 +565,10 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
 
           <div className="mt-16 border-t border-border/40 pt-8 text-xs text-muted-foreground">
             <p>
-              Источник: <code>docs/USER_GUIDE.md</code>. Скриншоты
-              переснимаются через{" "}
-              <code>node scripts/capture-guide-screenshots.mjs</code>.
-              Состояние чек-листа хранится в локальном браузере (
-              <code>localStorage</code>) и не уходит на сервер.
+              {t.sourceNote(
+                `docs/USER_GUIDE.${lang}.md`,
+                "node scripts/capture-guide-screenshots.mjs",
+              )}
             </p>
           </div>
         </main>
@@ -460,9 +585,32 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
  */
 const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
   markdown,
+  toc,
 }: {
   markdown: string;
+  toc: TocItem[];
 }) {
+  // react-markdown v10 passes the hast `node` to each component with
+  // `position.start.line` (1-indexed line in source). Map every TOC
+  // line to its dedup'd slug so duplicate-text headings still get
+  // distinct anchors. Counter-based approaches don't work here because
+  // ReactMarkdown can invoke heading components multiple times during
+  // a single render (StrictMode double-invoke + concurrent rendering)
+  // and the only stable identity is source position.
+  const lineToSlug = new Map<number, string>();
+  for (const item of toc) {
+    if (item.sourceLine != null) lineToSlug.set(item.sourceLine, item.slug);
+  }
+  const slugForNode = (node: unknown, fallback: string): string => {
+    const line = (
+      node as { position?: { start?: { line?: number } } } | undefined
+    )?.position?.start?.line;
+    if (line != null) {
+      const found = lineToSlug.get(line);
+      if (found) return found;
+    }
+    return fallback;
+  };
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -478,22 +626,24 @@ const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
             </h1>
           );
         },
-        h2: ({ children }) => {
+        h2: ({ children, ...rest }) => {
           const text = String(children);
+          const node = (rest as { node?: unknown }).node;
           return (
             <h2
-              id={slugify(text)}
+              id={slugForNode(node, slugify(text))}
               className="font-serif text-2xl tracking-tight text-foreground mt-14 mb-4 pt-4 border-t border-border/40 scroll-mt-24"
             >
               {children}
             </h2>
           );
         },
-        h3: ({ children }) => {
+        h3: ({ children, ...rest }) => {
           const text = String(children);
+          const node = (rest as { node?: unknown }).node;
           return (
             <h3
-              id={slugify(text)}
+              id={slugForNode(node, slugify(text))}
               className="font-serif text-xl tracking-tight text-foreground mt-10 mb-3 scroll-mt-24"
             >
               {children}
