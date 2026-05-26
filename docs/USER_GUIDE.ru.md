@@ -53,7 +53,7 @@
 
 URL: **`http://localhost:3000/login`** (dev) или ваш production-домен.
 
-![Login](guide/screenshots/01-login.png)
+![Login](guide/screenshots/01-login.webp)
 
 Креды выдаёт администратор системы. Если вы тот самый администратор и только что развернули стенд — пароль из `scripts/create-admin.ts` или из секретов вашего деплоя.
 
@@ -79,7 +79,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/terminal`
 
-![Risk Terminal](guide/screenshots/02-terminal.png)
+![Risk Terminal](guide/screenshots/02-terminal.webp)
 
 Это **главный экран**. Открываете утром — всё нужное здесь.
 
@@ -131,7 +131,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/board-deck?period=2026`
 
-![Board Deck](guide/screenshots/03-board-deck.png)
+![Board Deck](guide/screenshots/03-board-deck.webp)
 
 **Цель:** одностраничный документ для совета директоров. Открываете → читаете → нажимаете «Print to PDF» → отправляете в чат.
 
@@ -144,7 +144,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 ### Скриншот секции качественных рисков (низ страницы)
 
-![Board Deck Risk Flags](guide/screenshots/14-board-deck-risk-flags.png)
+![Board Deck Risk Flags](guide/screenshots/14-board-deck-risk-flags.webp)
 
 Здесь видно:
 - **AZSEKER-EDEN** Eden Agro — `Subsidy dependency`
@@ -165,7 +165,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting`
 
-![Budgeting](guide/screenshots/04-budgeting.png)
+![Budgeting](guide/screenshots/04-budgeting.webp)
 
 **Это «обычный» FP&A workspace** — то, что финансист делал в Excel, теперь делает здесь.
 
@@ -208,7 +208,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/onboarding`
 
-![Onboarding](guide/screenshots/11-onboarding.png)
+![Onboarding](guide/screenshots/11-onboarding.webp)
 
 **Цель:** показать прогресс ввода данных по каждой компании холдинга и помочь добить «пустые» секции.
 
@@ -237,7 +237,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/admin`
 
-![Admin Tools landing](guide/screenshots/05-admin-landing.png)
+![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
 
 **Это «инженерная панель»** — что использовать **перед клиентским демо** и для повседневной поддержки.
 
@@ -273,7 +273,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/admin/indicator-health`
 
-![Indicator Health](guide/screenshots/09-indicator-health.png)
+![Indicator Health](guide/screenshots/09-indicator-health.webp)
 
 **Сверху:** счётчики
 - 🟢 GREEN: 258 (21.5%)
@@ -302,7 +302,7 @@ URL: **`http://localhost:3000/login`** (dev) или ваш production-домен
 
 **URL:** `/budgeting/admin/companies-readiness`
 
-![Companies Readiness](guide/screenshots/08-companies-readiness.png)
+![Companies Readiness](guide/screenshots/08-companies-readiness.webp)
 
 Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty / FX tags / Strategic narrative.
 
@@ -345,7 +345,7 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 **URL:** `/budgeting/admin/data-archive`
 
-![Data Archive](guide/screenshots/10-data-archive.png)
+![Data Archive](guide/screenshots/10-data-archive.webp)
 
 **Зачем:** ошиблись с импортом → нужно убрать строки из расчёта, **но не удалять физически** для IFRS-аудита.
 
@@ -368,7 +368,7 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 **URL:** `/budgeting/admin/ai-import`
 
-![AI Auto Import](guide/screenshots/06-ai-import.png)
+![AI Auto Import](guide/screenshots/06-ai-import.webp)
 
 **Это убийца ручного маппинга.** До Phase 7.M Tier 7 каждый новый xlsx требовал кода. Теперь:
 
@@ -405,7 +405,7 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 **URL:** `/budgeting/admin/companies` → раздел **«Настройки компаний»** → expand карточку компании
 
-![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.png)
+![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
 
 **Это самая свежая фича (Phase 7.N, май 2026).** Качественные финансово-операционные риски, которые HeatMap количественно не показывает.
 
@@ -567,7 +567,7 @@ Three new indicators, питаются от файлов клиента (`Follow
 
 **Где:** Risk Terminal → клик на ячейку HeatMap → кнопка `Explain →`
 
-![Variance Explainer](guide/screenshots/13-variance-explainer.png)
+![Variance Explainer](guide/screenshots/13-variance-explainer.webp)
 
 **Что делает:** narrative (1-3 предложения) + 3 actionable recommendations + список TOP DRIVERS.
 
@@ -603,7 +603,7 @@ Three new indicators, питаются от файлов клиента (`Follow
 
 **URL:** `/budgeting/audit`
 
-![Audit Log](guide/screenshots/12-audit-log.png)
+![Audit Log](guide/screenshots/12-audit-log.webp)
 
 **Цель:** IFRS-совместимый журнал всех значимых изменений. Хранится 365 дней.
 
