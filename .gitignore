@@ -77,3 +77,4 @@ tmp/
 graphify-out/
 budgetpro-backup-*.sql
 .claude/skills/*/scripts/__pycache__/
+.claude/worktrees/
