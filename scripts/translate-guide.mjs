@@ -90,6 +90,10 @@ async function translate(target) {
 
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
+    // Default request timeout is 10 min, but AZ translation of the
+    // ~12K-token guide can push 6+ min — bump to 15 min as headroom.
+    timeout: 15 * 60 * 1000,
+    maxRetries: 1,
   });
 
   const systemPrompt = SYSTEM_PROMPT.replace(
@@ -98,7 +102,16 @@ async function translate(target) {
   ).replace("{{target_note}}", meta.note);
 
   const t0 = Date.now();
-  const response = await client.messages.create({
+
+  // Use streaming for long outputs (AZ translation can take 6+ min and
+  // hits server-side timeout in non-streaming mode). Stream events
+  // include incremental text deltas; we accumulate them.
+  let translated = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let stopReason = null;
+
+  const stream = await client.messages.stream({
     model: MODEL,
     max_tokens: 16_000,
     system: systemPrompt,
@@ -109,24 +122,30 @@ async function translate(target) {
       },
     ],
   });
-  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 
-  const block = response.content.find((b) => b.type === "text");
-  if (!block || !("text" in block)) {
-    throw new Error("No text block in response");
+  for await (const event of stream) {
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
+      translated += event.delta.text;
+    } else if (event.type === "message_delta") {
+      if (event.usage) outputTokens = event.usage.output_tokens;
+      if (event.delta?.stop_reason) stopReason = event.delta.stop_reason;
+    } else if (event.type === "message_start") {
+      inputTokens = event.message.usage?.input_tokens ?? 0;
+    }
   }
-  const translated = block.text.trim();
+
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+  translated = translated.trim();
 
   await writeFile(meta.file, translated + "\n", "utf8");
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
   console.log(
     `  ✓ ${meta.file}  ${translated.length} chars · ${inputTokens} in / ${outputTokens} out tokens · ${elapsed}s`,
   );
-  if (response.stop_reason !== "end_turn") {
-    console.warn(
-      `  ⚠ stop_reason="${response.stop_reason}" — output may be truncated`,
-    );
+  if (stopReason && stopReason !== "end_turn") {
+    console.warn(`  ⚠ stop_reason="${stopReason}" — output may be truncated`);
   }
 }
 

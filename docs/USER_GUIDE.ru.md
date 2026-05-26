@@ -17,6 +17,7 @@
 7. [Admin Tools — 16 инструментов в 4 группах](#7-admin-tools--16-инструментов-в-4-группах)
 8. [AI Auto Import — импорт любого Excel](#8-ai-auto-import--импорт-любого-excel)
 9. [Risk Registry — качественные флаги риска](#9-risk-registry--качественные-флаги-риска)
+   - [9.1 Compliance & Legal — реальные индикаторы](#91-compliance--legal--реальные-индикаторы-из-аудит-отчётов-и-судов)
 10. [AI функции — что, где, сколько стоит](#10-ai-функции--что-где-сколько-стоит)
 11. [Журнал аудита](#11-журнал-аудита)
 12. [Чек-лист самопроверки](#12-чек-лист-самопроверки)
@@ -418,6 +419,39 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 ---
 
+## 9.1 Compliance & Legal — реальные индикаторы из аудит-отчётов и судов
+
+**Где:** Risk Terminal → HeatMap (3 новые колонки) + Board Deck → секция «Compliance»
+
+Three new indicators, питаются от файлов клиента (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
+
+| Code | Что меряет | Зелёный | Янтарный | Красный |
+|---|---|---|---|---|
+| `AUDIT_CLOSED_PCT` | % закрытых аудит-замечаний (PBC) | ≥ 80% | 60–79% | < 60% |
+| `AUDIT_MAJOR_OPEN` | Открытых **Major** аудит-находок | ≤ 1 | 2–5 | > 5 |
+| `LEGAL_CASES_ACTIVE` | Активных судебных дел | ≤ 2 | 3–9 | ≥ 10 |
+
+### Что сейчас в БД (live)
+
+| Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
+|---|---|---|---|
+| **AZSEKER-AZSF** | 🔴 51% | 🔴 6 | 🔴 29 |
+| **AZSEKER-CPC** | 🔴 39% | 🟡 3 | 🟡 7 |
+| **AZSEKER-EDEN** | ⚪ нет данных | ⚪ нет данных | 🟡 4 |
+| MALT / FARM / HORIZON / PROMALT | ⚪ нет данных в файлах клиента | | |
+
+### Откуда берётся
+
+- **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — внутренний аудит-журнал клиента: 218 находок (Major / Minor / Observation / OFI). AZSF = 159 находок (51% закрыто, 6 Major open). CPC = 59 находок (39% закрыто, 3 Major open). Полный список доступен через `Company.settings.auditFindings` для drill-down.
+- **LEGAL_CASES_ACTIVE** — реестр открытых судебных дел: 54 кейса. AZSF — ответчик в 26 (29 открытых). CPC — ответчик в 7 (8 открытых). EDEN — только истец (4 открытых). Полный реестр в `Company.settings.courtDisputes`.
+
+### Что проверить
+- В HeatMap появились 3 новые колонки (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
+- Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
+- Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
+
+---
+
 ## 10. AI функции — что, где, сколько стоит
 
 Все LLM-вызовы идут на **Anthropic Claude** через серверный API (cost mode + retry policy).
@@ -570,6 +604,13 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 - [ ] Внутри карточки EDEN — секция **Risk Registry** с 8 категориями
 - [ ] Категории: Regulatory & compliance / Financial / Operational / Strategic / ESG / Market / Cyber / Reputational
 - [ ] Серьёзность отображена дотами `● ● ●` (emerald / amber / rose)
+
+### Compliance & Legal (`/budgeting/terminal` HeatMap)
+- [ ] В HeatMap есть колонки `AUDIT_CLOSED_PCT`, `AUDIT_MAJOR_OPEN`, `LEGAL_CASES_ACTIVE`
+- [ ] AZSF — все 3 ячейки **красные** (51% closed / 6 Major / 29 cases)
+- [ ] CPC — `AUDIT_CLOSED_PCT` 🔴, `AUDIT_MAJOR_OPEN` 🟡, `LEGAL_CASES_ACTIVE` 🟡
+- [ ] EDEN — `LEGAL_CASES_ACTIVE` 🟡 (4 кейса, все как истец)
+- [ ] Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer цитирует Major findings
 
 ### Audit Log (`/budgeting/audit`)
 - [ ] Таблица событий, новые сверху
