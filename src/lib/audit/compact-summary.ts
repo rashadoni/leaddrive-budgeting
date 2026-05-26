@@ -48,7 +48,9 @@ export interface AuditSummary {
 export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
   const m = e.metadata;
   switch (e.action) {
-    case 'company_role_change': {
+    case 'company_role_change':
+    case 'company_status_change':
+    case 'company_industry_change': {
       const code = stringField(m, 'companyCode');
       const from = stringField(m, 'from');
       const to = stringField(m, 'to');

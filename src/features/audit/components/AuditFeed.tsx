@@ -69,6 +69,10 @@ const ALL_ACTIONS = [
   "data_restore",
   // Phase 1.4 — BullMQ soft-delete physical-purge cron.
   "soft_delete_purge",
+  // Truth-Infra Phase C.1 — admin manually changed Company.status.
+  "company_status_change",
+  // Truth-Infra Phase C.2 — admin reclassified Company.industry.
+  "company_industry_change",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.
