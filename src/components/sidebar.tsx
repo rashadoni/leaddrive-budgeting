@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Building2,
   Sparkles,
+  BookText,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -71,6 +72,11 @@ const navItems: NavItem[] = [
   // (Period Locks, Approvals, Indicator Health, etc.) — this top-level
   // link is the discovery surface ("где все админ-тулзы?").
   { href: "/budgeting/admin", icon: Settings, label: "Admin Tools", minRole: "admin" },
+  // 2026-05-26 — In-app User Guide. Reads docs/USER_GUIDE.md, renders
+  // beautifully with sticky TOC + persistent verification checklist.
+  // Shipped after Phase 7.N riskTags wiring so the client can walk
+  // through the system cold.
+  { href: "/guide", icon: BookText, label: "Руководство" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
