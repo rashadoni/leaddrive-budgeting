@@ -10,6 +10,10 @@
  * Truth-infra Phase C.1 (2026-05-26): extended to support `status` field
  * alongside `role`. Either or both may be present in a single PATCH; at
  * least one must be present.
+ *
+ * Truth-infra Phase C.2 (2026-05-26): extended to support `industry` field.
+ * `industry` may be any of the 14 known industry codes OR `null` (to clear
+ * the field for level-1 sub-group placeholders).
  */
 
 export type CompanyRoleValue = 'operational' | 'admin' | 'holding';
@@ -27,9 +31,33 @@ const VALID_STATUSES: ReadonlySet<CompanyStatusValue> = new Set([
   'archived',
 ]);
 
+/**
+ * All 14 known industry codes — mirrors indicator-seeds.ts VALID_INDUSTRIES list.
+ * A string not in this set would violate the `Industry.code` FK constraint at
+ * the DB level, so rejecting here gives a useful 400 rather than a 500.
+ */
+export const VALID_INDUSTRIES: ReadonlySet<string> = new Set([
+  'agro_crops',
+  'beverage',
+  'construction',
+  'education',
+  'entertainment',
+  'food_processing',
+  'hospitality',
+  'industrial',
+  'logistics',
+  'pharma',
+  'poultry',
+  'real_estate',
+  'retail',
+  'services',
+]);
+
 export interface ParsedPatchBody {
   role?: CompanyRoleValue;
   status?: CompanyStatusValue;
+  /** `undefined` = not in body (no-op). `null` = explicitly clear to NULL. */
+  industry?: string | null;
 }
 
 /**
@@ -87,10 +115,25 @@ export function parsePatchBody(
     out.status = s as CompanyStatusValue;
   }
 
+  if ('industry' in obj) {
+    const i = obj.industry;
+    if (i === null) {
+      // Explicitly clear the industry (level-1 sub-group placeholder).
+      out.industry = null;
+    } else if (typeof i !== 'string' || !VALID_INDUSTRIES.has(i)) {
+      return {
+        ok: false,
+        error: `industry must be null or one of: ${[...VALID_INDUSTRIES].sort().join(', ')}`,
+      };
+    } else {
+      out.industry = i;
+    }
+  }
+
   if (Object.keys(out).length === 0) {
     return {
       ok: false,
-      error: 'No supported fields in body (expected: role, status)',
+      error: 'No supported fields in body (expected: role, status, industry)',
     };
   }
   return { ok: true, value: out };

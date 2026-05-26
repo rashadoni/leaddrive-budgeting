@@ -44,13 +44,14 @@ const { prismaMock } = vi.hoisted(() => ({
   },
 }));
 
-// Shared company fixture with both role AND status fields.
-// Tests that only care about one field can override the other.
+// Shared company fixture with role, status, and industry fields.
+// Tests that only care about a subset can override the rest.
 const BASE_COMPANY = {
   id: '',      // set per describe block
   code: 'AAC',
   role: 'operational' as const,
   status: 'active' as const,
+  industry: 'agro_crops' as string | null,
 };
 
 vi.mock('@/lib/auth', () => ({
@@ -414,5 +415,162 @@ describe('PATCH /api/companies/[id] — handler', () => {
     expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
     expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
     consoleErr.mockRestore();
+  });
+
+  // ─── Industry field (Truth-Infra Phase C.2) ──────────────────────────────
+
+  it('emits company_industry_change audit event on real industry change', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'agro_crops',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'retail',
+    });
+    prismaMock.auditEvent.create.mockResolvedValue({ id: 'audit_3' });
+
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { industry: 'retail' },
+      headers: { 'user-agent': 'TestRunner/1.0' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: COMPANY_ID, industry: 'retail' });
+
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
+    const auditCall = prismaMock.auditEvent.create.mock.calls[0][0];
+    expect(auditCall.data.action).toBe('company_industry_change');
+    expect(auditCall.data.entityType).toBe('Company');
+    expect(auditCall.data.entityId).toBe(COMPANY_ID);
+    expect(auditCall.data.organizationId).toBe(ORG_ID);
+    expect(auditCall.data.actorUserId).toBe('u_admin');
+    expect(auditCall.data.metadata).toEqual({
+      from: 'agro_crops',
+      to: 'retail',
+      companyCode: 'AAC',
+    });
+    expect(auditCall.data.context).toMatchObject({
+      route: '/api/companies/[id]',
+      userAgent: 'TestRunner/1.0',
+    });
+  });
+
+  it('returns 200 + skips update + skips audit on same-industry no-op', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'agro_crops',
+    });
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { industry: 'agro_crops' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    expect(prismaMock.company.update).not.toHaveBeenCalled();
+    expect(prismaMock.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('accepts industry: null to clear the field and emits audit with to: null', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: 'agro_crops',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'active',
+      industry: null,
+    });
+    prismaMock.auditEvent.create.mockResolvedValue({ id: 'audit_4' });
+
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { industry: null },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ id: COMPANY_ID, industry: null });
+
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    const updateCall = prismaMock.company.update.mock.calls[0][0];
+    expect(updateCall.data).toEqual({ industry: null });
+
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(1);
+    const auditCall = prismaMock.auditEvent.create.mock.calls[0][0];
+    expect(auditCall.data.action).toBe('company_industry_change');
+    expect(auditCall.data.metadata).toEqual({
+      from: 'agro_crops',
+      to: null,
+      companyCode: 'AAC',
+    });
+  });
+
+  it('emits all three audit events when role + status + industry all change in one request', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_admin', role: 'admin' });
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'operational',
+      status: 'pending',
+      industry: 'agro_crops',
+    });
+    prismaMock.company.update.mockResolvedValue({
+      id: COMPANY_ID,
+      code: 'AAC',
+      role: 'admin',
+      status: 'active',
+      industry: 'retail',
+    });
+    prismaMock.auditEvent.create
+      .mockResolvedValueOnce({ id: 'audit_role' })
+      .mockResolvedValueOnce({ id: 'audit_status' })
+      .mockResolvedValueOnce({ id: 'audit_industry' });
+
+    const req = makeRequest(`/api/companies/${COMPANY_ID}`, {
+      method: 'PATCH',
+      json: { role: 'admin', status: 'active', industry: 'retail' },
+    });
+    const res = await PATCH(req, paramsFor(COMPANY_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      id: COMPANY_ID,
+      role: 'admin',
+      status: 'active',
+      industry: 'retail',
+    });
+
+    // Single DB write with all three fields.
+    expect(prismaMock.company.update).toHaveBeenCalledTimes(1);
+    // Three separate audit events — one per changed field.
+    expect(prismaMock.auditEvent.create).toHaveBeenCalledTimes(3);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const actions = (prismaMock.auditEvent.create.mock.calls as any[][]).map(
+      (c) => c[0].data.action as string,
+    );
+    expect(actions).toContain('company_role_change');
+    expect(actions).toContain('company_status_change');
+    expect(actions).toContain('company_industry_change');
   });
 });

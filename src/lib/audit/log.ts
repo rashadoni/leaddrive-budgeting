@@ -69,6 +69,22 @@ export type AuditEventInput =
       };
     }
   | {
+      // Truth-infra Phase C.2 — admin reclassified a company's industry
+      // via PATCH /api/companies/[id] { industry }. Industry drives the
+      // indicator pack that runs for this company; correcting a wrong
+      // classification changes the composite-score calculation.
+      // Both from and to are nullable because industry is optional
+      // (null for level-1 sub-group placeholders).
+      action: 'company_industry_change';
+      entityType: 'Company';
+      entityId: string;
+      metadata: {
+        from: string | null;
+        to: string | null;
+        companyCode: string;
+      };
+    }
+  | {
       action: 'budget_plan_create';
       entityType: 'BudgetPlan';
       entityId: string;

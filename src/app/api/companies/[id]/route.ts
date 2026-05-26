@@ -1,8 +1,8 @@
 /**
- * PATCH /api/companies/[id] — company role + status management.
+ * PATCH /api/companies/[id] — company role / status / industry management.
  *
- * Supports two independent mutations in a single PATCH; either or both
- * fields may be present:
+ * Supports three independent mutations in a single PATCH; any combination
+ * of the three fields may be present:
  *
  *   { role: "operational"|"admin"|"holding" }
  *     → changes CompanyRole (Phase 7.E scoring toggle). Emits
@@ -13,13 +13,17 @@
  *       override of the onboarding-readiness gate). Emits
  *       `company_status_change` audit event.
  *
- * Either or both fields may be included in a single request body; an
- * empty body (no recognised fields) returns 400.
+ *   { industry: "<code>" | null }
+ *     → reclassifies Company.industry (Truth-infra Phase C.2 — industry
+ *       drives which indicator pack runs and which settings form shows).
+ *       `null` clears the field (for level-1 sub-group placeholders).
+ *       Emits `company_industry_change` audit event.
  *
- * Auth: admin-only. Both mutations reshape the holding view:
- *   - role flip removes admin/holding rows from the operational HeatMap.
- *   - status flip hides/shows the company in the terminal (matrix filters
- *     out `status='pending'` by default).
+ * Any combination of the three is valid; an empty body (no recognised
+ * fields) returns 400. Same-value PATCH for each field is a true no-op:
+ * no DB write, no audit event for that field.
+ *
+ * Auth: admin-only. All three mutations reshape the holding view.
  *
  * Rate-limit: keyed on userId at 10/min — interactive single-row clicks.
  *
@@ -76,7 +80,7 @@ export async function PATCH(
   // leak existence of cross-tenant ids.
   const existing = await prisma.company.findFirst({
     where: { id, organizationId: session.orgId },
-    select: { id: true, code: true, role: true, status: true },
+    select: { id: true, code: true, role: true, status: true, industry: true },
   });
   if (!existing) {
     return NextResponse.json({ error: 'Company not found' }, { status: 404 });
@@ -85,21 +89,32 @@ export async function PATCH(
   // Compute which fields actually changed to skip true no-ops.
   const roleChanged = parsed.value.role != null && parsed.value.role !== existing.role;
   const statusChanged = parsed.value.status != null && parsed.value.status !== existing.status;
+  // `industry` uses `!== undefined` because `null` is a valid new value (clear).
+  const industryChanged =
+    parsed.value.industry !== undefined &&
+    parsed.value.industry !== existing.industry;
 
-  if (!roleChanged && !statusChanged) {
+  if (!roleChanged && !statusChanged && !industryChanged) {
     // Complete no-op: same values submitted. Skip DB write AND audit.
-    return NextResponse.json({ id: existing.id, code: existing.code, role: existing.role, status: existing.status });
+    return NextResponse.json({
+      id: existing.id,
+      code: existing.code,
+      role: existing.role,
+      status: existing.status,
+      industry: existing.industry,
+    });
   }
 
   // Build the update data from changed fields only.
-  const updateData: { role?: string; status?: string } = {};
+  const updateData: { role?: string; status?: string; industry?: string | null } = {};
   if (roleChanged) updateData.role = parsed.value.role;
   if (statusChanged) updateData.status = parsed.value.status;
+  if (industryChanged) updateData.industry = parsed.value.industry;
 
   const updated = await prisma.company.update({
     where: { id: existing.id },
     data: updateData,
-    select: { id: true, code: true, role: true, status: true },
+    select: { id: true, code: true, role: true, status: true, industry: true },
   });
 
   // Best-effort audit emission for each changed field.
@@ -161,6 +176,27 @@ export async function PATCH(
       });
       if (!auditResult.ok) auditStale = true;
     }
+  }
+
+  if (industryChanged) {
+    // No schema-drift guard needed: industry is a plain string (nullable),
+    // not a Prisma enum, so there is no union/enum divergence to guard against.
+    const auditResult = await logAuditEvent(prisma, {
+      organizationId: session.orgId,
+      actorUserId: session.userId,
+      event: {
+        action: 'company_industry_change',
+        entityType: 'Company',
+        entityId: existing.id,
+        metadata: {
+          from: existing.industry,
+          to: parsed.value.industry ?? null,
+          companyCode: existing.code,
+        },
+      },
+      context: auditCtx,
+    });
+    if (!auditResult.ok) auditStale = true;
   }
 
   return NextResponse.json(auditStale ? { ...updated, auditStale } : updated);

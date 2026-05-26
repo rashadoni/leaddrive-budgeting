@@ -213,4 +213,54 @@ describe("CompanyManagementAdmin", () => {
     render(<CompanyManagementAdmin />)
     expect(screen.getByText(/Network error/i)).toBeTruthy()
   })
+
+  // ─── Industry select (Truth-Infra Phase C.2) ────────────────────────────────
+
+  it("renders industry select for admin users", () => {
+    render(<CompanyManagementAdmin />)
+    // Admins get a combobox for every editable field including industry.
+    expect(
+      screen.getByRole("combobox", { name: /industry for AZSF/i }),
+    ).toBeTruthy()
+    expect(
+      screen.getByRole("combobox", { name: /industry for EDEN/i }),
+    ).toBeTruthy()
+  })
+
+  it("calls PATCH with industry payload on industry select change", async () => {
+    render(<CompanyManagementAdmin />)
+
+    const industrySelect = screen.getByRole("combobox", {
+      name: /industry for AZSF/i,
+    }) as HTMLSelectElement
+
+    fireEvent.change(industrySelect, { target: { value: "retail" } })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/companies/co_1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ industry: "retail" }),
+      }),
+    )
+  })
+
+  it("sends industry: null when empty option selected (clears the field)", async () => {
+    render(<CompanyManagementAdmin />)
+
+    const industrySelect = screen.getByRole("combobox", {
+      name: /industry for AZSF/i,
+    }) as HTMLSelectElement
+
+    // Selecting the "—" option (value="") should map to `industry: null` in the PATCH body.
+    fireEvent.change(industrySelect, { target: { value: "" } })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/companies/co_1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ industry: null }),
+      }),
+    )
+  })
 })

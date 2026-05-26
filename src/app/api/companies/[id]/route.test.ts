@@ -64,6 +64,42 @@ describe('parsePatchBody — status field', () => {
   });
 });
 
+describe('parsePatchBody — industry field', () => {
+  it('accepts each of the 14 known industry codes', () => {
+    const CODES = [
+      'agro_crops', 'beverage', 'construction', 'education', 'entertainment',
+      'food_processing', 'hospitality', 'industrial', 'logistics', 'pharma',
+      'poultry', 'real_estate', 'retail', 'services',
+    ];
+    for (const industry of CODES) {
+      const out = parsePatchBody({ industry });
+      expect(out.ok).toBe(true);
+      if (out.ok) expect(out.value.industry).toBe(industry);
+    }
+  });
+
+  it('accepts null to explicitly clear the industry field', () => {
+    const out = parsePatchBody({ industry: null });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.value.industry).toBeNull();
+  });
+
+  it('rejects unknown industry codes', () => {
+    const r1 = parsePatchBody({ industry: 'healthcare' }); // not in VALID_INDUSTRIES
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.error).toMatch(/industry must be null or one of/);
+
+    const r2 = parsePatchBody({ industry: 'Retail' }); // capital letter — wrong
+    expect(r2.ok).toBe(false);
+  });
+
+  it('rejects non-string, non-null industry values', () => {
+    expect(parsePatchBody({ industry: 42 }).ok).toBe(false);
+    expect(parsePatchBody({ industry: true }).ok).toBe(false);
+    expect(parsePatchBody({ industry: {} }).ok).toBe(false);
+  });
+});
+
 describe('parsePatchBody — combined fields', () => {
   it('accepts role + status together', () => {
     const out = parsePatchBody({ role: 'admin', status: 'active' });
@@ -74,10 +110,20 @@ describe('parsePatchBody — combined fields', () => {
     }
   });
 
+  it('accepts role + status + industry together', () => {
+    const out = parsePatchBody({ role: 'holding', status: 'active', industry: 'retail' });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.value.role).toBe('holding');
+      expect(out.value.status).toBe('active');
+      expect(out.value.industry).toBe('retail');
+    }
+  });
+
   it('rejects empty body (no recognised fields)', () => {
     const out = parsePatchBody({});
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.error).toMatch(/expected: role, status/);
+    if (!out.ok) expect(out.error).toMatch(/expected: role, status, industry/);
   });
 
   it('rejects body with only unknown fields', () => {
@@ -95,5 +141,11 @@ describe('parsePatchBody — combined fields', () => {
     const out = parsePatchBody({ role: 'admin', status: 'deleted' });
     expect(out.ok).toBe(false);
     if (!out.ok) expect(out.error).toMatch(/pending, active, archived/);
+  });
+
+  it('rejects invalid industry even when valid role and status present', () => {
+    const out = parsePatchBody({ role: 'admin', status: 'active', industry: 'unknown_sector' });
+    expect(out.ok).toBe(false);
+    if (!out.ok) expect(out.error).toMatch(/industry must be null or one of/);
   });
 });

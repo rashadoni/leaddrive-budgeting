@@ -1,20 +1,23 @@
 "use client"
 
 /**
- * Truth-Infra Phase C.1 (2026-05-26) — Admin UI for Company role + status.
+ * Truth-Infra Phase C.2 (2026-05-26) — Admin UI for Company role, status, and industry.
  *
- * Surfaces the two fields managed by `PATCH /api/companies/[id]`:
+ * Surfaces the three fields managed by `PATCH /api/companies/[id]`:
  *
- *   • role   (operational | admin | holding) — affects HeatMap visibility and
- *             composite scoring (admin/holding rows excluded from operational view)
- *   • status (pending | active | archived)   — onboarding gate; matrix filters
- *             out pending companies by default
+ *   • role     (operational | admin | holding) — affects HeatMap visibility and
+ *               composite scoring (admin/holding rows excluded from operational view)
+ *   • status   (pending | active | archived)   — onboarding gate; matrix filters
+ *               out pending companies by default
+ *   • industry (<code> | null)                 — drives which indicator pack runs
+ *               and which settings form is shown; null clears the field for
+ *               level-1 sub-group placeholders
  *
  * Each row has independent save state so bulk edits don't block one another.
  * Optimistic update: select fires immediately, PATCH runs in background; error
  * rolls back the cell and shows an inline message.
  *
- * Auth: admin-only writes (enforced by the API); viewers see read-only selects.
+ * Auth: admin-only writes (enforced by the API); viewers see read-only badges.
  */
 
 import { useState, useMemo, useCallback } from "react"
@@ -72,6 +75,27 @@ const ROLE_PALETTE: Record<CompanyRoleValue, string> = {
   holding:     "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
 }
 
+/**
+ * All 14 known industry codes (mirrors validate.ts VALID_INDUSTRIES).
+ * The empty-string option is used as the "clear" sentinel (→ API receives null).
+ */
+const INDUSTRY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "agro_crops",     label: "Agro / Crops" },
+  { value: "beverage",       label: "Beverage" },
+  { value: "construction",   label: "Construction" },
+  { value: "education",      label: "Education" },
+  { value: "entertainment",  label: "Entertainment" },
+  { value: "food_processing",label: "Food Processing" },
+  { value: "hospitality",    label: "Hospitality" },
+  { value: "industrial",     label: "Industrial" },
+  { value: "logistics",      label: "Logistics" },
+  { value: "pharma",         label: "Pharma" },
+  { value: "poultry",        label: "Poultry" },
+  { value: "real_estate",    label: "Real Estate" },
+  { value: "retail",         label: "Retail" },
+  { value: "services",       label: "Services" },
+]
+
 // ─── Data fetching ─────────────────────────────────────────────────────────
 
 function flattenCompanies(raw: CompanyRow[]): CompanyRow[] {
@@ -103,7 +127,7 @@ async function fetchCompanies(orgId: string): Promise<CompanyRow[]> {
 
 async function patchCompany(
   id: string,
-  body: { role?: CompanyRoleValue; status?: CompanyStatusValue },
+  body: { role?: CompanyRoleValue; status?: CompanyStatusValue; industry?: string | null },
 ): Promise<void> {
   const res = await fetch(`/api/companies/${id}`, {
     method: "PATCH",
@@ -138,15 +162,21 @@ export function CompanyManagementAdmin() {
   const [overrides, setOverrides] = useState<Record<string, string>>({})
 
   const getField = useCallback(
-    (c: CompanyRow, field: "role" | "status"): string =>
-      overrides[`${c.id}:${field}`] ?? c[field],
+    (c: CompanyRow, field: "role" | "status" | "industry"): string => {
+      const key = `${c.id}:${field}`
+      if (key in overrides) return overrides[key]
+      // `industry` is nullable; coerce null → "" so it round-trips through
+      // the select `value` prop correctly (the "—" option has value="").
+      if (field === "industry") return c.industry ?? ""
+      return c[field]
+    },
     [overrides],
   )
 
   const handleChange = useCallback(
     async (
       id: string,
-      field: "role" | "status",
+      field: "role" | "status" | "industry",
       newValue: string,
       oldValue: string,
     ) => {
@@ -154,8 +184,12 @@ export function CompanyManagementAdmin() {
       setOverrides((prev) => ({ ...prev, [`${id}:${field}`]: newValue }))
       setSaveStates((prev) => ({ ...prev, [id]: { kind: "saving" } }))
 
+      // For industry: empty string in the select means "clear to null" in the API.
+      const patchValue: string | null =
+        field === "industry" && newValue === "" ? null : newValue
+
       try {
-        await patchCompany(id, { [field]: newValue } as Parameters<typeof patchCompany>[1])
+        await patchCompany(id, { [field]: patchValue } as Parameters<typeof patchCompany>[1])
         setSaveStates((prev) => ({ ...prev, [id]: { kind: "saved" } }))
         // Invalidate the react-query cache for this component's own data
         queryClient.invalidateQueries({ queryKey: ["admin-company-management", orgId] })
@@ -188,10 +222,11 @@ export function CompanyManagementAdmin() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Role & Status</h2>
+        <h2 className="text-lg font-semibold">Role, Status & Industry</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
           <strong>role</strong> determines HeatMap visibility (admin/holding excluded from operational view).{" "}
-          <strong>status</strong> is the onboarding gate — <em>pending</em> companies are hidden from the matrix.
+          <strong>status</strong> is the onboarding gate — <em>pending</em> companies are hidden from the matrix.{" "}
+          <strong>industry</strong> drives the indicator pack and the settings form layout.
         </p>
       </div>
 
@@ -239,12 +274,36 @@ export function CompanyManagementAdmin() {
                           {c.name}
                         </td>
                         <td className="p-3">
-                          {c.industry ? (
-                            <Badge variant="outline" className="text-[10px]">
-                              {c.industry}
-                            </Badge>
+                          {canEdit ? (
+                            <select
+                              value={getField(c, "industry")}
+                              disabled={isSaving}
+                              aria-label={`industry for ${c.code}`}
+                              onChange={(e) =>
+                                handleChange(
+                                  c.id,
+                                  "industry",
+                                  e.target.value,
+                                  getField(c, "industry"),
+                                )
+                              }
+                              className="rounded border px-1.5 py-0.5 text-xs font-medium focus:outline-none disabled:opacity-50 bg-background text-foreground border-border"
+                            >
+                              <option value="" className="bg-background text-foreground">—</option>
+                              {INDUSTRY_OPTIONS.map((o) => (
+                                <option key={o.value} value={o.value} className="bg-background text-foreground">
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            c.industry ? (
+                              <Badge variant="outline" className="text-[10px]">
+                                {c.industry}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )
                           )}
                         </td>
                         <td className="p-3">

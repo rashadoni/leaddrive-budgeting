@@ -2008,6 +2008,13 @@ enum AuditAction {
   // Metadata: { from, to, companyCode } — same shape as company_role_change
   // so audit-log UI can render both with the same template.
   company_status_change
+  // Truth-infra Phase C.2 (2026-05-26) — admin reclassified a company's
+  // industry via PATCH /api/companies/[id] { industry }.
+  // Industry drives which indicator pack runs and which settings form shows
+  // in CompanySettingsAdmin; correcting a mis-classified company requires
+  // audit trail for compliance (wrong industry → wrong composite score).
+  // Metadata: { from: string|null, to: string|null, companyCode: string }.
+  company_industry_change
 }
 
 // Retention: 365 days from `createdAt`. Auto-prune is deferred to
