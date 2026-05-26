@@ -23,7 +23,7 @@
  * styles in the JSX strip nav/sidebar so a clean PDF comes out.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -165,10 +165,106 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
   const progressPct =
     totalChecks > 0 ? Math.round((checkedCount / totalChecks) * 100) : 0;
 
-  // Track checklist counter — line index assigned as items render in
-  // markdown order. The component below counts a running index to match
-  // each list-item back to its line.
-  let checklistCounter = -1;
+  // Memoize the rendered markdown so React doesn't recreate the whole
+  // ReactMarkdown tree on every state change (which would blow away
+  // the custom checkboxes our useEffect mutates into the DOM).
+  const renderedMarkdown = useMemo(
+    () => <RenderedGuideMarkdown markdown={markdown} />,
+    [markdown],
+  );
+
+  // DOM post-processor: transform every `<li class="task-list-item">`
+  // into our custom checkbox. Works regardless of how react-markdown
+  // wires `className` to the component override (which has been
+  // unreliable across nested ULs in v10). Runs whenever the markdown
+  // changes — re-runs after React commits — and re-binds click
+  // handlers from the latest closure state.
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const root = contentRef.current;
+
+    const tasks = Array.from(
+      root.querySelectorAll<HTMLLIElement>("li.task-list-item"),
+    );
+    // Even if there are no NEW tasks to convert (because we've already
+    // converted them in a prior render), we still need to attach the
+    // click delegation listener below. Don't early-return.
+
+    const cleanupFns: Array<() => void> = [];
+
+    tasks.forEach((li, idx) => {
+      const item = checklistItems[idx];
+      if (!item) return;
+      // Skip if we've already processed this li in a previous render.
+      if (li.dataset.guideChecklistInit === "1") return;
+      li.dataset.guideChecklistInit = "1";
+
+      const checkbox = li.querySelector('input[type="checkbox"]');
+      if (checkbox) checkbox.remove();
+      const labelText = (li.textContent ?? "").replace(/^\s+/, "");
+
+      li.innerHTML = "";
+      li.className = "list-none -ml-6 flex items-start gap-2.5 group my-1";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", "false");
+      btn.className =
+        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all border-border bg-card hover:border-primary/60";
+      btn.dataset.guideLine = String(item.line);
+
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      span.className = "text-[15px] leading-relaxed text-foreground/90";
+      span.dataset.guideLabel = "1";
+
+      li.appendChild(btn);
+      li.appendChild(span);
+    });
+
+    // Event delegation: bind ONE listener at the content root that
+    // dispatches per-button clicks via data-guide-line. Survives
+    // re-renders of individual buttons.
+    const onClick = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      const btn = target?.closest<HTMLButtonElement>(
+        "button[data-guide-line]",
+      );
+      if (!btn) return;
+      const line = Number(btn.dataset.guideLine);
+      if (Number.isFinite(line)) toggleCheck(line);
+    };
+    root.addEventListener("click", onClick);
+    cleanupFns.push(() => root.removeEventListener("click", onClick));
+
+    return () => cleanupFns.forEach((fn) => fn());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markdown, checklistItems]);
+
+  // Sync visual checkbox state whenever checkedSet changes.
+  useEffect(() => {
+    if (!contentRef.current) return;
+    const buttons = contentRef.current.querySelectorAll<HTMLButtonElement>(
+      "button[data-guide-line]",
+    );
+    buttons.forEach((btn) => {
+      const line = Number(btn.dataset.guideLine);
+      const isChecked = checkedSet.has(line);
+      btn.setAttribute("aria-pressed", isChecked ? "true" : "false");
+      btn.className = isChecked
+        ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all bg-primary border-primary text-white"
+        : "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all border-border bg-card hover:border-primary/60";
+      btn.innerHTML = isChecked
+        ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M20 6 9 17l-5-5"/></svg>'
+        : "";
+      const span = btn.nextElementSibling as HTMLSpanElement | null;
+      if (span && span.dataset.guideLabel === "1") {
+        span.className = isChecked
+          ? "text-[15px] leading-relaxed text-muted-foreground line-through"
+          : "text-[15px] leading-relaxed text-foreground/90";
+      }
+    });
+  }, [checkedSet]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -339,221 +435,7 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
           data-guide-content
           className="prose prose-neutral dark:prose-invert max-w-3xl"
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              h1: ({ children }) => {
-                const text = String(children);
-                return (
-                  <h1
-                    id={slugify(text)}
-                    className="font-serif text-4xl font-bold tracking-tight text-foreground mb-3 mt-0"
-                  >
-                    {children}
-                  </h1>
-                );
-              },
-              h2: ({ children }) => {
-                const text = String(children);
-                return (
-                  <h2
-                    id={slugify(text)}
-                    className="font-serif text-2xl tracking-tight text-foreground mt-14 mb-4 pt-4 border-t border-border/40 scroll-mt-24"
-                  >
-                    {children}
-                  </h2>
-                );
-              },
-              h3: ({ children }) => {
-                const text = String(children);
-                return (
-                  <h3
-                    id={slugify(text)}
-                    className="font-serif text-xl tracking-tight text-foreground mt-10 mb-3 scroll-mt-24"
-                  >
-                    {children}
-                  </h3>
-                );
-              },
-              h4: ({ children }) => (
-                <h4 className="font-semibold text-base text-foreground mt-6 mb-2">
-                  {children}
-                </h4>
-              ),
-              p: ({ children }) => (
-                <p className="text-[15px] leading-relaxed text-foreground/90 my-3">
-                  {children}
-                </p>
-              ),
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  className="text-primary underline-offset-2 hover:underline"
-                  target={
-                    href?.startsWith("http") || href?.startsWith("/")
-                      ? "_blank"
-                      : undefined
-                  }
-                  rel={
-                    href?.startsWith("http") || href?.startsWith("/")
-                      ? "noreferrer"
-                      : undefined
-                  }
-                >
-                  {children}
-                </a>
-              ),
-              img: ({ src, alt }) => (
-                <figure className="my-8">
-                  <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={typeof src === "string" ? src : ""}
-                      alt={alt ?? ""}
-                      className="w-full h-auto"
-                      loading="lazy"
-                    />
-                  </div>
-                  {alt && (
-                    <figcaption className="mt-2 text-center text-xs text-muted-foreground italic">
-                      {alt}
-                    </figcaption>
-                  )}
-                </figure>
-              ),
-              table: ({ children }) => (
-                <div className="my-6 overflow-x-auto rounded-lg border border-border/60">
-                  <table className="w-full text-sm border-collapse">
-                    {children}
-                  </table>
-                </div>
-              ),
-              thead: ({ children }) => (
-                <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-                  {children}
-                </thead>
-              ),
-              th: ({ children }) => (
-                <th className="px-4 py-2 text-left font-medium border-b border-border/60">
-                  {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="px-4 py-2.5 border-b border-border/30 align-top text-[14px] text-foreground/90">
-                  {children}
-                </td>
-              ),
-              code: ({ className, children }) => {
-                const isBlock = (className ?? "").includes("language-");
-                if (isBlock) {
-                  return (
-                    <code className="block whitespace-pre overflow-x-auto rounded-md bg-muted/60 p-4 text-[13px] font-mono leading-relaxed">
-                      {children}
-                    </code>
-                  );
-                }
-                return (
-                  <code className="rounded bg-muted/70 px-1.5 py-0.5 text-[0.85em] font-mono">
-                    {children}
-                  </code>
-                );
-              },
-              pre: ({ children }) => (
-                <pre className="my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/40">
-                  {children}
-                </pre>
-              ),
-              blockquote: ({ children }) => (
-                <blockquote className="my-4 border-l-2 border-primary/40 pl-4 italic text-muted-foreground">
-                  {children}
-                </blockquote>
-              ),
-              ul: ({ children }) => (
-                <ul className="my-3 space-y-1.5 list-disc pl-6 marker:text-muted-foreground/60">
-                  {children}
-                </ul>
-              ),
-              ol: ({ children }) => (
-                <ol className="my-3 space-y-1.5 list-decimal pl-6 marker:text-muted-foreground/60">
-                  {children}
-                </ol>
-              ),
-              li: ({ children, node, ...props }) => {
-                // GFM task-list item detection. react-markdown v10
-                // doesn't pass className but does pass `node` (hast).
-                // The first hast child of a task-list-item is a
-                // `<input type="checkbox">` element with className
-                // "task-list-item-checkbox". Walk node.children to find
-                // it. This sidesteps any prop-plumbing differences.
-                const hastChildren =
-                  (
-                    node as
-                      | { children?: Array<{ tagName?: string; properties?: { type?: string } }> }
-                      | undefined
-                  )?.children ?? [];
-                const isTask = hastChildren.some(
-                  (c) =>
-                    c?.tagName === "input" &&
-                    c?.properties?.type === "checkbox",
-                );
-                if (isTask) {
-                  checklistCounter++;
-                  const item = checklistItems[checklistCounter];
-                  if (!item) {
-                    return <li {...props}>{children}</li>;
-                  }
-                  const isChecked = checkedSet.has(item.line);
-                  // Strip the auto-injected hidden checkbox from children
-                  // (react-markdown renders a disabled checkbox as the
-                  // first child — we replace it with our own).
-                  const cleaned = Array.isArray(children)
-                    ? children.filter((c) => {
-                        if (
-                          c &&
-                          typeof c === "object" &&
-                          "type" in c &&
-                          c.type === "input"
-                        )
-                          return false;
-                        return true;
-                      })
-                    : children;
-                  return (
-                    <li className="list-none -ml-6 flex items-start gap-2.5 group">
-                      <button
-                        type="button"
-                        onClick={() => toggleCheck(item.line)}
-                        aria-pressed={isChecked}
-                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
-                          isChecked
-                            ? "bg-primary border-primary text-white"
-                            : "border-border bg-card hover:border-primary/60"
-                        }`}
-                      >
-                        {isChecked && <CheckCircle2 className="h-4 w-4" />}
-                      </button>
-                      <span
-                        className={`text-[15px] leading-relaxed transition-colors ${
-                          isChecked
-                            ? "text-muted-foreground line-through"
-                            : "text-foreground/90"
-                        }`}
-                      >
-                        {cleaned}
-                      </span>
-                    </li>
-                  );
-                }
-                // Default li — strip `node` so it doesn't leak to DOM
-                return <li {...props}>{children}</li>;
-              },
-              hr: () => (
-                <hr className="my-12 border-0 border-t border-border/40" />
-              ),
-            }}
-          >
-            {markdown}
-          </ReactMarkdown>
+          {renderedMarkdown}
 
           <div className="mt-16 border-t border-border/40 pt-8 text-xs text-muted-foreground">
             <p>
@@ -569,3 +451,168 @@ export function GuideViewer({ markdown }: GuideViewerProps) {
     </div>
   );
 }
+
+/**
+ * Memoized markdown renderer — separate component so the entire
+ * ReactMarkdown tree is React-memo'd against the markdown string.
+ * When the parent re-renders due to `checkedSet` / `activeSlug`, the
+ * memoized children skip re-render and our DOM mutations stay intact.
+ */
+const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
+  markdown,
+}: {
+  markdown: string;
+}) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => {
+          const text = String(children);
+          return (
+            <h1
+              id={slugify(text)}
+              className="font-serif text-4xl font-bold tracking-tight text-foreground mb-3 mt-0"
+            >
+              {children}
+            </h1>
+          );
+        },
+        h2: ({ children }) => {
+          const text = String(children);
+          return (
+            <h2
+              id={slugify(text)}
+              className="font-serif text-2xl tracking-tight text-foreground mt-14 mb-4 pt-4 border-t border-border/40 scroll-mt-24"
+            >
+              {children}
+            </h2>
+          );
+        },
+        h3: ({ children }) => {
+          const text = String(children);
+          return (
+            <h3
+              id={slugify(text)}
+              className="font-serif text-xl tracking-tight text-foreground mt-10 mb-3 scroll-mt-24"
+            >
+              {children}
+            </h3>
+          );
+        },
+        h4: ({ children }) => (
+          <h4 className="font-semibold text-base text-foreground mt-6 mb-2">
+            {children}
+          </h4>
+        ),
+        p: ({ children }) => (
+          <p className="text-[15px] leading-relaxed text-foreground/90 my-3">
+            {children}
+          </p>
+        ),
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            className="text-primary underline-offset-2 hover:underline"
+            target={
+              href?.startsWith("http") || href?.startsWith("/")
+                ? "_blank"
+                : undefined
+            }
+            rel={
+              href?.startsWith("http") || href?.startsWith("/")
+                ? "noreferrer"
+                : undefined
+            }
+          >
+            {children}
+          </a>
+        ),
+        img: ({ src, alt }) => (
+          <figure className="my-8">
+            <div className="overflow-hidden rounded-lg border border-border/60 bg-card shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={typeof src === "string" ? src : ""}
+                alt={alt ?? ""}
+                className="w-full h-auto"
+                loading="lazy"
+              />
+            </div>
+            {alt && (
+              <figcaption className="mt-2 text-center text-xs text-muted-foreground italic">
+                {alt}
+              </figcaption>
+            )}
+          </figure>
+        ),
+        table: ({ children }) => (
+          <div className="my-6 overflow-x-auto rounded-lg border border-border/60">
+            <table className="w-full text-sm border-collapse">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => (
+          <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+            {children}
+          </thead>
+        ),
+        th: ({ children }) => (
+          <th className="px-4 py-2 text-left font-medium border-b border-border/60">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="px-4 py-2.5 border-b border-border/30 align-top text-[14px] text-foreground/90">
+            {children}
+          </td>
+        ),
+        code: ({ className, children }) => {
+          const isBlock = (className ?? "").includes("language-");
+          if (isBlock) {
+            return (
+              <code className="block whitespace-pre overflow-x-auto rounded-md bg-muted/60 p-4 text-[13px] font-mono leading-relaxed">
+                {children}
+              </code>
+            );
+          }
+          return (
+            <code className="rounded bg-muted/70 px-1.5 py-0.5 text-[0.85em] font-mono">
+              {children}
+            </code>
+          );
+        },
+        pre: ({ children }) => (
+          <pre className="my-4 overflow-x-auto rounded-lg border border-border/60 bg-muted/40">
+            {children}
+          </pre>
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="my-4 border-l-2 border-primary/40 pl-4 italic text-muted-foreground">
+            {children}
+          </blockquote>
+        ),
+        ul: ({ children }) => (
+          <ul className="my-3 space-y-1.5 list-disc pl-6 marker:text-muted-foreground/60">
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="my-3 space-y-1.5 list-decimal pl-6 marker:text-muted-foreground/60">
+            {children}
+          </ol>
+        ),
+        li: ({ children, ...props }) => {
+          // Default li — strip `node` so it doesn't leak to DOM.
+          // Task-list items are post-processed in the parent's useEffect
+          // (sidesteps react-markdown v10's inconsistent className
+          // plumbing across nested ULs).
+          const { node: _node, ...rest } = props as { node?: unknown };
+          return <li {...rest}>{children}</li>;
+        },
+        hr: () => <hr className="my-12 border-0 border-t border-border/40" />,
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
+});
