@@ -18,6 +18,7 @@
 8. [AI Auto Import — импорт любого Excel](#8-ai-auto-import--импорт-любого-excel)
 9. [Risk Registry — качественные флаги риска](#9-risk-registry--качественные-флаги-риска)
    - [9.1 Compliance & Legal — реальные индикаторы](#91-compliance--legal--реальные-индикаторы-из-аудит-отчётов-и-судов)
+   - [9.2 Concentration — кто держит вашу выручку](#92-concentration--кто-держит-вашу-выручку)
 10. [AI функции — что, где, сколько стоит](#10-ai-функции--что-где-сколько-стоит)
 11. [Журнал аудита](#11-журнал-аудита)
 12. [Чек-лист самопроверки](#12-чек-лист-самопроверки)
@@ -417,6 +418,23 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 - **AZSEKER-CPC** → `subsidy_dependency` + `non_transparent_structure` = **−13**
 - **AZSEKER-EDEN** → `subsidy_dependency` = **−5**
 
+### Детальный Risk Registry per entity
+
+Помимо 3 канонических флагов, у каждой компании есть детальный реестр рисков (KRI list) — открывается в admin-панели:
+**`/budgeting/admin/companies` → раскрыть карточку компании → секция «Risk Registry»**.
+
+| Entity | KRIs | Источник | Категории |
+|---|---|---|---|
+| **EDEN** | 15 | Top risk - EDEN AGRO MMC.xlsx (клиент) | Env / Fin / HC / Market / Ops / Reg / Strat / Tech |
+| **AZSF** | 15 | Industry template (2026-05-27) | Env / Fin / HC / Market / Ops / Reg / Strat / Tech |
+| **CPC** | 14 | Industry template (2026-05-27) | Env / Fin / Market / Ops / Reg / Strat / Tech |
+| **MALT** | 10 | Industry template (2026-05-27) | Env / Fin / HC / Market / Ops / Reg / Strat |
+| **HORIZON** | 5 | Industry template (2026-05-27, slim — passive shell) | Fin / Market / Reg / Strat |
+| **PROMALT** | 0 | — | JV with Azersun, registry deferred |
+| **FARM** | 0 | — | Archived |
+
+**Templates vs client-supplied:** EDEN reestr пришёл от клиента. Остальные — отраслевые шаблоны (food processing / services), которые админ должен отшлифовать через UI когда придут реальные данные от Nəcəf M.
+
 ---
 
 ## 9.1 Compliance & Legal — реальные индикаторы из аудит-отчётов и судов
@@ -449,6 +467,36 @@ Three new indicators, питаются от файлов клиента (`Follow
 - В HeatMap появились 3 новые колонки (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
 - Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
 - Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
+
+---
+
+## 9.2 Concentration — кто держит вашу выручку
+
+**Где:** Risk Terminal → HeatMap (3 колонки) + Board Deck → top movers/alerts.
+
+Помимо HHI (математически правильно, но плохо коммуницируется CFO) добавили **прямые показатели концентрации**, которые сразу читаются:
+
+| Code | Что меряет | Зелёный | Янтарный | Красный |
+|---|---|---|---|---|
+| `CUSTOMER_HHI` | Herfindahl-Hirschman index (математическая концентрация) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
+| `TOP_CUSTOMER_SHARE` | % выручки от **одного** крупнейшего клиента | ≤ 20% | 20–30% | > 30% |
+| `TOP3_CUSTOMER_SHARE` | % выручки от **топ-3** крупнейших клиентов | ≤ 50% | 50–75% | > 75% |
+
+### Live данные
+
+| Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Кто доминирует |
+|---|---|---|---|---|
+| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 клиента вообще |
+| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | вероятно AZSF (intercompany) |
+| **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
+| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
+| **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
+| **PROMALT** | ⚪ нет данных | ⚪ | ⚪ | (JV с Azersun) |
+
+### Зачем оба показателя
+- **TOP_CUSTOMER_SHARE** — «потеря одного клиента» (например AZSF теряет Bakı Şirniyyat → −32% revenue overnight)
+- **TOP3_CUSTOMER_SHARE** — «здоровье long-tail» (MALT 80% значит после top-3 почти ничего — нельзя заменить если уйдут все 3)
+- **CUSTOMER_HHI** — академически корректная мера, для регуляторов / due diligence
 
 ---
 

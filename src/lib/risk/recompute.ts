@@ -2547,6 +2547,20 @@ const counterpartyHhiResolver: NamespaceResolver = {
       state.context[`counterparty_hhi:${role}`] = rounded;
       state.context[`counterparty_hhi_${role}`] = rounded;
       state.inputs.resolved[`counterparty_hhi_${role}`] = rounded;
+
+      // 2026-05-27 — also expose the max share (top counterparty's %
+      // of revenue/spend) and the top-3 cumulative share for direct
+      // indicators that complement HHI. Single concentration metrics
+      // are easier to communicate to non-analyst CFOs than HHI.
+      const sortedShares = rows
+        .map((r) => r.sharePct)
+        .sort((a, b) => b - a);
+      const topShare = sortedShares[0] ?? 0;
+      const top3Share = sortedShares.slice(0, 3).reduce((s, x) => s + x, 0);
+      state.context[`top_counterparty_share_${role}`] = topShare;
+      state.context[`top3_counterparty_share_${role}`] = top3Share;
+      state.inputs.resolved[`top_counterparty_share_${role}`] = topShare;
+      state.inputs.resolved[`top3_counterparty_share_${role}`] = top3Share;
     }
   },
 };

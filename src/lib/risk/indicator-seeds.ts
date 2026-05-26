@@ -686,6 +686,86 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["counterparty:customer"],
     sortOrder: 2,
   },
+  // 2026-05-27 — Complement HHI with direct top-buyer concentration.
+  // HHI is mathematically rigorous but hard to communicate ("0.45 ratio")
+  // vs "Bakı Şirniyyat = 32% of revenue" which is immediately actionable.
+  // Sourced from the counterpartyHhiResolver's `top_counterparty_share_customer`
+  // alias (max sharePct across active customers, expressed as 0-100).
+  {
+    code: "TOP_CUSTOMER_SHARE",
+    nameEn: "Top Customer Revenue Share",
+    nameAz: "Ən böyük müştərinin gəlir payı",
+    nameRu: "Доля крупнейшего клиента в выручке",
+    category: "concentration",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+    ],
+    unit: "%",
+    direction: "lower_better",
+    formula: "top_counterparty_share_customer",
+    thresholds: {
+      // 0-20% → diversified buyer base (green)
+      // 20-30% → elevated concentration (amber); single buyer can hurt
+      // >30% → systemic dependence (red); one delayed payment threatens liquidity
+      green: { op: "<=", value: 20 },
+      amber: { op: "<=", value: 30 },
+      red: { op: ">", value: 30 },
+    },
+    hintTemplateEn:
+      "Top customer accounts for {value}% of revenue. ≤20% = diversified; 20-30% = elevated; >30% = single delayed payment threatens cash flow.",
+    hintTemplateRu:
+      "Топ-клиент держит {value}% выручки. ≤20% — диверсифицировано; 20-30% — повышенная концентрация; >30% — одна задержка платежа угрожает cash flow.",
+    hintTemplateAz:
+      "Ən böyük müştəri gəlirin {value}%-ni təşkil edir. ≤20% — diversifikasiya; 20-30% — yüksəlmiş; >30% — bir gecikmiş ödəniş pul axınını təhdid edir.",
+    requiredInputs: ["counterparty:customer"],
+    sortOrder: 3,
+  },
+  {
+    code: "TOP3_CUSTOMER_SHARE",
+    nameEn: "Top-3 Customers Revenue Share",
+    nameAz: "Top-3 müştərinin gəlir payı",
+    nameRu: "Доля топ-3 клиентов в выручке",
+    category: "concentration",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+    ],
+    unit: "%",
+    direction: "lower_better",
+    formula: "top3_counterparty_share_customer",
+    thresholds: {
+      // Most B2B distributors carry top-3 = 40-60% naturally.
+      // <50% = healthy long-tail; 50-75% = concentrated; >75% = oligopsony.
+      green: { op: "<=", value: 50 },
+      amber: { op: "<=", value: 75 },
+      red: { op: ">", value: 75 },
+    },
+    hintTemplateEn:
+      "Top-3 customers together account for {value}% of revenue. ≤50% = healthy long-tail; >75% = oligopsony — losing any one tips the equation.",
+    hintTemplateRu:
+      "Топ-3 клиента вместе держат {value}% выручки. ≤50% — здоровый длинный хвост; >75% — олигопсония, потеря любого роняет показатели.",
+    hintTemplateAz:
+      "Top-3 müştəri birlikdə gəlirin {value}%-ni təşkil edir. ≤50% — sağlam uzun quyruq; >75% — oliqopsoniya — birini itirmək balansı pozur.",
+    requiredInputs: ["counterparty:customer"],
+    sortOrder: 4,
+  },
   {
     code: "SUPPLIER_HHI",
     nameEn: "Supplier Concentration (HHI)",
