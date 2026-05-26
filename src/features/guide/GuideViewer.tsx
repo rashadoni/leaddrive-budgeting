@@ -24,15 +24,23 @@
  */
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { visit } from "unist-util-visit";
+import type { Root } from "mdast";
 import {
   Printer,
   CheckCircle2,
   ListChecks,
   ChevronRight,
   ExternalLink,
+  Check,
 } from "lucide-react";
+import {
+  useChecklistCount,
+  useChecklistItem,
+} from "./checklist-store";
 
 export type GuideLanguage = "en" | "ru" | "az";
 
@@ -109,6 +117,33 @@ interface TocItem {
   /** 1-indexed line number in the markdown source. Used by the renderer
    *  to map each heading back to its dedup'd slug via hast `position`. */
   sourceLine?: number;
+}
+
+/**
+ * remark plugin: unwrap an image-only paragraph so the image lifts to
+ * the document root. Without this, `![alt](path)` parses as a
+ * paragraph containing the image — and since our `img` component
+ * renders a block-level <figure>, we'd get invalid `<p><figure>...</p>`
+ * HTML and a hydration warning. The standard fix is an AST-level
+ * unwrap before react-markdown serializes.
+ *
+ * Identical behavior to the published `remark-unwrap-images` package
+ * (inlined to avoid the extra dep — we already have unist-util-visit
+ * transitively).
+ */
+function remarkUnwrapImages() {
+  return (tree: Root) => {
+    visit(tree, "paragraph", (node, index, parent) => {
+      if (
+        parent &&
+        index != null &&
+        node.children.length === 1 &&
+        node.children[0].type === "image"
+      ) {
+        parent.children.splice(index, 1, node.children[0]);
+      }
+    });
+  };
 }
 
 /** GitHub-style slugifier — keeps Cyrillic, strips emojis + punctuation. */
@@ -200,172 +235,54 @@ export function GuideViewer({ markdown, lang }: GuideViewerProps) {
     return () => observer.disconnect();
   }, [markdown]);
 
-  // Checklist state — keyed by line index of the markdown so reordering
-  // doesn't accidentally inherit old state (it does invalidate on
-  // section reorder, which is the safer default).
-  const checklistItems = useMemo(() => {
-    const items: { line: number; text: string }[] = [];
-    const lines = markdown.split(/\r?\n/);
-    lines.forEach((line, idx) => {
-      const m = /^\s*-\s+\[[ x]\]\s+(.+)$/.exec(line);
-      if (m) items.push({ line: idx, text: m[1] });
+  // Set of markdown source-line numbers (1-indexed) that are task-list
+  // items. The renderer passes hast `node.position.start.line` to
+  // `checklistLines.has(...)` to detect a task-list `<li>` and render
+  // it as our custom <TaskListItem/> instead of a plain bullet.
+  //
+  // 1-indexed matches hast's `position.start.line` so the lookup is
+  // a single `Set.has`, no off-by-one math.
+  const checklistLines = useMemo(() => {
+    const set = new Set<number>();
+    markdown.split(/\r?\n/).forEach((line, lineIdx) => {
+      if (/^\s*-\s+\[[ x]\]\s+/.test(line)) set.add(lineIdx + 1);
     });
-    return items;
+    return set;
   }, [markdown]);
 
-  const totalChecks = checklistItems.length;
-  const [checkedSet, setCheckedSet] = useState<Set<number>>(new Set());
+  const totalChecks = checklistLines.size;
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(`guide:checks:${lang}`);
-      if (raw) setCheckedSet(new Set(JSON.parse(raw)));
-    } catch {
-      /* localStorage disabled — silent */
-    }
-  }, []);
-
-  const toggleCheck = (lineIdx: number) => {
-    setCheckedSet((prev) => {
-      const next = new Set(prev);
-      if (next.has(lineIdx)) next.delete(lineIdx);
-      else next.add(lineIdx);
-      try {
-        localStorage.setItem(
-          `guide:checks:${lang}`,
-          JSON.stringify([...next]),
-        );
-      } catch {
-        /* silent */
-      }
-      return next;
-    });
-  };
-
-  const resetChecks = () => {
-    setCheckedSet(new Set());
-    try {
-      localStorage.removeItem(`guide:checks:${lang}`);
-    } catch {
-      /* silent */
-    }
-  };
+  // Per-language counter via external store. Increments whenever any
+  // <TaskListItem> toggles its checkbox. `reset` clears all checks
+  // for this language.
+  const { count: checkedCount, reset: resetChecks } = useChecklistCount(lang);
+  const progressPct =
+    totalChecks > 0 ? Math.round((checkedCount / totalChecks) * 100) : 0;
 
   const handlePrint = () => {
     if (typeof window !== "undefined") window.print();
   };
 
-  const checkedCount = checkedSet.size;
-  const progressPct =
-    totalChecks > 0 ? Math.round((checkedCount / totalChecks) * 100) : 0;
-
   // Memoize the rendered markdown so React doesn't recreate the whole
-  // ReactMarkdown tree on every state change (which would blow away
-  // the custom checkboxes our useEffect mutates into the DOM).
+  // ReactMarkdown tree on every checkbox toggle. Each <TaskListItem>
+  // subscribes to its own external-store snapshot — toggling one item
+  // does NOT invalidate this memo or re-render unrelated headings,
+  // images, tables, etc.
   //
-  // Pass the TOC directly — the renderer walks H2/H3 occurrences in
-  // markdown source order and assigns the matching toc[idx].slug to
-  // each heading's `id`. This sidesteps text-based lookup (which broke
-  // when ReactMarkdown internally re-invoked heading components,
-  // double-bumping a per-render counter and collapsing 3 distinct
-  // "Что проверить" H3s onto the same `что-проверить-3` id).
+  // Pass the TOC for heading-slug deduplication + the checklist-lines
+  // set + the active language (so per-item buttons can scope their
+  // localStorage state).
   const renderedMarkdown = useMemo(
-    () => <RenderedGuideMarkdown markdown={markdown} toc={toc} />,
-    [markdown, toc],
+    () => (
+      <RenderedGuideMarkdown
+        markdown={markdown}
+        toc={toc}
+        checklistLines={checklistLines}
+        lang={lang}
+      />
+    ),
+    [markdown, toc, checklistLines, lang],
   );
-
-  // DOM post-processor: transform every `<li class="task-list-item">`
-  // into our custom checkbox. Works regardless of how react-markdown
-  // wires `className` to the component override (which has been
-  // unreliable across nested ULs in v10). Runs whenever the markdown
-  // changes — re-runs after React commits — and re-binds click
-  // handlers from the latest closure state.
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const root = contentRef.current;
-
-    const tasks = Array.from(
-      root.querySelectorAll<HTMLLIElement>("li.task-list-item"),
-    );
-    // Even if there are no NEW tasks to convert (because we've already
-    // converted them in a prior render), we still need to attach the
-    // click delegation listener below. Don't early-return.
-
-    const cleanupFns: Array<() => void> = [];
-
-    tasks.forEach((li, idx) => {
-      const item = checklistItems[idx];
-      if (!item) return;
-      // Skip if we've already processed this li in a previous render.
-      if (li.dataset.guideChecklistInit === "1") return;
-      li.dataset.guideChecklistInit = "1";
-
-      const checkbox = li.querySelector('input[type="checkbox"]');
-      if (checkbox) checkbox.remove();
-      const labelText = (li.textContent ?? "").replace(/^\s+/, "");
-
-      li.innerHTML = "";
-      li.className = "list-none -ml-6 flex items-start gap-2.5 group my-1";
-
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.setAttribute("aria-pressed", "false");
-      btn.className =
-        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all border-border bg-card hover:border-primary/60";
-      btn.dataset.guideLine = String(item.line);
-
-      const span = document.createElement("span");
-      span.textContent = labelText;
-      span.className = "text-[15px] leading-relaxed text-foreground/90";
-      span.dataset.guideLabel = "1";
-
-      li.appendChild(btn);
-      li.appendChild(span);
-    });
-
-    // Event delegation: bind ONE listener at the content root that
-    // dispatches per-button clicks via data-guide-line. Survives
-    // re-renders of individual buttons.
-    const onClick = (e: Event) => {
-      const target = e.target as HTMLElement | null;
-      const btn = target?.closest<HTMLButtonElement>(
-        "button[data-guide-line]",
-      );
-      if (!btn) return;
-      const line = Number(btn.dataset.guideLine);
-      if (Number.isFinite(line)) toggleCheck(line);
-    };
-    root.addEventListener("click", onClick);
-    cleanupFns.push(() => root.removeEventListener("click", onClick));
-
-    return () => cleanupFns.forEach((fn) => fn());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markdown, checklistItems]);
-
-  // Sync visual checkbox state whenever checkedSet changes.
-  useEffect(() => {
-    if (!contentRef.current) return;
-    const buttons = contentRef.current.querySelectorAll<HTMLButtonElement>(
-      "button[data-guide-line]",
-    );
-    buttons.forEach((btn) => {
-      const line = Number(btn.dataset.guideLine);
-      const isChecked = checkedSet.has(line);
-      btn.setAttribute("aria-pressed", isChecked ? "true" : "false");
-      btn.className = isChecked
-        ? "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all bg-primary border-primary text-white"
-        : "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all border-border bg-card hover:border-primary/60";
-      btn.innerHTML = isChecked
-        ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4"><path d="M20 6 9 17l-5-5"/></svg>'
-        : "";
-      const span = btn.nextElementSibling as HTMLSpanElement | null;
-      if (span && span.dataset.guideLabel === "1") {
-        span.className = isChecked
-          ? "text-[15px] leading-relaxed text-muted-foreground line-through"
-          : "text-[15px] leading-relaxed text-foreground/90";
-      }
-    });
-  }, [checkedSet]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -579,16 +496,22 @@ export function GuideViewer({ markdown, lang }: GuideViewerProps) {
 
 /**
  * Memoized markdown renderer — separate component so the entire
- * ReactMarkdown tree is React-memo'd against the markdown string.
- * When the parent re-renders due to `checkedSet` / `activeSlug`, the
- * memoized children skip re-render and our DOM mutations stay intact.
+ * ReactMarkdown tree is React-memo'd against (markdown, toc,
+ * checklistLines, lang). Re-renders ONLY when those source-of-truth
+ * inputs change. Individual checkbox toggles flow through
+ * <TaskListItem/> via `useChecklistItem(lang, line)` without
+ * invalidating this memo.
  */
 const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
   markdown,
   toc,
+  checklistLines,
+  lang,
 }: {
   markdown: string;
   toc: TocItem[];
+  checklistLines: Set<number>;
+  lang: GuideLanguage;
 }) {
   // react-markdown v10 passes the hast `node` to each component with
   // `position.start.line` (1-indexed line in source). Map every TOC
@@ -613,7 +536,7 @@ const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
   };
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkUnwrapImages]}
       components={{
         h1: ({ children }) => {
           const text = String(children);
@@ -752,11 +675,21 @@ const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
           </ol>
         ),
         li: ({ children, ...props }) => {
-          // Default li — strip `node` so it doesn't leak to DOM.
-          // Task-list items are post-processed in the parent's useEffect
-          // (sidesteps react-markdown v10's inconsistent className
-          // plumbing across nested ULs).
-          const { node: _node, ...rest } = props as { node?: unknown };
+          const { node, ...rest } = props as { node?: unknown };
+          const line = (
+            node as { position?: { start?: { line?: number } } } | undefined
+          )?.position?.start?.line;
+          // Render as our custom <TaskListItem/> if this <li>'s source
+          // line is in the pre-computed checklist-lines set. Otherwise
+          // strip `node` (so it doesn't leak as a DOM attribute) and
+          // render a plain bullet.
+          if (line != null && checklistLines.has(line)) {
+            return (
+              <TaskListItem lang={lang} line={line}>
+                {children}
+              </TaskListItem>
+            );
+          }
           return <li {...rest}>{children}</li>;
         },
         hr: () => <hr className="my-12 border-0 border-t border-border/40" />,
@@ -766,3 +699,82 @@ const RenderedGuideMarkdown = memo(function RenderedGuideMarkdown({
     </ReactMarkdown>
   );
 });
+
+/**
+ * Task-list item — renders one row of the verification checklist.
+ *
+ * Server snapshot is ALWAYS unchecked (no localStorage access during
+ * SSR). After hydration, `useChecklistItem` reads from the per-lang
+ * store; React's `useSyncExternalStore` handles the snapshot swap
+ * without firing a hydration mismatch warning (the whole reason we
+ * picked this pattern over post-hydration DOM mutation).
+ *
+ * remark-gfm prepends a disabled `<input type="checkbox">` as the
+ * first React child. We strip it so it doesn't render alongside our
+ * custom button (which IS the visible checkbox). The strip walks one
+ * level deep — multi-line items wrap content in a `<p>` so we also
+ * unwrap that.
+ */
+function TaskListItem({
+  lang,
+  line,
+  children,
+}: {
+  lang: GuideLanguage;
+  line: number;
+  children: ReactNode;
+}) {
+  const { isChecked, toggle } = useChecklistItem(lang, line);
+
+  const stripCheckbox = (nodes: ReactNode): ReactNode => {
+    const arr = Array.isArray(nodes) ? nodes : [nodes];
+    return arr
+      .map((c) => {
+        if (c == null || typeof c !== "object") return c;
+        const obj = c as {
+          type?: unknown;
+          props?: { type?: string; children?: ReactNode };
+        };
+        if (obj.type === "input" && obj.props?.type === "checkbox") return null;
+        if (obj.type === "p" && obj.props) {
+          return {
+            ...obj,
+            props: {
+              ...obj.props,
+              children: stripCheckbox(obj.props.children ?? null),
+            },
+          };
+        }
+        return c;
+      })
+      .filter((c) => c !== null);
+  };
+  const cleaned = stripCheckbox(children);
+
+  return (
+    <li className="list-none -ml-6 flex items-start gap-2.5 my-1 group">
+      <button
+        type="button"
+        onClick={toggle}
+        aria-pressed={isChecked}
+        aria-label={isChecked ? "Uncheck item" : "Check item"}
+        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-all ${
+          isChecked
+            ? "bg-primary border-primary text-primary-foreground"
+            : "border-border bg-card hover:border-primary/60"
+        }`}
+      >
+        {isChecked && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+      </button>
+      <span
+        className={`text-[15px] leading-relaxed transition-colors ${
+          isChecked
+            ? "text-muted-foreground line-through"
+            : "text-foreground/90"
+        }`}
+      >
+        {cleaned}
+      </span>
+    </li>
+  );
+}
