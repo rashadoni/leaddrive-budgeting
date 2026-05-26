@@ -48,15 +48,17 @@ export interface AuditSummary {
 export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
   const m = e.metadata;
   switch (e.action) {
+    // All three share { from, to, companyCode } metadata shape — see route.ts.
+    // industry from/to may be null (unset → code, or code → null clear);
+    // use '—' sentinel so the transition arrow always renders.
     case 'company_role_change':
     case 'company_status_change':
     case 'company_industry_change': {
       const code = stringField(m, 'companyCode');
-      const from = stringField(m, 'from');
-      const to = stringField(m, 'to');
+      const from = stringField(m, 'from') ?? '—';
+      const to = stringField(m, 'to') ?? '—';
       const compact = code ?? e.entityType;
-      const verbose =
-        from && to ? `${code ? code + ' · ' : ''}${from} → ${to}` : compact;
+      const verbose = `${code ? code + ' · ' : ''}${from} → ${to}`;
       return { compact, verbose };
     }
     case 'import_budget_create': {

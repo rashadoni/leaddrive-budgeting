@@ -42,6 +42,29 @@ describe('summarizeAuditEvent — per-action coverage', () => {
     expect(out.verbose).toBe('admin → manager');
   });
 
+  it('company_status_change shows from → to transition', () => {
+    const out = summarizeAuditEvent(
+      ev('company_status_change', { companyCode: 'AZSF', from: 'pending', to: 'active' }),
+    );
+    expect(out.compact).toBe('AZSF');
+    expect(out.verbose).toBe('AZSF · pending → active');
+  });
+
+  it('company_industry_change shows from → to; null renders as —', () => {
+    // null → code (industry was unset, now set)
+    const out = summarizeAuditEvent(
+      ev('company_industry_change', { companyCode: 'EDEN', from: null, to: 'agro_crops' }),
+    );
+    expect(out.compact).toBe('EDEN');
+    expect(out.verbose).toBe('EDEN · — → agro_crops');
+
+    // code → null (industry cleared for placeholder company)
+    const out2 = summarizeAuditEvent(
+      ev('company_industry_change', { companyCode: 'EDEN', from: 'agro_crops', to: null }),
+    );
+    expect(out2.verbose).toBe('EDEN · agro_crops → —');
+  });
+
   it('import_budget_create', () => {
     const out = summarizeAuditEvent(
       ev('import_budget_create', { companyCode: 'AAC', year: 2026, inserted: 42 }),
