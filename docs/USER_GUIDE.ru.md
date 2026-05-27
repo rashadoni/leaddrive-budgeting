@@ -488,6 +488,20 @@ Three new indicators, питаются от файлов клиента (`Follow
 - Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
 - Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
 
+### LEGAL_MONEY_AT_RISK — раскрытые денежные требования (AZN)
+
+Регулярное выражение извлекает суммы из описаний кейсов («13276,92 manat borc məbləği»). Только commercial-споры с явной суммой:
+
+| Entity | Сумма | Кейсы | Статус |
+|---|---|---|---|
+| AZSF | 321,287 AZN | 2 (290K + 30K) | 🟡 amber |
+| CPC | 71,586 AZN | 2 (65K + 5K) | 🟢 green |
+| EDEN/MALT/HORIZON/PROMALT | ⚪ нет данных | трудовые/регуляторные без сумм | ⚪ |
+
+**Пороги:** ≤100K 🟢 / 100K-500K 🟡 / >500K 🔴
+
+Floor estimate — labor/regulatory disputes без явных AZN сумм не учтены. Реальная экспозиция выше.
+
 ---
 
 ## 9.2.5 FX risk — какая часть выручки уязвима к курсу

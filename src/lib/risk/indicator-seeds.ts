@@ -729,6 +729,54 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     requiredInputs: ["counterparty:customer"],
     sortOrder: 3,
   },
+  // 2026-05-27 — Disclosed legal money-at-risk. Extracted via regex from
+  // court case descriptions in Açıq məhkəmə mübahisələri.xlsx — sum of
+  // AZN amounts mentioned in case descriptions per company. Floor
+  // estimate of disclosed exposure (most labor/regulatory disputes have
+  // no explicit amount; this captures only commercial disputes with
+  // explicit claims).
+  {
+    code: "LEGAL_MONEY_AT_RISK",
+    nameEn: "Legal Money-at-Risk (AZN)",
+    nameAz: "Hüquqi Risk Altında Olan Məbləğ (AZN)",
+    nameRu: "Сумма судебных требований (AZN)",
+    category: "governance",
+    industries: [
+      "agro_crops",
+      "food_processing",
+      "industrial",
+      "services",
+      "hospitality",
+      "real_estate",
+      "retail",
+      "logistics",
+      "beverage",
+      "pharma",
+      "poultry",
+      "construction",
+    ],
+    unit: "AZN",
+    direction: "lower_better",
+    formula: "LEGAL_MONEY_AT_RISK",
+    thresholds: {
+      // Disclosed money in active disputes:
+      // < 100K AZN  = green (routine commercial disputes)
+      // 100K-500K  = amber (meaningful but not threatening)
+      // > 500K     = red (sizeable share of working capital exposed)
+      green: { op: "<=", value: 100_000 },
+      amber: { op: "<=", value: 500_000 },
+      red: { op: ">", value: 500_000 },
+    },
+    hintTemplateEn:
+      "Disclosed money claims in active court cases: {value} AZN. Floor estimate from explicit amounts in case descriptions.",
+    hintTemplateRu:
+      "Раскрытые денежные требования в активных судебных делах: {value} AZN. Минимальная оценка по явным суммам из описаний дел.",
+    hintTemplateAz:
+      "Aktiv məhkəmə işlərində açıqlanmış pul tələbləri: {value} AZN. İş təsvirlərindəki açıq məbləğlərə əsasən minimum qiymət.",
+    requiredInputs: ["operationalFact:LEGAL_MONEY_AT_RISK"],
+    sortOrder: 8,
+    defaultValueSource: "disclosed",
+  },
   // 2026-05-27 — Revenue-side FX exposure. Distinct from FX_IMPORTED_INPUT
   // (cost-side): this measures what % of revenue is collected in non-AZN
   // currencies. High = AZN weakness boosts P&L; AZN strength compresses

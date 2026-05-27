@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("110 active indicator seeds (107 base + 2026-05-27 concentration: TOP_CUSTOMER_SHARE, TOP3_CUSTOMER_SHARE + 2026-05-27 fx: REVENUE_FX_EXPOSURE)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(110)
+  it("111 active indicator seeds (110 base + 2026-05-27 legal money: LEGAL_MONEY_AT_RISK)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(111)
   })
 
   it("every indicator has a unique code", () => {
