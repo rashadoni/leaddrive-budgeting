@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react"
+import { AlertTriangle, EyeOff, ChevronDown, ChevronUp, Info } from "lucide-react"
 
 interface Alert {
   id: string
@@ -62,7 +62,26 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 space-y-2">
+        {/* 2026-05-27 — clarifying note. The «Dismiss» (formerly «Resolve»)
+            button only hides the alert row; it does not modify any
+            BudgetLine. Without this note users see «Aug -187M» disappear
+            and «Sep -207M» bubble up into its slot and read it as
+            «Resolve made the balance worse» — the exact confusion that
+            triggered this rewrite. */}
+        <div
+          className="flex items-start gap-1.5 text-[10px] text-muted-foreground border border-border/40 bg-muted/30 rounded px-2 py-1 leading-relaxed"
+          role="note"
+        >
+          <Info className="h-3 w-3 shrink-0 mt-px text-muted-foreground/80" />
+          <span>
+            «Скрыть» только убирает уведомление — баланс не меняется. Чтобы
+            устранить кассовый разрыв, скорректируйте план месяца во вкладке{" "}
+            <span className="font-medium text-foreground">P&L</span> или{" "}
+            <span className="font-medium text-foreground">Cash Flow → ОДДС</span>
+            .
+          </span>
+        </div>
         <div className="space-y-1.5">
           {visible.map((alert) => {
             const style = ALERT_STYLES[alert.alertType] || ALERT_STYLES.negative_balance
@@ -83,9 +102,15 @@ export function BudgetCashFlowAlerts({ alerts, onResolve }: Props) {
                   </div>
                 </div>
                 {onResolve && (
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => onResolve(alert.id)}>
-                    <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-                    Resolve
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={() => onResolve(alert.id)}
+                    title="Hides this alert. Does NOT change the underlying budget — edit Plan rows to actually fix the negative balance."
+                  >
+                    <EyeOff className="h-3.5 w-3.5 mr-1" />
+                    Скрыть
                   </Button>
                 )}
               </div>
