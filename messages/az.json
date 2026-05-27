@@ -2489,6 +2489,21 @@
     "ownerRolesCountOther": "{n} owner role",
     "morePresentCount": "+{n} daha"
   },
+  "adminCompanies": {
+    "sectionHeading": "Rol, Status və Sənaye",
+    "sectionDescription": "role HeatMap-da görünüşü müəyyən edir (admin/holding operational görünüşdən xaric). status onboardinq qapısı — pending şirkətlər matrisdan gizlədilir. industry indikator paketi və settings forma layout-u müəyyən edir.",
+    "loading": "Yüklənir…",
+    "thCode": "Kod",
+    "thName": "Ad",
+    "thIndustry": "Sənaye",
+    "thRole": "Rol",
+    "thStatus": "Status",
+    "ariaRole": "{code} üçün rol",
+    "ariaStatus": "{code} üçün status",
+    "ariaIndustry": "{code} üçün sənaye",
+    "saving": "Yadda saxlanılır…",
+    "savedAt": "Yadda saxlandı {time}"
+  },
   "adminIndicatorHealth": {
     "loading": "Yüklənir…",
     "summaryGreen": "🟢 Yaşıl",

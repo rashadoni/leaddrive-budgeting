@@ -2489,6 +2489,21 @@
     "ownerRolesCountOther": "{n} owner roles",
     "morePresentCount": "+{n} more"
   },
+  "adminCompanies": {
+    "sectionHeading": "Role, Status & Industry",
+    "sectionDescription": "role determines HeatMap visibility (admin/holding excluded from operational view). status is the onboarding gate — pending companies are hidden from the matrix. industry drives the indicator pack and the settings form layout.",
+    "loading": "Loading…",
+    "thCode": "Code",
+    "thName": "Name",
+    "thIndustry": "Industry",
+    "thRole": "Role",
+    "thStatus": "Status",
+    "ariaRole": "role for {code}",
+    "ariaStatus": "status for {code}",
+    "ariaIndustry": "industry for {code}",
+    "saving": "Saving…",
+    "savedAt": "Saved {time}"
+  },
   "adminIndicatorHealth": {
     "loading": "Loading…",
     "summaryGreen": "🟢 Green",

@@ -21,6 +21,7 @@
  */
 
 import { useState, useMemo, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Badge } from "@/components/ui/badge"
@@ -155,6 +156,7 @@ async function patchCompany(
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function CompanyManagementAdmin() {
+  const t = useTranslations("adminCompanies")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId ?? ""
   const canEdit = session?.user?.role === "admin"
@@ -234,17 +236,15 @@ export function CompanyManagementAdmin() {
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold">Role, Status & Industry</h2>
+        <h2 className="text-lg font-semibold">{t("sectionHeading")}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">
-          <strong>role</strong> determines HeatMap visibility (admin/holding excluded from operational view).{" "}
-          <strong>status</strong> is the onboarding gate — <em>pending</em> companies are hidden from the matrix.{" "}
-          <strong>industry</strong> drives the indicator pack and the settings form layout.
+          {t("sectionDescription")}
         </p>
       </div>
 
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" /> Загрузка…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("loading")}
         </div>
       )}
 
@@ -262,11 +262,11 @@ export function CompanyManagementAdmin() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
-                    <th className="text-left p-3 font-mono">Code</th>
-                    <th className="text-left p-3">Name</th>
-                    <th className="text-left p-3">Industry</th>
-                    <th className="text-left p-3">Role</th>
-                    <th className="text-left p-3">Status</th>
+                    <th className="text-left p-3 font-mono">{t("thCode")}</th>
+                    <th className="text-left p-3">{t("thName")}</th>
+                    <th className="text-left p-3">{t("thIndustry")}</th>
+                    <th className="text-left p-3">{t("thRole")}</th>
+                    <th className="text-left p-3">{t("thStatus")}</th>
                     <th className="w-20 p-3" />
                   </tr>
                 </thead>
@@ -290,7 +290,7 @@ export function CompanyManagementAdmin() {
                             <select
                               value={getField(c, "industry")}
                               disabled={isSaving}
-                              aria-label={`industry for ${c.code}`}
+                              aria-label={t("ariaIndustry", { code: c.code })}
                               onChange={(e) =>
                                 handleChange(
                                   c.id,
@@ -323,7 +323,7 @@ export function CompanyManagementAdmin() {
                             <select
                               value={role}
                               disabled={isSaving}
-                              aria-label={`role for ${c.code}`}
+                              aria-label={t("ariaRole", { code: c.code })}
                               onChange={(e) =>
                                 handleChange(
                                   c.id,
@@ -354,7 +354,7 @@ export function CompanyManagementAdmin() {
                             <select
                               value={status}
                               disabled={isSaving}
-                              aria-label={`status for ${c.code}`}
+                              aria-label={t("ariaStatus", { code: c.code })}
                               onChange={(e) =>
                                 handleChange(
                                   c.id,
