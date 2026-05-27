@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useEventStream } from '@/lib/events/use-event-stream';
+import { useDriftHealth, inputToSourceCode } from '../hooks/use-drift-health';
 import { Lock } from 'lucide-react';
 import { Sparkline, type SparklineStatus } from './Sparkline';
 import { PeriodChips } from './PeriodChips';
@@ -85,6 +86,10 @@ export function HeatMap({ period }: Props) {
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(period);
   useEffect(() => { setSelectedPeriod(period); }, [period]);
   // User-driven HeatMap row/cell clicks → selectCompany (tracks LRU recent).
+  // 2026-05-27 — Drift bridge: per-cell stale + drifted markers
+  // (defined here so the row-render loop can read it without an extra
+  // prop-drill into HeatMapCellTd).
+  const driftHealth = useDriftHealth();
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const setActiveIv = useTerminalStore((s) => s.setActiveIndicatorValue);
@@ -925,6 +930,21 @@ export function HeatMap({ period }: Props) {
                     {displayIndicators.map((ind) => {
                       const c = cellMap.get(cellKey(co.id, ind.id));
                       const scenarioStatus = scenarioDelta?.get(`${co.id}:${ind.code}`) ?? undefined;
+                      // 2026-05-27 — drift bridge: derive per-cell flags
+                      // from the global drift-health snapshot.
+                      let staleInputSourceCode: string | undefined;
+                      let staleInputStatus: 'stale' | 'critical_stale' | undefined;
+                      for (const input of ind.requiredInputs ?? []) {
+                        const code = inputToSourceCode(input);
+                        if (!code) continue;
+                        const f = driftHealth.byCode.get(code);
+                        if (f && (f.status === 'stale' || f.status === 'critical_stale')) {
+                          staleInputSourceCode = code;
+                          staleInputStatus = f.status;
+                          if (f.status === 'critical_stale') break; // worst wins
+                        }
+                      }
+                      const driftedRecently = driftHealth.driftedCells.has(`${co.code}::${ind.code}`);
                       return (
                         <HeatMapCellTd
                           key={ind.id}
@@ -933,6 +953,9 @@ export function HeatMap({ period }: Props) {
                           cell={c}
                           compactMode={compactMode}
                           scenarioStatus={scenarioStatus}
+                          staleInputSourceCode={staleInputSourceCode}
+                          staleInputStatus={staleInputStatus}
+                          driftedRecently={driftedRecently}
                           onCellClick={() => {
                             // Cell click ALWAYS selects company. Two
                             // panel-3 paths split on whether the cell
@@ -1143,6 +1166,21 @@ type HeatMapCellTdProps = {
   onCellClick: () => void;
   /** Phase 7.N — scenario delta: scenario status for this cell, or undefined if unchanged. */
   scenarioStatus?: string;
+  /**
+   * 2026-05-27 Drift bridge — when set, indicator depends on at least
+   * one external feed that is currently stale/critical_stale. HeatMap
+   * draws a small ⏳ marker on the cell so the user sees the cell's
+   * grayness has a real reason (data is old, not missing). Empty when
+   * no input is stale.
+   */
+  staleInputSourceCode?: string;
+  staleInputStatus?: "stale" | "critical_stale";
+  /**
+   * 2026-05-27 Drift bridge — when true, this cell appeared in a
+   * recent drift event (value swung dramatically). HeatMap draws an
+   * orange ring around the cell to invite investigation.
+   */
+  driftedRecently?: boolean;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1257,7 +1295,17 @@ function useAISummary(ivId: string | undefined, locale: string): AISummaryEntry 
 // nodes. Earlier `defaultOpen` lazy-mount caused tooltip pile-up on cursor
 // sweep (each cell's Tooltip initialized to open=true and Radix did not
 // transition to closed on pointerleave from the forced-open initial state).
-function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick }: HeatMapCellTdProps) {
+function HeatMapCellTd({
+  co,
+  ind,
+  cell,
+  compactMode,
+  scenarioStatus,
+  onCellClick,
+  staleInputSourceCode,
+  staleInputStatus,
+  driftedRecently,
+}: HeatMapCellTdProps) {
   // CLI Tier 2 — distinguish "N/A" (indicator not applicable to this
   // company's industry — e.g. AGRO_YIELD on services entity) from
   // "missing" (applicable but no computed value). Empty industries[]
@@ -1533,6 +1581,46 @@ function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick
               >
                 m
               </span>
+            )}
+            {/* 2026-05-27 Drift bridge — stale input marker. Top-right
+                corner, opposite the provenance d/e/m letter at top-left.
+                Color tracks status severity: amber for stale, rose for
+                critical-stale (older than 2× expected cadence). */}
+            {staleInputSourceCode && (
+              <span
+                aria-hidden="true"
+                data-testid="heatmap-stale-input-marker"
+                data-source-code={staleInputSourceCode}
+                data-stale-status={staleInputStatus}
+                title={`Input «${staleInputSourceCode}» is ${staleInputStatus?.replace('_', ' ')} — open Drift Dashboard to refresh`}
+                className="absolute top-0 right-0.5 leading-none font-mono pointer-events-none select-none"
+                style={{
+                  fontSize: compactMode ? 7 : 9,
+                  color:
+                    staleInputStatus === 'critical_stale'
+                      ? '#FF6B6B'
+                      : '#FFB800',
+                  opacity: 0.9,
+                  textShadow: '0 0 1px rgba(0,0,0,0.6)',
+                }}
+              >
+                ⏳
+              </span>
+            )}
+            {/* 2026-05-27 Drift bridge — drifted-cell ring overlay.
+                Highlights cells whose value swung dramatically between
+                recompute runs (audit-log drift event). Orange outline,
+                non-interactive — invites click → Indicator Detail. */}
+            {driftedRecently && (
+              <span
+                aria-hidden="true"
+                data-testid="heatmap-drifted-ring"
+                className="absolute inset-0 rounded-sm pointer-events-none"
+                style={{
+                  boxShadow: 'inset 0 0 0 1.5px #FFB800',
+                  opacity: 0.75,
+                }}
+              />
             )}
             {/* Missing cell label — no IndicatorValue row exists yet.
                 Shows "н/д" (нет данных) so the cell is not mistaken for

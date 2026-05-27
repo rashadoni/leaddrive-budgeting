@@ -98,6 +98,15 @@ export interface MatrixIndicatorCol {
    * only" toggle is on. Source: `IndicatorDefinition.industries`.
    */
   industries?: string[];
+  /**
+   * 2026-05-27 — resolver-input tokens this indicator's formula
+   * depends on (e.g. `["weather:rainfall_mm_90d"]`,
+   * `["currencyRate", "budgetLine"]`). Threaded to HeatMap so cells
+   * can flag «source is stale» by cross-referencing with the Drift
+   * Dashboard's freshness map (via `inputToSourceCode()`). Source:
+   * `IndicatorDefinition.requiredInputs`.
+   */
+  requiredInputs?: string[];
 }
 
 export interface MatrixResponse {

@@ -9,9 +9,10 @@ import {
   panelForCommand,
   type ParsedCommand,
 } from '../lib/command-parser';
-import { Bell } from 'lucide-react';
+import { Bell, AlertTriangle, Zap } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 import { ensureMatrix, useMatrix } from '../hooks/use-matrix';
+import { useDriftHealth } from '../hooks/use-drift-health';
 import {
   Tooltip,
   TooltipContent,
@@ -103,6 +104,10 @@ export function CommandBar() {
 
   const activeCompany = useTerminalStore((s) => s.activeCompanyCode);
   const alertsCount = useTerminalStore((s) => s.alertsCount);
+  // 2026-05-27 — Drift ↔ Risk Terminal bridge. Pulls /api/admin/drift
+  // every 5min and surfaces stale-feed + drift-event counts in a chip
+  // next to the alerts strip. Click → /admin/drift.
+  const health = useDriftHealth();
   // User-typed CO/CMP verbs are user-driven → selectCompany (tracks LRU recent).
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
@@ -669,6 +674,76 @@ export function CommandBar() {
               : t('commandBar.alertsTitle', { count: alertsCount })}
           </TooltipContent>
         </Tooltip>
+        {/* 2026-05-27 — Health chip. Surfaces Drift Dashboard state
+            without making user navigate there. Click jumps to the page. */}
+        {!health.loading && (health.staleCount > 0 || health.driftEventCount > 0) && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href="/budgeting/admin/drift"
+                className="flex items-center cursor-pointer hover:text-[#FF6B6B] transition-colors"
+                aria-label="Drift Dashboard"
+                data-testid="commandbar-health-chip"
+              >
+                <span className="ml-2 mr-1">[health</span>
+                {health.staleCount > 0 && (
+                  <>
+                    <AlertTriangle
+                      size={11}
+                      className="mx-1 text-[#FF6B6B]"
+                      aria-hidden="true"
+                    />
+                    <span className="text-[#FF6B6B]">{health.staleCount}</span>
+                  </>
+                )}
+                {health.staleCount > 0 && health.driftEventCount > 0 && (
+                  <span className="text-gray-600 mx-1">·</span>
+                )}
+                {health.driftEventCount > 0 && (
+                  <>
+                    <Zap
+                      size={11}
+                      className="mx-1 text-[#FFB800]"
+                      aria-hidden="true"
+                    />
+                    <span className="text-[#FFB800]">{health.driftEventCount}</span>
+                  </>
+                )}
+                <span>]</span>
+              </a>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[300px] text-xs"
+            >
+              <div className="space-y-0.5">
+                {health.staleCount > 0 && (
+                  <div>
+                    <span className="text-[#FF6B6B] font-medium">
+                      ⚠ {health.staleCount}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      {health.staleCount === 1 ? "stale feed" : "stale feeds"}
+                    </span>
+                  </div>
+                )}
+                {health.driftEventCount > 0 && (
+                  <div>
+                    <span className="text-[#FFB800] font-medium">
+                      ⚡ {health.driftEventCount}
+                    </span>{" "}
+                    <span className="text-muted-foreground">
+                      drift event{health.driftEventCount === 1 ? "" : "s"} (30d)
+                    </span>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground/70 pt-1">
+                  Click to open Drift Dashboard →
+                </div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
     </div>
     </TooltipProvider>
