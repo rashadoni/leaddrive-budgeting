@@ -59,26 +59,22 @@ type NavItem = {
 
 // Risk Terminal entries (Phase 7) sit alongside the legacy /budgeting page
 // so the sidebar shows holding-level work without burying it under tabs.
+// 2026-05-27 — every top-level item now uses `labelKey` so the sidebar
+// fully honours the user's locale. Previously a mix of hardcoded EN
+// ("Risk Terminal", "Board Deck", "Admin Tools", "Audit Log",
+// "Onboarding"), hardcoded RU ("Руководство"), and labelKey-driven
+// items rendered an inconsistent half-translated sidebar — user
+// flagged it on 2026-05-27. Brand names (Risk Terminal / Board Deck)
+// stay English across all locales by convention (they're product
+// names, not generic UI labels).
 const navItems: NavItem[] = [
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
-  { href: "/budgeting/terminal", icon: Activity, label: "Risk Terminal" },
-  // Phase 7.G E.2 v2 (Turn XLVII) — Board Deck v2 sidebar entry.
-  // Was orphaned from any nav previously (only reachable via
-  // CommandBar `BRF GO`); customer feedback noted nobody knew the
-  // verb. Icon: Presentation (lucide) — matches "deck for the board".
-  { href: "/budgeting/board-deck", icon: Presentation, label: "Board Deck" },
-  { href: "/budgeting/onboarding", icon: Upload, label: "Onboarding" },
-  { href: "/budgeting/audit", icon: ScrollText, label: "Audit Log", minRole: "manager" },
-  // Phase 7.M Tier 4 (2026-05-19) — Admin landing page with grouped tool
-  // catalog. Sidebar still expands to individual admin sub-entries below
-  // (Period Locks, Approvals, Indicator Health, etc.) — this top-level
-  // link is the discovery surface ("где все админ-тулзы?").
-  { href: "/budgeting/admin", icon: Settings, label: "Admin Tools", minRole: "admin" },
-  // 2026-05-26 — In-app User Guide. Reads docs/USER_GUIDE.md, renders
-  // beautifully with sticky TOC + persistent verification checklist.
-  // Shipped after Phase 7.N riskTags wiring so the client can walk
-  // through the system cold.
-  { href: "/guide", icon: BookText, label: "Руководство" },
+  { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
+  { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
+  { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
+  { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
+  { href: "/budgeting/admin", icon: Settings, labelKey: "adminTools", minRole: "admin" },
+  { href: "/guide", icon: BookText, labelKey: "guide" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
