@@ -113,7 +113,7 @@ async function translate(target) {
 
   const stream = await client.messages.stream({
     model: MODEL,
-    max_tokens: 16_000,
+    max_tokens: 20_000,
     system: systemPrompt,
     messages: [
       {
