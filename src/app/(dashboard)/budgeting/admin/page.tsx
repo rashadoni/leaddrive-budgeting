@@ -12,6 +12,7 @@
  *   • Configuration — chart of accounts / companies / users / onboarding
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import Link from "next/link"
@@ -185,10 +186,21 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
   },
 ]
 
+// Map each English GROUPS title to its translation key so the
+// hard-coded array stays readable but the rendered chrome respects
+// the user's locale.
+const GROUP_TITLE_KEY: Record<string, string> = {
+  "📥 Data Ingestion": "groupDataIngestion",
+  "🩺 Data Quality": "groupDataQuality",
+  "🔒 Operations": "groupOperations",
+  "⚙ Configuration": "groupConfiguration",
+}
+
 export default async function AdminLandingPage() {
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) redirect("/budgeting")
+  const t = await getTranslations("adminLanding")
 
   const totalTools = GROUPS.reduce((s, g) => s + g.tools.length, 0)
   const newTools = GROUPS.reduce(
@@ -199,14 +211,13 @@ export default async function AdminLandingPage() {
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Admin Tools</h1>
+        <h1 className="text-2xl font-bold mb-2">{t("pageTitle")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          {totalTools} инструментов в {GROUPS.length} группах ·{" "}
-          <span className="text-emerald-300 font-medium">
-            {newTools} новых в Phase 7.M
-          </span>
-          . Используйте перед client-демо: проверьте Indicator Health
-          → закройте red gaps → запустите импорт через AI Auto Import.
+          {t("statsLine", {
+            total: totalTools,
+            groups: GROUPS.length,
+            new: newTools,
+          })}
         </p>
       </div>
 
@@ -214,7 +225,9 @@ export default async function AdminLandingPage() {
         {GROUPS.map((group) => (
           <section key={group.title}>
             <h2 className="text-lg font-semibold mb-3 text-muted-foreground">
-              {group.title}
+              {GROUP_TITLE_KEY[group.title]
+                ? t(GROUP_TITLE_KEY[group.title] as never)
+                : group.title}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {group.tools.map((tool) => {

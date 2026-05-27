@@ -16,6 +16,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { hasRole } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
@@ -50,6 +51,7 @@ export default async function IndicatorBacklogPage({
   // When filtering to a single entity, show a "back to all" affordance so
   // the user can escape the deep-link without retyping the URL.
   const filteredEntity = companyCode ? companies[0] : null;
+  const t = await getTranslations("adminIndicatorBacklog");
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
@@ -60,19 +62,22 @@ export default async function IndicatorBacklogPage({
               href="/budgeting/admin/indicator-backlog"
               className="hover:text-foreground transition-colors"
             >
-              ← All entities
+              ← {t("allEntitiesLabel")}
             </a>
             <span>·</span>
             <span>
-              Filtered to{" "}
-              <span className="font-mono text-foreground">
-                {filteredEntity.companyCode}
-              </span>
+              {t.rich("filteredTo", {
+                code: () => (
+                  <span className="font-mono text-foreground">
+                    {filteredEntity.companyCode}
+                  </span>
+                ),
+              })}
             </span>
           </div>
         ) : null}
         <h1 className="text-2xl font-bold mb-1">
-          Indicator Backlog
+          {t("pageTitle")}
           {filteredEntity ? (
             <span className="text-muted-foreground font-normal">
               {" "}
@@ -81,17 +86,16 @@ export default async function IndicatorBacklogPage({
           ) : null}
         </h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
-          Per-entity action list: which indicators are missing data, who owns
-          the source, and how to import once received. Use this as the
-          single workflow surface when onboarding a new entity or chasing
-          missing client files. Pair with{" "}
-          <a
-            href="/budgeting/admin/ai-import"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            AI Auto Import
-          </a>{" "}
-          — every successful import closes items here.
+          {t.rich("pageDescription", {
+            aiImport: () => (
+              <a
+                href="/budgeting/admin/ai-import"
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                {t("aiImportLink")}
+              </a>
+            ),
+          })}
         </p>
       </div>
 

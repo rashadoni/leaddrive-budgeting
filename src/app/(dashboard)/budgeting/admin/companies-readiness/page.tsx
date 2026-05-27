@@ -15,6 +15,7 @@
  * sort + expand + CSV interactions.
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -71,13 +72,12 @@ export default async function CompaniesReadinessPage() {
     }
   })
 
+  const t = await getTranslations("adminCompaniesReadiness")
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
-      <h1 className="text-2xl font-bold mb-1">Company data readiness</h1>
+      <h1 className="text-2xl font-bold mb-1">{t("pageTitle")}</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Per-entity data-completeness score across seven areas. Sort by score
-        to see the weakest entities first. Click a row to expand the per-area
-        breakdown. Use «Export CSV» to copy the gap list into an email.
+        {t("pageDescription")}
       </p>
 
       <ReadinessTable rows={rows} />

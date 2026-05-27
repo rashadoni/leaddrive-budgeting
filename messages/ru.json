@@ -2447,6 +2447,48 @@
       "subtitle": "Новый временный пароль для {email}. Покажите его пользователю один раз."
     }
   },
+  "adminLanding": {
+    "pageTitle": "Админ-инструменты",
+    "statsLine": "{total} инструмент(ов) в {groups} групп(ах) · {new} новых в Phase 7.M. Используйте перед client-демо: проверьте Indicator Health → закройте red gaps → запустите импорт через AI Auto Import.",
+    "groupDataIngestion": "📥 Загрузка данных",
+    "groupDataQuality": "🩺 Качество данных",
+    "groupOperations": "🔒 Операции",
+    "groupConfiguration": "⚙ Конфигурация"
+  },
+  "adminCompaniesReadiness": {
+    "pageTitle": "Готовность данных по компаниям",
+    "pageDescription": "Per-company скор по 7 областям данных. Кликните row для разворота. Чипы — фильтр по tier; сортировка по score / code / industry.",
+    "filterAll": "Все ({n})",
+    "exportCsv": "↓ Экспорт CSV",
+    "sortOrderAriaLabel": "Порядок сортировки",
+    "thCode": "Код",
+    "thName": "Название",
+    "thIndustry": "Индустрия",
+    "thScore": "Скор",
+    "thTier": "Tier",
+    "thTopMissing": "Что не хватает",
+    "thBacklog": "Backlog"
+  },
+  "adminIndicatorBacklog": {
+    "pageTitle": "Backlog индикаторов",
+    "pageDescription": "Список действий по сущностям: какие индикаторы без данных, кто owner источника, как загрузить когда получите. Используйте как single workflow surface при onboarding'е новой сущности или chasing клиентских файлов. Парно с {aiImport} — каждый успешный импорт закрывает item'ы здесь.",
+    "aiImportLink": "AI Auto Import",
+    "allEntitiesLabel": "Все сущности",
+    "filteredTo": "Отфильтровано по {code}",
+    "hasData": "С данными",
+    "needsData": "Нужны данные",
+    "showAll": "Показать все {n}",
+    "showLess": "Свернуть",
+    "noDataYet": "Данных пока нет",
+    "allDataPresent": "✓ Все данные присутствуют для этой сущности",
+    "uploadFile": "Загрузить файл",
+    "emailOwners": "Email owner'ам",
+    "csvBtn": "CSV",
+    "emailBtn": "Email",
+    "ownerRolesCountOne": "{n} owner role",
+    "ownerRolesCountOther": "{n} owner roles",
+    "morePresentCount": "+ ещё {n}"
+  },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",
     "description": "Сопоставляет каждую компанию с её авторитетным xlsx-файлом для ночного drift-watchdog. Изменения записываются атомарно в {file}.",

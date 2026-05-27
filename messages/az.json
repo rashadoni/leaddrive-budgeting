@@ -2447,6 +2447,48 @@
       "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
     }
   },
+  "adminLanding": {
+    "pageTitle": "Admin Alətləri",
+    "statsLine": "{total} alət {groups} qrupda · Phase 7.M-də {new} yeni. Müştəri demo-dan əvvəl istifadə edin: Indicator Health-ə baxın → red gap-ləri bağlayın → AI Auto Import vasitəsilə idxal işə salın.",
+    "groupDataIngestion": "📥 Məlumat yükləməsi",
+    "groupDataQuality": "🩺 Məlumat keyfiyyəti",
+    "groupOperations": "🔒 Əməliyyatlar",
+    "groupConfiguration": "⚙ Konfiqurasiya"
+  },
+  "adminCompaniesReadiness": {
+    "pageTitle": "Şirkət məlumatlarının hazırlığı",
+    "pageDescription": "Hər şirkət üçün 7 məlumat sahəsi üzrə bal. Sətirə klik edib genişləndirin. Tier üzrə süzmək üçün çipləri, sıralamaq üçün dropdown istifadə edin.",
+    "filterAll": "Hamısı ({n})",
+    "exportCsv": "↓ CSV ixracı",
+    "sortOrderAriaLabel": "Sıralama qaydası",
+    "thCode": "Kod",
+    "thName": "Ad",
+    "thIndustry": "Sənaye",
+    "thScore": "Bal",
+    "thTier": "Tier",
+    "thTopMissing": "Çatışmayan",
+    "thBacklog": "Backlog"
+  },
+  "adminIndicatorBacklog": {
+    "pageTitle": "İndikator Backlog",
+    "pageDescription": "Sahə üzrə fəaliyyət siyahısı: hansı indikatorlarda məlumat yoxdur, mənbə kimə aiddir, və alındıqda necə idxal edilməlidir. Yeni sahə onboardinq və ya müştəri faylların gözlədikdə tək workflow səth kimi istifadə edin. {aiImport} ilə cüt — hər uğurlu idxal buradakı item-ləri bağlayır.",
+    "aiImportLink": "AI Auto Import",
+    "allEntitiesLabel": "Bütün sahələr",
+    "filteredTo": "{code} üzrə süzülmüş",
+    "hasData": "Məlumat var",
+    "needsData": "Məlumat lazımdır",
+    "showAll": "Hamısını göstər ({n})",
+    "showLess": "Yığ",
+    "noDataYet": "Hələ məlumat yoxdur",
+    "allDataPresent": "✓ Bu sahə üçün bütün məlumatlar mövcuddur",
+    "uploadFile": "Fayl yüklə",
+    "emailOwners": "Owner-lərə email",
+    "csvBtn": "CSV",
+    "emailBtn": "Email",
+    "ownerRolesCountOne": "{n} owner role",
+    "ownerRolesCountOther": "{n} owner role",
+    "morePresentCount": "+{n} daha"
+  },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
     "description": "Hər şirkəti gecə drift-watchdog üçün öz xlsx faylına bağlayır. Dəyişikliklər atomik şəkildə {file} faylına yazılır.",

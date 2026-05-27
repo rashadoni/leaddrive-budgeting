@@ -7,6 +7,7 @@
  * no extra hooks or libraries needed at this row count.
  */
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 
 type Tier = "complete" | "good" | "partial" | "thin" | "empty"
 
@@ -113,6 +114,7 @@ export function ReadinessTable({
 }: {
   rows: ReadonlyArray<ReadinessRow>
 }) {
+  const t = useTranslations("adminCompaniesReadiness")
   const [sortId, setSortId] = useState<SortId>("score-asc")
   const [tierFilter, setTierFilter] = useState<Tier | "all">("all")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -191,7 +193,7 @@ export function ReadinessTable({
               : "border-border hover:bg-muted"
           }`}
         >
-          All ({rows.length})
+          {t("filterAll", { n: rows.length })}
         </button>
         {(Object.keys(TIER_PALETTE) as Tier[]).map((tier) => {
           const p = TIER_PALETTE[tier]
@@ -221,7 +223,7 @@ export function ReadinessTable({
           value={sortId}
           onChange={(e) => setSortId(e.target.value as SortId)}
           className="text-xs border rounded px-2 py-1 bg-background"
-          aria-label="Sort order"
+          aria-label={t("sortOrderAriaLabel")}
         >
           {SORT_OPTIONS.map((o) => (
             <option key={o.id} value={o.id}>
@@ -234,7 +236,7 @@ export function ReadinessTable({
           onClick={handleExportCsv}
           className="text-xs px-2.5 py-1 rounded border border-border hover:bg-muted"
         >
-          ↓ Export CSV
+          {t("exportCsv")}
         </button>
       </div>
 
@@ -244,13 +246,13 @@ export function ReadinessTable({
           <thead className="bg-muted">
             <tr className="text-left text-xs">
               <th className="p-2 w-8"></th>
-              <th className="p-2 w-24">Code</th>
-              <th className="p-2">Name</th>
-              <th className="p-2 w-32">Industry</th>
-              <th className="p-2 w-20 text-right">Score</th>
-              <th className="p-2 w-24">Tier</th>
-              <th className="p-2">Top missing</th>
-              <th className="p-2 w-28 text-right">Backlog</th>
+              <th className="p-2 w-24">{t("thCode")}</th>
+              <th className="p-2">{t("thName")}</th>
+              <th className="p-2 w-32">{t("thIndustry")}</th>
+              <th className="p-2 w-20 text-right">{t("thScore")}</th>
+              <th className="p-2 w-24">{t("thTier")}</th>
+              <th className="p-2">{t("thTopMissing")}</th>
+              <th className="p-2 w-28 text-right">{t("thBacklog")}</th>
             </tr>
           </thead>
           <tbody>

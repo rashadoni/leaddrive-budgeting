@@ -16,6 +16,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Mail,
   Upload,
@@ -342,6 +343,7 @@ function FilterSelect({
 }
 
 function EntityCard({ company }: { company: CompanyBacklog }) {
+  const t = useTranslations("adminIndicatorBacklog");
   const [expandedPresent, setExpandedPresent] = useState(false);
 
   const handleCsv = () => {
@@ -457,7 +459,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 title="Export gap list as CSV"
               >
                 <Download className="h-3.5 w-3.5" />
-                CSV
+                {t("csvBtn")}
               </button>
               <button
                 type="button"
@@ -466,14 +468,14 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 title="Email owners with grouped requests"
               >
                 <Mail className="h-3.5 w-3.5" />
-                Email owners
+                {t("emailOwners")}
               </button>
               <a
                 href={`/budgeting/admin/ai-import?forEntity=${company.companyCode}`}
                 className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors shadow-sm"
               >
                 <Upload className="h-3.5 w-3.5" />
-                Upload file
+                {t("uploadFile")}
               </a>
             </div>
           )}
@@ -495,7 +497,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               <h4 className="text-sm font-medium text-foreground">
-                Has data
+                {t("hasData")}
               </h4>
               <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
                 {company.presentItems.length}
@@ -507,7 +509,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
                 onClick={() => setExpandedPresent((v) => !v)}
                 className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
               >
-                {expandedPresent ? "Show less" : `Show all ${company.presentItems.length}`}
+                {expandedPresent ? t("showLess") : t("showAll", { n: company.presentItems.length })}
                 {expandedPresent ? (
                   <ChevronUp className="h-3 w-3" />
                 ) : (
@@ -518,7 +520,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
           </div>
           {company.presentItems.length === 0 ? (
             <div className="text-xs text-muted-foreground italic py-4 text-center">
-              No data yet
+              {t("noDataYet")}
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
@@ -530,7 +532,7 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
               ))}
               {!expandedPresent && company.presentItems.length > 12 && (
                 <span className="text-[11px] text-muted-foreground/70 self-center px-2">
-                  +{company.presentItems.length - 12} more
+                  {t("morePresentCount", { n: company.presentItems.length - 12 })}
                 </span>
               )}
             </div>
@@ -542,21 +544,25 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
           <div className="flex items-center gap-2 mb-3">
             <AlertCircle className="h-4 w-4 text-rose-500" />
             <h4 className="text-sm font-medium text-foreground">
-              Needs data
+              {t("needsData")}
             </h4>
             <span className="font-mono text-xs text-rose-600 dark:text-rose-400 font-semibold">
               {company.items.length}
             </span>
             {company.items.length > 0 && (
               <span className="text-[11px] text-muted-foreground ml-auto">
-                {new Set(company.items.map((it) => it.owner.role)).size} owner
-                role{new Set(company.items.map((it) => it.owner.role)).size > 1 ? "s" : ""}
+                {(() => {
+                  const n = new Set(company.items.map((it) => it.owner.role)).size;
+                  return n === 1
+                    ? t("ownerRolesCountOne", { n })
+                    : t("ownerRolesCountOther", { n });
+                })()}
               </span>
             )}
           </div>
           {company.items.length === 0 ? (
             <div className="text-xs text-emerald-700 dark:text-emerald-300 italic py-4 text-center font-medium">
-              ✓ All data present for this entity
+              {t("allDataPresent")}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -607,6 +613,7 @@ function MissingRow({
   companyCode: string;
   companyName: string;
 }) {
+  const t = useTranslations("adminIndicatorBacklog");
   const handleEmail = () => {
     const subject = `[${companyCode}] Missing data — ${item.indicatorCode}`;
     const body = [
@@ -670,7 +677,7 @@ function MissingRow({
           title={`Email ${item.owner.role}`}
         >
           <Mail className="h-3 w-3" />
-          Email
+          {t("emailBtn")}
         </button>
       )}
     </div>

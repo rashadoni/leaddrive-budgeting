@@ -2447,6 +2447,48 @@
       "subtitle": "New temp password for {email}. Share it with the user once."
     }
   },
+  "adminLanding": {
+    "pageTitle": "Admin Tools",
+    "statsLine": "{total} tools in {groups} groups · {new} new in Phase 7.M. Use before client demo: check Indicator Health → close red gaps → run import via AI Auto Import.",
+    "groupDataIngestion": "📥 Data Ingestion",
+    "groupDataQuality": "🩺 Data Quality",
+    "groupOperations": "🔒 Operations",
+    "groupConfiguration": "⚙ Configuration"
+  },
+  "adminCompaniesReadiness": {
+    "pageTitle": "Company data readiness",
+    "pageDescription": "Per-company score across 7 data areas. Click a row to expand. Use the chips to filter by tier; sort by score / code / industry.",
+    "filterAll": "All ({n})",
+    "exportCsv": "↓ Export CSV",
+    "sortOrderAriaLabel": "Sort order",
+    "thCode": "Code",
+    "thName": "Name",
+    "thIndustry": "Industry",
+    "thScore": "Score",
+    "thTier": "Tier",
+    "thTopMissing": "Top missing",
+    "thBacklog": "Backlog"
+  },
+  "adminIndicatorBacklog": {
+    "pageTitle": "Indicator Backlog",
+    "pageDescription": "Per-entity action list: which indicators are missing data, who owns the source, and how to import once received. Use this as the single workflow surface when onboarding a new entity or chasing missing client files. Pair with {aiImport} — every successful import closes items here.",
+    "aiImportLink": "AI Auto Import",
+    "allEntitiesLabel": "All entities",
+    "filteredTo": "Filtered to {code}",
+    "hasData": "Has data",
+    "needsData": "Needs data",
+    "showAll": "Show all {n}",
+    "showLess": "Show less",
+    "noDataYet": "No data yet",
+    "allDataPresent": "✓ All data present for this entity",
+    "uploadFile": "Upload file",
+    "emailOwners": "Email owners",
+    "csvBtn": "CSV",
+    "emailBtn": "Email",
+    "ownerRolesCountOne": "{n} owner role",
+    "ownerRolesCountOther": "{n} owner roles",
+    "morePresentCount": "+{n} more"
+  },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",
     "description": "Maps each company to its authoritative xlsx file for the nightly drift-watchdog. Edits write atomically to {file}.",
