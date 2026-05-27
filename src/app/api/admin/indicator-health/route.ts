@@ -154,8 +154,18 @@ export async function GET(req: NextRequest) {
   const orgId = session.orgId
 
   // Pull all IV rows with their indicator + company codes.
+  // 2026-05-27 Phase 8 F1 — narrow to IVs whose IndicatorDefinition is
+  // currently active. After `scripts/audit-indicator-catalog.mjs` ran,
+  // 61 catalog entries for industries the holding doesn't use (poultry,
+  // hospitality, pharma, retail, logistics, etc.) were deactivated.
+  // Their historical IVs stay in DB (reversible) but should disappear
+  // from the gaps table — otherwise this surface still shows 600+
+  // "unknown" entries that will never resolve.
   const rows = await prisma.indicatorValue.findMany({
-    where: { organizationId: orgId },
+    where: {
+      organizationId: orgId,
+      indicator: { isActive: true },
+    },
     select: {
       status: true,
       inputs: true,
