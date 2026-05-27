@@ -227,7 +227,11 @@ export function PeriodLocksAdmin() {
                         signals "lock created before E.1 / snapshot write
                         failed" — flagged with a muted "no snapshot" hint. */}
                     {snap ? (
-                      <div className="mt-2 text-xs space-y-0.5 border-l-2 border-emerald-500/40 pl-2">
+                      // 2026-05-27 — replaced banned side-stripe (impeccable
+                      // absolute ban) with full muted border + emerald-tinted
+                      // bg + emerald header text. Same snapshot-grouping cue
+                      // without the colored left-stripe.
+                      <div className="mt-2 text-xs space-y-0.5 rounded border border-emerald-300/40 dark:border-emerald-700/40 bg-emerald-50/40 dark:bg-emerald-950/20 px-2 py-1.5">
                         <div className="text-emerald-700 dark:text-emerald-400 font-medium">
                           Snapshot · {new Date(snap.signedAt).toLocaleDateString()}
                         </div>
