@@ -153,6 +153,31 @@ export function HeatMap({ period }: Props) {
     }
   }, [hideNotMaterial]);
 
+  // 2026-05-27 — «Hide unknown» toggle: when ON, hide indicator columns
+  // where every visible company has status=unknown (no data resolved).
+  // Reduces visual noise from ~55% gray cells when showing real workflows.
+  // Default OFF so the matrix still surfaces gaps by default — toggle is
+  // a deliberate "demo mode" the user opts into. Persisted to localStorage.
+  const [hideUnknown, setHideUnknown] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.localStorage.getItem('terminal-hide-unknown-v1') === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        'terminal-hide-unknown-v1',
+        hideUnknown ? '1' : '0',
+      );
+    } catch {
+      // non-fatal.
+    }
+  }, [hideUnknown]);
+
   // Sub-20: shared `useMatrix()` hook. Module-level cache means
   // HeatMap + ComparePanel + CompanySnapshot all subscribe to ONE
   // in-flight matrix fetch when they mount concurrently. SSE-driven
@@ -484,6 +509,33 @@ export function HeatMap({ period }: Props) {
     return visible.map((e) => e.ind);
   }, [activeCompanyIndustries, activeCompanyIndustry, hideNotMaterial, rawIndicators]);
 
+  // 2026-05-27 — «Hide unknown» derived view. Compute the set of indicator
+  // IDs that have AT LEAST ONE non-unknown cell among the currently
+  // visible companies; when toggle is ON, drop columns missing from that
+  // set. O(cells + visibleCompanies) per matrix change — bounded by the
+  // matrix size (60 × 50 = 3k cells worst case).
+  const indicatorsWithAnyData = useMemo(() => {
+    if (!data || !hideUnknown) return null;
+    const visibleCompanyIds = new Set(filteredCompanies.map((c) => c.id));
+    const set = new Set<string>();
+    for (const cell of data.cells) {
+      if (!visibleCompanyIds.has(cell.companyId)) continue;
+      if (cell.status && cell.status !== 'unknown') {
+        set.add(cell.indicatorId);
+      }
+    }
+    return set;
+  }, [data, filteredCompanies, hideUnknown]);
+
+  const displayIndicators = useMemo(() => {
+    if (!hideUnknown || !indicatorsWithAnyData) return indicators;
+    return indicators.filter((ind) => indicatorsWithAnyData.has(ind.id));
+  }, [indicators, hideUnknown, indicatorsWithAnyData]);
+
+  const hiddenUnknownCount = hideUnknown
+    ? indicators.length - displayIndicators.length
+    : 0;
+
   if (!mounted) {
     return (
       <span className="text-gray-700 font-mono text-[10px]">{t('heatMap.loading')}</span>
@@ -584,6 +636,28 @@ export function HeatMap({ period }: Props) {
             {hideNotMaterial ? 'Material only' : 'All'}
           </button>
         )}
+        {/* 2026-05-27 — «Hide unknown» toggle. Hides indicator columns
+            where every visible company has status=unknown. Default OFF
+            so gaps stay surfaced; user opts into "demo mode". */}
+        <button
+          type="button"
+          onClick={() => setHideUnknown((v) => !v)}
+          className={`shrink-0 px-1.5 py-0.5 border rounded text-[9px] uppercase tracking-wider transition-colors ${
+            hideUnknown
+              ? 'border-[#00D4AA] text-[#00D4AA]'
+              : 'border-gray-700 text-gray-500 hover:border-gray-500'
+          }`}
+          title={
+            hideUnknown
+              ? `Hiding ${hiddenUnknownCount} indicator${hiddenUnknownCount === 1 ? '' : 's'} where every visible entity has no data. Click to show all.`
+              : 'Click to hide indicator columns where every visible entity has no data (cleaner view for demos).'
+          }
+          data-testid="hide-unknown-toggle"
+        >
+          {hideUnknown
+            ? `Hide unknown · ${hiddenUnknownCount} hidden`
+            : 'Hide unknown'}
+        </button>
         {(dbSummary || summary) && (
           <span className="tabular-nums shrink-0" title={dbSummary ? 'Counts from DB (all entities incl. admin)' : 'Counts from matrix view (admin filtered)'}>
             <span style={{ color: statusColor('green') }}>
@@ -692,7 +766,7 @@ export function HeatMap({ period }: Props) {
               >
                 {t('heatMap.companyColumn')}
               </th>
-              {indicators.map((ind) => (
+              {displayIndicators.map((ind) => (
                 <th
                   key={ind.id}
                   // data-indicator-code lets tests + ARIA tools read the
@@ -752,7 +826,7 @@ export function HeatMap({ period }: Props) {
             {filteredCompanies.length === 0 ? (
               <tr>
                 <td
-                  colSpan={indicators.length + 1}
+                  colSpan={displayIndicators.length + 1}
                   className="text-gray-600 px-2 py-3 text-center"
                 >
                   {t('heatMap.noCompaniesMatch')} "{search}"
@@ -841,7 +915,7 @@ export function HeatMap({ period }: Props) {
                         </TooltipContent>
                       </Tooltip>
                     </th>
-                    {indicators.map((ind) => {
+                    {displayIndicators.map((ind) => {
                       const c = cellMap.get(cellKey(co.id, ind.id));
                       const scenarioStatus = scenarioDelta?.get(`${co.id}:${ind.code}`) ?? undefined;
                       return (
