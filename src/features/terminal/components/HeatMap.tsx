@@ -1585,7 +1585,10 @@ function HeatMapCellTd({
             {/* 2026-05-27 Drift bridge — stale input marker. Top-right
                 corner, opposite the provenance d/e/m letter at top-left.
                 Color tracks status severity: amber for stale, rose for
-                critical-stale (older than 2× expected cadence). */}
+                critical-stale (older than 2× expected cadence).
+                Rev2: ⏳ emoji rendered illegibly at 9px (looked like a
+                smudge); switched to a filled dot + ring so the visual
+                contrast survives the tiny cell. */}
             {staleInputSourceCode && (
               <span
                 aria-hidden="true"
@@ -1593,19 +1596,20 @@ function HeatMapCellTd({
                 data-source-code={staleInputSourceCode}
                 data-stale-status={staleInputStatus}
                 title={`Input «${staleInputSourceCode}» is ${staleInputStatus?.replace('_', ' ')} — open Drift Dashboard to refresh`}
-                className="absolute top-0 right-0.5 leading-none font-mono pointer-events-none select-none"
+                className="absolute pointer-events-none select-none rounded-full"
                 style={{
-                  fontSize: compactMode ? 7 : 9,
-                  color:
+                  top: 1,
+                  right: 1,
+                  width: compactMode ? 6 : 8,
+                  height: compactMode ? 6 : 8,
+                  background:
                     staleInputStatus === 'critical_stale'
                       ? '#FF6B6B'
                       : '#FFB800',
-                  opacity: 0.9,
-                  textShadow: '0 0 1px rgba(0,0,0,0.6)',
+                  boxShadow:
+                    '0 0 0 1.5px rgba(15, 21, 53, 0.95), 0 0 3px rgba(0,0,0,0.5)',
                 }}
-              >
-                ⏳
-              </span>
+              />
             )}
             {/* 2026-05-27 Drift bridge — drifted-cell ring overlay.
                 Highlights cells whose value swung dramatically between
