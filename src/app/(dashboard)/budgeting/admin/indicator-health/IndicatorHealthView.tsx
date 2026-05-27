@@ -26,13 +26,35 @@ interface HealthResponse {
   generatedAt: string
 }
 
-const CATEGORY_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
-  "external-feed": { bg: "bg-blue-500/10", fg: "text-blue-300", label: "🔌 External feed needed" },
-  "ingest-gap": { bg: "bg-amber-500/10", fg: "text-amber-300", label: "📥 Ingest gap" },
-  "formula-edge-case": { bg: "bg-red-500/10", fg: "text-red-300", label: "⚙ Formula edge case" },
-  "no-data": { bg: "bg-gray-500/10", fg: "text-gray-300", label: "⚪ Data not entered" },
-  "leaf-rollup": { bg: "bg-purple-500/10", fg: "text-purple-300", label: "📊 Rollup (correct for leaf)" },
-  "code-bug": { bg: "bg-red-500/20", fg: "text-red-400", label: "🐛 Code bug" },
+// 2026-05-27 — bumped contrast: original light-tint chips with light-300
+// foreground colors were barely readable on the white card background
+// (`bg-blue-500/10` + `text-blue-300` ≈ 2.5:1, fails WCAG AA). New chips
+// use ring + saturated foreground that works in both light + dark mode.
+const CATEGORY_STYLE: Record<string, { cls: string; label: string }> = {
+  "external-feed": {
+    cls: "bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 ring-1 ring-sky-300 dark:ring-sky-700/60",
+    label: "🔌 External feed needed",
+  },
+  "ingest-gap": {
+    cls: "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 ring-1 ring-amber-300 dark:ring-amber-700/60",
+    label: "📥 Ingest gap",
+  },
+  "formula-edge-case": {
+    cls: "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 ring-1 ring-rose-300 dark:ring-rose-700/60",
+    label: "⚙ Formula edge case",
+  },
+  "no-data": {
+    cls: "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-700",
+    label: "⚪ Data not entered",
+  },
+  "leaf-rollup": {
+    cls: "bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 ring-1 ring-violet-300 dark:ring-violet-700/60",
+    label: "📊 Rollup (correct for leaf)",
+  },
+  "code-bug": {
+    cls: "bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-200 ring-1 ring-rose-400 dark:ring-rose-600/70 font-medium",
+    label: "🐛 Code bug",
+  },
 }
 
 export function IndicatorHealthView() {
@@ -146,9 +168,9 @@ export function IndicatorHealthView() {
               key={cat}
               type="button"
               onClick={() => setFilterCategory(cat)}
-              className={`px-2 py-1 rounded text-xs border ${s.bg} ${s.fg} ${
-                filterCategory === cat ? "ring-1 ring-current" : ""
-              }`}
+              className={`px-2.5 py-1 rounded-md text-xs ${s.cls} ${
+                filterCategory === cat ? "ring-2 ring-primary/60" : ""
+              } transition-all`}
             >
               {s.label} ({count})
             </button>
@@ -177,7 +199,7 @@ export function IndicatorHealthView() {
                   <td className="p-2 font-mono text-xs">{g.indicatorCode}</td>
                   <td className="p-2">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] ${style.bg} ${style.fg}`}
+                      className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] ${style.cls}`}
                     >
                       {style.label}
                     </span>

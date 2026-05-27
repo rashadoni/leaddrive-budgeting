@@ -3,30 +3,20 @@
 /**
  * 2026-05-27 — Client component for /admin/indicator-backlog.
  *
- * 4 sections:
- *   1. Summary cards — total entities / applicable / present / missing /
- *      overall readiness %
- *   2. By-owner aggregate — «Risk Officer owes 5 items across 3 entities»
- *   3. Filter bar — entity / category / owner-role / hide-zero
- *   4. Per-entity expandable rows with item-level table
+ * Redesign brief: original version showed only «missing» items in a
+ * collapsible table — user feedback «как тут понять чего не хватает?
+ * а что есть?» surfaced that we hid present indicators entirely.
  *
- * Per-row actions:
- *   - «Upload file» → deep-link /admin/ai-import (system knows what
- *     dataType is expected)
- *   - «Email owner» → mailto: with pre-filled body listing missing items
+ * This version is per-entity CARD layout with two clear sides:
+ *   - LEFT (✅ green): indicators that HAVE data, with status pills
+ *   - RIGHT (⏳ amber): indicators that are MISSING, with owner + actions
  *
- * Per-entity actions:
- *   - «CSV export» — gap list for this entity
- *   - «Email all owners» — bulk mailto: grouped by owner
- *
- * Design: follows Companies Readiness conventions (hairline borders,
- * semantic colors, expand affordance). No card-in-card.
+ * Plus visual progress bar per entity, summary cards top, by-owner
+ * pills, filters that don't hide-zero by default.
  */
 
 import { useMemo, useState } from "react";
 import {
-  ChevronRight,
-  ChevronDown,
   Mail,
   Upload,
   Download,
@@ -36,12 +26,16 @@ import {
   AlertCircle,
   Users,
   ListChecks,
+  Circle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { groupByOwner } from "@/lib/onboarding/indicator-owner-map";
 import type {
   CompanyBacklog,
   BacklogSummary,
   BacklogItem,
+  PresentItem,
 } from "@/lib/risk/indicator-backlog";
 
 interface Props {
@@ -53,10 +47,11 @@ type CategoryFilter = "all" | string;
 type OwnerFilter = "all" | string;
 
 export function IndicatorBacklogView({ companies, summary }: Props) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>("all");
-  const [hideZero, setHideZero] = useState(true);
+  // Show all entities by default (incl. those at 100%) — user wanted to
+  // SEE the complete picture, not hide healthy entities.
+  const [hideComplete, setHideComplete] = useState(false);
 
   const filteredCompanies = useMemo(() => {
     return companies
@@ -70,65 +65,52 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
           return true;
         }),
       }))
-      .filter((co) => !hideZero || co.items.length > 0);
-  }, [companies, categoryFilter, ownerFilter, hideZero]);
-
-  const toggleExpand = (code: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
-      return next;
-    });
-  };
-
-  const expandAll = () => {
-    setExpanded(new Set(filteredCompanies.map((c) => c.companyCode)));
-  };
-  const collapseAll = () => setExpanded(new Set());
+      .filter((co) => !hideComplete || co.items.length > 0);
+  }, [companies, categoryFilter, ownerFilter, hideComplete]);
 
   const hasFilters =
-    categoryFilter !== "all" || ownerFilter !== "all" || !hideZero;
+    categoryFilter !== "all" || ownerFilter !== "all" || hideComplete;
 
   return (
     <div className="space-y-6">
-      {/* ─── Summary cards ─── */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <SummaryCard
-          icon={ListChecks}
-          label="Entities"
-          value={summary.totalEntities}
-          tone="neutral"
-        />
-        <SummaryCard
-          icon={ListChecks}
-          label="Applicable indicators"
-          value={summary.totalApplicable}
-          tone="neutral"
-        />
-        <SummaryCard
-          icon={CheckCircle2}
-          label="With data"
-          value={summary.totalPresent}
-          tone="emerald"
-        />
-        <SummaryCard
-          icon={AlertCircle}
-          label="Missing"
-          value={summary.totalMissing}
-          tone={summary.totalMissing > 0 ? "rose" : "emerald"}
-        />
-        <SummaryCard
-          icon={CheckCircle2}
-          label="Overall readiness"
-          value={`${summary.overallReadinessPct}%`}
-          tone={
-            summary.overallReadinessPct >= 80
-              ? "emerald"
-              : summary.overallReadinessPct >= 50
-                ? "amber"
-                : "rose"
-          }
+      {/* ─── Summary cards with visual progress ─── */}
+      <div className="rounded-xl border border-border/60 bg-gradient-to-br from-card to-card/50 p-5">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+          <SummaryCell
+            label="Entities"
+            value={summary.totalEntities}
+            sub="active sub-cos"
+          />
+          <SummaryCell
+            label="Total indicators"
+            value={summary.totalApplicable}
+            sub="industry-applicable"
+          />
+          <SummaryCell
+            label="With data"
+            value={summary.totalPresent}
+            sub="have values"
+            tone="emerald"
+            icon={CheckCircle2}
+          />
+          <SummaryCell
+            label="Missing"
+            value={summary.totalMissing}
+            sub="awaiting data"
+            tone="rose"
+            icon={AlertCircle}
+          />
+          <SummaryCell
+            label="Holding readiness"
+            value={`${summary.overallReadinessPct}%`}
+            sub={`${summary.totalPresent} of ${summary.totalApplicable}`}
+            tone={readinessTone(summary.overallReadinessPct)}
+          />
+        </div>
+        <ProgressBar
+          present={summary.totalPresent}
+          total={summary.totalApplicable}
+          height="h-2.5"
         />
       </div>
 
@@ -141,13 +123,14 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
               By owner role
             </h3>
             <span className="text-xs text-muted-foreground ml-auto">
-              Group items by who provides the data — one email per owner
-              instead of N pings
+              Group by who provides the data — one email per owner
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
             {summary.byOwnerRole.map((r) => {
               const isActive = ownerFilter === r.role;
+              const isUnknown = r.role.toLowerCase().includes("unknown");
+              const isSystem = r.role.toLowerCase().includes("budgetpro");
               return (
                 <button
                   key={r.role}
@@ -155,14 +138,24 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
                   onClick={() =>
                     setOwnerFilter(isActive ? "all" : r.role)
                   }
-                  className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors ${
+                  className={`inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition-all ${
                     isActive
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-card text-foreground/90 hover:bg-accent"
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : isUnknown
+                        ? "border-dashed border-amber-400/60 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                        : isSystem
+                          ? "border-sky-300 bg-sky-50 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50"
+                          : "border-border bg-card text-foreground/90 hover:bg-accent"
                   }`}
                 >
                   <span className="font-medium">{r.role}</span>
-                  <span className="font-mono tabular-nums text-muted-foreground">
+                  <span
+                    className={`font-mono tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      isActive
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-foreground/10 text-foreground/80"
+                    }`}
+                  >
                     {r.missingCount}
                   </span>
                 </button>
@@ -173,8 +166,11 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
       )}
 
       {/* ─── Filter bar ─── */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="inline-flex items-center gap-1.5 text-muted-foreground">
+          <Filter className="h-3.5 w-3.5" />
+          <span>Filter:</span>
+        </div>
         <FilterSelect
           label="Category"
           value={categoryFilter}
@@ -199,14 +195,14 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
             })),
           ]}
         />
-        <label className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <label className="inline-flex items-center gap-1.5 text-muted-foreground cursor-pointer">
           <input
             type="checkbox"
-            checked={hideZero}
-            onChange={(e) => setHideZero(e.target.checked)}
+            checked={hideComplete}
+            onChange={(e) => setHideComplete(e.target.checked)}
             className="rounded border-border"
           />
-          Hide entities with 0 missing
+          Hide entities at 100% ready
         </label>
         {hasFilters && (
           <button
@@ -214,77 +210,106 @@ export function IndicatorBacklogView({ companies, summary }: Props) {
             onClick={() => {
               setCategoryFilter("all");
               setOwnerFilter("all");
-              setHideZero(true);
+              setHideComplete(false);
             }}
-            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-3 w-3" />
-            Clear filters
+            Clear all filters
           </button>
         )}
         <span className="ml-auto text-muted-foreground">
-          Showing {filteredCompanies.length} entities ·{" "}
-          {filteredCompanies.reduce((s, c) => s + c.items.length, 0)} items
+          {filteredCompanies.length} entities shown
         </span>
-        <button
-          type="button"
-          onClick={expanded.size === filteredCompanies.length ? collapseAll : expandAll}
-          className="text-[10px] text-muted-foreground hover:text-foreground"
-        >
-          {expanded.size === filteredCompanies.length ? "Collapse all" : "Expand all"}
-        </button>
       </div>
 
-      {/* ─── Per-entity rows ─── */}
-      <div className="space-y-3">
+      {/* ─── Per-entity cards ─── */}
+      <div className="space-y-4">
         {filteredCompanies.length === 0 && (
-          <div className="rounded-lg border border-border/60 bg-card p-8 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-border/60 bg-card p-12 text-center text-sm text-muted-foreground">
             No entities match the current filters.
           </div>
         )}
         {filteredCompanies.map((co) => (
-          <EntityRow
-            key={co.companyCode}
-            company={co}
-            isExpanded={expanded.has(co.companyCode)}
-            onToggle={() => toggleExpand(co.companyCode)}
-          />
+          <EntityCard key={co.companyCode} company={co} />
         ))}
       </div>
     </div>
   );
 }
 
-function SummaryCard({
-  icon: Icon,
+function SummaryCell({
   label,
   value,
+  sub,
   tone,
+  icon: Icon,
 }: {
-  icon: typeof CheckCircle2;
   label: string;
   value: number | string;
-  tone: "neutral" | "emerald" | "amber" | "rose";
+  sub: string;
+  tone?: "emerald" | "amber" | "rose" | "neutral";
+  icon?: typeof CheckCircle2;
 }) {
-  const toneClass = {
-    neutral: "text-foreground",
+  const valueClass = {
     emerald: "text-emerald-600 dark:text-emerald-400",
     amber: "text-amber-600 dark:text-amber-400",
     rose: "text-rose-600 dark:text-rose-400",
-  }[tone];
+    neutral: "text-foreground",
+  }[tone ?? "neutral"];
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-3">
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-        <Icon className="h-3 w-3" />
+    <div>
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+        {Icon && <Icon className="h-3 w-3" />}
         {label}
       </div>
-      <div
-        className={`mt-1 font-mono text-2xl tabular-nums font-semibold ${toneClass}`}
-      >
+      <div className={`font-mono text-3xl tabular-nums font-bold ${valueClass}`}>
         {value}
       </div>
+      <div className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</div>
     </div>
   );
+}
+
+function readinessTone(pct: number): "emerald" | "amber" | "rose" {
+  if (pct >= 80) return "emerald";
+  if (pct >= 50) return "amber";
+  return "rose";
+}
+
+function ProgressBar({
+  present,
+  total,
+  height = "h-2",
+}: {
+  present: number;
+  total: number;
+  height?: string;
+}) {
+  const pct = total > 0 ? (present / total) * 100 : 0;
+  const fillClass =
+    pct >= 80
+      ? "bg-emerald-500"
+      : pct >= 50
+        ? "bg-amber-500"
+        : "bg-rose-500";
+  return (
+    <div className={`relative w-full ${height} rounded-full bg-muted overflow-hidden`}>
+      <div
+        className={`absolute inset-y-0 left-0 ${fillClass} transition-all duration-500 ease-out`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function StatusDot({ status }: { status: "green" | "amber" | "red" }) {
+  const cls = {
+    green: "bg-emerald-500",
+    amber: "bg-amber-500",
+    red: "bg-rose-500",
+  }[status];
+  return <span className={`inline-block h-2 w-2 rounded-full ${cls} shrink-0`} />;
 }
 
 function FilterSelect({
@@ -304,7 +329,7 @@ function FilterSelect({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground max-w-[260px]"
+        className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground max-w-[260px] focus:outline-none focus:ring-2 focus:ring-primary/40"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -316,21 +341,13 @@ function FilterSelect({
   );
 }
 
-function EntityRow({
-  company,
-  isExpanded,
-  onToggle,
-}: {
-  company: CompanyBacklog;
-  isExpanded: boolean;
-  onToggle: () => void;
-}) {
+function EntityCard({ company }: { company: CompanyBacklog }) {
+  const [expandedPresent, setExpandedPresent] = useState(false);
+
   const handleCsv = () => {
     const header = [
       "Indicator",
       "Category",
-      "Unit",
-      "Direction",
       "Required input",
       "Owner role",
       "Owner name",
@@ -340,8 +357,6 @@ function EntityRow({
     const rows = company.items.map((it) => [
       it.indicatorCode,
       it.category,
-      it.unit,
-      it.direction,
       it.requiredInput,
       it.owner.role,
       it.owner.name ?? "",
@@ -355,7 +370,7 @@ function EntityRow({
   };
 
   const handleEmailAll = () => {
-    // BacklogItem already has `requiredInput` — pass items as-is.
+    if (company.items.length === 0) return;
     const grouped = groupByOwner(company.items);
     const drafts: string[] = [];
     for (const [, bucket] of grouped) {
@@ -377,151 +392,208 @@ function EntityRow({
         `Thanks!`,
       ];
       const body = encodeURIComponent(lines.join("\n"));
-      const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${body}`;
-      drafts.push(url);
+      drafts.push(
+        `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${body}`,
+      );
     }
-    // Open first; user can copy others from clipboard
     if (drafts.length > 0 && typeof window !== "undefined") {
       window.open(drafts[0], "_blank");
       if (drafts.length > 1) {
         alert(
-          `Opened email to first owner (${grouped.size} groups total). For bulk send, use «Email» button on each entity row.`,
+          `Opened email to first owner (${grouped.size} groups total).`,
         );
       }
     }
   };
 
-  const readinessTone =
-    company.readinessPct >= 80
-      ? "text-emerald-600 dark:text-emerald-400"
-      : company.readinessPct >= 50
-        ? "text-amber-600 dark:text-amber-400"
-        : "text-rose-600 dark:text-rose-400";
+  const isComplete = company.items.length === 0;
+  const accentClass = isComplete
+    ? "border-emerald-300 dark:border-emerald-700/60"
+    : company.readinessPct >= 50
+      ? "border-amber-300 dark:border-amber-700/60"
+      : "border-rose-300 dark:border-rose-700/60";
 
   return (
-    <div className="rounded-lg border border-border/60 bg-card overflow-hidden">
-      {/* Header row */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-accent/30 transition-colors"
-      >
-        {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {company.companyCode}
+    <div className={`rounded-xl border ${accentClass} bg-card overflow-hidden`}>
+      {/* ─── Card header ─── */}
+      <div className="px-5 py-4 border-b border-border/40 bg-gradient-to-r from-card to-muted/20">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {company.companyCode}
+              </span>
+              <h3 className="text-base font-semibold text-foreground">
+                {company.companyName}
+              </h3>
+              {company.industry && (
+                <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/90">
+                  {company.industry}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {company.presentCount} with data · {company.items.length} missing
+              · readiness{" "}
+              <span
+                className={`font-semibold ${
+                  company.readinessPct >= 80
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : company.readinessPct >= 50
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-rose-600 dark:text-rose-400"
+                }`}
+              >
+                {company.readinessPct}%
+              </span>
+            </div>
+          </div>
+          {!isComplete && (
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleCsv}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
+                title="Export gap list as CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleEmailAll}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-foreground/90 hover:bg-accent transition-colors"
+                title="Email owners with grouped requests"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                Email owners
+              </button>
+              <a
+                href={`/budgeting/admin/ai-import?forEntity=${company.companyCode}`}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload file
+              </a>
+            </div>
+          )}
+        </div>
+        {/* Progress bar at bottom of header */}
+        <div className="mt-3">
+          <ProgressBar
+            present={company.presentCount}
+            total={company.applicableCount}
+          />
+        </div>
+      </div>
+
+      {/* ─── Two-column body: Active | Missing ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr] divide-y lg:divide-y-0 lg:divide-x divide-border/40">
+        {/* LEFT: Present indicators */}
+        <div className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <h4 className="text-sm font-medium text-foreground">
+                Has data
+              </h4>
+              <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                {company.presentItems.length}
+              </span>
+            </div>
+            {company.presentItems.length > 12 && (
+              <button
+                type="button"
+                onClick={() => setExpandedPresent((v) => !v)}
+                className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-0.5"
+              >
+                {expandedPresent ? "Show less" : `Show all ${company.presentItems.length}`}
+                {expandedPresent ? (
+                  <ChevronUp className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </button>
+            )}
+          </div>
+          {company.presentItems.length === 0 ? (
+            <div className="text-xs text-muted-foreground italic py-4 text-center">
+              No data yet
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {(expandedPresent
+                ? company.presentItems
+                : company.presentItems.slice(0, 12)
+              ).map((item) => (
+                <PresentChip key={item.indicatorCode} item={item} />
+              ))}
+              {!expandedPresent && company.presentItems.length > 12 && (
+                <span className="text-[11px] text-muted-foreground/70 self-center px-2">
+                  +{company.presentItems.length - 12} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Missing indicators */}
+        <div className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertCircle className="h-4 w-4 text-rose-500" />
+            <h4 className="text-sm font-medium text-foreground">
+              Needs data
+            </h4>
+            <span className="font-mono text-xs text-rose-600 dark:text-rose-400 font-semibold">
+              {company.items.length}
             </span>
-            <span className="font-medium text-foreground">
-              {company.companyName}
-            </span>
-            {company.industry && (
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
-                {company.industry}
+            {company.items.length > 0 && (
+              <span className="text-[11px] text-muted-foreground ml-auto">
+                {new Set(company.items.map((it) => it.owner.role)).size} owner
+                role{new Set(company.items.map((it) => it.owner.role)).size > 1 ? "s" : ""}
               </span>
             )}
           </div>
-        </div>
-        <div className="flex items-center gap-6 shrink-0">
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
-              Missing
+          {company.items.length === 0 ? (
+            <div className="text-xs text-emerald-700 dark:text-emerald-300 italic py-4 text-center font-medium">
+              ✓ All data present for this entity
             </div>
-            <div className="font-mono text-xl tabular-nums font-semibold text-rose-600 dark:text-rose-400">
-              {company.items.length}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
-              Of total
-            </div>
-            <div className="font-mono text-xl tabular-nums text-muted-foreground">
-              {company.applicableCount}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
-              Ready
-            </div>
-            <div className={`font-mono text-xl tabular-nums font-semibold ${readinessTone}`}>
-              {company.readinessPct}%
-            </div>
-          </div>
-        </div>
-      </button>
-
-      {/* Expanded body */}
-      {isExpanded && (
-        <div className="border-t border-border/40 bg-muted/10">
-          {/* Entity-level actions */}
-          <div className="px-4 py-2 flex flex-wrap items-center gap-2 border-b border-border/30">
-            <button
-              type="button"
-              onClick={handleCsv}
-              className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-[11px] text-foreground/90 hover:bg-accent transition-colors"
-            >
-              <Download className="h-3 w-3" />
-              CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleEmailAll}
-              className="inline-flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-[11px] text-foreground/90 hover:bg-accent transition-colors"
-            >
-              <Mail className="h-3 w-3" />
-              Email all owners
-            </button>
-            <a
-              href={`/budgeting/admin/ai-import?forEntity=${company.companyCode}`}
-              className="inline-flex items-center gap-1.5 rounded border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] text-primary hover:bg-primary/15 transition-colors"
-            >
-              <Upload className="h-3 w-3" />
-              Upload file
-            </a>
-            <span className="ml-auto text-[10px] text-muted-foreground">
-              {company.items.length} items grouped into{" "}
-              {new Set(company.items.map((it) => it.owner.role)).size} owner role
-              {new Set(company.items.map((it) => it.owner.role)).size > 1
-                ? "s"
-                : ""}
-            </span>
-          </div>
-
-          {/* Items table */}
-          <table className="w-full text-sm">
-            <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">Indicator</th>
-                <th className="px-4 py-2 text-left font-medium">Category</th>
-                <th className="px-4 py-2 text-left font-medium">Owner</th>
-                <th className="px-4 py-2 text-left font-medium">
-                  What to send
-                </th>
-                <th className="px-4 py-2 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          ) : (
+            <div className="space-y-1.5">
               {company.items.map((item) => (
-                <ItemRow
+                <MissingRow
                   key={item.indicatorCode}
                   item={item}
                   companyCode={company.companyCode}
                   companyName={company.companyName}
                 />
               ))}
-            </tbody>
-          </table>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function ItemRow({
+function PresentChip({ item }: { item: PresentItem }) {
+  const ringClass = {
+    green: "ring-emerald-300 dark:ring-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200",
+    amber: "ring-amber-300 dark:ring-amber-700/60 bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200",
+    red: "ring-rose-300 dark:ring-rose-700/60 bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200",
+  }[item.status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 ring-1 rounded-md px-2 py-0.5 text-[11px] font-mono ${ringClass}`}
+      title={`${item.indicatorNameEn} (${item.category}, ${item.unit}) — status: ${item.status}`}
+    >
+      <StatusDot status={item.status} />
+      {item.indicatorCode}
+    </span>
+  );
+}
+
+function MissingRow({
   item,
   companyCode,
   companyName,
@@ -548,46 +620,53 @@ function ItemRow({
     if (typeof window !== "undefined") window.open(url, "_blank");
   };
 
-  const isSystemOwned = item.owner.role === "BudgetPro System";
+  const isSystemOwned = item.owner.role.toLowerCase().includes("budgetpro");
+  const isUnknownOwner = item.owner.role.toLowerCase().includes("unknown");
 
   return (
-    <tr className="border-t border-border/30 hover:bg-accent/20 transition-colors">
-      <td className="px-4 py-2">
-        <div className="font-mono text-[11px] text-foreground">
-          {item.indicatorCode}
+    <div
+      className={`group flex items-center gap-3 rounded-md border px-3 py-2 transition-colors ${
+        isUnknownOwner
+          ? "border-dashed border-amber-300/60 bg-amber-50/30 dark:border-amber-800/40 dark:bg-amber-950/15"
+          : "border-border/60 bg-muted/20 hover:bg-muted/40"
+      }`}
+    >
+      <Circle className="h-2 w-2 fill-rose-500 text-rose-500 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[12px] font-medium text-foreground">
+            {item.indicatorCode}
+          </span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
+            {item.category}
+          </span>
         </div>
-        <div className="text-[10px] text-muted-foreground truncate max-w-xs">
+        <div className="text-[11px] text-muted-foreground truncate mt-0.5">
           {item.indicatorNameEn}
         </div>
-      </td>
-      <td className="px-4 py-2">
-        <span className="inline-flex items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80">
-          {item.category}
-        </span>
-      </td>
-      <td className="px-4 py-2 max-w-[220px]">
-        <div className="text-xs text-foreground/90">{item.owner.role}</div>
-        {item.owner.name && (
-          <div className="text-[10px] text-muted-foreground">{item.owner.name}</div>
+      </div>
+      <div className="hidden md:block min-w-0 max-w-[200px]">
+        <div className="text-[11px] font-medium text-foreground/90 truncate">
+          {item.owner.role}
+        </div>
+        {item.owner.scope && (
+          <div className="text-[10px] text-muted-foreground truncate">
+            {item.owner.scope}
+          </div>
         )}
-      </td>
-      <td className="px-4 py-2 text-xs text-muted-foreground max-w-md">
-        {item.owner.scope ?? `Input: ${item.requiredInput}`}
-      </td>
-      <td className="px-4 py-2 text-right whitespace-nowrap">
-        {!isSystemOwned && (
-          <button
-            type="button"
-            onClick={handleEmail}
-            className="inline-flex items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-[10px] text-foreground/80 hover:bg-accent transition-colors"
-            title={`Email ${item.owner.role}`}
-          >
-            <Mail className="h-3 w-3" />
-            Email
-          </button>
-        )}
-      </td>
-    </tr>
+      </div>
+      {!isSystemOwned && (
+        <button
+          type="button"
+          onClick={handleEmail}
+          className="inline-flex items-center gap-1 rounded border border-border bg-card px-2 py-1 text-[11px] text-foreground/80 hover:bg-accent hover:border-primary/40 transition-colors opacity-60 group-hover:opacity-100 shrink-0"
+          title={`Email ${item.owner.role}`}
+        >
+          <Mail className="h-3 w-3" />
+          Email
+        </button>
+      )}
+    </div>
   );
 }
 

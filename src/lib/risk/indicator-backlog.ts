@@ -42,6 +42,17 @@ export interface BacklogItem {
   inputCategory: string;
 }
 
+export interface PresentItem {
+  indicatorCode: string;
+  indicatorNameEn: string;
+  indicatorNameRu: string | null;
+  indicatorNameAz: string | null;
+  category: string;
+  unit: string;
+  /** Current IndicatorValue.status — "green" | "amber" | "red". */
+  status: "green" | "amber" | "red";
+}
+
 export interface CompanyBacklog {
   companyId: string;
   companyCode: string;
@@ -55,8 +66,10 @@ export interface CompanyBacklog {
   presentCount: number;
   /** Readiness % = present / applicable. */
   readinessPct: number;
-  /** Per-indicator backlog details. */
+  /** Per-indicator backlog details (missing items). */
   items: BacklogItem[];
+  /** Per-indicator items that have data (status green/amber/red). */
+  presentItems: PresentItem[];
 }
 
 export interface BacklogSummary {
@@ -160,6 +173,7 @@ export async function computeIndicatorBacklog(
         presentCount: 0,
         readinessPct: 0,
         items: [],
+        presentItems: [],
       });
       continue;
     }
@@ -170,10 +184,20 @@ export async function computeIndicatorBacklog(
     let presentCount = 0;
     let missingCount = 0;
     const items: BacklogItem[] = [];
+    const presentItems: PresentItem[] = [];
     for (const ind of applicable) {
       const status = ivByKey.get(`${co.id}|${ind.id}`);
       if (status && status !== "unknown") {
         presentCount++;
+        presentItems.push({
+          indicatorCode: ind.code,
+          indicatorNameEn: ind.nameEn,
+          indicatorNameRu: ind.nameRu,
+          indicatorNameAz: ind.nameAz,
+          category: ind.category,
+          unit: ind.unit,
+          status: status as "green" | "amber" | "red",
+        });
       } else {
         missingCount++;
         // Pick primary requiredInput (first non-system one)
@@ -219,6 +243,9 @@ export async function computeIndicatorBacklog(
           ? Math.round((presentCount / applicable.length) * 100)
           : 0,
       items: items.sort((a, b) => a.indicatorCode.localeCompare(b.indicatorCode)),
+      presentItems: presentItems.sort(
+        (a, b) => a.indicatorCode.localeCompare(b.indicatorCode),
+      ),
     });
   }
 
