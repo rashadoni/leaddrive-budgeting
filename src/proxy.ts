@@ -122,6 +122,12 @@ export async function proxy(req: NextRequest) {
   })
 }
 
+// 2026-05-27 — added `_next/data` (RSC payload fetches) and `_next/webpack-hmr`
+// / `_next/turbopack-hmr` (dev HMR streams) to the skip list. These never
+// need auth() and previously paid the proxy.ts cost on every keystroke
+// during hot reload, contributing to «локалка долго перезагружается».
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|wallpapers).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|_next/data|_next/webpack-hmr|_next/turbopack-hmr|favicon.ico|wallpapers).*)",
+  ],
 }
