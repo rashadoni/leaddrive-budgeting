@@ -421,8 +421,16 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
         </summary>
         <div className="mt-2 space-y-2">
           {preview.entitySheetMaps.map((m) => (
-            <div key={m.code} className="border-l-2 border-emerald-500/40 pl-3">
-              <div className="font-mono font-bold">{m.code}</div>
+            // 2026-05-27 — replaced banned `border-l-2 border-emerald-500/40`
+            // side-stripe (impeccable absolute ban) with full muted border
+            // + emerald entity-code accent. Same visual grouping, no stripe.
+            <div
+              key={m.code}
+              className="rounded border border-border/60 bg-muted/20 px-3 py-2"
+            >
+              <div className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                {m.code}
+              </div>
               <div className="text-muted-foreground text-[11px] grid grid-cols-3 gap-1 mt-1">
                 {m.plSheet && <div>P&L: {m.plSheet}</div>}
                 {m.bsSheet && <div>BS: {m.bsSheet}</div>}
