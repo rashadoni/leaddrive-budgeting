@@ -675,7 +675,10 @@ export function MultiFileForm() {
                               <span className="text-slate-600">Запишет: </span>
                               {imp.impact.writes}
                             </p>
-                            {/* indicator list */}
+                            {/* indicator list — 2026-05-27 humanized: show
+                                Russian name primary, code as small mono
+                                suffix so finance users can read at-a-glance
+                                without learning each abbreviation. */}
                             {hasIndicators ? (
                               <div className="mt-1.5">
                                 <p className="text-[10px] text-slate-600 mb-1">
@@ -691,10 +694,13 @@ export function MultiFileForm() {
                                   {imp.impact.indicators.map((ind) => (
                                     <span
                                       key={ind.code}
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono text-slate-700"
-                                      title={`${ind.nameRu ?? ind.nameEn} · ${ind.category} · совпало по ${ind.matchedInput}`}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] text-slate-700"
+                                      title={`${ind.code} · ${ind.category} · совпало по ${ind.matchedInput}`}
                                     >
-                                      {ind.code}
+                                      <span>{ind.nameRu ?? ind.nameEn}</span>
+                                      <span className="font-mono text-[9px] text-slate-400">
+                                        {ind.code}
+                                      </span>
                                     </span>
                                   ))}
                                 </div>

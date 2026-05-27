@@ -577,18 +577,23 @@ function EntityCard({ company }: { company: CompanyBacklog }) {
 }
 
 function PresentChip({ item }: { item: PresentItem }) {
+  // 2026-05-27 — human-readable name primary, code demoted to tooltip.
+  // Finance users found `AGRO_COMMODITY_VOL` and `FP_INVENTORY_TURNS`
+  // unreadable; show Russian name (fallback English) instead. Power users
+  // who want the code hover the chip.
   const ringClass = {
     green: "ring-emerald-300 dark:ring-emerald-700/60 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200",
     amber: "ring-amber-300 dark:ring-amber-700/60 bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200",
     red: "ring-rose-300 dark:ring-rose-700/60 bg-rose-50/60 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200",
   }[item.status];
+  const displayName = item.indicatorNameRu ?? item.indicatorNameEn;
   return (
     <span
-      className={`inline-flex items-center gap-1.5 ring-1 rounded-md px-2 py-0.5 text-[11px] font-mono ${ringClass}`}
-      title={`${item.indicatorNameEn} (${item.category}, ${item.unit}) — status: ${item.status}`}
+      className={`inline-flex items-center gap-1.5 ring-1 rounded-md px-2 py-0.5 text-[11px] ${ringClass}`}
+      title={`${item.indicatorCode} · ${item.indicatorNameEn} · ${item.category} · ${item.unit} · status: ${item.status}`}
     >
       <StatusDot status={item.status} />
-      {item.indicatorCode}
+      <span className="font-medium">{displayName}</span>
     </span>
   );
 }
@@ -633,16 +638,18 @@ function MissingRow({
     >
       <Circle className="h-2 w-2 fill-rose-500 text-rose-500 shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-[12px] font-medium text-foreground">
+        {/* 2026-05-27 — lead with human name, demote code to small mono
+            suffix. Russian name preferred for AZSEKER admin audience. */}
+        <div className="text-[13px] font-medium text-foreground truncate">
+          {item.indicatorNameRu ?? item.indicatorNameEn}
+        </div>
+        <div className="flex items-baseline gap-2 mt-0.5">
+          <span className="font-mono text-[10px] text-muted-foreground/80">
             {item.indicatorCode}
           </span>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
             {item.category}
           </span>
-        </div>
-        <div className="text-[11px] text-muted-foreground truncate mt-0.5">
-          {item.indicatorNameEn}
         </div>
       </div>
       <div className="hidden md:block min-w-0 max-w-[200px]">

@@ -379,10 +379,13 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                         {sheetImpact.impact.indicators.slice(0, 6).map((ind) => (
                           <span
                             key={ind.code}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] font-mono text-slate-700"
-                            title={`${ind.nameRu ?? ind.nameEn} · ${ind.category}`}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] text-slate-700"
+                            title={`${ind.code} · ${ind.category}`}
                           >
-                            {ind.code}
+                            <span>{ind.nameRu ?? ind.nameEn}</span>
+                            <span className="font-mono text-[9px] text-slate-400">
+                              {ind.code}
+                            </span>
                           </span>
                         ))}
                         {sheetImpact.impact.indicators.length > 6 && (
