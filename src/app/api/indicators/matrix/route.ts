@@ -275,6 +275,10 @@ export async function GET(request: NextRequest) {
               // wire lets the CompanyTree compute the degradation
               // client-side without a second round-trip per row.
               lastReconciledAt: true,
+              // 2026-05-27 A4 — feeds matrix.lastComputedAt aggregate
+              // for the «Updated 2h ago» freshness badge in HeatMap
+              // header. Kept on the cell for future row-level freshness.
+              computedAt: true,
             },
           });
 
@@ -480,6 +484,10 @@ export async function GET(request: NextRequest) {
               // wire lets the CompanyTree compute the degradation
               // client-side without a second round-trip per row.
               lastReconciledAt: true,
+              // 2026-05-27 A4 — feeds matrix.lastComputedAt aggregate
+              // for the «Updated 2h ago» freshness badge in HeatMap
+              // header. Kept on the cell for future row-level freshness.
+              computedAt: true,
             },
           });
 
@@ -587,12 +595,28 @@ export async function GET(request: NextRequest) {
     // recompute event >10s later won't be obscured by stale cached
     // data. At Phase F 60-co × 80-ind scale this header is the
     // safety-net layer; the load-bearing cache is `ensureMatrix`.
+    // 2026-05-27 A4 freshness — aggregate max(computedAt) across all
+    // rendered cells (leaf + rollup + subgroup). Single ISO string the
+    // HeatMap header turns into «Updated 2h ago» via a relative-time
+    // formatter. Null when matrix has no cells (empty org / no recompute
+    // ever fired) — UI degrades to «No data yet». Reading from already-
+    // selected cells keeps this zero-extra-query.
+    const allCellsForFreshness = [...cells, ...parentCells, ...subgroupCells];
+    let lastComputedAt: string | null = null;
+    for (const c of allCellsForFreshness) {
+      const cellTs = (c as { computedAt?: Date | string | null }).computedAt;
+      if (!cellTs) continue;
+      const iso = cellTs instanceof Date ? cellTs.toISOString() : String(cellTs);
+      if (!lastComputedAt || iso > lastComputedAt) lastComputedAt = iso;
+    }
+
     return NextResponse.json(
       {
         period,
         companies: [...companies, ...subgroupCompanies],
         indicators: indicatorsForRender,
-        cells: [...cells, ...parentCells, ...subgroupCells],
+        cells: allCellsForFreshness,
+        lastComputedAt,
       },
       { headers: { 'Cache-Control': 'private, max-age=10' } },
     );

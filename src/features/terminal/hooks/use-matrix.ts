@@ -105,6 +105,11 @@ export interface MatrixResponse {
   companies: MatrixCompanyRow[];
   indicators: MatrixIndicatorCol[];
   cells: HeatMapCell[];
+  /** 2026-05-27 A4 — max(IndicatorValue.computedAt) across all rendered
+   *  cells, ISO 8601 string. Null when matrix has no cells (empty org /
+   *  no recompute fired). HeatMap header turns this into «Updated 2h ago»
+   *  via a relative-time formatter, refreshed every 30s without re-fetch. */
+  lastComputedAt?: string | null;
 }
 
 export interface UseMatrixResult {

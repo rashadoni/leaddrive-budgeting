@@ -683,6 +683,13 @@ export function HeatMap({ period }: Props) {
             )}
           </span>
         )}
+        {/* 2026-05-27 A4 — data-freshness badge. Reads matrix.lastComputedAt
+            from server (max(IndicatorValue.computedAt) across rendered cells)
+            and turns it into «Updated 2h ago» via FreshnessLabel below.
+            Re-renders every 30s without re-fetching the matrix. */}
+        {data?.lastComputedAt && (
+          <FreshnessLabel iso={data.lastComputedAt} />
+        )}
         {/* Phase 7.N — scenario mode badge */}
         {activeScenarioLabel && (
           <span className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border border-[#FFB800]/50 bg-[#FFB800]/10 text-[#FFB800] text-[9px] uppercase tracking-wider font-semibold">
@@ -1700,5 +1707,52 @@ function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick
         </TooltipContent>
       </Tooltip>
     </td>
+  );
+}
+
+/**
+ * 2026-05-27 A4 — relative-time data-freshness chip for the HeatMap
+ * header. Reads matrix.lastComputedAt (max(computedAt) across all
+ * rendered cells, set server-side) and renders «Updated 2h ago».
+ *
+ * Self-ticking: re-renders every 30s so a long-open Risk Terminal
+ * tab doesn't show stale "1 min ago" text three hours later. No
+ * matrix re-fetch happens here — the SSE channel handles that.
+ *
+ * Locale-agnostic (uses Intl.RelativeTimeFormat). Tooltip carries
+ * the full ISO timestamp for power users.
+ */
+function FreshnessLabel({ iso }: { iso: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const deltaSec = Math.max(0, Math.round((now - ts) / 1000));
+  let label: string;
+  if (deltaSec < 60) label = 'just now';
+  else if (deltaSec < 3600) label = `${Math.round(deltaSec / 60)}m ago`;
+  else if (deltaSec < 86400) label = `${Math.round(deltaSec / 3600)}h ago`;
+  else label = `${Math.round(deltaSec / 86400)}d ago`;
+  // Stale-after-24h flips the dot from teal (live) to amber (stale).
+  // Matches the trust-badge convention: real-time green / known-old amber.
+  const isStale = deltaSec > 86400;
+  return (
+    <span
+      className="inline-flex items-center gap-1 shrink-0 text-gray-500 text-[9px] tabular-nums"
+      title={`Last recompute: ${new Date(iso).toLocaleString()}`}
+      data-testid="heatmap-freshness"
+      // 2026-05-27 — opt out of visual diff (label text rotates every
+      // 30s, would cause spurious baseline drift on long test runs).
+      data-volatile="true"
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block h-1 w-1 rounded-full ${isStale ? 'bg-amber-500' : 'bg-emerald-500'}`}
+      />
+      <span>updated {label}</span>
+    </span>
   );
 }
