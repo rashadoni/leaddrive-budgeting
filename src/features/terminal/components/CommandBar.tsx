@@ -682,7 +682,7 @@ export function CommandBar() {
               <a
                 href="/budgeting/admin/drift"
                 className="flex items-center cursor-pointer hover:text-[#FF6B6B] transition-colors"
-                aria-label="Drift Dashboard"
+                aria-label={t('commandBar.healthAriaLabel')}
                 data-testid="commandbar-health-chip"
               >
                 <span className="ml-2 mr-1">[health</span>
