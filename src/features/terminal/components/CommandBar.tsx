@@ -9,7 +9,7 @@ import {
   panelForCommand,
   type ParsedCommand,
 } from '../lib/command-parser';
-import { Bell, AlertTriangle, Zap } from 'lucide-react';
+import { Bell, AlertTriangle, Zap, CheckCircle2 } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 import { ensureMatrix, useMatrix } from '../hooks/use-matrix';
 import { useDriftHealth } from '../hooks/use-drift-health';
@@ -674,39 +674,60 @@ export function CommandBar() {
               : t('commandBar.alertsTitle', { count: alertsCount })}
           </TooltipContent>
         </Tooltip>
-        {/* 2026-05-27 — Health chip. Surfaces Drift Dashboard state
-            without making user navigate there. Click jumps to the page. */}
-        {!health.loading && (health.staleCount > 0 || health.driftEventCount > 0) && (
+        {/* 2026-05-27 — Health chip. Surfaces Drift Dashboard state in
+            ALL conditions so the affordance is discoverable: green ✓
+            «ok» when nothing's wrong, amber/rose with counts when stale
+            feeds or drift events exist. Click → /admin/drift. */}
+        {!health.loading && (
           <Tooltip>
             <TooltipTrigger asChild>
               <a
                 href="/budgeting/admin/drift"
-                className="flex items-center cursor-pointer hover:text-[#FF6B6B] transition-colors"
+                className={`flex items-center cursor-pointer transition-colors ${
+                  health.staleCount > 0
+                    ? "hover:text-[#FF6B6B]"
+                    : health.driftEventCount > 0
+                      ? "hover:text-[#FFB800]"
+                      : "hover:text-emerald-400"
+                }`}
                 aria-label={t('commandBar.healthAriaLabel')}
                 data-testid="commandbar-health-chip"
               >
                 <span className="ml-2 mr-1">[health</span>
-                {health.staleCount > 0 && (
+                {health.staleCount === 0 && health.driftEventCount === 0 ? (
                   <>
-                    <AlertTriangle
+                    <CheckCircle2
                       size={11}
-                      className="mx-1 text-[#FF6B6B]"
+                      className="mx-1 text-emerald-400"
                       aria-hidden="true"
                     />
-                    <span className="text-[#FF6B6B]">{health.staleCount}</span>
+                    <span className="text-emerald-400">ok</span>
                   </>
-                )}
-                {health.staleCount > 0 && health.driftEventCount > 0 && (
-                  <span className="text-gray-600 mx-1">·</span>
-                )}
-                {health.driftEventCount > 0 && (
+                ) : (
                   <>
-                    <Zap
-                      size={11}
-                      className="mx-1 text-[#FFB800]"
-                      aria-hidden="true"
-                    />
-                    <span className="text-[#FFB800]">{health.driftEventCount}</span>
+                    {health.staleCount > 0 && (
+                      <>
+                        <AlertTriangle
+                          size={11}
+                          className="mx-1 text-[#FF6B6B]"
+                          aria-hidden="true"
+                        />
+                        <span className="text-[#FF6B6B]">{health.staleCount}</span>
+                      </>
+                    )}
+                    {health.staleCount > 0 && health.driftEventCount > 0 && (
+                      <span className="text-gray-600 mx-1">·</span>
+                    )}
+                    {health.driftEventCount > 0 && (
+                      <>
+                        <Zap
+                          size={11}
+                          className="mx-1 text-[#FFB800]"
+                          aria-hidden="true"
+                        />
+                        <span className="text-[#FFB800]">{health.driftEventCount}</span>
+                      </>
+                    )}
                   </>
                 )}
                 <span>]</span>
@@ -717,25 +738,33 @@ export function CommandBar() {
               className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[300px] text-xs"
             >
               <div className="space-y-0.5">
-                {health.staleCount > 0 && (
-                  <div>
-                    <span className="text-[#FF6B6B] font-medium">
-                      ⚠ {health.staleCount}
-                    </span>{" "}
-                    <span className="text-muted-foreground">
-                      {health.staleCount === 1 ? "stale feed" : "stale feeds"}
-                    </span>
+                {health.staleCount === 0 && health.driftEventCount === 0 ? (
+                  <div className="text-emerald-400">
+                    ✓ Все reference-фиды свежие, нет недавних drift events
                   </div>
-                )}
-                {health.driftEventCount > 0 && (
-                  <div>
-                    <span className="text-[#FFB800] font-medium">
-                      ⚡ {health.driftEventCount}
-                    </span>{" "}
-                    <span className="text-muted-foreground">
-                      drift event{health.driftEventCount === 1 ? "" : "s"} (30d)
-                    </span>
-                  </div>
+                ) : (
+                  <>
+                    {health.staleCount > 0 && (
+                      <div>
+                        <span className="text-[#FF6B6B] font-medium">
+                          ⚠ {health.staleCount}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          {health.staleCount === 1 ? "stale feed" : "stale feeds"}
+                        </span>
+                      </div>
+                    )}
+                    {health.driftEventCount > 0 && (
+                      <div>
+                        <span className="text-[#FFB800] font-medium">
+                          ⚡ {health.driftEventCount}
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          drift event{health.driftEventCount === 1 ? "" : "s"} (30d)
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
                 <div className="text-[10px] text-muted-foreground/70 pt-1">
                   Click to open Drift Dashboard →
