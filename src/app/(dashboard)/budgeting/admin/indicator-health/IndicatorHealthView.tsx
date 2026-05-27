@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
 
 interface GappyIndicator {
@@ -90,6 +91,7 @@ function rowKey(g: GappyIndicator): string {
 }
 
 export function IndicatorHealthView() {
+  const t = useTranslations("adminIndicatorHealth")
   const [data, setData] = useState<HealthResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -207,7 +209,7 @@ export function IndicatorHealthView() {
   }
 
   if (loading && !data) {
-    return <div className="text-sm text-muted-foreground">Загружаю…</div>
+    return <div className="text-sm text-muted-foreground">{t("loading")}</div>
   }
   if (error) {
     return (
@@ -233,27 +235,27 @@ export function IndicatorHealthView() {
       {/* ── Summary tiles ────────────────────────────────────── */}
       <div className="grid grid-cols-5 gap-2">
         <div className="border rounded p-3 bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-200 dark:ring-emerald-800/40">
-          <div className="text-xs text-emerald-800 dark:text-emerald-300 uppercase">🟢 Green</div>
+          <div className="text-xs text-emerald-800 dark:text-emerald-300 uppercase">{t("summaryGreen")}</div>
           <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-200">{summary.green}</div>
           <div className="text-[10px] text-muted-foreground">{greenPct}%</div>
         </div>
         <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-200 dark:ring-amber-800/40">
-          <div className="text-xs text-amber-800 dark:text-amber-300 uppercase">🟡 Amber</div>
+          <div className="text-xs text-amber-800 dark:text-amber-300 uppercase">{t("summaryAmber")}</div>
           <div className="text-2xl font-bold text-amber-700 dark:text-amber-200">{summary.amber}</div>
         </div>
         <div className="border rounded p-3 bg-rose-50 dark:bg-rose-950/30 ring-1 ring-rose-200 dark:ring-rose-800/40">
-          <div className="text-xs text-rose-800 dark:text-rose-300 uppercase">🔴 Red</div>
+          <div className="text-xs text-rose-800 dark:text-rose-300 uppercase">{t("summaryRed")}</div>
           <div className="text-2xl font-bold text-rose-700 dark:text-rose-200">{summary.red}</div>
         </div>
         <div className="border rounded p-3 bg-slate-50 dark:bg-slate-900/40 ring-1 ring-slate-200 dark:ring-slate-700/50">
-          <div className="text-xs text-slate-700 dark:text-slate-300 uppercase">⚪ Unknown</div>
+          <div className="text-xs text-slate-700 dark:text-slate-300 uppercase">{t("summaryUnknown")}</div>
           <div className="text-2xl font-bold text-slate-700 dark:text-slate-200">{summary.unknown}</div>
         </div>
         <div className="border rounded p-3">
-          <div className="text-xs text-muted-foreground uppercase">Computed</div>
+          <div className="text-xs text-muted-foreground uppercase">{t("summaryComputed")}</div>
           <div className="text-2xl font-bold">{computedPct}%</div>
           <div className="text-[10px] text-muted-foreground">
-            {summary.totalIvs} total IVs
+            {t("summaryTotalIvs", { n: summary.totalIvs })}
           </div>
         </div>
       </div>
@@ -261,7 +263,7 @@ export function IndicatorHealthView() {
       {/* ── Unknown by error code ─────────────────────────────── */}
       <div className="border rounded p-3">
         <div className="text-xs uppercase text-muted-foreground mb-2">
-          Unknown breakdown by error code
+          {t("unknownBreakdown")}
         </div>
         <div className="flex gap-2 flex-wrap">
           {Object.entries(unknownByErrorCode)
@@ -286,9 +288,9 @@ export function IndicatorHealthView() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск по имени, коду или missing var…"
+            placeholder={t("searchPlaceholder")}
             className="w-full pl-8 pr-8 py-1.5 text-xs border border-border rounded bg-background placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-            aria-label="Search indicators"
+            aria-label={t("searchAriaLabel")}
             data-testid="health-search"
           />
           {searchQuery && (
@@ -296,7 +298,7 @@ export function IndicatorHealthView() {
               type="button"
               onClick={() => setSearchQuery("")}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
+              aria-label={t("clearSearchAriaLabel")}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -304,7 +306,7 @@ export function IndicatorHealthView() {
         </div>
         {hasActiveFilter && (
           <div className="flex items-center gap-2 flex-wrap text-[11px]">
-            <span className="text-muted-foreground">Active filters:</span>
+            <span className="text-muted-foreground">{t("activeFilters")}</span>
             {filterCategory && (
               <button
                 type="button"
@@ -335,7 +337,7 @@ export function IndicatorHealthView() {
               </button>
             )}
             <span className="text-muted-foreground ml-1">
-              · {visible.length} of {gappyIndicators.length} rows
+              {t("rowsCount", { visible: visible.length, total: gappyIndicators.length })}
             </span>
           </div>
         )}
@@ -343,7 +345,7 @@ export function IndicatorHealthView() {
 
       {/* ── Category filter ───────────────────────────────────── */}
       <div className="flex gap-2 flex-wrap items-center">
-        <span className="text-xs text-muted-foreground">Filter:</span>
+        <span className="text-xs text-muted-foreground">{t("filterLabel")}</span>
         <button
           type="button"
           onClick={() => setFilterCategory(null)}
@@ -351,7 +353,7 @@ export function IndicatorHealthView() {
             !filterCategory ? "bg-muted" : ""
           }`}
         >
-          All ({gappyIndicators.length})
+          {t("filterAll", { n: gappyIndicators.length })}
         </button>
         {Object.entries(CATEGORY_STYLE).map(([cat, s]) => {
           const count = gappyIndicators.filter((g) => g.category === cat).length
@@ -378,36 +380,36 @@ export function IndicatorHealthView() {
             <tr>
               <th className="w-6 p-2" />
               <SortableTh
-                label="Indicator"
+                label={t("thIndicator")}
                 col="indicator"
                 sortColumn={sortColumn}
                 sortDir={sortDir}
                 onSort={toggleSort}
               />
               <SortableTh
-                label="Category"
+                label={t("thCategory")}
                 col="category"
                 sortColumn={sortColumn}
                 sortDir={sortDir}
                 onSort={toggleSort}
               />
               <SortableTh
-                label="Missing var"
+                label={t("thMissingVar")}
                 col="missingVar"
                 sortColumn={sortColumn}
                 sortDir={sortDir}
                 onSort={toggleSort}
               />
               <SortableTh
-                label="Cells"
+                label={t("thCells")}
                 col="cells"
                 sortColumn={sortColumn}
                 sortDir={sortDir}
                 onSort={toggleSort}
                 align="right"
               />
-              <th className="text-left p-2">Entities</th>
-              <th className="text-left p-2">Remediation</th>
+              <th className="text-left p-2">{t("thEntities")}</th>
+              <th className="text-left p-2">{t("thRemediation")}</th>
             </tr>
           </thead>
           <tbody>
@@ -431,9 +433,7 @@ export function IndicatorHealthView() {
             {visible.length === 0 && (
               <tr>
                 <td colSpan={7} className="p-4 text-center text-muted-foreground italic">
-                  {hasActiveFilter
-                    ? "No rows match the current filters."
-                    : "No gaps in this category 🎉"}
+                  {hasActiveFilter ? t("emptyFiltered") : t("emptyNoGaps")}
                 </td>
               </tr>
             )}
@@ -442,7 +442,7 @@ export function IndicatorHealthView() {
       </div>
 
       <div className="text-[10px] text-muted-foreground">
-        Generated at {new Date(data.generatedAt).toLocaleString()}
+        {t("generatedAt", { date: new Date(data.generatedAt).toLocaleString() })}
       </div>
     </div>
   )
@@ -507,6 +507,7 @@ function Row({
   onClickEntity: (code: string) => void
 }) {
   // Cells column impact bar — width proportional to maxCells; color
+  const t = useTranslations("adminIndicatorHealth")
   // bracket by absolute count (severity is "how many gaps" not "% of
   // the dataset").
   const barWidth = `${Math.max(4, Math.round((g.affectedCellCount / maxCells) * 100))}%`
@@ -611,7 +612,7 @@ function Row({
           <td colSpan={6} className="p-3 text-xs space-y-2" data-testid={`expanded-${rowKey(g)}`}>
             <div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">
-                Remediation
+                {t("expandedRemediation")}
               </div>
               <p className="text-foreground/90 leading-relaxed whitespace-pre-line">
                 {g.remediation}
@@ -620,13 +621,13 @@ function Row({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">
-                  Error code
+                  {t("expandedErrorCode")}
                 </div>
                 <code className="text-[11px] font-mono">{g.errorCode}</code>
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">
-                  Missing variable
+                  {t("expandedMissingVariable")}
                 </div>
                 <code className="text-[11px] font-mono">
                   {g.missingVariable ?? "—"}
@@ -634,7 +635,7 @@ function Row({
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">
-                  Affected entities ({g.affectedEntities.length})
+                  {t("expandedAffectedEntities", { n: g.affectedEntities.length })}
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {g.affectedEntities.map((code) => (
