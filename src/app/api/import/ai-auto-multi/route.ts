@@ -40,6 +40,10 @@ import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
 import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
+import {
+  affectedIndicatorsForDataType,
+  type DataTypeImpact,
+} from "@/lib/onboarding/ai-import/datatype-indicator-map"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 120
@@ -221,9 +225,18 @@ export async function POST(request: NextRequest) {
   // ── Context: known entity codes + org industry hint ─────────────
   const entities = await prisma.company.findMany({
     where: { organizationId: orgId, status: { not: "archived" } },
-    select: { code: true },
+    select: { code: true, industry: true },
   })
   const knownEntityCodes = entities.map((e: { code: string }) => e.code)
+  // Industry per entity used downstream to narrow the «affected
+  // indicators» preview projection (so a KPI_FARMING sheet for a
+  // food_processing entity doesn't list agro_crops-only indicators).
+  const industryByCode = new Map<string, string | null>(
+    entities.map((e: { code: string; industry: string | null }) => [
+      e.code,
+      e.industry,
+    ]),
+  )
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
     select: { settings: true },
@@ -296,6 +309,58 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // ── Decorate response with per-sheet «affected indicators» preview ──
+  // 2026-05-27 — extends each classification with the indicators its
+  // dataType writes will feed (matched against indicator-seeds
+  // requiredInputs). UI uses this to show "под какой индикатор попадает"
+  // alongside the existing confidence + reasoning. Cap at 12 to keep
+  // payload bounded — full list is recomputable client-side if needed.
+  function buildSheetImpacts(
+    classifications: ReadonlyArray<{
+      sheetName: string
+      dataType: string
+      entityCode: string | null
+      confidence: number
+    }>,
+  ): Array<
+    {
+      sheetName: string
+      dataType: string
+      entityCode: string | null
+      confidence: number
+      impact: DataTypeImpact
+    }
+  > {
+    return classifications.map((c) => {
+      const entityIndustry = c.entityCode
+        ? industryByCode.get(c.entityCode) ?? null
+        : null
+      const impact = affectedIndicatorsForDataType(
+        // SheetDataType union is a runtime-checked subset of strings; the
+        // classifier validates before returning.
+        c.dataType as Parameters<typeof affectedIndicatorsForDataType>[0],
+        {
+          industries: entityIndustry ? [entityIndustry] : undefined,
+          limit: 12,
+        },
+      )
+      return {
+        sheetName: c.sheetName,
+        dataType: c.dataType,
+        entityCode: c.entityCode,
+        confidence: c.confidence,
+        impact,
+      }
+    })
+  }
+  const sheetImpactsByFilename = new Map<
+    string,
+    ReturnType<typeof buildSheetImpacts>
+  >()
+  for (const f of result.perFile) {
+    sheetImpactsByFilename.set(f.filename, buildSheetImpacts(f.classifications))
+  }
+
   // ── Conflict short-circuit → 409 ────────────────────────────────
   // The orchestrator already returned early when conflicts were
   // detected (without opening any tx). Surface as 409 so the UI can
@@ -316,6 +381,7 @@ export async function POST(request: NextRequest) {
         ok: false,
         error: "Cross-file conflicts detected",
         ...result,
+        sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
         durationMs: Date.now() - t0,
       },
       { status: 409 },
@@ -351,6 +417,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
+    sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
     backlogClosed,
     durationMs: Date.now() - t0,
   })

@@ -73,6 +73,33 @@ interface PerGroupResult {
   skipReason: string | null
 }
 
+/** 2026-05-27 — per-sheet «affected indicators» preview projection.
+ *  Server computes via affectedIndicatorsForDataType() against
+ *  indicator-seeds.requiredInputs. Shown under each file in the preview
+ *  step so the user can verify the AI classifier landed on the right
+ *  dataType AND see which downstream indicators will move BEFORE applying. */
+interface AffectedIndicator {
+  code: string
+  nameEn: string
+  nameRu: string | null
+  nameAz: string | null
+  category: string
+  industries: string[]
+  matchedInput: string
+}
+interface SheetImpact {
+  sheetName: string
+  dataType: string
+  entityCode: string | null
+  confidence: number
+  impact: {
+    dataType: string
+    writes: string
+    note: string | null
+    indicators: AffectedIndicator[]
+  }
+}
+
 interface MultiFileApiResponse {
   ok: boolean
   mode?: "preview" | "applied"
@@ -93,6 +120,10 @@ interface MultiFileApiResponse {
    *  thanks to this import. Surfaced as «✅ Closed N backlog items»
    *  banner below the apply result. */
   backlogClosed?: Array<{ companyCode: string; indicatorCode: string }>
+  /** 2026-05-27 — per-file map of sheet-level impact projections. Read
+   *  by the preview card to render confidence + affected-indicator list
+   *  per classified sheet. */
+  sheetImpactsByFilename?: Record<string, SheetImpact[]>
 }
 
 const MAX_FILES = 10
@@ -116,6 +147,77 @@ function verdictEmoji(v: string): string {
   if (v === "yellow") return "🟡"
   if (v === "red") return "🔴"
   return "⚪"
+}
+
+/** Map LLM classifier confidence (0..1) → readable band + Tailwind chip class.
+ *  Mirrors `confidenceBand()` in datatype-indicator-map.ts but inlined here so
+ *  the component stays self-contained and tree-shakes cleanly. */
+function confidenceClass(c: number): {
+  label: string
+  pct: string
+  cls: string
+  bar: string
+} {
+  const pct = `${Math.round(Math.max(0, Math.min(1, c)) * 100)}%`
+  if (c >= 0.85) {
+    return {
+      label: "высокая",
+      pct,
+      cls: "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300",
+      bar: "bg-emerald-500",
+    }
+  }
+  if (c >= 0.65) {
+    return {
+      label: "средняя",
+      pct,
+      cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-300",
+      bar: "bg-amber-500",
+    }
+  }
+  return {
+    label: "низкая",
+    pct,
+    cls: "bg-rose-50 text-rose-800 ring-1 ring-rose-300",
+    bar: "bg-rose-500",
+  }
+}
+
+/** Per-dataType chip color. Maps the discrete classifier outputs to a
+ *  consistent palette so the user learns at-a-glance which colour is
+ *  which file-type. */
+function dataTypeChipClass(dt: string): string {
+  switch (dt) {
+    case "PLF":
+      return "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+    case "BS":
+      return "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200"
+    case "CF":
+      return "bg-teal-50 text-teal-700 ring-1 ring-teal-200"
+    case "KPI_FARMING":
+      return "bg-lime-50 text-lime-800 ring-1 ring-lime-300"
+    case "KPI_PROCESSING":
+      return "bg-orange-50 text-orange-800 ring-1 ring-orange-300"
+    case "LAND_REGISTRY":
+      return "bg-amber-50 text-amber-800 ring-1 ring-amber-300"
+    case "SALES":
+      return "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-fuchsia-200"
+    case "CAPEX":
+      return "bg-violet-50 text-violet-700 ring-1 ring-violet-200"
+    case "DESCRIPTIONS":
+      return "bg-slate-100 text-slate-700 ring-1 ring-slate-200"
+    case "OPS_FACTS":
+      return "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+    case "BUDGET_ACTUALS":
+    case "SALES_FORECAST":
+      return "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
+    case "INFO_SUMMARY":
+      return "bg-gray-100 text-gray-600 ring-1 ring-gray-200"
+    case "COMPANIES":
+      return "bg-stone-100 text-stone-700 ring-1 ring-stone-200"
+    default:
+      return "bg-rose-50 text-rose-700 ring-1 ring-rose-200"
+  }
 }
 
 export function MultiFileForm() {
@@ -474,36 +576,148 @@ export function MultiFileForm() {
         </div>
       )}
 
-      {/* Preview result */}
+      {/* Preview result — 2026-05-27 expanded: per-sheet dataType chip,
+          AI confidence bar, and "затронутые индикаторы" chip list, so the
+          admin can verify both classification correctness AND downstream
+          impact before clicking Apply. */}
       {previewResult && previewResult.perFile.length > 0 && (
         <div className="space-y-3" data-testid="preview-result">
-          <h3 className="font-semibold text-sm">Анализ файлов</h3>
-          {previewResult.perFile.map((f) => (
-            <div
-              key={f.filename}
-              className="border rounded p-3 text-sm"
-              data-testid={`preview-file-${f.filename}`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{f.filename}</span>
-                <span
-                  className={`px-2 py-0.5 rounded text-xs border ${verdictColor(
-                    f.error ? "red" : "green",
-                  )}`}
-                >
-                  {f.fileTypeResult.fileType}
-                </span>
-              </div>
-              <p className="text-xs text-slate-600 mt-1">
-                {f.fileTypeResult.reasoning}
+          <div className="flex items-end justify-between">
+            <div>
+              <h3 className="font-semibold text-sm">Анализ файлов</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Проверьте dataType и вероятность по каждому листу. Низкая
+                вероятность (&lt;65%) — AI скорее всего ошибся, проверьте
+                сами или перезалейте файл с более понятным названием листа.
               </p>
-              {f.classifications.length > 0 && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Листов классифицировано: {f.classifications.length}
-                </p>
-              )}
             </div>
-          ))}
+            <div className="text-[10px] text-slate-400 leading-tight text-right hidden md:block">
+              <div>зелёный = высокая ≥85%</div>
+              <div>жёлтый = средняя 65-84%</div>
+              <div>красный = низкая &lt;65%</div>
+            </div>
+          </div>
+          {previewResult.perFile.map((f) => {
+            const impacts =
+              previewResult.sheetImpactsByFilename?.[f.filename] ?? []
+            return (
+              <div
+                key={f.filename}
+                className="border rounded-lg p-3 text-sm space-y-2"
+                data-testid={`preview-file-${f.filename}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium truncate">{f.filename}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-xs border shrink-0 ${verdictColor(
+                      f.error ? "red" : "green",
+                    )}`}
+                  >
+                    {f.fileTypeResult.fileType}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  {f.fileTypeResult.reasoning}
+                </p>
+                {f.error && (
+                  <p className="text-xs text-red-700">⚠ {f.error}</p>
+                )}
+                {impacts.length > 0 && (
+                  <div className="border-t pt-2 space-y-1.5">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500">
+                      Листы ({impacts.length})
+                    </div>
+                    <ul className="space-y-1.5">
+                      {impacts.map((imp) => {
+                        const conf = confidenceClass(imp.confidence)
+                        const hasIndicators = imp.impact.indicators.length > 0
+                        return (
+                          <li
+                            key={imp.sheetName}
+                            className="rounded border border-slate-200 px-2.5 py-2 bg-slate-50/40"
+                            data-testid={`sheet-impact-${f.filename}-${imp.sheetName}`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-[11px] text-slate-700 truncate max-w-[16rem]">
+                                {imp.sheetName}
+                              </span>
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${dataTypeChipClass(imp.dataType)}`}
+                              >
+                                {imp.dataType}
+                              </span>
+                              {imp.entityCode && (
+                                <span className="font-mono text-[10px] text-slate-500">
+                                  {imp.entityCode}
+                                </span>
+                              )}
+                              <div
+                                className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] ${conf.cls}`}
+                                title={`AI уверенность: ${conf.pct}`}
+                              >
+                                <span>{conf.label}</span>
+                                <span className="font-mono opacity-70">
+                                  {conf.pct}
+                                </span>
+                              </div>
+                            </div>
+                            {/* confidence bar — visual reinforcement */}
+                            <div className="mt-1.5 h-1 rounded-full bg-slate-200 overflow-hidden">
+                              <div
+                                className={`h-full ${conf.bar} transition-all`}
+                                style={{
+                                  width: `${Math.round(Math.max(0, Math.min(1, imp.confidence)) * 100)}%`,
+                                }}
+                              />
+                            </div>
+                            {/* writes summary */}
+                            <p className="text-[10px] text-slate-500 mt-1.5">
+                              <span className="text-slate-600">Запишет: </span>
+                              {imp.impact.writes}
+                            </p>
+                            {/* indicator list */}
+                            {hasIndicators ? (
+                              <div className="mt-1.5">
+                                <p className="text-[10px] text-slate-600 mb-1">
+                                  Затронет {imp.impact.indicators.length} показател
+                                  {imp.impact.indicators.length === 1
+                                    ? "ь"
+                                    : imp.impact.indicators.length < 5
+                                      ? "я"
+                                      : "ей"}
+                                  :
+                                </p>
+                                <div className="flex flex-wrap gap-1">
+                                  {imp.impact.indicators.map((ind) => (
+                                    <span
+                                      key={ind.code}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] font-mono text-slate-700"
+                                      title={`${ind.nameRu ?? ind.nameEn} · ${ind.category} · совпало по ${ind.matchedInput}`}
+                                    >
+                                      {ind.code}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : imp.impact.note ? (
+                              <p className="text-[10px] text-slate-500 italic mt-1.5">
+                                {imp.impact.note}
+                              </p>
+                            ) : null}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {impacts.length === 0 && f.classifications.length > 0 && (
+                  <p className="text-xs text-slate-500">
+                    Листов классифицировано: {f.classifications.length}
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 

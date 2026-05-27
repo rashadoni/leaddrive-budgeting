@@ -50,6 +50,9 @@ import { classifySheets } from "@/lib/onboarding/ai-import/sheet-classifier"
 import {
   buildEntitySheetMaps,
 } from "@/lib/onboarding/ai-import/wire-azseker-adapters"
+import {
+  affectedIndicatorsForDataType,
+} from "@/lib/onboarding/ai-import/datatype-indicator-map"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 60
@@ -119,9 +122,15 @@ export async function POST(request: NextRequest) {
   // a hint of what valid AZSEKER-* / AAC-* / etc codes look like.
   const entities = await prisma.company.findMany({
     where: { organizationId: orgId, status: { not: "archived" } },
-    select: { code: true },
+    select: { code: true, industry: true },
   })
   const knownEntityCodes = entities.map((e: { code: string }) => e.code)
+  const industryByCode = new Map<string, string | null>(
+    entities.map((e: { code: string; industry: string | null }) => [
+      e.code,
+      e.industry,
+    ]),
+  )
 
   // Org context (industry hint)
   const org = await prisma.organization.findUnique({
@@ -176,6 +185,28 @@ export async function POST(request: NextRequest) {
   // /api/admin/import-workbook
   const entitySheetMaps = buildEntitySheetMaps(classifierResult.classifications)
 
+  // 2026-05-27 — per-sheet «affected indicators» preview projection.
+  // Tells the user which seed indicators each sheet's dataType will feed
+  // into BEFORE they confirm apply. Narrowed by the resolved entity's
+  // industry so a KPI_FARMING sheet for a food-processing entity doesn't
+  // surface agro_crops-only indicators.
+  const sheetImpacts = classifierResult.classifications.map((c) => {
+    const entityIndustry = c.entityCode
+      ? industryByCode.get(c.entityCode) ?? null
+      : null
+    const impact = affectedIndicatorsForDataType(c.dataType, {
+      industries: entityIndustry ? [entityIndustry] : undefined,
+      limit: 12,
+    })
+    return {
+      sheetName: c.sheetName,
+      dataType: c.dataType,
+      entityCode: c.entityCode,
+      confidence: c.confidence,
+      impact,
+    }
+  })
+
   // In v1 we DO NOT apply from this endpoint — caller chains to
   // /api/admin/import-workbook with the discovered ENTITIES. That
   // endpoint has the battle-tested 5-phase bit-perfect pipeline.
@@ -196,6 +227,7 @@ export async function POST(request: NextRequest) {
     totalSheets: metas.length,
     classifications: classifierResult.classifications,
     entitySheetMaps,
+    sheetImpacts,
     llmUsage: classifierResult.usage,
     skippedLLM: classifierResult.skippedLLM,
     durationMs: Date.now() - t0,

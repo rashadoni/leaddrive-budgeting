@@ -32,12 +32,38 @@ interface EntitySheetMap {
   descriptionSheets: string[]
 }
 
+interface AffectedIndicator {
+  code: string
+  nameEn: string
+  nameRu: string | null
+  nameAz: string | null
+  category: string
+  industries: string[]
+  matchedInput: string
+}
+interface SheetImpact {
+  sheetName: string
+  dataType: string
+  entityCode: string | null
+  confidence: number
+  impact: {
+    dataType: string
+    writes: string
+    note: string | null
+    indicators: AffectedIndicator[]
+  }
+}
+
 interface ClassifyResponse {
   ok: true
   mode: "preview"
   totalSheets: number
   classifications: Classification[]
   entitySheetMaps: EntitySheetMap[]
+  /** 2026-05-27 — per-sheet downstream impact projection. Lets the user
+   *  verify which indicators will move BEFORE clicking «Подтвердить и
+   *  импортировать» on this single-file form. */
+  sheetImpacts?: SheetImpact[]
   llmUsage: {
     inputTokens: number
     outputTokens: number
@@ -301,6 +327,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
               <th className="text-left p-2">Тип</th>
               <th className="text-left p-2">Сущность</th>
               <th className="text-right p-2">Confidence</th>
+              <th className="text-left p-2">Затронет</th>
               <th className="text-left p-2">Обоснование</th>
             </tr>
           </thead>
@@ -309,11 +336,16 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
               const style =
                 DATA_TYPE_STYLE[c.dataType] ?? DATA_TYPE_STYLE.UNKNOWN
               const conf = (c.confidence * 100).toFixed(0)
-              const confLow = c.confidence < 0.6
+              const confLow = c.confidence < 0.65
+              // 2026-05-27 — find this sheet's impact from the parallel
+              // sheetImpacts array (matched by sheetName).
+              const sheetImpact = preview.sheetImpacts?.find(
+                (s) => s.sheetName === c.sheetName,
+              )
               return (
                 <tr
                   key={c.sheetName}
-                  className={`border-t ${confLow ? "bg-amber-500/5" : ""}`}
+                  className={`border-t ${confLow ? "bg-amber-50" : ""}`}
                 >
                   <td className="p-2 font-mono text-xs">{c.sheetName}</td>
                   <td className="p-2">
@@ -327,9 +359,48 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                     {c.entityCode ?? <span className="text-muted-foreground">—</span>}
                   </td>
                   <td
-                    className={`p-2 text-right font-mono text-xs ${confLow ? "text-amber-300" : ""}`}
+                    className={`p-2 text-right font-mono text-xs ${
+                      confLow ? "text-rose-700 font-semibold" : ""
+                    }`}
                   >
                     {conf}%
+                    {confLow && (
+                      <div className="text-[9px] font-normal text-rose-600">
+                        ⚠ проверить
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-2 text-xs">
+                    {sheetImpact && sheetImpact.impact.indicators.length > 0 ? (
+                      <div
+                        className="flex flex-wrap gap-1"
+                        title={sheetImpact.impact.writes}
+                      >
+                        {sheetImpact.impact.indicators.slice(0, 6).map((ind) => (
+                          <span
+                            key={ind.code}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] font-mono text-slate-700"
+                            title={`${ind.nameRu ?? ind.nameEn} · ${ind.category}`}
+                          >
+                            {ind.code}
+                          </span>
+                        ))}
+                        {sheetImpact.impact.indicators.length > 6 && (
+                          <span className="text-[10px] text-muted-foreground">
+                            +{sheetImpact.impact.indicators.length - 6}
+                          </span>
+                        )}
+                      </div>
+                    ) : sheetImpact?.impact.note ? (
+                      <span
+                        className="italic text-muted-foreground text-[11px]"
+                        title={sheetImpact.impact.writes}
+                      >
+                        не задевает индикаторы
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="p-2 text-xs text-muted-foreground">
                     {c.reasoning}
