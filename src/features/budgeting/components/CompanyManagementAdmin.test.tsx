@@ -22,6 +22,19 @@ vi.mock("next-auth/react", () => ({
   useSession: vi.fn(),
 }))
 
+// 2026-05-27 — next-intl mock. Returns templates with interpolated
+// vars so assertions can still match by code (e.g. «aria-label
+// `ariaIndustry(code=AZSF)`» — getByLabelText with /AZSF/i works).
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
+    if (!vars) return key
+    const varStr = Object.entries(vars)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(",")
+    return `${key}(${varStr})`
+  },
+}))
+
 vi.mock("@tanstack/react-query", () => ({
   useQuery: vi.fn(),
   useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
@@ -105,15 +118,15 @@ describe("CompanyManagementAdmin", () => {
     expect(screen.getByText("EDEN")).toBeTruthy()
 
     // Role + status selects present for the first row
-    expect(screen.getByRole("combobox", { name: /role for AZSF/i })).toBeTruthy()
-    expect(screen.getByRole("combobox", { name: /status for AZSF/i })).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: /ariaRole.*code=AZSF/i })).toBeTruthy()
+    expect(screen.getByRole("combobox", { name: /ariaStatus.*code=AZSF/i })).toBeTruthy()
   })
 
   it("calls PATCH with role payload on role select change and refreshes terminal cache", async () => {
     render(<CompanyManagementAdmin />)
 
     const roleSelect = screen.getByRole("combobox", {
-      name: /role for AZSF/i,
+      name: /ariaRole.*code=AZSF/i,
     }) as HTMLSelectElement
 
     // Optimistic update applies the value immediately in the DOM
@@ -142,7 +155,7 @@ describe("CompanyManagementAdmin", () => {
 
     // EDEN (co_2) status: pending → active
     const statusSelect = screen.getByRole("combobox", {
-      name: /status for EDEN/i,
+      name: /ariaStatus.*code=EDEN/i,
     }) as HTMLSelectElement
     fireEvent.change(statusSelect, { target: { value: "active" } })
 
@@ -167,7 +180,7 @@ describe("CompanyManagementAdmin", () => {
     render(<CompanyManagementAdmin />)
 
     const roleSelect = screen.getByRole("combobox", {
-      name: /role for AZSF/i,
+      name: /ariaRole.*code=AZSF/i,
     }) as HTMLSelectElement
     expect(roleSelect.value).toBe("operational")
 
@@ -201,7 +214,9 @@ describe("CompanyManagementAdmin", () => {
   it("shows loading state while fetching", () => {
     mockUseQuery.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(<CompanyManagementAdmin />)
-    expect(screen.getByText(/Загрузка/i)).toBeTruthy()
+    // next-intl mock returns the key as literal — assert on the
+    // translation key instead of the locale-specific display text.
+    expect(screen.getByText("loading")).toBeTruthy()
   })
 
   it("shows fetch error message when query fails", () => {
@@ -220,10 +235,10 @@ describe("CompanyManagementAdmin", () => {
     render(<CompanyManagementAdmin />)
     // Admins get a combobox for every editable field including industry.
     expect(
-      screen.getByRole("combobox", { name: /industry for AZSF/i }),
+      screen.getByRole("combobox", { name: /ariaIndustry.*code=AZSF/i }),
     ).toBeTruthy()
     expect(
-      screen.getByRole("combobox", { name: /industry for EDEN/i }),
+      screen.getByRole("combobox", { name: /ariaIndustry.*code=EDEN/i }),
     ).toBeTruthy()
   })
 
@@ -231,7 +246,7 @@ describe("CompanyManagementAdmin", () => {
     render(<CompanyManagementAdmin />)
 
     const industrySelect = screen.getByRole("combobox", {
-      name: /industry for AZSF/i,
+      name: /ariaIndustry.*code=AZSF/i,
     }) as HTMLSelectElement
 
     fireEvent.change(industrySelect, { target: { value: "retail" } })
@@ -249,7 +264,7 @@ describe("CompanyManagementAdmin", () => {
     render(<CompanyManagementAdmin />)
 
     const industrySelect = screen.getByRole("combobox", {
-      name: /industry for AZSF/i,
+      name: /ariaIndustry.*code=AZSF/i,
     }) as HTMLSelectElement
 
     // Selecting the "—" option (value="") should map to `industry: null` in the PATCH body.
