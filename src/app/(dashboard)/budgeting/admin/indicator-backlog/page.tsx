@@ -26,23 +26,60 @@ export const metadata = {
   title: "Indicator Backlog · Admin · BudgetPro",
 };
 
-export default async function IndicatorBacklogPage() {
+export default async function IndicatorBacklogPage({
+  searchParams,
+}: {
+  // Next.js 16 — searchParams is a Promise on async pages
+  searchParams: Promise<{ company?: string }>;
+}) {
   const session = await auth();
   const role = session?.user?.role;
   if (!hasRole(role, "admin")) redirect("/budgeting");
   const orgId = session?.user?.organizationId;
   if (!orgId) redirect("/budgeting");
 
+  const params = await searchParams;
+  const companyCode = params.company?.trim() || undefined;
+
   const { companies, summary } = await computeIndicatorBacklog(
     prisma,
     orgId,
-    { period: "2026" },
+    { period: "2026", companyCode },
   );
+
+  // When filtering to a single entity, show a "back to all" affordance so
+  // the user can escape the deep-link without retyping the URL.
+  const filteredEntity = companyCode ? companies[0] : null;
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">Indicator Backlog</h1>
+        {filteredEntity ? (
+          <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <a
+              href="/budgeting/admin/indicator-backlog"
+              className="hover:text-foreground transition-colors"
+            >
+              ← All entities
+            </a>
+            <span>·</span>
+            <span>
+              Filtered to{" "}
+              <span className="font-mono text-foreground">
+                {filteredEntity.companyCode}
+              </span>
+            </span>
+          </div>
+        ) : null}
+        <h1 className="text-2xl font-bold mb-1">
+          Indicator Backlog
+          {filteredEntity ? (
+            <span className="text-muted-foreground font-normal">
+              {" "}
+              · {filteredEntity.companyName}
+            </span>
+          ) : null}
+        </h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
           Per-entity action list: which indicators are missing data, who owns
           the source, and how to import once received. Use this as the
