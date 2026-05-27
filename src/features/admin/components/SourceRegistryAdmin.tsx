@@ -12,6 +12,7 @@
  * `/api/admin/source-registry`.
  */
 import React from "react";
+import { useTranslations } from "next-intl";
 import { Loader2, Plus, Trash2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -22,6 +23,7 @@ interface Entry {
 }
 
 export function SourceRegistryAdmin() {
+  const t = useTranslations("adminSourceRegistry");
   const [entries, setEntries] = React.useState<Record<string, Entry>>({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -81,7 +83,7 @@ export function SourceRegistryAdmin() {
   };
 
   const handleDelete = async (companyCode: string) => {
-    if (!confirm(`Remove registry entry for ${companyCode}?`)) return;
+    if (!confirm(t("removeConfirm", { code: companyCode }))) return;
     setSaving(true);
     setError(null);
     try {
@@ -113,14 +115,15 @@ export function SourceRegistryAdmin() {
   return (
     <div className="p-6 max-w-[1100px] mx-auto space-y-6">
       <header>
-        <h1 className="text-2xl font-bold">Drift Watchdog Source Registry</h1>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Maps each company to its authoritative xlsx file for the nightly
-          drift-watchdog. Edits write atomically to{" "}
-          <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-            data/onboarding-source-registry.json
-          </code>
-          .
+          {t.rich("description", {
+            file: () => (
+              <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                data/onboarding-source-registry.json
+              </code>
+            ),
+          })}
         </p>
       </header>
 
@@ -131,25 +134,25 @@ export function SourceRegistryAdmin() {
       )}
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Entries</h2>
+        <h2 className="text-lg font-semibold">{t("entriesHeading")}</h2>
         {loading ? (
           <div className="flex items-center gap-2 text-muted-foreground text-sm">
-            <Loader2 className="animate-spin h-4 w-4" /> Loading…
+            <Loader2 className="animate-spin h-4 w-4" /> {t("loading")}
           </div>
         ) : Object.keys(entries).length === 0 ? (
           <p className="text-sm text-muted-foreground italic">
-            No entries yet. Add one below.
+            {t("emptyEntries")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left border-b">
-                  <th className="py-2 px-2 font-medium">Company Code</th>
-                  <th className="py-2 px-2 font-medium">xlsx Path</th>
-                  <th className="py-2 px-2 font-medium">Sheet</th>
-                  <th className="py-2 px-2 font-medium">Period</th>
-                  <th className="py-2 px-2 font-medium text-right">Actions</th>
+                  <th className="py-2 px-2 font-medium">{t("thCompanyCode")}</th>
+                  <th className="py-2 px-2 font-medium">{t("thXlsxPath")}</th>
+                  <th className="py-2 px-2 font-medium">{t("thSheet")}</th>
+                  <th className="py-2 px-2 font-medium">{t("thPeriod")}</th>
+                  <th className="py-2 px-2 font-medium text-right">{t("thActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -162,7 +165,7 @@ export function SourceRegistryAdmin() {
                         {entry.xlsx}
                       </td>
                       <td className="py-2 px-2 font-mono text-xs">
-                        {entry.sheet ?? <span className="italic text-muted-foreground">(none)</span>}
+                        {entry.sheet ?? <span className="italic text-muted-foreground">{t("noSheet")}</span>}
                       </td>
                       <td className="py-2 px-2 font-mono text-xs">{entry.period}</td>
                       <td className="py-2 px-2 text-right space-x-1">
@@ -173,7 +176,7 @@ export function SourceRegistryAdmin() {
                           onClick={() => handleEdit(code, entry)}
                           className="h-7 text-xs"
                         >
-                          Edit
+                          {t("editBtn")}
                         </Button>
                         <Button
                           type="button"
@@ -182,7 +185,7 @@ export function SourceRegistryAdmin() {
                           onClick={() => handleDelete(code)}
                           disabled={saving}
                           className="h-7 w-7 border-red-500/40 text-red-600 hover:bg-red-500/10 hover:text-red-700"
-                          aria-label={`Remove ${code}`}
+                          aria-label={t("removeAriaLabel", { code })}
                         >
                           <Trash2 size={12} />
                         </Button>
@@ -198,13 +201,13 @@ export function SourceRegistryAdmin() {
       <section>
         <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
           <Plus size={16} />
-          {entries[form.companyCode] ? "Edit entry" : "Add entry"}
+          {entries[form.companyCode] ? t("editEntryHeading") : t("addEntryHeading")}
         </h2>
         <form onSubmit={handleSave} className="space-y-3 max-w-2xl">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label htmlFor="reg-code" className="text-xs uppercase tracking-wider text-muted-foreground">
-                Company Code *
+                {t("labelCompanyCodeRequired")}
               </label>
               <input
                 id="reg-code"
@@ -218,7 +221,7 @@ export function SourceRegistryAdmin() {
             </div>
             <div>
               <label htmlFor="reg-period" className="text-xs uppercase tracking-wider text-muted-foreground">
-                Period *
+                {t("labelPeriodRequired")}
               </label>
               <input
                 id="reg-period"
@@ -233,7 +236,7 @@ export function SourceRegistryAdmin() {
           </div>
           <div>
             <label htmlFor="reg-xlsx" className="text-xs uppercase tracking-wider text-muted-foreground">
-              xlsx Path (absolute or repo-relative) *
+              {t("labelXlsxPathRequired")}
             </label>
             <input
               id="reg-xlsx"
@@ -247,7 +250,7 @@ export function SourceRegistryAdmin() {
           </div>
           <div>
             <label htmlFor="reg-sheet" className="text-xs uppercase tracking-wider text-muted-foreground">
-              Sheet name (optional — leave blank for single-sheet xlsx)
+              {t("labelSheetOptional")}
             </label>
             <input
               id="reg-sheet"
@@ -261,7 +264,7 @@ export function SourceRegistryAdmin() {
           <div className="flex items-center gap-2">
             <Button type="submit" variant="default" size="default" disabled={saving}>
               {saving ? <Loader2 className="animate-spin h-3 w-3" /> : <Save size={14} />}
-              {entries[form.companyCode] ? "Save edit" : "Add entry"}
+              {entries[form.companyCode] ? t("saveEditBtn") : t("addEntryBtn")}
             </Button>
             <Button
               type="button"
@@ -269,7 +272,7 @@ export function SourceRegistryAdmin() {
               size="default"
               onClick={() => setForm({ companyCode: "", xlsx: "", sheet: "", period: "2026" })}
             >
-              Clear
+              {t("clearBtn")}
             </Button>
           </div>
         </form>

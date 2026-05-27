@@ -13,6 +13,7 @@
  * to re-pull after a watchdog run.
  */
 import React from "react";
+import { useTranslations } from "next-intl";
 import { RefreshCw, AlertTriangle, Clock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -62,16 +63,23 @@ const FRESH_COLOR: Record<SourceFreshness["status"], string> = {
   missing: "border-gray-500/40 bg-gray-500/5 text-gray-600",
 };
 
-function ageLabel(hours: number | null, cadence: "daily" | "monthly"): string {
-  if (hours === null) return "never fetched";
-  if (cadence === "monthly" || hours > 48) {
-    const days = hours / 24;
-    return `${days.toFixed(1)} days ago`;
-  }
-  return `${hours.toFixed(1)} hours ago`;
+function useAgeLabel() {
+  const t = useTranslations("adminDriftDashboard");
+  return React.useCallback(
+    (hours: number | null, cadence: "daily" | "monthly"): string => {
+      if (hours === null) return t("neverFetched");
+      if (cadence === "monthly" || hours > 48) {
+        return t("daysAgo", { n: (hours / 24).toFixed(1) });
+      }
+      return t("hoursAgo", { n: hours.toFixed(1) });
+    },
+    [t],
+  );
 }
 
 export function DriftDashboard() {
+  const t = useTranslations("adminDriftDashboard");
+  const ageLabel = useAgeLabel();
   const [report, setReport] = React.useState<DriftReport | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -99,11 +107,8 @@ export function DriftDashboard() {
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Drift Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Data-quality signals: recent drift events, reference-feed freshness,
-            and stalled onboarding cases. Refresh re-pulls live state.
-          </p>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("description")}</p>
         </div>
         <Button
           type="button"
@@ -113,7 +118,7 @@ export function DriftDashboard() {
           disabled={loading}
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          Refresh
+          {t("refreshBtn")}
         </Button>
       </header>
 
@@ -127,24 +132,24 @@ export function DriftDashboard() {
         <>
           <Section
             icon={<AlertTriangle className="text-amber-600" />}
-            title="Reference-data freshness"
-            subtitle="Weather, commodity, FX feeds — age vs expected cadence"
+            title={t("freshnessTitle")}
+            subtitle={t("freshnessSubtitle")}
           >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {report.referenceFreshness.map((s) => (
-                <FreshnessCard key={s.sourceCode} source={s} onRefreshed={fetchReport} />
+                <FreshnessCard key={s.sourceCode} source={s} onRefreshed={fetchReport} ageLabel={ageLabel} />
               ))}
             </div>
           </Section>
 
           <Section
             icon={<AlertCircle className="text-red-600" />}
-            title="Recent drift events"
-            subtitle={`Last 30 days · ${report.recentDrifts.length} events`}
+            title={t("driftsTitle")}
+            subtitle={t("driftsSubtitle", { n: report.recentDrifts.length })}
           >
             {report.recentDrifts.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-emerald-600">
-                <CheckCircle2 size={14} /> No drift detected in the last 30 days.
+                <CheckCircle2 size={14} /> {t("driftsEmpty")}
               </div>
             ) : (
               <div className="space-y-2">
@@ -157,12 +162,12 @@ export function DriftDashboard() {
 
           <Section
             icon={<Clock className="text-amber-600" />}
-            title="Stalled onboarding"
-            subtitle={`Op-cos not audited in 7+ days · ${report.stalePending.length}`}
+            title={t("stalledTitle")}
+            subtitle={t("stalledSubtitle", { n: report.stalePending.length })}
           >
             {report.stalePending.length === 0 ? (
               <div className="flex items-center gap-2 text-sm text-emerald-600">
-                <CheckCircle2 size={14} /> Every leaf entity audited within the last 7 days.
+                <CheckCircle2 size={14} /> {t("stalledEmpty")}
               </div>
             ) : (
               <ul className="space-y-1 text-sm">
@@ -173,7 +178,7 @@ export function DriftDashboard() {
                     <span className="text-xs text-muted-foreground">
                       {c.lastReconciledAt
                         ? new Date(c.lastReconciledAt).toLocaleDateString()
-                        : "never audited"}
+                        : t("neverAudited")}
                     </span>
                   </li>
                 ))}
@@ -181,14 +186,14 @@ export function DriftDashboard() {
             )}
           </Section>
           <p className="text-xs text-muted-foreground text-right">
-            Generated {new Date(report.generatedAt).toLocaleString()}
+            {t("generatedAt", { date: new Date(report.generatedAt).toLocaleString() })}
           </p>
         </>
       )}
 
       {!report && loading && (
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="animate-spin h-4 w-4" /> Loading drift report…
+          <Loader2 className="animate-spin h-4 w-4" /> {t("loadingReport")}
         </div>
       )}
     </div>
@@ -221,13 +226,23 @@ function Section({
 function FreshnessCard({
   source,
   onRefreshed,
+  ageLabel,
 }: {
   source: SourceFreshness;
   onRefreshed: () => void;
+  ageLabel: (hours: number | null, cadence: "daily" | "monthly") => string;
 }) {
+  const t = useTranslations("adminDriftDashboard");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [lastResult, setLastResult] = React.useState<string | null>(null);
+
+  const statusLabel: Record<SourceFreshness["status"], string> = {
+    fresh: t("statusFresh"),
+    stale: t("statusStale"),
+    critical_stale: t("statusCriticalStale"),
+    missing: t("statusMissing"),
+  };
 
   const refresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -244,7 +259,8 @@ function FreshnessCard({
       }
       const inserted = typeof body.inserted === "number" ? body.inserted : 0;
       const errors = Array.isArray(body.errors) ? body.errors.length : 0;
-      setLastResult(`+${inserted} points${errors > 0 ? `, ${errors} errors` : ""}`);
+      const errorsSuffix = errors > 0 ? t("errorsLabel", { n: errors }) : "";
+      setLastResult(`${t("pointsLabel", { n: inserted })}${errorsSuffix}`);
       onRefreshed();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -258,12 +274,12 @@ function FreshnessCard({
       <div className="flex items-center justify-between mb-1">
         <span className="font-mono font-semibold uppercase text-[11px]">{source.sourceCode}</span>
         <span className="uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded border border-current">
-          {source.status.replace("_", " ")}
+          {statusLabel[source.status]}
         </span>
       </div>
       <div className="text-[10px] opacity-80 mb-2">
-        {source.cadence === "daily" ? "daily cadence" : "monthly cadence"} ·{" "}
-        {source.metricCount} metrics
+        {source.cadence === "daily" ? t("cadenceDaily") : t("cadenceMonthly")} ·{" "}
+        {source.metricCount} {t("metrics")}
       </div>
       <div className="text-sm">{ageLabel(source.ageHours, source.cadence)}</div>
       {source.lastFetchedAt && (
@@ -275,10 +291,10 @@ function FreshnessCard({
         type="button"
         onClick={refresh}
         disabled={busy}
-        title={`Fetch ${source.sourceCode} now`}
+        title={t("fetchTitle", { code: source.sourceCode })}
         className="mt-2 w-full rounded border border-current/40 px-2 py-1 text-[10px] uppercase tracking-wider font-semibold hover:bg-current/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
       >
-        {busy ? "Fetching…" : "Refresh now"}
+        {busy ? t("fetching") : t("refreshNow")}
       </button>
       {lastResult && (
         <div className="mt-1 text-[10px] text-emerald-700 dark:text-emerald-400">{lastResult}</div>
@@ -291,18 +307,21 @@ function FreshnessCard({
 }
 
 function DriftEventRow({ event }: { event: DriftEvent }) {
+  const t = useTranslations("adminDriftDashboard");
   const driftCount = event.drifts?.length ?? 0;
   return (
     <div className="rounded border border-red-500/30 bg-red-500/5 p-3 text-xs space-y-1.5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <span className="font-mono font-semibold">
-          {event.company?.code ?? "(unknown company)"}
+          {event.company?.code ?? t("unknownCompany")}
         </span>
         <span className="text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</span>
       </div>
       <div className="text-muted-foreground">
-        Run by: <span className="font-mono">{event.runBy ?? "(unknown)"}</span> ·{" "}
-        {driftCount} indicator{driftCount === 1 ? "" : "s"} drifted
+        {t("runByLabel")} <span className="font-mono">{event.runBy ?? t("unknownUser")}</span> ·{" "}
+        {driftCount === 1
+          ? t("indicatorsDriftedOne", { n: driftCount })
+          : t("indicatorsDriftedOther", { n: driftCount })}
       </div>
       {event.drifts && event.drifts.length > 0 && (
         <ul className="space-y-0.5 pl-3">
@@ -319,7 +338,7 @@ function DriftEventRow({ event }: { event: DriftEvent }) {
           ))}
           {event.drifts.length > 5 && (
             <li className="text-[10px] opacity-70 pl-3">
-              + {event.drifts.length - 5} more drifts
+              {t("moreDrifts", { n: event.drifts.length - 5 })}
             </li>
           )}
         </ul>

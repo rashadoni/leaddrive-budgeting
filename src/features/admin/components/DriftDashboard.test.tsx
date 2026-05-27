@@ -4,9 +4,27 @@
  * fetch and verifies the three sections render (freshness cards,
  * recent-drift rows, stalled-onboarding list) with the right counts
  * and color states for each branch.
+ *
+ * 2026-05-27 — next-intl mocked since the component now uses
+ * `useTranslations("adminDriftDashboard")`. Mock returns the key as
+ * literal so tests assert on stable translation keys, not display
+ * text (which can drift across locale edits).
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, waitFor } from "@testing-library/react";
+
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, vars?: Record<string, unknown>) => {
+    if (!vars) return key;
+    // For interpolated keys, append var values so the test can still
+    // distinguish e.g. `driftsSubtitle({n: 3})` from `driftsSubtitle({n: 0})`.
+    const varStr = Object.entries(vars)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(",");
+    return `${key}(${varStr})`;
+  },
+}));
+
 import { DriftDashboard } from "./DriftDashboard";
 
 const mockFetchResponse = (body: unknown) =>
@@ -32,11 +50,11 @@ describe("DriftDashboard", () => {
       generatedAt: "2026-05-16T10:00:00Z",
     }) as never;
     render(<DriftDashboard />);
-    expect(screen.getByText("Drift Dashboard")).toBeTruthy();
+    expect(screen.getByText("title")).toBeTruthy();
     await waitFor(() => {
-      expect(screen.getByText("Reference-data freshness")).toBeTruthy();
-      expect(screen.getByText("Recent drift events")).toBeTruthy();
-      expect(screen.getByText("Stalled onboarding")).toBeTruthy();
+      expect(screen.getByText("freshnessTitle")).toBeTruthy();
+      expect(screen.getByText("driftsTitle")).toBeTruthy();
+      expect(screen.getByText("stalledTitle")).toBeTruthy();
     });
   });
 
@@ -72,8 +90,9 @@ describe("DriftDashboard", () => {
       // transform; getByText matches the literal DOM text.
       expect(screen.getByText("weather-openmeteo")).toBeTruthy();
       expect(screen.getByText("worldbank-cpi")).toBeTruthy();
-      // Both source-card pills render with status text.
-      expect(screen.getAllByText(/fresh|stale/i).length).toBeGreaterThan(0);
+      // Status pills now render the translation keys.
+      expect(screen.getByText("statusFresh")).toBeTruthy();
+      expect(screen.getByText("statusStale")).toBeTruthy();
     });
   });
 
@@ -86,7 +105,7 @@ describe("DriftDashboard", () => {
     }) as never;
     render(<DriftDashboard />);
     await waitFor(() => {
-      expect(screen.getByText(/No drift detected/)).toBeTruthy();
+      expect(screen.getByText("driftsEmpty")).toBeTruthy();
     });
   });
 
@@ -136,7 +155,9 @@ describe("DriftDashboard", () => {
     await waitFor(() => {
       expect(screen.getByText("HORIZON-1")).toBeTruthy();
       expect(screen.getByText("AZSF")).toBeTruthy();
-      expect(screen.getByText(/never audited/)).toBeTruthy();
+      // Translation key for the "never audited" fallback rendered by
+      // the mocked next-intl.
+      expect(screen.getByText("neverAudited")).toBeTruthy();
     });
   });
 });

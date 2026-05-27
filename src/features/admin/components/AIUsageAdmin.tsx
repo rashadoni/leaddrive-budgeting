@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 
 interface UsageStats {
   tokensIn: number
@@ -39,7 +40,7 @@ function pctFmt(used: number, cap: number): string {
   return `${((used / cap) * 100).toFixed(1)}%`
 }
 
-function Sparkline({ data }: { data: number[] }) {
+function Sparkline({ data, ariaLabel }: { data: number[]; ariaLabel: string }) {
   const max = Math.max(1, ...data)
   // 30 days × ~6px each = 180px wide. Tiny inline svg, no chart lib.
   return (
@@ -48,7 +49,7 @@ function Sparkline({ data }: { data: number[] }) {
       width="180"
       height="40"
       role="img"
-      aria-label="30-day token usage trend"
+      aria-label={ariaLabel}
     >
       {data.map((v, i) => {
         const h = Math.round((v / max) * 36)
@@ -69,6 +70,7 @@ function Sparkline({ data }: { data: number[] }) {
 }
 
 export function AIUsageAdmin() {
+  const t = useTranslations("adminAiUsage")
   const [data, setData] = useState<UsageResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -105,7 +107,7 @@ export function AIUsageAdmin() {
   if (loading && !data) {
     return (
       <div className="p-6 text-sm text-muted-foreground" data-testid="ai-usage-loading">
-        Loading AI usage…
+        {t("loading")}
       </div>
     )
   }
@@ -115,7 +117,7 @@ export function AIUsageAdmin() {
         className="p-6 text-sm text-red-600 dark:text-red-300"
         data-testid="ai-usage-error"
       >
-        Failed to load AI usage: {error}
+        {t("error", { error })}
       </div>
     )
   }
@@ -124,12 +126,8 @@ export function AIUsageAdmin() {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto" data-testid="ai-usage-admin">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">AI Usage</h1>
-        <p className="text-sm text-muted-foreground">
-          Token consumption against the per-org LLM budget. Calls accrue from
-          AI Mapper, Variance Explainer, Morning Brief, Board Deck narration,
-          and Predictive forecasts. Auto-refreshes every 60s.
-        </p>
+        <h1 className="text-2xl font-semibold">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("description")}</p>
       </header>
 
       {(data.overBudget.daily || data.overBudget.monthly) && (
@@ -137,52 +135,70 @@ export function AIUsageAdmin() {
           data-testid="ai-usage-overbudget"
           className="rounded-md border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200"
         >
-          ⚠️ Over budget —
-          {data.overBudget.daily && (
-            <> daily cap exceeded ({fmt(data.today.total)}/{fmt(data.budget.daily)}).</>
-          )}
-          {data.overBudget.monthly && (
-            <> monthly cap exceeded ({fmt(data.mtd.total)}/{fmt(data.budget.monthly)}).</>
-          )}{" "}
-          New LLM calls will be rejected until the next reset window.
+          {t("overBudgetPrefix")}
+          {data.overBudget.daily &&
+            t("overBudgetDaily", {
+              today: fmt(data.today.total),
+              cap: fmt(data.budget.daily),
+            })}
+          {data.overBudget.monthly &&
+            t("overBudgetMonthly", {
+              mtd: fmt(data.mtd.total),
+              cap: fmt(data.budget.monthly),
+            })}
+          {t("overBudgetSuffix")}
         </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Card
-          label="Today (UTC)"
+          label={t("cardToday")}
           primary={fmt(data.today.total)}
-          secondary={`${data.today.calls} call${data.today.calls === 1 ? "" : "s"}`}
+          secondary={
+            data.today.calls === 1
+              ? t("callsOne", { n: data.today.calls })
+              : t("callsOther", { n: data.today.calls })
+          }
           tone={data.overBudget.daily ? "red" : data.today.total > data.budget.daily * 0.8 ? "amber" : "green"}
         />
         <Card
-          label="Month to date"
+          label={t("cardMtd")}
           primary={fmt(data.mtd.total)}
-          secondary={`${data.mtd.calls} call${data.mtd.calls === 1 ? "" : "s"}`}
+          secondary={
+            data.mtd.calls === 1
+              ? t("callsOne", { n: data.mtd.calls })
+              : t("callsOther", { n: data.mtd.calls })
+          }
           tone={data.overBudget.monthly ? "red" : data.mtd.total > data.budget.monthly * 0.8 ? "amber" : "green"}
         />
         <Card
-          label="Daily budget"
+          label={t("cardDailyBudget")}
           primary={fmt(data.budget.daily)}
-          secondary={`${pctFmt(data.today.total, data.budget.daily)} used · ${fmt(data.remaining.daily)} left`}
+          secondary={t("usedLeftLabel", {
+            pct: pctFmt(data.today.total, data.budget.daily),
+            remaining: fmt(data.remaining.daily),
+          })}
         />
         <Card
-          label="Monthly budget"
+          label={t("cardMonthlyBudget")}
           primary={fmt(data.budget.monthly)}
-          secondary={`${pctFmt(data.mtd.total, data.budget.monthly)} used · ${fmt(data.remaining.monthly)} left`}
+          secondary={t("usedLeftLabel", {
+            pct: pctFmt(data.mtd.total, data.budget.monthly),
+            remaining: fmt(data.remaining.monthly),
+          })}
         />
       </div>
 
       <div className="rounded-md border border-gray-800/60 bg-[#0F1535] px-4 py-4 text-gray-100">
         <div className="flex items-center justify-between mb-3">
           <div className="text-[11px] uppercase tracking-wider text-gray-400">
-            30-day total tokens
+            {t("chart30dTitle")}
           </div>
           <div className="text-[11px] text-gray-500">
             {data.last30[0].date} → {data.last30[29].date}
           </div>
         </div>
-        <Sparkline data={data.last30.map((d) => d.total)} />
+        <Sparkline data={data.last30.map((d) => d.total)} ariaLabel={t("ariaTrend")} />
       </div>
     </div>
   )
