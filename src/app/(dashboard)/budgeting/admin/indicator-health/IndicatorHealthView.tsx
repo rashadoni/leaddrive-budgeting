@@ -3,6 +3,10 @@ import { useEffect, useState } from "react"
 
 interface GappyIndicator {
   indicatorCode: string
+  /** 2026-05-27 — humanized labels added so finance users see «Сахаристость»
+   *  instead of cryptic AGRO_SUGAR_CONTENT in the gaps table. */
+  indicatorNameRu: string | null
+  indicatorNameEn: string
   affectedEntities: string[]
   affectedCellCount: number
   missingVariable: string | null
@@ -196,7 +200,20 @@ export function IndicatorHealthView() {
               const style = CATEGORY_STYLE[g.category] ?? CATEGORY_STYLE["no-data"]
               return (
                 <tr key={`${g.indicatorCode}-${g.errorCode}-${g.missingVariable}`} className="border-t align-top">
-                  <td className="p-2 font-mono text-xs">{g.indicatorCode}</td>
+                  <td className="p-2 text-xs">
+                    {/* 2026-05-27 — human name primary, code as small mono
+                        subtitle. Tooltip shows English fallback for
+                        bilingual context. */}
+                    <div
+                      className="font-medium text-[12px]"
+                      title={g.indicatorNameEn}
+                    >
+                      {g.indicatorNameRu ?? g.indicatorNameEn}
+                    </div>
+                    <div className="font-mono text-[10px] text-muted-foreground/80 mt-0.5">
+                      {g.indicatorCode}
+                    </div>
+                  </td>
                   <td className="p-2">
                     <span
                       className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] ${style.cls}`}

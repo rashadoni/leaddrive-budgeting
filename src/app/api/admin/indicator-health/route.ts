@@ -129,6 +129,11 @@ function extractMissingVariable(error: string | null): string | null {
 
 interface AggregatedGap {
   indicatorCode: string
+  /** Localized display name (Russian preferred, English fallback) — added
+   *  2026-05-27 so the UI can render «Сахаристость» instead of cryptic
+   *  AGRO_SUGAR_CONTENT in the gaps table. */
+  indicatorNameRu: string | null
+  indicatorNameEn: string
   affectedEntities: Set<string>
   affectedCellCount: number
   missingVariable: string | null
@@ -154,7 +159,7 @@ export async function GET(req: NextRequest) {
     select: {
       status: true,
       inputs: true,
-      indicator: { select: { code: true } },
+      indicator: { select: { code: true, nameEn: true, nameRu: true } },
       company: { select: { code: true } },
     },
   })
@@ -215,6 +220,8 @@ export async function GET(req: NextRequest) {
         }
         agg = {
           indicatorCode,
+          indicatorNameRu: row.indicator.nameRu ?? null,
+          indicatorNameEn: row.indicator.nameEn,
           affectedEntities: new Set(),
           affectedCellCount: 0,
           missingVariable: missingVar,
@@ -236,6 +243,8 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.affectedCellCount - a.affectedCellCount)
     .map((g) => ({
       indicatorCode: g.indicatorCode,
+      indicatorNameRu: g.indicatorNameRu,
+      indicatorNameEn: g.indicatorNameEn,
       affectedEntities: Array.from(g.affectedEntities).sort(),
       affectedCellCount: g.affectedCellCount,
       missingVariable: g.missingVariable,

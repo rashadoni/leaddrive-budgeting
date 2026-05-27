@@ -21,8 +21,10 @@ import path from "node:path";
 
 // Explicit .env load — `import "dotenv/config"` was missing the file
 // when invoked from project root in some shells.
-dotenvConfig({ path: path.resolve(process.cwd(), ".env") });
-dotenvConfig({ path: path.resolve(process.cwd(), ".env.local") });
+// `override: true` so an EMPTY ANTHROPIC_API_KEY inherited from a parent
+// LaunchAgent / shell doesn't shadow the real key in .env (2026-05-27 fix).
+dotenvConfig({ path: path.resolve(process.cwd(), ".env"), override: true });
+dotenvConfig({ path: path.resolve(process.cwd(), ".env.local"), override: true });
 
 const MODEL = "claude-sonnet-4-5-20250929";
 const SOURCE = "docs/USER_GUIDE.ru.md";
