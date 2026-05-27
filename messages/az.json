@@ -2388,7 +2388,12 @@
       "tokensOut": "çıxış",
       "confidenceTitle": "LLM özünüqiymətləndirmə inamı (0-100%)",
       "fullHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. LLM çağırışları istifadəçi tərəfindən tetiklənir (Explain / Re-run) — xanaya klikdə avtomatik baş vermir.",
-      "shortHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. Xəritə xanasına klikləyin, sonra"
+      "shortHint": "AI Dəyişiklik İzahçısı — göstəricinin nə ilə hərəkət etdiyini + 3 əməli tövsiyə bildirir. Xəritə xanasına klikləyin, sonra",
+      "factCheck": {
+        "title": "Fakt yoxlanışı",
+        "summary": "{matched} / {total} sitat gətirilən rəqəm göstərici şəkilcəsi ilə uyğundur.",
+        "allMatched": "Bütün {total} sitat gətirilən rəqəm şəkilcə ilə uyğundur."
+      }
     }
   },
   "usersAdmin": {

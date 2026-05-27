@@ -32,6 +32,7 @@ import {
   type ExplainerLanguage,
   type VarianceExplainerInput,
 } from "@/lib/risk/variance-explainer"
+import { verifyNarrative } from "@/lib/risk/narrative-fact-check"
 
 const DIRECTIONS = ["higher_better", "lower_better", "band"] as const
 type Direction = (typeof DIRECTIONS)[number]
@@ -284,9 +285,20 @@ export async function POST(
       console.error("[explain] audit emission failed (non-blocking):", err)
     })
 
+    // Phase 7.O C1 — fact-check the LLM narrative against the same
+    // snapshot it was given. Pure / cheap (~1ms regex over a 200-word
+    // string), never blocks. Result surfaced to the UI which renders an
+    // inline warning banner when `flags` is non-empty.
+    const factCheck = verifyNarrative(output.narrative, {
+      result: explainerInput.result,
+      resolved: explainerInput.resolved,
+      aggregates: explainerInput.aggregates,
+    })
+
     return NextResponse.json({
       indicatorValueId: iv.id,
       ...output,
+      factCheck,
     })
   } catch (err) {
     console.error("[explain] runExplainer failed:", err)

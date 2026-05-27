@@ -2388,7 +2388,12 @@
       "tokensOut": "out",
       "confidenceTitle": "LLM self-rated confidence (0-100%)",
       "fullHint": "AI Variance Explainer — narrates what's driving the indicator + 3 actionable recommendations. LLM calls are user-triggered (Explain / Re-run) — never auto-fired on cell-click navigation.",
-      "shortHint": "AI Variance Explainer — narrates what's driving an indicator + 3 actionable recommendations. Click any HeatMap cell, then"
+      "shortHint": "AI Variance Explainer — narrates what's driving an indicator + 3 actionable recommendations. Click any HeatMap cell, then",
+      "factCheck": {
+        "title": "Fact-check",
+        "summary": "{matched} of {total} cited values matched the indicator snapshot.",
+        "allMatched": "All {total} cited values matched the snapshot."
+      }
     }
   },
   "usersAdmin": {

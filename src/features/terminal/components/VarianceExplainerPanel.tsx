@@ -21,6 +21,13 @@ import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 type Language = "en" | "ru" | "az";
 
+interface FactCheckFlagShape {
+  reason: string;
+  claim: string;
+  severity: "warn" | "info";
+  suggestion: string;
+}
+
 interface ExplainResponse {
   indicatorValueId: string;
   narrative: string;
@@ -28,6 +35,13 @@ interface ExplainResponse {
   confidence: number;
   topDrivers: string[];
   usage?: { inputTokens: number; outputTokens: number };
+  /** Phase 7.O C1 — programmatic narrative fact-check.
+   *  Optional for back-compat with cached/older responses. */
+  factCheck?: {
+    flags: FactCheckFlagShape[];
+    totalChecked: number;
+    matched: number;
+  };
 }
 
 const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
@@ -370,6 +384,63 @@ export function VarianceExplainerPanel() {
             <p className="text-gray-200 text-[12px] leading-snug">
               {data.narrative}
             </p>
+            {data.factCheck && data.factCheck.flags.length > 0 && (
+              <div
+                className="mt-1.5 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
+                role="status"
+                aria-live="polite"
+              >
+                <div className="text-amber-600 dark:text-amber-400 text-[10px] uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 1.5A6.5 6.5 0 1 0 8 14.5 6.5 6.5 0 0 0 8 1.5zm.75 9.5h-1.5v-1.5h1.5V11zm0-3h-1.5V5h1.5v3z" />
+                  </svg>
+                  {t("varianceExplainer.factCheck.title")}
+                </div>
+                <ul className="space-y-1">
+                  {data.factCheck.flags.map((f, i) => (
+                    <li key={i} className="text-[10px] leading-snug text-gray-200">
+                      <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                        {f.claim}
+                      </span>{" "}
+                      — {f.reason}{" "}
+                      <span className="text-muted-foreground">
+                        {f.suggestion}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground text-[9px] mt-1">
+                  {t("varianceExplainer.factCheck.summary", {
+                    matched: data.factCheck.matched,
+                    total: data.factCheck.totalChecked,
+                  })}
+                </p>
+              </div>
+            )}
+            {data.factCheck &&
+              data.factCheck.flags.length === 0 &&
+              data.factCheck.totalChecked > 0 && (
+                <p className="mt-1 text-[9px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0L2.72 8.28a.75.75 0 1 1 1.06-1.06L6.75 10.19l5.97-5.97a.75.75 0 0 1 1.06 0z" />
+                  </svg>
+                  {t("varianceExplainer.factCheck.allMatched", {
+                    total: data.factCheck.totalChecked,
+                  })}
+                </p>
+              )}
           </section>
 
           <section>

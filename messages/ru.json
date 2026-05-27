@@ -2388,7 +2388,12 @@
       "tokensOut": "выход",
       "confidenceTitle": "Самооценка уверенности LLM (0-100%)",
       "fullHint": "AI Variance Explainer — объясняет что движет индикатором + 3 actionable рекомендации. LLM-вызовы запускаются пользователем (Explain / Re-run) — никогда не срабатывают автоматически при клике на ячейку.",
-      "shortHint": "AI Variance Explainer — объясняет что движет индикатором + 3 actionable рекомендации. Кликните на ячейку HeatMap, затем"
+      "shortHint": "AI Variance Explainer — объясняет что движет индикатором + 3 actionable рекомендации. Кликните на ячейку HeatMap, затем",
+      "factCheck": {
+        "title": "Проверка фактов",
+        "summary": "{matched} из {total} упомянутых чисел совпали со снимком индикатора.",
+        "allMatched": "Все {total} упомянутых чисел совпали со снимком."
+      }
     }
   },
   "usersAdmin": {

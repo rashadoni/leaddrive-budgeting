@@ -172,6 +172,12 @@ describe("POST /api/indicators/values/[id]/explain — handler", () => {
     expect(body.indicatorValueId).toBe(IV_ID);
     expect(body.narrative).toBe(explainerOutput.narrative);
 
+    // Phase 7.O C1 — route attaches fact-check result alongside narrative.
+    expect(body.factCheck).toBeDefined();
+    expect(Array.isArray(body.factCheck.flags)).toBe(true);
+    expect(typeof body.factCheck.totalChecked).toBe("number");
+    expect(typeof body.factCheck.matched).toBe("number");
+
     // Audit emission happens after JSON serialization; flush microtasks.
     await Promise.resolve();
     await Promise.resolve();
