@@ -9,10 +9,11 @@ import {
   panelForCommand,
   type ParsedCommand,
 } from '../lib/command-parser';
-import { Bell, AlertTriangle, Zap, CheckCircle2 } from 'lucide-react';
+import { Bell, AlertTriangle, Zap, CheckCircle2, Sparkles } from 'lucide-react';
 import { RelatedFunctionsMenu } from './RelatedFunctionsMenu';
 import { ensureMatrix, useMatrix } from '../hooks/use-matrix';
 import { useDriftHealth } from '../hooks/use-drift-health';
+import { useAiUsage, formatTokens } from '../hooks/use-ai-usage';
 import {
   Tooltip,
   TooltipContent,
@@ -108,6 +109,10 @@ export function CommandBar() {
   // every 5min and surfaces stale-feed + drift-event counts in a chip
   // next to the alerts strip. Click → /admin/drift.
   const health = useDriftHealth();
+  // Phase 7.O C2 — per-user AI spend chip. Pulls /api/me/ai-usage every
+  // minute and surfaces today's token total. Click → /budgeting/admin/ai-usage
+  // (admins) which has the holding-wide breakdown.
+  const aiUsage = useAiUsage();
   // User-typed CO/CMP verbs are user-driven → selectCompany (tracks LRU recent).
   const setCompany = useTerminalStore((s) => s.selectCompany);
   const setActivePanel = useTerminalStore((s) => s.setActivePanel);
@@ -768,6 +773,65 @@ export function CommandBar() {
                 )}
                 <div className="text-[10px] text-muted-foreground/70 pt-1">
                   Click to open Drift Dashboard →
+                </div>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {/* Phase 7.O C2 — per-user AI spend chip. Always rendered (even at
+            0 tokens) so the affordance stays discoverable: the user knows
+            where to glance when budget concerns surface. Click opens the
+            org-wide AI Usage dashboard (admin-only) or the same page in
+            read-only mode for non-admins. */}
+        {!aiUsage.loading && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href="/budgeting/admin/ai-usage"
+                className="flex items-center cursor-pointer transition-colors hover:text-[#A78BFA]"
+                aria-label={t('commandBar.aiUsageAriaLabel')}
+                data-testid="commandbar-ai-usage-chip"
+              >
+                <span className="ml-2 mr-1">[you</span>
+                <Sparkles
+                  size={11}
+                  className="mx-1 text-[#A78BFA]"
+                  aria-hidden="true"
+                />
+                <span className="text-[#A78BFA] tabular-nums">
+                  {formatTokens(aiUsage.today.total)}
+                </span>
+                <span>]</span>
+              </a>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="bg-popover text-popover-foreground border border-border shadow-lg max-w-[300px] text-xs"
+            >
+              <div className="space-y-1">
+                <div className="font-medium text-[#A78BFA]">
+                  {t('commandBar.aiUsageTitle')}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                  <span className="text-muted-foreground">
+                    {t('commandBar.aiUsageToday')}
+                  </span>
+                  <span className="tabular-nums text-right">
+                    {aiUsage.today.total.toLocaleString()} ·{' '}
+                    {aiUsage.today.calls}{' '}
+                    {t('commandBar.aiUsageCalls')}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {t('commandBar.aiUsageMtd')}
+                  </span>
+                  <span className="tabular-nums text-right">
+                    {aiUsage.mtd.total.toLocaleString()} ·{' '}
+                    {aiUsage.mtd.calls}{' '}
+                    {t('commandBar.aiUsageCalls')}
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted-foreground/70 pt-1">
+                  {t('commandBar.aiUsageClickHint')}
                 </div>
               </div>
             </TooltipContent>

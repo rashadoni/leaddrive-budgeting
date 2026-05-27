@@ -2160,7 +2160,13 @@
       "alertsAriaLabel": "Open alerts panel",
       "healthAriaLabel": "Open Drift Dashboard",
       "alertsLoading": "Alerts: loading…",
-      "alertsTitle": "{count} red+amber indicators across the org — click to open alerts panel"
+      "alertsTitle": "{count} red+amber indicators across the org — click to open alerts panel",
+      "aiUsageAriaLabel": "Open AI Usage Dashboard",
+      "aiUsageTitle": "Your AI usage",
+      "aiUsageToday": "Today",
+      "aiUsageMtd": "Month-to-date",
+      "aiUsageCalls": "calls",
+      "aiUsageClickHint": "Click to open holding-wide AI Usage →"
     },
     "mobileBanner": {
       "text": "Risk Terminal is optimized for ≥1024px viewports. Some panels may not display fully on this screen — switch to a wider monitor for the full experience.",

@@ -240,6 +240,32 @@ describe('CommandBar (Phase 7.D smoke)', () => {
     expect(input.value).toBe('');
   });
 
+  // Phase 7.O C2 — `[you ✨ N]` chip renders the current user's daily
+  // AI spend. Hook polls /api/me/ai-usage every 60s; the global fetch
+  // mock in beforeEach returns a matrix-shaped response without
+  // today/mtd → hook falls back to zeros → chip renders "0".
+  describe('regression: [you] AI-usage chip renders (Phase 7.O C2)', () => {
+    it('renders the [you ... ] strip with a Sparkles SVG and tabular token count', async () => {
+      render(<CommandBar />);
+      // Hook fires fetch on mount; wait for loading=false to flush.
+      await waitFor(() => {
+        const chip = document.querySelector('[data-testid="commandbar-ai-usage-chip"]');
+        expect(chip).not.toBeNull();
+      });
+      const chip = document.querySelector(
+        '[data-testid="commandbar-ai-usage-chip"]',
+      ) as HTMLElement;
+      expect(chip.textContent ?? '').toContain('[you');
+      expect(chip.textContent ?? '').toContain(']');
+      // Sparkles SVG present + marked decorative.
+      const svg = chip.querySelector('svg');
+      expect(svg).toBeTruthy();
+      expect(svg!.getAttribute('aria-hidden')).toBe('true');
+      // aria-label is present for screen readers
+      expect(chip.getAttribute('aria-label')).toMatch(/AI/i);
+    });
+  });
+
   // Regression test for bug fix #4 shipped in commit e66263a:
   //   "CommandBar.tsx [alerts 🔔 N] strip — was emoji 🔔. Now lucide
   //    <Bell/>. Completes the cross-platform parity sweep across 4 sites."

@@ -2160,7 +2160,13 @@
       "alertsAriaLabel": "Xəbərdarlıq panelini aç",
       "healthAriaLabel": "Drift Dashboard-ı aç",
       "alertsLoading": "Xəbərdarlıqlar: yüklənir…",
-      "alertsTitle": "Holdinqdə {count} red+amber göstərici — xəbərdarlıq panelini açmaq üçün klik"
+      "alertsTitle": "Holdinqdə {count} red+amber göstərici — xəbərdarlıq panelini açmaq üçün klik",
+      "aiUsageAriaLabel": "AI İstifadə Dashboard-ı aç",
+      "aiUsageTitle": "Sizin AI istifadəniz",
+      "aiUsageToday": "Bu gün",
+      "aiUsageMtd": "Ayın əvvəlindən",
+      "aiUsageCalls": "çağırış",
+      "aiUsageClickHint": "Bütün holdinq üzrə statistikanı aç →"
     },
     "mobileBanner": {
       "text": "Risk Terminal ≥1024px ekranlar üçün optimallaşdırılıb. Bu ekranda bəzi panellər tam görünməyə bilər — tam təcrübə üçün daha geniş monitor istifadə edin.",

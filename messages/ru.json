@@ -2160,7 +2160,13 @@
       "alertsAriaLabel": "Открыть панель алертов",
       "healthAriaLabel": "Открыть Drift Dashboard",
       "alertsLoading": "Алерты: загрузка…",
-      "alertsTitle": "{count} red+amber индикаторов в холдинге — кликните чтобы открыть панель алертов"
+      "alertsTitle": "{count} red+amber индикаторов в холдинге — кликните чтобы открыть панель алертов",
+      "aiUsageAriaLabel": "Открыть AI Usage Dashboard",
+      "aiUsageTitle": "Ваш расход AI",
+      "aiUsageToday": "Сегодня",
+      "aiUsageMtd": "С начала месяца",
+      "aiUsageCalls": "вызовов",
+      "aiUsageClickHint": "Открыть статистику по всему холдингу →"
     },
     "mobileBanner": {
       "text": "Risk Terminal оптимизирован для экранов ≥1024px. На этом экране некоторые панели могут отображаться не полностью — для полного опыта используйте более широкий монитор.",
