@@ -122,70 +122,28 @@ const budgetSubNav = [
       { value: "config", icon: Settings2, label: "Configuration" },
     ],
   },
-  // Phase 7.G Turn LXXXXII (closes LXXXXI architect ⚠️ class-issue):
-  // 3 admin pages were unreachable from any UI nav until this turn.
-  // Each entry uses `href` instead of `value` (full path, not ?tab=X).
-  // `minRole: "admin"` hides for non-admin (matches API enforcement).
+  // 2026-05-27 — admin sub-nav items now use `labelKey` (against the
+  // `nav` namespace) so they honour user locale. Previously hardcoded
+  // mix of EN + 1 RU («Импорт данных») produced a half-Cyrillic sidebar
+  // that user explicitly flagged.
   {
     group: "Admin",
     minRole: "admin" as Role,
     items: [
-      { href: "/budgeting/admin/periods", icon: Lock, label: "Period Locks", isPage: true },
-      { href: "/budgeting/admin/approval-requests", icon: CheckSquare, label: "Approvals", isPage: true },
-      { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, label: "Chart of Accounts", isPage: true },
-      { href: "/budgeting/admin/users", icon: Users, label: "User Access", isPage: true },
-      // Phase 7.H F4.v2.3 — non-engineer entry surface for operational
-      // KPIs + ESG disclosures.
-      { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, label: "Data Entry", isPage: true },
-      // Phase D.3 — drift dashboard. Recent drift events, reference-feed
-      // freshness, stalled onboarding cases. Admin-only.
-      { href: "/budgeting/admin/drift", icon: AlertTriangle, label: "Drift Dashboard", isPage: true },
-      // Phase 7.K 2026-05-18 — client-facing data-source catalog. Renders
-      // sources-catalog.ts as cards explaining what each external feed is,
-      // its business value, sample live value + indicator dependencies.
-      // Used during client demos when asked "where does this number come
-      // from?". Sits between Drift (freshness state) and Source Registry
-      // (onboarding-import source allowlist) since both are catalog-like.
-      { href: "/budgeting/admin/data-sources", icon: FileSpreadsheet, label: "Data Sources", isPage: true },
-      // Phase L4 — drift-watchdog source registry editor (replaces manual
-      // JSON edit of data/onboarding-source-registry.json).
-      { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, label: "Source Registry", isPage: true },
-      // Phase 7.I Track E — per-company settings editor (industry-shape
-      // form: region/cropType/hectares for agro, totalRooms for hotels,
-      // etc.). Replaces direct SQL on `Company.settings` JSON. 2026-05-16
-      // — page + API + tests already shipped; this is the missing sidebar
-      // entry that made the route unreachable from UI nav.
-      { href: "/budgeting/admin/companies", icon: Building2, label: "Company Settings", isPage: true },
-      // Phase 7.B v2 Day 6 — AI token usage dashboard. Daily / monthly
-      // burn against the org budget + 30-day trend sparkline. Admin
-      // visibility for LLM spend.
-      { href: "/budgeting/admin/ai-usage", icon: Sparkles, label: "AI Usage", isPage: true },
-      // Phase 7.M Tier 7 (2026-05-21) — SOLE import entry point. AI
-      // classifier now covers all 14 dataTypes (PLF/BS/CF/KPI/CAPEX/SALES/
-      // LAND/DESCRIPTIONS/INFO/COMPANIES/OPS_FACTS/BUDGET_ACTUALS/
-      // SALES_FORECAST + UNKNOWN). Old /budgeting/admin/import-workbook,
-      // operational-facts bulk-upload, ImportTab CSV, sales-forecast
-      // upload — all consolidated here. Renamed from "AI Import" →
-      // "Импорт данных" to signal it's the ONE import screen, not one of
-      // many.
-      { href: "/budgeting/admin/ai-import", icon: Brain, label: "Импорт данных", isPage: true },
-      // Phase 7.M Tier 4 (2026-05-19) — Indicator Health dashboard.
-      // Shows per-indicator green/amber/red/unknown breakdown with
-      // remediation guidance for unknowns. Use before client demo to
-      // know which gaps to fill.
-      { href: "/budgeting/admin/indicator-health", icon: Activity, label: "Indicator Health", isPage: true },
-      // 2026-05-27 — Compliance Hub: per-entity audit findings (218) +
-      // court cases (54), tabbed UI with filters + CSV export. Pure UI
-      // layer over Company.settings.auditFindings + courtDisputes JSON
-      // blobs loaded from client xlsx in Phase 7.N ingestion.
-      { href: "/budgeting/admin/compliance", icon: Shield, label: "Compliance Hub", isPage: true },
-      // 2026-05-27 — Indicator Backlog: per-entity action list of which
-      // indicators are missing data, who owns the source, how to fix.
-      // Designed as focused onboarding/data-collection workflow surface.
-      // Pairs with AI Auto Import — every successful upload closes items.
-      { href: "/budgeting/admin/indicator-backlog", icon: ListChecks, label: "Indicator Backlog", isPage: true },
-      // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
-      // a high-traffic page); not duplicated under Admin sub-nav.
+      { href: "/budgeting/admin/periods", icon: Lock, labelKey: "periodLocks", isPage: true },
+      { href: "/budgeting/admin/approval-requests", icon: CheckSquare, labelKey: "approvals", isPage: true },
+      { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, labelKey: "chartOfAccounts", isPage: true },
+      { href: "/budgeting/admin/users", icon: Users, labelKey: "userAccess", isPage: true },
+      { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, labelKey: "dataEntry", isPage: true },
+      { href: "/budgeting/admin/drift", icon: AlertTriangle, labelKey: "driftDashboard", isPage: true },
+      { href: "/budgeting/admin/data-sources", icon: FileSpreadsheet, labelKey: "dataSources", isPage: true },
+      { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, labelKey: "sourceRegistry", isPage: true },
+      { href: "/budgeting/admin/companies", icon: Building2, labelKey: "companySettings", isPage: true },
+      { href: "/budgeting/admin/ai-usage", icon: Sparkles, labelKey: "aiUsage", isPage: true },
+      { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "importData", isPage: true },
+      { href: "/budgeting/admin/indicator-health", icon: Activity, labelKey: "indicatorHealth", isPage: true },
+      { href: "/budgeting/admin/compliance", icon: Shield, labelKey: "complianceHub", isPage: true },
+      { href: "/budgeting/admin/indicator-backlog", icon: ListChecks, labelKey: "indicatorBacklog", isPage: true },
     ],
   },
 ]
@@ -387,7 +345,9 @@ export function Sidebar() {
                               )}
                             >
                               <sub.icon className="h-3.5 w-3.5 shrink-0" />
-                              {sub.label}
+                              {"labelKey" in sub && sub.labelKey
+                                ? t(sub.labelKey)
+                                : ("label" in sub ? sub.label : "")}
                             </Link>
                           )
                         })}

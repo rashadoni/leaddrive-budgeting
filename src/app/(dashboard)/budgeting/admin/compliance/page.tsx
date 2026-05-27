@@ -14,6 +14,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { hasRole } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
@@ -120,15 +121,13 @@ export default async function CompliancePage() {
     };
   });
 
+  const t = await getTranslations("adminCompliance");
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-1">Compliance &amp; Legal Hub</h1>
+        <h1 className="text-2xl font-bold mb-1">{t("pageTitle")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed max-w-3xl">
-          Per-entity audit findings (Major / Minor / Observation / OFI) and
-          open court cases — sourced from client-provided xlsx and stored as
-          drill-down JSON on each Company. Use the tabs to switch between
-          views; filter by severity / status; export filtered slice as CSV.
+          {t("pageDescription")}
         </p>
       </div>
 

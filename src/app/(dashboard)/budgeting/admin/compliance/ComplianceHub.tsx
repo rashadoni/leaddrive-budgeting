@@ -13,6 +13,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   Shield,
   Scale,
@@ -128,18 +129,19 @@ function SeverityChip({ severity }: { severity: string }) {
 }
 
 function StatusBadge({ closed }: { closed: boolean }) {
+  const t = useTranslations("adminCompliance");
   if (closed) {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="h-3 w-3" />
-        Closed
+        {t("statusClosed")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-[11px] text-rose-700 dark:text-rose-300">
       <AlertTriangle className="h-3 w-3" />
-      Open
+      {t("statusOpen")}
     </span>
   );
 }
@@ -168,6 +170,7 @@ function downloadCsv(filename: string, rows: string[][]) {
 }
 
 export function ComplianceHub({ entities }: Props) {
+  const t = useTranslations("adminCompliance");
   const [tab, setTab] = useState<Tab>("audit");
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
@@ -314,24 +317,24 @@ export function ComplianceHub({ entities }: Props) {
       {/* Summary cards — tab-specific */}
       {tab === "audit" ? (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <SummaryCard icon={Shield} label="Total findings" value={auditTotals.total} tone="neutral" />
+          <SummaryCard icon={Shield} label={t("cardTotalFindings")} value={auditTotals.total} tone="neutral" />
           <SummaryCard
             icon={CheckCircle2}
-            label="Completed"
+            label={t("cardCompleted")}
             value={`${auditTotals.completed} (${auditTotals.completedPct}%)`}
             tone={auditTotals.completedPct >= 80 ? "emerald" : auditTotals.completedPct >= 60 ? "amber" : "rose"}
           />
-          <SummaryCard icon={AlertOctagon} label="Major open" value={auditTotals.majorOpen} tone={auditTotals.majorOpen > 5 ? "rose" : auditTotals.majorOpen > 0 ? "amber" : "emerald"} />
-          <SummaryCard icon={AlertTriangle} label="Minor open" value={auditTotals.minorOpen} tone="amber" />
-          <SummaryCard icon={Info} label="Observation open" value={auditTotals.obsOpen} tone="slate" />
+          <SummaryCard icon={AlertOctagon} label={t("cardMajorOpen")} value={auditTotals.majorOpen} tone={auditTotals.majorOpen > 5 ? "rose" : auditTotals.majorOpen > 0 ? "amber" : "emerald"} />
+          <SummaryCard icon={AlertTriangle} label={t("cardMinorOpen")} value={auditTotals.minorOpen} tone="amber" />
+          <SummaryCard icon={Info} label={t("cardObservationOpen")} value={auditTotals.obsOpen} tone="slate" />
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <SummaryCard icon={Scale} label="Total court cases" value={courtTotals.total} tone="neutral" />
-          <SummaryCard icon={AlertTriangle} label="Currently open" value={courtTotals.open} tone={courtTotals.open > 10 ? "rose" : courtTotals.open > 2 ? "amber" : "emerald"} />
-          <SummaryCard icon={AlertOctagon} label="As defendant" value={courtTotals.defendant} tone={courtTotals.defendant > 10 ? "rose" : "amber"} />
-          <SummaryCard icon={Info} label="As plaintiff" value={courtTotals.plaintiff} tone="slate" />
-          <SummaryCard icon={Info} label="Money claims" value={courtTotals.moneyClaims} tone="amber" />
+          <SummaryCard icon={Scale} label={t("cardTotalCourtCases")} value={courtTotals.total} tone="neutral" />
+          <SummaryCard icon={AlertTriangle} label={t("cardCurrentlyOpen")} value={courtTotals.open} tone={courtTotals.open > 10 ? "rose" : courtTotals.open > 2 ? "amber" : "emerald"} />
+          <SummaryCard icon={AlertOctagon} label={t("cardAsDefendant")} value={courtTotals.defendant} tone={courtTotals.defendant > 10 ? "rose" : "amber"} />
+          <SummaryCard icon={Info} label={t("cardAsPlaintiff")} value={courtTotals.plaintiff} tone="slate" />
+          <SummaryCard icon={Info} label={t("cardMoneyClaims")} value={courtTotals.moneyClaims} tone="amber" />
         </div>
       )}
 
@@ -339,10 +342,10 @@ export function ComplianceHub({ entities }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60">
         <div className="flex gap-1">
           <TabButton active={tab === "audit"} onClick={() => setTab("audit")} icon={Shield}>
-            Audit findings ({auditRows.length})
+            {t("tabAudit", { n: auditRows.length })}
           </TabButton>
           <TabButton active={tab === "court"} onClick={() => setTab("court")} icon={Scale}>
-            Court cases ({courtRows.length})
+            {t("tabCourt", { n: courtRows.length })}
           </TabButton>
         </div>
         <button
@@ -351,7 +354,7 @@ export function ComplianceHub({ entities }: Props) {
           className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors mb-1"
         >
           <Download className="h-3.5 w-3.5" />
-          Export CSV
+          {t("exportCsv")}
         </button>
       </div>
 
@@ -359,21 +362,21 @@ export function ComplianceHub({ entities }: Props) {
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <Filter className="h-3.5 w-3.5 text-muted-foreground" />
         <FilterSelect
-          label="Entity"
+          label={t("filterEntity")}
           value={entityFilter}
           onChange={setEntityFilter}
           options={[
-            { value: "all", label: "All entities" },
+            { value: "all", label: t("filterAllEntities") },
             ...entityOptions.map((c) => ({ value: c, label: c })),
           ]}
         />
         {tab === "audit" && (
           <FilterSelect
-            label="Severity"
+            label={t("filterSeverity")}
             value={severityFilter}
             onChange={(v) => setSeverityFilter(v as SeverityFilter)}
             options={[
-              { value: "all", label: "All severities" },
+              { value: "all", label: t("filterAllSeverities") },
               { value: "Major", label: "Major" },
               { value: "Minor", label: "Minor" },
               { value: "Observation", label: "Observation" },
@@ -382,13 +385,13 @@ export function ComplianceHub({ entities }: Props) {
           />
         )}
         <FilterSelect
-          label="Status"
+          label={t("filterStatus")}
           value={statusFilter}
           onChange={(v) => setStatusFilter(v as StatusFilter)}
           options={[
-            { value: "all", label: "All statuses" },
-            { value: "open", label: "Open only" },
-            { value: "closed", label: "Closed only" },
+            { value: "all", label: t("filterAllStatuses") },
+            { value: "open", label: t("filterOpenOnly") },
+            { value: "closed", label: t("filterClosedOnly") },
           ]}
         />
         {hasFilters && (
@@ -402,11 +405,11 @@ export function ComplianceHub({ entities }: Props) {
             className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
           >
             <X className="h-3 w-3" />
-            Clear filters
+            {t("clearFilters")}
           </button>
         )}
         <span className="ml-auto text-muted-foreground">
-          Showing {tab === "audit" ? filteredAuditRows.length : filteredCourtRows.length}
+          {t("showingCount", { n: tab === "audit" ? filteredAuditRows.length : filteredCourtRows.length })}
         </span>
       </div>
 
@@ -514,10 +517,11 @@ function AuditTable({
 }: {
   rows: Array<{ entityCode: string; entityName: string; finding: AuditFinding }>;
 }) {
+  const t = useTranslations("adminCompliance");
   if (rows.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground">
-        No audit findings match the current filters.
+        {t("emptyAudit")}
       </div>
     );
   }
@@ -525,11 +529,11 @@ function AuditTable({
     <table className="w-full text-sm">
       <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
         <tr>
-          <th className="px-3 py-2 text-left font-medium">Entity</th>
-          <th className="px-3 py-2 text-left font-medium">Severity</th>
-          <th className="px-3 py-2 text-left font-medium">Audit</th>
-          <th className="px-3 py-2 text-left font-medium">Status (MNG)</th>
-          <th className="px-3 py-2 text-left font-medium">Grouping</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thEntity")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thSeverity")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thAudit")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thStatusMng")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thGrouping")}</th>
         </tr>
       </thead>
       <tbody>
@@ -568,10 +572,11 @@ function CourtTable({
 }: {
   rows: Array<{ entityCode: string; entityName: string; case: CourtCase }>;
 }) {
+  const t = useTranslations("adminCompliance");
   if (rows.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-muted-foreground">
-        No court cases match the current filters.
+        {t("emptyCourt")}
       </div>
     );
   }
@@ -579,12 +584,12 @@ function CourtTable({
     <table className="w-full text-sm">
       <thead className="bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
         <tr>
-          <th className="px-3 py-2 text-left font-medium">Entity</th>
-          <th className="px-3 py-2 text-left font-medium">Date</th>
-          <th className="px-3 py-2 text-left font-medium">Court</th>
-          <th className="px-3 py-2 text-left font-medium">Type</th>
-          <th className="px-3 py-2 text-left font-medium">Plaintiff → Defendant</th>
-          <th className="px-3 py-2 text-left font-medium">Status</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thEntity")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thDate")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thCourt")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thType")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thPlaintiffDefendant")}</th>
+          <th className="px-3 py-2 text-left font-medium">{t("thStatus")}</th>
         </tr>
       </thead>
       <tbody>
