@@ -63,16 +63,28 @@ const STATUS_OPTIONS: Array<{ value: CompanyStatusValue; label: string }> = [
   { value: "archived", label: "archived" },
 ]
 
+// 2026-05-27 — bumped contrast. Original `bg-{c}-500/15 text-{c}-300`
+// pattern failed WCAG AA (~2.5:1) on the light dashboard background
+// — user described as «отвратительные цвета». Replaced with the same
+// ring-based saturated-foreground pattern used by Indicator Health
+// chips (see IndicatorHealthView.tsx CATEGORY_STYLE) so the palette
+// is consistent across admin surfaces and readable in both themes.
 const STATUS_PALETTE: Record<CompanyStatusValue, string> = {
-  pending:  "bg-amber-500/15  text-amber-300  border-amber-500/30",
-  active:   "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
-  archived: "bg-slate-500/15  text-slate-400  border-slate-500/30",
+  pending:
+    "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 ring-1 ring-amber-300 dark:ring-amber-700/60",
+  active:
+    "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-300 dark:ring-emerald-700/60",
+  archived:
+    "bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-700",
 }
 
 const ROLE_PALETTE: Record<CompanyRoleValue, string> = {
-  operational: "bg-sky-500/15  text-sky-300  border-sky-500/30",
-  admin:       "bg-violet-500/15 text-violet-300 border-violet-500/30",
-  holding:     "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+  operational:
+    "bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-200 ring-1 ring-sky-300 dark:ring-sky-700/60",
+  admin:
+    "bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-200 ring-1 ring-violet-300 dark:ring-violet-700/60",
+  holding:
+    "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 ring-1 ring-indigo-300 dark:ring-indigo-700/60",
 }
 
 /**
