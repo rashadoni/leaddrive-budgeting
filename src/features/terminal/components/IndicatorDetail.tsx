@@ -923,20 +923,37 @@ function ProvenanceBadge({
     // so the map is exhaustive for future maintainers.
     computed: "",
   };
+  // 2026-05-27 — emoji prefix per source so finance users see the
+  // provenance category at-a-glance without needing to learn the
+  // colour code. Map matches CLAUDE.md's user-facing schema:
+  //   📥 disclosed (от клиента) — high trust
+  //   🔮 modeled (отраслевая/общая оценка) — lower trust
+  //   🌐 macro (макро-контекст) — single value across cos
+  //   ⚙ computed (расчёт) — derived from real data (default, no badge)
+  const icons: Record<NonNullable<IndicatorValueDetail["valueSource"]>, string> = {
+    disclosed: "📥",
+    modeled_industry: "🔮",
+    modeled_generic: "🌫",
+    macro: "🌐",
+    computed: "⚙",
+  };
   return (
     <span
       data-testid="provenance-badge"
       data-source={source}
       data-confidence={confidence ?? undefined}
       title={title}
-      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-mono ${palette[source]}`}
+      className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-mono inline-flex items-center gap-1 ${palette[source]}`}
     >
-      {label}
+      <span aria-hidden="true" className="not-italic">
+        {icons[source]}
+      </span>
+      <span>{label}</span>
       {confidence && (
         <span
           aria-hidden="true"
           data-testid="provenance-confidence-tier"
-          className="ml-1.5 opacity-70 font-bold"
+          className="ml-0.5 opacity-70 font-bold"
         >
           {confidence}
         </span>

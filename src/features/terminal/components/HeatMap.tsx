@@ -1487,6 +1487,46 @@ function HeatMapCellTd({ co, ind, cell, compactMode, scenarioStatus, onCellClick
                   e
                 </span>
               )}
+            {/* 2026-05-27 — `d` marker for disclosed (company-reported)
+                cells. Mirrors the `e` (estimate) marker shape so the
+                pair is learnable at-a-glance: top-left letter encodes
+                provenance (d = disclosed/real, e = estimated/modelled,
+                no letter = computed/derived from real data). Macro
+                cells use `m`. */}
+            {cell && cell.valueSource === 'disclosed' && (
+              <span
+                aria-hidden="true"
+                data-testid="heatmap-disclosed-marker"
+                data-source={cell.valueSource}
+                className="absolute top-0 left-0.5 leading-none font-mono font-bold"
+                style={{
+                  fontSize: compactMode ? 7 : 9,
+                  opacity: 0.9,
+                  color: '#FFFFFF',
+                  mixBlendMode: 'difference',
+                  pointerEvents: 'none',
+                }}
+              >
+                d
+              </span>
+            )}
+            {cell && cell.valueSource === 'macro' && (
+              <span
+                aria-hidden="true"
+                data-testid="heatmap-macro-marker"
+                data-source={cell.valueSource}
+                className="absolute top-0 left-0.5 leading-none font-mono"
+                style={{
+                  fontSize: compactMode ? 7 : 9,
+                  opacity: 0.85,
+                  color: '#FFFFFF',
+                  mixBlendMode: 'difference',
+                  pointerEvents: 'none',
+                }}
+              >
+                m
+              </span>
+            )}
             {/* Missing cell label — no IndicatorValue row exists yet.
                 Shows "н/д" (нет данных) so the cell is not mistaken for
                 a zero or an n/a.  Compact: tiny centered dot instead of
