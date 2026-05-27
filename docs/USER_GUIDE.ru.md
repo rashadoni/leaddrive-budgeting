@@ -440,20 +440,17 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 ### Детальный Risk Registry per entity
 
-Помимо 3 канонических флагов, у каждой компании есть детальный реестр рисков (KRI list) — открывается в admin-панели:
+Помимо 3 канонических флагов, у каждой компании может быть детальный реестр рисков (KRI list) — отображается в admin-панели:
 **`/budgeting/admin/companies` → раскрыть карточку компании → секция «Risk Registry»**.
 
-| Entity | KRIs | Источник | Категории |
-|---|---|---|---|
-| **EDEN** | 15 | Top risk - EDEN AGRO MMC.xlsx (клиент) | Env / Fin / HC / Market / Ops / Reg / Strat / Tech |
-| **AZSF** | 15 | Industry template (2026-05-27) | Env / Fin / HC / Market / Ops / Reg / Strat / Tech |
-| **CPC** | 14 | Industry template (2026-05-27) | Env / Fin / Market / Ops / Reg / Strat / Tech |
-| **MALT** | 10 | Industry template (2026-05-27) | Env / Fin / HC / Market / Ops / Reg / Strat |
-| **HORIZON** | 5 | Industry template (2026-05-27, slim — passive shell) | Fin / Market / Reg / Strat |
-| **PROMALT** | 0 | — | JV with Azersun, registry deferred |
-| **FARM** | 0 | — | Archived |
+**Текущее состояние:**
 
-**Templates vs client-supplied:** EDEN reestr пришёл от клиента. Остальные — отраслевые шаблоны (food processing / services), которые админ должен отшлифовать через UI когда придут реальные данные от Nəcəf M.
+| Entity | KRIs | Источник |
+|---|---|---|
+| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (файл от клиента) |
+| **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — ожидается от Nəcəf M (CARRYOVER L2) |
+
+Реестры для остальных entity **не заполнены умышленно** — мы НЕ генерируем риски сами, ждём реальные KRIs от Risk Officer'а холдинга. Тут не должно быть выдуманных данных: финансовый CFO принимает решения по этим показателям.
 
 ---
 
@@ -488,45 +485,31 @@ Three new indicators, питаются от файлов клиента (`Follow
 - Клик на красную ячейку AZSF/AUDIT_MAJOR_OPEN → Variance Explainer должен процитировать открытые Major находки в narrative
 - Board Deck → секция «Critical alerts» теперь содержит compliance/legal warning'и
 
-### LEGAL_MONEY_AT_RISK — раскрытые денежные требования (AZN)
-
-Регулярное выражение извлекает суммы из описаний кейсов («13276,92 manat borc məbləği»). Только commercial-споры с явной суммой:
-
-| Entity | Сумма | Кейсы | Статус |
-|---|---|---|---|
-| AZSF | 321,287 AZN | 2 (290K + 30K) | 🟡 amber |
-| CPC | 71,586 AZN | 2 (65K + 5K) | 🟢 green |
-| EDEN/MALT/HORIZON/PROMALT | ⚪ нет данных | трудовые/регуляторные без сумм | ⚪ |
-
-**Пороги:** ≤100K 🟢 / 100K-500K 🟡 / >500K 🔴
-
-Floor estimate — labor/regulatory disputes без явных AZN сумм не учтены. Реальная экспозиция выше.
+> **Money-at-risk per case (AZN):** удалён из индикаторов 2026-05-27. Regex покрывал только 4 из 54 кейсов (7%) — misleading floor estimate. Будет реализован заново когда придёт полный реестр claim amounts от Hüquq Şöbəsi.
 
 ---
 
 ## 9.2.5 FX risk — какая часть выручки уязвима к курсу
 
-**Где:** Risk Terminal → HeatMap колонка `REVENUE_FX_EXPOSURE` + Board Deck FX section.
+**Где:** Risk Terminal → HeatMap колонка `REVENUE_FX_EXPOSURE`.
 
-Хранится в `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % выручки в каждой валюте. Формула: **100 − fxRevenueAzn** = % non-AZN = FX-risk side.
+Хранится в `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % выручки в каждой валюте. Формула: **100 − fxRevenueAzn** = % non-AZN.
 
-| Entity | AZN | USD | EUR | RUB | FX Exposure | Источник |
-|---|---|---|---|---|---|---|
-| AZSF | 95% | 5% | 0% | 0% | 🟢 5% | Crocs Group / Coca-Cola |
-| CPC | 80% | 18% | 2% | 0% | 🟢 20% | DCFTA Georgia exports |
-| MALT | 100% | — | — | — | 🟢 0% | Carlsberg single-buyer AZN |
-| EDEN | 90% | 10% | — | — | 🟢 10% | Salyan sugarcane → Georgia |
-| HORIZON | 100% | — | — | — | 🟢 0% | Domestic services |
-| PROMALT | 100% | — | — | — | 🟢 0% | JV с Azersun, domestic |
+**Текущее состояние:**
+
+| Entity | AZN | USD | EUR | FX Exposure | Источник |
+|---|---|---|---|---|---|
+| **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — реальные volume splits 2027-2035 |
+| AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Ожидается от N. Nəcəfzadə file «Müştəri İcmalı» (CARRYOVER L1) |
+
+Только CPC имеет реальные данные (вычислены из клиентского forward plan). Для остальных 5 entity мы НЕ заполняем split умышленно — `REVENUE_FX_EXPOSURE` показывает `unknown` пока не придёт верифицированный per-customer FX breakdown.
 
 **Пороги:**
 - 🟢 ≤ 20% — внутренний рынок доминирует
 - 🟡 20–50% — смешанная экспозиция
 - 🔴 > 50% — FX-колебания доминируют над выручкой
 
-**Текущие значения = educated defaults** на основе известных клиентов. Реальный split per-customer придёт от N. Nəcəfzadə — после файла нужно будет обновить через `/budgeting/admin/companies` → settings panel.
-
-**Связь с `FX_IMPORTED_INPUT`** (impact, cost-side): два показателя вместе показывают **NET FX positon**. Если cost ≈ revenue в одной валюте → natural hedge. Если imported costs USD высокие но AZN revenue 100% → AZN weakness бьёт по марже без compensation.
+**Связь с `FX_IMPORTED_INPUT`** (cost-side): два показателя вместе дадут **NET FX position** когда у всех будет revenue split. Если cost ≈ revenue в одной валюте → natural hedge.
 
 ---
 

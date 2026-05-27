@@ -57,6 +57,12 @@ export interface CompanyTreeNode {
    *  Examples: "subsidy_dependency", "non_transparent_structure", "data_absence".
    *  Rendered as small colored chips on CompanyTree rows. */
   riskTags?: string[];
+  /** 2026-05-27 — empty-data banner from Company.settings.dataPendingBanner.
+   *  Set per-entity when we honestly have no data yet but want the row
+   *  visible (e.g. PROMALT JV awaiting client file). Rendered as a small
+   *  italic placeholder badge in the row so the entity isn't silently
+   *  presented as ⚪-unknown across all indicators. */
+  dataPendingBanner?: string | null;
 }
 
 export interface UseCompaniesResult {
@@ -103,6 +109,17 @@ function extractRiskTags(raw: unknown): string[] | undefined {
   return tags.filter((t): t is string => typeof t === "string");
 }
 
+/** Extract Company.settings.dataPendingBanner — string banner shown on
+ *  entity rows that intentionally have no data yet (e.g. PROMALT JV
+ *  awaiting client file). Returns the string or null. */
+function extractDataPendingBanner(raw: unknown): string | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const settings = (raw as { settings?: unknown }).settings;
+  if (typeof settings !== "object" || settings === null) return null;
+  const banner = (settings as { dataPendingBanner?: unknown }).dataPendingBanner;
+  return typeof banner === "string" && banner.trim() !== "" ? banner : null;
+}
+
 /** Recursively map a raw API company node to CompanyTreeNode. */
 function mapCompanyNode(raw: unknown): CompanyTreeNode | null {
   if (!isCompanyNode(raw)) return null;
@@ -110,6 +127,7 @@ function mapCompanyNode(raw: unknown): CompanyTreeNode | null {
   return {
     ...r,
     riskTags: extractRiskTags(raw),
+    dataPendingBanner: extractDataPendingBanner(raw),
     children: r.children
       ? (r.children.map(mapCompanyNode).filter(Boolean) as CompanyTreeNode[])
       : undefined,

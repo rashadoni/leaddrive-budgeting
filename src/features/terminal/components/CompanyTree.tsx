@@ -710,6 +710,14 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                     {child.name}
                   </span>
                   <RiskTagChips tags={child.riskTags} />
+                  {child.dataPendingBanner && (
+                    <span
+                      className="text-amber-400/80 text-[10px] italic px-1.5 py-0.5 rounded bg-amber-900/20 border border-amber-700/30"
+                      title={child.dataPendingBanner}
+                    >
+                      ⏳ awaiting data
+                    </span>
+                  )}
                   {child.industry && (
                     <span className="text-gray-600 text-[10px]">
                       {INDUSTRY_LABEL.get(child.industry) ?? child.industry}

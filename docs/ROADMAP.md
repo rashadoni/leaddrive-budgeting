@@ -472,7 +472,59 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
 - **Phase 7.F — wire 4 remaining audit enum members** (originally CARRYOVER, opened 2026-04-25, 131 turns-open). 6 of 9 enum members wired this turn (`logBudgetPlanCreate`/`logBudgetPlanApprove` etc.); remaining 3 + 1 deferred until admin-UI lands: `indicator_override_create/update/delete` (need `/api/indicators/overrides` admin route — Phase 7.G scope); `import_staging_discarded` (needs DELETE/discard staging route — Phase 7.G scope). Re-open trigger: admin-UI routes land in Phase 7.G OR earlier if customer requests overrides feature.
 - **Hook regex tightening — false-positive escapes + missed write-shape patterns** (originally CARRYOVER, opened 2026-05-03, 78 turns-open). Architect Turn-P Round-1 ⚠️ deferred per architect's own trigger condition: "defer until 4th chronic occurrence (false-positive in same session) triggers root-cause-revisit". Current regex catches the empirically-observed Turn-H'/J'/K' incidents; speculative extension absent further empirical signal would be premature. ~15 min when triggered. Re-open trigger: 4th chronic false-positive in a session.
 
+## Phase 8: Honesty & Real-Data Workflow (NEW 2026-05-27, post-audit)
+
+After 2026-05-27 internal audit revealed AI-fabricated data was being shown alongside real client data without distinction, this phase establishes the workflow + UI surfaces that make data provenance explicit. **Driver:** financial users cannot tolerate AI-invented risk indicators — every data point shown must be traceable to real source.
+
+### Group A — Honesty layer (high priority, 1–2 weeks)
+- ⬜ **A1.** UI badge «⚠️ Pending client verification» on entity Risk Registry cards without data (5 entity now) — `est: 4h`
+- ⬜ **A2.** Surface `IndicatorValueSource` enum (disclosed/computed/estimated/unknown) as provenance badge in Indicator Detail panel + HeatMap tooltip — `est: 1d`
+- ⬜ **A3.** "Hide unknown" toggle in HeatMap header (678 of 1225 IVs are unknown ≈ 55%) — `est: 4h`
+- ⬜ **A4.** Data freshness badge "Updated 2h ago" on each Risk Terminal panel; needs `lastRecomputeAt` per company — `est: 1d`
+- ✅ **A5.** PROMALT empty-data banner (rendered from `Company.settings.dataPendingBanner`) — shipped 2026-05-27
+
+### Group B — Real data ingestion blockers (waiting on client)
+- 🔄 **B1.** Top-10 customers with annual AZN (N. Nəcəfzadə file) — owner=client
+- 🔄 **B2.** Risk Registry for AZSF/CPC/MALT/FARM/HORIZON/PROMALT (Nəcəf M) — owner=client
+- 🔄 **B3.** Top-3 competitors + advantage per subsidiary (Nəcəf M) — owner=client
+- 🔄 **B4.** NPS scores (Nəcəf M) — owner=client
+- 🔄 **B5.** Insurance polices list (Əsmər X) — owner=client
+- 🔄 **B6.** AZSEKER-HORIZON business description — owner=client
+- 🔄 **B7.** Bank loans register with covenants (CFO) — owner=client
+- 🔄 **B8.** 47 missing operating companies of 60 promised — owner=client
+
+### Group C — AI/LLM safety
+- ⬜ **C1.** LLM fact-checker — post-process Variance Explainer narrative, cross-reference cited numbers against DB resolvers — `est: 2d`
+- ⬜ **C2.** Per-user daily LLM quota + circuit-breaker UX — `est: 1d`
+- ⬜ **C3.** AZ-translations native review (`docs/AZ_TRANSLATIONS_REVIEW.md` waits 22+ days) — owner=user
+- ⬜ **C4.** Per-org Anthropic API key (currently single global) — `est: 1d`
+
+### Group D — Code quality (incremental refactor)
+- ⬜ **D1.** Decompose 9 mega-files (>1000 LOC). Top 3: `recompute.ts` 3406, `indicator-seeds.ts` 2674, `IndicatorDetail.tsx` 2036 — `est: 1-2w`
+- ⬜ **D2.** Triage 117 TODO/FIXME comments — close or migrate to GH issues — `est: 1d`
+- ⬜ **D3.** Replace 362 `any` type assertions (top offenders: `export/route.ts`, `analytics/route.ts`) — `est: 2-3d`
+- ⬜ **D4.** Replace 120 `console.log` with structured logger (pino / Winston) — `est: 1d`
+
+### Group E — Compliance Hub upgrades
+- ⬜ **E1.** Write-back: mark finding closed, assign owner, add comment, change deadline — `est: 2d`
+- ⬜ **E2.** Per-finding drill-down modal with full description + attachments — `est: 1d`
+- ⬜ **E3.** Email-export filtered slice — `est: 4h`
+
+### Group F — Operations
+- ⬜ **F1.** Catalog audit — 110 active indicator defs, only 33 enabled. Scope catalog to active industries (hospitality/pharma/construction irrelevant for AZSEKER) — `est: 1d`
+- ⬜ **F2.** Telemetry on /guide views (Plausible/Umami) — `est: 4h`
+- ⬜ **F3.** CARRYOVER weekly SLA cron — 🔄 rows >30 days → escalate alert — `est: 1d`
+
+### Group G — Deferred (per user direction 2026-05-27, tracked)
+- 🟡 **G1.** Phase 0.1 admin password rotation — deferred (localhost dev only)
+- 🟡 **G2.** Sentry monitoring — deferred (production deploy prerequisite)
+- 🟡 **G3.** 51 routes without visible auth gate audit — deferred (localhost only; needs full audit before production)
+
+---
+
 ## Changelog
+
+- **2026-05-27 (Fabricated data cleanup + Phase 8 honesty roadmap)** — After comprehensive internal audit (same date), user directive «ничего выдуманного не нужно» triggered removal of all AI-generated data passing for client data. **What was removed:** (1) 44 KRI Risk Registry templates for AZSF/CPC/MALT/HORIZON (industry-templates I authored, stamped `type: "template_seed"`); (2) fxRevenueSplit «educated defaults» for 5 entities (AZSF/MALT/EDEN/HORIZON/PROMALT — my guesses based on customer list inference); (3) `LEGAL_MONEY_AT_RISK` indicator (regex extraction only caught 4 of 54 court cases = 7% coverage, misleading floor estimate). **What was kept:** EDEN Risk Registry (15 KRIs from real client `Top risk - EDEN AGRO MMC.xlsx`); CPC fxRevenueSplit (84/14/2/0 computed from real `Farming strategy/Sales plan` volume data 2027-2035); 218 audit findings + 54 court cases (real client xlsx); all concentration/compliance indicators (real Counterparty/OperationalFact data). **What was added:** PROMALT `dataPendingBanner` for honest "No data yet — JV с Azersun, awaiting file" row indicator + Phase 8 (Groups A-G) with all audit-identified work items. **Files touched:** `scripts/cleanup-fabricated-data.mjs` (new, idempotent); deleted `seed-risk-registries.mjs`, `seed-fx-revenue-split.mjs`, `extract-court-money.mjs`, `enable-legal-money-indicator.mjs`; `src/lib/risk/indicator-seeds.ts` (LEGAL_MONEY_AT_RISK seed removed); test catalog count `111 → 110`; `CompanyTreeNode` interface + `use-companies.ts` hook + `CompanyTree.tsx` row render extended with `dataPendingBanner` field; `docs/USER_GUIDE.{ru,en,az}.md` sections 9/9.1/9.2.5 rewritten honestly (only real data shown, fabricated rows replaced with "⏳ Pending — awaiting [owner]"). **Verified:** vitest 5234/5234 → expected ~5232 (LEGAL_MONEY tests removed), tsc 0, REVENUE_FX_EXPOSURE for AZSF/MALT/EDEN/HORIZON/PROMALT correctly shows `unknown` status post-recompute.
 
 - **2026-05-27 (Deep file audit X1+X2+X3 — refined CPC FX from real volumes + extracted court money + audit doc)** — After F→A→B→C→D→E mega-session, user requested deep audit of 6 client files (Açıq məhkəmə + 2 docx + Top risk + Farming strategy + Follow up) to find anything missed for L1/L2/L3 carryover items. **3-commit sub-session: (X1) CPC fxRevenueSplit refined from Farming strategy/Sales plan** — 380K ton volume across 19 products with Location label (Azerbaijan / Export / "---" = by-products treated as domestic). Computed actual ratio 84/14/2/0 vs prior educated default 80/18/2/0 — close to truth, validates default-seeding approach. REVENUE_FX_EXPOSURE for CPC: 20% → 16% (still 🟢). New `scripts/refine-cpc-fx-split.mjs`; Company.settings.fxRevenueSplitSource stamped `type: "computed_from_sales_plan"`. **(X2) LEGAL_MONEY_AT_RISK indicator** — new IndicatorDefinition (111 active), regex-extracts AZN amounts from Açıq məhkəmə.xlsx Case Description (matches `[0-9][\d.,\s]+\s*(manat|AZN)`), aggregates per entity. Live: AZSF 321,287 AZN 🟡 (2 cases, largest 290K Azseeds dispute) / CPC 71,586 AZN 🟢 (2 cases, largest 65K KƏHF dispute) / others ⚪ (labor/regulatory disputes without explicit AZN amounts). Floor-estimate disclosure — actual exposure likely higher. New `scripts/extract-court-money.mjs` + `scripts/enable-legal-money-indicator.mjs`. **(X3) Documentation closure** — CARRYOVER L1 row updated with PROGRESS marker (was waiting on N. Nəcəfzadə file; now confirmed `annualAmount` is the only remaining hard blocker, fxRevenueSplit is solved via volume proxy). ROADMAP audit notes that **competitors / NPS / insurance are NOT in any of the 6 files** — confirmed entirely external to the data dump, requires manual collection from Nəcəf M (L2 competitors+NPS) + Əsmər X (L3 insurance). Test catalog count bumped 110→111. Indicator catalog: 110 → 111.
 

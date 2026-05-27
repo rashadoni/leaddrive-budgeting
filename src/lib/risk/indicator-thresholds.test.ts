@@ -192,8 +192,8 @@ describe("indicator thresholds — band-direction extras (hand-declared)", () =>
 })
 
 describe("indicator thresholds — catalog completeness", () => {
-  it("111 active indicator seeds (110 base + 2026-05-27 legal money: LEGAL_MONEY_AT_RISK)", () => {
-    expect(ALL_INDICATOR_SEEDS).toHaveLength(111)
+  it("110 active indicator seeds (was 111 — LEGAL_MONEY_AT_RISK removed 2026-05-27 after regex coverage 7%)", () => {
+    expect(ALL_INDICATOR_SEEDS).toHaveLength(110)
   })
 
   it("every indicator has a unique code", () => {
