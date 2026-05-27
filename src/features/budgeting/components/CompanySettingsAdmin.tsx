@@ -437,7 +437,43 @@ function RiskRegistryPanel({ companyId }: { companyId: string }) {
     return { groups, categoryCounts, criticalCount }
   }, [registry, filter, criticalThreshold])
 
-  if (isLoading || !registry || registry.length === 0) return null
+  if (isLoading) return null
+
+  // 2026-05-27 A1 honesty layer — when the registry is missing entirely
+  // (5 of 6 AZSEKER entities at the moment), render an explicit
+  // "Pending client verification" badge instead of silently hiding the
+  // panel. Without this, an empty registry looks identical to "we have
+  // no data to show you" — confusing for stakeholders. The badge
+  // anchors the gap, says who owns it (CARRYOVER row B2), and links
+  // to the Indicator Backlog where the client can be emailed.
+  if (!registry || registry.length === 0) {
+    return (
+      <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20">
+        <div
+          className="rounded-md border border-amber-400/40 bg-amber-50/40 dark:bg-amber-950/20 px-3 py-2.5"
+          data-testid="risk-registry-pending"
+        >
+          <div className="flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+            <BookOpen className="h-3.5 w-3.5" />
+            <span>Risk registry</span>
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-mono">
+              ⚠️ Pending client
+            </span>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+            No top-risk register has been provided yet for this entity.{" "}
+            <a
+              href={`/budgeting/admin/indicator-backlog?company=${data?.companyCode ?? ""}`}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Open Backlog →
+            </a>{" "}
+            to email the owner (CARRYOVER row B2 — Nəcəf M).
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-5 pt-4 border-t border-dashed border-muted-foreground/20">
