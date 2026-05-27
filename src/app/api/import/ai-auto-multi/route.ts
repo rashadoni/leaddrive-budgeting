@@ -233,6 +233,24 @@ export async function POST(request: NextRequest) {
       ? ((org.settings as Record<string, unknown>).industry as string | undefined)
       : undefined
 
+  // ── Snapshot backlog BEFORE apply (for closed-items diff) ──────
+  // Only when shouldApply — preview runs don't change DB so no diff.
+  let backlogBefore: Awaited<
+    ReturnType<typeof import("@/lib/risk/indicator-backlog").computeIndicatorBacklog>
+  > | null = null
+  if (shouldApply) {
+    try {
+      const { computeIndicatorBacklog } = await import(
+        "@/lib/risk/indicator-backlog"
+      )
+      backlogBefore = await computeIndicatorBacklog(prisma, orgId, {
+        period: String(year),
+      })
+    } catch (e) {
+      console.warn("backlog before-snapshot failed:", e)
+    }
+  }
+
   // ── Run the orchestrator ────────────────────────────────────────
   let result
   try {
@@ -304,11 +322,36 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // ── Indicator backlog diff (only when apply succeeded) ─────────
+  // 2026-05-27 — after a successful apply, snapshot backlog again
+  // and compare against the pre-apply snapshot. Surfaces «✅ Closed
+  // N backlog items» in the import response so users see immediate
+  // value from each upload + a deep-link to drill into what's still
+  // missing.
+  //
+  // Best-effort — wrap in try/catch so backlog computation never
+  // breaks the import response.
+  let backlogClosed: Array<{ companyCode: string; indicatorCode: string }> = []
+  if (shouldApply && backlogBefore) {
+    try {
+      const { computeIndicatorBacklog, diffBacklogs } = await import(
+        "@/lib/risk/indicator-backlog"
+      )
+      const after = await computeIndicatorBacklog(prisma, orgId, {
+        period: String(year),
+      })
+      backlogClosed = diffBacklogs(backlogBefore.companies, after.companies)
+    } catch (e) {
+      console.warn("backlog diff failed:", e)
+    }
+  }
+
   // ── Normal path ─────────────────────────────────────────────────
   return NextResponse.json({
     ok: true,
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
+    backlogClosed,
     durationMs: Date.now() - t0,
   })
 }

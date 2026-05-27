@@ -37,6 +37,7 @@ import {
   Sparkles,
   BookText,
   Shield,
+  ListChecks,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
@@ -182,6 +183,11 @@ const budgetSubNav = [
       // layer over Company.settings.auditFindings + courtDisputes JSON
       // blobs loaded from client xlsx in Phase 7.N ingestion.
       { href: "/budgeting/admin/compliance", icon: Shield, label: "Compliance Hub", isPage: true },
+      // 2026-05-27 — Indicator Backlog: per-entity action list of which
+      // indicators are missing data, who owns the source, how to fix.
+      // Designed as focused onboarding/data-collection workflow surface.
+      // Pairs with AI Auto Import — every successful upload closes items.
+      { href: "/budgeting/admin/indicator-backlog", icon: ListChecks, label: "Indicator Backlog", isPage: true },
       // Phase C.3 "Onboarding Status" lives at top-level navItems (it's
       // a high-traffic page); not duplicated under Admin sub-nav.
     ],

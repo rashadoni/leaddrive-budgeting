@@ -89,6 +89,10 @@ interface MultiFileApiResponse {
   recompute: { ok: number; unknown: number; failed: number; targets: number }
   warnings: string[]
   error?: string
+  /** 2026-05-27 — indicators that moved from `unknown` → present
+   *  thanks to this import. Surfaced as «✅ Closed N backlog items»
+   *  banner below the apply result. */
+  backlogClosed?: Array<{ companyCode: string; indicatorCode: string }>
 }
 
 const MAX_FILES = 10
@@ -534,6 +538,35 @@ export function MultiFileForm() {
               Recompute: {applyResult.recompute.ok}/{applyResult.recompute.targets}{" "}
               успешно
             </p>
+          )}
+          {applyResult.backlogClosed && applyResult.backlogClosed.length > 0 && (
+            <div className="mt-3 p-3 rounded-md bg-emerald-50 border border-emerald-200">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-base">✅</span>
+                <p className="text-sm font-semibold text-emerald-800">
+                  Закрыто {applyResult.backlogClosed.length} пунктов из Indicator Backlog
+                </p>
+              </div>
+              <ul className="text-xs text-emerald-900/80 space-y-0.5 ml-5">
+                {applyResult.backlogClosed.slice(0, 8).map((b) => (
+                  <li key={`${b.companyCode}-${b.indicatorCode}`}>
+                    <code className="font-mono text-[11px]">{b.companyCode}</code>{" "}
+                    → {b.indicatorCode}
+                  </li>
+                ))}
+                {applyResult.backlogClosed.length > 8 && (
+                  <li className="italic text-emerald-700">
+                    … и ещё {applyResult.backlogClosed.length - 8}
+                  </li>
+                )}
+              </ul>
+              <a
+                href="/budgeting/admin/indicator-backlog"
+                className="inline-block mt-2 text-xs text-emerald-700 underline-offset-2 hover:underline"
+              >
+                Открыть Indicator Backlog →
+              </a>
+            </div>
           )}
         </div>
       )}

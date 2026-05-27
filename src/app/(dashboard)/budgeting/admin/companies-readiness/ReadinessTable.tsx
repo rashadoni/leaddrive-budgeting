@@ -250,13 +250,14 @@ export function ReadinessTable({
               <th className="p-2 w-20 text-right">Score</th>
               <th className="p-2 w-24">Tier</th>
               <th className="p-2">Top missing</th>
+              <th className="p-2 w-28 text-right">Backlog</th>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="p-6 text-center text-muted-foreground italic"
                 >
                   No companies match the current filter.
@@ -328,10 +329,18 @@ function ReadinessRowView({
         <td className="p-2 text-xs text-muted-foreground truncate max-w-[280px]">
           {topMissing || "—"}
         </td>
+        <td className="p-2 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+          <a
+            href={`/budgeting/admin/indicator-backlog?company=${row.code}`}
+            className="inline-flex items-center gap-1 rounded border border-primary/40 bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/15 transition-colors"
+          >
+            View →
+          </a>
+        </td>
       </tr>
       {isOpen && (
         <tr>
-          <td colSpan={7} className="border-t bg-muted/20 p-4">
+          <td colSpan={8} className="border-t bg-muted/20 p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
               {row.areas.map((a) => {
                 const pct = a.weight > 0 ? (a.earned / a.weight) * 100 : 0

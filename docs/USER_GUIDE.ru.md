@@ -321,6 +321,47 @@ Per-entity scoring по 7 областям: P&L / BS / CF / KPI / Counterparty /
 
 Кнопка **Export CSV** копирует gap-list для email.
 
+### 7.3.6 Indicator Backlog — что не хватает per компании
+
+**URL:** `/budgeting/admin/indicator-backlog`
+
+**Цель:** ровно одна страница где видно «что недозалили per entity» — без бесполезных галочек, с конкретным action-планом.
+
+**Структура:**
+- **5 summary-карточек:** Entities / Applicable indicators / With data / Missing / Overall readiness %
+- **By-owner aggregate** — кликабельные бэйджи «Risk Officer owes 5 items», «Sales Director owes 12», «CFO owes 8»
+- **Фильтры:** Category / Owner / Hide entities with 0 missing
+- **Per-entity rows** — раскрываются → таблица всех missing indicators с per-row owner + scope + action
+
+**Per-row actions:**
+- 📧 **Email** — открывает mailto: с pre-filled телом письма к owner'у с конкретным списком запрашиваемых данных
+- ⬆️ **Upload file** (entity-level) — deep-link на `/admin/ai-import?forEntity=AZSEKER-AZSF`
+- 📥 **CSV** (entity-level) — выгрузка gap-list для отправки клиенту
+- 📨 **Email all owners** (entity-level) — bulk mailto с группировкой по owner
+
+**Integration с AI Auto Import:**
+После успешного импорта в `/admin/ai-import` появляется banner:
+> ✅ Закрыто 7 пунктов из Indicator Backlog
+> - AZSEKER-AZSF → AUDIT_CLOSED_PCT
+> - AZSEKER-CPC → AUDIT_MAJOR_OPEN
+> - ...
+> [Открыть Indicator Backlog →]
+
+**Owner mapping** — кто за что отвечает:
+
+| Категория данных | Owner role |
+|---|---|
+| Audit findings | Internal Audit / Hüquq Şöbəsi |
+| Court cases | Hüquq Şöbəsi (Legal) |
+| Customers (counterparty) | Sales Director / Commercial Manager |
+| Suppliers | Procurement / Təchizat Şöbəsi |
+| P&L / BS / CF | CFO / Finance Manager |
+| Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
+| Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
+| Commodity / weather / news | BudgetPro System (auto-populated) |
+
+**Per-org customization:** для каждой организации (FO Holding, в будущем azmade / tabia) owner mapping можно переопределить через `Organization.settings.dataOwners` JSON — добавить реальные имена и email'ы. Без override используется generic role label.
+
 ### 7.3.5 Compliance Hub — единый экран аудит-находок + судов
 
 **URL:** `/budgeting/admin/compliance`

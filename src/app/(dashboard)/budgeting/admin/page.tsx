@@ -32,6 +32,7 @@ import {
   Users,
   Stethoscope,
   Shield,
+  ListChecks,
 } from "lucide-react"
 
 export const metadata = {
@@ -119,6 +120,13 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
         title: "Compliance Hub",
         desc: "Per-entity audit findings (218) + court cases (54) with filters, status, severity, CSV export.",
         icon: Shield,
+        badge: "new",
+      },
+      {
+        href: "/budgeting/admin/indicator-backlog",
+        title: "Indicator Backlog",
+        desc: "Per-entity action list: what indicators are missing, who owns the data, mailto + AI Auto Import deep-links. Onboarding workflow surface.",
+        icon: ListChecks,
         badge: "new",
       },
     ],
