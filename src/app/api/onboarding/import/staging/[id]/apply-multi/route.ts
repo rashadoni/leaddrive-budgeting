@@ -42,6 +42,15 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for this
+// 1000-LOC multi-sheet apply route. 8 console.* calls → logger calls
+// with scoped child loggers per phase (root / kpi / bs / recompute).
+const log = getLogger("api:apply-multi")
+const kpiLog = getLogger("api:apply-multi:kpi")
+const bsLog = getLogger("api:apply-multi:bs")
+const recomputeLog = getLogger("api:apply-multi:recompute")
 import {
   applyMultiSheetProposal,
   isMultiSheetProposal,
@@ -556,7 +565,10 @@ export async function POST(
     totalInserted = result.inserted
     totalDeleted = result.deleted
   } catch (err) {
-    console.error("[apply-multi] transaction failed:", err)
+    log.error("transaction failed", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     return NextResponse.json(
       {
         error: `Transaction failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -581,7 +593,10 @@ export async function POST(
     } catch (err) {
       // Non-fatal — already-active is the common case; don't roll back
       // the import for a status-flip failure.
-      console.warn("[apply-multi] Company.status flip failed:", err)
+      log.warn("Company.status flip failed", {
+        companyId,
+        err: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -640,9 +655,11 @@ export async function POST(
       for (const c of companies) idByCode.set(c.code, c.id)
       const unresolvedCodes = codes.filter((c) => !idByCode.has(c))
       if (unresolvedCodes.length > 0) {
-        console.warn(
-          `[apply-multi/kpi] ${sheetName}: ${unresolvedCodes.length} entities not in DB, skipping (${unresolvedCodes.join(", ")})`,
-        )
+        kpiLog.warn("entities not in DB — skipping", {
+          sheetName,
+          unresolvedCount: unresolvedCodes.length,
+          unresolvedCodes,
+        })
       }
       const resolvedFacts = parsed.facts.filter((f) => idByCode.has(f.companyCode))
 
@@ -717,7 +734,10 @@ export async function POST(
     // KPI dispatch failure is non-fatal — budget data is already
     // committed. Log + surface in response so the user knows the agro
     // indicators won't have data this round.
-    console.error("[apply-multi/kpi] dispatcher failed:", err)
+    kpiLog.error("dispatcher failed", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     kpiResults.push({
       sheetName: "<dispatcher>",
       family: "KPI_FARMING",
@@ -741,7 +761,10 @@ export async function POST(
         data: { status: "active" },
       })
     } catch (err) {
-      console.warn("[apply-multi/kpi] Company.status flip failed:", err)
+      kpiLog.warn("Company.status flip failed", {
+        companyIds: Array.from(kpiTouchedCompanyIds),
+        err: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -927,7 +950,10 @@ export async function POST(
       bsTouchedCompanyIds.add(company.id)
     }
   } catch (err) {
-    console.error("[apply-multi/bs] dispatcher failed:", err)
+    bsLog.error("dispatcher failed", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     bsResults.push({
       sheetName: "<dispatcher>",
       companyCode: null,
@@ -950,7 +976,10 @@ export async function POST(
         data: { status: "active" },
       })
     } catch (err) {
-      console.warn("[apply-multi/bs] Company.status flip failed:", err)
+      bsLog.warn("Company.status flip failed", {
+        companyIds: Array.from(bsTouchedCompanyIds),
+        err: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 
@@ -979,7 +1008,9 @@ export async function POST(
       return { companyId: cid, year: Number(y) }
     }),
     {
-      pairError: (label, err) => console.error(`[apply-multi/recompute] ${label}:`, err),
+      pairError: (label, err) => recomputeLog.error(label, {
+        err: err instanceof Error ? err.message : String(err),
+      }),
     },
   )
   const indicatorsStale = recomputeResult.failed > 0
