@@ -1,10 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId, getSession, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+
+// Phase 8 D3(f) (2026-05-28) — typed shapes for the Prisma queries
+// in this route. Replaces the 15 `(sl as any)` / `(line as any).account` /
+// `forecastEntries: any[]` / `(m: any) => …` casts that were
+// undoing the type safety Prisma already provides.
+type BudgetLineWithAccount = Prisma.BudgetLineGetPayload<{
+  include: { account: { select: { code: true; name: true } } }
+}>
+type RollingForecastMonthRow = Prisma.RollingForecastMonthGetPayload<true>
+type BudgetActualRow = Prisma.BudgetActualGetPayload<true>
+type BudgetForecastEntryRow = Prisma.BudgetForecastEntryGetPayload<true>
+type ForecastCreateInput = Prisma.BudgetForecastEntryCreateManyInput
+
+/** Narrow an unknown service-detail field to a finite number, default 0.
+ *  costModel.serviceDetails is `Record<string, any>` from the stub
+ *  loadAndCompute() — until that gets a real type we narrow at the edge. */
+function asNum(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
 
 const createRollingSchema = z.object({
   name: z.string().min(1).max(500),
@@ -97,11 +117,11 @@ export async function POST(req: NextRequest) {
   })
 
   if (sourcePlan) {
-    const sourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
+    const sourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
 
     // Clone parent lines first, then children with mapped parentId
-    const parentLines = sourceLines.filter((sl: any) => !sl.parentId)
-    const childLines = sourceLines.filter((sl: any) => sl.parentId)
+    const parentLines = sourceLines.filter((sl: BudgetLineWithAccount) => !sl.parentId)
+    const childLines = sourceLines.filter((sl: BudgetLineWithAccount) => sl.parentId)
     const idMapping = new Map<string, string>()
 
     for (const sl of parentLines) {
@@ -146,15 +166,15 @@ export async function POST(req: NextRequest) {
   // Auto-populate: fill forecast entries from cost model for all 12 months
   try {
     const costModel = await loadAndCompute(orgId)
-    const lines = await prisma.budgetLine.findMany({ where: { planId: plan.id }, include: { account: { select: { code: true, name: true } } } })
-    const forecastEntries: any[] = []
+    const lines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: plan.id }, include: { account: { select: { code: true, name: true } } } })
+    const forecastEntries: ForecastCreateInput[] = []
 
     for (const line of lines) {
       let monthlyAmount = 0
 
       if (line.lineType === "revenue") {
         // Find matching service revenue by account name (or code as fallback)
-        const lineDisplayName = (line as any).account?.name ?? (line as any).account?.code ?? ""
+        const lineDisplayName = line.account?.name ?? line.account?.code ?? ""
         for (const [svc, category] of Object.entries(SVC_REVENUE_MAP)) {
           if (lineDisplayName === category) {
             monthlyAmount = (costModel.serviceRevenues as Record<string, number>)?.[svc] ?? 0
@@ -165,9 +185,9 @@ export async function POST(req: NextRequest) {
         // Expense: resolve from cost model
         const parts = line.costModelKey.split(".")
         if (parts[0] === "serviceDetails" && parts.length === 3) {
-          const detail = costModel.serviceDetails[parts[1]]
+          const detail = costModel.serviceDetails[parts[1]] as Record<string, unknown> | undefined
           if (detail && parts[2] in detail) {
-            monthlyAmount = (detail as any)[parts[2]] ?? 0
+            monthlyAmount = asNum(detail[parts[2]])
           }
         }
       }
@@ -175,7 +195,7 @@ export async function POST(req: NextRequest) {
       if (monthlyAmount > 0) {
         // BudgetForecastEntry.category is a legacy string field that still exists —
         // populate with account.code (canonical ID key) instead of the dropped BudgetLine.category.
-        const accountCode = (line as any).account?.code ?? ""
+        const accountCode = line.account?.code ?? ""
         for (const me of monthEntries) {
           forecastEntries.push({
             organizationId: orgId,
@@ -309,7 +329,7 @@ export async function PATCH(req: NextRequest) {
     })
     if (sampleForecasts.length > 0) {
       await prisma.budgetForecastEntry.createMany({
-        data: sampleForecasts.map((f: any) => ({
+        data: sampleForecasts.map((f: BudgetForecastEntryRow) => ({
           organizationId: orgId,
           planId,
           year: nextYear,
@@ -358,19 +378,21 @@ export async function GET(req: NextRequest) {
     where: { planId, organizationId: orgId },
   })
 
-  // Build blended data per month — separate revenue and expense
-  const blended = months.map((m: any) => {
-    const monthActuals = actuals.filter((a: any) => {
+  // Build blended data per month — separate revenue and expense.
+  // Each rolling month gets typed as RollingForecastMonthRow; actuals
+  // and forecasts are the plain Prisma row types. No `any` cascades.
+  const blended = (months as RollingForecastMonthRow[]).map((m) => {
+    const monthActuals = (actuals as BudgetActualRow[]).filter((a) => {
       if (!a.expenseDate) return false
       const d = new Date(a.expenseDate)
       return d.getFullYear() === m.year && d.getMonth() + 1 === m.month
     })
-    const monthForecasts = forecasts.filter((f: any) => f.year === m.year && f.month === m.month)
+    const monthForecasts = (forecasts as BudgetForecastEntryRow[]).filter((f) => f.year === m.year && f.month === m.month)
 
-    const actualRevenue = monthActuals.filter((a: any) => a.lineType === "revenue").reduce((s: number, a: any) => s + a.actualAmount, 0)
-    const actualExpense = monthActuals.filter((a: any) => a.lineType === "expense").reduce((s: number, a: any) => s + a.actualAmount, 0)
-    const forecastRevenue = monthForecasts.filter((f: any) => f.lineType === "revenue").reduce((s: number, f: any) => s + f.forecastAmount, 0)
-    const forecastExpense = monthForecasts.filter((f: any) => f.lineType === "expense").reduce((s: number, f: any) => s + f.forecastAmount, 0)
+    const actualRevenue = monthActuals.filter((a) => a.lineType === "revenue").reduce((s, a) => s + a.actualAmount, 0)
+    const actualExpense = monthActuals.filter((a) => a.lineType === "expense").reduce((s, a) => s + a.actualAmount, 0)
+    const forecastRevenue = monthForecasts.filter((f) => f.lineType === "revenue").reduce((s, f) => s + f.forecastAmount, 0)
+    const forecastExpense = monthForecasts.filter((f) => f.lineType === "expense").reduce((s, f) => s + f.forecastAmount, 0)
 
     const hasActuals = (actualRevenue + actualExpense) > 0
     const revenue = hasActuals ? actualRevenue : forecastRevenue
@@ -389,11 +411,14 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  const totals = blended.reduce((acc: { revenue: number; expense: number; margin: number }, m: any) => ({
-    revenue: acc.revenue + m.revenue,
-    expense: acc.expense + m.expense,
-    margin: acc.margin + m.margin,
-  }), { revenue: 0, expense: 0, margin: 0 })
+  const totals = blended.reduce(
+    (acc, m) => ({
+      revenue: acc.revenue + m.revenue,
+      expense: acc.expense + m.expense,
+      margin: acc.margin + m.margin,
+    }),
+    { revenue: 0, expense: 0, margin: 0 },
+  )
 
   return NextResponse.json({
     plan,
