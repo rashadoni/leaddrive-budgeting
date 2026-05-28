@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react"
 
+/** Phase 8 D3(t) (2026-05-28) — single parsed CSV row. Keys are
+ *  column headers (vary per file/provider); values are raw strings as
+ *  read from disk. The import-csv handler narrows per integration's
+ *  categoryMapping. Mirrors the `ImportCsvRow` alias from
+ *  `@/lib/budgeting/hooks`. */
+type CsvRow = Record<string, string>
+
 interface Props {
   planId: string
   integrationId?: string
-  onImport: (data: { planId: string; rows: any[]; integrationId?: string; fileName?: string }) => void
+  onImport: (data: { planId: string; rows: CsvRow[]; integrationId?: string; fileName?: string }) => void
   isImporting?: boolean
   lastResult?: {
     totalRows: number
@@ -39,15 +46,15 @@ function splitCsvLine(line: string): string[] {
   return result
 }
 
-function parseCSV(text: string): any[] {
+function parseCSV(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length < 2) return []
   const headers = splitCsvLine(lines[0])
-  const rows = []
+  const rows: CsvRow[] = []
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue
     const values = splitCsvLine(lines[i])
-    const row: any = {}
+    const row: CsvRow = {}
     headers.forEach((h, idx) => {
       row[h] = values[idx] || ""
     })
@@ -58,7 +65,7 @@ function parseCSV(text: string): any[] {
 
 export function BudgetCsvImport({ planId, integrationId, onImport, isImporting, lastResult }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<any[] | null>(null)
+  const [preview, setPreview] = useState<CsvRow[] | null>(null)
   const [fileName, setFileName] = useState("")
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,7 +144,7 @@ export function BudgetCsvImport({ planId, integrationId, onImport, isImporting, 
                 <tbody>
                   {preview.slice(0, 10).map((row, i) => (
                     <tr key={i} className="border-t">
-                      {Object.values(row).map((v: any, j) => (
+                      {Object.values(row).map((v, j) => (
                         <td key={j} className="px-2 py-1">{v}</td>
                       ))}
                     </tr>
