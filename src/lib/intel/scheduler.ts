@@ -31,6 +31,14 @@
 import { createHash } from "node:crypto"
 import type { PrismaClient } from "@prisma/client"
 import { runIntelCrawl } from "./crawler"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// intel scheduler's best-effort housekeeping warnings. 2 console.warn
+// → logger.warn (settings.intelLastRunAt write fail + advisory-lock
+// release fail). Both are non-fatal; the crawl result + audit_event
+// are the durable record.
+const log = getLogger("intel:scheduler")
 import type { IntelCrawlInput, IntelCrawlResult, IntelOutputLanguage } from "./types"
 import { runBreachScanForOrg } from "@/lib/risk/breach-scan-runner"
 import {
@@ -208,9 +216,10 @@ export async function runScheduledIntelCrawl(
         data: { settings: newSettings as object },
       })
     } catch (e) {
-      console.warn(
-        `[intel-scheduler] failed to update settings.intelLastRunAt for ${orgId}: ${e instanceof Error ? e.message : e}`,
-      )
+      log.warn("failed to update settings.intelLastRunAt", {
+        orgId,
+        err: e instanceof Error ? e.message : String(e),
+      })
     }
 
     // 5.5 Phase 7.G Turn CII (D.5b wire) — optional commodity ingest.
@@ -315,9 +324,10 @@ export async function runScheduledIntelCrawl(
           lockKey.toString(),
         )
       } catch (e) {
-        console.warn(
-          `[intel-scheduler] failed to release advisory lock for ${orgId}: ${e instanceof Error ? e.message : e}`,
-        )
+        log.warn("failed to release advisory lock", {
+          orgId,
+          err: e instanceof Error ? e.message : String(e),
+        })
       }
     }
   }

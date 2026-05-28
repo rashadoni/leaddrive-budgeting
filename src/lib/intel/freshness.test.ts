@@ -154,6 +154,13 @@ describe("resolveFreshnessSources (L3 closure)", () => {
   });
 
   it("falls back to DEFAULT_SOURCES + warns when any entry is malformed", async () => {
+    // Phase 8 D4 continuation — freshness.ts migrated from console.warn
+    // to the structured `intel:freshness` logger. The logger mutes itself
+    // in test env by default; opt-in via LOG_IN_TESTS=1 so this test can
+    // still verify the warn-on-malformed-config side effect via console.warn
+    // (which the logger.emit path uses internally).
+    const prevLogInTests = process.env.LOG_IN_TESTS;
+    process.env.LOG_IN_TESTS = "1";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const override = [
       { sourceCode: "valid", cadence: "daily" },
@@ -167,9 +174,13 @@ describe("resolveFreshnessSources (L3 closure)", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain("intelFreshnessSources");
     warn.mockRestore();
+    if (prevLogInTests === undefined) delete process.env.LOG_IN_TESTS;
+    else process.env.LOG_IN_TESTS = prevLogInTests;
   });
 
   it("rejects unknown cadence values", async () => {
+    const prevLogInTests = process.env.LOG_IN_TESTS;
+    process.env.LOG_IN_TESTS = "1";
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await resolveFreshnessSources(
       mockPrismaWithSettings({
@@ -180,6 +191,8 @@ describe("resolveFreshnessSources (L3 closure)", () => {
     expect(result).toEqual(DEFAULT_SOURCES);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+    if (prevLogInTests === undefined) delete process.env.LOG_IN_TESTS;
+    else process.env.LOG_IN_TESTS = prevLogInTests;
   });
 
   it("rejects non-array overrides (string / object)", async () => {

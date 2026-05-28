@@ -15,6 +15,11 @@
  */
 
 import type { PrismaClient } from "@prisma/client";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// freshness override validator. Single warn-on-malformed-config call.
+const log = getLogger("intel:freshness");
 
 export type FreshnessStatus = "fresh" | "stale" | "critical_stale" | "missing";
 
@@ -100,9 +105,10 @@ export async function resolveFreshnessSources(
   if (!Array.isArray(override) || override.length === 0) return DEFAULT_SOURCES;
   const allValid = override.every(isValidSourceShape);
   if (!allValid) {
-    console.warn(
-      `[freshness] organization.settings.intelFreshnessSources has invalid entry(s) — ignoring override, falling back to DEFAULT_SOURCES`,
-    );
+    log.warn("organization.settings.intelFreshnessSources has invalid entry(s) — ignoring override, falling back to DEFAULT_SOURCES", {
+      orgId,
+      invalidEntries: override.length,
+    });
     return DEFAULT_SOURCES;
   }
   return override as FreshnessSource[];

@@ -21,6 +21,13 @@
  */
 
 import type { PrismaClient } from "@prisma/client"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger default for
+// the bootstrap registrar. Replaces `console.error` default sink with
+// `intel:scheduler-bootstrap` scope. Callers can still pass a custom
+// `opts.logError` (used by tests + alternate hosts).
+const log = getLogger("intel:scheduler-bootstrap")
 
 /** Result of org enumeration — narrow shape so tests can build mocks easily. */
 export interface ActiveOrg {
@@ -70,9 +77,10 @@ export interface RegisterSchedulersOptions {
   clearTimeoutImpl?: typeof clearTimeout
   /** Test seam: override `clearInterval`. Default = global. */
   clearIntervalImpl?: typeof clearInterval
-  /** Optional logger. Default: console.error for failures only (no console.log
-   *  noise — failures matter; successes are recorded by the scheduler itself
-   *  in IntelItem rows + audit_event). */
+  /** Optional logger. Default: structured `intel:scheduler-bootstrap`
+   *  logger for failures only (no info-level noise — failures matter;
+   *  successes are recorded by the scheduler itself in IntelItem rows +
+   *  audit_event). */
   logError?: (msg: string, err: unknown) => void
 }
 
@@ -107,7 +115,10 @@ export function registerSchedulers(
   const setI = opts.setIntervalImpl ?? setInterval
   const clearT = opts.clearTimeoutImpl ?? clearTimeout
   const clearI = opts.clearIntervalImpl ?? clearInterval
-  const logError = opts.logError ?? ((msg, err) => console.error(msg, err))
+  const logError = opts.logError ?? ((msg, err) => log.error(msg, {
+    err: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  }))
 
   const timeoutHandles: ReturnType<typeof setTimeout>[] = []
   const intervalHandles: ReturnType<typeof setInterval>[] = []
