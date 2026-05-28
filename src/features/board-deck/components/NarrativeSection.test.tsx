@@ -46,11 +46,13 @@ async function renderSection(
   narration: NarrationOutput | null,
   generatedAt = GENERATED_AT,
   currentLanguage: "en" | "ru" | "az" = "en",
+  factCheck?: Parameters<typeof NarrativeSection>[0]["factCheck"],
 ) {
   const tree = await NarrativeSection({
     narration,
     generatedAt,
     currentLanguage,
+    factCheck,
   });
   if (tree === null) return null;
   render(tree as React.ReactElement);
@@ -86,5 +88,40 @@ describe("NarrativeSection — graceful degradation", () => {
     const result = await renderSection(null);
     expect(result).toBeNull();
     expect(screen.queryByTestId("board-deck-narrative-full")).toBeNull();
+  });
+});
+
+describe("NarrativeSection — Phase 8 C5 fact-check banner", () => {
+  it("does NOT render banner when factCheck is absent", async () => {
+    await renderSection(NARRATION);
+    expect(screen.queryByTestId("board-deck-narrative-fact-check")).toBeNull();
+  });
+
+  it("does NOT render banner when factCheck has zero flags", async () => {
+    await renderSection(NARRATION, GENERATED_AT, "en", {
+      flags: [],
+      totalChecked: 5,
+      matched: 5,
+    });
+    expect(screen.queryByTestId("board-deck-narrative-fact-check")).toBeNull();
+  });
+
+  it("renders amber banner with per-flag claim/reason/suggestion", async () => {
+    await renderSection(NARRATION, GENERATED_AT, "en", {
+      flags: [
+        {
+          claim: "92",
+          reason: "Number 92 does not appear in the indicator snapshot.",
+          severity: "warn",
+          suggestion: "Verify this number against source data.",
+        },
+      ],
+      totalChecked: 6,
+      matched: 5,
+    });
+    const banner = screen.getByTestId("board-deck-narrative-fact-check");
+    expect(banner).toBeTruthy();
+    expect(banner.textContent ?? "").toContain("92");
+    expect(banner.textContent ?? "").toContain("does not appear");
   });
 });

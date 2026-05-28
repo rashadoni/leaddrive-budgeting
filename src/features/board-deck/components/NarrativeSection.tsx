@@ -23,6 +23,7 @@ import type {
   NarrationLanguage,
   NarrationOutput,
 } from "@/lib/board-deck/narrate-snapshot";
+import type { FactCheckResult } from "@/lib/risk/narrative-fact-check";
 import { NarrativeLanguagePicker } from "./NarrativeLanguagePicker";
 
 export interface NarrativeSectionProps {
@@ -34,12 +35,17 @@ export interface NarrativeSectionProps {
   /** Currently-resolved narration language (`?lang=` or locale).
    *  Drives the active state of the language picker. */
   currentLanguage: NarrationLanguage;
+  /** Phase 8 C5 — optional batch-narrative fact-check result. Renders
+   *  an amber banner under the article body when flags is non-empty.
+   *  Absent → no banner (back-compat with cached/older render paths). */
+  factCheck?: FactCheckResult;
 }
 
 export async function NarrativeSection({
   narration,
   generatedAt,
   currentLanguage,
+  factCheck,
 }: NarrativeSectionProps) {
   if (narration === null) return null;
   const t = await getTranslations("terminal");
@@ -64,6 +70,38 @@ export async function NarrativeSection({
           <p key={idx}>{paragraph}</p>
         ))}
       </div>
+      {/* Phase 8 C5 — batch-narrative fact-check banner. Hidden when
+          factCheck absent or zero flags. Print:hidden so the on-screen
+          warning doesn't bleed into the board pack. */}
+      {factCheck && factCheck.flags.length > 0 && (
+        <div
+          data-testid="board-deck-narrative-fact-check"
+          role="status"
+          aria-live="polite"
+          className="mt-6 rounded border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 print:hidden"
+        >
+          <div className="text-amber-700 dark:text-amber-300 text-[10px] uppercase tracking-wider mb-1">
+            {t("varianceExplainer.factCheck.title")}
+          </div>
+          <ul className="space-y-1">
+            {factCheck.flags.map((f, i) => (
+              <li key={i} className="text-xs leading-snug text-foreground/85">
+                <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                  {f.claim}
+                </span>{" "}
+                — {f.reason}{" "}
+                <span className="text-muted-foreground">{f.suggestion}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[10px] text-muted-foreground mt-1.5">
+            {t("varianceExplainer.factCheck.summary", {
+              matched: factCheck.matched,
+              total: factCheck.totalChecked,
+            })}
+          </p>
+        </div>
+      )}
       <p
         data-testid="narrative-attribution"
         className="mt-8 text-[10px] font-mono text-muted-foreground/60 tracking-wide"

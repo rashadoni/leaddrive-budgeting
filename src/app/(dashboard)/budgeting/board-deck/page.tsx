@@ -16,6 +16,7 @@ import { HeroSection } from "@/features/board-deck/components/HeroSection";
 import { CompositeTrendChart } from "@/features/board-deck/components/CompositeTrendChart";
 import { MetricCard } from "@/features/board-deck/components/MetricCard";
 import { NarrativeSection } from "@/features/board-deck/components/NarrativeSection";
+import { verifyBatchNarrative } from "@/lib/risk/batch-narrative-fact-check";
 import { TopAlertsSection } from "@/features/board-deck/components/TopAlertsSection";
 import { RiskFlagsSection } from "@/features/board-deck/components/RiskFlagsSection";
 import { FooterActions } from "@/features/board-deck/components/FooterActions";
@@ -257,6 +258,23 @@ export default async function BoardDeckPage({
         narration={narration}
         generatedAt={generatedAt}
         currentLanguage={narrationLanguage}
+        // Phase 8 C5 — batch fact-check banner. Runs over the joined
+        // headline + paragraphs against the snapshot's org-wide
+        // numbers. Cheap (~1ms regex); silent when narration is null.
+        factCheck={
+          narration
+            ? verifyBatchNarrative(
+                `${narration.headline}\n${narration.paragraphs.join("\n")}`,
+                {
+                  period,
+                  totals,
+                  compositeByCompany,
+                  countsByCompany: snapshot.countsByCompany,
+                  matchesBySeverity,
+                },
+              )
+            : undefined
+        }
       />
 
       {/* Phase 7.G Turn LI (v2 Turn 4) — top 3 alerts. Calm
