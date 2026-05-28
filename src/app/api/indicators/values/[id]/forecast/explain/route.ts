@@ -34,6 +34,7 @@ import {
   type ForecastExplainerLanguage,
 } from "@/lib/risk/forecast-explainer";
 import { forecastNextPeriod, forecastHorizon } from "@/lib/risk/forecast";
+import { verifyNarrative } from "@/lib/risk/narrative-fact-check";
 
 const DIRECTIONS = ["higher_better", "lower_better", "band"] as const;
 type Direction = (typeof DIRECTIONS)[number];
@@ -299,6 +300,32 @@ export async function POST(
       );
     });
 
+    // Phase 7.O C3 — same fact-checker as Variance Explainer applied to
+    // the forecast narrative. Forecast-side known numbers: current
+    // value, predicted, slope/r²/CI bounds, multi-step horizon, raw
+    // sparkline. Reuses `verifyNarrative` by mapping forecast inputs
+    // into the `result + resolved + aggregates` shape it already
+    // understands.
+    const factCheck = verifyNarrative(output.narrative, {
+      result: {
+        value: iv.value,
+        status: "amber",
+        period: iv.period,
+      },
+      resolved: {
+        predicted: forecast.predicted,
+        slope: forecast.slope,
+        intercept: forecast.intercept,
+        r2: forecast.r2,
+        contributingCount: forecast.contributingCount,
+      },
+      aggregates: {
+        sparkline,
+        horizon: horizonResult?.horizon ?? [],
+        predictionInterval: forecast.predictionInterval ?? {},
+      },
+    });
+
     return NextResponse.json({
       indicatorValueId: iv.id,
       ...output,
@@ -309,6 +336,7 @@ export async function POST(
       // estimate so UI can render `predicted ±marginOfError` numeric
       // band alongside the categorical confidence label.
       predictionInterval: forecast.predictionInterval,
+      factCheck,
     });
   } catch (err) {
     console.error("[forecast/explain] runForecastExplainer failed:", err);

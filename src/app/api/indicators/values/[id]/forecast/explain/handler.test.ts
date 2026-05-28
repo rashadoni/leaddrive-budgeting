@@ -206,6 +206,12 @@ describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => 
     expect(body.driverHypotheses).toEqual(explainerOutput.driverHypotheses);
     expect(body.riskFactors).toEqual(explainerOutput.riskFactors);
 
+    // Phase 7.O C3 — fact-check now wired into forecast route too.
+    expect(body.factCheck).toBeDefined();
+    expect(Array.isArray(body.factCheck.flags)).toBe(true);
+    expect(typeof body.factCheck.totalChecked).toBe("number");
+    expect(typeof body.factCheck.matched).toBe("number");
+
     // Audit emission happens via .catch; flush microtasks.
     await Promise.resolve();
     await Promise.resolve();

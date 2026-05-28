@@ -1438,6 +1438,12 @@ function forecastShape(confidence: ForecastConfidence): string {
  *   - Forecast: "this cell is green but trajectory points down — what's coming?" (proactive)
  */
 type ForecastLanguage = "en" | "ru" | "az";
+interface ForecastFactCheckFlag {
+  reason: string;
+  claim: string;
+  severity: "warn" | "info";
+  suggestion: string;
+}
 interface ForecastExplainResponse {
   indicatorValueId: string;
   narrative: string;
@@ -1449,6 +1455,13 @@ interface ForecastExplainResponse {
   usage?: { inputTokens: number; outputTokens: number };
   /** Sub-23 — multi-step horizon (typically 3 steps: t+1, t+2, t+3). */
   horizon?: Array<{ step: number; predicted: number }>;
+  /** Phase 7.O C3 — programmatic narrative fact-check. Optional for
+   *  back-compat with older cached responses. */
+  factCheck?: {
+    flags: ForecastFactCheckFlag[];
+    totalChecked: number;
+    matched: number;
+  };
 }
 type ExplainState =
   | { kind: "idle" }
@@ -1655,6 +1668,48 @@ function ForecastSection(props: {
           <p className="text-[11px] text-gray-200 leading-snug">
             {explain.data.narrative}
           </p>
+          {/* Phase 7.O C3 — fact-check banner. Amber when hallucinated
+              numbers found in narrative; subtle green tick when all cited
+              values matched the forecast snapshot. */}
+          {explain.data.factCheck && explain.data.factCheck.flags.length > 0 && (
+            <div
+              className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
+              role="status"
+              aria-live="polite"
+              data-testid="forecast-fact-check"
+            >
+              <div className="text-amber-600 dark:text-amber-400 text-[10px] uppercase tracking-wider mb-0.5">
+                {t('varianceExplainer.factCheck.title')}
+              </div>
+              <ul className="space-y-1">
+                {explain.data.factCheck.flags.map((f, i) => (
+                  <li key={i} className="text-[10px] leading-snug text-gray-200">
+                    <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                      {f.claim}
+                    </span>{" "}
+                    — {f.reason}{" "}
+                    <span className="text-muted-foreground">{f.suggestion}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted-foreground text-[9px] mt-1">
+                {t('varianceExplainer.factCheck.summary', {
+                  matched: explain.data.factCheck.matched,
+                  total: explain.data.factCheck.totalChecked,
+                })}
+              </p>
+            </div>
+          )}
+          {explain.data.factCheck &&
+            explain.data.factCheck.flags.length === 0 &&
+            explain.data.factCheck.totalChecked > 0 && (
+              <p className="text-[9px] text-emerald-600 dark:text-emerald-400">
+                ✓{' '}
+                {t('varianceExplainer.factCheck.allMatched', {
+                  total: explain.data.factCheck.totalChecked,
+                })}
+              </p>
+            )}
           {explain.data.driverHypotheses.length > 0 && (
             <div>
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground mb-0.5">
