@@ -33,6 +33,9 @@ import type { Language } from '@/lib/ai/prompts';
 // became `undefined` at runtime — caught by failing tests.
 import { Prisma } from '@prisma/client';
 import type { AuditAction, PrismaClient } from '@prisma/client';
+import { getLogger } from '@/lib/log';
+
+const logger = getLogger('lib:audit');
 
 /**
  * Per-action metadata contracts. Every variant carries:
@@ -760,7 +763,9 @@ export async function logAuditEvent(
       // passing an empty-string env var should not silently log a
       // tenant-less row. Fail loudly (in console) but don't throw.
       const err = 'audit/log: organizationId is required (got empty string)';
-      console.error(err);
+      logger.error('organizationId required but empty', {
+        action: args.event.action,
+      });
       return { ok: false, error: err };
     }
 
@@ -785,7 +790,11 @@ export async function logAuditEvent(
     // primary action has already committed; missing audit trail is bad
     // but missing the action would be worse.
     const reason = err instanceof Error ? err.message : String(err);
-    console.error('audit/log: write failed:', reason);
+    logger.error('audit write failed', {
+      action: args.event.action,
+      orgId: args.organizationId,
+      reason,
+    });
     return { ok: false, error: reason };
   }
 }

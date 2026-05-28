@@ -26,6 +26,9 @@ import { enqueue as enqueueRecomputeJob } from '@/lib/recompute/job-runner';
 // Async (BullMQ) path runs in the worker process; wrap inside the
 // processor instead — tracked as ROADMAP Phase 8 §D5(b).
 import { withOrgScope } from '@/lib/db/with-org-scope';
+import { getLogger } from '@/lib/log';
+
+const logger = getLogger('api:indicators');
 
 // Phase 6.1 — sync vs async threshold. Targets ≤ this run synchronously
 // in the request handler (drill-down style: single cell, instant feedback).
@@ -164,7 +167,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(indicators);
     });
   } catch (error) {
-    console.error('Error fetching indicators:', error);
+    logger.error('fetch indicators failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { error: 'Failed to fetch indicators' },
       { status: 500 },
@@ -208,7 +213,9 @@ export async function POST(request: NextRequest) {
   try {
     targets = await resolveTargets(session.orgId, { companyId, indicatorCode });
   } catch (error) {
-    console.error('Failed to resolve recompute targets:', error);
+    logger.error('resolve recompute targets failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { error: 'Failed to resolve targets' },
       { status: 500 },
@@ -313,7 +320,11 @@ export async function POST(request: NextRequest) {
             value: r.value,
           };
         } catch (err) {
-          console.error(`Recompute failed for ${company.code}/${definition.code}:`, err);
+          logger.error('recompute pair failed', {
+            companyCode: company.code,
+            indicatorCode: definition.code,
+            reason: err instanceof Error ? err.message : String(err),
+          });
           outcome = {
             companyId: company.id,
             companyCode: company.code,
@@ -390,10 +401,11 @@ export async function POST(request: NextRequest) {
       });
     } catch (err) {
       // Pipeline errors never abort the batch — log + record + continue.
-      console.error(
-        `Recompute failed for ${company.code}/${definition.code}:`,
-        err,
-      );
+      logger.error('recompute batch item failed', {
+        companyCode: company.code,
+        indicatorCode: definition.code,
+        reason: err instanceof Error ? err.message : String(err),
+      });
       results.push({
         companyId: company.id,
         companyCode: company.code,

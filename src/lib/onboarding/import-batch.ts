@@ -56,6 +56,7 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { getLogger } from "@/lib/log"
 import {
   reconcile,
   buildReconKey,
@@ -63,6 +64,8 @@ import {
   type ReconciliationReport,
   type ReconciliationOptions,
 } from "./reconciliation"
+
+const logger = getLogger("lib:import-batch")
 
 /**
  * The minimal shape of a budget-line row we expect from the parsing
@@ -311,7 +314,9 @@ export async function runImportBatch(
     } catch (err) {
       // Recompute failure is observable, not fatal. The write already
       // landed; finance can re-trigger recompute manually if needed.
-      console.error("[import-batch] recompute failed (non-fatal):", err)
+      logger.error("recompute failed (non-fatal)", {
+        reason: err instanceof Error ? err.message : String(err),
+      })
     }
   }
 

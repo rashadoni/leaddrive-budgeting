@@ -17,6 +17,9 @@ import {
 } from "./processors/recompute-processor"
 import { processCleanupSoftDeleted } from "./processors/cleanup-processor"
 import { scheduleCleanupCron } from "./queues"
+import { getLogger } from "@/lib/log"
+
+const logger = getLogger("worker:factory")
 
 /** Default per-worker concurrency. 4 = matches our 60-company target
  *  scale without saturating the Postgres pool (Prisma defaults to 10
@@ -56,18 +59,24 @@ export function buildAllWorkers(): Worker[] {
   // in stdout (LaunchAgent log). Detailed admin UI lives in Phase 9.
   for (const w of workers) {
     w.on("completed", (job) =>
-      console.log(
-        `[worker:${w.name}] job ${job.id} completed in ${Date.now() - job.timestamp}ms`,
-      ),
+      logger.info("job completed", {
+        worker: w.name,
+        jobId: job.id,
+        durationMs: Date.now() - job.timestamp,
+      }),
     )
     w.on("failed", (job, err) =>
-      console.error(
-        `[worker:${w.name}] job ${job?.id} failed:`,
-        err.message,
-      ),
+      logger.error("job failed", {
+        worker: w.name,
+        jobId: job?.id,
+        reason: err.message,
+      }),
     )
     w.on("error", (err) =>
-      console.error(`[worker:${w.name}] worker error:`, err.message),
+      logger.error("worker error", {
+        worker: w.name,
+        reason: err.message,
+      }),
     )
   }
 
@@ -76,8 +85,8 @@ export function buildAllWorkers(): Worker[] {
   // Fire-and-forget — a Redis blip during bootstrap shouldn't crash
   // the whole worker process; the next restart will re-register.
   void scheduleCleanupCron().catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err)
-    console.error(`[worker:cleanup] failed to schedule daily cron: ${msg}`)
+    const reason = err instanceof Error ? err.message : String(err)
+    logger.error("failed to schedule daily cleanup cron", { reason })
   })
 
   return workers

@@ -147,7 +147,12 @@ describe('logAuditEvent', () => {
     }
     expect(didThrow).toBe(false);
     expect(result).toEqual({ ok: false, error: 'connection refused' });
-    expect(console.error).toHaveBeenCalled();
+    // 2026-05-28 (Phase 8 D4): previously asserted on `console.error`
+    // having been called. After the structured-logger migration the
+    // failure path emits via `getLogger('lib:audit').error(...)` which
+    // is no-op in test env (vitest.setup mutes by default, opt-in via
+    // LOG_IN_TESTS=1). The public contract — `{ ok: false, error }` +
+    // never-throws — is what callers depend on and what we lock here.
   });
 
   it('non-Error throw (string / object) is normalised to a string error', async () => {

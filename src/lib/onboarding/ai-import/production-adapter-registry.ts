@@ -107,6 +107,9 @@ import {
   preWarmCoACache,
   resolveOrCreateAccountId,
 } from "../upsert-chart-of-account"
+import { getLogger } from "@/lib/log"
+
+const logger = getLogger("lib:prod-adapter")
 
 const CF_SOURCE_TAG = "azseker-workbook-cf"
 const DEFAULT_PLAN_NAME = "Azərşəkər 2026 Budget"
@@ -310,9 +313,10 @@ function makePlfHandler(
       const sheet = (input.workbook as any).Sheets[input.sheetName]
       const hasData = sheet != null && Object.keys(sheet).length > 1 // >1: !ref alone = empty
       if (hasData) {
-        console.log(
-          `[prod-adapter] PLF "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
-        )
+        logger.info("PLF format unknown — delegating to dynamic detector", {
+          sheetName: input.sheetName,
+          entityCode: input.entityCode,
+        })
         return runDynamicPlfAdapter(input, ctx.planId, companyId, prisma)
       }
     }
@@ -460,9 +464,10 @@ function makeBsHandler(
       const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet && Object.keys(sheet).length > 1
       if (hasData) {
-        console.log(
-          `[prod-adapter] BS "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
-        )
+        logger.info("BS format unknown — delegating to dynamic detector", {
+          sheetName: input.sheetName,
+          entityCode: input.entityCode,
+        })
         return runDynamicBsAdapter(input, ctx.planId, prisma, companyId ?? null)
       }
     }
@@ -603,9 +608,10 @@ function makeCfHandler(
       const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet && Object.keys(sheet).length > 1
       if (hasData) {
-        console.log(
-          `[prod-adapter] CF "${input.sheetName}" (${input.entityCode}): format unknown — delegating to dynamic structure detection`,
-        )
+        logger.info("CF format unknown — delegating to dynamic detector", {
+          sheetName: input.sheetName,
+          entityCode: input.entityCode,
+        })
         return runDynamicCfAdapter(input, prisma)
       }
     }
