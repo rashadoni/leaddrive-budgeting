@@ -459,18 +459,25 @@ export function ForecastTab({ planId, companyId }: { planId: string; companyId?:
                 profit: getColTotal(revenueLines, m) - getColTotal(expenseLines, m) - getColTotal(cogsLines, m),
               }))
 
-              const TrendTooltip = ({ active, payload, label }: any) => {
+              // Phase 8 D3(y) (2026-05-28) — Recharts Tooltip content
+              // callback; mirror only the fields we render.
+              type TrendTooltipProps = {
+                active?: boolean
+                label?: string
+                payload?: Array<{ dataKey: string | number; color?: string; value?: number }>
+              }
+              const TrendTooltip = ({ active, payload, label }: TrendTooltipProps) => {
                 if (!active || !payload?.length) return null
                 return (
                   <div className="bg-popover/95 backdrop-blur-sm border border-border rounded-xl p-3 shadow-xl text-sm min-w-[180px]">
                     <div className="font-semibold text-popover-foreground mb-2 border-b border-border/50 pb-1.5">{label}</div>
-                    {payload.map((p: any) => (
-                      <div key={p.dataKey} className="flex justify-between items-center gap-4 py-0.5">
+                    {payload.map((p) => (
+                      <div key={String(p.dataKey)} className="flex justify-between items-center gap-4 py-0.5">
                         <div className="flex items-center gap-1.5">
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-                          <span className="text-xs text-muted-foreground capitalize">{p.dataKey}</span>
+                          <span className="text-xs text-muted-foreground capitalize">{String(p.dataKey)}</span>
                         </div>
-                        <span className="font-mono font-bold text-popover-foreground text-xs">{fmtK(p.value)} ₼</span>
+                        <span className="font-mono font-bold text-popover-foreground text-xs">{fmtK(p.value ?? 0)} ₼</span>
                       </div>
                     ))}
                   </div>

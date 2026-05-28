@@ -62,7 +62,14 @@ export function BudgetWaterfallChart({
     return item.positive ? BUDGET_COLORS.positive : BUDGET_COLORS.negative
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  // Phase 8 D3(y) (2026-05-28) — Recharts Tooltip content props. We
+  // read `payload[0].payload` (the row from the `data` array typed
+  // above), so a single typed entry suffices.
+  type WaterfallTooltipProps = {
+    active?: boolean
+    payload?: Array<{ payload: typeof data[number] }>
+  }
+  const CustomTooltip = ({ active, payload }: WaterfallTooltipProps) => {
     if (!active || !payload?.length) return null
     const d = payload[0].payload
     const color = getColor(d)
@@ -85,9 +92,28 @@ export function BudgetWaterfallChart({
     )
   }
 
-  const renderCustomLabel = (props: any) => {
-    const { x, y, width, index } = props
-    const item = data[index]
+  // Recharts LabelList content callback props — coords come as
+  // `string | number | undefined` (SVG-friendly), so we coerce to
+  // pixel numbers locally before doing arithmetic.
+  type LabelContentProps = {
+    x?: string | number
+    y?: string | number
+    width?: string | number
+    index?: number
+  }
+  const toPx = (v: string | number | undefined): number => {
+    if (typeof v === "number") return v
+    if (typeof v === "string") {
+      const n = Number(v)
+      return Number.isFinite(n) ? n : 0
+    }
+    return 0
+  }
+  const renderCustomLabel = (props: LabelContentProps) => {
+    const x = toPx(props.x)
+    const y = toPx(props.y)
+    const width = toPx(props.width)
+    const item = props.index != null ? data[props.index] : undefined
     if (!item) return null
 
     // Show value label on all bars
@@ -151,7 +177,7 @@ export function BudgetWaterfallChart({
           radius={[4, 4, 0, 0]}
           animationDuration={ANIMATION.duration}
           animationEasing={ANIMATION.easing}
-          onClick={(_: any, index: number) => { if (onBarClick) onBarClick(data[index].name) }}
+          onClick={(_, index) => { if (onBarClick) onBarClick(data[index].name) }}
           style={{ cursor: onBarClick ? "pointer" : "default" }}
         >
           {data.map((entry, i) => (
