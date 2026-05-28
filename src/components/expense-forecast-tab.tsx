@@ -5,6 +5,10 @@ import { useTranslations } from "next-intl"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("ui:expense-forecast-tab")
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Save, TrendingDown, Info, Zap, ChevronDown, ChevronUp } from "lucide-react"
@@ -123,7 +127,10 @@ export function ExpenseForecastTab() {
       }
       setGrid(newGrid)
     } catch (err) {
-      console.error("Failed to load expense forecast data:", err)
+      log.error("Failed to load expense forecast data", {
+        year,
+        err: err instanceof Error ? err.message : String(err),
+      })
     } finally {
       setLoading(false)
     }
@@ -219,7 +226,10 @@ export function ExpenseForecastTab() {
         setTimeout(() => setSaved(false), 3000)
       }
     } catch (err) {
-      console.error("Failed to save expense forecast:", err)
+      log.error("Failed to save expense forecast", {
+        year,
+        err: err instanceof Error ? err.message : String(err),
+      })
     } finally {
       setSaving(false)
     }
