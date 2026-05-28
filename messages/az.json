@@ -2471,6 +2471,73 @@
       "multi": "Bir neçə fayl",
       "newBadge": "yeni"
     },
+    "multi": {
+      "dropZone": {
+        "empty": "1-{max} xlsx faylını buraya çəkin və ya seçmək üçün klikləyin",
+        "limits": "Maksimum {max} fayl, cəmi {mb} MB"
+      },
+      "fileList": {
+        "count": "{n} fayl",
+        "overLimit": "⚠ Limit aşıldı"
+      },
+      "step1": {
+        "button": "Addım 1: AI analizi",
+        "running": "Analiz olunur..."
+      },
+      "step2": {
+        "button": "Addım 2: Qrupları tətbiq et",
+        "running": "Tətbiq olunur..."
+      },
+      "applying": "Data tətbiq olunur… bu 30-90 saniyə çəkəcək. Səhifəni bağlamayın.",
+      "confidence": {
+        "high": "yüksək",
+        "medium": "orta",
+        "low": "aşağı"
+      },
+      "conflict": {
+        "title": "🚫 Fayllar arası konflikt — {n} xana fərqlidir",
+        "description": "İki və ya daha çox fayl eyni xana üçün fərqli dəyərlər göstərir. İdxal konflikt həll olunana qədər bloklanıb.",
+        "col": {
+          "cell": "Xana",
+          "values": "Dəyərlər",
+          "spread": "Fərq",
+          "resolution": "Həll"
+        },
+        "pickPlaceholder": "— seçin —",
+        "useFile": "{name} istifadə et",
+        "skipCell": "xananı atla",
+        "moreOmitted": "... daha {n} konflikt",
+        "allResolved": "✓ Bütün konfliktlər həll olundu — tətbiq etmək mümkündür.",
+        "forceOverride": "Ehtiyat variant: bütün konfliktləri last-write-wins ilə tətbiq et (bir-bir seçmək yerinə)"
+      },
+      "preview": {
+        "title": "Faylların analizi",
+        "subtitle": "Hər vərəq üçün dataType və etibarlılığı yoxlayın. Aşağı etibarlılıq (<65%) — AI çox güman ki, səhv edib, özünüz yoxlayın və ya vərəq adı daha aydın olan faylı yenidən yükləyin.",
+        "legendHigh": "yaşıl = yüksək ≥85%",
+        "legendMedium": "kəhrəba = orta 65-84%",
+        "legendLow": "qırmızı = aşağı <65%",
+        "sheetsHeading": "Vərəqlər ({n})",
+        "aiConfidenceTooltip": "AI etibarlılığı: {pct}",
+        "writes": "Yazır",
+        "affectsIndicators": "{n} göstəriciyə təsir edir",
+        "sheetsClassified": "Klassifikasiya olunan vərəq: {n}"
+      },
+      "result": {
+        "title": "Tətbiq nəticəsi",
+        "fileCount": "{n} fayl",
+        "rowsWritten": "{n} sətir yazıldı",
+        "skipped": "atlandı",
+        "recomputeLine": "Recompute: {ok}/{total} uğurlu",
+        "backlogClosed": "Indicator Backlog-dan {n} bənd bağlandı",
+        "andMore": "… daha {n}",
+        "openBacklog": "Indicator Backlog-u aç →"
+      },
+      "step3": {
+        "title": "Addım 3 — İdxal tamamlandı",
+        "summary": "{rows} sətir yazıldı · {groups} qrup tətbiq edildi",
+        "resetButton": "↩ Yenidən başla (növbəti faylları yüklə)"
+      }
+    },
     "single": {
       "dropZone": {
         "empty": "xlsx faylı buraya çəkin və ya seçmək üçün klikləyin",

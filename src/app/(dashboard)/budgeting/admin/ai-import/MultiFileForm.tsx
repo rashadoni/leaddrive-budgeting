@@ -16,6 +16,7 @@
  *  - Total size cap (20 MB) enforced client-side + server-side
  */
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
+import { useTranslations } from "next-intl"
 
 interface ConflictOccurrence {
   filename: string
@@ -152,7 +153,10 @@ function verdictEmoji(v: string): string {
 /** Map LLM classifier confidence (0..1) → readable band + Tailwind chip class.
  *  Mirrors `confidenceBand()` in datatype-indicator-map.ts but inlined here so
  *  the component stays self-contained and tree-shakes cleanly. */
-function confidenceClass(c: number): {
+function confidenceClass(
+  c: number,
+  t: (k: string) => string,
+): {
   label: string
   pct: string
   cls: string
@@ -161,7 +165,7 @@ function confidenceClass(c: number): {
   const pct = `${Math.round(Math.max(0, Math.min(1, c)) * 100)}%`
   if (c >= 0.85) {
     return {
-      label: "высокая",
+      label: t("confidence.high"),
       pct,
       cls: "bg-emerald-50 text-emerald-800 ring-1 ring-emerald-300",
       bar: "bg-emerald-500",
@@ -169,14 +173,14 @@ function confidenceClass(c: number): {
   }
   if (c >= 0.65) {
     return {
-      label: "средняя",
+      label: t("confidence.medium"),
       pct,
       cls: "bg-amber-50 text-amber-800 ring-1 ring-amber-300",
       bar: "bg-amber-500",
     }
   }
   return {
-    label: "низкая",
+    label: t("confidence.low"),
     pct,
     cls: "bg-rose-50 text-rose-800 ring-1 ring-rose-300",
     bar: "bg-rose-500",
@@ -221,6 +225,7 @@ function dataTypeChipClass(dt: string): string {
 }
 
 export function MultiFileForm() {
+  const t = useTranslations("adminAiImport.multi")
   const [files, setFiles] = useState<File[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [previewResult, setPreviewResult] =
@@ -358,11 +363,13 @@ export function MultiFileForm() {
           data-testid="multi-file-input"
         />
         <p className="text-sm text-slate-600">
-          Перетащите 1-{MAX_FILES} xlsx файлов сюда, или нажмите для выбора
+          {t("dropZone.empty", { max: MAX_FILES })}
         </p>
         <p className="text-xs text-slate-400 mt-1">
-          Максимум {MAX_FILES} файлов, суммарно {MAX_TOTAL_BYTES / 1024 / 1024}{" "}
-          MB
+          {t("dropZone.limits", {
+            max: MAX_FILES,
+            mb: MAX_TOTAL_BYTES / 1024 / 1024,
+          })}
         </p>
       </div>
 
@@ -371,12 +378,11 @@ export function MultiFileForm() {
         <div className="border rounded-lg overflow-hidden">
           <div className="flex items-center justify-between bg-slate-100 px-4 py-2 border-b">
             <span className="text-sm font-medium">
-              {files.length} файл{files.length === 1 ? "" : files.length < 5 ? "а" : "ов"} ·{" "}
-              {formatBytes(totalBytes)}
+              {t("fileList.count", { n: files.length })} · {formatBytes(totalBytes)}
             </span>
             {(overSizeCap || overCountCap) && (
               <span className="text-xs text-red-600 font-medium">
-                ⚠ Превышен лимит
+                {t("fileList.overLimit")}
               </span>
             )}
           </div>
@@ -419,9 +425,7 @@ export function MultiFileForm() {
           className="px-4 py-2 bg-slate-900 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
           data-testid="btn-analyze"
         >
-          {isProcessing && !applyResult
-            ? "Анализирую..."
-            : "Шаг 1: Анализ AI"}
+          {isProcessing && !applyResult ? t("step1.running") : t("step1.button")}
         </button>
         {previewResult && (
           <button
@@ -434,9 +438,7 @@ export function MultiFileForm() {
             className="px-4 py-2 bg-emerald-600 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-700"
             data-testid="btn-apply"
           >
-            {isProcessing && previewResult
-              ? "Применяю..."
-              : "Шаг 2: Применить группы"}
+            {isProcessing && previewResult ? t("step2.running") : t("step2.button")}
           </button>
         )}
       </div>
@@ -459,7 +461,7 @@ export function MultiFileForm() {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
-          <span>Применяю данные… это займёт 30-90 секунд. Не закрывайте страницу.</span>
+          <span>{t("applying")}</span>
         </div>
       )}
 
@@ -471,21 +473,19 @@ export function MultiFileForm() {
           data-testid="conflict-banner"
         >
           <h3 className="font-semibold text-red-800">
-            🚫 Конфликт между файлами — {previewResult.conflicts.length}{" "}
-            ячейк{previewResult.conflicts.length === 1 ? "а" : "и"} расходятся
+            {t("conflict.title", { n: previewResult.conflicts.length })}
           </h3>
           <p className="text-xs text-red-700">
-            Два или больше файлов содержат разные значения для одной и той же
-            ячейки. Импорт заблокирован до решения конфликта.
+            {t("conflict.description")}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b text-left">
-                  <th className="py-1 pr-2">Ячейка</th>
-                  <th className="py-1 pr-2">Значения</th>
-                  <th className="py-1 pr-2 text-right">Разница</th>
-                  <th className="py-1 pr-2">Решение</th>
+                  <th className="py-1 pr-2">{t("conflict.col.cell")}</th>
+                  <th className="py-1 pr-2">{t("conflict.col.values")}</th>
+                  <th className="py-1 pr-2 text-right">{t("conflict.col.spread")}</th>
+                  <th className="py-1 pr-2">{t("conflict.col.resolution")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -536,13 +536,13 @@ export function MultiFileForm() {
                           data-testid={`resolution-${c.key}`}
                           className="text-xs border rounded px-1 py-0.5 bg-white"
                         >
-                          <option value="">— выбрать —</option>
+                          <option value="">{t("conflict.pickPlaceholder")}</option>
                           {c.occurrences.map((o) => (
                             <option key={o.filename} value={o.filename}>
-                              использовать {o.filename}
+                              {t("conflict.useFile", { name: o.filename })}
                             </option>
                           ))}
-                          <option value="__skip__">пропустить ячейку</option>
+                          <option value="__skip__">{t("conflict.skipCell")}</option>
                         </select>
                       </td>
                     </tr>
@@ -552,13 +552,13 @@ export function MultiFileForm() {
             </table>
             {previewResult.conflicts.length > 20 && (
               <p className="text-xs text-red-600 mt-2">
-                ... ещё {previewResult.conflicts.length - 20} конфликт(ов)
+                {t("conflict.moreOmitted", { n: previewResult.conflicts.length - 20 })}
               </p>
             )}
           </div>
           {allConflictsResolved && (
             <p className="text-xs text-emerald-700 font-medium" data-testid="all-resolved">
-              ✓ Все конфликты разрешены — можно применять.
+              {t("conflict.allResolved")}
             </p>
           )}
           <label className="flex items-center gap-2 text-xs text-slate-700 border-t pt-2">
@@ -568,33 +568,28 @@ export function MultiFileForm() {
               onChange={(e) => setForceOverride(e.target.checked)}
               data-testid="force-override"
             />
-            <span>
-              Запасной вариант: применить все конфликты по last-write-wins (если
-              не хочу выбирать по одному)
-            </span>
+            <span>{t("conflict.forceOverride")}</span>
           </label>
         </div>
       )}
 
       {/* Preview result — 2026-05-27 expanded: per-sheet dataType chip,
-          AI confidence bar, and "затронутые индикаторы" chip list, so the
+          AI confidence bar, and affected-indicators chip list, so the
           admin can verify both classification correctness AND downstream
           impact before clicking Apply. */}
       {previewResult && previewResult.perFile.length > 0 && (
         <div className="space-y-3" data-testid="preview-result">
           <div className="flex items-end justify-between">
             <div>
-              <h3 className="font-semibold text-sm">Анализ файлов</h3>
+              <h3 className="font-semibold text-sm">{t("preview.title")}</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Проверьте dataType и вероятность по каждому листу. Низкая
-                вероятность (&lt;65%) — AI скорее всего ошибся, проверьте
-                сами или перезалейте файл с более понятным названием листа.
+                {t("preview.subtitle")}
               </p>
             </div>
             <div className="text-[10px] text-slate-400 leading-tight text-right hidden md:block">
-              <div>зелёный = высокая ≥85%</div>
-              <div>жёлтый = средняя 65-84%</div>
-              <div>красный = низкая &lt;65%</div>
+              <div>{t("preview.legendHigh")}</div>
+              <div>{t("preview.legendMedium")}</div>
+              <div>{t("preview.legendLow")}</div>
             </div>
           </div>
           {previewResult.perFile.map((f) => {
@@ -625,11 +620,11 @@ export function MultiFileForm() {
                 {impacts.length > 0 && (
                   <div className="border-t pt-2 space-y-1.5">
                     <div className="text-[11px] uppercase tracking-wide text-slate-500">
-                      Листы ({impacts.length})
+                      {t("preview.sheetsHeading", { n: impacts.length })}
                     </div>
                     <ul className="space-y-1.5">
                       {impacts.map((imp) => {
-                        const conf = confidenceClass(imp.confidence)
+                        const conf = confidenceClass(imp.confidence, t)
                         const hasIndicators = imp.impact.indicators.length > 0
                         return (
                           <li
@@ -653,7 +648,7 @@ export function MultiFileForm() {
                               )}
                               <div
                                 className={`ml-auto inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] ${conf.cls}`}
-                                title={`AI уверенность: ${conf.pct}`}
+                                title={t("preview.aiConfidenceTooltip", { pct: conf.pct })}
                               >
                                 <span>{conf.label}</span>
                                 <span className="font-mono opacity-70">
@@ -672,22 +667,19 @@ export function MultiFileForm() {
                             </div>
                             {/* writes summary */}
                             <p className="text-[10px] text-slate-500 mt-1.5">
-                              <span className="text-slate-600">Запишет: </span>
+                              <span className="text-slate-600">{t("preview.writes")}: </span>
                               {imp.impact.writes}
                             </p>
-                            {/* indicator list — 2026-05-27 humanized: show
-                                Russian name primary, code as small mono
-                                suffix so finance users can read at-a-glance
-                                without learning each abbreviation. */}
+                            {/* indicator list — humanized: localized name
+                                primary, code as small mono suffix so finance
+                                users read at-a-glance without learning each
+                                abbreviation. */}
                             {hasIndicators ? (
                               <div className="mt-1.5">
                                 <p className="text-[10px] text-slate-600 mb-1">
-                                  Затронет {imp.impact.indicators.length} показател
-                                  {imp.impact.indicators.length === 1
-                                    ? "ь"
-                                    : imp.impact.indicators.length < 5
-                                      ? "я"
-                                      : "ей"}
+                                  {t("preview.affectsIndicators", {
+                                    n: imp.impact.indicators.length,
+                                  })}
                                   :
                                 </p>
                                 <div className="flex flex-wrap gap-1">
@@ -695,7 +687,7 @@ export function MultiFileForm() {
                                     <span
                                       key={ind.code}
                                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-slate-200 text-[10px] text-slate-700"
-                                      title={`${ind.code} · ${ind.category} · совпало по ${ind.matchedInput}`}
+                                      title={`${ind.code} · ${ind.category} · ${ind.matchedInput}`}
                                     >
                                       <span>{ind.nameRu ?? ind.nameEn}</span>
                                       <span className="font-mono text-[9px] text-slate-400">
@@ -718,7 +710,7 @@ export function MultiFileForm() {
                 )}
                 {impacts.length === 0 && f.classifications.length > 0 && (
                   <p className="text-xs text-slate-500">
-                    Листов классифицировано: {f.classifications.length}
+                    {t("preview.sheetsClassified", { n: f.classifications.length })}
                   </p>
                 )}
               </div>
@@ -731,7 +723,7 @@ export function MultiFileForm() {
       {applyResult && (
         <div ref={applyResultRef} className="space-y-3" data-testid="apply-result">
           <h3 className="font-semibold text-sm">
-            {verdictEmoji(applyResult.overallVerdict)} Результат применения ·{" "}
+            {verdictEmoji(applyResult.overallVerdict)} {t("result.title")} ·{" "}
             {applyResult.durationMs}ms
           </h3>
           {applyResult.perGroup.map((g) => (
@@ -742,21 +734,23 @@ export function MultiFileForm() {
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium">
-                  {verdictEmoji(g.verdict)} {g.fileType} ({g.filenames.length}{" "}
-                  файл)
+                  {verdictEmoji(g.verdict)} {g.fileType} ·{" "}
+                  {t("result.fileCount", { n: g.filenames.length })}
                 </span>
                 <span className="text-xs">
                   {g.committed
-                    ? `${g.totalRowsInserted} строк записано`
-                    : g.skipReason ?? "пропущено"}
+                    ? t("result.rowsWritten", { n: g.totalRowsInserted })
+                    : g.skipReason ?? t("result.skipped")}
                 </span>
               </div>
             </div>
           ))}
           {applyResult.recompute.targets > 0 && (
             <p className="text-xs text-slate-600">
-              Recompute: {applyResult.recompute.ok}/{applyResult.recompute.targets}{" "}
-              успешно
+              {t("result.recomputeLine", {
+                ok: applyResult.recompute.ok,
+                total: applyResult.recompute.targets,
+              })}
             </p>
           )}
           {applyResult.backlogClosed && applyResult.backlogClosed.length > 0 && (
@@ -764,7 +758,7 @@ export function MultiFileForm() {
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-base">✅</span>
                 <p className="text-sm font-semibold text-emerald-800">
-                  Закрыто {applyResult.backlogClosed.length} пунктов из Indicator Backlog
+                  {t("result.backlogClosed", { n: applyResult.backlogClosed.length })}
                 </p>
               </div>
               <ul className="text-xs text-emerald-900/80 space-y-0.5 ml-5">
@@ -776,7 +770,9 @@ export function MultiFileForm() {
                 ))}
                 {applyResult.backlogClosed.length > 8 && (
                   <li className="italic text-emerald-700">
-                    … и ещё {applyResult.backlogClosed.length - 8}
+                    {t("result.andMore", {
+                      n: applyResult.backlogClosed.length - 8,
+                    })}
                   </li>
                 )}
               </ul>
@@ -784,7 +780,7 @@ export function MultiFileForm() {
                 href="/budgeting/admin/indicator-backlog"
                 className="inline-block mt-2 text-xs text-emerald-700 underline-offset-2 hover:underline"
               >
-                Открыть Indicator Backlog →
+                {t("result.openBacklog")}
               </a>
             </div>
           )}
@@ -800,13 +796,14 @@ export function MultiFileForm() {
           <div className="flex items-center gap-2">
             <span className="text-2xl">✅</span>
             <div>
-              <p className="font-semibold text-emerald-800">Шаг 3 — Импорт завершён</p>
+              <p className="font-semibold text-emerald-800">{t("step3.title")}</p>
               <p className="text-xs text-emerald-700 mt-0.5">
-                {applyResult.perGroup
-                  .filter((g) => g.committed)
-                  .reduce((s, g) => s + g.totalRowsInserted, 0)}{" "}
-                строк записано ·{" "}
-                {applyResult.perGroup.filter((g) => g.committed).length} группа(ы) применены
+                {t("step3.summary", {
+                  rows: applyResult.perGroup
+                    .filter((g) => g.committed)
+                    .reduce((s, g) => s + g.totalRowsInserted, 0),
+                  groups: applyResult.perGroup.filter((g) => g.committed).length,
+                })}
               </p>
             </div>
           </div>
@@ -816,7 +813,7 @@ export function MultiFileForm() {
             className="px-4 py-2 bg-emerald-600 text-white rounded font-medium hover:bg-emerald-700 text-sm"
             data-testid="btn-reset"
           >
-            ↩ Начать заново (загрузить следующие файлы)
+            {t("step3.resetButton")}
           </button>
         </div>
       )}

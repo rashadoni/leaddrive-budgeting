@@ -2471,6 +2471,73 @@
       "multi": "Multiple files",
       "newBadge": "new"
     },
+    "multi": {
+      "dropZone": {
+        "empty": "Drop 1-{max} xlsx files here, or click to choose",
+        "limits": "Max {max} files, {mb} MB total"
+      },
+      "fileList": {
+        "count": "{n} files",
+        "overLimit": "⚠ Limit exceeded"
+      },
+      "step1": {
+        "button": "Step 1: AI analysis",
+        "running": "Analyzing…"
+      },
+      "step2": {
+        "button": "Step 2: Apply groups",
+        "running": "Applying…"
+      },
+      "applying": "Applying data… this will take 30-90 seconds. Don't close the page.",
+      "confidence": {
+        "high": "high",
+        "medium": "medium",
+        "low": "low"
+      },
+      "conflict": {
+        "title": "🚫 Cross-file conflict — {n} cells disagree",
+        "description": "Two or more files contain different values for the same cell. Import is blocked until conflicts are resolved.",
+        "col": {
+          "cell": "Cell",
+          "values": "Values",
+          "spread": "Spread",
+          "resolution": "Resolution"
+        },
+        "pickPlaceholder": "— pick —",
+        "useFile": "use {name}",
+        "skipCell": "skip cell",
+        "moreOmitted": "... {n} more conflict(s)",
+        "allResolved": "✓ All conflicts resolved — ready to apply.",
+        "forceOverride": "Fallback: apply all conflicts last-write-wins (instead of picking one by one)"
+      },
+      "preview": {
+        "title": "File analysis",
+        "subtitle": "Verify the dataType and confidence per sheet. Low confidence (<65%) means the AI was probably wrong — check yourself or re-upload with clearer sheet names.",
+        "legendHigh": "green = high ≥85%",
+        "legendMedium": "amber = medium 65-84%",
+        "legendLow": "red = low <65%",
+        "sheetsHeading": "Sheets ({n})",
+        "aiConfidenceTooltip": "AI confidence: {pct}",
+        "writes": "Writes",
+        "affectsIndicators": "Affects {n} indicators",
+        "sheetsClassified": "Sheets classified: {n}"
+      },
+      "result": {
+        "title": "Apply result",
+        "fileCount": "{n} files",
+        "rowsWritten": "{n} rows written",
+        "skipped": "skipped",
+        "recomputeLine": "Recompute: {ok}/{total} OK",
+        "backlogClosed": "Closed {n} items from Indicator Backlog",
+        "andMore": "… and {n} more",
+        "openBacklog": "Open Indicator Backlog →"
+      },
+      "step3": {
+        "title": "Step 3 — Import complete",
+        "summary": "{rows} rows written · {groups} group(s) applied",
+        "resetButton": "↩ Start over (upload more files)"
+      }
+    },
     "single": {
       "dropZone": {
         "empty": "Drop an xlsx file here or click to choose",
