@@ -1108,6 +1108,30 @@
       "errorInvalidNumber": "Value must be a finite number."
     }
   },
+  "onboardingDashboard": {
+    "title": "Onboarding Completeness",
+    "description": "Auto-derived from DB state. Reflects current data after every import + recheck. See <code>docs/ONBOARDING_DATA_REQUIREMENTS.md</code> for what each section means.",
+    "loadingCompanies": "Loading companies…",
+    "computing": "Computing…",
+    "generated": "Generated {when}",
+    "copyButton": "Copy",
+    "copyHint": "Copy markdown summary to clipboard",
+    "recheckButton": "Recheck",
+    "recheckHint": "Re-derive completeness from current DB state",
+    "level": "level {n}",
+    "rowsCount": "{n} rows",
+    "overall": {
+      "verified": "verified",
+      "partial": "partial",
+      "pending": "pending"
+    },
+    "status": {
+      "complete": "Complete",
+      "partial": "Partial",
+      "missing": "Missing",
+      "n_a": "N/A"
+    }
+  },
   "onboarding": {
     "metaTitle": "Onboarding — AI Data Mapper",
     "pageTitle": "Onboarding",

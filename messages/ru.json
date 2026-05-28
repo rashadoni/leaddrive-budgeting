@@ -1108,6 +1108,30 @@
       "errorInvalidNumber": "Значение должно быть конечным числом."
     }
   },
+  "onboardingDashboard": {
+    "title": "Полнота онбординга",
+    "description": "Автоматически выводится из состояния БД. Отражает текущие данные после каждого импорта + перепроверки. Описание разделов — в <code>docs/ONBOARDING_DATA_REQUIREMENTS.md</code>.",
+    "loadingCompanies": "Загрузка компаний…",
+    "computing": "Считаю…",
+    "generated": "Сгенерировано {when}",
+    "copyButton": "Скопировать",
+    "copyHint": "Скопировать markdown-сводку в буфер обмена",
+    "recheckButton": "Перепроверить",
+    "recheckHint": "Пересчитать полноту по текущему состоянию БД",
+    "level": "уровень {n}",
+    "rowsCount": "{n} строк",
+    "overall": {
+      "verified": "verified",
+      "partial": "partial",
+      "pending": "pending"
+    },
+    "status": {
+      "complete": "Готово",
+      "partial": "Частично",
+      "missing": "Отсутствует",
+      "n_a": "Не применимо"
+    }
+  },
   "onboarding": {
     "metaTitle": "Онбординг — AI-маппер данных",
     "pageTitle": "Онбординг",

@@ -1108,6 +1108,30 @@
       "errorInvalidNumber": "Dəyər sonlu rəqəm olmalıdır."
     }
   },
+  "onboardingDashboard": {
+    "title": "Onboarding Tamlığı",
+    "description": "DB vəziyyətindən avtomatik çıxarılır. Hər idxal + yenidən yoxlamadan sonra cari datanı əks etdirir. Bölmələrin izahı — <code>docs/ONBOARDING_DATA_REQUIREMENTS.md</code>-də.",
+    "loadingCompanies": "Şirkətlər yüklənir…",
+    "computing": "Hesablanır…",
+    "generated": "Yaradıldı {when}",
+    "copyButton": "Kopyala",
+    "copyHint": "Markdown xülasəni mübadilə yaddaşına kopyala",
+    "recheckButton": "Yenidən yoxla",
+    "recheckHint": "Tamlığı cari DB vəziyyətindən yenidən hesabla",
+    "level": "səviyyə {n}",
+    "rowsCount": "{n} sətir",
+    "overall": {
+      "verified": "verified",
+      "partial": "partial",
+      "pending": "pending"
+    },
+    "status": {
+      "complete": "Tamam",
+      "partial": "Qismən",
+      "missing": "Yoxdur",
+      "n_a": "Tətbiq olunmur"
+    }
+  },
   "onboarding": {
     "metaTitle": "Onboarding — AI Data Mapper",
     "pageTitle": "Onboarding",
