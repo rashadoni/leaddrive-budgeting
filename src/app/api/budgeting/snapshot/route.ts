@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -9,6 +8,53 @@ import { prisma } from "@/lib/prisma"
  * Reconstructs the budget state at a given point in time using
  * the BudgetChangeLog. Uses DISTINCT ON for O(1) reconstruction.
  */
+
+// Phase 8 D3(l) (2026-05-28) — typed shapes for the change-log
+// reconstruction. Replaces the file-level `eslint-disable
+// @typescript-eslint/no-explicit-any` + 7 inline `any` casts.
+// The change-log `snapshot` column is Json; writers always serialize
+// the full BudgetLine / BudgetActual row at the time of the change,
+// so we type structurally to the columns we read on replay.
+
+/** Row returned by the DISTINCT ON $queryRaw against budget_change_logs. */
+interface ChangeLogRow {
+  entityId: string
+  entityType: string
+  action: string
+  snapshot: unknown
+  createdAt: Date
+}
+
+/** Minimum BudgetLine fields the snapshot reconstruction reads. Matches
+ *  both serialized historical snapshots and current Prisma rows pulled
+ *  via `include: { account: { select: { code, name } } }`. */
+interface BudgetLineSnapshot {
+  id: string
+  plannedAmount?: number | null
+  forecastAmount?: number | null
+  lineType: string
+  account?: { code?: string | null; name?: string | null } | null
+}
+
+/** Minimum BudgetActual fields the snapshot reconstruction reads. */
+interface BudgetActualSnapshot {
+  id: string
+  category: string
+  lineType: string
+  actualAmount: number
+}
+
+/** byCategory entries we accumulate while walking the merged lines. */
+interface ByCategoryRow {
+  category: string
+  lineType: string
+  planned: number
+  forecast: number
+  actual: number
+  variance: number
+  variancePct: number
+}
+
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -21,7 +67,7 @@ export async function GET(req: NextRequest) {
   const atDate = new Date(at)
 
   // 1. Get changelog entries at or before the given timestamp (changed entities)
-  const latestEntries: any[] = await prisma.$queryRaw`
+  const latestEntries = await prisma.$queryRaw<ChangeLogRow[]>`
     SELECT DISTINCT ON ("entityId")
       "entityId", "entityType", "action", "snapshot", "createdAt"
     FROM budget_change_logs
@@ -36,9 +82,9 @@ export async function GET(req: NextRequest) {
   const changedActualIds = new Set<string>()
   const deletedIds = new Set<string>()
 
-  const snapshotLines: any[] = []
-  const snapshotActuals: any[] = []
-  const forecasts: any[] = []
+  const snapshotLines: BudgetLineSnapshot[] = []
+  const snapshotActuals: BudgetActualSnapshot[] = []
+  const forecasts: unknown[] = []
 
   for (const entry of latestEntries) {
     if (entry.action === "delete") {
@@ -51,11 +97,11 @@ export async function GET(req: NextRequest) {
     switch (entry.entityType) {
       case "line":
         changedLineIds.add(entry.entityId)
-        snapshotLines.push(snapshot)
+        snapshotLines.push(snapshot as BudgetLineSnapshot)
         break
       case "actual":
         changedActualIds.add(entry.entityId)
-        snapshotActuals.push(snapshot)
+        snapshotActuals.push(snapshot as BudgetActualSnapshot)
         break
       case "forecast":
         forecasts.push(snapshot)
@@ -76,14 +122,14 @@ export async function GET(req: NextRequest) {
   ])
 
   // 3. Merge: changelog lines override, unchanged lines use current state
-  const lines: any[] = [...snapshotLines]
+  const lines: BudgetLineSnapshot[] = [...snapshotLines]
   for (const cl of currentLines) {
     if (!changedLineIds.has(cl.id) && !deletedIds.has(cl.id)) {
       lines.push(cl) // unchanged line — use current state
     }
   }
 
-  const actuals: any[] = [...snapshotActuals]
+  const actuals: BudgetActualSnapshot[] = [...snapshotActuals]
   for (const ca of currentActuals) {
     if (!changedActualIds.has(ca.id) && !deletedIds.has(ca.id)) {
       actuals.push(ca) // unchanged actual — use current state
@@ -102,7 +148,7 @@ export async function GET(req: NextRequest) {
   })
 }
 
-function computeAnalytics(lines: any[], actuals: any[]) {
+function computeAnalytics(lines: BudgetLineSnapshot[], actuals: BudgetActualSnapshot[]) {
   // Sum actuals directly by their lineType (matches live analytics API behavior)
   let totalExpenseActual = 0, totalRevenueActual = 0, totalCOGSActual = 0
   const actualsByCat = new Map<string, number>()
@@ -119,7 +165,7 @@ function computeAnalytics(lines: any[], actuals: any[]) {
   let totalRevenuePlanned = 0
   let totalCOGSPlanned = 0
 
-  const byCategory: any[] = []
+  const byCategory: ByCategoryRow[] = []
 
   for (const l of lines) {
     const planned = Number(l.plannedAmount || 0)
