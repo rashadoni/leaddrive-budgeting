@@ -2458,6 +2458,63 @@
       "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
     }
   },
+  "adminAiImport": {
+    "page": {
+      "pill": "VAHID GİRİŞ NÖQTƏSİ",
+      "title": "Data İmportu",
+      "description": "İstənilən xlsx-i yükləyin — AI avtomatik olaraq data tipini (P&L, Balance Sheet, Cash Flow, əməliyyat KPI-ları, CAPEX, satış, torpaq, şirkət təsvirləri, holdinq strukturu, büdcə faktiki məlumatları, satış proqnozu) müəyyən edir və düzgün adapter-ə yönləndirir. Hər data tipi üçün ayrı forma yoxdur — hər şey bir ekrandadır.",
+      "stackLine": "Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import → Mandatory Reconciliation. 🟢 GREEN reconciliation verdict olmadan DB-də heç bir dəyişiklik olmur."
+    },
+    "tabs": {
+      "ariaLabel": "AI İmport rejimi",
+      "single": "1 fayl",
+      "multi": "Bir neçə fayl",
+      "newBadge": "yeni"
+    },
+    "single": {
+      "dropZone": {
+        "empty": "xlsx faylı buraya çəkin və ya seçmək üçün klikləyin",
+        "hint": "AI strukturu müəyyən edib idxal planı təklif edəcək (hər hansı müştərinin hər hansı workbook-u)",
+        "replaceHint": "əvəz etmək üçün başqasını çəkin"
+      },
+      "step1": {
+        "button": "🧠 Addım 1: AI vərəq analizi",
+        "running": "AI strukturu analiz edir…"
+      },
+      "step2": {
+        "cancel": "✕ Ləğv et və başqa fayl yüklə",
+        "confirm": "✅ Addım 2: Planı təsdiq et və bit-perfect idxalı işə sal",
+        "running": "İdxal + uzlaşdırma…"
+      },
+      "preview": {
+        "title": "🧠 AI analizi tamamlandı",
+        "summary": "{n} vərəq · {ms}ms",
+        "skippedLlm": "0 tokens (only separators detected)",
+        "checkLowConfidence": "⚠ yoxla",
+        "noIndicatorImpact": "göstəricilərə təsir etmir",
+        "groupedByEntity": "Subyektlərə görə qruplaşdırma ({n})",
+        "col": {
+          "sheet": "Vərəq",
+          "type": "Tip",
+          "entity": "Subyekt",
+          "confidence": "Confidence",
+          "affects": "Təsir edir",
+          "reasoning": "Əsaslandırma"
+        }
+      },
+      "result": {
+        "title": "İDXAL TAMAMLANDI",
+        "col": {
+          "phase": "Phase",
+          "matched": "Matched",
+          "drift": "Drift",
+          "missing": "Missing",
+          "extra": "Extra",
+          "verdict": "Verdict"
+        }
+      }
+    }
+  },
   "adminQueue": {
     "title": "Növbə Admin",
     "subtitle": "BullMQ iş inspektoru. Statusa görə filtrləyin: active — indi işləyən, completed — son keçirici, failed — dead-letter-ə düşən.",

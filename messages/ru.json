@@ -2458,6 +2458,63 @@
       "subtitle": "Новый временный пароль для {email}. Покажите его пользователю один раз."
     }
   },
+  "adminAiImport": {
+    "page": {
+      "pill": "ЕДИНАЯ ТОЧКА ВХОДА",
+      "title": "Импорт данных",
+      "description": "Загрузите любой xlsx — AI автоматически определит тип данных (P&L, Balance Sheet, Cash Flow, операционные KPI, CAPEX, продажи, земля, описания компаний, структура холдинга, бюджетные актуалы, sales forecast) и маршрутизирует на правильный adapter. Никаких отдельных форм под каждый тип данных — один экран на всё.",
+      "stackLine": "Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import → Mandatory Reconciliation. Никаких изменений в БД без 🟢 GREEN verdict reconciliation report."
+    },
+    "tabs": {
+      "ariaLabel": "Режим AI-импорта",
+      "single": "1 файл",
+      "multi": "Несколько файлов",
+      "newBadge": "новое"
+    },
+    "single": {
+      "dropZone": {
+        "empty": "Перетащите xlsx файл сюда или нажмите для выбора",
+        "hint": "AI определит структуру + предложит план импорта (любой workbook от любого клиента)",
+        "replaceHint": "перетащите другой для замены"
+      },
+      "step1": {
+        "button": "🧠 Шаг 1: AI-анализ листов",
+        "running": "AI анализирует структуру…"
+      },
+      "step2": {
+        "cancel": "✕ Отменить и загрузить другой файл",
+        "confirm": "✅ Шаг 2: Подтвердить план и запустить bit-perfect импорт",
+        "running": "Импорт + сверка…"
+      },
+      "preview": {
+        "title": "🧠 AI-анализ завершён",
+        "summary": "{n} листов · {ms}ms",
+        "skippedLlm": "0 tokens (only separators detected)",
+        "checkLowConfidence": "⚠ проверить",
+        "noIndicatorImpact": "не задевает индикаторы",
+        "groupedByEntity": "Группировка по сущностям ({n})",
+        "col": {
+          "sheet": "Лист",
+          "type": "Тип",
+          "entity": "Сущность",
+          "confidence": "Confidence",
+          "affects": "Затронет",
+          "reasoning": "Обоснование"
+        }
+      },
+      "result": {
+        "title": "ИМПОРТ ЗАВЕРШЁН",
+        "col": {
+          "phase": "Phase",
+          "matched": "Matched",
+          "drift": "Drift",
+          "missing": "Missing",
+          "extra": "Extra",
+          "verdict": "Verdict"
+        }
+      }
+    }
+  },
   "adminQueue": {
     "title": "Очередь задач",
     "subtitle": "Инспектор BullMQ-задач. Фильтруйте по статусу: active — что выполняется сейчас, completed — недавняя пропускная способность, failed — попавшее в dead-letter.",

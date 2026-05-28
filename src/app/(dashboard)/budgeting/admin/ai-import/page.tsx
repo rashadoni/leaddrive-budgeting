@@ -7,15 +7,17 @@
  *      battle-tested 5-phase bit-perfect import with reconciliation
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
-  title: "Импорт данных · Admin · BudgetPro",
+  title: "AI Import · Admin · BudgetPro",
 }
 
 export default async function AIImportPage() {
+  const t = await getTranslations("adminAiImport")
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) redirect("/budgeting")
@@ -26,21 +28,15 @@ export default async function AIImportPage() {
     <div className="container mx-auto py-8 px-4 max-w-4xl">
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-primary/10 text-primary text-xs font-medium mb-2">
-          ЕДИНАЯ ТОЧКА ВХОДА
+          {t("page.pill")}
         </div>
-        <h1 className="text-2xl font-bold mb-2">Импорт данных</h1>
+        <h1 className="text-2xl font-bold mb-2">{t("page.title")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          Загрузите любой xlsx — AI автоматически определит тип данных
-          (P&amp;L, Balance Sheet, Cash Flow, операционные KPI, CAPEX,
-          продажи, земля, описания компаний, структура холдинга, бюджетные
-          актуалы, sales forecast) и маршрутизирует на правильный adapter.
-          Никаких отдельных форм под каждый тип данных — один экран на всё.
+          {t("page.description")}
         </p>
       </div>
       <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
-        Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import →
-        Mandatory Reconciliation. Никаких изменений в БД без 🟢 GREEN
-        verdict reconciliation report.
+        {t("page.stackLine")}
       </p>
 
       <AIImportTabs />

@@ -10,6 +10,7 @@
  *           → render verdict per phase
  */
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
+import { useTranslations } from "next-intl"
 
 interface Classification {
   sheetName: string
@@ -126,6 +127,7 @@ const VERDICT_STYLE = {
 } as const
 
 export function AIImportForm() {
+  const t = useTranslations("adminAiImport.single")
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isClassifying, setIsClassifying] = useState(false)
@@ -235,17 +237,16 @@ export function AIImportForm() {
           <div>
             <div className="text-sm font-mono">{file.name}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {(file.size / 1024).toFixed(0)} KB · drop another to replace
+              {(file.size / 1024).toFixed(0)} KB · {t("dropZone.replaceHint")}
             </div>
           </div>
         ) : (
           <div>
             <div className="text-base font-medium mb-1">
-              Перетащите xlsx файл сюда или нажмите для выбора
+              {t("dropZone.empty")}
             </div>
             <div className="text-xs text-muted-foreground">
-              AI определит структуру + предложит план импорта (любой
-              workbook от любого клиента)
+              {t("dropZone.hint")}
             </div>
           </div>
         )}
@@ -259,7 +260,7 @@ export function AIImportForm() {
           disabled={!file || isClassifying}
           className="w-full px-4 py-2 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {isClassifying ? "AI анализирует структуру…" : "🧠 Шаг 1: AI-анализ листов"}
+          {isClassifying ? t("step1.running") : t("step1.button")}
         </button>
       )}
 
@@ -283,7 +284,7 @@ export function AIImportForm() {
             }}
             className="flex-1 px-4 py-2 rounded border border-border text-sm hover:bg-muted/50 transition-colors"
           >
-            ✕ Отменить и загрузить другой файл
+            {t("step2.cancel")}
           </button>
           <button
             type="button"
@@ -291,9 +292,7 @@ export function AIImportForm() {
             disabled={isImporting}
             className="flex-1 px-4 py-2 rounded bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
-            {isImporting
-              ? "Импорт + сверка…"
-              : "✅ Шаг 2: Подтвердить план и запустить bit-perfect импорт"}
+            {isImporting ? t("step2.running") : t("step2.confirm")}
           </button>
         </div>
       )}
@@ -305,16 +304,21 @@ export function AIImportForm() {
 }
 
 function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
+  const t = useTranslations("adminAiImport.single")
   return (
     <div className="space-y-4">
       <div className="border rounded p-4 bg-muted/20">
         <div className="text-lg font-bold mb-1">
-          🧠 AI-анализ завершён
+          {t("preview.title")}
         </div>
         <div className="text-xs text-muted-foreground">
-          {preview.totalSheets} листов · {preview.durationMs}ms ·{" "}
+          {t("preview.summary", {
+            n: preview.totalSheets,
+            ms: preview.durationMs,
+          })}{" "}
+          ·{" "}
           {preview.skippedLLM
-            ? "0 tokens (only separators detected)"
+            ? t("preview.skippedLlm")
             : `${preview.llmUsage.inputTokens} in + ${preview.llmUsage.outputTokens} out tokens · ${preview.llmUsage.modelName}`}
         </div>
       </div>
@@ -323,12 +327,12 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
         <table className="w-full text-sm">
           <thead className="bg-muted text-xs">
             <tr>
-              <th className="text-left p-2">Лист</th>
-              <th className="text-left p-2">Тип</th>
-              <th className="text-left p-2">Сущность</th>
-              <th className="text-right p-2">Confidence</th>
-              <th className="text-left p-2">Затронет</th>
-              <th className="text-left p-2">Обоснование</th>
+              <th className="text-left p-2">{t("preview.col.sheet")}</th>
+              <th className="text-left p-2">{t("preview.col.type")}</th>
+              <th className="text-left p-2">{t("preview.col.entity")}</th>
+              <th className="text-right p-2">{t("preview.col.confidence")}</th>
+              <th className="text-left p-2">{t("preview.col.affects")}</th>
+              <th className="text-left p-2">{t("preview.col.reasoning")}</th>
             </tr>
           </thead>
           <tbody>
@@ -366,7 +370,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                     {conf}%
                     {confLow && (
                       <div className="text-[9px] font-normal text-rose-600">
-                        ⚠ проверить
+                        {t("preview.checkLowConfidence")}
                       </div>
                     )}
                   </td>
@@ -399,7 +403,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                         className="italic text-muted-foreground text-[11px]"
                         title={sheetImpact.impact.writes}
                       >
-                        не задевает индикаторы
+                        {t("preview.noIndicatorImpact")}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -417,7 +421,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
 
       <details className="border rounded p-3 text-xs">
         <summary className="cursor-pointer font-medium">
-          Группировка по сущностям ({preview.entitySheetMaps.length})
+          {t("preview.groupedByEntity", { n: preview.entitySheetMaps.length })}
         </summary>
         <div className="mt-2 space-y-2">
           {preview.entitySheetMaps.map((m) => (
@@ -463,12 +467,13 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
 }
 
 function ImportResultView({ result }: { result: ImportApplyResult }) {
+  const t = useTranslations("adminAiImport.single")
   const s = VERDICT_STYLE[result.overallVerdict]
   return (
     <div className="space-y-3">
       <div className={`border rounded p-4 ${s.bg}`}>
         <div className={`text-lg font-bold ${s.fg}`}>
-          {s.icon} ИМПОРТ ЗАВЕРШЁН · {result.overallVerdict.toUpperCase()}
+          {s.icon} {t("result.title")} · {result.overallVerdict.toUpperCase()}
         </div>
         <div className="text-xs text-muted-foreground mt-1">
           {result.durationMs}ms · recompute {result.recompute.ok}✓{" "}
@@ -480,12 +485,12 @@ function ImportResultView({ result }: { result: ImportApplyResult }) {
         <table className="w-full text-sm font-mono">
           <thead className="bg-muted text-xs">
             <tr>
-              <th className="text-left p-2">Phase</th>
-              <th className="text-right p-2">Matched</th>
-              <th className="text-right p-2">Drift</th>
-              <th className="text-right p-2">Missing</th>
-              <th className="text-right p-2">Extra</th>
-              <th className="text-left p-2">Verdict</th>
+              <th className="text-left p-2">{t("result.col.phase")}</th>
+              <th className="text-right p-2">{t("result.col.matched")}</th>
+              <th className="text-right p-2">{t("result.col.drift")}</th>
+              <th className="text-right p-2">{t("result.col.missing")}</th>
+              <th className="text-right p-2">{t("result.col.extra")}</th>
+              <th className="text-left p-2">{t("result.col.verdict")}</th>
             </tr>
           </thead>
           <tbody>

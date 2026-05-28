@@ -2458,6 +2458,63 @@
       "subtitle": "New temp password for {email}. Share it with the user once."
     }
   },
+  "adminAiImport": {
+    "page": {
+      "pill": "SINGLE ENTRY POINT",
+      "title": "Data Import",
+      "description": "Upload any xlsx — the AI automatically detects the data type (P&L, Balance Sheet, Cash Flow, operational KPI, CAPEX, sales, land, company descriptions, holding structure, budget actuals, sales forecast) and routes to the correct adapter. No separate forms per data type — one screen for everything.",
+      "stackLine": "Stack: AI Classifier (Anthropic) → Adapter Router → 5-Phase Import → Mandatory Reconciliation. No DB changes without a 🟢 GREEN reconciliation verdict."
+    },
+    "tabs": {
+      "ariaLabel": "AI Import mode",
+      "single": "1 file",
+      "multi": "Multiple files",
+      "newBadge": "new"
+    },
+    "single": {
+      "dropZone": {
+        "empty": "Drop an xlsx file here or click to choose",
+        "hint": "AI will detect the structure + suggest an import plan (any workbook from any client)",
+        "replaceHint": "drop another to replace"
+      },
+      "step1": {
+        "button": "🧠 Step 1: AI sheet analysis",
+        "running": "AI is analyzing structure…"
+      },
+      "step2": {
+        "cancel": "✕ Cancel and load another file",
+        "confirm": "✅ Step 2: Confirm plan and run bit-perfect import",
+        "running": "Import + reconciliation…"
+      },
+      "preview": {
+        "title": "🧠 AI analysis complete",
+        "summary": "{n} sheets · {ms}ms",
+        "skippedLlm": "0 tokens (only separators detected)",
+        "checkLowConfidence": "⚠ check",
+        "noIndicatorImpact": "does not affect indicators",
+        "groupedByEntity": "Grouped by entity ({n})",
+        "col": {
+          "sheet": "Sheet",
+          "type": "Type",
+          "entity": "Entity",
+          "confidence": "Confidence",
+          "affects": "Affects",
+          "reasoning": "Reasoning"
+        }
+      },
+      "result": {
+        "title": "IMPORT COMPLETE",
+        "col": {
+          "phase": "Phase",
+          "matched": "Matched",
+          "drift": "Drift",
+          "missing": "Missing",
+          "extra": "Extra",
+          "verdict": "Verdict"
+        }
+      }
+    }
+  },
   "adminQueue": {
     "title": "Queue Admin",
     "subtitle": "BullMQ job inspector. Filter by state to see live work (active), recent throughput (completed) or anything that hit the dead-letter set (failed).",

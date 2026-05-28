@@ -5,19 +5,21 @@
  * orchestrator) AI import workflows.
  *
  * Defaults to single-file for back-compat. Multi-file mode is
- * positioned as "новый — для пакетной загрузки".
+ * positioned as the newer batch-load surface.
  */
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { AIImportForm } from "./AIImportForm"
 import { MultiFileForm } from "./MultiFileForm"
 
 export function AIImportTabs() {
+  const t = useTranslations("adminAiImport")
   const [mode, setMode] = useState<"single" | "multi">("single")
   return (
     <div className="space-y-4">
       <div
         role="tablist"
-        aria-label="AI Import mode"
+        aria-label={t("tabs.ariaLabel")}
         className="inline-flex rounded border border-slate-200 bg-slate-50 p-1"
       >
         <button
@@ -32,7 +34,7 @@ export function AIImportTabs() {
           }`}
           data-testid="tab-single"
         >
-          1 файл
+          {t("tabs.single")}
         </button>
         <button
           type="button"
@@ -46,9 +48,9 @@ export function AIImportTabs() {
           }`}
           data-testid="tab-multi"
         >
-          Несколько файлов
+          {t("tabs.multi")}
           <span className="ml-1 inline-block text-[10px] uppercase tracking-wide text-emerald-600 font-semibold">
-            новое
+            {t("tabs.newBadge")}
           </span>
         </button>
       </div>
