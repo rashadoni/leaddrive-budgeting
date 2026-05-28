@@ -21,6 +21,12 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useTerminalStore } from "../store/terminalStore"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger replaces
+// 2 console.warn calls in the deep-link resolver's graceful-degradation
+// branches (non-OK response + network error).
+const log = getLogger("terminal:deep-link")
 
 const VARIANCE_EXPLAINER_PANEL_ID = 4
 
@@ -45,9 +51,12 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
       .then((res) => {
         if (!res.ok) {
           // 404 / 400 / 500 — graceful no-op
-          console.warn(
-            `[TerminalDeepLink] resolve returned ${res.status} for (${company}, ${indicator}, ${period})`,
-          )
+          log.warn("resolve returned non-OK status", {
+            status: res.status,
+            company,
+            indicator,
+            period,
+          })
           if (!cancelled) setResolved({ from, ok: false })
           return null
         }
@@ -60,7 +69,12 @@ export function TerminalDeepLinkHandler(): React.ReactElement | null {
         setResolved({ from, ok: true })
       })
       .catch((e) => {
-        console.warn(`[TerminalDeepLink] resolve failed:`, e)
+        log.warn("resolve failed", {
+          err: e instanceof Error ? e.message : String(e),
+          company,
+          indicator,
+          period,
+        })
         if (!cancelled) setResolved({ from, ok: false })
       })
 

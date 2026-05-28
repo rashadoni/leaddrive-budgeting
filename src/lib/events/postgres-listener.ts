@@ -17,6 +17,12 @@
  */
 
 import { Client } from 'pg';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// shared Postgres LISTEN/NOTIFY wrapper. 3 console.error → logger:
+// listener-threw, client-error, reconnect-failed.
+const log = getLogger('events:postgres-listener');
 
 export type PostgresChannel =
   | 'audit_events_changed'
@@ -78,12 +84,19 @@ async function getClient(): Promise<Client> {
         try {
           l(parsed as ChannelPayload<PostgresChannel>);
         } catch (err) {
-          console.error('[postgres-listener] listener threw:', err);
+          log.error('listener threw', {
+            channel,
+            err: err instanceof Error ? err.message : String(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          });
         }
       });
     });
     client.on('error', (err) => {
-      console.error('[postgres-listener] client error:', err);
+      log.error('client error', {
+        err: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       // On connection-loss, immediately re-establish the client so
       // existing subscribers in the shared `listeners` Map keep
       // receiving notifications without each having to re-subscribe.
@@ -96,10 +109,9 @@ async function getClient(): Promise<Client> {
       // next `subscribe()` call will retry. Existing SSE handlers stay
       // registered for whichever connection eventually wins.
       void getClient().catch((reconnectErr) => {
-        console.error(
-          '[postgres-listener] reconnect failed (will retry on next subscribe):',
-          reconnectErr,
-        );
+        log.error('reconnect failed (will retry on next subscribe)', {
+          err: reconnectErr instanceof Error ? reconnectErr.message : String(reconnectErr),
+        });
       });
     });
     // Begin LISTEN on both channels — cheap, fixed list, no need to
