@@ -18,7 +18,7 @@
  * a successful import.
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import {
   createPrismaDataSource,
   recomputeIndicator,
@@ -133,7 +133,11 @@ const EMPTY_RESULT: RunRecomputeResult = {
  * Returns aggregate counts; individual successes are not enumerated.
  */
 export async function runRecomputeForCompanies(
-  prisma: PrismaClient,
+  // Phase 8 D5(b) (2026-05-28) — accept TransactionClient so callers
+  // wrapped in `withOrgScope` (BullMQ recompute-processor) pick up
+  // `app.organization_id` at the DB layer. PrismaClient still works
+  // for legacy / CLI call sites (historical-backfill, smoke scripts).
+  prisma: PrismaClient | Prisma.TransactionClient,
   organizationId: string,
   affected: RecomputeAffected[],
   logger: RecomputeTriggerLogger = {},

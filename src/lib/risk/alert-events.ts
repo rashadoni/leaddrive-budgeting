@@ -51,7 +51,9 @@ export interface PersistAlertEventsResult {
  * `parsePeriod` already gates the API surface).
  */
 export async function persistAlertEvents(
-  prisma: PrismaClient,
+  // Phase 8 D5(b) — accept TransactionClient too so callers wrapped
+  // in `withOrgScope` (BullMQ recompute-processor) thread the tx.
+  prisma: PrismaClient | Prisma.TransactionClient,
   args: PersistAlertEventsArgs,
 ): Promise<PersistAlertEventsResult> {
   const { organizationId, period, matches } = args;
@@ -71,7 +73,12 @@ export async function persistAlertEvents(
       : [],
   }));
 
-  return prisma.$transaction(async (tx) => {
+  // Phase 8 D5(b) — if the caller already passed a TransactionClient
+  // (RLS-wrapped from withOrgScope), reuse it instead of opening a
+  // nested $transaction. Detection via `$transaction` method presence
+  // mirrors the dual-mode pattern in import-batch.ts / bs-import-batch.
+  const hasTx = "$transaction" in prisma
+  const run = async (tx: Prisma.TransactionClient) => {
     const del = await tx.alertEvent.deleteMany({
       where: { organizationId, period },
     });
@@ -80,5 +87,8 @@ export async function persistAlertEvents(
     }
     const ins = await tx.alertEvent.createMany({ data: rows });
     return { deleted: del.count, created: ins.count };
-  });
+  }
+  return hasTx
+    ? (prisma as PrismaClient).$transaction(run)
+    : run(prisma as Prisma.TransactionClient)
 }

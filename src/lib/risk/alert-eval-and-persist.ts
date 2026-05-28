@@ -11,7 +11,7 @@
  * concerns must not crash the import that already wrote IVs successfully).
  */
 
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import { filterOperationalCompanies } from './targets';
 import {
   evaluateAlertRules,
@@ -55,7 +55,11 @@ export interface EvalAndPersistResult {
  * Empty `periods` array is a no-op (no DB hit).
  */
 export async function evaluateAndPersistAlertsForPeriods(
-  prisma: PrismaClient,
+  // Phase 8 D5(b) — accept TransactionClient too so callers wrapped
+  // in `withOrgScope` thread the tx through without losing the RLS
+  // session var. Both shapes already satisfy the alert-eval query
+  // surface.
+  prisma: PrismaClient | Prisma.TransactionClient,
   args: EvalAndPersistArgs,
   logger: EvalAndPersistLogger = {},
 ): Promise<EvalAndPersistResult> {

@@ -17,6 +17,7 @@
 import type { Job } from "bullmq"
 import { PrismaClient } from "@prisma/client"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import type {
   RecomputePairJob,
   RecomputeBatchJob,
@@ -26,13 +27,13 @@ import type {
 // daemons; creating a fresh client per job would exhaust connection
 // pool. Workers should set DATABASE_URL with reasonable pool_size.
 //
-// Phase 5.2 Stage 2 RLS rollout note (2026-05-21): when per-table RLS
-// migrations land, `runRecomputeForCompanies` callers from THIS
-// processor will need to wrap individual writes in
-// `withOrgScope(job.data.organizationId, ...)` — the orgId is already
-// in the job payload. Until the per-table migrations apply, the
-// processor uses the regular prisma client and writes ignore RLS
-// (table-level RLS is OFF). See docs/RLS_PATTERN_EXAMPLE.md.
+// Phase 8 D5(b) (2026-05-28) — every `runRecomputeForCompanies` call
+// now runs inside `withOrgScope(orgId, tx => …)` so the recompute
+// resolvers pick up `app.organization_id` at the DB layer. orgId is
+// already in the job payload. The chunked batch path opens ONE
+// withOrgScope per chunk (not one per job) — long-running tx + Redis
+// retry semantics interact better when each chunk is its own
+// transaction.
 let prismaInstance: PrismaClient | null = null
 function getPrisma(): PrismaClient {
   if (!prismaInstance) prismaInstance = new PrismaClient()
@@ -45,10 +46,11 @@ export async function processRecomputePair(
 ): Promise<{ ok: number; unknown: number; failed: number; targets: number }> {
   const { organizationId, companyId, year } = job.data
   await job.updateProgress(0)
-  const result = await runRecomputeForCompanies(
-    getPrisma(),
+  const result = await withOrgScope(
     organizationId,
-    [{ companyId, year }],
+    (tx) =>
+      runRecomputeForCompanies(tx, organizationId, [{ companyId, year }]),
+    { client: getPrisma() },
   )
   await job.updateProgress(100)
   return {
@@ -80,10 +82,18 @@ export async function processRecomputeBatch(
   const aggregate = { ok: 0, unknown: 0, failed: 0, targets: 0 }
   for (let i = 0; i < targets.length; i += CHUNK) {
     const slice = targets.slice(i, i + CHUNK)
-    const result = await runRecomputeForCompanies(
-      getPrisma(),
+    // One withOrgScope per chunk — bounds the open-tx duration to the
+    // chunk (5 companies) instead of the whole batch (potentially 60).
+    // Lock contention risk on indicator_value upserts stays minimal.
+    const result = await withOrgScope(
       organizationId,
-      slice as Array<{ companyId: string; year: number }>,
+      (tx) =>
+        runRecomputeForCompanies(
+          tx,
+          organizationId,
+          slice as Array<{ companyId: string; year: number }>,
+        ),
+      { client: getPrisma() },
     )
     aggregate.ok += result.ok
     aggregate.unknown += result.unknown

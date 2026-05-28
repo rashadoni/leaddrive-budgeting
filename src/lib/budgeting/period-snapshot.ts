@@ -18,7 +18,7 @@
  */
 
 import { createHash } from "crypto";
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 export interface PeriodSnapshotAggregates {
   ivCount: number;
@@ -78,7 +78,9 @@ function sha256(s: string): string {
  * lock) and verifyPeriodSnapshot (drift check).
  */
 export async function computePeriodHashes(
-  prisma: PrismaClient,
+  // Phase 8 D5(b) — accept TransactionClient too so callers wrapped
+  // in `withOrgScope` thread the tx through.
+  prisma: PrismaClient | Prisma.TransactionClient,
   orgId: string,
   period: string,
 ): Promise<{
@@ -201,7 +203,9 @@ export async function createPeriodSnapshot(
  * `period_snapshot_drift` — to be added in a follow-up).
  */
 export async function verifyPeriodSnapshot(
-  prisma: PrismaClient,
+  // Phase 8 D5(b) — accept TransactionClient too so callers wrapped
+  // in `withOrgScope` thread the tx through.
+  prisma: PrismaClient | Prisma.TransactionClient,
   orgId: string,
   period: string,
 ): Promise<{

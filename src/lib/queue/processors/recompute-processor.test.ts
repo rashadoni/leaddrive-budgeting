@@ -11,6 +11,19 @@ vi.mock("@/lib/risk/recompute-trigger", () => ({
   runRecomputeForCompanies: vi.fn(),
 }))
 
+// Phase 8 D5(b) — withOrgScope opens a real Postgres tx. The processor
+// test doesn't need real RLS; mock it to just invoke the callback with
+// a no-op tx so the test still asserts chunking + progress emission.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: vi.fn(
+    async (
+      _orgId: string,
+      fn: (tx: unknown) => Promise<unknown>,
+      _opts?: unknown,
+    ) => fn({} as never),
+  ),
+}))
+
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 import {
   processRecomputePair,
