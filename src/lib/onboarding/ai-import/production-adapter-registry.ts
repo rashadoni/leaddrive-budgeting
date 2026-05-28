@@ -31,6 +31,7 @@
  * table.
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
+import type * as XLSXType from "xlsx"
 import {
   buildRegistryWith,
   type AdapterHandler,
@@ -243,8 +244,7 @@ function makePlfHandler(
     }
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parsePlfPlSheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
       { preferYear: input.year },
@@ -310,7 +310,7 @@ function makePlfHandler(
     // One Claude call detects the structure; result cached 24h in AIMapperProposalCache.
     if (rows.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sheet = (input.workbook as any).Sheets[input.sheetName]
+      const sheet = input.workbook.Sheets[input.sheetName]
       const hasData = sheet != null && Object.keys(sheet).length > 1 // >1: !ref alone = empty
       if (hasData) {
         logger.info("PLF format unknown — delegating to dynamic detector", {
@@ -328,8 +328,12 @@ function makePlfHandler(
       // Phase 7.M Tier 5 — `expectedSums` is read by orchestrator for
       // cross-file conflict detection (not declared on the public
       // AdapterRunResult shape, but the orchestrator looks for it).
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+      // Phase 8 D3 — `expectedSums` is an undocumented orchestrator
+      // hook on AdapterRunResult; cast the empty branch to a typed
+      // empty spread instead of `as any`.
+      ...(rows.length > 0
+        ? { expectedSums }
+        : ({} as Record<string, never>)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
         // Resolve (or create) one CoA row per unique line.code, then
@@ -407,8 +411,7 @@ function makeBsHandler(
     }
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parseWorkbookBsSheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
       { preferYear: input.year },
@@ -476,8 +479,12 @@ function makeBsHandler(
       summary: `${parsed.lines.length} BS lines for ${input.entityCode}`,
       itemCount: rows.length,
       warnings: parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+      // Phase 8 D3 — `expectedSums` is an undocumented orchestrator
+      // hook on AdapterRunResult; cast the empty branch to a typed
+      // empty spread instead of `as any`.
+      ...(rows.length > 0
+        ? { expectedSums }
+        : ({} as Record<string, never>)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
         // Resolve CoA FK for every unique BS line code.
@@ -553,8 +560,7 @@ function makeCfHandler(
     }
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parsePlfCfSheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
       { preferYear: input.year },
@@ -620,8 +626,12 @@ function makeCfHandler(
       summary: `${parsed.entries.length} CF entries for ${input.entityCode}`,
       itemCount: rows.length,
       warnings: parsed.warnings.map((w) => `row ${w.row}: ${w.reason}`),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+      // Phase 8 D3 — `expectedSums` is an undocumented orchestrator
+      // hook on AdapterRunResult; cast the empty branch to a typed
+      // empty spread instead of `as any`.
+      ...(rows.length > 0
+        ? { expectedSums }
+        : ({} as Record<string, never>)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
         const coaCache = createCoACache()
@@ -687,7 +697,7 @@ function makeKpiHandler(
     if (kind === "farming") {
       const parsed = parseWorkbookFarmingKpiSheet(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        input.workbook as any,
+        input.workbook,
         input.sheetName,
         input.XLSX,
         { preferYear: input.year },
@@ -711,7 +721,7 @@ function makeKpiHandler(
     } else if (kind === "processing") {
       const parsed = parseWorkbookProcessingKpiSheet(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        input.workbook as any,
+        input.workbook,
         input.sheetName,
         input.XLSX,
         { preferYear: input.year },
@@ -758,7 +768,7 @@ function makeKpiHandler(
         } else {
           const salesPlan = parseSalesPlanSheet(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            input.workbook as any,
+            input.workbook,
             input.sheetName,
             input.XLSX,
           )
@@ -790,7 +800,9 @@ function makeKpiHandler(
           itemCount: rows.length,
           warnings,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+          ...(rows.length > 0
+            ? { expectedSums }
+            : ({} as Record<string, never>)),
           applyToDb: async (tx: Prisma.TransactionClient) => {
             if (rows.length === 0) return { rowsInserted: 0 }
             const touchedCompanyIds = Array.from(
@@ -828,7 +840,7 @@ function makeKpiHandler(
         salesCompanyId = edenId
         parsed = parseFarmingSalesSheet(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          input.workbook as any,
+          input.workbook,
           input.sheetName,
           input.XLSX,
           { preferYear: input.year, companyId: edenId },
@@ -837,7 +849,7 @@ function makeKpiHandler(
         salesCompanyId = cpcId
         parsed = parseProductionSalesSheet(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          input.workbook as any,
+          input.workbook,
           input.sheetName,
           input.XLSX,
           { preferYear: input.year, companyId: cpcId },
@@ -849,7 +861,7 @@ function makeKpiHandler(
         salesCompanyId = promaltId
         parsed = parseProMaltSalesSheet(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          input.workbook as any,
+          input.workbook,
           input.sheetName,
           input.XLSX,
           { preferYear: input.year, companyId: promaltId },
@@ -881,8 +893,12 @@ function makeKpiHandler(
       summary: `${rows.length} ${kind} KPI facts`,
       itemCount: rows.length,
       warnings,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...(rows.length > 0 ? { expectedSums } : ({} as any)),
+      // Phase 8 D3 — `expectedSums` is an undocumented orchestrator
+      // hook on AdapterRunResult; cast the empty branch to a typed
+      // empty spread instead of `as any`.
+      ...(rows.length > 0
+        ? { expectedSums }
+        : ({} as Record<string, never>)),
       applyToDb: async (tx: Prisma.TransactionClient) => {
         if (rows.length === 0) return { rowsInserted: 0 }
         // Per-sheet KPI batch — scoped to the touched companies only
@@ -916,8 +932,7 @@ function makeLandRegistryHandler(
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parseLandRegistrySheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
     )
@@ -1048,8 +1063,7 @@ function makeDescriptionsHandler(
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parseTesvirSheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
     )
@@ -1100,8 +1114,7 @@ function makeForwardForecastHandler(
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
     const ctx = ctxRef.value ?? (await ensureCtx())
     const parsed = parseIcmalSheet(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      input.workbook as any,
+      input.workbook,
       input.sheetName,
       input.XLSX,
     )
@@ -1288,8 +1301,10 @@ function makeOpsFactsHandler(
     const wrappedWorkbook = {
       Sheets: { [input.sheetName]: sheet },
       SheetNames: [input.sheetName],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any
+      // Phase 8 D3 — wrappedWorkbook is shape-compatible with
+      // XLSX.WorkBook for the parser's needs (Sheets + SheetNames).
+      // Cast to the canonical type instead of `as any`.
+    } as XLSXType.WorkBook
     const parsed = parseOperationalFactsWorkbook(wrappedWorkbook, input.XLSX)
     const warnings: string[] = []
     for (const e of parsed.errors) {
@@ -1381,8 +1396,8 @@ function makeBudgetActualsHandler(
     const wrappedWorkbook = {
       Sheets: { [input.sheetName]: sheet },
       SheetNames: [input.sheetName],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any
+      // Phase 8 D3 — typed wrap matching XLSX.WorkBook.
+    } as XLSXType.WorkBook
     const parsed = parseBudgetActualsWorkbook(wrappedWorkbook, input.XLSX)
     const warnings: string[] = []
     for (const e of parsed.errors) {
@@ -1482,8 +1497,8 @@ function makeSalesForecastHandler(
     const wrappedWorkbook = {
       Sheets: { [input.sheetName]: sheet },
       SheetNames: [input.sheetName],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any
+      // Phase 8 D3 — typed wrap matching XLSX.WorkBook.
+    } as XLSXType.WorkBook
     const parsed = parseSalesForecastWorkbook(wrappedWorkbook, input.XLSX)
     const warnings: string[] = []
     for (const e of parsed.errors) {

@@ -19,11 +19,17 @@
  * is green).
  */
 import type { Prisma, PrismaClient } from "@prisma/client"
+import type * as XLSXType from "xlsx"
 import type { SheetDataType } from "./sheet-classifier"
 
 export interface AdapterRunInput {
-  /** Full xlsx workbook object. */
-  workbook: { Sheets: Record<string, unknown>; SheetNames: string[] }
+  /** Full xlsx workbook object.
+   *  Phase 8 D3 (2026-05-28) — tightened from a narrow in-house
+   *  `{ Sheets, SheetNames }` shape to the real `XLSX.WorkBook` so
+   *  downstream parsers can drop the `as any` bridging casts. xlsx
+   *  is already a hard dep of every parser in this chain, so
+   *  importing the type here is free. */
+  workbook: XLSXType.WorkBook
   /** Sheet name within the workbook the adapter should read. */
   sheetName: string
   /** Resolved entity code (or null for cross-entity adapters). */
@@ -32,7 +38,9 @@ export interface AdapterRunInput {
   year: number
   /** Organisation id. */
   organizationId: string
-  /** XLSX module reference (avoids hard-coupling). */
+  /** XLSX module reference. Kept loose so test fixtures can stub
+   *  without rebuilding the whole module surface; production callers
+   *  pass the real `import * as XLSX from 'xlsx'`. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   XLSX: any
 }

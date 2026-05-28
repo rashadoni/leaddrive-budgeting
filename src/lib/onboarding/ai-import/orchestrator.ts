@@ -15,6 +15,7 @@
  *   • SDK seam injected (anthropic client, prisma) for test isolation.
  */
 import type { PrismaClient } from "@prisma/client"
+import type * as XLSXType from "xlsx"
 import {
   extractWorkbookMeta,
   type SheetMeta,
@@ -35,9 +36,12 @@ import type { LLMUsage } from "@/lib/llm/types"
 import type { ReconciliationKey } from "../reconciliation"
 
 export interface OrchestratorInput {
-  /** Loaded XLSX workbook object. */
-  workbook: { Sheets: Record<string, unknown>; SheetNames: string[] }
-  /** XLSX module reference (avoids hard-coupling). */
+  /** Loaded XLSX workbook object.
+   *  Phase 8 D3 (2026-05-28) — tightened to the real `XLSX.WorkBook`
+   *  type so downstream adapters (AdapterRunInput.workbook) drop
+   *  their `as any` bridges. */
+  workbook: XLSXType.WorkBook
+  /** XLSX module reference. Kept loose so test fixtures can stub. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   XLSX: any
   /** Organisation id (multi-tenant scope). */

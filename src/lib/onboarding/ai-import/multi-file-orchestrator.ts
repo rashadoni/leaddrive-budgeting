@@ -45,6 +45,7 @@
  * injected via the deps object. Tests pass stubs for hermetic runs.
  */
 import type { PrismaClient } from "@prisma/client"
+import type * as XLSXType from "xlsx"
 import {
   extractWorkbookMeta,
   type SheetMeta,
@@ -120,7 +121,9 @@ const APPLY_ORDER: Record<FileType, number> = {
 export interface MultiFileImportInput {
   files: ReadonlyArray<{
     filename: string
-    workbook: { Sheets: Record<string, unknown>; SheetNames: string[] }
+    // Phase 8 D3 (2026-05-28) — tightened to XLSX.WorkBook so the
+    // adapter chain doesn't need `as any` bridges.
+    workbook: XLSXType.WorkBook
   }>
   organizationId: string
   year: number
