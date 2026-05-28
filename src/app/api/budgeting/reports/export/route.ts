@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { executeBudgetReport, getEntityFields, type BudgetReportConfig } from "@/lib/budgeting/report-engine"
+import { executeBudgetReport, getEntityFields, type BudgetReportConfig, type ReportRow } from "@/lib/budgeting/report-engine"
 
-function escapeCSV(val: any): string {
+function escapeCSV(val: unknown): string {
   if (val == null) return ""
   const s = String(val)
   if (s.includes(",") || s.includes('"') || s.includes("\n")) {
@@ -11,11 +11,11 @@ function escapeCSV(val: any): string {
   return s
 }
 
-function flattenRow(row: any): Record<string, any> {
-  const flat: Record<string, any> = {}
+function flattenRow(row: ReportRow): Record<string, unknown> {
+  const flat: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(row)) {
     if (v && typeof v === "object" && !Array.isArray(v) && !(v instanceof Date)) {
-      for (const [sk, sv] of Object.entries(v as any)) {
+      for (const [sk, sv] of Object.entries(v as Record<string, unknown>)) {
         flat[`${k}.${sk}`] = sv
       }
     } else {
@@ -176,14 +176,22 @@ export async function POST(req: NextRequest) {
     sheet.autoFilter = { from: "A1", to: `${colLetters[headers.length - 1]}1` }
 
     const buffer = await workbook.xlsx.writeBuffer()
-    return new NextResponse(buffer as any, {
+    // ExcelJS returns Node's Buffer; copy into a fresh ArrayBuffer so
+    // NextResponse's BodyInit accepts it (Buffer's underlying memory may
+    // be SharedArrayBuffer on some node versions, which BodyInit rejects).
+    const u8 =
+      buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer as ArrayBufferLike)
+    const ab = new ArrayBuffer(u8.byteLength)
+    new Uint8Array(ab).set(u8)
+    return new NextResponse(ab, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${entityType}_report.xlsx"`,
       },
     })
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error("Report export error:", e)
-    return NextResponse.json({ error: e.message || "Export failed" }, { status: 500 })
+    const message = e instanceof Error ? e.message : "Export failed"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
