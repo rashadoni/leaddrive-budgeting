@@ -29,7 +29,54 @@ import {
   useBudgetReportExport,
   useReportEntities,
 } from "@/lib/budgeting/hooks"
-import type { BudgetReportConfig } from "@/lib/budgeting/report-engine"
+import type { BudgetReportConfig, ReportRow } from "@/lib/budgeting/report-engine"
+import type { BudgetPlan, SavedBudgetReport } from "@/lib/budgeting/types"
+
+/** Phase 8 D3 (2026-05-28) — local helpers for typing the dynamic
+ *  report rows. The Prisma engine returns `Record<string, unknown>`,
+ *  so anywhere we sum or stringify a field we must narrow first. */
+function asNum(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
+/** Walk a dotted path against an unknown row shape, returning `unknown`.
+ *  Used by the table renderer to traverse relation fields like
+ *  "account.code" without falling through to `any`. */
+function pluck(obj: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((o, k) => {
+    if (o && typeof o === "object" && k in (o as Record<string, unknown>)) {
+      return (o as Record<string, unknown>)[k]
+    }
+    return undefined
+  }, obj)
+}
+
+/** Coerce an arbitrary string state value into the literal
+ *  `BudgetReportConfig.periodGroupBy` union. Unknown / "none" → undefined. */
+function asPeriodGroupBy(
+  v: string,
+): BudgetReportConfig["periodGroupBy"] | undefined {
+  return v === "month" || v === "quarter" || v === "year" ? v : undefined
+}
+
+/** Narrow a SavedBudgetReport.sortOrder (typed as `string`) to the
+ *  local "asc" | "desc" union state. */
+function asSortOrder(v: string | null | undefined): "asc" | "desc" {
+  return v === "asc" ? "asc" : "desc"
+}
+
+/** Map a saved-report filter (`value: any`) into the table-state
+ *  FilterItem (`value: string`). Inputs render as strings; the
+ *  previewConfig builder re-parses numerics. */
+function toFilterItems(
+  filters: SavedBudgetReport["filters"] | undefined,
+): FilterItem[] {
+  return (filters ?? []).map((f) => ({
+    field: f.field,
+    op: f.op,
+    value: f.value == null ? "" : String(f.value),
+  }))
+}
 
 const CHART_TYPES = [
   { value: "table", icon: Table2, label: "Table" },
@@ -101,18 +148,18 @@ export default function ReportBuilderPage() {
   const [deepLinkLoaded, setDeepLinkLoaded] = useState(false)
   useEffect(() => {
     if (reportIdParam && savedReports.data && !deepLinkLoaded) {
-      const report = savedReports.data.find((r: any) => r.id === reportIdParam)
+      const report = savedReports.data.find((r) => r.id === reportIdParam)
       if (report) {
         setEntityType(report.entityType)
-        setPlanId((report as any).planId ?? "")
-        setSelectedColumns((report as any).columns?.map((c: any) => c.field) ?? [])
-        setFilters((report as any).filters ?? [])
-        setGroupBy((report as any).groupBy ?? "")
-        setPeriodGroupBy((report as any).periodGroupBy ?? "none")
-        setSortBy((report as any).sortBy ?? "")
-        setSortOrder((report as any).sortOrder ?? "desc")
-        setChartType((report as any).chartType ?? "table")
-        setComputedFields((report as any).computedFields ?? [])
+        setPlanId(report.planId ?? "")
+        setSelectedColumns(report.columns?.map((c) => c.field) ?? [])
+        setFilters(toFilterItems(report.filters))
+        setGroupBy(report.groupBy ?? "")
+        setPeriodGroupBy(report.periodGroupBy ?? "none")
+        setSortBy(report.sortBy ?? "")
+        setSortOrder(asSortOrder(report.sortOrder))
+        setChartType(report.chartType ?? "table")
+        setComputedFields(report.computedFields ?? [])
         setLoadedReportName(report.name)
         setDeepLinkLoaded(true)
       }
@@ -138,7 +185,7 @@ export default function ReportBuilderPage() {
         value: isNaN(Number(f.value)) ? f.value : Number(f.value),
       })),
       groupBy: groupBy || undefined,
-      periodGroupBy: periodGroupBy !== "none" ? periodGroupBy as any : undefined,
+      periodGroupBy: asPeriodGroupBy(periodGroupBy),
       sortBy: sortBy || undefined,
       sortOrder,
       computedFields: computedFields.length > 0 ? computedFields : undefined,
@@ -151,7 +198,7 @@ export default function ReportBuilderPage() {
   // Narrowing helpers — declared here so every useMemo below can read them
   // without triggering a TDZ error. `preview.data` is optionally chained in
   // case the hook hasn't resolved yet.
-  const previewRows = preview.data?.data as any[] | undefined
+  const previewRows = preview.data?.data as ReportRow[] | undefined
   const previewTotal = preview.data?.total as number | undefined
   const hasRows = Boolean(previewRows && previewRows.length > 0)
 
@@ -193,7 +240,7 @@ export default function ReportBuilderPage() {
       columns: previewConfig.columns,
       filters: previewConfig.filters,
       groupBy: previewConfig.groupBy ?? null,
-      periodGroupBy: (previewConfig.periodGroupBy as any) ?? null,
+      periodGroupBy: previewConfig.periodGroupBy ?? null,
       sortBy: previewConfig.sortBy ?? null,
       sortOrder: previewConfig.sortOrder ?? "desc",
       chartType,
@@ -207,15 +254,15 @@ export default function ReportBuilderPage() {
     setReportName("")
   }, [reportName, previewConfig, chartType, createReport])
 
-  const handleLoad = useCallback((report: any) => {
+  const handleLoad = useCallback((report: SavedBudgetReport) => {
     setEntityType(report.entityType)
     setPlanId(report.planId ?? "")
-    setSelectedColumns(report.columns?.map((c: any) => c.field) ?? [])
-    setFilters(report.filters ?? [])
+    setSelectedColumns(report.columns?.map((c) => c.field) ?? [])
+    setFilters(toFilterItems(report.filters))
     setGroupBy(report.groupBy ?? "")
     setPeriodGroupBy(report.periodGroupBy ?? "none")
     setSortBy(report.sortBy ?? "")
-    setSortOrder(report.sortOrder ?? "desc")
+    setSortOrder(asSortOrder(report.sortOrder))
     setChartType(report.chartType ?? "table")
     setComputedFields(report.computedFields ?? [])
     setLoadedReportName(report.name)
@@ -235,9 +282,9 @@ export default function ReportBuilderPage() {
     const rows = (previewRows ?? [])
     let totalPlanned = 0, totalActual = 0, totalAmount = 0
     for (const r of rows) {
-      totalPlanned += r.plannedAmount ?? r.amount ?? r.forecastAmount ?? r.totalCost ?? 0
-      totalActual += r.actualAmount ?? 0
-      totalAmount += r.amount ?? r.forecastAmount ?? r.totalCost ?? r.plannedAmount ?? 0
+      totalPlanned += asNum(r.plannedAmount ?? r.amount ?? r.forecastAmount ?? r.totalCost)
+      totalActual += asNum(r.actualAmount)
+      totalAmount += asNum(r.amount ?? r.forecastAmount ?? r.totalCost ?? r.plannedAmount)
     }
     const variance = totalPlanned - totalActual
     const executionPct = totalPlanned > 0 ? (totalActual / totalPlanned) * 100 : 0
@@ -319,7 +366,7 @@ export default function ReportBuilderPage() {
             onChange={e => setPlanId(e.target.value)}
           >
             <option value="">{t("allPlans")}</option>
-            {plans.data?.map((p: any) => (
+            {plans.data?.map((p: BudgetPlan) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
@@ -707,9 +754,9 @@ export default function ReportBuilderPage() {
                 ) : (
                   <RPieChart>
                     <Pie
-                      data={(previewRows ?? []).slice(0, 10).map((r: any, i: number) => ({
-                        name: r[labelColumn] || `Item ${i + 1}`,
-                        value: r[numericColumns[0]] ?? 0,
+                      data={(previewRows ?? []).slice(0, 10).map((r, i) => ({
+                        name: String(r[labelColumn] ?? `Item ${i + 1}`),
+                        value: asNum(r[numericColumns[0]]),
                       }))}
                       dataKey="value"
                       nameKey="name"
@@ -717,9 +764,10 @@ export default function ReportBuilderPage() {
                       cy="50%"
                       outerRadius={120}
                       animationDuration={ANIMATION.duration}
-                      label={({ name, percent }: any) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }: { name?: string; percent?: number }) =>
+                        `${name ?? ""}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                     >
-                      {(previewRows ?? []).slice(0, 10).map((_: any, i: number) => (
+                      {(previewRows ?? []).slice(0, 10).map((_, i) => (
                         <Cell key={i} fill={BUDGET_COLORS.pie[i % BUDGET_COLORS.pie.length]} />
                       ))}
                     </Pie>
@@ -756,24 +804,27 @@ export default function ReportBuilderPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(previewRows ?? []).map((row: any, i: number) => (
+                    {(previewRows ?? []).map((row, i) => (
                       <tr key={i} className="border-b hover:bg-muted/30">
                         {selectedColumns.map(col => {
                           const fd = currentEntity?.fields.find(f => f.name === col)
-                          const val = col.includes(".") ? col.split(".").reduce((o: any, k: string) => o?.[k], row) : row[col]
+                          const val = col.includes(".") ? pluck(row, col) : row[col]
                           return (
                             <td key={col} className={`px-3 py-1.5 whitespace-nowrap ${fd?.type === "number" ? "text-right font-mono" : ""}`}>
                               {fd?.type === "number" && typeof val === "number" ? fmtManat(val) : String(val ?? "")}
                             </td>
                           )
                         })}
-                        {computedFields.map(cf => (
-                          <td key={cf} className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
-                            {cf === "execution_pct" || cf === "margin_pct"
-                              ? `${(row[cf] ?? 0).toFixed(1)}%`
-                              : typeof row[cf] === "number" ? fmtManat(row[cf]) : "—"}
-                          </td>
-                        ))}
+                        {computedFields.map(cf => {
+                          const cell = row[cf]
+                          return (
+                            <td key={cf} className="px-3 py-1.5 text-right font-mono whitespace-nowrap">
+                              {cf === "execution_pct" || cf === "margin_pct"
+                                ? `${asNum(cell).toFixed(1)}%`
+                                : typeof cell === "number" ? fmtManat(cell) : "—"}
+                            </td>
+                          )
+                        })}
                       </tr>
                     ))}
                   </tbody>
@@ -830,7 +881,7 @@ export default function ReportBuilderPage() {
             {savedReports.data?.length === 0 && (
               <p className="text-sm text-muted-foreground py-4 text-center">{t("noSavedReports")}</p>
             )}
-            {savedReports.data?.map((r: any) => (
+            {savedReports.data?.map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-md border p-3 hover:bg-accent">
                 <button className="text-left flex-1" onClick={() => handleLoad(r)}>
                   <p className="text-sm font-medium">{r.name}</p>
