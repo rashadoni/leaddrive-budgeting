@@ -11,6 +11,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyImpactForecasts } from "@/lib/server/get-company-impact-forecasts"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:terminal:impact-forecasts")
 
 export const maxDuration = 5
 
@@ -52,7 +56,9 @@ export async function GET(
     )
     return NextResponse.json({ forecasts: rows })
   } catch (err) {
-    console.error("[impact-forecasts GET] failed:", err)
+    log.error("GET failed", {
+      err: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json(
       { error: "Failed to fetch impact forecasts" },
       { status: 500 },

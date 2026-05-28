@@ -7,6 +7,10 @@ import { loadAndCompute } from "@/lib/cost-model/db"
 import { logBudgetPlanCreate } from "@/lib/audit/import-helpers"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_plans reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:budgeting:plans")
 
 // Phase 8 D3(h) (2026-05-28) — typed Prisma row shapes for the clone path.
 // Replaces the 10 `(sl as any)` / `(sl as any).account` / `(b: any)` /
@@ -364,7 +368,10 @@ export async function POST(req: NextRequest) {
       })
     }
   } catch (e) {
-    console.error("Auto-populate plan error:", e)
+    log.error("Auto-populate plan error", {
+      planId: plan.id,
+      err: e instanceof Error ? e.message : String(e),
+    })
   }
 
   // Phase 7.F (Turn 25) — emit audit. Non-blocking; logger failure

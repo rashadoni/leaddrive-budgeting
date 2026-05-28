@@ -16,6 +16,10 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { checkOnboardingCompleteness } from "@/lib/onboarding/completeness-checker";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:companies:onboarding");
 
 export async function GET(
   req: NextRequest,
@@ -49,7 +53,10 @@ export async function GET(
     const report = await checkOnboardingCompleteness(prisma, id, period);
     return NextResponse.json(report);
   } catch (error) {
-    console.error("[onboarding-check]", error);
+    log.error("onboarding-check failed", {
+      companyId: id,
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json(
       { error: "Failed to compute onboarding completeness" },
       { status: 500 },

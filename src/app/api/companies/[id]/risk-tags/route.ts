@@ -23,6 +23,10 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:companies:risk-tags")
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 
@@ -108,7 +112,9 @@ export async function PATCH(
       userAgent: req.headers.get("user-agent") ?? undefined,
     }),
   }).catch((err) => {
-    console.error("[risk-tags] audit failed (non-blocking):", err)
+    log.error("audit failed (non-blocking)", {
+      err: err instanceof Error ? err.message : String(err),
+    })
   })
 
   return NextResponse.json({ riskTags: body.riskTags })

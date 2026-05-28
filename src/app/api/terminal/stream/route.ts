@@ -1,6 +1,11 @@
 // Next.js Route Handler for Server-Sent Events (SSE)
-// This endpoint allows the Bloomberg-style terminal to receive real-time push updates 
+// This endpoint allows the Bloomberg-style terminal to receive real-time push updates
 // without polling the database every 30 seconds.
+
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('api:terminal:stream');
 
 export const dynamic = 'force-dynamic';
 
@@ -12,12 +17,15 @@ export async function GET(request: Request) {
   const writer = stream.writable.getWriter();
 
   // Helper function to push messages to the client
-  const sendEvent = async (event: string, data: any) => {
+  const sendEvent = async (event: string, data: unknown) => {
     try {
       const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
       await writer.write(encoder.encode(message));
     } catch (e) {
-      console.error('Error writing to SSE stream:', e);
+      log.error('Error writing to SSE stream', {
+        event,
+        err: e instanceof Error ? e.message : String(e),
+      });
     }
   };
 

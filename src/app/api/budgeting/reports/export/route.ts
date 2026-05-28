@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { executeBudgetReport, getEntityFields, type BudgetReportConfig, type ReportRow } from "@/lib/budgeting/report-engine"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:budgeting:reports:export")
 
 function escapeCSV(val: unknown): string {
   if (val == null) return ""
@@ -190,7 +194,11 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (e: unknown) {
-    console.error("Report export error:", e)
+    log.error("Report export error", {
+      entityType,
+      format,
+      err: e instanceof Error ? e.message : String(e),
+    })
     const message = e instanceof Error ? e.message : "Export failed"
     return NextResponse.json({ error: message }, { status: 500 })
   }

@@ -28,6 +28,10 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { hasAnthropicKey } from "@/lib/ai/client";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:intel:refresh");
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
 import { runIntelCrawl } from "@/lib/intel/crawler";
 
@@ -132,7 +136,9 @@ export async function POST(request: NextRequest) {
       userAgent: request.headers.get("user-agent") ?? undefined,
     }),
   }).catch((err) => {
-    console.error("[intel/refresh] audit emission failed (non-blocking):", err);
+    log.error("audit emission failed (non-blocking)", {
+      err: err instanceof Error ? err.message : String(err),
+    });
   });
 
   return NextResponse.json(

@@ -6,6 +6,10 @@ import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeysForMonths, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:budgeting:rolling")
 
 // Phase 8 D3(f) (2026-05-28) — typed shapes for the Prisma queries
 // in this route. Replaces the 15 `(sl as any)` / `(line as any).account` /
@@ -215,7 +219,10 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     // Cost model may not exist for this org — plan still created, just without forecasts
-    console.error("Rolling auto-populate forecast error:", e)
+    log.error("Rolling auto-populate forecast error", {
+      planId: plan.id,
+      err: e instanceof Error ? e.message : String(e),
+    })
   }
 
   return NextResponse.json({ success: true, data: plan }, { status: 201 })

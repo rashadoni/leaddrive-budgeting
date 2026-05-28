@@ -3,6 +3,10 @@ import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:budgeting:snapshot-actuals")
 import { currentBakuYearMonth } from "@/lib/risk/periods"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
@@ -154,7 +158,9 @@ export async function POST(req: NextRequest) {
       data: { month: targetMonth, created, skipped, plans: plans.length },
     })
   } catch (error) {
-    console.error("Snapshot actuals error:", error)
+    log.error("Snapshot actuals error", {
+      err: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: "Failed to create snapshot actuals" }, { status: 500 })
   }
 }

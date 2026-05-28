@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
 import { executeBudgetReport, getEntityConfigs, getEntityFields, type BudgetReportConfig } from "@/lib/budgeting/report-engine"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:budgeting:reports:preview")
 
 export async function POST(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -43,9 +47,13 @@ export async function POST(req: NextRequest) {
   try {
     const result = await executeBudgetReport(orgId, config)
     return NextResponse.json({ success: true, ...result })
-  } catch (e: any) {
-    console.error("Report preview error:", e)
-    return NextResponse.json({ error: e.message || "Report execution failed" }, { status: 500 })
+  } catch (e: unknown) {
+    log.error("Report preview error", {
+      entityType: config.entityType,
+      err: e instanceof Error ? e.message : String(e),
+    })
+    const message = e instanceof Error ? e.message : "Report execution failed"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
