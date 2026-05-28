@@ -1758,9 +1758,22 @@ function HeatMapCellTd({
                   non-`computed` variants — adding it on every cell
                   would defeat the visual signal. */}
               {cell.valueSource && cell.valueSource !== 'computed' && (
+                // Phase 8 A2 (2026-05-28) — provenance pill, not a faint
+                // italic line. Color-codes the source ladder so a hover
+                // tells the analyst whether this red KPI is a measured
+                // disclosure (emerald) or a modelled estimate (rose) at a
+                // glance. Mirrors the IndicatorDetail ProvenanceBadge so
+                // the visual contract is identical across surfaces.
                 <div
-                  className="text-[10px] mt-1 italic"
-                  style={{ color: '#94A3B8' }}
+                  className={`mt-1 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${
+                    cell.valueSource === 'disclosed'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                      : cell.valueSource === 'macro'
+                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                        : cell.valueSource === 'modeled_industry'
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                          : 'border-rose-500/40 bg-rose-500/10 text-rose-200'
+                  }`}
                   data-testid="heatmap-provenance-line"
                   data-source={cell.valueSource}
                 >
