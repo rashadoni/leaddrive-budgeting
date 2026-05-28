@@ -18,6 +18,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:indicator-disclosures")
 import {
   ESG_DISCLOSABLE_INDICATOR_CODES,
   getEsgDisclosureRule,
@@ -267,7 +271,9 @@ export async function POST(req: NextRequest) {
     },
     context: { route: "/api/indicator-disclosures" },
   }).catch((err) => {
-    console.error("[indicator-disclosures] audit log failed:", err)
+    log.error("audit log failed", {
+      err: err instanceof Error ? err.message : String(err),
+    })
   })
 
   // Fire-and-forget targeted recompute so the matrix surface updates
@@ -283,10 +289,12 @@ export async function POST(req: NextRequest) {
       {},
       { codeFilter: [row.indicatorCode] },
     ).catch((err) => {
-      console.error(
-        "[indicator-disclosures] post-save recompute failed:",
-        err,
-      )
+      log.error("post-save recompute failed", {
+        companyId: row.companyId,
+        year,
+        indicatorCode: row.indicatorCode,
+        err: err instanceof Error ? err.message : String(err),
+      })
     })
   }
 

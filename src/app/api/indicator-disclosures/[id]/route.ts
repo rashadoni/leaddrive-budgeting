@@ -12,6 +12,10 @@ import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:indicator-disclosures:id")
 
 export async function DELETE(
   req: NextRequest,
@@ -68,7 +72,10 @@ export async function DELETE(
     },
     context: { route: `/api/indicator-disclosures/${id}` },
   }).catch((err) => {
-    console.error("[indicator-disclosures] audit log failed:", err)
+    log.error("audit log failed", {
+      disclosureId: id,
+      err: err instanceof Error ? err.message : String(err),
+    })
   })
 
   // Targeted recompute so the IndicatorValue falls back to the modeled
@@ -82,10 +89,13 @@ export async function DELETE(
       {},
       { codeFilter: [existing.indicatorCode] },
     ).catch((err) => {
-      console.error(
-        "[indicator-disclosures] post-delete recompute failed:",
-        err,
-      )
+      log.error("post-delete recompute failed", {
+        disclosureId: id,
+        companyId: existing.companyId,
+        year,
+        indicatorCode: existing.indicatorCode,
+        err: err instanceof Error ? err.message : String(err),
+      })
     })
   }
 

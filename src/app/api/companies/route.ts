@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('api:companies');
 // Phase 5.2 Stage 2 Tier 4 (2026-05-21) — RLS wrap for companies reads/writes.
 import { withOrgScope } from '@/lib/db/with-org-scope';
 
@@ -58,7 +62,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error fetching companies:', error);
+    log.error('Error fetching companies', {
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: 'Failed to fetch companies' }, { status: 500 });
   }
 }
@@ -144,7 +150,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result.company, { status: 201 });
   } catch (error) {
-    console.error('Error creating company:', error);
+    log.error('Error creating company', {
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: 'Failed to create company' }, { status: 500 });
   }
 }
