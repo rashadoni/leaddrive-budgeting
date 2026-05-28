@@ -34,10 +34,22 @@ vi.mock("@/lib/budgeting/approval-notifications", () => ({
   notifyApprovalReviewed: notifyReviewedMock,
 }))
 
+// Phase 8 D5(c) — withOrgScope wraps the PATCH body in a real
+// Postgres tx. Mock to just invoke the callback with the prismaMock
+// so the test still exercises the route's mutation logic without a
+// live DB.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: vi.fn(async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prismaMock),
+  ),
+}))
+
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { PATCH } from "./route"
 
-const ORG_ID = "org_demo"
+// Phase 8 D5(c) — withOrgScope length-guard requires a cuid-shaped
+// 20-32 char string. Bumped from the legacy «org_demo» fixture.
+const ORG_ID = "cmapprovalreqtestorgid000001"
 
 function paramsFor(id: string) {
   return { params: Promise.resolve({ id }) }

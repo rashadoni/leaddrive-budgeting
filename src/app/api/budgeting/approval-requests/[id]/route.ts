@@ -31,6 +31,7 @@ import { requireAuth, hasRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import {
   parseLockedPeriods,
   removePeriodLock,
@@ -55,14 +56,14 @@ const patchBodySchema = z
   })
   .strict()
 
-// Phase 5.2 Stage 2 RLS wrap deferred — tracked as ROADMAP Phase 8
-// §D5(c). PATCH handler spans approval_requests read + Organization
-// update + audit log emission + notification trigger across multiple
-// paths. Wrapping in withOrgScope requires restructuring 150+ LOC;
-// deferred to dedicated session when approval_requests RLS migration
-// applies. Current handler already filters by
-// `organizationId: session.orgId` on the initial read so cross-tenant
-// access is gated at the application layer.
+// Phase 8 D5(c) (2026-05-28) — PATCH handler RLS wrap shipped. The
+// read + validation phase runs outside `withOrgScope` (it can short-
+// circuit 404 / 400 / 403 without opening a Postgres tx); the
+// mutation phase (Organization.update + ApprovalRequest.update +
+// logAuditEvent) runs inside one withOrgScope so every write picks
+// up `app.organization_id` at the DB layer. notifyApprovalReviewed
+// fires AFTER the tx commits — email is best-effort and a Redis /
+// SMTP blip shouldn't roll back the state change.
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Auth: any authenticated user, but action-specific role check below.
   const session = await requireAuth(req)
@@ -134,73 +135,95 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const now = new Date()
   const newStatus = nextStatus(action)
 
-  // Apply-on-approve logic. v1 only handles `period_unlock`; other types
-  // are approved but NOT auto-applied (mutation route handles via
-  // `approvalRequestId` query param — Turn LXXII).
-  let appliedAt: Date | null = null
-  let auditStale = false
-  if (action === "approve" && request.requestType === "period_unlock") {
-    const change = request.proposedChange as unknown as PeriodUnlockChange
-    const org = await prisma.organization.findUnique({
-      where: { id: session.orgId },
-      select: { id: true, lockedPeriods: true },
-    })
-    if (!org) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-    const currentLocks = parseLockedPeriods(org.lockedPeriods)
-    const removedLock = findLockForPeriod(currentLocks, change.period)
-    const nextLocks = removePeriodLock(currentLocks, change.period)
-    if (nextLocks.length !== currentLocks.length) {
-      await prisma.organization.update({
-        where: { id: org.id },
-        data: { lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue },
+  // Phase 8 D5(c) — mutations inside withOrgScope so every write
+  // (Organization.lockedPeriods update, ApprovalRequest.update, audit
+  // insert) picks up `app.organization_id`. Validation that can return
+  // 404 stays inside the tx because we still need the org-aware
+  // findUnique for the same orgId session var. Email notification
+  // fires AFTER tx commits.
+  type TxResult = {
+    updated: typeof request
+    auditStale: boolean
+    orgNotFound: boolean
+  }
+  const txResult = await withOrgScope<TxResult>(session.orgId, async (tx) => {
+    let appliedAt: Date | null = null
+    let auditStale = false
+    let orgNotFound = false
+
+    if (action === "approve" && request.requestType === "period_unlock") {
+      const change = request.proposedChange as unknown as PeriodUnlockChange
+      const org = await tx.organization.findUnique({
+        where: { id: session.orgId },
+        select: { id: true, lockedPeriods: true },
       })
-      appliedAt = now
-      // Mirror the audit shape of /api/budgeting/period-locks DELETE so
-      // CFO compliance gets a consistent trail regardless of unlock origin.
-      if (removedLock) {
-        const auditResult = await logAuditEvent(prisma, {
-          organizationId: session.orgId,
-          actorUserId: session.userId,
-          event: {
-            action: "period_lock_remove",
-            entityType: "Organization",
-            entityId: org.id,
-            metadata: {
-              period: change.period,
-              removedLock: {
-                lockedAt: removedLock.lockedAt,
-                lockedBy: removedLock.lockedBy,
-                reason: removedLock.reason,
+      if (!org) {
+        orgNotFound = true
+        return { updated: request, auditStale, orgNotFound }
+      }
+      const currentLocks = parseLockedPeriods(org.lockedPeriods)
+      const removedLock = findLockForPeriod(currentLocks, change.period)
+      const nextLocks = removePeriodLock(currentLocks, change.period)
+      if (nextLocks.length !== currentLocks.length) {
+        await tx.organization.update({
+          where: { id: org.id },
+          data: {
+            lockedPeriods: nextLocks as unknown as Prisma.InputJsonValue,
+          },
+        })
+        appliedAt = now
+        // Mirror the audit shape of /api/budgeting/period-locks DELETE so
+        // CFO compliance gets a consistent trail regardless of unlock origin.
+        if (removedLock) {
+          const auditResult = await logAuditEvent(tx, {
+            organizationId: session.orgId,
+            actorUserId: session.userId,
+            event: {
+              action: "period_lock_remove",
+              entityType: "Organization",
+              entityId: org.id,
+              metadata: {
+                period: change.period,
+                removedLock: {
+                  lockedAt: removedLock.lockedAt,
+                  lockedBy: removedLock.lockedBy,
+                  reason: removedLock.reason,
+                },
               },
             },
-          },
-          context: buildAuditContext({
-            route: "/api/budgeting/approval-requests/[id] (approve)",
-            userAgent: req.headers.get("user-agent") ?? undefined,
-          }),
-        })
-        if (!auditResult.ok) auditStale = true
+            context: buildAuditContext({
+              route: "/api/budgeting/approval-requests/[id] (approve)",
+              userAgent: req.headers.get("user-agent") ?? undefined,
+            }),
+          })
+          if (!auditResult.ok) auditStale = true
+        }
+      } else {
+        // Lock no longer present (raced with /api/budgeting/period-locks
+        // DELETE, or admin manually removed). Mark approved + applied=now
+        // anyway — the requester's intent is satisfied.
+        appliedAt = now
       }
-    } else {
-      // Lock no longer present (raced with /api/budgeting/period-locks
-      // DELETE, or admin manually removed). Mark approved + applied=now
-      // anyway — the requester's intent is satisfied.
-      appliedAt = now
     }
-  }
 
-  const updated = await prisma.approvalRequest.update({
-    where: { id },
-    data: {
-      status: newStatus,
-      reviewedBy: action === "cancel" ? null : session.userId,
-      reviewedAt: action === "cancel" ? null : now,
-      reviewComment: parsed.comment ?? null,
-      appliedAt,
-    },
+    const updated = await tx.approvalRequest.update({
+      where: { id },
+      data: {
+        status: newStatus,
+        reviewedBy: action === "cancel" ? null : session.userId,
+        reviewedAt: action === "cancel" ? null : now,
+        reviewComment: parsed.comment ?? null,
+        appliedAt,
+      },
+    })
+    return { updated, auditStale, orgNotFound }
   })
+
+  if (txResult.orgNotFound) {
+    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+  }
+  const updated = txResult.updated
+  const auditStale = txResult.auditStale
 
   // Phase 7.G Turn LXXIII (Phase 4.3 sub-3 — email notifications).
   // Approve / reject → notify the original requester. Cancel intentionally
