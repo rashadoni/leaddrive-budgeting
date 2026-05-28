@@ -2297,6 +2297,17 @@
       "couldNotLoadCodes": "Could not load company codes — chips show ids: {error}"
     },
     "boardDeck": {
+      "exports": {
+        "printLabel": "Print to PDF",
+        "printAriaLabel": "Print board snapshot to PDF",
+        "pdfLabel": "Export PDF",
+        "pdfRendering": "Rendering…",
+        "pdfAriaLabel": "Export board snapshot to PDF",
+        "pptxLabel": "Export PPTX",
+        "pptxExporting": "Exporting…",
+        "pptxAriaLabel": "Export board snapshot to PPTX",
+        "errorFallback": "Export failed"
+      },
       "hero": {
         "ariaLabel": "Board deck hero",
         "eyebrowSuffix": "Review",

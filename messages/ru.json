@@ -2297,6 +2297,17 @@
       "couldNotLoadCodes": "Не удалось загрузить коды компаний — чипы показывают id: {error}"
     },
     "boardDeck": {
+      "exports": {
+        "printLabel": "Печать в PDF",
+        "printAriaLabel": "Распечатать board snapshot в PDF",
+        "pdfLabel": "Экспорт PDF",
+        "pdfRendering": "Рендер…",
+        "pdfAriaLabel": "Экспортировать board snapshot в PDF",
+        "pptxLabel": "Экспорт PPTX",
+        "pptxExporting": "Экспортирую…",
+        "pptxAriaLabel": "Экспортировать board snapshot в PPTX",
+        "errorFallback": "Экспорт не удался"
+      },
       "hero": {
         "ariaLabel": "Заглавный блок отчёта",
         "eyebrowSuffix": "обзор",

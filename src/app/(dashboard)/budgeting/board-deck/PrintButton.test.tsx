@@ -21,10 +21,17 @@ afterEach(() => {
 });
 
 describe("PrintButton (Phase C3 v1)", () => {
+  // Phase 8 D7 (2026-05-28) — assertions updated for i18n. The global
+  // next-intl mock in vitest.setup.ts returns fallback labels derived
+  // from the key (camelCase → SPACED UPPERCASE), so `t("printLabel")`
+  // renders as "PRINT LABEL". Tests target the button via aria-label
+  // (mapped from `t("printAriaLabel")` → "PRINT ARIA LABEL").
+  const PRINT_ARIA = "PRINT ARIA LABEL";
+
   it("renders aria-label + visible label", () => {
     render(<PrintButton />);
-    const btn = screen.getByLabelText("Print board snapshot to PDF");
-    expect(btn.textContent).toContain("Print to PDF");
+    const btn = screen.getByLabelText(PRINT_ARIA);
+    expect(btn.textContent).toMatch(/PRINT/);
   });
 
   it("clicking calls window.print()", () => {
@@ -38,13 +45,13 @@ describe("PrintButton (Phase C3 v1)", () => {
       configurable: true,
     });
     render(<PrintButton />);
-    fireEvent.click(screen.getByLabelText("Print board snapshot to PDF"));
+    fireEvent.click(screen.getByLabelText(PRINT_ARIA));
     expect(printFn).toHaveBeenCalledOnce();
   });
 
   it("uses print:hidden so the button does NOT print itself", () => {
     render(<PrintButton />);
-    const btn = screen.getByLabelText("Print board snapshot to PDF");
+    const btn = screen.getByLabelText(PRINT_ARIA);
     expect(btn.className).toContain("print:hidden");
   });
 });

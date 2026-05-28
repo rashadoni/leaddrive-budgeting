@@ -57,8 +57,8 @@ beforeEach(() => {
 describe("ExportPptxButton (Phase C3 v2)", () => {
   it("renders aria-label + visible label", () => {
     render(<ExportPptxButton period="2025" />);
-    const btn = screen.getByLabelText("Export board snapshot to PPTX");
-    expect(btn.textContent).toContain("Export PPTX");
+    const btn = screen.getByLabelText("PPTX ARIA LABEL");
+    expect(btn.textContent).toContain("PPTX LABEL");
   });
 
   it("click → fetch + synthetic <a download> click + URL revoke", async () => {
@@ -96,7 +96,7 @@ describe("ExportPptxButton (Phase C3 v2)", () => {
     });
 
     render(<ExportPptxButton period="2025" />);
-    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+    fireEvent.click(screen.getByLabelText("PPTX ARIA LABEL"));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -123,7 +123,7 @@ describe("ExportPptxButton (Phase C3 v2)", () => {
     });
 
     render(<ExportPptxButton period="2025" />);
-    const btn = screen.getByLabelText("Export board snapshot to PPTX");
+    const btn = screen.getByLabelText("PPTX ARIA LABEL");
     fireEvent.click(btn);
 
     await waitFor(() => {
@@ -137,7 +137,7 @@ describe("ExportPptxButton (Phase C3 v2)", () => {
   it("uses print:hidden so the button does NOT print itself", () => {
     render(<ExportPptxButton period="2025" />);
     const wrapper = screen
-      .getByLabelText("Export board snapshot to PPTX")
+      .getByLabelText("PPTX ARIA LABEL")
       .closest("div");
     expect(wrapper?.className).toContain("print:hidden");
   });
@@ -186,7 +186,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     silenceAnchorClick();
 
     render(<ExportPptxButton period="2025" />);
-    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+    fireEvent.click(screen.getByLabelText("PPTX ARIA LABEL"));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = fetchSpy.mock.calls[0][0] as string;
@@ -200,7 +200,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     silenceAnchorClick();
 
     render(<ExportPptxButton period="2025" />);
-    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+    fireEvent.click(screen.getByLabelText("PPTX ARIA LABEL"));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = fetchSpy.mock.calls[0][0] as string;
@@ -213,7 +213,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     silenceAnchorClick();
 
     render(<ExportPptxButton period="2025" />);
-    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+    fireEvent.click(screen.getByLabelText("PPTX ARIA LABEL"));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = fetchSpy.mock.calls[0][0] as string;
@@ -226,7 +226,7 @@ describe("ExportPptxButton — Turn LIV URL passthrough", () => {
     silenceAnchorClick();
 
     render(<ExportPptxButton period="2025" />);
-    fireEvent.click(screen.getByLabelText("Export board snapshot to PPTX"));
+    fireEvent.click(screen.getByLabelText("PPTX ARIA LABEL"));
 
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = fetchSpy.mock.calls[0][0] as string;

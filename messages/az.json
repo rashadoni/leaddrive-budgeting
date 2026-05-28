@@ -2297,6 +2297,17 @@
       "couldNotLoadCodes": "Şirkət kodları yüklənmədi — çiplər id-ləri göstərir: {error}"
     },
     "boardDeck": {
+      "exports": {
+        "printLabel": "PDF-ə çap et",
+        "printAriaLabel": "Board snapshot-u PDF-ə çap et",
+        "pdfLabel": "PDF eksport",
+        "pdfRendering": "Render…",
+        "pdfAriaLabel": "Board snapshot-u PDF-ə eksport et",
+        "pptxLabel": "PPTX eksport",
+        "pptxExporting": "Eksport olunur…",
+        "pptxAriaLabel": "Board snapshot-u PPTX-ə eksport et",
+        "errorFallback": "Eksport baş tutmadı"
+      },
       "hero": {
         "ariaLabel": "Board deck baş bölmə",
         "eyebrowSuffix": "icmalı",

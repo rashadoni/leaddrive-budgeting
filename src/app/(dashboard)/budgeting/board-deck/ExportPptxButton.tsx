@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { FileDown, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Phase C3 v2 — PPTX export trigger for the Board Deck Generator.
@@ -23,6 +24,7 @@ import { FileDown, Loader2 } from "lucide-react";
  * default — broken UX after Turn LIII shipped the picker.
  */
 export function ExportPptxButton({ period }: { period: string }) {
+  const t = useTranslations("boardDeck.exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();
@@ -64,7 +66,7 @@ export function ExportPptxButton({ period }: { period: string }) {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(objectUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
+      setError(e instanceof Error ? e.message : t("errorFallback"));
     } finally {
       setBusy(false);
     }
@@ -77,14 +79,14 @@ export function ExportPptxButton({ period }: { period: string }) {
         onClick={handleClick}
         disabled={busy}
         className="inline-flex items-center gap-2 rounded border border-[#00D4AA] bg-[#00D4AA]/10 text-[#00D4AA] px-3 py-1.5 text-sm hover:bg-[#00D4AA]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Export board snapshot to PPTX"
+        aria-label={t("pptxAriaLabel")}
       >
         {busy ? (
           <Loader2 size={14} aria-hidden="true" className="animate-spin" />
         ) : (
           <FileDown size={14} aria-hidden="true" />
         )}
-        {busy ? "Exporting…" : "Export PPTX"}
+        {busy ? t("pptxExporting") : t("pptxLabel")}
       </button>
       {error && (
         <span

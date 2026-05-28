@@ -1,6 +1,7 @@
 "use client";
 
 import { Printer } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 /**
  * Phase C3 v1 — print trigger for the Board Deck Generator.
@@ -18,15 +19,16 @@ import { Printer } from "lucide-react";
  *    `/api/budgeting/board-deck/export-pptx`).
  */
 export function PrintButton() {
+  const t = useTranslations("boardDeck.exports");
   return (
     <button
       type="button"
       onClick={() => window.print()}
       className="inline-flex items-center gap-2 rounded border border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800] px-3 py-1.5 text-sm hover:bg-[#FFB800]/20 print:hidden"
-      aria-label="Print board snapshot to PDF"
+      aria-label={t("printAriaLabel")}
     >
       <Printer size={14} aria-hidden="true" />
-      Print to PDF
+      {t("printLabel")}
     </button>
   );
 }

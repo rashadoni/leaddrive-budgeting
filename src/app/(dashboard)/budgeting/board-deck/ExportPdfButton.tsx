@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 // Recovery 2026-05-16: brave-lehmann's `SummaryLanguage` (from the
 // abandoned `generate-summary` module) was the same shape as main's
 // canonical `Language` exported by `lib/ai/prompts`. Re-aliased here
@@ -34,6 +35,7 @@ export function ExportPdfButton({
   withSummary?: boolean;
   language?: SummaryLanguage;
 }) {
+  const t = useTranslations("boardDeck.exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +70,7 @@ export function ExportPdfButton({
       document.body.removeChild(anchor);
       URL.revokeObjectURL(objectUrl);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Export failed");
+      setError(e instanceof Error ? e.message : t("errorFallback"));
     } finally {
       setBusy(false);
     }
@@ -81,14 +83,14 @@ export function ExportPdfButton({
         onClick={handleClick}
         disabled={busy}
         className="inline-flex items-center gap-2 rounded border border-[#00B4D8] bg-[#00B4D8]/10 text-[#00B4D8] px-3 py-1.5 text-sm hover:bg-[#00B4D8]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Export board snapshot to PDF"
+        aria-label={t("pdfAriaLabel")}
       >
         {busy ? (
           <Loader2 size={14} aria-hidden="true" className="animate-spin" />
         ) : (
           <FileText size={14} aria-hidden="true" />
         )}
-        {busy ? "Rendering…" : "Export PDF"}
+        {busy ? t("pdfRendering") : t("pdfLabel")}
       </button>
       {error && (
         <span role="alert" className="text-xs text-[#FF4757]">

@@ -54,12 +54,17 @@ afterEach(() => {
 });
 
 describe("ExportPdfButton", () => {
+  // Phase 8 D7 — i18n keys via global next-intl mock render as
+  // SPACED UPPERCASE fallback labels ("pdfLabel" → "PDF LABEL",
+  // "pdfAriaLabel" → "PDF ARIA LABEL"). Tests target via the
+  // fallback to stay loose against exact copy edits.
+
   it("renders the button with default label", () => {
     render(<ExportPdfButton period="2025" />);
     expect(
-      screen.getByRole("button", { name: /Export board snapshot to PDF/i }),
+      screen.getByRole("button", { name: /PDF ARIA LABEL/i }),
     ).toBeTruthy();
-    expect(screen.getByText("Export PDF")).toBeTruthy();
+    expect(screen.getByText("PDF LABEL")).toBeTruthy();
   });
 
   it("click fires GET to /api/budgeting/board-deck/export-pdf with period only by default", async () => {
@@ -144,7 +149,7 @@ describe("ExportPdfButton", () => {
     await waitFor(() => {
       expect((button as HTMLButtonElement).disabled).toBe(true);
     });
-    expect(screen.getByText("Rendering…")).toBeTruthy();
+    expect(screen.getByText("PDF RENDERING")).toBeTruthy();
     // Second click is ignored — handleClick early-returns when busy.
     fireEvent.click(button);
     expect(fetchMock).toHaveBeenCalledTimes(1);
