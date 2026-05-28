@@ -349,13 +349,19 @@ export interface SavedBudgetReport {
   entityType: string
   planId?: string | null
   columns: { field: string; label?: string; aggregate?: "count" | "sum" | "avg" | "min" | "max" }[]
-  filters: { field: string; op: string; value: any }[]
+  // Phase 8 D3(aa) (2026-05-28) — filter values were typed `any` because
+  // their JS type varies with the chosen `op` (string for contains, number
+  // for gt/lt, etc.). `unknown` is the honest annotation — consumers must
+  // narrow before reading. The report-engine builder coerces per-op.
+  filters: { field: string; op: string; value: unknown }[]
   groupBy?: string | null
   periodGroupBy?: "month" | "quarter" | "year" | null
   sortBy?: string | null
   sortOrder: string
   chartType: string
-  chartConfig?: any
+  /** Per-chartType configuration blob (axis ranges, color overrides, etc.).
+   *  Shape varies per chartType; consumers narrow at read site. */
+  chartConfig?: Record<string, unknown> | null
   computedFields?: string[] | null
   isShared: boolean
   createdAt: string
