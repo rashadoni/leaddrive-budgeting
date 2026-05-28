@@ -19,6 +19,11 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// cash-flow batch import phase narrator. 4 console.* → logger calls.
+const log = getLogger("onboarding:cf-batch")
 import {
   reconcile,
   buildReconKey,
@@ -144,10 +149,13 @@ export async function runCashFlowBatch(
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([e, n]) => `${e}(${n})`)
         .join(", ")
-      console.log(
-        `[cf-batch] "${plan.label}" scope=sourceTag="${plan.sourceTag}" years=[${yearScope.join(",")}]` +
-        ` incoming=${plan.rows.length} rows — ${incomingBreakdown || "(none)"}`,
-      )
+      log.info("plan scope", {
+        label: plan.label,
+        sourceTag: plan.sourceTag,
+        years: yearScope,
+        incomingRows: plan.rows.length,
+        incomingBreakdown: incomingBreakdown || "(none)",
+      })
 
       let archived = 0
       let purged = 0
@@ -173,12 +181,14 @@ export async function runCashFlowBatch(
         data: stamp as unknown as Prisma.CashFlowEntryUpdateManyMutationInput,
       })
       archived = archiveResult.count
-      console.log(`[cf-batch] archive phase: archived=${archived} purged=${purged}`)
+      log.info("archive phase", { archived, purged })
       if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
-        console.warn(
-          `[cf-batch] ⚠️  archived ${archived} rows but only inserting ${plan.rows.length}` +
-          ` (${(archived / plan.rows.length).toFixed(1)}x) — check sourceTag "${plan.sourceTag}" is entity-specific`,
-        )
+        log.warn("archive/insert mismatch — check sourceTag is entity-specific", {
+          archived,
+          inserting: plan.rows.length,
+          ratio: Number((archived / plan.rows.length).toFixed(1)),
+          sourceTag: plan.sourceTag,
+        })
       }
 
       const payload = plan.rows.map((r) => ({
@@ -202,7 +212,7 @@ export async function runCashFlowBatch(
         const result = await tx.cashFlowEntry.createMany({ data: payload })
         inserted = result.count
       }
-      console.log(`[cf-batch] insert phase: inserted=${inserted}`)
+      log.info("insert phase", { inserted })
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
   }
   const { resetArchived, resetPurged, rowsInserted } = isOuterTx

@@ -34,6 +34,11 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// balance-sheet batch import phase narrator. 4 console.* → logger.
+const log = getLogger("onboarding:bs-batch")
 import {
   reconcile,
   buildReconKey,
@@ -174,10 +179,13 @@ export async function runBalanceSheetBatch(
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([e, n]) => `${e}(${n})`)
         .join(", ")
-      console.log(
-        `[bs-batch] "${plan.label}" scope=plans[${[...plan.planIds].join(",")}] years=[${yearScope.join(",")}]` +
-        ` incoming=${plan.rows.length} rows — ${incomingBreakdown || "(none)"}`,
-      )
+      log.info("plan scope", {
+        label: plan.label,
+        planIds: [...plan.planIds],
+        years: yearScope,
+        incomingRows: plan.rows.length,
+        incomingBreakdown: incomingBreakdown || "(none)",
+      })
 
       let archived = 0
       let purged = 0
@@ -203,12 +211,13 @@ export async function runBalanceSheetBatch(
         data: stamp as unknown as Prisma.BalanceSheetLineUpdateManyMutationInput,
       })
       archived = archiveResult.count
-      console.log(`[bs-batch] archive phase: archived=${archived} purged=${purged}`)
+      log.info("archive phase", { archived, purged })
       if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
-        console.warn(
-          `[bs-batch] ⚠️  archived ${archived} rows but only inserting ${plan.rows.length}` +
-          ` (${(archived / plan.rows.length).toFixed(1)}x) — check all entities are in one batch`,
-        )
+        log.warn("archive/insert mismatch — check all entities are in one batch", {
+          archived,
+          inserting: plan.rows.length,
+          ratio: Number((archived / plan.rows.length).toFixed(1)),
+        })
       }
 
       // Phase 2.1 session 3: accountCode + accountName columns dropped
@@ -230,7 +239,7 @@ export async function runBalanceSheetBatch(
         const result = await tx.balanceSheetLine.createMany({ data: payload })
         inserted = result.count
       }
-      console.log(`[bs-batch] insert phase: inserted=${inserted}`)
+      log.info("insert phase", { inserted })
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
   }
   const { resetArchived, resetPurged, rowsInserted } = isOuterTx
