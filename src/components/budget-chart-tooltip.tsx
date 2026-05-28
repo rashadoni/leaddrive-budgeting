@@ -2,9 +2,20 @@
 
 import { fmt, calcVariance } from "@/lib/budget-chart-theme"
 
+/** Phase 8 D3(n) (2026-05-28) — single payload entry passed by Recharts'
+ *  Tooltip `content` callback. Mirrors `TooltipPayload<ValueType, NameType>`
+ *  from recharts/types narrowed to the fields we read. */
+interface TooltipPayloadEntry {
+  dataKey?: string | number
+  name?: string | number
+  value?: number
+  color?: string
+  fill?: string
+}
+
 interface TooltipProps {
   active?: boolean
-  payload?: any[]
+  payload?: TooltipPayloadEntry[]
   label?: string
   mode?: "plan-vs-actual" | "plan-forecast-actual" | "comparison" | "composition"
   totalValue?: number
@@ -33,7 +44,7 @@ export function BudgetChartTooltip({
         </p>
       )}
       <div className="space-y-1.5">
-        {payload.map((entry: any, i: number) => (
+        {payload.map((entry, i) => (
           <div key={i} className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <span
@@ -43,7 +54,7 @@ export function BudgetChartTooltip({
               <span className="text-muted-foreground text-xs">{entry.name}</span>
             </div>
             <span className="font-mono font-medium text-popover-foreground text-xs">
-              {fmt(entry.value)}
+              {fmt(entry.value ?? 0)}
             </span>
           </div>
         ))}
@@ -52,10 +63,10 @@ export function BudgetChartTooltip({
       {/* Variance row for plan-vs-actual */}
       {mode === "plan-vs-actual" && payload.length >= 2 && (() => {
         const planVal = planKey
-          ? payload.find((p: any) => p.dataKey === planKey)?.value
+          ? payload.find((p) => p.dataKey === planKey)?.value
           : payload[0]?.value
         const actVal = actualKey
-          ? payload.find((p: any) => p.dataKey === actualKey)?.value
+          ? payload.find((p) => p.dataKey === actualKey)?.value
           : payload[1]?.value
         if (planVal == null || actVal == null) return null
         const v = calcVariance(planVal, actVal)
@@ -73,10 +84,10 @@ export function BudgetChartTooltip({
       {/* Variance for plan-forecast-actual */}
       {mode === "plan-forecast-actual" && payload.length >= 2 && (() => {
         const planVal = planKey
-          ? payload.find((p: any) => p.dataKey === planKey)?.value
+          ? payload.find((p) => p.dataKey === planKey)?.value
           : payload[0]?.value
         const actVal = actualKey
-          ? payload.find((p: any) => p.dataKey === actualKey)?.value
+          ? payload.find((p) => p.dataKey === actualKey)?.value
           : payload[payload.length - 1]?.value
         if (planVal == null || actVal == null) return null
         const v = calcVariance(planVal, actVal)
@@ -92,7 +103,7 @@ export function BudgetChartTooltip({
       })()}
 
       {/* Composition mode: show % of total */}
-      {mode === "composition" && totalValue && totalValue > 0 && payload[0] && (
+      {mode === "composition" && totalValue && totalValue > 0 && payload[0]?.value != null && (
         <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
           <span>Share</span>
           <span className="font-mono font-bold text-popover-foreground">
