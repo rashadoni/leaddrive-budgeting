@@ -32,6 +32,13 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// single-sheet apply route. 2 console.error → logger.error calls
+// (transaction-failed + recompute pair-error callback).
+const log = getLogger('api:apply');
+const recomputeLog = getLogger('api:apply:recompute');
 import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
@@ -456,7 +463,11 @@ export async function POST(
       { timeout: 60_000 },
     );
   } catch (err) {
-    console.error('[apply] transaction failed:', err);
+    log.error('transaction failed', {
+      stagingId: staging.id,
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     // Persist failure reason to staging so the UI can show it (out-of-
     // band of the transaction — best-effort, ignore secondary failures).
     try {
@@ -487,7 +498,9 @@ export async function POST(
   const recomputeResult = await runRecomputeForCompanies(prisma, orgIdLocal, [
     { companyId, year: targetYear },
   ], {
-    pairError: (label, err) => console.error(`[apply/recompute] ${label}:`, err),
+    pairError: (label, err) => recomputeLog.error(label, {
+      err: err instanceof Error ? err.message : String(err),
+    }),
   });
   const indicatorsStale = recomputeResult.failed > 0;
 

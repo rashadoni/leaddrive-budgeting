@@ -37,6 +37,12 @@ import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logAuditEvent, buildAuditContext } from '@/lib/audit/log';
 import { parsePatchBody, isValidCompanyRole, isValidCompanyStatus, VALID_INDUSTRIES } from './validate';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// audit-schema-drift guards. 3 console.error → logger.error calls
+// emit when an off-spec column value blocks an audit event emission.
+const log = getLogger('api:companies:id');
 
 const RATE_LIMIT = { name: 'company-patch', max: 10, windowMs: 60_000 };
 
@@ -128,9 +134,11 @@ export async function PATCH(
 
   if (roleChanged) {
     if (!isValidCompanyRole(existing.role)) {
-      console.error(
-        `audit/company_role_change: existing.role=${String(existing.role)} not in audit union — skipping emission`,
-      );
+      log.error('audit/company_role_change: existing.role not in audit union — skipping emission', {
+        companyId: existing.id,
+        companyCode: existing.code,
+        existingRole: String(existing.role),
+      });
       auditStale = true;
     } else {
       const auditResult = await logAuditEvent(prisma, {
@@ -154,9 +162,11 @@ export async function PATCH(
 
   if (statusChanged) {
     if (!isValidCompanyStatus(existing.status)) {
-      console.error(
-        `audit/company_status_change: existing.status=${String(existing.status)} not in audit union — skipping emission`,
-      );
+      log.error('audit/company_status_change: existing.status not in audit union — skipping emission', {
+        companyId: existing.id,
+        companyCode: existing.code,
+        existingStatus: String(existing.status),
+      });
       auditStale = true;
     } else {
       const auditResult = await logAuditEvent(prisma, {
@@ -184,9 +194,11 @@ export async function PATCH(
     // time guarantee that DB rows conform to VALID_INDUSTRIES. null is valid
     // (unset); any non-null value outside the set means stale/corrupt data.
     if (existing.industry !== null && !VALID_INDUSTRIES.has(existing.industry)) {
-      console.error(
-        `audit/company_industry_change: existing.industry=${String(existing.industry)} not in VALID_INDUSTRIES — skipping emission`,
-      );
+      log.error('audit/company_industry_change: existing.industry not in VALID_INDUSTRIES — skipping emission', {
+        companyId: existing.id,
+        companyCode: existing.code,
+        existingIndustry: String(existing.industry),
+      });
       auditStale = true;
     } else {
       const auditResult = await logAuditEvent(prisma, {
