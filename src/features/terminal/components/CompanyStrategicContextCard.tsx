@@ -46,6 +46,13 @@ interface ForwardForecast {
   }>
 }
 
+interface RiskRegistry {
+  itemCount: number
+  source: string | null
+  importedAt: string | null
+  pendingVerification: boolean
+}
+
 interface StrategicContext {
   companyCode: string
   companyName: string
@@ -54,6 +61,7 @@ interface StrategicContext {
   landSummary: LandSummary | null
   capexSummary: CapexSummary | null
   forwardForecast: ForwardForecast | null
+  riskRegistry: RiskRegistry | null
   hasAnyContent: boolean
 }
 
@@ -259,6 +267,60 @@ export function CompanyStrategicContextCard({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Risk Registry (Phase 8 A1) ────────────────────────────
+          Renders for every level-2 operational entity. When the
+          KRI list is empty (5 of 6 entities today), shows a clear
+          «Pending client verification» badge so finance users don't
+          confuse «no data» with «no risks». EDEN's 15 real KRIs show
+          a count instead. */}
+      {data.riskRegistry && (
+        <div
+          className={`rounded border px-2 py-1.5 ${
+            data.riskRegistry.pendingVerification
+              ? "border-rose-500/30 bg-rose-500/5"
+              : "border-emerald-500/20 bg-emerald-500/5"
+          }`}
+          data-testid="risk-registry-section"
+        >
+          <div
+            className={`text-[9px] uppercase mb-1 flex items-baseline gap-2 flex-wrap ${
+              data.riskRegistry.pendingVerification
+                ? "text-rose-300/80"
+                : "text-emerald-300/80"
+            }`}
+          >
+            <span>📑 Risk Registry (KRI)</span>
+            {data.riskRegistry.source && (
+              <span className="text-gray-600 normal-case not-italic text-[8px]">
+                источник: {data.riskRegistry.source}
+              </span>
+            )}
+          </div>
+          {data.riskRegistry.pendingVerification ? (
+            <div
+              className="text-rose-300 text-[11px] leading-snug"
+              data-testid="risk-registry-pending"
+            >
+              ⚠️ Pending client verification — реестр KRI ещё не передан
+              финансовой командой компании. Покажет «unknown» по риск-
+              индикаторам, пока xlsx не загружен.
+            </div>
+          ) : (
+            <div className="text-emerald-300 text-[11px]">
+              <span className="font-mono font-bold">
+                {data.riskRegistry.itemCount}
+              </span>{" "}
+              KRI занесены
+              {data.riskRegistry.importedAt && (
+                <span className="text-gray-500 text-[10px] ml-1.5">
+                  · {new Date(data.riskRegistry.importedAt).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -477,9 +477,9 @@ Migrated 2026-05-08 Phase 7.G **Turn LX** (architect FAIL closure on 6 stale dev
 After 2026-05-27 internal audit revealed AI-fabricated data was being shown alongside real client data without distinction, this phase establishes the workflow + UI surfaces that make data provenance explicit. **Driver:** financial users cannot tolerate AI-invented risk indicators — every data point shown must be traceable to real source.
 
 ### Group A — Honesty layer (high priority, 1–2 weeks)
-- ⬜ **A1.** UI badge «⚠️ Pending client verification» on entity Risk Registry cards without data (5 entity now) — `est: 4h`
+- ✅ **A1.** UI badge «⚠️ Pending client verification» on entity Risk Registry cards without data — shipped 2026-05-28. Strategic-context API now returns a `riskRegistry: { itemCount, source, importedAt, pendingVerification }` block for every level-2 operational entity; CompanyStrategicContextCard renders a rose-bordered «Pending client verification» banner for the 5 entities without KRI data (AZSF/CPC/MALT/FARM/HORIZON/PROMALT) and an emerald «N KRI занесены» chip for EDEN (15 real KRIs from `Top risk - EDEN AGRO MMC.xlsx`). 4 handler tests + 3 UI tests cover null (level-1), pending, populated paths.
 - ⬜ **A2.** Surface `IndicatorValueSource` enum (disclosed/computed/estimated/unknown) as provenance badge in Indicator Detail panel + HeatMap tooltip — `est: 1d`
-- ⬜ **A3.** "Hide unknown" toggle in HeatMap header (678 of 1225 IVs are unknown ≈ 55%) — `est: 4h`
+- ✅ **A3.** "Hide unknown" toggle in HeatMap header (678 of 1225 IVs are unknown ≈ 55%) — shipped 2026-05-27 (commit `f64c89c`)
 - ⬜ **A4.** Data freshness badge "Updated 2h ago" on each Risk Terminal panel; needs `lastRecomputeAt` per company — `est: 1d`
 - ✅ **A5.** PROMALT empty-data banner (rendered from `Company.settings.dataPendingBanner`) — shipped 2026-05-27
 
@@ -494,10 +494,11 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 - 🔄 **B8.** 47 missing operating companies of 60 promised — owner=client
 
 ### Group C — AI/LLM safety
-- ⬜ **C1.** LLM fact-checker — post-process Variance Explainer narrative, cross-reference cited numbers against DB resolvers — `est: 2d`
-- ⬜ **C2.** Per-user daily LLM quota + circuit-breaker UX — `est: 1d`
+- ✅ **C1.** LLM fact-checker — Variance Explainer + Forecast Explainer post-processed with pure-regex narrative cross-reference (commits `7c54f9b` + `52bcce2`, 2026-05-28). Covers fabricated numbers, ratio/percent/K/M/sign-flip paraphrases, future-year drift. UI banner under narrative in IndicatorDetail.
+- ✅ **C2.** Per-user LLM usage chip in CommandBar — visibility shipped via `[you ✨ N]` polling `/api/me/ai-usage` every 60s (commit `62bc5a9`, 2026-05-28). Hard quota / circuit-breaker enforcement at user-level deferred to v2 (needs AuditEvent index; per-org cap already enforces in `cost-budget.ts`).
 - ⬜ **C3.** AZ-translations native review (`docs/AZ_TRANSLATIONS_REVIEW.md` waits 22+ days) — owner=user
 - ⬜ **C4.** Per-org Anthropic API key (currently single global) — `est: 1d`
+- ⬜ **C5.** Batch-narrative fact-checker for Morning Brief / Board Deck / News Summary (per-IV checker covers explainers but not org-wide summaries) — `est: 2d`
 
 ### Group D — Code quality (incremental refactor)
 - ⬜ **D1.** Decompose 9 mega-files (>1000 LOC). Top 3: `recompute.ts` 3406, `indicator-seeds.ts` 2674, `IndicatorDetail.tsx` 2036 — `est: 1-2w`
@@ -506,7 +507,7 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 - ⬜ **D4.** Replace 120 `console.log` with structured logger (pino / Winston) — `est: 1d`
 
 ### Group E — Compliance Hub upgrades
-- ⬜ **E1.** Write-back: mark finding closed, assign owner, add comment, change deadline — `est: 2d`
+- 🟡 **E1.** Write-back close/reopen shipped (commit `3fd2e3c`, 2026-05-28). Remaining: assign owner / add comment / change deadline UI — `est: 1d`
 - ⬜ **E2.** Per-finding drill-down modal with full description + attachments — `est: 1d`
 - ⬜ **E3.** Email-export filtered slice — `est: 4h`
 

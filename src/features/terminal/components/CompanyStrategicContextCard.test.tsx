@@ -169,6 +169,74 @@ describe("CompanyStrategicContextCard", () => {
     expect(screen.getByText(/Хлопок/)).toBeTruthy()
   })
 
+  it("renders Risk Registry pending-verification badge when itemCount is 0", async () => {
+    mockFetch({
+      companyCode: "AZSEKER-AZSF",
+      companyName: "Azərşəkər Sugar",
+      strategicDescription: null,
+      competitiveAdvantage: null,
+      landSummary: null,
+      capexSummary: null,
+      forwardForecast: null,
+      riskRegistry: {
+        itemCount: 0,
+        source: null,
+        importedAt: null,
+        pendingVerification: true,
+      },
+      hasAnyContent: true,
+    })
+    render(<CompanyStrategicContextCard companyCode="AZSEKER-AZSF" />)
+    await waitFor(() => {
+      expect(screen.getByTestId("risk-registry-pending")).toBeTruthy()
+    })
+    expect(screen.getByText(/Pending client verification/i)).toBeTruthy()
+  })
+
+  it("renders Risk Registry KRI count when populated (EDEN happy path)", async () => {
+    mockFetch({
+      companyCode: "AZSEKER-EDEN",
+      companyName: "Eden Agro",
+      strategicDescription: null,
+      competitiveAdvantage: null,
+      landSummary: null,
+      capexSummary: null,
+      forwardForecast: null,
+      riskRegistry: {
+        itemCount: 15,
+        source: "Top risk - EDEN AGRO MMC.xlsx",
+        importedAt: "2026-05-27T10:00:00Z",
+        pendingVerification: false,
+      },
+      hasAnyContent: true,
+    })
+    render(<CompanyStrategicContextCard companyCode="AZSEKER-EDEN" />)
+    await waitFor(() => {
+      expect(screen.getByTestId("risk-registry-section")).toBeTruthy()
+    })
+    expect(screen.getByText("15")).toBeTruthy()
+    expect(screen.queryByTestId("risk-registry-pending")).toBeNull()
+  })
+
+  it("does not render Risk Registry section for level-1 (riskRegistry: null)", async () => {
+    mockFetch({
+      companyCode: "AZSEKER",
+      companyName: "AZSEKER Holding",
+      strategicDescription: "Holding company root.",
+      competitiveAdvantage: null,
+      landSummary: null,
+      capexSummary: null,
+      forwardForecast: null,
+      riskRegistry: null,
+      hasAnyContent: true,
+    })
+    render(<CompanyStrategicContextCard companyCode="AZSEKER" />)
+    await waitFor(() => {
+      expect(screen.getByText(/Holding company root/)).toBeTruthy()
+    })
+    expect(screen.queryByTestId("risk-registry-section")).toBeNull()
+  })
+
   it("shows error state on fetch failure", async () => {
     mockFetch({ error: "fail" }, false)
     render(<CompanyStrategicContextCard companyCode="AZSEKER-AZSF" />)

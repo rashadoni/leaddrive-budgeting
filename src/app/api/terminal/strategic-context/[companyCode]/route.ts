@@ -55,7 +55,7 @@ export async function GET(
 
   const company = await prisma.company.findFirst({
     where: { organizationId: session.orgId, code: decodedCode },
-    select: { id: true, code: true, name: true, settings: true },
+    select: { id: true, code: true, name: true, level: true, settings: true },
   })
   if (!company) {
     return NextResponse.json(
@@ -140,6 +140,34 @@ export async function GET(
         }
       : null
 
+  // ── Risk Registry (Phase 8 A1, 2026-05-28) ───────────────────
+  // Surface KRI count + a «pending client verification» flag when the
+  // entity is an operational ledger (level 2) but has no real Risk
+  // Registry data yet. EDEN is the only entity with 15 real KRIs today;
+  // AZSF/CPC/MALT/FARM/HORIZON/PROMALT are waiting on client xlsx.
+  type RiskRegistryItem = unknown
+  const riskRegistryBlock = compSettings.riskRegistry as
+    | { items?: RiskRegistryItem[]; source?: string; importedAt?: string }
+    | undefined
+  const riskRegistryItems = Array.isArray(riskRegistryBlock?.items)
+    ? riskRegistryBlock!.items
+    : []
+  const riskRegistry =
+    company.level === 2
+      ? {
+          itemCount: riskRegistryItems.length,
+          source:
+            typeof riskRegistryBlock?.source === "string"
+              ? riskRegistryBlock.source
+              : null,
+          importedAt:
+            typeof riskRegistryBlock?.importedAt === "string"
+              ? riskRegistryBlock.importedAt
+              : null,
+          pendingVerification: riskRegistryItems.length === 0,
+        }
+      : null
+
   // ── Forward forecast (org-level) ─────────────────────────────
   const forwardForecast =
     orgSettings.forwardForecast &&
@@ -174,11 +202,13 @@ export async function GET(
     landSummary,
     capexSummary,
     forwardForecast,
+    riskRegistry,
     hasAnyContent: !!(
       strategicDescription ||
       landSummary ||
       capexSummary ||
-      forwardForecast
+      forwardForecast ||
+      riskRegistry
     ),
   })
 }
