@@ -1,5 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -10,6 +10,23 @@ const undoChangeSchema = z.object({
   changeId: z.string().min(1).max(100),
 }).strict()
 
+// Phase 8 D3(u) (2026-05-28) — typed shape for BudgetChangeLog rows.
+// Retires the file-level `eslint-disable @typescript-eslint/no-explicit-any`.
+// `snapshot` is a Json column whose shape depends on entityType (line /
+// actual / forecast); narrow at the call site when reading.
+type ChangeLogRow = Prisma.BudgetChangeLogGetPayload<true>
+
+/** Narrow an unknown Json value to a record-with-optional-category
+ *  (the only field this route reads from the snapshot). Returns null
+ *  for non-object snapshots so the response stays consistent. */
+function readSnapshotCategory(snap: unknown): string | null {
+  if (snap && typeof snap === "object" && "category" in snap) {
+    const cat = (snap as Record<string, unknown>).category
+    return typeof cat === "string" ? cat : null
+  }
+  return null
+}
+
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -18,7 +35,7 @@ export async function GET(req: NextRequest) {
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
   const { items } = await withOrgScope(orgId, async (tx) => {
-    const changes = await tx.budgetChangeLog.findMany({
+    const changes: ChangeLogRow[] = await tx.budgetChangeLog.findMany({
       where: { planId, organizationId: orgId },
       orderBy: { createdAt: "desc" },
       take: 50,
@@ -26,13 +43,13 @@ export async function GET(req: NextRequest) {
 
     // Resolve user names — user table is Tier 4 (not yet RLS-protected);
     // queried via tx so it shares the same SET LOCAL transaction context.
-    const userIds = [...new Set(changes.map((c: any) => c.userId).filter(Boolean))] as string[]
+    const userIds = [...new Set(changes.map((c) => c.userId).filter(Boolean))] as string[]
     const users = userIds.length > 0
       ? await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
       : []
     const userMap = new Map(users.map((u: { id: string; name: string | null }) => [u.id, u.name || "Unknown"]))
 
-    const items = changes.map((c: any) => ({
+    const items = changes.map((c) => ({
       id: c.id,
       action: c.action,
       entityType: c.entityType,
@@ -40,7 +57,7 @@ export async function GET(req: NextRequest) {
       field: c.field,
       oldValue: c.oldValue,
       newValue: c.newValue,
-      category: (c.snapshot as any)?.category || null,
+      category: readSnapshotCategory(c.snapshot),
       userName: c.userId ? (userMap.get(c.userId) || "Unknown") : "System",
       createdAt: c.createdAt.toISOString(),
     }))
@@ -91,11 +108,17 @@ export async function POST(req: NextRequest) {
       return { notUndoable: true } as const
     }
 
-    // Revert the field to oldValue — scope update to caller's org (defense-in-depth)
-    const oldVal = change.oldValue as any
+    // Revert the field to oldValue — scope update to caller's org (defense-in-depth).
+    // oldValue is Json (unknown shape per field); pass through to Prisma as-is for
+    // object types, coerce to Number for primitives so numeric columns accept it.
+    const oldVal: unknown = change.oldValue
+    const dataPatch =
+      oldVal && typeof oldVal === "object"
+        ? (oldVal as Prisma.InputJsonValue)
+        : Number(oldVal as string | number)
     const updated = await tx.budgetLine.updateMany({
       where: { id: change.entityId, organizationId: orgId },
-      data: { [change.field]: typeof oldVal === "object" ? oldVal : Number(oldVal) },
+      data: { [change.field]: dataPatch },
     })
     if (updated.count === 0) return { lineNotFound: true } as const
 
