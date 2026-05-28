@@ -31,11 +31,19 @@ const ORG_ID = "cm3abcdefghijklmnopqrst" // valid cuid-length
 
 describe("withOrgScope bypass deprecation warning (Phase 5.2 Stage 2)", () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
+  let prevLogInTests: string | undefined
   beforeEach(() => {
+    // Phase 8 D4 continuation — with-org-scope migrated to structured
+    // logger which mutes in test env by default. Opt into LOG_IN_TESTS=1
+    // so the existing console.warn spy still observes the emission.
+    prevLogInTests = process.env.LOG_IN_TESTS
+    process.env.LOG_IN_TESTS = "1"
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
   })
   afterEach(() => {
     warnSpy.mockRestore()
+    if (prevLogInTests === undefined) delete process.env.LOG_IN_TESTS
+    else process.env.LOG_IN_TESTS = prevLogInTests
   })
 
   it("emits a deprecation warning when bypass:true is passed", async () => {

@@ -25,6 +25,10 @@
 import { tryEvaluateFormula } from './formula-engine';
 import { parsePeriod, type Period } from './periods';
 import type { RecomputeDataSource } from './recompute';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('risk:sparkline');
 
 export const SPARKLINE_LENGTH = 12;
 
@@ -116,12 +120,12 @@ export async function evaluateAt(
   } catch (err) {
     // Log with indicator id for production debuggability — without this,
     // an "all-null sparkline" production case is impossible to root-cause.
-    console.warn(
-      `[sparkline] evaluateAt failed: indicator=${args.definition.id} ` +
-        `company=${args.companyId} period=${args.period}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-    );
+    log.warn('evaluateAt failed', {
+      indicatorId: args.definition.id,
+      companyId: args.companyId,
+      period: args.period,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

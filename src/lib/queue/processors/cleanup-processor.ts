@@ -25,6 +25,10 @@ import {
 } from "../../cleanup/soft-delete-cleanup"
 import { logAuditEvent } from "../../audit/log"
 import { prisma } from "../../prisma"
+import { getLogger } from "../../log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("queue:cleanup-processor")
 
 export interface CleanupProcessorResult {
   counts: CleanupCounts
@@ -74,12 +78,15 @@ export async function processCleanupSoftDeleted(
     if (result.ok) auditEventId = result.id
   }
 
-  console.log(
-    `[cleanup-processor] purged ${counts.total} rows ` +
-      `(${counts.budgetPlans} plans / ${counts.cashFlowEntries} cash-flow / ` +
-      `${counts.balanceSheetLines} balance-sheet / ${counts.counterparties} ` +
-      `counterparties) in ${durationMs}ms (cutoff ${cutoffDays}d)`,
-  )
+  log.info("purged soft-deleted rows", {
+    total: counts.total,
+    budgetPlans: counts.budgetPlans,
+    cashFlowEntries: counts.cashFlowEntries,
+    balanceSheetLines: counts.balanceSheetLines,
+    counterparties: counts.counterparties,
+    durationMs,
+    cutoffDays,
+  })
 
   return { counts, durationMs, cutoffDays, auditEventId }
 }

@@ -19,6 +19,11 @@
  * single-machine setups working unchanged during the rollout.
  */
 import { prisma as defaultPrisma } from "@/lib/prisma"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// one-time DATABASE_URL_ADMIN-missing warning.
+const log = getLogger("db:prisma-admin")
 
 let cached: typeof defaultPrisma | null = null
 let warned = false
@@ -28,9 +33,8 @@ export function getPrismaAdmin(): typeof defaultPrisma {
   const adminUrl = process.env.DATABASE_URL_ADMIN
   if (!adminUrl) {
     if (!warned) {
-      console.warn(
-        "[prisma-admin] DATABASE_URL_ADMIN not set — falling back to default prisma. " +
-          "RLS-protected tables will require explicit withOrgScope() in this process.",
+      log.warn(
+        "DATABASE_URL_ADMIN not set — falling back to default prisma. RLS-protected tables will require explicit withOrgScope() in this process.",
       )
       warned = true
     }

@@ -3,6 +3,10 @@ import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { z } from "zod"
 import { prisma } from "./prisma"
+import { getLogger } from "./log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("auth")
 import bcrypt from "bcryptjs"
 
 const loginSchema = z.object({
@@ -47,7 +51,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             organizationName: user.organization.name,
           }
         } catch (err) {
-          console.error("[Auth] Login error:", err)
+          log.error("Login error", {
+            err: err instanceof Error ? err.message : String(err),
+          })
           return null
         }
       },

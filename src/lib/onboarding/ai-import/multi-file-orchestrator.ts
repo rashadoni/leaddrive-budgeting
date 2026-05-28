@@ -46,6 +46,10 @@
  */
 import type { PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const recomputeLog = getLogger("ai-import:multi-file:recompute")
 import {
   extractWorkbookMeta,
   type SheetMeta,
@@ -790,10 +794,9 @@ export async function runMultiFileImport(
         affected,
         {
           pairError: (label, err) =>
-            console.error(
-              `[multi-file-import] recompute pair error ${label}:`,
-              err,
-            ),
+            recomputeLog.error(label, {
+              err: err instanceof Error ? err.message : String(err),
+            }),
         },
       )
       recompute = {
