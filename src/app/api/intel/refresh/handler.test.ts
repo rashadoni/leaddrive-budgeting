@@ -205,14 +205,13 @@ describe('POST /api/intel/refresh — empty-org + audit-failure resilience', () 
   it('does not block response when audit emission fails', async () => {
     await mockSession({ orgId: ORG_ID, userId: USER_ID, role: 'admin' });
     prismaMock.auditEvent.create.mockRejectedValue(new Error('audit DB down'));
-    const consoleErrorSpy = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
     const res = await POST(makeRequest('/api/intel/refresh', { method: 'POST' }));
     expect(res.status).toBe(200);
-    // Tick so the rejected promise's catch fires before we assert.
+    // Tick so the rejected promise's catch fires (silently — the audit
+    // module's failure path now writes via `getLogger('lib:audit').error`
+    // which is muted in test env per Phase 8 D4 logger contract). The
+    // primary assertion above — response 200 even on audit failure —
+    // is the public contract callers depend on.
     await new Promise((r) => setImmediate(r));
-    expect(consoleErrorSpy).toHaveBeenCalled();
-    consoleErrorSpy.mockRestore();
   });
 });
