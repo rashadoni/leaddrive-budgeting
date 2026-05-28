@@ -2458,6 +2458,29 @@
       "subtitle": "New temp password for {email}. Share it with the user once."
     }
   },
+  "adminQueue": {
+    "title": "Queue Admin",
+    "subtitle": "BullMQ job inspector. Filter by state to see live work (active), recent throughput (completed) or anything that hit the dead-letter set (failed).",
+    "refresh": "refresh",
+    "loading": "Loading…",
+    "emptyState": "No jobs in <strong>{stateName}</strong> state.",
+    "state": {
+      "active": "active",
+      "waiting": "waiting",
+      "completed": "completed",
+      "failed": "failed",
+      "delayed": "delayed"
+    },
+    "col": {
+      "queue": "Queue",
+      "jobId": "Job ID",
+      "progress": "Progress",
+      "attempts": "Attempts",
+      "started": "Started",
+      "finished": "Finished",
+      "failedReason": "Failed reason"
+    }
+  },
   "adminDataArchive": {
     "title": "Data Archive",
     "description": "Archiving hides data from the HeatMap, recompute and reports but does not physically delete it. Restore is available within 90 days. All actions are recorded in the audit trail for IFRS audit.",

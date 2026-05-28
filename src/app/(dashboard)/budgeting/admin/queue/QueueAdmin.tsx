@@ -6,6 +6,7 @@
  * until the SSE endpoint is generalised to broadcast all-job events.
  */
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 
 type QueueState = "waiting" | "active" | "completed" | "failed" | "delayed"
 
@@ -31,6 +32,7 @@ const STATES: QueueState[] = [
 ]
 
 export function QueueAdmin() {
+  const t = useTranslations("adminQueue")
   const [state, setState] = useState<QueueState>("active")
   const [jobs, setJobs] = useState<JobRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -71,7 +73,7 @@ export function QueueAdmin() {
             }`}
             data-testid={`queue-state-${s}`}
           >
-            {s}
+            {t(`state.${s}`)}
           </button>
         ))}
         <button
@@ -79,7 +81,7 @@ export function QueueAdmin() {
           className="ml-auto text-xs text-muted-foreground hover:text-foreground"
           data-testid="queue-refresh"
         >
-          ↻ refresh
+          ↻ {t("refresh")}
         </button>
       </div>
       {err && (
@@ -88,11 +90,14 @@ export function QueueAdmin() {
         </div>
       )}
       {loading && (
-        <div className="text-sm text-muted-foreground">Loading…</div>
+        <div className="text-sm text-muted-foreground">{t("loading")}</div>
       )}
       {!loading && jobs.length === 0 && (
         <div className="text-sm text-muted-foreground border border-border rounded p-4 text-center">
-          No jobs in <strong>{state}</strong> state.
+          {t.rich("emptyState", {
+            stateName: t(`state.${state}`),
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </div>
       )}
       {!loading && jobs.length > 0 && (
@@ -100,13 +105,13 @@ export function QueueAdmin() {
           <table className="w-full text-xs">
             <thead className="bg-muted/40">
               <tr className="text-left">
-                <th className="p-2">Queue</th>
-                <th className="p-2">Job ID</th>
-                <th className="p-2">Progress</th>
-                <th className="p-2">Attempts</th>
-                <th className="p-2">Started</th>
-                <th className="p-2">Finished</th>
-                <th className="p-2">Failed reason</th>
+                <th className="p-2">{t("col.queue")}</th>
+                <th className="p-2">{t("col.jobId")}</th>
+                <th className="p-2">{t("col.progress")}</th>
+                <th className="p-2">{t("col.attempts")}</th>
+                <th className="p-2">{t("col.started")}</th>
+                <th className="p-2">{t("col.finished")}</th>
+                <th className="p-2">{t("col.failedReason")}</th>
               </tr>
             </thead>
             <tbody>

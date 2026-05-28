@@ -2458,6 +2458,29 @@
       "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
     }
   },
+  "adminQueue": {
+    "title": "Növbə Admin",
+    "subtitle": "BullMQ iş inspektoru. Statusa görə filtrləyin: active — indi işləyən, completed — son keçirici, failed — dead-letter-ə düşən.",
+    "refresh": "yenilə",
+    "loading": "Yüklənir…",
+    "emptyState": "<strong>{stateName}</strong> statusunda iş yoxdur.",
+    "state": {
+      "active": "aktiv",
+      "waiting": "gözləyir",
+      "completed": "tamamlandı",
+      "failed": "uğursuz",
+      "delayed": "təxirə salındı"
+    },
+    "col": {
+      "queue": "Növbə",
+      "jobId": "İş ID",
+      "progress": "İrəliləyiş",
+      "attempts": "Cəhdlər",
+      "started": "Başlanıb",
+      "finished": "Bitib",
+      "failedReason": "Uğursuzluq səbəbi"
+    }
+  },
   "adminDataArchive": {
     "title": "Data Arxivi",
     "description": "Arxivləşdirmə dataları HeatMap, recompute və hesabatlardan gizlədir, lakin onları fiziki olaraq silmir. Bərpa 90 gün ərzində mümkündür. Bütün hərəkətlər IFRS auditi üçün audit trail-da qeyd olunur.",

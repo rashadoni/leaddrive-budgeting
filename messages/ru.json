@@ -2458,6 +2458,29 @@
       "subtitle": "Новый временный пароль для {email}. Покажите его пользователю один раз."
     }
   },
+  "adminQueue": {
+    "title": "Очередь задач",
+    "subtitle": "Инспектор BullMQ-задач. Фильтруйте по статусу: active — что выполняется сейчас, completed — недавняя пропускная способность, failed — попавшее в dead-letter.",
+    "refresh": "обновить",
+    "loading": "Загрузка…",
+    "emptyState": "Нет задач в статусе <strong>{stateName}</strong>.",
+    "state": {
+      "active": "активные",
+      "waiting": "ожидание",
+      "completed": "завершено",
+      "failed": "ошибки",
+      "delayed": "отложенные"
+    },
+    "col": {
+      "queue": "Очередь",
+      "jobId": "ID задачи",
+      "progress": "Прогресс",
+      "attempts": "Попытки",
+      "started": "Начато",
+      "finished": "Завершено",
+      "failedReason": "Причина ошибки"
+    }
+  },
   "adminDataArchive": {
     "title": "Архив данных",
     "description": "Архивирование скрывает данные из HeatMap, recompute и отчётов, но физически их не удаляет. Восстановление возможно в течение 90 дней. Все действия записываются в audit trail для IFRS-аудита.",
