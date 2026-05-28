@@ -19,7 +19,7 @@ import {
   type DataSourceEntry,
 } from "@/lib/intel/sources-catalog"
 import { RecentCrossingsWidget } from "./RecentCrossingsWidget"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   CheckCircle2,
   Clock,
@@ -44,30 +44,31 @@ function StatusBadge({
 }: {
   status: FreshnessSnapshot["status"] | "unknown"
 }) {
+  const t = useTranslations("adminDataSources")
   const config: Record<
     string,
     { label: string; bg: string; fg: string; Icon: typeof CheckCircle2 }
   > = {
     fresh: {
-      label: "Свежее",
+      label: t("status.fresh"),
       bg: "bg-green-100 text-green-700",
       fg: "text-green-700",
       Icon: CheckCircle2,
     },
     stale: {
-      label: "Устарело",
+      label: t("status.stale"),
       bg: "bg-amber-100 text-amber-700",
       fg: "text-amber-700",
       Icon: Clock,
     },
     critical_stale: {
-      label: "Критично",
+      label: t("status.critical_stale"),
       bg: "bg-red-100 text-red-700",
       fg: "text-red-700",
       Icon: AlertTriangle,
     },
     missing: {
-      label: "Нет данных",
+      label: t("status.missing"),
       bg: "bg-gray-100 text-gray-700",
       fg: "text-gray-700",
       Icon: AlertCircle,
@@ -92,32 +93,36 @@ function StatusBadge({
 }
 
 function CostBadge({ cost }: { cost: DataSourceEntry["cost"] }) {
+  const t = useTranslations("adminDataSources")
   if (cost === "free") {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
-        free
+        {t("cost.free")}
       </span>
     )
   }
   if (cost === "free-tier") {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-700 border border-blue-200">
-        <Key size={11} /> free key
+        <Key size={11} /> {t("cost.freeTier")}
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-orange-50 text-orange-700 border border-orange-200">
-      <KeyRound size={11} /> paid
+      <KeyRound size={11} /> {t("cost.paid")}
     </span>
   )
 }
 
-function formatAge(hours: number | null): string {
+function formatAge(
+  hours: number | null,
+  t: (k: string, vars?: Record<string, string | number>) => string,
+): string {
   if (hours == null) return "—"
-  if (hours < 1) return `${Math.round(hours * 60)} мин назад`
-  if (hours < 24) return `${Math.round(hours)} ч назад`
-  return `${Math.round(hours / 24)} дн назад`
+  if (hours < 1) return t("age.minutes", { n: Math.round(hours * 60) })
+  if (hours < 24) return t("age.hours", { n: Math.round(hours) })
+  return t("age.days", { n: Math.round(hours / 24) })
 }
 
 function SourceCard({
@@ -127,6 +132,7 @@ function SourceCard({
   source: DataSourceEntry
   freshness: FreshnessSnapshot | undefined
 }) {
+  const t = useTranslations("adminDataSources")
   const status = freshness?.status ?? "unknown"
   return (
     <article className="border rounded-lg bg-white shadow-sm overflow-hidden">
@@ -157,7 +163,7 @@ function SourceCard({
         <div className="flex flex-col items-end gap-1 shrink-0">
           <StatusBadge status={status} />
           <span className="text-[10px] text-gray-500">
-            {formatAge(freshness?.ageHours ?? null)}
+            {formatAge(freshness?.ageHours ?? null, t)}
           </span>
         </div>
       </header>
@@ -165,7 +171,7 @@ function SourceCard({
       <div className="px-5 py-4 space-y-3">
         <section>
           <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
-            Что это
+            {t("section.whatItIs")}
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed">
             {source.whatItIsRu}
@@ -174,7 +180,7 @@ function SourceCard({
 
         <section>
           <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
-            Зачем холдингу
+            {t("section.businessValue")}
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed">
             {source.businessValueRu}
@@ -183,7 +189,7 @@ function SourceCard({
 
         <section className="rounded bg-gray-50 border border-gray-200 px-3 py-2">
           <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
-            Свежий пример
+            {t("section.freshExample")}
           </h4>
           <div className="text-sm">
             <div className="flex items-baseline gap-2">
@@ -202,7 +208,7 @@ function SourceCard({
 
         <section>
           <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
-            Питает индикаторы ({source.indicatorsPowered.length})
+            {t("section.poweredIndicators", { n: source.indicatorsPowered.length })}
           </h4>
           <div className="flex flex-wrap gap-1">
             {source.indicatorsPowered.map((code) => (
@@ -218,10 +224,10 @@ function SourceCard({
 
         <section className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
           <span>
-            <strong>Частота:</strong> {source.cadenceRu}
+            <strong>{t("footer.cadence")}:</strong> {source.cadenceRu}
           </span>
           <span>
-            <strong>Метрик:</strong> {source.metricsEmitted.length}
+            <strong>{t("footer.metrics")}:</strong> {source.metricsEmitted.length}
           </span>
         </section>
 
@@ -230,7 +236,7 @@ function SourceCard({
          *  demo orgs); fills in as scheduler ticks accumulate breaches. */}
         <section className="pt-2 border-t border-gray-100">
           <h4 className="text-xs font-semibold uppercase text-gray-500 mb-1">
-            Недавние crossing-события
+            {t("section.recentCrossings")}
           </h4>
           <RecentCrossingsWidget sourceCode={source.sourceCode} />
         </section>
@@ -247,6 +253,7 @@ function RunImpactScanButton() {
   // layer (7-day TTL per language) absorbs repeat scans.
   void useLocale() // keep hook called for parity with other parts of
                     // the page that read locale; not used here.
+  const t = useTranslations("adminDataSources")
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -292,9 +299,7 @@ function RunImpactScanButton() {
             : "bg-blue-600 text-white hover:bg-blue-700"
         }`}
       >
-        {running
-          ? "Запуск… (EN + RU + AZ)"
-          : "▶ Запустить impact-scan сейчас (EN/RU/AZ)"}
+        {running ? t("impactScan.running") : t("impactScan.button")}
       </button>
       {result && (
         <span className="text-xs text-emerald-700 font-mono">{result}</span>
@@ -305,6 +310,7 @@ function RunImpactScanButton() {
 }
 
 export function DataSourcesCatalogView() {
+  const t = useTranslations("adminDataSources")
   const [freshness, setFreshness] = useState<Record<string, FreshnessSnapshot>>(
     {},
   )
@@ -330,19 +336,14 @@ export function DataSourcesCatalogView() {
     <div className="p-6 max-w-7xl mx-auto">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">
-          Каталог источников данных
+          {t("title")}
         </h1>
         <p className="text-gray-600 max-w-3xl">
-          {DATA_SOURCES_CATALOG.length} внешних API + публичных источников
-          питают индикаторы Risk Terminal. Каждая карточка показывает что это,
-          зачем холдингу, текущий live-сигнал и какие индикаторы зависят от
-          этого источника. Открывайте эту страницу когда клиент спрашивает «а
-          откуда у вас эта цифра?».
+          {t("subtitle", { n: DATA_SOURCES_CATALOG.length })}
         </p>
         {loading && (
           <div className="mt-3 inline-flex items-center gap-2 text-sm text-gray-500">
-            <Loader2 size={14} className="animate-spin" /> Загружаю свежесть
-            источников…
+            <Loader2 size={14} className="animate-spin" /> {t("loading")}
           </div>
         )}
         {/* Phase 7.L — manual trigger for the impact-forecast scan.
@@ -366,20 +367,23 @@ export function DataSourcesCatalogView() {
 
       <footer className="mt-8 pt-6 border-t text-xs text-gray-500 space-y-1">
         <p>
-          <strong>Источник правды:</strong>{" "}
-          <code className="font-mono">src/lib/intel/sources-catalog.ts</code> —
-          одна запись на источник. UI авто-перерендеривается при добавлении
-          нового адаптера.
+          {t.rich("pageFooter.sourceOfTruth", {
+            code: (chunks) => <code className="font-mono">{chunks}</code>,
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </p>
         <p>
-          <strong>Свежесть данных</strong> подтягивается из{" "}
-          <a
-            href="/budgeting/admin/drift"
-            className="text-blue-600 hover:underline"
-          >
-            Drift Dashboard
-          </a>{" "}
-          (зелёный = свежее, жёлтый = устарело, красный = критично).
+          {t.rich("pageFooter.freshnessLine", {
+            strong: (chunks) => <strong>{chunks}</strong>,
+            driftLink: (chunks) => (
+              <a
+                href="/budgeting/admin/drift"
+                className="text-blue-600 hover:underline"
+              >
+                {chunks}
+              </a>
+            ),
+          })}
         </p>
       </footer>
     </div>

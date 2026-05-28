@@ -2458,6 +2458,103 @@
       "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
     }
   },
+  "adminDataArchive": {
+    "title": "Data Arxivi",
+    "description": "Arxivləşdirmə dataları HeatMap, recompute və hesabatlardan gizlədir, lakin onları fiziki olaraq silmir. Bərpa 90 gün ərzində mümkündür. Bütün hərəkətlər IFRS auditi üçün audit trail-da qeyd olunur.",
+    "historyTitle": "Arxivləşdirmə tarixçəsi (son 20)",
+    "historyEmpty": "Hələ heç bir arxivləşdirmə hərəkəti qeyd olunmayıb.",
+    "scopeAll": "all",
+    "actionArchive": "archive",
+    "actionRestore": "restore",
+    "systemActor": "sistem",
+    "col": {
+      "when": "Vaxt",
+      "action": "Hərəkət",
+      "what": "Nə",
+      "scope": "Sahə",
+      "rows": "Sətir",
+      "who": "Kim",
+      "reason": "Səbəb"
+    },
+    "form": {
+      "modeLabel": "Hərəkət",
+      "modeArchive": "Arxivləşdir (hesablamalardan gizlə)",
+      "modeRestore": "Bərpa et (gizli sətirləri qaytar)",
+      "entityKindLabel": "Data tipi",
+      "entityKind": {
+        "BudgetLine": {
+          "label": "Büdcə sətirləri (P&L)",
+          "description": "Revenue / COGS / OPEX. Arxivləşdirmə onları göstərici hesablamalarından və HeatMap-dən silir."
+        },
+        "BalanceSheetLine": {
+          "label": "Balance Sheet sətirləri",
+          "description": "Assets / Liabilities / Equity. Arxivləşdirmə balansdan silir. Sahə — il, şirkət deyil."
+        },
+        "CashFlowEntry": {
+          "label": "Cash Flow yazıları",
+          "description": "Gəlir/gediş. Sahə — il (təşkilat səviyyəsi); şirkət tətbiq olunmur."
+        },
+        "Counterparty": {
+          "label": "Qarşı tərəflər (müştərilər/təchizatçılar)",
+          "description": "Top-N müştəri və təchizatçı. HHI konsentrasiyasına və müştəri-təchizatçı riskinə təsir edir."
+        }
+      },
+      "companyLabel": "Şirkət",
+      "companyPickerPlaceholder": "— seçin —",
+      "yearLabel": "İl",
+      "periodLabel": "Dövr (məsələn, 2026 və ya 2026-Q1)",
+      "reasonLabel": "Səbəb (audit trail üçün)",
+      "reasonPlaceholder": "Məsələn: səhvən idxal edilən 2025-ci il sətirləri, faktiki məlumatlarla əvəz edirik",
+      "confirmLabel": "Təsdiq üçün \"{value}\" yazın",
+      "submitArchive": "Arxivləşdir",
+      "submitRestore": "Bərpa et",
+      "submitRunning": "İcra olunur…",
+      "resultOk": "Hazır. {action} {rows} sətir. Səhifə yenilənəcək…",
+      "resultArchived": "Arxivləşdirildi",
+      "resultRestored": "Bərpa edildi",
+      "resultError": "Xəta: {msg}"
+    }
+  },
+  "adminDataSources": {
+    "title": "Data Mənbələri Kataloqu",
+    "subtitle": "{n} xarici API + ictimai mənbə Risk Terminal göstəricilərini doldurur. Hər kart bunun nə olduğunu, holdinqə nə üçün lazım olduğunu, cari canlı siqnalı və bu mənbədən asılı göstəriciləri izah edir. Müştəri «bu rəqəm haradan gəlir?» soruşduqda bu səhifəni açın.",
+    "loading": "Mənbə təzəliyi yüklənir…",
+    "status": {
+      "fresh": "Təzə",
+      "stale": "Köhnə",
+      "critical_stale": "Kritik",
+      "missing": "Data yoxdur"
+    },
+    "cost": {
+      "free": "pulsuz",
+      "freeTier": "pulsuz açar",
+      "paid": "pullu"
+    },
+    "age": {
+      "minutes": "{n} dəq əvvəl",
+      "hours": "{n} s əvvəl",
+      "days": "{n} gün əvvəl"
+    },
+    "section": {
+      "whatItIs": "Bu nədir",
+      "businessValue": "Holdinqə nə üçün",
+      "freshExample": "Son nümunə",
+      "poweredIndicators": "Doldurur göstəriciləri ({n})",
+      "recentCrossings": "Son kəsişmə hadisələri"
+    },
+    "footer": {
+      "cadence": "Tezlik",
+      "metrics": "Metriklər"
+    },
+    "impactScan": {
+      "button": "▶ Impact-scan-ı indi işə sal (EN/RU/AZ)",
+      "running": "İşləyir… (EN + RU + AZ)"
+    },
+    "pageFooter": {
+      "sourceOfTruth": "<strong>Doğruluq mənbəyi:</strong> <code>src/lib/intel/sources-catalog.ts</code> — mənbə başına bir qeyd. Yeni adapter əlavə olunduqda UI avtomatik yenilənir.",
+      "freshnessLine": "<strong>Data təzəliyi</strong> <driftLink>Drift Dashboard</driftLink>-dan çəkilir (yaşıl = təzə, kəhrəba = köhnə, qırmızı = kritik)."
+    }
+  },
   "adminApiKeys": {
     "title": "Xarici API açarları",
     "subtitle": "Pullu / qeydiyyat tələb edən data mənbələri üçün təşkilat səviyyəli açarlar. Açarsız adapterlər öz işləməsindən yumşaq şəkildə imtina edir — müvafiq kartlarda Drift Dashboard <mono>api_key_missing</mono> göstərəcək. Açarlar <code>Organization.settings</code>-də saxlanılır; v1 — adi JSON (şifrələnmiş sütun v1.1-də gələcək).",

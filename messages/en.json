@@ -2458,6 +2458,103 @@
       "subtitle": "New temp password for {email}. Share it with the user once."
     }
   },
+  "adminDataArchive": {
+    "title": "Data Archive",
+    "description": "Archiving hides data from the HeatMap, recompute and reports but does not physically delete it. Restore is available within 90 days. All actions are recorded in the audit trail for IFRS audit.",
+    "historyTitle": "Archive history (last 20)",
+    "historyEmpty": "No archive actions recorded yet.",
+    "scopeAll": "all",
+    "actionArchive": "archive",
+    "actionRestore": "restore",
+    "systemActor": "system",
+    "col": {
+      "when": "When",
+      "action": "Action",
+      "what": "What",
+      "scope": "Scope",
+      "rows": "Rows",
+      "who": "Who",
+      "reason": "Reason"
+    },
+    "form": {
+      "modeLabel": "Action",
+      "modeArchive": "Archive (hide from calculations)",
+      "modeRestore": "Restore (bring back hidden rows)",
+      "entityKindLabel": "Data type",
+      "entityKind": {
+        "BudgetLine": {
+          "label": "Budget lines (P&L)",
+          "description": "Revenue / COGS / OPEX. Archiving removes them from indicator calculations and HeatMap."
+        },
+        "BalanceSheetLine": {
+          "label": "Balance Sheet rows",
+          "description": "Assets / Liabilities / Equity. Archiving removes them from the balance. Scope = year, not company."
+        },
+        "CashFlowEntry": {
+          "label": "Cash Flow entries",
+          "description": "Inflows / outflows. Scope = year (org-level); company is not applied."
+        },
+        "Counterparty": {
+          "label": "Counterparties (customers/suppliers)",
+          "description": "Top-N customers + suppliers. Affects HHI concentration and customer-supplier risk."
+        }
+      },
+      "companyLabel": "Company",
+      "companyPickerPlaceholder": "— pick —",
+      "yearLabel": "Year",
+      "periodLabel": "Period (e.g. 2026 or 2026-Q1)",
+      "reasonLabel": "Reason (for audit trail)",
+      "reasonPlaceholder": "E.g.: mistakenly imported 2025 rows, replacing with actuals",
+      "confirmLabel": "Type \"{value}\" to confirm",
+      "submitArchive": "Archive",
+      "submitRestore": "Restore",
+      "submitRunning": "Running…",
+      "resultOk": "Done. {action} {rows} rows. Page will refresh…",
+      "resultArchived": "Archived",
+      "resultRestored": "Restored",
+      "resultError": "Error: {msg}"
+    }
+  },
+  "adminDataSources": {
+    "title": "Data Sources Catalog",
+    "subtitle": "{n} external APIs + public sources feed Risk Terminal indicators. Each card explains what it is, why the holding cares, the current live signal and which indicators depend on this source. Open this page when a client asks «where does this number come from?».",
+    "loading": "Loading source freshness…",
+    "status": {
+      "fresh": "Fresh",
+      "stale": "Stale",
+      "critical_stale": "Critical",
+      "missing": "No data"
+    },
+    "cost": {
+      "free": "free",
+      "freeTier": "free key",
+      "paid": "paid"
+    },
+    "age": {
+      "minutes": "{n} min ago",
+      "hours": "{n} h ago",
+      "days": "{n} d ago"
+    },
+    "section": {
+      "whatItIs": "What it is",
+      "businessValue": "Why the holding cares",
+      "freshExample": "Latest sample",
+      "poweredIndicators": "Powers indicators ({n})",
+      "recentCrossings": "Recent crossing events"
+    },
+    "footer": {
+      "cadence": "Cadence",
+      "metrics": "Metrics"
+    },
+    "impactScan": {
+      "button": "▶ Run impact-scan now (EN/RU/AZ)",
+      "running": "Running… (EN + RU + AZ)"
+    },
+    "pageFooter": {
+      "sourceOfTruth": "<strong>Source of truth:</strong> <code>src/lib/intel/sources-catalog.ts</code> — one entry per source. UI auto-re-renders when a new adapter is added.",
+      "freshnessLine": "<strong>Data freshness</strong> is pulled from the <driftLink>Drift Dashboard</driftLink> (green = fresh, amber = stale, red = critical)."
+    }
+  },
   "adminApiKeys": {
     "title": "External API keys",
     "subtitle": "Per-org keys for paid / registration-only data sources. Adapters without a key here will skip themselves gracefully — the Drift Dashboard will show <mono>api_key_missing</mono> on the affected cards. Keys are stored in <code>Organization.settings</code>; v1 is plain JSON (encrypted column coming in v1.1).",

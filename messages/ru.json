@@ -2458,6 +2458,103 @@
       "subtitle": "Новый временный пароль для {email}. Покажите его пользователю один раз."
     }
   },
+  "adminDataArchive": {
+    "title": "Архив данных",
+    "description": "Архивирование скрывает данные из HeatMap, recompute и отчётов, но физически их не удаляет. Восстановление возможно в течение 90 дней. Все действия записываются в audit trail для IFRS-аудита.",
+    "historyTitle": "История архивации (последние 20)",
+    "historyEmpty": "Пока ни одного действия архивации не зарегистрировано.",
+    "scopeAll": "all",
+    "actionArchive": "archive",
+    "actionRestore": "restore",
+    "systemActor": "system",
+    "col": {
+      "when": "Когда",
+      "action": "Действие",
+      "what": "Что",
+      "scope": "Скоуп",
+      "rows": "Строк",
+      "who": "Кто",
+      "reason": "Причина"
+    },
+    "form": {
+      "modeLabel": "Действие",
+      "modeArchive": "Архивировать (скрыть из расчётов)",
+      "modeRestore": "Восстановить (вернуть скрытые)",
+      "entityKindLabel": "Тип данных",
+      "entityKind": {
+        "BudgetLine": {
+          "label": "Бюджетные строки (P&L)",
+          "description": "Revenue / COGS / OPEX. Архивирование уберёт их из расчёта индикаторов и HeatMap."
+        },
+        "BalanceSheetLine": {
+          "label": "Balance Sheet строки",
+          "description": "Assets / Liabilities / Equity. Архивирование уберёт из баланса. Скоуп — год, не компания."
+        },
+        "CashFlowEntry": {
+          "label": "Cash Flow entries",
+          "description": "Притоки/оттоки денег. Скоуп — год (org-уровень), компания не применяется."
+        },
+        "Counterparty": {
+          "label": "Контрагенты (клиенты/поставщики)",
+          "description": "Top-N клиенты и поставщики. Влияет на HHI-концентрацию и customer-supplier risk."
+        }
+      },
+      "companyLabel": "Компания",
+      "companyPickerPlaceholder": "— выберите —",
+      "yearLabel": "Год",
+      "periodLabel": "Период (например, 2026 или 2026-Q1)",
+      "reasonLabel": "Причина (для audit trail)",
+      "reasonPlaceholder": "Например: ошибочно импортированные строки 2025 года, заменяем актуалами",
+      "confirmLabel": "Введите \"{value}\" для подтверждения",
+      "submitArchive": "Архивировать",
+      "submitRestore": "Восстановить",
+      "submitRunning": "Выполняется…",
+      "resultOk": "Готово. {action} {rows} строк. Страница обновится…",
+      "resultArchived": "Архивировано",
+      "resultRestored": "Восстановлено",
+      "resultError": "Ошибка: {msg}"
+    }
+  },
+  "adminDataSources": {
+    "title": "Каталог источников данных",
+    "subtitle": "{n} внешних API + публичных источников питают индикаторы Risk Terminal. Каждая карточка показывает что это, зачем холдингу, текущий live-сигнал и какие индикаторы зависят от этого источника. Открывайте эту страницу когда клиент спрашивает «а откуда у вас эта цифра?».",
+    "loading": "Загружаю свежесть источников…",
+    "status": {
+      "fresh": "Свежее",
+      "stale": "Устарело",
+      "critical_stale": "Критично",
+      "missing": "Нет данных"
+    },
+    "cost": {
+      "free": "бесплатно",
+      "freeTier": "бесплатный ключ",
+      "paid": "платный"
+    },
+    "age": {
+      "minutes": "{n} мин назад",
+      "hours": "{n} ч назад",
+      "days": "{n} дн назад"
+    },
+    "section": {
+      "whatItIs": "Что это",
+      "businessValue": "Зачем холдингу",
+      "freshExample": "Свежий пример",
+      "poweredIndicators": "Питает индикаторы ({n})",
+      "recentCrossings": "Недавние crossing-события"
+    },
+    "footer": {
+      "cadence": "Частота",
+      "metrics": "Метрик"
+    },
+    "impactScan": {
+      "button": "▶ Запустить impact-scan сейчас (EN/RU/AZ)",
+      "running": "Запуск… (EN + RU + AZ)"
+    },
+    "pageFooter": {
+      "sourceOfTruth": "<strong>Источник правды:</strong> <code>src/lib/intel/sources-catalog.ts</code> — одна запись на источник. UI авто-перерендеривается при добавлении нового адаптера.",
+      "freshnessLine": "<strong>Свежесть данных</strong> подтягивается из <driftLink>Drift Dashboard</driftLink> (зелёный = свежее, жёлтый = устарело, красный = критично)."
+    }
+  },
   "adminApiKeys": {
     "title": "Внешние API ключи",
     "subtitle": "Ключи организации для платных / требующих регистрации источников. Адаптеры без ключа корректно пропускают свой запуск — в Drift Dashboard у соответствующих карточек будет показано <mono>api_key_missing</mono>. Ключи хранятся в <code>Organization.settings</code>; v1 — обычный JSON (шифрованная колонка — в v1.1).",

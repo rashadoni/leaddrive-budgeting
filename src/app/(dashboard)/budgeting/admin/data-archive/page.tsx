@@ -12,6 +12,7 @@
  * Admin-only — viewer/editor land on the dashboard via redirect.
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -22,6 +23,7 @@ export const metadata = {
 }
 
 export default async function DataArchivePage() {
+  const t = await getTranslations("adminDataArchive")
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) redirect("/budgeting")
@@ -63,34 +65,32 @@ export default async function DataArchivePage() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <h1 className="text-2xl font-bold mb-2">Архив данных</h1>
+      <h1 className="text-2xl font-bold mb-2">{t("title")}</h1>
       <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Архивирование скрывает данные из HeatMap, recompute и отчётов,
-        но физически их не удаляет. Восстановление возможно в течение
-        90 дней. Все действия записываются в audit trail для IFRS-аудита.
+        {t("description")}
       </p>
 
       <DataArchiveForm companies={companies} />
 
       <h2 className="text-lg font-semibold mt-10 mb-3">
-        История архивации (последние 20)
+        {t("historyTitle")}
       </h2>
       {recentEvents.length === 0 ? (
         <p className="text-sm text-muted-foreground italic">
-          Пока ни одного действия архивации не зарегистрировано.
+          {t("historyEmpty")}
         </p>
       ) : (
         <div className="border rounded overflow-hidden">
           <table className="w-full text-xs font-mono">
             <thead className="bg-muted">
               <tr>
-                <th className="text-left p-2">Когда</th>
-                <th className="text-left p-2">Действие</th>
-                <th className="text-left p-2">Что</th>
-                <th className="text-left p-2">Скоуп</th>
-                <th className="text-right p-2">Строк</th>
-                <th className="text-left p-2">Кто</th>
-                <th className="text-left p-2">Причина</th>
+                <th className="text-left p-2">{t("col.when")}</th>
+                <th className="text-left p-2">{t("col.action")}</th>
+                <th className="text-left p-2">{t("col.what")}</th>
+                <th className="text-left p-2">{t("col.scope")}</th>
+                <th className="text-right p-2">{t("col.rows")}</th>
+                <th className="text-left p-2">{t("col.who")}</th>
+                <th className="text-left p-2">{t("col.reason")}</th>
               </tr>
             </thead>
             <tbody>
@@ -102,7 +102,7 @@ export default async function DataArchivePage() {
                   m.period,
                 ]
                   .filter(Boolean)
-                  .join(" · ") || "all"
+                  .join(" · ") || t("scopeAll")
                 return (
                   <tr
                     key={e.id}
@@ -113,9 +113,9 @@ export default async function DataArchivePage() {
                     </td>
                     <td className="p-2">
                       {e.action === "data_archive" ? (
-                        <span className="text-amber-600">archive</span>
+                        <span className="text-amber-600">{t("actionArchive")}</span>
                       ) : (
-                        <span className="text-emerald-600">restore</span>
+                        <span className="text-emerald-600">{t("actionRestore")}</span>
                       )}
                     </td>
                     <td className="p-2">{String(m.entityKind ?? e.entityType)}</td>
@@ -126,7 +126,7 @@ export default async function DataArchivePage() {
                         : "—"}
                     </td>
                     <td className="p-2 truncate max-w-[140px]">
-                      {e.actor?.name ?? e.actor?.email ?? "system"}
+                      {e.actor?.name ?? e.actor?.email ?? t("systemActor")}
                     </td>
                     <td className="p-2 truncate max-w-[200px]">
                       {typeof m.reason === "string" ? m.reason : "—"}

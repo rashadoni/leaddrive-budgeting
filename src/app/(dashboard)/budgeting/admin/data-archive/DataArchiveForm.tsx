@@ -15,6 +15,7 @@
  * impossible to fat-finger a destructive action.
  */
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 
 interface CompanyOption {
   code: string
@@ -27,37 +28,19 @@ type EntityKind =
   | "CashFlowEntry"
   | "Counterparty"
 
-const ENTITY_KIND_LABELS: Record<
-  EntityKind,
-  { ru: string; description: string }
-> = {
-  BudgetLine: {
-    ru: "Бюджетные строки (P&L)",
-    description:
-      "Revenue / COGS / OPEX. Архивирование уберёт их из расчёта индикаторов и HeatMap.",
-  },
-  BalanceSheetLine: {
-    ru: "Balance Sheet строки",
-    description:
-      "Assets / Liabilities / Equity. Архивирование уберёт из баланса. Скоуп — год, не компания.",
-  },
-  CashFlowEntry: {
-    ru: "Cash Flow entries",
-    description:
-      "Притоки/оттоки денег. Скоуп — год (org-уровень), компания не применяется.",
-  },
-  Counterparty: {
-    ru: "Контрагенты (клиенты/поставщики)",
-    description:
-      "Top-N клиенты и поставщики. Влияет на HHI-концентрацию и customer-supplier risk.",
-  },
-}
+const ENTITY_KIND_KEYS: EntityKind[] = [
+  "BudgetLine",
+  "BalanceSheetLine",
+  "CashFlowEntry",
+  "Counterparty",
+]
 
 export function DataArchiveForm({
   companies,
 }: {
   companies: ReadonlyArray<CompanyOption>
 }) {
+  const t = useTranslations("adminDataArchive.form")
   const [mode, setMode] = useState<"archive" | "restore">("archive")
   const [entityKind, setEntityKind] = useState<EntityKind>("BudgetLine")
   const [companyCode, setCompanyCode] = useState<string>("")
@@ -142,7 +125,7 @@ export function DataArchiveForm({
     >
       {/* Mode picker */}
       <div>
-        <label className="block text-sm font-semibold mb-2">Действие</label>
+        <label className="block text-sm font-semibold mb-2">{t("modeLabel")}</label>
         <div className="flex gap-3">
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -152,7 +135,7 @@ export function DataArchiveForm({
               checked={mode === "archive"}
               onChange={() => setMode("archive")}
             />
-            <span>Архивировать (скрыть из расчётов)</span>
+            <span>{t("modeArchive")}</span>
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -162,40 +145,40 @@ export function DataArchiveForm({
               checked={mode === "restore"}
               onChange={() => setMode("restore")}
             />
-            <span>Восстановить (вернуть скрытые)</span>
+            <span>{t("modeRestore")}</span>
           </label>
         </div>
       </div>
 
       {/* Entity kind */}
       <div>
-        <label className="block text-sm font-semibold mb-2">Тип данных</label>
+        <label className="block text-sm font-semibold mb-2">{t("entityKindLabel")}</label>
         <select
           value={entityKind}
           onChange={(e) => setEntityKind(e.target.value as EntityKind)}
           className="w-full border rounded px-3 py-2 text-sm bg-background"
         >
-          {(Object.keys(ENTITY_KIND_LABELS) as EntityKind[]).map((k) => (
+          {ENTITY_KIND_KEYS.map((k) => (
             <option key={k} value={k}>
-              {ENTITY_KIND_LABELS[k].ru}
+              {t(`entityKind.${k}.label`)}
             </option>
           ))}
         </select>
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          {ENTITY_KIND_LABELS[entityKind].description}
+          {t(`entityKind.${entityKind}.description`)}
         </p>
       </div>
 
       {/* Scope: company */}
       {needsCompany && (
         <div>
-          <label className="block text-sm font-semibold mb-2">Компания</label>
+          <label className="block text-sm font-semibold mb-2">{t("companyLabel")}</label>
           <select
             value={companyCode}
             onChange={(e) => setCompanyCode(e.target.value)}
             className="w-full border rounded px-3 py-2 text-sm bg-background"
           >
-            <option value="">— выберите —</option>
+            <option value="">{t("companyPickerPlaceholder")}</option>
             {companies.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.code} — {c.name}
@@ -208,7 +191,7 @@ export function DataArchiveForm({
       {/* Scope: year */}
       {needsYear && (
         <div>
-          <label className="block text-sm font-semibold mb-2">Год</label>
+          <label className="block text-sm font-semibold mb-2">{t("yearLabel")}</label>
           <input
             type="number"
             value={year}
@@ -225,7 +208,7 @@ export function DataArchiveForm({
       {needsPeriod && (
         <div>
           <label className="block text-sm font-semibold mb-2">
-            Период (например, 2026 или 2026-Q1)
+            {t("periodLabel")}
           </label>
           <input
             type="text"
@@ -240,12 +223,12 @@ export function DataArchiveForm({
       {/* Reason */}
       <div>
         <label className="block text-sm font-semibold mb-2">
-          Причина (для audit trail)
+          {t("reasonLabel")}
         </label>
         <textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Например: ошибочно импортированные строки 2025 года, заменяем актуалами"
+          placeholder={t("reasonPlaceholder")}
           className="w-full border rounded px-3 py-2 text-sm bg-background"
           rows={2}
           maxLength={500}
@@ -255,8 +238,7 @@ export function DataArchiveForm({
       {/* Confirm field — visual safety */}
       <div className="border-t pt-4">
         <label className="block text-sm font-semibold mb-2">
-          Введите {expectedConfirm === "ALL" ? '"ALL"' : `"${expectedConfirm}"`}{" "}
-          для подтверждения
+          {t("confirmLabel", { value: expectedConfirm })}
         </label>
         <input
           type="text"
@@ -280,10 +262,10 @@ export function DataArchiveForm({
         }`}
       >
         {submitting
-          ? "Выполняется…"
+          ? t("submitRunning")
           : mode === "archive"
-            ? "Архивировать"
-            : "Восстановить"}
+            ? t("submitArchive")
+            : t("submitRestore")}
       </button>
 
       {/* Result */}
@@ -297,11 +279,17 @@ export function DataArchiveForm({
         >
           {result.ok ? (
             <>
-              ✓ Готово. {result.mode === "archive" ? "Архивировано" : "Восстановлено"}{" "}
-              <strong>{result.rowsAffected}</strong> строк. Страница обновится…
+              ✓{" "}
+              {t("resultOk", {
+                action:
+                  result.mode === "archive"
+                    ? t("resultArchived")
+                    : t("resultRestored"),
+                rows: result.rowsAffected,
+              })}
             </>
           ) : (
-            <>✗ Ошибка: {result.error}</>
+            <>✗ {t("resultError", { msg: result.error })}</>
           )}
         </div>
       )}
