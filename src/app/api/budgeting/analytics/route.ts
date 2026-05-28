@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
@@ -7,6 +8,21 @@ import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
 import { computeElapsedMonthIndices } from "@/lib/budgeting/elapsed-months"
+
+// Phase 8 D3 (2026-05-28) — typed shape for the budgetLine.findMany
+// include result. Replaces the 26 `(l as any).account` / `(l as any)
+// .costType` casts scattered through the handler with a single
+// payload type that mirrors the include block above (line 65).
+type BudgetLineWithRelations = Prisma.BudgetLineGetPayload<{
+  include: {
+    costType: true
+    budgetDept: true
+    account: { select: { code: true; name: true } }
+  }
+}>
+type BudgetCostTypeRow = Prisma.BudgetCostTypeGetPayload<true>
+type BudgetDepartmentRow = Prisma.BudgetDepartmentGetPayload<true>
+type BudgetActualRow = Prisma.BudgetActualGetPayload<true>
 
 /**
  * GET /api/budgeting/analytics
@@ -77,8 +93,8 @@ export async function GET(req: NextRequest) {
   ])
 
   // Load cost model if any line uses auto-actual OR auto-planned
-  const hasAutoActual = lines.some((l: any) => l.isAutoActual)
-  const hasAutoPlanned = lines.some((l: any) => l.isAutoPlanned)
+  const hasAutoActual = lines.some((l: BudgetLineWithRelations) => l.isAutoActual)
+  const hasAutoPlanned = lines.some((l: BudgetLineWithRelations) => l.isAutoPlanned)
   const costModel = (hasAutoActual || hasAutoPlanned) ? await loadAndCompute(orgId).catch(() => null) : null
 
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
@@ -103,7 +119,7 @@ export async function GET(req: NextRequest) {
   // computeFn closure + adds the observability log on the fallback branch.
   // See effective-planned.test.ts for the 7 cases covering Bug #1b
   // semantics (Turn 33 architect ⚠️ test-coverage closure).
-  function getEffectivePlanned(line: any): number {
+  function getEffectivePlanned(line: BudgetLineWithRelations): number {
     return getEffectivePlannedPure(line, (l) => {
       const computed = computePlannedForLine(l, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
       if (computed === 0 && l.plannedAmount > 0) {
@@ -113,7 +129,7 @@ export async function GET(req: NextRequest) {
         // pure helper handles the FALLBACK return; we just log here BEFORE
         // it does so there's a 1:1 log:fallback correspondence.
         console.warn(
-          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} accountCode=${(l as any).account?.code ?? ""} stored=${l.plannedAmount}`
+          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} accountCode=${l.account?.code ?? ""} stored=${l.plannedAmount}`
         )
       }
       return computed
@@ -143,7 +159,7 @@ export async function GET(req: NextRequest) {
       if (line.isAutoActual && line.costModelKey) {
         const monthlyAmount = resolveCostModelKey(costModel, line.costModelKey)
         const amount = monthlyAmount * elapsedMonths
-        const key = `${(line as any).account?.code ?? ""}||${line.lineType}`
+        const key = `${line.account?.code ?? ""}||${line.lineType}`
         autoActualByCategory.set(key, (autoActualByCategory.get(key) ?? 0) + amount)
         // Phase 3.1 v1.2 — attribute one monthlyAmount per elapsed month.
         const monthly = autoActualMonthlyByCategory.get(key) ?? Array(12).fill(0)
@@ -175,7 +191,7 @@ export async function GET(req: NextRequest) {
   // companyId (legacy / unassigned) all share an empty-string bucket so
   // their dedup behaviour is unchanged from the pre-Turn-30 era.
   const codesByCompany = new Map<string, Set<string>>()
-  for (const l of lines as any[]) {
+  for (const l of lines as BudgetLineWithRelations[]) {
     const code = (l.account?.code ?? l.department ?? "").toString()
     if (!code) continue
     const cid = l.companyId ?? ""
@@ -197,7 +213,7 @@ export async function GET(req: NextRequest) {
     }
     return false
   }
-  const isLeaf = (l: any): boolean => {
+  const isLeaf = (l: BudgetLineWithRelations): boolean => {
     const code = l.account?.code ?? l.department ?? ""
     return !code || !isParentCodeFor(code, l.companyId)
   }
@@ -207,13 +223,13 @@ export async function GET(req: NextRequest) {
   const revenueLines = lines.filter((l: { lineType: string }) => l.lineType === "revenue").filter(isLeaf)
   const cogsLines = lines.filter((l: { lineType: string }) => l.lineType === "cogs").filter(isLeaf)
 
-  const totalExpensePlanned = expenseLines.reduce((s: number, l: any) => s + getEffectivePlanned(l), 0)
-  const totalRevenuePlanned = revenueLines.reduce((s: number, l: any) => s + getEffectivePlanned(l), 0)
+  const totalExpensePlanned = expenseLines.reduce((s: number, l: BudgetLineWithRelations) => s + getEffectivePlanned(l), 0)
+  const totalRevenuePlanned = revenueLines.reduce((s: number, l: BudgetLineWithRelations) => s + getEffectivePlanned(l), 0)
   // COGS totals — must be computed before totalPlanned
-  const totalCOGSPlanned = cogsLines.reduce((s: number, l: any) => s + getEffectivePlanned(l), 0)
+  const totalCOGSPlanned = cogsLines.reduce((s: number, l: BudgetLineWithRelations) => s + getEffectivePlanned(l), 0)
   const totalPlanned = totalExpensePlanned // OpEx only (COGS allocates same costs by service)
-  const totalExpenseForecast = expenseLines.reduce((s: number, l: any) => s + (l.forecastAmount ?? getEffectivePlanned(l)), 0)
-  const totalRevenueForecast = revenueLines.reduce((s: number, l: any) => s + (l.forecastAmount ?? getEffectivePlanned(l)), 0)
+  const totalExpenseForecast = expenseLines.reduce((s: number, l: BudgetLineWithRelations) => s + (l.forecastAmount ?? getEffectivePlanned(l)), 0)
+  const totalRevenueForecast = revenueLines.reduce((s: number, l: BudgetLineWithRelations) => s + (l.forecastAmount ?? getEffectivePlanned(l)), 0)
   // Forecast from ForecastEntries (monthly) — split by lineType
   const feRevenue = forecastEntries.filter((e: { lineType: string }) => e.lineType === "revenue")
   const feExpense = forecastEntries.filter((e: { lineType: string }) => e.lineType === "expense")
@@ -296,9 +312,9 @@ export async function GET(req: NextRequest) {
   for (const l of lines) {
     if (!l.parentId) {
       // This is a parent line — register its children
-      const children = lines.filter((c: any) => c.parentId === l.id)
+      const children = lines.filter((c: BudgetLineWithRelations) => c.parentId === l.id)
       for (const c of children) {
-        parentLookup.set(`${(c as any).account?.code ?? ""}||${c.lineType}`, (l as any).account?.code ?? "")
+        parentLookup.set(`${c.account?.code ?? ""}||${c.lineType}`, l.account?.code ?? "")
       }
     }
   }
@@ -314,9 +330,9 @@ export async function GET(req: NextRequest) {
 
   for (const l of lines) {
     if (!isLeaf(l)) continue
-    const code = (l as any).account?.code ?? l.department ?? null
+    const code = l.account?.code ?? l.department ?? null
     const key = `${code ?? ""}||${l.lineType}`
-    const displayCategory = (l as any).account?.name ?? (l as any).account?.code ?? ""
+    const displayCategory = l.account?.name ?? l.account?.code ?? ""
     const existing = categoryMap.get(key) ?? { planned: 0, forecast: 0, actual: 0, lineType: l.lineType, accountCode: code, displayCategory, monthlyPlanned: Array(12).fill(0), monthlyActual: Array(12).fill(0) }
     const planned = getEffectivePlanned(l)
     existing.planned += planned
@@ -413,7 +429,7 @@ export async function GET(req: NextRequest) {
   // l.account is always set; looksLikeSapCode fallback retired.
   const deptMap = new Map<string, { expPlanned: number; expActual: number; revPlanned: number; revActual: number; forecast: number }>()
 
-  const resolveDept = (l: any): string => {
+  const resolveDept = (l: BudgetLineWithRelations): string => {
     return l.account?.name ?? l.account?.code ?? l.department ?? "General"
   }
 
@@ -546,7 +562,7 @@ export async function GET(req: NextRequest) {
 
   if (costTypes.length > 0) {
     // Lines with matrix FK references
-    const matrixLines = lines.filter((l: any) => l.costTypeId || (l.lineType === "revenue" && l.departmentId))
+    const matrixLines = lines.filter((l: BudgetLineWithRelations) => l.costTypeId || (l.lineType === "revenue" && l.departmentId))
 
     // Compute auto-actual per matrix cell if cost model available
     const { year: curYear2, month: curMonth2 } = currentBakuYearMonth()
@@ -570,10 +586,10 @@ export async function GET(req: NextRequest) {
     const cellMap = new Map<string, { planned: number; actual: number; forecast: number; lineType: string; costTypeKey: string; costTypeLabel: string; deptKey: string | null; deptLabel: string | null }>()
 
     for (const line of matrixLines) {
-      const ct = (line as any).costType
-      const dept = (line as any).budgetDept
+      const ct = line.costType
+      const dept = line.budgetDept
       const ctKey = line.lineType === "revenue" ? "_revenue" : (ct?.key || "unknown")
-      const ctLabel = line.lineType === "revenue" ? "Revenue" : (ct?.label || ((line as any).account?.name ?? (line as any).account?.code ?? ""))
+      const ctLabel = line.lineType === "revenue" ? "Revenue" : (ct?.label || (line.account?.name ?? line.account?.code ?? ""))
       const cellKey = `${ctKey}||${dept?.key || "_shared"}`
 
       const existing = cellMap.get(cellKey) ?? {
@@ -602,11 +618,11 @@ export async function GET(req: NextRequest) {
         existing.actual += monthlyAmount * elapsedMonths2
       } else if (!line.isAutoActual) {
         // Manual actuals: look up from BudgetActual records by account.code+lineType
-        const lineAccountCode = (line as any).account?.code ?? ""
+        const lineAccountCode = line.account?.code ?? ""
         const catKey = `${lineAccountCode}||${line.lineType}`
         const manualAmount = autoActualByCategory.has(catKey) ? 0 : (manualActuals
-          .filter((a: any) => a.category === lineAccountCode && a.lineType === line.lineType)
-          .reduce((s: number, a: any) => s + a.actualAmount, 0))
+          .filter((a: BudgetActualRow) => a.category === lineAccountCode && a.lineType === line.lineType)
+          .reduce((s: number, a: BudgetActualRow) => s + a.actualAmount, 0))
         existing.actual += manualAmount
       }
 
@@ -660,8 +676,8 @@ export async function GET(req: NextRequest) {
   }
 
   const matrix = {
-    costTypes: costTypes.map((ct: any) => ({ key: ct.key, label: ct.label, isShared: ct.isShared, color: ct.color })),
-    departments: departments.map((d: any) => ({ key: d.key, label: d.label, hasRevenue: d.hasRevenue, color: d.color })),
+    costTypes: costTypes.map((ct: BudgetCostTypeRow) => ({ key: ct.key, label: ct.label, isShared: ct.isShared, color: ct.color })),
+    departments: departments.map((d: BudgetDepartmentRow) => ({ key: d.key, label: d.label, hasRevenue: d.hasRevenue, color: d.color })),
     cells: matrixCells,
     rowTotals: matrixRowTotals,
     colTotals: matrixColTotals,
