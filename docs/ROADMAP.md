@@ -508,7 +508,7 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 
 ### Group E — Compliance Hub upgrades
 - 🟡 **E1.** Write-back close/reopen shipped (commit `3fd2e3c`, 2026-05-28). Remaining: assign owner / add comment / change deadline UI — `est: 1d`
-- ⬜ **E2.** Per-finding drill-down modal with full description + attachments — `est: 1d`
+- ✅ **E2.** Per-finding drill-down modal — shipped 2026-05-28. Click the audit text in any AuditTable row to open a modal with: full description (often truncated in the row), MNG status, grouping, Jan-26 status, assignee (when set), close metadata (when closed), full mutation history with reverse-chrono timeline, and comments list. Reuses the existing close/reopen PATCH path so an action inside the modal mirrors the inline button. EN/RU/AZ copy. Attachment support deferred — the data model has no attachments column today; would be a separate `FindingAttachment` table.
 - ✅ **E3.** Email-export filtered slice — shipped 2026-05-28. «Email» button next to «Export CSV» opens user's default mail client with mailto: URL carrying a Markdown table of the filtered slice (capped at 30 rows; clipboard fallback for slices over 2KB URL limit). Honours active entity / severity / status filters; subject + header includes counts + date. EN/RU/AZ copy.
 
 ### Group F — Operations

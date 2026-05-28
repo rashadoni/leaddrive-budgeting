@@ -2970,7 +2970,26 @@
     "emailSubjectCourt": "Срез судебных дел: {count} дел на {date}",
     "emailHeaderAudit": "Срез по аудиту — {count} замечаний на {date}.",
     "emailHeaderCourt": "Срез по судебным делам — {count} дел на {date}.",
-    "emailTruncated": "Показано {shown} из {total} строк. Полный список — через CSV-экспорт."
+    "emailTruncated": "Показано {shown} из {total} строк. Полный список — через CSV-экспорт.",
+    "ariaOpenDrilldown": "Открыть детали замечания #{idx}",
+    "drilldownTitle": "Замечание #{idx}",
+    "drilldownClose": "Закрыть",
+    "drilldownAuditText": "Описание замечания",
+    "drilldownStatusMng": "Статус (MNG)",
+    "drilldownGrouping": "Группа",
+    "drilldownJanStatus": "Статус на январь-26",
+    "drilldownAssignedTo": "Назначено",
+    "drilldownClosedBlock": "Резолюция",
+    "drilldownClosedLine": "Закрыто {when}, исполнитель: {by}",
+    "drilldownHistory": "История изменений ({n})",
+    "drilldownComments": "Комментарии ({n})",
+    "drilldownOpenCompany": "Открыть компании в админке",
+    "mutation": {
+      "close": "Закрыто",
+      "reopen": "Переоткрыто",
+      "assign": "Назначено",
+      "comment": "Комментарий"
+    }
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

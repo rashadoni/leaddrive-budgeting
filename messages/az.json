@@ -2970,7 +2970,26 @@
     "emailSubjectCourt": "Məhkəmə işləri kəsiyi: {count} iş, {date}",
     "emailHeaderAudit": "Audit kəsiyi — {date} tarixinə {count} tapıntı.",
     "emailHeaderCourt": "Məhkəmə işləri kəsiyi — {date} tarixinə {count} iş.",
-    "emailTruncated": "{total} sətirdən {shown} göstərilir. Tam siyahı üçün CSV-eksportdan istifadə edin."
+    "emailTruncated": "{total} sətirdən {shown} göstərilir. Tam siyahı üçün CSV-eksportdan istifadə edin.",
+    "ariaOpenDrilldown": "#{idx} tapıntının detallarını aç",
+    "drilldownTitle": "Tapıntı #{idx}",
+    "drilldownClose": "Bağla",
+    "drilldownAuditText": "Audit təsviri",
+    "drilldownStatusMng": "Status (MNG)",
+    "drilldownGrouping": "Qrup",
+    "drilldownJanStatus": "Yanvar-26 statusu",
+    "drilldownAssignedTo": "Təyin olundu",
+    "drilldownClosedBlock": "Qərar",
+    "drilldownClosedLine": "Bağlandı {when}, icraçı: {by}",
+    "drilldownHistory": "Dəyişiklik tarixçəsi ({n})",
+    "drilldownComments": "Şərhlər ({n})",
+    "drilldownOpenCompany": "Şirkətlər adminkasını aç",
+    "mutation": {
+      "close": "Bağlandı",
+      "reopen": "Yenidən açıldı",
+      "assign": "Təyin edildi",
+      "comment": "Şərh"
+    }
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

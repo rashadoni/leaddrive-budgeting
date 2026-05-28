@@ -2970,7 +2970,26 @@
     "emailSubjectCourt": "Compliance court cases slice ({count} cases, {date})",
     "emailHeaderAudit": "Compliance audit slice — {count} findings as of {date}.",
     "emailHeaderCourt": "Compliance court cases slice — {count} cases as of {date}.",
-    "emailTruncated": "Showing first {shown} of {total} rows. Use the CSV export for the full list."
+    "emailTruncated": "Showing first {shown} of {total} rows. Use the CSV export for the full list.",
+    "ariaOpenDrilldown": "Open finding #{idx} details",
+    "drilldownTitle": "Finding #{idx}",
+    "drilldownClose": "Close",
+    "drilldownAuditText": "Audit description",
+    "drilldownStatusMng": "Status (MNG)",
+    "drilldownGrouping": "Grouping",
+    "drilldownJanStatus": "Status as of Jan-26",
+    "drilldownAssignedTo": "Assigned to",
+    "drilldownClosedBlock": "Resolution",
+    "drilldownClosedLine": "Closed {when} by {by}",
+    "drilldownHistory": "Change history ({n})",
+    "drilldownComments": "Comments ({n})",
+    "drilldownOpenCompany": "Open company admin",
+    "mutation": {
+      "close": "Closed",
+      "reopen": "Reopened",
+      "assign": "Assigned",
+      "comment": "Commented"
+    }
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

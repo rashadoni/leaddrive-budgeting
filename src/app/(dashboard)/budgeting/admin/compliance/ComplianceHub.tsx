@@ -27,7 +27,28 @@ import {
   RotateCcw,
   Loader2,
   Mail,
+  ExternalLink,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+interface FindingComment {
+  at: string;
+  author: string;
+  text: string;
+}
+
+interface FindingMutation {
+  at: string;
+  by: string;
+  action: "close" | "reopen" | "assign" | "comment";
+  value?: string;
+}
 
 interface AuditFinding {
   severity: string;
@@ -40,6 +61,11 @@ interface AuditFinding {
   closed?: boolean;
   closedAt?: string;
   closedBy?: string;
+  // Phase 8 E2 — drill-down modal fields. Server emits these whenever
+  // assign / comment / close PATCHes have fired against the finding.
+  assignedTo?: string;
+  comments?: FindingComment[];
+  mutations?: FindingMutation[];
 }
 
 interface CourtCase {
@@ -194,6 +220,16 @@ export function ComplianceHub({ entities }: Props) {
   const [pendingRows, setPendingRows] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Phase 8 E2 — drill-down modal. Stores the row pointer (entityId +
+   *  findingIdx) so the modal can read live state from the entity list,
+   *  which keeps optimistic Close/Reopen flips reflected without the
+   *  modal needing its own state. Null = closed. */
+  const [drilldown, setDrilldown] = useState<{
+    entityId: string;
+    entityCode: string;
+    entityName: string;
+    findingIdx: number;
+  } | null>(null);
 
   /**
    * PATCH the compliance finding. Optimistic UI: flip locally first,
@@ -630,11 +666,190 @@ export function ComplianceHub({ entities }: Props) {
                 void toggleClosed(entityId, findingIdx, nextClosed);
               })
             }
+            onOpenDrilldown={setDrilldown}
           />
         ) : (
           <CourtTable rows={filteredCourtRows} />
         )}
       </div>
+
+      {/* Phase 8 E2 — drill-down modal. Reads live finding from
+          entities[] so optimistic close/reopen flips reflect without
+          modal-local state. */}
+      {drilldown &&
+        (() => {
+          const ent = entities.find((e) => e.id === drilldown.entityId);
+          const f = ent?.auditFindings?.items[drilldown.findingIdx];
+          if (!ent || !f) return null;
+          const closed = isRowClosed(drilldown.entityId, drilldown.findingIdx, f);
+          const key = `${drilldown.entityId}::${drilldown.findingIdx}`;
+          const isPending = pendingRows.has(key);
+          return (
+            <Dialog open={!!drilldown} onOpenChange={(v) => !v && setDrilldown(null)}>
+              <DialogHeader>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <DialogTitle>
+                      <span className="font-mono text-xs text-muted-foreground mr-2">
+                        {drilldown.entityCode.replace("AZSEKER-", "")}
+                      </span>
+                      {t("drilldownTitle", { idx: drilldown.findingIdx + 1 })}
+                    </DialogTitle>
+                    <div className="mt-2 flex items-center gap-2">
+                      <SeverityChip severity={f.severity} />
+                      <StatusBadge closed={closed} />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDrilldown(null)}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-1 -mt-1 -mr-1"
+                    aria-label={t("drilldownClose")}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </DialogHeader>
+              <DialogContent>
+                <div className="space-y-4 text-sm">
+                  <section>
+                    <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                      {t("drilldownAuditText")}
+                    </h3>
+                    <p className="leading-relaxed">{f.audit}</p>
+                  </section>
+                  <section className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("drilldownStatusMng")}
+                      </h3>
+                      <p className="text-xs">{f.status || "—"}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("drilldownGrouping")}
+                      </h3>
+                      <p className="text-xs">{f.grouping || "—"}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("drilldownJanStatus")}
+                      </h3>
+                      <p className="text-xs">{f.findingStatusJan || "—"}</p>
+                    </div>
+                    {f.assignedTo && (
+                      <div>
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                          {t("drilldownAssignedTo")}
+                        </h3>
+                        <p className="text-xs">{f.assignedTo}</p>
+                      </div>
+                    )}
+                  </section>
+                  {f.closed && f.closedAt && (
+                    <section className="rounded border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+                      <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
+                        {t("drilldownClosedBlock")}
+                      </div>
+                      <p className="text-xs text-foreground/80">
+                        {t("drilldownClosedLine", {
+                          when: new Date(f.closedAt).toLocaleString(),
+                          by: f.closedBy ?? "system",
+                        })}
+                      </p>
+                    </section>
+                  )}
+                  {f.mutations && f.mutations.length > 0 && (
+                    <section>
+                      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("drilldownHistory", { n: f.mutations.length })}
+                      </h3>
+                      <ul className="space-y-1.5 text-xs">
+                        {[...f.mutations].reverse().map((m, i) => (
+                          <li
+                            key={i}
+                            className="flex items-baseline gap-2 text-muted-foreground"
+                          >
+                            <span className="font-mono text-[10px] shrink-0">
+                              {new Date(m.at).toLocaleString()}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {t(`mutation.${m.action}`)}
+                            </span>
+                            {m.value && (
+                              <span className="truncate">«{m.value}»</span>
+                            )}
+                            <span className="text-muted-foreground ml-auto text-[10px]">
+                              {m.by}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                  {f.comments && f.comments.length > 0 && (
+                    <section>
+                      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                        {t("drilldownComments", { n: f.comments.length })}
+                      </h3>
+                      <ul className="space-y-2">
+                        {f.comments.map((c, i) => (
+                          <li
+                            key={i}
+                            className="rounded border border-border/60 bg-muted/30 px-3 py-2 text-xs"
+                          >
+                            <div className="text-[10px] text-muted-foreground mb-0.5">
+                              {c.author} ·{" "}
+                              {new Date(c.at).toLocaleString()}
+                            </div>
+                            <p className="leading-relaxed">{c.text}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              </DialogContent>
+              <DialogFooter>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => {
+                    startTransition(() => {
+                      void toggleClosed(
+                        drilldown.entityId,
+                        drilldown.findingIdx,
+                        !closed,
+                      );
+                    });
+                  }}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                    closed
+                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                  data-testid="drilldown-toggle"
+                >
+                  {isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : closed ? (
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  ) : (
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                  )}
+                  {closed ? t("btnReopen") : t("btnClose")}
+                </button>
+                <a
+                  href={`/budgeting/admin/companies`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  {t("drilldownOpenCompany")}
+                </a>
+              </DialogFooter>
+            </Dialog>
+          );
+        })()}
     </div>
   );
 }
@@ -731,6 +946,7 @@ function AuditTable({
   isRowClosed,
   pendingRows,
   onToggle,
+  onOpenDrilldown,
 }: {
   rows: Array<{
     entityId: string;
@@ -742,6 +958,12 @@ function AuditTable({
   isRowClosed: (entityId: string, findingIdx: number, f: AuditFinding) => boolean;
   pendingRows: Set<string>;
   onToggle: (entityId: string, findingIdx: number, nextClosed: boolean) => void;
+  onOpenDrilldown: (row: {
+    entityId: string;
+    entityCode: string;
+    entityName: string;
+    findingIdx: number;
+  }) => void;
 }) {
   const t = useTranslations("adminCompliance");
   if (rows.length === 0) {
@@ -780,7 +1002,25 @@ function AuditTable({
                 <SeverityChip severity={r.finding.severity} />
               </td>
               <td className="px-3 py-2 text-foreground/90 max-w-md">
-                {r.finding.audit}
+                {/* Phase 8 E2 — clickable audit text opens drill-down
+                    modal with full description, mutation history,
+                    comments. Underline-on-hover signals affordance. */}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenDrilldown({
+                      entityId: r.entityId,
+                      entityCode: r.entityCode,
+                      entityName: r.entityName,
+                      findingIdx: r.findingIdx,
+                    })
+                  }
+                  className="text-left hover:text-foreground hover:underline underline-offset-2 decoration-dotted decoration-muted-foreground cursor-pointer transition-colors"
+                  data-testid={`finding-drilldown-${r.entityCode}-${r.findingIdx}`}
+                  aria-label={t("ariaOpenDrilldown", { idx: r.findingIdx + 1 })}
+                >
+                  {r.finding.audit}
+                </button>
               </td>
               <td className="px-3 py-2">
                 <StatusBadge closed={isCompleted} />

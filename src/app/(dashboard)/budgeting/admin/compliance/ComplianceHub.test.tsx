@@ -92,6 +92,42 @@ describe("ComplianceHub close/reopen toggle", () => {
     })
   })
 
+  it("Phase 8 E2 — clicking audit text opens the drill-down modal", () => {
+    render(<ComplianceHub entities={[ENTITY]} />)
+    const trigger = screen.getByTestId("finding-drilldown-AZSEKER-AZSF-0")
+    fireEvent.click(trigger)
+    expect(screen.getByTestId("drilldown-toggle")).toBeTruthy()
+    // Modal shows audit text + status pill
+    const dialog = screen.getByTestId("drilldown-toggle").closest("div")
+    expect(dialog).toBeTruthy()
+    expect(screen.getAllByText(/Sample finding/).length).toBeGreaterThan(0)
+  })
+
+  it("Phase 8 E2 — drill-down modal Close button reuses the same PATCH path", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        companyCode: "AZSEKER-AZSF",
+        findingIdx: 0,
+        finding: { closed: true },
+        summary: { total: 1, completed: 1, completedPct: 100 },
+      }),
+    } as Response)
+    render(<ComplianceHub entities={[ENTITY]} />)
+    fireEvent.click(screen.getByTestId("finding-drilldown-AZSEKER-AZSF-0"))
+    const closeBtn = screen.getByTestId("drilldown-toggle")
+    fireEvent.click(closeBtn)
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe("/api/admin/compliance/finding")
+    const body = JSON.parse(init.body as string)
+    expect(body.action).toBe("close")
+  })
+
   it("Phase 8 E3 — Email button opens mailto with subject + body from filtered slice", () => {
     const originalHref = window.location.href
     const setHrefSpy = vi.fn()
