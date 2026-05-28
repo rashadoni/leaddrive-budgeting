@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { loadAndCompute } from "@/lib/cost-model/db"
 import { resolveCostModelKey } from "@/lib/budgeting/cost-model-map"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
 import ExcelJS from "exceljs"
+
+// Phase 8 D3 (2026-05-28) — typed shapes for the four Prisma queries
+// at the top of GET. Replaces the 38 `(l as any).account` /
+// `line.isAutoActual` / `a.actualAmount` casts that
+// were undoing the type safety Prisma already provides.
+type BudgetLineWithAccount = Prisma.BudgetLineGetPayload<{
+  include: { account: { select: { code: true; name: true } } }
+}>
+type BudgetActualRow = Prisma.BudgetActualGetPayload<true>
+type BudgetForecastEntryRow = Prisma.BudgetForecastEntryGetPayload<true>
 
 // ── Color palette ────────────────────────────────────────────────────────────
 const PURPLE = "FF6D28D9"
@@ -124,29 +135,29 @@ export async function GET(req: NextRequest) {
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   // Load cost model only if needed
-  const hasAutoActual = lines.some((l: any) => l.isAutoActual)
+  const hasAutoActual = lines.some((l: BudgetLineWithAccount) => l.isAutoActual)
   const costModel = hasAutoActual ? await loadAndCompute(orgId).catch(() => null) : null
 
   // ── Compute all financials ─────────────────────────────────────────────────
-  const expenseLines = lines.filter((l: any) => l.lineType === "expense")
-  const revenueLines = lines.filter((l: any) => l.lineType === "revenue")
-  const cogsLines = lines.filter((l: any) => l.lineType === "cogs")
+  const expenseLines = lines.filter((l: BudgetLineWithAccount) => l.lineType === "expense")
+  const revenueLines = lines.filter((l: BudgetLineWithAccount) => l.lineType === "revenue")
+  const cogsLines = lines.filter((l: BudgetLineWithAccount) => l.lineType === "cogs")
 
-  const totalExpensePlanned = expenseLines.reduce((s: number, l: any) => s + l.plannedAmount, 0)
-  const totalRevenuePlanned = revenueLines.reduce((s: number, l: any) => s + l.plannedAmount, 0)
-  const totalCOGSPlanned = cogsLines.reduce((s: number, l: any) => s + l.plannedAmount, 0)
+  const totalExpensePlanned = expenseLines.reduce((s: number, l: BudgetLineWithAccount) => s + l.plannedAmount, 0)
+  const totalRevenuePlanned = revenueLines.reduce((s: number, l: BudgetLineWithAccount) => s + l.plannedAmount, 0)
+  const totalCOGSPlanned = cogsLines.reduce((s: number, l: BudgetLineWithAccount) => s + l.plannedAmount, 0)
 
-  const totalExpenseForecast = expenseLines.reduce((s: number, l: any) => s + (l.forecastAmount ?? l.plannedAmount), 0)
-  const totalRevenueForecast = revenueLines.reduce((s: number, l: any) => s + (l.forecastAmount ?? l.plannedAmount), 0)
-  const totalCOGSForecast = cogsLines.reduce((s: number, l: any) => s + (l.forecastAmount ?? l.plannedAmount), 0)
+  const totalExpenseForecast = expenseLines.reduce((s: number, l: BudgetLineWithAccount) => s + (l.forecastAmount ?? l.plannedAmount), 0)
+  const totalRevenueForecast = revenueLines.reduce((s: number, l: BudgetLineWithAccount) => s + (l.forecastAmount ?? l.plannedAmount), 0)
+  const totalCOGSForecast = cogsLines.reduce((s: number, l: BudgetLineWithAccount) => s + (l.forecastAmount ?? l.plannedAmount), 0)
 
   // ForecastEntry overrides
-  const feRevenue = forecastEntries.filter((e: any) => e.lineType === "revenue")
-  const feExpense = forecastEntries.filter((e: any) => e.lineType === "expense")
-  const feCogs = forecastEntries.filter((e: any) => e.lineType === "cogs")
-  const totalRevenueForecastFE = feRevenue.length > 0 ? feRevenue.reduce((s: number, e: any) => s + e.forecastAmount, 0) : totalRevenueForecast
-  const totalExpenseForecastFE = feExpense.length > 0 ? feExpense.reduce((s: number, e: any) => s + e.forecastAmount, 0) : totalExpenseForecast
-  const totalCOGSForecastFE = feCogs.length > 0 ? feCogs.reduce((s: number, e: any) => s + e.forecastAmount, 0) : totalCOGSForecast
+  const feRevenue = forecastEntries.filter((e: BudgetForecastEntryRow) => e.lineType === "revenue")
+  const feExpense = forecastEntries.filter((e: BudgetForecastEntryRow) => e.lineType === "expense")
+  const feCogs = forecastEntries.filter((e: BudgetForecastEntryRow) => e.lineType === "cogs")
+  const totalRevenueForecastFE = feRevenue.length > 0 ? feRevenue.reduce((s: number, e: BudgetForecastEntryRow) => s + e.forecastAmount, 0) : totalRevenueForecast
+  const totalExpenseForecastFE = feExpense.length > 0 ? feExpense.reduce((s: number, e: BudgetForecastEntryRow) => s + e.forecastAmount, 0) : totalExpenseForecast
+  const totalCOGSForecastFE = feCogs.length > 0 ? feCogs.reduce((s: number, e: BudgetForecastEntryRow) => s + e.forecastAmount, 0) : totalCOGSForecast
 
   // Auto-actuals from cost model
   const autoActualByCategory = new Map<string, number>()
@@ -170,13 +181,13 @@ export async function GET(req: NextRequest) {
     }
 
     for (const line of lines) {
-      if ((line as any).isAutoActual && (line as any).costModelKey) {
-        const monthlyAmount = resolveCostModelKey(costModel, (line as any).costModelKey)
+      if (line.isAutoActual && line.costModelKey) {
+        const monthlyAmount = resolveCostModelKey(costModel, line.costModelKey)
         const amount = monthlyAmount * elapsedMonths
-        const key = `${(line as any).account?.code ?? ""}||${(line as any).lineType}`
+        const key = `${line.account?.code ?? ""}||${line.lineType}`
         autoActualByCategory.set(key, (autoActualByCategory.get(key) ?? 0) + amount)
-        if ((line as any).lineType === "revenue") autoActualRevenue += amount
-        else if ((line as any).lineType === "cogs") autoActualCOGS += amount
+        if (line.lineType === "revenue") autoActualRevenue += amount
+        else if (line.lineType === "cogs") autoActualCOGS += amount
         else autoActualExpense += amount
       }
     }
@@ -185,9 +196,9 @@ export async function GET(req: NextRequest) {
   // Manual actuals split
   let manualExpenseActual = 0, manualRevenueActual = 0, manualCOGSActual = 0
   for (const a of manualActuals) {
-    if ((a as any).lineType === "revenue") manualRevenueActual += (a as any).actualAmount
-    else if ((a as any).lineType === "cogs") manualCOGSActual += (a as any).actualAmount
-    else manualExpenseActual += (a as any).actualAmount
+    if (a.lineType === "revenue") manualRevenueActual += a.actualAmount
+    else if (a.lineType === "cogs") manualCOGSActual += a.actualAmount
+    else manualExpenseActual += a.actualAmount
   }
 
   const totalExpenseActual = autoActualExpense > 0 ? autoActualExpense : manualExpenseActual
@@ -380,9 +391,9 @@ export async function GET(req: NextRequest) {
     categoryActuals.set(key, (categoryActuals.get(key) ?? 0) + amount)
   }
   for (const a of manualActuals) {
-    const key = `${(a as any).category}||${(a as any).lineType}`
+    const key = `${a.category}||${a.lineType}`
     if (autoActualByCategory.has(key)) continue
-    categoryActuals.set(key, (categoryActuals.get(key) ?? 0) + (a as any).actualAmount)
+    categoryActuals.set(key, (categoryActuals.get(key) ?? 0) + a.actualAmount)
   }
 
   // Group by lineType sections
@@ -391,7 +402,7 @@ export async function GET(req: NextRequest) {
   const sectionTotals: Record<string, { planned: number; forecast: number; actual: number }> = {}
 
   for (const lineType of typeOrder) {
-    const typedLines = lines.filter((l: any) => l.lineType === lineType)
+    const typedLines = lines.filter((l: BudgetLineWithAccount) => l.lineType === lineType)
     if (typedLines.length === 0) continue
 
     // Section header
@@ -402,7 +413,7 @@ export async function GET(req: NextRequest) {
     let secPlanned = 0, secForecast = 0, secActual = 0
 
     for (const line of typedLines) {
-      const l = line as any
+      const l = line as BudgetLineWithAccount
       const catKey = `${l.account?.code ?? ""}||${l.lineType}`
       const actual = categoryActuals.get(catKey) ?? 0
       const planned = l.plannedAmount
@@ -480,7 +491,7 @@ export async function GET(req: NextRequest) {
     // Group by month
     const monthlyData = new Map<string, { revenue: number; expense: number; cogs: number }>()
     for (const fe of forecastEntries) {
-      const entry = fe as any
+      const entry = fe as BudgetForecastEntryRow
       const key = `${entry.year}-${String(entry.month).padStart(2, "0")}`
       const existing = monthlyData.get(key) ?? { revenue: 0, expense: 0, cogs: 0 }
       if (entry.lineType === "revenue") existing.revenue += entry.forecastAmount
@@ -551,7 +562,7 @@ export async function GET(req: NextRequest) {
     // Also add per-category monthly breakdown
     const catMonthly = new Map<string, Map<string, number>>()
     for (const fe of forecastEntries) {
-      const entry = fe as any
+      const entry = fe as BudgetForecastEntryRow
       const monthKey = `${entry.year}-${String(entry.month).padStart(2, "0")}`
       const catKey = `${entry.category} (${typeLabels[entry.lineType] || entry.lineType})`
       if (!catMonthly.has(catKey)) catMonthly.set(catKey, new Map())
@@ -616,7 +627,7 @@ export async function GET(req: NextRequest) {
   // Build dept data
   const deptMap = new Map<string, { expPlan: number; expActual: number; revPlan: number; revActual: number; forecast: number }>()
   for (const l of lines) {
-    const line = l as any
+    const line = l as BudgetLineWithAccount
     const dept = line.department || "General"
     const existing = deptMap.get(dept) ?? { expPlan: 0, expActual: 0, revPlan: 0, revActual: 0, forecast: 0 }
     existing.forecast += line.forecastAmount ?? line.plannedAmount
@@ -627,7 +638,7 @@ export async function GET(req: NextRequest) {
   // Apply actuals
   if (costModel) {
     for (const line of lines) {
-      const l = line as any
+      const l = line as BudgetLineWithAccount
       if (l.isAutoActual && l.costModelKey) {
         const dept = l.department || "General"
         const key = `${l.account?.code ?? ""}||${l.lineType}`
@@ -639,7 +650,7 @@ export async function GET(req: NextRequest) {
     }
   }
   for (const a of manualActuals) {
-    const actual = a as any
+    const actual = a as BudgetActualRow
     const catKey = `${actual.category}||${actual.lineType}`
     if (autoActualByCategory.has(catKey)) continue
     const dept = actual.department || "General"
@@ -708,7 +719,7 @@ export async function GET(req: NextRequest) {
   // Auto-actuals from cost model
   if (costModel) {
     for (const line of lines) {
-      const l = line as any
+      const l = line as BudgetLineWithAccount
       if (l.isAutoActual && l.costModelKey) {
         const catKey = `${l.account?.code ?? ""}||${l.lineType}`
         const amount = autoActualByCategory.get(catKey) ?? 0
@@ -731,7 +742,7 @@ export async function GET(req: NextRequest) {
 
   // Manual actuals
   for (const a of manualActuals) {
-    const actual = a as any
+    const actual = a as BudgetActualRow
     const row = wsActuals.addRow({
       category: actual.category,
       department: actual.department || "General",
@@ -770,7 +781,7 @@ export async function GET(req: NextRequest) {
   autoFilter(wsLines, 8)
 
   for (const line of lines) {
-    const l = line as any
+    const l = line as BudgetLineWithAccount
     const row = wsLines.addRow({
       category: l.account?.name ?? l.account?.code ?? "",
       lineType: typeLabels[l.lineType] || l.lineType,
@@ -787,8 +798,8 @@ export async function GET(req: NextRequest) {
 
   const linesTotalRow = wsLines.addRow({
     category: "TOTAL",
-    planned: lines.reduce((s: number, l: any) => s + l.plannedAmount, 0),
-    forecast: lines.reduce((s: number, l: any) => s + (l.forecastAmount ?? l.plannedAmount), 0),
+    planned: lines.reduce((s: number, l: BudgetLineWithAccount) => s + l.plannedAmount, 0),
+    forecast: lines.reduce((s: number, l: BudgetLineWithAccount) => s + (l.forecastAmount ?? l.plannedAmount), 0),
   })
   linesTotalRow.eachCell((cell) => Object.assign(cell, totalRowStyle()))
   linesTotalRow.getCell("planned").numFmt = currFmt
