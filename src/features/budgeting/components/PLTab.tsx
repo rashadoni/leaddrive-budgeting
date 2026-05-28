@@ -629,7 +629,15 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
               const gpMargin = totalRevenuePlanned > 0 ? ((grossProfitPlanned / totalRevenuePlanned) * 100).toFixed(1) : "0"
               const ebitdaMargin = totalRevenuePlanned > 0 ? ((opProfitPlanned / totalRevenuePlanned) * 100).toFixed(1) : "0"
 
-              const WaterfallTooltip = ({ active, payload }: any) => {
+              // Phase 8 D3(s) (2026-05-28) — structural shape for the
+              // Recharts Tooltip callback payload entries. We read
+              // `payload[0].payload` (the row our chart was built with),
+              // so `payload` typed as a generic record array suffices.
+              type WaterfallTooltipProps = {
+                active?: boolean
+                payload?: Array<{ payload: typeof waterfallData[number] }>
+              }
+              const WaterfallTooltip = ({ active, payload }: WaterfallTooltipProps) => {
                 if (!active || !payload?.length) return null
                 const d = payload[0].payload
                 return (
@@ -652,9 +660,27 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                 )
               }
 
-              const WaterfallLabel = (props: any) => {
-                const { x, y, width, index } = props
-                const item = waterfallData[index]
+              // Recharts LabelList content callback props: positional
+              // props arrive as `string | number | undefined` (SVG-friendly).
+              type WfLabelProps = {
+                x?: string | number
+                y?: string | number
+                width?: string | number
+                index?: number
+              }
+              const wfPx = (v: string | number | undefined) => {
+                if (typeof v === "number") return v
+                if (typeof v === "string") {
+                  const n = Number(v)
+                  return Number.isFinite(n) ? n : 0
+                }
+                return 0
+              }
+              const WaterfallLabel = (props: WfLabelProps) => {
+                const x = wfPx(props.x)
+                const y = wfPx(props.y)
+                const width = wfPx(props.width)
+                const item = props.index != null ? waterfallData[props.index] : undefined
                 if (!item) return null
                 const label = item.value < 0 ? `(${fmtK(Math.abs(item.value))})` : fmtK(item.value)
                 return (
@@ -740,7 +766,14 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                 return <div className="flex items-center justify-center h-[240px] text-sm text-muted-foreground">{t("pnlNoExpenseData")}</div>
               }
 
-              const DonutTooltip = ({ active, payload }: any) => {
+              // Pie chart tooltip entry: Recharts hands us `value` from the
+              // data row plus `name` and the row itself (with fill colour
+              // from the Cell). Narrow only what we read.
+              type DonutTooltipProps = {
+                active?: boolean
+                payload?: Array<{ value: number; name: string; payload: { fill: string } }>
+              }
+              const DonutTooltip = ({ active, payload }: DonutTooltipProps) => {
                 if (!active || !payload?.length) return null
                 const d = payload[0]
                 const pct = totalExp > 0 ? ((d.value / totalExp) * 100).toFixed(1) : "0"
@@ -758,7 +791,17 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                 )
               }
 
-              const DonutLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
+              // Recharts Pie label render props — all values are
+              // numeric pixel/percent coordinates supplied by the chart.
+              type DonutLabelProps = {
+                cx?: number
+                cy?: number
+                midAngle?: number
+                innerRadius?: number
+                outerRadius?: number
+                percent?: number
+              }
+              const DonutLabel = ({ cx = 0, cy = 0, midAngle = 0, innerRadius = 0, outerRadius = 0, percent = 0 }: DonutLabelProps) => {
                 if (percent < 0.05) return null
                 const RADIAN = Math.PI / 180
                 const radius = innerRadius + (outerRadius - innerRadius) * 0.5
