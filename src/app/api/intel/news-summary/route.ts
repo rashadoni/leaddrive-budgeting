@@ -17,6 +17,10 @@ import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:intel:news-summary")
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import {
@@ -156,7 +160,9 @@ export async function GET(request: NextRequest) {
     // crash the panel with HTTP 500 — return 200 with empty bullets so
     // NewsSummarySection renders the "нет актуальных новостей" fallback
     // instead of showing a raw error code to the CFO.
-    console.error("[news-summary] LLM error:", err instanceof Error ? err.message : String(err))
+    log.error("LLM error", {
+      err: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json({
       bullets: [],
       language,
@@ -191,7 +197,9 @@ export async function GET(request: NextRequest) {
       userAgent: request.headers.get("user-agent") ?? undefined,
     }),
   }).catch((e: unknown) => {
-    console.error("[news-summary] audit log failed:", e instanceof Error ? e.message : String(e))
+    log.error("audit log failed", {
+      err: e instanceof Error ? e.message : String(e),
+    })
   })
 
   return NextResponse.json({

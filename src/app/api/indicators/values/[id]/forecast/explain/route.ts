@@ -26,6 +26,10 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:forecast-explain");
 import {
   getAnthropicClientForOrg,
   hasAnthropicKey,
@@ -300,10 +304,9 @@ export async function POST(
         userAgent: request.headers.get("user-agent") ?? undefined,
       }),
     }).catch((err) => {
-      console.error(
-        "[forecast/explain] audit emission failed (non-blocking):",
-        err,
-      );
+      log.error("audit emission failed (non-blocking)", {
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
 
     // Phase 7.O C3 — same fact-checker as Variance Explainer applied to
@@ -345,7 +348,10 @@ export async function POST(
       factCheck,
     });
   } catch (err) {
-    console.error("[forecast/explain] runForecastExplainer failed:", err);
+    log.error("runForecastExplainer failed", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return NextResponse.json(
       {
         error: `Forecast explainer failed: ${err instanceof Error ? err.message : String(err)}`,

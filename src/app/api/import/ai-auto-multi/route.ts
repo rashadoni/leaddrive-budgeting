@@ -36,6 +36,10 @@ import { NextRequest, NextResponse } from "next/server"
 import * as XLSX from "xlsx"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:import:ai-auto-multi")
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
@@ -260,7 +264,9 @@ export async function POST(request: NextRequest) {
         period: String(year),
       })
     } catch (e) {
-      console.warn("backlog before-snapshot failed:", e)
+      log.warn("backlog before-snapshot failed", {
+        err: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 
@@ -408,7 +414,9 @@ export async function POST(request: NextRequest) {
       })
       backlogClosed = diffBacklogs(backlogBefore.companies, after.companies)
     } catch (e) {
-      console.warn("backlog diff failed:", e)
+      log.warn("backlog diff failed", {
+        err: e instanceof Error ? e.message : String(e),
+      })
     }
   }
 

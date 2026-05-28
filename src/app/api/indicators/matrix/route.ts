@@ -33,6 +33,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('api:indicators-matrix');
 // Phase 5.2 Stage 2 (2026-05-21) — RLS wrap. Every Prisma call below
 // runs through `tx` so when indicator_values RLS migration applies,
 // rows are filtered by `app.organization_id` at the DB layer rather
@@ -293,7 +297,9 @@ export async function GET(request: NextRequest) {
     try {
       readinessMap = await getCompanyReadiness(prisma, session.orgId)
     } catch (err) {
-      console.error('[matrix] readiness fetch failed (non-fatal):', err)
+      log.error('readiness fetch failed (non-fatal)', {
+        err: err instanceof Error ? err.message : String(err),
+      })
       readinessMap = new Map()
     }
 
@@ -622,7 +628,10 @@ export async function GET(request: NextRequest) {
     );
     });
   } catch (error) {
-    console.error('Error building indicator matrix:', error);
+    log.error('error building indicator matrix', {
+      err: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       { error: 'Failed to build matrix' },
       { status: 500 },
