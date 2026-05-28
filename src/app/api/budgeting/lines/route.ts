@@ -67,8 +67,12 @@ export async function GET(req: NextRequest) {
   )
 
   // Compute dynamic planned amounts for isAutoPlanned lines
-  const allLines = lines.flatMap((l: any) => [l, ...(l.children ?? [])])
-  const hasAutoPlanned = allLines.some((l: any) => l.isAutoPlanned)
+  // Phase 8 D3(o) (2026-05-28) — Prisma's include result is fully typed
+  // (BudgetLine + children: BudgetLine[] + account: { code, name }), so
+  // the (l as any) casts that used to bridge over the children field
+  // are no longer necessary. `line.children` is `BudgetLine[] | undefined`.
+  const allLines = lines.flatMap((l) => [l, ...(l.children ?? [])])
+  const hasAutoPlanned = allLines.some((l) => l.isAutoPlanned)
 
   if (hasAutoPlanned && plan) {
     const costModel = await loadAndCompute(orgId).catch(() => null)
@@ -83,10 +87,10 @@ export async function GET(req: NextRequest) {
     ])
 
     for (const line of lines) {
-      if ((line as any).isAutoPlanned) {
-        ;(line as any).plannedAmount = computePlannedForLine(line as any, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
+      if (line.isAutoPlanned) {
+        line.plannedAmount = computePlannedForLine(line, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
       }
-      for (const child of (line as any).children ?? []) {
+      for (const child of line.children ?? []) {
         if (child.isAutoPlanned) {
           child.plannedAmount = computePlannedForLine(child, costModel, salesForecasts, periodMonthCount, periodMonthNumbers, expenseForecasts)
         }
