@@ -183,11 +183,19 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
 
 // ─── Report Config type ───────────────────────────────────────
 
+/** Phase 8 D3 (2026-05-28) — dynamic-shape row from a generic Prisma
+ *  model dispatch. Each report engine query goes through
+ *  `prisma[entityConfig.model]` — neither the column set nor the
+ *  relation includes are known at compile time, so the safest type
+ *  is «string-keyed dictionary of unknown». Callers narrow per-field
+ *  as they consume rows. */
+export type ReportRow = Record<string, unknown>
+
 export interface BudgetReportConfig {
   entityType: string
   planId?: string
   columns: { field: string; label?: string; aggregate?: "count" | "sum" | "avg" | "min" | "max" }[]
-  filters: { field: string; op: string; value: any }[]
+  filters: { field: string; op: string; value: unknown }[]
   groupBy?: string
   periodGroupBy?: "month" | "quarter" | "year"
   sortBy?: string
@@ -197,21 +205,21 @@ export interface BudgetReportConfig {
 }
 
 export type ReportResult =
-  | { type: "flat"; data: any[]; total: number; aggregates?: Record<string, number> }
-  | { type: "grouped"; data: any[]; groupBy: string; total: number }
-  | { type: "period"; data: any[]; periodGroupBy: string; total: number }
+  | { type: "flat"; data: ReportRow[]; total: number; aggregates?: Record<string, number> }
+  | { type: "grouped"; data: ReportRow[]; groupBy: string; total: number }
+  | { type: "period"; data: ReportRow[]; periodGroupBy: string; total: number }
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-export function parseNumOrDate(value: any, field: string, config: EntityConfig) {
+export function parseNumOrDate(value: unknown, field: string, config: EntityConfig) {
   const fieldDef = config.fields.find(f => f.name === field)
-  if (fieldDef?.type === "date") return new Date(value)
+  if (fieldDef?.type === "date") return new Date(value as string | number | Date)
   if (fieldDef?.type === "number") return Number(value)
   return value
 }
 
 export function buildWhere(orgId: string, planId: string | undefined, config: EntityConfig, filters: BudgetReportConfig["filters"]) {
-  const where: any = { organizationId: orgId }
+  const where: Record<string, unknown> = { organizationId: orgId }
   if (config.hasPlanId && planId) {
     where.planId = planId
   }
@@ -226,11 +234,16 @@ export function buildWhere(orgId: string, planId: string | undefined, config: En
       case "lte": where[f.field] = { lte: parseNumOrDate(f.value, f.field, config) }; break
       case "contains": where[f.field] = { contains: f.value, mode: "insensitive" }; break
       case "in": where[f.field] = { in: Array.isArray(f.value) ? f.value : [f.value] }; break
-      case "between":
-        if (f.value?.from && f.value?.to) {
-          where[f.field] = { gte: parseNumOrDate(f.value.from, f.field, config), lte: parseNumOrDate(f.value.to, f.field, config) }
+      case "between": {
+        const between = f.value as { from?: unknown; to?: unknown } | null
+        if (between?.from && between?.to) {
+          where[f.field] = {
+            gte: parseNumOrDate(between.from, f.field, config),
+            lte: parseNumOrDate(between.to, f.field, config),
+          }
         }
         break
+      }
     }
   }
   return where
@@ -243,15 +256,31 @@ export function buildWhere(orgId: string, planId: string | undefined, config: En
 // from focused regression coverage. Re-export keeps the existing
 // caller (`executeBudgetReport`) unchanged.
 
-export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
-  const groups = new Map<string, any>()
+/** Tiny helper to narrow an unknown ReportRow field to a number with
+ *  a default. The report engine consumes Prisma findMany rows whose
+ *  per-field types aren't reachable at this generic dispatch layer;
+ *  narrowing at the read site keeps the rest typed. */
+function asNum(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
+interface PeriodGroup extends ReportRow {
+  period: string
+  _count: number
+  quarter?: number
+  month?: unknown
+}
+
+export function periodGroupData(rows: ReportRow[], periodGroupBy: "month" | "quarter" | "year", numericFields: string[]) {
+  const groups = new Map<string, PeriodGroup>()
 
   for (const row of rows) {
+    const month = asNum(row.month, 1)
     let key: string
     if (periodGroupBy === "year") {
       key = `${row.year}`
     } else if (periodGroupBy === "quarter") {
-      const q = Math.ceil((row.month || 1) / 3)
+      const q = Math.ceil(month / 3)
       key = `${row.year}-Q${q}`
     } else {
       key = `${row.year}-${String(row.month).padStart(2, "0")}`
@@ -260,7 +289,7 @@ export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" 
     if (!groups.has(key)) {
       groups.set(key, { period: key, year: row.year, _count: 0 })
       if (periodGroupBy === "quarter") {
-        groups.get(key)!.quarter = Math.ceil((row.month || 1) / 3)
+        groups.get(key)!.quarter = Math.ceil(month / 3)
       }
       if (periodGroupBy === "month") {
         groups.get(key)!.month = row.month
@@ -273,7 +302,7 @@ export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" 
     const g = groups.get(key)!
     g._count++
     for (const f of numericFields) {
-      g[f] += (row[f] ?? 0)
+      g[f] = asNum(g[f]) + asNum(row[f])
     }
   }
 
@@ -282,22 +311,23 @@ export function periodGroupData(rows: any[], periodGroupBy: "month" | "quarter" 
 
 // ─── Computed fields (post-processing) ────────────────────────
 
-export function applyComputedFields(rows: any[], computedFields: string[]) {
+export function applyComputedFields(rows: ReportRow[], computedFields: string[]): ReportRow[] {
   for (const row of rows) {
+    const planned = asNum(row.plannedAmount)
+    const actual = asNum(row.actualAmount)
+    const amount = asNum(row.amount, planned)
+    const totalCost = asNum(row.totalCost, actual)
     for (const cf of computedFields) {
       switch (cf) {
         case "variance":
-          row.variance = (row.plannedAmount ?? 0) - (row.actualAmount ?? 0)
+          row.variance = planned - actual
           break
         case "execution_pct":
-          row.execution_pct = (row.plannedAmount ?? 0) !== 0
-            ? ((row.actualAmount ?? 0) / row.plannedAmount) * 100
-            : 0
+          row.execution_pct = planned !== 0 ? (actual / planned) * 100 : 0
           break
         case "margin_pct":
-          row.margin_pct = (row.amount ?? row.plannedAmount ?? 0) !== 0
-            ? (((row.amount ?? row.plannedAmount ?? 0) - (row.totalCost ?? row.actualAmount ?? 0)) / (row.amount ?? row.plannedAmount ?? 1)) * 100
-            : 0
+          row.margin_pct =
+            amount !== 0 ? ((amount - totalCost) / (amount || 1)) * 100 : 0
           break
       }
     }
@@ -307,9 +337,19 @@ export function applyComputedFields(rows: any[], computedFields: string[]) {
 
 // ─── Main execute function ────────────────────────────────────
 
+/** Phase 8 D3 — narrow shape for dispatching `prisma[entityConfig.model]`.
+ *  Each model's findMany / groupBy accepts the same loose query
+ *  object; we don't model the per-model variants here because they
+ *  share method signatures sufficient for the report engine's use. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PrismaModelDispatch = Record<string, any>
+
 export async function executeBudgetReport(orgId: string, config: BudgetReportConfig): Promise<ReportResult> {
   const entityConfig = ENTITY_CONFIGS[config.entityType]
   if (!entityConfig) throw new Error(`Unknown entity type: ${config.entityType}`)
+  // Phase 8 D3 — single cast at the boundary instead of 4 scattered
+  // `modelDispatch[entityConfig.model]` casts.
+  const modelDispatch = prisma as unknown as PrismaModelDispatch
 
   const where = buildWhere(orgId, config.planId, entityConfig, config.filters)
   const limit = Math.min(config.limit ?? 500, 10000)
@@ -319,7 +359,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   // grouping / aggregation double-counts every revenue or expense. Build the
   // set of parent codes up-front and exclude them from every query below.
   if (config.entityType === "budgetLines") {
-    const distinctCodes = await (prisma as any).budgetLine.findMany({
+    const distinctCodes = await modelDispatch.budgetLine.findMany({
       where,
       select: { department: true },
       distinct: ["department"],
@@ -343,13 +383,13 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
 
   // ── Period groupBy path ──
   if (config.periodGroupBy && entityConfig.hasYearMonth) {
-    const allRows = await (prisma as any)[entityConfig.model].findMany({
+    const allRows = await modelDispatch[entityConfig.model].findMany({
       where,
       take: limit,
     })
 
     const numericFields = entityConfig.fields.filter(f => f.type === "number" && !["year", "month"].includes(f.name)).map(f => f.name)
-    let grouped = periodGroupData(allRows, config.periodGroupBy, numericFields)
+    let grouped: ReportRow[] = periodGroupData(allRows, config.periodGroupBy, numericFields)
 
     if (config.computedFields?.length) {
       grouped = applyComputedFields(grouped, config.computedFields)
@@ -360,7 +400,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
 
   // ── Standard groupBy path ──
   if (config.groupBy) {
-    const aggregates: any = {}
+    const aggregates: Record<string, Record<string, boolean>> = {}
     for (const col of config.columns) {
       if (col.aggregate && col.aggregate !== "count") {
         const aggKey = `_${col.aggregate}`
@@ -378,7 +418,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
 
     // Prisma 6: groupBy doesn't support orderBy _count or take with non-by fields
     // Fetch all groups, then sort/limit in JS
-    const result = await (prisma as any)[entityConfig.model].groupBy({
+    const result = await modelDispatch[entityConfig.model].groupBy({
       by: [config.groupBy],
       where,
       ...(Object.keys(sumFields).length > 0 ? { _sum: sumFields } : {}),
@@ -387,7 +427,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     // Manually count per group since Prisma 6 groupBy _count is unreliable
     // Also fetch total count per group via a separate approach
     const countByGroup = new Map<string, number>()
-    const allRows = await (prisma as any)[entityConfig.model].findMany({
+    const allRows = await modelDispatch[entityConfig.model].findMany({
       where,
       select: { [config.groupBy]: true },
     })
@@ -397,9 +437,13 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     }
 
     // Flatten _sum fields so chart & KPI can read them directly
-    const flatResult = result.map((row: any) => {
-      const flat: any = { ...row }
-      flat.count = countByGroup.get(String(row[config.groupBy ?? ""] ?? "")) ?? 0
+    type GroupByRow = ReportRow & { _sum?: Record<string, number | null>; _count?: number }
+    const flatResult: ReportRow[] = (result as GroupByRow[]).map((row) => {
+      const flat: ReportRow = { ...row }
+      flat.count =
+        countByGroup.get(
+          String((row[config.groupBy ?? ""] as unknown) ?? ""),
+        ) ?? 0
       if (row._sum) {
         for (const [k, v] of Object.entries(row._sum)) {
           flat[k] = v ?? 0
@@ -413,12 +457,17 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     // Sort by requested field or by count desc, then limit
     if (config.sortBy && config.sortBy !== "_count") {
       const dir = config.sortOrder === "asc" ? 1 : -1
-      flatResult.sort((a: any, b: any) => {
-        const va = a[config.sortBy!] ?? 0, vb = b[config.sortBy!] ?? 0
+      flatResult.sort((a: ReportRow, b: ReportRow) => {
+        const va = (a[config.sortBy!] as number | undefined) ?? 0,
+          vb = (b[config.sortBy!] as number | undefined) ?? 0
         return va < vb ? -dir : va > vb ? dir : 0
       })
     } else {
-      flatResult.sort((a: any, b: any) => b.count - a.count)
+      flatResult.sort(
+        (a: ReportRow, b: ReportRow) =>
+          ((b.count as number | undefined) ?? 0) -
+          ((a.count as number | undefined) ?? 0),
+      )
     }
     const limitedResult = flatResult.slice(0, limit)
 
@@ -426,8 +475,8 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   }
 
   // ── Flat query path ──
-  const select: any = {}
-  const include: any = {}
+  const select: Record<string, boolean> = {}
+  const include: Record<string, { select: Record<string, boolean> }> = {}
 
   for (const col of config.columns) {
     if (col.field.includes(".")) {
@@ -442,7 +491,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   const hasSelect = Object.keys(select).length > 0
   const hasInclude = Object.keys(include).length > 0
 
-  const result = await (prisma as any)[entityConfig.model].findMany({
+  const result = await modelDispatch[entityConfig.model].findMany({
     where,
     ...(hasSelect ? { select: { ...select, id: true, ...(hasInclude ? include : {}) } } : {}),
     ...(hasInclude && !hasSelect ? { include } : {}),
@@ -452,7 +501,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     take: limit,
   })
 
-  let data = result
+  let data: ReportRow[] = result as ReportRow[]
   if (config.computedFields?.length) {
     data = applyComputedFields(data, config.computedFields)
   }
@@ -463,7 +512,7 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
     if (col.aggregate) {
       const fieldDef = entityConfig.fields.find(f => f.name === col.field)
       if (fieldDef?.type === "number") {
-        const values = data.map((r: any) => r[col.field] ?? 0)
+        const values = data.map((r: ReportRow) => (r[col.field] as number | undefined) ?? 0)
         switch (col.aggregate) {
           case "sum": aggregatesResult[`${col.field}_sum`] = values.reduce((a: number, b: number) => a + b, 0); break
           case "avg": aggregatesResult[`${col.field}_avg`] = values.length ? values.reduce((a: number, b: number) => a + b, 0) / values.length : 0; break
