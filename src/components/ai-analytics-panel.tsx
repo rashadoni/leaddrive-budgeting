@@ -137,8 +137,18 @@ export function AIAnalyticsPanel({
             if (!line.startsWith("data: ")) continue
             const payload = line.slice(6).trim()
             if (!payload) continue
-            let parsed: any
-            try { parsed = JSON.parse(payload) } catch { continue }
+            // SSE event discriminated union — matches what
+            // /api/budgeting/ai-analytics POST emits. Each branch
+            // below narrows on `type` and the type-guarded shape.
+            type SseEvent =
+              | { type: "text"; text: string }
+              | { type: "tool_use"; id?: string; name: string; input?: { query?: string } }
+              | { type: "tool_result"; id: string; ok: boolean; error?: string }
+              | { type: "truncated"; reason?: string }
+              | { type: "error"; error: string }
+              | { type: "done" }
+            let parsed: SseEvent
+            try { parsed = JSON.parse(payload) as SseEvent } catch { continue }
             if (parsed.type === "text" && typeof parsed.text === "string") {
               setMessages(h => {
                 const copy = [...h]
@@ -171,9 +181,10 @@ export function AIAnalyticsPanel({
                 const copy = [...h]
                 const last = copy[copy.length - 1]
                 if (last?.role === "assistant" && last.toolChips) {
-                  const chips = last.toolChips.map((c) =>
+                  const nextStatus: ToolChip["status"] = parsed.ok ? "done" : "error"
+                  const chips: ToolChip[] = last.toolChips.map((c) =>
                     c.id === parsed.id
-                      ? { ...c, status: (parsed.ok ? "done" : "error") as ToolChip["status"], error: parsed.error }
+                      ? { ...c, status: nextStatus, error: parsed.error }
                       : c,
                   )
                   copy[copy.length - 1] = { ...last, toolChips: chips }
@@ -194,8 +205,8 @@ export function AIAnalyticsPanel({
             }
           }
         }
-      } catch (err: any) {
-        setError(err.message || "Stream failed")
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Stream failed")
       } finally {
         setStreaming(false)
       }
@@ -254,8 +265,8 @@ export function AIAnalyticsPanel({
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to export PDF")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to export PDF")
     } finally {
       setExporting(false)
     }

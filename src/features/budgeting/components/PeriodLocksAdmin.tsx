@@ -80,8 +80,8 @@ export function PeriodLocksAdmin() {
       const data = (await res.json()) as ApiListResponse
       setLocks(data.locks)
       setSnapshots(data.snapshots ?? {})
-    } catch (e: any) {
-      setError(e?.message || "Failed to load")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load")
     } finally {
       setLoading(false)
     }
@@ -115,8 +115,8 @@ export function PeriodLocksAdmin() {
       setPeriod("")
       setReason("")
       void fetchLocks()
-    } catch (e: any) {
-      setError(e?.message || "Failed to add")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to add")
     } finally {
       setSubmitting(false)
     }
@@ -137,8 +137,8 @@ export function PeriodLocksAdmin() {
         throw new Error(body.error || `HTTP ${res.status}`)
       }
       void fetchLocks()
-    } catch (e: any) {
-      setError(e?.message || "Failed to remove")
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to remove")
     }
   }
 
