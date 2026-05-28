@@ -29,8 +29,16 @@
  */
 
 /** Known external API key sources. Keep in sync with
- *  `ExtendedAdapterOptions.apiKeys` in `commodity/index.ts`. */
-export const KNOWN_API_KEY_SOURCES = ["eia", "usda", "gtrends"] as const
+ *  `ExtendedAdapterOptions.apiKeys` in `commodity/index.ts`.
+ *  `anthropic` (Phase 8 C4, 2026-05-28) lets each org BYO Claude
+ *  key instead of sharing the global ANTHROPIC_API_KEY env. When
+ *  set the org's key wins; absent → env fallback. */
+export const KNOWN_API_KEY_SOURCES = [
+  "eia",
+  "usda",
+  "gtrends",
+  "anthropic",
+] as const
 
 export type ApiKeySource = (typeof KNOWN_API_KEY_SOURCES)[number]
 
@@ -66,6 +74,7 @@ export async function listApiKeys(
     eia: null,
     usda: null,
     gtrends: null,
+    anthropic: null,
   }
   if (!orgId) return out
   let org: { settings: unknown } | null = null

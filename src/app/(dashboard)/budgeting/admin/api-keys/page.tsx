@@ -51,6 +51,17 @@ const SOURCE_DOCS: Record<
       "Paid (SerpAPI has free tier ~100 searches/mo). Drives AZ search-trend signals (retail / beverage demand).",
     sectors: ["retail", "beverage", "entertainment"],
   },
+  // Phase 8 C4 (2026-05-28) — per-org Anthropic key. When set the
+  // org's key is used for Variance Explainer / Forecast Explainer /
+  // Board Deck narration / Morning Brief instead of the global env
+  // ANTHROPIC_API_KEY. Spend lands on the org's Anthropic billing.
+  anthropic: {
+    name: "Anthropic (Claude API)",
+    signupUrl: "https://console.anthropic.com/settings/keys",
+    notes:
+      "Paid (~$3 / 1M input tokens for Sonnet 4.5). Powers AI Variance Explainer, Forecast Explainer, Board Deck narration, Morning Brief, and impact-forecast scans. When set, your org's key replaces the global server key — spend hits your Anthropic billing.",
+    sectors: ["all"],
+  },
 }
 
 export default async function ApiKeysPage() {

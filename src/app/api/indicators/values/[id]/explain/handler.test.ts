@@ -34,7 +34,18 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
 const { aiClientMock } = vi.hoisted(() => ({
-  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
+  aiClientMock: {
+    hasAnthropicKey: vi.fn().mockReturnValue(true),
+    // Phase 8 C4 — per-org client lookup. Default to «true / dummy
+    // client»; specific tests override to exercise 503 path.
+    hasAnthropicKeyForOrg: vi.fn().mockResolvedValue(true),
+    getAnthropicClientForOrg: vi.fn().mockResolvedValue({
+      // Variance Explainer never calls .messages.create directly in
+      // the test path — runExplainer is mocked above. Stub the
+      // shape so any incidental access doesn't crash.
+      messages: { create: vi.fn() },
+    }),
+  },
 }));
 vi.mock("@/lib/ai/client", () => aiClientMock);
 
@@ -102,12 +113,22 @@ beforeEach(() => {
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "audit_1" });
   runExplainerMock.mockReset();
   aiClientMock.hasAnthropicKey.mockReturnValue(true);
+  aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(true);
+  aiClientMock.getAnthropicClientForOrg.mockResolvedValue({
+    messages: { create: vi.fn() },
+  });
   rateLimitMock.enforceRateLimit.mockReset().mockReturnValue(null);
 });
 
 describe("POST /api/indicators/values/[id]/explain — handler", () => {
-  it("returns 503 when ANTHROPIC_API_KEY is missing — short-circuit before DB read", async () => {
+  it("returns 503 when no Anthropic key (env + per-org both unset) — short-circuit before DB read", async () => {
+    // Phase 8 C4 (2026-05-28) — key check now considers both env and
+    // per-org. Auth happens FIRST (so an unauthenticated request
+    // returns 401, not 503 — covered by the next test); when authed
+    // but no key, we still 503.
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
     aiClientMock.hasAnthropicKey.mockReturnValue(false);
+    aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(false);
     const req = makeRequest(`/api/indicators/values/${IV_ID}/explain`, {
       method: "POST",
       json: {},

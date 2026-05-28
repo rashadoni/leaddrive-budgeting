@@ -29,7 +29,13 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 
 const { aiClientMock } = vi.hoisted(() => ({
-  aiClientMock: { hasAnthropicKey: vi.fn().mockReturnValue(true) },
+  aiClientMock: {
+    hasAnthropicKey: vi.fn().mockReturnValue(true),
+    hasAnthropicKeyForOrg: vi.fn().mockResolvedValue(true),
+    getAnthropicClientForOrg: vi
+      .fn()
+      .mockResolvedValue({ messages: { create: vi.fn() } }),
+  },
 }));
 vi.mock("@/lib/ai/client", () => aiClientMock);
 
@@ -114,12 +120,20 @@ beforeEach(() => {
     .mockResolvedValue({ id: "audit_1" });
   runForecastExplainerMock.mockReset();
   aiClientMock.hasAnthropicKey.mockReturnValue(true);
+  aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(true);
+  aiClientMock.getAnthropicClientForOrg.mockResolvedValue({
+    messages: { create: vi.fn() },
+  });
   rateLimitMock.enforceRateLimit.mockReset().mockReturnValue(null);
 });
 
 describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => {
-  it("returns 503 when ANTHROPIC_API_KEY is missing — short-circuit before DB read", async () => {
+  it("returns 503 when no Anthropic key (env + per-org both unset) — short-circuit before DB read", async () => {
+    // Phase 8 C4 — key check now considers both env + per-org. Auth
+    // happens first; if authed but no key anywhere, still 503.
+    await mockSession({ orgId: ORG_ID, userId: "u_cfo", role: "manager" });
     aiClientMock.hasAnthropicKey.mockReturnValue(false);
+    aiClientMock.hasAnthropicKeyForOrg.mockResolvedValue(false);
     const req = makeRequest(
       `/api/indicators/values/${IV_ID}/forecast/explain`,
       { method: "POST", json: {} },

@@ -70,6 +70,10 @@ async function main() {
     eia: "eia-energy",
     usda: "usda-nass",
     gtrends: "google-trends-az",
+    // Phase 8 C4 — anthropic isn't an external-data adapter (no
+    // sourceCode in the catalog); it's the LLM client itself. This
+    // script only fetches adapter data, so anthropic→noop sentinel.
+    anthropic: "(llm-client; no fetch adapter)",
   }
   const adapterSourceCode = sourceCodeMap[source as ApiKeySource]
   const adapters = getCommodityAdapters({ apiKeys: { [source]: key } as never })

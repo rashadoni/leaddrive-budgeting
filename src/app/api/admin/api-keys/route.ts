@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
     eia: { configured: !!raw.eia, preview: redactApiKey(raw.eia) },
     usda: { configured: !!raw.usda, preview: redactApiKey(raw.usda) },
     gtrends: { configured: !!raw.gtrends, preview: redactApiKey(raw.gtrends) },
+    anthropic: { configured: !!raw.anthropic, preview: redactApiKey(raw.anthropic) },
   }
   return NextResponse.json({
     sources: KNOWN_API_KEY_SOURCES,
@@ -59,6 +60,13 @@ export async function GET(request: NextRequest) {
         name: "Google Trends Proxy (SerpAPI / ScrapingDog)",
         signupUrl: "https://serpapi.com/users/sign_up",
         notes: "Paid (SerpAPI has free tier ~100 searches/mo). Drives AZ search-trend signals.",
+      },
+      // Phase 8 C4 (2026-05-28) — per-org Anthropic key.
+      anthropic: {
+        name: "Anthropic (Claude API)",
+        signupUrl: "https://console.anthropic.com/settings/keys",
+        notes:
+          "Paid (~$3 / 1M input tokens for Sonnet 4.5). Powers all AI features. When set, your org's key replaces the global env key — spend hits your Anthropic billing.",
       },
     },
   })

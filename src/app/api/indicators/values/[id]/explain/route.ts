@@ -24,7 +24,11 @@ import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { hasAnthropicKey } from "@/lib/ai/client"
+import {
+  getAnthropicClientForOrg,
+  hasAnthropicKey,
+  hasAnthropicKeyForOrg,
+} from "@/lib/ai/client"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import {
   runExplainer,
@@ -54,16 +58,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!hasAnthropicKey()) {
-    return NextResponse.json(
-      {
-        error:
-          "AI Variance Explainer unavailable: ANTHROPIC_API_KEY not configured on this deployment.",
-      },
-      { status: 503 },
-    )
-  }
-
+  // Cheap sync gate first — most deployments still have the env key.
+  // The per-org check below catches the case where env is empty but
+  // the org has set its own key via /admin/api-keys.
   const session = await requireRole(request, "manager")
   if (isAuthError(session)) return session
   if (!session.orgId) {
@@ -73,6 +70,16 @@ export async function POST(
     )
   }
   const orgId = session.orgId
+  // Phase 8 C4 — per-org Anthropic key check. Env fallback covered.
+  if (!hasAnthropicKey() && !(await hasAnthropicKeyForOrg(prisma, orgId))) {
+    return NextResponse.json(
+      {
+        error:
+          "AI Variance Explainer unavailable: no Anthropic API key configured. Set Organization.settings.apiKeys.anthropic via /budgeting/admin/api-keys.",
+      },
+      { status: 503 },
+    )
+  }
 
   const rateLimitError = enforceRateLimit(
     `${orgId}:${getClientIp(request)}`,
@@ -249,7 +256,11 @@ export async function POST(
 
   try {
     const startedAt = Date.now()
-    const output = await runExplainer(explainerInput)
+    // Phase 8 C4 — resolve per-org client (falls back to env when
+    // org didn't set its own key). Injected via opts.client so
+    // runExplainer stays test-seam friendly.
+    const client = await getAnthropicClientForOrg(prisma, orgId)
+    const output = await runExplainer(explainerInput, { client })
     const durationMs = Date.now() - startedAt
 
     // Phase 7.E AI-suite audit emission. Records WHAT indicator + WHO

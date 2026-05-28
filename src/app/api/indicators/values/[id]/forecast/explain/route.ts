@@ -26,7 +26,11 @@ import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit";
-import { hasAnthropicKey } from "@/lib/ai/client";
+import {
+  getAnthropicClientForOrg,
+  hasAnthropicKey,
+  hasAnthropicKeyForOrg,
+} from "@/lib/ai/client";
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
 import {
   runForecastExplainer,
@@ -83,16 +87,6 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!hasAnthropicKey()) {
-    return NextResponse.json(
-      {
-        error:
-          "AI Forecast Explainer unavailable: ANTHROPIC_API_KEY not configured on this deployment.",
-      },
-      { status: 503 },
-    );
-  }
-
   const session = await requireRole(request, "manager");
   if (isAuthError(session)) return session;
   if (!session.orgId) {
@@ -102,6 +96,16 @@ export async function POST(
     );
   }
   const orgId = session.orgId;
+  // Phase 8 C4 — per-org Anthropic key check. Env fallback covered.
+  if (!hasAnthropicKey() && !(await hasAnthropicKeyForOrg(prisma, orgId))) {
+    return NextResponse.json(
+      {
+        error:
+          "AI Forecast Explainer unavailable: no Anthropic API key configured. Set Organization.settings.apiKeys.anthropic via /budgeting/admin/api-keys.",
+      },
+      { status: 503 },
+    );
+  }
 
   const rateLimitError = enforceRateLimit(
     `${orgId}:${getClientIp(request)}`,
@@ -260,7 +264,9 @@ export async function POST(
 
   try {
     const startedAt = Date.now();
-    const output = await runForecastExplainer(explainerInput);
+    // Phase 8 C4 — resolve per-org client (env fallback inside helper).
+    const client = await getAnthropicClientForOrg(prisma, orgId);
+    const output = await runForecastExplainer(explainerInput, { client });
     const durationMs = Date.now() - startedAt;
 
     // Audit emission — non-blocking. Mirror of variance-explainer
