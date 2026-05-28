@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useBudgetPlans, useBudgetAnalytics } from "@/lib/budgeting/hooks"
+import type { BudgetCategoryRow } from "@/lib/budgeting/types"
 // Phase 3.1 v1.2 ext — shared 12-month sparkline. ComparisonTab uses
 // the first selected plan's distribution as a single trend column.
 import { MonthlySparkline } from "./monthly-sparkline"
@@ -53,6 +54,60 @@ import { execPct } from "@/lib/budgeting/exec-pct"
 // Architect Turn-LXI doc-correctness closure.
 function fmt(n: number): string {
   return Math.round(n).toLocaleString() + " ₼"
+}
+
+/** Phase 8 D3(m) (2026-05-28) — narrow an unknown row-cell to a finite
+ *  number, defaulting to 0. Used by the materiality predicate which
+ *  reads dynamic `row[pN_pct]` / `row[pN_variance]` keys. */
+function asNum(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
+/** Chart-row shape: one entry per category with a `category` key plus
+ *  one numeric value per plan label. Recharts reads via dataKey =
+ *  planLabels[i] so we keep the dynamic-key shape with a union. */
+type ChartRow = { category: string } & Record<string, number | string>
+
+/** Table-row shape: per-plan planned/actual/variance/pct keys plus the
+ *  first plan's optional monthlyPlanned/monthlyActual sparkline arrays. */
+type TableRow = {
+  category: string
+  monthlyPlanned?: number[]
+  monthlyActual?: number[]
+} & Record<string, number | number[] | string | undefined>
+
+/** Recharts LabelList content callback props. Recharts ships x/y/
+ *  width/height as `string | number | undefined` (SVG-friendly), so
+ *  we mirror that shape and coerce to number when invoking
+ *  BudgetBarLabel (which needs numeric pixel values). */
+/** Matches Recharts' `RenderableText = string | number | boolean | null | undefined`
+ *  for `value`, plus their SVG-coord `string | number | undefined` for the
+ *  positional props. We coerce these to numeric pixels at the call site. */
+interface BarLabelContentProps {
+  x?: string | number
+  y?: string | number
+  width?: string | number
+  height?: string | number
+  value?: string | number | boolean | null
+  index?: number
+}
+
+function toPx(v: string | number | undefined): number {
+  if (typeof v === "number") return v
+  if (typeof v === "string") {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
+
+function toLabelValue(v: BarLabelContentProps["value"]): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v
+  if (typeof v === "string") {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : undefined
+  }
+  return undefined
 }
 
 // ─── Comparison Tab ────────────────────────────────────────────────────────────
@@ -95,7 +150,7 @@ export function ComparisonTab() {
   // Build chart data from all selected plans' byCategory
   const allCategories = new Set<string>()
   for (const a of analyticsArr) {
-    if (a?.byCategory) a.byCategory.forEach((c: any) => allCategories.add(c.category))
+    if (a?.byCategory) a.byCategory.forEach((c: BudgetCategoryRow) => allCategories.add(c.category))
   }
   const topCategories = Array.from(allCategories).slice(0, 10)
 
@@ -107,20 +162,20 @@ export function ComparisonTab() {
     return dupeCount > 0 ? `${baseName} (${dupeCount + 1})` : baseName
   })
 
-  const chartData = topCategories.map(cat => {
-    const row: any = { category: cat }
+  const chartData: ChartRow[] = topCategories.map(cat => {
+    const row: ChartRow = { category: cat }
     analyticsArr.forEach((a, i) => {
-      const found = a?.byCategory?.find((c: any) => c.category === cat)
+      const found = a?.byCategory?.find((c: BudgetCategoryRow) => c.category === cat)
       row[planLabels[i]] = found?.planned ?? 0
     })
     return row
   })
 
   // Variance table rows
-  const tableCategories = topCategories.map(cat => {
-    const row: any = { category: cat }
+  const tableCategories: TableRow[] = topCategories.map(cat => {
+    const row: TableRow = { category: cat }
     analyticsArr.forEach((a, i) => {
-      const found = a?.byCategory?.find((c: any) => c.category === cat)
+      const found = a?.byCategory?.find((c: BudgetCategoryRow) => c.category === cat)
       row[`p${i}_planned`] = found?.planned ?? 0
       row[`p${i}_actual`] = found?.actual ?? 0
       row[`p${i}_variance`] = found?.variance ?? 0
@@ -138,10 +193,10 @@ export function ComparisonTab() {
   })
 
   // Materiality filter
-  const isMaterial = (row: any) => {
+  const isMaterial = (row: TableRow) => {
     if (showAll) return true
     for (let i = 0; i < analyticsArr.length; i++) {
-      if (Math.abs(row[`p${i}_pct`] ?? 0) >= materialityPct || Math.abs(row[`p${i}_variance`] ?? 0) >= materialityAbs) return true
+      if (Math.abs(asNum(row[`p${i}_pct`])) >= materialityPct || Math.abs(asNum(row[`p${i}_variance`])) >= materialityAbs) return true
     }
     return false
   }
@@ -263,7 +318,17 @@ export function ComparisonTab() {
                     {selectedIds.map((id, i) => (
                       <Bar key={id} dataKey={planLabels[i]} fill={`url(#comp-grad-${i})`} radius={[4, 4, 0, 0]}
                         animationDuration={ANIMATION.duration} animationEasing={ANIMATION.easing} barSize={20}>
-                        <LabelList content={(props: any) => <BudgetBarLabel {...props} horizontal={false} />} />
+                        <LabelList content={(props: BarLabelContentProps) => (
+                          <BudgetBarLabel
+                            x={toPx(props.x)}
+                            y={toPx(props.y)}
+                            width={toPx(props.width)}
+                            height={toPx(props.height)}
+                            value={toLabelValue(props.value)}
+                            index={props.index}
+                            horizontal={false}
+                          />
+                        )} />
                       </Bar>
                     ))}
                   </BarChart>
@@ -384,10 +449,10 @@ export function ComparisonTab() {
                       <tr key={row.category} className="border-t border-border/50 hover:bg-muted/30">
                         <td className="px-3 py-1.5 font-medium sticky left-0 bg-background">{row.category}</td>
                         {selectedIds.map((_id, i) => [
-                          <td key={`${row.category}-p${i}-p`} className="px-2 py-1.5 text-right font-mono">{fmt(row[`p${i}_planned`])}</td>,
-                          <td key={`${row.category}-p${i}-a`} className="px-2 py-1.5 text-right font-mono">{fmt(row[`p${i}_actual`])}</td>,
-                          <td key={`${row.category}-p${i}-v`} className={`px-2 py-1.5 text-right font-mono font-bold ${(row[`p${i}_variance`] ?? 0) >= 0 ? "text-[#065f46] dark:text-[#6ee7b7]" : "text-red-500"}`}>
-                            {(row[`p${i}_pct`] ?? 0).toFixed(1)}%
+                          <td key={`${row.category}-p${i}-p`} className="px-2 py-1.5 text-right font-mono">{fmt(asNum(row[`p${i}_planned`]))}</td>,
+                          <td key={`${row.category}-p${i}-a`} className="px-2 py-1.5 text-right font-mono">{fmt(asNum(row[`p${i}_actual`]))}</td>,
+                          <td key={`${row.category}-p${i}-v`} className={`px-2 py-1.5 text-right font-mono font-bold ${asNum(row[`p${i}_variance`]) >= 0 ? "text-[#065f46] dark:text-[#6ee7b7]" : "text-red-500"}`}>
+                            {asNum(row[`p${i}_pct`]).toFixed(1)}%
                           </td>,
                         ])}
                         <td className="px-3 py-1.5">
