@@ -11,6 +11,7 @@
  * Inline status messages per row.
  */
 import { useState, useTransition } from "react"
+import { useTranslations } from "next-intl"
 import type { ApiKeySource } from "@/lib/intel/api-keys"
 
 interface SourceDoc {
@@ -34,6 +35,7 @@ interface ApiKeysFormProps {
 type RowState = "idle" | "saving" | "saved" | "error"
 
 export function ApiKeysForm({ initial }: ApiKeysFormProps) {
+  const t = useTranslations("adminApiKeys")
   const [rows, setRows] = useState(
     initial.map((r) => ({
       ...r,
@@ -75,10 +77,10 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
       const wasCleared = data.cleared?.includes(source)
       updateRow(idx, {
         state: "saved",
-        message: wasCleared ? "Cleared." : "Saved.",
+        message: wasCleared ? t("form.cleared") : t("form.saved"),
         input: "",
         configured: !wasCleared,
-        preview: wasCleared ? "***" : "(saved — reload page to see preview)",
+        preview: wasCleared ? "***" : t("form.savedPlaceholder"),
       })
     } catch (e) {
       updateRow(idx, {
@@ -108,7 +110,7 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
               )}
               {row.doc?.sectors && row.doc.sectors.length > 0 && (
                 <p className="mt-1 text-xs text-slate-500">
-                  Sectors: {row.doc.sectors.join(", ")}
+                  {t("form.sectors")}: {row.doc.sectors.join(", ")}
                 </p>
               )}
               {row.doc?.signupUrl && (
@@ -119,7 +121,7 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
                     rel="noreferrer noopener"
                     className="text-blue-600 underline hover:text-blue-700"
                   >
-                    Get a key →
+                    {t("form.getKey")}
                   </a>
                 </p>
               )}
@@ -127,11 +129,11 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
             <div className="text-right">
               {row.configured ? (
                 <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-500/40">
-                  Configured · {row.preview}
+                  {t("form.configured")} · {row.preview}
                 </span>
               ) : (
                 <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-500/40">
-                  No key
+                  {t("form.noKey")}
                 </span>
               )}
             </div>
@@ -141,7 +143,7 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
             <input
               type="password"
               autoComplete="off"
-              placeholder="Paste new key (≥8 chars)"
+              placeholder={t("form.placeholder")}
               value={row.input}
               onChange={(e) => updateRow(idx, { input: e.target.value })}
               className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800"
@@ -156,7 +158,7 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
                 disabled={row.state === "saving" || row.input.trim().length === 0}
                 className="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {row.state === "saving" ? "Saving…" : "Save"}
+                {row.state === "saving" ? t("form.saving") : t("form.save")}
               </button>
               {row.configured && (
                 <button
@@ -167,7 +169,7 @@ export function ApiKeysForm({ initial }: ApiKeysFormProps) {
                   disabled={row.state === "saving"}
                   className="rounded-md border border-rose-300 px-4 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-700 dark:hover:bg-rose-950"
                 >
-                  Clear
+                  {t("form.clear")}
                 </button>
               )}
             </div>

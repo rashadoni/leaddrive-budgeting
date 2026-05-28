@@ -11,6 +11,7 @@
  * audit-logs each change.
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -53,6 +54,7 @@ const SOURCE_DOCS: Record<
 }
 
 export default async function ApiKeysPage() {
+  const t = await getTranslations("adminApiKeys")
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) {
@@ -74,24 +76,27 @@ export default async function ApiKeysPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-6">
       <header className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">External API keys</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Per-org keys for paid / registration-only data sources. Adapters
-          without a key here will skip themselves gracefully — the Drift
-          Dashboard will show <span className="font-mono">api_key_missing</span> on the
-          affected cards. Keys are stored in <code className="font-mono">Organization.settings</code>;
-          v1 is plain JSON (encrypted column coming in v1.1).
+          {t.rich("subtitle", {
+            code: (chunks) => <code className="font-mono">{chunks}</code>,
+            mono: (chunks) => <span className="font-mono">{chunks}</span>,
+          })}
         </p>
       </header>
 
       <ApiKeysForm initial={initial} />
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-900/40">
-        <h2 className="mb-2 font-medium">What happens when I clear a key?</h2>
+        <h2 className="mb-2 font-medium">{t("clearSection.title")}</h2>
         <ul className="list-disc space-y-1 pl-5 text-slate-700 dark:text-slate-300">
-          <li>The corresponding adapter starts returning <span className="font-mono">api_key_missing</span> on every scheduler run.</li>
-          <li>No data is deleted — previously-ingested points stay in the database; they just age out / drift to STALE.</li>
-          <li>Re-enter the key any time to resume ingestion.</li>
+          <li>
+            {t.rich("clearSection.bullet1", {
+              mono: (chunks) => <span className="font-mono">{chunks}</span>,
+            })}
+          </li>
+          <li>{t("clearSection.bullet2")}</li>
+          <li>{t("clearSection.bullet3")}</li>
         </ul>
       </section>
     </div>

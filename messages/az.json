@@ -2458,6 +2458,66 @@
       "subtitle": "{email} üçün yeni müvəqqəti şifrə. İstifadəçi ilə bir dəfə paylaşın."
     }
   },
+  "adminApiKeys": {
+    "title": "Xarici API açarları",
+    "subtitle": "Pullu / qeydiyyat tələb edən data mənbələri üçün təşkilat səviyyəli açarlar. Açarsız adapterlər öz işləməsindən yumşaq şəkildə imtina edir — müvafiq kartlarda Drift Dashboard <mono>api_key_missing</mono> göstərəcək. Açarlar <code>Organization.settings</code>-də saxlanılır; v1 — adi JSON (şifrələnmiş sütun v1.1-də gələcək).",
+    "clearSection": {
+      "title": "Açar təmizləndikdə nə baş verir?",
+      "bullet1": "Müvafiq adapter hər planlayıcı işləməsində <mono>api_key_missing</mono> qaytarmağa başlayır.",
+      "bullet2": "Heç bir data silinmir — əvvəllər alınmış nöqtələr DB-də qalır; sadəcə köhnəlir / STALE-ə keçir.",
+      "bullet3": "Açarı istənilən vaxt yenidən daxil edin — yığım davam edəcək."
+    },
+    "form": {
+      "sectors": "Sektorlar",
+      "getKey": "Açar al →",
+      "configured": "Konfiqurasiya olunub",
+      "noKey": "Açar yoxdur",
+      "placeholder": "Yeni açarı yapışdırın (≥8 simvol)",
+      "save": "Saxla",
+      "saving": "Saxlanılır…",
+      "saved": "Saxlanıldı.",
+      "clear": "Təmizlə",
+      "cleared": "Təmizləndi.",
+      "savedPlaceholder": "(saxlanıldı — önizləmə üçün səhifəni yeniləyin)"
+    }
+  },
+  "adminIntelHealth": {
+    "title": "Intel Sağlamlığı",
+    "subtitle": "Gündəlik AI veb-tarayıcının müşahidəsi — son işləmə, qəbul həcmi, mənbə qarışığı, dil konfiqurasiyası. Risk Terminal-dakı Intel lentini doldurur.",
+    "status": {
+      "healthy": "SAĞLAM",
+      "stale": "KÖHNƏ",
+      "empty": "BOŞ (son işləmədə 0 element tapıldı)"
+    },
+    "labels": {
+      "status": "Status",
+      "lastRun": "Son işləmə",
+      "outputLanguage": "Çıxış dili",
+      "itemsLast30d": "Elementlər (son 30 gün)"
+    },
+    "relative": {
+      "never": "heç vaxt",
+      "justNow": "indi",
+      "minutes": "{n} dəq əvvəl",
+      "hours": "{n} saat əvvəl",
+      "days": "{n} gün əvvəl"
+    },
+    "languageDefault": "İngiliscə (defolt)",
+    "avgRelevance": "orta relevantlıq",
+    "sparkline": {
+      "title": "Son 7 gün — gündə alınan elementlər",
+      "itemsAbbr": "element"
+    },
+    "topSources": {
+      "title": "Top mənbələr (element sayına görə, 30 gün)",
+      "empty": "Hələ element yoxdur."
+    },
+    "topIndustries": {
+      "title": "Top sektorlar (element sayına görə, 30 gün)",
+      "empty": "Etiketli element yoxdur."
+    },
+    "footer": "Tarama cədvəli: Postgres advisory-lock dedup planlayıcısı vasitəsilə hər 24 saatda bir. Dili <code>Organization.settings.intelLanguage</code> ilə konfiqurasiya edin (en / ru / az)."
+  },
   "adminLanding": {
     "pageTitle": "Admin Alətləri",
     "statsLine": "{total} alət {groups} qrupda · Phase 7.M-də {new} yeni. Müştəri demo-dan əvvəl istifadə edin: Indicator Health-ə baxın → red gap-ləri bağlayın → AI Auto Import vasitəsilə idxal işə salın.",

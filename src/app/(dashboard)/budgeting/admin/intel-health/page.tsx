@@ -21,6 +21,7 @@
  */
 
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -30,32 +31,21 @@ export const metadata = {
   title: "Intel Health · BudgetPro",
 }
 
-/** Format an ISO date string as "3h ago", "2d ago" — relative to now. */
-function relativeTime(iso: string | null, now: Date = new Date()): string {
-  if (!iso) return "never"
+/** Format an ISO date string as a localized "3h ago", "2d ago" string. */
+function relativeTime(
+  iso: string | null,
+  t: (k: string, vars?: Record<string, string | number>) => string,
+  now: Date = new Date(),
+): string {
+  if (!iso) return t("relative.never")
   const ms = now.getTime() - new Date(iso).getTime()
   const min = Math.floor(ms / 60_000)
-  if (min < 1) return "just now"
-  if (min < 60) return `${min}m ago`
+  if (min < 1) return t("relative.justNow")
+  if (min < 60) return t("relative.minutes", { n: min })
   const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr}h ago`
+  if (hr < 24) return t("relative.hours", { n: hr })
   const day = Math.floor(hr / 24)
-  return `${day}d ago`
-}
-
-const STATUS_PILL: Record<"healthy" | "stale" | "empty", { label: string; cls: string }> = {
-  healthy: {
-    label: "HEALTHY",
-    cls: "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/40",
-  },
-  stale: {
-    label: "STALE",
-    cls: "bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40",
-  },
-  empty: {
-    label: "EMPTY (last run found 0 items)",
-    cls: "bg-slate-500/15 text-slate-700 ring-1 ring-slate-500/40",
-  },
+  return t("relative.days", { n: day })
 }
 
 const LANGUAGE_LABEL: Record<string, string> = {
@@ -65,6 +55,7 @@ const LANGUAGE_LABEL: Record<string, string> = {
 }
 
 export default async function IntelHealthPage() {
+  const t = await getTranslations("adminIntelHealth")
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "manager")) {
@@ -102,23 +93,34 @@ export default async function IntelHealthPage() {
     typeof settings.intelLanguage === "string" ? settings.intelLanguage : null
 
   const stats = computeIntelHealthStats(rows, { intelLastRunAt, intelLanguage })
+  const STATUS_PILL: Record<"healthy" | "stale" | "empty", { label: string; cls: string }> = {
+    healthy: {
+      label: t("status.healthy"),
+      cls: "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/40",
+    },
+    stale: {
+      label: t("status.stale"),
+      cls: "bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/40",
+    },
+    empty: {
+      label: t("status.empty"),
+      cls: "bg-slate-500/15 text-slate-700 ring-1 ring-slate-500/40",
+    },
+  }
   const pill = STATUS_PILL[stats.status]
   const maxDailyCount = Math.max(1, ...stats.last7Days.map((d) => d.count))
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Intel Health</h1>
-        <p className="text-sm text-muted-foreground">
-          Daily AI web-crawl observability — last run, ingestion volume, source
-          mix, language config. Drives the Intel feed on the Risk Terminal.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
       </header>
 
       {/* Status row */}
       <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
-          <Label>Status</Label>
+          <Label>{t("labels.status")}</Label>
           <span
             className={`inline-flex items-center px-2 py-1 rounded text-xs font-mono ${pill.cls}`}
           >
@@ -126,25 +128,25 @@ export default async function IntelHealthPage() {
           </span>
         </Card>
         <Card>
-          <Label>Last run</Label>
-          <Value>{relativeTime(stats.intelLastRunAt)}</Value>
+          <Label>{t("labels.lastRun")}</Label>
+          <Value>{relativeTime(stats.intelLastRunAt, t)}</Value>
           {stats.intelLastRunAt && (
             <SubText>{new Date(stats.intelLastRunAt).toLocaleString()}</SubText>
           )}
         </Card>
         <Card>
-          <Label>Output language</Label>
+          <Label>{t("labels.outputLanguage")}</Label>
           <Value>
             {stats.intelLanguage
               ? `${LANGUAGE_LABEL[stats.intelLanguage] ?? stats.intelLanguage} (${stats.intelLanguage})`
-              : "English (default)"}
+              : t("languageDefault")}
           </Value>
         </Card>
         <Card>
-          <Label>Items (last 30d)</Label>
+          <Label>{t("labels.itemsLast30d")}</Label>
           <Value>{stats.totalItems.toLocaleString()}</Value>
           <SubText>
-            avg relevance:{" "}
+            {t("avgRelevance")}:{" "}
             {Number.isNaN(stats.averageRelevance)
               ? "—"
               : (stats.averageRelevance * 100).toFixed(0) + "%"}
@@ -154,13 +156,13 @@ export default async function IntelHealthPage() {
 
       {/* 7-day sparkline */}
       <section className="rounded-lg border bg-card p-4">
-        <Label>Last 7 days — items ingested per day</Label>
+        <Label>{t("sparkline.title")}</Label>
         <div className="mt-3 flex items-end gap-1 h-24">
           {stats.last7Days.map((d) => (
             <div
               key={d.date}
               className="flex-1 flex flex-col items-center gap-1 group"
-              title={`${d.date}: ${d.count} items`}
+              title={`${d.date}: ${d.count} ${t("sparkline.itemsAbbr")}`}
             >
               <div
                 className="w-full rounded-t bg-cyan-500/40 group-hover:bg-cyan-500/70 transition-colors"
@@ -178,9 +180,11 @@ export default async function IntelHealthPage() {
       {/* Top sources + industries */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-lg border bg-card p-4">
-          <Label>Top sources (by item count, last 30d)</Label>
+          <Label>{t("topSources.title")}</Label>
           {stats.topSources.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-3">No items yet.</p>
+            <p className="text-sm text-muted-foreground mt-3">
+              {t("topSources.empty")}
+            </p>
           ) : (
             <ul className="mt-3 space-y-1.5">
               {stats.topSources.map((s) => (
@@ -193,9 +197,11 @@ export default async function IntelHealthPage() {
           )}
         </div>
         <div className="rounded-lg border bg-card p-4">
-          <Label>Top industries (by item count, last 30d)</Label>
+          <Label>{t("topIndustries.title")}</Label>
           {stats.topIndustries.length === 0 ? (
-            <p className="text-sm text-muted-foreground mt-3">No tagged items.</p>
+            <p className="text-sm text-muted-foreground mt-3">
+              {t("topIndustries.empty")}
+            </p>
           ) : (
             <ul className="mt-3 space-y-1.5">
               {stats.topIndustries.map((i) => (
@@ -210,12 +216,11 @@ export default async function IntelHealthPage() {
       </section>
 
       <footer className="text-xs text-muted-foreground border-t pt-4">
-        Crawl schedule: every 24h via Postgres advisory-lock-deduped scheduler.
-        Configure language via{" "}
-        <code className="font-mono bg-muted px-1 rounded">
-          Organization.settings.intelLanguage
-        </code>{" "}
-        (en / ru / az).
+        {t.rich("footer", {
+          code: (chunks) => (
+            <code className="font-mono bg-muted px-1 rounded">{chunks}</code>
+          ),
+        })}
       </footer>
     </div>
   )

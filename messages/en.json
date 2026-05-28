@@ -2458,6 +2458,66 @@
       "subtitle": "New temp password for {email}. Share it with the user once."
     }
   },
+  "adminApiKeys": {
+    "title": "External API keys",
+    "subtitle": "Per-org keys for paid / registration-only data sources. Adapters without a key here will skip themselves gracefully — the Drift Dashboard will show <mono>api_key_missing</mono> on the affected cards. Keys are stored in <code>Organization.settings</code>; v1 is plain JSON (encrypted column coming in v1.1).",
+    "clearSection": {
+      "title": "What happens when I clear a key?",
+      "bullet1": "The corresponding adapter starts returning <mono>api_key_missing</mono> on every scheduler run.",
+      "bullet2": "No data is deleted — previously-ingested points stay in the database; they just age out / drift to STALE.",
+      "bullet3": "Re-enter the key any time to resume ingestion."
+    },
+    "form": {
+      "sectors": "Sectors",
+      "getKey": "Get a key →",
+      "configured": "Configured",
+      "noKey": "No key",
+      "placeholder": "Paste new key (≥8 chars)",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "clear": "Clear",
+      "cleared": "Cleared.",
+      "savedPlaceholder": "(saved — reload page to see preview)"
+    }
+  },
+  "adminIntelHealth": {
+    "title": "Intel Health",
+    "subtitle": "Daily AI web-crawl observability — last run, ingestion volume, source mix, language config. Drives the Intel feed on the Risk Terminal.",
+    "status": {
+      "healthy": "HEALTHY",
+      "stale": "STALE",
+      "empty": "EMPTY (last run found 0 items)"
+    },
+    "labels": {
+      "status": "Status",
+      "lastRun": "Last run",
+      "outputLanguage": "Output language",
+      "itemsLast30d": "Items (last 30d)"
+    },
+    "relative": {
+      "never": "never",
+      "justNow": "just now",
+      "minutes": "{n}m ago",
+      "hours": "{n}h ago",
+      "days": "{n}d ago"
+    },
+    "languageDefault": "English (default)",
+    "avgRelevance": "avg relevance",
+    "sparkline": {
+      "title": "Last 7 days — items ingested per day",
+      "itemsAbbr": "items"
+    },
+    "topSources": {
+      "title": "Top sources (by item count, last 30d)",
+      "empty": "No items yet."
+    },
+    "topIndustries": {
+      "title": "Top industries (by item count, last 30d)",
+      "empty": "No tagged items."
+    },
+    "footer": "Crawl schedule: every 24h via Postgres advisory-lock-deduped scheduler. Configure language via <code>Organization.settings.intelLanguage</code> (en / ru / az)."
+  },
   "adminLanding": {
     "pageTitle": "Admin Tools",
     "statsLine": "{total} tools in {groups} groups · {new} new in Phase 7.M. Use before client demo: check Indicator Health → close red gaps → run import via AI Auto Import.",
