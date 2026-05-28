@@ -50,6 +50,7 @@ import {
   DEPARTMENTS,
   SECTION_TYPES,
   type BudgetLine,
+  type BudgetPlan,
 } from "@/lib/budgeting/types"
 import { COST_MODEL_KEY_OPTIONS } from "@/lib/budgeting/cost-model-map"
 import { BudgetConfigTab } from "@/components/budget-config-tab"
@@ -85,7 +86,7 @@ function statusBadge(status: string, t: (key: string) => string) {
   return <Badge title={t("hintStatusDraft")} className="bg-muted text-muted-foreground">{t("statusDraft")}</Badge>
 }
 
-function periodLabel(plan: any, t: (key: string) => string): string {
+function periodLabel(plan: BudgetPlan, t: (key: string) => string): string {
   if (plan.periodType === "monthly" && plan.month) {
     const months = t("monthsShort").split(",")
     return `${months[plan.month - 1]} ${plan.year}`
@@ -326,7 +327,7 @@ export default function BudgetingPage() {
             <>
               <select value={resolvedPlanId} onChange={e => {
                   setActivePlanId(e.target.value)
-                  const selected = (plans as any[]).find(p => p.id === e.target.value)
+                  const selected = plans.find((p: BudgetPlan) => p.id === e.target.value)
                   if (selected?.isRolling) setActiveTab("rolling")
                 }}
                 className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[180px]">
@@ -338,7 +339,7 @@ export default function BudgetingPage() {
                   Shows lock-icon + period + tooltip when the active plan's
                   period is locked at the org level. Renders nothing if
                   not locked (no layout shift). */}
-              <PeriodLockBadge plan={(plans as any[]).find(p => p.id === resolvedPlanId) ?? null} />
+              <PeriodLockBadge plan={plans.find((p: BudgetPlan) => p.id === resolvedPlanId) ?? null} />
             </>
           ) : null}
           {/* Turn 30: per-daughter-company drilldown selector. Org-wide default;

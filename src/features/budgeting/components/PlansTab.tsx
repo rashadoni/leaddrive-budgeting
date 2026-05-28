@@ -27,6 +27,7 @@ import {
   useBudgetDiff,
   useCreateRollingPlan,
 } from "@/lib/budgeting/hooks"
+import type { BudgetPlan } from "@/lib/budgeting/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,7 +60,9 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
   const updatePlan = useUpdateBudgetPlan()
   const deletePlan = useDeleteBudgetPlan()
   const { data: sessionData } = useSessionHook()
-  const userRole = (sessionData?.user as any)?.role || "viewer"
+  // Phase 8 D3(z) (2026-05-28) — Session.user is augmented with `role`
+  // via @/types/next-auth.d.ts; the `as any` cast is no longer needed.
+  const userRole = sessionData?.user?.role || "viewer"
   const activePlan = plans.find(p => p.id === activePlanId) || null
 
   // Inline rename
@@ -78,9 +81,15 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
 
   // Clone plan
   const createPlan = useCreateBudgetPlan()
-  const clonePlan = async (plan: any) => {
+  const clonePlan = async (plan: BudgetPlan) => {
     const cloneName = `${plan.name} (Copy)`
-    await createPlan.mutateAsync({ name: cloneName, year: plan.year, periodType: plan.periodType, quarter: plan.quarter, month: plan.month })
+    await createPlan.mutateAsync({
+      name: cloneName,
+      year: plan.year,
+      periodType: plan.periodType,
+      quarter: plan.quarter ?? undefined,
+      month: plan.month ?? undefined,
+    })
   }
 
   // F3: Versioning
@@ -364,7 +373,7 @@ export function PlansTab({ activePlanId, onSelect, onShowCreate }: { activePlanI
                 try {
                   await fetch("/api/budgeting/plans?deleteAll=true", {
                     method: "DELETE",
-                    headers: { "x-organization-id": String((sessionData?.user as any)?.organizationId || ""), "Content-Type": "application/json" },
+                    headers: { "x-organization-id": String(sessionData?.user?.organizationId || ""), "Content-Type": "application/json" },
                   })
                   window.location.reload()
                 } catch (e) {

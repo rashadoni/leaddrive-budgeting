@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+
+// Phase 8 D3(z) (2026-05-28) — typed shape for the BudgetPlan + lines
+// include used by this route. Replaces the 3 `(plan as any)` /
+// `(l: any)` casts that were undoing the type safety Prisma provides
+// (amendmentOf + version are columns on BudgetPlan — no schema gap,
+// the casts were stale).
+type PlanWithLines = Prisma.BudgetPlanGetPayload<{
+  include: { lines: { include: { account: { select: { code: true; name: true } } } } }
+}>
+type PlanLineRow = PlanWithLines["lines"][number]
 
 // POST — create a new version of an existing plan
 export async function POST(
@@ -16,7 +27,7 @@ export async function POST(
   const { orgId, userId } = session
 
   // Find original plan
-  const plan = await prisma.budgetPlan.findFirst({
+  const plan: PlanWithLines | null = await prisma.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
     include: { lines: { include: { account: { select: { code: true, name: true } } } } },
   })
@@ -30,7 +41,7 @@ export async function POST(
 
   // Snapshot current plan state
   const snapshot = {
-    lines: plan.lines.map((l: any) => ({
+    lines: plan.lines.map((l: PlanLineRow) => ({
       department: l.department,
       lineType: l.lineType,
       lineSubtype: l.lineSubtype,
@@ -54,9 +65,10 @@ export async function POST(
     data: { snapshotData: snapshot },
   })
 
-  // Determine root of version chain
-  const rootId = (plan as any).amendmentOf || plan.id
-  const currentVersion = (plan as any).version || 1
+  // Determine root of version chain. amendmentOf + version are columns
+  // on BudgetPlan (schema.prisma); the typed shape now exposes them.
+  const rootId = plan.amendmentOf || plan.id
+  const currentVersion = plan.version || 1
 
   // Clone plan with incremented version
   const newPlan = await prisma.budgetPlan.create({

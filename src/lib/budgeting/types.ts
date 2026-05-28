@@ -14,6 +14,14 @@ export interface BudgetPlan {
   approvedAt?: string | null
   rejectedReason?: string | null
   amendmentOf?: string | null
+  // Phase 8 D3(z) (2026-05-28) — rolling-plan + versioning columns
+  // exist on the Prisma BudgetPlan model; add to the API contract so
+  // page.tsx / PlansTab can read them without `(plan as any)` casts.
+  isRolling?: boolean
+  rollingMonths?: number | null
+  version?: number
+  versionLabel?: string | null
+  snapshotData?: unknown
   createdAt: string
   updatedAt: string
 }
