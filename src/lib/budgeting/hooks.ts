@@ -318,8 +318,8 @@ export function useBudgetAnalytics(planId: string, companyId?: string | null) {
     enabled: !!orgId && !!planId,
     // Don't retry 4xx — 404 from cross-tenant/deleted id is terminal,
     // retrying just hammers the route + delays the visible error state.
-    retry: (failureCount, error: any) => {
-      const msg = error?.message ?? ""
+    retry: (failureCount, error) => {
+      const msg = error instanceof Error ? error.message : ""
       if (msg.includes("404") || msg.includes("not found")) return false
       return failureCount < 3
     },
@@ -428,14 +428,18 @@ export function useSnapshotActuals() {
 // TIME MACHINE
 // ═══════════════════════════════════════════════════
 
+/** Phase 8 D3(k) (2026-05-28) — `oldValue` / `newValue` are audit-log
+ *  Json blobs. Their shape varies per `entityType`/`action`; consumers
+ *  must narrow before reading. Typed as `unknown` (was `any` and let
+ *  any field-access through without compile error). */
 export interface ChangeLogItem {
   id: string
   action: string
   entityType: string
   entityId: string
   field: string | null
-  oldValue: any
-  newValue: any
+  oldValue: unknown
+  newValue: unknown
   category: string | null
   userName: string
   createdAt: string
@@ -456,7 +460,7 @@ export function useUndoBudgetChange() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (changeId: string) =>
-      apiFetch<{ reverted: string; to: any }>("/api/budgeting/changelog", orgId, {
+      apiFetch<{ reverted: string; to: unknown }>("/api/budgeting/changelog", orgId, {
         method: "POST",
         body: JSON.stringify({ changeId }),
       }),
@@ -715,6 +719,46 @@ export function useCreateExchangeRate() {
 
 // ─── F2: Accounting Integration ───────────────────────────────
 
+/** Phase 8 D3(k) (2026-05-28) — mirrors `model AccountingIntegration`
+ *  from prisma/schema.prisma. `config` / `categoryMapping` are Json
+ *  columns; typed `Record<string, unknown>` here so the import-CSV
+ *  flow can pass arbitrary shapes per provider. */
+export interface AccountingIntegration {
+  id: string
+  organizationId: string
+  provider: string
+  name: string
+  config: Record<string, unknown>
+  categoryMapping: Record<string, unknown>
+  isActive: boolean
+  lastSyncAt: string | null
+  lastSyncStatus: string | null
+  lastSyncError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Single row from a parsed CSV import — keys vary per provider /
+ *  template. The /api/budgeting/import-csv handler narrows per
+ *  integration's `categoryMapping`. */
+export type ImportCsvRow = Record<string, unknown>
+
+/** Shape of one entry in the import-history list returned by
+ *  GET /api/budgeting/import-csv. Mirrors AccountingImport rows
+ *  with the `integration: { name, provider }` include. Consumed
+ *  by BudgetImportHistory + ImportTab. */
+export interface ImportHistoryEntry {
+  id: string
+  fileName: string | null
+  importType: string
+  status: string
+  totalRows: number
+  matchedRows: number
+  unmatchedRows: number
+  createdAt: string
+  integration?: { name: string; provider: string } | null
+}
+
 export function useAccountingIntegrations() {
   const orgId = useOrgId()
   return useQuery({
@@ -725,7 +769,7 @@ export function useAccountingIntegrations() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "API error")
-      return (json.data ?? json) as any[]
+      return (json.data ?? json) as AccountingIntegration[]
     },
     enabled: !!orgId,
   })
@@ -735,7 +779,7 @@ export function useCreateIntegration() {
   const orgId = useOrgId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { provider: string; name: string; config?: any }) => {
+    mutationFn: async (data: { provider: string; name: string; config?: Record<string, unknown> }) => {
       const res = await fetch("/api/budgeting/integrations", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-organization-id": orgId },
@@ -755,7 +799,7 @@ export function useImportCsv() {
   const orgId = useOrgId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { planId: string; rows: any[]; integrationId?: string; fileName?: string }) => {
+    mutationFn: async (data: { planId: string; rows: ImportCsvRow[]; integrationId?: string; fileName?: string }) => {
       const res = await fetch("/api/budgeting/import-csv", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-organization-id": orgId },
@@ -784,7 +828,7 @@ export function useImportHistory(planId?: string) {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "API error")
-      return (json.data ?? json ?? []) as any[]
+      return (json.data ?? json ?? []) as ImportHistoryEntry[]
     },
     enabled: !!orgId,
   })
@@ -824,7 +868,7 @@ export function useRollingForecast(planId: string | null) {
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || "API error")
       return json as {
-        plan: any
+        plan: BudgetPlan
         months: Array<{
           year: number
           month: number
