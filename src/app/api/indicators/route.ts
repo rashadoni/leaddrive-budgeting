@@ -238,6 +238,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Phase 8 D5(a) (2026-05-28) — `ds` is now per-path:
+  //   - Async fan-out (≥SYNC_THRESHOLD): uses the global prisma (worker
+  //     process wraps its own withOrgScope inside the processor —
+  //     §D5(b) is the follow-up that ships that wrap).
+  //   - Sync drill-down (<SYNC_THRESHOLD): the loop is wrapped in
+  //     withOrgScope below, and a tx-bound `ds` is built inside.
+  // The async branch above still references this top-level `ds`.
   const ds = createPrismaDataSource(prisma);
   type Outcome = {
     companyId: string;
@@ -362,60 +369,68 @@ export async function POST(request: NextRequest) {
 
   // Sync path — small fan-outs (drill-down style, ≤ SYNC_THRESHOLD pairs).
   //
-  // Phase 5.2 Stage 2 RLS wrap deferred — tracked as ROADMAP Phase 8
-  // §D5(a). The sync path runs through `recomputeIndicator(ds, ...)`
-  // where `ds = createPrismaDataSource(prisma)`. To get withOrgScope
-  // coverage we need ds to accept Prisma.TransactionClient. Refactor
-  // lives at src/lib/risk/recompute.ts; deferred to the per-tier
-  // rollout (touches Booking/Currency/BudgetLine/IndicatorValue
-  // resolvers in one go — best done with all those tables' migrations
-  // applying together, not piecemeal).
-  const results: Outcome[] = [];
-  for (const { company, definition } of targets) {
-    const defLike: IndicatorDefinitionLike = {
-      id: definition.id,
-      code: definition.code,
-      formula: definition.formula,
-      sparklineFormula: definition.sparklineFormula,
-      thresholds: definition.thresholds,
-      requiredInputs: definition.requiredInputs,
-      unit: definition.unit,
-      defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
-    };
-    try {
-      const r = await recomputeIndicator(ds, {
-        organizationId: session.orgId,
-        companyId: company.id,
-        definition: defLike,
-        period,
-        withSparkline,
-        industry: company.industry ?? null,
-      });
-      results.push({
-        companyId: company.id,
-        companyCode: company.code,
-        indicatorId: definition.id,
-        indicatorCode: definition.code,
-        status: r.status,
-        value: r.value,
-      });
-    } catch (err) {
-      // Pipeline errors never abort the batch — log + record + continue.
-      logger.error('recompute batch item failed', {
-        companyCode: company.code,
-        indicatorCode: definition.code,
-        reason: err instanceof Error ? err.message : String(err),
-      });
-      results.push({
-        companyId: company.id,
-        companyCode: company.code,
-        indicatorId: definition.id,
-        indicatorCode: definition.code,
-        status: 'error',
-        error: err instanceof Error ? err.message : String(err),
-      });
+  // Phase 8 D5(a) (2026-05-28) — sync recompute path RLS wrap shipped.
+  // The whole loop runs inside `withOrgScope(session.orgId, ...)` so every
+  // resolver read (`booking.findMany`, `budgetLine.findMany`, etc.) and
+  // every write (`indicatorValue.upsert`) picks up the `app.organization_id`
+  // Postgres session var. createPrismaDataSource accepts the tx now
+  // (Phase 8 D5(a) — Prisma.TransactionClient union).
+  //
+  // Caveat: a single per-pair Prisma error doesn't abort the tx because
+  // each `recomputeIndicator` call has its own try/catch. If a hard tx
+  // abort fires (e.g. lock timeout), the whole batch rolls back — that's
+  // a behavioural change vs the pre-D5(a) per-call rollback model, but
+  // matches the safer "all-or-nothing per drill-down" RLS contract.
+  const results: Outcome[] = await withOrgScope(session.orgId, async (tx) => {
+    const txDs = createPrismaDataSource(tx);
+    const localResults: Outcome[] = [];
+    for (const { company, definition } of targets) {
+      const defLike: IndicatorDefinitionLike = {
+        id: definition.id,
+        code: definition.code,
+        formula: definition.formula,
+        sparklineFormula: definition.sparklineFormula,
+        thresholds: definition.thresholds,
+        requiredInputs: definition.requiredInputs,
+        unit: definition.unit,
+        defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
+      };
+      try {
+        const r = await recomputeIndicator(txDs, {
+          organizationId: session.orgId,
+          companyId: company.id,
+          definition: defLike,
+          period,
+          withSparkline,
+          industry: company.industry ?? null,
+        });
+        localResults.push({
+          companyId: company.id,
+          companyCode: company.code,
+          indicatorId: definition.id,
+          indicatorCode: definition.code,
+          status: r.status,
+          value: r.value,
+        });
+      } catch (err) {
+        // Pipeline errors never abort the batch — log + record + continue.
+        logger.error('recompute batch item failed', {
+          companyCode: company.code,
+          indicatorCode: definition.code,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        localResults.push({
+          companyId: company.id,
+          companyCode: company.code,
+          indicatorId: definition.id,
+          indicatorCode: definition.code,
+          status: 'error',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-  }
+    return localResults;
+  });
 
   const ok = results.filter((r) =>
     ['green', 'amber', 'red'].includes(r.status),

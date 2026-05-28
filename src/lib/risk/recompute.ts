@@ -572,9 +572,14 @@ export interface RecomputeInputs {
  * Wraps a real PrismaClient into `RecomputeDataSource`. Every read includes
  * `organizationId` in `where:` for cross-tenant safety. Writes also carry
  * `organizationId` straight into the Prisma row.
+ *
+ * Phase 8 D5(a) (2026-05-28) — accepts either `PrismaClient` (legacy
+ * call sites + tests) OR `Prisma.TransactionClient` so callers wrapped
+ * in `withOrgScope` can thread the tx through and pick up RLS
+ * `app.organization_id` session vars at the DB layer.
  */
 export function createPrismaDataSource(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
 ): RecomputeDataSource {
   return {
     async listBookings({ organizationId, companyId, start, end }) {
