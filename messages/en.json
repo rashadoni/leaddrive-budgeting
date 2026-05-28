@@ -1648,7 +1648,9 @@
     "marketTicker": {
       "ariaLabel": "Market ticker — FX rates and commodities",
       "label": "Market",
-      "loading": "Loading quotes…"
+      "loading": "Loading quotes…",
+      "entryAriaLabel": "Open Data Sources for {label}",
+      "clickHint": "Source: {source} · click for catalog"
     },
     "benchmark": {
       "title": "Industry peer benchmark",

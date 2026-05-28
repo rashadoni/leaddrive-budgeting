@@ -1648,7 +1648,9 @@
     "marketTicker": {
       "ariaLabel": "Bazar lenti — valyuta və xammal",
       "label": "Bazar",
-      "loading": "Kotirovkalar yüklənir…"
+      "loading": "Kotirovkalar yüklənir…",
+      "entryAriaLabel": "{label} üçün Data Sources-u aç",
+      "clickHint": "Mənbə: {source} · kataloq üçün klik"
     },
     "benchmark": {
       "title": "Sənaye üzrə müqayisə",

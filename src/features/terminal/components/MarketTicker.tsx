@@ -8,12 +8,17 @@
  *   USD/AZN  1.7000  ▲ +0.02
  * Color-coded delta: green up, red down, gray flat.
  *
- * No interactivity (yet) — pure information surface. Click handler
- * for future drill-down (open `/budgeting/admin/exchange-rates`)
- * is a TODO.
+ * Phase 8 D2 (2026-05-28) — drill-down wired: clicking any entry
+ * opens the Data Sources Catalog admin page (`/budgeting/admin/data-
+ * sources`) where the operator can see freshness, sample value
+ * interpretation, and the upstream provider for every metric in the
+ * ticker. The dedicated `/exchange-rates` page from the original
+ * sketch never shipped — the Data Sources Catalog covers the same UX
+ * need and is already production-quality.
  */
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 interface TickerEntry {
@@ -54,6 +59,7 @@ function formatDelta(curr: number, prev: number | null): { text: string; tone: s
 
 export function MarketTicker() {
   const t = useTranslations("terminal");
+  const router = useRouter();
   const [entries, setEntries] = useState<TickerEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,7 +114,15 @@ export function MarketTicker() {
       {entries?.map((e) => {
         const delta = formatDelta(e.current, e.previous);
         return (
-          <span key={e.metric} className="inline-flex items-baseline gap-1.5 shrink-0">
+          <button
+            type="button"
+            key={e.metric}
+            onClick={() => router.push("/budgeting/admin/data-sources")}
+            className="inline-flex items-baseline gap-1.5 shrink-0 hover:bg-gray-800/40 hover:text-gray-100 transition-colors px-1 -mx-1 rounded cursor-pointer"
+            aria-label={t("marketTicker.entryAriaLabel", { label: e.label })}
+            data-testid={`market-ticker-entry-${e.metric}`}
+            title={t("marketTicker.clickHint", { source: e.source })}
+          >
             <span className="text-gray-500 uppercase">{e.label}</span>
             <span className="text-gray-200 tabular-nums">
               {formatVal(e.current, e.unit)}
@@ -116,7 +130,7 @@ export function MarketTicker() {
             <span className={`${delta.tone} tabular-nums text-[9px]`}>
               {delta.text}
             </span>
-          </span>
+          </button>
         );
       })}
     </div>

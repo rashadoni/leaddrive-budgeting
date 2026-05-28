@@ -502,9 +502,10 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 
 ### Group D — Code quality (incremental refactor)
 - ⬜ **D1.** Decompose 9 mega-files (>1000 LOC). Top 3: `recompute.ts` 3406, `indicator-seeds.ts` 2674, `IndicatorDetail.tsx` 2036 — `est: 1-2w`
-- ⬜ **D2.** Triage 117 TODO/FIXME comments — close or migrate to GH issues — `est: 1d`
+- ✅ **D2.** TODO/FIXME triage — closed 2026-05-28. The earlier "117" count included unrelated comment lines mentioning the word TODO; the real inventory was 6 items. Resolution: (1) MarketTicker drill-down — implemented (clicks open `/budgeting/admin/data-sources`); (2/3/4) Three Phase 5.2 RLS-deferred TODOs migrated to D5 below; (5) `api-harness.ts` `signal: null` cast — kept as-is (awaits upstream Next type update; well-documented); (6) approval-notifications per-recipient lang — kept as-is (blocked on `User.preferredLang` schema field; tracked under Phase 4.4).
 - ⬜ **D3.** Replace 362 `any` type assertions (top offenders: `export/route.ts`, `analytics/route.ts`) — `est: 2-3d`
 - ⬜ **D4.** Replace 120 `console.log` with structured logger (pino / Winston) — `est: 1d`
+- ⬜ **D5.** Phase 5.2 RLS wrap follow-ups — three deferred call-sites need `withOrgScope` once their multi-table transactions are restructured: (a) `src/app/api/indicators/route.ts` sync recompute path (touches Booking/Currency/BudgetLine/IndicatorValue resolvers — best done together with their migrations); (b) `src/app/api/indicators/route.ts` async BullMQ processor (`recompute-processor.ts`); (c) `src/app/api/budgeting/approval-requests/[id]/route.ts` PATCH handler (150+ LOC spanning approval_requests read + Organization update + audit log + notification trigger). All three currently filter by `organizationId: session.orgId` at the app layer so cross-tenant access is already gated; this work tightens it at the DB layer too.
 
 ### Group E — Compliance Hub upgrades
 - 🟡 **E1.** Write-back close/reopen shipped (commit `3fd2e3c`, 2026-05-28). Remaining: assign owner / add comment / change deadline UI — `est: 1d`

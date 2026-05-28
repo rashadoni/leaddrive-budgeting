@@ -24,7 +24,7 @@ import { filterOperationalCompanies } from '@/lib/risk/targets';
 import { enqueue as enqueueRecomputeJob } from '@/lib/recompute/job-runner';
 // Phase 5.2 Stage 2 (2026-05-21) — RLS wrap for GET + POST sync paths.
 // Async (BullMQ) path runs in the worker process; wrap inside the
-// processor instead (recompute-processor.ts TODO).
+// processor instead — tracked as ROADMAP Phase 8 §D5(b).
 import { withOrgScope } from '@/lib/db/with-org-scope';
 
 // Phase 6.1 — sync vs async threshold. Targets ≤ this run synchronously
@@ -351,14 +351,14 @@ export async function POST(request: NextRequest) {
 
   // Sync path — small fan-outs (drill-down style, ≤ SYNC_THRESHOLD pairs).
   //
-  // Phase 5.2 Stage 2 RLS wrap TODO (2026-05-21): the sync path runs
-  // through `recomputeIndicator(ds, ...)` where `ds` =
-  // createPrismaDataSource(prisma). To get withOrgScope coverage we
-  // need ds to accept Prisma.TransactionClient. Refactor lives at
-  // src/lib/risk/recompute.ts; deferred to the per-tier rollout
-  // (touches Booking/Currency/BudgetLine/IndicatorValue resolvers in
-  // one go — best done with all those tables' migrations applying
-  // together, not piecemeal).
+  // Phase 5.2 Stage 2 RLS wrap deferred — tracked as ROADMAP Phase 8
+  // §D5(a). The sync path runs through `recomputeIndicator(ds, ...)`
+  // where `ds = createPrismaDataSource(prisma)`. To get withOrgScope
+  // coverage we need ds to accept Prisma.TransactionClient. Refactor
+  // lives at src/lib/risk/recompute.ts; deferred to the per-tier
+  // rollout (touches Booking/Currency/BudgetLine/IndicatorValue
+  // resolvers in one go — best done with all those tables' migrations
+  // applying together, not piecemeal).
   const results: Outcome[] = [];
   for (const { company, definition } of targets) {
     const defLike: IndicatorDefinitionLike = {

@@ -1648,7 +1648,9 @@
     "marketTicker": {
       "ariaLabel": "Рыночная строка — курсы и сырьё",
       "label": "Рынок",
-      "loading": "Загрузка котировок…"
+      "loading": "Загрузка котировок…",
+      "entryAriaLabel": "Открыть Data Sources для {label}",
+      "clickHint": "Источник: {source} · клик — каталог"
     },
     "benchmark": {
       "title": "Сравнение с конкурентами по отрасли",
