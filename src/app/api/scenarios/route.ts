@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('api:scenarios');
 
 // Phase 7.N — POST now creates a new scenario (admin-only).
 // The old "apply/queue 202" path is replaced by GET /api/scenarios/[id]/simulate
@@ -54,7 +58,9 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(scenarios);
   } catch (error: unknown) {
-    console.error('Error fetching scenarios:', error);
+    log.error('Error fetching scenarios', {
+      err: error instanceof Error ? error.message : String(error),
+    });
     return NextResponse.json({ error: 'Failed to fetch scenarios' }, { status: 500 });
   }
 }
@@ -115,7 +121,10 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-    console.error('Error creating scenario:', e);
+    log.error('Error creating scenario', {
+      code,
+      err: e instanceof Error ? e.message : String(e),
+    });
     return NextResponse.json({ error: 'Failed to create scenario' }, { status: 500 });
   }
 }

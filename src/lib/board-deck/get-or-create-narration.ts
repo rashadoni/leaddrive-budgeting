@@ -37,6 +37,12 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/prisma";
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger for the
+// board-deck narration cache helper. 2 console.error → logger:
+// cache-write-failed + audit-emission-failed.
+const log = getLogger("board-deck:narration");
 import {
   runNarration,
   type NarrationLanguage,
@@ -244,7 +250,11 @@ export async function getOrCreateNarration(
         // don't want to lose the LLM call's output to a DB blip.
       }
     } else {
-      console.error("[board-deck-narration] cache write failed:", err);
+      log.error("cache write failed", {
+        organizationId: input.organizationId,
+        period: input.snapshot.period,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -272,10 +282,10 @@ export async function getOrCreateNarration(
       userAgent: input.audit?.userAgent,
     }),
   }).catch((err) => {
-    console.error(
-      "[board-deck-narration] audit emission failed (non-blocking):",
-      err,
-    );
+    log.error("audit emission failed (non-blocking)", {
+      organizationId: input.organizationId,
+      err: err instanceof Error ? err.message : String(err),
+    });
   });
 
   return result;

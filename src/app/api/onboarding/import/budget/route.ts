@@ -31,6 +31,11 @@ import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:import-budget")
+const recomputeLog = getLogger("api:import-budget:recompute")
 import {
   parseSoplSheet,
   parseSummaryRollupSheet,
@@ -290,7 +295,10 @@ export async function POST(request: NextRequest) {
       { timeout: 60_000 },
     )
   } catch (err) {
-    console.error("[import-budget] transaction failed:", err)
+    log.error("transaction failed", {
+      err: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     return NextResponse.json(
       {
         error: `Import transaction failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -311,7 +319,9 @@ export async function POST(request: NextRequest) {
     { companyId: company.id, year },
   ], {
     pairError: (label, err) =>
-      console.error(`[import-budget/recompute] ${label}:`, err),
+      recomputeLog.error(label, {
+        err: err instanceof Error ? err.message : String(err),
+      }),
   })
   const indicatorsStale = recomputeResult.failed > 0
 

@@ -477,6 +477,12 @@ describe("getOrCreateNarration — bypassCache + race + LLM failure", () => {
       new Error("connection refused"),
     );
     const runImpl = vi.fn().mockResolvedValue(VALID_OUTPUT);
+    // Phase 8 D4 continuation — get-or-create-narration migrated to
+    // structured logger which mutes itself in test env by default.
+    // Opt into LOG_IN_TESTS=1 so the existing console.error spy still
+    // sees the emission via the logger's internal emit path.
+    const prevLogInTests = process.env.LOG_IN_TESTS;
+    process.env.LOG_IN_TESTS = "1";
     const consoleSpy = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
@@ -493,5 +499,7 @@ describe("getOrCreateNarration — bypassCache + race + LLM failure", () => {
     expect(prisma.boardDeckNarration.update).not.toHaveBeenCalled();
 
     consoleSpy.mockRestore();
+    if (prevLogInTests === undefined) delete process.env.LOG_IN_TESTS;
+    else process.env.LOG_IN_TESTS = prevLogInTests;
   });
 });
