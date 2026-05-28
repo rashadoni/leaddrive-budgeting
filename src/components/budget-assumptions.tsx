@@ -97,9 +97,39 @@ function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
+/** Phase 8 D3(i) (2026-05-28) — AssumptionItem shape returned by
+ *  GET /api/budgeting/assumptions. Mirrors the Prisma BudgetAssumption
+ *  row but defined inline here so the client component doesn't pull
+ *  the Prisma client into the bundle. Fields kept narrow to the
+ *  columns the UI actually reads. */
+interface AssumptionItem {
+  id: string
+  category: string
+  key: string
+  label: string
+  value: number
+  unit: string | null
+  period: string | null
+  notes: string | null
+  sortOrder: number
+}
+
+/** Recharts Treemap content callback signature. Recharts ships
+ *  inexact types so we mirror the props we read; missing fields are
+ *  optional. */
+interface TreemapContentProps {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  name?: string
+  value?: number
+  color?: string
+}
+
 // Treemap custom content
-function TreemapContent(props: any) {
-  const { x, y, width, height, name, value, color } = props
+function TreemapContent(props: TreemapContentProps) {
+  const { x = 0, y = 0, width = 0, height = 0, name = "", value = 0, color = "#9ca3af" } = props
   if (width < 40 || height < 30) return null
   return (
     <g>
@@ -121,7 +151,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
-  const { data: assumptions, isLoading } = useQuery({
+  const { data: assumptions, isLoading } = useQuery<AssumptionItem[]>({
     queryKey: ["assumptions", planId],
     queryFn: async () => {
       const res = await fetch(`/api/budgeting/assumptions?planId=${planId}`, {
@@ -161,8 +191,8 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   }
 
   // Group by category
-  const grouped = new Map<string, any[]>()
-  assumptions.forEach((a: any) => {
+  const grouped = new Map<string, AssumptionItem[]>()
+  assumptions.forEach((a) => {
     if (!grouped.has(a.category)) grouped.set(a.category, [])
     grouped.get(a.category)!.push(a)
   })
@@ -172,8 +202,8 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
   // All categories with item counts (for treemap — shows ALL categories)
   const allCategoryCounts = Array.from(grouped.entries()).map(([cat, items]) => {
-    const aznTotal = items.filter((i: any) => i.unit === "AZN").reduce((s: number, i: any) => s + i.value, 0)
-    const totalSum = items.reduce((s: number, i: any) => s + (typeof i.value === "number" ? i.value : 0), 0)
+    const aznTotal = items.filter((i) => i.unit === "AZN").reduce((s, i) => s + i.value, 0)
+    const totalSum = items.reduce((s, i) => s + (typeof i.value === "number" ? i.value : 0), 0)
     const meta = getCategoryMeta(cat)
     return {
       name: meta.label, key: cat, count: items.length,
@@ -186,7 +216,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   const categoryTotals = allCategoryCounts.filter(c => c.aznValue > 0).sort((a, b) => b.aznValue - a.aznValue)
   const totalValue = categoryTotals.reduce((s, c) => s + c.aznValue, 0)
   const topCategory = allCategoryCounts[0]
-  const uniqueUnits = [...new Set(assumptions.map((a: any) => a.unit).filter(Boolean))]
+  const uniqueUnits = [...new Set(assumptions.map((a) => a.unit).filter(Boolean))]
 
   // Treemap data — by item count so ALL categories are visible
   const treemapData = allCategoryCounts.map(c => ({
@@ -201,7 +231,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
     if (!search) return selectedCategory ? cat === selectedCategory : true
     const q = search.toLowerCase()
     return getCategoryMeta(cat).label.toLowerCase().includes(q) ||
-      items.some((i: any) => i.label?.toLowerCase().includes(q))
+      items.some((i) => i.label?.toLowerCase().includes(q))
   })
 
   const toggleCategory = (cat: string) => {
@@ -383,9 +413,9 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
         <div className="max-h-[500px] overflow-y-auto">
           {filteredCategories.map(([cat, items]) => {
             const isExpanded = expandedCategories.has(cat) || !!search
-            const catTotal = items.filter((i: any) => i.unit === "AZN").reduce((s: number, i: any) => s + i.value, 0)
+            const catTotal = items.filter((i) => i.unit === "AZN").reduce((s, i) => s + i.value, 0)
             const filteredItems = search
-              ? items.filter((i: any) => i.label?.toLowerCase().includes(search.toLowerCase()))
+              ? items.filter((i) => i.label?.toLowerCase().includes(search.toLowerCase()))
               : items
 
             if (search && filteredItems.length === 0) return null
@@ -408,7 +438,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
                 </div>
 
                 {/* Item Rows */}
-                {isExpanded && filteredItems.map((item: any) => (
+                {isExpanded && filteredItems.map((item) => (
                   <div
                     key={item.id}
                     className="grid grid-cols-[1fr_100px_80px_80px] gap-2 px-4 py-1.5 border-b border-dashed border-muted hover:bg-muted/20 transition-colors"
@@ -443,7 +473,7 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2 border-t bg-muted/20 text-[10px] text-muted-foreground">
-          <span>{filteredCategories.length} categories • {search ? filteredCategories.reduce((s, [, items]) => s + items.filter((i: any) => i.label?.toLowerCase().includes(search.toLowerCase())).length, 0) : totalAssumptions} items</span>
+          <span>{filteredCategories.length} categories • {search ? filteredCategories.reduce((s, [, items]) => s + items.filter((i) => i.label?.toLowerCase().includes(search.toLowerCase())).length, 0) : totalAssumptions} items</span>
           {selectedCategory && (
             <button className="text-primary hover:underline" onClick={() => setSelectedCategory(null)}>
               Clear filter
