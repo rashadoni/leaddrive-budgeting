@@ -196,10 +196,10 @@ export async function runDynamicBsAdapter(
   }
 
   // ── 1. Extract compact sheet metadata ─────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // Phase 8 D3(w) (2026-05-28) — AdapterRunInput.workbook is
+  // typed XLSXType.WorkBook; no cast needed.
   const mapperInputResult = extractMapperInput(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input.workbook as any,
+    input.workbook,
     input.sheetName,
     input.XLSX,
     { companyName: input.entityCode },
@@ -288,8 +288,7 @@ export async function runDynamicBsAdapter(
   }
 
   // ── 6. Build AOA from the sheet ───────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sheet = (input.workbook as any).Sheets[input.sheetName]
+  const sheet = input.workbook.Sheets[input.sheetName]
   const aoa = input.XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     blankrows: false,
@@ -374,8 +373,8 @@ export async function runDynamicBsAdapter(
     .map((m) => `${effectiveYear}-${String(m + 1).padStart(2, "0")}`)
 
   // Expose expectedSums for orchestrator cross-file conflict detection
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const extra = rows.length > 0 ? { expectedSums } : ({} as any)
+  const extra: { expectedSums?: Map<ReconciliationKey, number> } =
+    rows.length > 0 ? { expectedSums } : {}
 
   return {
     summary: `${rows.length} dynamic BS rows for ${input.entityCode} (conf=${proposal.overallConfidence.toFixed(2)}, sheet="${input.sheetName}")`,

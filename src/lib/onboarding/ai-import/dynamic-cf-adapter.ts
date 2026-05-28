@@ -201,9 +201,12 @@ export async function runDynamicCfAdapter(
   }
 
   // ── 1. Extract compact sheet metadata ─────────────────────────────────────
+  // Phase 8 D3(w) (2026-05-28) — AdapterRunInput.workbook is now typed
+  // as `XLSXType.WorkBook` (see adapter-registry.ts D3(c) tightening),
+  // so the `as any` cast bypassing extractMapperInput's signature
+  // is no longer needed.
   const mapperInputResult = extractMapperInput(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input.workbook as any,
+    input.workbook,
     input.sheetName,
     input.XLSX,
     { companyName: input.entityCode },
@@ -292,8 +295,7 @@ export async function runDynamicCfAdapter(
   }
 
   // ── 6. Build AOA from the sheet ───────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sheet = (input.workbook as any).Sheets[input.sheetName]
+  const sheet = input.workbook.Sheets[input.sheetName]
   const aoa = input.XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     blankrows: false,
@@ -388,8 +390,8 @@ export async function runDynamicCfAdapter(
     .sort((a, b) => a - b)
     .map((m) => `${effectiveYear}-${String(m + 1).padStart(2, "0")}`)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const extra = rows.length > 0 ? { expectedSums } : ({} as any)
+  const extra: { expectedSums?: Map<ReconciliationKey, number> } =
+    rows.length > 0 ? { expectedSums } : {}
 
   return {
     summary: `${rows.length} dynamic CF entries for ${input.entityCode} (conf=${proposal.overallConfidence.toFixed(2)}, sheet="${input.sheetName}")`,

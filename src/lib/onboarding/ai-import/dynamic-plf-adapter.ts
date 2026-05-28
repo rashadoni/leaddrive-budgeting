@@ -121,8 +121,9 @@ export async function runDynamicPlfAdapter(
   // ── 1. Extract compact sheet metadata ─────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapperInputResult = extractMapperInput(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    input.workbook as any,
+    // Phase 8 D3(w) (2026-05-28) — AdapterRunInput.workbook is
+    // already typed XLSXType.WorkBook; no cast needed.
+    input.workbook,
     input.sheetName,
     input.XLSX,
     { companyName: input.entityCode },
@@ -215,8 +216,7 @@ export async function runDynamicPlfAdapter(
   // null → no year in roles → keep input.year
 
   // ── 6. Build AOA from the sheet ───────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sheet = (input.workbook as any).Sheets[input.sheetName]
+  const sheet = input.workbook.Sheets[input.sheetName]
   const aoa = (input.XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     blankrows: false,
@@ -328,14 +328,14 @@ export async function runDynamicPlfAdapter(
 
   // Expose expectedSums for orchestrator cross-file conflict detection
   // (same pattern as hard-coded PLF handler — not on public AdapterRunResult type).
-  const extra = rows.length > 0 ? { expectedSums } : {}
+  const extra: { expectedSums?: Map<ReconciliationKey, number> } =
+    rows.length > 0 ? { expectedSums } : {}
 
   return {
     summary: `${rows.length} dynamic PLF rows for ${input.entityCode} (conf=${proposal.overallConfidence.toFixed(2)}, sheet="${input.sheetName}")`,
     itemCount: rows.length,
     warnings: baseWarnings,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(extra as any),
+    ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
       // Phase 2.1 session 1 — resolve every unique line.code to a real
