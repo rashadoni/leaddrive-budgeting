@@ -24,12 +24,47 @@ function fmtCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n)
 }
 
+/** Phase 8 D3(q) (2026-05-28) — shapes returned by GET /api/budgeting/cogs.
+ *  Mirror Prisma's `COGSBudgetLine` (with productLine include) and
+ *  `COGSCostDetail` rows narrowed to the fields this view reads. */
+interface CogsLine {
+  id: string
+  productLineId: string
+  productLine: { id: string; name: string }
+  year: number
+  month: number
+  productionQty: number
+  totalCost: number
+}
+
+interface CogsDetail {
+  id: string
+  productLineId: string
+  costType: string // "raw_material" | "indirect" | "production" | "unit_cost"
+  label: string
+  accountCode: string | null
+  stage: string | null
+  year: number
+  month: number
+  amount: number
+}
+
+interface CogsResponse {
+  cogsLines: CogsLine[]
+  components: unknown[]
+  details: CogsDetail[]
+}
+
+/** Recharts chart row for monthly stacked bars — `month` is the
+ *  X-axis label, every other key is a numeric product cost. */
+type MonthlyDataRow = { month: string; Total: number } & Record<string, number | string>
+
 export function COGSCalculator({ planId }: { planId: string }) {
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<CogsResponse>({
     queryKey: ["cogs", planId],
     queryFn: async () => {
       const res = await fetch(`/api/budgeting/cogs?planId=${planId}`, {
@@ -70,7 +105,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
 
   // Group by product
   const products = new Map<string, { id: string; name: string; months: Record<number, { qty: number; cost: number }> }>()
-  data.cogsLines.forEach((l: any) => {
+  data.cogsLines.forEach((l) => {
     const key = l.productLine.id
     if (!products.has(key)) products.set(key, { id: key, name: l.productLine.name, months: {} })
     products.get(key)!.months[l.month] = { qty: l.productionQty, cost: l.totalCost }
@@ -81,7 +116,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
   type DetailLine = { label: string; accountCode: string | null; costType: string; stage: string | null; months: Record<number, number>; total: number }
   type ProductDetails = { stages: Map<string, { indirect: DetailLine[]; raw: DetailLine[]; production?: DetailLine; unitCost?: DetailLine }> }
   const detailsByProduct = new Map<string, ProductDetails>()
-  ;(data.details ?? []).forEach((d: any) => {
+  ;(data.details ?? []).forEach((d) => {
     if (!detailsByProduct.has(d.productLineId)) detailsByProduct.set(d.productLineId, { stages: new Map() })
     const prod = detailsByProduct.get(d.productLineId)!
     const stageKey = d.stage || "_default"
@@ -109,7 +144,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
   })
 
   const productList = Array.from(products.values())
-  const totalCost = data.cogsLines.reduce((s: number, l: any) => s + l.totalCost, 0)
+  const totalCost = data.cogsLines.reduce((s, l) => s + l.totalCost, 0)
 
   // Product rankings
   const productRanking = productList.map((p, i) => {
@@ -128,7 +163,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
   }).sort((a, b) => b.totalCost - a.totalCost)
 
   const topProduct = productRanking[0]
-  const monthsWithCost = new Set(data.cogsLines.filter((l: any) => l.totalCost > 0).map((l: any) => l.month)).size
+  const monthsWithCost = new Set(data.cogsLines.filter((l) => l.totalCost > 0).map((l) => l.month)).size
   const avgMonthlyCogs = monthsWithCost > 0 ? totalCost / monthsWithCost : 0
 
   // Donut data
@@ -139,8 +174,8 @@ export function COGSCalculator({ planId }: { planId: string }) {
   }))
 
   // Monthly stacked bar + total trend
-  const monthlyData = MONTHS.map((m, i) => {
-    const entry: any = { month: m }
+  const monthlyData: MonthlyDataRow[] = MONTHS.map((m, i) => {
+    const entry: MonthlyDataRow = { month: m, Total: 0 }
     let total = 0
     productList.forEach(p => {
       const cost = p.months[i + 1]?.cost || 0
