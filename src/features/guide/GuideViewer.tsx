@@ -209,6 +209,72 @@ export function GuideViewer({ markdown, lang }: GuideViewerProps) {
   const [activeSlug, setActiveSlug] = useState<string>("");
   const contentRef = useRef<HTMLDivElement>(null);
 
+  // Phase 8 F2 (2026-05-28) — page-view + anchor-change beacon to
+  // /api/telemetry/guide-view. Fire-and-forget; failures never
+  // surface. Records:
+  //   - On mount: one row with anchor=null (page-load)
+  //   - On every activeSlug change: one row with the new anchor
+  // Uses `navigator.sendBeacon` when available so unload + tab-switch
+  // don't lose the last view. Falls back to fetch() with keepalive.
+  const lastBeaconedSlug = useRef<string | null>(null);
+  useEffect(() => {
+    const send = (anchor: string | null) => {
+      const body = JSON.stringify({ lang, anchor });
+      try {
+        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+          const blob = new Blob([body], { type: "application/json" });
+          navigator.sendBeacon("/api/telemetry/guide-view", blob);
+          return;
+        }
+      } catch {
+        // sendBeacon throws on cross-origin / quota issues — fall through
+      }
+      // Fallback: fetch with keepalive
+      void fetch("/api/telemetry/guide-view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {
+        // Telemetry is silent on failure.
+      });
+    };
+    // Initial mount → null anchor
+    if (lastBeaconedSlug.current === null) {
+      send(null);
+      lastBeaconedSlug.current = "";
+      return;
+    }
+  }, [lang]);
+
+  useEffect(() => {
+    if (!activeSlug || activeSlug === lastBeaconedSlug.current) return;
+    lastBeaconedSlug.current = activeSlug;
+    // Debounce slightly — scroll-spy can flicker through 2-3 slugs
+    // before settling. 500ms quiet period is enough to skip the
+    // intermediate hits without losing the «which section was read»
+    // signal.
+    const handle = setTimeout(() => {
+      const body = JSON.stringify({ lang, anchor: activeSlug });
+      try {
+        if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+          const blob = new Blob([body], { type: "application/json" });
+          navigator.sendBeacon("/api/telemetry/guide-view", blob);
+          return;
+        }
+      } catch {
+        // fall through
+      }
+      void fetch("/api/telemetry/guide-view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [activeSlug, lang]);
+
   useEffect(() => {
     if (!contentRef.current) return;
     const headings = Array.from(

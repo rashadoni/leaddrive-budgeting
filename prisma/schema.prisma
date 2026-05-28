@@ -31,6 +31,7 @@ model Organization {
   updatedAt     DateTime @updatedAt
 
   periodSnapshots        PeriodSnapshot[]
+  guideViews             GuideView[]
   users                  User[]
   budgetPlans            BudgetPlan[]
   budgetCostTypes        BudgetCostType[]
@@ -2092,4 +2093,44 @@ model PeriodSnapshot {
 
   @@index([organizationId, period, signedAt])
   @@map("period_snapshots")
+}
+
+/**
+ * Phase 8 F2 (2026-05-28) — first-party /guide page-view telemetry.
+ *
+ * Tracks which sections of the in-app User Guide are actually read,
+ * per language, per user. No external provider (no Plausible /
+ * Umami / GA dep) — values stay on the same DB the rest of the app
+ * uses. Beacon posts to `/api/telemetry/guide-view` on initial mount
+ * and on hash-anchor change.
+ *
+ * Minimal shape — just enough to answer «which sections do users
+ * actually open» and «which language do они choose». PII-light:
+ * actorUserId is nullable (anonymous sessions still log a viewedAt
+ * for traffic counts). User-Agent stored truncated (no fingerprinting
+ * attempt).
+ *
+ * Retention: indefinite for now — the table will grow ≤ a few rows per
+ * user per day; physical purge cron (Phase 1.4) can sweep > 1y rows
+ * later if disk pressure surfaces.
+ */
+model GuideView {
+  id             String       @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  // null for anonymous sessions (unauthenticated /guide page-load).
+  actorUserId    String?
+  // ISO-639-1 of the language the user was reading (en / ru / az).
+  lang           String
+  // URL-fragment anchor the user scrolled to (#section-9-1) or null
+  // when the viewer first mounts.
+  anchor         String?
+  // Truncated to 200 chars — enough for «Chrome 130 macOS» pattern
+  // without storing high-entropy fingerprints.
+  userAgent      String?
+  viewedAt       DateTime     @default(now())
+
+  @@index([organizationId, viewedAt])
+  @@index([lang, viewedAt])
+  @@map("guide_views")
 }
