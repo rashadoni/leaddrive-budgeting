@@ -97,8 +97,9 @@ export async function POST(req: NextRequest) {
       companyId,
       companyName,
     )
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Failed to collect section data" }, { status: 500 })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed to collect section data"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 
   const systemPrompt = buildSystemPrompt(section as Section, sectionData, language)
@@ -160,13 +161,13 @@ export async function POST(req: NextRequest) {
 
           for await (const event of streamResp) {
             if (event.type === "content_block_delta") {
-              const delta = (event as any).delta
-              if (delta?.type === "text_delta" && delta.text) {
+              const delta = event.delta
+              if (delta.type === "text_delta" && delta.text) {
                 send({ type: "text", text: delta.text })
               }
             } else if (event.type === "content_block_start") {
-              const block = (event as any).content_block
-              if (block?.type === "tool_use" || block?.type === "server_tool_use") {
+              const block = event.content_block
+              if (block.type === "tool_use" || block.type === "server_tool_use") {
                 send({
                   type: "tool_use",
                   id: block.id,
@@ -209,8 +210,8 @@ export async function POST(req: NextRequest) {
                 content: JSON.stringify(result),
               })
               send({ type: "tool_result", id: block.id, name: block.name, ok: true })
-            } catch (err: any) {
-              const message = err?.message ?? "Tool call failed"
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : "Tool call failed"
               toolResults.push({
                 type: "tool_result",
                 tool_use_id: block.id,
@@ -232,8 +233,9 @@ export async function POST(req: NextRequest) {
 
         send({ type: "done" })
         controller.close()
-      } catch (err: any) {
-        send({ type: "error", error: err?.message ?? "AI request failed" })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "AI request failed"
+        send({ type: "error", error: message })
         controller.close()
       }
     },
