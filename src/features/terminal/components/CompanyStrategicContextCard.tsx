@@ -139,9 +139,12 @@ export function CompanyStrategicContextCard({
       </div>
 
       {/* ── Strategic description ──────────────────────────────── */}
+      {/* 2026-05-28 — replaced banned `border-l-2 border-blue-500/40`
+          side-stripe (impeccable absolute ban) with full hairline border
+          + faint blue bg tint. Same visual grouping, no side stripe. */}
       {data.strategicDescription && (
-        <div className="border-l-2 border-blue-500/40 pl-2">
-          <div className="text-[9px] text-gray-500 uppercase mb-1">
+        <div className="rounded border border-blue-500/20 bg-blue-500/5 px-2 py-1.5">
+          <div className="text-[9px] text-blue-300/80 uppercase mb-1">
             Бизнес-модель
           </div>
           <div className="text-gray-300 leading-snug">
@@ -157,8 +160,8 @@ export function CompanyStrategicContextCard({
 
       {/* ── Land summary (EDEN only) ───────────────────────────── */}
       {data.landSummary && (
-        <div className="border-l-2 border-emerald-500/40 pl-2">
-          <div className="text-[9px] text-gray-500 uppercase mb-1">
+        <div className="rounded border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5">
+          <div className="text-[9px] text-emerald-300/80 uppercase mb-1">
             🌾 Земельный реестр
           </div>
           <div className="text-gray-300">
@@ -185,8 +188,8 @@ export function CompanyStrategicContextCard({
 
       {/* ── CAPEX summary ──────────────────────────────────────── */}
       {data.capexSummary && (
-        <div className="border-l-2 border-amber-500/40 pl-2">
-          <div className="text-[9px] text-gray-500 uppercase mb-1">
+        <div className="rounded border border-amber-500/20 bg-amber-500/5 px-2 py-1.5">
+          <div className="text-[9px] text-amber-300/80 uppercase mb-1">
             🏗 CAPEX 2026
           </div>
           <div className="text-gray-300">
@@ -220,8 +223,8 @@ export function CompanyStrategicContextCard({
 
       {/* ── Forward forecast ───────────────────────────────────── */}
       {data.forwardForecast && data.forwardForecast.years.length > 0 && (
-        <div className="border-l-2 border-purple-500/40 pl-2">
-          <div className="text-[9px] text-gray-500 uppercase mb-1 flex items-baseline gap-2 flex-wrap">
+        <div className="rounded border border-purple-500/20 bg-purple-500/5 px-2 py-1.5">
+          <div className="text-[9px] text-purple-300/80 uppercase mb-1 flex items-baseline gap-2 flex-wrap">
             <span>📈 Forward forecast (consolidated holding)</span>
             {data.forwardForecast.hasTerminalValue && (
               <span className="text-purple-300">+ Terminal value</span>

@@ -122,12 +122,21 @@ export function NewsSummarySection() {
       {state.kind === "loaded" && (
         <ul className="space-y-1">
           {state.data.bullets.map((b, i) => (
+            // 2026-05-28 — replaced banned `border-l-2 border-[#FFB800]/30`
+            // side-stripe (impeccable absolute ban) with a leading bullet
+            // dot in the brand amber. Same visual rhythm, no stripe.
             <li
               key={i}
-              className="text-gray-300 text-[11px] leading-snug pl-2 border-l-2 border-[#FFB800]/30 hover:border-[#FFB800] hover:text-gray-100 cursor-pointer transition-colors"
+              className="text-gray-300 text-[11px] leading-snug flex gap-2 hover:text-gray-100 cursor-pointer transition-colors"
               onClick={() => { window.location.href = "/budgeting/intel"; }}
             >
-              {b}
+              <span
+                aria-hidden="true"
+                className="text-[#FFB800] shrink-0 select-none"
+              >
+                ·
+              </span>
+              <span>{b}</span>
             </li>
           ))}
           <li className="text-gray-700 text-[9px] mt-1">

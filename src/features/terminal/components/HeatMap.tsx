@@ -1779,7 +1779,11 @@ function HeatMapCellTd({
                 </div>
               )}
               {eligible && aiSummary && aiSummary.kind === 'ok' && (
-                <div className="text-[11px] text-[#00D4AA] mt-1.5 leading-snug border-l-2 border-[#00D4AA]/40 pl-1.5">
+                // 2026-05-28 — replaced banned `border-l-2 border-[#00D4AA]/40`
+                // side-stripe with a full hairline border + faint cyan
+                // bg tint. Preserves the «AI insight» framing inside the
+                // tooltip without using the banned side-stripe pattern.
+                <div className="text-[11px] text-[#00D4AA] mt-1.5 leading-snug rounded border border-[#00D4AA]/30 bg-[#00D4AA]/5 px-1.5 py-1">
                   {aiSummary.sentence}
                 </div>
               )}
