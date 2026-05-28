@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId, requireRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -6,6 +7,25 @@ import { loadAndCompute } from "@/lib/cost-model/db"
 import { logBudgetPlanCreate } from "@/lib/audit/import-helpers"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for budget_plans reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
+
+// Phase 8 D3(h) (2026-05-28) — typed Prisma row shapes for the clone path.
+// Replaces the 10 `(sl as any)` / `(sl as any).account` / `(b: any)` /
+// `(c: any)` / `(s: any)` / `(a: any)` casts that were undoing the
+// type safety Prisma already provides.
+type BudgetLineWithAccount = Prisma.BudgetLineGetPayload<{
+  include: { account: { select: { code: true; name: true } } }
+}>
+type SalesBudgetLineRow = Prisma.SalesBudgetLineGetPayload<true>
+type COGSBudgetLineRow = Prisma.COGSBudgetLineGetPayload<true>
+type BalanceSheetLineRow = Prisma.BalanceSheetLineGetPayload<true>
+type BudgetAssumptionRow = Prisma.BudgetAssumptionGetPayload<true>
+
+/** Narrow an unknown costModel.serviceDetail field to a finite number,
+ *  default 0. cost-model/db.ts stub returns Record<string, any>; until
+ *  it gets a real type we narrow at the edge. */
+function asNum(v: unknown, fallback = 0): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
 
 const createPlanSchema = z.object({
   name: z.string().min(1).max(500),
@@ -153,13 +173,13 @@ export async function POST(req: NextRequest) {
     })
 
     if (sourcePlan) {
-      const allSourceLines = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
+      const allSourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
       const costModel = await loadAndCompute(orgId)
 
       // Filter source lines to only include months relevant to this plan period
       // sortOrder % 100 = month index (0-11), so month = (sortOrder % 100) + 1
       const planMonthIndices = new Set(planMonths.map(m => m - 1)) // convert to 0-based
-      const sourceLines = allSourceLines.filter((sl: any) => {
+      const sourceLines = allSourceLines.filter((sl: BudgetLineWithAccount) => {
         const monthIdx = sl.sortOrder % 100
         return planMonthIndices.has(monthIdx)
       })
@@ -178,15 +198,15 @@ export async function POST(req: NextRequest) {
       }
 
       // Clone parent lines first, then children with mapped parentId
-      const parentLines = sourceLines.filter((sl: any) => !sl.parentId)
-      const childLines = sourceLines.filter((sl: any) => sl.parentId)
+      const parentLines = sourceLines.filter((sl: BudgetLineWithAccount) => !sl.parentId)
+      const childLines = sourceLines.filter((sl: BudgetLineWithAccount) => sl.parentId)
       const idMapping = new Map<string, string>() // oldId → newId
 
       for (const sl of parentLines) {
         let plannedAmount = 0
 
         if (sl.lineType === "revenue") {
-          const slDisplayName = (sl as any).account?.name ?? (sl as any).account?.code ?? ""
+          const slDisplayName = sl.account?.name ?? sl.account?.code ?? ""
           for (const [deptKey, category] of Object.entries(DEPT_CATEGORY_MAP)) {
             if (slDisplayName === category) {
               plannedAmount = forecastByDept[deptKey] ?? 0
@@ -197,9 +217,9 @@ export async function POST(req: NextRequest) {
         if (plannedAmount === 0 && sl.costModelKey) {
           const parts = sl.costModelKey.split(".")
           if (parts[0] === "serviceDetails" && parts.length === 3) {
-            const detail = costModel.serviceDetails[parts[1]]
+            const detail = costModel.serviceDetails[parts[1]] as Record<string, unknown> | undefined
             if (detail && parts[2] in detail) {
-              plannedAmount = ((detail as any)[parts[2]] ?? 0) * planMonths.length
+              plannedAmount = asNum(detail[parts[2]]) * planMonths.length
             }
           }
         }
@@ -230,9 +250,9 @@ export async function POST(req: NextRequest) {
         if (sl.costModelKey) {
           const parts = sl.costModelKey.split(".")
           if (parts[0] === "serviceDetails" && parts.length === 3) {
-            const detail = costModel.serviceDetails[parts[1]]
+            const detail = costModel.serviceDetails[parts[1]] as Record<string, unknown> | undefined
             if (detail && parts[2] in detail) {
-              plannedAmount = ((detail as any)[parts[2]] ?? 0) * planMonths.length
+              plannedAmount = asNum(detail[parts[2]]) * planMonths.length
             }
           }
         } else {
@@ -262,7 +282,7 @@ export async function POST(req: NextRequest) {
     })
     if (sourceSales.length > 0) {
       await prisma.salesBudgetLine.createMany({
-        data: sourceSales.map((s: any) => ({
+        data: sourceSales.map((s: SalesBudgetLineRow) => ({
           organizationId: orgId,
           planId: plan.id,
           productLineId: s.productLineId,
@@ -282,11 +302,15 @@ export async function POST(req: NextRequest) {
     })
     if (sourceCogs.length > 0) {
       await prisma.cOGSBudgetLine.createMany({
-        data: sourceCogs.map((c: any) => ({
+        // Phase 2.1 session 3 dropped `accountCode` String from
+        // COGSBudgetLine — pass `accountId` (the FK) instead. Without
+        // this fix the createMany was silently broken (column doesn't
+        // exist) and only ran because the `(c: any)` cast hid it.
+        data: sourceCogs.map((c: COGSBudgetLineRow) => ({
           organizationId: orgId,
           planId: plan.id,
           productLineId: c.productLineId,
-          accountCode: c.accountCode,
+          accountId: c.accountId,
           year: c.year,
           month: c.month,
           productionQty: c.productionQty,
@@ -302,11 +326,13 @@ export async function POST(req: NextRequest) {
     })
     if (sourceBS.length > 0) {
       await prisma.balanceSheetLine.createMany({
-        data: sourceBS.map((b: any) => ({
+        // Same Phase 2.1 session 3 fix as COGS above — `accountCode` +
+        // `accountName` String columns were dropped, FK `accountId` is
+        // the canonical identifier. Pass through directly.
+        data: sourceBS.map((b: BalanceSheetLineRow) => ({
           organizationId: orgId,
           planId: plan.id,
-          accountCode: b.accountCode,
-          accountName: b.accountName,
+          accountId: b.accountId,
           lineType: b.lineType,
           subType: b.subType,
           year: b.year,
@@ -323,7 +349,7 @@ export async function POST(req: NextRequest) {
     })
     if (sourceAssumptions.length > 0) {
       await prisma.budgetAssumption.createMany({
-        data: sourceAssumptions.map((a: any) => ({
+        data: sourceAssumptions.map((a: BudgetAssumptionRow) => ({
           organizationId: orgId,
           planId: plan.id,
           category: a.category,
