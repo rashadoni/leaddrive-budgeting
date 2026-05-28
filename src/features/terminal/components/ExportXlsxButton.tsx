@@ -15,6 +15,10 @@ import { useEffect } from "react";
 import { useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
 import { useTerminalStore } from "../store/terminalStore";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("terminal:export-xlsx");
 import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportXlsxTrigger() {
@@ -197,7 +201,10 @@ export function ExportXlsxTrigger() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } catch (err) {
-        console.error("XLSX export failed:", err);
+        log.error("XLSX export failed", {
+          period: matrix?.period,
+          err: err instanceof Error ? err.message : String(err),
+        });
         alert(
           "XLSX export failed: " +
             (err instanceof Error ? err.message : String(err)),

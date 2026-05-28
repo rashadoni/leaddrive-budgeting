@@ -3,6 +3,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger('terminal:heatmap');
 import {
   buildCellMap,
   cellKey,
@@ -234,10 +238,9 @@ export function HeatMap({ period }: Props) {
       .then((body) => {
         if (cancelled || !body) return;
         if (typeof body !== 'object' || !('settings' in body)) {
-          console.warn(
-            '[HeatMap] /api/organizations/settings returned unexpected shape; falling back to default alert thresholds',
+          log.warn('/api/organizations/settings returned unexpected shape; falling back to default alert thresholds', {
             body,
-          );
+          });
           return;
         }
         setAlertThresholds(

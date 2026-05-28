@@ -11,6 +11,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const log = getLogger("api:operational-facts:id")
 
 export async function DELETE(
   req: NextRequest,
@@ -68,7 +72,10 @@ export async function DELETE(
     },
     context: { route: `/api/operational-facts/${id}` },
   }).catch((err) => {
-    console.error("[operational-facts] audit log failed:", err)
+    log.error("audit log failed", {
+      factId: id,
+      err: err instanceof Error ? err.message : String(err),
+    })
   })
 
   return NextResponse.json({ ok: true })

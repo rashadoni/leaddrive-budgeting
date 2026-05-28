@@ -3,6 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { useCompanies } from '../hooks/use-companies';
+import { getLogger } from '@/lib/log';
+
+// Phase 8 D4 continuation (2026-05-28) — structured logger.
+const panelLog = getLogger('terminal:panel-grid');
 import {
   Group,
   Panel,
@@ -482,7 +486,9 @@ function applyLayoutSafe(
   try {
     ref.setLayout(layout);
   } catch (err) {
-    console.warn('[PanelGrid] setLayout rejected:', err);
+    panelLog.warn('setLayout rejected', {
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
