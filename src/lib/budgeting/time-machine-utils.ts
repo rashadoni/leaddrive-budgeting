@@ -1,21 +1,43 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface TimePoint {
   timestamp: string
   changeCount: number
   summary: string
 }
 
+/** Phase 8 D3(j) (2026-05-28) — `oldValue` / `newValue` / `snapshot` are
+ *  audit-log Json blobs; their shape varies per `entityType` + `action`.
+ *  Use `unknown` so callers must narrow before reading (was `any` and
+ *  silently let consumers read undefined fields without compile error). */
 export interface ChangeLogEntry {
   id: string
   entityId: string
   entityType: string
   action: string
   field?: string | null
-  oldValue?: any
-  newValue?: any
-  snapshot?: any
+  oldValue?: unknown
+  newValue?: unknown
+  snapshot?: unknown
   createdAt: string
+}
+
+/** Minimum structural shape of a BudgetLine row consumed by the
+ *  time-machine diff. Mirrors the columns we read (id + plannedAmount +
+ *  forecastAmount + the CoA join). Extra fields on a real row are
+ *  ignored. */
+export interface TimeMachineLine {
+  id: string
+  plannedAmount?: number | null
+  forecastAmount?: number | null
+  accountId?: string | null
+  account?: { code?: string | null } | null
+}
+
+/** Minimum structural shape of a BudgetActual row consumed by the
+ *  time-machine diff. */
+export interface TimeMachineActual {
+  category: string
+  lineType: string
+  actualAmount: number
 }
 
 /**
@@ -23,15 +45,15 @@ export interface ChangeLogEntry {
  * Returns a Map of cellKey → "increase" | "decrease" | "other"
  */
 export function getChangedCells(
-  prevLines: any[],
-  currentLines: any[],
-  prevActuals: any[],
-  currentActuals: any[]
+  prevLines: TimeMachineLine[],
+  currentLines: TimeMachineLine[],
+  prevActuals: TimeMachineActual[],
+  currentActuals: TimeMachineActual[],
 ): Map<string, "increase" | "decrease" | "other"> {
   const changed = new Map<string, "increase" | "decrease" | "other">()
 
   // Build lookup for previous state
-  const prevLineMap = new Map(prevLines.map((l: any) => [l.id, l]))
+  const prevLineMap = new Map(prevLines.map((l) => [l.id, l]))
 
   // Compare lines
   for (const line of currentLines) {
@@ -41,9 +63,9 @@ export function getChangedCells(
       changed.set(`line:${line.id}:plannedAmount`, "other")
       continue
     }
-    for (const field of ["plannedAmount", "forecastAmount"]) {
-      const oldVal = Number(prev[field] || 0)
-      const newVal = Number(line[field] || 0)
+    for (const field of ["plannedAmount", "forecastAmount"] as const) {
+      const oldVal = Number(prev[field] ?? 0)
+      const newVal = Number(line[field] ?? 0)
       if (oldVal !== newVal) {
         changed.set(`line:${line.id}:${field}`, newVal > oldVal ? "increase" : "decrease")
       }
@@ -54,7 +76,7 @@ export function getChangedCells(
   }
 
   // Detect deleted lines
-  const currentLineIds = new Set(currentLines.map((l: any) => l.id))
+  const currentLineIds = new Set(currentLines.map((l) => l.id))
   for (const prev of prevLines) {
     if (!currentLineIds.has(prev.id)) {
       changed.set(`line:${prev.id}:deleted`, "decrease")
