@@ -21,6 +21,7 @@
     "smoke-test": "npx tsx scripts/pre-demo-smoke.ts",
     "sparklines:refresh": "tsx scripts/compute-sparklines.ts",
     "carryover:bump": "node scripts/carryover-bump.mjs",
+    "carryover:sla": "tsx scripts/carryover-sla-scan.ts",
     "i18n:industries": "tsx scripts/build-industries-i18n.ts"
   },
   "keywords": [],

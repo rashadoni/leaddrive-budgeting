@@ -514,7 +514,7 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 ### Group F — Operations
 - ⬜ **F1.** Catalog audit — 110 active indicator defs, only 33 enabled. Scope catalog to active industries (hospitality/pharma/construction irrelevant for AZSEKER) — `est: 1d`
 - ⬜ **F2.** Telemetry on /guide views (Plausible/Umami) — `est: 4h`
-- ⬜ **F3.** CARRYOVER weekly SLA cron — 🔄 rows >30 days → escalate alert — `est: 1d`
+- ✅ **F3.** CARRYOVER weekly SLA scanner — shipped 2026-05-28. Pure helper `src/lib/carryover/scan-stale-rows.ts` parses `docs/CARRYOVER.md`, extracts the `## OPEN` section, returns rows past a configurable cutoff (default 30d), and tags `owner=user` separately as the highest-leverage escalation tier. CLI script `npm run carryover:sla` (or `npx tsx scripts/carryover-sla-scan.ts`) prints a stdout summary and exits 1 when stale rows are present so cron / LaunchAgent wrappers can fire a notification. Tested live: 5 OPEN rows, 1 stale (30d, owner=user). 11 unit tests + 0 deps. Cron wiring left to user — see script docstring for cron.d / LaunchAgent suggestion.
 
 ### Group G — Deferred (per user direction 2026-05-27, tracked)
 - 🟡 **G1.** Phase 0.1 admin password rotation — deferred (localhost dev only)
