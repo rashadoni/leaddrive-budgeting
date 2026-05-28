@@ -2932,7 +2932,13 @@
     "statusOpen": "Открыто",
     "statusClosed": "Закрыто",
     "emptyAudit": "Нет audit-наблюдений по текущим фильтрам.",
-    "emptyCourt": "Нет судебных дел по текущим фильтрам."
+    "emptyCourt": "Нет судебных дел по текущим фильтрам.",
+    "thActions": "Действия",
+    "btnClose": "Закрыть",
+    "btnReopen": "Открыть снова",
+    "ariaCloseAction": "Закрыть замечание #{idx}",
+    "ariaReopenAction": "Открыть снова замечание #{idx}",
+    "actionFailed": "Не удалось сохранить изменение (HTTP {status}). Попробуйте ещё раз."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

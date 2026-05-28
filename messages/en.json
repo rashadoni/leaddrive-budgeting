@@ -2932,7 +2932,13 @@
     "statusOpen": "Open",
     "statusClosed": "Closed",
     "emptyAudit": "No audit findings match the current filters.",
-    "emptyCourt": "No court cases match the current filters."
+    "emptyCourt": "No court cases match the current filters.",
+    "thActions": "Actions",
+    "btnClose": "Close",
+    "btnReopen": "Reopen",
+    "ariaCloseAction": "Close finding #{idx}",
+    "ariaReopenAction": "Reopen finding #{idx}",
+    "actionFailed": "Could not save the change (HTTP {status}). Try again."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

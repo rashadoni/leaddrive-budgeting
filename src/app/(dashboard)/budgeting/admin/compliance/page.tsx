@@ -99,6 +99,7 @@ export default async function CompliancePage() {
   const entities: EntityComplianceData[] = companies.map((c: (typeof companies)[number]) => {
     const s = (c.settings ?? {}) as CompanySettings;
     return {
+      id: c.id,
       code: c.code,
       name: c.name,
       industry: c.industry ?? "—",

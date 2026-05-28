@@ -12,7 +12,7 @@
  * slate=observation, emerald=completed).
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   Shield,
@@ -24,6 +24,8 @@ import {
   Download,
   Filter,
   X,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 
 interface AuditFinding {
@@ -32,6 +34,11 @@ interface AuditFinding {
   status: string;
   grouping: string;
   findingStatusJan: string;
+  // Phase 8 E1 — write-back overlay fields. Optional; present after
+  // PATCH /api/admin/compliance/finding flips them.
+  closed?: boolean;
+  closedAt?: string;
+  closedBy?: string;
 }
 
 interface CourtCase {
@@ -59,6 +66,8 @@ interface CourtData {
 }
 
 export interface EntityComplianceData {
+  /** Phase 8 E1 — companyId needed for the per-finding write-back PATCH. */
+  id: string;
   code: string;
   name: string;
   industry: string;
@@ -175,19 +184,95 @@ export function ComplianceHub({ entities }: Props) {
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Phase 8 E1 — local close-override map. Server is the source of truth
+  // once PATCH succeeds; this lets the UI render optimistically while the
+  // request is in flight and recover from API errors without a refresh.
+  // Key shape: `${entityId}::${findingIdx}` → true(closed)/false(reopen).
+  const [closedOverrides, setClosedOverrides] = useState<Record<string, boolean>>({});
+  // Per-row pending state to disable the toggle + show spinner.
+  const [pendingRows, setPendingRows] = useState<Set<string>>(new Set());
+  const [, startTransition] = useTransition();
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  // Flatten audit findings across entities (one row per finding)
+  /**
+   * PATCH the compliance finding. Optimistic UI: flip locally first,
+   * roll back if the request fails. Each pending row shows a spinner
+   * and disables its button to prevent double-clicks.
+   */
+  const toggleClosed = useCallback(
+    async (entityId: string, findingIdx: number, nextClosed: boolean) => {
+      const key = `${entityId}::${findingIdx}`;
+      setActionError(null);
+      setClosedOverrides((m) => ({ ...m, [key]: nextClosed }));
+      setPendingRows((s) => {
+        const n = new Set(s);
+        n.add(key);
+        return n;
+      });
+      try {
+        const res = await fetch("/api/admin/compliance/finding", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyId: entityId,
+            findingIdx,
+            action: nextClosed ? "close" : "reopen",
+          }),
+        });
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          // Rollback override on failure.
+          setClosedOverrides((m) => {
+            const n = { ...m };
+            delete n[key];
+            return n;
+          });
+          setActionError(
+            body.error ?? t("actionFailed", { status: res.status }),
+          );
+        }
+      } catch (err) {
+        setClosedOverrides((m) => {
+          const n = { ...m };
+          delete n[key];
+          return n;
+        });
+        setActionError(
+          err instanceof Error ? err.message : String(err),
+        );
+      } finally {
+        setPendingRows((s) => {
+          const n = new Set(s);
+          n.delete(key);
+          return n;
+        });
+      }
+    },
+    [t],
+  );
+
+  // Flatten audit findings across entities (one row per finding).
+  // Phase 8 E1 — each row carries entityId + findingIdx so the
+  // per-row close/reopen toggle can call the right PATCH endpoint.
   const auditRows = useMemo(() => {
     const rows: Array<{
+      entityId: string;
       entityCode: string;
       entityName: string;
+      findingIdx: number;
       finding: AuditFinding;
     }> = [];
     for (const e of entities) {
       if (!e.auditFindings) continue;
-      for (const f of e.auditFindings.items) {
-        rows.push({ entityCode: e.code, entityName: e.name, finding: f });
-      }
+      e.auditFindings.items.forEach((f, idx) => {
+        rows.push({
+          entityId: e.id,
+          entityCode: e.code,
+          entityName: e.name,
+          findingIdx: idx,
+          finding: f,
+        });
+      });
     }
     return rows;
   }, [entities]);
@@ -207,6 +292,18 @@ export function ComplianceHub({ entities }: Props) {
     return rows;
   }, [entities]);
 
+  /** Phase 8 E1 — effective closed state for a row: server-stored OR
+   *  the in-flight override OR the imported MNG status text match. */
+  const isRowClosed = useCallback(
+    (entityId: string, findingIdx: number, finding: AuditFinding) => {
+      const key = `${entityId}::${findingIdx}`;
+      if (key in closedOverrides) return closedOverrides[key];
+      if (typeof finding.closed === "boolean") return finding.closed;
+      return /yerinə yetirilib/i.test(finding.status);
+    },
+    [closedOverrides],
+  );
+
   // Apply filters
   const filteredAuditRows = useMemo(() => {
     return auditRows.filter((r) => {
@@ -214,13 +311,13 @@ export function ComplianceHub({ entities }: Props) {
       if (severityFilter !== "all" && !r.finding.severity.startsWith(severityFilter))
         return false;
       if (statusFilter !== "all") {
-        const isCompleted = /yerinə yetirilib/i.test(r.finding.status);
+        const isCompleted = isRowClosed(r.entityId, r.findingIdx, r.finding);
         if (statusFilter === "open" && isCompleted) return false;
         if (statusFilter === "closed" && !isCompleted) return false;
       }
       return true;
     });
-  }, [auditRows, entityFilter, severityFilter, statusFilter]);
+  }, [auditRows, entityFilter, severityFilter, statusFilter, isRowClosed]);
 
   const filteredCourtRows = useMemo(() => {
     return courtRows.filter((r) => {
@@ -413,10 +510,28 @@ export function ComplianceHub({ entities }: Props) {
         </span>
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          className="rounded-md border border-rose-300 bg-rose-50 text-rose-800 text-xs px-3 py-2 dark:bg-rose-950/40 dark:border-rose-800/40 dark:text-rose-300"
+        >
+          ⚠ {actionError}
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-lg border border-border/60 overflow-hidden">
         {tab === "audit" ? (
-          <AuditTable rows={filteredAuditRows} />
+          <AuditTable
+            rows={filteredAuditRows}
+            isRowClosed={isRowClosed}
+            pendingRows={pendingRows}
+            onToggle={(entityId, findingIdx, nextClosed) =>
+              startTransition(() => {
+                void toggleClosed(entityId, findingIdx, nextClosed);
+              })
+            }
+          />
         ) : (
           <CourtTable rows={filteredCourtRows} />
         )}
@@ -514,8 +629,20 @@ function FilterSelect({
 
 function AuditTable({
   rows,
+  isRowClosed,
+  pendingRows,
+  onToggle,
 }: {
-  rows: Array<{ entityCode: string; entityName: string; finding: AuditFinding }>;
+  rows: Array<{
+    entityId: string;
+    entityCode: string;
+    entityName: string;
+    findingIdx: number;
+    finding: AuditFinding;
+  }>;
+  isRowClosed: (entityId: string, findingIdx: number, f: AuditFinding) => boolean;
+  pendingRows: Set<string>;
+  onToggle: (entityId: string, findingIdx: number, nextClosed: boolean) => void;
 }) {
   const t = useTranslations("adminCompliance");
   if (rows.length === 0) {
@@ -534,11 +661,14 @@ function AuditTable({
           <th className="px-3 py-2 text-left font-medium">{t("thAudit")}</th>
           <th className="px-3 py-2 text-left font-medium">{t("thStatusMng")}</th>
           <th className="px-3 py-2 text-left font-medium">{t("thGrouping")}</th>
+          <th className="px-3 py-2 text-right font-medium">{t("thActions")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r, idx) => {
-          const isCompleted = /yerinə yetirilib/i.test(r.finding.status);
+          const isCompleted = isRowClosed(r.entityId, r.findingIdx, r.finding);
+          const key = `${r.entityId}::${r.findingIdx}`;
+          const isPending = pendingRows.has(key);
           return (
             <tr
               key={idx}
@@ -558,6 +688,33 @@ function AuditTable({
               </td>
               <td className="px-3 py-2 text-xs text-muted-foreground max-w-[180px] truncate">
                 {r.finding.grouping}
+              </td>
+              <td className="px-3 py-2 text-right">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => onToggle(r.entityId, r.findingIdx, !isCompleted)}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                    isCompleted
+                      ? "border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40 dark:hover:bg-amber-950/60"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40 dark:hover:bg-emerald-950/60"
+                  } disabled:cursor-not-allowed disabled:opacity-60`}
+                  aria-label={
+                    isCompleted
+                      ? t("ariaReopenAction", { idx: r.findingIdx + 1 })
+                      : t("ariaCloseAction", { idx: r.findingIdx + 1 })
+                  }
+                  data-testid={`finding-toggle-${r.entityCode}-${r.findingIdx}`}
+                >
+                  {isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : isCompleted ? (
+                    <RotateCcw className="h-3 w-3" />
+                  ) : (
+                    <CheckCircle2 className="h-3 w-3" />
+                  )}
+                  {isCompleted ? t("btnReopen") : t("btnClose")}
+                </button>
               </td>
             </tr>
           );

@@ -2932,7 +2932,13 @@
     "statusOpen": "Açıq",
     "statusClosed": "Bağlı",
     "emptyAudit": "Cari filtrlərə uyğun audit müşahidəsi yoxdur.",
-    "emptyCourt": "Cari filtrlərə uyğun məhkəmə işi yoxdur."
+    "emptyCourt": "Cari filtrlərə uyğun məhkəmə işi yoxdur.",
+    "thActions": "Hərəkətlər",
+    "btnClose": "Bağla",
+    "btnReopen": "Yenidən aç",
+    "ariaCloseAction": "Tapıntını bağla #{idx}",
+    "ariaReopenAction": "Tapıntını yenidən aç #{idx}",
+    "actionFailed": "Dəyişikliyi saxlamaq mümkün olmadı (HTTP {status}). Yenidən cəhd edin."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",
