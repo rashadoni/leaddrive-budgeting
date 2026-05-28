@@ -2962,7 +2962,15 @@
     "btnReopen": "Открыть снова",
     "ariaCloseAction": "Закрыть замечание #{idx}",
     "ariaReopenAction": "Открыть снова замечание #{idx}",
-    "actionFailed": "Не удалось сохранить изменение (HTTP {status}). Попробуйте ещё раз."
+    "actionFailed": "Не удалось сохранить изменение (HTTP {status}). Попробуйте ещё раз.",
+    "emailExport": "В email",
+    "emailExportAriaLabel": "Отправить отфильтрованный срез по почте",
+    "emailCopied": "Скопировано — вставьте в письмо",
+    "emailSubjectAudit": "Срез аудита: {count} замечаний на {date}",
+    "emailSubjectCourt": "Срез судебных дел: {count} дел на {date}",
+    "emailHeaderAudit": "Срез по аудиту — {count} замечаний на {date}.",
+    "emailHeaderCourt": "Срез по судебным делам — {count} дел на {date}.",
+    "emailTruncated": "Показано {shown} из {total} строк. Полный список — через CSV-экспорт."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

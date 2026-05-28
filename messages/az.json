@@ -2962,7 +2962,15 @@
     "btnReopen": "Yenidən aç",
     "ariaCloseAction": "Tapıntını bağla #{idx}",
     "ariaReopenAction": "Tapıntını yenidən aç #{idx}",
-    "actionFailed": "Dəyişikliyi saxlamaq mümkün olmadı (HTTP {status}). Yenidən cəhd edin."
+    "actionFailed": "Dəyişikliyi saxlamaq mümkün olmadı (HTTP {status}). Yenidən cəhd edin.",
+    "emailExport": "Email",
+    "emailExportAriaLabel": "Filtrlənmiş kəsiyi email ilə göndər",
+    "emailCopied": "Kopyalandı — emaila yapışdırın",
+    "emailSubjectAudit": "Audit kəsiyi: {count} tapıntı, {date}",
+    "emailSubjectCourt": "Məhkəmə işləri kəsiyi: {count} iş, {date}",
+    "emailHeaderAudit": "Audit kəsiyi — {date} tarixinə {count} tapıntı.",
+    "emailHeaderCourt": "Məhkəmə işləri kəsiyi — {date} tarixinə {count} iş.",
+    "emailTruncated": "{total} sətirdən {shown} göstərilir. Tam siyahı üçün CSV-eksportdan istifadə edin."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

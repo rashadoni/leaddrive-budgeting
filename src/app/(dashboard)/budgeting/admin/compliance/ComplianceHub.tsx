@@ -26,6 +26,7 @@ import {
   X,
   RotateCcw,
   Loader2,
+  Mail,
 } from "lucide-react";
 
 interface AuditFinding {
@@ -407,6 +408,92 @@ export function ComplianceHub({ entities }: Props) {
     }
   };
 
+  /**
+   * Phase 8 E3 — email-export the currently filtered slice. Opens the
+   * user's default mail client with a pre-filled subject + body. The
+   * body is a Markdown-flavoured plaintext summary the user can review
+   * before sending — never sends mail on behalf of the user.
+   *
+   * Limited to ~30 rows in the body (mailto: URL length cap on most
+   * clients is ~2KB). When truncated, the body appends a hint pointing
+   * to the CSV export for the full list.
+   */
+  const MAILTO_ROW_CAP = 30;
+  const [emailCopied, setEmailCopied] = useState<boolean>(false);
+  const handleEmailExport = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const filterChips = [
+      entityFilter !== "all" ? `entity=${entityFilter}` : null,
+      tab === "audit" && severityFilter !== "all" ? `severity=${severityFilter}` : null,
+      statusFilter !== "all" ? `status=${statusFilter}` : null,
+    ]
+      .filter((c): c is string => c !== null)
+      .join(" · ");
+    let subject: string;
+    let body: string;
+    if (tab === "audit") {
+      const total = filteredAuditRows.length;
+      const shown = Math.min(total, MAILTO_ROW_CAP);
+      subject = t("emailSubjectAudit", { count: total, date: today });
+      const lines: string[] = [];
+      lines.push(t("emailHeaderAudit", { count: total, date: today }));
+      if (filterChips) lines.push(`Filters: ${filterChips}`);
+      lines.push("");
+      lines.push("| # | Entity | Severity | Audit |");
+      lines.push("|---|---|---|---|");
+      filteredAuditRows.slice(0, MAILTO_ROW_CAP).forEach((r, i) => {
+        const closed = isRowClosed(r.entityId, r.findingIdx, r.finding);
+        const sev = r.finding.severity.replace(/\|/g, "/");
+        const audit = r.finding.audit.replace(/\|/g, "/").slice(0, 120);
+        lines.push(
+          `| ${i + 1} | ${r.entityCode.replace("AZSEKER-", "")} | ${sev}${closed ? " ✓closed" : ""} | ${audit} |`,
+        );
+      });
+      if (total > MAILTO_ROW_CAP) {
+        lines.push("");
+        lines.push(t("emailTruncated", { shown, total }));
+      }
+      body = lines.join("\n");
+    } else {
+      const total = filteredCourtRows.length;
+      const shown = Math.min(total, MAILTO_ROW_CAP);
+      subject = t("emailSubjectCourt", { count: total, date: today });
+      const lines: string[] = [];
+      lines.push(t("emailHeaderCourt", { count: total, date: today }));
+      if (filterChips) lines.push(`Filters: ${filterChips}`);
+      lines.push("");
+      lines.push("| # | Entity | Date | Type | Plaintiff → Defendant | Status |");
+      lines.push("|---|---|---|---|---|---|");
+      filteredCourtRows.slice(0, MAILTO_ROW_CAP).forEach((r, i) => {
+        const status = r.case.closed ? "✓closed" : "open";
+        const cl = r.case.claimant.replace(/\|/g, "/");
+        const df = r.case.defendant.replace(/\|/g, "/");
+        const ty = r.case.disputeType.replace(/\|/g, "/").slice(0, 60);
+        lines.push(
+          `| ${i + 1} | ${r.entityCode.replace("AZSEKER-", "")} | ${r.case.date} | ${ty} | ${cl} → ${df} | ${status} |`,
+        );
+      });
+      if (total > MAILTO_ROW_CAP) {
+        lines.push("");
+        lines.push(t("emailTruncated", { shown, total }));
+      }
+      body = lines.join("\n");
+    }
+    // Most email clients honor newlines in the body via %0A; the URL is
+    // length-capped at ~2KB which is the point of the row cap above.
+    const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    // Open the mail composer. If the URL is over 2KB (rare on a 30-row
+    // body but possible with very long audit descriptions), fall back to
+    // copying the body to the clipboard so the user can paste it.
+    if (mailto.length > 2000 && navigator.clipboard) {
+      void navigator.clipboard.writeText(`${subject}\n\n${body}`);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 3000);
+    } else {
+      window.location.href = mailto;
+    }
+  };
+
   const hasFilters = entityFilter !== "all" || severityFilter !== "all" || statusFilter !== "all";
 
   return (
@@ -445,14 +532,26 @@ export function ComplianceHub({ entities }: Props) {
             {t("tabCourt", { n: courtRows.length })}
           </TabButton>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors mb-1"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {t("exportCsv")}
-        </button>
+        <div className="flex items-center gap-2 mb-1">
+          <button
+            type="button"
+            onClick={handleEmailExport}
+            data-testid="compliance-email-export"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+            aria-label={t("emailExportAriaLabel")}
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {emailCopied ? t("emailCopied") : t("emailExport")}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t("exportCsv")}
+          </button>
+        </div>
       </div>
 
       {/* Filter bar */}

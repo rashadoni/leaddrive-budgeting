@@ -92,6 +92,29 @@ describe("ComplianceHub close/reopen toggle", () => {
     })
   })
 
+  it("Phase 8 E3 — Email button opens mailto with subject + body from filtered slice", () => {
+    const originalHref = window.location.href
+    const setHrefSpy = vi.fn()
+    Object.defineProperty(window.location, "href", {
+      get: () => originalHref,
+      set: (v: string) => setHrefSpy(v),
+      configurable: true,
+    })
+
+    render(<ComplianceHub entities={[ENTITY]} />)
+    const btn = screen.getByTestId("compliance-email-export")
+    fireEvent.click(btn)
+
+    expect(setHrefSpy).toHaveBeenCalledOnce()
+    const href = setHrefSpy.mock.calls[0][0] as string
+    expect(href.startsWith("mailto:?subject=")).toBe(true)
+    expect(href).toContain("body=")
+    // Decoded body must reference the single finding's audit text + entity code
+    const decoded = decodeURIComponent(href)
+    expect(decoded).toContain("AZSF")
+    expect(decoded).toContain("Sample finding")
+  })
+
   it("rolls back the optimistic flip + shows an error banner on PATCH failure", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,

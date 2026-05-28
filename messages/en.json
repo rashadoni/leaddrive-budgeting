@@ -2962,7 +2962,15 @@
     "btnReopen": "Reopen",
     "ariaCloseAction": "Close finding #{idx}",
     "ariaReopenAction": "Reopen finding #{idx}",
-    "actionFailed": "Could not save the change (HTTP {status}). Try again."
+    "actionFailed": "Could not save the change (HTTP {status}). Try again.",
+    "emailExport": "Email",
+    "emailExportAriaLabel": "Email this filtered slice",
+    "emailCopied": "Copied — paste into mail",
+    "emailSubjectAudit": "Compliance audit slice ({count} findings, {date})",
+    "emailSubjectCourt": "Compliance court cases slice ({count} cases, {date})",
+    "emailHeaderAudit": "Compliance audit slice — {count} findings as of {date}.",
+    "emailHeaderCourt": "Compliance court cases slice — {count} cases as of {date}.",
+    "emailTruncated": "Showing first {shown} of {total} rows. Use the CSV export for the full list."
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

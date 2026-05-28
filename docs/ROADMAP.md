@@ -509,7 +509,7 @@ After 2026-05-27 internal audit revealed AI-fabricated data was being shown alon
 ### Group E — Compliance Hub upgrades
 - 🟡 **E1.** Write-back close/reopen shipped (commit `3fd2e3c`, 2026-05-28). Remaining: assign owner / add comment / change deadline UI — `est: 1d`
 - ⬜ **E2.** Per-finding drill-down modal with full description + attachments — `est: 1d`
-- ⬜ **E3.** Email-export filtered slice — `est: 4h`
+- ✅ **E3.** Email-export filtered slice — shipped 2026-05-28. «Email» button next to «Export CSV» opens user's default mail client with mailto: URL carrying a Markdown table of the filtered slice (capped at 30 rows; clipboard fallback for slices over 2KB URL limit). Honours active entity / severity / status filters; subject + header includes counts + date. EN/RU/AZ copy.
 
 ### Group F — Operations
 - ⬜ **F1.** Catalog audit — 110 active indicator defs, only 33 enabled. Scope catalog to active industries (hospitality/pharma/construction irrelevant for AZSEKER) — `est: 1d`
