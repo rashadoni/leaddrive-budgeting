@@ -37,6 +37,18 @@ export interface BudgetLine {
   sortOrder: number
   parentId?: string | null
   children?: BudgetLine[]
+  // Phase 8 D3(g) (2026-05-28) — multi-currency fields populated by the
+  // /api/budgeting/lines GET route from the Prisma BudgetLine row. Optional
+  // so xlsx-imported / cost-model-generated lines that don't carry FX
+  // metadata still satisfy the contract. BudgetFxSummary consumes these.
+  currencyCode?: string | null
+  originalAmount?: number | null
+  exchangeRate?: number | null
+  // Phase 8 D3(g) (2026-05-28) — ChartOfAccount join included by the lines
+  // route via `include: { account: { select: { code, name } } }`. Optional
+  // because some legacy / aggregate consumers project lines without the
+  // account include. Consumers must guard with `?.`.
+  account?: { code: string; name: string } | null
 }
 
 export interface BudgetActual {

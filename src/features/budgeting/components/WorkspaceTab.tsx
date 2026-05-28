@@ -42,7 +42,7 @@ import {
   useApplyTemplates, useCreateBudgetActual, useCreateBudgetLine,
   useDeleteBudgetActual, useDeleteBudgetLine, useSyncActuals, useUpdateBudgetLine,
 } from "@/lib/budgeting/hooks"
-import { type BudgetLine, type BudgetDirectionTemplate } from "@/lib/budgeting/types"
+import { type BudgetLine, type BudgetCategoryRow, type BudgetDirectionTemplate } from "@/lib/budgeting/types"
 import { computeOperatingProfit } from "@/lib/budgeting/operating-profit"
 import { varPct } from "@/lib/budgeting/var-pct"
 import { toast } from "sonner"
@@ -218,7 +218,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const allLineCodes = useMemo(() => {
     const s = new Set<string>()
     for (const l of filteredLines) {
-      const code = (l as any).account?.code ?? l.department ?? ""
+      const code = l.account?.code ?? l.department ?? ""
       if (code) s.add(code)
     }
     return s
@@ -230,7 +230,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
     return false
   }, [allLineCodes])
   const isLeafLine = useCallback((l: BudgetLine): boolean => {
-    const code = (l as any).account?.code ?? l.department ?? ""
+    const code = l.account?.code ?? l.department ?? ""
     return !code || !isParentCode(code)
   }, [isParentCode])
 
@@ -934,11 +934,11 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const MAX_CHART_ITEMS = 8
 
   const expenseAllData = byCategory
-    .filter((c: any) => c.lineType === "expense" && (c.planned > 0 || c.actual > 0))
-    .sort((a: any, b: any) => Math.max(b.actual, b.planned) - Math.max(a.actual, a.planned))
+    .filter((c: BudgetCategoryRow) => c.lineType === "expense" && (c.planned > 0 || c.actual > 0))
+    .sort((a: BudgetCategoryRow, b: BudgetCategoryRow) => Math.max(b.actual, b.planned) - Math.max(a.actual, a.planned))
 
   const expenseBarData = (() => {
-    const toRow = (c: any) => ({
+    const toRow = (c: BudgetCategoryRow) => ({
       name: c.category.length > 20 ? c.category.slice(0, 20) + "…" : c.category,
       [planLabel]: Math.round(c.planned),
       [actualLabel]: Math.round(c.actual),
@@ -946,16 +946,16 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
     if (expenseAllData.length <= MAX_CHART_ITEMS + 1) return expenseAllData.map(toRow)
     const top = expenseAllData.slice(0, MAX_CHART_ITEMS).map(toRow)
     const rest = expenseAllData.slice(MAX_CHART_ITEMS)
-    top.push({ name: `Other (${rest.length})`, [planLabel]: Math.round(rest.reduce((s: number, c: any) => s + c.planned, 0)), [actualLabel]: Math.round(rest.reduce((s: number, c: any) => s + c.actual, 0)) })
+    top.push({ name: `Other (${rest.length})`, [planLabel]: Math.round(rest.reduce((s: number, c: BudgetCategoryRow) => s + c.planned, 0)), [actualLabel]: Math.round(rest.reduce((s: number, c: BudgetCategoryRow) => s + c.actual, 0)) })
     return top
   })()
 
   const revenueAllData = byCategory
-    .filter((c: any) => c.lineType === "revenue" && (c.planned > 0 || c.actual > 0))
-    .sort((a: any, b: any) => Math.max(b.actual, b.planned) - Math.max(a.actual, a.planned))
+    .filter((c: BudgetCategoryRow) => c.lineType === "revenue" && (c.planned > 0 || c.actual > 0))
+    .sort((a: BudgetCategoryRow, b: BudgetCategoryRow) => Math.max(b.actual, b.planned) - Math.max(a.actual, a.planned))
 
   const revenueBarData = (() => {
-    const toRow = (c: any) => ({
+    const toRow = (c: BudgetCategoryRow) => ({
       name: c.category.length > 20 ? c.category.slice(0, 20) + "…" : c.category,
       [planLabel]: Math.round(c.planned),
       [actualLabel]: Math.round(c.actual),
@@ -963,7 +963,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
     if (revenueAllData.length <= MAX_CHART_ITEMS + 1) return revenueAllData.map(toRow)
     const top = revenueAllData.slice(0, MAX_CHART_ITEMS).map(toRow)
     const rest = revenueAllData.slice(MAX_CHART_ITEMS)
-    top.push({ name: `Other (${rest.length})`, [planLabel]: Math.round(rest.reduce((s: number, c: any) => s + c.planned, 0)), [actualLabel]: Math.round(rest.reduce((s: number, c: any) => s + c.actual, 0)) })
+    top.push({ name: `Other (${rest.length})`, [planLabel]: Math.round(rest.reduce((s: number, c: BudgetCategoryRow) => s + c.planned, 0)), [actualLabel]: Math.round(rest.reduce((s: number, c: BudgetCategoryRow) => s + c.actual, 0)) })
     return top
   })()
 
@@ -1094,7 +1094,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         <Card className="border-0 shadow-md">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">{t("chartPlanForecastActual") || "Plan vs Actual by Category"}</CardTitle>
-            <p className="text-[10px] text-muted-foreground">{byCategory.filter((c: any) => c.planned > 0 || c.actual > 0).length} active categories</p>
+            <p className="text-[10px] text-muted-foreground">{byCategory.filter((c: BudgetCategoryRow) => c.planned > 0 || c.actual > 0).length} active categories</p>
           </CardHeader>
           <CardContent className="pt-0">
             <BudgetCategoryBars categories={byCategory} />
@@ -1169,7 +1169,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         </div>
         <div className="flex-1" />
         <Input placeholder={t("searchCategory")} title={t("hintSearchCategory")} value={filterText} onChange={e => setFilterText(e.target.value)} className="h-8 w-48 text-xs" />
-        <select value={filterType} onChange={e => setFilterType(e.target.value as any)} title={t("hintFilterType")} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+        <select value={filterType} onChange={e => setFilterType(e.target.value as "all" | "expense" | "revenue")} title={t("hintFilterType")} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
           <option value="all">{t("filterAll")}</option>
           <option value="expense">{t("filterExpenses")}</option>
           <option value="revenue">{t("filterRevenues")}</option>
@@ -1388,7 +1388,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
 
       {/* F7: Multi-Currency FX Summary */}
       <BudgetFxSummary
-        lines={(lines as any[]).flatMap((l: any) => [l, ...(l.children ?? [])])}
+        lines={lines.flatMap((l: BudgetLine) => [l, ...(l.children ?? [])])}
         baseCurrency="AZN"
       />
     </div>
