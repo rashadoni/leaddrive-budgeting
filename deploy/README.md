@@ -111,6 +111,36 @@ docker compose exec app node -e "
 
 Then log in and change the password via the UI.
 
+### Provision the RLS roles (Phase 5.2 — required for DB-layer tenant isolation)
+
+The `*_rls_*` migrations enable Row-Level Security + create per-org policies,
+but the two Postgres ROLES they rely on must be created manually (once),
+AFTER the migrations have created the tables. Skipping this is not a crash —
+the app falls back to the default DB user and RLS is simply NOT enforced at
+the DB layer (app-layer `where: { organizationId }` still isolates tenants),
+so you lose the defence-in-depth. For a hardened deploy:
+
+```bash
+# 1. BYPASSRLS role for migrations + cross-org cron (budgetpro_admin)
+docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB" \
+  -v admin_password="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)" \
+  -v db_name="$POSTGRES_DB" \
+  < scripts/sql/create-bypass-role.sql
+
+# 2. Restricted RLS-enforced role for request handlers (budgetpro_app)
+docker compose exec -T db psql -U "$POSTGRES_USER" "$POSTGRES_DB" \
+  -v app_password="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)" \
+  -v db_name="$POSTGRES_DB" \
+  < scripts/sql/create-app-role.sql
+```
+
+Then set `DATABASE_URL_ADMIN` + `DATABASE_URL_APP` in `.env.production` to the
+two roles' connection strings (host `db`, port 5432, same database; each with
+the password you passed above) and restart: `docker compose --env-file
+.env.production restart app`. Verify isolation with the RLS integration test
+(`DATABASE_URL_APP=... npx vitest run src/lib/db/rls-leak.integration.test.ts`).
+See `docs/DEPLOYMENT_READINESS.md` §8.2 for the full RLS posture.
+
 ---
 
 ## 3. TLS setup (after the HTTP deploy is working)
