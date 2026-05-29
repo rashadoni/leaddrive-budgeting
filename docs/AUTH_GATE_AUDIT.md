@@ -34,7 +34,10 @@
 
 ## Findings
 
-### F1 (real — pre-production blocker) — `terminal/stream` must gate before it streams real events
+### F1 — ✅ RESOLVED 2026-05-29 — `terminal/stream` SSE gated
+Shipped: added a `getOrgId` gate at the top of `GET` (`src/app/api/terminal/stream/route.ts`) — resolves the NextAuth session from request cookies (the authed terminal already connects with them), 401 when absent. Closes the anonymous open-connection surface now and future-proofs the line-35 real-events hookup against cross-tenant leakage. tsc 0. *(Original finding retained below for context.)*
+
+### F1 (original) — `terminal/stream` must gate before it streams real events
 `src/app/api/terminal/stream/route.ts:35` carries a TODO to "hook into your background job queue (BullMQ) / Redis Pub/Sub to listen for `indicator_computed` events." **The moment real org-scoped events are wired in, this ungated SSE becomes a cross-tenant leak** (any unauthenticated client could subscribe to every org's recompute events). It is safe *only* because it is a no-data heartbeat right now.
 - **Fix (when wiring real events):** add `const orgId = await getOrgId(request as NextRequest); if (!orgId) return new Response('Unauthorized', { status: 401 })` at the top of `GET`, and filter pushed events to that `orgId`. Cheap (~5 lines), but MUST land in the same change that adds real event content.
 - **Secondary (lower):** even as a heartbeat, an unauthenticated client can hold open SSE connections (a mild resource/DoS surface). A gate closes that too.
@@ -42,16 +45,24 @@
 ### F2 (advisory) — rate-limit coverage is partial by design
 Only 25/143 routes call `enforceRateLimit` (the import / AI / mutation-heavy ones). Read endpoints rely on auth + org-scope alone. Acceptable for localhost; for production behind a public URL, consider a blanket edge rate-limit (Vercel/Cloudflare) rather than per-route calls.
 
-### F3 (advisory) — no global middleware
-Auth is per-handler. This is **safe** (verified: every data method gates) but **fragile** — a future route author who forgets to call a gate has no safety net. **Recommendation for production:** add a `middleware.ts` with a `matcher: ['/api/:path*']` that rejects unauthenticated requests as defence-in-depth, excluding `auth/[...nextauth]` (and any deliberately-public route). This converts "remember to gate every handler" from a convention into an enforced invariant.
+### F3 (advisory — no global middleware) — defence-in-depth attempted 2026-05-29, deferred to the prod deploy
+Auth is per-handler. This is **safe** (verified: every data method gates) but **fragile** — a future route author who forgets a gate has no safety net. A `middleware.ts` over `/api/:path*` would make the gate an enforced invariant.
+
+**Attempted + reverted 2026-05-29 (empirical finding — recorded so the next attempt doesn't repeat it):** I wrote a custom edge middleware using `getToken` from `next-auth/jwt` (the "escape hatch" — avoids importing the Node-only Prisma/bcrypt auth config), whitelisting `/api/auth` + `/api/telemetry/guide-view`, gating everything else. The **gate worked** (anon `/api/budgeting/*` → 401) BUT it **broke NextAuth's own `/api/auth/*` endpoints (200 → 404)** despite the explicit whitelist + `NextResponse.next()`. This is the known Auth.js v5 behaviour: a custom non-`auth`-wrapper middleware interferes with the auth catch-all's resolution. Reverted (auth is more important than defence-in-depth; the audit already proved 0 real holes).
+
+**Correct approach for the actual prod deploy (do NOT use the bare `getToken` middleware):** the Auth.js v5 split-config pattern —
+1. Extract an edge-safe `auth.config.ts` (providers list + `callbacks.authorized` + jwt/session opts, **no** PrismaAdapter, **no** bcrypt `authorize`).
+2. `auth.ts` imports it and adds the adapter + the Credentials provider's bcrypt `authorize`.
+3. `middleware.ts`: `export { auth as middleware } from "@/auth.config"` (the edge instance) + `matcher: ['/api/:path*']`, with the `authorized` callback whitelisting `/api/auth` + `/api/telemetry/guide-view`.
+This is a deliberate refactor of the working login config on a **beta** NextAuth — must be done with a full e2e login pass (the `visual-baseline` spec logs in + loads the terminal end-to-end), on a freshly-restarted dev server, not bolted on blind. Note: this project's secret env is `NEXTAUTH_SECRET` (Auth.js v5 default is `AUTH_SECRET`) — pass it explicitly if the auto-lookup misses it.
 
 ## Conclusion
 
 **No exposed-data API endpoint is unauthenticated.** All 140 data-accessing routes gate every method (role-gate or auth+org-gate, verified per-method); the 3 gate-free routes are the auth provider, a 410 tombstone, and a no-data heartbeat. The deferred "51 ungated routes" concern does **not** reflect a real exposure — it was a `requireRole`-only grep that missed the `getOrgId` session-gate.
 
-**Production hardening checklist (deferred per user direction; this audit is the map):**
-- [ ] **F1** — gate `terminal/stream` in the same PR that wires real SSE events (blocker).
-- [ ] **F3** — add `middleware.ts` `/api/:path*` auth as defence-in-depth.
-- [ ] **F2** — edge rate-limit at the platform layer.
-- [ ] (G1) rotate the dev admin password.
+**Production hardening checklist (this audit is the map):**
+- [x] **F1** — `terminal/stream` SSE gated (`getOrgId`), shipped 2026-05-29.
+- [ ] **F3** — `middleware.ts` `/api/:path*` defence-in-depth: use the Auth.js v5 **split-config** pattern (above), NOT the bare `getToken` middleware (proven to break `/api/auth/*`). Requires an edge-safe `auth.config.ts` refactor + full e2e login verification on a restarted dev server.
+- [ ] **F2** — edge rate-limit at the platform layer (Vercel/Cloudflare).
+- [ ] (G1) rotate the dev admin password (currently kept at `Admin123!` per user direction; rotation is a credential action — owner=user).
 - [ ] (G2) wire Sentry once a DSN exists.
