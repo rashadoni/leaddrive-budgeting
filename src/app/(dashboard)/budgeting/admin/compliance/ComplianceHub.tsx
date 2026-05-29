@@ -12,7 +12,7 @@
  * slate=observation, emerald=completed).
  */
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import {
   Shield,
@@ -28,6 +28,9 @@ import {
   Loader2,
   Mail,
   ExternalLink,
+  UserPlus,
+  CalendarClock,
+  MessageSquarePlus,
 } from "lucide-react";
 import {
   Dialog,
@@ -46,7 +49,7 @@ interface FindingComment {
 interface FindingMutation {
   at: string;
   by: string;
-  action: "close" | "reopen" | "assign" | "comment";
+  action: "close" | "reopen" | "assign" | "comment" | "deadline";
   value?: string;
 }
 
@@ -66,7 +69,15 @@ interface AuditFinding {
   assignedTo?: string;
   comments?: FindingComment[];
   mutations?: FindingMutation[];
+  // Phase 8 E1 completion (2026-05-29) — target completion date set via
+  // the `deadline` action (ISO YYYY-MM-DD).
+  deadline?: string;
 }
+
+/** Phase 8 E1 completion — the write-back actions the modal can fire
+ *  beyond close/reopen. `assign` + `deadline` carry a single string
+ *  value; `comment` appends to the thread. */
+type ManageAction = "assign" | "comment" | "deadline";
 
 interface CourtCase {
   date: string;
@@ -218,6 +229,18 @@ export function ComplianceHub({ entities }: Props) {
   const [closedOverrides, setClosedOverrides] = useState<Record<string, boolean>>({});
   // Per-row pending state to disable the toggle + show spinner.
   const [pendingRows, setPendingRows] = useState<Set<string>>(new Set());
+  // Phase 8 E1 completion — server-returned finding after assign /
+  // comment / deadline PATCHes. `entities` is a static server prop, so
+  // we overlay the updated finding here keyed by `${entityId}::${idx}`
+  // to reflect the mutation in the modal without a full page refetch.
+  const [findingOverrides, setFindingOverrides] = useState<
+    Record<string, AuditFinding>
+  >({});
+  // Phase 8 E1 completion — controlled inputs for the modal's manage
+  // controls (assignee / new-comment / deadline).
+  const [assigneeInput, setAssigneeInput] = useState("");
+  const [commentInput, setCommentInput] = useState("");
+  const [deadlineInput, setDeadlineInput] = useState("");
   const [, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
   /** Phase 8 E2 — drill-down modal. Stores the row pointer (entityId +
@@ -230,6 +253,17 @@ export function ComplianceHub({ entities }: Props) {
     entityName: string;
     findingIdx: number;
   } | null>(null);
+  // Reset the manage inputs whenever the drilldown points at a
+  // different finding (or closes) so stale text doesn't carry over.
+  const drilldownKey = drilldown
+    ? `${drilldown.entityId}::${drilldown.findingIdx}`
+    : null;
+  useEffect(() => {
+    setAssigneeInput("");
+    setCommentInput("");
+    setDeadlineInput("");
+    setActionError(null);
+  }, [drilldownKey]);
 
   /**
    * PATCH the compliance finding. Optimistic UI: flip locally first,
@@ -277,6 +311,55 @@ export function ComplianceHub({ entities }: Props) {
         setActionError(
           err instanceof Error ? err.message : String(err),
         );
+      } finally {
+        setPendingRows((s) => {
+          const n = new Set(s);
+          n.delete(key);
+          return n;
+        });
+      }
+    },
+    [t],
+  );
+
+  /**
+   * Phase 8 E1 completion — assign owner / add comment / set deadline.
+   * Unlike close/reopen (a boolean overlay), these return the full
+   * updated finding, which we stash in `findingOverrides` so the modal
+   * re-renders with the new assignee / comment / deadline + the appended
+   * mutation-history entry. Returns true on success so callers can clear
+   * their input.
+   */
+  const applyFindingAction = useCallback(
+    async (
+      entityId: string,
+      findingIdx: number,
+      action: ManageAction,
+      value: string,
+    ): Promise<boolean> => {
+      const key = `${entityId}::${findingIdx}`;
+      setActionError(null);
+      setPendingRows((s) => new Set(s).add(key));
+      try {
+        const res = await fetch("/api/admin/compliance/finding", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId: entityId, findingIdx, action, value }),
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          error?: string;
+          finding?: AuditFinding;
+        };
+        if (!res.ok || !body.ok || !body.finding) {
+          setActionError(body.error ?? t("actionFailed", { status: res.status }));
+          return false;
+        }
+        setFindingOverrides((m) => ({ ...m, [key]: body.finding as AuditFinding }));
+        return true;
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+        return false;
       } finally {
         setPendingRows((s) => {
           const n = new Set(s);
@@ -679,10 +762,13 @@ export function ComplianceHub({ entities }: Props) {
       {drilldown &&
         (() => {
           const ent = entities.find((e) => e.id === drilldown.entityId);
-          const f = ent?.auditFindings?.items[drilldown.findingIdx];
-          if (!ent || !f) return null;
-          const closed = isRowClosed(drilldown.entityId, drilldown.findingIdx, f);
+          const rawF = ent?.auditFindings?.items[drilldown.findingIdx];
+          if (!ent || !rawF) return null;
           const key = `${drilldown.entityId}::${drilldown.findingIdx}`;
+          // Phase 8 E1 completion — overlay the post-mutation finding so
+          // assign / comment / deadline changes show immediately.
+          const f = findingOverrides[key] ?? rawF;
+          const closed = isRowClosed(drilldown.entityId, drilldown.findingIdx, f);
           const isPending = pendingRows.has(key);
           return (
             <Dialog open={!!drilldown} onOpenChange={(v) => !v && setDrilldown(null)}>
@@ -743,6 +829,16 @@ export function ComplianceHub({ entities }: Props) {
                           {t("drilldownAssignedTo")}
                         </h3>
                         <p className="text-xs">{f.assignedTo}</p>
+                      </div>
+                    )}
+                    {f.deadline && (
+                      <div>
+                        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                          {t("drilldownDeadline")}
+                        </h3>
+                        <p className="text-xs">
+                          {new Date(f.deadline).toLocaleDateString()}
+                        </p>
                       </div>
                     )}
                   </section>
@@ -808,6 +904,111 @@ export function ComplianceHub({ entities }: Props) {
                       </ul>
                     </section>
                   )}
+                  {/* Phase 8 E1 completion — manage controls: assign
+                      owner / add comment / set deadline. Each fires
+                      applyFindingAction → server PATCH → findingOverrides. */}
+                  <section className="rounded border border-border/60 px-3 py-2.5 space-y-2.5">
+                    <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      {t("drilldownManage")}
+                    </h3>
+                    {/* Assign owner */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={assigneeInput}
+                        onChange={(e) => setAssigneeInput(e.target.value)}
+                        placeholder={t("assigneePlaceholder")}
+                        aria-label={t("drilldownAssignedTo")}
+                        className="h-7 flex-1 rounded border border-border/70 bg-background px-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={isPending || !assigneeInput.trim()}
+                        onClick={() => {
+                          const v = assigneeInput.trim();
+                          startTransition(() => {
+                            void applyFindingAction(
+                              drilldown.entityId,
+                              drilldown.findingIdx,
+                              "assign",
+                              v,
+                            ).then((ok) => ok && setAssigneeInput(""));
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        data-testid="finding-assign"
+                      >
+                        <UserPlus className="h-3 w-3" />
+                        {t("btnAssign")}
+                      </button>
+                    </div>
+                    {/* Set deadline */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={deadlineInput}
+                        onChange={(e) => setDeadlineInput(e.target.value)}
+                        aria-label={t("drilldownDeadline")}
+                        className="h-7 flex-1 rounded border border-border/70 bg-background px-2 text-xs"
+                      />
+                      <button
+                        type="button"
+                        disabled={isPending || !deadlineInput}
+                        onClick={() => {
+                          const v = deadlineInput;
+                          startTransition(() => {
+                            void applyFindingAction(
+                              drilldown.entityId,
+                              drilldown.findingIdx,
+                              "deadline",
+                              v,
+                            ).then((ok) => ok && setDeadlineInput(""));
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        data-testid="finding-deadline"
+                      >
+                        <CalendarClock className="h-3 w-3" />
+                        {t("btnSetDeadline")}
+                      </button>
+                    </div>
+                    {/* Add comment */}
+                    <div className="space-y-1.5">
+                      <textarea
+                        value={commentInput}
+                        onChange={(e) => setCommentInput(e.target.value)}
+                        placeholder={t("commentPlaceholder")}
+                        aria-label={t("drilldownComments", { n: f.comments?.length ?? 0 })}
+                        rows={2}
+                        className="w-full rounded border border-border/70 bg-background px-2 py-1.5 text-xs resize-y"
+                      />
+                      <button
+                        type="button"
+                        disabled={isPending || !commentInput.trim()}
+                        onClick={() => {
+                          const v = commentInput.trim();
+                          startTransition(() => {
+                            void applyFindingAction(
+                              drilldown.entityId,
+                              drilldown.findingIdx,
+                              "comment",
+                              v,
+                            ).then((ok) => ok && setCommentInput(""));
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-border/60 px-2.5 py-1 text-xs hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        data-testid="finding-comment"
+                      >
+                        <MessageSquarePlus className="h-3 w-3" />
+                        {t("btnAddComment")}
+                      </button>
+                    </div>
+                    {actionError && (
+                      <p className="text-[11px] text-red-500" role="alert">
+                        {actionError}
+                      </p>
+                    )}
+                  </section>
                 </div>
               </DialogContent>
               <DialogFooter>

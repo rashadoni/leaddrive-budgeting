@@ -495,8 +495,8 @@
     "varianceColPct": "%",
     "varianceColTrend": "Динамика",
     "periodAnnual": "Годовой",
-    "periodQuarterly": "Кв.{n}",
-    "periodMonthly": "М.{n}",
+    "periodQuarterly": "Квартальный",
+    "periodMonthly": "Месячный",
     "varianceRowAriaLabel": "{category}: {severity} отклонение",
     "varianceSeverityRed": "значительное",
     "varianceSeverityAmber": "умеренное",
@@ -516,9 +516,6 @@
     "dlgYear": "Год",
     "dlgMonth": "Месяц",
     "dlgQuarter": "Квартал",
-    "periodMonthly": "Месячный",
-    "periodQuarterly": "Квартальный",
-    "periodAnnual": "Годовой",
     "fieldCategory": "Категория",
     "fieldDepartment": "Департамент",
     "fieldType": "Тип",
@@ -3001,8 +2998,16 @@
       "close": "Закрыто",
       "reopen": "Переоткрыто",
       "assign": "Назначено",
-      "comment": "Комментарий"
-    }
+      "comment": "Комментарий",
+      "deadline": "Срок задан"
+    },
+    "drilldownDeadline": "Срок",
+    "drilldownManage": "Управление",
+    "assigneePlaceholder": "Имя или email ответственного",
+    "commentPlaceholder": "Добавить комментарий…",
+    "btnAssign": "Назначить",
+    "btnSetDeadline": "Задать срок",
+    "btnAddComment": "Добавить"
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

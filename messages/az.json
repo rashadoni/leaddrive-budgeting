@@ -495,8 +495,8 @@
     "varianceColPct": "%",
     "varianceColTrend": "Dinamika",
     "periodAnnual": "İllik",
-    "periodQuarterly": "R{n}",
-    "periodMonthly": "A{n}",
+    "periodQuarterly": "Rüblük",
+    "periodMonthly": "Aylıq",
     "varianceRowAriaLabel": "{category}: {severity} sapma",
     "varianceSeverityRed": "yüksək",
     "varianceSeverityAmber": "orta",
@@ -516,9 +516,6 @@
     "dlgYear": "İl",
     "dlgMonth": "Ay",
     "dlgQuarter": "Rüb",
-    "periodMonthly": "Aylıq",
-    "periodQuarterly": "Rüblük",
-    "periodAnnual": "İllik",
     "fieldCategory": "Kateqoriya",
     "fieldDepartment": "Şöbə",
     "fieldType": "Növ",
@@ -3001,8 +2998,16 @@
       "close": "Bağlandı",
       "reopen": "Yenidən açıldı",
       "assign": "Təyin edildi",
-      "comment": "Şərh"
-    }
+      "comment": "Şərh",
+      "deadline": "Son tarix təyin edildi"
+    },
+    "drilldownDeadline": "Son tarix",
+    "drilldownManage": "İdarəetmə",
+    "assigneePlaceholder": "Məsul şəxsin adı və ya e-poçtu",
+    "commentPlaceholder": "Şərh əlavə edin…",
+    "btnAssign": "Təyin et",
+    "btnSetDeadline": "Son tarix təyin et",
+    "btnAddComment": "Əlavə et"
   },
   "adminDriftDashboard": {
     "title": "Drift Dashboard",

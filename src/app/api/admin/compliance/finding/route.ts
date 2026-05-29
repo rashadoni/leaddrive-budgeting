@@ -27,8 +27,14 @@ import { Prisma } from "@prisma/client";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { prisma } from "@/lib/prisma";
 
-const VALID_ACTIONS = new Set(["close", "reopen", "assign", "comment"] as const);
-type FindingAction = "close" | "reopen" | "assign" | "comment";
+const VALID_ACTIONS = new Set([
+  "close",
+  "reopen",
+  "assign",
+  "comment",
+  "deadline",
+] as const);
+type FindingAction = "close" | "reopen" | "assign" | "comment" | "deadline";
 
 /**
  * Per-finding mutation log entry stored inline alongside the original
@@ -55,6 +61,9 @@ interface AuditFinding {
   findingStatusJan: string;
   closed?: boolean;
   assignedTo?: string;
+  /** ISO date (YYYY-MM-DD) target completion date set via the
+   *  `deadline` action. Phase 8 E1 completion (2026-05-29). */
+  deadline?: string;
   comments?: Array<{ at: string; author: string; text: string }>;
   mutations?: FindingMutation[];
   closedAt?: string;
@@ -124,12 +133,26 @@ export async function PATCH(req: NextRequest) {
     );
   }
   const typedAction = action as FindingAction;
-  if ((typedAction === "assign" || typedAction === "comment") && !value) {
+  if (
+    (typedAction === "assign" ||
+      typedAction === "comment" ||
+      typedAction === "deadline") &&
+    !value
+  ) {
     return NextResponse.json(
       {
         ok: false,
         error: `Field 'value' (string) is required for action='${typedAction}'`,
       },
+      { status: 400 },
+    );
+  }
+  // `deadline` value must be a parseable date (the UI sends an ISO
+  // YYYY-MM-DD from a <input type="date">). Reject garbage so a bad
+  // client can't poison the JSON with an unparseable string.
+  if (typedAction === "deadline" && value && Number.isNaN(Date.parse(value))) {
+    return NextResponse.json(
+      { ok: false, error: "Field 'value' must be a valid date for action='deadline'" },
       { status: 400 },
     );
   }
@@ -195,6 +218,10 @@ export async function PATCH(req: NextRequest) {
       mutation.value = value;
       break;
     }
+    case "deadline":
+      finding.deadline = value!;
+      mutation.value = value;
+      break;
   }
   finding.mutations = [
     ...(Array.isArray(finding.mutations) ? finding.mutations : []),

@@ -200,4 +200,71 @@ describe("PATCH /api/admin/compliance/finding", () => {
     )
     expect(res.status).toBe(400)
   })
+
+  // Phase 8 E1 completion (2026-05-29) — deadline action.
+  it("deadline sets finding.deadline + appends a mutation with the value", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: "AZSEKER-AZSF",
+      settings: { auditFindings: { items: [baseFinding()] } },
+    })
+    const res = await PATCH(
+      makeRequest("/api/admin/compliance/finding", {
+        method: "PATCH",
+        json: {
+          companyId: COMPANY_ID,
+          findingIdx: 0,
+          action: "deadline",
+          value: "2026-09-30",
+        },
+      }),
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.finding.deadline).toBe("2026-09-30")
+    expect(body.finding.mutations.at(-1)).toMatchObject({
+      action: "deadline",
+      value: "2026-09-30",
+      by: USER_ID,
+    })
+  })
+
+  it("400 when deadline value is missing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: "AZSEKER-AZSF",
+      settings: { auditFindings: { items: [baseFinding()] } },
+    })
+    const res = await PATCH(
+      makeRequest("/api/admin/compliance/finding", {
+        method: "PATCH",
+        json: { companyId: COMPANY_ID, findingIdx: 0, action: "deadline" },
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it("400 when deadline value is not a valid date", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.company.findFirst.mockResolvedValue({
+      id: COMPANY_ID,
+      code: "AZSEKER-AZSF",
+      settings: { auditFindings: { items: [baseFinding()] } },
+    })
+    const res = await PATCH(
+      makeRequest("/api/admin/compliance/finding", {
+        method: "PATCH",
+        json: {
+          companyId: COMPANY_ID,
+          findingIdx: 0,
+          action: "deadline",
+          value: "not-a-date",
+        },
+      }),
+    )
+    expect(res.status).toBe(400)
+  })
 })
