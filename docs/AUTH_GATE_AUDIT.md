@@ -72,6 +72,6 @@ Dev is unaffected (no nginx; the route just exists). Verify on the VM with `ngin
 **Production hardening checklist (this audit is the map):**
 - [x] **F1** — `terminal/stream` SSE gated (`getOrgId`), shipped 2026-05-29.
 - [ ] **F3** — defence-in-depth `/api` gate. A Next.js `middleware.ts` is NOT viable on this stack (BOTH getToken and split-config wedged the dev server 2026-05-29 — see F3 above). Do it at **nginx** (`auth_request`) or the existing **`proxy.ts`** layer instead, or skip it (it's defence-in-depth — the per-handler gates already cover 0-exposure).
-- [ ] **F2** — edge rate-limit at the platform layer (Vercel/Cloudflare).
+- [~] **F2** — edge rate-limit. **Recommendation + ready nginx config documented 2026-05-29 in `docs/RATE_LIMITING.md`** (blanket `limit_req` on `/api/` + tighter on `/api/auth/`, real-IP handling for CDN, 429 override, thresholds, verify steps). Apply on the VM/edge at deploy time — cannot be tested from the dev box. The per-route `enforceRateLimit` (25 routes) remains the app-layer backstop.
 - [ ] (G1) rotate the dev admin password (currently kept at `Admin123!` per user direction; rotation is a credential action — owner=user).
 - [x] **G2** — Sentry wired DSN-ready 2026-05-29 (`@sentry/nextjs` 10.55.0; instrumentation + global-error + DSN-gated `withSentryConfig`). Inert until `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` is set — then it activates with no code change. Set the DSN(s) per `.env.production.example`.
