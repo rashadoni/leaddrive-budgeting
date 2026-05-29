@@ -4,6 +4,8 @@ description: docs/CARRYOVER.md is single source of truth for open 🔄 items; de
 type: feedback
 originSessionId: cc752d7f-fcd5-4aa3-bd07-4a3cd4aa06f1
 ---
+> **STATUS 2026-05-29 — RE-ACTIVATED.** The Turn LXXXVII deprecation is reversed: `architect-gate.sh` is re-wired into the settings.json Stop hooks and enforces this rule via **check #5** (transcript scan for an Edit/Write to `docs/CARRYOVER.md` this turn — NOT the old mtime check mentioned in step 2 below). Scope is CARRYOVER freshness ONLY: `mark-dirty.sh` (PostToolUse) stays unwired, so `CARVE_OUT=1` every turn and the mandatory-architect-subagent checks (#1/#2) stay dormant — subagents remain on-demand. Pure Q&A / zero-tool turns are exempt.
+
 Every substantive turn MUST process `docs/CARRYOVER.md` — the cross-turn tracker of open `🔄` escalations and partial items. Without this, "что осталось" audits depend on user vigilance instead of mechanical enforcement.
 
 **Required developer actions every substantive turn:**

@@ -43,9 +43,15 @@ on-demand only.
   - New API routes (Zod / auth gate / rate limit consistency)
   - LLM integration (prompt drift / token budgets)
   - `.claude/hooks/**` edits (recursion-style risk)
-- Hook files (`architect-gate.sh`, `mark-dirty.sh`, `auto-bootstrap.sh`)
-  remain on disk but are UNWIRED from `settings.json`. Re-wire to
-  re-enable for a work block.
+- Hook wiring (`.claude/settings.json`, re-confirmed 2026-05-29):
+  `bootstrap.sh` (SessionStart) + `test-gate.sh` + `architect-gate.sh` (Stop)
+  are **WIRED**. `mark-dirty.sh` (PostToolUse) stays **UNWIRED** — so
+  `architect-gate.sh` runs with `CARVE_OUT=1` every turn, enforcing ONLY the
+  CARRYOVER freshness check (#5), NOT the mandatory-architect-subagent checks
+  (#1/#2). Net effect: CARRYOVER freshness is enforced again; subagents remain
+  on-demand per the "no agents" default below. To also re-enable mandatory
+  architect review on source-changing turns, wire `mark-dirty.sh` into
+  PostToolUse.
 
 ### Turn flow
 
@@ -57,10 +63,13 @@ on-demand only.
    `test-gate.sh` Stop hook still runs `vitest` pre-Stop as safety net.
 4. Pre-commit hook runs M7 status-band scanner + secret scanner.
 5. Developer commits with descriptive message.
-6. **CARRYOVER (`docs/CARRYOVER.md`) is a manual tracker** — file 🔄 rows
-   when useful (deferred work, user-action blockers, dev-owned follow-ups).
-   No automatic freshness enforcement. Counter-bump (`npm run carryover:bump`)
-   is OPTIONAL.
+6. **CARRYOVER (`docs/CARRYOVER.md`) — freshness ENFORCED** (architect-gate
+   Stop hook check #5, re-activated 2026-05-29). Every substantive turn with
+   OPEN 🔄 items MUST process the tracker before Stop: close what you can,
+   heartbeat (bump turns-open counter) for user-owned blockers, or re-escalate
+   with a new specific blocker. Pure Q&A / zero-tool turns are exempt (hook
+   `CARVE_OUT`). File 🔄 rows for deferred work, user-action blockers,
+   dev-owned follow-ups.
 7. Turn ends with developer announcing the next step as a fact, not a
    question (`feedback_decide_next_step.md`).
 
@@ -96,7 +105,7 @@ Core protocol files today:
 - `feedback_session_speedup.md` — pacing rules #1-26
 - ~~`feedback_architect_scope_audit.md`~~ — DEPRECATED Turn LXXXVII (no auto-architect)
 - ~~`feedback_100_percent_closure.md`~~ — DEPRECATED Turn LXXXVII (no Completion Audit)
-- ~~`feedback_carryover_enforcement.md`~~ — DEPRECATED Turn LXXXVII (CARRYOVER now manual; check #5 disabled)
+- `feedback_carryover_enforcement.md` — **RE-ACTIVATED 2026-05-29** (architect-gate Stop hook re-wired; check #5 CARRYOVER freshness enforced again). Turn LXXXVII deprecation reversed. Scope: freshness only — mark-dirty.sh stays unwired so mandatory-architect-invocation (#1/#2) is still dormant.
 - ~~`feedback_single_round_architect.md`~~ — DEPRECATED Turn LXXXVII (architect not invoked at all; rule moot)
 - plus product / UX / user-preference memories — enumerated in `MEMORY.md`
 
