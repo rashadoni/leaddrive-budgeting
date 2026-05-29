@@ -282,6 +282,12 @@ export function TodayBrief() {
     <div
       className="font-mono text-[12px] text-gray-300 h-full w-full overflow-y-auto p-3 space-y-3"
       data-testid="today-brief"
+      // Phase 8 D1 (2026-05-29) — Panel-3 Today's Brief is all non-deterministic
+      // content (LLM Morning Brief narrative, live movers, news). The Risk
+      // Terminal visual-baseline gate masks `[data-volatile]`, so this tag keeps
+      // the dynamic text out of the HeatMap layout snapshot (it was 5364px of
+      // false-positive diff — the gate's #1 flake source).
+      data-volatile="true"
     >
       <header className="border-b border-gray-800 pb-1">
         <h3 className="text-cyan-300 uppercase tracking-wider text-[10px]">{t("todayBrief.title")}</h3>
