@@ -82,8 +82,12 @@ DONE — stack up, RLS roles provisioned, admin seeded. MANUAL steps remaining:
 
   2. Log in (ADMIN_EMAIL / your ADMIN_PASSWORD) and CHANGE THE PASSWORD in the UI.
 
-  3. TLS + domain:        deploy/README.md §3
+  3. Smoke test (run NOW, before declaring the deploy good):
+        bash deploy/smoke-test.sh http://localhost   # or https://<your-domain>
+     Verifies app-up + the auth gates from outside (8 checks). All must pass.
+
+  4. TLS + domain:        deploy/README.md §3
      RLS isolation check: DATABASE_URL_APP=… npx vitest run src/lib/db/rls-leak.integration.test.ts
-     Smoke test:          docs/DEPLOYMENT_READINESS.md §5.2
+     Real-user smoke:     docs/DEPLOYMENT_READINESS.md §5.2 (login + open terminal + 1 import)
 ==============================================================================
 NEXT

@@ -4,7 +4,17 @@ import { auth } from "@/lib/auth"
 import { checkRateLimit, type RateLimitConfig } from "@/lib/rate-limit"
 import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
 
-const publicPaths = ["/login", "/api/auth"]
+// Phase 8 2026-05-29 — `/api/telemetry/guide-view` added: the F2 /guide
+// view-beacon is PUBLIC by design (its handler reads the session via
+// getSession().catch(()=>null) and logs anon views with org/user = null —
+// that's the whole point, "anonymous /guide traffic counts surface"). It was
+// missing here, so proxy.ts `auth()`-gated it → every anon beacon got 401 and
+// no anon view was ever recorded, in dev AND prod (nginx F3 whitelists it at
+// the edge, but this layer runs behind nginx and still 401'd it). Caught by
+// deploy/smoke-test.sh. The route is rate-limited (10/min/IP) and writes only
+// a telemetry row — no data exposure. Mirrors the nginx public exception +
+// docs/AUTH_GATE_AUDIT.md.
+const publicPaths = ["/login", "/api/auth", "/api/telemetry/guide-view"]
 
 // Rate limit tiers for budget mutation endpoints.
 // First matching rule wins. Keyed by org id so quota is per-tenant.
