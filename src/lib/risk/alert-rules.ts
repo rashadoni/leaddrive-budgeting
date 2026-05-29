@@ -444,37 +444,62 @@ export const RULE_CRITICAL_INDICATOR_ORG_WIDE: AlertRule = {
   id: 'critical-indicator-org-wide',
   name: 'Critical indicator org-wide',
   description:
-    'Flags org-wide pressure on a designated critical indicator: if N+ companies have it red, the holding has a consolidated-level problem on that metric. Indicator code + threshold are configurable.',
+    'Flags org-wide pressure on a designated critical metric: if N+ companies have it red, the holding has a consolidated-level problem. The configured indicatorCode may be an exact code OR a "family" pattern with a leading "*" (e.g. "*_NET_MARGIN") that matches every per-sector variant (FP_NET_MARGIN / SVC_NET_MARGIN / …). Code + threshold are configurable per org.',
   severity: 'critical',
   priority: 20,
   match(ctx, config) {
-    const code = config.criticalIndicator.indicatorCode;
+    const configured = config.criticalIndicator.indicatorCode;
     const threshold = config.criticalIndicator.redCountMin;
-    const target = ctx.indicators.find((i) => i.code === code);
-    if (!target) return [];
+    // Phase 8 fix: support a "family" pattern. A leading '*' suffix-matches
+    // every indicator whose code ends with the rest — '*_NET_MARGIN' covers
+    // FP_NET_MARGIN / SVC_NET_MARGIN / IND_NET_MARGIN across all industry
+    // templates. Phase 7.M replaced the generic IND_* margins with
+    // per-sector codes, so the old exact-match default ('IND_NET_MARGIN')
+    // matched ZERO companies and this rule silently never fired. A plain
+    // code (no '*') stays an exact match — back-compat for orgs that pinned
+    // one specific indicator via Organization.settings.alertThresholds.
+    const isFamily = configured.startsWith('*');
+    const suffix = configured.slice(1); // e.g. '_NET_MARGIN'
+    const targets = isFamily
+      ? ctx.indicators.filter((i) => i.code.endsWith(suffix))
+      : ctx.indicators.filter((i) => i.code === configured);
+    if (targets.length === 0) return [];
+    const targetIds = new Set(targets.map((i) => i.id));
     const redCells = ctx.cells.filter(
       (c) =>
-        c.indicatorId === target.id &&
+        targetIds.has(c.indicatorId) &&
         c.status === 'red' &&
         !isAggregateRollup(c),
     );
-    if (redCells.length < threshold) return [];
     const uniqueCompanyIds = Array.from(
       new Set(redCells.map((c) => c.companyId)),
     );
+    // Threshold is on COMPANY count (a company red on its sector's net
+    // margin counts once), not raw cell count. Identical to cell count in
+    // the single-indicator exact case → no behavior change there.
+    if (uniqueCompanyIds.length < threshold) return [];
+    // Distinct REAL codes that fired (not the '*_…' pattern) so downstream
+    // consumers can resolve them — e.g. ['FP_NET_MARGIN', 'SVC_NET_MARGIN'].
+    const idToCode = new Map(targets.map((i) => [i.id, i.code]));
+    const matchedCodes = Array.from(
+      new Set(redCells.map((c) => idToCode.get(c.indicatorId) as string)),
+    );
+    // Display label: strip the '*'/'*_' so the message reads
+    // 'NET_MARGIN red for N companies', not '*_NET_MARGIN'.
+    const label = isFamily ? configured.replace(/^\*_?/, '') : configured;
     return [
       {
         ruleId: this.id,
         ruleName: this.name,
         severity: this.severity,
-        message: `${code} red for ${uniqueCompanyIds.length} companies — consolidated pressure on critical metric`,
+        message: `${label} red for ${uniqueCompanyIds.length} companies — consolidated pressure on critical metric`,
         messageKey: `alerts.messages.${this.id}`,
         messageParams: {
-          code,
+          code: label,
           companyCount: uniqueCompanyIds.length,
         },
         affectedCompanyIds: uniqueCompanyIds,
-        affectedIndicatorCodes: [code],
+        affectedIndicatorCodes: matchedCodes,
       },
     ];
   },

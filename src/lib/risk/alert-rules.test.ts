@@ -358,6 +358,78 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
     };
     expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
   });
+
+  // Phase 8 2026-05-29 — family pattern fix. The default code is now
+  // '*_NET_MARGIN' (suffix family), not the dead exact 'IND_NET_MARGIN'.
+  it('family default "*_NET_MARGIN" matches a per-sector code (the Phase 7.M bug case)', () => {
+    // No company carries the legacy IND_NET_MARGIN — they have industry
+    // codes. Before the fix this returned [] (silently never fired).
+    const ctx: AlertContext = {
+      companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
+      indicators: [indicator('fp', 'FP_NET_MARGIN')],
+      cells: [
+        cell('co_a', 'fp', 'red'),
+        cell('co_b', 'fp', 'red'),
+        cell('co_c', 'fp', 'red'),
+      ],
+    };
+    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].affectedIndicatorCodes).toEqual(['FP_NET_MARGIN']);
+    // Label strips the '*_' → reads cleanly, not '*_NET_MARGIN'.
+    expect(matches[0].message).toContain('NET_MARGIN red for 3 companies');
+  });
+
+  it('family pattern aggregates red companies ACROSS sectors', () => {
+    const ctx: AlertContext = {
+      companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
+      indicators: [indicator('fp', 'FP_NET_MARGIN'), indicator('svc', 'SVC_NET_MARGIN')],
+      cells: [
+        cell('co_a', 'fp', 'red'),
+        cell('co_b', 'fp', 'red'),
+        cell('co_c', 'svc', 'red'), // a different sector's net margin
+      ],
+    };
+    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    expect(matches).toHaveLength(1);
+    expect(matches[0].affectedCompanyIds).toHaveLength(3);
+    expect([...(matches[0].affectedIndicatorCodes ?? [])].sort()).toEqual([
+      'FP_NET_MARGIN',
+      'SVC_NET_MARGIN',
+    ]);
+  });
+
+  it('family suffix is specific — "*_NET_MARGIN" does NOT match *_GROSS_MARGIN', () => {
+    const ctx: AlertContext = {
+      companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
+      indicators: [indicator('fpg', 'FP_GROSS_MARGIN')], // gross, not net
+      cells: [
+        cell('co_a', 'fpg', 'red'),
+        cell('co_b', 'fpg', 'red'),
+        cell('co_c', 'fpg', 'red'),
+      ],
+    };
+    expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+  });
+
+  it('exact code config (no "*") stays an exact match — back-compat for pinned orgs', () => {
+    const exactConfig = {
+      ...DEFAULT_ALERT_THRESHOLDS,
+      criticalIndicator: { indicatorCode: 'FP_NET_MARGIN', redCountMin: 3 },
+    };
+    const ctx: AlertContext = {
+      companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
+      indicators: [indicator('fp', 'FP_NET_MARGIN'), indicator('svc', 'SVC_NET_MARGIN')],
+      cells: [
+        cell('co_a', 'fp', 'red'), // only this one matches the exact code
+        cell('co_b', 'svc', 'red'),
+        cell('co_c', 'svc', 'red'),
+      ],
+    };
+    // Exact match = only co_a (FP_NET_MARGIN) red → 1 < 3 → no fire. Proves
+    // a pinned exact code does NOT bleed into other sectors' codes.
+    expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, exactConfig)).toHaveLength(0);
+  });
 });
 
 describe('evaluateAlertRules (Phase C6 engine)', () => {
@@ -1124,7 +1196,10 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
     };
     const [m] = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, mergeWithDefaults(undefined));
     expect(m.messageKey).toBe('alerts.messages.critical-indicator-org-wide');
-    expect(m.messageParams).toEqual({ code: 'IND_NET_MARGIN', companyCount: 3 });
+    // Default code is the family '*_NET_MARGIN'; the message label strips the
+    // '*_' prefix → 'NET_MARGIN'. (IND_NET_MARGIN here still matches the
+    // family by suffix, so the rule fires for this legacy-style fixture.)
+    expect(m.messageParams).toEqual({ code: 'NET_MARGIN', companyCount: 3 });
   });
 });
 

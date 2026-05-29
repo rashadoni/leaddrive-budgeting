@@ -24,7 +24,10 @@ describe('DEFAULT_ALERT_THRESHOLDS', () => {
       criticalComposite: { scoreMax: 40 },
       sectorAmber: { amberCountMin: 5 },
       sectorRedSpread: { redCountMin: 3, companyCountMin: 2 },
-      criticalIndicator: { indicatorCode: 'IND_NET_MARGIN', redCountMin: 3 },
+      // Phase 8 2026-05-29: changed from exact 'IND_NET_MARGIN' to the
+      // family pattern '*_NET_MARGIN' so the rule fires across per-sector
+      // margin codes (FP_/SVC_/…) instead of silently never matching.
+      criticalIndicator: { indicatorCode: '*_NET_MARGIN', redCountMin: 3 },
     });
   });
 });
