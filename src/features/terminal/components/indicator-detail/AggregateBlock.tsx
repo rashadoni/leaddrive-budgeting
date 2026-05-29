@@ -196,15 +196,39 @@ export function formatAggValue(v: number, hint: "money" | "count" | "ratio" | "p
 
 /** Heuristic — derive a presentation hint from the key name. Used to
  *  disambiguate "line_count: 900" (integer count) vs "revenue: 28713024"
- *  (money) vs "fx_revenue_share: 0.42" (ratio). */
+ *  (money) vs "fx_revenue_share: 0.42" (ratio).
+ *
+ *  Phase 8 fix: lowercase the key first — the regexes were case-sensitive,
+ *  so UPPERCASE indicator-code keys (AUDIT_CLOSED_PCT, …) matched nothing and
+ *  fell through to "money" (₼). Also `_pct` now → percent (was shadowed into
+ *  "ratio" by the line above, leaving the percent branch dead). For a
+ *  resolved variable that IS an indicator, prefer `unitToHint(ind.unit)` —
+ *  the real stored unit — over this name heuristic. */
 export function hintForKey(key: string): "money" | "count" | "ratio" | "percent" {
-  if (/_count$|_n$|^count$/.test(key)) return "count";
-  if (/_share$|_ratio$|_pct$|^ratio$/.test(key)) return "ratio";
-  if (/_pct$|^pct/.test(key)) return "percent";
+  const k = key.toLowerCase();
+  if (/_count$|_n$|^count$/.test(k)) return "count";
+  if (/_pct$|_percent$|^pct/.test(k)) return "percent";
+  if (/_share$|_ratio$|^ratio$/.test(k)) return "ratio";
   // FX rates — small ratio-like numbers (1, 1.7, 1.85)
-  if (/^fx_/.test(key)) return "ratio";
+  if (/^fx_/.test(k)) return "ratio";
   // Default: money (revenue/cogs/opex/total_cost/imported_input_cost/etc.)
   return "money";
+}
+
+/** Map a stored `IndicatorDefinition.unit` to a `formatAggValue` hint, so a
+ *  resolved variable that IS the indicator (passthrough) shows its REAL unit
+ *  instead of the name-heuristic default of ₼. DB units seen: "%", "cases",
+ *  "count", "index", "AZN". Unknown non-currency → "ratio" (a plain number),
+ *  NEVER money — so we never invent a currency that isn't there. */
+export function unitToHint(
+  unit: string | null | undefined,
+): "money" | "count" | "ratio" | "percent" {
+  const u = (unit ?? "").trim().toLowerCase();
+  if (u === "%" || u === "percent" || u === "pct") return "percent";
+  if (u === "cases" || u === "count" || u === "n" || u === "items") return "count";
+  if (u === "azn" || u === "₼" || u === "usd" || u === "eur" || /^[a-z]{3}$/.test(u)) return "money";
+  // index / ratio / score / x / tCO2e / unknown → plain number, no currency.
+  return "ratio";
 }
 
 /** Render one aggregate namespace as a clean key-value table. Falls back to

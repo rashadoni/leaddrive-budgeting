@@ -39,7 +39,7 @@ import { formatValue, formatHeadlineValue } from "./indicator-detail/format";
 import { ForecastSection } from "./indicator-detail/ForecastSection";
 // Phase 8 D1 (2026-05-29) — Panel-3 badges + aggregate renderer extracted to siblings.
 import { ProvenanceBadge, MaterialityBadge, TrustAuditStrip } from "./indicator-detail/badges";
-import { AggregateBlock, formatAggValue, hintForKey } from "./indicator-detail/AggregateBlock";
+import { AggregateBlock, formatAggValue, hintForKey, unitToHint } from "./indicator-detail/AggregateBlock";
 
 export function IndicatorDetail() {
   const t = useTranslations('terminal');
@@ -657,17 +657,30 @@ export function IndicatorDetail() {
         ) : (
           <table className="text-[11px] tabular-nums w-full">
             <tbody>
-              {Object.entries(resolved).map(([k, v]) => (
-                <tr key={k} className="border-b border-border/30 last:border-b-0">
-                  <td className="py-0.5 pr-3 text-muted-foreground font-mono">{k}</td>
-                  <td
-                    className="py-0.5 text-gray-200 text-right"
-                    title={Number.isFinite(v) ? v.toLocaleString("ru-RU") : undefined}
-                  >
-                    {formatAggValue(v, hintForKey(k))}
-                  </td>
-                </tr>
-              ))}
+              {Object.entries(resolved).map(([k, v]) => {
+                // Phase 8 fix: a resolved variable that IS this indicator
+                // (passthrough, e.g. LEGAL_CASES_ACTIVE / AUDIT_CLOSED_PCT)
+                // uses the indicator's REAL unit. For other inputs we keep the
+                // name heuristic — BUT never render ₼ for a NON-currency
+                // indicator: the heuristic defaults unknown keys to money, so a
+                // %-indicator like TOP_CUSTOMER_SHARE showed its input
+                // `top_counterparty_share_customer = 42 ₼`. Coerce that money
+                // default to a plain number when the indicator isn't currency.
+                const indHint = unitToHint(ind.unit);
+                let hint = k === ind.code ? indHint : hintForKey(k);
+                if (indHint !== "money" && hint === "money") hint = "ratio";
+                return (
+                  <tr key={k} className="border-b border-border/30 last:border-b-0">
+                    <td className="py-0.5 pr-3 text-muted-foreground font-mono">{k}</td>
+                    <td
+                      className="py-0.5 text-gray-200 text-right"
+                      title={Number.isFinite(v) ? v.toLocaleString("ru-RU") : undefined}
+                    >
+                      {formatAggValue(v, hint)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
