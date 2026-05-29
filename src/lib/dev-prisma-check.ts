@@ -29,6 +29,11 @@
 
 import { Prisma } from "@prisma/client"
 import type { PrismaClient } from "@prisma/client"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger. Dev-only diagnostic;
+// logger pretty-prints in dev (the only env this runs in).
+const log = getLogger("dev-prisma-check")
 
 interface GlobalWithFlag {
   __devPrismaCheckRan?: boolean
@@ -109,15 +114,14 @@ export function startDevPrismaCheck(prisma: PrismaClient): void {
       lines.push(
         "  This warning is dev-only. Production builds skip the check.",
       )
-      console.warn(lines.join("\n"))
+      log.warn(lines.join("\n"))
     })
     .catch((err) => {
       // DB not reachable / permissions / introspection failure — not
       // worth blocking the app over. Log once and move on.
-      console.warn(
-        "[dev-prisma-check] Could not verify schema/DB consistency:",
-        err instanceof Error ? err.message : String(err),
-      )
+      log.warn("Could not verify schema/DB consistency", {
+        err: err instanceof Error ? err.message : String(err),
+      })
     })
 }
 

@@ -17,6 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:admin:indicator-backlog");
 import { computeIndicatorBacklog } from "@/lib/risk/indicator-backlog";
 
 export async function GET(request: NextRequest) {
@@ -42,7 +46,9 @@ export async function GET(request: NextRequest) {
       headers: { "Cache-Control": "private, max-age=30" },
     });
   } catch (err) {
-    console.error("indicator-backlog error", err);
+    log.error("backlog computation failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       { error: "Failed to compute backlog" },
       { status: 500 },

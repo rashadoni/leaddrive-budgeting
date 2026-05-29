@@ -46,6 +46,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getTranslations } from "next-intl/server";
 import PptxGenJS from "pptxgenjs";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:board-deck:export-pptx");
 import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods";
 import {
   DEFAULT_ALERT_RULE_IDS,
@@ -186,7 +190,9 @@ export async function GET(req: NextRequest) {
       { prisma },
     );
   } catch (err) {
-    console.error("[board-deck/export-pptx] buildTrendSeries failed", err);
+    log.error("buildTrendSeries failed", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     trendSeries = [];
   }
 

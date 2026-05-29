@@ -6,6 +6,10 @@ import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-loc
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { deriveMonthIndex } from "@/lib/budgeting/derive-month-index"
 import { withDeprecation } from "@/lib/api-deprecation"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:budgeting:import-csv")
 
 const importCsvSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -135,8 +139,11 @@ async function _POST(req: NextRequest) {
         },
       })
       matched++
-    } catch (err: any) {
-      console.error(`Import CSV row ${i + 1} error:`, err)
+    } catch (err: unknown) {
+      log.error("CSV row import error", {
+        row: i + 1,
+        err: err instanceof Error ? err.message : String(err),
+      })
       unmatched++
       errors.push({ row: i + 1, error: "Failed to process row" })
     }

@@ -7,6 +7,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:admin:recent-crossings")
 import { getRecentCrossingsForSource } from "@/lib/server/get-recent-crossings-for-source"
 
 export const maxDuration = 5
@@ -35,7 +39,9 @@ export async function GET(
     )
     return NextResponse.json({ crossings: summaries })
   } catch (err) {
-    console.error("[recent-crossings GET] failed:", err)
+    log.error("GET failed", {
+      err: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json(
       { error: "Failed to fetch recent crossings" },
       { status: 500 },

@@ -18,6 +18,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:admin:run-crossing-scan")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
 import { runCrossingScan } from "@/lib/intel/crossing-scan-runner"
@@ -129,7 +133,9 @@ export async function POST(request: NextRequest) {
       perLang,
     })
   } catch (err) {
-    console.error("[crossing-scan POST] failed:", err)
+    log.error("POST failed", {
+      err: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : String(err),

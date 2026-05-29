@@ -20,6 +20,11 @@
  */
 
 import type { EmailService, EmailPayload, SendResult } from "./types"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger (muted in tests by
+// default, so the in-memory stub no longer floods vitest stdout).
+const log = getLogger("email:in-memory")
 
 interface SentEmail extends EmailPayload {
   messageId: string
@@ -34,17 +39,15 @@ export class InMemoryEmailService implements EmailService {
     const messageId = `mem-${this.nextId++}-${Date.now()}`
     const record: SentEmail = { ...payload, messageId, sentAt: new Date() }
     this.sent.push(record)
-    // Best-effort dev console log — short, doesn't leak body to logs.
-    if (typeof console !== "undefined" && console.log) {
-      const kind = payload.metadata?.kind ?? "email"
-      // Count both `to` and `bcc` — bcc-only broadcasts (e.g. notifyApprovalCreated)
-      // would otherwise log "0 recipients" and look like noop. Single recipient
-      // (object form, not array) counts as 1.
-      const toCount = Array.isArray(payload.to) ? payload.to.length : 1
-      const bccCount = payload.bcc?.length ?? 0
-      const total = toCount + bccCount
-      console.log(`[email/in-memory] sent ${kind} (${total} recipient${total === 1 ? "" : "s"})`)
-    }
+    // Best-effort dev trace — short, doesn't leak body to logs.
+    const kind = payload.metadata?.kind ?? "email"
+    // Count both `to` and `bcc` — bcc-only broadcasts (e.g. notifyApprovalCreated)
+    // would otherwise log "0 recipients" and look like noop. Single recipient
+    // (object form, not array) counts as 1.
+    const toCount = Array.isArray(payload.to) ? payload.to.length : 1
+    const bccCount = payload.bcc?.length ?? 0
+    const total = toCount + bccCount
+    log.info("sent", { kind, recipients: total })
     return { ok: true, messageId }
   }
 

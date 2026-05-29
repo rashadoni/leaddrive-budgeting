@@ -27,6 +27,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { chromium } from "playwright";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:board-deck:export-pdf");
 import {
   currentBakuYear,
   parsePeriod,
@@ -165,9 +169,10 @@ export async function GET(req: NextRequest) {
     // Architect Turn-XLVII Suggestion: log the error for production
     // observability so leaked processes can be traced post-mortem.
     await browser.close().catch((err) => {
-      console.error(
-        `[board-deck/export-pdf] browser.close() failed (orgId=${auth.orgId}): ${err instanceof Error ? err.message : String(err)}`,
-      );
+      log.error("browser.close() failed", {
+        orgId: auth.orgId,
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
   }
 }

@@ -8,6 +8,10 @@ import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getEffectivePlanned as getEffectivePlannedPure } from "@/lib/budgeting/effective-planned"
 import { currentBakuYearMonth } from "@/lib/risk/periods"
 import { computeElapsedMonthIndices } from "@/lib/budgeting/elapsed-months"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:budgeting:analytics")
 
 // Phase 8 D3 (2026-05-28) — typed shape for the budgetLine.findMany
 // include result. Replaces the 26 `(l as any).account` / `(l as any)
@@ -128,9 +132,13 @@ export async function GET(req: NextRequest) {
         // regressions don't silently mask data-pipeline gaps. Note: the
         // pure helper handles the FALLBACK return; we just log here BEFORE
         // it does so there's a 1:1 log:fallback correspondence.
-        console.warn(
-          `[analytics] getEffectivePlanned fallback fired — orgId=${orgId} planId=${planId} lineId=${l.id} accountCode=${l.account?.code ?? ""} stored=${l.plannedAmount}`
-        )
+        log.warn("getEffectivePlanned fallback fired", {
+          orgId,
+          planId,
+          lineId: l.id,
+          accountCode: l.account?.code ?? "",
+          stored: l.plannedAmount,
+        })
       }
       return computed
     })

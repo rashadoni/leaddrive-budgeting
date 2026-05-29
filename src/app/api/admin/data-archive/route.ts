@@ -36,6 +36,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:admin:data-archive")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { archiveRows, restoreRows } from "@/lib/server/archive"
 
@@ -170,7 +174,10 @@ export async function POST(request: NextRequest) {
       auditEventId: result.auditEventId,
     })
   } catch (err) {
-    console.error(`[admin/data-archive ${mode}] failed:`, err)
+    log.error("data-archive operation failed", {
+      mode,
+      err: err instanceof Error ? err.message : String(err),
+    })
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : String(err),

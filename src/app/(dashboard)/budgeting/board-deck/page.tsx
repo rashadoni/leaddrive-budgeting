@@ -12,6 +12,10 @@ import { getOrCreateNarration } from "@/lib/board-deck/get-or-create-narration";
 import { hasAnthropicKey } from "@/lib/ai/client";
 import { computeHoldingComposite } from "@/features/board-deck/lib/holding-composite";
 import { buildTrendSeries } from "@/features/board-deck/lib/build-trend-series";
+import { getLogger } from "@/lib/log";
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("page:board-deck");
 import { HeroSection } from "@/features/board-deck/components/HeroSection";
 import { CompositeTrendChart } from "@/features/board-deck/components/CompositeTrendChart";
 import { MetricCard } from "@/features/board-deck/components/MetricCard";
@@ -165,7 +169,10 @@ export default async function BoardDeckPage({
     },
     { prisma },
   ).catch((err) => {
-    console.error("[board-deck] buildTrendSeries failed:", err);
+    log.error("buildTrendSeries failed", {
+      period,
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   });
 

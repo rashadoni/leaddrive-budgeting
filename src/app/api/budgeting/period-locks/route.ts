@@ -28,6 +28,10 @@ import { z, ZodError } from "zod"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { enforceRateLimit } from "@/lib/rate-limit"
+import { getLogger } from "@/lib/log"
+
+// Phase 8 D4 final (2026-05-29) — structured logger.
+const log = getLogger("api:budgeting:period-locks")
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import {
   parseLockedPeriods,
@@ -174,7 +178,10 @@ export async function POST(req: NextRequest) {
       const { createPeriodSnapshot } = await import("@/lib/budgeting/period-snapshot")
       await createPeriodSnapshot(prisma, session.orgId, parsed.period, session.userId, parsed.reason ?? null)
     } catch (e) {
-      console.error("[period-locks] snapshot create failed", e)
+      log.error("snapshot create failed", {
+        period: parsed.period,
+        err: e instanceof Error ? e.message : String(e),
+      })
       snapshotStale = true
     }
   }
