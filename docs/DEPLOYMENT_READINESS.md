@@ -8,10 +8,15 @@ This doc is the **pre-deploy gate** — the checklist + reference an
 on-call reviewer walks through to confirm the stack is ready for
 real-customer load.
 
-**Phase status (2026-05-03):** Phase 7.G Turn B. The app deploys today
-via `deploy/README.md`'s Docker Compose flow (single-VM target). Vercel
-serverless is a roadmap target with known infrastructure gaps tracked
-in §4 + CARRYOVER.
+**Phase status (updated 2026-05-29, Phase 8):** The app deploys via
+`deploy/README.md`'s Docker Compose flow (single-VM target). Since the v1 of
+this doc (2026-05-03), shipped + relevant to a deploy: **Phase 5.2 RLS** (two
+Postgres roles + `withOrgScope` on 16 routes — §1 + §8.2 updated), **Phase 6
+BullMQ/Redis** queue behind `QUEUE_BACKEND` (§1.1 updated), the **Phase 8 G3
+auth-gate audit** (`docs/AUTH_GATE_AUDIT.md` — 0 exposed endpoints; F1 SSE gate
+shipped, F3 `/api` middleware deferred — see §8.2), CI `tsc --noEmit` gate, and
+the M7 + visual-baseline regression gates. Vercel serverless is still a future
+target with the §4.3 gaps open.
 
 ---
 
@@ -23,6 +28,11 @@ rotation cadence, and what breaks if it's wrong.
 | Var | Required | Read from | Supplier | Rotation | Failure mode if wrong |
 |-----|----------|-----------|----------|----------|------------------------|
 | `DATABASE_URL` | YES | `prisma/schema.prisma`, all Prisma calls | DBA | Never (rotate via password change in `POSTGRES_PASSWORD`) | App container restart-loops; logs show Prisma `P1001` |
+| `DATABASE_URL_ADMIN` | YES (RLS) | `src/lib/prisma-admin.ts` — BYPASSRLS role for migrations + admin/cron paths | DBA | With `budgetpro_admin` pw | RLS migrations + admin tasks fail; falls back to default client |
+| `DATABASE_URL_APP` | YES (RLS) | `withOrgScope` (16 org-scoped routes) — restricted `budgetpro_app` role, NO BYPASSRLS | DBA | With `budgetpro_app` pw | DB-layer tenant isolation NOT enforced (app-layer org-scope still holds, but defence-in-depth lost) |
+| `QUEUE_BACKEND` | NO (default `inprocess`) | `src/lib/queue/feature-flag.ts` | SRE | Never | `bullmq` without a running worker → recompute jobs never drain |
+| `REDIS_URL` | NO (only if `QUEUE_BACKEND=bullmq`) | `src/lib/queue/redis-client.ts` | SRE | On Redis credential change | BullMQ worker can't connect; jobs queue with no consumer |
+| `LOG_LEVEL` | NO (default `info`) | `src/lib/log.ts` | SRE | Never | Wrong verbosity only |
 | `POSTGRES_USER` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | DB container won't init |
 | `POSTGRES_PASSWORD` | YES (deploy) | `docker-compose.yml` | DBA | Annual or on incident | App can't connect; downstream of `DATABASE_URL` |
 | `POSTGRES_DB` | YES (deploy) | `docker-compose.yml` | DBA | Never | DB container won't init |
@@ -43,8 +53,9 @@ to catch drift.
 
 ### 1.1 What's NOT in the matrix (and why)
 
-- `REDIS_URL` / `BULLMQ_*` — Phase 7.E C6 v3 follow-up; scheduler infra
-  not yet shipped. Tracked as 🔄 in CARRYOVER.
+- `REDIS_URL` / BullMQ — **shipped Phase 6** (now IN the §1 matrix), behind
+  the `QUEUE_BACKEND` flag (default `inprocess`). Only needed if you run the
+  dedicated worker (`scripts/run-worker.ts`); see `docs/QUEUE_RUNBOOK.md`.
 - `SMTP_*` / `RESEND_API_KEY` — no email pipeline yet (alerts surface
   in-app only). Roadmap.
 - `SENTRY_DSN` / `DATADOG_API_KEY` — no APM/error-tracking integration
@@ -553,13 +564,24 @@ Roadmap; not Phase 7.
 
 ### 8.2 Access control
 
-- **App-level RBAC**: `User.role ∈ {admin, manager, editor, viewer}` per Org
-- **No row-level security (RLS)** in Postgres. Tenant isolation enforced
-  in app layer via `where: { organizationId: session.orgId }` on every
-  query. Roadmap item: ROADMAP §5.2.
+- **App-level RBAC**: `User.role ∈ {admin, manager, editor, viewer}` per Org,
+  enforced per-handler via `requireRole` / `requireAuth` / `getOrgId`. The
+  **Phase 8 G3 auth-gate audit** (`docs/AUTH_GATE_AUDIT.md`) verified per-method
+  that 0 data-serving endpoints are unauthenticated across all 143 API routes.
+- **Row-level security (RLS)**: **shipped Phase 5.2.** Two Postgres roles
+  (`budgetpro_admin` BYPASSRLS for migrations/admin, `budgetpro_app` restricted
+  for request handlers) + RLS policies; org-scoped routes run inside
+  `withOrgScope` (16 routes) so tenant isolation is enforced at the DB layer,
+  not just the app layer (`where: { organizationId }`). Set `DATABASE_URL_APP`
+  + `DATABASE_URL_ADMIN` (§1) to activate it on prod.
+- **API auth defence-in-depth (F3)**: a global `/api` middleware is DEFERRED —
+  attempted 2026-05-29 via a `getToken` edge middleware but it broke NextAuth's
+  `/api/auth/*` (Auth.js v5 catch-all interference); the correct split-config
+  approach is documented in `docs/AUTH_GATE_AUDIT.md` (F3) for the deploy. Not a
+  hole — every route already self-gates; this is the optional safety net.
 - **Audit log**: `AuditEvent` records all state-changing operations
-  with actorUserId + IP + userAgent. 365-day retention (manual prune
-  until BullMQ ships).
+  with actorUserId + IP + userAgent. 365-day retention (daily physical-purge
+  cron shipped Phase 1.4 / 7.M).
 
 ### 8.3 Backup + retention
 
