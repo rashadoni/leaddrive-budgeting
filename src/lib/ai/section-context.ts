@@ -164,8 +164,16 @@ async function computeBalanceSheet(
   companyName: string | null,
 ) {
   const plan = await verifyPlan(orgId, planId)
+  // Phase 8 D3 (2026-05-29) — Phase 2.1 dropped the `accountName` String
+  // column from BalanceSheetLine; the canonical name lives on the
+  // ChartOfAccount FK. Without the include + relation read, `r.accountName`
+  // was `undefined` at runtime (masked by `prisma: any`), so every line
+  // collapsed into a single "undefined" bucket and the AI's per-account
+  // balance-sheet breakdown was meaningless. Include the account, read
+  // `account.name` (fall back to the code, then accountId).
   const rows = await prisma.balanceSheetLine.findMany({
     where: { organizationId: orgId, planId },
+    include: { account: { select: { code: true, name: true } } },
   })
   const byType = { asset: 0, liability: 0, equity: 0 } as Record<string, number>
   const decOnly: Record<string, Record<string, number>> = { asset: {}, liability: {}, equity: {} }
@@ -173,7 +181,8 @@ async function computeBalanceSheet(
     if (r.month !== 12) continue
     byType[r.lineType] = (byType[r.lineType] ?? 0) + r.amount
     const bucket = decOnly[r.lineType] ?? {}
-    bucket[r.accountName] = (bucket[r.accountName] ?? 0) + r.amount
+    const acctName = r.account?.name ?? r.account?.code ?? r.accountId
+    bucket[acctName] = (bucket[acctName] ?? 0) + r.amount
     decOnly[r.lineType] = bucket
   }
   const top = (bucket: Record<string, number>) =>
