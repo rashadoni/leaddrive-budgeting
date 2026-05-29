@@ -17,7 +17,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { filterOperationalCompanies } from '@/lib/risk/targets';
+import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 import {
   computeCompositeByCompany,
   type CompositeScore,
@@ -106,7 +106,7 @@ export async function buildBoardSnapshot(args: {
 }): Promise<BoardSnapshot | null> {
   const { orgId, period } = args;
 
-  const [org, companiesRaw, indicators] = await Promise.all([
+  const [org, companiesRaw, indicatorsRaw] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
       select: { name: true, slug: true, settings: true },
@@ -143,6 +143,11 @@ export async function buildBoardSnapshot(args: {
         // Phase 8 fix: needed so the Board Deck composite is WEIGHTED,
         // identical to the Risk Terminal (see cells.map below).
         weight: true,
+        // Phase 8 fix: category + requiredInputs drive the same
+        // internal-category filter the matrix endpoint applies, so the deck
+        // composites over the SAME indicator set as the terminal.
+        category: true,
+        requiredInputs: true,
         sortOrder: true,
       },
       orderBy: { sortOrder: 'asc' },
@@ -150,6 +155,15 @@ export async function buildBoardSnapshot(args: {
   ]);
 
   if (!org) return null;
+
+  // Phase 8 fix: mirror the matrix endpoint's render filter — drop
+  // internal-category indicators UNLESS rollup-bearing. Without it the deck
+  // composited over a superset (e.g. IND_REVENUE_TOTAL, an internal revenue
+  // *level*), so its scores ran ~2 pts above the terminal for the same
+  // company. Now both surfaces use the identical cell set.
+  const indicators = indicatorsRaw.filter(
+    (i) => i.category !== 'internal' || isRollupIndicator(i),
+  );
 
   type CompanyRawShape = (typeof companiesRaw)[number];
   type IndicatorShape = (typeof indicators)[number];

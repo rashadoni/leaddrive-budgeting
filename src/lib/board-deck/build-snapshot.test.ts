@@ -111,6 +111,20 @@ describe('buildBoardSnapshot', () => {
         weight: 3,
         sortOrder: 3,
       },
+      // Phase 8 lock: an internal-category indicator. The deck must FILTER it
+      // out (mirroring the matrix endpoint), so snap.indicators stays 3 codes
+      // and totals.cells stays 6. If the internal-filter regresses, this
+      // indicator leaks in and those assertions fail.
+      {
+        id: 'ind_rev',
+        code: 'IND_REVENUE_TOTAL',
+        nameEn: 'Total Revenue',
+        direction: 'higher_is_better',
+        unit: '₼',
+        category: 'internal',
+        requiredInputs: [],
+        sortOrder: 4,
+      },
     ]);
     prismaMock.indicatorValue.findMany.mockResolvedValue([
       // ALPHA: 2 green, 1 amber → composite ≈ (100+100+50)/3 = 83 → 'green'
