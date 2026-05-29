@@ -177,13 +177,13 @@ export async function buildBoardSnapshot(args: {
     companyId: string;
     indicatorId: string;
     value: number | null;
-    status: HeatMapCell['status'];
+    status: string;
   };
   const cells: HeatMapCell[] = values.map((v: ValueShape) => ({
     companyId: v.companyId,
     indicatorId: v.indicatorId,
     value: v.value as number,
-    status: v.status,
+    status: v.status as HeatMapCell['status'],
   }));
 
   // Phase 7.N wiring — extract per-company riskTags from settings JSON

@@ -128,7 +128,7 @@ export async function getOrCreateImpactForecast(
         if (!row) return undefined
         const hydrated: CachedEntry = {
           output: {
-            scenarios: row.scenarios as ImpactForecastOutput["scenarios"],
+            scenarios: row.scenarios as unknown as ImpactForecastOutput["scenarios"],
             recommendations:
               row.recommendations as ImpactForecastOutput["recommendations"],
             confidence: row.confidence as ImpactForecastOutput["confidence"],

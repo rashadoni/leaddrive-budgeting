@@ -28,6 +28,8 @@
  * Scheduler runs continue; Drift Dashboard surfaces the gap.
  */
 
+import type { PrismaClient as PrismaClientType, Prisma } from "@prisma/client"
+
 /** Known external API key sources. Keep in sync with
  *  `ExtendedAdapterOptions.apiKeys` in `commodity/index.ts`.
  *  `anthropic` (Phase 8 C4, 2026-05-28) lets each org BYO Claude
@@ -43,19 +45,11 @@ export const KNOWN_API_KEY_SOURCES = [
 export type ApiKeySource = (typeof KNOWN_API_KEY_SOURCES)[number]
 
 /** Minimal Prisma client shape — keeps this helper unit-testable
- *  without a live DB. */
-interface PrismaLike {
-  organization: {
-    findUnique(args: {
-      where: { id: string }
-      select: { settings: true }
-    }): Promise<{ settings: unknown } | null>
-    update(args: {
-      where: { id: string }
-      data: { settings: unknown }
-    }): Promise<unknown>
-  }
-}
+ *  without a live DB. Phase 8 D3 final (2026-05-29): typed as
+ *  `Pick<PrismaClient, "organization">` so the real (now strictly-typed)
+ *  `prisma` export is assignable at production call sites; unit tests
+ *  pass a 2-method stub via `as never`. */
+type PrismaLike = Pick<PrismaClientType, "organization">
 
 interface SettingsShape {
   apiKeys?: Partial<Record<ApiKeySource, string | null>>
@@ -178,7 +172,7 @@ export async function setApiKeys(
   const newSettings: SettingsShape = { ...settings, apiKeys: currentKeys }
   await prisma.organization.update({
     where: { id: orgId },
-    data: { settings: newSettings as unknown as Record<string, unknown> },
+    data: { settings: newSettings as unknown as Prisma.InputJsonValue },
   })
   return { updated, cleared, errors }
 }

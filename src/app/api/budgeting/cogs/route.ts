@@ -67,35 +67,81 @@ export async function POST(req: NextRequest) {
     if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cogs" })
   }
 
+  // Phase 8 D3 final (2026-05-29) — COGSBudgetLine.accountId is a REQUIRED
+  // ChartOfAccount FK since Phase 2.1 dropped the legacy `accountCode`
+  // String column. Resolve every item's FK up front and reject the batch
+  // when any code is free-text / unmatched: a COGS line cannot exist
+  // without an account. The retired `prisma: any` masked two runtime
+  // breaks here — a null `accountId` hit the NOT NULL FK, and writing the
+  // dropped `accountCode` (or spreading it via `...item`) threw a
+  // PrismaClientValidationError on a column the model no longer has.
+  const cogsItems: Array<Record<string, unknown>> = Array.isArray(body) ? body : [body]
+  const resolved = await Promise.all(
+    cogsItems.map(async (item) => ({
+      item,
+      accountId: await resolveAccountId(prisma, orgId, (item.accountCode as string) ?? ""),
+    })),
+  )
+  const unmatched = resolved.filter((r) => !r.accountId)
+  if (unmatched.length > 0) {
+    return NextResponse.json(
+      {
+        error: "Unmatched account codes — every COGS line needs a Chart-of-Accounts code",
+        codes: unmatched.map((r) => (r.item.accountCode as string) ?? "(missing)"),
+      },
+      { status: 400 },
+    )
+  }
+
   if (Array.isArray(body)) {
     const results = await Promise.all(
-      body.map(async (item: any) => {
-        // Phase 2.1 step 2 (Turn LII): resolve ChartOfAccount FK from
-        // the SAP-style accountCode string. Helper returns null for
-        // free-text or no-match — `accountId` stays unset and the
-        // legacy `accountCode` string drives display.
-        const accountId = await resolveAccountId(prisma, orgId, item.accountCode ?? "")
-        return prisma.cOGSBudgetLine.upsert({
+      resolved.map(({ item, accountId }) =>
+        prisma.cOGSBudgetLine.upsert({
           where: {
             planId_productLineId_year_month: {
-              planId: item.planId,
-              productLineId: item.productLineId,
-              year: item.year,
-              month: item.month,
+              planId: item.planId as string,
+              productLineId: item.productLineId as string,
+              year: item.year as number,
+              month: item.month as number,
             },
           },
-          update: { productionQty: item.productionQty, totalCost: item.totalCost, accountCode: item.accountCode, accountId, notes: item.notes },
-          create: { ...item, organizationId: orgId, accountId },
-        })
-      })
+          update: {
+            productionQty: item.productionQty as number | undefined,
+            totalCost: item.totalCost as number | undefined,
+            notes: item.notes as string | undefined,
+            accountId: accountId!,
+          },
+          create: {
+            organizationId: orgId,
+            planId: item.planId as string,
+            productLineId: item.productLineId as string,
+            accountId: accountId!,
+            year: item.year as number,
+            month: item.month as number,
+            productionQty: item.productionQty as number | undefined,
+            totalCost: item.totalCost as number | undefined,
+            notes: item.notes as string | undefined,
+          },
+        }),
+      ),
     )
     return NextResponse.json(results, { status: 201 })
   }
 
-  // Single-create path — same resolver call, same null-fallback contract.
-  const accountId = await resolveAccountId(prisma, orgId, body.accountCode ?? "")
+  // Single-create path — accountId guaranteed resolved by the gate above.
+  const { item, accountId } = resolved[0]
   const line = await prisma.cOGSBudgetLine.create({
-    data: { ...body, organizationId: orgId, accountId },
+    data: {
+      organizationId: orgId,
+      planId: item.planId as string,
+      productLineId: item.productLineId as string,
+      accountId: accountId!,
+      year: item.year as number,
+      month: item.month as number,
+      productionQty: item.productionQty as number | undefined,
+      totalCost: item.totalCost as number | undefined,
+      notes: item.notes as string | undefined,
+    },
   })
   return NextResponse.json(line, { status: 201 })
 }

@@ -271,7 +271,7 @@ export async function POST(req: NextRequest) {
         metric: row.metric,
         date: row.date.toISOString(),
         value: row.value,
-        unit: row.unit,
+        unit: row.unit ?? undefined,
         sourceNote: body.sourceNote,
         ...(existing ? { previousValue: existing.value } : {}),
       },

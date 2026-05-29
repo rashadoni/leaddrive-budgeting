@@ -46,7 +46,7 @@ describe("getAnthropicClientForOrg", () => {
     const { getAnthropicClientForOrg, __resetAnthropicClientCacheForTests } =
       await import("./client")
     __resetAnthropicClientCacheForTests()
-    const client = await getAnthropicClientForOrg(prisma, "org1")
+    const client = await getAnthropicClientForOrg(prisma as never, "org1")
     expect(client).toBeTruthy()
     // The per-org key is the one Anthropic SDK ended up with.
     // We can't peek inside the SDK directly, but we CAN assert prisma
@@ -67,7 +67,7 @@ describe("getAnthropicClientForOrg", () => {
     const { getAnthropicClientForOrg, __resetAnthropicClientCacheForTests } =
       await import("./client")
     __resetAnthropicClientCacheForTests()
-    const client = await getAnthropicClientForOrg(prisma, "org2")
+    const client = await getAnthropicClientForOrg(prisma as never, "org2")
     expect(client).toBeTruthy()
   })
 
@@ -79,7 +79,7 @@ describe("getAnthropicClientForOrg", () => {
     const { getAnthropicClientForOrg, __resetAnthropicClientCacheForTests } =
       await import("./client")
     __resetAnthropicClientCacheForTests()
-    await expect(getAnthropicClientForOrg(prisma, "org3")).rejects.toThrow(
+    await expect(getAnthropicClientForOrg(prisma as never, "org3")).rejects.toThrow(
       /No Anthropic API key available/,
     )
   })
@@ -92,8 +92,8 @@ describe("getAnthropicClientForOrg", () => {
     const { getAnthropicClientForOrg, __resetAnthropicClientCacheForTests } =
       await import("./client")
     __resetAnthropicClientCacheForTests()
-    const c4 = await getAnthropicClientForOrg(prisma, "org4")
-    const c5 = await getAnthropicClientForOrg(prisma, "org5")
+    const c4 = await getAnthropicClientForOrg(prisma as never, "org4")
+    const c5 = await getAnthropicClientForOrg(prisma as never, "org5")
     // Both orgs fall back to env key → same SDK instance.
     expect(c4).toBe(c5)
   })
@@ -104,7 +104,7 @@ describe("hasAnthropicKeyForOrg", () => {
     Object.assign(process.env, { ANTHROPIC_API_KEY: "sk-ant-env-set-bbb" })
     const prisma = makePrisma({})
     const { hasAnthropicKeyForOrg } = await import("./client")
-    expect(await hasAnthropicKeyForOrg(prisma, "any-org")).toBe(true)
+    expect(await hasAnthropicKeyForOrg(prisma as never, "any-org")).toBe(true)
     expect(prisma.organization.findUnique).not.toHaveBeenCalled()
   })
 
@@ -114,13 +114,13 @@ describe("hasAnthropicKeyForOrg", () => {
       org6: { apiKeys: { anthropic: "sk-ant-only-org-ccc" } },
     })
     const { hasAnthropicKeyForOrg } = await import("./client")
-    expect(await hasAnthropicKeyForOrg(prisma, "org6")).toBe(true)
+    expect(await hasAnthropicKeyForOrg(prisma as never, "org6")).toBe(true)
   })
 
   it("returns false when neither env nor per-org key is set", async () => {
     delete process.env.ANTHROPIC_API_KEY
     const prisma = makePrisma({ org7: {} })
     const { hasAnthropicKeyForOrg } = await import("./client")
-    expect(await hasAnthropicKeyForOrg(prisma, "org7")).toBe(false)
+    expect(await hasAnthropicKeyForOrg(prisma as never, "org7")).toBe(false)
   })
 })

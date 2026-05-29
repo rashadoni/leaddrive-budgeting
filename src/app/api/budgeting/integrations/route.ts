@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -57,8 +58,8 @@ export async function POST(req: NextRequest) {
       organizationId: orgId,
       provider,
       name,
-      config: config || {},
-      categoryMapping: categoryMapping || {},
+      config: (config || {}) as Prisma.InputJsonValue,
+      categoryMapping: (categoryMapping || {}) as Prisma.InputJsonValue,
     },
   })
 

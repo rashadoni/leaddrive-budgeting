@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -82,7 +83,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       ...(data.sortOrder !== undefined ? { sortOrder: data.sortOrder } : {}),
       ...(data.chartType !== undefined ? { chartType: data.chartType } : {}),
       ...(data.chartConfig !== undefined ? { chartConfig: data.chartConfig } : {}),
-      ...(data.computedFields !== undefined ? { computedFields: data.computedFields } : {}),
+      ...(data.computedFields !== undefined ? { computedFields: data.computedFields ?? Prisma.JsonNull } : {}),
       ...(data.isShared !== undefined ? { isShared: data.isShared } : {}),
     },
   })

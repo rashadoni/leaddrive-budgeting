@@ -58,6 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   let created = 0
   let skipped = 0
+  let skippedNoAccount = 0
 
   for (const t of templates) {
     const key = `${t.name}||${t.lineType}`
@@ -66,11 +67,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       continue
     }
 
-    // Phase 2.1 step 2 (Turn LI): if the template's name is itself a
-    // SAP-style code (e.g. "601-01-02"), look up the matching CoA row
-    // so the BudgetLine carries the FK; free-text template names get
-    // null and the legacy `category` string drives display.
+    // Phase 8 D3 final (2026-05-29): BudgetLine.accountId is a REQUIRED
+    // ChartOfAccount FK since Phase 2.1 (the legacy `category` string that
+    // used to back free-text templates was dropped). A template whose name
+    // is not a resolvable SAP-style account code can no longer produce a
+    // line — skip it and surface the count, instead of throwing the FK
+    // violation the old `prisma: any` masked.
     const accountId = await resolveAccountId(prisma, orgId, t.name)
+    if (!accountId) {
+      skippedNoAccount++
+      continue
+    }
 
     await prisma.budgetLine.create({
       data: {
@@ -91,5 +98,5 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     created++
   }
 
-  return NextResponse.json({ data: { created, skipped } })
+  return NextResponse.json({ data: { created, skipped, skippedNoAccount } })
 }

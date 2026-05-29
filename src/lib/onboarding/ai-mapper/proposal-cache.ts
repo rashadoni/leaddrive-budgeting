@@ -147,7 +147,7 @@ export async function getOrCreateProposal(
   if (!opts.bypassCache) {
     const entry = await tryPrismaThenFallback<CachedEntry | undefined>(
       async () => {
-        const row = await defaultPrisma.aiMapperProposalCache.findUnique({
+        const row = await defaultPrisma.aIMapperProposalCache.findUnique({
           where: {
             organizationId_structureHash_promptVersion_modelName: {
               organizationId: opts.orgId,
@@ -179,7 +179,7 @@ export async function getOrCreateProposal(
         // Persist counter bump — best-effort, fall through if table missing
         await tryPrismaThenFallback<void>(
           async () => {
-            await defaultPrisma.aiMapperProposalCache.update({
+            await defaultPrisma.aIMapperProposalCache.update({
               where: {
                 organizationId_structureHash_promptVersion_modelName: {
                   organizationId: opts.orgId,
@@ -241,7 +241,7 @@ export async function getOrCreateProposal(
   // ── WRITE path: Prisma upsert + in-memory mirror ───────────────────
   await tryPrismaThenFallback<void>(
     async () => {
-      await defaultPrisma.aiMapperProposalCache.upsert({
+      await defaultPrisma.aIMapperProposalCache.upsert({
         where: {
           organizationId_structureHash_promptVersion_modelName: {
             organizationId: opts.orgId,
@@ -322,7 +322,7 @@ export async function promoteCacheEntryToTemplate(
   return await tryPrismaThenFallback<boolean>(
     async () => {
       // Find first to discriminate "no row" from "table missing" cleanly.
-      const row = await defaultPrisma.aiMapperProposalCache.findUnique({
+      const row = await defaultPrisma.aIMapperProposalCache.findUnique({
         where: {
           organizationId_structureHash_promptVersion_modelName: {
             organizationId: orgId,
@@ -342,7 +342,7 @@ export async function promoteCacheEntryToTemplate(
         memoryEntry.lastUsedAt = memoryEntry.lastUsedAt ?? null as unknown as number
         return true
       }
-      await defaultPrisma.aiMapperProposalCache.update({
+      await defaultPrisma.aIMapperProposalCache.update({
         where: {
           organizationId_structureHash_promptVersion_modelName: {
             organizationId: orgId,
@@ -389,7 +389,7 @@ export async function promoteCacheEntryToTemplate(
 export async function listTemplates(orgId: string): Promise<TemplateInfo[]> {
   return await tryPrismaThenFallback<TemplateInfo[]>(
     async () => {
-      const rows = await defaultPrisma.aiMapperProposalCache.findMany({
+      const rows = await defaultPrisma.aIMapperProposalCache.findMany({
         where: { organizationId: orgId, isTemplate: true },
         orderBy: { lastUsedAt: { sort: "desc", nulls: "last" } },
       })
@@ -479,7 +479,7 @@ export async function deleteTemplate(cacheKey: string): Promise<boolean> {
   return await tryPrismaThenFallback<boolean>(
     async () => {
       try {
-        await defaultPrisma.aiMapperProposalCache.delete({
+        await defaultPrisma.aIMapperProposalCache.delete({
           where: {
             organizationId_structureHash_promptVersion_modelName: {
               organizationId: orgId,

@@ -16,6 +16,9 @@ const { prismaMock } = vi.hoisted(() => ({
     },
     budgetPlan: { findMany: vi.fn() },
     organization: { findUnique: vi.fn() },
+    // Phase 8 D3 final — accountId is a required CoA FK since Phase 2.1, so
+    // the route resolves it via chartOfAccount.findUnique before writing.
+    chartOfAccount: { findUnique: vi.fn() },
   },
 }))
 
@@ -33,6 +36,9 @@ const validBody = {
   month: 1,
   productionQty: 100,
   totalCost: 5000,
+  // SAP-style code so resolveAccountId() maps it to a CoA row (the FK is
+  // required since Phase 2.1; unmatched codes now 400).
+  accountCode: "601-01-02",
 }
 
 beforeEach(() => {
@@ -42,6 +48,7 @@ beforeEach(() => {
     { id: "p1", periodType: "annual", year: 2026, month: null, quarter: null },
   ])
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
+  prismaMock.chartOfAccount.findUnique.mockReset().mockResolvedValue({ id: "acc1" })
 })
 
 describe("POST /api/budgeting/cogs — period lock (Turn LXVIII)", () => {

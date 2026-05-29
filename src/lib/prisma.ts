@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 /**
  * Prisma client with multi-tenant extensions.
  *
@@ -8,24 +6,42 @@
  * Run `npx prisma generate` after Docker setup (Task 0.16).
  */
 
-let PrismaClientClass: any
+import type { PrismaClient as PrismaClientType, Prisma } from "@prisma/client"
 
-try {
-  PrismaClientClass = require("@prisma/client").PrismaClient
-} catch {
-  // PrismaClient not generated yet — provide stub for build
-  PrismaClientClass = class StubPrismaClient {
-    $extends() { return this }
-  }
+// Phase 8 D3 final (2026-05-29) — retired the file-level `eslint-disable
+// @typescript-eslint/no-explicit-any` + the `PrismaClientClass: any` /
+// `prisma: any` exports. `prisma` is now strictly typed `PrismaClient`,
+// so every consumer gets real model types instead of `any`. The latent
+// bugs the `any` masked (dropped columns, missing models, null derefs)
+// were fixed in separate commits ahead of this tighten.
+
+interface PrismaCtor {
+  new (): PrismaClientType
 }
 
-const globalForPrisma = globalThis as unknown as { prisma: InstanceType<typeof PrismaClientClass> }
+let PrismaClientClass: PrismaCtor
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  PrismaClientClass = require("@prisma/client").PrismaClient as PrismaCtor
+} catch {
+  // PrismaClient not generated yet — provide stub for build. Only
+  // `$extends` is callable on the stub instance; the `as unknown` bridge
+  // satisfies the constructor shape without the full client type.
+  PrismaClientClass = class StubPrismaClient {
+    $extends() {
+      return this
+    }
+  } as unknown as PrismaCtor
+}
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClientType }
 
 const basePrisma = globalForPrisma.prisma ?? new PrismaClientClass()
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = basePrisma
 
-export const prisma = basePrisma
+export const prisma: PrismaClientType = basePrisma
 
 // Phase 7.F (Turn 13) — dev-only stale-Prisma-client detector. Fires once
 // per Node process, async, never throws. Catches the Turn 12 class of
@@ -58,20 +74,13 @@ if (
 // contributors into a third tenant-isolation pattern. RLS is the chosen
 // path; explicit `withOrgScope()` is the cron/admin escape hatch.
 
-/** Fire-and-forget audit log entry */
-export function logAudit(orgId: string, action: string, entityType: string, entityId: string, entityName?: string, extra?: { oldValue?: any; newValue?: any }) {
-  prisma.auditLog.create({
-    data: {
-      organizationId: orgId,
-      action,
-      entityType,
-      entityId,
-      entityName: entityName || undefined,
-      oldValue: extra?.oldValue || undefined,
-      newValue: extra?.newValue || undefined,
-    },
-  }).catch(() => {})
-}
+// Phase 8 D3 final (2026-05-29) — removed dead `logAudit()`. It
+// referenced `prisma.auditLog`, a model that does not exist in
+// schema.prisma (the audit table is `AuditEvent`, written via
+// `logAuditEvent` in `@/lib/audit/log` — 105 call sites). `logAudit`
+// had 0 callers and its `prisma.auditLog.create()` would have thrown
+// (caught by the `.catch(()=>{})`), so it never logged. The
+// `prisma: any` export masked the missing-model error.
 
 /** Fire-and-forget budget change log for Time Machine */
 export function logBudgetChange(opts: {
@@ -81,9 +90,9 @@ export function logBudgetChange(opts: {
   entityId: string
   action: string
   field?: string
-  oldValue?: any
-  newValue?: any
-  snapshot?: any
+  oldValue?: unknown
+  newValue?: unknown
+  snapshot?: unknown
   userId?: string
   // Phase 5.2 Stage 2 (2026-05-21) — optional tx so callers wrapped
   // in `withOrgScope` can route the write through their transaction
@@ -102,9 +111,9 @@ export function logBudgetChange(opts: {
       entityId: opts.entityId,
       action: opts.action,
       field: opts.field || undefined,
-      oldValue: opts.oldValue ?? undefined,
-      newValue: opts.newValue ?? undefined,
-      snapshot: opts.snapshot ?? undefined,
+      oldValue: (opts.oldValue ?? undefined) as Prisma.InputJsonValue | undefined,
+      newValue: (opts.newValue ?? undefined) as Prisma.InputJsonValue | undefined,
+      snapshot: (opts.snapshot ?? undefined) as Prisma.InputJsonValue | undefined,
       userId: opts.userId || undefined,
     },
   }).catch(() => {})

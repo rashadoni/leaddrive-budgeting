@@ -437,7 +437,10 @@ export async function GET(req: NextRequest) {
   // l.account is always set; looksLikeSapCode fallback retired.
   const deptMap = new Map<string, { expPlanned: number; expActual: number; revPlanned: number; revActual: number; forecast: number }>()
 
-  const resolveDept = (l: BudgetLineWithRelations): string => {
+  // Param loosened to the structural subset resolveDept actually reads, so
+  // it accepts both budgetLine rows (with the account include) and
+  // budgetActual rows (no account relation, department only).
+  const resolveDept = (l: { account?: { code: string; name: string } | null; department?: string | null }): string => {
     return l.account?.name ?? l.account?.code ?? l.department ?? "General"
   }
 

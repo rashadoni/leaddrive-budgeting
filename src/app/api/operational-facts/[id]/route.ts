@@ -67,7 +67,7 @@ export async function DELETE(
         metric: existing.metric,
         date: existing.date.toISOString(),
         previousValue: existing.value,
-        unit: existing.unit,
+        unit: existing.unit ?? undefined,
       },
     },
     context: { route: `/api/operational-facts/${id}` },

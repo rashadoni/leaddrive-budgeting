@@ -24,6 +24,7 @@
  * read-through pattern when ready.
  */
 
+import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import type { CommodityAdapter, CommodityDataPoint, CommodityFetchResult } from "./types"
@@ -154,12 +155,12 @@ export async function ingestCommodityData(
                 datetime: point.datetime,
                 value: point.value,
                 unit: point.unit ?? null,
-                raw: (point.raw ?? null) as object | null,
+                raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
               },
               update: {
                 value: point.value,
                 unit: point.unit ?? null,
-                raw: (point.raw ?? null) as object | null,
+                raw: (point.raw ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
                 fetchedAt: new Date(),
               },
             })

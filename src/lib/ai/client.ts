@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk"
+import type { PrismaClient as PrismaClientType } from "@prisma/client"
 import { getApiKey } from "@/lib/intel/api-keys"
 
 // Default to the Sonnet tier — cost/quality sweet spot for finance prose.
@@ -44,18 +45,11 @@ export function hasAnthropicKey(): boolean {
  * narrow `PrismaLike` interface; threading prisma keeps this function
  * testable without the global Prisma singleton.
  */
-interface PrismaLike {
-  organization: {
-    findUnique(args: {
-      where: { id: string }
-      select: { settings: true }
-    }): Promise<{ settings: unknown } | null>
-    update(args: {
-      where: { id: string }
-      data: { settings: unknown }
-    }): Promise<unknown>
-  }
-}
+// Phase 8 D3 final (2026-05-29) — `Pick<PrismaClient, "organization">` so
+// the real (now strictly-typed) `prisma` export is assignable at the
+// production call sites (explain / forecast / api-keys routes); unit
+// tests pass a 2-method stub via `as never`.
+type PrismaLike = Pick<PrismaClientType, "organization">
 
 export async function getAnthropicClientForOrg(
   prisma: PrismaLike,

@@ -32,6 +32,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
@@ -119,7 +120,10 @@ export async function PATCH(
 
   const updated = await prisma.company.update({
     where: { id: existing.id },
-    data: updateData,
+    // `industry` is a relation-backed scalar FK (industryRef), so it is only
+    // settable through the Unchecked update input. Cast bridges the hand-built
+    // partial to that shape; runtime payload is unchanged.
+    data: updateData as Prisma.CompanyUncheckedUpdateInput,
     select: { id: true, code: true, role: true, status: true, industry: true },
   });
 

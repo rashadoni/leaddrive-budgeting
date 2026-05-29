@@ -22,6 +22,7 @@
  * + the future BreachForecastPanel API consumer.
  */
 
+import { Prisma } from "@prisma/client"
 import { prisma as defaultPrisma } from "@/lib/prisma"
 import { tryPrismaThenFallback } from "@/lib/prisma-promotion"
 import type { ForecastedBreach } from "./breach-forecaster"
@@ -174,7 +175,7 @@ export async function evaluateAndPersistBreaches(
               predictedValue: b.predictedValue,
               predictedLower: b.predictedLower ?? null,
               predictedUpper: b.predictedUpper ?? null,
-              drivers: (b.drivers ?? null) as object | null,
+              drivers: (b.drivers ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
               computedAt,
             },
             update: {
@@ -185,7 +186,7 @@ export async function evaluateAndPersistBreaches(
               predictedValue: b.predictedValue,
               predictedLower: b.predictedLower ?? null,
               predictedUpper: b.predictedUpper ?? null,
-              drivers: (b.drivers ?? null) as object | null,
+              drivers: (b.drivers ?? Prisma.JsonNull) as Prisma.NullableJsonNullValueInput,
               computedAt,
             },
           })

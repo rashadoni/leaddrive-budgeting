@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
       sortOrder: data.sortOrder,
       chartType: data.chartType,
       chartConfig: data.chartConfig ?? null,
-      computedFields: data.computedFields ?? null,
+      computedFields: data.computedFields ?? Prisma.JsonNull,
       isShared: data.isShared,
     },
   })
