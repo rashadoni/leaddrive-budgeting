@@ -30,6 +30,7 @@ import {
   WatchlistTabs,
   ReadinessChip,
   CompositeMini,
+  RowFreshness,
   AllRow,
   TrustBadge,
   RiskTagChips,
@@ -153,6 +154,55 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     }
     return out;
   }, [matrix, companies]);
+  // Phase 8 A4 — per-company data-freshness, keyed by code: MAX(computedAt)
+  // across the entity's matrix cells, then sub-groups inherit MAX(own,
+  // descendants) via the same parent-walk as compositeByCode. ISO strings
+  // sort lexicographically === chronologically (same comparison the matrix
+  // route uses for the org-wide aggregate). Drives the RowFreshness chip.
+  const freshnessByCode = useMemo<Map<string, string>>(() => {
+    if (!matrix) return new Map<string, string>();
+    const byId = new Map<string, string>();
+    for (const c of matrix.cells) {
+      const ts = c.computedAt;
+      if (!ts) continue;
+      const prev = byId.get(c.companyId);
+      if (!prev || ts > prev) byId.set(c.companyId, ts);
+    }
+    const out = new Map<string, string>();
+    for (const co of matrix.companies) {
+      const ts = byId.get(co.id);
+      if (ts) out.set(co.code, ts);
+    }
+    type MatrixCo = (typeof matrix.companies)[number] & { parentCompanyId?: string | null };
+    const cosWithParent = matrix.companies as ReadonlyArray<MatrixCo>;
+    const childrenByParentId = new Map<string, MatrixCo[]>();
+    for (const co of cosWithParent) {
+      const pid = co.parentCompanyId ?? null;
+      if (pid === null) continue;
+      const list = childrenByParentId.get(pid);
+      if (list) list.push(co);
+      else childrenByParentId.set(pid, [co]);
+    }
+    let progressed = true;
+    let safety = 5;
+    while (progressed && safety-- > 0) {
+      progressed = false;
+      for (const [parentId, kids] of childrenByParentId) {
+        const parentCo = cosWithParent.find((c) => c.id === parentId);
+        if (!parentCo) continue;
+        let maxTs = out.get(parentCo.code) ?? null;
+        for (const k of kids) {
+          const kt = out.get(k.code);
+          if (kt && (!maxTs || kt > maxTs)) maxTs = kt;
+        }
+        if (maxTs && maxTs !== out.get(parentCo.code)) {
+          out.set(parentCo.code, maxTs);
+          progressed = true;
+        }
+      }
+    }
+    return out;
+  }, [matrix]);
   // Phase 7.M Step 5 (2026-05-19) — per-company readiness map keyed by
   // code. Direct from `co.readiness` for ops cos; parents inherit the
   // WORST tier of their direct children (a holding with one empty
@@ -649,6 +699,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           </span>
           <ReadinessChip data={readinessByCode.get(root.code) ?? null} />
           <CompositeMini score={compositeByCode.get(root.code)?.score ?? null} />
+          <RowFreshness iso={freshnessByCode.get(root.code) ?? null} />
           <span
             className="flex-1 truncate"
             // Phase 3.3 hover pattern — reveals fully-qualified
@@ -707,6 +758,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                   </span>
                   <ReadinessChip data={readinessByCode.get(child.code) ?? null} />
                   <CompositeMini score={compositeByCode.get(child.code)?.score ?? null} />
+                  <RowFreshness iso={freshnessByCode.get(child.code) ?? null} />
                   <span
                     className="flex-1 truncate"
                     title={`${child.code} — ${child.name}`}

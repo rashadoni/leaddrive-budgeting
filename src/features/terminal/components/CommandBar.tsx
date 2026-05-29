@@ -791,6 +791,10 @@ export function CommandBar() {
                 className="flex items-center cursor-pointer transition-colors hover:text-[#A78BFA]"
                 aria-label={t('commandBar.aiUsageAriaLabel')}
                 data-testid="commandbar-ai-usage-chip"
+                // Phase 8 A4 — per-user token total drifts every 60s poll;
+                // opt out of the visual-baseline diff (was silently drifting
+                // terminal-heatmap.png). Mirrors the FreshnessLabel pattern.
+                data-volatile="true"
               >
                 <span className="ml-2 mr-1">[you</span>
                 <Sparkles

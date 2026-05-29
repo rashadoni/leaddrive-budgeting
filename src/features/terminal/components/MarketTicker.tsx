@@ -98,6 +98,10 @@ export function MarketTicker() {
       role="status"
       aria-label={t("marketTicker.ariaLabel")}
       data-testid="market-ticker"
+      // Phase 8 A4 — live market values refresh on a timer; opt the whole
+      // ticker strip out of the visual-baseline diff (was silently drifting
+      // terminal-heatmap.png). Mirrors the FreshnessLabel pattern.
+      data-volatile="true"
       className="flex items-center gap-3 px-3 py-1 bg-[#050814] border-t border-gray-800/60 font-mono text-[10px] text-gray-400 overflow-x-auto whitespace-nowrap shrink-0"
     >
       <span className="text-gray-700 uppercase tracking-wider shrink-0">

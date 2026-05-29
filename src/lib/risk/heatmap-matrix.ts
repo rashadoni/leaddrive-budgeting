@@ -19,6 +19,12 @@ export interface HeatMapCell {
   indicatorId: string;
   value: number;
   status: IndicatorStatus;
+  /** Phase 8 A4 — ISO timestamp of `IndicatorValue.computedAt`. The matrix
+   *  API selects + emits it per cell (it already feeds the org-wide
+   *  `matrix.lastComputedAt` aggregate); typing it lets the client derive a
+   *  per-company freshness chip via a MAX-by-companyId groupby. Optional —
+   *  cells predating the select, or synthetic rollups, may omit it. */
+  computedAt?: string | null;
   /**
    * Phase 7.N C5 v2 — per-indicator composite weight.
    * Carried from `IndicatorDefinition.weight` via the matrix API.

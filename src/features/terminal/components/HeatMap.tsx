@@ -20,6 +20,7 @@ import {
   statusShape,
 } from '@/lib/risk/heatmap-matrix';
 import { resolveIndicatorLabel } from '../lib/resolve-indicator-label';
+import { formatFreshness } from '../lib/relative-time';
 import { inputToSourceCode } from '../hooks/use-drift-health';
 import { PeriodChips } from './PeriodChips';
 import { TimeMachineSlider } from './TimeMachineSlider';
@@ -619,17 +620,11 @@ function FreshnessLabel({ iso }: { iso: string }) {
     const tick = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(tick);
   }, []);
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return null;
-  const deltaSec = Math.max(0, Math.round((now - ts) / 1000));
-  let label: string;
-  if (deltaSec < 60) label = 'just now';
-  else if (deltaSec < 3600) label = `${Math.round(deltaSec / 60)}m ago`;
-  else if (deltaSec < 86400) label = `${Math.round(deltaSec / 3600)}h ago`;
-  else label = `${Math.round(deltaSec / 86400)}d ago`;
-  // Stale-after-24h flips the dot from teal (live) to amber (stale).
-  // Matches the trust-badge convention: real-time green / known-old amber.
-  const isStale = deltaSec > 86400;
+  // Phase 8 A4 — shared formatter (also drives the per-company CompanyTree
+  // chip). Stale-after-24h flips the dot teal→amber (trust-badge convention).
+  const parts = formatFreshness(iso, now);
+  if (!parts) return null;
+  const { label, isStale } = parts;
   return (
     <span
       className="inline-flex items-center gap-1 shrink-0 text-gray-500 text-[9px] tabular-nums"

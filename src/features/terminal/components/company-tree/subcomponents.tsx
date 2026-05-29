@@ -10,11 +10,12 @@
  * (verified by the visual-baseline gate).
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
 import { Bell, Star } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { TRUST_COLOR, TRUST_LABEL, type TrustStatus } from "@/lib/risk/trust-status";
+import { formatFreshness } from "../../lib/relative-time";
 
 /**
  * Phase B4 — watchlist tab strip. 5 tabs: ALL / STARRED / ALERTED /
@@ -387,5 +388,38 @@ export function StarToggle(props: {
         aria-hidden="true"
       />
     </button>
+  );
+}
+
+/**
+ * Phase 8 A4 — per-company data-freshness chip. `iso` is the MAX(computedAt)
+ * across the entity's matrix cells (or its descendants', for sub-groups).
+ * Fixed-width (`w-9`, right-aligned) so the compact label ("2h" / "15m" /
+ * "3d" / "now") never shifts the sibling chips as it ticks; `data-volatile`
+ * so the visual-baseline gate masks the rotating text. Dot is emerald when
+ * fresh, amber when >24h stale (trust-badge convention). Renders nothing when
+ * the entity has no computed cells, keeping the row clean.
+ */
+export function RowFreshness({ iso }: { iso: string | null }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+  const parts = formatFreshness(iso, now);
+  if (!iso || !parts) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 shrink-0 w-9 justify-end text-[9px] tabular-nums text-gray-500"
+      title={`Last recompute: ${new Date(iso).toLocaleString()} (${parts.label})`}
+      data-testid="row-freshness"
+      data-volatile="true"
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block h-1 w-1 rounded-full ${parts.isStale ? 'bg-amber-500' : 'bg-emerald-500'}`}
+      />
+      <span>{parts.short}</span>
+    </span>
   );
 }
