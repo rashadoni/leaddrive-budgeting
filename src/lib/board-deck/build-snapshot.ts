@@ -140,6 +140,9 @@ export async function buildBoardSnapshot(args: {
         nameEn: true,
         direction: true,
         unit: true,
+        // Phase 8 fix: needed so the Board Deck composite is WEIGHTED,
+        // identical to the Risk Terminal (see cells.map below).
+        weight: true,
         sortOrder: true,
       },
       orderBy: { sortOrder: 'asc' },
@@ -179,11 +182,20 @@ export async function buildBoardSnapshot(args: {
     value: number | null;
     status: string;
   };
+  // Phase 8 fix: carry each indicator's weight onto its cells so the Board
+  // Deck composite is WEIGHTED — identical to the Risk Terminal. Without it,
+  // computeCompositeScore defaulted every weight to 1.0 (unweighted), so the
+  // deck reported different composite scores than the terminal for the same
+  // company (e.g. HORIZON 25 unweighted vs 21 weighted).
+  const weightById = new Map<string, number>(
+    indicators.map((i: IndicatorShape) => [i.id, i.weight ?? 1.0]),
+  );
   const cells: HeatMapCell[] = values.map((v: ValueShape) => ({
     companyId: v.companyId,
     indicatorId: v.indicatorId,
     value: v.value as number,
     status: v.status as HeatMapCell['status'],
+    weight: weightById.get(v.indicatorId) ?? 1.0,
   }));
 
   // Phase 7.N wiring — extract per-company riskTags from settings JSON

@@ -105,6 +105,10 @@ describe('buildBoardSnapshot', () => {
         nameEn: 'Days Sales Outstanding',
         direction: 'lower_is_better',
         unit: 'days',
+        // Phase 8 — heavier weight so this test LOCKS the weighted composite:
+        // ALPHA = (100×1 + 100×1 + 50×3)/5 = 70 weighted (vs 83 unweighted).
+        // If the deck stops passing cell weights, ALPHA reverts to 83 → fails.
+        weight: 3,
         sortOrder: 3,
       },
     ]);
@@ -174,9 +178,11 @@ describe('buildBoardSnapshot', () => {
     expect(snap.totals.indicators).toBe(3);
     expect(snap.totals.cells).toBe(6);
 
-    // Composite: ALPHA = 83/green; BETA = 0/red
+    // Composite: ALPHA = 70/green (WEIGHTED — dso amber carries weight 3;
+    // unweighted would be 83). Phase 8 lock: the deck must apply indicator
+    // weights, identical to the Risk Terminal. BETA = 0/red.
     const alpha = snap.compositeByCompany.get('co_alpha');
-    expect(alpha?.score).toBe(83);
+    expect(alpha?.score).toBe(70);
     expect(alpha?.band).toBe('green');
     const beta = snap.compositeByCompany.get('co_beta');
     expect(beta?.score).toBe(0);
