@@ -60,6 +60,11 @@ So **both** Next-middleware shapes (getToken AND split-config) break this specif
 - OR accept the per-handler gates as sufficient (the audit already proved 0 exposed endpoints) and skip F3 — it is defence-in-depth, not a hole.
 Do NOT re-attempt a Next.js `middleware.ts` here without first resolving why it wedges (likely a `proxy.ts` × middleware ordering issue), and always verify with the `visual-baseline` e2e on a freshly-restarted server.
 
+**✅ Implemented 2026-05-29 — nginx variant (the recommended path).** Shipped the edge gate at nginx instead of Next middleware:
+- `src/app/api/_authcheck/route.ts` — a decode-only validator (`getToken` → 204 authed / 401 anon, no DB). Runs in the normal Node route runtime, so it works on this stack (verified locally: 401 anon, server stays healthy — unlike the middleware). nginx marks it `internal` so it's not externally reachable in prod.
+- `deploy/nginx/budgetpro.conf` — `auth_request /api/_authcheck` on the `location /api/` block (+ the SSE `location /api/events/stream`), with public exceptions kept un-gated (`^~ /api/auth/`, `= /api/telemetry/guide-view`) and a JSON-401 `@api_unauthorized` named location. Mirror the blocks into the HTTPS server block when TLS is enabled (noted inline).
+Dev is unaffected (no nginx; the route just exists). Verify on the VM with `nginx -t` + a smoke test (anon `curl /api/budgeting/analytics` → 401 at the edge; authed browser still works). This is the only F3 form proven viable on this stack.
+
 ## Conclusion
 
 **No exposed-data API endpoint is unauthenticated.** All 140 data-accessing routes gate every method (role-gate or auth+org-gate, verified per-method); the 3 gate-free routes are the auth provider, a 410 tombstone, and a no-data heartbeat. The deferred "51 ungated routes" concern does **not** reflect a real exposure — it was a `requireRole`-only grep that missed the `getOrgId` session-gate.
