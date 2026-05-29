@@ -278,9 +278,16 @@ export async function POST(req: NextRequest) {
           },
         })
       }
-    }
 
     // Clone Sales Budget lines (filtered by period months)
+    // Phase 8 D3 (2026-05-29) — these four clone blocks read
+    // `sourcePlan.id`, so they MUST stay inside the `if (sourcePlan)`
+    // guard opened above. Previously the guard closed right after the
+    // budgetLine clones, leaving these outside: on a fresh org's first
+    // plan (no source plan) `sourcePlan.id` threw, the whole try block
+    // aborted into the catch, and the clones were skipped via exception
+    // with a spurious "Auto-populate plan error" logged every time.
+    // `prisma: any` hid the null-deref. The guard now wraps all clones.
     const sourceSales = await prisma.salesBudgetLine.findMany({
       where: { organizationId: orgId, planId: sourcePlan.id, month: { in: planMonths } },
     })
@@ -367,6 +374,7 @@ export async function POST(req: NextRequest) {
         })),
       })
     }
+    } // end if (sourcePlan) — guards all clone blocks above
   } catch (e) {
     log.error("Auto-populate plan error", {
       planId: plan.id,
