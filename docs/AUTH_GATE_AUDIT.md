@@ -50,11 +50,15 @@ Auth is per-handler. This is **safe** (verified: every data method gates) but **
 
 **Attempted + reverted 2026-05-29 (empirical finding — recorded so the next attempt doesn't repeat it):** I wrote a custom edge middleware using `getToken` from `next-auth/jwt` (the "escape hatch" — avoids importing the Node-only Prisma/bcrypt auth config), whitelisting `/api/auth` + `/api/telemetry/guide-view`, gating everything else. The **gate worked** (anon `/api/budgeting/*` → 401) BUT it **broke NextAuth's own `/api/auth/*` endpoints (200 → 404)** despite the explicit whitelist + `NextResponse.next()`. This is the known Auth.js v5 behaviour: a custom non-`auth`-wrapper middleware interferes with the auth catch-all's resolution. Reverted (auth is more important than defence-in-depth; the audit already proved 0 real holes).
 
-**Correct approach for the actual prod deploy (do NOT use the bare `getToken` middleware):** the Auth.js v5 split-config pattern —
-1. Extract an edge-safe `auth.config.ts` (providers list + `callbacks.authorized` + jwt/session opts, **no** PrismaAdapter, **no** bcrypt `authorize`).
-2. `auth.ts` imports it and adds the adapter + the Credentials provider's bcrypt `authorize`.
-3. `middleware.ts`: `export { auth as middleware } from "@/auth.config"` (the edge instance) + `matcher: ['/api/:path*']`, with the `authorized` callback whitelisting `/api/auth` + `/api/telemetry/guide-view`.
-This is a deliberate refactor of the working login config on a **beta** NextAuth — must be done with a full e2e login pass (the `visual-baseline` spec logs in + loads the terminal end-to-end), on a freshly-restarted dev server, not bolted on blind. Note: this project's secret env is `NEXTAUTH_SECRET` (Auth.js v5 default is `AUTH_SECRET`) — pass it explicitly if the auto-lookup misses it.
+**Update 2026-05-29 — the split-config ALSO failed; a Next.js middleware is NOT viable on this stack.** Second attempt: a separate edge-safe `auth.config.ts` (minimal: jwt strategy + secret + pure session callback, no Prisma/bcrypt — `auth.ts` left 100% untouched) + `src/middleware.ts` using the `auth()` wrapper, matcher `"/api/((?!auth).*)"` (excludes NextAuth's routes at the matcher level, not just in-code), returning 401 for unauthenticated `/api`. tsc clean. But on a freshly-restarted dev server it **wedged the server entirely** — every request (including matcher-excluded `/api/auth/*` and `/login`) returned `000` with no app-log entry, i.e. requests hung at the edge layer before reaching the app. No compile error logged. Reverted (deleted both files; server recovered immediately, all auth 200). 
+
+So **both** Next-middleware shapes (getToken AND split-config) break this specific stack: **NextAuth v5.0.0-beta.30 + a custom `proxy.ts` request layer (visible as `proxy.ts: Xms` in every dev log line) + Turbopack**. The middleware layer and that proxy layer appear to interact badly. 
+
+**Recommended path for F3 instead (when actually deploying):** gate at a layer that's NOT the Next.js middleware —
+- **nginx** (the prod reverse proxy, `deploy/nginx/`): require the session cookie's presence / do an `auth_request` subrequest to a lightweight `/api/auth/session` check before proxying `/api/*` (excluding `/api/auth`). Closest to "defence-in-depth at the edge" without touching Next internals.
+- OR the existing **`proxy.ts`** layer (whatever it is — it already wraps every request) — add the auth check there, where it's proven to work in this stack.
+- OR accept the per-handler gates as sufficient (the audit already proved 0 exposed endpoints) and skip F3 — it is defence-in-depth, not a hole.
+Do NOT re-attempt a Next.js `middleware.ts` here without first resolving why it wedges (likely a `proxy.ts` × middleware ordering issue), and always verify with the `visual-baseline` e2e on a freshly-restarted server.
 
 ## Conclusion
 
@@ -62,7 +66,7 @@ This is a deliberate refactor of the working login config on a **beta** NextAuth
 
 **Production hardening checklist (this audit is the map):**
 - [x] **F1** — `terminal/stream` SSE gated (`getOrgId`), shipped 2026-05-29.
-- [ ] **F3** — `middleware.ts` `/api/:path*` defence-in-depth: use the Auth.js v5 **split-config** pattern (above), NOT the bare `getToken` middleware (proven to break `/api/auth/*`). Requires an edge-safe `auth.config.ts` refactor + full e2e login verification on a restarted dev server.
+- [ ] **F3** — defence-in-depth `/api` gate. A Next.js `middleware.ts` is NOT viable on this stack (BOTH getToken and split-config wedged the dev server 2026-05-29 — see F3 above). Do it at **nginx** (`auth_request`) or the existing **`proxy.ts`** layer instead, or skip it (it's defence-in-depth — the per-handler gates already cover 0-exposure).
 - [ ] **F2** — edge rate-limit at the platform layer (Vercel/Cloudflare).
 - [ ] (G1) rotate the dev admin password (currently kept at `Admin123!` per user direction; rotation is a credential action — owner=user).
 - [ ] (G2) wire Sentry once a DSN exists.
