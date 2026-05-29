@@ -230,7 +230,8 @@ describe("alert message i18n drift guard (sub-35)", () => {
         { id: "c2", code: "B", name: "B", industry: "Industrial" },
         { id: "c3", code: "C", name: "C", industry: "Industrial" },
       ],
-      indicators: [{ id: "i1", code: "IND_NET_MARGIN" }],
+      // Phase 8 — default critical metric is now the exact IND_EBITDA_MARGIN.
+      indicators: [{ id: "i1", code: "IND_EBITDA_MARGIN" }],
       cells: [
         { indicatorValueId: "iv1", companyId: "c1", indicatorId: "i1", value: 0, status: "red" },
         { indicatorValueId: "iv2", companyId: "c2", indicatorId: "i1", value: 0, status: "red" },

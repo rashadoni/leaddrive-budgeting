@@ -33,7 +33,7 @@ const NAVIGATION: CommandRow[] = [
 ];
 
 const ANALYSIS: CommandRow[] = [
-  { example: "IND_GROSS_MARGIN IND GO", i18nDescKey: "cmdIndDesc" },
+  { example: "IND_EBITDA_MARGIN IND GO", i18nDescKey: "cmdIndDesc" },
   { example: "AAC,ATL CMP GO", i18nDescKey: "cmdCmpDesc" },
   { example: "CHT GO", i18nDescKey: "cmdChtDesc" },
   { example: "USD_SPIKE_25 SCN GO", i18nDescKey: "cmdScnDesc" },

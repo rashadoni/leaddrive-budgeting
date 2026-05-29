@@ -157,20 +157,31 @@ export interface ResolvedAlertThresholds {
  * corresponding hardcoded constant from the original `alert-rules.ts`
  * (lines 187, 220, 259, 298, 320, 328 of pre-v2). An org with empty
  * settings sees identical alert output to v1 — EXCEPT `criticalIndicator`,
- * whose code changed from the exact `IND_NET_MARGIN` to the family pattern
- * `*_NET_MARGIN` (Phase 8 2026-05-29). Reason: Phase 7.M moved margins to
- * per-sector codes (FP_NET_MARGIN / SVC_NET_MARGIN / …), so the exact
- * legacy code matched 0 companies and the rule silently never fired. The
- * family pattern suffix-matches every sector variant; for the legacy
- * Industrial demo (which had IND_NET_MARGIN) it still matches, so demo
- * output is unchanged. See RULE_CRITICAL_INDICATOR_ORG_WIDE.match().
+ * a DELIBERATE semantic change (Phase 8 2026-05-29). The v1 default was the
+ * exact `IND_NET_MARGIN`, matched via `i.code === code`. Phase 7.M moved
+ * margins to per-sector codes (FP_NET_MARGIN / SVC_NET_MARGIN / …), so that
+ * exact code matched 0 companies and the rule silently never fired.
+ *
+ * The default is now `IND_EBITDA_MARGIN` — a generic profitability code that
+ * SURVIVED 7.M and is live across the holding (DB 2026-05-29: tracked by 6
+ * companies, red at 4). It fires today, which is the whole point of the fix.
+ * It is NOT the `*_NET_MARGIN` family: net margin is barely tracked on real
+ * holdings (only 1 company carries any net-margin indicator), so a
+ * net-margin family with a 3-company threshold is STRUCTURALLY unable to
+ * fire — it would swap the dead exact code for an equally-silent family.
+ * EBITDA margin is the cleaner holding-level profitability comparator anyway.
+ *
+ * The rule still supports the `*` family pattern (see
+ * RULE_CRITICAL_INDICATOR_ORG_WIDE.match() + `indicatorCode` schema doc), so
+ * an org can opt into `*_NET_MARGIN` / `*_GROSS_MARGIN` / any suffix family
+ * via `Organization.settings.alertThresholds`. The default just isn't one.
  */
 export const DEFAULT_ALERT_THRESHOLDS: ResolvedAlertThresholds = {
   mostlyRed: { redCountMin: 3 },
   criticalComposite: { scoreMax: 40 },
   sectorAmber: { amberCountMin: 5 },
   sectorRedSpread: { redCountMin: 3, companyCountMin: 2 },
-  criticalIndicator: { indicatorCode: '*_NET_MARGIN', redCountMin: 3 },
+  criticalIndicator: { indicatorCode: 'IND_EBITDA_MARGIN', redCountMin: 3 },
 };
 
 /**

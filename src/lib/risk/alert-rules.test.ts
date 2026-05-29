@@ -61,6 +61,10 @@ const IND_GROSS = indicator('ind_gross', 'IND_GROSS_MARGIN');
 const IND_NET = indicator('ind_net', 'IND_NET_MARGIN');
 const IND_OPEX = indicator('ind_opex', 'IND_OPEX_RATIO');
 const IND_FX = indicator('ind_fx', 'FX_IMPORTED_INPUT');
+// Phase 8 2026-05-29 — the DEFAULT criticalIndicator metric. Retargeted from
+// the dead exact IND_NET_MARGIN to IND_EBITDA_MARGIN (live generic
+// profitability code). Used by the "default fires" tests below.
+const IND_EBITDA = indicator('ind_ebitda', 'IND_EBITDA_MARGIN');
 
 describe('RULE_COMPANY_MOSTLY_RED (Phase C6)', () => {
   it('triggers when company has 3+ red indicators', () => {
@@ -313,30 +317,31 @@ describe('RULE_SECTOR_RED_SPREAD (Phase C6)', () => {
 });
 
 describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
-  it('triggers when IND_NET_MARGIN red for 3+ companies', () => {
+  it('triggers when the default metric (IND_EBITDA_MARGIN) red for 3+ companies', () => {
     const ctx: AlertContext = {
       companies: [
         company('co_a', 'A'),
         company('co_b', 'B'),
         company('co_c', 'C'),
       ],
-      indicators: [IND_NET],
+      indicators: [IND_EBITDA],
       cells: [
-        cell('co_a', 'ind_net', 'red'),
-        cell('co_b', 'ind_net', 'red'),
-        cell('co_c', 'ind_net', 'red'),
+        cell('co_a', 'ind_ebitda', 'red'),
+        cell('co_b', 'ind_ebitda', 'red'),
+        cell('co_c', 'ind_ebitda', 'red'),
       ],
     };
     const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
     expect(matches).toHaveLength(1);
-    expect(matches[0].affectedIndicatorCodes).toEqual(['IND_NET_MARGIN']);
+    // Exact (non-family) default → affected code is the literal code.
+    expect(matches[0].affectedIndicatorCodes).toEqual(['IND_EBITDA_MARGIN']);
     expect(matches[0].message).toContain('3 companies');
   });
 
-  it('does NOT trigger if IND_NET_MARGIN not in indicator list', () => {
+  it('does NOT trigger if the default metric (IND_EBITDA_MARGIN) not in indicator list', () => {
     const ctx: AlertContext = {
       companies: [company('co_a', 'A')],
-      indicators: [IND_GROSS], // no IND_NET_MARGIN
+      indicators: [IND_GROSS], // no IND_EBITDA_MARGIN
       cells: [cell('co_a', 'ind_gross', 'red')],
     };
     expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
@@ -349,21 +354,30 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
         company('co_b', 'B'),
         company('sg', 'SG', null, true),
       ],
-      indicators: [IND_NET],
+      indicators: [IND_EBITDA],
       cells: [
-        cell('co_a', 'ind_net', 'red'),
-        cell('co_b', 'ind_net', 'red'),
-        cell('sg', 'ind_net', 'red', true), // rollup; should not count as 3rd
+        cell('co_a', 'ind_ebitda', 'red'),
+        cell('co_b', 'ind_ebitda', 'red'),
+        cell('sg', 'ind_ebitda', 'red', true), // rollup; should not count as 3rd
       ],
     };
     expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
   });
 
-  // Phase 8 2026-05-29 — family pattern fix. The default code is now
-  // '*_NET_MARGIN' (suffix family), not the dead exact 'IND_NET_MARGIN'.
-  it('family default "*_NET_MARGIN" matches a per-sector code (the Phase 7.M bug case)', () => {
+  // Phase 8 2026-05-29 — family ("*") pattern mechanism. The DEFAULT is now
+  // the exact IND_EBITDA_MARGIN (see the "default is exact" lock test below),
+  // so these mechanism tests pin an explicit '*_NET_MARGIN' config — the
+  // path an org takes via Organization.settings.alertThresholds to watch a
+  // per-sector metric family.
+  const familyNetMarginConfig: ResolvedAlertThresholds = {
+    ...DEFAULT_ALERT_THRESHOLDS,
+    criticalIndicator: { indicatorCode: '*_NET_MARGIN', redCountMin: 3 },
+  };
+
+  it('family pattern "*_NET_MARGIN" matches a per-sector code (the Phase 7.M bug case)', () => {
     // No company carries the legacy IND_NET_MARGIN — they have industry
-    // codes. Before the fix this returned [] (silently never fired).
+    // codes. With an exact-match config this returned [] (silently never
+    // fired); the '*' family suffix-matches the sector variant.
     const ctx: AlertContext = {
       companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
       indicators: [indicator('fp', 'FP_NET_MARGIN')],
@@ -373,7 +387,7 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
         cell('co_c', 'fp', 'red'),
       ],
     };
-    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, familyNetMarginConfig);
     expect(matches).toHaveLength(1);
     expect(matches[0].affectedIndicatorCodes).toEqual(['FP_NET_MARGIN']);
     // Label strips the '*_' → reads cleanly, not '*_NET_MARGIN'.
@@ -390,7 +404,7 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
         cell('co_c', 'svc', 'red'), // a different sector's net margin
       ],
     };
-    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
+    const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, familyNetMarginConfig);
     expect(matches).toHaveLength(1);
     expect(matches[0].affectedCompanyIds).toHaveLength(3);
     expect([...(matches[0].affectedIndicatorCodes ?? [])].sort()).toEqual([
@@ -409,7 +423,28 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE (Phase C6)', () => {
         cell('co_c', 'fpg', 'red'),
       ],
     };
-    expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS)).toHaveLength(0);
+    expect(RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, familyNetMarginConfig)).toHaveLength(0);
+  });
+
+  it('default watches IND_EBITDA_MARGIN exactly — a net-margin family is NOT the default (locks Phase 8 decision)', () => {
+    // The default was retargeted from the dead exact IND_NET_MARGIN — and
+    // deliberately NOT to the '*_NET_MARGIN' family (net margin is tracked by
+    // only 1 holding company, so a family at threshold 3 is structurally
+    // silent) — to the live, exact IND_EBITDA_MARGIN. So per-sector net
+    // margins do NOT fire under DEFAULT; they require an explicit family
+    // override (see familyNetMarginConfig tests above).
+    const netCtx: AlertContext = {
+      companies: [company('co_a', 'A'), company('co_b', 'B'), company('co_c', 'C')],
+      indicators: [indicator('fp', 'FP_NET_MARGIN')],
+      cells: [
+        cell('co_a', 'fp', 'red'),
+        cell('co_b', 'fp', 'red'),
+        cell('co_c', 'fp', 'red'),
+      ],
+    };
+    expect(
+      RULE_CRITICAL_INDICATOR_ORG_WIDE.match(netCtx, DEFAULT_ALERT_THRESHOLDS),
+    ).toHaveLength(0);
   });
 
   it('exact code config (no "*") stays an exact match — back-compat for pinned orgs', () => {
@@ -702,12 +737,12 @@ describe('RULE_CRITICAL_INDICATOR_ORG_WIDE — affectedCompanyIds dedup contract
         company('co_b', 'B', 'Industrial'),
         company('co_c', 'C', 'Industrial'),
       ],
-      indicators: [{ id: 'ind_net', code: 'IND_NET_MARGIN' }],
+      indicators: [{ id: 'ind_ebitda', code: 'IND_EBITDA_MARGIN' }],
       cells: [
-        cell('co_a', 'ind_net', 'red'),
-        cell('co_a', 'ind_net', 'red'), // synthetic duplicate
-        cell('co_b', 'ind_net', 'red'),
-        cell('co_c', 'ind_net', 'red'),
+        cell('co_a', 'ind_ebitda', 'red'),
+        cell('co_a', 'ind_ebitda', 'red'), // synthetic duplicate
+        cell('co_b', 'ind_ebitda', 'red'),
+        cell('co_c', 'ind_ebitda', 'red'),
       ],
     };
     const matches = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, DEFAULT_ALERT_THRESHOLDS);
@@ -749,22 +784,22 @@ describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
       indicator('ind_lev', 'IND_DEBT_TO_EBITDA'),
     ];
     const cells: HeatMapCell[] = [];
-    // co_a: 4 reds (3+ trips company-mostly-red) — composite very low,
-    // includes IND_NET_MARGIN red (org-wide trigger #1).
-    for (const ind of ['ind_gross', 'ind_net', 'ind_opex', 'ind_curr']) {
+    // co_a: 5 reds (3+ trips company-mostly-red) — composite very low,
+    // includes IND_EBITDA_MARGIN red (org-wide trigger #1, the default metric).
+    for (const ind of ['ind_gross', 'ind_net', 'ind_opex', 'ind_curr', 'ind_ebitda']) {
       cells.push(cell('co_a', ind, 'red'));
     }
-    for (const ind of ['ind_quick', 'ind_dso', 'ind_dpo', 'ind_ccc', 'ind_roe', 'ind_roa', 'ind_ebitda', 'ind_lev']) {
+    for (const ind of ['ind_quick', 'ind_dso', 'ind_dpo', 'ind_ccc', 'ind_roe', 'ind_roa', 'ind_lev']) {
       cells.push(cell('co_a', ind, 'amber'));
     }
-    // co_b: 1 red on IND_NET_MARGIN (org-wide trigger #2) + 4 amber
+    // co_b: 1 red on IND_EBITDA_MARGIN (org-wide trigger #2) + 4 amber
     // (sector amber cluster contributor — Industrial).
-    cells.push(cell('co_b', 'ind_net', 'red'));
+    cells.push(cell('co_b', 'ind_ebitda', 'red'));
     for (const ind of ['ind_gross', 'ind_opex', 'ind_curr', 'ind_quick']) {
       cells.push(cell('co_b', ind, 'amber'));
     }
-    // co_c: 1 red on IND_NET_MARGIN (org-wide trigger #3 → 3+ → fires).
-    cells.push(cell('co_c', 'ind_net', 'red'));
+    // co_c: 1 red on IND_EBITDA_MARGIN (org-wide trigger #3 → 3+ → fires).
+    cells.push(cell('co_c', 'ind_ebitda', 'red'));
     for (const ind of ['ind_gross', 'ind_opex']) {
       cells.push(cell('co_c', ind, 'amber'));
     }
@@ -784,12 +819,12 @@ describe('evaluateAlertRules (Phase C6) — multi-rule integration', () => {
     const matches = evaluateAlertRules(DEFAULT_ALERT_RULES, ctx);
     // co_a triggers 5 rules (4 critical + 1 warning):
     //   critical:
-    //     - company-mostly-red (4 reds ≥ 3)
-    //     - company-critical-composite (4 red + 8 amber → 33 < 40)
-    //     - critical-indicator-org-wide (red IND_NET_MARGIN, 3 cos)
-    //     - sector-red-spread (Industrial has 7 reds across 3 cos)
+    //     - company-mostly-red (5 reds ≥ 3)
+    //     - company-critical-composite (5 red + 7 amber → < 40)
+    //     - critical-indicator-org-wide (red IND_EBITDA_MARGIN = default, 3 cos)
+    //     - sector-red-spread (Industrial has 8 reds across 3 cos)
     //   warning:
-    //     - sector-amber-cluster (Industrial has 12 amber across 2 cos)
+    //     - sector-amber-cluster (Industrial has 11 amber across 2 cos)
     // Architect Round-1 sub-14 closure: was loose `≥3`; tightened to
     // `=5` so a silent regression breaks the test instead of passing
     // on N-of-5.
@@ -1005,8 +1040,8 @@ describe('Phase C6 v2 — externalised thresholds', () => {
   });
 
   it('RULE_CRITICAL_INDICATOR_ORG_WIDE honors custom indicator picklist', () => {
-    // Default code IND_NET_MARGIN; reds are on IND_GROSS_MARGIN. With
-    // defaults → no trigger (target indicator not red). With config
+    // Default code IND_EBITDA_MARGIN; reds are on IND_GROSS_MARGIN. With
+    // defaults → no trigger (default metric not present/red). With config
     // pointing at IND_GROSS_MARGIN → fires for those reds.
     const ctx: AlertContext = {
       companies: [
@@ -1187,7 +1222,7 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
         { id: 'c2', code: 'B', name: 'B', industry: 'Industrial' },
         { id: 'c3', code: 'C', name: 'C', industry: 'Industrial' },
       ],
-      indicators: [{ id: 'i1', code: 'IND_NET_MARGIN' }],
+      indicators: [{ id: 'i1', code: 'IND_EBITDA_MARGIN' }],
       cells: [
         { indicatorValueId: 'iv1', companyId: 'c1', indicatorId: 'i1', value: 0, status: 'red' },
         { indicatorValueId: 'iv2', companyId: 'c2', indicatorId: 'i1', value: 0, status: 'red' },
@@ -1196,10 +1231,9 @@ describe('Sub-35 — alert messageKey / messageParams contract', () => {
     };
     const [m] = RULE_CRITICAL_INDICATOR_ORG_WIDE.match(ctx, mergeWithDefaults(undefined));
     expect(m.messageKey).toBe('alerts.messages.critical-indicator-org-wide');
-    // Default code is the family '*_NET_MARGIN'; the message label strips the
-    // '*_' prefix → 'NET_MARGIN'. (IND_NET_MARGIN here still matches the
-    // family by suffix, so the rule fires for this legacy-style fixture.)
-    expect(m.messageParams).toEqual({ code: 'NET_MARGIN', companyCount: 3 });
+    // Default code is the exact IND_EBITDA_MARGIN (no '*'), so the label is
+    // the literal code — no suffix-strip.
+    expect(m.messageParams).toEqual({ code: 'IND_EBITDA_MARGIN', companyCount: 3 });
   });
 });
 

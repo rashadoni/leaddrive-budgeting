@@ -295,7 +295,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                 Примеры:{" "}
                 <span className="font-mono text-[#FFB800]">AGRO_SUGAR_PRICE_TREND</span>,{" "}
                 <span className="font-mono text-[#FFB800]">FX_IMPORTED_INPUT</span>,{" "}
-                <span className="font-mono text-[#FFB800]">IND_GROSS_MARGIN</span>,{" "}
+                <span className="font-mono text-[#FFB800]">IND_EBITDA_MARGIN</span>,{" "}
                 <span className="font-mono text-[#FFB800]">AGRO_YIELD</span>.
                 Полный список — в матрице индикаторов (HOLD GO → индикаторы).
               </p>
