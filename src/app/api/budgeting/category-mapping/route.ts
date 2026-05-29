@@ -27,11 +27,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Integration not found" }, { status: 404 })
   }
 
-  // Also return available budget cost types for mapping targets
+  // Also return available budget cost types for mapping targets.
+  // Phase 8 D3 (2026-05-29) — BudgetCostType has `key` + `label` (no
+  // `name`/`code`/`lineType`). The prior select referenced 3 columns
+  // that don't exist on the model, so Prisma would throw "Unknown field"
+  // at runtime — masked by `prisma: any`. (No production caller fetches
+  // this endpoint today, so it never surfaced.) Map to the real fields.
   const costTypes = await prisma.budgetCostType.findMany({
     where: { organizationId: orgId },
-    select: { id: true, name: true, code: true, lineType: true },
-    orderBy: { name: "asc" },
+    select: { id: true, key: true, label: true },
+    orderBy: { label: "asc" },
   })
 
   return NextResponse.json({

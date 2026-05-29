@@ -55,7 +55,8 @@ describe("GET /api/budgeting/category-mapping", () => {
       name: "QBO",
     })
     prismaMock.budgetCostType.findMany.mockResolvedValue([
-      { id: "ct1", name: "Sales", code: "601", lineType: "revenue" },
+      // Phase 8 D3 (2026-05-29) — real BudgetCostType shape (key + label).
+      { id: "ct1", key: "sales", label: "Sales" },
     ])
     const res = await GET(
       makeRequest("/api/budgeting/category-mapping?integrationId=i1"),
