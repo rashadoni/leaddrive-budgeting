@@ -141,6 +141,24 @@ export async function GET(request: NextRequest) {
     // (nullable-aware variant — global seeds + org overrides) sees
     // app.organization_id once enabled.
     return await withOrgScope(session.orgId, async (tx) => {
+      // Phase 8 F1 (2026-05-29) — scope the catalog to the org's ACTIVE
+      // industries (derived from its companies). Multi-org-safe + query-time:
+      // the seed catalog holds every industry's indicators (110 today) so the
+      // platform stays multi-tenant, but a given org should only SEE the
+      // subset relevant to the sectors it actually operates in (AZSEKER:
+      // agro / processing / … → its relevant set, not the hospitality / pharma
+      // / construction defs). Universal indicators (empty `industries`) always
+      // pass. A global `isActive=false` on the irrelevant defs would have been
+      // WRONG — it'd hide them from a future hospitality/pharma org too.
+      const orgCompanies = await tx.company.findMany({
+        where: { organizationId: session.orgId, industry: { not: null } },
+        select: { industry: true },
+        distinct: ['industry'],
+      });
+      const orgIndustries = orgCompanies
+        .map((c) => c.industry)
+        .filter((x): x is string => x != null && x.length > 0);
+
       // UI list view — omit heavy implementation fields (formula, thresholds,
       // requiredInputs, sparklineFormula, hintTemplates). Detail endpoint can
       // hydrate the rest when we add one.
@@ -148,6 +166,18 @@ export async function GET(request: NextRequest) {
         where: {
           isActive: true,
           OR: [{ organizationId: null }, { organizationId: session.orgId }],
+          // Industry scope: universal (empty industries) OR overlaps one of
+          // the org's company industries. `hasSome: []` (org with no companies
+          // yet) matches nothing, so a fresh org sees universal indicators
+          // only — they widen as companies are onboarded.
+          AND: [
+            {
+              OR: [
+                { industries: { isEmpty: true } },
+                { industries: { hasSome: orgIndustries } },
+              ],
+            },
+          ],
         },
         orderBy: { sortOrder: 'asc' },
         select: {

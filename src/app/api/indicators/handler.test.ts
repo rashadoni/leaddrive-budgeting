@@ -84,6 +84,33 @@ describe("GET /api/indicators", () => {
       }),
     )
   })
+
+  // Phase 8 F1 — catalog scoped to the org's active industries (multi-org-safe).
+  it("scopes the catalog to the org's company industries (query-time)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    // Org operates in agro_crops + food_processing.
+    prismaMock.company.findMany.mockResolvedValue([
+      { industry: "agro_crops" },
+      { industry: "food_processing" },
+    ])
+    prismaMock.indicatorDefinition.findMany.mockResolvedValue([])
+    const res = await GET(makeRequest("/api/indicators"))
+    expect(res.status).toBe(200)
+    // Distinct industries pulled from the org's companies.
+    expect(prismaMock.company.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ distinct: ["industry"] }),
+    )
+    // The findMany where carries the industry-overlap scope (universal OR hasSome).
+    const call = prismaMock.indicatorDefinition.findMany.mock.calls[0][0]
+    expect(call.where.AND).toEqual([
+      {
+        OR: [
+          { industries: { isEmpty: true } },
+          { industries: { hasSome: ["agro_crops", "food_processing"] } },
+        ],
+      },
+    ])
+  })
 })
 
 describe("POST /api/indicators (recompute)", () => {
