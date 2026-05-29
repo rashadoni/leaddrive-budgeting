@@ -16,6 +16,7 @@ const { prismaMock, resolvePatternForDeptMock } = vi.hoisted(() => ({
     budgetCostType: { findMany: vi.fn() },
     budgetDepartment: { findMany: vi.fn() },
     budgetLine: { create: vi.fn() },
+    chartOfAccount: { upsert: vi.fn() },
     organization: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
@@ -39,14 +40,19 @@ beforeEach(() => {
   prismaMock.budgetCostType.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetDepartment.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetLine.create.mockReset().mockResolvedValue({ id: "bl1" })
+  // resolveOrCreateAccountId (real, not mocked) upserts the CoA FK inside
+  // the tx; the mock returns a stable id so accountId is populated.
+  prismaMock.chartOfAccount.upsert.mockReset().mockResolvedValue({ id: "acc_x" })
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: "a1" })
   resolvePatternForDeptMock.mockReset().mockReturnValue("deptCosts.X")
   // Default $transaction implementation: run the callback with a tx that
-  // delegates back to prismaMock
+  // delegates back to prismaMock. Includes chartOfAccount.upsert because
+  // line creation now resolves a NOT-NULL accountId FK inside the tx.
   prismaMock.$transaction.mockReset().mockImplementation(async (fn: any) => {
     return fn({
       budgetLine: { create: prismaMock.budgetLine.create },
+      chartOfAccount: { upsert: prismaMock.chartOfAccount.upsert },
     })
   })
 })
@@ -149,5 +155,14 @@ describe("POST /api/budgeting/matrix-seed", () => {
     expect(res.status).toBe(201)
     // 1 (shared) + 2 (deptCT × 2 depts) = 3 cogs lines
     expect(prismaMock.budgetLine.create).toHaveBeenCalledTimes(3)
+
+    // Phase 2.1 schema-drift regression guard: every created line must
+    // carry the NOT-NULL `accountId` FK and must NOT carry the dropped
+    // `category` column (Prisma would 500 on either drift at runtime).
+    for (const call of prismaMock.budgetLine.create.mock.calls) {
+      const { data } = call[0] as { data: Record<string, unknown> }
+      expect(data.accountId).toBe("acc_x")
+      expect(data).not.toHaveProperty("category")
+    }
   })
 })

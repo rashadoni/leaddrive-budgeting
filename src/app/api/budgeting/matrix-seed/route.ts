@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
+import type { Prisma, BudgetLine } from "@prisma/client"
 import { getOrgId, getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolvePatternForDept } from "@/lib/budgeting/cost-model-map"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { resolveOrCreateAccountId, createCoACache } from "@/lib/onboarding/upsert-chart-of-account"
 
 const matrixSeedSchema = z.object({
   planId: z.string().min(1).max(100),
@@ -13,7 +15,22 @@ const matrixSeedSchema = z.object({
 }).strict()
 
 // ─── Operating Expense groups (OpEx) ────────────────────────────────────────
-const EXPENSE_GROUPS = [
+type ExpenseItem = {
+  label: string
+  amount: number
+  department?: string
+  costModelKey?: string
+  isAutoActual?: boolean
+}
+
+type ExpenseGroup = {
+  label: string
+  sortOrder: number
+  notes: string
+  items: ExpenseItem[]
+}
+
+const EXPENSE_GROUPS: ExpenseGroup[] = [
   {
     label: "Admin Overhead", sortOrder: 100, notes: "group:admin",
     items: [
@@ -130,29 +147,48 @@ export async function POST(req: NextRequest) {
     }, { status: 400 })
   }
 
-  const linesToCreate: any[] = []
+  // Build COGS + Revenue line specs (pure — no DB yet). Each spec carries
+  // the ChartOfAccount resolution hints (code/name/accountType); the FK is
+  // resolved-or-created inside the $transaction below so it's atomic with
+  // the line insert. Phase 2.1 dropped BudgetLine.category and made
+  // accountId NOT NULL — these specs omit `category` (so tsc rejects it if
+  // re-added) and defer `accountId` to resolveOrCreateAccountId.
+  type MatrixLineSpec = {
+    coaCode: string
+    coaName: string
+    coaAccountType: string
+    data: Omit<Prisma.BudgetLineUncheckedCreateInput, "accountId">
+  }
+  const lineSpecs: MatrixLineSpec[] = []
   let sortOrder = 0
 
-  // COGS lines: costType × department matrix
+  // COGS lines: costType × department matrix. The synthetic CoA code is
+  // keyed on the cost type (MTX-COGS-<key>) — the department dimension is
+  // already carried by departmentId, so every dept cell of one cost type
+  // shares a single account (cache hit after the first cell).
   for (const ct of costTypes) {
     if (ct.isShared) {
       const costModelKey = ct.costModelPattern?.includes("{dept}")
         ? null
         : ct.costModelPattern || null
       sortOrder++
-      linesToCreate.push({
-        organizationId: orgId,
-        planId,
-        category: ct.label,
-        lineType: "cogs",
-        plannedAmount: 0,
-        costModelKey,
-        isAutoPlanned: !!costModelKey,
-        isAutoActual: false,
-        costTypeId: ct.id,
-        departmentId: null,
-        department: null,
-        sortOrder,
+      lineSpecs.push({
+        coaCode: `MTX-COGS-${ct.key}`,
+        coaName: ct.label,
+        coaAccountType: "cogs",
+        data: {
+          organizationId: orgId,
+          planId,
+          lineType: "cogs",
+          plannedAmount: 0,
+          costModelKey,
+          isAutoPlanned: !!costModelKey,
+          isAutoActual: false,
+          costTypeId: ct.id,
+          departmentId: null,
+          department: null,
+          sortOrder,
+        },
       })
     } else {
       for (const dept of departments) {
@@ -161,78 +197,118 @@ export async function POST(req: NextRequest) {
           ? resolvePatternForDept(ct.costModelPattern, dept.serviceKey)
           : null
         sortOrder++
-        linesToCreate.push({
-          organizationId: orgId,
-          planId,
-          category: `${ct.label} — ${dept.label}`,
-          lineType: "cogs",
-          plannedAmount: 0,
-          costModelKey,
-          isAutoPlanned: !!costModelKey,
-          isAutoActual: false,
-          costTypeId: ct.id,
-          departmentId: dept.id,
-          department: dept.label,
-          sortOrder,
+        lineSpecs.push({
+          coaCode: `MTX-COGS-${ct.key}`,
+          coaName: ct.label,
+          coaAccountType: "cogs",
+          data: {
+            organizationId: orgId,
+            planId,
+            lineType: "cogs",
+            plannedAmount: 0,
+            costModelKey,
+            isAutoPlanned: !!costModelKey,
+            isAutoActual: false,
+            costTypeId: ct.id,
+            departmentId: dept.id,
+            department: dept.label,
+            sortOrder,
+          },
         })
       }
     }
   }
 
-  // Revenue lines: one per department with hasRevenue=true
+  // Revenue lines: one per revenue-bearing department. CoA code keyed on
+  // the department (MTX-REV-<key>).
   if (includeRevenue) {
     for (const dept of departments) {
       if (!dept.hasRevenue || !dept.serviceKey) continue
       sortOrder++
-      linesToCreate.push({
-        organizationId: orgId,
-        planId,
-        category: dept.label,
-        lineType: "revenue",
-        plannedAmount: 0,
-        costModelKey: `serviceRevenues.${dept.serviceKey}`,
-        isAutoPlanned: true,
-        isAutoActual: false,
-        costTypeId: null,
-        departmentId: dept.id,
-        department: dept.label,
-        sortOrder,
+      lineSpecs.push({
+        coaCode: `MTX-REV-${dept.key}`,
+        coaName: dept.label,
+        coaAccountType: "revenue",
+        data: {
+          organizationId: orgId,
+          planId,
+          lineType: "revenue",
+          plannedAmount: 0,
+          costModelKey: `serviceRevenues.${dept.serviceKey}`,
+          isAutoPlanned: true,
+          isAutoActual: false,
+          costTypeId: null,
+          departmentId: dept.id,
+          department: dept.label,
+          sortOrder,
+        },
       })
     }
   }
 
-  // Create COGS + Revenue lines, then expense groups with parent-child
-  const created = await prisma.$transaction(async (tx: any) => {
-    // 1. Create COGS + Revenue lines
-    const flatLines = await Promise.all(
-      linesToCreate.map((data) => tx.budgetLine.create({ data }))
-    )
+  // Create COGS + Revenue lines, then expense groups with parent-child.
+  // resolveOrCreateAccountId upserts the ChartOfAccount (role='unknown' for
+  // later admin reclassification) inside the same tx — atomic with the line
+  // insert. A shared coaCache makes it one upsert per distinct code.
+  const created = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    const coaCache = createCoACache()
 
-    // 2. Create Operating Expense groups (parent → children)
-    const expenseLines: any[] = []
+    // 1. COGS + Revenue lines (flat). Sequential so the shared cache
+    //    de-dups upserts deterministically (parallel cache misses would
+    //    upsert the same code N times — atomic but wasteful).
+    const flatLines: BudgetLine[] = []
+    for (const spec of lineSpecs) {
+      const accountId = await resolveOrCreateAccountId(tx, coaCache, {
+        organizationId: orgId,
+        code: spec.coaCode,
+        defaultName: spec.coaName,
+        defaultAccountType: spec.coaAccountType,
+      })
+      flatLines.push(await tx.budgetLine.create({ data: { ...spec.data, accountId } }))
+    }
+
+    // 2. Operating Expense groups (parent → children). Each distinct OpEx
+    //    item gets its own account (MTX-EXP-<group>[-<n>]); the index is
+    //    stable for this fixed template.
+    const expenseLines: BudgetLine[] = []
     if (includeExpenses) {
       for (const group of EXPENSE_GROUPS) {
+        const groupSlug = group.notes.replace(/^group:/, "")
+        const parentAccountId = await resolveOrCreateAccountId(tx, coaCache, {
+          organizationId: orgId,
+          code: `MTX-EXP-${groupSlug}`,
+          defaultName: group.label,
+          defaultAccountType: "expense",
+        })
         const parent = await tx.budgetLine.create({
           data: {
             organizationId: orgId, planId,
-            category: group.label, lineType: "expense",
+            lineType: "expense",
             plannedAmount: 0, sortOrder: group.sortOrder,
             notes: group.notes, isAutoActual: false,
+            accountId: parentAccountId,
           },
         })
         expenseLines.push(parent)
 
         for (let i = 0; i < group.items.length; i++) {
-          const item = group.items[i] as any
+          const item = group.items[i]
+          const childAccountId = await resolveOrCreateAccountId(tx, coaCache, {
+            organizationId: orgId,
+            code: `MTX-EXP-${groupSlug}-${i + 1}`,
+            defaultName: item.label,
+            defaultAccountType: "expense",
+          })
           const child = await tx.budgetLine.create({
             data: {
               organizationId: orgId, planId,
-              category: item.label, lineType: "expense",
+              lineType: "expense",
               plannedAmount: Math.round(item.amount * 100) / 100,
               parentId: parent.id, sortOrder: i + 1,
               department: item.department || null,
               costModelKey: item.costModelKey || null,
               isAutoActual: item.isAutoActual || false,
+              accountId: childAccountId,
             },
           })
           expenseLines.push(child)
