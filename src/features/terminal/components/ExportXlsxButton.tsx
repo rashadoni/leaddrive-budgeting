@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 import { useLocale } from "next-intl";
 import { useMatrix } from "../hooks/use-matrix";
+import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
 import { useTerminalStore } from "../store/terminalStore";
 import { getLogger } from "@/lib/log";
 
@@ -23,6 +24,9 @@ import { computeCompositeByCompany } from "@/lib/risk/composite-score";
 
 export function ExportXlsxTrigger() {
   const { matrix } = useMatrix();
+  // Phase 7.N — shared `/api/companies` riskTags so the exported workbook's
+  // composites match the on-screen terminal (CompanyTree / HeatMap).
+  const { companies: companyTree } = useCompanies();
   const locale = useLocale() as "en" | "ru" | "az";
   const alertMatches = useTerminalStore((s) => s.alertMatches);
 
@@ -35,8 +39,18 @@ export function ExportXlsxTrigger() {
       try {
         const XLSX = await import("xlsx");
 
-        // Composites for the summary sheet (same calc as PDF).
-        const compositesById = computeCompositeByCompany(matrix.cells);
+        // Composites for the summary sheet (same calc as PDF). Phase 7.N —
+        // apply the per-company riskTag penalty from the shared
+        // `/api/companies` source so the exported composites match the
+        // on-screen terminal; the matrix payload carries no riskTags.
+        const riskTagsByCompanyId = companyTree
+          ? buildRiskTagsByCompanyId(companyTree)
+          : undefined;
+        const compositesById = computeCompositeByCompany(
+          matrix.cells,
+          undefined,
+          riskTagsByCompanyId,
+        );
 
         // ---- Sheet 1: Summary ----
         const orgName =
@@ -213,7 +227,7 @@ export function ExportXlsxTrigger() {
     };
     window.addEventListener("terminal:export-xlsx", handler);
     return () => window.removeEventListener("terminal:export-xlsx", handler);
-  }, [matrix, locale, alertMatches]);
+  }, [matrix, locale, alertMatches, companyTree]);
 
   return null;
 }

@@ -36,6 +36,7 @@ import {
   evaluateSubscription,
 } from "./AISubscriptions";
 import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
 
 const STORAGE_KEY = "terminal-subscriptions-v1";
 
@@ -87,6 +88,11 @@ const FIXTURE_MATRIX = {
 beforeEach(() => {
   window.localStorage.removeItem(STORAGE_KEY);
   __resetMatrixCacheForTests();
+  // Phase 7.N — AISubscriptions now subscribes to useCompanies() for the
+  // composite riskTag penalty; reset that module cache too. Default
+  // /api/companies returns 404 below (no riskTags) so existing matcher
+  // tests evaluate unpenalized composites exactly as before.
+  __resetCompaniesCacheForTests();
   // Default: matrix endpoint returns the AAC=red / ATL=green fixture
   // so the matcher engine has data to evaluate against.
   global.fetch = vi.fn(async (url: RequestInfo | URL) => {
@@ -104,6 +110,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.removeItem(STORAGE_KEY);
   __resetMatrixCacheForTests();
+  __resetCompaniesCacheForTests();
   vi.restoreAllMocks();
 });
 
@@ -583,6 +590,71 @@ describe("AISubscriptions (Tier-3 sub-30)", () => {
         expect(env.data[0].lastFiredAt).not.toBeNull();
       },
       { timeout: 2000 },
+    );
+    const env = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
+    expect(typeof env.data[0].lastFiredAt).toBe("number");
+  });
+
+  it("matcher uses the Phase 7.N riskTag-penalized composite (EDEN 100→88 fires a <90 sub)", async () => {
+    // EDEN is all-green (raw composite 100) but flagged data_absence (-12) →
+    // penalised 88. A "fire when EDEN composite < 90" subscription therefore
+    // fires ONLY if the penalty is applied (88 < 90); the raw 100 would not
+    // (100 < 90 is false). A populated lastFiredAt is the proof the matcher's
+    // composite calc threads riskTags from /api/companies.
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            period: "2026",
+            companies: [
+              { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
+            ],
+            indicators: [
+              { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
+            ],
+            cells: [
+              { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.includes("/api/companies")) {
+        return new Response(
+          JSON.stringify([
+            { id: "co_eden", code: "EDEN", name: "Eden", settings: { riskTags: ["data_absence"] } },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+    const seed = [
+      {
+        id: "s-eden",
+        label: "EDEN penalised drop",
+        scope: "company",
+        scopeValue: "EDEN",
+        metric: "composite",
+        comparator: "<",
+        threshold: 90,
+        indicatorCode: null,
+        status: "active",
+        lastFiredAt: null,
+      },
+    ];
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, data: seed }));
+    render(<AISubscriptions />);
+    fireOpen();
+    await waitFor(
+      () => {
+        const env = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
+        expect(env.data[0].lastFiredAt).not.toBeNull();
+      },
+      { timeout: 5000 },
     );
     const env = JSON.parse(window.localStorage.getItem(STORAGE_KEY)!);
     expect(typeof env.data[0].lastFiredAt).toBe("number");

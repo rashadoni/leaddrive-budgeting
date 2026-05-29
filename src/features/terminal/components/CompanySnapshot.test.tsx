@@ -18,6 +18,7 @@ import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import * as nextIntl from "next-intl";
 import { CompanySnapshot } from "./CompanySnapshot";
 import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
 
 // Sub-35 — top-alerts section reads `alertMatches` from terminalStore.
 // Module-scope mock with a let-binding so individual tests can swap in
@@ -108,6 +109,11 @@ beforeEach(() => {
   // fetch mock controls the resolved data (without this the first
   // test's payload sticks for the rest of the file).
   __resetMatrixCacheForTests();
+  // Phase 7.N — CompanySnapshot now subscribes to useCompanies() for
+  // riskTags; reset that module cache too so the never-resolving fetch in
+  // the "Loading" test (and per-test fetch overrides) don't bleed across
+  // tests. Convention documented in use-companies.ts.
+  __resetCompaniesCacheForTests();
   mockAlertMatches = null;
   global.fetch = vi.fn(async () =>
     new Response(JSON.stringify(FULL_FIXTURE), {
@@ -254,5 +260,61 @@ describe("CompanySnapshot (Phase B7)", () => {
     expect(screen.queryByText("Доля операционных расходов")).toBeTruthy();
     // English names should NOT be rendered in RU locale.
     expect(screen.queryByText("Gross Margin")).toBeNull();
+  });
+});
+
+describe("CompanySnapshot composite applies Phase 7.N riskTag penalties", () => {
+  // Regression lock for the Panel-4/Panel-1 parity bug: the snapshot's
+  // composite badge ignored Company.settings.riskTags while CompanyTree
+  // (Panel 1) applied them, so the same company showed two different scores
+  // on one /budgeting/terminal screen. Mocks BOTH the matrix endpoint AND
+  // /api/companies (the riskTags source).
+  beforeEach(() => {
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            period: "2026",
+            companies: [
+              { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
+            ],
+            indicators: [
+              { id: "ind_a", code: "IND_A", nameEn: "A", unit: "%", direction: "higher_better" },
+              { id: "ind_b", code: "IND_B", nameEn: "B", unit: "%", direction: "higher_better" },
+            ],
+            cells: [
+              { indicatorValueId: "iv1", companyId: "co_eden", indicatorId: "ind_a", value: 50, status: "green" },
+              { indicatorValueId: "iv2", companyId: "co_eden", indicatorId: "ind_b", value: 50, status: "green" },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.includes("/api/companies")) {
+        return new Response(
+          JSON.stringify([
+            { id: "co_eden", code: "EDEN", name: "Eden", settings: { riskTags: ["data_absence"] } },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  });
+
+  it("penalises the active company's composite badge (100 → 88)", async () => {
+    render(<CompanySnapshot companyCode="EDEN" />);
+    // 88 = base 100 (all-green) minus data_absence (-12). IMPOSSIBLE without
+    // the riskTags wiring — pre-fix the badge rendered 100. waitFor covers the
+    // two-source async (matrix + companies both resolve).
+    await waitFor(() => {
+      expect(screen.getByText("88")).toBeTruthy();
+    });
+    // The unpenalised 100 must NOT appear anywhere once the penalty applies —
+    // this is the assertion that would have caught the original bug.
+    expect(screen.queryByText("100")).toBeNull();
   });
 });

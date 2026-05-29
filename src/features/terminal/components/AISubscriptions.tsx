@@ -37,6 +37,7 @@ import { useTranslations, useLocale } from "next-intl";
 import { Bell, X, Trash2, Pause, Play } from "lucide-react";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { useMatrix, type MatrixResponse } from "../hooks/use-matrix";
+import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
 import {
   computeCompositeByCompany,
   type CompositeScore,
@@ -221,13 +222,22 @@ export function AISubscriptions() {
    * v1 plumbing those v2 channels will subscribe to.
    */
   const { matrix } = useMatrix();
+  // Phase 7.N — riskTags from the shared `/api/companies` source so the
+  // subscription matcher evaluates against the SAME penalized composite the
+  // HeatMap / CompanyTree show (e.g. "fire when EDEN composite < 90" must use
+  // the penalized 88, not the raw 100). The matrix payload carries no riskTags.
+  const { companies: companyTree } = useCompanies();
   const composites = useMemo(() => {
     if (!matrix) return new Map<string, CompositeScore>();
+    const riskTagsByCompanyId = companyTree
+      ? buildRiskTagsByCompanyId(companyTree)
+      : undefined;
     return computeCompositeByCompany(
       matrix.cells,
       matrix.companies.map((c) => c.id),
+      riskTagsByCompanyId,
     );
-  }, [matrix]);
+  }, [matrix, companyTree]);
 
   useEffect(() => {
     if (!matrix || subs.length === 0) return;

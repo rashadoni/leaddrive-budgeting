@@ -30,6 +30,7 @@ import {
   type IndustryTranslator,
 } from "@/lib/risk/alert-message-i18n";
 import { useMatrix } from "../hooks/use-matrix";
+import { useCompanies, buildRiskTagsByCompanyId } from "../hooks/use-companies";
 import { Sparkline, type SparklineStatus } from "./Sparkline";
 import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
@@ -74,6 +75,13 @@ export function CompanySnapshot({ companyCode }: Props) {
   // through `refresh()` so the cache invalidates and HeatMap +
   // ComparePanel + this snapshot all see fresh data.
   const { matrix: data, loading, error, refresh } = useMatrix();
+  // Phase 7.N — qualitative riskTags from the SAME module-cached
+  // `/api/companies` source CompanyTree (Panel 1) + HeatMap (Panel 2) read,
+  // so Panel 4's composite badge applies the identical per-tag penalty.
+  // The matrix endpoint's `companies` payload carries no riskTags. Without
+  // this the snapshot showed an UNPENALIZED score that disagreed with the
+  // company's tree badge on the same /budgeting/terminal screen.
+  const { companies: companyTree } = useCompanies();
   // Sub-27 cont'd Round-5 — extend snapshot toward GU-equivalent
   // CompanyOverview per plan §1: composite + status chips + top alerts.
   const alertMatches = useTerminalStore((s) => s.alertMatches);
@@ -89,8 +97,16 @@ export function CompanySnapshot({ companyCode }: Props) {
   const company = data?.companies.find((c) => c.code === companyCode);
   const compositeByCo = useMemo(() => {
     if (!data) return new Map();
-    return computeCompositeByCompany(data.cells);
-  }, [data]);
+    // Phase 7.N — per-company riskTag penalty (subsidy_dependency -5,
+    // non_transparent_structure -8, data_absence -12; clamped to ≥0).
+    // `companyTree` is null while companies load → undefined → no penalty
+    // (pre-7.N parity, no flash of a wrong score). Map keys are
+    // Company.id === HeatMapCell.companyId.
+    const riskTagsByCompanyId = companyTree
+      ? buildRiskTagsByCompanyId(companyTree)
+      : undefined;
+    return computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+  }, [data, companyTree]);
   const composite = company ? compositeByCo.get(company.id) : null;
   const statusCounts = useMemo(() => {
     if (!data || !company) return null;
