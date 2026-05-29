@@ -17,6 +17,7 @@ import {
   computeCompositeScore,
   computeCompositeByCompany,
   scoreToBand,
+  RISK_TAG_PENALTY_TABLE,
 } from './composite-score';
 import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 
@@ -350,5 +351,121 @@ describe('Phase 7.N C5 v2 — weighted composite', () => {
     expect(result.score).toBe(100);
     expect(result.contributingCount).toBe(1);
     expect(result.totalCount).toBe(2);
+  });
+});
+
+describe('Phase 7.N — riskTag composite penalty', () => {
+  it('no riskTags → no penalty, no scoreBeforeTags/riskTagPenalty fields', () => {
+    const r = computeCompositeScore([cell('green'), cell('green')]);
+    expect(r.score).toBe(100);
+    expect(r.scoreBeforeTags).toBeUndefined();
+    expect(r.riskTagPenalty).toBeUndefined();
+  });
+
+  it('subsidy_dependency penalises -5 (matches live AZSEKER-EDEN diff)', () => {
+    // all-green base = 100; EDEN observed 57/57 vs penalised 52 on real
+    // data — the -5 delta is the subsidy_dependency tag.
+    const r = computeCompositeScore([cell('green'), cell('green')], ['subsidy_dependency']);
+    expect(r.score).toBe(95);
+    expect(r.scoreBeforeTags).toBe(100);
+    expect(r.riskTagPenalty).toBe(5);
+  });
+
+  it('non_transparent_structure penalises -8', () => {
+    const r = computeCompositeScore([cell('green')], ['non_transparent_structure']);
+    expect(r.score).toBe(92);
+    expect(r.riskTagPenalty).toBe(8);
+  });
+
+  it('data_absence penalises -12', () => {
+    const r = computeCompositeScore([cell('green')], ['data_absence']);
+    expect(r.score).toBe(88);
+    expect(r.riskTagPenalty).toBe(12);
+  });
+
+  it('stacked non_transparent + data_absence = -20 (matches live AZSEKER-AZSF diff)', () => {
+    // AZSF observed 30 (penalised) vs 50 (unpenalised) on real data → -20.
+    const r = computeCompositeScore(
+      [cell('green'), cell('green')],
+      ['non_transparent_structure', 'data_absence'],
+    );
+    expect(r.riskTagPenalty).toBe(20);
+    expect(r.score).toBe(80);
+  });
+
+  it('stacked subsidy + non_transparent = -13 (matches live AZSEKER-CPC diff)', () => {
+    // CPC observed 49 (penalised) vs 62 (unpenalised) → -13.
+    const r = computeCompositeScore(
+      [cell('green')],
+      ['subsidy_dependency', 'non_transparent_structure'],
+    );
+    expect(r.riskTagPenalty).toBe(13);
+  });
+
+  it('all three tags = max -25 penalty', () => {
+    const r = computeCompositeScore(
+      [cell('green')],
+      ['subsidy_dependency', 'non_transparent_structure', 'data_absence'],
+    );
+    expect(r.riskTagPenalty).toBe(25);
+    expect(r.score).toBe(75);
+  });
+
+  it('penalty floors the score at 0, never negative', () => {
+    // all-red base = 0; -25 would be -25 but Math.max clamps to 0.
+    const r = computeCompositeScore(
+      [cell('red')],
+      ['subsidy_dependency', 'non_transparent_structure', 'data_absence'],
+    );
+    expect(r.score).toBe(0);
+    expect(r.scoreBeforeTags).toBe(0);
+    expect(r.riskTagPenalty).toBe(25);
+  });
+
+  it('unrecognised tag strings contribute 0 penalty', () => {
+    const r = computeCompositeScore([cell('green')], ['totally_made_up_tag']);
+    expect(r.score).toBe(100);
+    expect(r.scoreBeforeTags).toBeUndefined();
+    expect(r.riskTagPenalty).toBeUndefined();
+  });
+
+  it('empty riskTags array → no penalty', () => {
+    const r = computeCompositeScore([cell('green')], []);
+    expect(r.score).toBe(100);
+    expect(r.riskTagPenalty).toBeUndefined();
+  });
+
+  it('computeCompositeByCompany applies per-company penalties via the 3rd arg', () => {
+    const coCell = (companyId: string, status: HeatMapCell['status']): HeatMapCell => ({
+      companyId,
+      indicatorId: `ind-${Math.random()}`,
+      value: 0,
+      status,
+    });
+    // co_a all-green (100) flagged data_absence → 88; co_b all-green, no
+    // tags → 100. Proves the map routes each company's tags correctly.
+    const cells = [
+      coCell('co_a', 'green'),
+      coCell('co_a', 'green'),
+      coCell('co_b', 'green'),
+      coCell('co_b', 'green'),
+    ];
+    const riskTagsByCompany = new Map<string, readonly string[]>([
+      ['co_a', ['data_absence']],
+    ]);
+    const result = computeCompositeByCompany(cells, undefined, riskTagsByCompany);
+    expect(result.get('co_a')?.score).toBe(88);
+    expect(result.get('co_a')?.riskTagPenalty).toBe(12);
+    expect(result.get('co_b')?.score).toBe(100);
+    expect(result.get('co_b')?.riskTagPenalty).toBeUndefined();
+  });
+
+  it('RISK_TAG_PENALTY_TABLE exposes the canonical penalties and is frozen', () => {
+    expect(RISK_TAG_PENALTY_TABLE).toEqual({
+      data_absence: 12,
+      non_transparent_structure: 8,
+      subsidy_dependency: 5,
+    });
+    expect(Object.isFrozen(RISK_TAG_PENALTY_TABLE)).toBe(true);
   });
 });

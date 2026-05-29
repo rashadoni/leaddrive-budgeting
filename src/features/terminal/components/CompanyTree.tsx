@@ -26,6 +26,7 @@ const PANEL_ID = 1;
 // (other modules import `CompanyNode` from here) without duplicating
 // the shape — drift is now compile-checked at the import boundary.
 import type { CompanyTreeNode } from "../hooks/use-companies";
+import { buildRiskTagsByCompanyId } from "../hooks/use-companies";
 export type CompanyNode = CompanyTreeNode;
 import { INDUSTRIES } from "@/lib/industries/data";
 
@@ -87,15 +88,11 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     // Phase 7.N wiring: derive id → riskTags map from the tree prop
     // so the composite-score helper can apply per-tag penalty
     // (subsidy_dependency -5, non_transparent_structure -8,
-    // data_absence -12; clamped to ≥0).
-    const riskTagsByCompanyId = new Map<string, readonly string[]>();
-    const walk = (nodes: CompanyNode[]) => {
-      for (const n of nodes) {
-        if (n.riskTags && n.riskTags.length > 0) riskTagsByCompanyId.set(n.id, n.riskTags);
-        if (n.children) walk(n.children);
-      }
-    };
-    walk(companies);
+    // data_absence -12; clamped to ≥0). Shared with HeatMap (Panel 2)
+    // via `buildRiskTagsByCompanyId` so both panels apply identical
+    // penalties — see the helper's doc-comment for the divergence this
+    // closes.
+    const riskTagsByCompanyId = buildRiskTagsByCompanyId(companies);
     const byId = computeCompositeByCompany(matrix.cells, undefined, riskTagsByCompanyId);
     const out = new Map<string, CompositeScore>();
     for (const co of matrix.companies) {

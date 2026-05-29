@@ -202,6 +202,35 @@ function buildCodeToId(
   return out;
 }
 
+/**
+ * Phase 7.N — build a `companyId → riskTags` lookup from a CompanyTree.
+ *
+ * Shared by CompanyTree (Panel 1 trust badges) and HeatMap (Panel 2
+ * row-header composites) so BOTH panels feed the same per-tag penalty
+ * (`subsidy_dependency` -5, `non_transparent_structure` -8,
+ * `data_absence` -12) into `computeCompositeByCompany`.
+ *
+ * Before this helper each panel walked the tree inline, and HeatMap's
+ * walk was simply missing — its composite ignored riskTags entirely, so
+ * the same company showed two different scores on one screen (CompanyTree
+ * penalized, HeatMap not). Centralizing the walk makes that divergence
+ * impossible to reintroduce. Only nodes carrying ≥1 tag are added; keys
+ * are `Company.id` (matches `HeatMapCell.companyId`).
+ */
+export function buildRiskTagsByCompanyId(
+  nodes: readonly CompanyTreeNode[],
+): Map<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>();
+  const walk = (arr: readonly CompanyTreeNode[]) => {
+    for (const n of arr) {
+      if (n.riskTags && n.riskTags.length > 0) out.set(n.id, n.riskTags);
+      if (n.children && n.children.length > 0) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return out;
+}
+
 const EMPTY_MAP: ReadonlyMap<string, string> = new Map();
 
 export function useCompanies(): UseCompaniesResult {

@@ -35,6 +35,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { HeatMap } from "./HeatMap";
+import { __resetCompaniesCacheForTests } from "../hooks/use-companies";
+import { __resetMatrixCacheForTests } from "../hooks/use-matrix";
 
 vi.mock("@/lib/events/use-event-stream", () => ({
   useEventStream: () => {},
@@ -75,6 +77,12 @@ vi.mock("../store/terminalStore", () => ({
 }));
 
 beforeEach(() => {
+  // HeatMap now subscribes to the module-cached `useCompanies()` hook for
+  // riskTags (Phase 7.N composite penalty). Reset BOTH module caches each
+  // test so a prior describe's matrix/companies result doesn't bleed —
+  // per the convention documented in use-matrix.ts / use-companies.ts.
+  __resetMatrixCacheForTests();
+  __resetCompaniesCacheForTests();
   // Mock matrix endpoint: 1 sub-group + 4 ops cos × 5 indicators.
   // Ops cos all-green (composite=100). Sub-group has rollup-cells
   // marked isSubgroupRollup=true with all-amber status — these MUST
@@ -204,5 +212,74 @@ describe("HeatMap composite-by-company integration (Phase C5 sub-8 contract)", (
     // OR the explicit-labels table is configured. Both render paths
     // require the key to exist somewhere in messages.json or mock.
     expect(fallback).not.toBe(camelFallback);
+  });
+});
+
+describe("HeatMap composite applies Phase 7.N riskTag penalties (Panel-1/Panel-2 parity)", () => {
+  // Regression lock for the 2026-05-29 bug: the HeatMap row-header
+  // composite ignored Company.settings.riskTags while the CompanyTree
+  // badge applied them, so the same company showed two different scores
+  // on one screen. This mocks BOTH the matrix endpoint AND /api/companies
+  // (the riskTags source) and asserts the row-header score is penalised.
+  beforeEach(() => {
+    __resetMatrixCacheForTests();
+    __resetCompaniesCacheForTests();
+    global.fetch = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("/api/indicators/matrix")) {
+        return new Response(
+          JSON.stringify({
+            period: "2026",
+            companies: [
+              // EDEN: all-green base 100; flagged data_absence (-12) → 88.
+              { id: "co_eden", code: "EDEN", name: "Eden", industry: "Agri" },
+              // CLEAN: all-green, no riskTags → stays 100 (proves only the
+              // flagged company is penalised, not a global drop).
+              { id: "co_clean", code: "CLEAN", name: "Clean Co", industry: "Agri" },
+            ],
+            indicators: [
+              { id: "ind_a", code: "IND_A", nameEn: "A", direction: "higher_better", unit: "%" },
+              { id: "ind_b", code: "IND_B", nameEn: "B", direction: "higher_better", unit: "%" },
+            ],
+            cells: [
+              ...["co_eden", "co_clean"].flatMap((co) =>
+                ["ind_a", "ind_b"].map((ind) => ({
+                  companyId: co,
+                  indicatorId: ind,
+                  value: 50,
+                  status: "green" as const,
+                })),
+              ),
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.includes("/api/companies")) {
+        // Flat tree of roots; useCompanies reads settings.riskTags.
+        return new Response(
+          JSON.stringify([
+            { id: "co_eden", code: "EDEN", name: "Eden", settings: { riskTags: ["data_absence"] } },
+            { id: "co_clean", code: "CLEAN", name: "Clean Co", settings: {} },
+          ]),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    }) as never;
+  });
+
+  it("penalises the flagged company's row-header composite (100 → 88) and leaves the unflagged one at 100", async () => {
+    render(<HeatMap />);
+    // The penalised 88/100 title is IMPOSSIBLE without the riskTags
+    // wiring — pre-fix EDEN rendered 100/100. waitFor covers the
+    // two-source async (matrix + companies both resolve).
+    await waitFor(() => {
+      expect(screen.getByTitle(/^Composite 88\/100/)).toBeTruthy();
+    });
+    // Exactly one company stays at 100 (CLEAN). If the penalty had not
+    // applied, EDEN would also be 100 and this length would be 2 —
+    // the assertion that would have caught the original bug.
+    expect(screen.getAllByTitle(/^Composite 100\/100/)).toHaveLength(1);
   });
 });

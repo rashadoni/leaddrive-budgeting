@@ -42,6 +42,7 @@ import {
   readAlertThresholdsFromOrgSettings,
 } from '@/lib/risk/alert-thresholds-config';
 import { useMatrix } from '../hooks/use-matrix';
+import { useCompanies, buildRiskTagsByCompanyId } from '../hooks/use-companies';
 import { getMateriality, isMaterialityScoped } from '@/lib/risk/esg-materiality';
 
 type CompanyRow = {
@@ -194,6 +195,14 @@ export function HeatMap({ period }: Props) {
   // every subscribing panel re-renders with fresh data.
   const { matrix: data, loading, error, refresh: refetchMatrix } =
     useMatrix(selectedPeriod);
+  // Phase 7.N — qualitative riskTags from the SAME module-cached
+  // `/api/companies` source CompanyTree (Panel 1) reads, so the
+  // HeatMap row-header composite applies the identical per-tag penalty.
+  // The matrix endpoint's `companies` payload does NOT carry riskTags,
+  // hence the separate (already in-flight, deduped) hook rather than a
+  // matrix-API change. Until this resolves, `companyTree` is null →
+  // no penalty (matches pre-7.N behaviour, no flash of wrong score).
+  const { companies: companyTree } = useCompanies();
   const searchInputRef = useRef<HTMLInputElement>(null);
   // SSR/CSR hydration guard — see CompanyTree for rationale.
   const [mounted, setMounted] = useState(false);
@@ -319,11 +328,20 @@ export function HeatMap({ period }: Props) {
   // "this is a navigation rollup, not a measurable entity" UX.
   const compositeByCompany = useMemo(() => {
     if (!data) return new Map<string, CompositeScore>();
+    // Phase 7.N — apply per-company qualitative riskTag penalties so the
+    // Panel-2 row-header composite matches the Panel-1 CompanyTree badge
+    // (subsidy_dependency -5, non_transparent_structure -8,
+    // data_absence -12; clamped to ≥0). `companyTree` is the shared
+    // `/api/companies` tree; map keys are Company.id === cell.companyId.
+    // null while companies load → undefined → no penalty (pre-7.N parity).
+    const riskTagsByCompanyId = companyTree
+      ? buildRiskTagsByCompanyId(companyTree)
+      : undefined;
     // Sparse-map mode (no companyIds arg) — rows without scoreable cells
     // are absent from the result; HeatMap's fallback for missing entries
     // shows "—" via `compositeByCompany.get(co.id) ?? null` consumer.
-    return computeCompositeByCompany(data.cells);
-  }, [data]);
+    return computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+  }, [data, companyTree]);
 
   const filteredCompanies = useMemo(() => {
     if (!data) return [];
