@@ -30,6 +30,8 @@ import {
   type MorningBriefInput,
 } from "@/lib/intel/morning-brief"
 import { MORNING_BRIEF_PROMPT_VERSION } from "@/lib/llm/prompts/morning-brief-system"
+import { currentBakuYear } from "@/lib/risk/periods"
+import { verifyMorningBriefNarrative } from "@/lib/risk/batch-narrative-fact-check"
 
 export const maxDuration = 30
 
@@ -174,6 +176,25 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // Phase 8 C5 close (2026-05-29) — fact-check the narrative against the
+  // brief's own numbers (worst-cell values, mover deltas, alert counts)
+  // so a hallucinated figure surfaces the same amber banner the per-IV
+  // Variance Explainer + Board Deck narration already show. Pure regex,
+  // zero LLM cost — computed per-path with the path's narrative.
+  const briefPeriod = currentBakuYear()
+  const factCheckBrief = (narrative: string) =>
+    verifyMorningBriefNarrative(narrative, {
+      period: briefPeriod,
+      worstCells: shaped.worstCells,
+      topMovers: shaped.topMovers,
+      alertCounts: {
+        critical: shaped.activeAlerts.filter((a) => a.severity === "critical").length,
+        warning: shaped.activeAlerts.filter((a) => a.severity === "warning").length,
+        info: shaped.activeAlerts.filter((a) => a.severity === "info").length,
+      },
+      newsBulletCount: shaped.newsBullets.length,
+    })
+
   const cacheKey = `${orgId}:${shaped.language}:${MORNING_BRIEF_PROMPT_VERSION}:${payloadHash(shaped)}`
   const cached = cache.get(cacheKey)
   if (cached && Date.now() - cached.generatedAt < CACHE_TTL_MS) {
@@ -183,6 +204,7 @@ export async function POST(request: NextRequest) {
       priorityAction: cached.priorityAction,
       generatedAt: new Date(cached.generatedAt).toISOString(),
       fromCache: true,
+      factCheck: factCheckBrief(cached.narrative),
     })
   }
 
@@ -268,5 +290,6 @@ export async function POST(request: NextRequest) {
     generatedAt: new Date(generatedAt).toISOString(),
     fromCache: false,
     usage: result.usage,
+    factCheck: factCheckBrief(result.narrative),
   })
 }

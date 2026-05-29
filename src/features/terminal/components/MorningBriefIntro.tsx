@@ -34,6 +34,12 @@ interface BriefInputs {
   }>
 }
 
+interface FactCheckFlagShape {
+  reason: string
+  claim: string
+  suggestion: string
+}
+
 interface BriefResponse {
   headline?: string
   narrative?: string
@@ -42,6 +48,14 @@ interface BriefResponse {
   fromCache?: boolean
   generatedAt?: string
   error?: string
+  // Phase 8 C5 close (2026-05-29) — regex fact-check of the narrative
+  // against the brief's own numbers. Same shape + banner pattern as the
+  // per-IV Variance Explainer and Board Deck narration.
+  factCheck?: {
+    flags: FactCheckFlagShape[]
+    totalChecked: number
+    matched: number
+  }
 }
 
 type State =
@@ -184,6 +198,49 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
               {state.data.narrative}
             </p>
           )}
+          {state.data.factCheck && state.data.factCheck.flags.length > 0 && (
+            <div
+              className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="text-amber-400 text-[9px] uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
+                <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M8 1.5A6.5 6.5 0 1 0 8 14.5 6.5 6.5 0 0 0 8 1.5zm.75 9.5h-1.5v-1.5h1.5V11zm0-3h-1.5V5h1.5v3z" />
+                </svg>
+                {t("varianceExplainer.factCheck.title")}
+              </div>
+              <ul className="space-y-1">
+                {state.data.factCheck.flags.map((f, i) => (
+                  <li key={i} className="text-[9.5px] leading-snug text-gray-200">
+                    <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-300">
+                      {f.claim}
+                    </span>{" "}
+                    — {f.reason}{" "}
+                    <span className="text-gray-500">{f.suggestion}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-gray-600 text-[8.5px] mt-1">
+                {t("varianceExplainer.factCheck.summary", {
+                  matched: state.data.factCheck.matched,
+                  total: state.data.factCheck.totalChecked,
+                })}
+              </p>
+            </div>
+          )}
+          {state.data.factCheck &&
+            state.data.factCheck.flags.length === 0 &&
+            state.data.factCheck.totalChecked > 0 && (
+              <p className="text-emerald-400 text-[8.5px] flex items-center gap-1">
+                <svg width="9" height="9" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                  <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0L2.72 8.28a.75.75 0 1 1 1.06-1.06L6.75 10.19l5.97-5.97a.75.75 0 0 1 1.06 0z" />
+                </svg>
+                {t("varianceExplainer.factCheck.allMatched", {
+                  total: state.data.factCheck.totalChecked,
+                })}
+              </p>
+            )}
           {state.data.priorityAction && (
             <div className="flex items-start gap-1.5 mt-2 pt-1.5 border-t border-cyan-500/15">
               <span className="text-[#00D4AA] text-[9px] uppercase tracking-wider font-semibold mt-0.5">

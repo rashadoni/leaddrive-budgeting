@@ -157,3 +157,94 @@ export function verifyBatchNarrative(
     aggregates,
   })
 }
+
+/**
+ * Phase 8 C5 close (2026-05-29) — Morning Brief fact-checker adapter.
+ *
+ * The Morning Brief endpoint's narrative input is shaped differently
+ * from BoardSnapshot — it's `{ worstCells, topMovers, activeAlerts,
+ * newsBullets }` (see `MorningBriefInput` in `@/lib/intel/morning-brief`).
+ * This adapter maps that shape into C1's `{result, resolved, aggregates}`
+ * known-numbers contract so the same regex extractor + tolerance rules
+ * apply, producing an identical `FactCheckResult` for the UI banner.
+ *
+ * Numbers the LLM legitimately cites in a Morning Brief:
+ *  - «AZSEKER-CPC FP_GROSS_MARGIN at 8.2%»  → worstCells[i].value
+ *  - «SUGAR_PRICE jumped +21%»               → topMovers[i].deltaPct
+ *  - «3 critical alerts this morning»        → alertCounts.critical
+ *  - «scanning 10 worst indicators»          → counts.worstCells
+ *
+ * The same ×100 / ×1000 / sign-flip / European-decimal paraphrase
+ * tolerance from C1 applies; the documented small-integer-saturation
+ * limitation (top of this file) carries over too. The `period` drives
+ * the future-year drift catch (a brief that cites 2030 data when the
+ * snapshot period is the current year is flagged).
+ */
+export interface MorningBriefSnapshot {
+  period: string
+  worstCells: Array<{
+    companyCode: string
+    indicatorCode: string
+    value: number
+  }>
+  topMovers: Array<{
+    companyCode: string
+    indicatorCode: string
+    deltaPct: number
+  }>
+  /** Active alert counts by severity (length of each MorningBriefInput
+   *  activeAlerts bucket). */
+  alertCounts: { critical: number; warning: number; info: number }
+  /** Count of news bullets fed to the brief (the bullets themselves are
+   *  qualitative text — only the count is a checkable number). */
+  newsBulletCount: number
+}
+
+export function verifyMorningBriefNarrative(
+  narrative: string,
+  snapshot: MorningBriefSnapshot,
+): FactCheckResult {
+  // Per-cell worst-indicator values + per-mover delta percentages become
+  // resolved formula vars (the most-cited concrete numbers in a brief).
+  const resolved: Record<string, number> = {}
+  for (const c of snapshot.worstCells) {
+    resolved[`${c.companyCode}.${c.indicatorCode}`] = c.value
+  }
+  for (const m of snapshot.topMovers) {
+    resolved[`${m.companyCode}.${m.indicatorCode}.deltaPct`] = m.deltaPct
+  }
+
+  const totalAlerts =
+    snapshot.alertCounts.critical +
+    snapshot.alertCounts.warning +
+    snapshot.alertCounts.info
+
+  const aggregates: Record<string, unknown> = {
+    alertCounts: {
+      critical: snapshot.alertCounts.critical,
+      warning: snapshot.alertCounts.warning,
+      info: snapshot.alertCounts.info,
+    },
+    counts: {
+      worstCells: snapshot.worstCells.length,
+      topMovers: snapshot.topMovers.length,
+      newsBullets: snapshot.newsBulletCount,
+      activeAlerts: totalAlerts,
+    },
+    // Same denominator-constant pre-seed as the batch variant so «50%»
+    // / «top 10» phrasing isn't false-flagged as fabricated.
+    _scaleConstants: { pct100: 100, halfPct: 50, quartile: 25, topN: 10 },
+  }
+
+  // Representative headline value — the count of red worst-cells is the
+  // most-cited single number; it also enters the known set via `counts`.
+  return verifyNarrative(narrative, {
+    result: {
+      value: snapshot.worstCells.length,
+      status: "amber",
+      period: snapshot.period,
+    },
+    resolved,
+    aggregates,
+  })
+}

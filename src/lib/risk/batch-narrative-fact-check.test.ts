@@ -2,8 +2,14 @@
  * Phase 8 C5 — batch-narrative fact-checker tests.
  */
 import { describe, it, expect } from "vitest"
-import { verifyBatchNarrative } from "./batch-narrative-fact-check"
-import type { BatchNarrativeSnapshot } from "./batch-narrative-fact-check"
+import {
+  verifyBatchNarrative,
+  verifyMorningBriefNarrative,
+} from "./batch-narrative-fact-check"
+import type {
+  BatchNarrativeSnapshot,
+  MorningBriefSnapshot,
+} from "./batch-narrative-fact-check"
 
 const SNAPSHOT: BatchNarrativeSnapshot = {
   period: "2026",
@@ -99,6 +105,60 @@ describe("verifyBatchNarrative", () => {
 
   it("returns empty result for empty narrative", () => {
     const out = verifyBatchNarrative("", SNAPSHOT)
+    expect(out.flags).toEqual([])
+    expect(out.totalChecked).toBe(0)
+  })
+})
+
+// ── Phase 8 C5 close (2026-05-29) — Morning Brief adapter ──────────────
+describe("verifyMorningBriefNarrative", () => {
+  const BRIEF: MorningBriefSnapshot = {
+    period: "2026",
+    worstCells: [
+      { companyCode: "AZSEKER-CPC", indicatorCode: "FP_GROSS_MARGIN", value: 8.2 },
+      { companyCode: "AZSEKER-EDEN", indicatorCode: "CUSTOMER_HHI", value: 4200 },
+    ],
+    topMovers: [
+      { companyCode: "AZSEKER-CPC", indicatorCode: "SUGAR_PRICE", deltaPct: 21 },
+    ],
+    alertCounts: { critical: 3, warning: 5, info: 2 },
+    newsBulletCount: 4,
+  }
+
+  it("passes a narrative citing the brief's own numbers", () => {
+    const narrative =
+      "AZSEKER-CPC gross margin at 8.2% with sugar +21%; 3 critical alerts this morning."
+    const out = verifyMorningBriefNarrative(narrative, BRIEF)
+    expect(out.flags).toEqual([])
+    expect(out.totalChecked).toBeGreaterThan(0)
+  })
+
+  it("flags a fabricated worst-cell value", () => {
+    // Narrative claims 88.8% margin — far outside any known value or its
+    // ×100/×1000 paraphrase, so it must be flagged.
+    const narrative = "AZSEKER-CPC gross margin collapsed to 88.8% overnight."
+    const out = verifyMorningBriefNarrative(narrative, BRIEF)
+    expect(out.flags.some((f) => f.claim.includes("88.8") && f.severity === "warn")).toBe(
+      true,
+    )
+  })
+
+  it("flags future-year drift (period=2026, narrative cites 2031)", () => {
+    const narrative = "By 2031 the holding stabilises; margin 8.2%."
+    const out = verifyMorningBriefNarrative(narrative, BRIEF)
+    expect(out.flags.some((f) => f.claim === "2031" && f.severity === "warn")).toBe(
+      true,
+    )
+  })
+
+  it("does not false-flag alert counts (3 critical / 5 warning)", () => {
+    const narrative = "3 critical and 5 warning alerts fired across the holding."
+    const out = verifyMorningBriefNarrative(narrative, BRIEF)
+    expect(out.flags).toEqual([])
+  })
+
+  it("returns empty result for empty narrative", () => {
+    const out = verifyMorningBriefNarrative("", BRIEF)
     expect(out.flags).toEqual([])
     expect(out.totalChecked).toBe(0)
   })
