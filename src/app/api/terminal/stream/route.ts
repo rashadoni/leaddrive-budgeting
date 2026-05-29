@@ -2,6 +2,8 @@
 // This endpoint allows the Bloomberg-style terminal to receive real-time push updates
 // without polling the database every 30 seconds.
 
+import type { NextRequest } from 'next/server';
+import { getOrgId } from '@/lib/api-auth';
 import { getLogger } from '@/lib/log';
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
@@ -10,6 +12,17 @@ const log = getLogger('api:terminal:stream');
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
+  // Phase 8 G3 F1 — gate the SSE. Today it only emits no-data heartbeats, but
+  // the TODO below will hook in real org-scoped recompute events; an ungated
+  // stream would then leak cross-tenant events. Gating now also closes the
+  // anonymous open-connection surface. `getOrgId` resolves the NextAuth
+  // session from the request cookies (the authed terminal page already
+  // connects with them) and returns null when unauthenticated.
+  const orgId = await getOrgId(request as NextRequest);
+  if (!orgId) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const encoder = new TextEncoder();
 
   // Create a TransformStream to stream data to the client
