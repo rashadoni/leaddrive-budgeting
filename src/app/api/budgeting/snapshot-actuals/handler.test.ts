@@ -13,7 +13,6 @@ const { prismaMock } = vi.hoisted(() => ({
     budgetPlan: { findMany: vi.fn() },
     budgetLine: { findMany: vi.fn() },
     budgetActual: { findFirst: vi.fn(), create: vi.fn() },
-    costModelSnapshot: { upsert: vi.fn() },
     organization: { findUnique: vi.fn() },
   },
 }))
@@ -43,7 +42,6 @@ beforeEach(() => {
   prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetActual.findFirst.mockReset().mockResolvedValue(null)
   prismaMock.budgetActual.create.mockReset()
-  prismaMock.costModelSnapshot.upsert.mockReset().mockResolvedValue({})
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
 })
 

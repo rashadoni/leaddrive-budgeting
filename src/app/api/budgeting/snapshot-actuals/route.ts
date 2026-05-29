@@ -44,25 +44,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Cost model not available" }, { status: 500 })
     }
 
-    // Find plans to process — needed for the lock check below; the
-    // costModelSnapshot upsert is a side-effect and MUST come after the
-    // lock check to avoid leaking a snapshot row on a 423 reject.
+    // Find plans to process — needed for the lock check below.
     const plans = planId
       ? await prisma.budgetPlan.findMany({ where: { id: planId, organizationId: orgId } })
       : await prisma.budgetPlan.findMany({ where: { organizationId: orgId, status: { in: ["draft", "approved"] } } })
 
     // Phase 7.G Turn LXIX (Phase 4.2 bulk-mutation gate). snapshot-actuals
-    // writes actuals at `targetMonth` for each plan AND upserts a CostModelSnapshot.
-    // Both are mutations into the org's data; both must respect period-lock.
-    // Reject if either:
+    // writes actuals at `targetMonth` for each plan — a mutation into the
+    // org's data, so it must respect period-lock. Reject if either:
     //   - any plan's period is locked (annual/quarterly/monthly), OR
     //   - the target month's containing periods (year/quarter/month) match a lock.
     // Conservative: if ANY plan's period or the targetMonth-containers are
-    // locked, skip the whole batch (atomic intent).
-    //
-    // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure: previously this gate
-    // ran AFTER costModelSnapshot.upsert — locked-period requests still
-    // committed a snapshot row. Now the gate fires BEFORE both upsert and
+    // locked, skip the whole batch (atomic intent). The gate fires BEFORE
     // the per-plan create loop.
     const [tYearStr, tMonthStr] = targetMonth.split("-")
     const tYear = Number(tYearStr)
@@ -77,27 +70,16 @@ export async function POST(req: NextRequest) {
     const snapLock = await findFirstActiveLockInPeriods(prisma, orgId, periodsToCheck)
     if (snapLock) return lockedResponse(snapLock, { prisma, orgId, userId, route: "POST /api/budgeting/snapshot-actuals" })
 
-    // Save cost model snapshot (upsert) — moved BELOW the lock check.
-    const summary = (costModel as any).summary
-    await prisma.costModelSnapshot.upsert({
-      where: { organizationId_snapshotMonth: { organizationId: orgId, snapshotMonth: targetMonth } },
-      update: {
-        totalCost: summary?.totalCost ?? costModel.grandTotalG ?? 0,
-        totalRevenue: summary?.totalRevenue ?? Object.values(costModel.serviceRevenues).reduce((s: number, v: number) => s + v, 0),
-        margin: summary?.margin ?? 0,
-        marginPct: summary?.marginPct ?? 0,
-        dataJson: JSON.stringify(costModel),
-      },
-      create: {
-        organizationId: orgId,
-        snapshotMonth: targetMonth,
-        totalCost: summary?.totalCost ?? costModel.grandTotalG ?? 0,
-        totalRevenue: summary?.totalRevenue ?? Object.values(costModel.serviceRevenues).reduce((s: number, v: number) => s + v, 0),
-        margin: summary?.margin ?? 0,
-        marginPct: summary?.marginPct ?? 0,
-        dataJson: JSON.stringify(costModel),
-      },
-    })
+    // Phase 8 D3 (2026-05-29) — removed a dead `prisma.costModelSnapshot
+    // .upsert(...)` block here. `CostModelSnapshot` is not a model in
+    // schema.prisma (it was an AAC-era table, gone since the Phase 2.3
+    // legacy cleanup), and `loadAndCompute` is now a stub — so the upsert
+    // referenced an undefined client property and threw on every call,
+    // which the route's try/catch turned into a 500. Because this hook IS
+    // called from the UI (`useSnapshotActuals`), the feature was broken.
+    // The route's real work — snapshotting auto-actual budget lines into
+    // BudgetActual rows — lives in the loop below and was never reached.
+    // No reader of costModelSnapshot exists, so dropping the write is safe.
 
     let created = 0
     let skipped = 0
