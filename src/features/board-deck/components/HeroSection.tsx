@@ -109,7 +109,10 @@ export async function HeroSection({
         >
           {scoreText}
         </div>
-        <p className="mt-3 text-sm md:text-base text-muted-foreground tracking-wide">
+        <p
+          data-testid="hero-score-caption"
+          className="mt-3 text-sm md:text-base text-muted-foreground tracking-wide"
+        >
           {t("boardDeck.hero.scoreLabel")}{" "}
           {composite.score !== null && (
             <span className="text-muted-foreground/70">

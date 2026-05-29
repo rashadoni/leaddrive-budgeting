@@ -19,23 +19,38 @@
  *     + lead-ins + CTA + AI attribution footer) — the highest-density
  *     v2 layout area; if it regresses, the rest of the page typically
  *     follows.
- *   - Mask LLM-driven regions (headline / lead-ins / attribution) so
- *     the baseline locks chrome, not narrative content. Each LLM run
- *     produces different prose; without masks, the snapshot would
- *     fail loud on every cache-miss.
+ *   - Mask LLM-driven AND data-driven regions (headline / lead-ins /
+ *     attribution / composite score / score caption) so the baseline
+ *     locks CHROME + LAYOUT, never the volatile content inside. Each
+ *     LLM run produces different prose; each recompute produces a
+ *     different score. Without masks the snapshot failed loud on every
+ *     cache-miss OR IndicatorValue change — a permanently-red gate that
+ *     gave zero signal. Phase 8 determinism fix (2026-05-29): added the
+ *     score + caption to the mask set so the gate is green on clean
+ *     code and only goes red on a real layout regression.
  *
  * What this baseline DOES catch:
  *   - Hero box padding / margin regressions (Tailwind class swap, CSS
  *     token bump, broken responsive breakpoint).
- *   - Composite score number positioning + typography regressions.
+ *   - Composite score *block* positioning + font-size-class regressions
+ *     (the masked band's y-offset + height track the score's layout, so
+ *     a moved/resized score still diffs — only the digit VALUE is blind).
  *   - CTA button alignment + visual hierarchy.
  *   - Background color regressions (cream → white = visible diff).
  *   - Eyebrow row layout regressions (org name / period mono alignment).
+ *   - Vertical rhythm between all hero bands (spacing-token regressions).
  *
  * What this baseline does NOT catch (by design):
  *   - LLM headline content (changes per run; masked).
  *   - LLM lead-in sentences (changes per run; masked).
  *   - LLM attribution timestamps (clock-driven; masked).
+ *   - Composite score DIGITS + contributing-count N/M (data-driven;
+ *     masked Phase 8). The score's *existence* + layout are still
+ *     locked (band) and its rendering is unit-tested in
+ *     `HeroSection.test.tsx`; only the pixel-level glyph value is blind.
+ *   - Score-area micro-typography (font-family / weight / color inside
+ *     the masked band). A regression there would need a unit/DOM assert,
+ *     not this pixel gate. Accepted tradeoff for a deterministic gate.
  *   - Sub-hero content (metrics row / trend chart / top alerts /
  *     footer actions) — covered by the structural smoke
  *     `board-deck-v2.spec.ts`. If a future regression hits one of
@@ -108,12 +123,30 @@ test.describe('Phase 7.G Turn LII — Board Deck hero visual baseline', () => {
     //
     // animations: 'disabled' is set in the project defaults; reasserting
     // here for legibility / explicit documentation.
+    //
+    // Mask list — LLM-output AND data-driven content (anything that
+    // changes between runs without a layout change):
+    //   - hero-headline:        AI-generated each cache miss
+    //   - hero-lead-ins:        AI-generated each cache miss
+    //   - hero-ai-attribution:  contains generatedAt timestamp
+    //   - hero-score:           composite digits — recompute on ANY
+    //                           IndicatorValue change (DATA drift, not
+    //                           layout). Phase 8 determinism fix.
+    //   - hero-score-caption:   "Composite score · N of M contributing"
+    //                           — N/M shift as sub-cos are added/scored.
+    // All five are full-width block elements, so the mask is a
+    // fixed-width horizontal band: its y-position + height still lock
+    // the hero's vertical rhythm + font-size class (a text-9xl→8xl
+    // regression shrinks the band), but the digit VALUES inside no
+    // longer drift the baseline. See header doc "DOES / does NOT catch".
     await expect(hero).toHaveScreenshot('board-deck-hero.png', {
       animations: 'disabled',
       mask: [
         page.getByTestId('hero-headline'),
         page.getByTestId('hero-lead-ins'),
         page.getByTestId('hero-ai-attribution'),
+        page.getByTestId('hero-score'),
+        page.getByTestId('hero-score-caption'),
       ],
     });
   });
