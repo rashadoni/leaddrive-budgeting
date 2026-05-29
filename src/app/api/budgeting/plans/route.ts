@@ -171,22 +171,31 @@ export async function POST(req: NextRequest) {
     const planMonths = getPeriodMonths(periodType, quarter ?? null, month ?? null)
 
     // Clone budget line structure from any existing plan
+    // Phase 8 fix: only clone from a LIVE source plan. Without `deletedAt:
+    // null` this could (and did) pick / read from soft-deleted plans, so a
+    // new quarterly plan got populated from archived data.
     const sourcePlan = await prisma.budgetPlan.findFirst({
-      where: { organizationId: orgId, id: { not: plan.id }, isRolling: false },
+      where: { organizationId: orgId, id: { not: plan.id }, isRolling: false, deletedAt: null },
       orderBy: { createdAt: "asc" },
     })
 
     if (sourcePlan) {
-      const allSourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
+      const allSourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
       const costModel = await loadAndCompute(orgId)
 
-      // Filter source lines to only include months relevant to this plan period
-      // sortOrder % 100 = month index (0-11), so month = (sortOrder % 100) + 1
-      const planMonthIndices = new Set(planMonths.map(m => m - 1)) // convert to 0-based
-      const sourceLines = allSourceLines.filter((sl: BudgetLineWithAccount) => {
-        const monthIdx = sl.sortOrder % 100
-        return planMonthIndices.has(monthIdx)
-      })
+      // Filter source lines to only the months this plan period covers.
+      // BudgetLine.monthIndex is the canonical 0-based month (0=Jan..11=Dec);
+      // planMonths is 1-based, so compare against (m-1). Phase 8 fix: the old
+      // code derived the month from `sortOrder % 100`, which is 0 for the live
+      // lines (sortOrder encodes account order, NOT month) — so quarterly /
+      // monthly clones matched ZERO live lines and silently fell back to the
+      // soft-deleted rows the read above used to include. Both bugs fixed:
+      // `deletedAt: null` on the read + `monthIndex` (not sortOrder) here.
+      const planMonthIndices = new Set(planMonths.map((m) => m - 1)) // 0-based
+      const sourceLines = allSourceLines.filter(
+        (sl: BudgetLineWithAccount) =>
+          sl.monthIndex != null && planMonthIndices.has(sl.monthIndex),
+      )
 
       // Load sales forecast for revenue (user's Excel forecast)
       const salesForecasts = await prisma.salesForecast.findMany({
@@ -239,7 +248,7 @@ export async function POST(req: NextRequest) {
             plannedAmount: Math.round(plannedAmount * 100) / 100,
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
-            notes: sl.notes, sortOrder: sl.sortOrder,
+            notes: sl.notes, sortOrder: sl.sortOrder, monthIndex: sl.monthIndex,
             // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
             accountId: sl.accountId,
             lineSubtype: sl.lineSubtype, parentId: null,
@@ -271,7 +280,7 @@ export async function POST(req: NextRequest) {
             plannedAmount: Math.round(plannedAmount * 100) / 100,
             costModelKey: sl.costModelKey,
             isAutoActual: false, isAutoPlanned: false,
-            notes: sl.notes, sortOrder: sl.sortOrder,
+            notes: sl.notes, sortOrder: sl.sortOrder, monthIndex: sl.monthIndex,
             // Phase 2.1 session 3: accountId is NOT NULL — pass through directly.
             accountId: sl.accountId,
             lineSubtype: sl.lineSubtype, parentId: newParentId,
@@ -333,7 +342,7 @@ export async function POST(req: NextRequest) {
 
     // Clone Balance Sheet lines (filtered by period months)
     const sourceBS = await prisma.balanceSheetLine.findMany({
-      where: { organizationId: orgId, planId: sourcePlan.id, month: { in: planMonths } },
+      where: { organizationId: orgId, planId: sourcePlan.id, month: { in: planMonths }, deletedAt: null },
     })
     if (sourceBS.length > 0) {
       await prisma.balanceSheetLine.createMany({

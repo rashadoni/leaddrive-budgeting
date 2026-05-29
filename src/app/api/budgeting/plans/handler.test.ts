@@ -23,9 +23,15 @@ const { prismaMock, costModelMock } = vi.hoisted(() => ({
     budgetLine: {
       findMany: vi.fn(),
       createMany: vi.fn(),
+      create: vi.fn(),
     },
     salesForecast: { findMany: vi.fn() },
     expenseForecast: { findMany: vi.fn() },
+    // Phase 8 — auto-populate clone reads/writes (quarterly fix test).
+    salesBudgetLine: { findMany: vi.fn(), createMany: vi.fn() },
+    cOGSBudgetLine: { findMany: vi.fn(), createMany: vi.fn() },
+    balanceSheetLine: { findMany: vi.fn(), createMany: vi.fn() },
+    budgetAssumption: { findMany: vi.fn(), createMany: vi.fn() },
     auditEvent: { create: vi.fn() },
     // Phase 5.2 Stage 2 — withOrgScope wraps budget_plans reads/writes.
     $transaction: vi.fn(
@@ -53,6 +59,11 @@ beforeEach(() => {
   prismaMock.budgetPlan.create.mockReset();
   prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([]);
   prismaMock.budgetLine.createMany.mockReset();
+  prismaMock.budgetLine.create.mockReset();
+  prismaMock.salesBudgetLine.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.cOGSBudgetLine.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.balanceSheetLine.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.budgetAssumption.findMany.mockReset().mockResolvedValue([]);
   prismaMock.salesForecast.findMany.mockReset().mockResolvedValue([]);
   prismaMock.expenseForecast.findMany.mockReset().mockResolvedValue([]);
   prismaMock.auditEvent.create.mockReset().mockResolvedValue({ id: 'audit_1' });
@@ -210,5 +221,56 @@ describe('POST /api/budgeting/plans — handler', () => {
     expect(body.auditStale).toBe(true);
     expect(prismaMock.budgetPlan.create).toHaveBeenCalledTimes(1);
     consoleErr.mockRestore();
+  });
+
+  // Phase 8 fix (2026-05-29) — quarterly auto-populate. Regression lock for
+  // the bug found by live test: the clone (a) read source lines WITHOUT a
+  // `deletedAt` filter (resurrecting archived rows) and (b) derived the month
+  // from `sortOrder % 100` (always 0 for live lines) instead of `monthIndex`,
+  // so a Q2 plan cloned deleted rows and dropped `monthIndex`. This locks all
+  // three: deletedAt:null on the read, monthIndex-based filtering, monthIndex
+  // preserved on the clone.
+  it('quarterly clone takes only in-quarter LIVE lines by monthIndex + preserves monthIndex', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    prismaMock.budgetPlan.create.mockResolvedValue({
+      id: PLAN_ID, name: 'Q2', year: 2026, periodType: 'quarterly',
+      organizationId: ORG_ID, month: null, quarter: 2, notes: null,
+    });
+    // 1st findFirst = duplicate check (none); 2nd = source plan (annual).
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'src', periodType: 'annual', isRolling: false });
+    // Source: an April line (monthIndex 3 ∈ Q2 {3,4,5}) and an August line
+    // (monthIndex 7, outside Q2). Only April should clone.
+    const baseLine = {
+      sortOrder: 0, plannedAmount: 100, lineType: 'expense', department: null,
+      costModelKey: null, notes: null, lineSubtype: null, parentId: null,
+    };
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { ...baseLine, id: 'l_apr', monthIndex: 3, accountId: 'acc_apr', account: { code: 'A', name: 'A' } },
+      { ...baseLine, id: 'l_aug', monthIndex: 7, accountId: 'acc_aug', account: { code: 'B', name: 'B' } },
+    ]);
+    prismaMock.budgetLine.create.mockImplementation(
+      async ({ data }: { data: Record<string, unknown> }) => ({ id: 'new', ...data }),
+    );
+
+    const res = await POST(
+      makeRequest('/api/budgeting/plans', {
+        method: 'POST',
+        json: { name: 'Q2', periodType: 'quarterly', year: 2026, quarter: 2 },
+      }),
+    );
+    expect(res.status).toBe(201);
+
+    // (a) Source lines read with deletedAt: null — no resurrecting archived rows.
+    const sourceRead = prismaMock.budgetLine.findMany.mock.calls[0][0];
+    expect(sourceRead.where.deletedAt).toBeNull();
+
+    // (b) Only the April line (monthIndex 3) cloned; August (7) excluded.
+    expect(prismaMock.budgetLine.create).toHaveBeenCalledTimes(1);
+    const created = prismaMock.budgetLine.create.mock.calls[0][0].data;
+    expect(created.accountId).toBe('acc_apr');
+    // (c) monthIndex preserved on the cloned line (was dropped before the fix).
+    expect(created.monthIndex).toBe(3);
   });
 });
