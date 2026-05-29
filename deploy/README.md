@@ -43,6 +43,12 @@ Verify: `docker --version && docker compose version`.
 
 ## 2. First deploy (~15 min)
 
+> **Shortcut:** once `.env.production` is filled (step 2 below), `bash
+> deploy/first-deploy.sh` automates steps 3-5 (build+start, RLS roles, seed
+> admin) — idempotent, prompts for the role passwords, prints the remaining
+> manual steps. The detailed steps below are the source of truth / for when you
+> want to run them by hand.
+
 ```bash
 # Clone repo
 cd /opt
