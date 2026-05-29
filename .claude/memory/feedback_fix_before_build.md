@@ -32,3 +32,14 @@ User confirmed Option B on 2026-05-10: **architect review is single-round per tu
 - Refactor opportunities not blocking shipped behavior
 
 This exception kills the architect-FAIL → fix → re-architect spiral that burned 8-25 min/turn for diminishing returns. Real bug-catching is delegated to `tsc` + `vitest` + pre-commit M7 + periodic audit. Architect's per-turn role narrows to: scope check + one-shot quality pass + ⚠️ enumeration. Re-iteration to PASS within a turn is **prohibited** unless one of the four hard exceptions above applies.
+
+## 2026-05-29 reaffirmation + broadening — "хвосты" (in-progress tails) count
+
+User restated the principle on 2026-05-29: **«сначала хвосты потом новая работа это всегда так должно быть»** ("first the tails, then new work — it should always be this way").
+
+This **broadens** the rule beyond bugs/regressions/review findings to explicitly include **in-progress incremental cleanup work** ("хвосты" / tails):
+- Incremental refactor sweeps already started (e.g. D3 `any`-elimination, D4 `console.*`→logger migration) — finish the remaining files BEFORE opening any new feature (e.g. E1 Compliance UI).
+- A 🟡 in-progress ROADMAP item outranks a ⬜ new-feature item when picking what to do next, unless the user redirects.
+- When presenting a "what's next" menu, order it tails-first and recommend the tails path by default; only surface new-feature work as the alternative.
+
+This is a standing default, not a per-session call. Apply it every time without re-asking.
