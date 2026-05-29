@@ -5,14 +5,17 @@
  *
  * Augments VarianceExplainerPanel's empty state (no IV selected). When
  * an `activeCompanyCode` IS set but no IV is drilled down, render 3
- * mini-sparkline cards stacked horizontally:
- *   - Gross Margin (IND_GROSS_MARGIN)
- *   - Net Margin (IND_NET_MARGIN)
- *   - OpEx Ratio (IND_OPEX_RATIO)
+ * mini-sparkline cards stacked horizontally — the margin trio:
+ *   - Gross Margin (*_GROSS_MARGIN — FP_/SVC_/… per industry)
+ *   - Net Margin   (*_NET_MARGIN)
+ *   - OpEx Ratio   (*_OPEX_RATIO)
  *
- * If the active company doesn't have one or more of these IVs, that
- * card shows "no data" — total absence falls back to the original
- * "Pick a HeatMap cell" instruction.
+ * Indicators are resolved by SUFFIX + the company's own cell set (see
+ * SNAPSHOT_MARGIN_SUFFIXES) so the panel works across every industry
+ * template, NOT by hardcoded generic codes (which went dead post-7.M and
+ * silently emptied this panel for every real company). If the active
+ * company has none of the three margins, the panel falls back to the
+ * original "Pick a HeatMap cell" instruction.
  *
  * Plan §B7 listed "revenue / margin / FCF" as the trio; v1 ships
  * margin-trio because the existing indicators are ratio-shaped and
@@ -52,10 +55,19 @@ import type {
 } from "../hooks/use-matrix";
 type MatrixCell = HeatMapCell;
 
-const SNAPSHOT_INDICATOR_CODES = [
-  "IND_GROSS_MARGIN",
-  "IND_NET_MARGIN",
-  "IND_OPEX_RATIO",
+// The margin trio the snapshot features, matched by SUFFIX (not exact
+// code). Phase 7.M moved from generic `IND_*` codes to industry-templated
+// ones — Food Processing carries `FP_GROSS_MARGIN`, Services
+// `SVC_GROSS_MARGIN`, etc. The old hardcoded `IND_GROSS_MARGIN` exact-match
+// went dead for every real company (the AAC/demo era was the last time the
+// `IND_*` margins existed), silently emptying Panel 4. Suffix match
+// subsumes the legacy `IND_*` codes (they end with these suffixes too); the
+// per-company cell filter below selects the company's own industry variant.
+// Order = display order (Gross → Net → OpEx).
+const SNAPSHOT_MARGIN_SUFFIXES = [
+  "_GROSS_MARGIN",
+  "_NET_MARGIN",
+  "_OPEX_RATIO",
 ] as const;
 
 interface Props {
@@ -152,8 +164,23 @@ export function CompanySnapshot({ companyCode }: Props) {
     );
   }
 
-  const cards = SNAPSHOT_INDICATOR_CODES.map((code) => {
-    const ind = data.indicators.find((i) => i.code === code);
+  // Indicators THIS company is tracked for. Cells link company↔indicator,
+  // and a company carries only its own industry's margin indicators — so
+  // this set disambiguates which `*_GROSS_MARGIN` (FP_/SVC_/IND_/…) belongs
+  // to the active company.
+  const companyIndicatorIds = new Set(
+    data.cells
+      .filter((c) => c.companyId === company.id)
+      .map((c) => c.indicatorId),
+  );
+
+  const cards = SNAPSHOT_MARGIN_SUFFIXES.map((suffix) => {
+    // Among matrix indicators whose code ends with this margin suffix, pick
+    // the one the company actually has (its industry variant — e.g. Food
+    // Processing → FP_GROSS_MARGIN). Subsumes the legacy IND_* exact codes.
+    const ind = data.indicators.find(
+      (i) => i.code.endsWith(suffix) && companyIndicatorIds.has(i.id),
+    );
     if (!ind) return null;
     const cell = data.cells.find(
       (c) => c.companyId === company.id && c.indicatorId === ind.id,
@@ -450,11 +477,19 @@ function SnapshotCard({
       <div className="text-[9px] uppercase tracking-wider text-gray-600 truncate shrink-0">
         {resolveIndicatorLabel(indicator, locale)}
       </div>
-      <div className="flex items-baseline gap-1 shrink-0">
+      <div
+        data-testid="snapshot-card-value"
+        className="flex items-baseline gap-1 shrink-0"
+      >
         {/* Tier-3 sub-29 Round-16 closure — shape glyph alongside
             colored value text. Same status→shape mapping as HeatMap
             cells; aria-hidden because the surrounding context already
-            conveys status semantically. */}
+            conveys status semantically.
+            NOTE: the visual-baseline-snapshotcard gate masks THIS row
+            (status glyph + value + status color are all data-driven —
+            they recompute on every IndicatorValue change). The row's
+            full-width band still locks vertical rhythm; the value/color
+            rendering is asserted in CompanySnapshot.test.tsx instead. */}
         <span aria-hidden="true" className={`text-[10px] opacity-70 ${statusColor}`}>
           {statusShape(status)}
         </span>

@@ -164,6 +164,29 @@ describe("CompanySnapshot (Phase B7)", () => {
     expect(svgs.length).toBeGreaterThanOrEqual(3);
   });
 
+  // 2026-05-29 — the visual-baseline-snapshotcard gate MASKS the value row
+  // (status glyph + value + status color are data-driven; they recompute on
+  // every IndicatorValue change). So the status→color contract is asserted
+  // HERE in the DOM rather than in pixels. This also guards two invariants
+  // the gate depends on: (a) the `snapshot-card-value` testid exists (the
+  // mask target — a rename would silently no-op the mask, the exact bug the
+  // old `.sparkline svg` selector had), and (b) one value row per card.
+  it("value row carries the mask testid + correct status-color class", async () => {
+    render(<CompanySnapshot companyCode="AAC-MAIN" />);
+    await waitFor(() => {
+      expect(screen.queryByText("Gross Margin")).toBeTruthy();
+    });
+    // (a) mask target exists, one per card (fixture has 3 margin cards).
+    const valueRows = document.querySelectorAll(
+      '[data-testid="snapshot-card-value"]',
+    );
+    expect(valueRows.length).toBe(3);
+    // (b) status → color (same mapping as HeatMap cells):
+    //   red → text-[#FF4757], amber → text-[#FFB020], green → text-[#00D4AA]
+    expect(screen.getByText("-9.46 %").className).toContain("text-[#FF4757]"); // net = red
+    expect(screen.getByText("15.1 %").className).toContain("text-[#FFB020]"); // gross = amber
+  });
+
   it("Header shows active company code in highlight color", async () => {
     render(<CompanySnapshot companyCode="AAC-MAIN" />);
     await waitFor(() => {
