@@ -29,6 +29,7 @@ interface FakeBudgetLineRow {
   currencyCode: string | null
   exchangeRate: number | null
   monthIndex: number | null
+  sortOrder: number | null
   planId: string
   sourceDocument: string
   deletedAt: Date | null
@@ -89,6 +90,7 @@ function makeFakePrisma(opts: {
             currencyCode: d.currencyCode ?? null,
             exchangeRate: d.exchangeRate ?? null,
             monthIndex: d.monthIndex ?? null,
+            sortOrder: d.sortOrder ?? null,
             planId: d.planId!,
             sourceDocument: d.sourceDocument ?? "",
             deletedAt: null,
@@ -247,6 +249,44 @@ describe("runImportBatch — bit-perfect round-trip", () => {
     expect(prisma.__budgetLines).toHaveLength(2)
     const live = prisma.__budgetLines.filter((b) => b.deletedAt === null)
     expect(live).toHaveLength(1)
+  })
+})
+
+describe("runImportBatch — sortOrder mirrors monthIndex (month-bucketing invariant)", () => {
+  it("writes sortOrder = monthIndex so month/quarter readers bucket correctly", async () => {
+    // Regression: the createMany payload previously omitted `sortOrder`, so
+    // every imported line fell to the schema default 0. recompute-data-source,
+    // the Panel-3 drill-down, and the 12-month series endpoint all treat
+    // `sortOrder` as the 0..11 month index — a 0 default collapsed the whole
+    // year into January (Feb..Dec read as zero). Lock the writer to mirror
+    // monthIndex onto sortOrder.
+    const prisma = makeFakePrisma()
+    const plan = planFor(
+      [
+        R("PLF.01.01.01", 100, 0), // Jan
+        R("PLF.01.01.02", 200, 5), // Jun
+        R("PLF.01.01.03", 300, 11), // Dec
+      ],
+      { periodScope: ["2026-01", "2026-06", "2026-12"] },
+    )
+    await runImportBatch(prisma, plan)
+    const live = prisma.__budgetLines.filter((b) => b.deletedAt === null)
+    expect(live).toHaveLength(3)
+    for (const row of live) {
+      expect(row.sortOrder).toBe(row.monthIndex)
+    }
+    expect(new Set(live.map((b) => b.sortOrder))).toEqual(new Set([0, 5, 11]))
+  })
+
+  it("falls back to sortOrder 0 when monthIndex is null (annual line; prior behavior preserved)", async () => {
+    const prisma = makeFakePrisma()
+    const annual: ImportBatchRow = { ...R("PLF.09.09.09", 999, 0), monthIndex: null, period: "2026" }
+    const plan = planFor([annual], { periodScope: ["2026"] })
+    await runImportBatch(prisma, plan)
+    const live = prisma.__budgetLines.filter((b) => b.deletedAt === null)
+    expect(live).toHaveLength(1)
+    expect(live[0].monthIndex).toBeNull()
+    expect(live[0].sortOrder).toBe(0)
   })
 })
 

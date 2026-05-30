@@ -272,6 +272,17 @@ export async function runImportBatch(
         currencyCode: r.currencyCode,
         exchangeRate: r.exchangeRate,
         monthIndex: r.monthIndex,
+        // `sortOrder` MUST mirror `monthIndex` (0..11). The recompute
+        // pipeline, the Panel-3 drill-down, and the 12-month series
+        // endpoint all filter/bucket budget lines by `sortOrder` as the
+        // month index (recompute-data-source.ts:312-327). Leaving it at
+        // the schema default `0` (the prior bug) collapsed every month
+        // into January: monthly/quarterly indicators for AzerSheker —
+        // whose lines all defaulted to sortOrder=0 — lumped the whole
+        // year into 2026-01/Q1 and showed zero for Feb..Dec. Mirroring
+        // monthIndex keeps all four readers consistent without touching
+        // the core-calc bucketing logic.
+        sortOrder: r.monthIndex ?? 0,
         accountId: r.accountId,
         sourceDocument: r.sourceCell,
       }))
