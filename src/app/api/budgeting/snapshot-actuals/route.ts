@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     for (const plan of plans) {
       // Get auto-actual lines for this plan
       const autoLines = await prisma.budgetLine.findMany({
-        where: { planId: plan.id, organizationId: orgId, isAutoActual: true },
+        where: { planId: plan.id, organizationId: orgId, isAutoActual: true, deletedAt: null },
         include: { account: { select: { code: true, name: true } } },
       })
 

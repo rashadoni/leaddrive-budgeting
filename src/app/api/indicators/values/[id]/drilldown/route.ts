@@ -110,6 +110,7 @@ export async function GET(
       organizationId: orgId,
       companyId: iv.companyId,
       plan: { year: period.year },
+      deletedAt: null,
       ...(sortOrderFilter ? { sortOrder: sortOrderFilter } : {}),
     },
     select: {

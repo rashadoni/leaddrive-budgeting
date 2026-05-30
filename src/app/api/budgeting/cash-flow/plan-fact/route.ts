@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
     where: {
       organizationId: orgId,
       plan: { year, status: { in: ["approved", "draft"] } },
+      deletedAt: null,
     },
     select: { lineType: true, plannedAmount: true, department: true },
   })

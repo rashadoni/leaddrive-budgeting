@@ -113,7 +113,8 @@ export async function GET(req: NextRequest) {
   //    Lines that were never changed = their current state IS historical state
   const [currentLines, currentActuals] = await Promise.all([
     prisma.budgetLine.findMany({
-      where: { planId, organizationId: orgId },
+      // Phase 8 fix: honor soft-delete — live lines only.
+      where: { planId, organizationId: orgId, deletedAt: null },
       include: { account: { select: { code: true, name: true } } },
     }),
     prisma.budgetActual.findMany({

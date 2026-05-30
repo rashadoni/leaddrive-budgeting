@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     where: {
       organizationId: orgId,
       plan: { is: { year } },
+      deletedAt: null,
       ...(companyId ? { companyId } : {}),
     },
     select: { lineType: true, plannedAmount: true, currencyCode: true },
