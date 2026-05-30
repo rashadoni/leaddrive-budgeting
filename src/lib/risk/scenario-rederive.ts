@@ -83,6 +83,10 @@ export interface DriverSimulationResult {
   byCompany: DriverCompositeSwing[]
   holdingBaselineScore: number | null
   holdingScenarioScore: number | null
+  /** Financial-stress sub-composite (P&L-indicator subset) — swings harder than
+   *  the full composite under a financial shock. Same revenue-weighted method. */
+  financialHoldingBaselineScore: number | null
+  financialHoldingScenarioScore: number | null
   changed: number
   worsened: number
   improved: number
@@ -90,6 +94,19 @@ export interface DriverSimulationResult {
 }
 
 const STATUS_ORDER: Record<IndicatorStatus, number> = { green: 3, amber: 2, red: 1, unknown: 0 }
+
+/**
+ * A "financial" indicator is one whose formula reads a P&L scalar — exactly
+ * the set a financial shock drives. Used to compute a financial-stress
+ * sub-composite that swings hard under a crisis (the full composite is diluted
+ * by ESG/governance/news indicators that don't react). Category alone won't do
+ * it — the margin indicators are scattered under `operational`.
+ */
+const FINANCIAL_SCALAR_RE =
+  /\b(revenue|cogs|gross_profit|ebitda|net_income|opex|total_cost|imported_input_cost|total_input_cost|domestic_input_cost)\b/
+export function isFinancialIndicator(formula: string): boolean {
+  return FINANCIAL_SCALAR_RE.test(formula ?? '')
+}
 
 function readScalars(ctx: Record<string, unknown>): ResolvedScalars {
   const g = (k: string): number => (typeof ctx[k] === 'number' ? (ctx[k] as number) : NaN)
@@ -161,6 +178,8 @@ export async function simulateByDrivers(
   let lastError: string | null = null
   const scenarioCells: HeatMapCell[] = []
   const baselineCells: HeatMapCell[] = []
+  const financialScenarioCells: HeatMapCell[] = []
+  const financialBaselineCells: HeatMapCell[] = []
 
   for (const co of companies) {
     const coIVs = ivsByCompany.get(co.id) ?? []
@@ -236,11 +255,16 @@ export async function simulateByDrivers(
       })
       const w = ind.weight ?? undefined
       if (isLeaf(co.id)) {
+        const fin = isFinancialIndicator(ind.formula)
         if (baselineStatus) {
-          baselineCells.push({ companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w })
+          const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w }
+          baselineCells.push(cell)
+          if (fin) financialBaselineCells.push(cell)
         }
         if (scenarioStatus) {
-          scenarioCells.push({ companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w })
+          const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w }
+          scenarioCells.push(cell)
+          if (fin) financialScenarioCells.push(cell)
         }
       }
     }
@@ -265,6 +289,13 @@ export async function simulateByDrivers(
   const holdingBaselineScore = holdingId ? baseAll.get(holdingId)?.score ?? null : null
   const holdingScenarioScore = holdingId ? scenAll.get(holdingId)?.score ?? null : null
 
+  // Financial-stress sub-composite — same revenue-weighted roll-up over the
+  // P&L-indicator subset only.
+  const finBaseAll = deriveParentComposites(compArg, computeCompositeByCompany(financialBaselineCells, ids))
+  const finScenAll = deriveParentComposites(compArg, computeCompositeByCompany(financialScenarioCells, ids))
+  const financialHoldingBaselineScore = holdingId ? finBaseAll.get(holdingId)?.score ?? null : null
+  const financialHoldingScenarioScore = holdingId ? finScenAll.get(holdingId)?.score ?? null : null
+
   let worsened = 0
   let improved = 0
   let changed = 0
@@ -282,6 +313,8 @@ export async function simulateByDrivers(
     byCompany,
     holdingBaselineScore,
     holdingScenarioScore,
+    financialHoldingBaselineScore,
+    financialHoldingScenarioScore,
     changed,
     worsened,
     improved,

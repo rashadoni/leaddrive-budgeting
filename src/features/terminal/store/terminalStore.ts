@@ -147,6 +147,10 @@ export interface ScenarioBriefState {
   scenarioCode: string;
   holdingBaselineScore: number | null;
   holdingScenarioScore: number | null;
+  /** Financial-stress sub-composite swing (P&L indicators only) — moves harder
+   *  than the full composite under a financial shock. */
+  financialHoldingBaselineScore: number | null;
+  financialHoldingScenarioScore: number | null;
   byCompany: Array<{
     companyId: string;
     companyCode: string;

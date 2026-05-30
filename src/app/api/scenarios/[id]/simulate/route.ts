@@ -183,6 +183,8 @@ export async function GET(
       deltaMap,
       holdingBaselineScore: sim.holdingBaselineScore,
       holdingScenarioScore: sim.holdingScenarioScore,
+      financialHoldingBaselineScore: sim.financialHoldingBaselineScore,
+      financialHoldingScenarioScore: sim.financialHoldingScenarioScore,
       changed: sim.changed,
       worsened: sim.worsened,
       improved: sim.improved,

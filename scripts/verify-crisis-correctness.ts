@@ -59,7 +59,8 @@ async function main() {
       baselineIVs,
     })
     console.log(`\n══════════ ${code} ══════════`)
-    console.log(`holding composite: ${r.holdingBaselineScore} → ${r.holdingScenarioScore}  (Δ ${r.holdingScenarioScore != null && r.holdingBaselineScore != null ? r.holdingScenarioScore - r.holdingBaselineScore : 'n/a'})`)
+    console.log(`holding composite:  ${r.holdingBaselineScore} → ${r.holdingScenarioScore}  (Δ ${r.holdingScenarioScore != null && r.holdingBaselineScore != null ? r.holdingScenarioScore - r.holdingBaselineScore : 'n/a'})`)
+    console.log(`financial health:   ${r.financialHoldingBaselineScore} → ${r.financialHoldingScenarioScore}  (Δ ${r.financialHoldingScenarioScore != null && r.financialHoldingBaselineScore != null ? r.financialHoldingScenarioScore - r.financialHoldingBaselineScore : 'n/a'})`)
     console.log(`indicators changed: ${r.changed}  (worsened ${r.worsened}, improved ${r.improved})`)
     console.log(`drift: attempted ${r.driftSummary.pairsAttempted}, errored ${r.driftSummary.pairsErrored}${r.driftSummary.lastError ? ` (last: ${r.driftSummary.lastError})` : ''}`)
     console.log('per-company composite swing:')

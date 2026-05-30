@@ -22,6 +22,8 @@ const SAMPLE: ScenarioBriefState = {
   scenarioCode: 'INPUT_COST_30',
   holdingBaselineScore: 61,
   holdingScenarioScore: 58,
+  financialHoldingBaselineScore: 64,
+  financialHoldingScenarioScore: 41,
   byCompany: [{ companyId: 'c1', companyCode: 'AZSEKER-CPC', baselineScore: 64, scenarioScore: 61 }],
   narrative: '⚠ ...',
   mitigations: ['hedge'],

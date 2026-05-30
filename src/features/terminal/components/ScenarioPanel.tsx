@@ -370,6 +370,8 @@ export function ScenarioPanel() {
         scenarioCode: data.scenarioCode,
         holdingBaselineScore: data.holdingBaselineScore ?? null,
         holdingScenarioScore: data.holdingScenarioScore ?? null,
+        financialHoldingBaselineScore: data.financialHoldingBaselineScore ?? null,
+        financialHoldingScenarioScore: data.financialHoldingScenarioScore ?? null,
         byCompany: data.byCompany ?? [],
         narrative: data.narrative ?? null,
         mitigations: data.mitigations ?? [],
@@ -704,15 +706,39 @@ export function ScenarioPanel() {
                     className="space-y-4 rounded-lg border border-red-500/20 bg-red-500/[0.03] p-4"
                     data-testid="crisis-brief-panel"
                   >
-                    <div className="flex items-center justify-between gap-3">
-                      <HoldingScoreSwing
-                        base={scenarioBrief.holdingBaselineScore}
-                        scen={scenarioBrief.holdingScenarioScore}
-                      />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <HoldingScoreSwing
+                          base={scenarioBrief.holdingBaselineScore}
+                          scen={scenarioBrief.holdingScenarioScore}
+                        />
+                        {scenarioBrief.financialHoldingScenarioScore != null && (
+                          <div className="flex items-baseline gap-3" data-testid="financial-stress-swing">
+                            <span className="text-xs text-muted-foreground">Финансовое здоровье</span>
+                            <span className="text-sm text-muted-foreground line-through tabular-nums">
+                              {scenarioBrief.financialHoldingBaselineScore ?? "—"}
+                            </span>
+                            <span
+                              className={`text-2xl font-bold tabular-nums ${bandColor(scenarioBrief.financialHoldingScenarioScore)}`}
+                            >
+                              {scenarioBrief.financialHoldingScenarioScore}
+                            </span>
+                            {scenarioBrief.financialHoldingBaselineScore != null && (
+                              <span className="text-xs font-semibold text-red-500">
+                                ▼{" "}
+                                {Math.abs(
+                                  scenarioBrief.financialHoldingScenarioScore -
+                                    scenarioBrief.financialHoldingBaselineScore,
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => clearScenarioDelta()}
-                        className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50"
+                        className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50 shrink-0"
                         data-testid="crisis-revert"
                       >
                         ← Базовый сценарий

@@ -1,5 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { simulateByDrivers } from './scenario-rederive'
+import { simulateByDrivers, isFinancialIndicator } from './scenario-rederive'
+
+describe('isFinancialIndicator', () => {
+  it('true for P&L-scalar formulas', () => {
+    expect(isFinancialIndicator('gross_profit / revenue * 100')).toBe(true)
+    expect(isFinancialIndicator('ebitda / revenue * 100')).toBe(true)
+    expect(isFinancialIndicator('imported_input_cost / total_input_cost * 100')).toBe(true)
+    expect(isFinancialIndicator('revenue / hectares_planted')).toBe(true)
+  })
+  it('false for non-financial (operational/esg) formulas', () => {
+    expect(isFinancialIndicator('yield_per_ha')).toBe(false)
+    expect(isFinancialIndicator('industry_factor_scope_1')).toBe(false)
+    expect(isFinancialIndicator('news_sentiment_30d')).toBe(false)
+    expect(isFinancialIndicator('')).toBe(false)
+  })
+})
 
 // DS whose every mutation throws — proves the engine never persists.
 const noWriteDs = new Proxy(
@@ -97,5 +112,42 @@ describe('simulateByDrivers (B2)', () => {
       { buildContext: fakeBuildContext, recomputeIndicator: fakeRecompute },
     )
     expect(r.holdingScenarioScore).toBe(83)
+  })
+})
+
+describe('simulateByDrivers — financial-stress sub-composite', () => {
+  const companies = [
+    { id: 'c1', code: 'CPC', name: 'CPC', parentCompanyId: 'p1', industry: 'food_processing', revenue: 1000 },
+    { id: 'p1', code: 'AZSEKER', name: 'Holding', parentCompanyId: null, industry: null, revenue: null },
+  ]
+  const indicators = [
+    { id: 'i1', code: 'IND_EBITDA_MARGIN', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1 },
+    { id: 'i2', code: 'AGRO_YIELD', formula: 'yield_per_ha', thresholds: {}, requiredInputs: ['operationalFact:yield_per_ha'], weight: 1 },
+  ]
+  const baselineIVs = [
+    { companyId: 'c1', indicatorId: 'i1', value: 20, status: 'green' as const },
+    { companyId: 'c1', indicatorId: 'i2', value: 5, status: 'green' as const },
+  ]
+  const scenario = { code: 'INPUT_COST_30', overrides: { shock: { inputCostShock: 0.3 } } }
+
+  it('financial swing reflects ONLY P&L indicators (drops harder than the diluted full composite)', async () => {
+    const fakeBuildContext = vi.fn(async () => ({ context: { revenue: 1000, cogs: 600, opex: 200, gross_profit: 400, ebitda: 200, net_income: 150, da_total: 50, total_input_cost: 600, imported_input_cost: 0, yield_per_ha: 5 }, inputs: {}, functions: {} }) as never)
+    // financial i1 → red under the cost shock; non-financial i2 (yield) → unchanged green.
+    const fakeRecompute = vi.fn(async (_ds, args: { definition: { code?: string } }) =>
+      (args.definition.code === 'IND_EBITDA_MARGIN' ? { ok: true, value: -5, status: 'red' } : { ok: true, value: 5, status: 'green' }) as never,
+    )
+    const r = await simulateByDrivers(
+      noWriteDs,
+      { organizationId: 'org1', scenario, period: '2026', companies, indicators, baselineIVs },
+      { buildContext: fakeBuildContext, recomputeIndicator: fakeRecompute },
+    )
+    // Full composite: 1 red + 1 green → 50. Financial composite: only i1 red → 0.
+    expect(r.holdingScenarioScore).toBe(50)
+    expect(r.financialHoldingBaselineScore).toBe(100) // i1 green baseline
+    expect(r.financialHoldingScenarioScore).toBe(0) // i1 red scenario
+    // Financial stress is more dramatic than the diluted full swing.
+    expect(r.holdingBaselineScore! - r.holdingScenarioScore!).toBeLessThan(
+      r.financialHoldingBaselineScore! - r.financialHoldingScenarioScore!,
+    )
   })
 })
