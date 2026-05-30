@@ -34,6 +34,7 @@ import {
   createPrismaDataSource,
   type IndicatorDefinitionLike,
 } from '@/lib/risk/recompute'
+import { mapWithConcurrency } from '@/lib/risk/concurrency'
 import { parsePeriod, PeriodParseError } from '@/lib/risk/periods'
 import { filterOperationalCompanies } from '@/lib/risk/targets'
 import type { IndicatorStatus } from '@/lib/risk/formula-engine'
@@ -253,60 +254,59 @@ export async function POST(request: NextRequest) {
     deltaPct: number | null
   }> = []
 
-  // Sequential to keep DB connection pool happy under 5/min limit; v2
-  // can batch via Promise.all if profiling shows it's worth the load.
+  // Concurrency-capped (was sequential) — each call is still the canonical
+  // recomputeIndicator (no writes in preview); only the loop is parallel, well
+  // under the Prisma pool. Per-pair failure → null (skipped), never aborts.
   let perPairErrors = 0
   let lastError: string | null = null
+  const pairs: Array<{ co: (typeof companies)[number]; ind: (typeof affectedIndicators)[number] }> = []
   for (const co of companies) {
-    for (const ind of affectedIndicators) {
-      try {
-        const def: IndicatorDefinitionLike = {
-          id: ind.id,
-          code: ind.code,
-          formula: ind.formula,
-          thresholds: ind.thresholds,
-          requiredInputs: ind.requiredInputs,
-        }
-        const r = await recomputeIndicator(ds, {
-          organizationId: session.orgId,
-          companyId: co.id,
-          definition: def,
-          period,
-          scenarioOverrides: overrides,
-        })
-        const baseline = baselineByKey.get(`${co.id}:${ind.id}`) ?? null
-        const baselineValue = baseline?.value ?? null
-        const scenarioValue = r.status === 'unknown' ? null : r.value
-        let deltaPct: number | null = null
-        if (
-          baselineValue !== null &&
-          scenarioValue !== null &&
-          Math.abs(baselineValue) > 1e-9
-        ) {
-          deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
-        }
-        results.push({
-          companyId: co.id,
-          companyCode: co.code ?? co.id,
-          indicatorId: ind.id,
-          indicatorCode: ind.code,
-          unit: ind.unit,
-          baselineValue,
-          baselineStatus: baseline?.status ?? null,
-          scenarioValue,
-          scenarioStatus: r.status === 'unknown' ? null : r.status,
-          deltaPct,
-        })
-      } catch (err) {
-        // Per-pair failure shouldn't abort the whole preview; skip the
-        // pair, the UI renders it as missing. Counted + last-error
-        // surfaced for diagnostics.
-        perPairErrors++
-        lastError = err instanceof Error ? err.message : String(err)
-        continue
-      }
-    }
+    for (const ind of affectedIndicators) pairs.push({ co, ind })
   }
+  const mapped = await mapWithConcurrency(pairs, 8, async ({ co, ind }) => {
+    try {
+      const def: IndicatorDefinitionLike = {
+        id: ind.id,
+        code: ind.code,
+        formula: ind.formula,
+        thresholds: ind.thresholds,
+        requiredInputs: ind.requiredInputs,
+      }
+      const r = await recomputeIndicator(ds, {
+        organizationId: session.orgId,
+        companyId: co.id,
+        definition: def,
+        period,
+        scenarioOverrides: overrides,
+      })
+      const baseline = baselineByKey.get(`${co.id}:${ind.id}`) ?? null
+      const baselineValue = baseline?.value ?? null
+      const scenarioValue = r.status === 'unknown' ? null : r.value
+      let deltaPct: number | null = null
+      if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
+        deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
+      }
+      return {
+        companyId: co.id,
+        companyCode: co.code ?? co.id,
+        indicatorId: ind.id,
+        indicatorCode: ind.code,
+        unit: ind.unit,
+        baselineValue,
+        baselineStatus: baseline?.status ?? null,
+        scenarioValue,
+        scenarioStatus: r.status === 'unknown' ? null : r.status,
+        deltaPct,
+      }
+    } catch (err) {
+      // Per-pair failure shouldn't abort the whole preview; skip the pair (the
+      // UI renders it as missing). Counted + last-error surfaced for diagnostics.
+      perPairErrors++
+      lastError = err instanceof Error ? err.message : String(err)
+      return null
+    }
+  })
+  for (const m of mapped) if (m) results.push(m)
 
   return NextResponse.json({
     period,

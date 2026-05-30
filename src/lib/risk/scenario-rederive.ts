@@ -21,6 +21,7 @@ import type { IndicatorStatus } from './formula-engine'
 import { parsePeriod } from './periods'
 import { hasShock, readShock, resolveShockOverrides, type ResolvedScalars } from './scenario-shock'
 import { computeCompositeByCompany, deriveParentComposites } from './composite-score'
+import { mapWithConcurrency } from './concurrency'
 import type { HeatMapCell } from './heatmap-matrix'
 
 export interface SimulateByDriversCompany {
@@ -98,20 +99,6 @@ const STATUS_ORDER: Record<IndicatorStatus, number> = { green: 3, amber: 2, red:
 /** Max concurrent recomputeIndicator calls — speeds the preview ~5-8× over a
  *  sequential loop while staying well under the Prisma connection pool. */
 const RECOMPUTE_CONCURRENCY = 8
-
-/** Order-preserving concurrency-capped async map (no extra deps). */
-async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length)
-  let next = 0
-  const worker = async (): Promise<void> => {
-    while (next < items.length) {
-      const i = next++
-      results[i] = await fn(items[i])
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
-  return results
-}
 
 /**
  * A "financial" indicator is one whose formula reads a P&L scalar — exactly
