@@ -1,6 +1,6 @@
 # Design — Crisis Brief Phase 3: live price/weather signal triggers
 
-**Date:** 2026-05-30 · **Status:** Approved (strip-in-terminal, price/weather only — news OUT, data-blocked) · **Builds on:** Phase 1+2.
+**Date:** 2026-05-30 · **Status:** ✅ SHIPPED 2026-05-30 (strip-in-terminal, price/weather; news OUT — Phase 3b, data-blocked) · **Builds on:** Phase 1+2.
 
 ## 1. Goal
 
