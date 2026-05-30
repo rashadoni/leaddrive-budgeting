@@ -279,7 +279,32 @@ constraints.
   - **No background scheduler**: `POST /api/indicators` runs sync with
     a 500-pair cap; longer recomputes time out. Need: BullMQ + Redis
     OR Vercel Cron. **Tracked: CLAUDE.md "no background scheduler"
-    gap.**
+    gap.** (This is the Vercel-SaaS recompute gap. NOTE — separate from
+    the **intel feed scheduler** below, which the manual-VM prod CAN run.)
+
+## Intel feed scheduler (Crisis Brief feed freshness — manual-VM prod)
+
+The Crisis Brief features added 2026-05-30 read the live intel feed:
+Phase 2 scenario anchors (FX/commodity levels), Phase 3 price/weather
+signal triggers, and Phase 3b news triggers. These **degrade gracefully
+when the feed is stale** (each surfaces an honest staleness date / ⚠
+flag — they never break), but to stay FRESH in prod the feed must be
+refreshed periodically. On the manual-VM deployment, run the intel
+scheduler under systemd / cron / a LaunchAgent:
+
+```bash
+# 24h cadence (default); fetches FX/CPI/commodity/weather + the AI news
+# crawl (Anthropic web_search — uses ANTHROPIC_API_KEY, no extra key).
+npx tsx scripts/intel-scheduler-bootstrap.ts
+# One-off manual news refresh: npx tsx scripts/run-news-crawl.ts
+```
+
+Required env for the feed crawl: `ANTHROPIC_API_KEY` set (else the news
+crawl no-ops + AI narrative degrades) and `WEB_SEARCH_PROVIDER` left
+unset/empty (defaults to `anthropic-bundled`; never `in-memory` in prod
+— the code throws). Without the scheduler the terminal still works on
+the last-ingested feed (stale-flagged). **Owner: SRE — add the
+systemd/cron unit at deploy time.**
   - **No connection pooling**: Prisma's default per-instance pool
     (5 connections) × N concurrent function invocations would exhaust
     Postgres `max_connections=100` immediately at any scale. Need:
