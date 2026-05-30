@@ -108,7 +108,7 @@ function readScalars(ctx: Record<string, unknown>): ResolvedScalars {
 }
 
 export async function simulateByDrivers(
-  ds: RecomputeDataSource,
+  rawDs: RecomputeDataSource,
   input: SimulateByDriversInput,
   deps: SimulateByDriversDeps = {},
 ): Promise<DriverSimulationResult> {
@@ -116,16 +116,35 @@ export async function simulateByDrivers(
   const recomputeIndicator = deps.recomputeIndicator ?? realRecompute
   const { organizationId, scenario, period, companies, indicators, baselineIVs } = input
 
+  // CRITICAL: recomputeIndicator ALWAYS calls ds.upsertIndicatorValue (recompute.ts:805)
+  // — there is no skip flag. A live preview MUST NOT persist (it would poison the
+  // baseline for the next scenario + the real HeatMap). Wrap the DS so the write
+  // method is a no-op; all read methods pass through. This makes simulateByDrivers
+  // guaranteed write-free regardless of the DS the caller hands in.
+  const ds: RecomputeDataSource = {
+    ...rawDs,
+    upsertIndicatorValue: (async () => undefined) as RecomputeDataSource['upsertIndicatorValue'],
+  }
+
   if (!hasShock(scenario.overrides)) {
     throw new Error(`Scenario ${scenario.code} has no shock — use the legacy multiplier path.`)
   }
   const shock = readShock(scenario.overrides)!
   const parsedPeriod = parsePeriod(period)
 
-  const baselineByKey = new Map<string, SimulateByDriversBaselineIV>()
-  for (const iv of baselineIVs) baselineByKey.set(`${iv.companyId}:${iv.indicatorId}`, iv)
-
-  const requiredUnion = Array.from(new Set(indicators.flatMap((i) => i.requiredInputs ?? [])))
+  // Index indicators by id + group the EXISTING baseline IVs by company. We
+  // only re-derive (company, indicator) pairs that actually have a baseline IV
+  // — i.e. the cells already on the HeatMap. Recomputing the full
+  // companies×indicators cartesian would simulate industry-irrelevant pairs
+  // (e.g. AGRO_YIELD on a services co) and, with a writing DS, would persist
+  // spurious rows. Iterating real pairs mirrors what the terminal shows.
+  const indicatorById = new Map(indicators.map((i) => [i.id, i]))
+  const ivsByCompany = new Map<string, SimulateByDriversBaselineIV[]>()
+  for (const iv of baselineIVs) {
+    const list = ivsByCompany.get(iv.companyId)
+    if (list) list.push(iv)
+    else ivsByCompany.set(iv.companyId, [iv])
+  }
 
   // Leaf = a company nobody else points to as parent. Only leaves contribute
   // cells to the composite; parents (incl. the holding root) get a
@@ -137,19 +156,29 @@ export async function simulateByDrivers(
   const isLeaf = (id: string): boolean => !parentIds.has(id)
 
   const deltas: DriverIndicatorDelta[] = []
+  let pairsAttempted = 0
   let pairsErrored = 0
   let lastError: string | null = null
   const scenarioCells: HeatMapCell[] = []
   const baselineCells: HeatMapCell[] = []
 
   for (const co of companies) {
+    const coIVs = ivsByCompany.get(co.id) ?? []
+    if (coIVs.length === 0) continue // no cells on the HeatMap for this company
+
+    // One buildContext per company over the union of THIS company's
+    // baseline indicators' requiredInputs → resolve the shock's scalar
+    // overrides from the company's real baseline.
+    const coRequired = Array.from(
+      new Set(coIVs.flatMap((iv) => indicatorById.get(iv.indicatorId)?.requiredInputs ?? [])),
+    )
     let overrides: Record<string, number> = {}
     try {
       const baseCtx = await buildContext(ds, {
         organizationId,
         companyId: co.id,
         period: parsedPeriod,
-        requiredInputs: requiredUnion,
+        requiredInputs: coRequired,
         industry: co.industry ?? null,
       })
       overrides = resolveShockOverrides(shock, readScalars(baseCtx.context as Record<string, unknown>))
@@ -157,9 +186,10 @@ export async function simulateByDrivers(
       lastError = err instanceof Error ? err.message : String(err)
     }
 
-    for (const ind of indicators) {
-      const key = `${co.id}:${ind.id}`
-      const baseline = baselineByKey.get(key) ?? null
+    for (const baseline of coIVs) {
+      const ind = indicatorById.get(baseline.indicatorId)
+      if (!ind) continue
+      pairsAttempted++
       const def: IndicatorDefinitionLike = {
         id: ind.id,
         code: ind.code,
@@ -167,8 +197,8 @@ export async function simulateByDrivers(
         thresholds: ind.thresholds,
         requiredInputs: ind.requiredInputs,
       }
-      let scenarioValue: number | null = baseline?.value ?? null
-      let scenarioStatus: IndicatorStatus | null = baseline?.status ?? null
+      let scenarioValue: number | null = baseline.value
+      let scenarioStatus: IndicatorStatus | null = baseline.status
       try {
         const rr = await recomputeIndicator(ds, {
           organizationId,
@@ -184,8 +214,8 @@ export async function simulateByDrivers(
         pairsErrored++
         lastError = err instanceof Error ? err.message : String(err)
       }
-      const baselineValue = baseline?.value ?? null
-      const baselineStatus = baseline?.status ?? null
+      const baselineValue = baseline.value
+      const baselineStatus = baseline.status
       let deltaPct: number | null = null
       if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
         deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
@@ -255,6 +285,6 @@ export async function simulateByDrivers(
     changed,
     worsened,
     improved,
-    driftSummary: { pairsAttempted: companies.length * indicators.length, pairsErrored, lastError },
+    driftSummary: { pairsAttempted, pairsErrored, lastError },
   }
 }
