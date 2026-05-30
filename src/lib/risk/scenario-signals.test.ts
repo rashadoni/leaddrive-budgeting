@@ -1,0 +1,53 @@
+import { describe, it, expect } from 'vitest'
+import { detectSignals } from './scenario-signals'
+import type { FeedSnapshot } from './scenario-feed-context'
+
+const fresh = (value: number) => ({ value, asOf: '2026-05-28', stale: false })
+
+// Snapshot mirroring the current live feed (all 4 rules fire).
+const LIVE: FeedSnapshot = {
+  AZN_USD: fresh(1.7),
+  FX_FORWARD_USD_AZN_12M: fresh(1.7527),
+  BRENT_USD_BBL: fresh(110.53),
+  FAO_SUGAR_INDEX: { value: 88.5, asOf: '2026-03-31', stale: true },
+  RAINFALL_14D_MIN: fresh(11.5),
+}
+
+describe('detectSignals', () => {
+  it('fires all 4 signals on the live feed, each mapped to its scenario', () => {
+    const sigs = detectSignals(LIVE)
+    const byId = Object.fromEntries(sigs.map((s) => [s.id, s]))
+    expect(byId['fx-depreciation'].suggestedScenarioCode).toBe('AZN_DEVAL_15')
+    expect(byId['oil-elevated'].suggestedScenarioCode).toBe('BRENT_TO_140')
+    expect(byId['drought'].suggestedScenarioCode).toBe('DROUGHT_2026')
+    expect(byId['sugar-pressure'].suggestedScenarioCode).toBe('SUGAR_PRICE_TO_70')
+    expect(sigs).toHaveLength(4)
+  })
+
+  it('carries freshness (FAO sugar stale flag propagates)', () => {
+    const sugar = detectSignals(LIVE).find((s) => s.id === 'sugar-pressure')!
+    expect(sugar.stale).toBe(true)
+    expect(sugar.asOf).toBe('2026-03-31')
+  })
+
+  it('FX rule needs > 1.5% forward premium (does NOT fire at +1%)', () => {
+    const snap: FeedSnapshot = { AZN_USD: fresh(1.7), FX_FORWARD_USD_AZN_12M: fresh(1.7 * 1.01) }
+    expect(detectSignals(snap).some((s) => s.id === 'fx-depreciation')).toBe(false)
+  })
+
+  it('oil rule does NOT fire below $95', () => {
+    expect(detectSignals({ BRENT_USD_BBL: fresh(80) }).some((s) => s.id === 'oil-elevated')).toBe(false)
+  })
+
+  it('drought rule does NOT fire when rainfall ≥ 15mm', () => {
+    expect(detectSignals({ RAINFALL_14D_MIN: fresh(30) }).some((s) => s.id === 'drought')).toBe(false)
+  })
+
+  it('sugar rule does NOT fire at/above 90', () => {
+    expect(detectSignals({ FAO_SUGAR_INDEX: fresh(95) }).some((s) => s.id === 'sugar-pressure')).toBe(false)
+  })
+
+  it('missing inputs → no signals (empty feed)', () => {
+    expect(detectSignals({})).toEqual([])
+  })
+})
