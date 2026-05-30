@@ -39,7 +39,7 @@ import { useEventStream } from "@/lib/events/use-event-stream";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanyImpactForecastsCard } from "./CompanyImpactForecastsCard";
 import { CompanyStrategicContextCard } from "./CompanyStrategicContextCard";
-import { computeCompositeByCompany } from "@/lib/risk/composite-score";
+import { computeCompositeByCompany, deriveParentComposites } from "@/lib/risk/composite-score";
 import { DEFAULT_ALERT_RULE_IDS } from "@/lib/risk/alert-rules";
 import { resolveIndicatorLabel } from "../lib/resolve-indicator-label";
 
@@ -117,7 +117,11 @@ export function CompanySnapshot({ companyCode }: Props) {
     const riskTagsByCompanyId = companyTree
       ? buildRiskTagsByCompanyId(companyTree)
       : undefined;
-    return computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+    // 2026-05-30 — parent/holding rows get the SAME revenue-weighted roll-up
+    // as Panel 1/2 (deriveParentComposites) so the composite badge is
+    // identical across all three panels for a selected sub-group.
+    const leafById = computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+    return deriveParentComposites(data.companies, leafById);
   }, [data, companyTree]);
   const composite = company ? compositeByCo.get(company.id) : null;
   const statusCounts = useMemo(() => {
