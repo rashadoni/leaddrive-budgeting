@@ -95,6 +95,24 @@ export interface DriverSimulationResult {
 
 const STATUS_ORDER: Record<IndicatorStatus, number> = { green: 3, amber: 2, red: 1, unknown: 0 }
 
+/** Max concurrent recomputeIndicator calls — speeds the preview ~5-8× over a
+ *  sequential loop while staying well under the Prisma connection pool. */
+const RECOMPUTE_CONCURRENCY = 8
+
+/** Order-preserving concurrency-capped async map (no extra deps). */
+async function mapWithConcurrency<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++
+      results[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()))
+  return results
+}
+
 /**
  * A "financial" indicator is one whose formula reads a P&L scalar — exactly
  * the set a financial shock drives. Used to compute a financial-stress
@@ -181,17 +199,15 @@ export async function simulateByDrivers(
   const financialScenarioCells: HeatMapCell[] = []
   const financialBaselineCells: HeatMapCell[] = []
 
-  for (const co of companies) {
-    const coIVs = ivsByCompany.get(co.id) ?? []
-    if (coIVs.length === 0) continue // no cells on the HeatMap for this company
+  // Only companies that have cells on the HeatMap participate.
+  const activeCompanies = companies.filter((co) => (ivsByCompany.get(co.id)?.length ?? 0) > 0)
 
-    // One buildContext per company over the union of THIS company's
-    // baseline indicators' requiredInputs → resolve the shock's scalar
-    // overrides from the company's real baseline.
-    const coRequired = Array.from(
-      new Set(coIVs.flatMap((iv) => indicatorById.get(iv.indicatorId)?.requiredInputs ?? [])),
-    )
-    let overrides: Record<string, number> = {}
+  // ── Phase 1 — per-company shock overrides (one baseline buildContext each),
+  //    run concurrently. ────────────────────────────────────────────────────
+  const overridesByCompany = new Map<string, Record<string, number>>()
+  await mapWithConcurrency(activeCompanies, RECOMPUTE_CONCURRENCY, async (co) => {
+    const coIVs = ivsByCompany.get(co.id) ?? []
+    const coRequired = Array.from(new Set(coIVs.flatMap((iv) => indicatorById.get(iv.indicatorId)?.requiredInputs ?? [])))
     try {
       const baseCtx = await buildContext(ds, {
         organizationId,
@@ -200,72 +216,88 @@ export async function simulateByDrivers(
         requiredInputs: coRequired,
         industry: co.industry ?? null,
       })
-      overrides = resolveShockOverrides(shock, readScalars(baseCtx.context as Record<string, unknown>))
+      overridesByCompany.set(co.id, resolveShockOverrides(shock, readScalars(baseCtx.context as Record<string, unknown>)))
     } catch (err) {
+      overridesByCompany.set(co.id, {})
       lastError = err instanceof Error ? err.message : String(err)
     }
+  })
 
-    for (const baseline of coIVs) {
+  // ── Phase 2 — re-derive every (company, indicator) pair CONCURRENTLY (capped).
+  //    Each call is still the canonical recomputeIndicator (disclosure / clamps
+  //    / status logic preserved) — only the loop is parallel. ────────────────
+  type Pair = { co: SimulateByDriversCompany; baseline: SimulateByDriversBaselineIV; ind: SimulateByDriversIndicator }
+  const pairs: Pair[] = []
+  for (const co of activeCompanies) {
+    for (const baseline of ivsByCompany.get(co.id) ?? []) {
       const ind = indicatorById.get(baseline.indicatorId)
-      if (!ind) continue
-      pairsAttempted++
-      const def: IndicatorDefinitionLike = {
-        id: ind.id,
-        code: ind.code,
-        formula: ind.formula,
-        thresholds: ind.thresholds,
-        requiredInputs: ind.requiredInputs,
-      }
-      let scenarioValue: number | null = baseline.value
-      let scenarioStatus: IndicatorStatus | null = baseline.status
-      try {
-        const rr = await recomputeIndicator(ds, {
-          organizationId,
-          companyId: co.id,
-          definition: def,
-          period,
-          industry: co.industry ?? null,
-          scenarioOverrides: overrides,
-        })
-        scenarioValue = rr.status === 'unknown' ? null : rr.value
-        scenarioStatus = rr.status
-      } catch (err) {
-        pairsErrored++
-        lastError = err instanceof Error ? err.message : String(err)
-      }
-      const baselineValue = baseline.value
-      const baselineStatus = baseline.status
-      let deltaPct: number | null = null
-      if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
-        deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
-      }
-      const changed = baselineStatus !== null && scenarioStatus !== null && baselineStatus !== scenarioStatus
-      deltas.push({
+      if (ind) pairs.push({ co, baseline, ind })
+    }
+  }
+  pairsAttempted = pairs.length
+
+  const results = await mapWithConcurrency(pairs, RECOMPUTE_CONCURRENCY, async ({ co, baseline, ind }) => {
+    const def: IndicatorDefinitionLike = {
+      id: ind.id,
+      code: ind.code,
+      formula: ind.formula,
+      thresholds: ind.thresholds,
+      requiredInputs: ind.requiredInputs,
+    }
+    let scenarioValue: number | null = baseline.value
+    let scenarioStatus: IndicatorStatus | null = baseline.status
+    try {
+      const rr = await recomputeIndicator(ds, {
+        organizationId,
         companyId: co.id,
-        companyCode: co.code,
-        companyName: co.name,
-        indicatorId: ind.id,
-        code: ind.code,
-        baselineValue,
-        baselineStatus,
-        scenarioValue,
-        scenarioStatus,
-        changed,
-        deltaPct,
+        definition: def,
+        period,
+        industry: co.industry ?? null,
+        scenarioOverrides: overridesByCompany.get(co.id) ?? {},
       })
-      const w = ind.weight ?? undefined
-      if (isLeaf(co.id)) {
-        const fin = isFinancialIndicator(ind.formula)
-        if (baselineStatus) {
-          const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w }
-          baselineCells.push(cell)
-          if (fin) financialBaselineCells.push(cell)
-        }
-        if (scenarioStatus) {
-          const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w }
-          scenarioCells.push(cell)
-          if (fin) financialScenarioCells.push(cell)
-        }
+      scenarioValue = rr.status === 'unknown' ? null : rr.value
+      scenarioStatus = rr.status
+    } catch (err) {
+      pairsErrored++
+      lastError = err instanceof Error ? err.message : String(err)
+    }
+    return { co, baseline, ind, scenarioValue, scenarioStatus }
+  })
+
+  // ── Assemble deltas + composite cells from the results (order-independent). ─
+  for (const { co, baseline, ind, scenarioValue, scenarioStatus } of results) {
+    const baselineValue = baseline.value
+    const baselineStatus = baseline.status
+    let deltaPct: number | null = null
+    if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
+      deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
+    }
+    const changed = baselineStatus !== null && scenarioStatus !== null && baselineStatus !== scenarioStatus
+    deltas.push({
+      companyId: co.id,
+      companyCode: co.code,
+      companyName: co.name,
+      indicatorId: ind.id,
+      code: ind.code,
+      baselineValue,
+      baselineStatus,
+      scenarioValue,
+      scenarioStatus,
+      changed,
+      deltaPct,
+    })
+    const w = ind.weight ?? undefined
+    if (isLeaf(co.id)) {
+      const fin = isFinancialIndicator(ind.formula)
+      if (baselineStatus) {
+        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: baselineValue ?? 0, status: baselineStatus, weight: w }
+        baselineCells.push(cell)
+        if (fin) financialBaselineCells.push(cell)
+      }
+      if (scenarioStatus) {
+        const cell: HeatMapCell = { companyId: co.id, indicatorId: ind.id, value: scenarioValue ?? 0, status: scenarioStatus, weight: w }
+        scenarioCells.push(cell)
+        if (fin) financialScenarioCells.push(cell)
       }
     }
   }
