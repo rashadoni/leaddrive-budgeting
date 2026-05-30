@@ -1,6 +1,6 @@
 # Design — Crisis Brief Phase 2: live-feed anchoring + shock-from-target
 
-**Date:** 2026-05-30 · **Status:** Approved (scope chosen by user: grounding + shock-from-absolute-target) · **Builds on:** Phase 1 (`…/2026-05-30-what-if-crisis-brief-design.md`).
+**Date:** 2026-05-30 · **Status:** ✅ SHIPPED 2026-05-30 (scope: grounding + shock-from-absolute-target) · **Builds on:** Phase 1 (`…/2026-05-30-what-if-crisis-brief-design.md`).
 
 ## 1. Goal
 
