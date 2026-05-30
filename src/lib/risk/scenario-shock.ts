@@ -32,6 +32,23 @@ export interface ScenarioShock {
    * spent but the harvest fails. Only modulates the revenueShock→cogs link.
    */
   costRigidity?: number
+  /**
+   * Phase 2 — absolute target anchored to a LIVE feed metric. The engine layer
+   * resolves it into the `drives` fraction from the current feed level
+   * (`frac = value / currentLevel − 1`) BEFORE the P&L recompute. Optional;
+   * when present it overrides the plain `drives` fraction. See
+   * `scenario-feed-context.ts`.
+   */
+  target?: ShockTarget
+}
+
+export interface ShockTarget {
+  /** Live-feed metric key (e.g. "AZN_USD", "FAO_SUGAR_INDEX", "BRENT_USD_BBL"). */
+  metric: string
+  /** Absolute target level the scenario drives toward. */
+  value: number
+  /** Which B2 lever the fractional change feeds. */
+  drives: 'fxShock' | 'priceShock' | 'inputCostShock'
 }
 
 /**
@@ -52,19 +69,35 @@ export interface ResolvedScalars {
   yield_per_ha?: number
 }
 
-const SHOCK_KEYS: (keyof ScenarioShock)[] = [
+type NumericShockKey =
+  | 'revenueShock' | 'priceShock' | 'inputCostShock' | 'fxShock' | 'assumedImportShare' | 'yieldShock' | 'costRigidity'
+const SHOCK_KEYS: NumericShockKey[] = [
   'revenueShock', 'priceShock', 'inputCostShock', 'fxShock', 'assumedImportShare', 'yieldShock', 'costRigidity',
 ]
 
 /** Type-guard: does this overrides blob carry a shock with ≥1 non-zero effect?
- *  `assumedImportShare` alone is NOT an effect — it only modulates fxShock. */
+ *  `assumedImportShare` alone is NOT an effect — it only modulates fxShock.
+ *  A well-formed Phase-2 `target` also makes it simulatable (the fraction is
+ *  derived from the feed at run time). */
+function isValidTarget(t: unknown): t is ShockTarget {
+  if (!t || typeof t !== 'object') return false
+  const o = t as Record<string, unknown>
+  return (
+    typeof o.metric === 'string' &&
+    typeof o.value === 'number' &&
+    Number.isFinite(o.value) &&
+    (o.drives === 'fxShock' || o.drives === 'priceShock' || o.drives === 'inputCostShock')
+  )
+}
+
 export function hasShock(overrides: unknown): overrides is { shock: ScenarioShock } {
   if (!overrides || typeof overrides !== 'object') return false
   const shock = (overrides as { shock?: unknown }).shock
   if (!shock || typeof shock !== 'object') return false
   const s = shock as Record<string, unknown>
   const levers: (keyof ScenarioShock)[] = ['revenueShock', 'priceShock', 'inputCostShock', 'fxShock', 'yieldShock']
-  return levers.some((k) => typeof s[k] === 'number' && Number.isFinite(s[k] as number) && (s[k] as number) !== 0)
+  const hasLever = levers.some((k) => typeof s[k] === 'number' && Number.isFinite(s[k] as number) && (s[k] as number) !== 0)
+  return hasLever || isValidTarget(s.target)
 }
 
 const num = (v: unknown, fallback = 0): number =>
@@ -136,5 +169,8 @@ export function readShock(overrides: unknown): ScenarioShock | null {
   const s = (overrides as { shock: Record<string, unknown> }).shock
   const out: ScenarioShock = {}
   for (const k of SHOCK_KEYS) if (typeof s[k] === 'number' && Number.isFinite(s[k] as number)) out[k] = s[k] as number
+  if (isValidTarget(s.target)) {
+    out.target = { metric: s.target.metric, value: s.target.value, drives: s.target.drives }
+  }
   return out
 }

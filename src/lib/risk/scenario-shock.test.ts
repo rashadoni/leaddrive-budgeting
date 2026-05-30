@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasShock, resolveShockOverrides, type ScenarioShock, type ResolvedScalars } from './scenario-shock'
+import { hasShock, readShock, resolveShockOverrides, type ScenarioShock, type ResolvedScalars } from './scenario-shock'
 
 const base: ResolvedScalars = {
   revenue: 1000, cogs: 600, opex: 200, gross_profit: 400, ebitda: 200, net_income: 150,
@@ -17,6 +17,19 @@ describe('hasShock', () => {
     expect(hasShock({ shock: { assumedImportShare: 0.3 } })).toBe(false)
     expect(hasShock(null)).toBe(false)
     expect(hasShock(undefined)).toBe(false)
+  })
+  it('true for a target-only shock (Phase 2 — fraction is derived from the feed)', () => {
+    expect(hasShock({ shock: { target: { metric: 'AZN_USD', value: 2.04, drives: 'fxShock' } } })).toBe(true)
+  })
+  it('false for a malformed target', () => {
+    expect(hasShock({ shock: { target: { metric: 'AZN_USD' } } })).toBe(false)
+  })
+})
+
+describe('readShock — target', () => {
+  it('parses a well-formed target block', () => {
+    const s = readShock({ shock: { target: { metric: 'AZN_USD', value: 2.04, drives: 'fxShock' } } })
+    expect(s?.target).toEqual({ metric: 'AZN_USD', value: 2.04, drives: 'fxShock' })
   })
 })
 
