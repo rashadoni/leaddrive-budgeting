@@ -309,22 +309,39 @@ export function createPrismaDataSource(
       // evaluations actually see different data per anchor — the whole
       // point of a sparkline is varying-by-period, defeated by an
       // unfiltered annual sum.
-      let sortOrderFilter: { gte: number; lte: number } | undefined;
+      // Prefer `monthIndex` (the schema-intended month source — see prisma
+      // `@@index([planId, companyId, monthIndex])`), falling back to the
+      // legacy `sortOrder` only for rows where monthIndex was never
+      // populated. The importer was fixed 2026-05-30 to write
+      // `sortOrder = monthIndex`, but monthIndex is the canonical column, so
+      // bucket on it directly and stop depending on the two staying synced.
+      let monthRange: { gte: number; lte: number } | undefined;
       if (period.kind === 'month') {
         const m = period.start.getUTCMonth();
-        sortOrderFilter = { gte: m, lte: m };
+        monthRange = { gte: m, lte: m };
       } else if (period.kind === 'quarter') {
         const startMonth = period.start.getUTCMonth();
-        sortOrderFilter = { gte: startMonth, lte: startMonth + 2 };
+        monthRange = { gte: startMonth, lte: startMonth + 2 };
       }
-      // year — no sortOrder filter; aggregate across all 12 months.
+      // year — no month filter; aggregate across all 12 months.
 
       const rows = await prisma.budgetLine.findMany({
         where: {
           organizationId,
           companyId,
           plan: { year: period.year },
-          ...(sortOrderFilter ? { sortOrder: sortOrderFilter } : {}),
+          // Coalesce-in-filter: a row matches the period month if its
+          // monthIndex is in range, OR (monthIndex null) its legacy
+          // sortOrder is in range. Mirrors the `monthIndex ?? sortOrder`
+          // preference already used in the analytics / pnl readers.
+          ...(monthRange
+            ? {
+                OR: [
+                  { monthIndex: monthRange },
+                  { monthIndex: null, sortOrder: monthRange },
+                ],
+              }
+            : {}),
           // Phase 7.M Step 4 — exclude soft-deleted (archived) budget
           // lines. Without this, archiving a single period's rows
           // would still leave them flowing into revenue / cogs / opex
@@ -342,6 +359,7 @@ export function createPrismaDataSource(
           // null for out-of-range / non-monthly rows so resolvers can
           // group by month deterministically.
           sortOrder: true,
+          monthIndex: true,
           // CLI follow-up — fallback channel when accountId is null.
           // The ATL detailed import (`scripts/import-atl-detailed.cjs`)
           // populates `lineType` directly instead of linking to CoA. The
@@ -366,6 +384,7 @@ export function createPrismaDataSource(
             currencyCode: string | null;
             exchangeRate: number | null;
             sortOrder: number;
+            monthIndex: number | null;
             lineType: string;
             account: {
               accountType: string;
@@ -386,13 +405,14 @@ export function createPrismaDataSource(
           // (deterministic across locale-mixed CoAs); fall back to the
           // primary name when nameEn was never populated.
           accountName: r.account?.nameEn ?? r.account?.name ?? null,
-          // Month index lives on the row's `sortOrder` field per the
-          // 12-row-per-line monthly persistence contract. Anything
+          // Prefer the canonical `monthIndex`; fall back to the legacy
+          // `sortOrder`-as-month only when monthIndex is null. Anything
           // outside [0,11] is non-monthly (rollup-sourced single-row
           // legacy or hand-edited) — surface as null so resolvers
           // bypass it instead of bucketing into "month 99".
           monthIndex:
-            r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null,
+            r.monthIndex ??
+            (r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null),
         }),
       );
     },

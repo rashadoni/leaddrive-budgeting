@@ -810,7 +810,7 @@ describe('buildContext — budgetLine namespace', () => {
   });
 });
 
-describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () => {
+describe('createPrismaDataSource.listBudgetLines — month filter math (monthIndex-preferring)', () => {
   // The mock-level tests above verify period.kind flows through, but the
   // actual `[startMonth..startMonth+2]` sortOrder math for quarter and
   // `{gte:m, lte:m}` for month live INSIDE createPrismaDataSource. Lock
@@ -827,7 +827,7 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
     return { prisma, findMany };
   }
 
-  it('month period (Apr) → sortOrder filter {gte: 3, lte: 3}', async () => {
+  it('month period (Apr) → monthIndex-preferring filter (month 3)', async () => {
     const { prisma, findMany } = makePrismaSpy();
     const ds = createPrismaDataSource(prisma);
     await ds.listBudgetLines({
@@ -838,10 +838,16 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
     expect(findMany).toHaveBeenCalledTimes(1);
     const where = findMany.mock.calls[0][0].where;
     expect(where.plan).toEqual({ year: 2026 });
-    expect(where.sortOrder).toEqual({ gte: 3, lte: 3 });
+    // monthIndex is the canonical month source; sortOrder is the legacy
+    // fallback only when monthIndex is null.
+    expect(where.OR).toEqual([
+      { monthIndex: { gte: 3, lte: 3 } },
+      { monthIndex: null, sortOrder: { gte: 3, lte: 3 } },
+    ]);
+    expect(where.sortOrder).toBeUndefined();
   });
 
-  it('quarter period (Q3 = Jul-Sep) → sortOrder filter {gte: 6, lte: 8}', async () => {
+  it('quarter period (Q3 = Jul-Sep) → monthIndex-preferring filter (months 6-8)', async () => {
     const { prisma, findMany } = makePrismaSpy();
     const ds = createPrismaDataSource(prisma);
     await ds.listBudgetLines({
@@ -850,10 +856,13 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
       period: parsePeriod('2026-Q3'),
     });
     const where = findMany.mock.calls[0][0].where;
-    expect(where.sortOrder).toEqual({ gte: 6, lte: 8 });
+    expect(where.OR).toEqual([
+      { monthIndex: { gte: 6, lte: 8 } },
+      { monthIndex: null, sortOrder: { gte: 6, lte: 8 } },
+    ]);
   });
 
-  it('quarter period (Q1) → sortOrder filter {gte: 0, lte: 2}', async () => {
+  it('quarter period (Q1) → monthIndex-preferring filter (months 0-2)', async () => {
     const { prisma, findMany } = makePrismaSpy();
     const ds = createPrismaDataSource(prisma);
     await ds.listBudgetLines({
@@ -862,10 +871,13 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
       period: parsePeriod('2026-Q1'),
     });
     const where = findMany.mock.calls[0][0].where;
-    expect(where.sortOrder).toEqual({ gte: 0, lte: 2 });
+    expect(where.OR).toEqual([
+      { monthIndex: { gte: 0, lte: 2 } },
+      { monthIndex: null, sortOrder: { gte: 0, lte: 2 } },
+    ]);
   });
 
-  it('year period → no sortOrder filter (sums all 12 months)', async () => {
+  it('year period → no month filter (sums all 12 months)', async () => {
     const { prisma, findMany } = makePrismaSpy();
     const ds = createPrismaDataSource(prisma);
     await ds.listBudgetLines({
@@ -875,10 +887,11 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
     });
     const where = findMany.mock.calls[0][0].where;
     expect(where.plan).toEqual({ year: 2026 });
+    expect(where.OR).toBeUndefined();
     expect(where.sortOrder).toBeUndefined();
   });
 
-  it('month period (Dec) → sortOrder filter {gte: 11, lte: 11}', async () => {
+  it('month period (Dec) → monthIndex-preferring filter (month 11)', async () => {
     // Locks the boundary case (December = month index 11). A bug like
     // `{gte: m, lte: m + 1}` would silently include January next year here.
     const { prisma, findMany } = makePrismaSpy();
@@ -889,7 +902,30 @@ describe('createPrismaDataSource.listBudgetLines — sortOrder filter math', () 
       period: parsePeriod('2026-12'),
     });
     const where = findMany.mock.calls[0][0].where;
-    expect(where.sortOrder).toEqual({ gte: 11, lte: 11 });
+    expect(where.OR).toEqual([
+      { monthIndex: { gte: 11, lte: 11 } },
+      { monthIndex: null, sortOrder: { gte: 11, lte: 11 } },
+    ]);
+  });
+
+  it('row resolution prefers monthIndex over sortOrder; falls back when null', async () => {
+    // Locks the `monthIndex ?? sortOrder` row mapping. A line whose
+    // canonical monthIndex disagrees with its legacy sortOrder must bucket
+    // by monthIndex; a null monthIndex falls back to sortOrder; a null
+    // monthIndex with out-of-range sortOrder surfaces null (non-monthly).
+    const { prisma, findMany } = makePrismaSpy();
+    findMany.mockResolvedValueOnce([
+      { plannedAmount: 100, currencyCode: null, exchangeRate: null, sortOrder: 0, monthIndex: 5, lineType: 'revenue', account: null },
+      { plannedAmount: 200, currencyCode: null, exchangeRate: null, sortOrder: 7, monthIndex: null, lineType: 'revenue', account: null },
+      { plannedAmount: 300, currencyCode: null, exchangeRate: null, sortOrder: 99, monthIndex: null, lineType: 'revenue', account: null },
+    ]);
+    const ds = createPrismaDataSource(prisma);
+    const rows = await ds.listBudgetLines({
+      organizationId: 'org_1',
+      companyId: 'co_1',
+      period: parsePeriod('2026'),
+    });
+    expect(rows.map((r) => r.monthIndex)).toEqual([5, 7, null]);
   });
 });
 

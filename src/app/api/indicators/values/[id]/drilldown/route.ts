@@ -96,13 +96,16 @@ export async function GET(
     )
   }
 
-  let sortOrderFilter: { gte: number; lte: number } | undefined
+  // Prefer the canonical `monthIndex`; fall back to legacy `sortOrder`
+  // only when monthIndex is null (mirrors recompute-data-source + the
+  // analytics/pnl readers — see the 2026-05-30 month-bucketing fix).
+  let monthRange: { gte: number; lte: number } | undefined
   if (period.kind === "month") {
     const m = period.start.getUTCMonth()
-    sortOrderFilter = { gte: m, lte: m }
+    monthRange = { gte: m, lte: m }
   } else if (period.kind === "quarter") {
     const startMonth = period.start.getUTCMonth()
-    sortOrderFilter = { gte: startMonth, lte: startMonth + 2 }
+    monthRange = { gte: startMonth, lte: startMonth + 2 }
   }
 
   const rows = await prisma.budgetLine.findMany({
@@ -111,7 +114,14 @@ export async function GET(
       companyId: iv.companyId,
       plan: { year: period.year },
       deletedAt: null,
-      ...(sortOrderFilter ? { sortOrder: sortOrderFilter } : {}),
+      ...(monthRange
+        ? {
+            OR: [
+              { monthIndex: monthRange },
+              { monthIndex: null, sortOrder: monthRange },
+            ],
+          }
+        : {}),
     },
     select: {
       id: true,
@@ -122,6 +132,7 @@ export async function GET(
       currencyCode: true,
       exchangeRate: true,
       sortOrder: true,
+      monthIndex: true,
       notes: true,
       account: {
         select: {
@@ -165,7 +176,8 @@ export async function GET(
       currencyCode: r.currencyCode ?? baseCcy,
       exchangeRate: r.exchangeRate ?? null,
       monthIndex:
-        r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null,
+        r.monthIndex ??
+        (r.sortOrder >= 0 && r.sortOrder <= 11 ? r.sortOrder : null),
       notes: r.notes ?? null,
     }
   })

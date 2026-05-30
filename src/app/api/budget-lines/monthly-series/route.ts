@@ -66,11 +66,18 @@ export async function GET(request: NextRequest) {
       ...(accountCode
         ? { account: { code: accountCode } }
         : { category: category! }),
-      // 12-row-per-line monthly persistence: sortOrder 0..11 = month index.
-      sortOrder: { gte: 0, lte: 11 },
+      // Month rows only. Prefer the canonical `monthIndex`; fall back to
+      // legacy `sortOrder` when monthIndex is null (mirrors the 2026-05-30
+      // month-bucketing fix). A row qualifies when its effective month is
+      // in [0,11].
+      OR: [
+        { monthIndex: { gte: 0, lte: 11 } },
+        { monthIndex: null, sortOrder: { gte: 0, lte: 11 } },
+      ],
     },
     select: {
       sortOrder: true,
+      monthIndex: true,
       plannedAmount: true,
       currencyCode: true,
       exchangeRate: true,
@@ -92,7 +99,7 @@ export async function GET(request: NextRequest) {
   }))
   type Row = (typeof rows)[number]
   for (const r of rows as Row[]) {
-    const m = r.sortOrder
+    const m = r.monthIndex ?? r.sortOrder
     if (m < 0 || m > 11) continue
     const isForeign = r.currencyCode != null && r.currencyCode !== baseCcy
     const rate = r.exchangeRate ?? 1
