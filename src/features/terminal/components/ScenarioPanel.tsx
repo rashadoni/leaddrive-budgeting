@@ -14,9 +14,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
-import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2 } from "lucide-react";
+import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
+import { orderCascade } from "../lib/cascade-order";
 import { ScenarioFormModal, type ScenarioFormValues } from "./ScenarioFormModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -104,6 +105,90 @@ function fmt(v: number): string {
     : v.toFixed(2);
 }
 
+// ─── Crisis Brief (B2 drivers mode) helpers ────────────────────────────────────
+
+type AiLang = "en" | "ru" | "az";
+
+/** Composite-score band colour (matches CompanyTree/HeatMap thresholds). */
+function bandColor(score: number | null): string {
+  if (score == null) return "text-muted-foreground";
+  if (score >= 67) return "text-emerald-500";
+  if (score >= 34) return "text-[#FFB800]";
+  return "text-red-500";
+}
+
+/** Tween a number from its previous value to `target` (cubic ease-out). */
+function useCountTween(target: number | null, durationMs = 900): number | null {
+  const [v, setV] = useState<number | null>(target);
+  const fromRef = useRef<number | null>(target);
+  useEffect(() => {
+    if (target == null) {
+      setV(null);
+      return;
+    }
+    const from = fromRef.current ?? target;
+    let raf = 0;
+    let start = 0;
+    const step = (t: number) => {
+      if (start === 0) start = t;
+      const p = Math.min(1, (t - start) / durationMs);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setV(Math.round(from + (target - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(step);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, durationMs]);
+  return v;
+}
+
+/** Holding composite swing: baseline (struck-through) → animated scenario score
+ *  with a colour shift + ▼/▲ delta badge. The demo's headline number. */
+function HoldingScoreSwing({ base, scen }: { base: number | null; scen: number | null }) {
+  const shown = useCountTween(scen);
+  const drop = base != null && scen != null ? scen - base : null;
+  return (
+    <div className="flex items-baseline gap-3" data-testid="holding-score-swing">
+      <span className="text-xs text-muted-foreground">Композит холдинга</span>
+      <span className="text-base text-muted-foreground line-through tabular-nums">{base ?? "—"}</span>
+      <span className={`text-4xl font-bold tabular-nums transition-colors duration-500 ${bandColor(shown)}`}>
+        {shown ?? "—"}
+      </span>
+      {drop != null && drop !== 0 && (
+        <span className={`text-sm font-semibold ${drop < 0 ? "text-red-500" : "text-emerald-500"}`}>
+          {drop < 0 ? "▼" : "▲"} {Math.abs(drop)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Reveal the narrative sentence-by-sentence (tag-safe — never splits markup). */
+function NarrativeStream({ text }: { text: string }) {
+  const lines = useMemo(() => text.split(/(?<=[.!?])\s+/).filter(Boolean), [text]);
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    setShown(0);
+    if (lines.length === 0) return;
+    let i = 0;
+    const id = window.setInterval(() => {
+      i++;
+      setShown(i);
+      if (i >= lines.length) window.clearInterval(id);
+    }, 420);
+    return () => window.clearInterval(id);
+  }, [lines]);
+  return <p className="text-sm leading-relaxed whitespace-pre-line">{lines.slice(0, shown).join(" ")}</p>;
+}
+
+type BriefState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "done" }
+  | { kind: "unsupported" }
+  | { kind: "error"; message: string };
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ScenarioPanel() {
@@ -123,6 +208,14 @@ export function ScenarioPanel() {
   const setScenarioDelta = useTerminalStore((s) => s.setScenarioDelta);
   const clearScenarioDelta = useTerminalStore((s) => s.clearScenarioDelta);
   const activeScenarioLabel = useTerminalStore((s) => s.activeScenarioLabel);
+  const scenarioBrief = useTerminalStore((s) => s.scenarioBrief);
+  const setScenarioBrief = useTerminalStore((s) => s.setScenarioBrief);
+
+  // Crisis Brief (B2 drivers mode) local state
+  const [aiLang, setAiLang] = useState<AiLang>("ru");
+  const [briefState, setBriefState] = useState<BriefState>({ kind: "idle" });
+  const [cascadeNonce, setCascadeNonce] = useState(0);
+  const fullDeltaMapRef = useRef<Record<string, string>>({});
 
   const period = useMemo(() => currentBakuYear(), []);
 
@@ -228,6 +321,65 @@ export function ScenarioPanel() {
     setOpen(false);
   }, [simState, locale, setScenarioDelta]);
 
+  // ── Drivers mode (Crisis Brief, B2) ─────────────────────────────────────────
+  const runDrivers = useCallback(async () => {
+    if (!selectedScenario || briefState.kind === "loading") return;
+    setBriefState({ kind: "loading" });
+    clearScenarioDelta(); // clear any prior overlay + brief
+    try {
+      const res = await fetch(
+        `/api/scenarios/${selectedScenario.id}/simulate?mode=drivers&period=${period}&lang=${aiLang}`,
+      );
+      if (res.status === 422) {
+        setBriefState({ kind: "unsupported" });
+        return;
+      }
+      if (!res.ok) throw new Error(`simulate ${res.status}`);
+      const data = await res.json();
+      fullDeltaMapRef.current = (data.deltaMap ?? {}) as Record<string, string>;
+      setScenarioBrief({
+        scenarioCode: data.scenarioCode,
+        holdingBaselineScore: data.holdingBaselineScore ?? null,
+        holdingScenarioScore: data.holdingScenarioScore ?? null,
+        byCompany: data.byCompany ?? [],
+        narrative: data.narrative ?? null,
+        mitigations: data.mitigations ?? [],
+        cascadeOrder: orderCascade(data.deltas ?? []),
+      });
+      setBriefState({ kind: "done" });
+      setCascadeNonce((n) => n + 1);
+    } catch (e: unknown) {
+      setBriefState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+    }
+  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief]);
+
+  // Staggered worst-first cascade — reveal the overlay deltaMap incrementally so
+  // the HeatMap visibly "reacts". One run per cascadeNonce; cleans up its timer.
+  useEffect(() => {
+    if (cascadeNonce === 0) return;
+    const brief = scenarioBrief;
+    if (!brief || brief.cascadeOrder.length === 0) return;
+    const order = brief.cascadeOrder;
+    const full = fullDeltaMapRef.current;
+    const perCell = Math.min(120, Math.max(35, Math.round(1800 / order.length)));
+    let i = 0;
+    let timer = 0;
+    setScenarioDelta(new Map(), brief.scenarioCode);
+    const tick = () => {
+      i++;
+      const partial = new Map<string, string>();
+      for (let k = 0; k < i && k < order.length; k++) {
+        const key = order[k];
+        if (full[key]) partial.set(key, full[key]);
+      }
+      setScenarioDelta(partial, brief.scenarioCode);
+      if (i < order.length) timer = window.setTimeout(tick, perCell);
+    };
+    timer = window.setTimeout(tick, perCell);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cascadeNonce]);
+
   // ── CRUD helpers ─────────────────────────────────────────────────────────────
   const openCreateForm = useCallback(() => {
     setFormScenario(undefined);
@@ -280,6 +432,15 @@ export function ScenarioPanel() {
     simState.kind === "done"
       ? simState.result.deltas.filter((d) => d.changed)
       : [];
+
+  // Drivers mode is available when the selected scenario carries a `shock` block.
+  const selectedHasShock = !!(selectedScenario?.overrides as { shock?: unknown } | null)?.shock;
+  // Worst-hit companies (largest composite drop) for the brief panel.
+  const worstHitCompanies =
+    scenarioBrief?.byCompany
+      .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
+      .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
+      .slice(0, 4) ?? [];
 
   return (
   <>
@@ -365,6 +526,7 @@ export function ScenarioPanel() {
                         onClick={() => {
                           setSelectedId(s.id);
                           setSimState({ kind: "idle" });
+                          setBriefState({ kind: "idle" });
                         }}
                         className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
                           isSelected
@@ -433,15 +595,47 @@ export function ScenarioPanel() {
                 )}
 
                 {/* Action buttons */}
-                <div className="flex items-center gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  {selectedHasShock && (
+                    <button
+                      type="button"
+                      onClick={() => void runDrivers()}
+                      disabled={briefState.kind === "loading"}
+                      className="inline-flex items-center gap-1.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 px-4 py-1.5 text-sm font-semibold hover:bg-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                      data-testid="scenario-run-crisis"
+                    >
+                      <Flame size={14} aria-hidden="true" />
+                      {briefState.kind === "loading" ? "Моделирование кризиса…" : "Запустить кризис"}
+                    </button>
+                  )}
+                  {selectedHasShock && (
+                    <div className="inline-flex items-center gap-1 text-xs" role="group" aria-label="Язык AI-нарратива">
+                      <span className="text-muted-foreground">AI:</span>
+                      {(["ru", "en", "az"] as AiLang[]).map((lng) => (
+                        <button
+                          key={lng}
+                          type="button"
+                          onClick={() => setAiLang(lng)}
+                          className={`rounded px-1.5 py-0.5 uppercase ${
+                            aiLang === lng
+                              ? "bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40"
+                              : "border border-input text-muted-foreground hover:bg-muted/50"
+                          }`}
+                          data-testid={`scenario-ai-lang-${lng}`}
+                        >
+                          {lng}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={handleSimulate}
                     disabled={simState.kind === "loading"}
-                    className="rounded border border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800] px-4 py-1.5 text-sm font-medium hover:bg-[#FFB800]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded border border-input bg-muted/20 text-muted-foreground px-3 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="scenario-simulate-button"
                   >
-                    {simState.kind === "loading" ? "Моделирование…" : "⚡ Смоделировать"}
+                    {simState.kind === "loading" ? "Моделирование…" : "⚡ Быстрый расчёт"}
                   </button>
 
                   {simState.kind === "done" && (
@@ -455,6 +649,83 @@ export function ScenarioPanel() {
                     </button>
                   )}
                 </div>
+
+                {/* ── Crisis Brief (drivers mode) ── */}
+                {briefState.kind === "unsupported" && (
+                  <p className="text-sm text-amber-500">
+                    ⚠ У этого сценария нет блока <code>shock</code> — запусти «Быстрый расчёт» (старый множитель).
+                  </p>
+                )}
+                {briefState.kind === "error" && (
+                  <p className="text-sm text-red-500" data-testid="scenario-crisis-error">
+                    Ошибка моделирования: {briefState.message}
+                  </p>
+                )}
+                {scenarioBrief && scenarioBrief.scenarioCode === selectedScenario.code && briefState.kind === "done" && (
+                  <div
+                    className="space-y-4 rounded-lg border border-red-500/20 bg-red-500/[0.03] p-4"
+                    data-testid="crisis-brief-panel"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <HoldingScoreSwing
+                        base={scenarioBrief.holdingBaselineScore}
+                        scen={scenarioBrief.holdingScenarioScore}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => clearScenarioDelta()}
+                        className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50"
+                        data-testid="crisis-revert"
+                      >
+                        ← Базовый сценарий
+                      </button>
+                    </div>
+
+                    {/* Worst-hit companies */}
+                    {worstHitCompanies.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {worstHitCompanies.map((c) => (
+                          <span
+                            key={c.companyId}
+                            className="inline-flex items-baseline gap-1.5 rounded border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs"
+                          >
+                            <span className="font-mono text-muted-foreground">{c.companyCode}</span>
+                            <span className="text-muted-foreground line-through tabular-nums">{c.baselineScore}</span>
+                            <span className={`font-semibold tabular-nums ${bandColor(c.scenarioScore)}`}>
+                              {c.scenarioScore}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* AI narrative + mitigations */}
+                    {scenarioBrief.narrative ? (
+                      <div className="space-y-3">
+                        <NarrativeStream text={scenarioBrief.narrative} />
+                        {scenarioBrief.mitigations.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                              Меры
+                            </h4>
+                            <ul className="space-y-1">
+                              {scenarioBrief.mitigations.map((m, i) => (
+                                <li key={i} className="flex items-start gap-2 text-sm">
+                                  <span className="text-[#FFB800] mt-0.5">→</span>
+                                  <span>{m}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground italic" data-testid="crisis-narrative-unavailable">
+                        AI-нарратив недоступен — см. изменения индикаторов ниже.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Simulation results */}
                 {simState.kind === "unsupported" && (
