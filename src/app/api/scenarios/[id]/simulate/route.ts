@@ -161,30 +161,37 @@ export async function GET(
         ? `Assumes ${Math.round((resolvedShock.assumedImportShare ?? 0) * 100)}% imported-input share (current data has no tagged imported costs).`
         : null
 
+    // Build worst-hit (cheap, no AI) — ALWAYS returned so the client can render
+    // the chips AND post it to the narrative endpoint (the latency split below).
+    const deltasByCo = new Map<string, typeof sim.deltas>()
+    for (const d of sim.deltas) {
+      if (!d.changed) continue
+      const l = deltasByCo.get(d.companyId) ?? []
+      l.push(d)
+      deltasByCo.set(d.companyId, l)
+    }
+    const worstHit = sim.byCompany
+      .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
+      .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
+      .slice(0, 3)
+      .map((b) => {
+        const co = companies.find((c) => c.id === b.companyId)
+        const topDeltas = (deltasByCo.get(b.companyId) ?? [])
+          .filter((d) => d.baselineValue != null && d.scenarioValue != null)
+          .slice(0, 2)
+          .map((d) => ({ code: d.code, baselineValue: d.baselineValue!, scenarioValue: d.scenarioValue! }))
+        return { companyCode: co?.code ?? b.companyId, companyName: co?.name ?? b.companyId, baselineScore: b.baselineScore, scenarioScore: b.scenarioScore, topDeltas }
+      })
+
+    // `?narrative=0` → skip the slow AI call so the cascade fires immediately;
+    // the client fetches the narrative separately via POST .../narrative.
+    // Default (omitted / =1) keeps the inline narrative — back-compat.
+    const wantNarrative = searchParams.get('narrative') !== '0'
     let narrative: string | null = null
     let mitigations: string[] = []
     let narrativeError: string | null = null
-    if (hasAnthropicKey()) {
+    if (wantNarrative && hasAnthropicKey()) {
       try {
-        const deltasByCo = new Map<string, typeof sim.deltas>()
-        for (const d of sim.deltas) {
-          if (!d.changed) continue
-          const l = deltasByCo.get(d.companyId) ?? []
-          l.push(d)
-          deltasByCo.set(d.companyId, l)
-        }
-        const worstHit = sim.byCompany
-          .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
-          .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
-          .slice(0, 3)
-          .map((b) => {
-            const co = companies.find((c) => c.id === b.companyId)
-            const topDeltas = (deltasByCo.get(b.companyId) ?? [])
-              .filter((d) => d.baselineValue != null && d.scenarioValue != null)
-              .slice(0, 2)
-              .map((d) => ({ code: d.code, baselineValue: d.baselineValue!, scenarioValue: d.scenarioValue! }))
-            return { companyCode: co?.code ?? b.companyId, companyName: co?.name ?? b.companyId, baselineScore: b.baselineScore, scenarioScore: b.scenarioScore, topDeltas }
-          })
         const brief = await runCrisisBrief({
           scenarioCode: scenario.code,
           scenarioNameEn: scenario.nameEn,
@@ -203,7 +210,7 @@ export async function GET(
       } catch (err) {
         narrativeError = err instanceof Error ? err.message : String(err)
       }
-    } else {
+    } else if (wantNarrative) {
       narrativeError = 'No Anthropic API key configured — narrative skipped.'
     }
 
@@ -227,6 +234,7 @@ export async function GET(
       driftSummary: sim.driftSummary,
       feedAnchors,
       assumptionNote,
+      worstHit,
       narrative,
       mitigations,
       narrativeError,

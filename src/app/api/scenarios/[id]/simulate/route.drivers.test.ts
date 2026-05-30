@@ -80,6 +80,26 @@ describe('GET simulate ?mode=drivers', () => {
     expect(body.narrativeError).toBeTruthy()
   })
 
+  it('?narrative=0 skips the AI call (fast cascade) + still returns worstHit', async () => {
+    findFirst.mockResolvedValue({ id: 's1', code: 'INPUT_COST_30', nameEn: 'x', overrides: { shock: { inputCostShock: 0.3 } } })
+    companyFindMany.mockResolvedValue([{ id: 'c1', code: 'CPC', name: 'CPC', parentCompanyId: null, industry: 'food_processing' }])
+    indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'IND_EBITDA_MARGIN', formula: 'x', thresholds: {}, requiredInputs: [], weight: 1 }])
+    ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 4.5, status: 'red', inputs: { resolved: { revenue: 1 } } }])
+    simulateByDrivers.mockResolvedValue({
+      scenarioCode: 'INPUT_COST_30', period: '2026',
+      deltas: [{ companyId: 'c1', companyCode: 'CPC', companyName: 'CPC', indicatorId: 'i1', code: 'IND_EBITDA_MARGIN', baselineValue: 4.5, baselineStatus: 'amber', scenarioValue: -7, scenarioStatus: 'red', changed: true, deltaPct: -255 }],
+      byCompany: [{ companyId: 'c1', companyCode: 'CPC', baselineScore: 64, scenarioScore: 40 }],
+      holdingBaselineScore: 61, holdingScenarioScore: 55, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 50, changed: 1, worsened: 1, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
+    })
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&narrative=0'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(runCrisisBrief).not.toHaveBeenCalled()
+    expect(body.narrative).toBeNull()
+    expect(body.worstHit).toHaveLength(1)
+    expect(body.worstHit[0]).toMatchObject({ companyCode: 'CPC', baselineScore: 64, scenarioScore: 40 })
+  })
+
   it('422 when ?mode=drivers but scenario has no shock', async () => {
     findFirst.mockResolvedValue({ id: 's1', code: 'X', nameEn: 'x', overrides: { adjustments: [] } })
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers'), { params: Promise.resolve({ id: 's1' }) } as never)

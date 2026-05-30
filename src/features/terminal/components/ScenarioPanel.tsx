@@ -226,6 +226,9 @@ export function ScenarioPanel() {
   // non-blocking pill so the HeatMap cascade is VISIBLE; the brief shows only
   // once the cascade completes ('done').
   const [cascadePhase, setCascadePhase] = useState<"none" | "running" | "done">("none");
+  // Narrative loads separately (after the fast sim) so the cascade fires
+  // immediately; this tracks its background fetch for the brief's narrative area.
+  const [narrativeState, setNarrativeState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const fullDeltaMapRef = useRef<Record<string, string>>({});
 
   const period = useMemo(() => currentBakuYear(), []);
@@ -357,12 +360,15 @@ export function ScenarioPanel() {
   // ── Drivers mode (Crisis Brief, B2) ─────────────────────────────────────────
   const runDrivers = useCallback(async () => {
     if (!selectedScenario || briefState.kind === "loading") return;
+    const scenarioId = selectedScenario.id;
     setBriefState({ kind: "loading" });
     setCascadePhase("none");
+    setNarrativeState("idle");
     clearScenarioDelta(); // clear any prior overlay + brief
     try {
+      // FAST path: `narrative=0` skips the slow AI call so the cascade fires now.
       const res = await fetch(
-        `/api/scenarios/${selectedScenario.id}/simulate?mode=drivers&period=${period}&lang=${aiLang}`,
+        `/api/scenarios/${scenarioId}/simulate?mode=drivers&period=${period}&narrative=0`,
       );
       if (res.status === 422) {
         setBriefState({ kind: "unsupported" });
@@ -371,23 +377,48 @@ export function ScenarioPanel() {
       if (!res.ok) throw new Error(`simulate ${res.status}`);
       const data = await res.json();
       fullDeltaMapRef.current = (data.deltaMap ?? {}) as Record<string, string>;
-      setScenarioBrief({
+      const brief = {
         scenarioCode: data.scenarioCode,
         holdingBaselineScore: data.holdingBaselineScore ?? null,
         holdingScenarioScore: data.holdingScenarioScore ?? null,
         financialHoldingBaselineScore: data.financialHoldingBaselineScore ?? null,
         financialHoldingScenarioScore: data.financialHoldingScenarioScore ?? null,
         byCompany: data.byCompany ?? [],
-        narrative: data.narrative ?? null,
-        mitigations: data.mitigations ?? [],
+        narrative: null as string | null,
+        mitigations: [] as string[],
         cascadeOrder: orderCascade(data.deltas ?? []),
         feedAnchors: data.feedAnchors ?? [],
-      });
+      };
+      setScenarioBrief(brief);
       setBriefState({ kind: "done" });
       // Sequence B: collapse to the pill + play the cascade on the visible map;
       // the brief reveals when the cascade effect flips cascadePhase → 'done'.
       setCascadePhase("running");
       setCascadeNonce((n) => n + 1);
+
+      // Background: fetch the narrative from the already-computed summary and
+      // fill it into the brief when it arrives (cascade + swing don't wait).
+      setNarrativeState("loading");
+      void fetch(`/api/scenarios/${scenarioId}/narrative`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          language: aiLang,
+          holdingBaselineScore: data.holdingBaselineScore ?? null,
+          holdingScenarioScore: data.holdingScenarioScore ?? null,
+          worstHit: data.worstHit ?? [],
+          changed: data.changed ?? 0,
+          worsened: data.worsened ?? 0,
+          improved: data.improved ?? 0,
+          assumptionNote: data.assumptionNote ?? null,
+        }),
+      })
+        .then((r) => (r.ok ? r.json() : { narrative: null, mitigations: [], narrativeError: `narrative ${r.status}` }))
+        .then((nd: { narrative?: string | null; mitigations?: string[] }) => {
+          setScenarioBrief({ ...brief, narrative: nd.narrative ?? null, mitigations: nd.mitigations ?? [] });
+          setNarrativeState(nd.narrative ? "done" : "error");
+        })
+        .catch(() => setNarrativeState("error"));
     } catch (e: unknown) {
       setBriefState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -529,7 +560,7 @@ export function ScenarioPanel() {
             {activeScenarioLabel && (
               <button
                 type="button"
-                onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); }}
+                onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
                 className="rounded border border-red-500/30 bg-red-500/10 text-red-400 px-2 py-1 text-xs hover:bg-red-500/20"
               >
                 Сбросить: {activeScenarioLabel}
@@ -592,6 +623,7 @@ export function ScenarioPanel() {
                                 setSimState({ kind: "idle" });
                                 setBriefState({ kind: "idle" });
                                 setCascadePhase("none");
+                                setNarrativeState("idle");
                               }}
                               className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
                                 isSelected
@@ -765,7 +797,7 @@ export function ScenarioPanel() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); }}
+                        onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
                         className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50 shrink-0"
                         data-testid="crisis-revert"
                       >
@@ -833,6 +865,10 @@ export function ScenarioPanel() {
                           </div>
                         )}
                       </div>
+                    ) : narrativeState === "loading" ? (
+                      <p className="text-sm text-sky-300/80 italic animate-pulse" data-testid="crisis-narrative-loading">
+                        🤖 AI-бриф генерируется…
+                      </p>
                     ) : (
                       <p className="text-xs text-muted-foreground italic" data-testid="crisis-narrative-unavailable">
                         AI-нарратив недоступен — см. изменения индикаторов ниже.
