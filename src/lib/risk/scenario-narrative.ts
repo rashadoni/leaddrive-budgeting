@@ -28,6 +28,8 @@ export interface CrisisBriefInput {
   improved: number
   /** Honest modeling caveat surfaced verbatim (e.g. FX import-share assumption). */
   assumptionNote: string | null
+  /** Phase 2 — live-feed anchors so the brief cites real current market levels. */
+  feedAnchors?: Array<{ label: string; currentValue: number; scenarioValue: number; unit: string; asOf: string; stale: boolean }>
 }
 export interface CrisisBriefOutput {
   narrative: string
@@ -69,11 +71,17 @@ export function buildCrisisBriefPrompt(input: CrisisBriefInput): string {
   const assumption = input.assumptionNote
     ? `\nModeling assumption (state this in the narrative): ${input.assumptionNote}\n`
     : ''
+  const anchorLines = (input.feedAnchors ?? [])
+    .map((a) => `  ${a.label}: ${a.currentValue} → ${a.scenarioValue} ${a.unit} (as of ${a.asOf}${a.stale ? ', STALE — note the date' : ''})`)
+    .join('\n')
+  const anchorSection = anchorLines
+    ? `\nLive market anchors (cite the CURRENT level as the real starting point; if STALE, mention the observation date):\n${anchorLines}\n`
+    : ''
   return `Scenario: ${input.scenarioCode} (${input.scenarioNameEn})
 
 Holding composite score: ${fmtScore(input.holdingBaselineScore)} → ${fmtScore(input.holdingScenarioScore)}
 Indicators changed status: ${input.changed} (worsened ${input.worsened}, improved ${input.improved})
-${assumption}
+${assumption}${anchorSection}
 Worst-hit companies (use these EXACT numbers, invent nothing):
 ${worstLines || '  (none)'}
 

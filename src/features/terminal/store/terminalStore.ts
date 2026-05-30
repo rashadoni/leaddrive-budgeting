@@ -161,6 +161,15 @@ export interface ScenarioBriefState {
   mitigations: string[];
   /** Ordered "companyId:code" keys, worst-first, for the staggered cascade. */
   cascadeOrder: string[];
+  /** Phase 2 — live-feed "current → scenario" anchors (FX/commodity levels). */
+  feedAnchors: Array<{
+    label: string;
+    currentValue: number;
+    scenarioValue: number;
+    unit: string;
+    asOf: string;
+    stale: boolean;
+  }>;
 }
 
 export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent' | 'sector';

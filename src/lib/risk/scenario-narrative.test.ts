@@ -34,6 +34,14 @@ describe('buildCrisisBriefPrompt', () => {
     const p = buildCrisisBriefPrompt({ ...input, assumptionNote: 'Assumes 30% imported-input share' })
     expect(p).toContain('30% imported-input share')
   })
+  it('includes live-feed anchors with the current → scenario level (Phase 2)', () => {
+    const p = buildCrisisBriefPrompt({
+      ...input,
+      feedAnchors: [{ label: 'AZN/USD', currentValue: 1.7, scenarioValue: 2.04, unit: 'AZN/USD', asOf: '2026-05-28', stale: false }],
+    })
+    expect(p).toContain('AZN/USD: 1.7 → 2.04')
+    expect(p).toContain('2026-05-28')
+  })
 })
 
 describe('runCrisisBrief', () => {

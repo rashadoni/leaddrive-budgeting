@@ -196,6 +196,7 @@ export async function GET(
           worsened: sim.worsened,
           improved: sim.improved,
           assumptionNote,
+          feedAnchors,
         })
         narrative = brief.narrative
         mitigations = brief.mitigations

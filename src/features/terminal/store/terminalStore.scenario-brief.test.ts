@@ -28,6 +28,7 @@ const SAMPLE: ScenarioBriefState = {
   narrative: '⚠ ...',
   mitigations: ['hedge'],
   cascadeOrder: ['c1:FP_GROSS_MARGIN'],
+  feedAnchors: [{ label: 'AZN/USD', currentValue: 1.7, scenarioValue: 2.04, unit: 'AZN/USD', asOf: '2026-05-28', stale: false }],
 }
 
 beforeEach(() => {

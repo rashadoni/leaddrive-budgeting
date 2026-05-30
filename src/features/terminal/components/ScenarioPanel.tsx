@@ -376,6 +376,7 @@ export function ScenarioPanel() {
         narrative: data.narrative ?? null,
         mitigations: data.mitigations ?? [],
         cascadeOrder: orderCascade(data.deltas ?? []),
+        feedAnchors: data.feedAnchors ?? [],
       });
       setBriefState({ kind: "done" });
       setCascadeNonce((n) => n + 1);
@@ -744,6 +745,28 @@ export function ScenarioPanel() {
                         ← Базовый сценарий
                       </button>
                     </div>
+
+                    {/* Live-feed anchors (Phase 2) — "from the real current level" */}
+                    {scenarioBrief.feedAnchors.length > 0 && (
+                      <div className="flex flex-wrap gap-2" data-testid="crisis-feed-anchors">
+                        {scenarioBrief.feedAnchors.map((a) => (
+                          <span
+                            key={a.label}
+                            className="inline-flex items-baseline gap-1.5 rounded border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-xs"
+                            title={`Источник: ${a.asOf}${a.stale ? " (устарело)" : ""}`}
+                          >
+                            <span className="text-sky-300/90">📊 {a.label}</span>
+                            <span className="text-muted-foreground tabular-nums">{a.currentValue}</span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-semibold tabular-nums">{a.scenarioValue}</span>
+                            <span className="text-[10px] text-muted-foreground">{a.unit}</span>
+                            <span className={`text-[10px] ${a.stale ? "text-amber-500" : "text-emerald-500/70"}`}>
+                              {a.stale ? `⚠ ${a.asOf}` : `✓ ${a.asOf}`}
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Worst-hit companies */}
                     {worstHitCompanies.length > 0 && (
