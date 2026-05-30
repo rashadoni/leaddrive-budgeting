@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react';
 import { CommandBar } from '@/features/terminal/components/CommandBar';
+import { SignalsStrip } from '@/features/terminal/components/SignalsStrip';
 import { PanelGrid } from '@/features/terminal/components/PanelGrid';
 import { HotkeyToolbar } from '@/features/terminal/components/HotkeyToolbar';
 import { TerminalDeepLinkHandler } from '@/features/terminal/components/TerminalDeepLinkHandler';
@@ -36,6 +37,10 @@ export default function TerminalPage() {
 
       {/* 1. Command Bar */}
       <CommandBar />
+
+      {/* Phase 3 — live price/weather signal strip (suggests crisis scenarios).
+          Renders nothing when there are no signals. */}
+      <SignalsStrip />
 
       {/* 2. Multi-pane Workspace (Center) */}
       <PanelGrid />
