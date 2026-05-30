@@ -51,13 +51,15 @@ export async function GET(req: NextRequest) {
   const [lines, plan] = await withOrgScope(orgId, async (tx) =>
     Promise.all([
       tx.budgetLine.findMany({
-        where: { planId, organizationId: orgId, parentId: null, ...deptFilter },
+        // Phase 8 fix: honor soft-delete on parents AND children so the budget
+        // table doesn't show superseded (clean-slate / re-import) lines.
+        where: { planId, organizationId: orgId, parentId: null, deletedAt: null, ...deptFilter },
         orderBy: [{ sortOrder: "asc" }],
         include: {
           children: {
             orderBy: [{ sortOrder: "asc" }],
             include: { account: { select: { code: true, name: true } } },
-            ...(deptFilter ? { where: deptFilter } : {}),
+            where: { deletedAt: null, ...(deptFilter ?? {}) },
           },
           account: { select: { code: true, name: true } },
         },

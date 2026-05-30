@@ -54,8 +54,9 @@ describe("GET /api/budgeting/lines/count", () => {
     const res = await GET(makeRequest("/api/budgeting/lines/count?planId=p1"))
     const body = await res.json()
     expect(body.count).toBe(4321)
+    // Phase 8: count honors soft-delete — live lines only.
     expect(prismaMock.budgetLine.count).toHaveBeenCalledWith({
-      where: { planId: "p1", organizationId: ORG_ID },
+      where: { planId: "p1", organizationId: ORG_ID, deletedAt: null },
     })
   })
 })

@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
   }
 
   const count = await prisma.budgetLine.count({
-    where: { planId, organizationId: session.orgId },
+    // Phase 8 fix: honor soft-delete — count only live lines.
+    where: { planId, organizationId: session.orgId, deletedAt: null },
   })
   return NextResponse.json({ count })
 }

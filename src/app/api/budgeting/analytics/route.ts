@@ -61,9 +61,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  const lineWhere: { planId: string; organizationId: string; companyId?: { in: string[] } } = {
+  // Phase 8 fix: honor soft-delete — exclude superseded (clean-slate /
+  // re-import) budget lines so analytics totals match the P&L endpoint and
+  // the recompute-driven terminal (both already filter deletedAt).
+  const lineWhere: { planId: string; organizationId: string; deletedAt: null; companyId?: { in: string[] } } = {
     planId,
     organizationId: orgId,
+    deletedAt: null,
   }
   if (companyFilter.kind === "single") {
     if (companyFilter.companyIds.length === 0) {

@@ -127,7 +127,7 @@ export async function GET(req: NextRequest) {
 
   const [plan, lines, manualActuals, forecastEntries] = await Promise.all([
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId }, orderBy: { sortOrder: "asc" }, include: { account: { select: { code: true, name: true } } } }),
+    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, deletedAt: null }, orderBy: { sortOrder: "asc" }, include: { account: { select: { code: true, name: true } } } }),
     prisma.budgetActual.findMany({ where: { planId, organizationId: orgId }, orderBy: { createdAt: "asc" } }),
     prisma.budgetForecastEntry.findMany({ where: { planId, organizationId: orgId }, orderBy: [{ year: "asc" }, { month: "asc" }] }),
   ])
