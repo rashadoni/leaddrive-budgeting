@@ -60,6 +60,19 @@ describe('resolveShockOverrides — consistent P&L recompute', () => {
     expect(o.gross_profit).toBeCloseTo(850 - 660) // 190
     expect(o.ebitda).toBeCloseTo(190 - 200) // -10
   })
+  it('drought: revenue −30% with costRigidity 0.8 keeps costs mostly sunk → margin CRUSHED', () => {
+    const o = resolveShockOverrides({ revenueShock: -0.3, costRigidity: 0.8 }, base)
+    // new_revenue = 700 ; cogs scales by (1 + (-0.3)*(1-0.8)) = 1 - 0.06 = 0.94 → 564
+    expect(o.revenue).toBeCloseTo(700)
+    expect(o.cogs).toBeCloseTo(564)
+    expect(o.gross_profit).toBeCloseTo(700 - 564) // 136 (vs baseline 400 — crushed)
+    expect(o.ebitda).toBeCloseTo(136 - 200) // -64 (turned negative)
+  })
+  it('lost customer: revenue −30% with costRigidity 0 (default) scales cogs fully (margin flat)', () => {
+    const o = resolveShockOverrides({ revenueShock: -0.3, costRigidity: 0 }, base)
+    expect(o.cogs).toBeCloseTo(420) // 600*0.7 — fully variable
+    expect(o.gross_profit).toBeCloseTo(280)
+  })
   it('yieldShock −30% lowers yield_per_ha', () => {
     const o = resolveShockOverrides({ yieldShock: -0.3 }, base)
     expect(o.yield_per_ha).toBeCloseTo(7)

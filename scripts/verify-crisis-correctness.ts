@@ -10,7 +10,7 @@ import { createPrismaDataSource } from '@/lib/risk/recompute'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 
 const PERIOD = '2026'
-const FLAGSHIPS = ['INPUT_COST_30', 'REVENUE_DROP_30', 'AZN_DEVAL_20']
+const FLAGSHIPS = ['INPUT_COST_30', 'DROUGHT_2026', 'AZN_DEVAL_20']
 
 async function load(orgId: string, code: string) {
   const scenario = await prisma.scenario.findFirstOrThrow({ where: { organizationId: orgId, code } })

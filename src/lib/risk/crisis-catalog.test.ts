@@ -15,7 +15,7 @@ describe('CRISIS_CATALOG', () => {
   })
   it('the 3 user-selected flagships are present + marked', () => {
     const flags = CRISIS_CATALOG.filter((s) => s.flagship).map((s) => s.code)
-    expect(flags).toEqual(expect.arrayContaining(['INPUT_COST_30', 'REVENUE_DROP_30', 'AZN_DEVAL_20']))
+    expect(flags).toEqual(expect.arrayContaining(['INPUT_COST_30', 'DROUGHT_2026', 'AZN_DEVAL_20']))
     expect(flags).toHaveLength(3)
   })
 })

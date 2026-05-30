@@ -23,6 +23,15 @@ export interface ScenarioShock {
   assumedImportShare?: number
   /** Δ yield_per_ha, fraction (−0.30). */
   yieldShock?: number
+  /**
+   * 0..1 — how much of cogs is SUNK/fixed under a volume (revenueShock) drop.
+   * 0 (default) = fully variable: a volume drop scales cogs proportionally
+   * (margins flat) — models losing a customer (just produce less).
+   * 1 = fully sunk: a volume drop leaves cogs unchanged (margins crushed) —
+   * models a drought, where seeds/fertilizer/labor/irrigation are already
+   * spent but the harvest fails. Only modulates the revenueShock→cogs link.
+   */
+  costRigidity?: number
 }
 
 /**
@@ -44,7 +53,7 @@ export interface ResolvedScalars {
 }
 
 const SHOCK_KEYS: (keyof ScenarioShock)[] = [
-  'revenueShock', 'priceShock', 'inputCostShock', 'fxShock', 'assumedImportShare', 'yieldShock',
+  'revenueShock', 'priceShock', 'inputCostShock', 'fxShock', 'assumedImportShare', 'yieldShock', 'costRigidity',
 ]
 
 /** Type-guard: does this overrides blob carry a shock with ≥1 non-zero effect?
@@ -77,16 +86,22 @@ export function resolveShockOverrides(
   const importedCost = num(base.imported_input_cost)
   const yieldPerHa = base.yield_per_ha
 
-  const volumeF = 1 + num(shock.revenueShock)
+  const revenueShock = num(shock.revenueShock)
+  const rigidity = Math.min(1, Math.max(0, num(shock.costRigidity)))
+  const volumeF = 1 + revenueShock
   const priceF = 1 + num(shock.priceShock)
   const fx = num(shock.fxShock)
   const importShare = num(shock.assumedImportShare)
   const inputCostShock = num(shock.inputCostShock)
 
   const new_revenue = revenue * volumeF * priceF
+  // cogs follows volume only for its VARIABLE portion (1 − rigidity); the sunk
+  // portion stays put. Drought (rigidity≈0.8): cogs barely falls as yield
+  // collapses → margins crushed. Lost customer (rigidity 0): cogs scales fully.
+  const cogsVolumeF = 1 + revenueShock * (1 - rigidity)
   const importBase = importedCost > 0 ? importedCost : cogs * importShare
   const cost_increase = importBase * fx + cogs * inputCostShock
-  const new_cogs = cogs * volumeF + cost_increase
+  const new_cogs = cogs * cogsVolumeF + cost_increase
   const new_gross_profit = new_revenue - new_cogs
   const new_ebitda = new_gross_profit - opex
   const new_net_income = new_ebitda - daTotal
