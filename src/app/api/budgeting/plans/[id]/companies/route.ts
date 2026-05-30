@@ -60,6 +60,7 @@ export async function GET(
       organizationId: session.orgId,
       planId: id,
       companyId: { not: null },
+      deletedAt: null,
     },
     distinct: ["companyId"],
     select: { companyId: true },

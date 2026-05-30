@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       organizationId: orgId,
       companyId,
       plan: { year },
+      deletedAt: null,
       ...(accountCode
         ? { account: { code: accountCode } }
         : { category: category! }),

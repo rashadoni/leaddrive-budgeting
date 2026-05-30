@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   const [plan, lines] = await Promise.all([
     prisma.budgetPlan.findFirst({ where: { id: planId, organizationId: orgId } }),
-    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true }, include: { account: { select: { code: true, name: true } } } }),
+    prisma.budgetLine.findMany({ where: { planId, organizationId: orgId, isAutoActual: true, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
   ])
 
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })

@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
   })
 
   if (sourcePlan) {
-    const sourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id }, include: { account: { select: { code: true, name: true } } } })
+    const sourceLines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: sourcePlan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
 
     // Clone parent lines first, then children with mapped parentId
     const parentLines = sourceLines.filter((sl: BudgetLineWithAccount) => !sl.parentId)
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
   // Auto-populate: fill forecast entries from cost model for all 12 months
   try {
     const costModel = await loadAndCompute(orgId)
-    const lines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: plan.id }, include: { account: { select: { code: true, name: true } } } })
+    const lines: BudgetLineWithAccount[] = await prisma.budgetLine.findMany({ where: { planId: plan.id, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
     const forecastEntries: ForecastCreateInput[] = []
 
     for (const line of lines) {
@@ -372,7 +372,7 @@ export async function GET(req: NextRequest) {
 
   // Get actuals and forecast entries for these months
   const lines = await prisma.budgetLine.findMany({
-    where: { planId, organizationId: orgId },
+    where: { planId, organizationId: orgId, deletedAt: null },
   })
 
   // Pull actuals from ALL plans in the org (not just rolling plan)

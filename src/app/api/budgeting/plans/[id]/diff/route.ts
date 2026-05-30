@@ -29,8 +29,8 @@ export async function GET(
   }
 
   const [linesA, linesB] = await Promise.all([
-    prisma.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId }, include: { account: { select: { code: true, name: true } } } }),
-    prisma.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId }, include: { account: { select: { code: true, name: true } } } }),
+    prisma.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
+    prisma.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
   ])
 
   // Build maps by composite key: account.code + department + lineType

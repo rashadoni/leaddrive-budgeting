@@ -208,7 +208,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const planData = await prisma.budgetPlan.findFirst({ where: { id, organizationId: orgId } })
     if (planData) {
       const autoLines = await prisma.budgetLine.findMany({
-        where: { planId: id, organizationId: orgId, isAutoPlanned: true },
+        where: { planId: id, organizationId: orgId, isAutoPlanned: true, deletedAt: null },
       })
       if (autoLines.length > 0) {
         const cm = await loadAndCompute(orgId).catch(() => null)
