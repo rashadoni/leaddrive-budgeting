@@ -156,3 +156,67 @@ Each scenario lists its primary driver(s) → the indicators it moves. Transmiss
 14. **Major customer default** — revenue + liquidity
 
 *(Optional later: energy/gas spike, labour-cost spike, CPI surge.)*
+
+## §B. Transmission findings (Task 0 — verified against live DB 2026-05-30)
+
+Empirical check of "does a driver actually move its target indicators" against the live AzerSheker data (8 companies under root `AZSEKER`; period 2026). **This invalidates part of the §A flat-var design and must be reflected in the plan.**
+
+### What the data shows
+- **The override surface is the resolved financial scalars**, exposed per company in `IndicatorValue.inputs.resolved`: `revenue`, `cogs`, `gross_profit`, `opex`, `ebitda`, `net_income`, `da_total`, `total_cost`, `total_input_cost`, `domestic_input_cost`, `imported_input_cost`, and (FX indicator only) `fx_usd`/`fx_eur`/`fx_azn`.
+- **Margin formulas read DERIVED scalars, not primitives:**
+  - `FP_GROSS_MARGIN = gross_profit / revenue * 100`
+  - `IND_EBITDA_MARGIN = ebitda / revenue * 100`
+  - `FP_OPEX_RATIO = opex / revenue * 100`
+  - `SVC_NET_MARGIN = net_income / revenue * 100`
+  - `FX_IMPORTED_INPUT = imported_input_cost / total_input_cost * 100`
+  - `AGRO_REVENUE_PER_HA = revenue / hectares_planted`; `AGRO_YIELD_PER_HA = yield_per_ha`
+- **Consequences for the §A drivers:**
+  - A `cogs ×1.25` driver is **INERT** — no margin formula reads `cogs` (they read pre-computed `gross_profit`/`ebitda`).
+  - An `fx_usd` driver is **INERT on current data** — `imported_input_cost = 0` for **every** company (all budget lines tagged domestic), so `FX_IMPORTED_INPUT = 0/green` everywhere and `fx_usd` moves nothing.
+  - A `harvest_tons` driver moves exactly **1** indicator; `yield_per_ha`, `drought_index` are separate single-indicator operationalFacts.
+  - Overriding `revenue` **alone** moves margins the **WRONG way** (e.g. `gross_profit / lower_revenue` *rises*) — economically backwards.
+- **The connected scalar is `revenue`** (denominator of 6+ indicators), and the dramatic, correct-direction lever is compressing `gross_profit`/`ebitda`/`net_income` **together** (holding `revenue`), or scaling the whole P&L set consistently.
+- **Several entities already run negative EBITDA** (AZSF −648K, MALT −518K, EDEN −1.90M on 2026) — a crisis deepens existing red rather than flipping green→red for those.
+
+### Required design change (supersedes §3a/§3b flat-var semantics)
+Drivers must operate on the **resolved financial scalars** with **economically-consistent multi-scalar transforms**, so the cascade is both visible AND CFO-defensible. Three fidelity levels (decision recorded below):
+- **B1 — consistent-scalar-set drivers (simplest):** each scenario authors a set of direct scalar mults that move together, e.g. margin-compression = `[{gross_profit ×0.7},{ebitda ×0.7},{net_income ×0.7}]`. My existing `{var,mode,value}[]` schema handles this unchanged; correct in direction; the CAUSE (FX/sugar/drought) lives in the scenario name + AI narrative, not the mechanism.
+- **B2 — cause-accurate P&L recompute (richer):** scenario specifies economic shocks (`revenueShock`, `inputCostShock`, `priceShock`); the engine reads baseline scalars and recomputes the dependent chain per company (`new_gross_profit = revenue·r − cogs·k`, `new_ebitda = new_gross_profit − opex`, …), then overrides the derived scalars consistently. Models the mechanism; respects per-company exposure (FX-insulated entities barely move — a credibility win).
+- **A — full primitive re-resolution:** out of scope (would require patching budgetLine rows in-request; the resolver graph can't be cheaply overridden).
+
+**Decision (2026-05-30):** **B2 — cause-accurate P&L recompute** (user-approved). Scenarios specify economic shocks; the engine reads each company's baseline resolved scalars and recomputes the dependent P&L chain consistently, then overrides the derived scalars. Per-company exposure is respected (FX-insulated entities barely move — a credibility win).
+
+### §B.1 — B2 shock schema (replaces §3a flat-var `drivers`)
+`Scenario.overrides.shock` (JSON, alongside legacy `adjustments`):
+```jsonc
+"shock": {
+  "revenueShock":      0.0,  // Δ sales VOLUME, fraction (−0.30 = −30%); scales revenue AND variable cogs
+  "priceShock":        0.0,  // Δ selling PRICE, fraction (−0.20); scales revenue only → margin compresses
+  "inputCostShock":    0.0,  // Δ input cost, fraction (+0.25); scales cogs only → margin compresses
+  "fxShock":           0.0,  // AZN devaluation fraction (0.20 = −20%); raises cost on the FX-exposed input share
+  "assumedImportShare":0.0,  // 0..1 — used for fxShock WHEN imported_input_cost==0 (current data); surfaced in the narrative as an explicit assumption
+  "yieldShock":        0.0   // Δ yield_per_ha, fraction (−0.30) — drives AGRO_YIELD_PER_HA + harvest-linked facts
+}
+```
+
+### §B.2 — engine recompute (per company, from baseline resolved scalars)
+```
+volumeF = 1 + revenueShock ; priceF = 1 + priceShock
+new_revenue = revenue * volumeF * priceF
+importBase = imported_input_cost > 0 ? imported_input_cost : cogs * assumedImportShare
+cost_increase = importBase * fxShock + cogs * inputCostShock
+new_cogs = cogs * volumeF + cost_increase            // variable cost scales with volume, plus the shocks
+new_gross_profit = new_revenue - new_cogs
+new_ebitda = new_gross_profit - opex                 // opex held fixed (conservative)
+new_net_income = new_ebitda - da_total
+new_yield_per_ha = yield_per_ha * (1 + yieldShock)
+// Overrides handed to buildContext (only finite, only changed):
+{ revenue, cogs, gross_profit, ebitda, net_income, total_input_cost: new_cogs,
+  imported_input_cost: importBase*(1+fxShock), yield_per_ha }
+```
+This makes every margin formula (`gross_profit/revenue`, `ebitda/revenue`, `net_income/revenue`, `opex/revenue`), `AGRO_REVENUE_PER_HA` (`revenue/hectares_planted`), `AGRO_YIELD_PER_HA`, and `FX_IMPORTED_INPUT` (`imported_input_cost/total_input_cost`) move in the economically-correct direction.
+
+### §B.3 — the 3 flagship scenarios (user-selected)
+1. **Margin compression — input cost +30%:** `{ inputCostShock: 0.30 }` → gross/ebitda/net margins compress amber→red across food-processing. Universal (moves 6+ indicators).
+2. **Revenue drop — drought/lost customer −30%:** `{ revenueShock: -0.30, yieldShock: -0.30 }` → revenue + revenue-per-ha + yield fall; absolute thresholds breach. Hits agro (FARM/EDEN).
+3. **AZN devaluation −20%:** `{ fxShock: 0.20, assumedImportShare: 0.30 }` → cost rises on an assumed 30% imported-input share (current data has 0 tagged imports; the 30% is stated explicitly in the narrative as a modeling assumption until the client tags real imported costs). Models the FX→cost→margin mechanism honestly.
