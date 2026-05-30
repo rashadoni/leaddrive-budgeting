@@ -222,6 +222,10 @@ export function ScenarioPanel() {
   const [aiLang, setAiLang] = useState<AiLang>("ru");
   const [briefState, setBriefState] = useState<BriefState>({ kind: "idle" });
   const [cascadeNonce, setCascadeNonce] = useState(0);
+  // Sequence-B run phases: while 'running' the panel collapses to a small
+  // non-blocking pill so the HeatMap cascade is VISIBLE; the brief shows only
+  // once the cascade completes ('done').
+  const [cascadePhase, setCascadePhase] = useState<"none" | "running" | "done">("none");
   const fullDeltaMapRef = useRef<Record<string, string>>({});
 
   const period = useMemo(() => currentBakuYear(), []);
@@ -354,6 +358,7 @@ export function ScenarioPanel() {
   const runDrivers = useCallback(async () => {
     if (!selectedScenario || briefState.kind === "loading") return;
     setBriefState({ kind: "loading" });
+    setCascadePhase("none");
     clearScenarioDelta(); // clear any prior overlay + brief
     try {
       const res = await fetch(
@@ -379,6 +384,9 @@ export function ScenarioPanel() {
         feedAnchors: data.feedAnchors ?? [],
       });
       setBriefState({ kind: "done" });
+      // Sequence B: collapse to the pill + play the cascade on the visible map;
+      // the brief reveals when the cascade effect flips cascadePhase → 'done'.
+      setCascadePhase("running");
       setCascadeNonce((n) => n + 1);
     } catch (e: unknown) {
       setBriefState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
@@ -390,10 +398,17 @@ export function ScenarioPanel() {
   useEffect(() => {
     if (cascadeNonce === 0) return;
     const brief = scenarioBrief;
-    if (!brief || brief.cascadeOrder.length === 0) return;
+    if (!brief) return;
     const order = brief.cascadeOrder;
+    // Nothing flips → skip straight to the brief.
+    if (order.length === 0) {
+      setCascadePhase("done");
+      return;
+    }
     const full = fullDeltaMapRef.current;
-    const perCell = Math.min(120, Math.max(35, Math.round(1800 / order.length)));
+    // Cascade is now front-and-centre (map visible) — make it deliberate:
+    // ~1–2s total, but never a sub-second flash for a few-cell scenario.
+    const perCell = Math.min(260, Math.max(60, Math.round(1900 / order.length)));
     let i = 0;
     let timer = 0;
     setScenarioDelta(new Map(), brief.scenarioCode);
@@ -406,6 +421,7 @@ export function ScenarioPanel() {
       }
       setScenarioDelta(partial, brief.scenarioCode);
       if (i < order.length) timer = window.setTimeout(tick, perCell);
+      else setCascadePhase("done"); // cascade finished → reveal the brief
     };
     timer = window.setTimeout(tick, perCell);
     return () => window.clearTimeout(timer);
@@ -476,6 +492,16 @@ export function ScenarioPanel() {
 
   return (
   <>
+    {cascadePhase === "running" ? (
+      // Sequence B — non-blocking pill; the HeatMap cascade plays in full view.
+      <div
+        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full border border-red-500/50 bg-[#0a0e1f]/95 px-5 py-2.5 text-sm font-semibold text-red-300 shadow-2xl"
+        data-testid="crisis-cascading"
+      >
+        <Flame size={15} className="animate-pulse" aria-hidden="true" />
+        Кризис разворачивается на карте…
+      </div>
+    ) : (
     <div
       role="dialog"
       aria-modal="true"
@@ -503,7 +529,7 @@ export function ScenarioPanel() {
             {activeScenarioLabel && (
               <button
                 type="button"
-                onClick={() => clearScenarioDelta()}
+                onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); }}
                 className="rounded border border-red-500/30 bg-red-500/10 text-red-400 px-2 py-1 text-xs hover:bg-red-500/20"
               >
                 Сбросить: {activeScenarioLabel}
@@ -565,6 +591,7 @@ export function ScenarioPanel() {
                                 setSelectedId(s.id);
                                 setSimState({ kind: "idle" });
                                 setBriefState({ kind: "idle" });
+                                setCascadePhase("none");
                               }}
                               className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
                                 isSelected
@@ -738,7 +765,7 @@ export function ScenarioPanel() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => clearScenarioDelta()}
+                        onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); }}
                         className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50 shrink-0"
                         data-testid="crisis-revert"
                       >
@@ -941,6 +968,7 @@ export function ScenarioPanel() {
         </div>
       </div>
     </div>
+    )}
 
     {/* Create / edit form — rendered above the panel (z-[60]) */}
     {formOpen && (
