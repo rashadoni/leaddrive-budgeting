@@ -32,8 +32,8 @@ Thresholds are **heuristics** (labeled as such). Stale feeds still fire but are 
 - **Visual gate:** the strip shifts the viewport → `terminal-heatmap.png` drifts → regenerate baseline + `BASELINE UPDATE: Phase 3 signals strip (layout)` commit (run via the e2e auth fixture; if the dev-admin pw is rotated, hand the regen to the user).
 
 ## 4. Scope / non-goals
-- **In:** 4 price/weather signals; strip; click→pre-select.
-- **Out (Phase 3b):** news-derived triggers (0 rows); auto-RUN on click (we pre-select, user clicks Запустить); configurable thresholds UI; new scrapers.
+- **In:** 4 price/weather signals; strip; click→pre-select. **+ Phase 3b (SHIPPED same day): news-derived triggers** — the "0 rows → blocked" premise was stale; `intel_items` has 20 real items, so `detectNewsSignals` (negative sentiment + keyword + tag → scenario) was built + merged into the strip (📰). News IS now in.
+- **Out:** auto-RUN on click (we pre-select, user clicks Запустить); configurable thresholds UI; new scrapers / feeding the crawler with more sources.
 
 ## 5. Error handling
 - Missing feed metric → that rule doesn't fire (no signal). Empty signals → strip renders nothing.
