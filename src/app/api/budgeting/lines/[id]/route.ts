@@ -99,7 +99,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Invalid request" }, { status: 400 })
   }
 
-  const { category, department, lineType, lineSubtype, plannedAmount, forecastAmount, unitPrice, unitCost, quantity, costModelKey, isAutoActual, notes, parentId } = data
+  // `category` accepted in the body for back-compat but NOT written: Phase
+  // 2.1 dropped BudgetLine.category (→ accountId FK); writing it 500'd.
+  const { department, lineType, lineSubtype, plannedAmount, forecastAmount, unitPrice, unitCost, quantity, costModelKey, isAutoActual, notes, parentId } = data
 
   // Fetch old state for change log + planId for bypass scope check
   const line = await prisma.budgetLine.findFirst({ where: { id, organizationId: orgId } })
@@ -140,7 +142,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const result = await prisma.budgetLine.updateMany({
     where: { id, organizationId: orgId },
     data: {
-      ...(category !== undefined && { category }),
       ...(department !== undefined && { department }),
       ...(lineType !== undefined && { lineType }),
       ...(lineSubtype !== undefined && { lineSubtype: lineSubtype || null }),
@@ -162,7 +163,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (updated && line) {
     // Log each changed field
-    const fields = ["category", "department", "lineType", "lineSubtype", "plannedAmount", "forecastAmount", "unitPrice", "unitCost", "quantity", "costModelKey", "isAutoActual", "notes", "parentId"] as const
+    const fields = ["department", "lineType", "lineSubtype", "plannedAmount", "forecastAmount", "unitPrice", "unitCost", "quantity", "costModelKey", "isAutoActual", "notes", "parentId"] as const
     for (const f of fields) {
       const oldVal = (line as any)[f]
       const newVal = (updated as any)[f]

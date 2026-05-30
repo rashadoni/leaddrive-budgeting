@@ -125,12 +125,14 @@ describe("GET /api/budget-lines/monthly-series", () => {
     expect(where).toMatchObject({ account: { code: "601-01" } })
   })
 
-  it("falls back to category when accountCode missing", async () => {
+  it("falls back to category (as a CoA code) when accountCode missing", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     await GET(
       makeRequest("/api/budget-lines/monthly-series?companyId=c1&category=Salaries&year=2026"),
     )
     const where = prismaMock.budgetLine.findMany.mock.calls[0][0].where
-    expect(where).toMatchObject({ category: "Salaries" })
+    // Phase 2.1 dropped BudgetLine.category → the legacy `category` param now
+    // resolves via the CoA FK (account.code), not the dropped column.
+    expect(where).toMatchObject({ account: { code: "Salaries" } })
   })
 })

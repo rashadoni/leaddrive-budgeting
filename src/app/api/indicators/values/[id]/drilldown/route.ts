@@ -125,7 +125,6 @@ export async function GET(
     },
     select: {
       id: true,
-      category: true,
       department: true,
       lineType: true,
       plannedAmount: true,
@@ -167,9 +166,13 @@ export async function GET(
     return {
       id: r.id,
       accountCode: r.account?.code ?? null,
-      accountName: r.account?.nameEn ?? r.account?.name ?? r.category ?? null,
+      accountName: r.account?.nameEn ?? r.account?.name ?? null,
       accountType,
-      category: r.category,
+      // Phase 2.1 dropped BudgetLine.category (→ accountId FK). Selecting the
+      // dropped column was the 500 here — Postgres "column does not exist",
+      // only surfaced by a real drill-down (mocked tests returned category).
+      // Keep a `category` field for UI back-compat, now = the CoA code.
+      category: r.account?.code ?? null,
       department: r.department,
       plannedAmount: r.plannedAmount,
       amountBase,

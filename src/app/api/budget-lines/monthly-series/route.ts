@@ -65,7 +65,10 @@ export async function GET(request: NextRequest) {
       deletedAt: null,
       ...(accountCode
         ? { account: { code: accountCode } }
-        : { category: category! }),
+        // Phase 2.1 dropped BudgetLine.category (→ accountId FK). The legacy
+        // `category` param is now an account CODE — resolve via the CoA FK,
+        // not the dropped column (which 500'd "column does not exist").
+        : { account: { code: category! } }),
       // Month rows only. Prefer the canonical `monthIndex`; fall back to
       // legacy `sortOrder` when monthIndex is null (mirrors the 2026-05-30
       // month-bucketing fix). A row qualifies when its effective month is
