@@ -10,6 +10,8 @@ import type { FeedSnapshot } from './scenario-feed-context'
 
 export interface Signal {
   id: string
+  /** Phase 3b — 'market' (price/weather feed) vs 'news' (curated headlines). */
+  kind: 'market' | 'news'
   severity: 'high' | 'medium'
   label: string
   detail: string
@@ -36,6 +38,7 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
     if (premium > 0.015) {
       out.push({
         id: 'fx-depreciation',
+        kind: 'market',
         severity: 'high',
         label: 'Рынок закладывает девальвацию маната',
         detail: `Форвард USD/AZN 12М ${fwd.value} vs спот ${spot.value} (${pct(premium)})`,
@@ -51,6 +54,7 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
   if (brent && brent.value > 95) {
     out.push({
       id: 'oil-elevated',
+        kind: 'market',
       severity: 'medium',
       label: 'Brent на повышенном уровне',
       detail: `Brent $${brent.value}/баррель (> $95) — давление на энергию/удобрения`,
@@ -65,6 +69,7 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
   if (rain && rain.value < 15) {
     out.push({
       id: 'drought',
+        kind: 'market',
       severity: 'high',
       label: 'Низкий прогноз осадков в агрорегионах',
       detail: `Мин. осадки 14д ${rain.value} мм (< 15 мм) — риск засухи`,
@@ -79,6 +84,7 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
   if (sugar && sugar.value < 90) {
     out.push({
       id: 'sugar-pressure',
+      kind: 'market',
       severity: 'medium',
       label: 'Цена сахара под давлением',
       detail: `FAO индекс сахара ${sugar.value} (< 90)`,
@@ -89,4 +95,68 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
   }
 
   return out
+}
+
+// ─── Phase 3b — news-derived signals ───────────────────────────────────────
+
+export interface NewsItem {
+  title: string
+  sourceLabel: string
+  sentimentScore: number | null
+  industryTags: string[]
+  companyTags: string[]
+  /** ISO date (YYYY-MM-DD). */
+  publishedAt: string
+}
+
+/** Only materially-negative news triggers a crisis suggestion. */
+const NEWS_SENTIMENT_THRESHOLD = -0.3
+
+interface NewsRule {
+  code: string
+  /** Require ≥1 of these industryTags (omit to skip the tag gate). */
+  tags?: string[]
+  /** Require a keyword match in the headline. */
+  kw: RegExp
+}
+
+// Order matters — first matching rule wins for a given item. Conservative:
+// a signal needs negative sentiment AND a keyword (AND a tag where set), so a
+// generic negative headline with no commodity/FX/weather angle never fires.
+const NEWS_RULES: NewsRule[] = [
+  { code: 'DROUGHT_2026', tags: ['agro_crops', 'food_processing'], kw: /weather|drought|harvest|flood|frost|adverse|погод|засух|урожай|ущерб|наводнен/i },
+  { code: 'AZN_DEVAL_15', kw: /devalu|manat|девальв|обесцен|курс\s*(манат|azn)/i },
+  { code: 'SUGAR_PRICE_TO_70', kw: /sugar|сахар/i },
+  { code: 'BRENT_TO_140', kw: /\boil\b|brent|crude|нефть|энерг|fuel|топлив/i },
+]
+
+/**
+ * Map recent negative news to the crisis scenario it implies (keyword + tag
+ * heuristic, deterministic — no per-request LLM). Dedupes to one signal per
+ * scenario, keeping the most-negative headline. Pure.
+ */
+export function detectNewsSignals(items: NewsItem[]): Signal[] {
+  const best = new Map<string, NewsItem>()
+  for (const item of items) {
+    const s = item.sentimentScore
+    if (typeof s !== 'number' || !Number.isFinite(s) || s > NEWS_SENTIMENT_THRESHOLD) continue
+    const title = item.title ?? ''
+    for (const rule of NEWS_RULES) {
+      if (rule.tags && !rule.tags.some((t) => item.industryTags?.includes(t))) continue
+      if (!rule.kw.test(title)) continue
+      const cur = best.get(rule.code)
+      if (!cur || s < (cur.sentimentScore ?? 0)) best.set(rule.code, item)
+      break
+    }
+  }
+  return [...best.entries()].map(([code, item]) => ({
+    id: `news-${code}`,
+    kind: 'news' as const,
+    severity: (item.sentimentScore ?? 0) <= -0.5 ? 'high' : 'medium',
+    label: item.title.length > 90 ? `${item.title.slice(0, 87)}…` : item.title,
+    detail: `📰 ${item.sourceLabel} · тон ${(item.sentimentScore ?? 0).toFixed(2)}`,
+    suggestedScenarioCode: code,
+    asOf: item.publishedAt,
+    stale: false,
+  }))
 }

@@ -15,6 +15,7 @@ import { useTerminalStore } from "../store/terminalStore";
 
 interface Signal {
   id: string;
+  kind: "market" | "news";
   severity: "high" | "medium";
   label: string;
   detail: string;
@@ -66,8 +67,12 @@ export function SignalsStrip() {
           data-testid={`signal-${s.id}`}
           className="shrink-0 inline-flex items-center gap-1.5 rounded border border-border bg-background/60 px-2 py-0.5 text-[11px] hover:border-sky-500/50 hover:bg-sky-500/10"
         >
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${SEV_DOT[s.severity] ?? "bg-muted-foreground"}`} />
-          <span className="text-foreground/90">{s.label}</span>
+          {s.kind === "news" ? (
+            <span aria-hidden="true">📰</span>
+          ) : (
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${SEV_DOT[s.severity] ?? "bg-muted-foreground"}`} />
+          )}
+          <span className="text-foreground/90 max-w-[280px] truncate">{s.label}</span>
           <span className="text-muted-foreground">→ {s.suggestedScenarioCode}</span>
           {s.stale && <span className="text-amber-500 text-[9px]">⚠</span>}
         </button>
