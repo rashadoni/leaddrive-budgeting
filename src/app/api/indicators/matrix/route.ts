@@ -303,6 +303,20 @@ export async function GET(request: NextRequest) {
       readinessMap = new Map()
     }
 
+    // Per-company revenue — materiality basis for the revenue-weighted
+    // holding composite roll-up (see deriveParentComposites). Pulled from
+    // any IV's resolved.revenue (consistent within a company; take the max
+    // so a stray partial 0 can't win). 0 when no P&L is loaded → 0 weight
+    // in the parent roll-up, so a no-data shell can't inflate the holding.
+    const revenueByCompanyId = new Map<string, number>();
+    for (const v of values) {
+      const rev = (v.inputs as { resolved?: { revenue?: unknown } } | null)?.resolved?.revenue;
+      if (typeof rev === 'number' && Number.isFinite(rev)) {
+        const cur = revenueByCompanyId.get(v.companyId) ?? -Infinity;
+        if (rev > cur) revenueByCompanyId.set(v.companyId, rev);
+      }
+    }
+
     const companies = operational.map((c) => ({
       id: c.id,
       code: c.code,
@@ -319,6 +333,9 @@ export async function GET(request: NextRequest) {
       // Phase 7.M Step 5 — readiness {score, tier, areas[]}. `null` when
       // the helper failed or this entity wasn't in scope (level=1 parents).
       readiness: readinessMap.get(c.id) ?? null,
+      // 2026-05-30 — materiality basis for the revenue-weighted holding
+      // composite roll-up (deriveParentComposites). 0 = no P&L → 0 weight.
+      revenue: revenueByCompanyId.get(c.id) ?? 0,
     }));
 
     // Phase 7.H F4.v2.4 — materiality lookup needs the company's

@@ -23,6 +23,7 @@ import { useDriftHealth } from '../hooks/use-drift-health';
 import { useEventStream } from '@/lib/events/use-event-stream';
 import {
   computeCompositeByCompany,
+  deriveParentComposites,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
 import {
@@ -282,9 +283,11 @@ export function useHeatMapModel(period: string | undefined) {
   // EXCLUDED to prevent double-aggregation: the rollup already encodes
   // children's worst status, and averaging worst-of-children would
   // dramatically underestimate sub-group health (4g+1r → all-red rollup
-  // → composite ≈ 0, but true signal is 80% green). Sub-groups end up
-  // with no scoreable cells → composite null → "—" badge — honest
-  // "this is a navigation rollup, not a measurable entity" UX.
+  // → composite ≈ 0, but true signal is 80% green). Sub-groups have no own
+  // scoreable cells, so their composite is instead DERIVED below as a
+  // revenue-weighted roll-up of their children (deriveParentComposites) —
+  // matching CompanyTree (Panel 1) so the SAME number shows in both panels
+  // (2026-05-30: replaced the prior "—" blank, which clashed with the tree).
   const compositeByCompany = useMemo(() => {
     if (!data) return new Map<string, CompositeScore>();
     // Phase 7.N — apply per-company qualitative riskTag penalties so the
@@ -299,7 +302,8 @@ export function useHeatMapModel(period: string | undefined) {
     // Sparse-map mode (no companyIds arg) — rows without scoreable cells
     // are absent from the result; HeatMap's fallback for missing entries
     // shows "—" via `compositeByCompany.get(co.id) ?? null` consumer.
-    return computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+    const leafById = computeCompositeByCompany(data.cells, undefined, riskTagsByCompanyId);
+    return deriveParentComposites(data.companies, leafById);
   }, [data, companyTree]);
 
   const filteredCompanies = useMemo(() => {

@@ -16,8 +16,10 @@ import { describe, it, expect } from 'vitest';
 import {
   computeCompositeScore,
   computeCompositeByCompany,
+  deriveParentComposites,
   scoreToBand,
   RISK_TAG_PENALTY_TABLE,
+  type CompositeScore,
 } from './composite-score';
 import { isAggregateRollup, type HeatMapCell } from './heatmap-matrix';
 
@@ -467,5 +469,63 @@ describe('Phase 7.N — riskTag composite penalty', () => {
       subsidy_dependency: 5,
     });
     expect(Object.isFrozen(RISK_TAG_PENALTY_TABLE)).toBe(true);
+  });
+});
+
+describe('deriveParentComposites — revenue-weighted holding roll-up', () => {
+  const leaf = (score: number): CompositeScore => ({
+    score,
+    band: scoreToBand(score),
+    contributingCount: 5,
+    totalCount: 5,
+  });
+
+  it('weights children by revenue — a 0-revenue shell cannot inflate the parent', () => {
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'big', parentCompanyId: 'p', revenue: 9000 },
+      { id: 'small', parentCompanyId: 'p', revenue: 1000 },
+      { id: 'shell', parentCompanyId: 'p', revenue: 0 }, // no-data shell, high score
+    ];
+    const out = deriveParentComposites(
+      companies,
+      new Map([['big', leaf(40)], ['small', leaf(60)], ['shell', leaf(90)]]),
+    );
+    // Revenue-weighted: (40*9000 + 60*1000 + 90*0)/(9000+1000) = 420000/10000 = 42.
+    // Unweighted would be (40+60+90)/3 = 63 — the 0-revenue shell must NOT lift it.
+    expect(out.get('p')?.score).toBe(42);
+    expect(out.get('p')?.band).toBe(scoreToBand(42));
+  });
+
+  it('falls back to an unweighted mean when every child revenue is 0/absent', () => {
+    const companies = [
+      { id: 'p', parentCompanyId: null },
+      { id: 'a', parentCompanyId: 'p', revenue: 0 },
+      { id: 'b', parentCompanyId: 'p' }, // revenue absent
+    ];
+    const out = deriveParentComposites(companies, new Map([['a', leaf(30)], ['b', leaf(50)]]));
+    expect(out.get('p')?.score).toBe(40); // (30 + 50) / 2
+  });
+
+  it('resolves a multi-level holding bottom-up (sub-groups then umbrella)', () => {
+    const companies = [
+      { id: 'top', parentCompanyId: null },
+      { id: 'sgA', parentCompanyId: 'top' },
+      { id: 'sgB', parentCompanyId: 'top' },
+      { id: 'a1', parentCompanyId: 'sgA', revenue: 100 },
+      { id: 'b1', parentCompanyId: 'sgB', revenue: 100 },
+    ];
+    const out = deriveParentComposites(companies, new Map([['a1', leaf(20)], ['b1', leaf(80)]]));
+    expect(out.get('sgA')?.score).toBe(20);
+    expect(out.get('sgB')?.score).toBe(80);
+    // top is a sub-group of sub-groups; both sgA/sgB have revenue 0 (no own
+    // revenue field) → unweighted mean of (20, 80) = 50.
+    expect(out.get('top')?.score).toBe(50);
+  });
+
+  it('leaves with their own scores pass through unchanged', () => {
+    const companies = [{ id: 'solo', parentCompanyId: null, revenue: 500 }];
+    const out = deriveParentComposites(companies, new Map([['solo', leaf(73)]]));
+    expect(out.get('solo')?.score).toBe(73);
   });
 });

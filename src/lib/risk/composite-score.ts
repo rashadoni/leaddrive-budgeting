@@ -204,6 +204,77 @@ export function computeCompositeByCompany(
   return out;
 }
 
+/**
+ * Roll sub-group / holding (parent) composites up from their children as a
+ * REVENUE-WEIGHTED mean of the children's composite scores.
+ *
+ * Why revenue-weighted (2026-05-30): a holding's risk is dominated by where
+ * the money is — a 0-revenue shell (e.g. a JV "awaiting data") must NOT lift
+ * the parent score. An unweighted mean gave AZSEKER 48 (inflated by a
+ * 0-revenue R78 shell); revenue-weighting gives ~45, dominated by the large
+ * operating subs — the same principle as a cap-weighted index. Falls back to
+ * an unweighted mean only when every child revenue is 0/absent (no
+ * materiality signal). Walks the tree to a fixpoint so multi-level
+ * hierarchies (sub-group of sub-groups) resolve bottom-up.
+ *
+ * Used by BOTH the CompanyTree (Panel 1) and the HeatMap row headers
+ * (Panel 2) so the SAME parent number shows in both — a parent is never
+ * blank in one view and scored in the other (terminal "numbers must tie
+ * out" rule). Returns a NEW map = `leafById` + derived parents, keyed by id.
+ */
+export function deriveParentComposites(
+  companies: ReadonlyArray<{ id: string; parentCompanyId?: string | null; revenue?: number | null }>,
+  leafById: ReadonlyMap<string, CompositeScore>,
+): Map<string, CompositeScore> {
+  const out = new Map<string, CompositeScore>(leafById);
+  const revById = new Map<string, number>(
+    companies.map((c) => [
+      c.id,
+      typeof c.revenue === 'number' && Number.isFinite(c.revenue) ? Math.max(0, c.revenue) : 0,
+    ]),
+  );
+  const childrenByParent = new Map<string, string[]>();
+  for (const c of companies) {
+    const pid = c.parentCompanyId ?? null;
+    if (!pid) continue;
+    const list = childrenByParent.get(pid);
+    if (list) list.push(c.id);
+    else childrenByParent.set(pid, [c.id]);
+  }
+  let progressed = true;
+  let safety = 8; // depth cap (fixpoint for >2-level hierarchies)
+  while (progressed && safety-- > 0) {
+    progressed = false;
+    for (const [parentId, kidIds] of childrenByParent) {
+      const existing = out.get(parentId);
+      if (existing && existing.score !== null) continue; // already scored
+      // Defer until every child that is ITSELF a parent has resolved
+      // (correct bottom-up order for multi-level holdings).
+      const childParentsPending = kidIds.some(
+        (id) => childrenByParent.has(id) && (out.get(id)?.score ?? null) === null,
+      );
+      if (childParentsPending) continue;
+      const kids = kidIds
+        .map((id) => ({ s: out.get(id), rev: revById.get(id) ?? 0 }))
+        .filter((k): k is { s: CompositeScore; rev: number } => !!k.s && k.s.score !== null);
+      if (kids.length === 0) continue;
+      const totalRev = kids.reduce((acc, k) => acc + k.rev, 0);
+      const score =
+        totalRev > 0
+          ? Math.round(kids.reduce((acc, k) => acc + (k.s.score as number) * k.rev, 0) / totalRev)
+          : Math.round(kids.reduce((acc, k) => acc + (k.s.score as number), 0) / kids.length);
+      out.set(parentId, {
+        score,
+        band: scoreToBand(score),
+        contributingCount: kids.reduce((acc, k) => acc + k.s.contributingCount, 0),
+        totalCount: kids.reduce((acc, k) => acc + k.s.totalCount, 0),
+      });
+      progressed = true;
+    }
+  }
+  return out;
+}
+
 /** Phase 7.N wiring — expose the per-tag penalty table so UIs can
  *  explain WHY a flag changes the score. Read-only. */
 export const RISK_TAG_PENALTY_TABLE = Object.freeze({ ...RISK_TAG_PENALTY });

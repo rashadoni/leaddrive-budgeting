@@ -6,7 +6,7 @@ import { useTerminalStore } from '../store/terminalStore';
 import { useMatrix } from '../hooks/use-matrix';
 import {
   computeCompositeByCompany,
-  scoreToBand,
+  deriveParentComposites,
   type CompositeScore,
 } from '@/lib/risk/composite-score';
 import {
@@ -102,55 +102,17 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     // closes.
     const riskTagsByCompanyId = buildRiskTagsByCompanyId(companies);
     const byId = computeCompositeByCompany(matrix.cells, undefined, riskTagsByCompanyId);
+    // Derive parent/holding composites from children — REVENUE-WEIGHTED so a
+    // 0-revenue shell (e.g. a JV "awaiting data") can't inflate a holding.
+    // Shared helper → byte-identical to the HeatMap row headers (Panel 2);
+    // `matrix.companies` carries `parentCompanyId` + `revenue`. (Replaces the
+    // old unweighted children-average that gave AZSEKER 48 vs the heatmap's
+    // "—"; now both show the same revenue-weighted ~45.)
+    const fullById = deriveParentComposites(matrix.companies, byId);
     const out = new Map<string, CompositeScore>();
     for (const co of matrix.companies) {
-      const score = byId.get(co.id);
+      const score = fullById.get(co.id);
       if (score) out.set(co.code, score);
-    }
-    // CLI follow-up — derive parent composite from children average.
-    // `computeCompositeByCompany` skips rollup-only cells (sub-groups
-    // typically only have IND_HOLDING_REVENUE, which is a rollup), so
-    // every level=1 node renders as "—" with raw scoring. Walk the
-    // hierarchy via parentCompanyId (matrix payload now surfaces it) and
-    // assign each parent the avg of its children's scores. We iterate
-    // bottom-up by level descending so a holding umbrella inherits from
-    // sub-groups that themselves just inherited from ops cos.
-    type MatrixCo = (typeof matrix.companies)[number] & { parentCompanyId?: string | null };
-    const cosWithParent = matrix.companies as ReadonlyArray<MatrixCo>;
-    const childrenByParentId = new Map<string, MatrixCo[]>();
-    for (const co of cosWithParent) {
-      const pid = co.parentCompanyId ?? null;
-      if (pid === null) continue;
-      const list = childrenByParentId.get(pid);
-      if (list) list.push(co);
-      else childrenByParentId.set(pid, [co]);
-    }
-    // Process parents whose children all already have computed scores
-    // first; iterate until no progress made (handles >2-level hierarchies).
-    let progressed = true;
-    let safety = 5; // depth cap (FO Holding has 3 levels max today)
-    while (progressed && safety-- > 0) {
-      progressed = false;
-      for (const [parentId, kids] of childrenByParentId) {
-        const parentCo = cosWithParent.find((c) => c.id === parentId);
-        if (!parentCo) continue;
-        const existing = out.get(parentCo.code);
-        if (existing && existing.score !== null) continue; // already scored
-        const kidScores = kids
-          .map((k) => out.get(k.code))
-          .filter((s): s is CompositeScore => !!s && s.score !== null);
-        if (kidScores.length === 0) continue;
-        const avg = Math.round(
-          kidScores.reduce((acc, s) => acc + (s.score ?? 0), 0) / kidScores.length,
-        );
-        out.set(parentCo.code, {
-          score: avg,
-          band: scoreToBand(avg),
-          contributingCount: kidScores.reduce((acc, s) => acc + s.contributingCount, 0),
-          totalCount: kidScores.reduce((acc, s) => acc + s.totalCount, 0),
-        });
-        progressed = true;
-      }
     }
     return out;
   }, [matrix, companies]);
