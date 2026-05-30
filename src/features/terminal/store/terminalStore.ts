@@ -132,6 +132,31 @@ export interface TerminalState {
   scenarioDelta: ReadonlyMap<string, string> | null;
   /** Name shown in HeatMap scenario badge. */
   activeScenarioLabel: string | null;
+  /**
+   * Phase 1 "Crisis Brief" (B2 drivers mode) — the rich payload behind a
+   * driver-re-derivation run: the holding score swing, per-company composite
+   * swings, the grounded AI narrative + mitigations, and the worst-first
+   * cascade order. `null` outside drivers mode. Cleared with `scenarioDelta`
+   * on revert.
+   */
+  scenarioBrief: ScenarioBriefState | null;
+}
+
+/** Phase 1 "Crisis Brief" — driver-mode scenario result for the panel. */
+export interface ScenarioBriefState {
+  scenarioCode: string;
+  holdingBaselineScore: number | null;
+  holdingScenarioScore: number | null;
+  byCompany: Array<{
+    companyId: string;
+    companyCode: string;
+    baselineScore: number | null;
+    scenarioScore: number | null;
+  }>;
+  narrative: string | null;
+  mitigations: string[];
+  /** Ordered "companyId:code" keys, worst-first, for the staggered cascade. */
+  cascadeOrder: string[];
 }
 
 export type WatchlistTab = 'all' | 'starred' | 'alerted' | 'recent' | 'sector';
@@ -195,8 +220,13 @@ export interface TerminalActions {
   setAlertMatches: (matches: readonly AlertMatch[] | null) => void;
   /** Phase 7.N — apply scenario delta overlay to HeatMap. */
   setScenarioDelta: (delta: ReadonlyMap<string, string> | null, label: string | null) => void;
-  /** Phase 7.N — clear scenario overlay (return to baseline). */
+  /** Phase 7.N — clear scenario overlay (return to baseline). Also clears the
+   *  Phase-1 driver-mode `scenarioBrief` — revert is one gesture. */
   clearScenarioDelta: () => void;
+  /** Phase 1 "Crisis Brief" — set the driver-mode result payload. */
+  setScenarioBrief: (brief: ScenarioBriefState | null) => void;
+  /** Phase 1 "Crisis Brief" — clear just the brief (keeps any overlay). */
+  clearScenarioBrief: () => void;
   clearState: () => void;
 }
 
@@ -281,6 +311,7 @@ let globalState: TerminalState = {
   alertMatches: null,
   scenarioDelta: null,
   activeScenarioLabel: null,
+  scenarioBrief: null,
 };
 
 /**
@@ -436,7 +467,9 @@ const actions: TerminalActions = {
   setScenarioDelta: (delta, label) =>
     setGlobalState({ scenarioDelta: delta, activeScenarioLabel: label }),
   clearScenarioDelta: () =>
-    setGlobalState({ scenarioDelta: null, activeScenarioLabel: null }),
+    setGlobalState({ scenarioDelta: null, activeScenarioLabel: null, scenarioBrief: null }),
+  setScenarioBrief: (brief) => setGlobalState({ scenarioBrief: brief }),
+  clearScenarioBrief: () => setGlobalState({ scenarioBrief: null }),
   setCompactMode: (mode) => {
     setGlobalState({ compactMode: mode });
     writeCompactModeToStorage(mode);
@@ -468,6 +501,7 @@ const actions: TerminalActions = {
       alertMatches: null,
       scenarioDelta: null,
       activeScenarioLabel: null,
+      scenarioBrief: null,
     });
     if (typeof window !== 'undefined') {
       try {
