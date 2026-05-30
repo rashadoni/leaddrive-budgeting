@@ -8,12 +8,16 @@ const findFirst = vi.fn()
 const companyFindMany = vi.fn()
 const indicatorFindMany = vi.fn()
 const ivFindMany = vi.fn()
+const fxFindMany = vi.fn()
+const intelFindMany = vi.fn()
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     scenario: { findFirst: (...a: unknown[]) => findFirst(...a) },
     company: { findMany: (...a: unknown[]) => companyFindMany(...a) },
     indicatorDefinition: { findMany: (...a: unknown[]) => indicatorFindMany(...a) },
     indicatorValue: { findMany: (...a: unknown[]) => ivFindMany(...a) },
+    currencyRateHistory: { findMany: (...a: unknown[]) => fxFindMany(...a) },
+    intelDataPoint: { findMany: (...a: unknown[]) => intelFindMany(...a) },
   },
 }))
 vi.mock('@/lib/risk/recompute', () => ({ createPrismaDataSource: () => ({}) }))
@@ -28,7 +32,11 @@ import { GET } from './route'
 const req = (url: string) => new Request(url) as never
 
 describe('GET simulate ?mode=drivers', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    fxFindMany.mockResolvedValue([])
+    intelFindMany.mockResolvedValue([])
+  })
 
   it('derives revenue from inputs.resolved.revenue + runs sim + narrative', async () => {
     findFirst.mockResolvedValue({ id: 's1', code: 'INPUT_COST_30', nameEn: 'Input +30%', nameRu: 'Стоимость +30%', overrides: { shock: { inputCostShock: 0.3 } } })
@@ -76,5 +84,25 @@ describe('GET simulate ?mode=drivers', () => {
     findFirst.mockResolvedValue({ id: 's1', code: 'X', nameEn: 'x', overrides: { adjustments: [] } })
     const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers'), { params: Promise.resolve({ id: 's1' }) } as never)
     expect(res.status).toBe(422)
+  })
+
+  it('Phase 2: an absolute target resolves to a fraction from the live feed + returns anchors', async () => {
+    findFirst.mockResolvedValue({ id: 's1', code: 'AZN_DEVAL_20', nameEn: 'AZN -20%', overrides: { shock: { target: { metric: 'AZN_USD', value: 2.04, drives: 'fxShock' } } } })
+    fxFindMany.mockResolvedValue([{ currencyCode: 'USD', rate: 1.7, rateDate: new Date('2026-05-28') }])
+    companyFindMany.mockResolvedValue([{ id: 'c1', code: 'CPC', name: 'CPC', parentCompanyId: null, industry: 'food_processing' }])
+    indicatorFindMany.mockResolvedValue([{ id: 'i1', code: 'FX_IMPORTED_INPUT', formula: 'imported_input_cost/total_input_cost*100', thresholds: {}, requiredInputs: [], weight: 1 }])
+    ivFindMany.mockResolvedValue([{ companyId: 'c1', indicatorId: 'i1', value: 0, status: 'green', inputs: { resolved: { revenue: 6475882 } } }])
+    simulateByDrivers.mockResolvedValue({ scenarioCode: 'AZN_DEVAL_20', period: '2026', deltas: [], byCompany: [], holdingBaselineScore: 61, holdingScenarioScore: 58, financialHoldingBaselineScore: 62, financialHoldingScenarioScore: 55, changed: 0, worsened: 0, improved: 0, driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null } })
+    runCrisisBrief.mockResolvedValue({ narrative: '⚠', mitigations: [], confidence: 0.6, modelName: 's', promptVersion: 'v1' })
+
+    const res = await GET(req('http://x/api/scenarios/s1/simulate?mode=drivers&period=2026'), { params: Promise.resolve({ id: 's1' }) } as never)
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    // engine received the DERIVED fraction (2.04/1.70−1 = 0.20), not a target
+    const passedOverrides = (simulateByDrivers.mock.calls[0][1] as { scenario: { overrides: { shock: { fxShock?: number } } } }).scenario.overrides.shock
+    expect(passedOverrides.fxShock).toBeCloseTo(0.2, 5)
+    // anchors returned for the panel
+    expect(body.feedAnchors).toHaveLength(1)
+    expect(body.feedAnchors[0]).toMatchObject({ label: 'AZN/USD', currentValue: 1.7, scenarioValue: 2.04 })
   })
 })

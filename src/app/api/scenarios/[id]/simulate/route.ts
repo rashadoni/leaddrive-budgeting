@@ -25,6 +25,7 @@ import {
 } from '@/lib/risk/scenario-simulator'
 import { createPrismaDataSource } from '@/lib/risk/recompute'
 import { hasShock, readShock } from '@/lib/risk/scenario-shock'
+import { resolveFeedShock, resolveFeedContext, FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
 import { hasAnthropicKey } from '@/lib/ai/client'
@@ -62,7 +63,8 @@ export async function GET(
         { status: 422 },
       )
     }
-    const [companies, indicators, baselineRows] = await Promise.all([
+    const rawShock = readShock(scenario.overrides)!
+    const [companies, indicators, baselineRows, fxRows, intelRows] = await Promise.all([
       prisma.company.findMany({
         where: { organizationId: session.orgId },
         select: { id: true, code: true, name: true, parentCompanyId: true, industry: true },
@@ -75,7 +77,40 @@ export async function GET(
         where: { organizationId: session.orgId, period },
         select: { companyId: true, indicatorId: true, value: true, status: true, inputs: true },
       }),
+      // Phase 2 — latest live feed for shock-target anchoring.
+      prisma.currencyRateHistory.findMany({
+        where: { organizationId: session.orgId },
+        orderBy: [{ currencyCode: 'asc' }, { rateDate: 'desc' }],
+        distinct: ['currencyCode'],
+        select: { currencyCode: true, rate: true, rateDate: true },
+      }),
+      prisma.intelDataPoint.findMany({
+        where: { organizationId: session.orgId, metric: { in: ['BRENT_USD_BBL', 'FAO_SUGAR_INDEX', 'FAO_CEREAL_INDEX'] } },
+        orderBy: [{ metric: 'asc' }, { datetime: 'desc' }],
+        distinct: ['metric'],
+        select: { metric: true, value: true, datetime: true },
+      }),
     ])
+
+    // Build the feed snapshot + resolve any absolute target → its drives fraction.
+    const nowMs = Date.now()
+    const staleMs = FEED_STALE_DAYS * 86_400_000
+    const feedSnapshot: FeedSnapshot = {}
+    for (const r of fxRows) {
+      feedSnapshot[`AZN_${r.currencyCode}`] = { value: r.rate, asOf: r.rateDate.toISOString().slice(0, 10), stale: nowMs - r.rateDate.getTime() > staleMs }
+    }
+    for (const r of intelRows) {
+      feedSnapshot[r.metric] = { value: r.value, asOf: r.datetime.toISOString().slice(0, 10), stale: nowMs - r.datetime.getTime() > staleMs }
+    }
+    const resolvedShock = resolveFeedShock(rawShock, feedSnapshot)
+    const feedAnchors = resolveFeedContext(rawShock, feedSnapshot)
+    // A target-only scenario whose feed metric is missing can't derive a fraction.
+    if (!hasShock({ shock: resolvedShock })) {
+      return NextResponse.json(
+        { error: 'Scenario target metric unavailable in the live feed — cannot derive the shock.' },
+        { status: 422 },
+      )
+    }
 
     // Revenue per company = MAX(inputs.resolved.revenue) — NO company.revenue column (spec §B).
     const revenueByCompanyId = new Map<string, number>()
@@ -90,7 +125,7 @@ export async function GET(
     const ds = createPrismaDataSource(prisma)
     const sim = await simulateByDrivers(ds, {
       organizationId: session.orgId,
-      scenario: { code: scenario.code, overrides: scenario.overrides },
+      scenario: { code: scenario.code, overrides: { shock: resolvedShock } },
       period,
       companies: companies.map((c) => ({
         id: c.id,
@@ -120,10 +155,10 @@ export async function GET(
     for (const d of sim.deltas) if (d.changed && d.scenarioStatus) deltaMap[`${d.companyId}:${d.code}`] = d.scenarioStatus
 
     // Honest FX modeling caveat for the narrative (assumed import share).
-    const shock = readShock(scenario.overrides)
+    // Use the RESOLVED shock — a target-driven FX scenario gets its fxShock here.
     const assumptionNote =
-      shock?.fxShock && shock?.assumedImportShare
-        ? `Assumes ${Math.round((shock.assumedImportShare ?? 0) * 100)}% imported-input share (current data has no tagged imported costs).`
+      resolvedShock.fxShock && resolvedShock.assumedImportShare
+        ? `Assumes ${Math.round((resolvedShock.assumedImportShare ?? 0) * 100)}% imported-input share (current data has no tagged imported costs).`
         : null
 
     let narrative: string | null = null
@@ -189,6 +224,7 @@ export async function GET(
       worsened: sim.worsened,
       improved: sim.improved,
       driftSummary: sim.driftSummary,
+      feedAnchors,
       assumptionNote,
       narrative,
       mitigations,
