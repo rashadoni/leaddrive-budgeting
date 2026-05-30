@@ -89,10 +89,21 @@ SCN <code> GO / click
    → ScenarioPanel: cascade → score tween → narrative stream
 ```
 
-## 5. Scope (YAGNI)
+## 5. Scope — full vision = a "living risk radar", built in 3 phases
 
-- **In:** the driver engine, the narrative generator, the panel animation, and **2 flagship scenarios re-authored with drivers** — `AZN_DEVAL_20` (FX) + `DROUGHT_2026` (yield). These cover the two most demo-relevant crises (currency + agro).
-- **Out (follow-up):** the other 4 scenarios (re-author later with the same schema); ad-hoc/custom driver entry (type-your-own what-if); side-by-side baseline|scenario dual-grid. The legacy multiplier path stays for any scenario without `drivers`.
+The user's target is the maximal version: the terminal watches the world (prices, FX, weather, news) → anchors scenarios to reality → auto-suggests the relevant what-if + AI narrative + cascade. That's **3 subsystems**, so it's decomposed into phases — each gets its own spec → plan → build. **This spec covers Phase 1**; Phases 2-3 are the roadmap (own specs later).
+
+### Phase 1 — Crisis Catalog (this spec; demo-ready wow)
+Driver-re-derivation engine + AI narrative + cascade + revenue-weighted score swing + a **14-scenario catalog** across 5 categories (FX/macro, commodity, climate/agro, geopolitics, customers). Validate transmission on **2 flagship scenarios first** (`AZN_DEVAL_20`, `DROUGHT_2026`) before authoring the other 12. This alone is the jaw-dropping demo. *(Catalog list: §A appendix.)*
+
+### Phase 2 — Live-feed anchoring (own spec)
+Scenarios start from the **real current feed values** (FX/sugar/oil are live: 14 commodity points + FX history). "AZN −20%" anchors to the actual current rate (1.70 → 2.04); sugar scenarios to the live price. Turns hypothetical deltas into "from where we are now".
+
+### Phase 3 — Signal triggers (own spec; has a data dependency)
+- **Price/weather trigger (real now):** when a live feed moves materially (sugar −X%, FX shift, drought index up), the terminal flags/suggests the matching scenario.
+- **News trigger (needs data first):** the AI crawler pulls real news → classifies the event → maps to a scenario → suggests it. **Hard dependency:** raw news is currently **0 rows** (crawler not fed / no sources) — Phase 3 must first stand up the crawler with real sources, else the news path is empty. Price/weather triggers do NOT have this dependency.
+
+**Always out:** ad-hoc/custom driver entry (type-your-own); side-by-side dual-grid. The legacy multiplier path stays for any scenario without `drivers`.
 
 ## 6. Error handling
 
@@ -115,3 +126,33 @@ SCN <code> GO / click
 - **Narrative tone:** advisory-CFO framing with a ⚠ crisis lead (as validated in the mockup) — names the holding swing first, then the worst-hit companies with their real numbers, then mitigations. Not pure alarmism.
 - **Cascade:** worst-first (red cells lead), default ~50ms/cell, tuned to the real cell count during implementation so the full reflow lands in ≈1.5–2.5s (dramatic but not dragging).
 - **Endpoint:** extend the existing `/api/scenarios/[id]/simulate` with `?mode=drivers` rather than a new route — the legacy multiplier path stays the default for scenarios without `drivers`.
+
+## §A. Phase-1 scenario catalog (14, grouped by category)
+
+Each scenario lists its primary driver(s) → the indicators it moves. Transmission validated per scenario (the 2 ✦ flagships first).
+
+**💱 FX / macro**
+1. ✦ **AZN −20%** — `fx_usd` set → FX-imported-cost + food-processing margins
+2. **AZN −15% + debt stress** — `fx_usd` + debt-cost driver → margins, cash
+3. **Policy-rate spike** — debt-servicing driver → margin/EBITDA
+
+**🌾 Commodity**
+4. **Sugar −20%** — `sugar_price` mult 0.8 → revenue/ha, AZSF/CPC margins
+5. **Sugar crash −40%** — severe tail of #4
+6. **Brent −30%** — energy/fertilizer + `commodity_vol`
+7. **Wheat/grain +25%** — `cogs` mult → food-processing gross margin
+
+**☀️ Climate / agro**
+8. ✦ **Drought — harvest −30%** — `harvest_tons` mult 0.7 → yield/revenue-per-ha
+9. **Severe drought −50%** — extreme tail of #8
+10. **Flood / bad weather** — harvest −20% + quality/cost penalty
+
+**🌍 Geopolitics**
+11. **Iran sanctions tighten** — `fx_usd` + cost + `news_sentiment_30d`
+12. **Export/border closure** — exporter revenue + concentration
+
+**👥 Customers / counterparties**
+13. **Lose top customer** — `top_customer_share`/HHI → concentration red
+14. **Major customer default** — revenue + liquidity
+
+*(Optional later: energy/gas spike, labour-cost spike, CPI surge.)*
