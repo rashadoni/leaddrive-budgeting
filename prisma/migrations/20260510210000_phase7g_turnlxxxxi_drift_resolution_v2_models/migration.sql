@@ -47,7 +47,7 @@ CREATE INDEX "ai_mapper_proposal_cache_organizationId_isTemplate_lastUsedAt_idx"
 
 ALTER TABLE "ai_mapper_proposal_cache"
   ADD CONSTRAINT "ai_mapper_proposal_cache_organizationId_fkey"
-  FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ─── ai_token_usage (Phase 7.B v2 Day 6) ────────────────────────────
 
@@ -70,7 +70,7 @@ CREATE INDEX "ai_token_usage_organizationId_date_idx"
 
 ALTER TABLE "ai_token_usage"
   ADD CONSTRAINT "ai_token_usage_organizationId_fkey"
-  FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ─── intel_data_points (Phase 7.E #1 D.5b) ──────────────────────────
 
@@ -96,7 +96,7 @@ CREATE INDEX "intel_data_points_organizationId_sourceCode_datetime_idx"
 
 ALTER TABLE "intel_data_points"
   ADD CONSTRAINT "intel_data_points_organizationId_fkey"
-  FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ─── variance_explanations (Phase 7.E #2 v2 E.1a) ───────────────────
 
@@ -123,7 +123,7 @@ CREATE INDEX "variance_explanations_organizationId_indicatorValueId_cachedAt_idx
 
 ALTER TABLE "variance_explanations"
   ADD CONSTRAINT "variance_explanations_organizationId_fkey"
-  FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- ─── predictive_breaches (Phase 7.E #3 E.2b) ────────────────────────
 
@@ -155,4 +155,4 @@ CREATE INDEX "predictive_breaches_organizationId_period_horizonStep_confidenceBa
 
 ALTER TABLE "predictive_breaches"
   ADD CONSTRAINT "predictive_breaches_organizationId_fkey"
-  FOREIGN KEY ("organizationId") REFERENCES "organizations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
