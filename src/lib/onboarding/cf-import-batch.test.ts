@@ -180,6 +180,31 @@ describe("runCashFlowBatch — round-trip", () => {
     expect(r.reconciliation.verdict).toBe("green")
   })
 
+  it("recon read does NOT select the dropped `category` column", async () => {
+    // Regression (2026-05-30): defaultReadActualCfSums selected `category`,
+    // a column Phase 2.1 dropped from CashFlowEntry. tsc could not catch it
+    // (the function takes a loose `PrismaClient | TransactionClient` union,
+    // which erodes Prisma's strict select-type checking), so it threw at
+    // runtime on EVERY real CF --apply — only surfaced by the multi-file
+    // E2E. The recon key is built from `sourceId`, so `category` was dead.
+    // Lock it out of the select so a re-add fails this test (not prod).
+    const prisma = makeFakePrisma()
+    await runCashFlowBatch(prisma, planFor([E("AZSF", "CF.01.01", 100_000)]))
+    const findManySpy = prisma.cashFlowEntry.findMany as unknown as {
+      mock: { calls: Array<[{ select?: Record<string, unknown> }]> }
+    }
+    const reconCall = findManySpy.mock.calls.find((c) => c[0]?.select)
+    expect(reconCall, "recon findMany with a select should have run").toBeTruthy()
+    const select = reconCall![0].select!
+    expect(select.category).toBeUndefined()
+    expect(select).toMatchObject({
+      sourceId: true,
+      year: true,
+      month: true,
+      amount: true,
+    })
+  })
+
   it("re-import soft-archives prior + writes fresh", async () => {
     const prisma = makeFakePrisma()
     const plan = planFor([E("AZSF", "CF.01.01", 1000)])

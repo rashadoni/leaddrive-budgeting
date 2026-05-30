@@ -273,8 +273,12 @@ async function defaultReadActualCfSums(
       ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),
     },
     select: {
+      // Phase 2.1 session 3 dropped `CashFlowEntry.category`; this recon
+      // read selected it but never used it (the key below is built from
+      // `sourceId`). Selecting a non-existent column threw a Prisma
+      // runtime error on every real CF apply — only reached on --apply,
+      // so dry-run + mocked unit tests never caught it (2026-05-30).
       sourceId: true,
-      category: true,
       year: true,
       month: true,
       amount: true,
