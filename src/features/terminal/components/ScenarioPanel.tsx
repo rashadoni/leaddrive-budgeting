@@ -18,6 +18,7 @@ import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
 import { orderCascade } from "../lib/cascade-order";
+import { CRISIS_CATALOG, CRISIS_CATEGORY_LABEL_RU, type CrisisCategory } from "@/lib/risk/crisis-catalog";
 import { ScenarioFormModal, type ScenarioFormValues } from "./ScenarioFormModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -189,6 +190,12 @@ type BriefState =
   | { kind: "unsupported" }
   | { kind: "error"; message: string };
 
+// Scenario-code → crisis category (for the grouped selector). Scenarios not in
+// the catalog (legacy multiplier scenarios) fall into the "Other" group.
+const CATEGORY_BY_CODE = new Map<string, CrisisCategory>(CRISIS_CATALOG.map((s) => [s.code, s.category]));
+const CATEGORY_ORDER: CrisisCategory[] = ["fx_macro", "commodity", "climate_agro", "geopolitics", "customers"];
+const OTHER_GROUP_LABEL = "🧪 Другие (множитель)";
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ScenarioPanel() {
@@ -281,6 +288,28 @@ export function ScenarioPanel() {
     () => scenarios?.find((s) => s.id === selectedId) ?? null,
     [scenarios, selectedId],
   );
+
+  // Group scenarios by crisis category for the selector (closes the flat-list
+  // "только два параметра?" complaint). Catalog scenarios land in their
+  // category; legacy multiplier scenarios fall into the "Other" group.
+  const groupedScenarios = useMemo(() => {
+    if (!scenarios) return null;
+    const groups = new Map<string, Scenario[]>();
+    for (const s of scenarios) {
+      const key = (CATEGORY_BY_CODE.get(s.code) as string | undefined) ?? "__other__";
+      const list = groups.get(key);
+      if (list) list.push(s);
+      else groups.set(key, [s]);
+    }
+    const ordered: Array<{ key: string; label: string; items: Scenario[] }> = [];
+    for (const cat of CATEGORY_ORDER) {
+      const items = groups.get(cat);
+      if (items && items.length) ordered.push({ key: cat, label: CRISIS_CATEGORY_LABEL_RU[cat], items });
+    }
+    const other = groups.get("__other__");
+    if (other && other.length) ordered.push({ key: "__other__", label: OTHER_GROUP_LABEL, items: other });
+    return ordered;
+  }, [scenarios]);
 
   // ── Run simulation ──────────────────────────────────────────────────────────
   const handleSimulate = useCallback(async () => {
@@ -515,57 +544,66 @@ export function ScenarioPanel() {
             {scenarios !== null && scenarios.length === 0 && (
               <p className="text-sm text-muted-foreground" data-testid="scenarios-empty">Сценарии не найдены</p>
             )}
-            {scenarios && scenarios.length > 0 && (
-              <ul className="space-y-1">
-                {scenarios.map((s) => {
-                  const isSelected = s.id === selectedId;
-                  return (
-                    <li key={s.id} className="group relative">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedId(s.id);
-                          setSimState({ kind: "idle" });
-                          setBriefState({ kind: "idle" });
-                        }}
-                        className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
-                          isSelected
-                            ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
-                            : "border-input hover:bg-muted/50 text-muted-foreground"
-                        }`}
-                        data-testid={`scenario-row-${s.code}`}
-                      >
-                        <div className="font-semibold">{s.code}</div>
-                        <div className="opacity-70 text-[10px] mt-0.5 line-clamp-2">
-                          {resolveScenarioLabel(s, locale)}
-                        </div>
-                      </button>
-                      {/* Edit / delete icons — shown on hover */}
-                      <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); openEditForm(s); }}
-                          aria-label={`Редактировать ${s.code}`}
-                          data-testid={`scenario-edit-${s.code}`}
-                          className="rounded p-1 hover:bg-muted/60 text-muted-foreground hover:text-foreground"
-                        >
-                          <Pencil size={10} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); }}
-                          disabled={deletingId === s.id}
-                          aria-label={`Удалить ${s.code}`}
-                          data-testid={`scenario-delete-${s.code}`}
-                          className="rounded p-1 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-40"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+            {groupedScenarios && groupedScenarios.length > 0 && (
+              <div className="space-y-3">
+                {groupedScenarios.map((group) => (
+                  <div key={group.key}>
+                    <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 mb-1 px-0.5">
+                      {group.label}
+                    </h4>
+                    <ul className="space-y-1">
+                      {group.items.map((s) => {
+                        const isSelected = s.id === selectedId;
+                        return (
+                          <li key={s.id} className="group relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedId(s.id);
+                                setSimState({ kind: "idle" });
+                                setBriefState({ kind: "idle" });
+                              }}
+                              className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
+                                isSelected
+                                  ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
+                                  : "border-input hover:bg-muted/50 text-muted-foreground"
+                              }`}
+                              data-testid={`scenario-row-${s.code}`}
+                            >
+                              <div className="font-semibold">{s.code}</div>
+                              <div className="opacity-70 text-[10px] mt-0.5 line-clamp-2">
+                                {resolveScenarioLabel(s, locale)}
+                              </div>
+                            </button>
+                            {/* Edit / delete icons — shown on hover */}
+                            <div className="absolute right-1 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openEditForm(s); }}
+                                aria-label={`Редактировать ${s.code}`}
+                                data-testid={`scenario-edit-${s.code}`}
+                                className="rounded p-1 hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                              >
+                                <Pencil size={10} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); }}
+                                disabled={deletingId === s.id}
+                                aria-label={`Удалить ${s.code}`}
+                                data-testid={`scenario-delete-${s.code}`}
+                                className="rounded p-1 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-40"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
             )}
           </aside>
 
