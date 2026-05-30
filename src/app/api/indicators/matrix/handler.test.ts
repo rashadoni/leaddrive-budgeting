@@ -470,6 +470,45 @@ describe('GET /api/indicators/matrix — handler', () => {
       ).toBe(false);
     });
 
+    it("consolidates ratio indicators (Σnum/Σdenom) — incl. a child whose margin is unknown but components are real (2026-05-30 fix)", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      const subgroup = { id: 'co_holding', code: 'AAC', name: 'AAC Holding', industry: null, level: 1, isActive: true, role: 'operational', sortOrder: 1 };
+      const coA = { id: 'co_a', code: 'A', name: 'A', industry: 'food_processing', level: 2, isActive: true, role: 'operational', sortOrder: 2 };
+      const coB = { id: 'co_b', code: 'B', name: 'B', industry: 'food_processing', level: 2, isActive: true, role: 'operational', sortOrder: 3 };
+      setupCompaniesMock(
+        [subgroup, coA, coB],
+        [{ id: 'co_a', parentCompanyId: 'co_holding' }, { id: 'co_b', parentCompanyId: 'co_holding' }],
+      );
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        { id: 'i_ebitda', code: 'IND_EBITDA_MARGIN', nameEn: 'EBITDA Margin', direction: 'higher_is_better', unit: '%', sortOrder: 1, category: 'operational', requiredInputs: ['budgetLine'] },
+      ]);
+      setupIVMock(
+        [
+          // co_a: real margin, red.
+          { id: 'iv_a', companyId: 'co_a', indicatorId: 'i_ebitda', value: -10, status: 'red', inputs: { resolved: { ebitda: -100, revenue: 1000 } }, sparkline: null },
+          // co_b: margin -900% is out_of_range → status unknown (hidden at the
+          // leaf), BUT its ebitda/revenue are real and belong in the holding Σ.
+          { id: 'iv_b', companyId: 'co_b', indicatorId: 'i_ebitda', value: -900, status: 'unknown', inputs: { resolved: { ebitda: -900, revenue: 100 } }, sparkline: null },
+        ],
+        [],
+        ['co_holding'],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const cell = body.cells.find(
+        (c: { companyId: string; indicatorId: string }) =>
+          c.companyId === 'co_holding' && c.indicatorId === 'i_ebitda',
+      );
+      expect(cell).toBeTruthy();
+      expect(cell.kind).toBe('synthetic-rollup');
+      // Consolidated Σebitda/Σrevenue × 100 = (-100 + -900)/(1000 + 100) × 100
+      // = -90.9%. Distinguishes the fix from BOTH the old buggy average incl.
+      // unknown (-455%) AND a naive exclude-unknown average (-10%).
+      expect(cell.value).toBeCloseTo(-90.9, 1);
+    });
+
     it("Turn 33.5 synthetic-average fallback preserved when no real parent IV exists (back-compat)", async () => {
       await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
       const subgroup = {

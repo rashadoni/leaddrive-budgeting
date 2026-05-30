@@ -536,12 +536,43 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Aggregate cells per (subgroupId, indicatorId) — Turn 33.5 synthetic
-    // average. Sub-44 cont'd: skip pairs where a REAL parent IV exists
-    // (priority lock: real IV > synthetic average; see `realParentCellKeys`
-    // above). The ops-cell `cells` array already has rollup-bearing
-    // internals filtered out, so they don't enter the average pool either.
-    type AggBucket = { sum: number; count: number; statuses: Set<IndicatorStatus> };
+    // ── Sub-group rollup VALUE (Turn 33.5 → 2026-05-30 consolidation fix) ──
+    // Ratio indicators (margins, OpEx %, per-ha) CONSOLIDATE: Σnumerator /
+    // Σdenominator from the children's resolved P&L inputs — the
+    // economically correct holding figure. Averaging children's percentages
+    // is mathematically wrong (you can't average ratios with different
+    // denominators) and let a hidden-implausible child (e.g. an out_of_range
+    // -738% EBITDA the leaf hides as `unknown`) dominate the parent — a
+    // holding EBITDA read -142.9% when the true consolidated figure is
+    // -29.1%. For non-ratio indicators a simple average is the fallback, but
+    // BOTH paths now exclude `unknown`/non-finite children (they carry no
+    // meaningful value — including them double-counted hidden/no-data zeros).
+    // Status stays worst-of-children ("weakest-link" risk semantics).
+    const RATIO_ROLLUP_CONFIG: Record<string, { num: string; denom: string; scale: number }> = {
+      IND_EBITDA_MARGIN:  { num: 'ebitda',              denom: 'revenue',          scale: 100 },
+      FP_GROSS_MARGIN:    { num: 'gross_profit',        denom: 'revenue',          scale: 100 },
+      SVC_GROSS_MARGIN:   { num: 'gross_profit',        denom: 'revenue',          scale: 100 },
+      FP_OPEX_RATIO:      { num: 'opex',                denom: 'revenue',          scale: 100 },
+      SVC_OPEX_RATIO:     { num: 'opex',                denom: 'revenue',          scale: 100 },
+      SVC_NET_MARGIN:     { num: 'net_income',          denom: 'revenue',          scale: 100 },
+      SVC_COGS_INTENSITY: { num: 'cogs',                denom: 'revenue',          scale: 100 },
+      FX_IMPORTED_INPUT:  { num: 'imported_input_cost', denom: 'total_input_cost', scale: 100 },
+      AGRO_COST_PER_HA:      { num: 'cogs',         denom: 'hectares_planted', scale: 1 },
+      AGRO_REVENUE_PER_HA:   { num: 'revenue',      denom: 'hectares_planted', scale: 1 },
+      AGRO_YIELD_EFFICIENCY: { num: 'gross_profit', denom: 'hectares_planted', scale: 1 },
+    };
+    // `cells` doesn't carry inputs; `values` does. Build (co::ind) → resolved.
+    const resolvedByCell = new Map<string, Record<string, unknown>>();
+    for (const v of values) {
+      const r = (v.inputs as { resolved?: Record<string, unknown> } | null)?.resolved;
+      if (r && typeof r === 'object') resolvedByCell.set(`${v.companyId}::${v.indicatorId}`, r);
+    }
+    const idToCode = new Map<string, string>(indicatorsForRender.map((i) => [i.id, i.code]));
+
+    type AggBucket = {
+      sum: number; count: number; statuses: Set<IndicatorStatus>;
+      numSum: number; denomSum: number; consolidatable: boolean;
+    };
     const aggMap = new Map<string, AggBucket>(); // key: `${sgId}::${indId}`
     for (const cell of cells) {
       const sgId = childToSubgroup.get(cell.companyId);
@@ -551,12 +582,35 @@ export async function GET(request: NextRequest) {
       if (realParentCellKeys.has(key)) continue;
       let bucket = aggMap.get(key);
       if (!bucket) {
-        bucket = { sum: 0, count: 0, statuses: new Set() };
+        bucket = { sum: 0, count: 0, statuses: new Set(), numSum: 0, denomSum: 0, consolidatable: false };
         aggMap.set(key, bucket);
       }
+      // worst-of-children status uses ALL children (worstStatus ignores
+      // 'unknown' in its precedence, so a no-data child can't make red).
+      bucket.statuses.add(cell.status);
+      // CONSOLIDATION (ratio indicators): accumulate the child's real
+      // numerator/denominator REGARDLESS of the child's margin status. A
+      // child's margin may be flagged unknown/out_of_range (e.g. EDEN's
+      // -738% on tiny revenue, hidden at the leaf) while its underlying
+      // ebitda + revenue are real and DO belong in the holding's
+      // consolidated Σ. Excluding it would understate the holding loss.
+      // Finite-guarded so a NaN/parse-error component can't poison the sum.
+      const cfg = RATIO_ROLLUP_CONFIG[idToCode.get(cell.indicatorId) ?? ''];
+      if (cfg) {
+        const resolved = resolvedByCell.get(`${cell.companyId}::${cell.indicatorId}`);
+        const num = resolved?.[cfg.num];
+        const denom = resolved?.[cfg.denom];
+        if (typeof num === 'number' && Number.isFinite(num) && typeof denom === 'number' && Number.isFinite(denom)) {
+          bucket.numSum += num;
+          bucket.denomSum += denom;
+          bucket.consolidatable = true;
+        }
+      }
+      // AVERAGE fallback (non-ratio indicators): exclude unknown / non-finite
+      // children — they carry no meaningful margin value to average.
+      if (cell.status === 'unknown' || !Number.isFinite(cell.value)) continue;
       bucket.sum += cell.value;
       bucket.count += 1;
-      bucket.statuses.add(cell.status);
     }
 
     const worstStatus = (statuses: Set<IndicatorStatus>): IndicatorStatus => {
@@ -566,25 +620,38 @@ export async function GET(request: NextRequest) {
       return 'unknown';
     };
 
-    const subgroupCells = Array.from(aggMap.entries()).map(([key, bucket]) => {
-      const [sgId, indId] = key.split('::');
-      return {
-        indicatorValueId: null, // no persisted IV — synthetic rollup
-        companyId: sgId,
-        indicatorId: indId,
-        value: bucket.sum / bucket.count, // simple average
-        status: worstStatus(bucket.statuses),
-        // Sub-44 cont'd architect 💡 closure — discriminated-union
-        // `kind` field replaces the legacy `isSubgroupRollup` boolean.
-        // Gate downstream via `isAggregateRollup(c)` helper.
-        kind: 'synthetic-rollup' as const,
-        // Phase 7.G Turn VI — drives IndicatorDetail "averaged from N
-        // children" copy. Closes UX gap where a sub-group cell click
-        // previously rendered "no computed value yet" (panel didn't
-        // know about synthetic rollups; only the matrix builder did).
-        contributingChildCount: bucket.count,
-      };
-    });
+    const subgroupCells = Array.from(aggMap.entries())
+      .map(([key, bucket]) => {
+        const [sgId, indId] = key.split('::');
+        const cfg = RATIO_ROLLUP_CONFIG[idToCode.get(indId) ?? ''];
+        let value: number;
+        if (bucket.consolidatable && cfg && bucket.denomSum !== 0) {
+          // Consolidated ratio: Σnum / Σdenom × scale (×100 for percentage
+          // margins) — the economically correct holding-level figure.
+          value = (bucket.numSum / bucket.denomSum) * cfg.scale;
+        } else if (bucket.count > 0) {
+          value = bucket.sum / bucket.count; // average over KNOWN children only
+        } else {
+          // All children unknown/no-data → no meaningful rollup value.
+          // Drop the synthetic cell entirely (honest empty rather than 0/NaN).
+          return null;
+        }
+        return {
+          indicatorValueId: null, // no persisted IV — synthetic rollup
+          companyId: sgId,
+          indicatorId: indId,
+          value,
+          status: worstStatus(bucket.statuses),
+          // Sub-44 cont'd architect 💡 closure — discriminated-union
+          // `kind` field replaces the legacy `isSubgroupRollup` boolean.
+          // Gate downstream via `isAggregateRollup(c)` helper.
+          kind: 'synthetic-rollup' as const,
+          // Phase 7.G Turn VI — drives IndicatorDetail "averaged from N
+          // children" copy. Now counts KNOWN-status contributors only.
+          contributingChildCount: bucket.count,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null);
 
     // Phase 7.G Turn CC — `Cache-Control: private, max-age=10` per
     // Turn-32 architect ⚠️ spec option (b). Defense-in-depth layer:
