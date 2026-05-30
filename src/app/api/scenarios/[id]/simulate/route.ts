@@ -23,6 +23,11 @@ import {
   buildDeltaMap,
   type SimulatableOverrides,
 } from '@/lib/risk/scenario-simulator'
+import { createPrismaDataSource } from '@/lib/risk/recompute'
+import { hasShock, readShock } from '@/lib/risk/scenario-shock'
+import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
+import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
+import { hasAnthropicKey } from '@/lib/ai/client'
 
 export async function GET(
   request: NextRequest,
@@ -44,6 +49,149 @@ export async function GET(
   })
   if (!scenario) {
     return NextResponse.json({ error: 'Scenario not found' }, { status: 404 })
+  }
+
+  const mode = searchParams.get('mode')
+  const language = (searchParams.get('lang') as BriefLanguage | null) ?? 'ru'
+
+  // ── Driver re-derivation path (Phase 1 "Crisis Brief", B2) ────────────────
+  if (mode === 'drivers') {
+    if (!hasShock(scenario.overrides)) {
+      return NextResponse.json(
+        { error: 'Scenario has no `shock` block — run the default multiplier simulate (omit ?mode=drivers).' },
+        { status: 422 },
+      )
+    }
+    const [companies, indicators, baselineRows] = await Promise.all([
+      prisma.company.findMany({
+        where: { organizationId: session.orgId },
+        select: { id: true, code: true, name: true, parentCompanyId: true, industry: true },
+      }),
+      prisma.indicatorDefinition.findMany({
+        where: { isActive: true },
+        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true },
+      }),
+      prisma.indicatorValue.findMany({
+        where: { organizationId: session.orgId, period },
+        select: { companyId: true, indicatorId: true, value: true, status: true, inputs: true },
+      }),
+    ])
+
+    // Revenue per company = MAX(inputs.resolved.revenue) — NO company.revenue column (spec §B).
+    const revenueByCompanyId = new Map<string, number>()
+    for (const r of baselineRows) {
+      const rev = (r.inputs as { resolved?: { revenue?: unknown } } | null)?.resolved?.revenue
+      if (typeof rev === 'number' && Number.isFinite(rev)) {
+        const cur = revenueByCompanyId.get(r.companyId) ?? -Infinity
+        if (rev > cur) revenueByCompanyId.set(r.companyId, rev)
+      }
+    }
+
+    const ds = createPrismaDataSource(prisma)
+    const sim = await simulateByDrivers(ds, {
+      organizationId: session.orgId,
+      scenario: { code: scenario.code, overrides: scenario.overrides },
+      period,
+      companies: companies.map((c) => ({
+        id: c.id,
+        code: c.code ?? c.id,
+        name: c.name,
+        parentCompanyId: c.parentCompanyId,
+        industry: c.industry,
+        revenue: revenueByCompanyId.get(c.id) ?? 0,
+      })),
+      indicators: indicators.map((i) => ({
+        id: i.id,
+        code: i.code,
+        formula: i.formula,
+        thresholds: i.thresholds,
+        requiredInputs: i.requiredInputs ?? [],
+        weight: i.weight ?? null,
+      })),
+      baselineIVs: baselineRows.map((iv) => ({
+        companyId: iv.companyId,
+        indicatorId: iv.indicatorId,
+        value: iv.value,
+        status: iv.status as never,
+      })),
+    })
+
+    const deltaMap: Record<string, string> = {}
+    for (const d of sim.deltas) if (d.changed && d.scenarioStatus) deltaMap[`${d.companyId}:${d.code}`] = d.scenarioStatus
+
+    // Honest FX modeling caveat for the narrative (assumed import share).
+    const shock = readShock(scenario.overrides)
+    const assumptionNote =
+      shock?.fxShock && shock?.assumedImportShare
+        ? `Assumes ${Math.round((shock.assumedImportShare ?? 0) * 100)}% imported-input share (current data has no tagged imported costs).`
+        : null
+
+    let narrative: string | null = null
+    let mitigations: string[] = []
+    let narrativeError: string | null = null
+    if (hasAnthropicKey()) {
+      try {
+        const deltasByCo = new Map<string, typeof sim.deltas>()
+        for (const d of sim.deltas) {
+          if (!d.changed) continue
+          const l = deltasByCo.get(d.companyId) ?? []
+          l.push(d)
+          deltasByCo.set(d.companyId, l)
+        }
+        const worstHit = sim.byCompany
+          .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
+          .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
+          .slice(0, 3)
+          .map((b) => {
+            const co = companies.find((c) => c.id === b.companyId)
+            const topDeltas = (deltasByCo.get(b.companyId) ?? [])
+              .filter((d) => d.baselineValue != null && d.scenarioValue != null)
+              .slice(0, 2)
+              .map((d) => ({ code: d.code, baselineValue: d.baselineValue!, scenarioValue: d.scenarioValue! }))
+            return { companyCode: co?.code ?? b.companyId, companyName: co?.name ?? b.companyId, baselineScore: b.baselineScore, scenarioScore: b.scenarioScore, topDeltas }
+          })
+        const brief = await runCrisisBrief({
+          scenarioCode: scenario.code,
+          scenarioNameEn: scenario.nameEn,
+          language,
+          holdingBaselineScore: sim.holdingBaselineScore,
+          holdingScenarioScore: sim.holdingScenarioScore,
+          worstHit,
+          changed: sim.changed,
+          worsened: sim.worsened,
+          improved: sim.improved,
+          assumptionNote,
+        })
+        narrative = brief.narrative
+        mitigations = brief.mitigations
+      } catch (err) {
+        narrativeError = err instanceof Error ? err.message : String(err)
+      }
+    } else {
+      narrativeError = 'No Anthropic API key configured — narrative skipped.'
+    }
+
+    return NextResponse.json({
+      mode: 'drivers',
+      scenarioId: scenario.id,
+      scenarioCode: scenario.code,
+      scenarioNameRu: scenario.nameRu ?? scenario.nameEn,
+      scenarioNameEn: scenario.nameEn,
+      period: sim.period,
+      deltas: sim.deltas,
+      byCompany: sim.byCompany,
+      deltaMap,
+      holdingBaselineScore: sim.holdingBaselineScore,
+      holdingScenarioScore: sim.holdingScenarioScore,
+      changed: sim.changed,
+      worsened: sim.worsened,
+      improved: sim.improved,
+      driftSummary: sim.driftSummary,
+      assumptionNote,
+      narrative,
+      mitigations,
+      narrativeError,
+    })
   }
 
   // Guard: scenario must have simulatable adjustments
