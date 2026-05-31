@@ -28,9 +28,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { FlaskConical, X, Play } from "lucide-react"
 import { currentBakuYear } from "@/lib/risk/periods"
+import { resolveIndicatorLabel } from "../lib/resolve-indicator-label"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,8 @@ interface PreviewCell {
   companyCode: string
   indicatorId: string
   indicatorCode: string
+  indicatorNameEn: string | null
+  indicatorNameRu: string | null
   unit: string
   baselineValue: number | null
   baselineStatus: "green" | "amber" | "red" | "unknown" | null
@@ -284,17 +287,27 @@ function formatValue(v: number | null, unit: string): string {
   return v.toFixed(2)
 }
 
-const STATUS_PILL: Record<NonNullable<PreviewCell["baselineStatus"]>, string> = {
-  green: "bg-emerald-500/15 text-emerald-400",
-  amber: "bg-amber-500/15 text-amber-400",
-  red: "bg-red-500/15 text-red-400",
-  unknown: "bg-slate-500/15 text-slate-400",
+// High-contrast status coding for the dark terminal palette: a solid bright
+// status dot + bright value text. Replaces the old dim X-500/15 fills that
+// read as muddy/«тусклый» on the dark background.
+const STATUS_DOT: Record<NonNullable<PreviewCell["baselineStatus"]>, string> = {
+  green: "bg-emerald-400",
+  amber: "bg-amber-400",
+  red: "bg-red-400",
+  unknown: "bg-slate-500",
+}
+const STATUS_TEXT: Record<NonNullable<PreviewCell["baselineStatus"]>, string> = {
+  green: "text-emerald-300",
+  amber: "text-amber-300",
+  red: "text-red-300",
+  unknown: "text-slate-400",
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function WhatIfPreviewPanel() {
   const t = useTranslations("terminal")
+  const locale = useLocale()
   const [open, setOpen] = useState(false)
   const [activeGroup, setActiveGroup] = useState("fx")
   const [overrides, setOverrides] = useState<Record<string, number>>(ALL_DEFAULTS)
@@ -430,7 +443,7 @@ export function WhatIfPreviewPanel() {
               <h2 className="text-sm font-semibold tracking-tight text-gray-100">
                 {t("whatif.title")}
               </h2>
-              <p className="text-xs text-gray-500">{t("whatif.subtitle")}</p>
+              <p className="text-xs text-gray-400">{t("whatif.subtitle")}</p>
             </div>
           </div>
           <button
@@ -445,7 +458,7 @@ export function WhatIfPreviewPanel() {
 
         {/* ── Quick Preset Scenarios ─────────────────────────────────── */}
         <section className="px-6 pt-4 pb-3 border-b border-gray-800/60">
-          <h3 className="text-[10px] uppercase tracking-wider text-gray-500 mb-2">
+          <h3 className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
             {t("whatif.presetsHeader")}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
@@ -468,7 +481,7 @@ export function WhatIfPreviewPanel() {
                   setOverrides(ALL_DEFAULTS)
                   setState({ kind: "idle" })
                 }}
-                className="ml-auto text-[11px] text-gray-600 hover:text-gray-400 transition-colors"
+                className="ml-auto text-[11px] text-gray-500 hover:text-gray-400 transition-colors"
               >
                 {t("whatif.resetToBase")}
               </button>
@@ -492,7 +505,7 @@ export function WhatIfPreviewPanel() {
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors ${
                     isActive
                       ? "bg-gray-800 text-gray-100 border border-gray-700/80"
-                      : "text-gray-500 hover:text-gray-300 border border-transparent hover:border-gray-800"
+                      : "text-gray-400 hover:text-gray-300 border border-transparent hover:border-gray-800"
                   }`}
                 >
                   <span aria-hidden="true">{group.emoji}</span>
@@ -517,7 +530,7 @@ export function WhatIfPreviewPanel() {
                 <label key={v.key} className="flex items-center gap-3 text-xs">
                   <span
                     className={`font-mono w-40 shrink-0 truncate transition-colors ${
-                      changed ? "text-[#FFB800]" : "text-gray-400"
+                      changed ? "text-[#FFB800]" : "text-gray-300"
                     }`}
                   >
                     {t(`whatif.vars.${v.key}` as never)}
@@ -539,11 +552,11 @@ export function WhatIfPreviewPanel() {
                       changed ? "border-[#FFB800]/50" : "border-gray-700/60"
                     }`}
                   />
-                  <span className="text-[10px] text-gray-600 font-mono w-16 shrink-0">{v.unit}</span>
+                  <span className="text-[10px] text-gray-500 font-mono w-16 shrink-0">{v.unit}</span>
                   <span
                     className={`font-mono text-[10px] tabular-nums w-20 ${
                       Math.abs(deltaPct) < 0.01
-                        ? "text-gray-600"
+                        ? "text-gray-500"
                         : deltaPct > 0
                         ? "text-amber-400"
                         : "text-emerald-400"
@@ -573,11 +586,11 @@ export function WhatIfPreviewPanel() {
                 : t("whatif.previewRun")}
             </button>
             {!hasChanges && (
-              <span className="text-[11px] text-gray-600 italic">
+              <span className="text-[11px] text-gray-500 italic">
                 {t("whatif.noChanges")}
               </span>
             )}
-            <span className="ml-auto text-[10px] text-gray-600 font-mono">
+            <span className="ml-auto text-[10px] text-gray-500 font-mono">
               {t("whatif.periodLabel")}: {period}
             </span>
           </div>
@@ -586,7 +599,7 @@ export function WhatIfPreviewPanel() {
         {/* ── Results ────────────────────────────────────────────────── */}
         <section className="px-6 py-4">
           {state.kind === "idle" && (
-            <p className="text-[11px] text-gray-500 italic">{t("whatif.idleHint")}</p>
+            <p className="text-[11px] text-gray-400 italic">{t("whatif.idleHint")}</p>
           )}
           {state.kind === "loading" && (
             <p className="text-[11px] text-cyan-300">{t("whatif.previewLoading")}…</p>
@@ -619,14 +632,14 @@ export function WhatIfPreviewPanel() {
                       ↑ {summary.improved} {t("whatif.summaryImproved")}
                     </span>
                   )}
-                  <span className="text-gray-500">
+                  <span className="text-gray-400">
                     {summary.stable} {t("whatif.summaryStable")}
                   </span>
                 </div>
               )}
 
               {/* Cell-count info line */}
-              <p className="text-[11px] text-gray-500 mb-3">
+              <p className="text-[11px] text-gray-400 mb-3">
                 {t("whatif.summaryLine", {
                   affected: state.data.affectedIndicatorCount,
                   cells: state.data.cells.length,
@@ -635,7 +648,7 @@ export function WhatIfPreviewPanel() {
               </p>
 
               {state.data.cells.length === 0 ? (
-                <p className="text-[11px] text-gray-500 italic">{t("whatif.noAffected")}</p>
+                <p className="text-[11px] text-gray-400 italic">{t("whatif.noAffected")}</p>
               ) : (
                 <div className="space-y-3">
                   {Array.from(cellsByCompany.entries()).map(([co, rows]) => (
@@ -651,7 +664,7 @@ export function WhatIfPreviewPanel() {
                       </header>
 
                       {/* Column headers */}
-                      <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 px-3 py-1 text-[10px] uppercase tracking-wider text-gray-600 border-b border-gray-800/40">
+                      <div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 px-3 py-1 text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-800/40">
                         <div>{t("whatif.colIndicator")}</div>
                         <div className="text-right">{t("whatif.colBaseline")}</div>
                         <div className="text-right">{t("whatif.colScenario")}</div>
@@ -664,61 +677,59 @@ export function WhatIfPreviewPanel() {
                           const sRank = statusRank(c.scenarioStatus)
                           const worsened = bRank !== -1 && sRank !== -1 && sRank > bRank
                           const improved = bRank !== -1 && sRank !== -1 && sRank < bRank
-
-                          const rowCls = worsened
-                            ? "bg-amber-500/5 ring-1 ring-inset ring-amber-500/20"
-                            : improved
-                            ? "bg-emerald-500/5 ring-1 ring-inset ring-emerald-500/20"
-                            : ""
+                          const name = resolveIndicatorLabel(
+                            { code: c.indicatorCode, nameEn: c.indicatorNameEn, nameRu: c.indicatorNameRu },
+                            locale,
+                          )
 
                           return (
                             <li
                               key={c.indicatorId}
-                              className={`px-3 py-2 grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 items-center text-[11px] ${rowCls}`}
+                              className="px-3 py-2 grid grid-cols-[2fr_1fr_1fr_1fr] gap-2 items-center text-[11px]"
                             >
-                              <div
-                                className="font-mono text-gray-400 truncate"
-                                title={c.indicatorCode}
-                              >
-                                {c.indicatorCode}
-                                {worsened && (
-                                  <span className="ml-1.5 text-[9px] text-amber-400 font-semibold">
-                                    ▲ status
+                              {/* Indicator: human-readable name + raw code beneath */}
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-gray-100 truncate" title={name}>
+                                    {name}
                                   </span>
-                                )}
-                                {improved && (
-                                  <span className="ml-1.5 text-[9px] text-emerald-400 font-semibold">
-                                    ▼ status
-                                  </span>
-                                )}
+                                  {worsened && (
+                                    <span className="shrink-0 text-[10px] text-red-300" aria-label="worsened">▲</span>
+                                  )}
+                                  {improved && (
+                                    <span className="shrink-0 text-[10px] text-emerald-300" aria-label="improved">▼</span>
+                                  )}
+                                </div>
+                                <div className="text-[9px] font-mono text-gray-400 truncate">
+                                  {c.indicatorCode}
+                                </div>
                               </div>
-                              <div className="text-right tabular-nums font-mono">
-                                <span
-                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${
-                                    c.baselineStatus ? STATUS_PILL[c.baselineStatus] : "text-gray-500"
-                                  }`}
-                                >
+                              {/* Baseline: status dot + value */}
+                              <div className="flex items-center justify-end gap-1.5 tabular-nums font-mono">
+                                {c.baselineStatus && (
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[c.baselineStatus]}`} aria-hidden="true" />
+                                )}
+                                <span className={c.baselineStatus ? STATUS_TEXT[c.baselineStatus] : "text-gray-400"}>
                                   {formatValue(c.baselineValue, c.unit)}
                                 </span>
                               </div>
-                              <div className="text-right tabular-nums font-mono">
-                                <span
-                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] ${
-                                    c.scenarioStatus ? STATUS_PILL[c.scenarioStatus] : "text-gray-500"
-                                  }`}
-                                >
+                              {/* Scenario: status dot + value (bolder) */}
+                              <div className="flex items-center justify-end gap-1.5 tabular-nums font-mono">
+                                {c.scenarioStatus && (
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[c.scenarioStatus]}`} aria-hidden="true" />
+                                )}
+                                <span className={`font-semibold ${c.scenarioStatus ? STATUS_TEXT[c.scenarioStatus] : "text-gray-400"}`}>
                                   {formatValue(c.scenarioValue, c.unit)}
                                 </span>
                               </div>
+                              {/* Δ% */}
                               <div
-                                className={`text-right tabular-nums font-mono text-[10px] ${
-                                  c.deltaPct === null
-                                    ? "text-gray-500"
-                                    : Math.abs(c.deltaPct) < 0.5
-                                    ? "text-gray-500"
+                                className={`text-right tabular-nums font-mono font-medium ${
+                                  c.deltaPct === null || Math.abs(c.deltaPct) < 0.5
+                                    ? "text-gray-400"
                                     : c.deltaPct > 0
-                                    ? "text-amber-400"
-                                    : "text-emerald-400"
+                                    ? "text-amber-300"
+                                    : "text-emerald-300"
                                 }`}
                               >
                                 {c.deltaPct === null
@@ -737,7 +748,7 @@ export function WhatIfPreviewPanel() {
           )}
         </section>
 
-        <footer className="px-6 py-2 border-t border-gray-800/60 text-[10px] text-gray-600">
+        <footer className="px-6 py-2 border-t border-gray-800/60 text-[10px] text-gray-500">
           {t("whatif.footerNote")}
         </footer>
       </div>

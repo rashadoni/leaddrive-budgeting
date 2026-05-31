@@ -192,6 +192,8 @@ export async function POST(request: NextRequest) {
       select: {
         id: true,
         code: true,
+        nameEn: true, // human-readable label for the preview results table
+        nameRu: true,
         unit: true,
         formula: true,
         thresholds: true,
@@ -247,6 +249,8 @@ export async function POST(request: NextRequest) {
     companyCode: string
     indicatorId: string
     indicatorCode: string
+    indicatorNameEn: string | null
+    indicatorNameRu: string | null
     unit: string
     baselineValue: number | null
     baselineStatus: IndicatorStatus | null
@@ -293,6 +297,8 @@ export async function POST(request: NextRequest) {
         companyCode: co.code ?? co.id,
         indicatorId: ind.id,
         indicatorCode: ind.code,
+        indicatorNameEn: ind.nameEn,
+        indicatorNameRu: ind.nameRu,
         unit: ind.unit,
         baselineValue,
         baselineStatus: baseline?.status ?? null,
