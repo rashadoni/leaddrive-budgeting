@@ -31,6 +31,19 @@ interface FakeCfRow {
   deletedBy: string | null
 }
 
+// 2026-05-31 entity-scope: the reset now passes
+// `OR: [{ sourceId: { startsWith: "<entity>::" } }]` to isolate one entity's
+// CF on a shared sourceTag. The fake honours it so the regression test bites.
+function matchesEntityScope(
+  r: { sourceId: string | null },
+  w: { OR?: Array<{ sourceId?: { startsWith?: string } }> },
+): boolean {
+  if (!w.OR) return true
+  return w.OR.some(
+    (c) => c.sourceId?.startsWith != null && (r.sourceId ?? "").startsWith(c.sourceId.startsWith),
+  )
+}
+
 function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient & {
   __cf: FakeCfRow[]
 } {
@@ -42,6 +55,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           source?: string
+          OR?: Array<{ sourceId?: { startsWith?: string } }>
           deletedAt?: null
           year?: { in: number[] }
         }
@@ -49,6 +63,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         for (const r of cf) {
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.source && r.source !== w.source) continue
+          if (!matchesEntityScope(r, w)) continue
           if (w.deletedAt === null && r.deletedAt !== null) continue
           if (w.year && !w.year.in.includes(r.year)) continue
           Object.assign(r, args.data)
@@ -60,6 +75,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           source?: string
+          OR?: Array<{ sourceId?: { startsWith?: string } }>
           deletedAt?: { not: null }
           year?: { in: number[] }
         }
@@ -68,6 +84,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
           const r = cf[i]
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.source && r.source !== w.source) continue
+          if (!matchesEntityScope(r, w)) continue
           if (w.deletedAt?.not === null && r.deletedAt === null) continue
           if (w.year && !w.year.in.includes(r.year)) continue
           cf.splice(i, 1)
@@ -100,6 +117,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           source?: string
+          OR?: Array<{ sourceId?: { startsWith?: string } }>
           deletedAt?: null
           year?: { in: number[] }
         }
@@ -107,6 +125,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
             if (w.source && r.source !== w.source) return false
+            if (!matchesEntityScope(r, w)) return false
             if (w.deletedAt === null && r.deletedAt !== null) return false
             if (w.year && !w.year.in.includes(r.year)) return false
             return true
@@ -318,5 +337,42 @@ describe("runCashFlowBatch — outer-transaction mode (Phase 7.M Tier 5)", () =>
     expect(results[0].reconciliation.verdict).toBe("green")
     expect(results[1].reconciliation.verdict).toBe("green")
     expect(prisma.__cf.filter((r) => r.deletedAt === null)).toHaveLength(2)
+  })
+})
+
+// ─── 2026-05-31 cross-archive bugfix — per-entity reset on a shared sourceTag ──
+// cash_flow_entries has NO companyId; the entity lives in sourceId as
+// `<entityCode>::<cfCode>`. The AzerSheker multi-import used ONE shared
+// sourceTag for every entity, so each entity's batch archived siblings' live CF
+// (only the last survived: 37 live of 309). These tests pin the fix: reset/recon
+// are scoped to the batch's entities by sourceId prefix.
+describe("runCashFlowBatch — per-entity isolation on a shared sourceTag", () => {
+  it("one entity's batch does NOT archive a sibling's CF under the SAME sourceTag", async () => {
+    const prisma = makeFakePrisma()
+    await runCashFlowBatch(prisma, planFor([E("AZSEKER-AZSF", "CF.01.01", 100)]))
+    // Pre-fix: this second batch (same sourceTag) archived AZSF's CF.
+    // Post-fix: reset scoped to the CPC sourceId prefix → AZSF stays live.
+    const rb = await runCashFlowBatch(prisma, planFor([E("AZSEKER-CPC", "CF.02.01", 200)]))
+    expect(rb.metrics.resetArchived).toBe(0)
+    const live = prisma.__cf.filter((r) => r.deletedAt === null)
+    expect(live).toHaveLength(2)
+    expect(live.map((r) => r.sourceId).sort()).toEqual([
+      "AZSEKER-AZSF::CF.01.01",
+      "AZSEKER-CPC::CF.02.01",
+    ])
+    expect(rb.reconciliation.verdict).toBe("green")
+  })
+
+  it("re-importing one entity replaces only its own CF; sibling untouched", async () => {
+    const prisma = makeFakePrisma()
+    await runCashFlowBatch(prisma, planFor([E("AZSEKER-AZSF", "CF.01.01", 100)]))
+    await runCashFlowBatch(prisma, planFor([E("AZSEKER-CPC", "CF.02.01", 200)]))
+    const reAzsf = await runCashFlowBatch(prisma, planFor([E("AZSEKER-AZSF", "CF.01.01", 150)]))
+    expect(reAzsf.metrics.resetArchived).toBe(1) // ONLY AZSF's prior row
+    const live = prisma.__cf.filter((r) => r.deletedAt === null)
+    expect(live).toHaveLength(2)
+    expect(live.find((r) => r.sourceId === "AZSEKER-AZSF::CF.01.01")?.amount).toBe(150)
+    expect(live.find((r) => r.sourceId === "AZSEKER-CPC::CF.02.01")?.amount).toBe(200)
+    expect(reAzsf.reconciliation.verdict).toBe("green")
   })
 })

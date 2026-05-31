@@ -159,11 +159,25 @@ export async function runCashFlowBatch(
 
       let archived = 0
       let purged = 0
+      // BUGFIX 2026-05-31: the reset scoped by `source` (sourceTag) only.
+      // cash_flow_entries has NO companyId — the entity lives in sourceId as
+      // `<entityCode>::<cfCode>`. The AzerSheker multi-import used ONE shared
+      // sourceTag ('azseker-workbook-cf') for every entity, so each entity's
+      // batch archived the siblings' live CF — only the last entity survived
+      // (37 live of 309). Scope the reset to THIS batch's entities by sourceId
+      // prefix (mirrors the BS companyId fix). Fall back to sourceTag-only when
+      // no incoming row carries an entityCode (legacy / single-entity batches).
+      const entityPrefixes = [...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean))]
+      const entityScope =
+        entityPrefixes.length > 0
+          ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
+          : {}
       if (plan.purgeArchivedFirst) {
         const purgeResult = await tx.cashFlowEntry.deleteMany({
           where: {
             organizationId: plan.organizationId,
             source: plan.sourceTag,
+            ...entityScope,
             deletedAt: { not: null },
             ...yearFilter,
           },
@@ -175,6 +189,7 @@ export async function runCashFlowBatch(
         where: {
           organizationId: plan.organizationId,
           source: plan.sourceTag,
+          ...entityScope,
           deletedAt: null,
           ...yearFilter,
         },
@@ -265,10 +280,21 @@ async function defaultReadActualCfSums(
         .filter((n) => Number.isFinite(n)),
     ),
   )
+  // Match the reset scope (entity-aware, 2026-05-31 bugfix): read only THIS
+  // batch's entities, else siblings on the same shared sourceTag inflate the
+  // actual sums with extra recon keys once the reset no longer cross-deletes.
+  const entityPrefixes = [
+    ...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean)),
+  ]
+  const entityScope =
+    entityPrefixes.length > 0
+      ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
+      : {}
   const rows = await prisma.cashFlowEntry.findMany({
     where: {
       organizationId: plan.organizationId,
       source: plan.sourceTag,
+      ...entityScope,
       deletedAt: null,
       ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),
     },
