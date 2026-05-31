@@ -79,6 +79,14 @@ docker compose logs -f app
 - `app` Next.js server bound to `0.0.0.0:3000`
 - `nginx` proxies `:80` → `app:3000`
 
+> **Migration path verified end-to-end (2026-05-31).** `prisma migrate deploy` was run against a throwaway fresh DB: it applies the single `00000000000000_init` baseline → **60 tables + 56 RLS policies + 7 enums**, recorded in `_prisma_migrations`. The entrypoint is fail-fast (`set -e`), so a migration error stops the container before it serves traffic.
+>
+> ⚠️ **If the baseline is ever regenerated from `pg_dump`** (`prisma/migrations/00000000000000_init/migration.sql`) — e.g. after a future schema squash — strip the two pg_dump artifacts that break Prisma's migration engine (it runs SQL directly, not via `psql`):
+> 1. the `\restrict` / `\unrestrict` psql meta-commands (top + bottom of the dump);
+> 2. `SELECT pg_catalog.set_config('search_path', '', false);` — it empties the session search_path, so `migrate deploy` applies the schema but then fails **P1014** recording `_prisma_migrations`. Replace it with `SET search_path = public;`.
+>
+> `migrate dev` does NOT surface #2 (its shadow flow differs) — always test a regenerated baseline with `migrate deploy` against a fresh DB.
+
 Open `http://<VM-IP>/` — you should see the BudgetPro login page.
 
 ### Create the first admin user
