@@ -457,6 +457,13 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'scenarioPanel.close': 'Close',
   'scenarioPanel.unsupportedSim':
     "⚠ This scenario doesn't support simulation (no adjustments field). Update it via the seed-scenarios command.",
+
+  // CompanyStrategicContextCard (terminal.strategicContext.*) — keys the card's
+  // test asserts on by text. Mirrors messages/en.json.
+  'strategicContext.parcels': 'parcels',
+  'strategicContext.loadError': 'Load error: {error}',
+  'strategicContext.riskPending':
+    "⚠️ Pending client verification — the KRI registry hasn't been provided by the company's finance team yet. Risk indicators will show «unknown» until the xlsx is uploaded.",
 };
 
 /**

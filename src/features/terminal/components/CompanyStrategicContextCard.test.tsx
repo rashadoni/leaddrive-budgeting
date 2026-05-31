@@ -87,7 +87,7 @@ describe("CompanyStrategicContextCard", () => {
     await waitFor(() => {
       expect(screen.getByText(/22,596/)).toBeTruthy()
     })
-    expect(screen.getByText(/17 участков/)).toBeTruthy()
+    expect(screen.getByText(/17 parcels/)).toBeTruthy()
     expect(
       screen.getByText(/Ağcabədi, Beyləqan, Yevlax/),
     ).toBeTruthy()
@@ -164,9 +164,10 @@ describe("CompanyStrategicContextCard", () => {
       expect(screen.getByText("2026")).toBeTruthy()
     })
     expect(screen.getByText(/Terminal value/)).toBeTruthy()
-    // BU names are translated AZ→RU in the component (Buğda→Пшеница, Tekstil→Хлопок)
-    expect(screen.getByText(/Пшеница/)).toBeTruthy()
-    expect(screen.getByText(/Хлопок/)).toBeTruthy()
+    // BU names are localized in the component; the test renders under the
+    // mock locale "en" (vitest.setup useLocale → 'en'), so Buğda→Wheat / Tekstil→Cotton.
+    expect(screen.getByText(/Wheat/)).toBeTruthy()
+    expect(screen.getByText(/Cotton/)).toBeTruthy()
   })
 
   it("renders Risk Registry pending-verification badge when itemCount is 0", async () => {
@@ -241,7 +242,7 @@ describe("CompanyStrategicContextCard", () => {
     mockFetch({ error: "fail" }, false)
     render(<CompanyStrategicContextCard companyCode="AZSEKER-AZSF" />)
     await waitFor(() => {
-      expect(screen.getByText(/Ошибка загрузки/)).toBeTruthy()
+      expect(screen.getByText(/Load error/)).toBeTruthy()
     })
   })
 

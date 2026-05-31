@@ -41,8 +41,15 @@ function leafValue(d: Dict, dotted: string): unknown {
   return dotted.split('.').reduce<unknown>((a, k) => (a as Dict | undefined)?.[k], d);
 }
 
-describe('ScenarioPanel i18n parity', () => {
-  for (const ns of ['scenarioPanel', 'scenarioDesc', 'scenarioForm'] as const) {
+describe('Terminal i18n parity (scenario panel/form + sweep namespaces)', () => {
+  for (const ns of [
+    'scenarioPanel',
+    'scenarioDesc',
+    'scenarioForm',
+    'signalsStrip',
+    'strategicContext',
+    'impactForecasts',
+  ] as const) {
     const enKeys = leafKeys(sub(en, ['terminal', ns]));
     const ruKeys = leafKeys(sub(ru, ['terminal', ns]));
     const azKeys = leafKeys(sub(az, ['terminal', ns]));

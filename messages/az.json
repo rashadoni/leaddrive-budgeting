@@ -2690,6 +2690,35 @@
     "signalsStrip": {
       "title": "📡 Siqnallar",
       "staleAt": "köhnəlmiş {asOf}"
+    },
+    "strategicContext": {
+      "loading": "Strateji kontekst yüklənir…",
+      "loadError": "Yükləmə xətası: {error}",
+      "title": "📋 Strateji kontekst",
+      "businessModel": "Biznes-model",
+      "landRegistry": "🌾 Torpaq reyestri",
+      "leased": "icarəyə götürülüb",
+      "parcels": "sahə",
+      "perYear": "/il",
+      "regionsLabel": "Regionlar:",
+      "contractsExpiring": "⚠ {count} müqavilə 2 il ərzində bitir",
+      "sourceLabel": "mənbə: {source}",
+      "riskPending": "⚠️ Müştəri təsdiqi gözlənilir — KRI reyestri hələ şirkətin maliyyə komandası tərəfindən təqdim edilməyib. xlsx yüklənənə qədər risk indikatorları «unknown» göstərəcək.",
+      "kriEntered": "KRI daxil edilib"
+    },
+    "impactForecasts": {
+      "loading": "Impact-proqnozlar yüklənir…",
+      "loadError": "Impact-proqnozların yüklənməsi xətası: {error}",
+      "emptyState": "Bu şirkət üçün son feed-crossing impact-proqnozları yoxdur. Xarici feed (FAO/Brent/AZN-USD/CPI/və s.) həddi keçdikdə avtomatik LLM-təhlil burada görünəcək.",
+      "title": "Feed hadisələri üzrə impact-proqnozlar ({count})",
+      "recommendations": "Tövsiyələr",
+      "relatedNews": "Əlaqəli xəbərlər",
+      "scenarioBest": "ən yaxşı",
+      "scenarioLikely": "ehtimal",
+      "scenarioWorst": "ən pis",
+      "confHigh": "yüksək etibar",
+      "confMed": "orta etibar",
+      "confLow": "aşağı etibar"
     }
   },
   "usersAdmin": {

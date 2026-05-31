@@ -12,6 +12,7 @@
  * Renders nothing when none of these are populated (graceful empty state).
  */
 import React, { useEffect, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
 
 interface LandSummary {
   parcelCount: number
@@ -73,22 +74,27 @@ function fmtAZN(v: number): string {
   return `₼${v.toFixed(0)}`
 }
 
-/** Translate Azerbaijani crop/business-unit names from the farming
- *  strategy spreadsheet (İcmal) into Russian for CFO readability. */
-const BU_RU: Record<string, string> = {
-  "Buğda":              "Пшеница",
-  "Tekstil":            "Хлопок",
-  "Pambıq":             "Хлопок",
-  "Şəkər çuğunduru":    "Сах. свёкла",
-  "Qarğıdalı":          "Кукуруза",
-  "Arpa":               "Ячмень",
-  "Torpaq icarəsi":     "Аренда земли",
-  "Lab services":       "Лаб. услуги",
-  "Yem":                "Корма",
-  "Digər":              "Прочее",
+/** Localize Azerbaijani crop/business-unit names from the farming strategy
+ *  spreadsheet (İcmal). The source is Azeri; RU + EN get readable labels, and
+ *  the AZ view keeps the original spreadsheet term. Unknown names pass through. */
+const BU_LABELS: Record<string, { ru: string; en: string }> = {
+  "Buğda":              { ru: "Пшеница",     en: "Wheat" },
+  "Tekstil":            { ru: "Хлопок",      en: "Cotton" },
+  "Pambıq":             { ru: "Хлопок",      en: "Cotton" },
+  "Şəkər çuğunduru":    { ru: "Сах. свёкла", en: "Sugar beet" },
+  "Qarğıdalı":          { ru: "Кукуруза",    en: "Maize" },
+  "Arpa":               { ru: "Ячмень",      en: "Barley" },
+  "Torpaq icarəsi":     { ru: "Аренда земли", en: "Land lease" },
+  "Lab services":       { ru: "Лаб. услуги", en: "Lab services" },
+  "Yem":                { ru: "Корма",       en: "Feed" },
+  "Digər":              { ru: "Прочее",      en: "Other" },
 }
-function localBu(raw: string): string {
-  return BU_RU[raw] ?? raw
+function localBu(raw: string, locale: string): string {
+  const m = BU_LABELS[raw]
+  if (!m) return raw
+  if (locale === "en") return m.en
+  if (locale === "ru") return m.ru
+  return raw // az → original spreadsheet term
 }
 
 export function CompanyStrategicContextCard({
@@ -96,6 +102,8 @@ export function CompanyStrategicContextCard({
 }: {
   companyCode: string
 }) {
+  const t = useTranslations("terminal")
+  const locale = useLocale()
   const [data, setData] = useState<StrategicContext | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -127,14 +135,14 @@ export function CompanyStrategicContextCard({
   if (loading && !data) {
     return (
       <div className="text-[10px] text-gray-600 italic">
-        Загружаю стратегический контекст…
+        {t("strategicContext.loading")}
       </div>
     )
   }
   if (error) {
     return (
       <div className="text-[10px] text-red-400">
-        Ошибка загрузки: {error}
+        {t("strategicContext.loadError", { error })}
       </div>
     )
   }
@@ -143,7 +151,7 @@ export function CompanyStrategicContextCard({
   return (
     <div className="space-y-3 text-[11px]">
       <div className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">
-        📋 Стратегический контекст
+        {t("strategicContext.title")}
       </div>
 
       {/* ── Strategic description ──────────────────────────────── */}
@@ -153,7 +161,7 @@ export function CompanyStrategicContextCard({
       {data.strategicDescription && (
         <div className="rounded border border-blue-500/20 bg-blue-500/5 px-2 py-1.5">
           <div className="text-[9px] text-blue-300/80 uppercase mb-1">
-            Бизнес-модель
+            {t("strategicContext.businessModel")}
           </div>
           <div className="text-gray-300 leading-snug">
             {data.strategicDescription}
@@ -170,7 +178,7 @@ export function CompanyStrategicContextCard({
       {data.landSummary && (
         <div className="rounded border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5">
           <div className="text-[9px] text-emerald-300/80 uppercase mb-1">
-            🌾 Земельный реестр
+            {t("strategicContext.landRegistry")}
           </div>
           <div className="text-gray-300">
             <span className="text-emerald-300 font-mono font-bold">
@@ -179,16 +187,17 @@ export function CompanyStrategicContextCard({
               })}{" "}
               ha
             </span>{" "}
-            арендованы · {data.landSummary.parcelCount} участков ·{" "}
-            {fmtAZN(data.landSummary.totalAnnualRentAzn)}/год
+            {t("strategicContext.leased")} · {data.landSummary.parcelCount}{" "}
+            {t("strategicContext.parcels")} ·{" "}
+            {fmtAZN(data.landSummary.totalAnnualRentAzn)}
+            {t("strategicContext.perYear")}
           </div>
           <div className="text-gray-500 text-[10px] mt-0.5">
-            Регионы: {data.landSummary.regions.join(", ")}
+            {t("strategicContext.regionsLabel")} {data.landSummary.regions.join(", ")}
           </div>
           {data.landSummary.contractsExpiringWithinYears > 0 && (
             <div className="text-amber-300 text-[10px] mt-0.5">
-              ⚠ {data.landSummary.contractsExpiringWithinYears} договоров
-              истекают в течение 2 лет
+              {t("strategicContext.contractsExpiring", { count: data.landSummary.contractsExpiringWithinYears })}
             </div>
           )}
         </div>
@@ -238,7 +247,7 @@ export function CompanyStrategicContextCard({
               <span className="text-purple-300">+ Terminal value</span>
             )}
             <span className="text-gray-600 normal-case not-italic text-[8px]">
-              источник: {data.forwardForecast.source ?? "EDEN İcmal"}
+              {t("strategicContext.sourceLabel", { source: data.forwardForecast.source ?? "EDEN İcmal" })}
             </span>
           </div>
           <div className="space-y-0.5">
@@ -256,7 +265,7 @@ export function CompanyStrategicContextCard({
                     className="text-gray-500 truncate text-right"
                     title={y.topBu.businessUnit}
                   >
-                    {localBu(y.topBu.businessUnit)}
+                    {localBu(y.topBu.businessUnit, locale)}
                   </span>
                 )}
               </div>
@@ -295,7 +304,7 @@ export function CompanyStrategicContextCard({
             <span>📑 Risk Registry (KRI)</span>
             {data.riskRegistry.source && (
               <span className="text-gray-600 normal-case not-italic text-[8px]">
-                источник: {data.riskRegistry.source}
+                {t("strategicContext.sourceLabel", { source: data.riskRegistry.source })}
               </span>
             )}
           </div>
@@ -304,16 +313,14 @@ export function CompanyStrategicContextCard({
               className="text-rose-300 text-[11px] leading-snug"
               data-testid="risk-registry-pending"
             >
-              ⚠️ Pending client verification — реестр KRI ещё не передан
-              финансовой командой компании. Покажет «unknown» по риск-
-              индикаторам, пока xlsx не загружен.
+              {t("strategicContext.riskPending")}
             </div>
           ) : (
             <div className="text-emerald-300 text-[11px]">
               <span className="font-mono font-bold">
                 {data.riskRegistry.itemCount}
               </span>{" "}
-              KRI занесены
+              {t("strategicContext.kriEntered")}
               {data.riskRegistry.importedAt && (
                 <span className="text-gray-500 text-[10px] ml-1.5">
                   · {new Date(data.riskRegistry.importedAt).toLocaleDateString()}

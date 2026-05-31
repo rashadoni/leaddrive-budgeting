@@ -2690,6 +2690,35 @@
     "signalsStrip": {
       "title": "📡 Сигналы",
       "staleAt": "устарело {asOf}"
+    },
+    "strategicContext": {
+      "loading": "Загружаю стратегический контекст…",
+      "loadError": "Ошибка загрузки: {error}",
+      "title": "📋 Стратегический контекст",
+      "businessModel": "Бизнес-модель",
+      "landRegistry": "🌾 Земельный реестр",
+      "leased": "арендованы",
+      "parcels": "участков",
+      "perYear": "/год",
+      "regionsLabel": "Регионы:",
+      "contractsExpiring": "⚠ {count} договоров истекают в течение 2 лет",
+      "sourceLabel": "источник: {source}",
+      "riskPending": "⚠️ Pending client verification — реестр KRI ещё не передан финансовой командой компании. Покажет «unknown» по риск-индикаторам, пока xlsx не загружен.",
+      "kriEntered": "KRI занесены"
+    },
+    "impactForecasts": {
+      "loading": "Загружаю impact-прогнозы…",
+      "loadError": "Ошибка загрузки impact-прогнозов: {error}",
+      "emptyState": "Нет недавних feed-crossing impact-прогнозов для этой компании. Когда external feed (FAO/Brent/AZN-USD/CPI/etc) пересечёт threshold — автоматический LLM-анализ появится здесь.",
+      "title": "Impact-прогнозы по feed-событиям ({count})",
+      "recommendations": "Рекомендации",
+      "relatedNews": "Связанные новости",
+      "scenarioBest": "лучший",
+      "scenarioLikely": "вероятный",
+      "scenarioWorst": "худший",
+      "confHigh": "выс. увер.",
+      "confMed": "сред. увер.",
+      "confLow": "низ. увер."
     }
   },
   "usersAdmin": {

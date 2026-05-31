@@ -2690,6 +2690,35 @@
     "signalsStrip": {
       "title": "📡 Signals",
       "staleAt": "stale {asOf}"
+    },
+    "strategicContext": {
+      "loading": "Loading strategic context…",
+      "loadError": "Load error: {error}",
+      "title": "📋 Strategic context",
+      "businessModel": "Business model",
+      "landRegistry": "🌾 Land registry",
+      "leased": "leased",
+      "parcels": "parcels",
+      "perYear": "/yr",
+      "regionsLabel": "Regions:",
+      "contractsExpiring": "⚠ {count} contracts expiring within 2 years",
+      "sourceLabel": "source: {source}",
+      "riskPending": "⚠️ Pending client verification — the KRI registry hasn't been provided by the company's finance team yet. Risk indicators will show «unknown» until the xlsx is uploaded.",
+      "kriEntered": "KRI entered"
+    },
+    "impactForecasts": {
+      "loading": "Loading impact forecasts…",
+      "loadError": "Error loading impact forecasts: {error}",
+      "emptyState": "No recent feed-crossing impact forecasts for this company. When an external feed (FAO/Brent/AZN-USD/CPI/etc) crosses a threshold, an automatic LLM analysis will appear here.",
+      "title": "Impact forecasts by feed events ({count})",
+      "recommendations": "Recommendations",
+      "relatedNews": "Related news",
+      "scenarioBest": "best",
+      "scenarioLikely": "likely",
+      "scenarioWorst": "worst",
+      "confHigh": "high conf.",
+      "confMed": "med conf.",
+      "confLow": "low conf."
     }
   },
   "usersAdmin": {

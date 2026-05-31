@@ -14,7 +14,7 @@
  * companies will have 0 rows until a feed crossing fires).
  */
 import React, { useEffect, useState } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { getDataSourceByCode } from "@/lib/intel/sources-catalog"
 import { DEFAULT_CROSSING_RULES } from "@/lib/intel/crossing-rules-default-pack"
 
@@ -23,17 +23,24 @@ const RULE_LABEL = new Map(
   DEFAULT_CROSSING_RULES.map((r) => [r.id, r.name]),
 )
 
-/** Short Russian labels for the external metric codes used in crossing rules. */
-const METRIC_LABEL_RU: Record<string, string> = {
-  FAO_FFPI_NOMINAL: "Индекс прод. цен FAO",
-  FAO_MEAT_INDEX: "FAO: мясо",
-  FAO_DAIRY_INDEX: "FAO: молочка",
-  FAO_CEREAL_INDEX: "FAO: зерновые",
-  FAO_OILS_INDEX: "FAO: масла",
-  FAO_SUGAR_INDEX: "FAO: сахар",
-  BRENT_USD_BBL: "Brent нефть",
-  AZN_USD: "Курс AZN/USD",
-  AZ_CPI_FOOD: "ИПЦ продовольствие AZ",
+/** Short localized labels for the external metric codes used in crossing rules. */
+const METRIC_LABELS: Record<string, { ru: string; en: string; az: string }> = {
+  FAO_FFPI_NOMINAL: { ru: "Индекс прод. цен FAO", en: "FAO food price index", az: "FAO ərzaq qiymət indeksi" },
+  FAO_MEAT_INDEX: { ru: "FAO: мясо", en: "FAO: meat", az: "FAO: ət" },
+  FAO_DAIRY_INDEX: { ru: "FAO: молочка", en: "FAO: dairy", az: "FAO: süd" },
+  FAO_CEREAL_INDEX: { ru: "FAO: зерновые", en: "FAO: cereals", az: "FAO: taxıl" },
+  FAO_OILS_INDEX: { ru: "FAO: масла", en: "FAO: oils", az: "FAO: yağlar" },
+  FAO_SUGAR_INDEX: { ru: "FAO: сахар", en: "FAO: sugar", az: "FAO: şəkər" },
+  BRENT_USD_BBL: { ru: "Brent нефть", en: "Brent crude", az: "Brent neft" },
+  AZN_USD: { ru: "Курс AZN/USD", en: "AZN/USD rate", az: "AZN/USD məzənnəsi" },
+  AZ_CPI_FOOD: { ru: "ИПЦ продовольствие AZ", en: "AZ food CPI", az: "AZ ərzaq İSİ" },
+}
+function localMetric(code: string, locale: string): string {
+  const m = METRIC_LABELS[code]
+  if (!m) return code
+  if (locale === "en") return m.en
+  if (locale === "az") return m.az
+  return m.ru
 }
 
 interface ImpactScenario {
@@ -125,10 +132,11 @@ function ScenarioBlock({
 }
 
 function ConfidenceChip({ confidence }: { confidence: "low" | "medium" | "high" }) {
+  const t = useTranslations("terminal")
   const config = {
-    high: { label: "high conf.", cls: "bg-emerald-500/20 text-emerald-300" },
-    medium: { label: "med conf.", cls: "bg-amber-500/20 text-amber-300" },
-    low: { label: "low conf.", cls: "bg-gray-500/20 text-gray-400" },
+    high: { label: t("impactForecasts.confHigh"), cls: "bg-emerald-500/20 text-emerald-300" },
+    medium: { label: t("impactForecasts.confMed"), cls: "bg-amber-500/20 text-amber-300" },
+    low: { label: t("impactForecasts.confLow"), cls: "bg-gray-500/20 text-gray-400" },
   }
   const c = config[confidence]
   return (
@@ -141,13 +149,15 @@ function ConfidenceChip({ confidence }: { confidence: "low" | "medium" | "high" 
 }
 
 function ForecastItem({ row }: { row: ImpactForecastRow }) {
+  const t = useTranslations("terminal")
+  const locale = useLocale()
   const source = getDataSourceByCode(row.triggerSourceCode)
   return (
     <article className="border border-gray-800 rounded p-2 bg-[#050814]">
       <header className="flex items-center justify-between gap-2 mb-1.5">
         <div className="text-[10px] text-gray-400 truncate flex-1" title={`${row.triggerMetric} · ${row.ruleId}`}>
           <span className="text-[#00D4AA] font-semibold">
-            {METRIC_LABEL_RU[row.triggerMetric] ?? row.triggerMetric}
+            {localMetric(row.triggerMetric, locale)}
           </span>{" "}
           @ {row.triggerValueRounded}{" "}
           <span className="text-gray-600">·</span>{" "}
@@ -159,14 +169,14 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
       </header>
 
       <div className="grid grid-cols-3 gap-1.5 mb-2">
-        <ScenarioBlock label="best" scenario={row.scenarios.best} tone="best" />
+        <ScenarioBlock label={t("impactForecasts.scenarioBest")} scenario={row.scenarios.best} tone="best" />
         <ScenarioBlock
-          label="likely"
+          label={t("impactForecasts.scenarioLikely")}
           scenario={row.scenarios.likely}
           tone="likely"
         />
         <ScenarioBlock
-          label="worst"
+          label={t("impactForecasts.scenarioWorst")}
           scenario={row.scenarios.worst}
           tone="worst"
         />
@@ -174,7 +184,7 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
 
       <div className="border-t border-gray-800/60 pt-1.5">
         <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
-          Рекомендации
+          {t("impactForecasts.recommendations")}
         </div>
         <ol className="text-[11px] text-gray-300 space-y-0.5 list-decimal list-inside">
           {row.recommendations.map((r, i) => (
@@ -199,7 +209,7 @@ function ForecastItem({ row }: { row: ImpactForecastRow }) {
       {row.relatedNews && row.relatedNews.length > 0 && (
         <div className="mt-1.5 border-t border-gray-800/60 pt-1.5">
           <div className="text-[9px] uppercase tracking-wider text-gray-500 mb-0.5">
-            Связанные новости
+            {t("impactForecasts.relatedNews")}
           </div>
           <ul className="text-[11px] text-gray-300 space-y-1">
             {row.relatedNews.map((n) => (
@@ -251,6 +261,7 @@ export function CompanyImpactForecastsCard({
   companyCode: string
 }) {
   const locale = useLocale()
+  const t = useTranslations("terminal")
   // Phase 7.L 2026-05-18 — filter forecasts by current UI locale so a
   // RU user doesn't see EN narratives. If no row exists for the
   // current locale, empty state surfaces; admin can re-run the scan
@@ -298,23 +309,21 @@ export function CompanyImpactForecastsCard({
   if (loading && rows.length === 0) {
     return (
       <div className="text-[10px] text-gray-600 italic">
-        Загружаю impact-прогнозы…
+        {t("impactForecasts.loading")}
       </div>
     )
   }
   if (error) {
     return (
       <div className="text-[10px] text-red-500">
-        Ошибка загрузки impact-прогнозов: {error}
+        {t("impactForecasts.loadError", { error })}
       </div>
     )
   }
   if (rows.length === 0) {
     return (
       <div className="text-[10px] text-gray-600 italic leading-relaxed">
-        Нет недавних feed-crossing impact-прогнозов для этой компании. Когда
-        external feed (FAO/Brent/AZN-USD/CPI/etc) пересечёт threshold —
-        автоматический LLM-анализ появится здесь.
+        {t("impactForecasts.emptyState")}
       </div>
     )
   }
@@ -322,7 +331,7 @@ export function CompanyImpactForecastsCard({
   return (
     <div className="space-y-2">
       <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
-        Impact-прогнозы по feed-событиям ({rows.length})
+        {t("impactForecasts.title", { count: rows.length })}
       </div>
       {rows.map((r) => (
         <ForecastItem key={r.id} row={r} />
