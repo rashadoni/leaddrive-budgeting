@@ -189,11 +189,25 @@ export async function runBalanceSheetBatch(
 
       let archived = 0
       let purged = 0
+      // BUGFIX 2026-05-31: Phase 7.O added `companyId` to BS rows, but the
+      // archive below still scoped ONLY by planId. Every AzerSheker entity
+      // shares one plan, so a per-entity multi-file batch archived OTHER
+      // entities' live BS — the 2026-05-26 multi-import left CPC/AZSF/EDEN
+      // with zero live balance sheet (only the last-written entity, MALT,
+      // survived). Mirror the P&L batch (`runImportBatch`): scope the reset
+      // to the companies actually present in THIS batch. Fall back to the
+      // legacy plan-only scope when no incoming row carries a companyId.
+      const incomingCompanyIds = [
+        ...new Set(plan.rows.map((r) => r.companyId).filter((x): x is string => x != null)),
+      ]
+      const companyScope =
+        incomingCompanyIds.length > 0 ? { companyId: { in: incomingCompanyIds } } : {}
       if (plan.purgeArchivedFirst) {
         const purgeResult = await tx.balanceSheetLine.deleteMany({
           where: {
             organizationId: plan.organizationId,
             planId: { in: [...plan.planIds] },
+            ...companyScope,
             deletedAt: { not: null },
             ...yearFilter,
           },
@@ -205,6 +219,7 @@ export async function runBalanceSheetBatch(
         where: {
           organizationId: plan.organizationId,
           planId: { in: [...plan.planIds] },
+          ...companyScope,
           deletedAt: null,
           ...yearFilter,
         },
@@ -299,12 +314,20 @@ async function defaultReadActualBsSums(
     ),
   )
 
+  // Match the archive scope (companyId-aware, 2026-05-31 bugfix): recon must
+  // read only the rows THIS batch is responsible for. Sibling entities share
+  // the same plan, so a planId-only read would sum their balances in and trip
+  // a false drift verdict once the archive no longer cross-deletes them.
+  const companyIds = [
+    ...new Set(plan.rows.map((r) => r.companyId).filter((x): x is string => x != null)),
+  ]
   // Phase 2.1 session 3: accountCode column dropped from BalanceSheetLine;
   // read via FK relation `account.code` instead.
   const rows = await prisma.balanceSheetLine.findMany({
     where: {
       organizationId: plan.organizationId,
       planId: { in: [...plan.planIds] },
+      ...(companyIds.length > 0 ? { companyId: { in: companyIds } } : {}),
       deletedAt: null,
       ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),
     },

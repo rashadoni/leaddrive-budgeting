@@ -23,6 +23,7 @@ import type { PrismaClient } from "@prisma/client"
 interface FakeBsRow {
   organizationId: string
   planId: string
+  companyId: string | null
   accountId: string
   lineType: string
   subType: string | null
@@ -50,12 +51,14 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           planId?: { in: string[] }
+          companyId?: { in: string[] }
           deletedAt?: null
           year?: { in: number[] }
         }
         for (const r of bs) {
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.planId && !w.planId.in.includes(r.planId)) continue
+          if (w.companyId && (r.companyId == null || !w.companyId.in.includes(r.companyId))) continue
           if (w.deletedAt === null && r.deletedAt !== null) continue
           if (w.year && !w.year.in.includes(r.year)) continue
           Object.assign(r, args.data)
@@ -67,6 +70,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           planId?: { in: string[] }
+          companyId?: { in: string[] }
           deletedAt?: { not: null }
           year?: { in: number[] }
         }
@@ -75,6 +79,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
           const r = bs[i]
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.planId && !w.planId.in.includes(r.planId)) continue
+          if (w.companyId && (r.companyId == null || !w.companyId.in.includes(r.companyId))) continue
           if (w.deletedAt?.not === null && r.deletedAt === null) continue
           if (w.year && !w.year.in.includes(r.year)) continue
           bs.splice(i, 1)
@@ -87,6 +92,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
           bs.push({
             organizationId: d.organizationId!,
             planId: d.planId!,
+            companyId: d.companyId ?? null,
             accountId: d.accountId!,
             lineType: d.lineType!,
             subType: d.subType ?? null,
@@ -104,6 +110,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
         const w = args.where as {
           organizationId?: string
           planId?: { in: string[] }
+          companyId?: { in: string[] }
           deletedAt?: null
           year?: { in: number[] }
         }
@@ -111,6 +118,7 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
             if (w.planId && !w.planId.in.includes(r.planId)) return false
+            if (w.companyId && (r.companyId == null || !w.companyId.in.includes(r.companyId))) return false
             if (w.deletedAt === null && r.deletedAt !== null) return false
             if (w.year && !w.year.in.includes(r.year)) return false
             return true
@@ -136,8 +144,10 @@ const R = (
   accountCode: string,
   amount: number,
   month: number = 4,
+  companyId: string | null = null,
 ): BsImportRow => ({
   planId: "plan_2026",
+  companyId,
   accountCode,
   accountId: `coa_${accountCode}`,
   lineType: "asset",
@@ -290,5 +300,39 @@ describe("runBalanceSheetBatch — outer-transaction mode (Phase 7.M Tier 5)", (
     expect(results[0].reconciliation.verdict).toBe("green")
     expect(results[1].reconciliation.verdict).toBe("green")
     expect(prisma.__bs.filter((r) => r.deletedAt === null)).toHaveLength(2)
+  })
+})
+
+// ─── 2026-05-31 cross-archive bugfix — per-entity (companyId) reset scope ──────
+// Real AzerSheker shape: ALL entities live on ONE shared plan ("Azərşəkər 2026
+// Budget"). The reset was scoped by planId only, so a per-entity batch archived
+// siblings' live BS — the 2026-05-26 multi-import left CPC/AZSF/EDEN with zero
+// live balance sheet (only the last-written entity, MALT, survived). These tests
+// pin the fix: reset/recon are now scoped by companyId.
+describe("runBalanceSheetBatch — per-entity isolation on a shared plan", () => {
+  it("one company's batch does NOT archive a sibling's live BS on the SAME plan", async () => {
+    const prisma = makeFakePrisma()
+    await runBalanceSheetBatch(prisma, planFor([R("BS.01.01.01", 100, 4, "co_A")], { label: "CPC" }))
+    // Pre-fix: this second batch's planId-scoped reset archived co_A.
+    // Post-fix: reset is scoped to co_B → co_A's BS stays live.
+    const rb = await runBalanceSheetBatch(prisma, planFor([R("BS.02.01.01", 200, 4, "co_B")], { label: "AZSF" }))
+    expect(rb.metrics.resetArchived).toBe(0) // co_B had nothing prior to archive
+    const live = prisma.__bs.filter((r) => r.deletedAt === null)
+    expect(live).toHaveLength(2)
+    expect(live.map((r) => r.companyId).sort()).toEqual(["co_A", "co_B"])
+    expect(rb.reconciliation.verdict).toBe("green")
+  })
+
+  it("re-importing one company replaces only its own rows; sibling untouched", async () => {
+    const prisma = makeFakePrisma()
+    await runBalanceSheetBatch(prisma, planFor([R("BS.01.01.01", 100, 4, "co_A")], { label: "CPC" }))
+    await runBalanceSheetBatch(prisma, planFor([R("BS.02.01.01", 200, 4, "co_B")], { label: "AZSF" }))
+    const reA = await runBalanceSheetBatch(prisma, planFor([R("BS.01.01.01", 150, 4, "co_A")], { label: "CPC" }))
+    expect(reA.metrics.resetArchived).toBe(1) // ONLY co_A's prior row
+    const live = prisma.__bs.filter((r) => r.deletedAt === null)
+    expect(live).toHaveLength(2)
+    expect(live.find((r) => r.companyId === "co_A")?.amount).toBe(150)
+    expect(live.find((r) => r.companyId === "co_B")?.amount).toBe(200)
+    expect(reA.reconciliation.verdict).toBe("green")
   })
 })
