@@ -10,7 +10,7 @@
  */
 import { PrismaClient } from "@prisma/client"
 import * as XLSX from "xlsx"
-import { parsePlfPlSheet, parsePlfCfSheet, type PlfAccountType } from "../src/lib/onboarding/adapters/azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotal, type PlfAccountType } from "../src/lib/onboarding/adapters/azseker-plf"
 import { parseWorkbookBsSheet, type BsLineType } from "../src/lib/onboarding/adapters/azseker-workbook-bs"
 
 const prisma = new PrismaClient()
@@ -220,6 +220,35 @@ async function main() {
     }
     console.log("")
   }
+
+  // ===== EBITDA chain-check (2026-05-31) — source PLF.08 vs DB IND_EBITDA_MARGIN × revenue =====
+  // Independent of the line-sum reconciliation above: verifies the
+  // capture→resolver→indicator chain reports the source's OWN EBITDA, not net.
+  console.log("========== EBITDA (chain-check) ==========\n")
+  const ebDefs = await prisma.indicatorDefinition.findMany({
+    where: { code: { in: ["IND_EBITDA_MARGIN", "IND_REVENUE_TOTAL"] } },
+    select: { id: true, code: true },
+  })
+  const ebIdByCode = new Map(ebDefs.map((d) => [d.code, d.id]))
+  for (const job of JOBS) {
+    const srcEbitda = parsePlfEbitdaSubtotal(wb, job.sheet, XLSX, { preferYear: YEAR }).reduce((s, x) => s + x.value, 0)
+    const co = await prisma.company.findFirst({ where: { code: job.code }, select: { id: true } })
+    const ivs = co
+      ? await prisma.indicatorValue.findMany({
+          where: { companyId: co.id, period: String(YEAR), indicatorId: { in: [...ebIdByCode.values()] } },
+          select: { indicatorId: true, value: true, status: true },
+        })
+      : []
+    const marginIv = ivs.find((r) => r.indicatorId === ebIdByCode.get("IND_EBITDA_MARGIN"))
+    const revIv = ivs.find((r) => r.indicatorId === ebIdByCode.get("IND_REVENUE_TOTAL"))
+    const dbEbitda = marginIv && revIv && marginIv.status !== "unknown" ? (marginIv.value / 100) * revIv.value : null
+    // margin×revenue carries rounding — allow 0.5% (or 2 ₼) tolerance.
+    const tol = Math.max(2, Math.abs(srcEbitda) * 0.005)
+    const ok = dbEbitda !== null && Math.abs(dbEbitda - srcEbitda) <= tol
+    if (!ok) anyDiff = true
+    console.log(`  ${ok ? "✓" : "✗"} ${job.code.padEnd(14)} source EBITDA=${fmt(srcEbitda)}  db(margin×rev)=${dbEbitda === null ? "     —      " : fmt(dbEbitda)}`)
+  }
+  console.log("")
 
   console.log(anyDiff ? "RESULT: ✗ discrepancies found (see above)" : "RESULT: ✓ all match")
   await prisma.$disconnect()
