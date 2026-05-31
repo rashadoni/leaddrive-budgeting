@@ -108,6 +108,19 @@ describe("POST /api/budgeting/plans/[id]/create-version", () => {
     )
     // Both lines cloned to new plan
     expect(prismaMock.budgetLine.create).toHaveBeenCalledTimes(2)
+    // Regression (2026-05-31): the source-line load MUST exclude soft-deleted
+    // lines, or archived budget lines get cloned into the new version and
+    // resurrected as live rows. Lock the include filter.
+    expect(prismaMock.budgetPlan.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          lines: {
+            where: { deletedAt: null },
+            include: { account: { select: { code: true, name: true } } },
+          },
+        },
+      }),
+    )
   })
 
   it("uses amendmentOf (root) for version chain not the current id", async () => {

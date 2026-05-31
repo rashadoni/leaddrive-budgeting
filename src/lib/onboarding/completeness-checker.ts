@@ -100,6 +100,7 @@ export async function checkOnboardingCompleteness(
       companyId,
       lineType: "revenue",
       plan: { is: { year: yearFromPeriod } },
+      deletedAt: null, // count LIVE lines only (2026-05-31 soft-delete audit)
     },
   });
   const cogsLineCount = await prisma.budgetLine.count({
@@ -108,6 +109,7 @@ export async function checkOnboardingCompleteness(
       companyId,
       lineType: "cogs",
       plan: { is: { year: yearFromPeriod } },
+      deletedAt: null,
     },
   });
   const expenseLineCount = await prisma.budgetLine.count({
@@ -116,6 +118,7 @@ export async function checkOnboardingCompleteness(
       companyId,
       lineType: "expense",
       plan: { is: { year: yearFromPeriod } },
+      deletedAt: null,
     },
   });
 
@@ -132,6 +135,7 @@ export async function checkOnboardingCompleteness(
         organizationId: orgId,
         companyId,
         plan: { is: { year: yearFromPeriod } },
+        deletedAt: null,
       },
       select: { planId: true },
       distinct: ["planId"],
@@ -152,12 +156,12 @@ export async function checkOnboardingCompleteness(
 
   // ── §5 Balance Sheet (plan-scoped) ──────────────────────────────────
   const balanceSheetCount = inPlans
-    ? await prisma.balanceSheetLine.count({ where: { organizationId: orgId, ...inPlans } })
+    ? await prisma.balanceSheetLine.count({ where: { organizationId: orgId, deletedAt: null, ...inPlans } })
     : 0;
 
   // ── §6 Cash Flow (org-scoped — CashFlowEntry has no plan/company FK) ─
   const cashFlowCount = await prisma.cashFlowEntry.count({
-    where: { organizationId: orgId, year: yearFromPeriod },
+    where: { organizationId: orgId, year: yearFromPeriod, deletedAt: null },
   });
 
   // ── §7 Actuals (company-scoped — has explicit companyId per Turn 35) ─

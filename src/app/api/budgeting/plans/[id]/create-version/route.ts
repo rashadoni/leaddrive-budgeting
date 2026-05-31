@@ -29,7 +29,10 @@ export async function POST(
   // Find original plan
   const plan: PlanWithLines | null = await prisma.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
-    include: { lines: { include: { account: { select: { code: true, name: true } } } } },
+    // deletedAt:null (2026-05-31): clone/snapshot only LIVE lines — without it,
+    // archived (soft-deleted) budget lines get copied into the new version and
+    // resurrected as live rows.
+    include: { lines: { where: { deletedAt: null }, include: { account: { select: { code: true, name: true } } } } },
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 

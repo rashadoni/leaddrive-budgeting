@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   const lines = await prisma.budgetLine.findMany({
-    where: { planId, organizationId: orgId },
+    where: { planId, organizationId: orgId, deletedAt: null },
     select: { department: true, lineType: true, plannedAmount: true, account: { select: { code: true, name: true } } },
     orderBy: [{ lineType: "asc" }, { sortOrder: "asc" }, { department: "asc" }],
   })

@@ -51,7 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   // Get existing lines in this plan to skip duplicates (keyed by account.code)
   const existingLines = await prisma.budgetLine.findMany({
-    where: { planId, organizationId: orgId },
+    // deletedAt:null (2026-05-31): only LIVE lines count as "already present",
+    // else an archived account is treated as existing and skipped on re-apply.
+    where: { planId, organizationId: orgId, deletedAt: null },
     select: { accountId: true, lineType: true, account: { select: { code: true } } },
   })
   const existingKeys = new Set(existingLines.map((l: { accountId: string; lineType: string; account: { code: string } }) => `${l.account?.code ?? l.accountId}||${l.lineType}`))

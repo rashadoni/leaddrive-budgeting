@@ -62,7 +62,9 @@ export async function POST(req: NextRequest) {
 
   for (const plan of plans) {
     const lines = await prisma.budgetLine.findMany({
-      where: { planId: plan.id, organizationId: orgId },
+      // deletedAt:null (2026-05-31): project CF from LIVE budget lines only —
+      // archived lines would inject phantom cash flows into the projection.
+      where: { planId: plan.id, organizationId: orgId, deletedAt: null },
       include: { account: { select: { code: true, name: true } } },
     })
 
@@ -118,7 +120,9 @@ export async function POST(req: NextRequest) {
 
   // 4. Generate alerts for negative closing balances
   const entries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year },
+    // deletedAt:null (2026-05-31): balance/alerts off LIVE entries only —
+    // archived rows would distort closing balances and fire false alerts.
+    where: { organizationId: orgId, year, deletedAt: null },
     orderBy: [{ month: "asc" }],
   })
 

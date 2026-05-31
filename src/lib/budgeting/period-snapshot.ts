@@ -112,6 +112,8 @@ export async function computePeriodHashes(
     where: {
       organizationId: orgId,
       plan: { is: { year } },
+      // deletedAt:null (2026-05-31): enumerate plans/companies with LIVE lines.
+      deletedAt: null,
     },
     select: {
       planId: true,
