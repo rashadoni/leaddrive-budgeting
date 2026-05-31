@@ -139,6 +139,10 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
     bandTarget: "Target band",
     legendStatus: "Status thresholds",
     legendUnits: "Common units",
+    unitPct: "Percentage (margins, ratios)",
+    unitAzn: "Azerbaijani Manat",
+    unitRatio: "Ratio (e.g. operating leverage)",
+    unitIndex: "Index (HHI 0–10000)",
     footnote:
       "Computed values are derived from BudgetLine + CashFlowEntry + BalanceSheetLine source data via the FormulaEngine.",
     page: "Page",
@@ -169,6 +173,10 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
     bandTarget: "Целевой коридор",
     legendStatus: "Пороги статусов",
     legendUnits: "Единицы измерения",
+    unitPct: "Процент (маржа, коэффициенты)",
+    unitAzn: "Азербайджанский манат",
+    unitRatio: "Коэффициент (напр. операционный рычаг)",
+    unitIndex: "Индекс (HHI 0–10000)",
     footnote:
       "Вычисленные значения получены из BudgetLine + CashFlowEntry + BalanceSheetLine через FormulaEngine.",
     page: "Страница",
@@ -199,6 +207,10 @@ const I18N: Record<RiskMatrixPdfProps["language"], Record<string, string>> = {
     bandTarget: "Hədəf zolaq",
     legendStatus: "Status hədləri",
     legendUnits: "Vahidlər",
+    unitPct: "Faiz (marja, nisbətlər)",
+    unitAzn: "Azərbaycan manatı",
+    unitRatio: "Nisbət (məs. əməliyyat leverajı)",
+    unitIndex: "İndeks (HHI 0–10000)",
     footnote:
       "Hesablanan dəyərlər BudgetLine + CashFlowEntry + BalanceSheetLine mənbələrindən FormulaEngine vasitəsilə alınır.",
     page: "Səhifə",
@@ -516,10 +528,10 @@ export function RiskMatrixPdfDoc(props: RiskMatrixPdfProps) {
         </View>
 
         <Text style={styles.sectionTitle}>{t.legendUnits}</Text>
-        <View style={styles.legendItem}><Text style={styles.legendBadge}>%</Text><Text>Percentage (margins, ratios)</Text></View>
-        <View style={styles.legendItem}><Text style={styles.legendBadge}>AZN ₼</Text><Text>Azerbaijani Manat</Text></View>
-        <View style={styles.legendItem}><Text style={styles.legendBadge}>ratio</Text><Text>Ratio (e.g. operating leverage)</Text></View>
-        <View style={styles.legendItem}><Text style={styles.legendBadge}>index</Text><Text>Index (HHI 0–10000)</Text></View>
+        <View style={styles.legendItem}><Text style={styles.legendBadge}>%</Text><Text>{t.unitPct}</Text></View>
+        <View style={styles.legendItem}><Text style={styles.legendBadge}>AZN ₼</Text><Text>{t.unitAzn}</Text></View>
+        <View style={styles.legendItem}><Text style={styles.legendBadge}>ratio</Text><Text>{t.unitRatio}</Text></View>
+        <View style={styles.legendItem}><Text style={styles.legendBadge}>index</Text><Text>{t.unitIndex}</Text></View>
 
         <Text style={[styles.sectionTitle, { fontSize: 9, color: "#6B7280" }]}>{t.footnote}</Text>
 
