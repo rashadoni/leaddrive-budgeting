@@ -603,7 +603,7 @@ export function IndicatorDetail() {
         return (
           <section>
             <div className="text-muted-foreground uppercase tracking-wider text-[9px] mb-0.5">
-              Источник
+              {t('indicatorDetail.source')}
             </div>
             <div className="space-y-1.5">
               {sources.map((src) => (
@@ -632,7 +632,7 @@ export function IndicatorDetail() {
                       href="/budgeting/admin/data-sources"
                       className="text-blue-400 hover:text-blue-300 underline-offset-2 hover:underline"
                     >
-                      Что это?
+                      {t('indicatorDetail.whatIsThis')}
                     </a>
                     <span className="text-gray-600">·</span>
                     <code className="font-mono text-gray-500">

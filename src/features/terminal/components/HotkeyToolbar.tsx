@@ -495,14 +495,14 @@ export function HotkeyToolbar() {
     {
       key: "impact-scan",
       label: impactScanning
-        ? "Импакт…"
+        ? t("hotkeys.impactRunning")
         : impactScanResult
-          ? `Импакт ${impactScanResult}`
-          : "Импакт",
+          ? t("hotkeys.impactResult", { result: impactScanResult })
+          : t("hotkeys.impact"),
       icon: Zap,
       title: impactScanning
-        ? "Запускается impact-forecast scan на EN + RU + AZ (~8-12 мин)"
-        : "Запустить impact-forecast scan для всех external feed crossings (FAO / Brent / AZN-USD / CPI). Генерирует прогнозы на EN + RU + AZ за один клик.",
+        ? t("hotkeys.impactTitleRunning")
+        : t("hotkeys.impactTitle"),
       group: "ops",
       priority: "pinned",
       action: triggerImpactScan,

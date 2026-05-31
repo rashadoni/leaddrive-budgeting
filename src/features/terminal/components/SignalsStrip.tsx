@@ -11,6 +11,7 @@
  * terminal). News-derived triggers are OUT (Phase 3b — data-blocked).
  */
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 
 interface Signal {
@@ -27,6 +28,7 @@ interface Signal {
 const SEV_DOT: Record<string, string> = { high: "bg-red-500", medium: "bg-[#FFB800]" };
 
 export function SignalsStrip() {
+  const t = useTranslations("terminal");
   const [signals, setSignals] = useState<Signal[] | null>(null);
   const setActiveScenarioCode = useTerminalStore((s) => s.setActiveScenarioCode);
 
@@ -58,7 +60,7 @@ export function SignalsStrip() {
       data-testid="signals-strip"
     >
       <span className="shrink-0 text-[11px] font-mono font-semibold uppercase tracking-wider text-sky-300">
-        📡 Сигналы
+        {t("signalsStrip.title")}
       </span>
       {signals.map((s) => {
         // Readability (2026-05-31): severity-colored chip (red=high / amber=medium)
@@ -73,7 +75,7 @@ export function SignalsStrip() {
             key={s.id}
             type="button"
             onClick={() => open(s.suggestedScenarioCode)}
-            title={`${s.detail}${s.stale ? ` · устарело ${s.asOf}` : ` · ${s.asOf}`}`}
+            title={`${s.detail} · ${s.stale ? t("signalsStrip.staleAt", { asOf: s.asOf }) : s.asOf}`}
             data-testid={`signal-${s.id}`}
             className={`shrink-0 inline-flex items-center gap-2 rounded border px-2.5 py-1 text-xs transition-colors ${sev}`}
           >

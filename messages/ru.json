@@ -1863,7 +1863,12 @@
       "toolbarAriaLabel": "Горячие клавиши терминала",
       "paletteLabel": "ещё {count}+",
       "paletteTitle": "Открыть командную строку (⌘K) — внутри ещё {count} команд (CMP / SCN / WX / etc.)",
-      "paletteAriaLabel": "Открыть командную палитру"
+      "paletteAriaLabel": "Открыть командную палитру",
+      "impact": "Импакт",
+      "impactRunning": "Импакт…",
+      "impactResult": "Импакт {result}",
+      "impactTitleRunning": "Запускается impact-forecast scan на EN + RU + AZ (~8-12 мин)",
+      "impactTitle": "Запустить impact-forecast scan для всех external feed crossings (FAO / Brent / AZN-USD / CPI). Генерирует прогнозы на EN + RU + AZ за один клик."
     },
     "companyTree": {
       "filterPlaceholder": "фильтр компаний…",
@@ -2043,7 +2048,9 @@
         "lastAudited": "Сверено",
         "notReconciled": "Ещё не сверено",
         "sourceNotRecorded": "Источник не зафиксирован"
-      }
+      },
+      "source": "Источник",
+      "whatIsThis": "Что это?"
     },
     "auditTicker": {
       "events": "СОБЫТИЯ",
@@ -2228,7 +2235,8 @@
       "aiUsageToday": "Сегодня",
       "aiUsageMtd": "С начала месяца",
       "aiUsageCalls": "вызовов",
-      "aiUsageClickHint": "Открыть статистику по всему холдингу →"
+      "aiUsageClickHint": "Открыть статистику по всему холдингу →",
+      "feedsFreshOk": "✓ Все reference-фиды свежие, нет недавних drift events"
     },
     "mobileBanner": {
       "text": "Risk Terminal оптимизирован для экранов ≥1024px. На этом экране некоторые панели могут отображаться не полностью — для полного опыта используйте более широкий монитор.",
@@ -2678,6 +2686,10 @@
       "errNetwork": "Ошибка сети",
       "errJsonParse": "Ошибка разбора JSON: {message}",
       "errJsonNoAdjustments": "JSON должен содержать массив \"adjustments\" хотя бы с одним элементом"
+    },
+    "signalsStrip": {
+      "title": "📡 Сигналы",
+      "staleAt": "устарело {asOf}"
     }
   },
   "usersAdmin": {

@@ -1863,7 +1863,12 @@
       "toolbarAriaLabel": "Terminal hotkeys",
       "paletteLabel": "{count}+ more",
       "paletteTitle": "Open the command bar (⌘K) — {count} more commands inside (CMP / SCN / WX / etc.)",
-      "paletteAriaLabel": "Open command palette"
+      "paletteAriaLabel": "Open command palette",
+      "impact": "Impact",
+      "impactRunning": "Impact…",
+      "impactResult": "Impact {result}",
+      "impactTitleRunning": "Running impact-forecast scan on EN + RU + AZ (~8-12 min)",
+      "impactTitle": "Run impact-forecast scan for all external feed crossings (FAO / Brent / AZN-USD / CPI). Generates forecasts on EN + RU + AZ in one click."
     },
     "companyTree": {
       "filterPlaceholder": "filter companies…",
@@ -2043,7 +2048,9 @@
         "lastAudited": "Audited",
         "notReconciled": "Not yet reconciled",
         "sourceNotRecorded": "Source not recorded"
-      }
+      },
+      "source": "Source",
+      "whatIsThis": "What is this?"
     },
     "auditTicker": {
       "events": "EVENTS",
@@ -2228,7 +2235,8 @@
       "aiUsageToday": "Today",
       "aiUsageMtd": "Month-to-date",
       "aiUsageCalls": "calls",
-      "aiUsageClickHint": "Click to open holding-wide AI Usage →"
+      "aiUsageClickHint": "Click to open holding-wide AI Usage →",
+      "feedsFreshOk": "✓ All reference feeds fresh, no recent drift events"
     },
     "mobileBanner": {
       "text": "Risk Terminal is optimized for ≥1024px viewports. Some panels may not display fully on this screen — switch to a wider monitor for the full experience.",
@@ -2678,6 +2686,10 @@
       "errNetwork": "Network error",
       "errJsonParse": "JSON parse error: {message}",
       "errJsonNoAdjustments": "JSON must contain an \"adjustments\" array with at least one entry"
+    },
+    "signalsStrip": {
+      "title": "📡 Signals",
+      "staleAt": "stale {asOf}"
     }
   },
   "usersAdmin": {

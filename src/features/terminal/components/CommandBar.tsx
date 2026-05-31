@@ -745,7 +745,7 @@ export function CommandBar() {
               <div className="space-y-0.5">
                 {health.staleCount === 0 && health.driftEventCount === 0 ? (
                   <div className="text-emerald-400">
-                    ✓ Все reference-фиды свежие, нет недавних drift events
+                    {t('commandBar.feedsFreshOk')}
                   </div>
                 ) : (
                   <>

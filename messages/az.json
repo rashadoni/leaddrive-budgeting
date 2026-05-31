@@ -1863,7 +1863,12 @@
       "toolbarAriaLabel": "Terminal qısayolları",
       "paletteLabel": "+{count} daha",
       "paletteTitle": "Komanda sətrini aç (⌘K) — daxildə {count} əlavə komanda (CMP / SCN / WX / etc.)",
-      "paletteAriaLabel": "Komanda palitrasını aç"
+      "paletteAriaLabel": "Komanda palitrasını aç",
+      "impact": "İmpakt",
+      "impactRunning": "İmpakt…",
+      "impactResult": "İmpakt {result}",
+      "impactTitleRunning": "EN + RU + AZ üzrə impact-forecast scan işə salınır (~8-12 dəq)",
+      "impactTitle": "Bütün xarici feed kəsişmələri (FAO / Brent / AZN-USD / CPI) üçün impact-forecast scan işə sal. Bir kliklə EN + RU + AZ üzrə proqnozlar yaradır."
     },
     "companyTree": {
       "filterPlaceholder": "şirkət filtri…",
@@ -2043,7 +2048,9 @@
         "lastAudited": "Yoxlanıldı",
         "notReconciled": "Hələ yoxlanılmayıb",
         "sourceNotRecorded": "Mənbə qeydə alınmayıb"
-      }
+      },
+      "source": "Mənbə",
+      "whatIsThis": "Bu nədir?"
     },
     "auditTicker": {
       "events": "HADİSƏLƏR",
@@ -2228,7 +2235,8 @@
       "aiUsageToday": "Bu gün",
       "aiUsageMtd": "Ayın əvvəlindən",
       "aiUsageCalls": "çağırış",
-      "aiUsageClickHint": "Bütün holdinq üzrə statistikanı aç →"
+      "aiUsageClickHint": "Bütün holdinq üzrə statistikanı aç →",
+      "feedsFreshOk": "✓ Bütün istinad feed-ləri təzədir, son drift hadisəsi yoxdur"
     },
     "mobileBanner": {
       "text": "Risk Terminal ≥1024px ekranlar üçün optimallaşdırılıb. Bu ekranda bəzi panellər tam görünməyə bilər — tam təcrübə üçün daha geniş monitor istifadə edin.",
@@ -2678,6 +2686,10 @@
       "errNetwork": "Şəbəkə xətası",
       "errJsonParse": "JSON təhlil xətası: {message}",
       "errJsonNoAdjustments": "JSON ən azı bir elementi olan \"adjustments\" massivini ehtiva etməlidir"
+    },
+    "signalsStrip": {
+      "title": "📡 Siqnallar",
+      "staleAt": "köhnəlmiş {asOf}"
     }
   },
   "usersAdmin": {
