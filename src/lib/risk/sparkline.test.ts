@@ -146,6 +146,39 @@ describe('evaluateAt', () => {
     expect(result).toBeNull();
   });
 
+  it('forwards definition.aggregation="snapshot" to the per-period buildContext', async () => {
+    // Locks the sparkline-nit fix (2026-05-31): the per-month context must use
+    // the same snapshot/flow flag as the spot value, else a snapshot metric
+    // with intra-month multi-facts would average in the trailing viz.
+    let capturedAgg: string | undefined = 'UNSET';
+    await evaluateAt(stubDs, {
+      organizationId: 'o',
+      companyId: 'c',
+      definition: { id: 'i', formula: 'x', requiredInputs: [], aggregation: 'snapshot' },
+      period: '2026-04',
+      buildContext: async (a) => {
+        capturedAgg = a.aggregation;
+        return { context: { x: 1 } };
+      },
+    });
+    expect(capturedAgg).toBe('snapshot');
+  });
+
+  it('defaults the per-period aggregation to "flow" when the definition omits it', async () => {
+    let capturedAgg: string | undefined = 'UNSET';
+    await evaluateAt(stubDs, {
+      organizationId: 'o',
+      companyId: 'c',
+      definition: { id: 'i', formula: 'x', requiredInputs: [] },
+      period: '2026-04',
+      buildContext: async (a) => {
+        capturedAgg = a.aggregation;
+        return { context: { x: 1 } };
+      },
+    });
+    expect(capturedAgg).toBe('flow');
+  });
+
   it('returns null on divide-by-zero (Infinity is not finite)', async () => {
     const result = await evaluateAt(stubDs, {
       organizationId: 'o',

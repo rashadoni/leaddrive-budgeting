@@ -122,6 +122,7 @@ async function main() {
           formula: true,
           sparklineFormula: true,
           requiredInputs: true,
+          aggregation: true, // 2026-05-31 — snapshot/flow → per-month sparkline aggregation
         },
       },
       company: { select: { id: true, code: true } },
@@ -145,6 +146,7 @@ async function main() {
         formula: iv.indicator.formula,
         sparklineFormula: iv.indicator.sparklineFormula,
         requiredInputs: iv.indicator.requiredInputs,
+        aggregation: iv.indicator.aggregation, // 2026-05-31 — snapshot/flow
       };
       const sparkline = await computeSparkline(ds, {
         organizationId: iv.organizationId,

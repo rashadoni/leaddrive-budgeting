@@ -812,6 +812,7 @@ export async function recomputeIndicator(
         formula: args.definition.formula,
         sparklineFormula: args.definition.sparklineFormula ?? null,
         requiredInputs: args.definition.requiredInputs,
+        aggregation: args.definition.aggregation, // 2026-05-31 — snapshot/flow into per-month sparkline
       },
       anchorPeriod: args.period,
       // Sub-43 closure — extracted period:string→Period bridge.

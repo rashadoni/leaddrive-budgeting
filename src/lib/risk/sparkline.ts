@@ -37,6 +37,10 @@ export interface IndicatorForSparkline {
   formula: string;
   sparklineFormula?: string | null;
   requiredInputs: string[];
+  /** 2026-05-31 — "snapshot" | "flow"; threaded into the per-month buildContext
+   *  so the sparkline resolves operationalFact inputs the same way the spot
+   *  value does (latest-by-date for snapshots, mean for flows). Absent → flow. */
+  aggregation?: string;
 }
 
 /**
@@ -92,6 +96,7 @@ export async function evaluateAt(
       companyId: string;
       period: string;
       requiredInputs: string[];
+      aggregation?: "snapshot" | "flow";
     }) => Promise<{ context: Record<string, unknown> }>;
   },
 ): Promise<number | null> {
@@ -102,6 +107,7 @@ export async function evaluateAt(
       companyId: args.companyId,
       period: args.period,
       requiredInputs: args.definition.requiredInputs,
+      aggregation: args.definition.aggregation === 'snapshot' ? 'snapshot' : 'flow',
     });
     const formula =
       args.definition.sparklineFormula && args.definition.sparklineFormula.length > 0
@@ -199,6 +205,7 @@ export function bridgeRecomputeBuildContext(
       companyId: string;
       period: Period;
       requiredInputs: string[];
+      aggregation?: "snapshot" | "flow";
     },
   ) => Promise<{
     context: Record<string, unknown>;
@@ -223,6 +230,7 @@ export function bridgeRecomputeBuildContext(
       companyId: a.companyId,
       period,
       requiredInputs: a.requiredInputs,
+      aggregation: a.aggregation,
     });
     // Explicit destructure-and-rewrap. Sub-43 architect closure —
     // making the strip intentional in the type system: a future
