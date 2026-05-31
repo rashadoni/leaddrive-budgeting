@@ -49,6 +49,7 @@ describe('Terminal i18n parity (scenario panel/form + sweep namespaces)', () => 
     'signalsStrip',
     'strategicContext',
     'impactForecasts',
+    'signals',
   ] as const) {
     const enKeys = leafKeys(sub(en, ['terminal', ns]));
     const ruKeys = leafKeys(sub(ru, ['terminal', ns]));

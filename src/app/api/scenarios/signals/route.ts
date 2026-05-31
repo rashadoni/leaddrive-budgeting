@@ -6,9 +6,10 @@
  * auth-gated. News-derived triggers are OUT (raw news = 0 rows — Phase 3b).
  */
 import { NextRequest, NextResponse } from 'next/server'
+import { getTranslations } from 'next-intl/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
-import { detectSignals, detectNewsSignals, type NewsItem } from '@/lib/risk/scenario-signals'
+import { detectSignals, detectNewsSignals, type NewsItem, type SignalTranslator } from '@/lib/risk/scenario-signals'
 import { FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
 
 /** Only news from the last N days can trigger (stale news must not fire). */
@@ -80,5 +81,12 @@ export async function GET(request: NextRequest) {
     publishedAt: n.publishedAt ? n.publishedAt.toISOString().slice(0, 10) : '',
   }))
 
-  return NextResponse.json({ signals: [...detectSignals(snapshot), ...detectNewsSignals(newsItems)] })
+  // Localize signal labels/details server-side (label/detail templates live in
+  // messages/*.json terminal.signals.*). Locale comes from the x-locale header
+  // (proxy.ts → i18n/request.ts). Keeps the Signal contract — {label, detail}
+  // strings — unchanged for the client + visual baseline.
+  const tSignals = (await getTranslations('terminal.signals')) as unknown as SignalTranslator
+  return NextResponse.json({
+    signals: [...detectSignals(snapshot, tSignals), ...detectNewsSignals(newsItems, tSignals)],
+  })
 }

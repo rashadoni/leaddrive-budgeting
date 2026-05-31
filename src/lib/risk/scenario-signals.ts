@@ -23,7 +23,17 @@ export interface Signal {
 
 const pct = (x: number) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`
 
-export function detectSignals(snapshot: FeedSnapshot): Signal[] {
+/** Minimal translator the detectors use to localize signal labels/details.
+ *  Structurally satisfied by next-intl's scoped `t` (the route injects
+ *  `getTranslations('terminal.signals')`). */
+export type SignalTranslator = (key: string, values?: Record<string, string | number>) => string
+
+/** Fallback when no translator is injected (unit tests / non-localized callers):
+ *  returns the key verbatim. Production (the signals route) always passes a real
+ *  next-intl translator, so end users never see raw keys. */
+const IDENTITY: SignalTranslator = (k) => k
+
+export function detectSignals(snapshot: FeedSnapshot, t: SignalTranslator = IDENTITY): Signal[] {
   const out: Signal[] = []
   const get = (k: string) => {
     const d = snapshot[k]
@@ -40,8 +50,8 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
         id: 'fx-depreciation',
         kind: 'market',
         severity: 'high',
-        label: 'Рынок закладывает девальвацию маната',
-        detail: `Форвард USD/AZN 12М ${fwd.value} vs спот ${spot.value} (${pct(premium)})`,
+        label: t('fxDepreciation.label'),
+        detail: t('fxDepreciation.detail', { fwd: String(fwd.value), spot: String(spot.value), premium: pct(premium) }),
         suggestedScenarioCode: 'AZN_DEVAL_15',
         asOf: fwd.asOf,
         stale: fwd.stale || spot.stale,
@@ -56,8 +66,8 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
       id: 'oil-elevated',
         kind: 'market',
       severity: 'medium',
-      label: 'Brent на повышенном уровне',
-      detail: `Brent $${brent.value}/баррель (> $95) — давление на энергию/удобрения`,
+      label: t('oilElevated.label'),
+      detail: t('oilElevated.detail', { brent: String(brent.value) }),
       suggestedScenarioCode: 'BRENT_TO_140',
       asOf: brent.asOf,
       stale: brent.stale,
@@ -71,8 +81,8 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
       id: 'drought',
         kind: 'market',
       severity: 'high',
-      label: 'Низкий прогноз осадков в агрорегионах',
-      detail: `Мин. осадки 14д ${rain.value} мм (< 15 мм) — риск засухи`,
+      label: t('drought.label'),
+      detail: t('drought.detail', { rain: String(rain.value) }),
       suggestedScenarioCode: 'DROUGHT_2026',
       asOf: rain.asOf,
       stale: rain.stale,
@@ -86,8 +96,8 @@ export function detectSignals(snapshot: FeedSnapshot): Signal[] {
       id: 'sugar-pressure',
       kind: 'market',
       severity: 'medium',
-      label: 'Цена сахара под давлением',
-      detail: `FAO индекс сахара ${sugar.value} (< 90)`,
+      label: t('sugarPressure.label'),
+      detail: t('sugarPressure.detail', { sugar: String(sugar.value) }),
       suggestedScenarioCode: 'SUGAR_PRICE_TO_70',
       asOf: sugar.asOf,
       stale: sugar.stale,
@@ -135,7 +145,7 @@ const NEWS_RULES: NewsRule[] = [
  * heuristic, deterministic — no per-request LLM). Dedupes to one signal per
  * scenario, keeping the most-negative headline. Pure.
  */
-export function detectNewsSignals(items: NewsItem[]): Signal[] {
+export function detectNewsSignals(items: NewsItem[], t: SignalTranslator = IDENTITY): Signal[] {
   const best = new Map<string, NewsItem>()
   for (const item of items) {
     const s = item.sentimentScore
@@ -154,7 +164,7 @@ export function detectNewsSignals(items: NewsItem[]): Signal[] {
     kind: 'news' as const,
     severity: (item.sentimentScore ?? 0) <= -0.5 ? 'high' : 'medium',
     label: item.title.length > 90 ? `${item.title.slice(0, 87)}…` : item.title,
-    detail: `📰 ${item.sourceLabel} · тон ${(item.sentimentScore ?? 0).toFixed(2)}`,
+    detail: t('newsDetail', { source: item.sourceLabel, score: (item.sentimentScore ?? 0).toFixed(2) }),
     suggestedScenarioCode: code,
     asOf: item.publishedAt,
     stale: false,

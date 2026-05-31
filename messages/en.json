@@ -2721,6 +2721,25 @@
       "confHigh": "high conf.",
       "confMed": "med conf.",
       "confLow": "low conf."
+    },
+    "signals": {
+      "fxDepreciation": {
+        "label": "Market is pricing in manat devaluation",
+        "detail": "12M USD/AZN forward {fwd} vs spot {spot} ({premium})"
+      },
+      "oilElevated": {
+        "label": "Brent elevated",
+        "detail": "Brent ${brent}/bbl (> $95) — energy/fertilizer cost pressure"
+      },
+      "drought": {
+        "label": "Low rainfall forecast in agro regions",
+        "detail": "Min 14d rainfall {rain} mm (< 15 mm) — drought risk"
+      },
+      "sugarPressure": {
+        "label": "Sugar price under pressure",
+        "detail": "FAO sugar index {sugar} (< 90)"
+      },
+      "newsDetail": "📰 {source} · sentiment {score}"
     }
   },
   "usersAdmin": {

@@ -2721,6 +2721,25 @@
       "confHigh": "выс. увер.",
       "confMed": "сред. увер.",
       "confLow": "низ. увер."
+    },
+    "signals": {
+      "fxDepreciation": {
+        "label": "Рынок закладывает девальвацию маната",
+        "detail": "Форвард USD/AZN 12М {fwd} vs спот {spot} ({premium})"
+      },
+      "oilElevated": {
+        "label": "Brent на повышенном уровне",
+        "detail": "Brent ${brent}/баррель (> $95) — давление на энергию/удобрения"
+      },
+      "drought": {
+        "label": "Низкий прогноз осадков в агрорегионах",
+        "detail": "Мин. осадки 14д {rain} мм (< 15 мм) — риск засухи"
+      },
+      "sugarPressure": {
+        "label": "Цена сахара под давлением",
+        "detail": "FAO индекс сахара {sugar} (< 90)"
+      },
+      "newsDetail": "📰 {source} · тон {score}"
     }
   },
   "usersAdmin": {

@@ -464,6 +464,20 @@ const EXPLICIT_LABELS: Record<string, string> = {
   'strategicContext.loadError': 'Load error: {error}',
   'strategicContext.riskPending':
     "⚠️ Pending client verification — the KRI registry hasn't been provided by the company's finance team yet. Risk indicators will show «unknown» until the xlsx is uploaded.",
+
+  // SignalsStrip signal labels/details (terminal.signals.*) — the signals route
+  // localizes server-side via getTranslations, mocked here. Mirrors messages/en.json
+  // so the route test's interpolation assertions (e.g. drought.detail contains the
+  // live rainfall value) still hold.
+  'fxDepreciation.label': 'Market is pricing in manat devaluation',
+  'fxDepreciation.detail': '12M USD/AZN forward {fwd} vs spot {spot} ({premium})',
+  'oilElevated.label': 'Brent elevated',
+  'oilElevated.detail': 'Brent ${brent}/bbl (> $95) — energy/fertilizer cost pressure',
+  'drought.label': 'Low rainfall forecast in agro regions',
+  'drought.detail': 'Min 14d rainfall {rain} mm (< 15 mm) — drought risk',
+  'sugarPressure.label': 'Sugar price under pressure',
+  'sugarPressure.detail': 'FAO sugar index {sugar} (< 90)',
+  'newsDetail': '📰 {source} · sentiment {score}',
 };
 
 /**
