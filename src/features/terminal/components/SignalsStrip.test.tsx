@@ -4,7 +4,7 @@ import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/re
 import { SignalsStrip } from "./SignalsStrip";
 
 const SIGNALS = [
-  { id: "fx-depreciation", severity: "high", label: "Девальвация маната", detail: "форвард", suggestedScenarioCode: "AZN_DEVAL_15", asOf: "2026-05-24", stale: false },
+  { id: "oil-elevated", severity: "medium", label: "Brent на повышенном уровне", detail: "Brent $110/баррель", suggestedScenarioCode: "BRENT_TO_140", asOf: "2026-05-24", stale: false },
   { id: "drought", severity: "high", label: "Низкие осадки", detail: "11.5мм", suggestedScenarioCode: "DROUGHT_2026", asOf: "2026-05-28", stale: false },
 ];
 
@@ -23,9 +23,9 @@ describe("SignalsStrip", () => {
   it("renders a chip per signal", async () => {
     mockFetch(SIGNALS);
     render(<SignalsStrip />);
-    await waitFor(() => expect(screen.getByTestId("signal-fx-depreciation")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId("signal-oil-elevated")).toBeTruthy());
     expect(screen.getByTestId("signal-drought")).toBeTruthy();
-    expect(screen.getByText(/AZN_DEVAL_15/)).toBeTruthy();
+    expect(screen.getByText(/BRENT_TO_140/)).toBeTruthy();
   });
 
   it("clicking a signal dispatches terminal:open-scenario with the scenario code", async () => {

@@ -53,13 +53,9 @@ const ADAPTER_METRICS: ReadonlyArray<string> = [
   "AZ_GOODS_EXPORTS_USD",
   "AZ_GOODS_IMPORTS_USD",
   "AZ_TRADE_BALANCE_USD",
-  // ── cbar-fx + cbar-fx-forward ─────────────────
+  // ── cbar-fx (spot only; IRP forward removed 2026-06-01) ──
   "AZN_USD",
   "AZN_EUR",
-  "FX_FORWARD_USD_AZN_3M",
-  "FX_FORWARD_USD_AZN_6M",
-  "FX_FORWARD_USD_AZN_12M",
-  "FX_FORWARD_EUR_AZN_3M",
   // ── eia-energy ────────────────────────────────
   "BRENT_USD_BBL",
   "WTI_USD_BBL",

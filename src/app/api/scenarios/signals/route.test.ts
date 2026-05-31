@@ -28,7 +28,6 @@ describe('GET /api/scenarios/signals', () => {
   it('reads the feed → returns the firing signals (rainfall MIN across regions)', async () => {
     fxFindMany.mockResolvedValue([{ currencyCode: 'USD', rate: 1.7, rateDate: new Date('2026-05-28') }])
     intelFindMany.mockResolvedValue([
-      { metric: 'FX_FORWARD_USD_AZN_12M', value: 1.7527, datetime: new Date('2026-05-24') },
       { metric: 'BRENT_USD_BBL', value: 110.53, datetime: new Date('2026-05-14') },
       { metric: 'FAO_SUGAR_INDEX', value: 88.5, datetime: new Date('2026-03-31') },
       { metric: 'BEYLAQAN_RAINFALL_MM_14D_FCST', value: 11.5, datetime: new Date('2026-05-28') },
@@ -38,7 +37,7 @@ describe('GET /api/scenarios/signals', () => {
     const body = await res.json()
     expect(res.status).toBe(200)
     const ids = body.signals.map((s: { id: string }) => s.id).sort()
-    expect(ids).toEqual(['drought', 'fx-depreciation', 'oil-elevated', 'sugar-pressure'])
+    expect(ids).toEqual(['drought', 'oil-elevated', 'sugar-pressure'])
     // drought used the MIN rainfall (11.5), not the other region
     const drought = body.signals.find((s: { id: string }) => s.id === 'drought')
     expect(drought.detail).toContain('11.5')

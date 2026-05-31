@@ -21,8 +21,6 @@ export interface Signal {
   stale: boolean
 }
 
-const pct = (x: number) => `${x >= 0 ? '+' : ''}${(x * 100).toFixed(1)}%`
-
 /** Minimal translator the detectors use to localize signal labels/details.
  *  Structurally satisfied by next-intl's scoped `t` (the route injects
  *  `getTranslations('terminal.signals')`). */
@@ -40,26 +38,15 @@ export function detectSignals(snapshot: FeedSnapshot, t: SignalTranslator = IDEN
     return d && typeof d.value === 'number' && Number.isFinite(d.value) ? d : null
   }
 
-  // 1) FX depreciation — 12M forward prices the manat weaker than spot.
-  const spot = get('AZN_USD')
-  const fwd = get('FX_FORWARD_USD_AZN_12M')
-  if (spot && fwd && spot.value > 0) {
-    const premium = fwd.value / spot.value - 1
-    if (premium > 0.015) {
-      out.push({
-        id: 'fx-depreciation',
-        kind: 'market',
-        severity: 'high',
-        label: t('fxDepreciation.label'),
-        detail: t('fxDepreciation.detail', { fwd: String(fwd.value), spot: String(spot.value), premium: pct(premium) }),
-        suggestedScenarioCode: 'AZN_DEVAL_15',
-        asOf: fwd.asOf,
-        stale: fwd.stale || spot.stale,
-      })
-    }
-  }
+  // NOTE (2026-06-01): the FX-depreciation signal was removed. It fired on an
+  // IRP-MODELED 12M forward (FX_FORWARD_USD_AZN_12M) computed from hardcoded
+  // spot + policy rates — not a real market quote. The manat is a managed peg
+  // with no liquid forward market, so an interest-rate-parity premium is not a
+  // devaluation expectation. Showing it as "market is pricing devaluation" was
+  // misleading. Removed with the cbar-fx-forward adapter. The remaining signals
+  // below are all driven by real fetched feeds (Brent/EIA, weather, FAO sugar).
 
-  // 2) Oil elevated — energy/fertilizer cost pressure.
+  // 1) Oil elevated — energy/fertilizer cost pressure.
   const brent = get('BRENT_USD_BBL')
   if (brent && brent.value > 95) {
     out.push({

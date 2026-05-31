@@ -60,12 +60,6 @@ describe("checkPlausibility — FX rates", () => {
     expect(checkPlausibility("AZN_USD", 1700).ok).toBe(false)
   })
 
-  it("applies same rule to forward curve tenors", () => {
-    expect(checkPlausibility("FX_FORWARD_USD_AZN_3M", 1.72).ok).toBe(true)
-    expect(checkPlausibility("FX_FORWARD_USD_AZN_6M", 1.74).ok).toBe(true)
-    expect(checkPlausibility("FX_FORWARD_USD_AZN_12M", 1.78).ok).toBe(true)
-    expect(checkPlausibility("FX_FORWARD_USD_AZN_3M", 0.0001).ok).toBe(false)
-  })
 })
 
 describe("checkPlausibility — energy", () => {

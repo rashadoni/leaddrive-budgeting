@@ -2723,10 +2723,6 @@
       "confLow": "low conf."
     },
     "signals": {
-      "fxDepreciation": {
-        "label": "Market is pricing in manat devaluation",
-        "detail": "12M USD/AZN forward {fwd} vs spot {spot} ({premium})"
-      },
       "oilElevated": {
         "label": "Brent elevated",
         "detail": "Brent ${brent}/bbl (> $95) — energy/fertilizer cost pressure"

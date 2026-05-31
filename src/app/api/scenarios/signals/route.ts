@@ -15,7 +15,7 @@ import { FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-con
 /** Only news from the last N days can trigger (stale news must not fire). */
 const NEWS_WINDOW_DAYS = 30
 
-const INTEL_METRICS = ['FX_FORWARD_USD_AZN_12M', 'BRENT_USD_BBL', 'FAO_SUGAR_INDEX']
+const INTEL_METRICS = ['BRENT_USD_BBL', 'FAO_SUGAR_INDEX']
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request)

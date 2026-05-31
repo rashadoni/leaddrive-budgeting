@@ -469,8 +469,6 @@ const EXPLICIT_LABELS: Record<string, string> = {
   // localizes server-side via getTranslations, mocked here. Mirrors messages/en.json
   // so the route test's interpolation assertions (e.g. drought.detail contains the
   // live rainfall value) still hold.
-  'fxDepreciation.label': 'Market is pricing in manat devaluation',
-  'fxDepreciation.detail': '12M USD/AZN forward {fwd} vs spot {spot} ({premium})',
   'oilElevated.label': 'Brent elevated',
   'oilElevated.detail': 'Brent ${brent}/bbl (> $95) — energy/fertilizer cost pressure',
   'drought.label': 'Low rainfall forecast in agro regions',

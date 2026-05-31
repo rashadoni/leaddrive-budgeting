@@ -116,7 +116,7 @@ export const PLAUSIBILITY_RULES: ReadonlyArray<PlausibilityRule> = [
   // breach 0.5 or 5.0.
   {
     id: "azn-usd-spot",
-    match: /^(AZN_USD|FX_FORWARD_USD_AZN_(?:3|6|12)M)$/,
+    match: /^AZN_USD$/,
     min: 0.5,
     max: 5.0,
     reason:
@@ -124,7 +124,7 @@ export const PLAUSIBILITY_RULES: ReadonlyArray<PlausibilityRule> = [
   },
   {
     id: "azn-eur-spot",
-    match: /^(AZN_EUR|FX_FORWARD_EUR_AZN_(?:3|6|12)M)$/,
+    match: /^AZN_EUR$/,
     min: 0.5,
     max: 5.0,
     reason:

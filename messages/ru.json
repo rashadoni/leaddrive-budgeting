@@ -2723,10 +2723,6 @@
       "confLow": "низ. увер."
     },
     "signals": {
-      "fxDepreciation": {
-        "label": "Рынок закладывает девальвацию маната",
-        "detail": "Форвард USD/AZN 12М {fwd} vs спот {spot} ({premium})"
-      },
       "oilElevated": {
         "label": "Brent на повышенном уровне",
         "detail": "Brent ${brent}/баррель (> $95) — давление на энергию/удобрения"

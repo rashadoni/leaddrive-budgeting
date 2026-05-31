@@ -8,7 +8,6 @@
 import { createWorldBankCPIAdapter } from "./worldbank-cpi"
 import { createOpenMeteoWeatherAdapter } from "./weather-openmeteo"
 import { createSugarYahooAdapter } from "./sugar-yahoo"
-import { createCBARForwardAdapter } from "./cbar-fx-forward"
 // Phase 7.K — Phase 1: official replacements for the 3 broken adapters
 // (tcmb-fx-rates / commodities-rss-brent / worldbank-sugar).
 import { createCBARFXAdapter } from "./cbar-fx"
@@ -64,8 +63,8 @@ export function getCommodityAdapters(
     // Phase 7.I — sector-aware feeds for AzerSheker pilot.
     createOpenMeteoWeatherAdapter(opts),
     createSugarYahooAdapter(opts),
-    // Phase 7.J — IRP-derived AZN forward curve for hedge sizing.
-    createCBARForwardAdapter(opts),
+    // Phase 7.J IRP-derived AZN forward curve REMOVED 2026-06-01 — it was a
+    // model on hardcoded spot+rates (no real AZN forward market), not real data.
   ]
 }
 
@@ -74,7 +73,6 @@ export function getCommodityAdapters(
 // once the dashboard auto-prunes).
 export { createTCMBAdapter, TCMB_FX_SOURCE } from "./tcmb-fx"
 export { createWorldBankCPIAdapter, WB_CPI_SOURCE } from "./worldbank-cpi"
-export { createCommoditiesRSSAdapter, COMMODITIES_RSS_SOURCE } from "./commodities-rss"
 // Phase 7.K Phase 1 replacements:
 export { createCBARFXAdapter, CBAR_FX_SOURCE } from "./cbar-fx"
 export { createEIAEnergyAdapter, EIA_ENERGY_SOURCE } from "./eia-energy"
@@ -148,10 +146,6 @@ export {
   SUGAR_YAHOO_SOURCE,
   SUGAR_YAHOO_METRIC,
 } from "./sugar-yahoo"
-export {
-  createCBARForwardAdapter,
-  buildForwardCurve,
-} from "./cbar-fx-forward"
 export {
   ingestCommodityData,
   clearCommodityMemoryForTests,

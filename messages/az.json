@@ -2723,10 +2723,6 @@
       "confLow": "aşağı etibar"
     },
     "signals": {
-      "fxDepreciation": {
-        "label": "Bazar manatın devalvasiyasını qiymətləndirir",
-        "detail": "12 aylıq USD/AZN forvard {fwd} vs spot {spot} ({premium})"
-      },
       "oilElevated": {
         "label": "Brent yüksək səviyyədə",
         "detail": "Brent ${brent}/barel (> $95) — enerji/gübrə xərc təzyiqi"
