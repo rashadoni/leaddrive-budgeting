@@ -96,9 +96,25 @@ export const budgetLineResolver: NamespaceResolver = {
     const domestic_input_cost = domestic_cogs;
     const gross_profit = revenue - cogs;
     const net_income = revenue - cogs - opex;
-    // True EBITDA = EBIT + D&A add-back (703-11 + 721-11 SAP codes).
-    // Equals net_income when no D&A lines are identified (PLF-format data).
-    const ebitda = net_income + da_total;
+    // EBITDA: prefer the source's OWN EBITDA subtotal, captured as `pl_ebitda`
+    // operational_facts (SUMMED over the period = flow semantics, like the P&L
+    // leaves). 2026-05-31 audit: PLF-format AzerSheker has no SAP D&A codes
+    // (da_total=0) AND its `expense` lineType lumps D&A + interest + tax, so
+    // `net_income + da_total` collapses to NET — IND_EBITDA_MARGIN was showing
+    // net margin (CPC 4.55% vs the source's 9.29%). When no captured pl_ebitda
+    // exists, fall back to the EBIT + D&A-add-back derivation.
+    let capturedEbitda: number | null = null;
+    if (ctx.ds.listOperationalFacts) {
+      const ebRows = await ctx.ds.listOperationalFacts({
+        organizationId: ctx.organizationId,
+        companyId: ctx.companyId,
+        metric: 'pl_ebitda',
+        start: ctx.period.start,
+        end: ctx.period.end,
+      });
+      if (ebRows.length > 0) capturedEbitda = ebRows.reduce((s, r) => s + r.value, 0);
+    }
+    const ebitda = capturedEbitda ?? net_income + da_total;
 
     state.context.revenue = revenue;
     state.context.cogs = cogs;
