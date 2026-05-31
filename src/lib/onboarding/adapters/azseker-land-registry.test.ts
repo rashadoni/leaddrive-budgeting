@@ -184,4 +184,37 @@ describe("parseLandRegistryFromAoa", () => {
     expect(result.warnings.length).toBe(1)
     expect(result.warnings[0]).toMatch(/zero hectares/)
   })
+
+  it("REJECTS a year-keyed forecast sheet (S/S column holds years, e.g. Torpaq) to avoid N× duplication", () => {
+    // Mirrors the live bug: "Torpaq" repeats the registry once per forecast
+    // year, so S/S holds 2027..2037 → 431 parcels / 225,236 ha stored vs the
+    // real 17 / 22,596. The guard must refuse rather than persist the garbage.
+    const row = (year: number, ha: number) => [
+      year, `r${year}`, `a${year}`, "31.10.2025", "Ağcabədi", "X", "",
+      ha, 1000, "11.07.2017-49 il", "", "İcarə", "Ağcabədi rayon",
+    ]
+    const aoa: unknown[][] = [
+      [],
+      HEADER,
+      row(2027, 500),
+      row(2028, 500),
+      row(2029, 500),
+      row(2030, 500),
+    ]
+    const result = parseLandRegistryFromAoa(aoa)
+    expect(result.parcels).toHaveLength(0) // refused, not 4 parcels / 2000 ha
+    expect(result.totalHectares).toBe(0)
+    expect(result.warnings.some((w) => /year-like sequence/i.test(w))).toBe(true)
+  })
+
+  it("ACCEPTS a normal registry whose S/S are sequence numbers 1..N (not years)", () => {
+    const row = (seq: number, ha: number) => [
+      seq, `r${seq}`, `a${seq}`, "31.10.2025", "Ağcabədi", "X", "",
+      ha, 1000, "11.07.2017-49 il", "", "İcarə", "Ağcabədi rayon",
+    ]
+    const aoa: unknown[][] = [[], HEADER, row(1, 500), row(2, 600), row(3, 700)]
+    const result = parseLandRegistryFromAoa(aoa)
+    expect(result.parcels).toHaveLength(3)
+    expect(result.totalHectares).toBe(1800)
+  })
 })

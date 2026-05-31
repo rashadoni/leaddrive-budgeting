@@ -210,6 +210,31 @@ export function parseLandRegistryFromAoa(
     })
   }
 
+  // Guard (2026-05-31): reject year-keyed sheets misclassified as a land
+  // registry. The lease-extract registry ("Çıxarışların uçotu") numbers
+  // parcels with S/S sequence 1..N. A forecast sheet such as "Torpaq" repeats
+  // the registry once per forecast year, so its leading column holds calendar
+  // YEARS (2027..2037) — parsed naively that yields ~N× duplicated parcels
+  // (EDEN: 431 parcels / 225,236 ha stored vs the real 17 / 22,596). The AI
+  // multi-import classified "Torpaq" (= "Land") as a land registry and ran
+  // this adapter on it, overwriting the correct data. If most sequence numbers
+  // look like calendar years, this is NOT a registry — return empty + warn
+  // rather than persist inflated garbage.
+  const yearLike = parcels.filter(
+    (p) => p.sequenceNumber >= 1990 && p.sequenceNumber <= 2100,
+  ).length
+  if (parcels.length > 0 && yearLike / parcels.length > 0.5) {
+    return {
+      parcels: [],
+      warnings: [
+        ...warnings,
+        `Rejected land parse: ${yearLike}/${parcels.length} parcels have year-like sequence numbers (e.g. ${parcels[0].sequenceNumber}). This looks like a year-keyed forecast sheet (e.g. "Torpaq"), not a land-extract registry — refusing to avoid ~N× hectare duplication.`,
+      ],
+      totalHectares: 0,
+      totalAnnualRentAzn: 0,
+    }
+  }
+
   const totalHectares = parcels.reduce((s, p) => s + p.hectares, 0)
   const totalAnnualRentAzn = parcels.reduce((s, p) => s + p.annualRentAzn, 0)
   return { parcels, warnings, totalHectares, totalAnnualRentAzn }
