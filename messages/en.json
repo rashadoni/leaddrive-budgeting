@@ -2098,7 +2098,46 @@
       "summaryStable": "stable",
       "summaryLine": "Affected {affected} indicators · {cells} cells across {companies} companies",
       "noAffected": "No affected indicators in current scope.",
-      "footerNote": "Preview is not persisted. Save an override set via Scenario → Save (v2)."
+      "footerNote": "Preview is not persisted. Save an override set via Scenario → Save (v2).",
+      "groups": {
+        "fx": "FX Rates",
+        "commodity": "Commodities",
+        "macro": "Macro",
+        "agro": "Agricultural"
+      },
+      "vars": {
+        "fx_usd": "AZN per 1 USD",
+        "fx_eur": "AZN per 1 EUR",
+        "fx_try": "AZN per 1 TRY",
+        "fx_rub": "AZN per 1 RUB",
+        "brent_price_latest": "Brent Crude",
+        "sugar_price_latest": "Sugar (ICE #11)",
+        "wheat_price_latest": "Wheat (CBOT)",
+        "corn_price_latest": "Corn / Maize",
+        "cotton_price_latest": "Cotton (ICE #2)",
+        "natgas_price_latest": "Natural Gas",
+        "az_cpi_all_latest": "AZ CPI (all items)",
+        "az_cpi_food_latest": "AZ Food CPI",
+        "az_cpi_housing_latest": "AZ Housing CPI",
+        "rainfall_mm_90d": "Rainfall (90-day)",
+        "temp_avg_c_30d": "Avg Temperature"
+      },
+      "presets": {
+        "aznPeg": "AZN Peg Break",
+        "opec": "OPEC+ Breakdown",
+        "grain": "Black Sea Grain Crisis",
+        "tryCrash": "Turkish Lira Crash",
+        "drought": "Kura-Araz Drought",
+        "fullShock": "Full External Shock"
+      },
+      "presetDescs": {
+        "aznPeg": "2015 devaluation replay: AZN −15%, inflation +6pp, gas costs rise",
+        "opec": "Brent $40 — below AZ fiscal break-even; partial AZN weakening −10%",
+        "grain": "2022 Ukraine war replay: wheat +81%, corn +45%, gas ×2 — import food shock",
+        "tryCrash": "TRY −44% (2021 replay) — Turkish import flood + tourism revenue hit",
+        "drought": "Catastrophic drought: rainfall −86%, heat +13°C — EDEN agro yield shock",
+        "fullShock": "Oil crash + AZN devaluation + grain crisis + drought — tail risk stress test"
+      }
     },
     "breach": {
       "dialogAriaLabel": "Predictive Breach Forecasts",

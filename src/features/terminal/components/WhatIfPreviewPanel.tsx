@@ -153,6 +153,9 @@ const ALL_DEFAULTS: Record<string, number> = Object.fromEntries(
 // ─── Preset Stress Scenarios ──────────────────────────────────────────────────
 
 interface Preset {
+  /** i18n key — label via `whatif.presets.<key>`, tooltip via `whatif.presetDescs.<key>`. */
+  key: string
+  /** EN reference (rendered text comes from i18n; kept for code readability). */
   label: string
   desc: string
   icon: string
@@ -161,6 +164,7 @@ interface Preset {
 
 const PRESETS: Preset[] = [
   {
+    key: "aznPeg",
     label: "AZN Peg Break",
     // Replay of Feb 2015 devaluation: CBAR lifted the peg after Brent fell from $115→$45.
     // AZN/USD moved from 0.78 → 1.05 overnight (-34%). All imported inputs (machinery,
@@ -178,6 +182,7 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    key: "opec",
     label: "OPEC+ Breakdown",
     // AZ fiscal break-even ~$55/bbl. Below that: state capex cut → contractor revenues drop,
     // credit tightens (IBA NPL rise), construction slows, consumer spending falls.
@@ -191,6 +196,7 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    key: "grain",
     label: "Black Sea Grain Crisis",
     // 2022 Ukraine war scenario: wheat spiked to $430/t (+100%), corn +50%, EU natgas +200%.
     // Azerbaijan imports ~60% of wheat → bread prices up → social pressure → price caps.
@@ -205,6 +211,7 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    key: "tryCrash",
     label: "Turkish Lira Crash",
     // Turkey is AZ's #1 trade partner (~30% of imports). TRY crashed -44% in Dec 2021.
     // Effect: (1) cheaper Turkish goods dump into AZ market → local manufacturers lose margin;
@@ -218,6 +225,7 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    key: "drought",
     label: "Kura-Araz Drought",
     // EDEN operates 22,596 ha in the Kura-Araz lowland — semi-arid (250 mm/yr avg).
     // A severe drought year: <30 mm/90-day + extreme summer heat.
@@ -234,6 +242,7 @@ const PRESETS: Preset[] = [
     },
   },
   {
+    key: "fullShock",
     label: "Full External Shock",
     // "Perfect storm": oil crash triggers AZN devaluation → inflation spike → credit crunch.
     // Simultaneously: Ukraine-style grain disruption + European gas crisis.
@@ -442,14 +451,14 @@ export function WhatIfPreviewPanel() {
           <div className="flex flex-wrap items-center gap-2">
             {PRESETS.map((preset) => (
               <button
-                key={preset.label}
+                key={preset.key}
                 type="button"
-                title={preset.desc}
+                title={t(`whatif.presetDescs.${preset.key}` as never)}
                 onClick={() => applyPreset(preset)}
                 className="inline-flex items-center gap-1.5 rounded border border-gray-700/60 px-2.5 py-1 text-[11px] text-gray-300 hover:border-[#FFB800]/50 hover:bg-[#FFB800]/5 hover:text-[#FFB800] transition-colors"
               >
                 <span aria-hidden="true">{preset.icon}</span>
-                <span className="font-medium">{preset.label}</span>
+                <span className="font-medium">{t(`whatif.presets.${preset.key}` as never)}</span>
               </button>
             ))}
             {hasChanges && (
@@ -487,7 +496,7 @@ export function WhatIfPreviewPanel() {
                   }`}
                 >
                   <span aria-hidden="true">{group.emoji}</span>
-                  <span>{group.label}</span>
+                  <span>{t(`whatif.groups.${group.key}` as never)}</span>
                   {changed > 0 && (
                     <span className="ml-0.5 h-4 min-w-[16px] rounded-full bg-cyan-500/20 text-cyan-400 text-[9px] font-mono flex items-center justify-center px-1">
                       {changed}
@@ -511,7 +520,7 @@ export function WhatIfPreviewPanel() {
                       changed ? "text-[#FFB800]" : "text-gray-400"
                     }`}
                   >
-                    {v.label}
+                    {t(`whatif.vars.${v.key}` as never)}
                   </span>
                   <input
                     type="number"

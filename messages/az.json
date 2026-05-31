@@ -2098,7 +2098,46 @@
       "summaryStable": "sabit",
       "summaryLine": "Təsirlənmiş {affected} indikator · {cells} xana, {companies} şirkət üzrə",
       "noAffected": "Cari görmə əhatəsində təsirlənmiş indikator yoxdur.",
-      "footerNote": "Önbax bazaya yazılmır. Override-ları saxlamaq üçün Ssenari → Saxla (v2) istifadə edin."
+      "footerNote": "Önbax bazaya yazılmır. Override-ları saxlamaq üçün Ssenari → Saxla (v2) istifadə edin.",
+      "groups": {
+        "fx": "Valyuta məzənnələri",
+        "commodity": "Əmtəələr",
+        "macro": "Makro",
+        "agro": "Aqrar"
+      },
+      "vars": {
+        "fx_usd": "1 USD üçün AZN",
+        "fx_eur": "1 EUR üçün AZN",
+        "fx_try": "1 TRY üçün AZN",
+        "fx_rub": "1 RUB üçün AZN",
+        "brent_price_latest": "Brent nefti",
+        "sugar_price_latest": "Şəkər (ICE #11)",
+        "wheat_price_latest": "Buğda (CBOT)",
+        "corn_price_latest": "Qarğıdalı",
+        "cotton_price_latest": "Pambıq (ICE #2)",
+        "natgas_price_latest": "Təbii qaz",
+        "az_cpi_all_latest": "AZ İQİ (bütün mallar)",
+        "az_cpi_food_latest": "AZ ərzaq İQİ",
+        "az_cpi_housing_latest": "AZ mənzil İQİ",
+        "rainfall_mm_90d": "Yağıntı (90 gün)",
+        "temp_avg_c_30d": "Orta temperatur"
+      },
+      "presets": {
+        "aznPeg": "Manatın bağlanmasının qırılması",
+        "opec": "OPEC+ dağılması",
+        "grain": "Qara dəniz taxıl böhranı",
+        "tryCrash": "Türk lirəsinin çöküşü",
+        "drought": "Kür-Araz quraqlığı",
+        "fullShock": "Tam xarici şok"
+      },
+      "presetDescs": {
+        "aznPeg": "2015 devalvasiyasının təkrarı: AZN −15%, inflyasiya +6pp, qaz xərcləri artır",
+        "opec": "Brent $40 — AZ büdcə nöqtəsindən aşağı; manatın qismən zəifləməsi −10%",
+        "grain": "2022 Ukrayna müharibəsinin təkrarı: buğda +81%, qarğıdalı +45%, qaz ×2 — idxal ərzaq şoku",
+        "tryCrash": "TRY −44% (2021 təkrarı) — türk idxalı axını + turizm gəlirinə zərbə",
+        "drought": "Fəlakətli quraqlıq: yağıntı −86%, istilik +13°C — EDEN məhsuldarlıq şoku",
+        "fullShock": "Neft çöküşü + manat devalvasiyası + taxıl böhranı + quraqlıq — quyruq riski stress-testi"
+      }
     },
     "breach": {
       "dialogAriaLabel": "İndikator pozuntuları proqnozu",
