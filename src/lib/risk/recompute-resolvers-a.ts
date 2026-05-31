@@ -101,6 +101,23 @@ export const companySettingsResolver: NamespaceResolver = {
   },
 };
 
+// Stock/snapshot operational metrics that must resolve to the LATEST in-period
+// fact, not the mean (see resolve() below). Two classes:
+//   • compliance/legal/audit counts (confirmed live-buggy 2026-05-31 — CPC
+//     LEGAL_CASES_ACTIVE 6@May + 8@Dec averaged to 7 instead of 8) — by prefix;
+//   • intensive ratios/indices (%, per-ha, indices) — averaging two snapshots
+//     of an intensive quantity is semantically wrong (you'd weight-average, not
+//     arithmetic-mean). Latent today only because each is written single-fact
+//     (azseker-workbook-kpi `yield_per_ha = Σharvest÷Σarea`; drought-index
+//     delete-then-insert) — a re-import on a new date would reintroduce the
+//     stale+fresh blend. Architect-flagged false-negative, closed here.
+// Flow/additive metrics (harvest_tons, area_hectares, *_avg_kg, prices, …) keep
+// averaging — none of them start with these prefixes or end in these suffixes.
+// Long-term this belongs on a per-IndicatorDefinition `aggregation` flag (see
+// CARRYOVER 2026-05-31); the allow-list is the no-migration fix for now.
+export const SNAPSHOT_METRIC_RE =
+  /^(LEGAL_CASES_|LEGAL_DISPUTES_|AUDIT_CLOSED_PCT|AUDIT_MAJOR_OPEN|court_disputes_|audit_findings_)|(_pct|_per_ha|_index)$/;
+
 export const operationalFactResolver: NamespaceResolver = {
   name: 'operationalFact',
   matches: (r) => r.startsWith('operationalFact:'),
@@ -122,10 +139,19 @@ export const operationalFactResolver: NamespaceResolver = {
         perMetric[metric] = { count: 0, avg: null };
         continue;
       }
-      const avg = rows.reduce((a, r) => a + r.value, 0) / rows.length;
-      state.context[metric] = avg;
-      state.inputs.resolved[metric] = avg;
-      perMetric[metric] = { count: rows.length, avg };
+      // Snapshot/stock metrics (legal/audit/court counts): when several facts
+      // exist in-period they are successive POINT-IN-TIME snapshots from
+      // re-imports, not period contributions — take the LATEST by date, not the
+      // mean. Averaging blends stale+fresh (2026-05-31: CPC LEGAL_CASES_ACTIVE
+      // had 6@2026-05-01 + 8@2026-12-31 → mean 7 instead of the correct 8).
+      // Flow metrics (production, weather, …) keep averaging. Conservative,
+      // explicit prefix allow-list — extend as new stock metrics are seeded.
+      const resolved = SNAPSHOT_METRIC_RE.test(metric)
+        ? rows.reduce((latest, r) => (r.date > latest.date ? r : latest), rows[0]).value
+        : rows.reduce((a, r) => a + r.value, 0) / rows.length;
+      state.context[metric] = resolved;
+      state.inputs.resolved[metric] = resolved;
+      perMetric[metric] = { count: rows.length, avg: resolved };
     }
     state.inputs.aggregates.operational_fact = perMetric;
   },

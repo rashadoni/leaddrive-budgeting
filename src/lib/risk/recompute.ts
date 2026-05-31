@@ -19,8 +19,13 @@
  *   "company.settings.<path>"           Pluck numeric top-level keys from
  *                                       Company.settings JSON; snake-case the
  *                                       name for context.
- *   "operationalFact:<metric>"          Avg of OperationalFact.value for that
- *                                       metric in period. Exposes as <metric>.
+ *   "operationalFact:<metric>"          OperationalFact.value for that metric in
+ *                                       period, exposed as <metric>. Multiple
+ *                                       in-period facts: MEAN for additive/flow
+ *                                       metrics, LATEST-by-date for snapshot/
+ *                                       stock metrics (counts, %, per-ha,
+ *                                       indices) — see SNAPSHOT_METRIC_RE in
+ *                                       recompute-resolvers-a.ts.
  *
  * Post-processing derives `rooms_available = total_rooms × daysInPeriod` when
  * both are present (occupancy shape).
