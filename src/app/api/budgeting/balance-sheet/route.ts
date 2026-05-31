@@ -22,7 +22,17 @@ export async function GET(req: NextRequest) {
   const lines = await withOrgScope(orgId, async (tx) =>
     tx.balanceSheetLine.findMany({
       where: { organizationId: orgId, planId, deletedAt: null },
-      orderBy: [{ lineType: "asc" }, { accountCode: "asc" }, { month: "asc" }],
+      // orderBy account.code via the relation (2026-05-31): the scalar
+      // `accountCode` column was DROPPED in Phase 2.1 (2026-05-26, replaced by
+      // accountId + account FK), but this orderBy still referenced it → Prisma
+      // "Unknown argument accountCode" → 500 → the BS tab silently showed the
+      // empty state for every plan since. The handler-test prisma mock ignores
+      // orderBy, so it stayed green; only hitting the live route surfaced it.
+      orderBy: [{ lineType: "asc" }, { account: { code: "asc" } }, { month: "asc" }],
+      // Include the related account so the client can label detail rows —
+      // `accountCode`/`accountName` scalars are gone (Phase 2.1); the per-
+      // account breakdown is keyed off `account.name`/`account.code` now.
+      include: { account: { select: { code: true, name: true } } },
     })
   )
 

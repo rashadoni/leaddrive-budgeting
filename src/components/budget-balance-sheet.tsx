@@ -25,8 +25,12 @@ function fmtCurrency(n: number): string {
 
 interface BSLine {
   id: string
-  accountCode: string
-  accountName: string
+  // `accountCode`/`accountName` scalars were dropped in Phase 2.1 (2026-05-26);
+  // the route now includes the related account. Keep the old fields optional
+  // for any legacy payload, but prefer `account.*` for labels.
+  accountCode?: string | null
+  accountName?: string | null
+  account?: { code: string | null; name: string | null } | null
   lineType: string
   month: number
   amount: number
@@ -35,8 +39,11 @@ interface BSLine {
 function getSectionData(lines: BSLine[]) {
   const grouped = new Map<string, Record<number, number>>()
   lines.forEach((l) => {
-    if (!grouped.has(l.accountName)) grouped.set(l.accountName, {})
-    grouped.get(l.accountName)![l.month] = (grouped.get(l.accountName)![l.month] || 0) + l.amount
+    // accountName/accountCode scalars dropped Phase 2.1 — label from the
+    // included account relation, with legacy-scalar + "—" fallbacks.
+    const label = l.account?.name ?? l.account?.code ?? l.accountName ?? l.accountCode ?? "—"
+    if (!grouped.has(label)) grouped.set(label, {})
+    grouped.get(label)![l.month] = (grouped.get(label)![l.month] || 0) + l.amount
   })
 
   const sectionTotals: Record<number, number> = {}
