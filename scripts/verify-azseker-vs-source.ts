@@ -10,7 +10,7 @@
  */
 import { PrismaClient } from "@prisma/client"
 import * as XLSX from "xlsx"
-import { parsePlfPlSheet, type PlfAccountType } from "../src/lib/onboarding/adapters/azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, type PlfAccountType } from "../src/lib/onboarding/adapters/azseker-plf"
 import { parseWorkbookBsSheet, type BsLineType } from "../src/lib/onboarding/adapters/azseker-workbook-bs"
 
 const prisma = new PrismaClient()
@@ -33,6 +33,15 @@ const BS_JOBS: { code: string; sheet: string }[] = [
   { code: "AZSEKER-MALT", sheet: "BS Malt" },
 ]
 const BS_TYPES: BsLineType[] = ["asset", "liability", "equity"]
+
+const CF_JOBS: { code: string; sheet: string }[] = [
+  { code: "AZSEKER-CPC", sheet: "CF CPC" },
+  { code: "AZSEKER-AZSF", sheet: "CF AZSF" },
+  { code: "AZSEKER-EDEN", sheet: "CF EDEN" },
+  { code: "AZSEKER-MALT", sheet: "CF Malt" },
+]
+const CF_TYPES = ["inflow", "outflow"] as const
+const CF_SOURCE_TAG = "azseker-workbook-cf"
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 })
@@ -167,6 +176,47 @@ async function main() {
       if (!ok) anyDiff = true
       console.log(`  ${ok ? "✓" : "✗"} ${t.padEnd(10)} months src=${Object.keys(src[t]).length} db=${Object.keys(db[t]).length} | maxMonthΔ=${fmt(maxDiff)}`)
       if (!ok && diffMonths.length) console.log(`      ${diffMonths.join("  ")}`)
+    }
+    console.log("")
+  }
+
+  // ===== CASH FLOW (flows, per month, by inflow/outflow) =====
+  console.log("========== CASH FLOW ==========\n")
+  for (const job of CF_JOBS) {
+    console.log(`━━━ ${job.code}  (sheet "${job.sheet}") ━━━`)
+    const parsed = parsePlfCfSheet(wb, job.sheet, XLSX, { preferYear: YEAR })
+    if (parsed.warnings.length) console.log(`  ⚠ ${parsed.warnings.slice(0, 2).map((w) => w.reason).join("; ")}`)
+    const src: Record<string, number[]> = { inflow: Array(12).fill(0), outflow: Array(12).fill(0) }
+    for (const e of parsed.entries) {
+      for (let m = 0; m < 12; m++) src[e.entryType][m] += e.perMonth[m] ?? 0
+    }
+    const rows = await prisma.cashFlowEntry.findMany({
+      where: {
+        source: CF_SOURCE_TAG,
+        sourceId: { startsWith: `${job.code}::` },
+        deletedAt: null,
+        year: YEAR,
+      },
+      select: { entryType: true, month: true, amount: true },
+    })
+    const db: Record<string, number[]> = { inflow: Array(12).fill(0), outflow: Array(12).fill(0) }
+    for (const r of rows) if (db[r.entryType]) db[r.entryType][r.month - 1] += r.amount
+    if (rows.length === 0) {
+      const srcMonths = new Set<number>()
+      for (const t of CF_TYPES) src[t].forEach((v, m) => { if (Math.abs(v) > EPS) srcMonths.add(m + 1) })
+      console.log(`  ✗ NO LIVE CF IN DB — source has ${srcMonths.size} month(s) → cash flow MISSING for this entity`)
+      anyDiff = true
+      console.log("")
+      continue
+    }
+    for (const t of CF_TYPES) {
+      const sAnnual = src[t].reduce((a, b) => a + b, 0)
+      const dAnnual = db[t].reduce((a, b) => a + b, 0)
+      let maxMonthDiff = 0
+      for (let m = 0; m < 12; m++) maxMonthDiff = Math.max(maxMonthDiff, Math.abs((db[t][m] || 0) - (src[t][m] || 0)))
+      const ok = Math.abs(sAnnual - dAnnual) <= EPS && maxMonthDiff <= EPS
+      if (!ok) anyDiff = true
+      console.log(`  ${ok ? "✓" : "✗"} ${t.padEnd(8)} annual src=${fmt(sAnnual).padStart(12)} db=${fmt(dAnnual).padStart(12)} | maxMonthΔ=${fmt(maxMonthDiff)}`)
     }
     console.log("")
   }

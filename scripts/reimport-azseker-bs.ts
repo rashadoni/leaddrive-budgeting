@@ -16,22 +16,32 @@
 import { PrismaClient, type Prisma } from "@prisma/client"
 import * as XLSX from "xlsx"
 import { resolveOrgContext } from "../src/lib/onboarding/ai-import/prod-adapter-context"
-import { makeBsHandler } from "../src/lib/onboarding/ai-import/production-adapter-handlers-financial"
+import {
+  makeBsHandler,
+  makeCfHandler,
+} from "../src/lib/onboarding/ai-import/production-adapter-handlers-financial"
+import type { AdapterHandler } from "../src/lib/onboarding/ai-import/adapter-registry"
 import { runRecomputeForCompanies } from "../src/lib/risk/recompute-trigger"
 
 const prisma = new PrismaClient()
 const SOURCE = "/Users/rashadrahimov/Documents/budget azersheker/Guvven Fin.xlsx"
 const YEAR = 2026
 const DRY = process.env.DRY === "1"
+const MODE = (process.env.MODE || "both").toLowerCase() // "bs" | "cf" | "both"
 
-const JOBS = [
+const BS_JOBS = [
   { entityCode: "AZSEKER-CPC", sheet: "BS CPC" },
   { entityCode: "AZSEKER-AZSF", sheet: "BS AZSF" },
   { entityCode: "AZSEKER-EDEN", sheet: "BS EDEN" },
 ]
+const CF_JOBS = [
+  { entityCode: "AZSEKER-CPC", sheet: "CF CPC" },
+  { entityCode: "AZSEKER-AZSF", sheet: "CF AZSF" },
+  { entityCode: "AZSEKER-EDEN", sheet: "CF EDEN" },
+]
 
 async function main() {
-  console.log(`${DRY ? "DRY RUN (no writes)" : "LIVE RE-IMPORT"} — BS restore for ${JOBS.length} entities, year ${YEAR}\n`)
+  console.log(`${DRY ? "DRY RUN (no writes)" : "LIVE RE-IMPORT"} — MODE=${MODE}, year ${YEAR}\n`)
   const wb = XLSX.readFile(SOURCE)
 
   const anyCo = await prisma.company.findFirst({
@@ -43,30 +53,42 @@ async function main() {
 
   const ctx = await resolveOrgContext(prisma, orgId, YEAR)
   const ctxRef = { value: ctx as typeof ctx | null }
-  const handler = makeBsHandler(prisma, ctxRef, async () => ctx)
+  const bsHandler = makeBsHandler(prisma, ctxRef, async () => ctx)
+  const cfHandler = makeCfHandler(prisma, ctxRef, async () => ctx)
 
   const affected: { companyId: string; year: number }[] = []
-  for (const job of JOBS) {
-    const input = {
-      workbook: wb,
-      sheetName: job.sheet,
-      entityCode: job.entityCode,
-      year: YEAR,
-      organizationId: orgId,
-      XLSX,
+
+  async function runJobs(
+    label: string,
+    handler: AdapterHandler,
+    jobs: { entityCode: string; sheet: string }[],
+  ): Promise<void> {
+    console.log(`\n--- ${label} ---`)
+    for (const job of jobs) {
+      const input = {
+        workbook: wb,
+        sheetName: job.sheet,
+        entityCode: job.entityCode,
+        year: YEAR,
+        organizationId: orgId,
+        XLSX,
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = await handler(input as any)
+      console.log(`${job.entityCode}  "${job.sheet}": ${res.summary} (rows to write = ${res.itemCount})`)
+      if (res.warnings.length) console.log(`   warnings: ${res.warnings.slice(0, 3).join("; ")}`)
+      if (DRY) continue
+      const applied = (await prisma.$transaction((tx) =>
+        res.applyToDb(tx as unknown as Prisma.TransactionClient),
+      )) as { rowsInserted: number }
+      console.log(`   → rowsInserted = ${applied.rowsInserted}`)
+      const id = ctx.codeToId.get(job.entityCode)
+      if (id) affected.push({ companyId: id, year: YEAR })
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await handler(input as any)
-    console.log(`${job.entityCode}  "${job.sheet}": ${res.summary} (rows to write = ${res.itemCount})`)
-    if (res.warnings.length) console.log(`   warnings: ${res.warnings.slice(0, 3).join("; ")}`)
-    if (DRY) continue
-    const applied = (await prisma.$transaction((tx) =>
-      res.applyToDb(tx as unknown as Prisma.TransactionClient),
-    )) as { rowsInserted: number }
-    console.log(`   → rowsInserted = ${applied.rowsInserted}`)
-    const id = ctx.codeToId.get(job.entityCode)
-    if (id) affected.push({ companyId: id, year: YEAR })
   }
+
+  if (MODE === "bs" || MODE === "both") await runJobs("BALANCE SHEET", bsHandler, BS_JOBS)
+  if (MODE === "cf" || MODE === "both") await runJobs("CASH FLOW", cfHandler, CF_JOBS)
 
   if (!DRY && affected.length > 0) {
     console.log(`\nRecomputing indicators for ${affected.length} companies…`)
