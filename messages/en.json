@@ -2649,6 +2649,35 @@
         "customers": "👥 Customers",
         "__other__": "🧪 Other (multiplier)"
       }
+    },
+    "scenarioForm": {
+      "editTitle": "Edit: {code}",
+      "createTitle": "New scenario",
+      "closeAria": "Close form",
+      "codeLabel": "Scenario code *",
+      "codeHint": "UPPERCASE letters, digits and underscores only. Cannot be changed after creation.",
+      "nameEnLabel": "Name (EN) *",
+      "nameRuLabel": "Name (RU)",
+      "nameRuPlaceholder": "Sugar price −20%",
+      "descLabel": "Description",
+      "descPlaceholder": "Brief description of the shock and assumptions",
+      "overridesLabel": "Overrides (JSON) *",
+      "structureValid": "Structure valid. <m>multiply</m> and <m>delta</m> are interchangeable.",
+      "codesHelpSummary": "Help: allowed indicator codes",
+      "codesHelpPrefix": "Examples:",
+      "codesHelpSuffix": "Full list — in the indicator matrix (HOLD GO → indicators).",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "update": "Update",
+      "create": "Create",
+      "errCodeNameRequired": "Code and English name are required",
+      "errCodeFormat": "Code must be UPPERCASE letters, digits, and underscores only",
+      "errAdminRequired": "Admin role required to manage scenarios",
+      "errCodeExists": "Scenario code already exists",
+      "errServer": "Server error {status}",
+      "errNetwork": "Network error",
+      "errJsonParse": "JSON parse error: {message}",
+      "errJsonNoAdjustments": "JSON must contain an \"adjustments\" array with at least one entry"
     }
   },
   "usersAdmin": {

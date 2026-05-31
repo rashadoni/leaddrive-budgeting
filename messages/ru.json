@@ -2649,6 +2649,35 @@
         "customers": "👥 Клиенты",
         "__other__": "🧪 Другие (множитель)"
       }
+    },
+    "scenarioForm": {
+      "editTitle": "Редактировать: {code}",
+      "createTitle": "Новый сценарий",
+      "closeAria": "Закрыть форму",
+      "codeLabel": "Код сценария *",
+      "codeHint": "Только UPPERCASE буквы, цифры и подчёркивания. Нельзя изменить после создания.",
+      "nameEnLabel": "Название (EN) *",
+      "nameRuLabel": "Название (RU)",
+      "nameRuPlaceholder": "Цена сахара −20%",
+      "descLabel": "Описание",
+      "descPlaceholder": "Краткое описание шока и предпосылок",
+      "overridesLabel": "Overrides (JSON) *",
+      "structureValid": "Структура корректна. <m>multiply</m> и <m>delta</m> — взаимозаменяемы.",
+      "codesHelpSummary": "Справка: допустимые коды индикаторов",
+      "codesHelpPrefix": "Примеры:",
+      "codesHelpSuffix": "Полный список — в матрице индикаторов (HOLD GO → индикаторы).",
+      "cancel": "Отмена",
+      "saving": "Сохранение…",
+      "update": "Обновить",
+      "create": "Создать",
+      "errCodeNameRequired": "Код и название (EN) обязательны",
+      "errCodeFormat": "Код — только UPPERCASE буквы, цифры и подчёркивания",
+      "errAdminRequired": "Для управления сценариями нужна роль Admin",
+      "errCodeExists": "Сценарий с таким кодом уже существует",
+      "errServer": "Ошибка сервера {status}",
+      "errNetwork": "Ошибка сети",
+      "errJsonParse": "Ошибка разбора JSON: {message}",
+      "errJsonNoAdjustments": "JSON должен содержать массив \"adjustments\" хотя бы с одним элементом"
     }
   },
   "usersAdmin": {

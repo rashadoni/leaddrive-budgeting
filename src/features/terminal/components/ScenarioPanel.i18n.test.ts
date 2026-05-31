@@ -42,7 +42,7 @@ function leafValue(d: Dict, dotted: string): unknown {
 }
 
 describe('ScenarioPanel i18n parity', () => {
-  for (const ns of ['scenarioPanel', 'scenarioDesc'] as const) {
+  for (const ns of ['scenarioPanel', 'scenarioDesc', 'scenarioForm'] as const) {
     const enKeys = leafKeys(sub(en, ['terminal', ns]));
     const ruKeys = leafKeys(sub(ru, ['terminal', ns]));
     const azKeys = leafKeys(sub(az, ['terminal', ns]));

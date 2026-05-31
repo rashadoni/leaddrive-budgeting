@@ -2649,6 +2649,35 @@
         "customers": "👥 Müştərilər",
         "__other__": "🧪 Digər (multiplikator)"
       }
+    },
+    "scenarioForm": {
+      "editTitle": "Redaktə: {code}",
+      "createTitle": "Yeni ssenari",
+      "closeAria": "Formanı bağla",
+      "codeLabel": "Ssenari kodu *",
+      "codeHint": "Yalnız BÖYÜK hərflər, rəqəmlər və alt xətt. Yaradıldıqdan sonra dəyişdirilə bilməz.",
+      "nameEnLabel": "Ad (EN) *",
+      "nameRuLabel": "Ad (RU)",
+      "nameRuPlaceholder": "Şəkər qiyməti −20%",
+      "descLabel": "Təsvir",
+      "descPlaceholder": "Şokun və ehtimalların qısa təsviri",
+      "overridesLabel": "Overrides (JSON) *",
+      "structureValid": "Struktur düzgündür. <m>multiply</m> və <m>delta</m> bir-birini əvəz edir.",
+      "codesHelpSummary": "Kömək: icazə verilən indikator kodları",
+      "codesHelpPrefix": "Nümunələr:",
+      "codesHelpSuffix": "Tam siyahı — indikator matrisində (HOLD GO → indikatorlar).",
+      "cancel": "Ləğv et",
+      "saving": "Saxlanılır…",
+      "update": "Yenilə",
+      "create": "Yarat",
+      "errCodeNameRequired": "Kod və ad (EN) tələb olunur",
+      "errCodeFormat": "Kod yalnız BÖYÜK hərflər, rəqəmlər və alt xətt olmalıdır",
+      "errAdminRequired": "Ssenariləri idarə etmək üçün Admin rolu tələb olunur",
+      "errCodeExists": "Bu kodlu ssenari artıq mövcuddur",
+      "errServer": "Server xətası {status}",
+      "errNetwork": "Şəbəkə xətası",
+      "errJsonParse": "JSON təhlil xətası: {message}",
+      "errJsonNoAdjustments": "JSON ən azı bir elementi olan \"adjustments\" massivini ehtiva etməlidir"
     }
   },
   "usersAdmin": {

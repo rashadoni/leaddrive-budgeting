@@ -21,6 +21,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { X, Save, AlertCircle, CheckCircle } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ const OVERRIDES_TEMPLATE = JSON.stringify(
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
+  const t = useTranslations("terminal");
   const isEdit = Boolean(initial?.id);
 
   const [code, setCode] = useState(initial?.code ?? "");
@@ -93,25 +95,25 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
         !Array.isArray((parsed as { adjustments: unknown }).adjustments) ||
         (parsed as { adjustments: unknown[] }).adjustments.length === 0
       ) {
-        setJsonError('Must have { "adjustments": [ ... ] } with at least one entry');
+        setJsonError(t("scenarioForm.errJsonNoAdjustments"));
         return false;
       }
       setJsonError(null);
       return true;
     } catch (e) {
-      setJsonError(`JSON parse error: ${e instanceof Error ? e.message : String(e)}`);
+      setJsonError(t("scenarioForm.errJsonParse", { message: e instanceof Error ? e.message : String(e) }));
       return false;
     }
-  }, []);
+  }, [t]);
 
   const handleSubmit = useCallback(async () => {
     setError(null);
     if (!code.trim() || !nameEn.trim()) {
-      setError("Code and English name are required");
+      setError(t("scenarioForm.errCodeNameRequired"));
       return;
     }
     if (!/^[A-Z0-9_]+$/.test(code)) {
-      setError("Code must be UPPERCASE letters, digits, and underscores only");
+      setError(t("scenarioForm.errCodeFormat"));
       return;
     }
     if (!validateJson(overridesJson)) return;
@@ -148,17 +150,17 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
       });
 
       if (res.status === 403) {
-        setError("Admin role required to manage scenarios");
+        setError(t("scenarioForm.errAdminRequired"));
         return;
       }
       if (res.status === 409) {
         const data = (await res.json()) as { error?: string };
-        setError(data.error ?? "Scenario code already exists");
+        setError(data.error ?? t("scenarioForm.errCodeExists"));
         return;
       }
       if (!res.ok) {
         const data = (await res.json()) as { error?: string; details?: unknown };
-        setError(data.error ?? `Server error ${res.status}`);
+        setError(data.error ?? t("scenarioForm.errServer", { status: res.status }));
         return;
       }
 
@@ -166,11 +168,11 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
       onSaved(saved);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Network error");
+      setError(e instanceof Error ? e.message : t("scenarioForm.errNetwork"));
     } finally {
       setSubmitting(false);
     }
-  }, [code, nameEn, nameRu, description, overridesJson, isEdit, initial, validateJson, onSaved, onClose]);
+  }, [code, nameEn, nameRu, description, overridesJson, isEdit, initial, validateJson, onSaved, onClose, t]);
 
   return (
     <div
@@ -183,12 +185,12 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-3">
           <h2 className="text-base font-semibold">
-            {isEdit ? `Редактировать: ${initial!.code}` : "Новый сценарий"}
+            {isEdit ? t("scenarioForm.editTitle", { code: initial!.code }) : t("scenarioForm.createTitle")}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Закрыть форму"
+            aria-label={t("scenarioForm.closeAria")}
             className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
           >
             <X size={14} aria-hidden="true" />
@@ -200,7 +202,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
           {/* Code — read-only on edit */}
           <div>
             <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              Код сценария *
+              {t("scenarioForm.codeLabel")}
             </label>
             <input
               type="text"
@@ -212,7 +214,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
             />
             {!isEdit && (
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Только UPPERCASE буквы, цифры и подчёркивания. Нельзя изменить после создания.
+                {t("scenarioForm.codeHint")}
               </p>
             )}
           </div>
@@ -220,7 +222,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
           {/* nameEn */}
           <div>
             <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              Название (EN) *
+              {t("scenarioForm.nameEnLabel")}
             </label>
             <input
               type="text"
@@ -234,13 +236,13 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
           {/* nameRu */}
           <div>
             <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              Название (RU)
+              {t("scenarioForm.nameRuLabel")}
             </label>
             <input
               type="text"
               value={nameRu}
               onChange={(e) => setNameRu(e.target.value)}
-              placeholder="Цена сахара −20%"
+              placeholder={t("scenarioForm.nameRuPlaceholder")}
               className="w-full rounded border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50"
             />
           </div>
@@ -248,13 +250,13 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
           {/* description */}
           <div>
             <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              Описание
+              {t("scenarioForm.descLabel")}
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="Краткое описание шока и предпосылок"
+              placeholder={t("scenarioForm.descPlaceholder")}
               className="w-full rounded border border-input bg-background px-3 py-1.5 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50"
             />
           </div>
@@ -262,7 +264,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
           {/* overrides JSON */}
           <div>
             <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              Overrides (JSON) *
+              {t("scenarioForm.overridesLabel")}
             </label>
             <textarea
               value={overridesJson}
@@ -282,22 +284,22 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
             ) : (
               <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
                 <CheckCircle size={10} className="text-emerald-500" />
-                Структура корректна.{" "}
-                <span className="font-mono">multiply</span> и{" "}
-                <span className="font-mono">delta</span> — взаимозаменяемы.
+                {t.rich("scenarioForm.structureValid", {
+                  m: (c) => <span className="font-mono">{c}</span>,
+                })}
               </p>
             )}
             <details className="mt-2">
               <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
-                Справка: допустимые коды индикаторов
+                {t("scenarioForm.codesHelpSummary")}
               </summary>
               <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                Примеры:{" "}
+                {t("scenarioForm.codesHelpPrefix")}{" "}
                 <span className="font-mono text-[#FFB800]">AGRO_SUGAR_PRICE_TREND</span>,{" "}
                 <span className="font-mono text-[#FFB800]">FX_IMPORTED_INPUT</span>,{" "}
                 <span className="font-mono text-[#FFB800]">IND_EBITDA_MARGIN</span>,{" "}
-                <span className="font-mono text-[#FFB800]">AGRO_YIELD</span>.
-                Полный список — в матрице индикаторов (HOLD GO → индикаторы).
+                <span className="font-mono text-[#FFB800]">AGRO_YIELD</span>.{" "}
+                {t("scenarioForm.codesHelpSuffix")}
               </p>
             </details>
           </div>
@@ -318,7 +320,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
             onClick={onClose}
             className="rounded border border-input px-4 py-1.5 text-sm hover:bg-muted/50"
           >
-            Отмена
+            {t("scenarioForm.cancel")}
           </button>
           <button
             type="button"
@@ -328,7 +330,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
             data-testid="scenario-form-save"
           >
             <Save size={13} />
-            {submitting ? "Сохранение…" : isEdit ? "Обновить" : "Создать"}
+            {submitting ? t("scenarioForm.saving") : isEdit ? t("scenarioForm.update") : t("scenarioForm.create")}
           </button>
         </div>
       </div>
