@@ -80,6 +80,12 @@ export function AuditTicker() {
     <div
       onClick={handleClick}
       role="button"
+      // data-volatile (2026-05-31): the strip's CONTENT is a live audit-event
+      // feed (timestamps + event names that change between renders) — mask it
+      // in the visual-baseline gate so data-drift doesn't flake the layout
+      // snapshot (the strip's box/height is still gated; only its text is
+      // ignored). Honors the cooperative mask contract in visual-baseline.spec.
+      data-volatile="true"
       // Phase 7.G Turn Q — Turn-40-sub3 architect 💡 closure (tab-order
       // semantics): `tabIndex={0}` puts the strip into the keyboard tab
       // order between primary surfaces (CommandBar / LayoutMenu / panel

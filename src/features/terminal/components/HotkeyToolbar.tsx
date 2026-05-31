@@ -557,10 +557,13 @@ export function HotkeyToolbar() {
     },
   ];
 
-  // Phase 7.I — Variant C: only render pinned buttons in the toolbar.
-  // Overflow buttons (compare/scenario/intel/etc.) accessible via the
-  // CommandBar's `⌘K Commands` button below + via direct verbs.
-  const visibleHotkeys = hotkeys.filter((h) => h.priority === "pinned");
+  // 2026-05-31 (user request «подними наверх не прячь в свёрнутом») — surface
+  // EVERY hotkey in the toolbar instead of hiding the 15+ "overflow" ones
+  // behind the ⌘K palette. The toolbar is `overflow-x-auto` so it scrolls
+  // horizontally; group separators keep the clusters legible. The ⌘K palette
+  // now only renders if something is still hidden (overflowCount > 0) — with
+  // all surfaced it's 0, so it auto-disappears.
+  const visibleHotkeys = hotkeys;
   const overflowCount = hotkeys.length - visibleHotkeys.length;
 
   /** Focus the CommandBar input + scroll it into view. Used by both the
@@ -579,9 +582,9 @@ export function HotkeyToolbar() {
     <div
       role="toolbar"
       aria-label={t("hotkeys.toolbarAriaLabel")}
-      className="flex items-center gap-1 px-2 py-1 bg-[#050814] border-b border-gray-800 font-mono text-[10px] text-gray-500 overflow-x-auto whitespace-nowrap shrink-0"
+      className="flex items-center gap-1 px-2 py-1.5 bg-[#050814] border-b border-gray-800 font-mono text-[11px] text-gray-300 overflow-x-auto whitespace-nowrap shrink-0"
     >
-      <span className="text-gray-700 shrink-0 mr-1">⌘ {t("hotkeys.label")}</span>
+      <span className="text-gray-400 shrink-0 mr-1 font-semibold uppercase tracking-wide">⌘ {t("hotkeys.label")}</span>
       {visibleHotkeys.map((h, i) => {
         const Icon = h.icon;
         // Phase 6.1 — progress overlay on Recompute button when async job
@@ -619,7 +622,7 @@ export function HotkeyToolbar() {
               title={h.title}
               aria-label={h.title}
               data-group={h.group}
-              className="relative flex items-center gap-1 px-2 py-0.5 rounded border border-gray-800 hover:border-[#00D4AA]/60 hover:text-[#00D4AA] hover:bg-[#00D4AA]/5 disabled:opacity-40 disabled:hover:border-gray-800 disabled:hover:text-gray-500 disabled:hover:bg-transparent transition-colors shrink-0 overflow-hidden"
+              className="relative flex items-center gap-1 px-2 py-0.5 rounded border border-gray-700 text-gray-200 hover:border-[#00D4AA]/70 hover:text-[#00D4AA] hover:bg-[#00D4AA]/10 disabled:opacity-40 disabled:hover:border-gray-700 disabled:hover:text-gray-300 disabled:hover:bg-transparent transition-colors shrink-0 overflow-hidden"
             >
               {showProgress && (
                 <span
@@ -641,6 +644,7 @@ export function HotkeyToolbar() {
           doesn't require knowing verbs in advance. Cmd+K keyboard
           shortcut still focuses the CommandBar input (existing
           handler in CommandBar.tsx); both paths are valid entry. */}
+      {overflowCount > 0 && (
       <Popover open={paletteOpen} onOpenChange={setPaletteOpen}>
         <PopoverTrigger asChild>
           <button
@@ -708,6 +712,7 @@ export function HotkeyToolbar() {
           </div>
         </PopoverContent>
       </Popover>
+      )}
       {/* Compact-mode toggle is in PanelGrid; mirror it here for one-stop access */}
       <button
         type="button"

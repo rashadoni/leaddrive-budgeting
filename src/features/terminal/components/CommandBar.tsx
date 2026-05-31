@@ -521,7 +521,7 @@ export function CommandBar() {
     <TooltipProvider delayDuration={300}>
     <div className="flex items-center justify-between px-4 py-1 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
       <div className="flex items-center flex-1 gap-2">
-        <span className="text-gray-500 shrink-0">[cmd]</span>
+        <span className="text-gray-400 shrink-0">[cmd]</span>
         <div className="flex-1 max-w-xl relative">
         <form
           onSubmit={handleCommandSubmit}
@@ -564,7 +564,7 @@ export function CommandBar() {
               }
             }}
             placeholder={t('commandBar.placeholder')}
-            className="bg-transparent border-none outline-none text-[#E8EDF5] w-full placeholder-gray-600 uppercase"
+            className="bg-transparent border-none outline-none text-[#E8EDF5] w-full placeholder-gray-500 uppercase"
             autoComplete="off"
             spellCheck={false}
             aria-autocomplete="list"
@@ -648,7 +648,7 @@ export function CommandBar() {
 
       <div className="flex items-center space-x-6 text-gray-400">
         <div className="flex items-center gap-1">
-          <span className="text-gray-500">CO:</span>
+          <span className="text-gray-400">CO:</span>
           <span className={activeCompany ? 'text-[#FFB800]' : ''}>{activeCompany || 'NONE'}</span>
           <RelatedFunctionsMenu />
         </div>

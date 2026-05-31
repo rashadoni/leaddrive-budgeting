@@ -66,55 +66,42 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(toolbar.getAttribute("aria-label")).toMatch(/hotkey/i);
   });
 
-  it("renders the pinned hotkey set + ⌘K palette trigger + COMPACT (Phase 7.I Variant C)", () => {
+  it("surfaces ALL hotkeys directly in the toolbar (2026-05-31 — no ⌘K palette)", () => {
     render(<HotkeyToolbar />);
-    // Pinned set — high-frequency triage + system ops (non-agro context).
-    // Test mock returns key.split('.').pop().toUpperCase() so all labels
-    // arrive uppercased (see vitest.setup.ts fallbackLabel).
+    // Pinned triage + system ops.
     expect(screen.queryByText("ALERTS")).toBeTruthy();
     expect(screen.queryByText("BREACH")).toBeTruthy();
     expect(screen.queryByText("ACTIONS")).toBeTruthy();
     expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
     expect(screen.queryByText("HELP")).toBeTruthy();
-    // Overflow buttons NOT rendered (only reachable via CommandBar verbs).
-    expect(screen.queryByText("NEW PLAN")).toBeNull();
-    expect(screen.queryByText("COMPARE")).toBeNull();
-    expect(screen.queryByText("STARRED")).toBeNull();
-    expect(screen.queryByText("RECENT")).toBeNull();
-    expect(screen.queryByText("SEARCH")).toBeNull();
-    expect(screen.queryByText("IMPORT")).toBeNull();
-    // ⌘K palette trigger present (aria-label test-mock value = "PALETTE ARIA LABEL").
-    expect(screen.queryByLabelText(/palette/i)).toBeTruthy();
-    expect(screen.queryByText("⌘K")).toBeTruthy();
-    // Compact toggle still pinned ml-auto.
-    expect(screen.queryByLabelText(/Toggle compact/i)).toBeTruthy();
+    // Previously-"overflow" commands are now rendered DIRECTLY in the toolbar
+    // (user request: surface them, don't hide behind the palette).
+    expect(screen.queryByText("NEW PLAN")).toBeTruthy();
+    expect(screen.queryByText("COMPARE")).toBeTruthy();
+    expect(screen.queryByText("STARRED")).toBeTruthy();
+    expect(screen.queryByText("RECENT")).toBeTruthy();
+    expect(screen.queryByText("SEARCH")).toBeTruthy();
+    expect(screen.queryByText("IMPORT")).toBeTruthy();
+    // ⌘K palette trigger gone — nothing is hidden, so it auto-disappears.
+    expect(screen.queryByLabelText(/palette/i)).toBeNull();
+    // Compact toggle still present.
+    expect(screen.queryByLabelText(/compact/i)).toBeTruthy();
   });
 
-  it("⌘K palette trigger opens a popover listing overflow commands (Phase 7.I)", () => {
+  it("overflow commands are visible directly — no palette interaction needed", () => {
     render(<HotkeyToolbar />);
-    // Before click: overflow commands hidden.
-    expect(screen.queryByText("COMPARE")).toBeNull();
-    expect(screen.queryByText("INTEL")).toBeNull();
-    expect(screen.queryByText("NEW PLAN")).toBeNull();
-    // Click the palette trigger (Radix Popover opens on click).
-    fireEvent.click(screen.getByLabelText(/palette/i));
-    // After click: overflow commands rendered inside the popover content.
-    // The popover content is portalled but happy-dom keeps it in the same
-    // document so screen.queryByText still finds it.
     expect(screen.queryByText("COMPARE")).toBeTruthy();
     expect(screen.queryByText("INTEL")).toBeTruthy();
     expect(screen.queryByText("NEW PLAN")).toBeTruthy();
   });
 
-  it("clicking an overflow command in the palette fires its action (Phase 7.I)", () => {
+  it("clicking INTEL (now a direct toolbar button) fires terminal:open-intel", () => {
     render(<HotkeyToolbar />);
     let fired = 0;
     const handler = () => {
       fired += 1;
     };
     window.addEventListener("terminal:open-intel", handler);
-    // Open palette, then click INTEL inside it.
-    fireEvent.click(screen.getByLabelText(/palette/i));
     const intelBtn = screen.getByText("INTEL").closest("button")!;
     fireEvent.click(intelBtn);
     window.removeEventListener("terminal:open-intel", handler);
