@@ -480,6 +480,7 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Aktiv məhkəmə işləri: {value}. ≤2 — KOS üçün norm; 3-9 — yüksəlmiş; ≥10 — sistemli hüquqi risk (xərclər + nüfuz).",
     requiredInputs: ["operationalFact:LEGAL_CASES_ACTIVE"],
+    aggregation: "snapshot", // point-in-time count — latest fact, not mean
     sortOrder: 4,
     defaultValueSource: "disclosed",
   },
@@ -518,6 +519,7 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Ümumi məhkəmə işləri (il ərzində): {value}. Yüksək say — münaqişəli münasibətlər və ya normativ pozuntular.",
     requiredInputs: ["operationalFact:LEGAL_CASES_TOTAL"],
+    aggregation: "snapshot", // point-in-time count — latest fact, not mean
     sortOrder: 5,
     defaultValueSource: "disclosed",
   },
@@ -562,6 +564,7 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Audit tapıntılarından bağlananlar: {value}%. ≥80% — vaxtında aradan qaldırma; 60-79% — gecikmə; <60% — sistemli uyumsuzluq.",
     requiredInputs: ["operationalFact:AUDIT_CLOSED_PCT"],
+    aggregation: "snapshot", // % snapshot — latest fact, not mean
     sortOrder: 6,
     defaultValueSource: "disclosed",
   },
@@ -601,6 +604,7 @@ export const crossSectorIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Açıq əsas audit tapıntıları: {value}. 0-1 — nəzarət altında; 2-5 — yüksəlmiş risk; >5 — sistemli zəiflik, idarə heyətinə çatdırılmalı.",
     requiredInputs: ["operationalFact:AUDIT_MAJOR_OPEN"],
+    aggregation: "snapshot", // point-in-time count — latest fact, not mean
     sortOrder: 7,
     defaultValueSource: "disclosed",
   },

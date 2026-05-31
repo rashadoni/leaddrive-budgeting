@@ -71,7 +71,7 @@ export async function GET(
       }),
       prisma.indicatorDefinition.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true },
+        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true, aggregation: true },
       }),
       prisma.indicatorValue.findMany({
         where: { organizationId: session.orgId, period },

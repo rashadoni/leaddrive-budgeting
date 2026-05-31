@@ -256,6 +256,8 @@ async function upsertGlobal(seed: IndicatorSeed) {
     // Seed-level overrides are explicit (e.g. IND_GROSS_MARGIN=1.4); all
     // other indicators use 1.0 (the DB column default + formula default).
     weight: seed.weight ?? 1.0,
+    // 2026-05-31 — operationalFact aggregation (snapshot=latest / flow=mean).
+    aggregation: seed.aggregation ?? "flow",
   }
 
   if (existing) {

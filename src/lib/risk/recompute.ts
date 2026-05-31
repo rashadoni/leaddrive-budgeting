@@ -330,6 +330,13 @@ export async function buildContext(
      * surfaces NaN into the formula (status='unknown').
      */
     industry?: string | null;
+    /**
+     * 2026-05-31 — `IndicatorDefinition.aggregation` ("snapshot"|"flow"),
+     * threaded into `ResolverCtx` so the operationalFact resolver picks
+     * latest-by-date vs mean for this indicator's metric inputs. Defaults to
+     * "flow" (mean) for callers/fixtures that omit it.
+     */
+    aggregation?: "snapshot" | "flow";
   },
 ): Promise<{
   context: FormulaContext;
@@ -348,6 +355,7 @@ export async function buildContext(
     period: args.period,
     baseCurrency: args.baseCurrency ?? 'AZN',
     industry: args.industry ?? null,
+    aggregation: args.aggregation === 'snapshot' ? 'snapshot' : 'flow',
   };
 
   // RESOLVERS is iterated once per recompute; each resolver sees all its
@@ -390,6 +398,9 @@ export interface IndicatorDefinitionLike {
   formula: string;
   thresholds: unknown; // Prisma Json — cast at classify time
   requiredInputs: string[];
+  /** "snapshot" | "flow" — controls operationalFact in-period aggregation
+   *  (latest vs mean). Optional; absent → "flow". See ResolverCtx.aggregation. */
+  aggregation?: string;
   /** Matches `IndicatorDefinition.unit`. When this is `"%"` the pipeline
    *  applies a plausibility cap on the computed value — ratios outside
    *  ±200% almost always indicate upstream data misclassification (e.g. a
@@ -556,6 +567,7 @@ export async function recomputeIndicator(
     baseCurrency: args.baseCurrency,
     scenarioOverrides: args.scenarioOverrides,
     industry: args.industry,
+    aggregation: args.definition.aggregation === 'snapshot' ? 'snapshot' : 'flow',
   });
 
   // Skip formula evaluation when a disclosure overrides the value —

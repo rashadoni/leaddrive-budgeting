@@ -76,6 +76,7 @@ async function main() {
     select: {
       id: true, organizationId: true, code: true, formula: true, sparklineFormula: true,
       thresholds: true, requiredInputs: true, industries: true, isActive: true, unit: true,
+      aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation (else this backfill re-averages snapshot metrics)
     },
   });
   const defs = preferOrgScopedDefinitions(allDefs);
@@ -119,6 +120,7 @@ async function main() {
               thresholds: definition.thresholds as never,
               requiredInputs: definition.requiredInputs,
               unit: definition.unit,
+              aggregation: definition.aggregation, // 2026-05-31 — snapshot/flow
             },
             period,
             baseCurrency: company.baseCurrencyCode ?? undefined,

@@ -40,6 +40,17 @@ export interface ResolverCtx {
    * schema level today but legacy fixtures may omit it).
    */
   industry: string | null;
+  /**
+   * 2026-05-31 — how the operationalFact resolver aggregates multiple in-period
+   * facts for THIS indicator's metric inputs: "flow" = mean (additive/period
+   * metrics, the default), "snapshot" = latest-by-date (stock/point-in-time
+   * counts, %, intensive ratios). Threaded from `IndicatorDefinition.aggregation`
+   * via buildContext. Replaces the central SNAPSHOT_METRIC_RE regex with a
+   * per-indicator, seed-declared decision. No indicator mixes snapshot+flow
+   * operationalFact inputs (verified at migration time), so an indicator-level
+   * flag is sufficient.
+   */
+  aggregation: "snapshot" | "flow";
 }
 
 export interface NamespaceResolver {

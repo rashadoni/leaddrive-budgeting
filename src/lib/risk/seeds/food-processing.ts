@@ -133,6 +133,7 @@ export const foodProcessingIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Çıxım {value}% — {status}. 75%-dən aşağı: dəyirmanda şirə itkisi, baqas nəmlik, evaporatorda təbəqə.",
     requiredInputs: ["operationalFact:extraction_rate_pct"],
+    aggregation: "snapshot", // % extraction-rate snapshot — latest, not mean
     sortOrder: 750,
     defaultValueSource: "disclosed",
   },

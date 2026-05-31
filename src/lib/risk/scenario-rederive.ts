@@ -230,6 +230,7 @@ export async function simulateByDrivers(
       formula: ind.formula,
       thresholds: ind.thresholds,
       requiredInputs: ind.requiredInputs,
+      aggregation: (ind as { aggregation?: string }).aggregation, // 2026-05-31 — snapshot/flow
     }
     let scenarioValue: number | null = baseline.value
     let scenarioStatus: IndicatorStatus | null = baseline.status

@@ -70,4 +70,12 @@ export interface IndicatorSeed {
    * See composite-score.ts for the full weight scheme rationale.
    */
   weight?: number;
+  /**
+   * 2026-05-31 — operationalFact in-period aggregation for this indicator's
+   * metric inputs. "flow" (default, omit) = mean (additive/period metrics);
+   * "snapshot" = latest-by-date (stock/point-in-time counts, %, intensive
+   * ratios). Replaces the central SNAPSHOT_METRIC_RE regex — see
+   * recompute-resolvers-a.ts + ResolverCtx.aggregation.
+   */
+  aggregation?: "snapshot" | "flow";
 }

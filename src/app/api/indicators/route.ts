@@ -93,6 +93,7 @@ async function resolveTargets(
       // back to `computed`, mis-tagging modeled-generic ESG IVs as
       // real measurements.
       defaultValueSource: true,
+      aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation
     },
   });
   // Inline prefer-org-scoped + match — keeping Prisma's full row types.
@@ -336,6 +337,7 @@ export async function POST(request: NextRequest) {
           thresholds: definition.thresholds,
           requiredInputs: definition.requiredInputs,
           unit: definition.unit,
+          aggregation: definition.aggregation, // 2026-05-31 — snapshot/flow
           defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
         };
         let outcome: Outcome;
@@ -423,6 +425,7 @@ export async function POST(request: NextRequest) {
         thresholds: definition.thresholds,
         requiredInputs: definition.requiredInputs,
         unit: definition.unit,
+        aggregation: definition.aggregation, // 2026-05-31 — snapshot/flow
         defaultValueSource: definition.defaultValueSource as unknown as IndicatorDefinitionLike["defaultValueSource"],
       };
       try {

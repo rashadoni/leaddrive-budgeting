@@ -220,6 +220,7 @@ export async function runRecomputeForCompanies(
       // recomputeIndicator consumes so every IV writes the right
       // provenance stamp without per-call lookup.
       defaultValueSource: true,
+      aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation
     },
   });
   const defs = preferOrgScopedDefinitions(allDefs);
@@ -351,6 +352,7 @@ export async function runRecomputeForCompanies(
         thresholds: definition.thresholds,
         requiredInputs: definition.requiredInputs,
         unit: definition.unit,
+        aggregation: definition.aggregation, // 2026-05-31 — snapshot/flow
         // Phase 7.H F4.v2.1 — string-union mirror of the Prisma enum
         // value (1:1 names). Cast through unknown because the generated
         // Prisma enum type isn't structurally identical to our

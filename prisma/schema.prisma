@@ -1228,6 +1228,13 @@ model IndicatorDefinition {
   weight             Float                @default(1.0)
   isActive           Boolean              @default(true)
   sortOrder          Int                  @default(0)
+  // How the operationalFact resolver aggregates multiple in-period facts for
+  // THIS indicator's metric inputs: "flow" = mean (additive/period metrics like
+  // production volumes — the default), "snapshot" = latest-by-date (stock/
+  // point-in-time metrics: legal-case counts, audit %, intensive ratios). Moves
+  // the stock/flow decision to the seed (data) instead of a central regex.
+  // 2026-05-31 — replaces SNAPSHOT_METRIC_RE.
+  aggregation        String               @default("flow")
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 

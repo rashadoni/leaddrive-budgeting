@@ -53,6 +53,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Quraqlıq indeksi {value}/100 — 60-dan yuxarı bölgə üçün >20% məhsul itkisinin tarixi həddi.",
     requiredInputs: ["operationalFact:drought_index"],
+    aggregation: "snapshot", // index snapshot — latest, not mean
     sortOrder: 20,
     weight: 1.3, // FX / macro exposure — drought is an existential agro macro risk
   },
@@ -113,6 +114,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Məhsuldarlıq {value} t/ha — {status}. Qamış: hədəf 60+; 40-dan aşağı — suvarma və ya sort.",
     requiredInputs: ["operationalFact:yield_per_ha"],
+    aggregation: "snapshot", // intensive ratio (t/ha) — latest, not mean
     sortOrder: 45,
     defaultValueSource: "disclosed",
   },
@@ -140,6 +142,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Saxaroza miqdarı {value}% — {status}. 10%-dən aşağı: gec biçim, quraqlıq stresi və ya sort dreyfi.",
     requiredInputs: ["operationalFact:sugar_content_pct"],
+    aggregation: "snapshot", // % snapshot — latest, not mean
     sortOrder: 50,
     defaultValueSource: "disclosed",
   },
@@ -166,6 +169,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Su istifadəsi {value} m³/ha — {status}. 18 000-dən yuxarı: səmərəsiz suvarma (kanal itkiləri, zəif planlaşdırma).",
     requiredInputs: ["operationalFact:water_use_m3_per_ha"],
+    aggregation: "snapshot", // intensive ratio (m³/ha) — latest, not mean
     sortOrder: 60,
     defaultValueSource: "disclosed",
   },
@@ -194,6 +198,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Gübrə {value} kq/ha — {status}. Məhsuldarlıq artmadan yüksək — azot yuyulması riski + əlavə xərc.",
     requiredInputs: ["operationalFact:fertilizer_kg_per_ha"],
+    aggregation: "snapshot", // intensive ratio (kg/ha) — latest, not mean
     sortOrder: 70,
     defaultValueSource: "disclosed",
   },
@@ -324,6 +329,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Əsas alıcının payı {value}% — {status}. >70%: bir zavodun 30 günlük gecikməsi = pul böhranı. Diversifikasiya və ya ödəniş şərtləri ilə hedcinq.",
     requiredInputs: ["operationalFact:cane_buyer_concentration_pct"],
+    aggregation: "snapshot", // % concentration snapshot — latest, not mean
     sortOrder: 96,
     defaultValueSource: "disclosed",
   },
@@ -353,6 +359,7 @@ export const agroIndicators: IndicatorSeed[] = [
     hintTemplateAz:
       "Yığım icrası {value}% — {status}. Sezon sonu <70% — yığılmayan qamış Brix-i itirir; işçi qüvvəsi / hava / texnika yoxlayın.",
     requiredInputs: ["operationalFact:cane_hectares_harvested_pct"],
+    aggregation: "snapshot", // % progress snapshot — latest, not mean
     sortOrder: 97,
     defaultValueSource: "disclosed",
   },

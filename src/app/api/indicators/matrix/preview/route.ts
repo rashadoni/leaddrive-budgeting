@@ -196,6 +196,7 @@ export async function POST(request: NextRequest) {
         formula: true,
         thresholds: true,
         requiredInputs: true,
+        aggregation: true, // 2026-05-31 — snapshot/flow → ctx.aggregation
       },
     }),
   ])
@@ -271,6 +272,7 @@ export async function POST(request: NextRequest) {
         formula: ind.formula,
         thresholds: ind.thresholds,
         requiredInputs: ind.requiredInputs,
+        aggregation: ind.aggregation, // 2026-05-31 — snapshot/flow
       }
       const r = await recomputeIndicator(ds, {
         organizationId: session.orgId,
