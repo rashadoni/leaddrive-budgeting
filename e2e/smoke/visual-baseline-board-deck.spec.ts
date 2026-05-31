@@ -57,6 +57,20 @@
  *     those sections without DOM symptom, add a sibling spec
  *     (mirroring the snapshotcard pattern).
  *
+ * KNOWN RE-BASELINE TRIGGER — content-HEIGHT drift (data, not layout):
+ *   The masks lock the masked regions' CONTENT but not their rendered
+ *   HEIGHT. A longer AI narration, a wrapped score caption, or the
+ *   lead-ins block appearing/disappearing (narration null↔present)
+ *   shifts every band below it, so the committed mask y-offsets stop
+ *   aligning and the gate goes RED with no CSS change. This is
+ *   DATA/CONTENT drift — re-baseline with `BASELINE UPDATE: data-drift`,
+ *   do NOT hunt for a layout-token bug. It is deterministic across
+ *   consecutive runs once re-baselined (narration is cached, so the
+ *   height is constant until the narrative cache is regenerated).
+ *   2026-06-01: re-baselined for exactly this (score-block / lead-in
+ *   height shifted vs the committed frame; chrome + block start
+ *   positions matched — verified via the actual/expected/diff PNGs).
+ *
  * Pre-conditions:
  *   - Same as `visual-baseline.spec.ts` (dev server / admin user / Postgres)
  *   - PLUS: snapshot must build (≥1 operational sub-co with at least
