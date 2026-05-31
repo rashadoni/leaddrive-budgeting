@@ -210,12 +210,12 @@ export function HeatMap({ period }: Props) {
         {/* Phase 7.N — scenario mode badge */}
         {activeScenarioLabel && (
           <span className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded border border-[#FFB800]/50 bg-[#FFB800]/10 text-[#FFB800] text-[9px] uppercase tracking-wider font-semibold">
-            <span>⚡ СЦЕНАРИЙ: {activeScenarioLabel}</span>
+            <span>{t('heatMap.scenarioBanner', { label: activeScenarioLabel })}</span>
             <button
               type="button"
               onClick={() => clearScenarioDelta()}
               className="ml-1 opacity-70 hover:opacity-100"
-              title="Вернуться к базовым данным"
+              title={t('heatMap.revertToBase')}
             >
               ×
             </button>

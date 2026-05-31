@@ -646,7 +646,12 @@ export function CommandBar() {
         )}
       </div>
 
-      <div className="flex items-center space-x-6 text-gray-400">
+      {/* data-volatile (2026-06-01): the right status cluster carries LIVE
+          content — [alerts N] (alertsCount) + [health …] (drift health) update
+          asynchronously and differ frame-to-frame, flaking the HeatMap visual
+          baseline. Mask it (cooperative contract in visual-baseline.spec); the
+          cluster's box/position stays gated, only its volatile text is ignored. */}
+      <div className="flex items-center space-x-6 text-gray-400" data-volatile="true">
         <div className="flex items-center gap-1">
           <span className="text-gray-400">CO:</span>
           <span className={activeCompany ? 'text-[#FFB800]' : ''}>{activeCompany || 'NONE'}</span>

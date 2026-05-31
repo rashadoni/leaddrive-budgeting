@@ -1957,7 +1957,9 @@
       "errParse": "Indicator formula has a syntax error — contact admin.",
       "errEval": "Formula eval error — one of the inputs is missing.",
       "sparklineTrendAriaLabel": "{indCode} 12-month trend for {coCode}",
-      "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend"
+      "sparklineTrendAriaLabelSelf": "{indCode} 12-month trend",
+      "scenarioBanner": "⚡ SCENARIO: {label}",
+      "revertToBase": "Return to baseline data"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",

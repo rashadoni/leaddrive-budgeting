@@ -1957,7 +1957,9 @@
       "errParse": "Göstərici formulasında sintaksis xətası — admin ilə əlaqə saxlayın.",
       "errEval": "Formula hesablama xətası — daxil olan dəyişənlərdən biri əksikdir.",
       "sparklineTrendAriaLabel": "{indCode} {coCode} üçün 12 aylıq trend",
-      "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend"
+      "sparklineTrendAriaLabelSelf": "{indCode} 12 aylıq trend",
+      "scenarioBanner": "⚡ SSENARİ: {label}",
+      "revertToBase": "Baza məlumatlarına qayıt"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",

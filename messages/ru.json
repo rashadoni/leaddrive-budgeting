@@ -1957,7 +1957,9 @@
       "errParse": "Ошибка в формуле индикатора — обратитесь к админу.",
       "errEval": "Ошибка вычисления формулы — отсутствует одна из переменных.",
       "sparklineTrendAriaLabel": "{indCode} тренд за 12 месяцев для {coCode}",
-      "sparklineTrendAriaLabelSelf": "{indCode} тренд за 12 месяцев"
+      "sparklineTrendAriaLabelSelf": "{indCode} тренд за 12 месяцев",
+      "scenarioBanner": "⚡ СЦЕНАРИЙ: {label}",
+      "revertToBase": "Вернуться к базовым данным"
     },
     "indicatorDetail": {
       "emptyDrillDown": "Кликните на любую ячейку HeatMap для детализации.",
