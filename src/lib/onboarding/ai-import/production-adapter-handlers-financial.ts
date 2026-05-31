@@ -16,7 +16,7 @@ import {
 import { runDynamicPlfAdapter } from "./dynamic-plf-adapter"
 import { runDynamicBsAdapter } from "./dynamic-bs-adapter"
 import { runDynamicCfAdapter } from "./dynamic-cf-adapter"
-import { parsePlfPlSheet, parsePlfCfSheet } from "../adapters/azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotal } from "../adapters/azseker-plf"
 import { parseWorkbookBsSheet } from "../adapters/azseker-workbook-bs"
 import {
   parseWorkbookFarmingKpiSheet,
@@ -206,6 +206,37 @@ export function makePlfHandler(
           rows: resolvedRows,
           expectedSums,
         })
+        // Capture the source's OWN EBITDA subtotal → `pl_ebitda` operational_facts.
+        // The recompute SUMS these per period for context.ebitda; deriving EBITDA
+        // from the lumped `expense` leaves (D&A+interest+tax) collapses it to NET
+        // (2026-05-31 audit). Idempotent: delete this company+year's pl_ebitda then
+        // re-insert, so re-imports stay correct.
+        const ebitdaMonthly = parsePlfEbitdaSubtotal(input.workbook, input.sheetName, input.XLSX, {
+          preferYear: input.year,
+        })
+        await tx.operationalFact.deleteMany({
+          where: {
+            companyId,
+            metric: "pl_ebitda",
+            date: {
+              gte: new Date(Date.UTC(input.year, 0, 1)),
+              lt: new Date(Date.UTC(input.year + 1, 0, 1)),
+            },
+          },
+        })
+        if (ebitdaMonthly.length > 0) {
+          await tx.operationalFact.createMany({
+            data: ebitdaMonthly.map((x) => ({
+              organizationId: ctx.organizationId,
+              companyId,
+              metric: "pl_ebitda",
+              date: new Date(Date.UTC(input.year, x.month - 1, 1)),
+              value: x.value,
+              unit: "AZN",
+              source: "import:plf-subtotal",
+            })),
+          })
+        }
         return { rowsInserted: result.metrics.rowsInserted }
       },
     } as AdapterRunResult & { expectedSums?: Map<ReconciliationKey, number> }

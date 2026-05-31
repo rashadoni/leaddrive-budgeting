@@ -22,6 +22,7 @@ import type { PrismaClient } from "@prisma/client"
 vi.mock("../adapters/azseker-plf", () => ({
   parsePlfPlSheet: vi.fn(),
   parsePlfCfSheet: vi.fn(),
+  parsePlfEbitdaSubtotal: vi.fn(() => []),
 }))
 vi.mock("../adapters/azseker-workbook-bs", () => ({
   parseWorkbookBsSheet: vi.fn(),
@@ -78,7 +79,7 @@ vi.mock("../sales-forecast-batch", () => ({
 }))
 
 import { buildProductionAdapterRegistry } from "./production-adapter-registry"
-import { parsePlfPlSheet, parsePlfCfSheet } from "../adapters/azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotal } from "../adapters/azseker-plf"
 import { parseWorkbookBsSheet } from "../adapters/azseker-workbook-bs"
 import { parseLandRegistrySheet } from "../adapters/azseker-land-registry"
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
@@ -210,6 +211,12 @@ describe("buildProductionAdapterRegistry", () => {
           where: { organizationId_code: { code: string } }
         }) => ({ id: `coa_${args.where.organizationId_code.code}` })),
       },
+      // 2026-05-31: PLF handler also captures the EBITDA subtotal into
+      // pl_ebitda operational_facts (parsePlfEbitdaSubtotal mocked → []).
+      operationalFact: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
     } as never
     const apply = await result.applyToDb(fakeTx)
     expect(apply.rowsInserted).toBe(1)
@@ -220,6 +227,15 @@ describe("buildProductionAdapterRegistry", () => {
     expect(txArg).toBe(fakeTx) // OUTER TX, not prisma
     expect(planArg.organizationId).toBe("org_1")
     expect(planArg.rows).toHaveLength(1)
+    // EBITDA subtotal capture is wired into the PLF handler (2026-05-31) — it
+    // reads the source EBITDA row for the imported sheet+year into pl_ebitda
+    // so the recompute reports true EBITDA (not net).
+    expect(parsePlfEbitdaSubtotal).toHaveBeenCalledWith(
+      expect.anything(),
+      "PLF CPC",
+      expect.anything(),
+      { preferYear: 2026 },
+    )
   })
 
   it("BS handler routes through runBalanceSheetBatch with tx", async () => {

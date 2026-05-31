@@ -326,3 +326,43 @@ export function parsePlfCfSheet(
 
   return { sheetName, entries, warnings }
 }
+
+/**
+ * Extract the source's OWN EBITDA subtotal row (col-B label contains "EBITDA",
+ * excluding margin/% variants) → monthly values for `preferYear`. The PLF
+ * leaves lump D&A + interest + tax into one `expense` type, so deriving EBITDA
+ * from them collapses it to NET (2026-05-31 audit); capturing the author's own
+ * EBITDA subtotal as `pl_ebitda` operational_facts lets the recompute report it
+ * correctly. Returns [] when no EBITDA row / year header exists (non-PLF or
+ * cross-entity summary sheets).
+ */
+export function parsePlfEbitdaSubtotal(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+  xlsx: typeof XLSX,
+  opts?: { preferYear?: number },
+): { month: number; value: number }[] {
+  const sheet = workbook.Sheets[sheetName]
+  if (!sheet) return []
+  const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    raw: true,
+    blankrows: false,
+  }) as unknown[][]
+  const header = findPlfHeaderRow(aoa, { preferYear: opts?.preferYear })
+  if (!header) return []
+  const { monthCols } = header
+  const ebitdaRow = aoa.find((r) => {
+    const label = String((r as unknown[])[1] ?? "").toUpperCase()
+    return label.includes("EBITDA") && !label.includes("MARGIN") && !label.includes("%")
+  })
+  if (!ebitdaRow) return []
+  const out: { month: number; value: number }[] = []
+  for (let m = 0; m < 12; m++) {
+    const v = (ebitdaRow as unknown[])[monthCols[m]]
+    if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > 0.005) {
+      out.push({ month: m + 1, value: v })
+    }
+  }
+  return out
+}
