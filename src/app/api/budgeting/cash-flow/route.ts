@@ -20,10 +20,12 @@ const createCashFlowSchema = z.object({
   paymentDate: z.string().max(50).optional().nullable(),
   currencyCode: z.string().max(10).optional(),
   isProjected: z.boolean().optional(),
-  // Phase 2.1 session 3: accountId optional (CashFlowEntry.category dropped;
-  // callers that don't yet send accountId get a null FK — safe since the
-  // ChartOfAccount FK on CashFlowEntry is still nullable at the DB level).
-  accountId: z.string().min(1).max(100).optional(),
+  // accountId REQUIRED (2026-05-31): CashFlowEntry.accountId is NOT NULL — every
+  // cash movement must tie to a ChartOfAccount. The prior "still nullable at the
+  // DB level" note was stale: Phase 2.1 set the column NOT NULL in the DB but
+  // left this schema/API optional, which caused the schema↔DB drift; reconciled
+  // to NOT NULL on 2026-05-31.
+  accountId: z.string().min(1).max(100),
 }).strict()
 
 // GET — get cash flow data for a year

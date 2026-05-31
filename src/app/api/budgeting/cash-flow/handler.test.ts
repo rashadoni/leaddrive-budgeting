@@ -30,7 +30,8 @@ import { POST } from "./route"
 
 // Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
 const ORG_ID = "cm3rlscashflow000001abc"
-const validBody = { year: 2026, month: 1, entryType: "inflow" as const, amount: 1000 }
+// accountId is REQUIRED (2026-05-31 — CashFlowEntry.accountId is NOT NULL).
+const validBody = { year: 2026, month: 1, entryType: "inflow" as const, amount: 1000, accountId: "acct_coa_1000" }
 
 beforeEach(() => {
   prismaMock.cashFlowEntry.create.mockReset().mockResolvedValue({ id: "cf1" })
@@ -96,5 +97,13 @@ describe("POST /api/budgeting/cash-flow — period lock (Turn LXVIII follow-up)"
     const res = await POST(makeRequest("/api/budgeting/cash-flow", { method: "POST", json: validBody }))
     expect(res.status).toBe(201)
     expect(prismaMock.cashFlowEntry.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns 400 when accountId is missing (now required — CashFlowEntry.accountId NOT NULL)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "manager" })
+    const { accountId: _omit, ...noAccount } = validBody
+    const res = await POST(makeRequest("/api/budgeting/cash-flow", { method: "POST", json: noAccount }))
+    expect(res.status).toBe(400)
+    expect(prismaMock.cashFlowEntry.create).not.toHaveBeenCalled()
   })
 })

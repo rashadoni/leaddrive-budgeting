@@ -90,6 +90,9 @@ export async function POST(req: NextRequest) {
             entryType,
             source: "budget_line",
             sourceId: line.id,
+            // accountId is NOT NULL on CashFlowEntry — inherit the budget line's
+            // account (BudgetLine.accountId is itself NOT NULL since Phase 2.1).
+            accountId: line.accountId,
             amount: monthlyAmount,
             description: `${(line as any).account?.name ?? (line as any).account?.code ?? ""} (${line.lineType})`,
             isProjected: true,
@@ -100,48 +103,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 2. From invoices (sent/partially_paid → projected inflows)
-  try {
-    const invoices = await (prisma as any).invoice.findMany({
-      where: {
-        organizationId: orgId,
-        status: { in: ["sent", "partially_paid"] },
-      },
-    })
-
-    for (const inv of invoices) {
-      const dueDate = inv.dueDate ? new Date(inv.dueDate) : new Date()
-      if (dueDate.getFullYear() !== year) continue
-
-      const existing = await prisma.cashFlowEntry.findFirst({
-        where: {
-          organizationId: orgId,
-          source: "invoice",
-          sourceId: inv.id,
-        },
-      })
-
-      if (!existing) {
-        await prisma.cashFlowEntry.create({
-          data: {
-            organizationId: orgId,
-            year,
-            month: dueDate.getMonth() + 1,
-            entryType: "inflow",
-            source: "invoice",
-            sourceId: inv.id,
-            amount: inv.totalAmount || inv.amount || 0,
-            description: `Invoice #${inv.number || inv.id.substring(0, 8)}`,
-            paymentDate: dueDate,
-            isProjected: true,
-          },
-        })
-        created++
-      }
-    }
-  } catch {
-    // Invoice model may not exist — skip silently
-  }
+  // 2. From invoices — DISABLED 2026-05-31. `CashFlowEntry.accountId` is now
+  // NOT NULL (schema↔DB reconciled to the Phase-2.1 integrity rule): every cash
+  // movement must tie to a ChartOfAccount. An invoice has no single account to
+  // attribute its projected inflow to, and we will not fabricate one. Re-enable
+  // once an invoice→CoA mapping exists (e.g. a default AR/revenue account per
+  // org). This path was unused (0 invoice-sourced rows) and was already
+  // defensively wrapped in try/catch for a possibly-absent Invoice model.
 
   // 3. Clear old alerts for this year before regenerating
   await prisma.cashFlowAlert.deleteMany({
