@@ -80,15 +80,21 @@ export function SignalsStrip() {
             className={`shrink-0 inline-flex items-center gap-2 rounded border px-2.5 py-1 text-xs transition-colors ${sev}`}
           >
             {s.kind === "news" ? (
-              <span aria-hidden="true">📰</span>
+              <span className="shrink-0" aria-hidden="true">📰</span>
             ) : (
               <span
-                className={`inline-block w-2 h-2 rounded-full ${SEV_DOT[s.severity] ?? "bg-muted-foreground"}`}
+                className={`inline-block w-2 h-2 rounded-full shrink-0 ${SEV_DOT[s.severity] ?? "bg-muted-foreground"}`}
               />
             )}
-            <span className="text-gray-100 font-medium max-w-[360px] truncate">{s.label}</span>
-            <span className="text-sky-300/90 font-mono shrink-0">→ {s.suggestedScenarioCode}</span>
-            {s.stale && <span className="text-amber-400 text-[10px] shrink-0">⚠</span>}
+            {/* Label + the data basis that fired the signal (forward vs spot,
+                Brent level, rainfall, FAO sugar) — surfaced inline so the «why»
+                is visible without hovering. Full text stays in the title. */}
+            <span className="flex flex-col min-w-0 max-w-[380px] text-left leading-tight">
+              <span className="text-gray-100 font-medium truncate">{s.label}</span>
+              <span className="text-[10px] text-gray-400 font-mono truncate">{s.detail}</span>
+            </span>
+            <span className="text-sky-300/90 font-mono shrink-0 self-center">→ {s.suggestedScenarioCode}</span>
+            {s.stale && <span className="text-amber-400 text-[10px] shrink-0 self-center">⚠</span>}
           </button>
         );
       })}
