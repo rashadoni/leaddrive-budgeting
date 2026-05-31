@@ -13,6 +13,7 @@
  */
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { useTerminalStore } from "../store/terminalStore"
@@ -24,18 +25,19 @@ import { Label } from "@/components/ui/label"
 import { Loader2, Save, AlertCircle, Check, Sprout } from "lucide-react"
 
 const AGRO_METRICS = [
-  { key: "yield_per_ha", label: "Yield (tons/ha)", unit: "tons/ha" },
-  { key: "sugar_content_pct", label: "Sugar content (%)", unit: "%" },
-  { key: "water_use_m3_per_ha", label: "Water use (m³/ha)", unit: "m³/ha" },
-  { key: "fertilizer_kg_per_ha", label: "Fertilizer (kg/ha)", unit: "kg/ha" },
-  { key: "extraction_rate_pct", label: "Extraction rate (%)", unit: "%" },
-  { key: "harvest_tons", label: "Harvest (tons)", unit: "tons" },
-  { key: "area_hectares", label: "Area planted (ha)", unit: "hectares" },
+  { key: "yield_per_ha", labelKey: "metricYield", unit: "tons/ha" },
+  { key: "sugar_content_pct", labelKey: "metricSugarContent", unit: "%" },
+  { key: "water_use_m3_per_ha", labelKey: "metricWaterUse", unit: "m³/ha" },
+  { key: "fertilizer_kg_per_ha", labelKey: "metricFertilizer", unit: "kg/ha" },
+  { key: "extraction_rate_pct", labelKey: "metricExtractionRate", unit: "%" },
+  { key: "harvest_tons", labelKey: "metricHarvest", unit: "tons" },
+  { key: "area_hectares", labelKey: "metricAreaPlanted", unit: "hectares" },
 ] as const
 
 type MetricKey = (typeof AGRO_METRICS)[number]["key"]
 
 export function AgronomyEntryPanel() {
+  const t = useTranslations("terminal")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const userRole = session?.user?.role
@@ -73,9 +75,9 @@ export function AgronomyEntryPanel() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
-      if (!activeCompany?.id) throw new Error("Select a company first.")
+      if (!activeCompany?.id) throw new Error(t("agronomyEntry.errSelectCompany"))
       const numericValue = Number(value)
-      if (!Number.isFinite(numericValue)) throw new Error("Value must be a finite number.")
+      if (!Number.isFinite(numericValue)) throw new Error(t("agronomyEntry.errValueNotFinite"))
       const iso = `${dateStr}T00:00:00.000Z`
       const res = await fetch("/api/operational-facts", {
         method: "POST",
@@ -131,7 +133,7 @@ export function AgronomyEntryPanel() {
   if (!activeCompanyCode) {
     return (
       <div className="p-6 text-center text-sm text-gray-500">
-        Select a company in the company tree to log an agronomy entry.
+        {t("agronomyEntry.emptyState")}
       </div>
     )
   }
@@ -140,13 +142,13 @@ export function AgronomyEntryPanel() {
     <div className="space-y-4 max-w-xl">
       <div className="flex items-center gap-2 px-1">
         <Sprout className="h-4 w-4 text-emerald-500" />
-        <h2 className="text-base font-bold">Agronomy entry</h2>
+        <h2 className="text-base font-bold">{t("agronomyEntry.title")}</h2>
         <Badge variant="outline" className="text-[10px] ml-2">
           {activeCompany?.code ?? activeCompanyCode}
         </Badge>
         {!canEdit && (
           <Badge variant="secondary" className="text-[10px]">
-            Read-only (viewer role)
+            {t("agronomyEntry.readOnlyBadge")}
           </Badge>
         )}
       </div>
@@ -154,7 +156,7 @@ export function AgronomyEntryPanel() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="agro-metric">Metric</Label>
+            <Label htmlFor="agro-metric">{t("agronomyEntry.metricLabel")}</Label>
             <select
               id="agro-metric"
               className="w-full rounded border bg-background px-2 py-1.5 text-sm"
@@ -168,7 +170,7 @@ export function AgronomyEntryPanel() {
             >
               {AGRO_METRICS.map((m) => (
                 <option key={m.key} value={m.key}>
-                  {m.label}
+                  {t(`agronomyEntry.${m.labelKey}`)}
                 </option>
               ))}
             </select>
@@ -176,7 +178,7 @@ export function AgronomyEntryPanel() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label htmlFor="agro-value">Value</Label>
+              <Label htmlFor="agro-value">{t("agronomyEntry.valueLabel")}</Label>
               <Input
                 id="agro-value"
                 type="number"
@@ -189,7 +191,7 @@ export function AgronomyEntryPanel() {
               <div className="text-[10px] text-gray-500">{selectedMetric.unit}</div>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="agro-date">Date</Label>
+              <Label htmlFor="agro-date">{t("agronomyEntry.dateLabel")}</Label>
               <Input
                 id="agro-date"
                 type="date"
@@ -201,12 +203,12 @@ export function AgronomyEntryPanel() {
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="agro-note">Source / note (optional)</Label>
+            <Label htmlFor="agro-note">{t("agronomyEntry.noteLabel")}</Label>
             <Input
               id="agro-note"
               value={note}
               onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              placeholder="e.g. on-site weighing 2026-04-30, batch #12"
+              placeholder={t("agronomyEntry.notePlaceholder")}
               disabled={!canEdit}
             />
             <div className="text-[10px] text-gray-500 text-right">{note.length}/500</div>
@@ -214,14 +216,16 @@ export function AgronomyEntryPanel() {
 
           {warnings && warnings.length > 0 && (
             <div className="rounded border border-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2 text-xs text-amber-700 dark:text-amber-300 space-y-1">
-              <div className="font-semibold">Soft warnings:</div>
+              <div className="font-semibold">{t("agronomyEntry.softWarningsHeading")}</div>
               <ul className="list-disc pl-4">
                 {warnings.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}
               </ul>
               <div className="text-[10px] mt-1">
-                Tap "Save anyway" to confirm and persist.
+                {t("agronomyEntry.softWarningsHint", {
+                  action: t("agronomyEntry.saveAnyway"),
+                })}
               </div>
             </div>
           )}
@@ -235,7 +239,7 @@ export function AgronomyEntryPanel() {
 
           {savedAt && !errorMsg && (
             <div className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-              <Check className="h-3 w-3" /> Saved
+              <Check className="h-3 w-3" /> {t("agronomyEntry.saved")}
             </div>
           )}
 
@@ -252,7 +256,9 @@ export function AgronomyEntryPanel() {
                 ) : (
                   <Save className="h-3 w-3 mr-2" />
                 )}
-                {warningsMode === "confirm" ? "Save anyway" : "Save entry"}
+                {warningsMode === "confirm"
+                  ? t("agronomyEntry.saveAnyway")
+                  : t("agronomyEntry.saveEntry")}
               </Button>
             </div>
           )}
@@ -260,8 +266,11 @@ export function AgronomyEntryPanel() {
       </Card>
 
       <div className="text-[10px] text-gray-500 px-1">
-        Tip: bulk uploads (Excel with companyCode + metric + date + value columns) are at{" "}
-        <code className="bg-muted px-1 rounded">/budgeting/admin/data-entry</code>.
+        {t.rich("agronomyEntry.bulkTip", {
+          code: () => (
+            <code className="bg-muted px-1 rounded">/budgeting/admin/data-entry</code>
+          ),
+        })}
       </div>
     </div>
   )

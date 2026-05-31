@@ -12,6 +12,7 @@
  * lookup via useCompanies()).
  */
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
 
@@ -49,6 +50,7 @@ function fmtMoney(n: number): string {
 }
 
 export function FxExposurePanel() {
+  const t = useTranslations("terminal");
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const { companies } = useCompanies();
   const activeCompany = useMemo(() => {
@@ -84,25 +86,25 @@ export function FxExposurePanel() {
     };
   }, [activeCompany?.id]);
 
-  if (loading) return <div className="text-muted-foreground text-sm p-4">Loading…</div>;
-  if (error) return <div className="text-destructive text-sm p-4">Failed to load: {error}</div>;
+  if (loading) return <div className="text-muted-foreground text-sm p-4">{t("fxExposure.loading")}</div>;
+  if (error) return <div className="text-destructive text-sm p-4">{t("fxExposure.loadFailed", { error })}</div>;
   if (!data) return null;
 
   const currencies = Object.keys(data.totals).sort();
-  const scopeLabel = activeCompany ? activeCompany.code : "All companies";
+  const scopeLabel = activeCompany ? activeCompany.code : t("fxExposure.allCompanies");
 
   return (
     <div className="space-y-4 text-sm">
       <header className="border-b border-border pb-2">
-        <h2 className="text-base font-semibold">FX Exposure — {scopeLabel}</h2>
+        <h2 className="text-base font-semibold">{t("fxExposure.title", { scope: scopeLabel })}</h2>
         <p className="text-xs text-muted-foreground">
-          Year {data.year} · base {data.baseCurrency} · {data.lineCount} budget lines aggregated
+          {t("fxExposure.subtitle", { year: data.year, base: data.baseCurrency, count: data.lineCount })}
         </p>
       </header>
 
       <section>
         <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-          Net exposure by currency
+          {t("fxExposure.netExposureHeader")}
         </h3>
         <div className="grid grid-cols-2 gap-3">
           {currencies.map((cur) => {
@@ -121,12 +123,12 @@ export function FxExposurePanel() {
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {cur === data.baseCurrency
-                    ? "base currency"
+                    ? t("fxExposure.baseCurrency")
                     : long
-                      ? `${cur}-long → hedge sells ${cur}`
+                      ? t("fxExposure.longHint", { cur })
                       : net < 0
-                        ? `${cur}-short → hedge buys ${cur}`
-                        : "balanced"}
+                        ? t("fxExposure.shortHint", { cur })
+                        : t("fxExposure.balanced")}
                 </p>
               </div>
             );
@@ -136,29 +138,29 @@ export function FxExposurePanel() {
 
       <section>
         <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
-          Per-currency P&L breakdown
+          {t("fxExposure.pnlHeader")}
         </h3>
         <div className="rounded-md border border-border overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-muted/40">
               <tr>
-                <th className="text-left px-2 py-1.5 font-medium">Currency</th>
-                <th className="text-right px-2 py-1.5 font-medium">Revenue</th>
-                <th className="text-right px-2 py-1.5 font-medium">COGS</th>
-                <th className="text-right px-2 py-1.5 font-medium">Expense</th>
-                <th className="text-right px-2 py-1.5 font-medium">Net</th>
+                <th className="text-left px-2 py-1.5 font-medium">{t("fxExposure.colCurrency")}</th>
+                <th className="text-right px-2 py-1.5 font-medium">{t("fxExposure.colRevenue")}</th>
+                <th className="text-right px-2 py-1.5 font-medium">{t("fxExposure.colCogs")}</th>
+                <th className="text-right px-2 py-1.5 font-medium">{t("fxExposure.colExpense")}</th>
+                <th className="text-right px-2 py-1.5 font-medium">{t("fxExposure.colNet")}</th>
               </tr>
             </thead>
             <tbody>
               {currencies.map((cur) => {
-                const t = data.totals[cur];
+                const tot = data.totals[cur];
                 const net = data.netExposureByCurrency[cur] ?? 0;
                 return (
                   <tr key={cur} className="border-t border-border/60">
                     <td className="px-2 py-1.5 font-medium">{cur}</td>
-                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(t.revenue)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(t.cogs)}</td>
-                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(t.expense)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(tot.revenue)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(tot.cogs)}</td>
+                    <td className="px-2 py-1.5 text-right font-mono">{fmtMoney(tot.expense)}</td>
                     <td className={`px-2 py-1.5 text-right font-mono ${net >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                       {net >= 0 ? "+" : ""}
                       {fmtMoney(net)}
@@ -170,7 +172,7 @@ export function FxExposurePanel() {
           </table>
         </div>
         <p className="text-[10px] text-muted-foreground mt-2">
-          Pair with the CBAR forward curve panel to size 3/6/12-month hedges against the open exposure.
+          {t("fxExposure.hedgeFootnote")}
         </p>
       </section>
     </div>

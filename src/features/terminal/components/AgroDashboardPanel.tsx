@@ -16,6 +16,7 @@
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
+import { useTranslations } from "next-intl"
 import { useTerminalStore } from "../store/terminalStore"
 import { Badge } from "@/components/ui/badge"
 import { Sparkline } from "./Sparkline"
@@ -72,48 +73,51 @@ function fmtNum(n: number | null, fractionDigits = 1): string {
 }
 
 interface MetricMeta {
-  en: string
+  /** i18n key suffix for the metric label, resolved via t() at the JSX site
+   *  (the const is module-level and cannot call the hook). */
+  labelKey: string
   icon: typeof Sprout
-  /** Single-line hint shown when no observations exist — gives the
-   *  client a target range so the empty state is actionable instead of
-   *  decorative. */
-  hint: string
+  /** i18n key suffix for the single-line hint shown when no observations
+   *  exist — gives the client a target range so the empty state is
+   *  actionable instead of decorative. */
+  hintKey: string
 }
 
 const METRIC_LABEL: Record<(typeof TRACKED_METRICS)[number], MetricMeta> = {
   yield_per_ha: {
-    en: "Yield (t/ha)",
+    labelKey: "labelYield",
     icon: Sprout,
-    hint: "Sugarcane target 60+ t/ha · sugar beet 40–70",
+    hintKey: "hintYield",
   },
   sugar_content_pct: {
-    en: "Sugar content (%)",
+    labelKey: "labelSugarContent",
     icon: Beaker,
-    hint: "Cane: 14%+ green · 10–14 amber · <10 red",
+    hintKey: "hintSugarContent",
   },
   water_use_m3_per_ha: {
-    en: "Water (m³/ha)",
+    labelKey: "labelWater",
     icon: Droplets,
-    hint: "Cane: <12,000 efficient · 12–18k typical",
+    hintKey: "hintWater",
   },
   fertilizer_kg_per_ha: {
-    en: "Fertilizer (kg/ha)",
+    labelKey: "labelFertilizer",
     icon: Sprout,
-    hint: "Cane: ~300–600 kg/ha NPK or urea",
+    hintKey: "hintFertilizer",
   },
   extraction_rate_pct: {
-    en: "Extraction (%)",
+    labelKey: "labelExtraction",
     icon: Beaker,
-    hint: "Modern cane refineries 85–92%",
+    hintKey: "hintExtraction",
   },
   harvest_tons: {
-    en: "Harvest (tons)",
+    labelKey: "labelHarvest",
     icon: Sprout,
-    hint: "Total tonnage harvested for the period",
+    hintKey: "hintHarvest",
   },
 }
 
 export function AgroDashboardPanel() {
+  const t = useTranslations("terminal")
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode)
@@ -178,7 +182,7 @@ export function AgroDashboardPanel() {
   if (!activeCompanyCode) {
     return (
       <div className="p-6 text-center text-sm text-muted-foreground">
-        Select a company in the company tree to view agro dashboard.
+        {t("agroDashboard.selectCompany")}
       </div>
     )
   }
@@ -186,9 +190,13 @@ export function AgroDashboardPanel() {
   if (activeIndustry && !AGRO_INDUSTRIES.has(activeIndustry)) {
     return (
       <div className="p-6 text-center text-sm text-muted-foreground">
-        Agro dashboard applies to <strong>agro_crops</strong> and <strong>food_processing</strong> companies.
+        {t.rich("agroDashboard.notApplicable", {
+          crops: "agro_crops",
+          food: "food_processing",
+          strong: (chunks) => <strong>{chunks}</strong>,
+        })}
         <br />
-        Active company {activeCompanyCode} is{" "}
+        {t("agroDashboard.notApplicableActive", { company: activeCompanyCode })}{" "}
         <Badge variant="outline" className="text-[10px]">
           {activeIndustry}
         </Badge>
@@ -231,19 +239,19 @@ export function AgroDashboardPanel() {
         )}
         {hectares != null && (
           <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
-            {hectares.toLocaleString("en-US")} ha planted
+            {t("agroDashboard.hectaresPlanted", { ha: hectares.toLocaleString("en-US") })}
           </Badge>
         )}
         {yieldTarget != null && (
           <Badge variant="outline" className="text-[10px] text-muted-foreground border-input">
-            target {yieldTarget} t/ha
+            {t("agroDashboard.yieldTarget", { value: yieldTarget })}
           </Badge>
         )}
       </div>
 
       {factsLoading && (
         <div className="text-sm text-muted-foreground flex items-center gap-2">
-          <Loader2 className="h-3 w-3 animate-spin" /> Loading agronomy data…
+          <Loader2 className="h-3 w-3 animate-spin" /> {t("agroDashboard.loading")}
         </div>
       )}
 
@@ -253,18 +261,21 @@ export function AgroDashboardPanel() {
       {!factsLoading && !hasAnyData && (
         <div className="rounded-md border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
           <div className="text-[11px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold mb-1">
-            No agronomy data yet
+            {t("agroDashboard.emptyTitle")}
           </div>
           <div className="text-sm text-gray-200">
-            Enter your first observation via{" "}
-            <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
-              KPI GO
-            </code>{" "}
-            or bulk-import an Excel sheet at{" "}
-            <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
-              /budgeting/admin/data-entry
-            </code>
-            . The cells below light up green / amber / red as soon as values land.
+            {t.rich("agroDashboard.emptyBody", {
+              kpi: () => (
+                <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
+                  KPI GO
+                </code>
+              ),
+              path: () => (
+                <code className="text-[11px] bg-black/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-mono">
+                  /budgeting/admin/data-entry
+                </code>
+              ),
+            })}
           </div>
         </div>
       )}
@@ -295,7 +306,7 @@ export function AgroDashboardPanel() {
             >
               <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
                 <Icon className="h-3 w-3" />
-                {label.en}
+                {t(`agroDashboard.${label.labelKey}`)}
               </div>
               <div className={`mt-2 text-2xl font-bold tabular-nums ${hasValue ? "text-white" : "text-muted-foreground"}`}>
                 {fmtNum(s.latest, m === "harvest_tons" ? 0 : 1)}
@@ -309,12 +320,12 @@ export function AgroDashboardPanel() {
                     <Sparkline data={s.values} status={status} compact={false} />
                   </div>
                   <div className="mt-1.5 text-[10px] text-muted-foreground">
-                    {obsCount} observation{obsCount === 1 ? "" : "s"}
+                    {t("agroDashboard.observations", { count: obsCount })}
                   </div>
                 </>
               ) : (
                 <div className="mt-2 text-[10px] leading-snug text-muted-foreground">
-                  {label.hint}
+                  {t(`agroDashboard.${label.hintKey}`)}
                 </div>
               )}
             </div>
@@ -325,11 +336,11 @@ export function AgroDashboardPanel() {
       {/* Recent agronomy entries */}
       <div className="rounded-md border border-border/60 bg-[#0F1535] px-3 py-3">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
-          Recent agronomy entries
+          {t("agroDashboard.recentEntries")}
         </div>
         {!hasAnyData ? (
           <div className="text-xs text-muted-foreground">
-            Empty — first KPI entry will appear here as a row with date, metric, value, unit.
+            {t("agroDashboard.recentEntriesEmpty")}
           </div>
         ) : (
           <div className="divide-y divide-gray-800/60">

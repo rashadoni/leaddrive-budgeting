@@ -12,6 +12,7 @@
  * via the admin form (Phase 7.J — separate); this panel is read-only.
  */
 import { useEffect, useState, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { useCompanies } from "../hooks/use-companies";
 
@@ -71,6 +72,7 @@ function flatten(nodes: readonly CompanyNode[]): CompanyNode[] {
 }
 
 export function ConcentrationPanel() {
+  const t = useTranslations("terminal");
   const activeCompanyCode = useTerminalStore((s) => s.activeCompanyCode);
   const { companies } = useCompanies();
   const activeCompany = useMemo(() => {
@@ -113,12 +115,12 @@ export function ConcentrationPanel() {
   if (!activeCompany) {
     return (
       <div className="text-muted-foreground text-sm p-4">
-        Pick a company in the tree to load its counterparty register.
+        {t("concentration.pickCompanyPrompt")}
       </div>
     );
   }
-  if (loading) return <div className="text-muted-foreground text-sm p-4">Loading…</div>;
-  if (error) return <div className="text-destructive text-sm p-4">Failed to load: {error}</div>;
+  if (loading) return <div className="text-muted-foreground text-sm p-4">{t("concentration.loading")}</div>;
+  if (error) return <div className="text-destructive text-sm p-4">{t("concentration.failedToLoad", { error })}</div>;
   if (!data) return null;
 
   const customers = data.counterparties.filter((r) => r.role === "customer");
@@ -128,12 +130,16 @@ export function ConcentrationPanel() {
     <div className="space-y-4 text-sm">
       <header className="border-b border-border pb-2">
         <h2 className="text-base font-semibold">
-          Concentration — {activeCompany.code}
+          {t("concentration.heading", { code: activeCompany.code })}
         </h2>
         <p className="text-xs text-muted-foreground">
-          Period {data.period} · {customers.length} customers · {suppliers.length} suppliers
+          {t("concentration.summaryLine", {
+            period: data.period,
+            customers: customers.length,
+            suppliers: suppliers.length,
+          })}
           {data.summary.singleSourceSuppliers > 0 && (
-            <> · <span className="text-red-600 dark:text-red-400 font-semibold">{data.summary.singleSourceSuppliers} single-source</span></>
+            <> · <span className="text-red-600 dark:text-red-400 font-semibold">{t("concentration.singleSourceCount", { count: data.summary.singleSourceSuppliers })}</span></>
           )}
         </p>
       </header>
@@ -141,37 +147,37 @@ export function ConcentrationPanel() {
       {/* HHI summary cards */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-md border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Customer HHI</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("concentration.customerHhi")}</p>
           <p className={`text-2xl font-mono font-bold ${hhiColor(data.summary.customerHhi, true)}`}>
             {data.summary.customerHhi.toFixed(3)}
           </p>
           <p className="text-[10px] text-muted-foreground">
-            {data.summary.customerHhi > 0.25 ? "high — single-buyer risk" : data.summary.customerHhi > 0.15 ? "moderate" : "competitive"}
+            {data.summary.customerHhi > 0.25 ? t("concentration.customerHhiHigh") : data.summary.customerHhi > 0.15 ? t("concentration.customerHhiModerate") : t("concentration.customerHhiCompetitive")}
           </p>
         </div>
         <div className="rounded-md border border-border bg-card p-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Supplier HHI</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{t("concentration.supplierHhi")}</p>
           <p className={`text-2xl font-mono font-bold ${hhiColor(data.summary.supplierHhi, false)}`}>
             {data.summary.supplierHhi.toFixed(3)}
           </p>
           <p className="text-[10px] text-muted-foreground">
-            {data.summary.supplierHhi > 0.35 ? "high — supply-chain fragile" : data.summary.supplierHhi > 0.2 ? "moderate" : "diversified"}
+            {data.summary.supplierHhi > 0.35 ? t("concentration.supplierHhiHigh") : data.summary.supplierHhi > 0.2 ? t("concentration.supplierHhiModerate") : t("concentration.supplierHhiDiversified")}
           </p>
         </div>
       </div>
 
       {/* Customer table */}
       <section>
-        <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Top customers</h3>
+        <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">{t("concentration.topCustomers")}</h3>
         <div className="rounded-md border border-border overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-muted/40">
               <tr>
-                <th className="text-left px-2 py-1.5 font-medium">Customer</th>
+                <th className="text-left px-2 py-1.5 font-medium">{t("concentration.colCustomer")}</th>
                 <th className="text-right px-2 py-1.5 font-medium w-16">%</th>
-                <th className="text-left px-2 py-1.5 font-medium w-24">Contract</th>
-                <th className="text-right px-2 py-1.5 font-medium w-12">Net days</th>
-                <th className="text-left px-2 py-1.5 font-medium">Notes</th>
+                <th className="text-left px-2 py-1.5 font-medium w-24">{t("concentration.colContract")}</th>
+                <th className="text-right px-2 py-1.5 font-medium w-12">{t("concentration.colNetDays")}</th>
+                <th className="text-left px-2 py-1.5 font-medium">{t("concentration.colNotes")}</th>
               </tr>
             </thead>
             <tbody>
@@ -179,13 +185,13 @@ export function ConcentrationPanel() {
                 <tr key={c.id} className="border-t border-border/60">
                   <td className="px-2 py-1.5 font-medium">{c.name}</td>
                   <td className="px-2 py-1.5 text-right font-mono">{c.sharePct.toFixed(1)}</td>
-                  <td className="px-2 py-1.5 text-muted-foreground">{c.contractExpiry ? new Date(c.contractExpiry).toISOString().slice(0, 10) : "open"}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{c.contractExpiry ? new Date(c.contractExpiry).toISOString().slice(0, 10) : t("concentration.contractOpen")}</td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{c.paymentTermsDays ?? "—"}</td>
                   <td className="px-2 py-1.5 text-muted-foreground text-[11px]">{c.notes}</td>
                 </tr>
               ))}
               {customers.length === 0 && (
-                <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground">No customers registered</td></tr>
+                <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground">{t("concentration.noCustomers")}</td></tr>
               )}
             </tbody>
           </table>
@@ -194,16 +200,16 @@ export function ConcentrationPanel() {
 
       {/* Supplier table */}
       <section>
-        <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Top suppliers</h3>
+        <h3 className="text-xs uppercase tracking-wider text-muted-foreground mb-2">{t("concentration.topSuppliers")}</h3>
         <div className="rounded-md border border-border overflow-hidden">
           <table className="w-full text-xs">
             <thead className="bg-muted/40">
               <tr>
-                <th className="text-left px-2 py-1.5 font-medium">Supplier</th>
+                <th className="text-left px-2 py-1.5 font-medium">{t("concentration.colSupplier")}</th>
                 <th className="text-right px-2 py-1.5 font-medium w-16">%</th>
-                <th className="text-left px-2 py-1.5 font-medium w-20">Source</th>
-                <th className="text-right px-2 py-1.5 font-medium w-12">Net days</th>
-                <th className="text-left px-2 py-1.5 font-medium">Notes</th>
+                <th className="text-left px-2 py-1.5 font-medium w-20">{t("concentration.colSource")}</th>
+                <th className="text-right px-2 py-1.5 font-medium w-12">{t("concentration.colNetDays")}</th>
+                <th className="text-left px-2 py-1.5 font-medium">{t("concentration.colNotes")}</th>
               </tr>
             </thead>
             <tbody>
@@ -214,10 +220,10 @@ export function ConcentrationPanel() {
                   <td className="px-2 py-1.5">
                     {s.singleSource ? (
                       <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
-                        <span aria-hidden="true">⚠</span> single
+                        <span aria-hidden="true">⚠</span> {t("concentration.sourceSingle")}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">multi</span>
+                      <span className="text-muted-foreground">{t("concentration.sourceMulti")}</span>
                     )}
                   </td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{s.paymentTermsDays ?? "—"}</td>
@@ -225,7 +231,7 @@ export function ConcentrationPanel() {
                 </tr>
               ))}
               {suppliers.length === 0 && (
-                <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground">No suppliers registered</td></tr>
+                <tr><td colSpan={5} className="px-2 py-3 text-center text-muted-foreground">{t("concentration.noSuppliers")}</td></tr>
               )}
             </tbody>
           </table>
