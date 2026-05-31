@@ -33,11 +33,14 @@ export async function GET(req: NextRequest) {
     expenseForecast,
     rolling,
   ] = await Promise.all([
-    prisma.budgetLine.count({ where: { organizationId: orgId } }),
+    // deletedAt:null on the 3 soft-delete tables (BudgetLine, BalanceSheetLine,
+    // CashFlowEntry) so the tab-availability presence check reflects LIVE rows,
+    // not archived ones (2026-05-31). The other tables have no soft-delete column.
+    prisma.budgetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
     prisma.salesBudgetLine.count({ where: { organizationId: orgId } }),
     prisma.cOGSBudgetLine.count({ where: { organizationId: orgId } }),
-    prisma.balanceSheetLine.count({ where: { organizationId: orgId } }),
-    prisma.cashFlowEntry.count({ where: { organizationId: orgId } }),
+    prisma.balanceSheetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
+    prisma.cashFlowEntry.count({ where: { organizationId: orgId, deletedAt: null } }),
     prisma.budgetAssumption.count({ where: { organizationId: orgId } }),
     prisma.salesForecast.count({ where: { organizationId: orgId } }),
     prisma.expenseForecast.count({ where: { organizationId: orgId } }),

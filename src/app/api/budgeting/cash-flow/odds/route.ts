@@ -14,8 +14,11 @@ export async function GET(req: NextRequest) {
   const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
   const compareYear = req.nextUrl.searchParams.get("compareYear")
 
+  // deletedAt:null REQUIRED (2026-05-31): same soft-delete archive pattern
+  // as the cash-flow overview GET — without it the ODDS statement sums
+  // superseded rows, inflating Operating/Investing/Financing totals ~2×.
   const entries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year },
+    where: { organizationId: orgId, year, deletedAt: null },
     orderBy: [{ month: "asc" }],
     include: { account: { select: { code: true, name: true } } },
   })
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
   let compareEntries: typeof entries = []
   if (compareYear) {
     compareEntries = await prisma.cashFlowEntry.findMany({
-      where: { organizationId: orgId, year: parseInt(compareYear) },
+      where: { organizationId: orgId, year: parseInt(compareYear), deletedAt: null },
       include: { account: { select: { code: true, name: true } } },
     })
   }

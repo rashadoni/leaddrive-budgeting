@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
-    cashFlowEntry: { create: vi.fn() },
+    cashFlowEntry: { create: vi.fn(), findMany: vi.fn() },
     organization: { findUnique: vi.fn() },
     // Phase 5.2 Stage 2 — withOrgScope wraps cash_flow_entries reads/writes.
     $transaction: vi.fn(
@@ -26,7 +26,7 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
-import { POST } from "./route"
+import { GET, POST } from "./route"
 
 // Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
 const ORG_ID = "cm3rlscashflow000001abc"
@@ -35,6 +35,7 @@ const validBody = { year: 2026, month: 1, entryType: "inflow" as const, amount: 
 
 beforeEach(() => {
   prismaMock.cashFlowEntry.create.mockReset().mockResolvedValue({ id: "cf1" })
+  prismaMock.cashFlowEntry.findMany.mockReset().mockResolvedValue([])
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
 })
 
@@ -105,5 +106,34 @@ describe("POST /api/budgeting/cash-flow — period lock (Turn LXVIII follow-up)"
     const res = await POST(makeRequest("/api/budgeting/cash-flow", { method: "POST", json: noAccount }))
     expect(res.status).toBe(400)
     expect(prismaMock.cashFlowEntry.create).not.toHaveBeenCalled()
+  })
+})
+
+describe("GET /api/budgeting/cash-flow — soft-delete exclusion (2026-05-31)", () => {
+  it("returns 401 unauth", async () => {
+    await mockSession(null)
+    const res = await GET(makeRequest("/api/budgeting/cash-flow?year=2026"))
+    expect(res.status).toBe(401)
+  })
+
+  it("excludes soft-deleted rows on BOTH current and prior year reads (deletedAt:null)", async () => {
+    // Regression: CashFlowEntry uses soft-delete-then-insert on re-import.
+    // Without deletedAt:null the overview GET summed archived rows alongside
+    // live ones — measured ×1.98 inflows/outflows inflation on the live
+    // AZSEKER 2026 data (97M vs the correct 49M). prev-year is read for the
+    // opening-balance carry, so it needs the same filter.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await GET(makeRequest("/api/budgeting/cash-flow?year=2026"))
+    expect(res.status).toBe(200)
+    expect(prismaMock.cashFlowEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, year: 2026, deletedAt: null },
+      }),
+    )
+    expect(prismaMock.cashFlowEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, year: 2025, deletedAt: null },
+      }),
+    )
   })
 })

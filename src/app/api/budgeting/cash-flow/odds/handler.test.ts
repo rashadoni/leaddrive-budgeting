@@ -95,12 +95,15 @@ describe("GET /api/budgeting/cash-flow/odds", () => {
     expect(op.totalInflow).toBe(500)
   })
 
-  it("org-scoped query (filters by organizationId + year)", async () => {
+  it("org-scoped query filters by organizationId + year AND excludes soft-deleted (deletedAt:null)", async () => {
+    // Regression (2026-05-31): the ODDS statement summed archived rows from
+    // soft-delete-then-insert re-imports without this filter (same ×2 class
+    // as the cash-flow overview GET).
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     await GET(makeRequest("/api/budgeting/cash-flow/odds?year=2026"))
     expect(prismaMock.cashFlowEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: ORG_ID, year: 2026 },
+        where: { organizationId: ORG_ID, year: 2026, deletedAt: null },
       }),
     )
   })

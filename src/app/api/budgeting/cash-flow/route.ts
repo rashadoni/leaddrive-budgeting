@@ -36,12 +36,17 @@ export async function GET(req: NextRequest) {
   const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
   const { entries, prevYearEntries } = await withOrgScope(orgId, async (tx) => {
+    // deletedAt:null REQUIRED (2026-05-31): CashFlowEntry uses the
+    // soft-delete-then-insert archive pattern on re-import. Without this
+    // filter the GET sums superseded (archived) rows alongside live ones,
+    // inflating displayed inflows/outflows ~2× on re-imported data
+    // (measured ×1.98 on AZSEKER 2026). Matches plans/route.ts convention.
     const entries = await tx.cashFlowEntry.findMany({
-      where: { organizationId: orgId, year },
+      where: { organizationId: orgId, year, deletedAt: null },
       orderBy: [{ month: "asc" }, { entryType: "asc" }],
     })
     const prevYearEntries = await tx.cashFlowEntry.findMany({
-      where: { organizationId: orgId, year: year - 1 },
+      where: { organizationId: orgId, year: year - 1, deletedAt: null },
     })
     return { entries, prevYearEntries }
   })

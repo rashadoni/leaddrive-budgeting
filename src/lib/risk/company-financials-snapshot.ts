@@ -48,6 +48,11 @@ export async function getCompanyFinancialsSnapshot(
       // Filter via the related plan's `year` field through a Prisma
       // relation predicate.
       plan: { year },
+      // deletedAt:null REQUIRED (2026-05-31): BudgetLine uses soft-delete-
+      // then-insert on re-import. Without this the snapshot sums archived
+      // rows alongside live ones — measured ×6.27 budgetLine inflation on
+      // live data — corrupting the intel crossing-scan that consumes it.
+      deletedAt: null,
     },
     _sum: { plannedAmount: true },
   })

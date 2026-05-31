@@ -82,12 +82,16 @@ describe("GET /api/budgeting/balance-sheet", () => {
     expect(body.all).toHaveLength(4)
   })
 
-  it("query is org-scoped", async () => {
+  it("query is org-scoped AND excludes soft-deleted rows (deletedAt:null)", async () => {
+    // Regression (2026-05-31): BalanceSheetLine uses soft-delete-then-insert
+    // on re-import. The GET must filter deletedAt:null or it sums archived
+    // rows alongside live ones — measured ×1.92 Total-Assets inflation on
+    // the live AZSEKER 2026 Budget plan before this filter was added.
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
     await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
     expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { organizationId: ORG_ID, planId: "p1" },
+        where: { organizationId: ORG_ID, planId: "p1", deletedAt: null },
       }),
     )
   })

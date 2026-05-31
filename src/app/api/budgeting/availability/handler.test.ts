@@ -115,9 +115,14 @@ describe("GET /api/budgeting/availability (Turn 33.5)", () => {
   it("all 9 prisma.count calls scope by organizationId (security regression guard)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" });
     await GET(makeRequest("http://localhost/api/budgeting/availability"));
+    // The 3 soft-delete tables additionally filter deletedAt:null so the
+    // tab-presence boolean reflects LIVE rows, not archived ones (2026-05-31).
+    const softDelete = new Set(["budgetLine", "balanceSheetLine", "cashFlowEntry"]);
     for (const [name, model] of Object.entries(prismaMock)) {
       expect(model.count, `${name}.count called with orgId`).toHaveBeenCalledWith({
-        where: { organizationId: ORG_ID },
+        where: softDelete.has(name)
+          ? { organizationId: ORG_ID, deletedAt: null }
+          : { organizationId: ORG_ID },
       });
     }
   });

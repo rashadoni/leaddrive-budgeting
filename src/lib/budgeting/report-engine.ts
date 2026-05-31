@@ -352,6 +352,15 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   const modelDispatch = prisma as unknown as PrismaModelDispatch
 
   const where = buildWhere(orgId, config.planId, entityConfig, config.filters)
+  // Soft-delete tables (2026-05-31): exclude archived rows or re-imported
+  // data double-counts in custom reports. Measured on live data: budgetLine
+  // ×6.27, balanceSheetLine ×1.92, cashFlowEntry ×1.98. Applied here (after
+  // buildWhere) so it flows into the distinct-codes scan AND the main query
+  // uniformly. The other report entity models have no soft-delete column.
+  const SOFT_DELETE_MODELS = new Set(["budgetLine", "balanceSheetLine", "cashFlowEntry"])
+  if (SOFT_DELETE_MODELS.has(entityConfig.model)) {
+    where.deletedAt = null
+  }
   const limit = Math.min(config.limit ?? 500, 10000)
 
   // For budgetLines, the imported P&L contains BOTH parent SAP codes (e.g.

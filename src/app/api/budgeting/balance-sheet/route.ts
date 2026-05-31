@@ -14,9 +14,14 @@ export async function GET(req: NextRequest) {
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
+  // deletedAt:null REQUIRED (2026-05-31): BalanceSheetLine uses the
+  // soft-delete-then-insert archive pattern on re-import. Without this
+  // filter the GET returns superseded (archived) rows alongside live ones,
+  // inflating Total Assets/Liabilities/Equity ~2× on re-imported data
+  // (measured ×1.92 on AZSEKER 2026 Budget). Matches plans/route.ts.
   const lines = await withOrgScope(orgId, async (tx) =>
     tx.balanceSheetLine.findMany({
-      where: { organizationId: orgId, planId },
+      where: { organizationId: orgId, planId, deletedAt: null },
       orderBy: [{ lineType: "asc" }, { accountCode: "asc" }, { month: "asc" }],
     })
   )
