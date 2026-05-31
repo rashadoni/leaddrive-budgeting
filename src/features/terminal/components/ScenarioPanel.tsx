@@ -12,13 +12,13 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
 import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
 import { orderCascade } from "../lib/cascade-order";
-import { CRISIS_CATALOG, CRISIS_CATEGORY_LABEL_RU, type CrisisCategory } from "@/lib/risk/crisis-catalog";
+import { CRISIS_CATALOG, type CrisisCategory } from "@/lib/risk/crisis-catalog";
 import { ScenarioFormModal, type ScenarioFormValues } from "./ScenarioFormModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -147,11 +147,12 @@ function useCountTween(target: number | null, durationMs = 900): number | null {
 /** Holding composite swing: baseline (struck-through) → animated scenario score
  *  with a colour shift + ▼/▲ delta badge. The demo's headline number. */
 function HoldingScoreSwing({ base, scen }: { base: number | null; scen: number | null }) {
+  const t = useTranslations("terminal");
   const shown = useCountTween(scen);
   const drop = base != null && scen != null ? scen - base : null;
   return (
     <div className="flex items-baseline gap-3" data-testid="holding-score-swing">
-      <span className="text-xs text-muted-foreground">Композит холдинга</span>
+      <span className="text-xs text-muted-foreground">{t("scenarioPanel.holdingComposite")}</span>
       <span className="text-base text-muted-foreground line-through tabular-nums">{base ?? "—"}</span>
       <span className={`text-4xl font-bold tabular-nums transition-colors duration-500 ${bandColor(shown)}`}>
         {shown ?? "—"}
@@ -194,12 +195,12 @@ type BriefState =
 // the catalog (legacy multiplier scenarios) fall into the "Other" group.
 const CATEGORY_BY_CODE = new Map<string, CrisisCategory>(CRISIS_CATALOG.map((s) => [s.code, s.category]));
 const CATEGORY_ORDER: CrisisCategory[] = ["fx_macro", "commodity", "climate_agro", "geopolitics", "customers"];
-const OTHER_GROUP_LABEL = "🧪 Другие (множитель)";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ScenarioPanel() {
   const locale = useLocale();
+  const t = useTranslations("terminal");
   const [open, setOpen] = useState(false);
   const [scenarios, setScenarios] = useState<Scenario[] | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -296,6 +297,15 @@ export function ScenarioPanel() {
     [scenarios, selectedId],
   );
 
+  // Localized scenario description: catalog scenarios carry a translated copy
+  // under terminal.scenarioDesc.<code>; user-created scenarios (no such key)
+  // fall back to the single English `description` field stored in the DB.
+  const selectedScenarioDesc = useMemo(() => {
+    if (!selectedScenario) return null;
+    const key = `scenarioDesc.${selectedScenario.code}`;
+    return t.has(key as never) ? t(key as never) : selectedScenario.description ?? null;
+  }, [selectedScenario, t]);
+
   // Group scenarios by crisis category for the selector (closes the flat-list
   // "только два параметра?" complaint). Catalog scenarios land in their
   // category; legacy multiplier scenarios fall into the "Other" group.
@@ -308,13 +318,13 @@ export function ScenarioPanel() {
       if (list) list.push(s);
       else groups.set(key, [s]);
     }
-    const ordered: Array<{ key: string; label: string; items: Scenario[] }> = [];
+    const ordered: Array<{ key: string; items: Scenario[] }> = [];
     for (const cat of CATEGORY_ORDER) {
       const items = groups.get(cat);
-      if (items && items.length) ordered.push({ key: cat, label: CRISIS_CATEGORY_LABEL_RU[cat], items });
+      if (items && items.length) ordered.push({ key: cat, items });
     }
     const other = groups.get("__other__");
-    if (other && other.length) ordered.push({ key: "__other__", label: OTHER_GROUP_LABEL, items: other });
+    if (other && other.length) ordered.push({ key: "__other__", items: other });
     return ordered;
   }, [scenarios]);
 
@@ -489,7 +499,7 @@ export function ScenarioPanel() {
   );
 
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm("Удалить этот сценарий? Он будет скрыт, но данные сохранятся.")) return;
+    if (!confirm(t("scenarioPanel.deleteConfirm"))) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/scenarios/${id}`, { method: "DELETE" });
@@ -503,7 +513,7 @@ export function ScenarioPanel() {
     } finally {
       setDeletingId(null);
     }
-  }, [selectedId]);
+  }, [selectedId, t]);
 
   if (!open) return null;
 
@@ -530,13 +540,13 @@ export function ScenarioPanel() {
         data-testid="crisis-cascading"
       >
         <Flame size={15} className="animate-pulse" aria-hidden="true" />
-        Кризис разворачивается на карте…
+        {t("scenarioPanel.cascadeRunning")}
       </div>
     ) : (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Сценарный анализ"
+      aria-label={t("scenarioPanel.dialogAria")}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) setOpen(false);
@@ -549,10 +559,10 @@ export function ScenarioPanel() {
             <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
-                Сценарный анализ (What-if)
+                {t("scenarioPanel.title")}
               </h2>
               <p className="text-xs text-muted-foreground">
-                Живое моделирование — выбери сценарий → Смоделировать → Применить к HeatMap
+                {t("scenarioPanel.subtitle")}
               </p>
             </div>
           </div>
@@ -563,13 +573,13 @@ export function ScenarioPanel() {
                 onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
                 className="rounded border border-red-500/30 bg-red-500/10 text-red-400 px-2 py-1 text-xs hover:bg-red-500/20"
               >
-                Сбросить: {activeScenarioLabel}
+                {t("scenarioPanel.reset", { label: activeScenarioLabel })}
               </button>
             )}
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Закрыть"
+              aria-label={t("scenarioPanel.close")}
               className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
             >
               <X size={14} aria-hidden="true" />
@@ -582,34 +592,34 @@ export function ScenarioPanel() {
           <aside>
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                Сценарии ({scenarios?.length ?? 0})
+                {t("scenarioPanel.scenariosCount", { count: scenarios?.length ?? 0 })}
               </h3>
               <button
                 type="button"
                 onClick={openCreateForm}
-                aria-label="Создать сценарий"
+                aria-label={t("scenarioPanel.createAria")}
                 data-testid="scenario-create-button"
                 className="flex items-center gap-0.5 rounded border border-[#FFB800]/40 bg-[#FFB800]/8 text-[#FFB800] px-1.5 py-0.5 text-[10px] hover:bg-[#FFB800]/20"
               >
                 <Plus size={10} aria-hidden="true" />
-                Новый
+                {t("scenarioPanel.new")}
               </button>
             </div>
             {scenarios === null && !fetchError && (
-              <p className="text-sm text-muted-foreground" data-testid="scenarios-loading">Загрузка…</p>
+              <p className="text-sm text-muted-foreground" data-testid="scenarios-loading">{t("scenarioPanel.loading")}</p>
             )}
             {fetchError && (
               <p className="text-xs text-red-500 mt-2" data-testid="scenarios-fetch-error">{fetchError}</p>
             )}
             {scenarios !== null && scenarios.length === 0 && (
-              <p className="text-sm text-muted-foreground" data-testid="scenarios-empty">Сценарии не найдены</p>
+              <p className="text-sm text-muted-foreground" data-testid="scenarios-empty">{t("scenarioPanel.empty")}</p>
             )}
             {groupedScenarios && groupedScenarios.length > 0 && (
               <div className="space-y-3">
                 {groupedScenarios.map((group) => (
                   <div key={group.key}>
                     <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 mb-1 px-0.5">
-                      {group.label}
+                      {t(`scenarioPanel.category.${group.key}` as never)}
                     </h4>
                     <ul className="space-y-1">
                       {group.items.map((s) => {
@@ -642,7 +652,7 @@ export function ScenarioPanel() {
                               <button
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); openEditForm(s); }}
-                                aria-label={`Редактировать ${s.code}`}
+                                aria-label={t("scenarioPanel.editAria", { code: s.code })}
                                 data-testid={`scenario-edit-${s.code}`}
                                 className="rounded p-1 hover:bg-muted/60 text-muted-foreground hover:text-foreground"
                               >
@@ -652,7 +662,7 @@ export function ScenarioPanel() {
                                 type="button"
                                 onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); }}
                                 disabled={deletingId === s.id}
-                                aria-label={`Удалить ${s.code}`}
+                                aria-label={t("scenarioPanel.deleteAria", { code: s.code })}
                                 data-testid={`scenario-delete-${s.code}`}
                                 className="rounded p-1 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-40"
                               >
@@ -674,8 +684,8 @@ export function ScenarioPanel() {
             {selectedScenario === null ? (
               <p className="text-sm text-muted-foreground">
                 {scenarios && scenarios.length > 0
-                  ? "Выбери сценарий слева"
-                  : "Нет доступных сценариев"}
+                  ? t("scenarioPanel.selectLeft")
+                  : t("scenarioPanel.noneAvailable")}
               </p>
             ) : (
               <div className="space-y-4">
@@ -685,12 +695,12 @@ export function ScenarioPanel() {
                     {resolveScenarioLabel(selectedScenario, locale)}
                   </h3>
                   <p className="text-xs text-muted-foreground font-mono">
-                    {selectedScenario.code} · период: {period}
+                    {t("scenarioPanel.codePeriod", { code: selectedScenario.code, period })}
                   </p>
                 </div>
-                {selectedScenario.description && (
+                {selectedScenarioDesc && (
                   <p className="text-sm text-muted-foreground">
-                    {selectedScenario.description}
+                    {selectedScenarioDesc}
                   </p>
                 )}
 
@@ -705,11 +715,11 @@ export function ScenarioPanel() {
                       data-testid="scenario-run-crisis"
                     >
                       <Flame size={14} aria-hidden="true" />
-                      {briefState.kind === "loading" ? "Моделирование кризиса…" : "Запустить кризис"}
+                      {briefState.kind === "loading" ? t("scenarioPanel.simulatingCrisis") : t("scenarioPanel.runCrisis")}
                     </button>
                   )}
                   {selectedHasShock && (
-                    <div className="inline-flex items-center gap-1 text-xs" role="group" aria-label="Язык AI-нарратива">
+                    <div className="inline-flex items-center gap-1 text-xs" role="group" aria-label={t("scenarioPanel.aiLangAria")}>
                       <span className="text-muted-foreground">AI:</span>
                       {(["ru", "en", "az"] as AiLang[]).map((lng) => (
                         <button
@@ -735,7 +745,7 @@ export function ScenarioPanel() {
                     className="rounded border border-input bg-muted/20 text-muted-foreground px-3 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="scenario-simulate-button"
                   >
-                    {simState.kind === "loading" ? "Моделирование…" : "⚡ Быстрый расчёт"}
+                    {simState.kind === "loading" ? t("scenarioPanel.simulating") : t("scenarioPanel.quickCalc")}
                   </button>
 
                   {simState.kind === "done" && (
@@ -745,7 +755,7 @@ export function ScenarioPanel() {
                       className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 px-4 py-1.5 text-sm font-medium hover:bg-emerald-500/20"
                       data-testid="scenario-apply-heatmap"
                     >
-                      ✓ Применить к HeatMap
+                      {t("scenarioPanel.applyHeatMap")}
                     </button>
                   )}
                 </div>
@@ -753,12 +763,12 @@ export function ScenarioPanel() {
                 {/* ── Crisis Brief (drivers mode) ── */}
                 {briefState.kind === "unsupported" && (
                   <p className="text-sm text-amber-500">
-                    ⚠ У этого сценария нет блока <code>shock</code> — запусти «Быстрый расчёт» (старый множитель).
+                    {t.rich("scenarioPanel.unsupportedShock", { code: (c) => <code>{c}</code> })}
                   </p>
                 )}
                 {briefState.kind === "error" && (
                   <p className="text-sm text-red-500" data-testid="scenario-crisis-error">
-                    Ошибка моделирования: {briefState.message}
+                    {t("scenarioPanel.crisisError", { message: briefState.message })}
                   </p>
                 )}
                 {scenarioBrief && scenarioBrief.scenarioCode === selectedScenario.code && briefState.kind === "done" && (
@@ -774,7 +784,7 @@ export function ScenarioPanel() {
                         />
                         {scenarioBrief.financialHoldingScenarioScore != null && (
                           <div className="flex items-baseline gap-3" data-testid="financial-stress-swing">
-                            <span className="text-xs text-muted-foreground">Финансовое здоровье</span>
+                            <span className="text-xs text-muted-foreground">{t("scenarioPanel.financialHealth")}</span>
                             <span className="text-sm text-muted-foreground line-through tabular-nums">
                               {scenarioBrief.financialHoldingBaselineScore ?? "—"}
                             </span>
@@ -801,7 +811,7 @@ export function ScenarioPanel() {
                         className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50 shrink-0"
                         data-testid="crisis-revert"
                       >
-                        ← Базовый сценарий
+                        {t("scenarioPanel.baseScenario")}
                       </button>
                     </div>
 
@@ -812,7 +822,7 @@ export function ScenarioPanel() {
                           <span
                             key={a.label}
                             className="inline-flex items-baseline gap-1.5 rounded border border-sky-500/25 bg-sky-500/10 px-2 py-1 text-xs"
-                            title={`Источник: ${a.asOf}${a.stale ? " (устарело)" : ""}`}
+                            title={`${t("scenarioPanel.sourceTitle", { asOf: a.asOf })}${a.stale ? t("scenarioPanel.staleSuffix") : ""}`}
                           >
                             <span className="text-sky-300/90">📊 {a.label}</span>
                             <span className="text-muted-foreground tabular-nums">{a.currentValue}</span>
@@ -852,7 +862,7 @@ export function ScenarioPanel() {
                         {scenarioBrief.mitigations.length > 0 && (
                           <div>
                             <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
-                              Меры
+                              {t("scenarioPanel.measures")}
                             </h4>
                             <ul className="space-y-1">
                               {scenarioBrief.mitigations.map((m, i) => (
@@ -867,11 +877,11 @@ export function ScenarioPanel() {
                       </div>
                     ) : narrativeState === "loading" ? (
                       <p className="text-sm text-sky-300/80 italic animate-pulse" data-testid="crisis-narrative-loading">
-                        🤖 AI-бриф генерируется…
+                        {t("scenarioPanel.briefGenerating")}
                       </p>
                     ) : (
                       <p className="text-xs text-muted-foreground italic" data-testid="crisis-narrative-unavailable">
-                        AI-нарратив недоступен — см. изменения индикаторов ниже.
+                        {t("scenarioPanel.narrativeUnavailable")}
                       </p>
                     )}
                   </div>
@@ -880,13 +890,12 @@ export function ScenarioPanel() {
                 {/* Simulation results */}
                 {simState.kind === "unsupported" && (
                   <p className="text-sm text-amber-500">
-                    ⚠ Этот сценарий не поддерживает симуляцию (нет поля adjustments).
-                    Обновите сценарий командой seed-scenarios.
+                    {t("scenarioPanel.unsupportedSim")}
                   </p>
                 )}
                 {simState.kind === "error" && (
                   <p className="text-sm text-red-500" data-testid="scenario-apply-error">
-                    Ошибка: {simState.message}
+                    {t("scenarioPanel.error", { message: simState.message })}
                   </p>
                 )}
 
@@ -895,40 +904,40 @@ export function ScenarioPanel() {
                     {/* Summary chips */}
                     <div className="flex flex-wrap gap-2 text-xs">
                       <span className="px-2 py-0.5 rounded border border-border bg-muted/30">
-                        Проверено: <strong>{simState.result.deltas.length + simState.result.unchanged}</strong> индикаторов
+                        {t.rich("scenarioPanel.checked", { count: simState.result.deltas.length + simState.result.unchanged, strong: (c) => <strong>{c}</strong> })}
                       </span>
                       <span className="px-2 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-red-400">
                         <TrendingDown size={10} className="inline mr-1" />
-                        Ухудшились: <strong>{simState.result.worsened}</strong>
+                        {t.rich("scenarioPanel.worsened", { count: simState.result.worsened, strong: (c) => <strong>{c}</strong> })}
                       </span>
                       {simState.result.improved > 0 && (
                         <span className="px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
                           <TrendingUp size={10} className="inline mr-1" />
-                          Улучшились: <strong>{simState.result.improved}</strong>
+                          {t.rich("scenarioPanel.improved", { count: simState.result.improved, strong: (c) => <strong>{c}</strong> })}
                         </span>
                       )}
                       <span className="px-2 py-0.5 rounded border border-border bg-muted/20 text-muted-foreground">
                         <Minus size={10} className="inline mr-1" />
-                        Без изменений: <strong>{simState.result.unchanged}</strong>
+                        {t.rich("scenarioPanel.unchangedCount", { count: simState.result.unchanged, strong: (c) => <strong>{c}</strong> })}
                       </span>
                     </div>
 
                     {/* Delta table */}
                     {changedDeltas.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Ни один индикатор не меняет цвет при этом сценарии.
+                        {t("scenarioPanel.noColorChange")}
                       </p>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
                             <tr className="border-b border-border text-muted-foreground">
-                              <th className="text-left py-1.5 pr-3 font-medium">Компания</th>
-                              <th className="text-left py-1.5 pr-3 font-medium">Индикатор</th>
-                              <th className="text-left py-1.5 pr-3 font-medium">Базовый</th>
-                              <th className="text-left py-1.5 pr-3 font-medium">Сценарий</th>
-                              <th className="text-right py-1.5 pr-3 font-medium">Значение было</th>
-                              <th className="text-right py-1.5 font-medium">Значение стало</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colCompany")}</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colIndicator")}</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colBaseline")}</th>
+                              <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colScenario")}</th>
+                              <th className="text-right py-1.5 pr-3 font-medium">{t("scenarioPanel.colValueWas")}</th>
+                              <th className="text-right py-1.5 font-medium">{t("scenarioPanel.colValueNow")}</th>
                             </tr>
                           </thead>
                           <tbody>

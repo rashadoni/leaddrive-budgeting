@@ -290,7 +290,8 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
     fireEvent.click(screen.getByTestId("scenario-simulate-button"));
     await waitFor(() => {
       // Unsupported state renders an amber warning (no data-testid, check text).
-      expect(screen.getByText(/не поддерживает симуляцию/i)).toBeTruthy();
+      // i18n'd via terminal.scenarioPanel.unsupportedSim (en mirror in vitest.setup EXPLICIT_LABELS).
+      expect(screen.getByText(/support simulation/i)).toBeTruthy();
     });
   });
 
@@ -330,7 +331,7 @@ describe("ScenarioPanel (Phase C4 v1)", () => {
   it("Close (X) button dismisses modal", async () => {
     render(<ScenarioPanel />);
     fireOpen();
-    fireEvent.click(screen.getByLabelText("Закрыть"));
+    fireEvent.click(screen.getByLabelText("Close"));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 

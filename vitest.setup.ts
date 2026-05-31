@@ -450,6 +450,13 @@ const EXPLICIT_LABELS: Record<string, string> = {
   colRole: 'Role',
   colConfidence: 'Conf.',
   colReasoning: 'Reasoning',
+
+  // ScenarioPanel (terminal.scenarioPanel.*) — only the keys ScenarioPanel.test
+  // asserts on by text/aria need a real English label; the rest fall back to the
+  // camelCase-shout fallback. Mirrors messages/en.json terminal.scenarioPanel.*.
+  'scenarioPanel.close': 'Close',
+  'scenarioPanel.unsupportedSim':
+    "⚠ This scenario doesn't support simulation (no adjustments field). Update it via the seed-scenarios command.",
 };
 
 /**
@@ -473,9 +480,30 @@ function fallbackLabel(key: string, values?: Record<string, unknown>): string {
   return spaced ? spaced.toUpperCase() : key;
 }
 
+/**
+ * Build a mock `t` that mirrors the parts of the next-intl translator the
+ * components use: callable `t(key, values)`, plus `t.rich` (tag-aware in real
+ * next-intl — here it just resolves the label; tag fns in `values` are ignored
+ * since no test asserts on rich output), `t.has` (true only for explicitly
+ * mapped keys, so unmapped lookups like scenarioDesc.<code> fall back to the
+ * component's own default), and `t.markup`.
+ */
+function makeMockT() {
+  const t = ((key: string, values?: Record<string, unknown>) =>
+    fallbackLabel(key, values)) as {
+    (key: string, values?: Record<string, unknown>): string;
+    rich: (key: string, values?: Record<string, unknown>) => string;
+    has: (key: string) => boolean;
+    markup: (key: string, values?: Record<string, unknown>) => string;
+  };
+  t.rich = (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values);
+  t.has = (key: string) => key in EXPLICIT_LABELS;
+  t.markup = (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values);
+  return t;
+}
+
 vi.mock('next-intl', () => ({
-  useTranslations: (_namespace?: string) =>
-    (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values),
+  useTranslations: (_namespace?: string) => makeMockT(),
   useLocale: () => 'en',
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
   useMessages: () => ({}),
@@ -493,8 +521,7 @@ vi.mock('next-intl', () => ({
 // duplicate of these keys, creating a drift surface. Centralizing the
 // server mock here kills the drift class entirely.
 vi.mock('next-intl/server', () => ({
-  getTranslations: async (_namespace?: string) =>
-    (key: string, values?: Record<string, unknown>) => fallbackLabel(key, values),
+  getTranslations: async (_namespace?: string) => makeMockT(),
   getLocale: async () => 'en',
   getMessages: async () => ({}),
   getFormatter: async () => ({
