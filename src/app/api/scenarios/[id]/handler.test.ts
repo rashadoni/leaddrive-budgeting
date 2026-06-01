@@ -158,6 +158,49 @@ describe("PATCH /api/scenarios/[id]", () => {
       expect.objectContaining({ where: { id: SCENARIO_ID } }),
     )
   })
+
+  it("200 accepts a feed-anchored shock override (BRENT_TO_140 edit)", async () => {
+    // Regression: editing a crisis scenario used to 400 ("Validation error")
+    // because the route only accepted `adjustments[]` (2026-06-01).
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.scenario.findFirst.mockResolvedValue(EXISTING)
+    prismaMock.scenario.update.mockResolvedValue({ ...EXISTING })
+    const res = await PATCH(
+      makeRequest(`/api/scenarios/${SCENARIO_ID}`, {
+        method: "PATCH",
+        json: { overrides: { shock: { target: { metric: "BRENT_USD_BBL", value: 120, drives: "inputCostShock" } } } },
+      }),
+      makeParams(),
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it("200 accepts a direct-lever shock override (PRICE_DROP_40 edit)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.scenario.findFirst.mockResolvedValue(EXISTING)
+    prismaMock.scenario.update.mockResolvedValue({ ...EXISTING })
+    const res = await PATCH(
+      makeRequest(`/api/scenarios/${SCENARIO_ID}`, {
+        method: "PATCH",
+        json: { overrides: { shock: { priceShock: -0.25 } } },
+      }),
+      makeParams(),
+    )
+    expect(res.status).toBe(200)
+  })
+
+  it("400 rejects an empty shock override (no target, no lever)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: USER_ID, role: "admin" })
+    prismaMock.scenario.findFirst.mockResolvedValue(EXISTING)
+    const res = await PATCH(
+      makeRequest(`/api/scenarios/${SCENARIO_ID}`, {
+        method: "PATCH",
+        json: { overrides: { shock: {} } },
+      }),
+      makeParams(),
+    )
+    expect(res.status).toBe(400)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

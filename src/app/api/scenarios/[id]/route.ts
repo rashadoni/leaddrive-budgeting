@@ -2,24 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
+import { ScenarioOverridesSchema } from '@/lib/risk/scenario-overrides-schema';
 
 // ─── Validation ───────────────────────────────────────────────────────────────
-
-const AdjustmentSchema = z.object({
-  codes: z.array(z.string().min(1)).min(1),
-  multiply: z.number().positive().optional(),
-  delta: z.number().optional(),
-  note: z.string().max(256).optional(),
-});
 
 const ScenarioUpdateSchema = z.object({
   nameEn: z.string().min(1).max(256).optional(),
   nameRu: z.string().max(256).nullable().optional(),
   nameAz: z.string().max(256).nullable().optional(),
   description: z.string().max(2048).nullable().optional(),
-  overrides: z
-    .object({ adjustments: z.array(AdjustmentSchema).min(1) })
-    .optional(),
+  // Accepts legacy `adjustments[]` OR the Phase-2 `shock{}` form (crisis
+  // scenarios) — kept in lockstep with the create route + the engine.
+  overrides: ScenarioOverridesSchema.optional(),
   isActive: z.boolean().optional(),
 });
 

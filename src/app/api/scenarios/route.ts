@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireAuth, requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit';
 import { getLogger } from '@/lib/log';
+import { ScenarioOverridesSchema } from '@/lib/risk/scenario-overrides-schema';
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger('api:scenarios');
@@ -15,13 +16,6 @@ const CREATE_RATE_LIMIT = { name: 'scenarios-create', max: 10, windowMs: 60_000 
 
 // ─── Validation schema ────────────────────────────────────────────────────────
 
-const AdjustmentSchema = z.object({
-  codes: z.array(z.string().min(1)).min(1),
-  multiply: z.number().positive().optional(),
-  delta: z.number().optional(),
-  note: z.string().max(256).optional(),
-});
-
 const ScenarioCreateSchema = z.object({
   code: z
     .string()
@@ -32,9 +26,9 @@ const ScenarioCreateSchema = z.object({
   nameRu: z.string().max(256).optional(),
   nameAz: z.string().max(256).optional(),
   description: z.string().max(2048).optional(),
-  overrides: z.object({
-    adjustments: z.array(AdjustmentSchema).min(1),
-  }),
+  // Accepts legacy `adjustments[]` OR the Phase-2 `shock{}` form — kept in
+  // lockstep with the update route + the simulate engine.
+  overrides: ScenarioOverridesSchema,
   isActive: z.boolean().default(true),
 });
 
