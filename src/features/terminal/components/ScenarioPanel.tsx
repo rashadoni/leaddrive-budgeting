@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { resolveScenarioLabel } from "../lib/resolve-scenario-label";
-import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame } from "lucide-react";
+import { Beaker, X, TrendingDown, TrendingUp, Minus, Plus, Pencil, Trash2, Flame, Zap } from "lucide-react";
 import { useTerminalStore } from "../store/terminalStore";
 import { currentBakuYear } from "@/lib/risk/periods";
 import { orderCascade } from "../lib/cascade-order";
@@ -74,21 +74,21 @@ const STATUS_COLOR: Record<string, string> = {
   green: "text-emerald-500",
   amber: "text-[#FFB800]",
   red: "text-red-500",
-  unknown: "text-muted-foreground",
+  unknown: "text-gray-400",
 };
 
 const STATUS_BG: Record<string, string> = {
   green: "bg-emerald-500/15 border-emerald-500/30",
   amber: "bg-[#FFB800]/15 border-[#FFB800]/30",
   red: "bg-red-500/15 border-red-500/30",
-  unknown: "bg-muted/20 border-border",
+  unknown: "bg-white/[0.03] border-white/10",
 };
 
 const STATUS_DOT: Record<string, string> = {
   green: "bg-emerald-500",
   amber: "bg-[#FFB800]",
   red: "bg-red-500",
-  unknown: "bg-muted-foreground",
+  unknown: "bg-white/5-foreground",
 };
 
 function StatusDot({ status }: { status: string }) {
@@ -112,7 +112,7 @@ type AiLang = "en" | "ru" | "az";
 
 /** Composite-score band colour (matches CompanyTree/HeatMap thresholds). */
 function bandColor(score: number | null): string {
-  if (score == null) return "text-muted-foreground";
+  if (score == null) return "text-gray-400";
   if (score >= 67) return "text-emerald-500";
   if (score >= 34) return "text-[#FFB800]";
   return "text-red-500";
@@ -152,8 +152,8 @@ function HoldingScoreSwing({ base, scen }: { base: number | null; scen: number |
   const drop = base != null && scen != null ? scen - base : null;
   return (
     <div className="flex items-baseline gap-3" data-testid="holding-score-swing">
-      <span className="text-xs text-muted-foreground">{t("scenarioPanel.holdingComposite")}</span>
-      <span className="text-base text-muted-foreground line-through tabular-nums">{base ?? "—"}</span>
+      <span className="text-xs text-gray-400">{t("scenarioPanel.holdingComposite")}</span>
+      <span className="text-base text-gray-400 line-through tabular-nums">{base ?? "—"}</span>
       <span className={`text-4xl font-bold tabular-nums transition-colors duration-500 ${bandColor(shown)}`}>
         {shown ?? "—"}
       </span>
@@ -552,16 +552,18 @@ export function ScenarioPanel() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-5xl max-h-[88vh] overflow-y-auto rounded-lg border border-input bg-background shadow-2xl">
+      <div className="relative w-full max-w-5xl max-h-[88vh] overflow-y-auto rounded-xl border border-white/10 bg-[#0A0E27] text-gray-200 shadow-2xl shadow-black/60 ring-1 ring-white/5">
         {/* Header */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-gradient-to-b from-[#0E1430] to-[#0A0E27] px-6 py-3.5 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10">
+              <Beaker size={16} className="text-[#FFB800]" aria-hidden="true" />
+            </span>
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-[15px] font-semibold tracking-tight text-gray-50">
                 {t("scenarioPanel.title")}
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-gray-500">
                 {t("scenarioPanel.subtitle")}
               </p>
             </div>
@@ -580,18 +582,18 @@ export function ScenarioPanel() {
               type="button"
               onClick={() => setOpen(false)}
               aria-label={t("scenarioPanel.close")}
-              className="rounded border border-input px-2 py-1 text-sm hover:bg-muted/50"
+              className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
             >
-              <X size={14} aria-hidden="true" />
+              <X size={15} aria-hidden="true" />
             </button>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 px-6 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-[264px_1fr] gap-5 px-6 py-5">
           {/* Scenario list */}
-          <aside>
+          <aside className="md:border-r md:border-white/10 md:pr-5">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-gray-400">
                 {t("scenarioPanel.scenariosCount", { count: scenarios?.length ?? 0 })}
               </h3>
               <button
@@ -606,19 +608,19 @@ export function ScenarioPanel() {
               </button>
             </div>
             {scenarios === null && !fetchError && (
-              <p className="text-sm text-muted-foreground" data-testid="scenarios-loading">{t("scenarioPanel.loading")}</p>
+              <p className="text-sm text-gray-400" data-testid="scenarios-loading">{t("scenarioPanel.loading")}</p>
             )}
             {fetchError && (
               <p className="text-xs text-red-500 mt-2" data-testid="scenarios-fetch-error">{fetchError}</p>
             )}
             {scenarios !== null && scenarios.length === 0 && (
-              <p className="text-sm text-muted-foreground" data-testid="scenarios-empty">{t("scenarioPanel.empty")}</p>
+              <p className="text-sm text-gray-400" data-testid="scenarios-empty">{t("scenarioPanel.empty")}</p>
             )}
             {groupedScenarios && groupedScenarios.length > 0 && (
               <div className="space-y-3">
                 {groupedScenarios.map((group) => (
                   <div key={group.key}>
-                    <h4 className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 mb-1 px-0.5">
+                    <h4 className="text-[10px] font-mono uppercase tracking-wider text-gray-400/70 mb-1 px-0.5">
                       {t(`scenarioPanel.category.${group.key}` as never)}
                     </h4>
                     <ul className="space-y-1">
@@ -635,15 +637,15 @@ export function ScenarioPanel() {
                                 setCascadePhase("none");
                                 setNarrativeState("idle");
                               }}
-                              className={`w-full text-left px-2 py-1.5 pr-14 rounded border text-xs font-mono transition-colors ${
+                              className={`w-full text-left pl-3 pr-14 py-2 rounded-md border text-xs font-mono transition-all ${
                                 isSelected
-                                  ? "border-[#FFB800] bg-[#FFB800]/10 text-[#FFB800]"
-                                  : "border-input hover:bg-muted/50 text-muted-foreground"
+                                  ? "border-[#FFB800]/50 bg-[#FFB800]/[0.12] text-[#FFB800] shadow-[inset_3px_0_0_0_#FFB800]"
+                                  : "border-white/10 bg-white/[0.02] text-gray-300 hover:border-white/25 hover:bg-white/[0.06]"
                               }`}
                               data-testid={`scenario-row-${s.code}`}
                             >
-                              <div className="font-semibold">{s.code}</div>
-                              <div className="opacity-70 text-[10px] mt-0.5 line-clamp-2">
+                              <div className="font-semibold tracking-tight">{s.code}</div>
+                              <div className={`text-[10px] mt-0.5 line-clamp-2 ${isSelected ? "text-[#FFB800]/70" : "text-gray-500"}`}>
                                 {resolveScenarioLabel(s, locale)}
                               </div>
                             </button>
@@ -654,7 +656,7 @@ export function ScenarioPanel() {
                                 onClick={(e) => { e.stopPropagation(); openEditForm(s); }}
                                 aria-label={t("scenarioPanel.editAria", { code: s.code })}
                                 data-testid={`scenario-edit-${s.code}`}
-                                className="rounded p-1 hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+                                className="rounded p-1 hover:bg-white/10 text-gray-400 hover:text-gray-100"
                               >
                                 <Pencil size={10} />
                               </button>
@@ -664,7 +666,7 @@ export function ScenarioPanel() {
                                 disabled={deletingId === s.id}
                                 aria-label={t("scenarioPanel.deleteAria", { code: s.code })}
                                 data-testid={`scenario-delete-${s.code}`}
-                                className="rounded p-1 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 disabled:opacity-40"
+                                className="rounded p-1 hover:bg-red-500/10 text-gray-400 hover:text-red-400 disabled:opacity-40"
                               >
                                 <Trash2 size={10} />
                               </button>
@@ -682,7 +684,7 @@ export function ScenarioPanel() {
           {/* Detail + simulation */}
           <section>
             {selectedScenario === null ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-gray-400">
                 {scenarios && scenarios.length > 0
                   ? t("scenarioPanel.selectLeft")
                   : t("scenarioPanel.noneAvailable")}
@@ -691,60 +693,63 @@ export function ScenarioPanel() {
               <div className="space-y-4">
                 {/* Scenario header */}
                 <div>
-                  <h3 className="text-base font-semibold">
+                  <h3 className="text-lg font-semibold tracking-tight text-gray-50">
                     {resolveScenarioLabel(selectedScenario, locale)}
                   </h3>
-                  <p className="text-xs text-muted-foreground font-mono">
+                  <p className="mt-1 inline-flex items-center gap-1.5 rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] text-gray-400 font-mono">
                     {t("scenarioPanel.codePeriod", { code: selectedScenario.code, period })}
                   </p>
                 </div>
                 {selectedScenarioDesc && (
-                  <p className="text-sm text-muted-foreground">
+                  <p className="rounded-md border-l-2 border-[#FFB800]/40 bg-white/[0.02] py-2 pl-3 pr-2 text-sm leading-relaxed text-gray-300">
                     {selectedScenarioDesc}
                   </p>
                 )}
 
                 {/* Action buttons */}
-                <div className="flex flex-wrap items-center gap-3 pt-1">
+                <div className="flex flex-wrap items-center gap-2.5 pt-1">
                   {selectedHasShock && (
                     <button
                       type="button"
                       onClick={() => void runDrivers()}
                       disabled={briefState.kind === "loading"}
-                      className="inline-flex items-center gap-1.5 rounded border border-red-500/50 bg-red-500/15 text-red-300 px-4 py-1.5 text-sm font-semibold hover:bg-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center gap-1.5 rounded-md bg-[#FF4757] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[#FF4757]/25 transition-all hover:bg-[#ff5b69] hover:shadow-[#FF4757]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                       data-testid="scenario-run-crisis"
                     >
-                      <Flame size={14} aria-hidden="true" />
+                      <Flame size={14} aria-hidden="true" className={briefState.kind === "loading" ? "animate-pulse" : ""} />
                       {briefState.kind === "loading" ? t("scenarioPanel.simulatingCrisis") : t("scenarioPanel.runCrisis")}
                     </button>
                   )}
                   {selectedHasShock && (
-                    <div className="inline-flex items-center gap-1 text-xs" role="group" aria-label={t("scenarioPanel.aiLangAria")}>
-                      <span className="text-muted-foreground">AI:</span>
-                      {(["ru", "en", "az"] as AiLang[]).map((lng) => (
-                        <button
-                          key={lng}
-                          type="button"
-                          onClick={() => setAiLang(lng)}
-                          className={`rounded px-1.5 py-0.5 uppercase ${
-                            aiLang === lng
-                              ? "bg-[#FFB800]/20 text-[#FFB800] border border-[#FFB800]/40"
-                              : "border border-input text-muted-foreground hover:bg-muted/50"
-                          }`}
-                          data-testid={`scenario-ai-lang-${lng}`}
-                        >
-                          {lng}
-                        </button>
-                      ))}
+                    <div className="inline-flex items-center gap-1.5 text-xs" role="group" aria-label={t("scenarioPanel.aiLangAria")}>
+                      <span className="text-gray-500">AI</span>
+                      <div className="inline-flex items-center rounded-md border border-white/10 bg-white/[0.03] p-0.5">
+                        {(["ru", "en", "az"] as AiLang[]).map((lng) => (
+                          <button
+                            key={lng}
+                            type="button"
+                            onClick={() => setAiLang(lng)}
+                            className={`rounded px-2 py-0.5 uppercase font-medium transition-colors ${
+                              aiLang === lng
+                                ? "bg-[#FFB800]/20 text-[#FFB800]"
+                                : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+                            }`}
+                            data-testid={`scenario-ai-lang-${lng}`}
+                          >
+                            {lng}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <button
                     type="button"
                     onClick={handleSimulate}
                     disabled={simState.kind === "loading"}
-                    className="rounded border border-input bg-muted/20 text-muted-foreground px-3 py-1.5 text-xs hover:bg-muted/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.03] px-3 py-2 text-xs font-medium text-gray-300 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="scenario-simulate-button"
                   >
+                    <Zap size={13} aria-hidden="true" className="text-[#FFB800]" />
                     {simState.kind === "loading" ? t("scenarioPanel.simulating") : t("scenarioPanel.quickCalc")}
                   </button>
 
@@ -752,7 +757,7 @@ export function ScenarioPanel() {
                     <button
                       type="button"
                       onClick={handleApplyToHeatMap}
-                      className="rounded border border-emerald-500/40 bg-emerald-500/10 text-emerald-400 px-4 py-1.5 text-sm font-medium hover:bg-emerald-500/20"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#00D4AA]/50 bg-[#00D4AA]/10 px-4 py-2 text-sm font-medium text-[#00D4AA] transition-colors hover:bg-[#00D4AA]/20"
                       data-testid="scenario-apply-heatmap"
                     >
                       {t("scenarioPanel.applyHeatMap")}
@@ -784,8 +789,8 @@ export function ScenarioPanel() {
                         />
                         {scenarioBrief.financialHoldingScenarioScore != null && (
                           <div className="flex items-baseline gap-3" data-testid="financial-stress-swing">
-                            <span className="text-xs text-muted-foreground">{t("scenarioPanel.financialHealth")}</span>
-                            <span className="text-sm text-muted-foreground line-through tabular-nums">
+                            <span className="text-xs text-gray-400">{t("scenarioPanel.financialHealth")}</span>
+                            <span className="text-sm text-gray-400 line-through tabular-nums">
                               {scenarioBrief.financialHoldingBaselineScore ?? "—"}
                             </span>
                             <span
@@ -808,7 +813,7 @@ export function ScenarioPanel() {
                       <button
                         type="button"
                         onClick={() => { clearScenarioDelta(); setCascadePhase("none"); setBriefState({ kind: "idle" }); setNarrativeState("idle"); }}
-                        className="rounded border border-input px-3 py-1 text-xs text-muted-foreground hover:bg-muted/50 shrink-0"
+                        className="rounded border border-white/10 px-3 py-1 text-xs text-gray-400 hover:bg-white/5 shrink-0"
                         data-testid="crisis-revert"
                       >
                         {t("scenarioPanel.baseScenario")}
@@ -825,10 +830,10 @@ export function ScenarioPanel() {
                             title={`${t("scenarioPanel.sourceTitle", { asOf: a.asOf })}${a.stale ? t("scenarioPanel.staleSuffix") : ""}`}
                           >
                             <span className="text-sky-300/90">📊 {a.label}</span>
-                            <span className="text-muted-foreground tabular-nums">{a.currentValue}</span>
-                            <span className="text-muted-foreground">→</span>
+                            <span className="text-gray-400 tabular-nums">{a.currentValue}</span>
+                            <span className="text-gray-400">→</span>
                             <span className="font-semibold tabular-nums">{a.scenarioValue}</span>
-                            <span className="text-[10px] text-muted-foreground">{a.unit}</span>
+                            <span className="text-[10px] text-gray-400">{a.unit}</span>
                             <span className={`text-[10px] ${a.stale ? "text-amber-500" : "text-emerald-500/70"}`}>
                               {a.stale ? `⚠ ${a.asOf}` : `✓ ${a.asOf}`}
                             </span>
@@ -845,8 +850,8 @@ export function ScenarioPanel() {
                             key={c.companyId}
                             className="inline-flex items-baseline gap-1.5 rounded border border-red-500/25 bg-red-500/10 px-2 py-1 text-xs"
                           >
-                            <span className="font-mono text-muted-foreground">{c.companyCode}</span>
-                            <span className="text-muted-foreground line-through tabular-nums">{c.baselineScore}</span>
+                            <span className="font-mono text-gray-400">{c.companyCode}</span>
+                            <span className="text-gray-400 line-through tabular-nums">{c.baselineScore}</span>
                             <span className={`font-semibold tabular-nums ${bandColor(c.scenarioScore)}`}>
                               {c.scenarioScore}
                             </span>
@@ -861,7 +866,7 @@ export function ScenarioPanel() {
                         <NarrativeStream text={scenarioBrief.narrative} />
                         {scenarioBrief.mitigations.length > 0 && (
                           <div>
-                            <h4 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1.5">
+                            <h4 className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-1.5">
                               {t("scenarioPanel.measures")}
                             </h4>
                             <ul className="space-y-1">
@@ -880,7 +885,7 @@ export function ScenarioPanel() {
                         {t("scenarioPanel.briefGenerating")}
                       </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground italic" data-testid="crisis-narrative-unavailable">
+                      <p className="text-xs text-gray-400 italic" data-testid="crisis-narrative-unavailable">
                         {t("scenarioPanel.narrativeUnavailable")}
                       </p>
                     )}
@@ -903,7 +908,7 @@ export function ScenarioPanel() {
                   <div className="space-y-3">
                     {/* Summary chips */}
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="px-2 py-0.5 rounded border border-border bg-muted/30">
+                      <span className="px-2 py-0.5 rounded border border-white/10 bg-white/5">
                         {t.rich("scenarioPanel.checked", { count: simState.result.deltas.length + simState.result.unchanged, strong: (c) => <strong>{c}</strong> })}
                       </span>
                       <span className="px-2 py-0.5 rounded border border-red-500/30 bg-red-500/10 text-red-400">
@@ -916,7 +921,7 @@ export function ScenarioPanel() {
                           {t.rich("scenarioPanel.improved", { count: simState.result.improved, strong: (c) => <strong>{c}</strong> })}
                         </span>
                       )}
-                      <span className="px-2 py-0.5 rounded border border-border bg-muted/20 text-muted-foreground">
+                      <span className="px-2 py-0.5 rounded border border-white/10 bg-white/[0.03] text-gray-400">
                         <Minus size={10} className="inline mr-1" />
                         {t.rich("scenarioPanel.unchangedCount", { count: simState.result.unchanged, strong: (c) => <strong>{c}</strong> })}
                       </span>
@@ -924,14 +929,14 @@ export function ScenarioPanel() {
 
                     {/* Delta table */}
                     {changedDeltas.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-gray-400">
                         {t("scenarioPanel.noColorChange")}
                       </p>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
                           <thead>
-                            <tr className="border-b border-border text-muted-foreground">
+                            <tr className="border-b border-white/10 text-gray-400">
                               <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colCompany")}</th>
                               <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colIndicator")}</th>
                               <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colBaseline")}</th>
@@ -948,19 +953,19 @@ export function ScenarioPanel() {
                               return (
                                 <tr
                                   key={i}
-                                  className={`border-b border-border/40 ${
+                                  className={`border-b border-white/[0.06] ${
                                     worsened
                                       ? "bg-red-500/5"
                                       : "bg-emerald-500/5"
                                   }`}
                                 >
-                                  <td className="py-1.5 pr-3 font-mono text-[10px] text-muted-foreground">
+                                  <td className="py-1.5 pr-3 font-mono text-[10px] text-gray-400">
                                     {d.companyCode}
                                   </td>
                                   <td className="py-1.5 pr-3 font-mono text-[10px]">
                                     {d.code}
                                     {d.note && (
-                                      <div className="text-muted-foreground opacity-70 text-[9px]">
+                                      <div className="text-gray-400 opacity-70 text-[9px]">
                                         {d.note}
                                       </div>
                                     )}
@@ -990,7 +995,7 @@ export function ScenarioPanel() {
                                       )}
                                     </span>
                                   </td>
-                                  <td className="py-1.5 pr-3 text-right font-mono text-muted-foreground">
+                                  <td className="py-1.5 pr-3 text-right font-mono text-gray-400">
                                     {fmt(d.baselineValue)}
                                   </td>
                                   <td className="py-1.5 text-right font-mono">
