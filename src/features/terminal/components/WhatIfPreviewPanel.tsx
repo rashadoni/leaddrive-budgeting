@@ -279,6 +279,15 @@ function statusRank(s: PreviewCell["baselineStatus"]): number {
   return -1
 }
 
+/** A cell "moved" if its status flipped OR its value shifted meaningfully.
+ *  Used to filter out the +0.0% noise so the user sees only what changed. */
+function cellChanged(c: PreviewCell): boolean {
+  const statusChanged =
+    c.baselineStatus != null && c.scenarioStatus != null && c.baselineStatus !== c.scenarioStatus
+  const valueMoved = c.deltaPct != null && Math.abs(c.deltaPct) >= 0.1
+  return statusChanged || valueMoved
+}
+
 function formatValue(v: number | null, unit: string): string {
   if (v === null || !Number.isFinite(v)) return "—"
   if (unit === "%" || unit === "% YoY") return `${v.toFixed(1)}%`
@@ -308,6 +317,8 @@ const STATUS_TEXT: Record<NonNullable<PreviewCell["baselineStatus"]>, string> = 
 export function WhatIfPreviewPanel() {
   const t = useTranslations("terminal")
   const locale = useLocale()
+  // Default to hiding the unchanged (+0.0%) rows so the impact is obvious.
+  const [onlyChanged, setOnlyChanged] = useState(true)
   const [open, setOpen] = useState(false)
   const [activeGroup, setActiveGroup] = useState("fx")
   const [overrides, setOverrides] = useState<Record<string, number>>(ALL_DEFAULTS)
@@ -406,16 +417,35 @@ export function WhatIfPreviewPanel() {
     return { breaches, improved, stable }
   }, [state])
 
-  /** Group result cells by company code. */
+  /** Group result cells by company code — optionally only the ones that moved. */
   const cellsByCompany = useMemo(() => {
     if (state.kind !== "loaded") return new Map<string, PreviewCell[]>()
     const m = new Map<string, PreviewCell[]>()
     for (const c of state.data.cells) {
+      if (onlyChanged && !cellChanged(c)) continue
       const arr = m.get(c.companyCode) ?? []
       arr.push(c)
       m.set(c.companyCode, arr)
     }
     return m
+  }, [state, onlyChanged])
+
+  /** Headline impact: how many indicators moved + the single biggest mover. */
+  const impact = useMemo(() => {
+    if (state.kind !== "loaded") return null
+    const cells = state.data.cells
+    const changed = cells.filter(cellChanged)
+    let top: PreviewCell | null = null
+    for (const c of changed) {
+      if (c.deltaPct == null) continue
+      if (top == null || Math.abs(c.deltaPct) > Math.abs(top.deltaPct ?? 0)) top = c
+    }
+    return {
+      total: cells.length,
+      changedCount: changed.length,
+      hiddenCount: cells.length - changed.length,
+      top,
+    }
   }, [state])
 
   if (!open) return null
@@ -638,17 +668,58 @@ export function WhatIfPreviewPanel() {
                 </div>
               )}
 
-              {/* Cell-count info line */}
-              <p className="text-[11px] text-gray-400 mb-3">
-                {t("whatif.summaryLine", {
-                  affected: state.data.affectedIndicatorCount,
-                  cells: state.data.cells.length,
-                  companies: cellsByCompany.size,
-                })}
+              {/* Impact headline + the single biggest mover — answers
+                  "how does it affect things?" at a glance. */}
+              {impact && impact.top && impact.top.deltaPct != null && (
+                <p className="text-[12px] text-gray-200 mb-2" data-testid="whatif-impact-headline">
+                  {t("whatif.impactHeadline", { n: impact.changedCount })}{" "}
+                  <span className="text-gray-500">· {t("whatif.biggestMove")}</span>{" "}
+                  <b className="text-gray-100">
+                    {resolveIndicatorLabel(
+                      { code: impact.top.indicatorCode, nameEn: impact.top.indicatorNameEn, nameRu: impact.top.indicatorNameRu },
+                      locale,
+                    )}
+                  </b>{" "}
+                  <b className={impact.top.deltaPct > 0 ? "text-amber-300" : "text-emerald-300"}>
+                    {impact.top.deltaPct >= 0 ? "+" : ""}{impact.top.deltaPct.toFixed(1)}%
+                  </b>
+                </p>
+              )}
+
+              {/* Cell-count info line + only-changed toggle */}
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-[11px] text-gray-400">
+                  {t("whatif.summaryLine", {
+                    affected: state.data.affectedIndicatorCount,
+                    cells: state.data.cells.length,
+                    companies: cellsByCompany.size,
+                  })}
+                </p>
+                {impact && impact.total > 0 && impact.hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setOnlyChanged((v) => !v)}
+                    className="shrink-0 rounded border border-white/15 px-2 py-0.5 text-[10px] text-gray-300 hover:bg-white/5 hover:text-gray-100 transition-colors"
+                    data-testid="whatif-only-changed"
+                  >
+                    {onlyChanged
+                      ? t("whatif.showAll", { n: impact.hiddenCount })
+                      : t("whatif.onlyChanged")}
+                  </button>
+                )}
+              </div>
+
+              {/* Note: this preview only re-prices feed-driven signals. */}
+              <p className="text-[10px] text-gray-500 leading-relaxed border-l-2 border-[#FFB800]/40 pl-2 mb-3">
+                {t("whatif.feedNote")}
               </p>
 
-              {state.data.cells.length === 0 ? (
-                <p className="text-[11px] text-gray-400 italic">{t("whatif.noAffected")}</p>
+              {cellsByCompany.size === 0 ? (
+                <p className="text-[11px] text-gray-400 italic" data-testid="whatif-nothing-moved">
+                  {state.data.cells.length > 0
+                    ? t("whatif.nothingMovedHint")
+                    : t("whatif.noAffected")}
+                </p>
               ) : (
                 <div className="space-y-3">
                   {Array.from(cellsByCompany.entries()).map(([co, rows]) => (
@@ -725,11 +796,13 @@ export function WhatIfPreviewPanel() {
                               {/* Δ% */}
                               <div
                                 className={`text-right tabular-nums font-mono font-medium ${
-                                  c.deltaPct === null || Math.abs(c.deltaPct) < 0.5
-                                    ? "text-gray-400"
-                                    : c.deltaPct > 0
-                                    ? "text-amber-300"
-                                    : "text-emerald-300"
+                                  worsened
+                                    ? "text-red-300"
+                                    : improved
+                                    ? "text-emerald-300"
+                                    : c.deltaPct === null || Math.abs(c.deltaPct) < 0.1
+                                    ? "text-gray-500"
+                                    : "text-amber-300"
                                 }`}
                               >
                                 {c.deltaPct === null

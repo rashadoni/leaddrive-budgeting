@@ -2125,6 +2125,12 @@
       "summaryStable": "stable",
       "summaryLine": "Affected {affected} indicators · {cells} cells across {companies} companies",
       "noAffected": "No affected indicators in current scope.",
+      "impactHeadline": "{n} indicators moved",
+      "biggestMove": "biggest:",
+      "onlyChanged": "Only changed",
+      "showAll": "Show all (+{n})",
+      "feedNote": "This preview re-prices feed-driven signals (commodity / FX / macro). For full P&L and composite-score impact, use “Run crisis” in the Scenario panel.",
+      "nothingMovedHint": "No indicator moved on this preview — only feed-driven signals respond here. For P&L / composite-score impact, use “Run crisis” in Scenarios.",
       "footerNote": "Preview is not persisted. Save an override set via Scenario → Save (v2).",
       "groups": {
         "fx": "FX Rates",

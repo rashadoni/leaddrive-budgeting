@@ -2125,6 +2125,12 @@
       "summaryStable": "sabit",
       "summaryLine": "Təsirlənmiş {affected} indikator · {cells} xana, {companies} şirkət üzrə",
       "noAffected": "Cari görmə əhatəsində təsirlənmiş indikator yoxdur.",
+      "impactHeadline": "{n} indikator dəyişdi",
+      "biggestMove": "ən çox:",
+      "onlyChanged": "Yalnız dəyişənlər",
+      "showAll": "Hamısını göstər (+{n})",
+      "feedNote": "Bu önizləmə yalnız lentdən oxuyan indikatorları (əmtəə / valyuta / makro) yenidən hesablayır. P&L və kompozit bala tam təsir üçün Ssenari panelində «Run crisis» istifadə edin.",
+      "nothingMovedHint": "Bu önizləmədə heç nə dəyişmədi — burada yalnız lent əsaslı indikatorlar reaksiya verir. P&L / kompozit təsir üçün Ssenarilərdə «Run crisis» istifadə edin.",
       "footerNote": "Önbax bazaya yazılmır. Override-ları saxlamaq üçün Ssenari → Saxla (v2) istifadə edin.",
       "groups": {
         "fx": "Valyuta məzənnələri",
