@@ -366,18 +366,20 @@ export function AISubscriptions() {
         if (e.target === e.currentTarget) setOpen(false);
       }}
     >
-      <div className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-lg border border-gray-700 bg-background shadow-2xl">
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-800 bg-background/95 px-6 py-3 backdrop-blur">
-          <div className="flex items-center gap-2">
-            <Bell size={16} className="text-[#FFB020]" aria-hidden="true" />
+      <div className="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl border border-white/10 bg-[#0A0E27] text-gray-200 shadow-2xl shadow-black/60 ring-1 ring-white/5">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-gradient-to-b from-[#0E1430] to-[#0A0E27] px-6 py-3.5 backdrop-blur">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#FFB800]/30 bg-[#FFB800]/10">
+              <Bell size={15} className="text-[#FFB800]" aria-hidden="true" />
+            </span>
             <div>
-              <h2 className="text-lg font-semibold tracking-tight">
+              <h2 className="text-[15px] font-semibold tracking-tight text-gray-50">
                 {t("subscriptions.title", {
                   active: counts.active,
                   paused: counts.paused,
                 })}
               </h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-gray-500">
                 {t("subscriptions.subtitle")}
               </p>
             </div>
@@ -386,9 +388,9 @@ export function AISubscriptions() {
             type="button"
             onClick={() => setOpen(false)}
             aria-label={t("subscriptions.closeAriaLabel")}
-            className="rounded border border-gray-700 px-2 py-1 text-sm hover:bg-gray-800"
+            className="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-white/5 hover:text-gray-200"
           >
-            <X size={14} aria-hidden="true" />
+            <X size={15} aria-hidden="true" />
           </button>
         </header>
 
@@ -408,7 +410,7 @@ export function AISubscriptions() {
               onChange={(e) => setLabel(e.target.value)}
               placeholder={t("subscriptions.labelPlaceholder")}
               aria-label={t("subscriptions.labelAriaLabel")}
-              className="w-full bg-[#0A0E27] border border-gray-700 rounded px-2 py-1 text-sm text-gray-200 placeholder-gray-600 focus:border-[#FFB020] focus:outline-none"
+              className="w-full bg-[#0A0E27] border border-white/15 rounded px-2 py-1 text-sm text-gray-200 placeholder-gray-600 focus:border-[#FFB800] focus:outline-none"
               spellCheck={false}
               maxLength={100}
               data-testid="subscriptions-label"
@@ -418,7 +420,7 @@ export function AISubscriptions() {
                 value={scope}
                 onChange={(e) => setScope(e.target.value as Scope)}
                 aria-label={t("subscriptions.scopeAriaLabel")}
-                className="bg-[#0A0E27] border border-gray-700 rounded px-1.5 py-1 text-gray-200"
+                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200"
                 data-testid="subscriptions-scope"
               >
                 <option value="any">{t("subscriptions.scopeAny")}</option>
@@ -442,7 +444,7 @@ export function AISubscriptions() {
                       : t("subscriptions.scopeValueDisabledPlaceholder")
                 }
                 aria-label={t("subscriptions.scopeValueAriaLabel")}
-                className="bg-[#0A0E27] border border-gray-700 rounded px-1.5 py-1 text-gray-200 placeholder-gray-700 disabled:opacity-50"
+                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200 placeholder-gray-700 disabled:opacity-50"
                 spellCheck={false}
                 data-testid="subscriptions-scope-value"
               />
@@ -450,7 +452,7 @@ export function AISubscriptions() {
                 value={comparator}
                 onChange={(e) => setComparator(e.target.value as Comparator)}
                 aria-label={t("subscriptions.comparatorAriaLabel")}
-                className="bg-[#0A0E27] border border-gray-700 rounded px-1.5 py-1 text-gray-200"
+                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200"
                 data-testid="subscriptions-comparator"
               >
                 <option value="<">&lt;</option>
@@ -464,7 +466,7 @@ export function AISubscriptions() {
                 value={threshold}
                 onChange={(e) => setThreshold(e.target.value)}
                 aria-label={t("subscriptions.thresholdAriaLabel")}
-                className="bg-[#0A0E27] border border-gray-700 rounded px-1.5 py-1 text-gray-200 tabular-nums"
+                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200 tabular-nums"
                 min={0}
                 max={100}
                 step={1}
@@ -474,7 +476,7 @@ export function AISubscriptions() {
             <button
               type="submit"
               disabled={!label.trim()}
-              className="px-3 py-1 rounded bg-[#FFB020] text-[#050814] text-sm font-semibold disabled:bg-gray-800 disabled:text-gray-600"
+              className="px-3 py-1 rounded bg-[#FFB800] text-[#050814] text-sm font-semibold disabled:bg-gray-800 disabled:text-gray-600"
               data-testid="subscriptions-create-submit"
             >
               {t("subscriptions.createSubmit")}
@@ -488,7 +490,7 @@ export function AISubscriptions() {
             </div>
             {subs.length === 0 ? (
               <p
-                className="text-sm text-muted-foreground italic"
+                className="text-sm text-gray-400 italic"
                 data-testid="subscriptions-empty"
               >
                 {t("subscriptions.empty")}
