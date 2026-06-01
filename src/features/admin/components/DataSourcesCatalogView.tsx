@@ -18,6 +18,7 @@ import {
   DATA_SOURCES_CATALOG,
   type DataSourceEntry,
 } from "@/lib/intel/sources-catalog"
+import { localizedSource } from "@/lib/intel/sources-catalog-i18n"
 import { RecentCrossingsWidget } from "./RecentCrossingsWidget"
 import { useLocale, useTranslations } from "next-intl"
 import {
@@ -133,6 +134,8 @@ function SourceCard({
   freshness: FreshnessSnapshot | undefined
 }) {
   const t = useTranslations("adminDataSources")
+  const locale = useLocale()
+  const L = localizedSource(source, locale)
   const status = freshness?.status ?? "unknown"
   return (
     <article className="border rounded-lg bg-white shadow-sm overflow-hidden">
@@ -145,7 +148,7 @@ function SourceCard({
             <CostBadge cost={source.cost} />
           </div>
           <h3 className="text-base font-semibold text-gray-900">
-            {source.displayNameRu}
+            {L.displayName}
           </h3>
           <p className="text-xs text-gray-500 mt-0.5">
             {source.vendor} ·{" "}
@@ -174,7 +177,7 @@ function SourceCard({
             {t("section.whatItIs")}
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed">
-            {source.whatItIsRu}
+            {L.whatItIs}
           </p>
         </section>
 
@@ -183,7 +186,7 @@ function SourceCard({
             {t("section.businessValue")}
           </h4>
           <p className="text-sm text-gray-800 leading-relaxed">
-            {source.businessValueRu}
+            {L.businessValue}
           </p>
         </section>
 
@@ -201,7 +204,7 @@ function SourceCard({
               </span>
             </div>
             <p className="text-xs text-gray-700 mt-1 italic">
-              {source.sampleLatest.interpretation}
+              {L.interpretation}
             </p>
           </div>
         </section>
@@ -224,7 +227,7 @@ function SourceCard({
 
         <section className="flex items-center justify-between text-xs text-gray-500 pt-1 border-t border-gray-100">
           <span>
-            <strong>{t("footer.cadence")}:</strong> {source.cadenceRu}
+            <strong>{t("footer.cadence")}:</strong> {L.cadence}
           </span>
           <span>
             <strong>{t("footer.metrics")}:</strong> {source.metricsEmitted.length}
