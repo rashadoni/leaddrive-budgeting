@@ -3156,11 +3156,98 @@
   },
   "adminLanding": {
     "pageTitle": "Admin Alətləri",
-    "statsLine": "{total} alət {groups} qrupda · Phase 7.M-də {new} yeni. Müştəri demo-dan əvvəl istifadə edin: Indicator Health-ə baxın → red gap-ləri bağlayın → AI Auto Import vasitəsilə idxal işə salın.",
+    "statsLine": "{groups} qrupda {total} alət · {new} yeni.",
     "groupDataIngestion": "📥 Məlumat yükləməsi",
     "groupDataQuality": "🩺 Məlumat keyfiyyəti",
     "groupOperations": "🔒 Əməliyyatlar",
-    "groupConfiguration": "⚙ Konfiqurasiya"
+    "groupConfiguration": "⚙ Konfiqurasiya",
+    "workflowTitle": "Müştəri demosundan əvvəl",
+    "workflow": {
+      "s1": "Indicator Health — hesablanmış faizi yoxlayın və red / unknown boşluqları tapın.",
+      "s2": "Drift Dashboard — bütün xarici fid-lərin təzə olduğuna əmin olun.",
+      "s3": "Lazım gələrsə boşluqları Data Entry vasitəsilə doldurun.",
+      "s4": "Müştəridən yeni xlsx? AI Import vasitəsilə keçirin (istənilən fayl üçün işləyir).",
+      "s5": "İdxaldan sonra — IFRS uyğunluq yoxlamasını işə salın (balans, bölmələr, COGS vs OpEx, amortizasiya).",
+      "s6": "Son yoxlama üçün CLI-dən npm run smoke-test işə salın."
+    },
+    "tools": {
+      "aiImport": {
+        "title": "AI idxal",
+        "desc": "İstənilən xlsx yükləyin — maliyyə (P&L/BS/CF), KPI, torpaq, təsvirlər, şirkət strukturu, büdcə faktları, satış proqnozu. AI tipi müəyyən edir və yönləndirir. Beş forma yerinə bir ekran."
+      },
+      "dataEntry": {
+        "title": "Əl ilə daxiletmə",
+        "desc": "Texniki olmayan admin üçün KPI və ESG açıqlamalarının əl ilə daxil edilməsi."
+      },
+      "dataSources": {
+        "title": "Mənbələr kataloqu",
+        "desc": "Müştəri üçün xarici fid kataloqu: biznes dəyəri, nümunə dəyər, indikator asılılıqları."
+      },
+      "sourceRegistry": {
+        "title": "Mənbə reyestri",
+        "desc": "Drift-watchdog: idxala icazə verilən xlsx mənbələrinin siyahısı."
+      },
+      "indicatorHealth": {
+        "title": "İndikatorların sağlamlığı",
+        "desc": "İndikator üzrə green/amber/red/unknown bölgüsü və düzəliş tövsiyələri. Müştəri demosundan əvvəl işə salın."
+      },
+      "driftDashboard": {
+        "title": "Drift paneli",
+        "desc": "Son drift hadisələri, referens-fid təzəliyi və ilişib qalmış onboardinq halları."
+      },
+      "companiesReadiness": {
+        "title": "Şirkətlərin hazırlığı",
+        "desc": "Şirkət üzrə 7 sahə üzrə qiymətləndirmə səviyyələrlə (complete/good/partial/thin/empty). CSV ixracı."
+      },
+      "dataArchive": {
+        "title": "Məlumat arxivi",
+        "desc": "Self-servis arxiv və bərpa: büdcə sətirləri, balans, pul axını, qarşı tərəflər."
+      },
+      "intelHealth": {
+        "title": "Intel sağlamlığı",
+        "desc": "Xarici-fid adapter statusu, son gəzişmələr və xəbər pipeline diaqnostikası."
+      },
+      "complianceHub": {
+        "title": "Compliance mərkəzi",
+        "desc": "Subyekt üzrə audit tapıntıları və məhkəmə işləri — filtrlər, status, ciddilik və CSV ixracı."
+      },
+      "indicatorBacklog": {
+        "title": "İndikator backlog",
+        "desc": "Subyekt üzrə fəaliyyət siyahısı: hansı indikatorlar çatışmır, məlumatın sahibi kimdir, birbaşa keçidlərlə."
+      },
+      "ifrsConformance": {
+        "title": "IFRS yoxlaması",
+        "desc": "İdxaldan sonra: IAS 1 struktur yoxlaması — balans, bütün bölmələr, COGS vs OpEx, amortizasiya. Real rəqəmlərlə 0-100 bal."
+      },
+      "periodLocks": {
+        "title": "Dövr kilidləri",
+        "desc": "CFO bağlanışı: bağlı dövrlərdə dəyişiklikləri bloklayır (423 qaytarır)."
+      },
+      "approvals": {
+        "title": "Təsdiqlər",
+        "desc": "Büdcə dəyişiklikləri və üzləşmə düzəlişləri üçün gözləyən təsdiq sorğuları."
+      },
+      "aiUsage": {
+        "title": "AI istifadəsi",
+        "desc": "Günlük/aylıq LLM token xərci, 30 günlük trend və təşkilat üzrə büdcə nəzarəti."
+      },
+      "apiKeys": {
+        "title": "API açarları",
+        "desc": "Təşkilat üzrə açarlar (EIA, SerpAPI). Təşkilat parametrlərində şifrələnir."
+      },
+      "chartOfAccounts": {
+        "title": "Hesablar planı",
+        "desc": "Hesablar planı şablon redaktoru — sahə üzrə şablonlar (10 sektor)."
+      },
+      "companySettings": {
+        "title": "Şirkət parametrləri",
+        "desc": "Rol/status + şirkət üzrə sahə parametrləri (region, hektar, emal gücü…)."
+      },
+      "userAccess": {
+        "title": "İstifadəçi girişi",
+        "desc": "İstifadəçi rolları və alt-qrup girişinin idarəsi (RBAC)."
+      }
+    }
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Şirkət məlumatlarının hazırlığı",

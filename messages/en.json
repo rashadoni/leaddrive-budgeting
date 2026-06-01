@@ -3156,11 +3156,98 @@
   },
   "adminLanding": {
     "pageTitle": "Admin Tools",
-    "statsLine": "{total} tools in {groups} groups · {new} new in Phase 7.M. Use before client demo: check Indicator Health → close red gaps → run import via AI Auto Import.",
+    "statsLine": "{total} tools across {groups} groups · {new} new.",
     "groupDataIngestion": "📥 Data Ingestion",
     "groupDataQuality": "🩺 Data Quality",
     "groupOperations": "🔒 Operations",
-    "groupConfiguration": "⚙ Configuration"
+    "groupConfiguration": "⚙ Configuration",
+    "workflowTitle": "Before a client demo",
+    "workflow": {
+      "s1": "Indicator Health — check the % computed and identify red / unknown gaps.",
+      "s2": "Drift Dashboard — make sure every external feed is fresh.",
+      "s3": "Fill any gaps via Data Entry if needed.",
+      "s4": "New client xlsx? Run it through AI Import (works for any workbook).",
+      "s5": "After import — run the IFRS conformance check (balance ties, sections, COGS vs OpEx, depreciation).",
+      "s6": "Run npm run smoke-test from the CLI for a final check."
+    },
+    "tools": {
+      "aiImport": {
+        "title": "AI Import",
+        "desc": "Drop any xlsx — financials (P&L/BS/CF), KPIs, land, descriptions, company structure, budget actuals, sales forecast. AI detects the type and routes it. One screen instead of five forms."
+      },
+      "dataEntry": {
+        "title": "Data Entry",
+        "desc": "Manual entry of KPIs and ESG disclosures for non-engineer admins."
+      },
+      "dataSources": {
+        "title": "Data Sources Catalog",
+        "desc": "Client-facing catalog of external feeds: business value, sample value, indicator dependencies."
+      },
+      "sourceRegistry": {
+        "title": "Source Registry",
+        "desc": "Drift-watchdog: the allow-list of xlsx sources permitted for ingest."
+      },
+      "indicatorHealth": {
+        "title": "Indicator Health",
+        "desc": "Per-indicator green/amber/red/unknown breakdown with remediation guidance. Run before a client demo."
+      },
+      "driftDashboard": {
+        "title": "Drift Dashboard",
+        "desc": "Recent drift events, reference-feed freshness, and stalled onboarding cases."
+      },
+      "companiesReadiness": {
+        "title": "Companies Readiness",
+        "desc": "Per-company 7-area scoring with tiers (complete/good/partial/thin/empty). CSV export."
+      },
+      "dataArchive": {
+        "title": "Data Archive",
+        "desc": "Self-service archive & restore: budget lines, balance sheet, cash flow, counterparties."
+      },
+      "intelHealth": {
+        "title": "Intel Health",
+        "desc": "External-feed adapter status, recent crawls, and news-pipeline diagnostics."
+      },
+      "complianceHub": {
+        "title": "Compliance Hub",
+        "desc": "Per-entity audit findings and court cases with filters, status, severity, and CSV export."
+      },
+      "indicatorBacklog": {
+        "title": "Indicator Backlog",
+        "desc": "Per-entity action list: which indicators are missing, who owns the data, with deep links."
+      },
+      "ifrsConformance": {
+        "title": "IFRS conformance",
+        "desc": "After import: structural IAS 1 check — balance ties, all sections, COGS vs OpEx, depreciation. 0-100 score on real figures."
+      },
+      "periodLocks": {
+        "title": "Period Locks",
+        "desc": "CFO close: blocks mutations on closed periods (returns 423)."
+      },
+      "approvals": {
+        "title": "Approvals",
+        "desc": "Pending approval requests for budget-plan changes and reconciliation overrides."
+      },
+      "aiUsage": {
+        "title": "AI Usage",
+        "desc": "Daily/monthly LLM token spend, 30-day trend, and per-org budget enforcement."
+      },
+      "apiKeys": {
+        "title": "API Keys",
+        "desc": "Per-org keys (EIA, SerpAPI). Encrypted at rest in org settings."
+      },
+      "chartOfAccounts": {
+        "title": "Chart of Accounts",
+        "desc": "Chart-of-accounts template editor — per-industry templates (10 sectors)."
+      },
+      "companySettings": {
+        "title": "Company Settings",
+        "desc": "Role/status + per-company industry settings (region, hectares, processing capacity…)."
+      },
+      "userAccess": {
+        "title": "User Access",
+        "desc": "User roles and sub-group access management (RBAC)."
+      }
+    }
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Company data readiness",
