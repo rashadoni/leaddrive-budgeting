@@ -17,6 +17,12 @@ function bs(over: Partial<IfrsBalanceSheetSnapshot> = {}): IfrsBalanceSheetSnaps
     hasLiabilitySection: true,
     hasEquitySection: true,
     lineCount: 1,
+    // Defaults represent a well-classified import → the v2 checks pass.
+    assetLineCount: 1,
+    assetSubTypedCount: 1,
+    liabilityLineCount: 1,
+    liabilitySubTypedCount: 1,
+    equityComponentCount: 2,
     ...over,
   }
 }
@@ -34,7 +40,7 @@ function pnl(over: Partial<IfrsPnlSnapshot> = {}): IfrsPnlSnapshot {
     ...over,
   }
 }
-const NO_BS = bs({ present: false, hasAssetSection: false, hasLiabilitySection: false, hasEquitySection: false, lineCount: 0 })
+const NO_BS = bs({ present: false, hasAssetSection: false, hasLiabilitySection: false, hasEquitySection: false, lineCount: 0, assetLineCount: 0, assetSubTypedCount: 0, liabilityLineCount: 0, liabilitySubTypedCount: 0, equityComponentCount: 0 })
 const NO_PNL = pnl({ present: false, lineCount: 0 })
 
 function find(report: ReturnType<typeof runIfrsChecks>, code: string) {
@@ -108,6 +114,46 @@ describe("runIfrsChecks — balance sheet sections", () => {
       pnl: NO_PNL,
     })
     expect(find(r, "bs_sections").status).toBe("fail")
+  })
+})
+
+describe("runIfrsChecks — current/non-current split (IAS 1 §60)", () => {
+  it("passes when assets and liabilities carry a subType", () => {
+    const r = runIfrsChecks({
+      balanceSheet: bs({ assetLineCount: 4, assetSubTypedCount: 4, liabilityLineCount: 3, liabilitySubTypedCount: 3 }),
+      pnl: NO_PNL,
+    })
+    expect(find(r, "bs_current_noncurrent").status).toBe("pass")
+  })
+  it("warns when a section lacks the current/non-current split", () => {
+    const r = runIfrsChecks({
+      balanceSheet: bs({ assetLineCount: 4, assetSubTypedCount: 0, liabilityLineCount: 3, liabilitySubTypedCount: 3 }),
+      pnl: NO_PNL,
+    })
+    const c = find(r, "bs_current_noncurrent")
+    expect(c.status).toBe("warn")
+    expect(c.values?.unclassified).toBe("assets")
+  })
+  it("skips when no balance sheet imported", () => {
+    const r = runIfrsChecks({ balanceSheet: NO_BS, pnl: pnl({ revenue: 1, revenueAccountCount: 1 }) })
+    expect(find(r, "bs_current_noncurrent").status).toBe("skip")
+  })
+})
+
+describe("runIfrsChecks — equity composition (IAS 1 §54)", () => {
+  it("passes when equity is split into >=2 components", () => {
+    const r = runIfrsChecks({ balanceSheet: bs({ equityComponentCount: 3 }), pnl: NO_PNL })
+    expect(find(r, "bs_equity_composition").status).toBe("pass")
+  })
+  it("warns when equity is a single lumped line", () => {
+    const r = runIfrsChecks({ balanceSheet: bs({ equityComponentCount: 1 }), pnl: NO_PNL })
+    const c = find(r, "bs_equity_composition")
+    expect(c.status).toBe("warn")
+    expect(c.values?.equityComponents).toBe(1)
+  })
+  it("skips when there is no equity section", () => {
+    const r = runIfrsChecks({ balanceSheet: bs({ hasEquitySection: false, equityComponentCount: 0 }), pnl: NO_PNL })
+    expect(find(r, "bs_equity_composition").status).toBe("skip")
   })
 })
 
@@ -200,12 +246,14 @@ describe("buildIfrsInput — shaping raw DB rows", () => {
     expect(input.pnl.depreciationAccountCount).toBe(3)
   })
 
-  it("round-trips through runIfrsChecks to a passing report", () => {
+  it("round-trips a well-classified company through runIfrsChecks to a 100 report", () => {
     const input = buildIfrsInput(
       [
-        { lineType: "asset", amount: 1000 },
-        { lineType: "liability", amount: -600 },
-        { lineType: "equity", amount: -400 },
+        { lineType: "asset", amount: 700, subType: "non_current", accountKey: "a1" },
+        { lineType: "asset", amount: 300, subType: "current", accountKey: "a2" },
+        { lineType: "liability", amount: -600, subType: "short_term", accountKey: "l1" },
+        { lineType: "equity", amount: -250, accountKey: "eq_capital" },
+        { lineType: "equity", amount: -150, accountKey: "eq_retained" },
       ],
       [
         { amount: 500, accountType: "revenue", accountKey: "r1" },
@@ -213,8 +261,11 @@ describe("buildIfrsInput — shaping raw DB rows", () => {
         { amount: 100, accountType: "expense", accountKey: "e1", category: "depreciation" },
       ],
     )
+    expect(input.balanceSheet.assetSubTypedCount).toBe(2)
+    expect(input.balanceSheet.equityComponentCount).toBe(2)
     const report = runIfrsChecks(input)
     expect(report.summary.fail).toBe(0)
+    expect(report.summary.warn).toBe(0)
     expect(report.summary.score).toBe(100)
   })
 })
@@ -223,7 +274,7 @@ describe("runIfrsChecks — skip + summary", () => {
   it("skips every check for an empty company", () => {
     const r = runIfrsChecks({ balanceSheet: NO_BS, pnl: NO_PNL })
     expect(r.checks.every((c) => c.status === "skip")).toBe(true)
-    expect(r.summary.skip).toBe(5)
+    expect(r.summary.skip).toBe(7)
     expect(r.summary.score).toBeNull()
   })
 
@@ -238,20 +289,28 @@ describe("runIfrsChecks — skip + summary", () => {
   })
 
   it("counts a warn as half a pass in the score", () => {
-    // 4 pass + 1 warn over 5 scored = (4 + 0.5)/5 = 90
+    // 6 pass + 1 warn over 7 scored = (6 + 0.5)/7 = 92.86 → 93
     const r = runIfrsChecks({
       balanceSheet: bs({ assets: 100, liabilities: -60, equity: -40 }),
       pnl: pnl({ revenue: 9, revenueAccountCount: 1, cogsAccountCount: 1, opexAccountCount: 1, depreciationAccountCount: 0 }),
     })
-    expect(r.summary.pass).toBe(4)
+    expect(r.summary.pass).toBe(6)
     expect(r.summary.warn).toBe(1)
-    expect(r.summary.score).toBe(90)
+    expect(r.summary.score).toBe(93)
   })
 
-  it("always returns exactly the five structural checks", () => {
+  it("always returns exactly the seven structural checks", () => {
     const r = runIfrsChecks({ balanceSheet: NO_BS, pnl: NO_PNL })
     expect(r.checks.map((c) => c.code).sort()).toEqual(
-      ["bs_balances", "bs_sections", "pnl_cogs_opex_separation", "pnl_depreciation", "pnl_revenue"].sort(),
+      [
+        "bs_balances",
+        "bs_sections",
+        "bs_current_noncurrent",
+        "bs_equity_composition",
+        "pnl_cogs_opex_separation",
+        "pnl_depreciation",
+        "pnl_revenue",
+      ].sort(),
     )
   })
 })

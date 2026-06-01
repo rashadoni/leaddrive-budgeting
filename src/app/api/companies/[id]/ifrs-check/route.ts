@@ -55,7 +55,7 @@ export async function GET(
   // ── Balance sheet: load all (non-deleted), keep only the latest period ──
   const allBsLines = await prisma.balanceSheetLine.findMany({
     where: { companyId, organizationId: session.orgId, deletedAt: null },
-    select: { lineType: true, amount: true, year: true, month: true },
+    select: { lineType: true, amount: true, year: true, month: true, subType: true, accountId: true },
   })
   let period: string | null = null
   let bsRows: RawBsLine[] = []
@@ -72,7 +72,7 @@ export async function GET(
     period = `${maxY}-${String(maxM).padStart(2, "0")}`
     bsRows = allBsLines
       .filter((l) => l.year === maxY && l.month === maxM)
-      .map((l) => ({ lineType: l.lineType, amount: l.amount }))
+      .map((l) => ({ lineType: l.lineType, amount: l.amount, subType: l.subType, accountKey: l.accountId }))
   }
 
   // ── Income statement: budget lines joined to the chart of accounts ──

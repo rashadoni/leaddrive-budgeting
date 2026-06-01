@@ -35,6 +35,14 @@ export interface IfrsBalanceSheetSnapshot {
   hasLiabilitySection: boolean
   hasEquitySection: boolean
   lineCount: number
+  /** Asset lines total / how many carry a current·non-current subType (IAS 1 §60). */
+  assetLineCount: number
+  assetSubTypedCount: number
+  /** Liability lines total / how many carry a short·long-term subType. */
+  liabilityLineCount: number
+  liabilitySubTypedCount: number
+  /** Distinct equity accounts — IAS 1 expects equity split into components. */
+  equityComponentCount: number
 }
 
 /** Snapshot of one company's imported P&L, summed by account class. */
@@ -91,6 +99,10 @@ export interface RawBsLine {
   /** "asset" | "liability" | "equity" */
   lineType: string
   amount: number
+  /** current·non-current (assets) / short·long-term (liabilities); null if unclassified. */
+  subType?: string | null
+  /** Stable account identity (accountId) — for distinct equity-component counting. */
+  accountKey?: string
 }
 
 /** A P&L (budget) line joined to its chart-of-accounts classification. */
@@ -129,19 +141,32 @@ export function buildIfrsInput(bsLines: RawBsLine[], plLines: RawPlLine[]): Ifrs
   let hasAssetSection = false
   let hasLiabilitySection = false
   let hasEquitySection = false
+  let assetLineCount = 0
+  let assetSubTypedCount = 0
+  let liabilityLineCount = 0
+  let liabilitySubTypedCount = 0
+  const equityAccounts = new Set<string>()
+  const subTyped = (s?: string | null) => !!s && s.trim() !== ""
   for (const l of bsLines) {
     switch (l.lineType) {
       case "asset":
         assets += l.amount
         hasAssetSection = true
+        assetLineCount += 1
+        if (subTyped(l.subType)) assetSubTypedCount += 1
         break
       case "liability":
         liabilities += l.amount
         hasLiabilitySection = true
+        liabilityLineCount += 1
+        if (subTyped(l.subType)) liabilitySubTypedCount += 1
         break
       case "equity":
         equity += l.amount
         hasEquitySection = true
+        // Count distinct equity accounts; fall back to a per-line key when
+        // no accountKey is supplied so each line still counts as a component.
+        equityAccounts.add(l.accountKey ?? `eq:${equityAccounts.size}`)
         break
     }
   }
@@ -182,6 +207,11 @@ export function buildIfrsInput(bsLines: RawBsLine[], plLines: RawPlLine[]): Ifrs
       hasLiabilitySection,
       hasEquitySection,
       lineCount: bsLines.length,
+      assetLineCount,
+      assetSubTypedCount,
+      liabilityLineCount,
+      liabilitySubTypedCount,
+      equityComponentCount: equityAccounts.size,
     },
     pnl: {
       present: plLines.length > 0,
@@ -280,6 +310,60 @@ export function runIfrsChecks(input: IfrsCheckInput): IfrsReport {
           ? "Balance sheet has all three sections (assets, liabilities, equity)."
           : `Balance sheet missing section(s): ${missing.join(", ")}.`,
       values: { missing: missing.join(",") || "—", missingCount: missing.length },
+    })
+  }
+
+  /* ── 2b. Current vs non-current classification (IAS 1 §60) ── */
+  if (!bs.present) {
+    checks.push({
+      code: "bs_current_noncurrent",
+      status: "skip",
+      messageEn: "No balance sheet imported for this company.",
+    })
+  } else {
+    // A section is "classified" when at least half its lines carry a subType.
+    const assetCov = bs.assetLineCount > 0 ? bs.assetSubTypedCount / bs.assetLineCount : 1
+    const liabCov = bs.liabilityLineCount > 0 ? bs.liabilitySubTypedCount / bs.liabilityLineCount : 1
+    const assetsClassified = bs.assetLineCount === 0 || assetCov >= 0.5
+    const liabClassified = bs.liabilityLineCount === 0 || liabCov >= 0.5
+    const unclassified: string[] = []
+    if (!assetsClassified) unclassified.push("assets")
+    if (!liabClassified) unclassified.push("liabilities")
+    checks.push({
+      code: "bs_current_noncurrent",
+      status: unclassified.length === 0 ? "pass" : "warn",
+      messageEn:
+        unclassified.length === 0
+          ? "Assets and liabilities are split into current vs non-current (IAS 1 §60)."
+          : `No current/non-current split on: ${unclassified.join(", ")}.`,
+      values: {
+        assetsClassifiedPct: Math.round(assetCov * 100),
+        liabilitiesClassifiedPct: Math.round(liabCov * 100),
+        unclassified: unclassified.join(",") || "—",
+      },
+    })
+  }
+
+  /* ── 2c. Equity broken into components (IAS 1 §54/§78(e)) ── */
+  if (!bs.present || !bs.hasEquitySection) {
+    checks.push({
+      code: "bs_equity_composition",
+      status: "skip",
+      messageEn: "No equity section imported for this company.",
+    })
+  } else if (bs.equityComponentCount >= 2) {
+    checks.push({
+      code: "bs_equity_composition",
+      status: "pass",
+      messageEn: "Equity is broken into components (e.g. share capital, retained earnings).",
+      values: { equityComponents: bs.equityComponentCount },
+    })
+  } else {
+    checks.push({
+      code: "bs_equity_composition",
+      status: "warn",
+      messageEn: "Equity is a single lumped line — IAS 1 expects components shown separately.",
+      values: { equityComponents: bs.equityComponentCount },
     })
   }
 

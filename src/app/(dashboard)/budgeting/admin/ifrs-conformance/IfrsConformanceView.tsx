@@ -52,6 +52,8 @@ function scoreColor(score: number | null): string {
 const DETAIL_FIELDS: Record<string, string[]> = {
   bs_balances: ["assets", "liabilities", "equity", "residual"],
   bs_sections: ["missing"],
+  bs_current_noncurrent: ["unclassified"],
+  bs_equity_composition: ["equityComponents"],
   pnl_revenue: ["revenue", "revenueAccounts"],
   pnl_cogs_opex_separation: ["cogsAccounts", "opexAccounts"],
   pnl_depreciation: ["depreciationAccounts"],
@@ -90,7 +92,7 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
   function fieldValue(field: string, values?: Record<string, number | string>): string {
     if (!values || values[field] === undefined) return "—"
     const v = values[field]
-    if (field === "missing") {
+    if (field === "missing" || field === "unclassified") {
       return v === "—" || v === "" ? t("fields.none") : String(v)
     }
     return typeof v === "number" ? nf.format(v) : String(v)

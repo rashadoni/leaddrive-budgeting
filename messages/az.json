@@ -3442,6 +3442,14 @@
       "pnl_depreciation": {
         "label": "Amortizasiya açıqlanıb",
         "desc": "Amortizasiya IAS 1-in tələb etdiyi kimi ayrıca sətir kimi göstərilir."
+      },
+      "bs_current_noncurrent": {
+        "label": "Cari/uzunmüddətli bölgü",
+        "desc": "Aktivlər və öhdəliklər cari və uzunmüddətli olaraq ayrılır (IAS 1 §60)."
+      },
+      "bs_equity_composition": {
+        "label": "Kapital komponentlərə bölünüb",
+        "desc": "Kapital komponentlərini (nizamnamə kapitalı, bölüşdürülməmiş mənfəət) ayrıca göstərir, bir sətirdə yox."
       }
     },
     "fields": {
@@ -3455,7 +3463,9 @@
       "opexAccounts": "Əməliyyat xərci hesabları",
       "depreciationAccounts": "Amortizasiya hesabları",
       "missing": "Çatışmır",
-      "none": "yox"
+      "none": "yox",
+      "unclassified": "Bölgüsüz",
+      "equityComponents": "Kapital komponentləri"
     }
   }
 }

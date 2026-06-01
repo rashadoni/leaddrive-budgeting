@@ -50,11 +50,14 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
   it("runs the checks against a balanced, fully-classified company → 200 pass", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
     // Two periods; only the latest (2026-03) is used for the balance check.
+    // Latest period is a well-classified import: assets/liabilities carry a
+    // subType, equity is split into 2 components.
     prismaMock.balanceSheetLine.findMany.mockResolvedValue([
-      { lineType: "asset", amount: 999, year: 2025, month: 12 }, // older period — ignored
-      { lineType: "asset", amount: 326066365, year: 2026, month: 3 },
-      { lineType: "liability", amount: -128398951, year: 2026, month: 3 },
-      { lineType: "equity", amount: -197667414, year: 2026, month: 3 },
+      { lineType: "asset", amount: 999, year: 2025, month: 12, subType: "current", accountId: "old" }, // older period — ignored
+      { lineType: "asset", amount: 326066365, year: 2026, month: 3, subType: "non_current", accountId: "a1" },
+      { lineType: "liability", amount: -128398951, year: 2026, month: 3, subType: "short_term", accountId: "l1" },
+      { lineType: "equity", amount: -100000000, year: 2026, month: 3, subType: null, accountId: "eq_cap" },
+      { lineType: "equity", amount: -97667414, year: 2026, month: 3, subType: null, accountId: "eq_ret" },
     ])
     prismaMock.budgetLine.findMany.mockResolvedValue([
       { plannedAmount: 5000, accountId: "r1", account: { accountType: "revenue", category: null, name: "Sales", nameRu: null, nameAz: null, nameEn: null } },
@@ -73,6 +76,12 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     const bal = body.report.checks.find((c: { code: string }) => c.code === "bs_balances")
     expect(bal.status).toBe("pass")
     expect(bal.values.residual).toBe(0)
+    // v2 checks wired through the route (subType + equity accountIds threaded):
+    const cnc = body.report.checks.find((c: { code: string }) => c.code === "bs_current_noncurrent")
+    expect(cnc.status).toBe("pass")
+    const eq = body.report.checks.find((c: { code: string }) => c.code === "bs_equity_composition")
+    expect(eq.status).toBe("pass")
+    expect(eq.values.equityComponents).toBe(2)
   })
 
   it("skips the BS checks when only a P&L was imported (no fabricated fail)", async () => {

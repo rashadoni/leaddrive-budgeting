@@ -3442,6 +3442,14 @@
       "pnl_depreciation": {
         "label": "Depreciation / amortisation disclosed",
         "desc": "D&A is identifiable as its own line, as IAS 1 expects."
+      },
+      "bs_current_noncurrent": {
+        "label": "Current vs non-current split",
+        "desc": "Assets and liabilities are split into current and non-current (IAS 1 §60)."
+      },
+      "bs_equity_composition": {
+        "label": "Equity broken into components",
+        "desc": "Equity shows its components (share capital, retained earnings) separately, not one lumped line."
       }
     },
     "fields": {
@@ -3455,7 +3463,9 @@
       "opexAccounts": "Operating-expense accounts",
       "depreciationAccounts": "D&A accounts",
       "missing": "Missing",
-      "none": "none"
+      "none": "none",
+      "unclassified": "Without split",
+      "equityComponents": "Equity components"
     }
   }
 }
