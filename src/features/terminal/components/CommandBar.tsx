@@ -519,7 +519,14 @@ export function CommandBar() {
 
   return (
     <TooltipProvider delayDuration={300}>
-    <div className="flex items-center justify-between px-4 py-1 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
+    {/* data-volatile (2026-06-01): the whole command-line strip is live content
+        — input/autocomplete hints + the right status cluster ([alerts N] /
+        [health …]) whose WIDTH varies with live counts, which shifted the
+        masked cluster's left edge and intermittently flaked the HeatMap visual
+        baseline. Mask the entire strip; its box/height stays gated (content
+        below still shifts on a real layout change). Supersedes the inner
+        cluster mask below. */}
+    <div data-volatile="true" className="flex items-center justify-between px-4 py-1 bg-[#050814] border-b border-gray-800 text-[#00D4AA] font-mono text-sm">
       <div className="flex items-center flex-1 gap-2">
         <span className="text-gray-400 shrink-0">[cmd]</span>
         <div className="flex-1 max-w-xl relative">
