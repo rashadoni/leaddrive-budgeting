@@ -3403,5 +3403,59 @@
     "indicatorsDriftedOne": "{n} indicator drifted",
     "indicatorsDriftedOther": "{n} indicators drifted",
     "moreDrifts": "+ {n} more drifts"
+  },
+  "adminIfrs": {
+    "pageTitle": "IFRS conformance check",
+    "pageDescription": "After importing a company's financial statements, verify they're assembled in line with IFRS (IAS 1) structure: a balancing balance sheet with all sections, recognised revenue, cost of sales separated from operating expenses, and depreciation shown as its own line. This is a structural check on the imported figures — not an audit opinion.",
+    "selectCompany": "Company",
+    "selectPlaceholder": "Select a company…",
+    "run": "Run check",
+    "running": "Checking…",
+    "scoreLabel": "Conformance",
+    "periodLabel": "Balance sheet period",
+    "summaryLine": "{pass} passed · {warn} warnings · {fail} failed · {skip} skipped",
+    "noStatements": "No financial statements imported for this company yet — nothing to check. Import a workbook first.",
+    "errorGeneric": "Could not run the check. Please try again.",
+    "status": {
+      "pass": "Pass",
+      "warn": "Warning",
+      "fail": "Fail",
+      "skip": "No data"
+    },
+    "checks": {
+      "bs_balances": {
+        "label": "Balance sheet balances",
+        "desc": "Total assets equal liabilities plus equity (the fundamental accounting identity)."
+      },
+      "bs_sections": {
+        "label": "All balance sheet sections present",
+        "desc": "Assets, liabilities and equity are each reported (IAS 1)."
+      },
+      "pnl_revenue": {
+        "label": "Revenue recognised",
+        "desc": "The income statement reports revenue."
+      },
+      "pnl_cogs_opex_separation": {
+        "label": "Cost of sales separated from operating expenses",
+        "desc": "IAS 1 'by function' presentation keeps cost of sales distinct from operating expenses."
+      },
+      "pnl_depreciation": {
+        "label": "Depreciation / amortisation disclosed",
+        "desc": "D&A is identifiable as its own line, as IAS 1 expects."
+      }
+    },
+    "fields": {
+      "assets": "Assets",
+      "liabilities": "Liabilities",
+      "equity": "Equity",
+      "residual": "Imbalance",
+      "revenue": "Revenue",
+      "revenueAccounts": "Revenue accounts",
+      "cogsAccounts": "Cost-of-sales accounts",
+      "opexAccounts": "Operating-expense accounts",
+      "depreciationAccounts": "D&A accounts",
+      "missing": "Missing",
+      "none": "none"
+    }
   }
 }

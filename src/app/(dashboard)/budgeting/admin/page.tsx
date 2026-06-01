@@ -34,6 +34,7 @@ import {
   Stethoscope,
   Shield,
   ListChecks,
+  Scale,
 } from "lucide-react"
 
 export const metadata = {
@@ -103,6 +104,14 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
         title: "Companies Readiness",
         desc: "Per-company 7-area scoring с tiers (complete/good/partial/thin/empty). CSV export.",
         icon: Stethoscope,
+      },
+      {
+        href: "/budgeting/admin/ifrs-conformance",
+        title: "IFRS-проверка",
+        desc: "После импорта: структурная проверка отчётности по IAS 1 — баланс сходится, все разделы, выручка, себестоимость отделена от OpEx, амортизация отдельной строкой. Score 0-100. Только реальные импортированные цифры.",
+        icon: Scale,
+        badge: "🆕 Phase 7.N",
+        recentlyAdded: true,
       },
       {
         href: "/budgeting/admin/data-archive",
@@ -306,6 +315,16 @@ export default async function AdminLandingPage() {
               AI Auto Import
             </Link>{" "}
             (универсально для любого workbook'a).
+          </li>
+          <li>
+            После импорта — прогнать{" "}
+            <Link
+              href="/budgeting/admin/ifrs-conformance"
+              className="text-emerald-300 underline"
+            >
+              IFRS-проверку
+            </Link>{" "}
+            (баланс сходится, разделы, COGS≠OpEx, амортизация).
           </li>
           <li>
             Запустить <code className="px-1 py-0.5 bg-muted rounded">npm run smoke-test</code>{" "}

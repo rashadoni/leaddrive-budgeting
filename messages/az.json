@@ -3403,5 +3403,59 @@
     "indicatorsDriftedOne": "{n} indikator drift etdi",
     "indicatorsDriftedOther": "{n} indikator drift etdi",
     "moreDrifts": "+ {n} əlavə drift"
+  },
+  "adminIfrs": {
+    "pageTitle": "IFRS uyğunluq yoxlaması",
+    "pageDescription": "Şirkətin maliyyə hesabatları idxal edildikdən sonra onların IFRS (IAS 1) strukturuna uyğun yığıldığını yoxlayır: balans bütün bölmələrlə bərabərləşir, gəlir tanınır, satışın maya dəyəri əməliyyat xərclərindən ayrılır və amortizasiya ayrıca sətirdə göstərilir. Bu, idxal edilmiş rəqəmlərin struktur yoxlamasıdır — audit rəyi deyil.",
+    "selectCompany": "Şirkət",
+    "selectPlaceholder": "Şirkət seçin…",
+    "run": "Yoxla",
+    "running": "Yoxlanılır…",
+    "scoreLabel": "Uyğunluq",
+    "periodLabel": "Balans dövrü",
+    "summaryLine": "{pass} keçdi · {warn} xəbərdarlıq · {fail} uğursuz · {skip} ötürüldü",
+    "noStatements": "Bu şirkət üçün hələ maliyyə hesabatı idxal edilməyib — yoxlanılacaq bir şey yoxdur. Əvvəlcə fayl idxal edin.",
+    "errorGeneric": "Yoxlama aparıla bilmədi. Yenidən cəhd edin.",
+    "status": {
+      "pass": "Keçdi",
+      "warn": "Xəbərdarlıq",
+      "fail": "Uğursuz",
+      "skip": "Məlumat yoxdur"
+    },
+    "checks": {
+      "bs_balances": {
+        "label": "Balans bərabərləşir",
+        "desc": "Aktivlərin cəmi öhdəliklər və kapitalın cəminə bərabərdir (əsas balans bərabərliyi)."
+      },
+      "bs_sections": {
+        "label": "Bütün balans bölmələri mövcuddur",
+        "desc": "Aktivlər, öhdəliklər və kapital ayrı-ayrılıqda göstərilir (IAS 1)."
+      },
+      "pnl_revenue": {
+        "label": "Gəlir tanınıb",
+        "desc": "Mənfəət və zərər hesabatında gəlir əks olunub."
+      },
+      "pnl_cogs_opex_separation": {
+        "label": "Satışın maya dəyəri əməliyyat xərclərindən ayrılıb",
+        "desc": "IAS 1 «funksiya üzrə» təqdimat maya dəyərini əməliyyat xərclərindən ayırır."
+      },
+      "pnl_depreciation": {
+        "label": "Amortizasiya açıqlanıb",
+        "desc": "Amortizasiya IAS 1-in tələb etdiyi kimi ayrıca sətir kimi göstərilir."
+      }
+    },
+    "fields": {
+      "assets": "Aktivlər",
+      "liabilities": "Öhdəliklər",
+      "equity": "Kapital",
+      "residual": "Uyğunsuzluq",
+      "revenue": "Gəlir",
+      "revenueAccounts": "Gəlir hesabları",
+      "cogsAccounts": "Maya dəyəri hesabları",
+      "opexAccounts": "Əməliyyat xərci hesabları",
+      "depreciationAccounts": "Amortizasiya hesabları",
+      "missing": "Çatışmır",
+      "none": "yox"
+    }
   }
 }
