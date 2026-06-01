@@ -49,6 +49,26 @@ const legacyInitial: ScenarioFormValues = {
   overrides: JSON.stringify({ adjustments: [{ codes: ["IND_NET_MARGIN"], multiply: 0.8 }] }, null, 2),
 };
 
+// Lever-style shock (no `target`) — the PRICE_DROP_40 shape the user hit.
+const priceDropInitial: ScenarioFormValues = {
+  id: "scn_pricedrop",
+  code: "PRICE_DROP_40",
+  nameEn: "Price crash -40%",
+  nameRu: "Обвал цены -40%",
+  description: "Severe price-crash tail.",
+  overrides: JSON.stringify({ shock: { priceShock: -0.4 } }, null, 2),
+};
+
+// Multi-lever shock with cost rigidity (the DROUGHT_2026 shape).
+const droughtInitial: ScenarioFormValues = {
+  id: "scn_drought",
+  code: "DROUGHT_2026",
+  nameEn: "Drought — harvest -30%",
+  nameRu: "",
+  description: "",
+  overrides: JSON.stringify({ shock: { revenueShock: -0.3, yieldShock: -0.3, costRigidity: 0.8 } }, null, 2),
+};
+
 function jsonText(): string {
   return (screen.getByTestId("overrides-json") as HTMLTextAreaElement).value;
 }
@@ -106,6 +126,27 @@ describe("ScenarioFormModal — shock scenarios are editable (bug fix)", () => {
     const share = document.getElementById("shock-import-share") as HTMLInputElement;
     expect(share).toBeTruthy();
     expect(share.value).toBe("0.3");
+  });
+
+  it("shows a friendly lever input (not raw JSON) for a price-shock scenario", () => {
+    render(<ScenarioFormModal initial={priceDropInitial} onClose={() => {}} onSaved={() => {}} />);
+    expect(screen.getByTestId("shock-editor")).toBeTruthy();
+    // priceShock -0.4 is surfaced as a percentage (-40), not the raw fraction.
+    expect((screen.getByTestId("shock-lever-priceShock") as HTMLInputElement).value).toBe("-40");
+  });
+
+  it("editing a lever percentage writes the fraction back to the JSON", () => {
+    render(<ScenarioFormModal initial={priceDropInitial} onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.change(screen.getByTestId("shock-lever-priceShock"), { target: { value: "-25" } });
+    expect(JSON.parse(jsonText()).shock.priceShock).toBe(-0.25);
+    expect(saveBtn().disabled).toBe(false);
+  });
+
+  it("surfaces every lever + cost rigidity for a multi-lever scenario", () => {
+    render(<ScenarioFormModal initial={droughtInitial} onClose={() => {}} onSaved={() => {}} />);
+    expect((screen.getByTestId("shock-lever-revenueShock") as HTMLInputElement).value).toBe("-30");
+    expect((screen.getByTestId("shock-lever-yieldShock") as HTMLInputElement).value).toBe("-30");
+    expect((screen.getByTestId("shock-cost-rigidity") as HTMLInputElement).value).toBe("0.8");
   });
 
   it("PATCHes the edited shock value to the API on Save", async () => {
