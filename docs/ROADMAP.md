@@ -361,6 +361,18 @@ billing and i18n plumbing are out of scope).
 
 ## Backlog (long-term, non-CARRYOVER)
 
+### Client feedback — 2026-06-01 demo (AzerSheker / Azik) {#client-feedback-2026-06-01}
+
+Triaged by buildability. None built yet — each needs a design pass (brainstorming) before implementation; #5 is build-ready now.
+
+1. **Per-hectare benchmark bands** — the agro per-ha indicators (`AGRO_REVENUE_PER_HA`, `AGRO_COST_PER_HA`, `AGRO_YIELD_PER_HA`, `AGRO_YIELD_EFFICIENCY`) show a value but no benchmark. Client: "show the floor (aşağı planka) AND the best-case ceiling (yuxarı planka) per ha so I can tell if my number is good." → Surface the indicator `thresholds` as an explicit benchmark range in IndicatorDetail + a real per-crop/region best-case figure. Effort: **M** (threshold display is quick; the best-case number needs an agro-benchmark data source).
+2. **Post-import IFRS-conformance check** — "FS IFRS uyğun yığılmasını yoxlamaq, importdan sonra" = after import, validate the financial statements conform to IFRS. → New validation pass (extend `scripts/audit-company.cjs` or a new IFRS-structure checker: COGS≠OPEX separation, D&A its own line, BS balances, statement linkage). Effort: **M-L**.
+3. **Regional peer comparison** — compare the entity vs same-industry companies in regional countries (TR/RU/GE/IR). → Extend the existing `PeerPanel` / `PeerBenchmarkModal` / `ComparePanel` (today they compare INTERNAL holding cos) with an external regional-peer dataset. Effort: **L + DATA-BLOCKED** (needs a peer-company financials source).
+4. **Imported-input tagging for FX simulation** — identify what is purchased externally (foreign currency) so the currency What-if can rank which cost lines / products suffer most on a devaluation. → Per-COGS-line (or per-input) import-share + currency tag → FX What-if per-line impact ranking. Ties to `FX_IMPORTED_INPUT` + `fxExposureSource`. Effort: **M-L** + needs per-input import-share data.
+5. **Fuzzy / semantic indicator search in Panel 2 (HeatMap)** — "many indicators; I had to hover one-by-one to find the per-ha one — need a search that understands intent even on an inexact word." → Add an indicator (column) search box to the HeatMap (today it only filters company ROWS via `heatMap.filterRowsPlaceholder`) with fuzzy matching, reusing the CommandBar fuzzy-score. Effort: **S-M**, self-contained, NO data dependency. **← recommend building first.**
+
+---
+
 > Items migrated 2026-05-05 Phase 7.G **Turn XVIII** from `docs/CARRYOVER.md`
 > §OPEN to declutter the active tracker. Rows here are not abandoned — they
 > stay actionable when the named **trigger condition** fires (Redis ships,
