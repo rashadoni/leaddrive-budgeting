@@ -3450,6 +3450,10 @@
       "bs_equity_composition": {
         "label": "Kapital komponentlərə bölünüb",
         "desc": "Kapital komponentlərini (nizamnamə kapitalı, bölüşdürülməmiş mənfəət) ayrıca göstərir, bir sətirdə yox."
+      },
+      "pnl_equity_linkage": {
+        "label": "P&L balansla uyğunlaşır",
+        "desc": "Mənfəət-zərər hesabatının xalis nəticəsi kapitalın «cari ilin mənfəəti/zərəri» sətrinə bərabərdir (hesabatların əlaqəsi)."
       }
     },
     "fields": {
@@ -3465,7 +3469,10 @@
       "missing": "Çatışmır",
       "none": "yox",
       "unclassified": "Bölgüsüz",
-      "equityComponents": "Kapital komponentləri"
+      "equityComponents": "Kapital komponentləri",
+      "pnlNet": "P&L xalis nəticə",
+      "equityCurrentYear": "Kapital (cari il) sətri",
+      "linkageGap": "Fərq"
     }
   }
 }

@@ -57,6 +57,7 @@ const DETAIL_FIELDS: Record<string, string[]> = {
   pnl_revenue: ["revenue", "revenueAccounts"],
   pnl_cogs_opex_separation: ["cogsAccounts", "opexAccounts"],
   pnl_depreciation: ["depreciationAccounts"],
+  pnl_equity_linkage: ["pnlNet", "equityCurrentYear", "linkageGap"],
 }
 
 export function IfrsConformanceView({ companies }: { companies: CompanyOption[] }) {

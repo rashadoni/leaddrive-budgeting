@@ -43,6 +43,12 @@ export interface IfrsBalanceSheetSnapshot {
   liabilitySubTypedCount: number
   /** Distinct equity accounts — IAS 1 expects equity split into components. */
   equityComponentCount: number
+  /**
+   * Sum of equity lines identified as the *current-year* profit/loss result
+   * (as stored), or null when no such line was found. Used to reconcile the
+   * P&L bottom line to the balance sheet (clean-surplus linkage).
+   */
+  equityCurrentYearResult: number | null
 }
 
 /** Snapshot of one company's imported P&L, summed by account class. */
@@ -103,7 +109,13 @@ export interface RawBsLine {
   subType?: string | null
   /** Stable account identity (accountId) — for distinct equity-component counting. */
   accountKey?: string
+  /** Account name(s) — used to identify the equity "current-year result" line. */
+  accountName?: string | null
 }
+
+/** Matches the equity "current-year profit/loss" line across EN/RU/AZ. */
+const CURRENT_YEAR_RESULT_RE =
+  /current year|current period|reporting period|отчётн|текущ\w*\s*год|cari il|hesabat (dövrü|ili)|təsərrüfat ili/i
 
 /** A P&L (budget) line joined to its chart-of-accounts classification. */
 export interface RawPlLine {
@@ -146,6 +158,7 @@ export function buildIfrsInput(bsLines: RawBsLine[], plLines: RawPlLine[]): Ifrs
   let liabilityLineCount = 0
   let liabilitySubTypedCount = 0
   const equityAccounts = new Set<string>()
+  let equityCurrentYearResult: number | null = null
   const subTyped = (s?: string | null) => !!s && s.trim() !== ""
   for (const l of bsLines) {
     switch (l.lineType) {
@@ -167,6 +180,10 @@ export function buildIfrsInput(bsLines: RawBsLine[], plLines: RawPlLine[]): Ifrs
         // Count distinct equity accounts; fall back to a per-line key when
         // no accountKey is supplied so each line still counts as a component.
         equityAccounts.add(l.accountKey ?? `eq:${equityAccounts.size}`)
+        // Identify the current-year profit/loss line (clean-surplus linkage).
+        if (CURRENT_YEAR_RESULT_RE.test(l.accountName ?? "")) {
+          equityCurrentYearResult = (equityCurrentYearResult ?? 0) + l.amount
+        }
         break
     }
   }
@@ -212,6 +229,7 @@ export function buildIfrsInput(bsLines: RawBsLine[], plLines: RawPlLine[]): Ifrs
       liabilityLineCount,
       liabilitySubTypedCount,
       equityComponentCount: equityAccounts.size,
+      equityCurrentYearResult,
     },
     pnl: {
       present: plLines.length > 0,
@@ -453,6 +471,41 @@ export function runIfrsChecks(input: IfrsCheckInput): IfrsReport {
       messageEn:
         "No depreciation / amortisation line identified — IAS 1 expects D&A disclosed.",
       values: { depreciationAccounts: 0 },
+    })
+  }
+
+  /* ── 6. Statement linkage: P&L net result ↔ balance-sheet current-year line ──
+   * Clean-surplus identity: the equity "current-year profit/loss" line should
+   * equal the P&L bottom line. NEVER a hard fail — a divergence can be a
+   * legitimate plan-vs-actual / period-coverage difference, so we flag it for
+   * review (warn) rather than asserting the data is wrong. Convention-agnostic:
+   * the two figures tie under EITHER the signed/trial-balance convention
+   * (eqCY + net ≈ 0) or the natural convention (eqCY − net ≈ 0). */
+  if (!pnl.present || !bs.present || bs.equityCurrentYearResult == null) {
+    checks.push({
+      code: "pnl_equity_linkage",
+      status: "skip",
+      messageEn:
+        "Can't link statements — needs both an income statement and an equity 'current-year result' line.",
+    })
+  } else {
+    const pnlNet = pnl.revenue - pnl.cogs - pnl.opex
+    const eqCY = bs.equityCurrentYearResult
+    const gap = Math.min(Math.abs(eqCY + pnlNet), Math.abs(eqCY - pnlNet))
+    const scale = Math.max(Math.abs(pnlNet), Math.abs(eqCY), 1)
+    const tolerance = Math.max(1000, 0.01 * scale)
+    const ties = gap <= tolerance
+    checks.push({
+      code: "pnl_equity_linkage",
+      status: ties ? "pass" : "warn",
+      messageEn: ties
+        ? "P&L net result reconciles to the balance-sheet current-year line."
+        : "P&L net result doesn't match the balance-sheet current-year line — review (may be a plan-vs-actual or period difference).",
+      values: {
+        pnlNet: round(pnlNet),
+        equityCurrentYear: round(eqCY),
+        linkageGap: round(gap),
+      },
     })
   }
 

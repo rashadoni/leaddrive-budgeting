@@ -3450,6 +3450,10 @@
       "bs_equity_composition": {
         "label": "Equity broken into components",
         "desc": "Equity shows its components (share capital, retained earnings) separately, not one lumped line."
+      },
+      "pnl_equity_linkage": {
+        "label": "P&L reconciles to the balance sheet",
+        "desc": "The income-statement net result equals the equity 'current-year profit/loss' line (clean-surplus link)."
       }
     },
     "fields": {
@@ -3465,7 +3469,10 @@
       "missing": "Missing",
       "none": "none",
       "unclassified": "Without split",
-      "equityComponents": "Equity components"
+      "equityComponents": "Equity components",
+      "pnlNet": "P&L net result",
+      "equityCurrentYear": "Equity current-year line",
+      "linkageGap": "Gap"
     }
   }
 }

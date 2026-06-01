@@ -23,6 +23,7 @@ function bs(over: Partial<IfrsBalanceSheetSnapshot> = {}): IfrsBalanceSheetSnaps
     liabilityLineCount: 1,
     liabilitySubTypedCount: 1,
     equityComponentCount: 2,
+    equityCurrentYearResult: null,
     ...over,
   }
 }
@@ -40,7 +41,7 @@ function pnl(over: Partial<IfrsPnlSnapshot> = {}): IfrsPnlSnapshot {
     ...over,
   }
 }
-const NO_BS = bs({ present: false, hasAssetSection: false, hasLiabilitySection: false, hasEquitySection: false, lineCount: 0, assetLineCount: 0, assetSubTypedCount: 0, liabilityLineCount: 0, liabilitySubTypedCount: 0, equityComponentCount: 0 })
+const NO_BS = bs({ present: false, hasAssetSection: false, hasLiabilitySection: false, hasEquitySection: false, lineCount: 0, assetLineCount: 0, assetSubTypedCount: 0, liabilityLineCount: 0, liabilitySubTypedCount: 0, equityComponentCount: 0, equityCurrentYearResult: null })
 const NO_PNL = pnl({ present: false, lineCount: 0 })
 
 function find(report: ReturnType<typeof runIfrsChecks>, code: string) {
@@ -270,11 +271,67 @@ describe("buildIfrsInput — shaping raw DB rows", () => {
   })
 })
 
+describe("runIfrsChecks — statement linkage (P&L ↔ equity current-year)", () => {
+  it("passes when the current-year line reconciles to P&L net (real MALT figures)", () => {
+    // MALT: P&L net -517,831 ; equity current-year +517,831 (signed convention) → ties exactly.
+    const input = buildIfrsInput(
+      [{ lineType: "equity", amount: 517831, accountKey: "cy", accountName: "Current Year (Profit) / Loss" }],
+      [
+        { amount: 546070, accountType: "revenue", accountKey: "r1" },
+        { amount: 438874, accountType: "cogs", accountKey: "c1" },
+        { amount: 625027, accountType: "expense", accountKey: "e1" },
+      ],
+    )
+    expect(input.balanceSheet.equityCurrentYearResult).toBe(517831)
+    expect(find(runIfrsChecks(input), "pnl_equity_linkage").status).toBe("pass")
+  })
+
+  it("warns (not fails) when P&L net and the current-year line diverge (real AZSF figures)", () => {
+    // AZSF: P&L net -648,801 ; equity current-year +112,652 → gap 536,149 → review, not wrong.
+    const input = buildIfrsInput(
+      [{ lineType: "equity", amount: 112652, accountKey: "cy", accountName: "Current Year (Profit) / Loss" }],
+      [
+        { amount: 2247860, accountType: "revenue", accountKey: "r1" },
+        { amount: 2185563, accountType: "cogs", accountKey: "c1" },
+        { amount: 711098, accountType: "expense", accountKey: "e1" },
+      ],
+    )
+    const c = find(runIfrsChecks(input), "pnl_equity_linkage")
+    expect(c.status).toBe("warn")
+    expect(c.values?.linkageGap).toBe(536149)
+  })
+
+  it("never hard-fails — a divergence is review-worthy, not declared wrong", () => {
+    const input = buildIfrsInput(
+      [{ lineType: "equity", amount: 999999, accountKey: "cy", accountName: "Current Year Profit/Loss" }],
+      [{ amount: 10, accountType: "revenue", accountKey: "r1" }],
+    )
+    expect(find(runIfrsChecks(input), "pnl_equity_linkage").status).not.toBe("fail")
+  })
+
+  it("accepts the natural convention too (eqCY − net ≈ 0)", () => {
+    const input = buildIfrsInput(
+      [{ lineType: "equity", amount: 5000, accountKey: "cy", accountName: "Current year result" }],
+      [{ amount: 5000, accountType: "revenue", accountKey: "r1" }],
+    )
+    expect(find(runIfrsChecks(input), "pnl_equity_linkage").status).toBe("pass")
+  })
+
+  it("skips when no current-year equity line is identifiable", () => {
+    const input = buildIfrsInput(
+      [{ lineType: "equity", amount: 100, accountKey: "cap", accountName: "Share capital" }],
+      [{ amount: 10, accountType: "revenue", accountKey: "r1" }],
+    )
+    expect(input.balanceSheet.equityCurrentYearResult).toBeNull()
+    expect(find(runIfrsChecks(input), "pnl_equity_linkage").status).toBe("skip")
+  })
+})
+
 describe("runIfrsChecks — skip + summary", () => {
   it("skips every check for an empty company", () => {
     const r = runIfrsChecks({ balanceSheet: NO_BS, pnl: NO_PNL })
     expect(r.checks.every((c) => c.status === "skip")).toBe(true)
-    expect(r.summary.skip).toBe(7)
+    expect(r.summary.skip).toBe(8)
     expect(r.summary.score).toBeNull()
   })
 
@@ -299,7 +356,7 @@ describe("runIfrsChecks — skip + summary", () => {
     expect(r.summary.score).toBe(93)
   })
 
-  it("always returns exactly the seven structural checks", () => {
+  it("always returns exactly the eight structural checks", () => {
     const r = runIfrsChecks({ balanceSheet: NO_BS, pnl: NO_PNL })
     expect(r.checks.map((c) => c.code).sort()).toEqual(
       [
@@ -310,6 +367,7 @@ describe("runIfrsChecks — skip + summary", () => {
         "pnl_cogs_opex_separation",
         "pnl_depreciation",
         "pnl_revenue",
+        "pnl_equity_linkage",
       ].sort(),
     )
   })

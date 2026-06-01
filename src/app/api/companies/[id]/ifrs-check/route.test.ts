@@ -84,6 +84,26 @@ describe("GET /api/companies/[id]/ifrs-check", () => {
     expect(eq.values.equityComponents).toBe(2)
   })
 
+  it("reconciles the P&L net result to the equity current-year line (statement linkage)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
+    // pnlNet = 5000 - 2000 - 1100 = 1900 ; equity current-year line = -1900 → ties.
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+      { lineType: "asset", amount: 1900, year: 2026, month: 1, subType: "current", accountId: "a1", account: { name: "Cash", nameEn: null, nameRu: null, nameAz: null } },
+      { lineType: "equity", amount: -1900, year: 2026, month: 1, subType: null, accountId: "eq_cy", account: { name: "Current Year (Profit) / Loss", nameEn: null, nameRu: null, nameAz: null } },
+    ])
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { plannedAmount: 5000, accountId: "r1", account: { accountType: "revenue", category: null, name: "Sales", nameRu: null, nameAz: null, nameEn: null } },
+      { plannedAmount: 2000, accountId: "c1", account: { accountType: "cogs", category: null, name: "Raw", nameRu: null, nameAz: null, nameEn: null } },
+      { plannedAmount: 1100, accountId: "e1", account: { accountType: "expense", category: null, name: "Opex", nameRu: null, nameAz: null, nameEn: null } },
+    ])
+    const res = await GET(makeRequest(`/api/companies/${COMPANY_ID}/ifrs-check`), buildParams(COMPANY_ID))
+    const body = await res.json()
+    const link = body.report.checks.find((c: { code: string }) => c.code === "pnl_equity_linkage")
+    expect(link.status).toBe("pass")
+    expect(link.values.pnlNet).toBe(1900)
+    expect(link.values.equityCurrentYear).toBe(-1900)
+  })
+
   it("skips the BS checks when only a P&L was imported (no fabricated fail)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
     prismaMock.balanceSheetLine.findMany.mockResolvedValue([]) // FARM: P&L only
