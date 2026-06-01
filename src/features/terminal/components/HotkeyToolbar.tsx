@@ -557,14 +557,23 @@ export function HotkeyToolbar() {
     },
   ];
 
-  // 2026-05-31 (user request «подними наверх не прячь в свёрнутом») — surface
-  // EVERY hotkey in the toolbar instead of hiding the 15+ "overflow" ones
-  // behind the ⌘K palette. The toolbar is `overflow-x-auto` so it scrolls
-  // horizontally; group separators keep the clusters legible. The ⌘K palette
-  // now only renders if something is still hidden (overflowCount > 0) — with
-  // all surfaced it's 0, so it auto-disappears.
-  const visibleHotkeys = hotkeys;
-  const overflowCount = hotkeys.length - visibleHotkeys.length;
+  // 2026-06-01 (user request «после import остальное сверни чтоб был
+  // выпадающий») — keep the toolbar short: surface hotkeys only up to & INCLUDING
+  // "import"; fold everything after it into the ⌘K dropdown so you don't have to
+  // horizontally scroll to find a command. Reverses the 2026-05-31 "surface
+  // everything" tweak. The cut is POSITIONAL (not by `priority`), so the palette
+  // below renders `overflowHotkeys` directly — otherwise the `pinned` items that
+  // sit after import (recompute / impact-scan / help / agro) would vanish.
+  // Exception: a couple of items that sit AFTER import stay pinned — they're
+  // stateful action buttons (live recompute progress / impact-scan running
+  // label) that a click-to-close dropdown can't show feedback for.
+  const KEEP_PINNED_AFTER_IMPORT = new Set(["impact-scan", "recompute"]);
+  const importIdx = hotkeys.findIndex((h) => h.key === "import");
+  const isVisible = (h: HotkeyDef, i: number) =>
+    importIdx < 0 || i <= importIdx || KEEP_PINNED_AFTER_IMPORT.has(h.key);
+  const visibleHotkeys = hotkeys.filter(isVisible);
+  const overflowHotkeys = hotkeys.filter((h, i) => !isVisible(h, i));
+  const overflowCount = overflowHotkeys.length;
 
   /** Focus the CommandBar input + scroll it into view. Used by both the
    *  `⌘K Commands` button and the existing Cmd+K keyboard shortcut. */
@@ -672,9 +681,12 @@ export function HotkeyToolbar() {
             Type in the command bar below (⌘K) for fuzzy search — these
             shortcuts are the click-equivalents.
           </div>
-          {/* Group overflow items by their group label for visual rhythm. */}
-          {(["analysis", "social", "workspace", "ops"] as HotkeyGroup[]).flatMap((g) => {
-            const groupItems = hotkeys.filter((h) => h.priority === "overflow" && h.group === g);
+          {/* Group the collapsed (post-"import") items by their group label.
+              Uses overflowHotkeys (positional) — NOT a priority filter — so the
+              pinned items after import (recompute / impact-scan / help / agro)
+              still appear here rather than vanishing. */}
+          {(["analysis", "social", "workspace", "sector", "ops"] as HotkeyGroup[]).flatMap((g) => {
+            const groupItems = overflowHotkeys.filter((h) => h.group === g);
             if (groupItems.length === 0) return [];
             return [
               <div

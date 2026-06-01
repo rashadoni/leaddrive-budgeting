@@ -66,24 +66,25 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(toolbar.getAttribute("aria-label")).toMatch(/hotkey/i);
   });
 
-  it("surfaces ALL hotkeys directly in the toolbar (2026-05-31 — no ⌘K palette)", () => {
+  it("shows hotkeys through 'import' inline and collapses the rest into the ⌘K palette (2026-06-01)", () => {
     render(<HotkeyToolbar />);
-    // Pinned triage + system ops.
+    // Visible through "import": triage + analysis + social + new-plan + import.
     expect(screen.queryByText("ALERTS")).toBeTruthy();
     expect(screen.queryByText("BREACH")).toBeTruthy();
     expect(screen.queryByText("ACTIONS")).toBeTruthy();
-    expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
-    expect(screen.queryByText("HELP")).toBeTruthy();
-    // Previously-"overflow" commands are now rendered DIRECTLY in the toolbar
-    // (user request: surface them, don't hide behind the palette).
-    expect(screen.queryByText("NEW PLAN")).toBeTruthy();
     expect(screen.queryByText("COMPARE")).toBeTruthy();
-    expect(screen.queryByText("STARRED")).toBeTruthy();
-    expect(screen.queryByText("RECENT")).toBeTruthy();
-    expect(screen.queryByText("SEARCH")).toBeTruthy();
+    expect(screen.queryByText("SCENARIO")).toBeTruthy();
+    expect(screen.queryByText("NEW PLAN")).toBeTruthy();
     expect(screen.queryByText("IMPORT")).toBeTruthy();
-    // ⌘K palette trigger gone — nothing is hidden, so it auto-disappears.
-    expect(screen.queryByLabelText(/palette/i)).toBeNull();
+    // Stateful action buttons stay pinned (live progress can't live in a menu).
+    expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
+    // Post-import navigation items collapse into the palette → NOT inline.
+    expect(screen.queryByText("STARRED")).toBeNull();
+    expect(screen.queryByText("RECENT")).toBeNull();
+    expect(screen.queryByText("SEARCH")).toBeNull();
+    expect(screen.queryByText("HELP")).toBeNull();
+    // The ⌘K palette trigger is back (something is collapsed now).
+    expect(screen.queryByLabelText(/palette/i)).toBeTruthy();
     // Compact toggle still present.
     expect(screen.queryByLabelText(/compact/i)).toBeTruthy();
   });
