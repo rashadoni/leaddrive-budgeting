@@ -12,7 +12,7 @@
 import { DataSourcesCatalogView } from "@/features/admin/components/DataSourcesCatalogView"
 
 export const metadata = {
-  title: "Каталог источников · BudgetPro",
+  title: "Data Sources · Admin · BudgetPro",
 }
 
 export default function DataSourcesPage() {

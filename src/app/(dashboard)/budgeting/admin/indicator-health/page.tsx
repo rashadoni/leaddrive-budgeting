@@ -9,6 +9,7 @@
  * Server component fetches from /api/admin/indicator-health.
  */
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { IndicatorHealthView } from "./IndicatorHealthView"
@@ -21,16 +22,12 @@ export default async function IndicatorHealthPage() {
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) redirect("/budgeting")
+  const t = await getTranslations("adminIndicatorHealth")
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-5xl">
-      <h1 className="text-2xl font-bold mb-2">Indicator Health Dashboard</h1>
-      <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-        Overview всех indicator value cells в БД. Показывает почему
-        каждый unknown и как его исправить (wire feed, добавить данные, и
-        т.д.). Используйте для подготовки к client-демо: 🟡/⚪ items
-        нужно либо заполнить либо честно объяснить клиенту.
-      </p>
+      <h1 className="text-2xl font-bold mb-2">{t("pageTitle")}</h1>
+      <p className="text-sm text-muted-foreground mb-6 leading-relaxed">{t("pageDescription")}</p>
       <IndicatorHealthView />
     </div>
   )

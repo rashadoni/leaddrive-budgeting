@@ -3326,7 +3326,9 @@
     "expandedRemediation": "Remediation",
     "expandedErrorCode": "Error code",
     "expandedMissingVariable": "Missing variable",
-    "expandedAffectedEntities": "Affected entities ({n})"
+    "expandedAffectedEntities": "Affected entities ({n})",
+    "pageTitle": "Indicator Health Dashboard",
+    "pageDescription": "Overview of every indicator value cell in the database — why each one is unknown and how to fix it (wire a feed, add data, etc.). Use it before a client demo: 🟡/⚪ items should be filled in or honestly explained to the client."
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",
@@ -3587,5 +3589,11 @@
       "no_da_line": "No depreciation / amortisation line identified.",
       "linkage_gap": "P&L net result ({pnlNet}) doesn't match the balance-sheet current-year line ({equityCurrentYear}) — gap {linkageGap}. Often a plan-vs-actual or period-coverage difference; worth a review."
     }
+  },
+  "recentCrossings": {
+    "loading": "Loading events…",
+    "error": "Error: {msg}",
+    "empty": "No recent crossing events",
+    "companies": "{count, plural, one {# company} other {# companies}}"
   }
 }

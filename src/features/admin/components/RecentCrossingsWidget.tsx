@@ -7,6 +7,7 @@
  * compact placeholder when no crossings exist (most demo orgs).
  */
 import React, { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import { AlertTriangle, Clock } from "lucide-react"
 
 interface CrossingSummary {
@@ -23,6 +24,7 @@ function fmtDate(iso: string): string {
 }
 
 export function RecentCrossingsWidget({ sourceCode }: { sourceCode: string }) {
+  const t = useTranslations("recentCrossings")
   const [rows, setRows] = useState<CrossingSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,19 +51,13 @@ export function RecentCrossingsWidget({ sourceCode }: { sourceCode: string }) {
   }, [sourceCode])
 
   if (loading) {
-    return (
-      <div className="text-xs text-gray-500 italic">Загрузка событий…</div>
-    )
+    return <div className="text-xs text-muted-foreground italic">{t("loading")}</div>
   }
   if (error) {
-    return <div className="text-xs text-red-600">Ошибка: {error}</div>
+    return <div className="text-xs text-red-600 dark:text-red-400">{t("error", { msg: error })}</div>
   }
   if (rows.length === 0) {
-    return (
-      <div className="text-xs text-gray-500 italic">
-        Нет недавних crossing-событий
-      </div>
-    )
+    return <div className="text-xs text-muted-foreground italic">{t("empty")}</div>
   }
   return (
     <ul className="space-y-1">
@@ -72,12 +68,11 @@ export function RecentCrossingsWidget({ sourceCode }: { sourceCode: string }) {
         >
           <AlertTriangle size={12} className="text-amber-500 mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
-            <div className="font-mono text-gray-800 truncate">{r.ruleId}</div>
-            <div className="text-gray-500">
+            <div className="font-mono text-foreground/80 truncate">{r.ruleId}</div>
+            <div className="text-muted-foreground">
               {fmtDate(r.triggerObservedAt)} · {r.triggerValueRounded}{" "}
-              <span className="text-gray-400">·</span>{" "}
-              <Clock size={9} className="inline" /> {r.affectedCompanyCount}{" "}
-              {r.affectedCompanyCount === 1 ? "компания" : "компаний"}
+              <span className="text-muted-foreground/60">·</span>{" "}
+              <Clock size={9} className="inline" /> {t("companies", { count: r.affectedCompanyCount })}
             </div>
           </div>
         </li>

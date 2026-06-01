@@ -3326,7 +3326,9 @@
     "expandedRemediation": "Nə etməli",
     "expandedErrorCode": "Error code",
     "expandedMissingVariable": "Missing variable",
-    "expandedAffectedEntities": "Təsirə düşən sahələr ({n})"
+    "expandedAffectedEntities": "Təsirə düşən sahələr ({n})",
+    "pageTitle": "İndikator sağlamlığı paneli",
+    "pageDescription": "Bazadakı hər indikator dəyər xanasının icmalı — hər biri niyə unknown və necə düzəltmək (fid qoşmaq, məlumat əlavə etmək və s.). Müştəri demosundan əvvəl istifadə edin: 🟡/⚪ ya doldurulmalı, ya da müştəriyə dürüst izah edilməlidir."
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
@@ -3587,5 +3589,11 @@
       "no_da_line": "Amortizasiya sətri tapılmadı.",
       "linkage_gap": "P&L xalis nəticəsi ({pnlNet}) kapitalın «cari il» sətri ilə ({equityCurrentYear}) uyğun gəlmir — fərq {linkageGap}. Çox vaxt plan/fakt və ya dövr fərqidir; yoxlamaq lazımdır."
     }
+  },
+  "recentCrossings": {
+    "loading": "Hadisələr yüklənir…",
+    "error": "Xəta: {msg}",
+    "empty": "Son crossing hadisəsi yoxdur",
+    "companies": "{count} şirkət"
   }
 }

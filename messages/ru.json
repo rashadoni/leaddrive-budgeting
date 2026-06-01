@@ -3326,7 +3326,9 @@
     "expandedRemediation": "Что делать",
     "expandedErrorCode": "Error code",
     "expandedMissingVariable": "Missing variable",
-    "expandedAffectedEntities": "Затронутые сущности ({n})"
+    "expandedAffectedEntities": "Затронутые сущности ({n})",
+    "pageTitle": "Дашборд здоровья индикаторов",
+    "pageDescription": "Обзор каждой ячейки значения индикатора в базе — почему каждый unknown и как это исправить (подключить фид, добавить данные и т.д.). Используйте перед клиентским демо: 🟡/⚪ нужно либо заполнить, либо честно объяснить клиенту."
   },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",
@@ -3587,5 +3589,11 @@
       "no_da_line": "Не найдена строка амортизации.",
       "linkage_gap": "Чистый результат P&L ({pnlNet}) не сходится со строкой капитала «текущий год» ({equityCurrentYear}) — разрыв {linkageGap}. Часто это разница план/факт или периода; стоит проверить."
     }
+  },
+  "recentCrossings": {
+    "loading": "Загрузка событий…",
+    "error": "Ошибка: {msg}",
+    "empty": "Нет недавних crossing-событий",
+    "companies": "{count, plural, one {# компания} few {# компании} many {# компаний} other {# компаний}}"
   }
 }
