@@ -2627,6 +2627,7 @@
       "selectLeft": "Pick a scenario on the left",
       "noneAvailable": "No scenarios available",
       "codePeriod": "{code} · period: {period}",
+      "activeParams": "Active:",
       "runCrisis": "Run crisis",
       "simulatingCrisis": "Modelling crisis…",
       "aiLangAria": "AI narrative language",

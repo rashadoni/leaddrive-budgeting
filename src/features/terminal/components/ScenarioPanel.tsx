@@ -196,6 +196,42 @@ type BriefState =
 const CATEGORY_BY_CODE = new Map<string, CrisisCategory>(CRISIS_CATALOG.map((s) => [s.code, s.category]));
 const CATEGORY_ORDER: CrisisCategory[] = ["fx_macro", "commodity", "climate_agro", "geopolitics", "customers"];
 
+// Active-parameters chip — surfaces the saved shock value(s) under the title so
+// the user always sees the REAL target being simulated (the static name may say
+// "$140" while the saved target is something else they edited). Mirrors the
+// label maps in ScenarioFormModal; keys live under `scenarioForm.*`.
+const SHOCK_METRIC_META: Record<string, { labelKey: string; unit: string }> = {
+  AZN_USD: { labelKey: "metricAznUsd", unit: "AZN/USD" },
+  BRENT_USD_BBL: { labelKey: "metricBrent", unit: "$/bbl" },
+  FAO_SUGAR_INDEX: { labelKey: "metricFaoSugar", unit: "index" },
+};
+const SHOCK_LEVER_LABEL_KEY: Record<string, string> = {
+  revenueShock: "leverRevenue",
+  priceShock: "leverPrice",
+  inputCostShock: "leverInputCost",
+  fxShock: "leverFx",
+  yieldShock: "leverYield",
+};
+
+/** Derive a flat list of active shock parameters from a scenario's overrides. */
+export function readActiveShock(overrides: unknown):
+  | { target: { metric: string; value: number } | null; levers: { key: string; pct: number }[]; costRigidity: number | null }
+  | null {
+  const shock = (overrides as { shock?: Record<string, unknown> } | null)?.shock;
+  if (!shock || typeof shock !== "object") return null;
+  const tgt = shock.target as { metric?: unknown; value?: unknown } | undefined;
+  const target =
+    tgt && typeof tgt.metric === "string" && typeof tgt.value === "number"
+      ? { metric: tgt.metric, value: tgt.value }
+      : null;
+  const levers = Object.keys(SHOCK_LEVER_LABEL_KEY)
+    .filter((k) => typeof shock[k] === "number")
+    .map((k) => ({ key: k, pct: Number(((shock[k] as number) * 100).toFixed(2)) }));
+  const costRigidity = typeof shock.costRigidity === "number" ? shock.costRigidity : null;
+  if (!target && levers.length === 0 && costRigidity === null) return null;
+  return { target, levers, costRigidity };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ScenarioPanel() {
@@ -699,6 +735,41 @@ export function ScenarioPanel() {
                   <p className="mt-1 inline-flex items-center gap-1.5 rounded border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] text-gray-400 font-mono">
                     {t("scenarioPanel.codePeriod", { code: selectedScenario.code, period })}
                   </p>
+                  {(() => {
+                    const active = readActiveShock(selectedScenario.overrides);
+                    if (!active) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5" data-testid="active-shock-params">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-gray-500">
+                          {t("scenarioPanel.activeParams")}
+                        </span>
+                        {active.target && (
+                          <span className="inline-flex items-baseline gap-1 rounded-md border border-[#FFB800]/40 bg-[#FFB800]/10 px-2 py-0.5 text-xs text-gray-200">
+                            {SHOCK_METRIC_META[active.target.metric]
+                              ? t(`scenarioForm.${SHOCK_METRIC_META[active.target.metric].labelKey}` as never)
+                              : active.target.metric}
+                            <span className="text-gray-500">→</span>
+                            <b className="tabular-nums text-[#FFB800]" data-testid="active-shock-target">{active.target.value}</b>
+                            <span className="text-[10px] text-gray-500">{SHOCK_METRIC_META[active.target.metric]?.unit ?? ""}</span>
+                          </span>
+                        )}
+                        {active.levers.map((lev) => (
+                          <span key={lev.key} className="inline-flex items-baseline gap-1 rounded-md border border-[#FFB800]/40 bg-[#FFB800]/10 px-2 py-0.5 text-xs text-gray-200">
+                            {t(`scenarioForm.${SHOCK_LEVER_LABEL_KEY[lev.key]}` as never)}
+                            <b className={`tabular-nums ${lev.pct < 0 ? "text-[#FF6B7A]" : "text-[#00D4AA]"}`}>
+                              {lev.pct > 0 ? "+" : ""}{lev.pct}%
+                            </b>
+                          </span>
+                        ))}
+                        {active.costRigidity !== null && (
+                          <span className="inline-flex items-baseline gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-xs text-gray-300">
+                            {t("scenarioForm.costRigidityLabel")}
+                            <b className="tabular-nums text-gray-100">{active.costRigidity}</b>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
                 {selectedScenarioDesc && (
                   <p className="rounded-md border-l-2 border-[#FFB800]/40 bg-white/[0.02] py-2 pl-3 pr-2 text-sm leading-relaxed text-gray-300">

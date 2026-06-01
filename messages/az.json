@@ -2627,6 +2627,7 @@
       "selectLeft": "Soldan ssenari seç",
       "noneAvailable": "Əlçatan ssenari yoxdur",
       "codePeriod": "{code} · dövr: {period}",
+      "activeParams": "Aktiv:",
       "runCrisis": "Böhranı işə sal",
       "simulatingCrisis": "Böhran modelləşdirilir…",
       "aiLangAria": "AI mətn dili",

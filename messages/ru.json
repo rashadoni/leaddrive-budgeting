@@ -2627,6 +2627,7 @@
       "selectLeft": "Выбери сценарий слева",
       "noneAvailable": "Нет доступных сценариев",
       "codePeriod": "{code} · период: {period}",
+      "activeParams": "Активно:",
       "runCrisis": "Запустить кризис",
       "simulatingCrisis": "Моделирование кризиса…",
       "aiLangAria": "Язык AI-нарратива",
