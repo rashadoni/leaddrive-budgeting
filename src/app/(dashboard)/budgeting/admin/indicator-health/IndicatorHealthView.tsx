@@ -1,13 +1,24 @@
 "use client"
 import { useEffect, useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
+
+/** Locale-aware display name — English fallback, never forced Russian. */
+function pickName(
+  g: { indicatorNameRu: string | null; indicatorNameAz: string | null; indicatorNameEn: string },
+  locale: string,
+): string {
+  if (locale === "az") return g.indicatorNameAz ?? g.indicatorNameEn
+  if (locale === "ru") return g.indicatorNameRu ?? g.indicatorNameEn
+  return g.indicatorNameEn
+}
 
 interface GappyIndicator {
   indicatorCode: string
-  /** 2026-05-27 — humanized labels added so finance users see «Сахаристость»
+  /** 2026-05-27 — humanized labels added so finance users see localized names
    *  instead of cryptic AGRO_SUGAR_CONTENT in the gaps table. */
   indicatorNameRu: string | null
+  indicatorNameAz: string | null
   indicatorNameEn: string
   affectedEntities: string[]
   affectedCellCount: number
@@ -92,6 +103,7 @@ function rowKey(g: GappyIndicator): string {
 
 export function IndicatorHealthView() {
   const t = useTranslations("adminIndicatorHealth")
+  const locale = useLocale()
   const [data, setData] = useState<HealthResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -148,12 +160,14 @@ export function IndicatorHealthView() {
     const q = searchQuery.trim().toLocaleLowerCase()
     if (q) {
       rows = rows.filter((g) => {
+        // Match across all name variants so a search term works in any locale.
         const ru = (g.indicatorNameRu ?? "").toLocaleLowerCase()
+        const az = (g.indicatorNameAz ?? "").toLocaleLowerCase()
         const en = g.indicatorNameEn.toLocaleLowerCase()
         const code = g.indicatorCode.toLocaleLowerCase()
         const miss = (g.missingVariable ?? "").toLocaleLowerCase()
         return (
-          ru.includes(q) || en.includes(q) || code.includes(q) || miss.includes(q)
+          ru.includes(q) || az.includes(q) || en.includes(q) || code.includes(q) || miss.includes(q)
         )
       })
     }
@@ -168,8 +182,8 @@ export function IndicatorHealthView() {
         case "cells":
           return (a.affectedCellCount - b.affectedCellCount) * dir
         case "indicator": {
-          const an = (a.indicatorNameRu ?? a.indicatorNameEn).toLocaleLowerCase()
-          const bn = (b.indicatorNameRu ?? b.indicatorNameEn).toLocaleLowerCase()
+          const an = pickName(a, locale).toLocaleLowerCase()
+          const bn = pickName(b, locale).toLocaleLowerCase()
           return an.localeCompare(bn) * dir
         }
         case "category":
@@ -181,7 +195,7 @@ export function IndicatorHealthView() {
       }
     })
     return sorted
-  }, [filtered, sortColumn, sortDir])
+  }, [filtered, sortColumn, sortDir, locale])
 
   // Cells column impact-bar normalization — compute once per data fetch.
   const maxCells = useMemo(() => {
@@ -508,6 +522,7 @@ function Row({
 }) {
   // Cells column impact bar — width proportional to maxCells; color
   const t = useTranslations("adminIndicatorHealth")
+  const locale = useLocale()
   // bracket by absolute count (severity is "how many gaps" not "% of
   // the dataset").
   const barWidth = `${Math.max(4, Math.round((g.affectedCellCount / maxCells) * 100))}%`
@@ -539,7 +554,7 @@ function Row({
             className="font-medium text-[12px]"
             title={g.indicatorNameEn}
           >
-            {g.indicatorNameRu ?? g.indicatorNameEn}
+            {pickName(g, locale)}
           </div>
           <div className="font-mono text-[10px] text-muted-foreground/80 mt-0.5">
             {g.indicatorCode}
