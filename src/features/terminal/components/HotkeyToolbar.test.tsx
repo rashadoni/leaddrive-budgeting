@@ -69,7 +69,6 @@ describe("HotkeyToolbar (Phase B6)", () => {
   it("shows hotkeys through 'import' inline and collapses the rest into the ⌘K palette (2026-06-01)", () => {
     render(<HotkeyToolbar />);
     // Visible through "import": triage + analysis + social + new-plan + import.
-    expect(screen.queryByText("ALERTS")).toBeTruthy();
     expect(screen.queryByText("BREACH")).toBeTruthy();
     expect(screen.queryByText("ACTIONS")).toBeTruthy();
     expect(screen.queryByText("SCENARIO")).toBeTruthy();
@@ -79,6 +78,7 @@ describe("HotkeyToolbar (Phase B6)", () => {
     // Stateful action buttons stay pinned (live progress can't live in a menu).
     expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
     // Force-collapsed (before import) → in the palette, NOT inline.
+    expect(screen.queryByText("ALERTS")).toBeNull();
     expect(screen.queryByText("COMPARE")).toBeNull();
     expect(screen.queryByText("COMMENTS")).toBeNull();
     expect(screen.queryByText("CHAT")).toBeNull();
@@ -113,13 +113,15 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(fired).toBe(1);
   });
 
-  it("ALERTS click fires terminal:open-audit", () => {
+  it("ALERTS (now in the ⌘K palette) fires terminal:open-audit", () => {
     render(<HotkeyToolbar />);
     let fired = 0;
     const handler = () => {
       fired += 1;
     };
     window.addEventListener("terminal:open-audit", handler);
+    // ALERTS is force-collapsed into the palette — open it, then click.
+    fireEvent.click(screen.getByLabelText(/palette/i));
     fireEvent.click(screen.getByText("ALERTS"));
     window.removeEventListener("terminal:open-audit", handler);
     expect(fired).toBe(1);

@@ -570,7 +570,7 @@ export function HotkeyToolbar() {
   const KEEP_PINNED_AFTER_IMPORT = new Set(["impact-scan", "recompute"]);
   // 2026-06-01 (user request) — also fold these into the ⌘K dropdown even
   // though they sit BEFORE import, to shorten the bar further.
-  const FORCE_COLLAPSE = new Set(["compare", "comments", "chat"]);
+  const FORCE_COLLAPSE = new Set(["alerts", "compare", "comments", "chat"]);
   const importIdx = hotkeys.findIndex((h) => h.key === "import");
   const isVisible = (h: HotkeyDef, i: number) =>
     !FORCE_COLLAPSE.has(h.key) &&
@@ -689,7 +689,7 @@ export function HotkeyToolbar() {
               Uses overflowHotkeys (positional) — NOT a priority filter — so the
               pinned items after import (recompute / impact-scan / help / agro)
               still appear here rather than vanishing. */}
-          {(["analysis", "social", "workspace", "sector", "ops"] as HotkeyGroup[]).flatMap((g) => {
+          {(["critical", "analysis", "social", "workspace", "sector", "ops"] as HotkeyGroup[]).flatMap((g) => {
             const groupItems = overflowHotkeys.filter((h) => h.group === g);
             if (groupItems.length === 0) return [];
             return [
