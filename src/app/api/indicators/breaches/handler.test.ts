@@ -11,9 +11,13 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     // Phase 7.F sub-group RBAC — getCompanyScope reads user row.
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
-    // Breach route resolves companyId → companyCode for display.
+    // Breach route resolves companyId → code + name AND drops rows whose
+    // company doesn't exist — mock the real companies used in the tests.
     company: { findMany: vi.fn().mockResolvedValue([
-      { id: "co_aac", code: "AZSEKER-MALT" },
+      { id: "co_aac", code: "AZSEKER-MALT", name: "Malt" },
+      { id: "co_a", code: "CO-A", name: "Company A" },
+      { id: "co_b", code: "CO-B", name: "Company B" },
+      { id: "co_c", code: "CO-C", name: "Company C" },
     ]) },
   },
 }))
@@ -164,6 +168,22 @@ describe("GET /api/indicators/breaches — happy path + filters", () => {
     expect(body.count).toBe(1)
     expect(body.breaches[0].period).toBe("2026-Q1")
     expect(body.breaches[0].confidenceBand).toBe("high")
+  })
+
+  it("drops forecasts for non-existent (orphan/mock) companies + enriches code·name", async () => {
+    await evaluateAndPersistBreaches(ORG, [
+      sampleBreach({ companyId: "co_ghost", period: "2026-Q3", confidenceBand: "high" }),
+    ])
+    const res = await GET(makeRequest("/api/indicators/breaches?period=2026-Q3"))
+    const body = await res.json()
+    // co_ghost isn't in the company table → filtered out entirely.
+    expect(body.count).toBe(0)
+    expect(body.breaches).toEqual([])
+    // And a real company's rows carry the resolved name.
+    const all = await GET(makeRequest("/api/indicators/breaches?period=2026-Q1"))
+    const allBody = await all.json()
+    expect(allBody.breaches[0].companyName).toBeDefined()
+    expect(allBody.breaches[0].companyCode).not.toMatch(/^co_/) // resolved, not a raw id
   })
 
   it("multi-tenant: org_b sees zero when only org_a has data", async () => {

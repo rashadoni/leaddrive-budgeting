@@ -79,19 +79,27 @@ export async function GET(req: NextRequest) {
   // Strip organizationId from response — caller already knows their own org.
   const sanitized = scoped.map(({ organizationId: _o, ...rest }) => rest)
 
-  // Resolve companyId → companyCode for display (saves client a join).
+  // Resolve companyId → code + name for display (saves the client a join) AND
+  // DROP forecasts whose company no longer exists — `predictive_breaches` can
+  // retain orphaned rows (stale / mock `cmock…` companyIds) that would otherwise
+  // surface as raw cuids and inflate the count with non-real data (2026-06-01).
   const uniqueIds = [...new Set(sanitized.map((b) => b.companyId))]
   const companyRows = uniqueIds.length > 0
     ? await prisma.company.findMany({
         where: { id: { in: uniqueIds } },
-        select: { id: true, code: true },
+        select: { id: true, code: true, name: true },
       })
     : []
-  const codeById = new Map(companyRows.map((c: { id: string; code: string }) => [c.id, c.code]))
-  const enriched = sanitized.map((b) => ({
-    ...b,
-    companyCode: codeById.get(b.companyId) ?? b.companyId,
-  }))
+  const byId = new Map(
+    companyRows.map((c: { id: string; code: string; name: string }) => [c.id, c]),
+  )
+  const enriched = sanitized
+    .filter((b) => byId.has(b.companyId)) // real companies only — no orphan/mock rows
+    .map((b) => ({
+      ...b,
+      companyCode: byId.get(b.companyId)!.code,
+      companyName: byId.get(b.companyId)!.name,
+    }))
 
   return NextResponse.json({
     breaches: enriched,
@@ -99,6 +107,6 @@ export async function GET(req: NextRequest) {
       period: parsed.period ?? null,
       minConfidenceBand: parsed.minConfidenceBand ?? null,
     },
-    count: sanitized.length,
+    count: enriched.length,
   })
 }

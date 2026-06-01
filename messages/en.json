@@ -2157,6 +2157,7 @@
     "breach": {
       "dialogAriaLabel": "Predictive Breach Forecasts",
       "closeAriaLabel": "Close breach panel",
+      "explainer": "Each row is an indicator likely to slip from its current colour band into a worse one if the recent trend continues. «step +N» = N periods ahead; confidence = how cleanly the trend fits.",
       "title": "Breach Forecasts",
       "subtitle": "Predictive trend-based breach detection (linear regression on indicator sparklines)",
       "periodLabel": "Period",

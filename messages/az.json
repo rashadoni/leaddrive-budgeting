@@ -2178,7 +2178,8 @@
       "companyMany": "şirkət",
       "summaryAcross": "—",
       "stepLabel": "addım",
-      "footerNote": "Proqnozlar indikator sparkline-ları üzrə xətti reqressiyadan istifadə edir (≥3 boş olmayan nöqtə). Yalnız pisləşmə keçidləri (yaşıl→sarı/qırmızı, sarı→qırmızı). İnam səviyyəsi üfüq addımı ilə azalır."
+      "footerNote": "Proqnozlar indikator sparkline-ları üzrə xətti reqressiyadan istifadə edir (≥3 boş olmayan nöqtə). Yalnız pisləşmə keçidləri (yaşıl→sarı/qırmızı, sarı→qırmızı). İnam səviyyəsi üfüq addımı ilə azalır.",
+      "explainer": "Hər sətir — son trend davam edərsə cari rəng zonasından daha pisinə keçə biləcək indikatordur. «addım +N» = N period irəli; etibarlılıq = trendin nə qədər dəqiq oturması."
     },
     "relatedFunctions": {
       "ariaLabel": "Əlaqəli funksiyalar",

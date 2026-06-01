@@ -37,6 +37,7 @@ import { AlertTriangle, X } from "lucide-react";
 interface BreachRow {
   companyId: string;
   companyCode: string;
+  companyName?: string;
   indicatorCode: string;
   period: string;
   horizonStep: number;
@@ -251,6 +252,9 @@ export function BreachForecastPanel() {
                 {grouped.size}{" "}
                 {pluralize(grouped.size, t("breach.companyOne"), t("breach.companyFew"), t("breach.companyMany"))}
               </p>
+              <p className="text-[10px] text-gray-500 leading-relaxed border-l-2 border-amber-500/40 pl-2">
+                {t("breach.explainer")}
+              </p>
               {Array.from(grouped.entries()).map(([companyId, rows]) => (
                 <div
                   key={companyId}
@@ -260,6 +264,9 @@ export function BreachForecastPanel() {
                   <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800/60 bg-gray-900/50">
                     <h3 className="text-xs font-mono font-semibold tracking-wide text-cyan-300">
                       {rows[0]?.companyCode ?? companyId}
+                      {rows[0]?.companyName && (
+                        <span className="ml-1.5 font-sans font-normal text-gray-500">· {rows[0].companyName}</span>
+                      )}
                     </h3>
                     <span className="text-[10px] text-gray-500">
                       {rows.length}{" "}
