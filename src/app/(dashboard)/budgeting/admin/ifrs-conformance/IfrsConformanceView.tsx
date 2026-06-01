@@ -3,12 +3,18 @@
  * Phase 7.N — client view for the post-import IFRS conformance check.
  *
  * Pick a company → fetch GET /api/companies/[id]/ifrs-check → render the
- * 5 IAS 1 structural checks as a pass/warn/fail/skip checklist with a 0-100
+ * IAS 1 structural checks as a pass/warn/fail/skip checklist with a 0-100
  * conformance score. All numbers come from the API (real imported figures);
  * this component only formats + localises them.
+ *
+ * Styling: this is a LIGHT admin surface (with dark-mode support), so status
+ * colours use solid "soft badge" tones — saturated text on a pale tint in
+ * light, light text on a dark tint in dark — never the dark-terminal opacity
+ * tints (which read as washed-out pastels on white).
  */
 import { useCallback, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
+import { CheckCircle2, AlertTriangle, XCircle, MinusCircle } from "lucide-react"
 
 type IfrsStatus = "pass" | "warn" | "fail" | "skip"
 
@@ -34,18 +40,53 @@ export interface CompanyOption {
   name: string
 }
 
-const STATUS_STYLE: Record<IfrsStatus, { bg: string; fg: string; border: string; glyph: string }> = {
-  pass: { bg: "bg-emerald-500/10", fg: "text-emerald-400", border: "border-emerald-500/30", glyph: "●" },
-  warn: { bg: "bg-amber-500/10", fg: "text-amber-400", border: "border-amber-500/30", glyph: "▲" },
-  fail: { bg: "bg-red-500/10", fg: "text-red-400", border: "border-red-500/30", glyph: "✖" },
-  skip: { bg: "bg-muted", fg: "text-muted-foreground", border: "border-border", glyph: "○" },
+interface StatusStyle {
+  Icon: React.ComponentType<{ className?: string }>
+  icon: string // icon colour
+  badge: string // status pill (bg + text + border)
+  accent: string // card left-accent border colour
+  reason: string // detailed-finding text colour
+}
+
+const STATUS_STYLE: Record<IfrsStatus, StatusStyle> = {
+  pass: {
+    Icon: CheckCircle2,
+    icon: "text-emerald-600 dark:text-emerald-400",
+    badge:
+      "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30",
+    accent: "border-l-emerald-500",
+    reason: "",
+  },
+  warn: {
+    Icon: AlertTriangle,
+    icon: "text-amber-600 dark:text-amber-400",
+    badge:
+      "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+    accent: "border-l-amber-500",
+    reason: "text-amber-700 dark:text-amber-300",
+  },
+  fail: {
+    Icon: XCircle,
+    icon: "text-red-600 dark:text-red-400",
+    badge:
+      "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30",
+    accent: "border-l-red-500",
+    reason: "text-red-700 dark:text-red-300",
+  },
+  skip: {
+    Icon: MinusCircle,
+    icon: "text-muted-foreground/50",
+    badge: "bg-muted text-muted-foreground border-border",
+    accent: "border-l-border",
+    reason: "",
+  },
 }
 
 function scoreColor(score: number | null): string {
   if (score == null) return "text-muted-foreground"
-  if (score >= 90) return "text-emerald-400"
-  if (score >= 70) return "text-amber-400"
-  return "text-red-400"
+  if (score >= 90) return "text-emerald-600 dark:text-emerald-400"
+  if (score >= 70) return "text-amber-600 dark:text-amber-400"
+  return "text-red-600 dark:text-red-400"
 }
 
 /** Which `values` fields to surface per check, in display order. */
@@ -72,21 +113,24 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
     maximumFractionDigits: 0,
   })
 
-  const run = useCallback(async (companyId: string) => {
-    if (!companyId) return
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    try {
-      const res = await fetch(`/api/companies/${companyId}/ifrs-check`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setResult((await res.json()) as IfrsResponse)
-    } catch {
-      setError(t("errorGeneric"))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
+  const run = useCallback(
+    async (companyId: string) => {
+      if (!companyId) return
+      setLoading(true)
+      setError(null)
+      setResult(null)
+      try {
+        const res = await fetch(`/api/companies/${companyId}/ifrs-check`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        setResult((await res.json()) as IfrsResponse)
+      } catch {
+        setError(t("errorGeneric"))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [t],
+  )
 
   const allSkipped = result != null && result.report.summary.score == null
 
@@ -154,7 +198,7 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
               setSelectedId(e.target.value)
               if (e.target.value) void run(e.target.value)
             }}
-            className="min-w-[280px] rounded-md border bg-background px-3 py-2 text-sm"
+            className="min-w-[280px] rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/40"
             data-testid="ifrs-company-select"
           >
             <option value="">{t("selectPlaceholder")}</option>
@@ -169,14 +213,14 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
           type="button"
           onClick={() => void run(selectedId)}
           disabled={!selectedId || loading}
-          className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted disabled:opacity-50 transition-colors"
+          className="rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm hover:bg-muted disabled:opacity-50 transition-colors"
         >
           {loading ? t("running") : t("run")}
         </button>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           {error}
         </div>
       )}
@@ -184,7 +228,7 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
       {result && (
         <div data-testid="ifrs-result">
           {/* Header: score + summary */}
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 pb-4 border-b">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-5 pb-4 border-b">
             <div className="flex items-baseline gap-2">
               <span className="text-sm text-muted-foreground">{t("scoreLabel")}</span>
               <span className={`text-3xl font-bold tabular-nums ${scoreColor(result.report.summary.score)}`}>
@@ -192,7 +236,7 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
               </span>
             </div>
             <div className="text-sm text-muted-foreground">
-              {result.company.code} · {result.company.name}
+              <span className="font-medium text-foreground">{result.company.code}</span> · {result.company.name}
               {result.period && (
                 <span className="ml-3">
                   {t("periodLabel")}: <span className="font-medium text-foreground/80">{result.period}</span>
@@ -212,27 +256,28 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
           {/* Why isn't it 100% — detailed reasons, or an all-good note. */}
           {!allSkipped && attentionChecks.length > 0 && (
             <div
-              className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 mb-4"
+              className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 mb-4 dark:border-amber-500/30 dark:bg-amber-500/10"
               data-testid="ifrs-why"
             >
-              <p className="text-sm font-semibold text-amber-300">{t("whyTitle")}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">{t("whyTitle")}</p>
+              </div>
+              <p className="text-xs text-amber-700/80 dark:text-amber-200/70 mt-1">
                 {t("whyIntro", { n: attentionChecks.length })}
               </p>
-              <ul className="mt-2 space-y-1.5">
+              <ul className="mt-2.5 space-y-2">
                 {attentionChecks.map((c) => {
                   const s = STATUS_STYLE[c.status]
                   return (
                     <li key={c.code} className="text-xs flex gap-2">
-                      <span className={`mt-0.5 leading-none ${s.fg}`} aria-hidden>
-                        {s.glyph}
-                      </span>
-                      <span>
-                        <span className="font-medium text-foreground/90">
+                      <s.Icon className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${s.icon}`} />
+                      <span className="text-foreground/80">
+                        <span className="font-semibold text-foreground">
                           {t(`checks.${c.code}.label` as never)}
                         </span>
                         {" — "}
-                        <span className="text-muted-foreground">{reasonText(c)}</span>
+                        {reasonText(c)}
                       </span>
                     </li>
                   )
@@ -242,64 +287,65 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
           )}
           {!allSkipped && attentionChecks.length === 0 && (
             <div
-              className="rounded-md border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-3 mb-4 text-sm text-emerald-300"
+              className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 mb-4 text-sm font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
               data-testid="ifrs-allgood"
             >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               {t("allGood")}
             </div>
           )}
 
           {allSkipped ? (
-            <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
               {t("noStatements")}
             </div>
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {result.report.checks.map((c) => {
                 const s = STATUS_STYLE[c.status]
                 const fields = DETAIL_FIELDS[c.code] ?? []
                 return (
                   <li
                     key={c.code}
-                    className={`rounded-md border p-3 ${s.border} ${c.status === "skip" ? "opacity-70" : ""}`}
+                    className={`rounded-lg border border-l-4 bg-card shadow-sm p-4 ${s.accent} ${
+                      c.status === "skip" ? "opacity-60" : ""
+                    }`}
                     data-testid={`ifrs-check-${c.code}`}
                   >
                     <div className="flex items-start gap-3">
-                      <span className={`mt-0.5 text-lg leading-none ${s.fg}`} aria-hidden>
-                        {s.glyph}
-                      </span>
+                      <s.Icon className={`w-5 h-5 mt-0.5 shrink-0 ${s.icon}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium text-sm">{t(`checks.${c.code}.label` as never)}</span>
+                          <span className="font-semibold text-sm text-foreground">
+                            {t(`checks.${c.code}.label` as never)}
+                          </span>
                           <span
-                            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${s.bg} ${s.fg} ${s.border} border`}
+                            className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${s.badge}`}
                             data-testid={`ifrs-status-${c.code}`}
                           >
                             {t(`status.${c.status}` as never)}
                           </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-muted/50 text-muted-foreground font-mono">
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground/80 font-mono">
                             {t(`standard.${c.code}` as never)}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                        <p className="text-xs text-muted-foreground mt-1.5 leading-snug">
                           {t(`checks.${c.code}.desc` as never)}
                         </p>
                         {c.status !== "skip" && c.status !== "pass" && reasonText(c) && (
                           <p
-                            className={`text-xs mt-1.5 leading-snug font-medium ${
-                              c.status === "fail" ? "text-red-400" : "text-amber-400"
-                            }`}
+                            className={`text-xs mt-2 leading-snug font-medium ${s.reason}`}
                             data-testid={`ifrs-reason-${c.code}`}
                           >
                             {reasonText(c)}
                           </p>
                         )}
                         {c.status !== "skip" && fields.length > 0 && (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                          <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 pt-3 border-t border-dashed">
                             {fields.map((f) => (
                               <span key={f} className="text-[11px] text-muted-foreground">
                                 {t(`fields.${f}` as never)}:{" "}
-                                <span className="font-medium tabular-nums text-foreground/80">
+                                <span className="font-semibold tabular-nums text-foreground/90">
                                   {fieldValue(f, c.values)}
                                 </span>
                               </span>
