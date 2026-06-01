@@ -227,7 +227,7 @@ export function IndicatorHealthView() {
   }
   if (error) {
     return (
-      <div className="border border-red-500/40 bg-red-500/10 text-red-300 rounded p-3 text-sm">
+      <div className="border border-red-200 bg-red-50 text-red-700 rounded p-3 text-sm dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-300">
         ❌ {error}
       </div>
     )

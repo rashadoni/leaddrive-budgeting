@@ -107,23 +107,23 @@ interface ImportApplyResult {
 }
 
 const DATA_TYPE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
-  PLF: { bg: "bg-blue-500/10", fg: "text-blue-300", label: "P&L" },
+  PLF: { bg: "bg-blue-50 dark:bg-blue-500/10", fg: "text-blue-700 dark:text-blue-300", label: "P&L" },
   BS: { bg: "bg-purple-500/10", fg: "text-purple-300", label: "Balance Sheet" },
-  CF: { bg: "bg-cyan-500/10", fg: "text-cyan-300", label: "Cash Flow" },
-  KPI_FARMING: { bg: "bg-green-500/10", fg: "text-green-300", label: "KPI Farming" },
-  KPI_PROCESSING: { bg: "bg-green-500/10", fg: "text-green-300", label: "KPI Processing" },
-  CAPEX: { bg: "bg-amber-500/10", fg: "text-amber-300", label: "CAPEX" },
+  CF: { bg: "bg-cyan-50 dark:bg-cyan-500/10", fg: "text-cyan-700 dark:text-cyan-300", label: "Cash Flow" },
+  KPI_FARMING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Farming" },
+  KPI_PROCESSING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Processing" },
+  CAPEX: { bg: "bg-amber-50 dark:bg-amber-500/10", fg: "text-amber-700 dark:text-amber-300", label: "CAPEX" },
   SALES: { bg: "bg-pink-500/10", fg: "text-pink-300", label: "Sales" },
-  LAND_REGISTRY: { bg: "bg-emerald-500/10", fg: "text-emerald-300", label: "Land Registry" },
+  LAND_REGISTRY: { bg: "bg-emerald-50 dark:bg-emerald-500/10", fg: "text-emerald-700 dark:text-emerald-300", label: "Land Registry" },
   DESCRIPTIONS: { bg: "bg-indigo-500/10", fg: "text-indigo-300", label: "Descriptions" },
   INFO_SUMMARY: { bg: "bg-gray-500/10", fg: "text-gray-400", label: "Separator" },
-  UNKNOWN: { bg: "bg-red-500/10", fg: "text-red-300", label: "Unknown ⚠" },
+  UNKNOWN: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300", label: "Unknown ⚠" },
 }
 
 const VERDICT_STYLE = {
-  green: { bg: "bg-emerald-500/10", fg: "text-emerald-300", icon: "🟢" },
-  yellow: { bg: "bg-amber-500/10", fg: "text-amber-300", icon: "🟡" },
-  red: { bg: "bg-red-500/10", fg: "text-red-300", icon: "🔴" },
+  green: { bg: "bg-emerald-50 dark:bg-emerald-500/10", fg: "text-emerald-700 dark:text-emerald-300", icon: "🟢" },
+  yellow: { bg: "bg-amber-50 dark:bg-amber-500/10", fg: "text-amber-700 dark:text-amber-300", icon: "🟡" },
+  red: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300", icon: "🔴" },
 } as const
 
 export function AIImportForm() {
@@ -266,7 +266,7 @@ export function AIImportForm() {
 
       {/* ── Error banner ───────────────────────────────────────── */}
       {error && (
-        <div className="border border-red-500/40 bg-red-500/10 text-red-300 rounded p-3 text-sm">
+        <div className="border border-red-500/40 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 rounded p-3 text-sm">
           ❌ {error}
         </div>
       )}
@@ -387,7 +387,7 @@ function ClassificationPreview({ preview }: { preview: ClassifyResponse }) {
                             title={`${ind.code} · ${ind.category}`}
                           >
                             <span>{ind.nameRu ?? ind.nameEn}</span>
-                            <span className="font-mono text-[9px] text-slate-400">
+                            <span className="font-mono text-[9px] text-slate-700 dark:text-slate-400">
                               {ind.code}
                             </span>
                           </span>
