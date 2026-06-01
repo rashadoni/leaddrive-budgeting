@@ -568,9 +568,13 @@ export function HotkeyToolbar() {
   // stateful action buttons (live recompute progress / impact-scan running
   // label) that a click-to-close dropdown can't show feedback for.
   const KEEP_PINNED_AFTER_IMPORT = new Set(["impact-scan", "recompute"]);
+  // 2026-06-01 (user request) — also fold these into the ⌘K dropdown even
+  // though they sit BEFORE import, to shorten the bar further.
+  const FORCE_COLLAPSE = new Set(["compare", "comments", "chat"]);
   const importIdx = hotkeys.findIndex((h) => h.key === "import");
   const isVisible = (h: HotkeyDef, i: number) =>
-    importIdx < 0 || i <= importIdx || KEEP_PINNED_AFTER_IMPORT.has(h.key);
+    !FORCE_COLLAPSE.has(h.key) &&
+    (importIdx < 0 || i <= importIdx || KEEP_PINNED_AFTER_IMPORT.has(h.key));
   const visibleHotkeys = hotkeys.filter(isVisible);
   const overflowHotkeys = hotkeys.filter((h, i) => !isVisible(h, i));
   const overflowCount = overflowHotkeys.length;

@@ -72,12 +72,16 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(screen.queryByText("ALERTS")).toBeTruthy();
     expect(screen.queryByText("BREACH")).toBeTruthy();
     expect(screen.queryByText("ACTIONS")).toBeTruthy();
-    expect(screen.queryByText("COMPARE")).toBeTruthy();
     expect(screen.queryByText("SCENARIO")).toBeTruthy();
+    expect(screen.queryByText("INTEL")).toBeTruthy();
     expect(screen.queryByText("NEW PLAN")).toBeTruthy();
     expect(screen.queryByText("IMPORT")).toBeTruthy();
     // Stateful action buttons stay pinned (live progress can't live in a menu).
     expect(screen.queryByText("RECOMPUTE")).toBeTruthy();
+    // Force-collapsed (before import) → in the palette, NOT inline.
+    expect(screen.queryByText("COMPARE")).toBeNull();
+    expect(screen.queryByText("COMMENTS")).toBeNull();
+    expect(screen.queryByText("CHAT")).toBeNull();
     // Post-import navigation items collapse into the palette → NOT inline.
     expect(screen.queryByText("STARRED")).toBeNull();
     expect(screen.queryByText("RECENT")).toBeNull();
@@ -89,9 +93,9 @@ describe("HotkeyToolbar (Phase B6)", () => {
     expect(screen.queryByLabelText(/compact/i)).toBeTruthy();
   });
 
-  it("overflow commands are visible directly — no palette interaction needed", () => {
+  it("inline commands are directly clickable — no palette interaction needed", () => {
     render(<HotkeyToolbar />);
-    expect(screen.queryByText("COMPARE")).toBeTruthy();
+    expect(screen.queryByText("SCENARIO")).toBeTruthy();
     expect(screen.queryByText("INTEL")).toBeTruthy();
     expect(screen.queryByText("NEW PLAN")).toBeTruthy();
   });
