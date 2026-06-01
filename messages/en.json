@@ -2628,6 +2628,8 @@
       "noneAvailable": "No scenarios available",
       "codePeriod": "{code} · period: {period}",
       "activeParams": "Active:",
+      "crisisSlowHint": "Still computing… (high load — this can take longer than usual)",
+      "crisisTimeout": "The simulation timed out — likely high load. Please try again.",
       "runCrisis": "Run crisis",
       "simulatingCrisis": "Modelling crisis…",
       "aiLangAria": "AI narrative language",

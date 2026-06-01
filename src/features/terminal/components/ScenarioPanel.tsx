@@ -196,6 +196,13 @@ type BriefState =
 const CATEGORY_BY_CODE = new Map<string, CrisisCategory>(CRISIS_CATALOG.map((s) => [s.code, s.category]));
 const CATEGORY_ORDER: CrisisCategory[] = ["fx_macro", "commodity", "climate_agro", "geopolitics", "customers"];
 
+// Crisis-sim timing guards. The drivers sim is normally ~0.5-2s, but under heavy
+// machine load (many concurrent sessions) it can spike. Show a "still working"
+// hint after SLOW_HINT_MS so the button doesn't read as frozen ("не генерирует"),
+// and hard-abort after SIM_TIMEOUT_MS so it can never hang indefinitely.
+const SLOW_HINT_MS = 8_000;
+const SIM_TIMEOUT_MS = 90_000;
+
 // Active-parameters chip — surfaces the saved shock value(s) under the title so
 // the user always sees the REAL target being simulated (the static name may say
 // "$140" while the saved target is something else they edited). Mirrors the
@@ -266,6 +273,9 @@ export function ScenarioPanel() {
   // Narrative loads separately (after the fast sim) so the cascade fires
   // immediately; this tracks its background fetch for the brief's narrative area.
   const [narrativeState, setNarrativeState] = useState<"idle" | "loading" | "done" | "error">("idle");
+  // True once the sim has been running longer than SLOW_HINT_MS — drives the
+  // "still computing under load" hint so a slow run doesn't look frozen.
+  const [briefSlow, setBriefSlow] = useState(false);
   const fullDeltaMapRef = useRef<Record<string, string>>({});
   // Cached narrative inputs from the last run, so switching the AI language can
   // re-generate JUST the narrative (in the new language) without re-running the
@@ -459,12 +469,22 @@ export function ScenarioPanel() {
     setBriefState({ kind: "loading" });
     setCascadePhase("none");
     setNarrativeState("idle");
+    setBriefSlow(false);
     clearScenarioDelta(); // clear any prior overlay + brief
+    // Surface a "still working" hint if the sim runs long, and hard-abort it so
+    // a load spike can't leave the button stuck on "Modelling crisis…" forever.
+    const slowTimer = setTimeout(() => setBriefSlow(true), SLOW_HINT_MS);
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), SIM_TIMEOUT_MS);
     try {
       // FAST path: `narrative=0` skips the slow AI call so the cascade fires now.
       const res = await fetch(
         `/api/scenarios/${scenarioId}/simulate?mode=drivers&period=${period}&narrative=0`,
+        { signal: controller.signal },
       );
+      clearTimeout(slowTimer);
+      clearTimeout(timeoutTimer);
+      setBriefSlow(false);
       if (res.status === 422) {
         setBriefState({ kind: "unsupported" });
         return;
@@ -506,9 +526,16 @@ export function ScenarioPanel() {
       };
       void postNarrative(aiLang, brief);
     } catch (e: unknown) {
-      setBriefState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      clearTimeout(slowTimer);
+      clearTimeout(timeoutTimer);
+      setBriefSlow(false);
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      setBriefState({
+        kind: "error",
+        message: aborted ? t("scenarioPanel.crisisTimeout") : e instanceof Error ? e.message : String(e),
+      });
     }
-  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative]);
+  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative, t]);
 
   // Staggered worst-first cascade — reveal the overlay deltaMap incrementally so
   // the HeatMap visibly "reacts". One run per cascadeNonce; cleans up its timer.
@@ -830,6 +857,11 @@ export function ScenarioPanel() {
                       <Flame size={14} aria-hidden="true" className={briefState.kind === "loading" ? "animate-pulse" : ""} />
                       {briefState.kind === "loading" ? t("scenarioPanel.simulatingCrisis") : t("scenarioPanel.runCrisis")}
                     </button>
+                  )}
+                  {briefState.kind === "loading" && briefSlow && (
+                    <span className="text-[11px] text-amber-400/90 animate-pulse" data-testid="crisis-slow-hint">
+                      {t("scenarioPanel.crisisSlowHint")}
+                    </span>
                   )}
                   {selectedHasShock && (
                     <div className="inline-flex items-center gap-1.5 text-xs" role="group" aria-label={t("scenarioPanel.aiLangAria")}>
