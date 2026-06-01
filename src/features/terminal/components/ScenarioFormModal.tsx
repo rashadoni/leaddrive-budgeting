@@ -20,9 +20,28 @@
  *   overrides  – JSON (adjustments[])
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { X, Save, AlertCircle, CheckCircle } from "lucide-react";
+import { hasShock } from "@/lib/risk/scenario-shock";
+
+// ─── Friendly editor metadata ──────────────────────────────────────────────────
+// Maps a live-feed metric → a human label key + display unit, so a non-technical
+// user edits "Brent target ($/bbl): 120" instead of raw JSON. Unknown metrics
+// fall back to showing the raw metric key with no unit.
+const METRIC_META: Record<string, { labelKey: string; unit: string }> = {
+  AZN_USD: { labelKey: "metricAznUsd", unit: "AZN/USD" },
+  BRENT_USD_BBL: { labelKey: "metricBrent", unit: "$/bbl" },
+  FAO_SUGAR_INDEX: { labelKey: "metricFaoSugar", unit: "index" },
+};
+
+// Shock transmission paths → plain-language label keys.
+const DRIVES = ["inputCostShock", "fxShock", "priceShock"] as const;
+const DRIVE_LABEL_KEY: Record<(typeof DRIVES)[number], string> = {
+  inputCostShock: "driveInputCost",
+  fxShock: "driveFx",
+  priceShock: "drivePrice",
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,13 +107,19 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
   const validateJson = useCallback((text: string) => {
     try {
       const parsed = JSON.parse(text) as unknown;
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        !("adjustments" in parsed) ||
-        !Array.isArray((parsed as { adjustments: unknown }).adjustments) ||
-        (parsed as { adjustments: unknown[] }).adjustments.length === 0
-      ) {
+      if (typeof parsed !== "object" || parsed === null) {
+        setJsonError(t("scenarioForm.errJsonNoAdjustments"));
+        return false;
+      }
+      // Accept EITHER the legacy multiplier format (`adjustments[]`) OR the
+      // Phase-2 driver format (`shock{...}`). The crisis catalog scenarios
+      // (BRENT_TO_140, AZN_DEVAL_*, DROUGHT_2026, …) all use `shock` — the
+      // old validator only knew `adjustments`, so editing any of them silently
+      // disabled Save (the "I can't change the price" bug, 2026-06-01).
+      const adj = (parsed as { adjustments?: unknown }).adjustments;
+      const okAdjustments = Array.isArray(adj) && adj.length > 0;
+      const okShock = hasShock(parsed);
+      if (!okAdjustments && !okShock) {
         setJsonError(t("scenarioForm.errJsonNoAdjustments"));
         return false;
       }
@@ -105,6 +130,61 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
       return false;
     }
   }, [t]);
+
+  // Friendly editor — parse the current JSON into a `shock.target` when valid,
+  // so a non-technical user can change the headline number + effect with labeled
+  // inputs instead of editing raw JSON. Hides automatically mid-edit (invalid
+  // JSON) and for legacy `adjustments[]` scenarios (no shock target).
+  const shockTarget = useMemo(() => {
+    try {
+      const parsed = JSON.parse(overridesJson) as {
+        shock?: { target?: { metric?: unknown; value?: unknown; drives?: unknown }; assumedImportShare?: unknown };
+      };
+      const tgt = parsed?.shock?.target;
+      if (
+        tgt &&
+        typeof tgt.metric === "string" &&
+        typeof tgt.value === "number" &&
+        Number.isFinite(tgt.value) &&
+        typeof tgt.drives === "string"
+      ) {
+        return {
+          metric: tgt.metric,
+          value: tgt.value,
+          drives: tgt.drives,
+          assumedImportShare:
+            typeof parsed.shock?.assumedImportShare === "number" ? parsed.shock.assumedImportShare : null,
+        };
+      }
+    } catch {
+      /* mid-edit invalid JSON — friendly editor hides until valid again */
+    }
+    return null;
+  }, [overridesJson]);
+
+  // Patch the parsed shock and re-serialize back into the JSON textarea (the
+  // JSON stays the single source of truth; the friendly inputs are a view).
+  const patchShock = useCallback(
+    (patch: { value?: number; drives?: string; assumedImportShare?: number }) => {
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse(overridesJson) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      const shock = { ...((parsed.shock as Record<string, unknown>) ?? {}) };
+      const target = { ...((shock.target as Record<string, unknown>) ?? {}) };
+      if (patch.value !== undefined) target.value = patch.value;
+      if (patch.drives !== undefined) target.drives = patch.drives;
+      shock.target = target;
+      if (patch.assumedImportShare !== undefined) shock.assumedImportShare = patch.assumedImportShare;
+      parsed.shock = shock;
+      const next = JSON.stringify(parsed, null, 2);
+      setOverridesJson(next);
+      validateJson(next);
+    },
+    [overridesJson, validateJson],
+  );
 
   const handleSubmit = useCallback(async () => {
     setError(null);
@@ -120,7 +200,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
 
     setSubmitting(true);
     try {
-      const parsed = JSON.parse(overridesJson) as { adjustments: unknown[] };
+      const parsed = JSON.parse(overridesJson) as Record<string, unknown>;
 
       const url = isEdit
         ? `/api/scenarios/${initial!.id}`
@@ -173,6 +253,54 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
       setSubmitting(false);
     }
   }, [code, nameEn, nameRu, description, overridesJson, isEdit, initial, validateJson, onSaved, onClose, t]);
+
+  // The raw-JSON editor (label + textarea + validity hint + codes help). Shared
+  // between the bare layout (legacy scenarios) and the collapsed "Advanced"
+  // layout (shock scenarios get the friendly editor above instead).
+  const jsonInner = (
+    <>
+      <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
+        {t("scenarioForm.overridesLabel")}
+      </label>
+      <textarea
+        value={overridesJson}
+        onChange={(e) => {
+          setOverridesJson(e.target.value);
+          validateJson(e.target.value);
+        }}
+        rows={10}
+        spellCheck={false}
+        data-testid="overrides-json"
+        className={`w-full rounded border ${jsonError ? "border-red-500/60" : "border-input"} bg-background px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50`}
+      />
+      {jsonError ? (
+        <p className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
+          <AlertCircle size={10} />
+          {jsonError}
+        </p>
+      ) : (
+        <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
+          <CheckCircle size={10} className="text-emerald-500" />
+          {t.rich("scenarioForm.structureValid", {
+            m: (c) => <span className="font-mono">{c}</span>,
+          })}
+        </p>
+      )}
+      <details className="mt-2">
+        <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
+          {t("scenarioForm.codesHelpSummary")}
+        </summary>
+        <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
+          {t("scenarioForm.codesHelpPrefix")}{" "}
+          <span className="font-mono text-[#FFB800]">AGRO_SUGAR_PRICE_TREND</span>,{" "}
+          <span className="font-mono text-[#FFB800]">FX_IMPORTED_INPUT</span>,{" "}
+          <span className="font-mono text-[#FFB800]">IND_EBITDA_MARGIN</span>,{" "}
+          <span className="font-mono text-[#FFB800]">AGRO_YIELD</span>.{" "}
+          {t("scenarioForm.codesHelpSuffix")}
+        </p>
+      </details>
+    </>
+  );
 
   return (
     <div
@@ -261,48 +389,96 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
             />
           </div>
 
-          {/* overrides JSON */}
-          <div>
-            <label className="block text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">
-              {t("scenarioForm.overridesLabel")}
-            </label>
-            <textarea
-              value={overridesJson}
-              onChange={(e) => {
-                setOverridesJson(e.target.value);
-                validateJson(e.target.value);
-              }}
-              rows={10}
-              spellCheck={false}
-              className={`w-full rounded border ${jsonError ? "border-red-500/60" : "border-input"} bg-background px-3 py-2 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50`}
-            />
-            {jsonError ? (
-              <p className="text-[10px] text-red-400 mt-1 flex items-center gap-1">
-                <AlertCircle size={10} />
-                {jsonError}
+          {/* Friendly shock editor — labeled inputs for crisis/shock scenarios
+              so the headline number + effect are editable without raw JSON.
+              Closes the "что за коды / can't change the price" feedback. */}
+          {shockTarget && (
+            <div
+              className="rounded border border-[#FFB800]/30 bg-[#FFB800]/5 p-3 space-y-3"
+              data-testid="shock-editor"
+            >
+              <p className="text-xs font-mono uppercase tracking-wider text-[#FFB800]">
+                {t("scenarioForm.shockEditorTitle")}
               </p>
-            ) : (
-              <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                <CheckCircle size={10} className="text-emerald-500" />
-                {t.rich("scenarioForm.structureValid", {
-                  m: (c) => <span className="font-mono">{c}</span>,
-                })}
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground flex-1" htmlFor="shock-value">
+                  {METRIC_META[shockTarget.metric]
+                    ? t(`scenarioForm.${METRIC_META[shockTarget.metric].labelKey}`)
+                    : shockTarget.metric}
+                </label>
+                <input
+                  id="shock-value"
+                  type="number"
+                  step="any"
+                  value={shockTarget.value}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isFinite(n)) patchShock({ value: n });
+                  }}
+                  className="w-28 rounded border border-input bg-background px-2 py-1 text-sm font-mono text-right focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50"
+                  data-testid="shock-value-input"
+                />
+                <span className="text-xs text-muted-foreground w-16">
+                  {METRIC_META[shockTarget.metric]?.unit ?? ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground flex-1" htmlFor="shock-drives">
+                  {t("scenarioForm.shockEffectLabel")}
+                </label>
+                <select
+                  id="shock-drives"
+                  value={shockTarget.drives}
+                  onChange={(e) => patchShock({ drives: e.target.value })}
+                  className="rounded border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50"
+                  data-testid="shock-drives-select"
+                >
+                  {DRIVES.map((d) => (
+                    <option key={d} value={d}>
+                      {t(`scenarioForm.${DRIVE_LABEL_KEY[d]}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {shockTarget.assumedImportShare !== null && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground flex-1" htmlFor="shock-import-share">
+                    {t("scenarioForm.shockImportShareLabel")}
+                  </label>
+                  <input
+                    id="shock-import-share"
+                    type="number"
+                    step="any"
+                    min={0}
+                    max={1}
+                    value={shockTarget.assumedImportShare}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isFinite(n)) patchShock({ assumedImportShare: n });
+                    }}
+                    className="w-28 rounded border border-input bg-background px-2 py-1 text-sm font-mono text-right focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50"
+                  />
+                  <span className="text-xs text-muted-foreground w-16">0–1</span>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                {t("scenarioForm.shockEditorHint")}
               </p>
-            )}
-            <details className="mt-2">
-              <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground">
-                {t("scenarioForm.codesHelpSummary")}
+            </div>
+          )}
+
+          {/* overrides — raw JSON. Collapsed under "Advanced" when the friendly
+              editor above is shown; bare for legacy adjustments[] scenarios. */}
+          {shockTarget ? (
+            <details className="rounded border border-input/60 px-3 py-2">
+              <summary className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground">
+                {t("scenarioForm.advancedJsonSummary")}
               </summary>
-              <p className="text-[10px] text-muted-foreground mt-1 leading-relaxed">
-                {t("scenarioForm.codesHelpPrefix")}{" "}
-                <span className="font-mono text-[#FFB800]">AGRO_SUGAR_PRICE_TREND</span>,{" "}
-                <span className="font-mono text-[#FFB800]">FX_IMPORTED_INPUT</span>,{" "}
-                <span className="font-mono text-[#FFB800]">IND_EBITDA_MARGIN</span>,{" "}
-                <span className="font-mono text-[#FFB800]">AGRO_YIELD</span>.{" "}
-                {t("scenarioForm.codesHelpSuffix")}
-              </p>
+              <div className="mt-2">{jsonInner}</div>
             </details>
-          </div>
+          ) : (
+            <div>{jsonInner}</div>
+          )}
 
           {/* Submit error */}
           {error && (
