@@ -267,6 +267,19 @@ export function ScenarioPanel() {
   // immediately; this tracks its background fetch for the brief's narrative area.
   const [narrativeState, setNarrativeState] = useState<"idle" | "loading" | "done" | "error">("idle");
   const fullDeltaMapRef = useRef<Record<string, string>>({});
+  // Cached narrative inputs from the last run, so switching the AI language can
+  // re-generate JUST the narrative (in the new language) without re-running the
+  // whole simulation — closes "menяю язык но ничего не происходит" (2026-06-01).
+  const narrativeInputRef = useRef<{
+    scenarioId: string;
+    holdingBaselineScore: number | null;
+    holdingScenarioScore: number | null;
+    worstHit: unknown[];
+    changed: number;
+    worsened: number;
+    improved: number;
+    assumptionNote: string | null;
+  } | null>(null);
 
   const period = useMemo(() => currentBakuYear(), []);
 
@@ -403,6 +416,42 @@ export function ScenarioPanel() {
     setOpen(false);
   }, [simState, locale, setScenarioDelta]);
 
+  // Generate (or re-generate) the AI narrative for the CURRENT brief in a given
+  // language — reused by runDrivers and by the AI-language switch, so changing
+  // RU/EN/AZ re-narrates the existing result without re-running the simulation.
+  const postNarrative = useCallback(
+    async (language: AiLang, brief: NonNullable<Parameters<typeof setScenarioBrief>[0]>) => {
+      const input = narrativeInputRef.current;
+      if (!input) return;
+      setNarrativeState("loading");
+      setScenarioBrief({ ...brief, narrative: null, mitigations: [] });
+      try {
+        const r = await fetch(`/api/scenarios/${input.scenarioId}/narrative`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            language,
+            holdingBaselineScore: input.holdingBaselineScore,
+            holdingScenarioScore: input.holdingScenarioScore,
+            worstHit: input.worstHit,
+            changed: input.changed,
+            worsened: input.worsened,
+            improved: input.improved,
+            assumptionNote: input.assumptionNote,
+          }),
+        });
+        const nd: { narrative?: string | null; mitigations?: string[] } = r.ok
+          ? await r.json()
+          : { narrative: null, mitigations: [] };
+        setScenarioBrief({ ...brief, narrative: nd.narrative ?? null, mitigations: nd.mitigations ?? [] });
+        setNarrativeState(nd.narrative ? "done" : "error");
+      } catch {
+        setNarrativeState("error");
+      }
+    },
+    [setScenarioBrief],
+  );
+
   // ── Drivers mode (Crisis Brief, B2) ─────────────────────────────────────────
   const runDrivers = useCallback(async () => {
     if (!selectedScenario || briefState.kind === "loading") return;
@@ -442,33 +491,24 @@ export function ScenarioPanel() {
       setCascadePhase("running");
       setCascadeNonce((n) => n + 1);
 
-      // Background: fetch the narrative from the already-computed summary and
-      // fill it into the brief when it arrives (cascade + swing don't wait).
-      setNarrativeState("loading");
-      void fetch(`/api/scenarios/${scenarioId}/narrative`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          language: aiLang,
-          holdingBaselineScore: data.holdingBaselineScore ?? null,
-          holdingScenarioScore: data.holdingScenarioScore ?? null,
-          worstHit: data.worstHit ?? [],
-          changed: data.changed ?? 0,
-          worsened: data.worsened ?? 0,
-          improved: data.improved ?? 0,
-          assumptionNote: data.assumptionNote ?? null,
-        }),
-      })
-        .then((r) => (r.ok ? r.json() : { narrative: null, mitigations: [], narrativeError: `narrative ${r.status}` }))
-        .then((nd: { narrative?: string | null; mitigations?: string[] }) => {
-          setScenarioBrief({ ...brief, narrative: nd.narrative ?? null, mitigations: nd.mitigations ?? [] });
-          setNarrativeState(nd.narrative ? "done" : "error");
-        })
-        .catch(() => setNarrativeState("error"));
+      // Cache the narrative inputs so an AI-language switch can re-narrate
+      // without re-simulating, then kick off the background narrative fetch
+      // (cascade + swing don't wait on it).
+      narrativeInputRef.current = {
+        scenarioId,
+        holdingBaselineScore: data.holdingBaselineScore ?? null,
+        holdingScenarioScore: data.holdingScenarioScore ?? null,
+        worstHit: data.worstHit ?? [],
+        changed: data.changed ?? 0,
+        worsened: data.worsened ?? 0,
+        improved: data.improved ?? 0,
+        assumptionNote: data.assumptionNote ?? null,
+      };
+      void postNarrative(aiLang, brief);
     } catch (e: unknown) {
       setBriefState({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief]);
+  }, [selectedScenario, briefState.kind, period, aiLang, clearScenarioDelta, setScenarioBrief, postNarrative]);
 
   // Staggered worst-first cascade — reveal the overlay deltaMap incrementally so
   // the HeatMap visibly "reacts". One run per cascadeNonce; cleans up its timer.
@@ -799,7 +839,14 @@ export function ScenarioPanel() {
                           <button
                             key={lng}
                             type="button"
-                            onClick={() => setAiLang(lng)}
+                            onClick={() => {
+                              setAiLang(lng);
+                              // If a brief is already shown, re-narrate it in the
+                              // new language right away (don't wait for a re-run).
+                              if (lng !== aiLang && briefState.kind === "done" && scenarioBrief) {
+                                void postNarrative(lng, scenarioBrief);
+                              }
+                            }}
                             className={`rounded px-2 py-0.5 uppercase font-medium transition-colors ${
                               aiLang === lng
                                 ? "bg-[#FFB800]/20 text-[#FFB800]"
