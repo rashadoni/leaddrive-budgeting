@@ -256,6 +256,7 @@ export async function GET(req: NextRequest) {
     .map((g) => ({
       indicatorCode: g.indicatorCode,
       indicatorNameRu: g.indicatorNameRu,
+      indicatorNameAz: g.indicatorNameAz,
       indicatorNameEn: g.indicatorNameEn,
       affectedEntities: Array.from(g.affectedEntities).sort(),
       affectedCellCount: g.affectedCellCount,
