@@ -2170,7 +2170,8 @@
         "tryCrash": "TRY −44% (2021 replay) — Turkish import flood + tourism revenue hit",
         "drought": "Catastrophic drought: rainfall −86%, heat +13°C — EDEN agro yield shock",
         "fullShock": "Oil crash + AZN devaluation + grain crisis + drought — tail risk stress test"
-      }
+      },
+      "runFullCrisis": "→ Run full crisis (P&L)"
     },
     "breach": {
       "dialogAriaLabel": "Predictive Breach Forecasts",

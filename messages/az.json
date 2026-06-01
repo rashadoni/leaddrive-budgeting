@@ -2170,7 +2170,8 @@
         "tryCrash": "TRY −44% (2021 təkrarı) — türk idxalı axını + turizm gəlirinə zərbə",
         "drought": "Fəlakətli quraqlıq: yağıntı −86%, istilik +13°C — EDEN məhsuldarlıq şoku",
         "fullShock": "Neft çöküşü + manat devalvasiyası + taxıl böhranı + quraqlıq — quyruq riski stress-testi"
-      }
+      },
+      "runFullCrisis": "→ Tam crisis hesablaması (P&L)"
     },
     "breach": {
       "dialogAriaLabel": "İndikator pozuntuları proqnozu",

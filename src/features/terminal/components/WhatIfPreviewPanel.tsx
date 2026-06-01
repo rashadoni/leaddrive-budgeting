@@ -709,10 +709,24 @@ export function WhatIfPreviewPanel() {
                 )}
               </div>
 
-              {/* Note: this preview only re-prices feed-driven signals. */}
-              <p className="text-[10px] text-gray-500 leading-relaxed border-l-2 border-[#FFB800]/40 pl-2 mb-3">
-                {t("whatif.feedNote")}
-              </p>
+              {/* Note: this preview only re-prices feed-driven signals + a
+                  bridge to the full P&L/composite crisis sim (Scenario panel). */}
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <p className="text-[10px] text-gray-500 leading-relaxed border-l-2 border-[#FFB800]/40 pl-2 flex-1">
+                  {t("whatif.feedNote")}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    window.dispatchEvent(new CustomEvent("terminal:open-scenario"))
+                  }}
+                  className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[#FF4757]/50 bg-[#FF4757]/10 px-2.5 py-1 text-[11px] font-semibold text-[#FF8794] hover:bg-[#FF4757]/20 transition-colors"
+                  data-testid="whatif-run-full-crisis"
+                >
+                  {t("whatif.runFullCrisis")}
+                </button>
+              </div>
 
               {cellsByCompany.size === 0 ? (
                 <p className="text-[11px] text-gray-400 italic" data-testid="whatif-nothing-moved">
