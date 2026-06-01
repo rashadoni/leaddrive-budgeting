@@ -46,4 +46,16 @@ describe("formatAggValue — non-money units carry no ₼ (the Panel 3 bug)", ()
     // money still renders ₼.
     expect(formatAggValue(1000, "money")).toContain("₼");
   });
+
+  it("rounds large 'ratio' magnitudes (coerced money inputs) — no kopeck tail", () => {
+    // A %-margin indicator coerces its money inputs (cogs/revenue/…) to "ratio";
+    // those used to show "438874.36". Now they round + group, with no ₼.
+    const cogs = formatAggValue(438874.36, "ratio");
+    expect(cogs).not.toMatch(/\.\d/); // no decimal tail
+    expect(cogs.replace(/\D/g, "")).toBe("438874"); // rounded digits
+    expect(formatAggValue(-21493.93, "ratio").replace(/[^\d]/g, "")).toBe("21494"); // rounds
+    expect(formatAggValue(0, "ratio")).toBe("0"); // not "0.00"
+    // true small ratios keep two decimals.
+    expect(formatAggValue(0.42, "ratio")).toBe("0.42");
+  });
 });

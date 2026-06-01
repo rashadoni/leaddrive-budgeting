@@ -185,7 +185,15 @@ export function formatAggValue(v: number, hint: "money" | "count" | "ratio" | "p
   if (!Number.isFinite(v)) return "—";
   if (hint === "count") return String(Math.round(v));
   if (hint === "percent") return `${v.toFixed(Math.abs(v) >= 100 ? 0 : 1)}%`;
-  if (hint === "ratio") return v.toFixed(2);
+  if (hint === "ratio") {
+    // Large magnitudes here are money inputs coerced to "ratio" for a
+    // non-currency indicator (e.g. cogs/revenue under a %-margin indicator) —
+    // show them rounded with thousands separators instead of "438874.36".
+    // True small ratios (e.g. fx_revenue_share 0.42) keep two decimals.
+    if (v === 0) return "0";
+    if (Math.abs(v) >= 100) return Math.round(v).toLocaleString("ru-RU");
+    return v.toFixed(2);
+  }
   // money
   const abs = Math.abs(v);
   if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B ₼`;
