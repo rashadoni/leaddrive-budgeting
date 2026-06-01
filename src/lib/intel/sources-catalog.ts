@@ -153,7 +153,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     ],
     sampleLatest: {
       metric: "WHEAT_USD_TONNE",
-      value: "$234/т",
+      value: "$234/t",
       interpretation:
         "Пшеница $234/т — ниже $250 порога 🟢. Хорошее время для закупок муки на 6 мес вперёд.",
     },
@@ -187,7 +187,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     ],
     sampleLatest: {
       metric: "COPPER_USD_TONNE",
-      value: "$13,878/т",
+      value: "$13,878/t",
       interpretation:
         "Медь выше $11k — 🔴 red — industrial cost pressure. ATL-DBZ / ATL-PMZ / ZTP закупают медь по высоким ценам.",
     },
@@ -212,7 +212,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     indicatorsPowered: ["LOG_DIESEL_PRICE_SIGNAL", "LOG_BDI_FREIGHT_SIGNAL"],
     sampleLatest: {
       metric: "DIESEL_USD_LITRE",
-      value: "$1.04/л",
+      value: "$1.04/L",
       interpretation:
         "Дизель $1.04/л — 🔴 red — выше $0.90 порога. Прямое давление на логистическую маржу LLS.",
     },
@@ -242,7 +242,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     indicatorsPowered: ["AGRO_SALYAN_RAINFALL_14D_FCST"],
     sampleLatest: {
       metric: "SALYAN_RAINFALL_MM_14D_FCST",
-      value: "53.8 мм",
+      value: "53.8 mm",
       interpretation:
         "Сальян — прогноз 53.8mm на 14 дней — 🟢 green. Достаточная влага для свёклы на пик сезона роста.",
     },
@@ -258,7 +258,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     sourceCode: "az-stat-cpi",
     displayNameRu: "ГосСтат AZ · индекс потребительских цен",
     displayNameEn: "AZ State Statistics CPI",
-    vendor: "Государственный комитет статистики Азербайджана",
+    vendor: "State Statistical Committee of Azerbaijan",
     whatItIsRu:
       "Месячный индекс потребительских цен (база 2010=100) с разбивкой на 4 категории: всё, продукты + напитки + табак, непродовольственные, платные услуги. Скачивается как XLSX с stat.gov.az.",
     businessValueRu:
@@ -304,7 +304,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     indicatorsPowered: ["SERV_AZ_TRADE_BALANCE_SIGNAL"],
     sampleLatest: {
       metric: "AZ_TRADE_BALANCE_USD",
-      value: "-$23.2 млрд",
+      value: "-$23.2 bn",
       interpretation:
         "Comtrade preview за 2025 показывает отрицательный баланс (-23 млрд USD). Скорее всего это лаг публикации — нефть не вся посчитана. Перечитаем когда UN докатит данные.",
     },
@@ -339,7 +339,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     ],
     sampleLatest: {
       metric: "AZ_TOURISM_ARRIVALS",
-      value: "2.3 млн чел",
+      value: "2.3 M people",
       interpretation:
         "2.3 млн туристов в год — 🔴 red — ниже доковидных 3.2 млн. Hospitality в зоне восстановления.",
     },
@@ -387,7 +387,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     sourceCode: "google-trends-az",
     displayNameRu: "Google Trends · поисковый спрос AZ",
     displayNameEn: "Google Trends Azerbaijan (via Scrapingdog proxy)",
-    vendor: "Google (через Scrapingdog API)",
+    vendor: "Google (via Scrapingdog API)",
     whatItIsRu:
       "Нормализованный 0-100 индекс поискового интереса по 4 категориям: продукты питания (yemək/продукты/grocery), одежда (moda/одежда/fashion), электроника (iPhone/электроника/electronics), туризм (tour/путешествие/travel) — гео:AZ.",
     businessValueRu:
@@ -404,7 +404,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
     ],
     sampleLatest: {
       metric: "AZ_TREND_FOOD_RETAIL",
-      value: "79 из 100",
+      value: "79 of 100",
       interpretation:
         "Food search interest 79 — 🔴 red — ниже 80 порога. Retail может ожидать слабый трафик в продуктовых магазинах в ближайшие 2-4 недели.",
     },
