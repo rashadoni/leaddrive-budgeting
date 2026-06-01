@@ -63,6 +63,8 @@ const NUM_INPUT =
   "w-28 rounded border border-white/10 bg-white/[0.03] px-2 py-1 text-sm font-mono text-right text-gray-100 focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50";
 const SELECT_INPUT =
   "rounded border border-white/10 bg-[#0E1430] px-2 py-1 text-sm text-gray-100 focus:outline-none focus:ring-1 focus:ring-[#FFB800]/50";
+const REMOVE_BTN =
+  "shrink-0 rounded p-1 text-gray-500 transition-colors hover:bg-white/5 hover:text-red-400";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,19 +86,13 @@ interface Props {
 
 // ─── Default overrides template shown on create ───────────────────────────────
 
-const OVERRIDES_TEMPLATE = JSON.stringify(
-  {
-    adjustments: [
-      {
-        codes: ["INDICATOR_CODE"],
-        multiply: 0.8,
-        note: "brief explanation",
-      },
-    ],
-  },
-  null,
-  2,
-);
+// New scenarios start as a guided "shock" so the friendly builder (labeled
+// inputs + Add/Remove parameter) shows immediately — a non-programmer never has
+// to touch raw JSON. Starts with one editable lever (output price −10%).
+const OVERRIDES_TEMPLATE = JSON.stringify({ shock: { priceShock: -0.1 } }, null, 2);
+
+// Feed-anchored target metrics offered in the builder's metric picker.
+const TARGET_METRICS = ["BRENT_USD_BBL", "AZN_USD", "FAO_SUGAR_INDEX"] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -179,7 +175,9 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
       ).map((k) => ({ key: k, value: s[k] as number }));
       const costRigidity = typeof s.costRigidity === "number" ? s.costRigidity : null;
       const assumedImportShare = typeof s.assumedImportShare === "number" ? s.assumedImportShare : null;
-      if (!target && levers.length === 0 && costRigidity === null) return null;
+      // Show the builder whenever there's a `shock` object — even an empty one —
+      // so the user can add the first parameter (legacy `adjustments[]` has no
+      // shock key → returns null → raw JSON shown instead).
       return { target, levers, costRigidity, assumedImportShare };
     } catch {
       /* mid-edit invalid JSON — friendly editor hides until valid again */
@@ -206,6 +204,41 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
     },
     [overridesJson, validateJson],
   );
+
+  // Builder — add a parameter (lever / feed target / scalar) with a sensible
+  // default, or remove one. All via patchShock so the JSON stays in sync. Lets
+  // a non-programmer compose a scenario without touching JSON.
+  const addParam = useCallback(
+    (v: string) => {
+      if (v.startsWith("lever:")) {
+        const k = v.slice("lever:".length);
+        patchShock((s) => { s[k] = -0.1; });
+      } else if (v === "target") {
+        patchShock((s) => { s.target = { metric: "BRENT_USD_BBL", value: 120, drives: "inputCostShock" }; });
+      } else if (v === "costRigidity") {
+        patchShock((s) => { s.costRigidity = 0.5; });
+      } else if (v === "importShare") {
+        patchShock((s) => { s.assumedImportShare = 0.3; });
+      }
+    },
+    [patchShock],
+  );
+  const removeParam = useCallback(
+    (key: string) => patchShock((s) => { delete s[key]; }),
+    [patchShock],
+  );
+
+  // Which parameters can still be added (not already present).
+  const addableParams = useMemo(() => {
+    if (!shockView) return [] as { value: string; labelKey: string }[];
+    const present = new Set(shockView.levers.map((l) => l.key));
+    const out: { value: string; labelKey: string }[] = [];
+    for (const k of SHOCK_LEVERS) if (!present.has(k)) out.push({ value: `lever:${k}`, labelKey: LEVER_LABEL_KEY[k] });
+    if (!shockView.target) out.push({ value: "target", labelKey: "targetOption" });
+    if (shockView.costRigidity === null) out.push({ value: "costRigidity", labelKey: "costRigidityLabel" });
+    if (shockView.assumedImportShare === null) out.push({ value: "importShare", labelKey: "shockImportShareLabel" });
+    return out;
+  }, [shockView]);
 
   const handleSubmit = useCallback(async () => {
     setError(null);
@@ -423,14 +456,41 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                 {t("scenarioForm.shockEditorTitle")}
               </p>
 
-              {/* Feed-anchored target (e.g. Brent → $140/bbl) */}
+              {/* Empty state — guide the user to add a parameter. */}
+              {!shockView.target &&
+                shockView.levers.length === 0 &&
+                shockView.costRigidity === null &&
+                shockView.assumedImportShare === null && (
+                  <p className="text-xs text-gray-400 italic" data-testid="shock-empty">
+                    {t("scenarioForm.builderEmpty")}
+                  </p>
+                )}
+
+              {/* Feed-anchored target — pick a market metric + level + effect. */}
               {shockView.target && (
-                <>
+                <div className="space-y-2 rounded border border-white/10 bg-white/[0.02] p-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-gray-400 flex-1" htmlFor="shock-target-metric">
+                      {t("scenarioForm.targetMetricLabel")}
+                    </label>
+                    <select
+                      id="shock-target-metric"
+                      value={shockView.target.metric}
+                      onChange={(e) => patchShock((s) => { s.target = { ...(s.target as Record<string, unknown>), metric: e.target.value }; })}
+                      className={SELECT_INPUT}
+                      data-testid="shock-target-metric"
+                    >
+                      {TARGET_METRICS.map((m) => (
+                        <option key={m} value={m}>{t(`scenarioForm.${METRIC_META[m].labelKey}`)}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => removeParam("target")} className={REMOVE_BTN} aria-label={t("scenarioForm.removeParam")} data-testid="shock-remove-target">
+                      <X size={12} aria-hidden="true" />
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-400 flex-1" htmlFor="shock-value">
-                      {METRIC_META[shockView.target.metric]
-                        ? t(`scenarioForm.${METRIC_META[shockView.target.metric].labelKey}`)
-                        : shockView.target.metric}
+                      {t("scenarioForm.shockTargetValueLabel")}
                     </label>
                     <input
                       id="shock-value"
@@ -444,9 +504,7 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                       className={NUM_INPUT}
                       data-testid="shock-value-input"
                     />
-                    <span className="text-xs text-gray-500 w-16">
-                      {METRIC_META[shockView.target.metric]?.unit ?? ""}
-                    </span>
+                    <span className="text-xs text-gray-500 w-12">{METRIC_META[shockView.target.metric]?.unit ?? ""}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <label className="text-xs text-gray-400 flex-1" htmlFor="shock-drives">
@@ -460,13 +518,11 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                       data-testid="shock-drives-select"
                     >
                       {DRIVES.map((d) => (
-                        <option key={d} value={d}>
-                          {t(`scenarioForm.${DRIVE_LABEL_KEY[d]}`)}
-                        </option>
+                        <option key={d} value={d}>{t(`scenarioForm.${DRIVE_LABEL_KEY[d]}`)}</option>
                       ))}
                     </select>
                   </div>
-                </>
+                </div>
               )}
 
               {/* Direct P&L levers (e.g. price −40%) — edited as a percentage */}
@@ -487,7 +543,10 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                     className={NUM_INPUT}
                     data-testid={`shock-lever-${lev.key}`}
                   />
-                  <span className="text-xs text-gray-500 w-16">%</span>
+                  <span className="text-xs text-gray-500 w-7">%</span>
+                  <button type="button" onClick={() => removeParam(lev.key)} className={REMOVE_BTN} aria-label={t("scenarioForm.removeParam")} data-testid={`shock-remove-${lev.key}`}>
+                    <X size={12} aria-hidden="true" />
+                  </button>
                 </div>
               ))}
 
@@ -511,7 +570,10 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                     className={NUM_INPUT}
                     data-testid="shock-cost-rigidity"
                   />
-                  <span className="text-xs text-gray-500 w-16">0–1</span>
+                  <span className="text-xs text-gray-500 w-7">0–1</span>
+                  <button type="button" onClick={() => removeParam("costRigidity")} className={REMOVE_BTN} aria-label={t("scenarioForm.removeParam")} data-testid="shock-remove-costRigidity">
+                    <X size={12} aria-hidden="true" />
+                  </button>
                 </div>
               )}
 
@@ -535,8 +597,27 @@ export function ScenarioFormModal({ initial, onClose, onSaved }: Props) {
                     className={NUM_INPUT}
                     data-testid="shock-import-share"
                   />
-                  <span className="text-xs text-gray-500 w-16">0–1</span>
+                  <span className="text-xs text-gray-500 w-7">0–1</span>
+                  <button type="button" onClick={() => removeParam("assumedImportShare")} className={REMOVE_BTN} aria-label={t("scenarioForm.removeParam")} data-testid="shock-remove-importShare">
+                    <X size={12} aria-hidden="true" />
+                  </button>
                 </div>
+              )}
+
+              {/* Add a parameter — pick from the ones not already used. */}
+              {addableParams.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => { if (e.target.value) addParam(e.target.value); }}
+                  className={`${SELECT_INPUT} w-full`}
+                  data-testid="shock-add-param"
+                  aria-label={t("scenarioForm.addParam")}
+                >
+                  <option value="">+ {t("scenarioForm.addParam")}</option>
+                  {addableParams.map((p) => (
+                    <option key={p.value} value={p.value}>{t(`scenarioForm.${p.labelKey}`)}</option>
+                  ))}
+                </select>
               )}
 
               <p className="text-[10px] text-gray-500 leading-relaxed">

@@ -149,6 +149,37 @@ describe("ScenarioFormModal — shock scenarios are editable (bug fix)", () => {
     expect((screen.getByTestId("shock-cost-rigidity") as HTMLInputElement).value).toBe("0.8");
   });
 
+  it("create mode shows the friendly builder (not raw JSON) with a starter lever", () => {
+    render(<ScenarioFormModal onClose={() => {}} onSaved={() => {}} />);
+    expect(screen.getByTestId("shock-editor")).toBeTruthy();
+    // Starter lever: output price -10%.
+    expect((screen.getByTestId("shock-lever-priceShock") as HTMLInputElement).value).toBe("-10");
+  });
+
+  it("Add parameter adds a feed-anchored target to the JSON", () => {
+    render(<ScenarioFormModal onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.change(screen.getByTestId("shock-add-param"), { target: { value: "target" } });
+    expect(screen.getByTestId("shock-value-input")).toBeTruthy();
+    const j = JSON.parse(jsonText());
+    expect(j.shock.target).toMatchObject({ metric: "BRENT_USD_BBL", drives: "inputCostShock" });
+  });
+
+  it("Remove parameter deletes a lever from the JSON", () => {
+    render(<ScenarioFormModal initial={priceDropInitial} onClose={() => {}} onSaved={() => {}} />);
+    expect(JSON.parse(jsonText()).shock.priceShock).toBe(-0.4);
+    fireEvent.click(screen.getByTestId("shock-remove-priceShock"));
+    expect(JSON.parse(jsonText()).shock.priceShock).toBeUndefined();
+    // With no parameters left, Save is disabled (empty shock is invalid).
+    expect(saveBtn().disabled).toBe(true);
+    expect(screen.getByTestId("shock-empty")).toBeTruthy();
+  });
+
+  it("the target metric picker rewrites the metric in the JSON", () => {
+    render(<ScenarioFormModal initial={shockInitial} onClose={() => {}} onSaved={() => {}} />);
+    fireEvent.change(screen.getByTestId("shock-target-metric"), { target: { value: "AZN_USD" } });
+    expect(JSON.parse(jsonText()).shock.target.metric).toBe("AZN_USD");
+  });
+
   it("PATCHes the edited shock value to the API on Save", async () => {
     const onSaved = vi.fn();
     const fetchMock = vi.fn(async () =>
