@@ -184,6 +184,12 @@ export function evaluateSubscription(
  */
 const FIRE_DEBOUNCE_MS = 60 * 60 * 1000;
 
+/** Plain-language one-liner of a subscription's condition, for the toast. */
+function conditionText(s: Subscription): string {
+  const scopeStr = s.scope === "any" ? "any" : `${s.scope}:${s.scopeValue ?? "?"}`;
+  return `${scopeStr} · composite ${s.comparator} ${s.threshold ?? "?"}`;
+}
+
 export function AISubscriptions() {
   const t = useTranslations("terminal");
   const locale = useLocale();
@@ -195,6 +201,11 @@ export function AISubscriptions() {
   const [scopeValue, setScopeValue] = useState("");
   const [comparator, setComparator] = useState<Comparator>("<");
   const [threshold, setThreshold] = useState("50");
+  // v1.5 (2026-06-01) — active in-terminal notification: a transient toast
+  // stack + a persistent unseen-count bell pill, both shown even when the
+  // panel is closed (this component stays mounted via PanelGrid).
+  const [toasts, setToasts] = useState<{ id: string; label: string; condition: string }[]>([]);
+  const [unseenCount, setUnseenCount] = useState(0);
 
   useEffect(() => {
     setSubs(readStore());
@@ -257,6 +268,23 @@ export function AISubscriptions() {
     if (changed) {
       setSubs(updated);
       writeStore(updated);
+      // v1.5 — surface the firing actively: toast(s) + bump the bell count.
+      const firedNow = updated.filter((u, i) => u.lastFiredAt !== subs[i].lastFiredAt);
+      if (firedNow.length > 0) {
+        setUnseenCount((c) => c + firedNow.length);
+        const fresh = firedNow.map((s, k) => ({
+          id: `${s.id}-${now}-${k}`,
+          label: s.label,
+          condition: conditionText(s),
+        }));
+        setToasts((prev) => [...fresh, ...prev].slice(0, 4));
+        fresh.forEach((tt) =>
+          window.setTimeout(
+            () => setToasts((prev) => prev.filter((p) => p.id !== tt.id)),
+            7000,
+          ),
+        );
+      }
     }
     // subs intentionally omitted from deps — using setSubs(updated)
     // would cause re-evaluation loop. We re-evaluate only when matrix
@@ -349,14 +377,14 @@ export function AISubscriptions() {
     [locale],
   );
 
-  if (!open) return null;
-
   const counts = {
     active: subs.filter((s) => s.status === "active").length,
     paused: subs.filter((s) => s.status === "paused").length,
   };
 
   return (
+    <>
+    {open && (
     <div
       role="dialog"
       aria-modal="true"
@@ -590,5 +618,53 @@ export function AISubscriptions() {
         </div>
       </div>
     </div>
+    )}
+
+    {/* v1.5 — active notification surface. Renders even when the panel is
+        closed (component stays mounted via PanelGrid). Toasts auto-dismiss
+        after 7s; the bell pill persists the unseen count until opened. */}
+    {toasts.length > 0 && (
+      <div
+        className="fixed bottom-6 right-6 z-[70] flex w-72 flex-col gap-2"
+        data-testid="subscription-toasts"
+      >
+        {toasts.map((tt) => (
+          <button
+            key={tt.id}
+            type="button"
+            onClick={() => {
+              setOpen(true);
+              setUnseenCount(0);
+              setToasts([]);
+            }}
+            className="flex items-start gap-2.5 rounded-lg border border-[#FF4757]/40 bg-[#0A0E27] px-3 py-2.5 text-left shadow-2xl shadow-black/50 ring-1 ring-white/5 transition-colors hover:border-[#FF4757]/70"
+          >
+            <Bell size={15} className="mt-0.5 shrink-0 animate-pulse text-[#FF4757]" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold text-gray-100">{tt.label}</span>
+              <span className="block truncate text-[11px] text-gray-400">
+                {t("subscriptions.firedToast")} · <span className="font-mono">{tt.condition}</span>
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+    )}
+    {toasts.length === 0 && unseenCount > 0 && (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+          setUnseenCount(0);
+        }}
+        aria-label={t("subscriptions.bellAriaLabel", { count: unseenCount })}
+        className="fixed bottom-6 right-6 z-[70] inline-flex items-center gap-1.5 rounded-full border border-[#FF4757]/50 bg-[#0A0E27] px-3 py-2 text-sm font-semibold text-[#FF4757] shadow-2xl shadow-black/50 transition-colors hover:bg-[#FF4757]/10"
+        data-testid="subscription-bell"
+      >
+        <Bell size={15} className="animate-pulse" aria-hidden="true" />
+        {unseenCount}
+      </button>
+    )}
+    </>
   );
 }

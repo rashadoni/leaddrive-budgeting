@@ -595,6 +595,34 @@ describe("AISubscriptions (Tier-3 sub-30)", () => {
     expect(typeof env.data[0].lastFiredAt).toBe("number");
   });
 
+  it("v1.5: a firing rule surfaces a toast notification even while the panel is closed", async () => {
+    const seed = [
+      {
+        id: "s-toast",
+        label: "toast me",
+        scope: "any",
+        scopeValue: null,
+        metric: "composite",
+        comparator: "<",
+        threshold: 999, // always fires
+        indicatorCode: null,
+        status: "active",
+        lastFiredAt: null,
+      },
+    ];
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 1, data: seed }));
+    render(<AISubscriptions />);
+    // No fireOpen() — the toast is an ACTIVE surface that shows when the
+    // panel is closed (the whole point of v1.5).
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("subscription-toasts")).toBeTruthy();
+      },
+      { timeout: 2000 },
+    );
+    expect(screen.getByText("toast me")).toBeTruthy();
+  });
+
   it("matcher uses the Phase 7.N riskTag-penalized composite (EDEN 100→88 fires a <90 sub)", async () => {
     // EDEN is all-green (raw composite 100) but flagged data_absence (-12) →
     // penalised 88. A "fire when EDEN composite < 90" subscription therefore

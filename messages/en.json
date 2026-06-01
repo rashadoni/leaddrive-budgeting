@@ -2313,6 +2313,8 @@
       "resumeAriaLabel": "Resume {label}",
       "deleteAriaLabel": "Delete {label}",
       "lastFiredLabel": "fired",
+      "firedToast": "Rule fired",
+      "bellAriaLabel": "{count} subscription(s) fired — open panel",
       "lastFiredTitle": "Last time this subscription matched a HeatMap cell"
     },
     "actionCenter": {

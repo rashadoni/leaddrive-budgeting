@@ -2313,6 +2313,8 @@
       "resumeAriaLabel": "{label} davam etdir",
       "deleteAriaLabel": "{label} sil",
       "lastFiredLabel": "işə düşüb",
+      "firedToast": "Qayda işə düşdü",
+      "bellAriaLabel": "{count} abunə işə düşdü — paneli aç",
       "lastFiredTitle": "Abunənin son dəfə nə vaxt xanaya uyğun gəldiyi"
     },
     "actionCenter": {

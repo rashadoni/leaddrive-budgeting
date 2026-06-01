@@ -2313,6 +2313,8 @@
       "resumeAriaLabel": "Возобновить {label}",
       "deleteAriaLabel": "Удалить {label}",
       "lastFiredLabel": "сработала",
+      "firedToast": "Правило сработало",
+      "bellAriaLabel": "Сработало подписок: {count} — открыть панель",
       "lastFiredTitle": "Когда подписка в последний раз совпала с ячейкой"
     },
     "actionCenter": {
