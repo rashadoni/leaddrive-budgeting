@@ -108,15 +108,15 @@ interface ImportApplyResult {
 
 const DATA_TYPE_STYLE: Record<string, { bg: string; fg: string; label: string }> = {
   PLF: { bg: "bg-blue-50 dark:bg-blue-500/10", fg: "text-blue-700 dark:text-blue-300", label: "P&L" },
-  BS: { bg: "bg-purple-500/10", fg: "text-purple-300", label: "Balance Sheet" },
+  BS: { bg: "bg-purple-50 dark:bg-purple-500/10", fg: "text-purple-700 dark:text-purple-300", label: "Balance Sheet" },
   CF: { bg: "bg-cyan-50 dark:bg-cyan-500/10", fg: "text-cyan-700 dark:text-cyan-300", label: "Cash Flow" },
   KPI_FARMING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Farming" },
   KPI_PROCESSING: { bg: "bg-green-50 dark:bg-green-500/10", fg: "text-green-700 dark:text-green-300", label: "KPI Processing" },
   CAPEX: { bg: "bg-amber-50 dark:bg-amber-500/10", fg: "text-amber-700 dark:text-amber-300", label: "CAPEX" },
-  SALES: { bg: "bg-pink-500/10", fg: "text-pink-300", label: "Sales" },
+  SALES: { bg: "bg-pink-50 dark:bg-pink-500/10", fg: "text-pink-700 dark:text-pink-300", label: "Sales" },
   LAND_REGISTRY: { bg: "bg-emerald-50 dark:bg-emerald-500/10", fg: "text-emerald-700 dark:text-emerald-300", label: "Land Registry" },
-  DESCRIPTIONS: { bg: "bg-indigo-500/10", fg: "text-indigo-300", label: "Descriptions" },
-  INFO_SUMMARY: { bg: "bg-gray-500/10", fg: "text-gray-400", label: "Separator" },
+  DESCRIPTIONS: { bg: "bg-indigo-50 dark:bg-indigo-500/10", fg: "text-indigo-700 dark:text-indigo-300", label: "Descriptions" },
+  INFO_SUMMARY: { bg: "bg-gray-50 dark:bg-gray-500/10", fg: "text-gray-700 dark:text-gray-400", label: "Separator" },
   UNKNOWN: { bg: "bg-red-50 dark:bg-red-500/10", fg: "text-red-700 dark:text-red-300", label: "Unknown ⚠" },
 }
 
