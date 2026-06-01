@@ -285,10 +285,13 @@ export function IndicatorHealthView() {
             .map(([code, count]) => (
               <div
                 key={code}
-                className="border rounded px-2 py-1 text-xs font-mono"
+                className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2.5 py-1 text-xs"
+                title={code}
               >
-                <span className="text-muted-foreground">{code}:</span>{" "}
-                <span className="font-bold">{count}</span>
+                <span className="text-foreground/80">
+                  {t.has(`errorCode.${code}` as never) ? t(`errorCode.${code}` as never) : code}
+                </span>
+                <span className="font-semibold tabular-nums rounded bg-muted px-1.5 py-0.5">{count}</span>
               </div>
             ))}
         </div>
@@ -327,7 +330,10 @@ export function IndicatorHealthView() {
                 onClick={() => setFilterCategory(null)}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded ring-1 ring-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
               >
-                {CATEGORY_STYLE[filterCategory]?.label ?? filterCategory} <X className="h-3 w-3" />
+                {t.has(`category.${filterCategory}` as never)
+                  ? t(`category.${filterCategory}` as never)
+                  : filterCategory}{" "}
+                <X className="h-3 w-3" />
               </button>
             )}
             {entityFilter && (
@@ -381,7 +387,7 @@ export function IndicatorHealthView() {
                 filterCategory === cat ? "ring-2 ring-primary/60" : ""
               } transition-all`}
             >
-              {s.label} ({count})
+              {t.has(`category.${cat}` as never) ? t(`category.${cat}` as never) : s.label} ({count})
             </button>
           )
         })}
@@ -564,7 +570,7 @@ function Row({
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] ${style.cls}`}
           >
-            {style.label}
+            {t.has(`category.${g.category}` as never) ? t(`category.${g.category}` as never) : style.label}
           </span>
         </td>
         <td className="p-2 font-mono text-[11px] text-muted-foreground">
@@ -617,8 +623,8 @@ function Row({
             )}
           </div>
         </td>
-        <td className="p-2 text-[11px] text-muted-foreground max-w-md truncate">
-          {g.remediation}
+        <td className="p-2 text-[11px] text-foreground/80 max-w-md truncate">
+          {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
         </td>
       </tr>
       {expanded && (
@@ -629,7 +635,13 @@ function Row({
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground/70 mb-1">
                 {t("expandedRemediation")}
               </div>
-              <p className="text-foreground/90 leading-relaxed whitespace-pre-line">
+              <p className="text-foreground/90 leading-relaxed">
+                {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
+              </p>
+              <div className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground/70">
+                {t("expandedTechnicalDetail")}
+              </div>
+              <p className="text-muted-foreground leading-relaxed whitespace-pre-line">
                 {g.remediation}
               </p>
             </div>

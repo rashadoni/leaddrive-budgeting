@@ -3328,7 +3328,32 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Affected entities ({n})",
     "pageTitle": "Indicator Health Dashboard",
-    "pageDescription": "Overview of every indicator value cell in the database — why each one is unknown and how to fix it (wire a feed, add data, etc.). Use it before a client demo: 🟡/⚪ items should be filled in or honestly explained to the client."
+    "pageDescription": "Overview of every indicator value cell in the database — why each one is unknown and how to fix it (wire a feed, add data, etc.). Use it before a client demo: 🟡/⚪ items should be filled in or honestly explained to the client.",
+    "category": {
+      "external-feed": "🔌 External feed needed",
+      "ingest-gap": "📥 Ingest gap",
+      "formula-edge-case": "⚙ Formula edge case",
+      "no-data": "⚪ Data not entered",
+      "leaf-rollup": "📊 Rollup (OK for leaf)",
+      "code-bug": "🐛 Code bug"
+    },
+    "errorCode": {
+      "eval": "Formula evaluation error",
+      "non_finite": "Division by zero / infinity",
+      "no_budget_lines": "No budget data",
+      "no_foreign_currency_lines": "No FX data",
+      "rollup_no_children": "No child companies",
+      "out_of_range": "Out of range"
+    },
+    "action": {
+      "external-feed": "Connect the external data feed.",
+      "ingest-gap": "Add this data to the import sheet.",
+      "formula-edge-case": "Edge case — usually self-resolves; low priority.",
+      "no-data": "Enter the data manually or via import.",
+      "leaf-rollup": "Correct for a leaf company — no action needed.",
+      "code-bug": "Code bug — report to the dev team."
+    },
+    "expandedTechnicalDetail": "Technical detail"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",

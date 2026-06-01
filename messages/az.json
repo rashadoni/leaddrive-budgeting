@@ -3328,7 +3328,32 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Təsirə düşən sahələr ({n})",
     "pageTitle": "İndikator sağlamlığı paneli",
-    "pageDescription": "Bazadakı hər indikator dəyər xanasının icmalı — hər biri niyə unknown və necə düzəltmək (fid qoşmaq, məlumat əlavə etmək və s.). Müştəri demosundan əvvəl istifadə edin: 🟡/⚪ ya doldurulmalı, ya da müştəriyə dürüst izah edilməlidir."
+    "pageDescription": "Bazadakı hər indikator dəyər xanasının icmalı — hər biri niyə unknown və necə düzəltmək (fid qoşmaq, məlumat əlavə etmək və s.). Müştəri demosundan əvvəl istifadə edin: 🟡/⚪ ya doldurulmalı, ya da müştəriyə dürüst izah edilməlidir.",
+    "category": {
+      "external-feed": "🔌 Xarici fid lazımdır",
+      "ingest-gap": "📥 İdxal boşluğu",
+      "formula-edge-case": "⚙ Düstur kənar halı",
+      "no-data": "⚪ Məlumat daxil edilməyib",
+      "leaf-rollup": "📊 Yığım (yarpaq üçün norm)",
+      "code-bug": "🐛 Kod xətası"
+    },
+    "errorCode": {
+      "eval": "Düstur hesablama xətası",
+      "non_finite": "Sıfıra bölmə / sonsuzluq",
+      "no_budget_lines": "Büdcə məlumatı yoxdur",
+      "no_foreign_currency_lines": "Valyuta məlumatı yoxdur",
+      "rollup_no_children": "Törəmə şirkət yoxdur",
+      "out_of_range": "Diapazondan kənar"
+    },
+    "action": {
+      "external-feed": "Xarici məlumat fidini qoşun.",
+      "ingest-gap": "Bu məlumatı idxal faylına əlavə edin.",
+      "formula-edge-case": "Kənar hal — adətən öz-özünə həll olunur; aşağı prioritet.",
+      "no-data": "Məlumatı əl ilə və ya idxalla daxil edin.",
+      "leaf-rollup": "Yarpaq şirkət üçün düzgündür — tədbir lazım deyil.",
+      "code-bug": "Kod xətası — developerlərə bildirin."
+    },
+    "expandedTechnicalDetail": "Texniki təfərrüat"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
