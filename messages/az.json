@@ -1931,6 +1931,12 @@
     },
     "heatMap": {
       "filterRowsPlaceholder": "sətr filtri…",
+      "findIndicatorPlaceholder": "indikator tap…",
+      "findIndicatorAria": "İndikatorları ad və ya kod üzrə axtar",
+      "findIndicatorClear": "İndikator axtarışını təmizlə",
+      "findIndicatorCount": "{count}/{total}",
+      "findIndicatorCountTitle": "Tapılan indikatorlar / mövcud olanların sayı",
+      "noIndicatorsMatch": "Sorğuya uyğun indikator yoxdur",
       "loadingHeatmap": "Risk xəritəsi yüklənir…",
       "noCompaniesYet": "Şirkət və ya göstərici hələ yoxdur. /budgeting/onboarding ilə idxal et və göstərici seed-i işə sal (scripts/seed-indicators.ts).",
       "companyColumn": "Şirkət",

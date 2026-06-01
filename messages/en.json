@@ -1931,6 +1931,12 @@
     },
     "heatMap": {
       "filterRowsPlaceholder": "filter rows…",
+      "findIndicatorPlaceholder": "find indicator…",
+      "findIndicatorAria": "Search indicators by name or code",
+      "findIndicatorClear": "Clear indicator search",
+      "findIndicatorCount": "{count}/{total}",
+      "findIndicatorCountTitle": "Indicators matching your search / total available",
+      "noIndicatorsMatch": "No indicators match",
       "loadingHeatmap": "Loading heatmap…",
       "noCompaniesYet": "No companies or indicators yet. Import via /budgeting/onboarding and seed indicators (scripts/seed-indicators.ts).",
       "companyColumn": "Company",

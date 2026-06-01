@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Lock } from 'lucide-react';
+import { Lock, Search, X } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -50,7 +50,7 @@ export function HeatMap({ period }: Props) {
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
-    hiddenUnknownCount,
+    hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,
   } = useHeatMapModel(period);
 
   if (!mounted) {
@@ -134,6 +134,60 @@ export function HeatMap({ period }: Props) {
             spellCheck={false}
             aria-label={t('heatMap.filterAriaLabel')}
           />
+        </div>
+        {/* Client-feedback #5 (2026-06-01) — intuitive indicator (column)
+            search. Multilingual fuzzy matcher (indicator-search.ts) filters
+            the matrix columns so the user finds an indicator by approximate
+            name in EN/RU/AZ instead of hovering over each header. Separate
+            from the `/` company-row filter to its left. */}
+        <div className="flex items-center gap-1 flex-1 max-w-[240px]">
+          <Search size={11} className="text-gray-600 shrink-0" aria-hidden="true" />
+          <div className="relative flex-1">
+            <input
+              ref={indicatorSearchInputRef}
+              type="text"
+              value={indicatorQuery}
+              onChange={(e) => setIndicatorQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIndicatorQuery('');
+                  indicatorSearchInputRef.current?.blur();
+                  e.stopPropagation();
+                }
+              }}
+              placeholder={t('heatMap.findIndicatorPlaceholder')}
+              className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 pr-5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none w-full"
+              spellCheck={false}
+              aria-label={t('heatMap.findIndicatorAria')}
+            />
+            {indicatorQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIndicatorQuery('');
+                  indicatorSearchInputRef.current?.focus();
+                }}
+                className="absolute right-0.5 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-300"
+                title={t('heatMap.findIndicatorClear')}
+                aria-label={t('heatMap.findIndicatorClear')}
+              >
+                <X size={11} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          {indicatorQuery.trim() && (
+            <span
+              className={`shrink-0 tabular-nums text-[9px] ${
+                displayIndicators.length === 0 ? 'text-[#FF4757]' : 'text-[#00D4AA]'
+              }`}
+              title={t('heatMap.findIndicatorCountTitle')}
+            >
+              {t('heatMap.findIndicatorCount', {
+                count: displayIndicators.length,
+                total: indicators.length,
+              })}
+            </span>
+          )}
         </div>
         {showMaterialityToggle && (
           <button
@@ -347,7 +401,16 @@ export function HeatMap({ period }: Props) {
             </tr>
           </thead>
           <tbody>
-            {filteredCompanies.length === 0 ? (
+            {indicatorQuery.trim() && displayIndicators.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={displayIndicators.length + 1}
+                  className="text-gray-600 px-2 py-3 text-center"
+                >
+                  {t('heatMap.noIndicatorsMatch')} "{indicatorQuery}"
+                </td>
+              </tr>
+            ) : filteredCompanies.length === 0 ? (
               <tr>
                 <td
                   colSpan={displayIndicators.length + 1}

@@ -1931,6 +1931,12 @@
     },
     "heatMap": {
       "filterRowsPlaceholder": "фильтр строк…",
+      "findIndicatorPlaceholder": "найти индикатор…",
+      "findIndicatorAria": "Поиск индикаторов по названию или коду",
+      "findIndicatorClear": "Очистить поиск индикаторов",
+      "findIndicatorCount": "{count}/{total}",
+      "findIndicatorCountTitle": "Индикаторов найдено / всего доступно",
+      "noIndicatorsMatch": "Нет индикаторов по запросу",
       "loadingHeatmap": "Загрузка карты рисков…",
       "noCompaniesYet": "Компаний или индикаторов ещё нет. Импортируйте через /budgeting/onboarding и запустите seed индикаторов (scripts/seed-indicators.ts).",
       "companyColumn": "Компания",

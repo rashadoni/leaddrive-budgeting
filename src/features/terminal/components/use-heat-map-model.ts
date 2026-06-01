@@ -38,6 +38,7 @@ import {
 import { useMatrix } from '../hooks/use-matrix';
 import { useCompanies, buildRiskTagsByCompanyId } from '../hooks/use-companies';
 import { getMateriality, isMaterialityScoped } from '@/lib/risk/esg-materiality';
+import { filterIndicatorsByQuery } from '../lib/indicator-search';
 
 const log = getLogger('terminal:heatmap');
 const PANEL_ID = 2;
@@ -68,6 +69,12 @@ export function useHeatMapModel(period: string | undefined) {
   const search = useTerminalStore((s) => s.searchByPanel[PANEL_ID] ?? '');
   const setSearch = useTerminalStore((s) => s.setSearchForPanel);
   const clearSearch = useTerminalStore((s) => s.clearSearchForPanel);
+  // Client-feedback #5 (2026-06-01) — intuitive indicator (column) search,
+  // separate from the company (row) `search` above. Local state: it's
+  // Panel-2-only and doesn't need the cross-panel store bridge that the
+  // `/`-row-filter uses.
+  const [indicatorQuery, setIndicatorQuery] = useState('');
+  const indicatorSearchInputRef = useRef<HTMLInputElement>(null);
   const setAlertsCount = useTerminalStore((s) => s.setAlertsCount);
   const setAlertedCompanyCodes = useTerminalStore((s) => s.setAlertedCompanyCodes);
   const setAlertMatches = useTerminalStore((s) => s.setAlertMatches);
@@ -517,9 +524,16 @@ export function useHeatMapModel(period: string | undefined) {
   }, [data, filteredCompanies, hideUnknown]);
 
   const displayIndicators = useMemo(() => {
+    // Client-feedback #5 — an active indicator query takes precedence and
+    // surfaces every match, deliberately bypassing the "hide unknown" toggle
+    // (if the user explicitly searched for a column, show it even when all
+    // its cells are empty). Original column order is preserved by the matcher.
+    if (indicatorQuery.trim()) {
+      return filterIndicatorsByQuery(indicatorQuery, indicators);
+    }
     if (!hideUnknown || !indicatorsWithAnyData) return indicators;
     return indicators.filter((ind) => indicatorsWithAnyData.has(ind.id));
-  }, [indicators, hideUnknown, indicatorsWithAnyData]);
+  }, [indicators, hideUnknown, indicatorsWithAnyData, indicatorQuery]);
 
   const hiddenUnknownCount = hideUnknown
     ? indicators.length - displayIndicators.length
@@ -537,6 +551,6 @@ export function useHeatMapModel(period: string | undefined) {
     setAlertThresholds, refetchTimerRef, cellMap, compositeByCompany,
     filteredCompanies, summary, activeCompanyIndustries, activeCompanyIndustry,
     rawIndicators, indicators, indicatorsWithAnyData, displayIndicators,
-    hiddenUnknownCount,
+    hiddenUnknownCount, indicatorQuery, setIndicatorQuery, indicatorSearchInputRef,
   };
 }
