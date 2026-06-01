@@ -99,6 +99,49 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
     return typeof v === "number" ? nf.format(v) : String(v)
   }
 
+  /** Pre-format numeric values to localized strings for reason interpolation. */
+  function fmtValues(values?: Record<string, number | string>): Record<string, string> {
+    const out: Record<string, string> = {}
+    if (!values) return out
+    for (const [k, v] of Object.entries(values)) out[k] = typeof v === "number" ? nf.format(v) : String(v)
+    return out
+  }
+
+  /** Map a non-pass (code, status) to its stable reason code; null for pass/skip. */
+  function reasonCode(code: string, status: IfrsStatus, values?: Record<string, number | string>): string | null {
+    if (status === "pass" || status === "skip") return null
+    switch (code) {
+      case "bs_balances":
+        return "out_of_balance"
+      case "bs_sections":
+        return "missing_sections"
+      case "bs_current_noncurrent":
+        return "no_split"
+      case "bs_equity_composition":
+        return "equity_lumped"
+      case "pnl_revenue":
+        return status === "fail" ? "no_revenue_accounts" : "revenue_zero"
+      case "pnl_cogs_opex_separation":
+        if (status === "fail") return "no_cost_accounts"
+        return Number(values?.cogsAccounts ?? 0) > 0 ? "only_cogs" : "only_opex"
+      case "pnl_depreciation":
+        return "no_da_line"
+      case "pnl_equity_linkage":
+        return "linkage_gap"
+      default:
+        return null
+    }
+  }
+
+  /** Localized, detailed finding for a non-pass check (what's wrong + numbers). */
+  function reasonText(c: IfrsCheck): string | null {
+    const rc = reasonCode(c.code, c.status, c.values)
+    if (!rc) return null
+    return t(`reasons.${rc}` as never, fmtValues(c.values) as never)
+  }
+
+  const attentionChecks = result ? result.report.checks.filter((c) => c.status === "warn" || c.status === "fail") : []
+
   return (
     <div>
       {/* Company selector */}
@@ -166,6 +209,46 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
             </div>
           </div>
 
+          {/* Why isn't it 100% — detailed reasons, or an all-good note. */}
+          {!allSkipped && attentionChecks.length > 0 && (
+            <div
+              className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 mb-4"
+              data-testid="ifrs-why"
+            >
+              <p className="text-sm font-semibold text-amber-300">{t("whyTitle")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {t("whyIntro", { n: attentionChecks.length })}
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {attentionChecks.map((c) => {
+                  const s = STATUS_STYLE[c.status]
+                  return (
+                    <li key={c.code} className="text-xs flex gap-2">
+                      <span className={`mt-0.5 leading-none ${s.fg}`} aria-hidden>
+                        {s.glyph}
+                      </span>
+                      <span>
+                        <span className="font-medium text-foreground/90">
+                          {t(`checks.${c.code}.label` as never)}
+                        </span>
+                        {" — "}
+                        <span className="text-muted-foreground">{reasonText(c)}</span>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+          {!allSkipped && attentionChecks.length === 0 && (
+            <div
+              className="rounded-md border border-emerald-500/30 bg-emerald-500/[0.06] px-4 py-3 mb-4 text-sm text-emerald-300"
+              data-testid="ifrs-allgood"
+            >
+              {t("allGood")}
+            </div>
+          )}
+
           {allSkipped ? (
             <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
               {t("noStatements")}
@@ -194,10 +277,23 @@ export function IfrsConformanceView({ companies }: { companies: CompanyOption[] 
                           >
                             {t(`status.${c.status}` as never)}
                           </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded border border-border bg-muted/50 text-muted-foreground font-mono">
+                            {t(`standard.${c.code}` as never)}
+                          </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1 leading-snug">
                           {t(`checks.${c.code}.desc` as never)}
                         </p>
+                        {c.status !== "skip" && c.status !== "pass" && reasonText(c) && (
+                          <p
+                            className={`text-xs mt-1.5 leading-snug font-medium ${
+                              c.status === "fail" ? "text-red-400" : "text-amber-400"
+                            }`}
+                            data-testid={`ifrs-reason-${c.code}`}
+                          >
+                            {reasonText(c)}
+                          </p>
+                        )}
                         {c.status !== "skip" && fields.length > 0 && (
                           <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
                             {fields.map((f) => (

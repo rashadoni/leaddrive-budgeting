@@ -3473,6 +3473,32 @@
       "pnlNet": "P&L net result",
       "equityCurrentYear": "Equity current-year line",
       "linkageGap": "Gap"
+    },
+    "whyTitle": "Why isn't it 100%?",
+    "whyIntro": "Items that need attention: {n}",
+    "allGood": "All checks pass — the statements match the IAS 1 structure.",
+    "standard": {
+      "bs_balances": "IAS 1 — accounting equation",
+      "bs_sections": "IAS 1.54",
+      "bs_current_noncurrent": "IAS 1.60",
+      "bs_equity_composition": "IAS 1.54(r)",
+      "pnl_revenue": "IAS 1.82(a)",
+      "pnl_cogs_opex_separation": "IAS 1.99–105",
+      "pnl_depreciation": "IAS 1.104 / IAS 16",
+      "pnl_equity_linkage": "Clean-surplus (IAS 1.106)"
+    },
+    "reasons": {
+      "out_of_balance": "Assets ({assets}) ≠ liabilities + equity — out of balance by {residual}.",
+      "missing_sections": "Missing balance-sheet section(s): {missing}.",
+      "no_split": "No current/non-current split on: {unclassified}.",
+      "equity_lumped": "Equity is a single lumped line — components (share capital, retained earnings) aren't shown separately.",
+      "no_revenue_accounts": "No revenue accounts found in the income statement.",
+      "revenue_zero": "Revenue accounts exist but total revenue is zero.",
+      "no_cost_accounts": "No cost or expense accounts found in the income statement.",
+      "only_cogs": "Only cost of sales is present — operating expenses aren't separated.",
+      "only_opex": "Only operating expenses are present — cost of sales isn't separated.",
+      "no_da_line": "No depreciation / amortisation line identified.",
+      "linkage_gap": "P&L net result ({pnlNet}) doesn't match the balance-sheet current-year line ({equityCurrentYear}) — gap {linkageGap}. Often a plan-vs-actual or period-coverage difference; worth a review."
     }
   }
 }

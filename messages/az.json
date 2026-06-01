@@ -3473,6 +3473,32 @@
       "pnlNet": "P&L xalis nəticə",
       "equityCurrentYear": "Kapital (cari il) sətri",
       "linkageGap": "Fərq"
+    },
+    "whyTitle": "Niyə 100% deyil?",
+    "whyIntro": "Diqqət tələb edən bəndlər: {n}",
+    "allGood": "Bütün yoxlamalar keçdi — hesabatlar IAS 1 strukturuna uyğundur.",
+    "standard": {
+      "bs_balances": "IAS 1 — balans bərabərliyi",
+      "bs_sections": "IAS 1.54",
+      "bs_current_noncurrent": "IAS 1.60",
+      "bs_equity_composition": "IAS 1.54(r)",
+      "pnl_revenue": "IAS 1.82(a)",
+      "pnl_cogs_opex_separation": "IAS 1.99–105",
+      "pnl_depreciation": "IAS 1.104 / IAS 16",
+      "pnl_equity_linkage": "Xalis artım (IAS 1.106)"
+    },
+    "reasons": {
+      "out_of_balance": "Aktivlər ({assets}) ≠ öhdəliklər + kapital — fərq {residual}.",
+      "missing_sections": "Balansın bölmələri çatışmır: {missing}.",
+      "no_split": "Cari/uzunmüddətli bölgü yoxdur: {unclassified}.",
+      "equity_lumped": "Kapital bir sətirdədir — komponentlər (nizamnamə kapitalı, bölüşdürülməmiş mənfəət) ayrıca göstərilmir.",
+      "no_revenue_accounts": "Mənfəət-zərər hesabatında gəlir hesabları yoxdur.",
+      "revenue_zero": "Gəlir hesabları var, lakin ümumi gəlir sıfırdır.",
+      "no_cost_accounts": "Xərc və ya məsrəf hesabları tapılmadı.",
+      "only_cogs": "Yalnız maya dəyəri var — əməliyyat xərcləri ayrılmayıb.",
+      "only_opex": "Yalnız əməliyyat xərcləri var — maya dəyəri ayrılmayıb.",
+      "no_da_line": "Amortizasiya sətri tapılmadı.",
+      "linkage_gap": "P&L xalis nəticəsi ({pnlNet}) kapitalın «cari il» sətri ilə ({equityCurrentYear}) uyğun gəlmir — fərq {linkageGap}. Çox vaxt plan/fakt və ya dövr fərqidir; yoxlamaq lazımdır."
     }
   }
 }
