@@ -115,8 +115,8 @@ export function HeatMap({ period }: Props) {
             </span>
           )}
         </span>
-        <div className="flex items-center gap-1 flex-1 max-w-[220px]">
-          <span className="text-gray-600">/</span>
+        <div className="flex items-center gap-1 flex-1 max-w-[230px]">
+          <span className="text-[#00D4AA]/80 font-semibold">/</span>
           <input
             ref={searchInputRef}
             type="text"
@@ -130,7 +130,7 @@ export function HeatMap({ period }: Props) {
               }
             }}
             placeholder={t('heatMap.filterRowsPlaceholder')}
-            className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none w-full"
+            className="bg-white/[0.06] border border-white/20 rounded px-2 py-1 text-[11px] text-gray-100 placeholder-gray-400 focus:border-[#00D4AA] focus:ring-1 focus:ring-[#00D4AA]/30 focus:outline-none w-full"
             spellCheck={false}
             aria-label={t('heatMap.filterAriaLabel')}
           />
@@ -140,8 +140,8 @@ export function HeatMap({ period }: Props) {
             the matrix columns so the user finds an indicator by approximate
             name in EN/RU/AZ instead of hovering over each header. Separate
             from the `/` company-row filter to its left. */}
-        <div className="flex items-center gap-1 flex-1 max-w-[240px]">
-          <Search size={11} className="text-gray-600 shrink-0" aria-hidden="true" />
+        <div className="flex items-center gap-1 flex-1 max-w-[250px]">
+          <Search size={13} className="text-[#00D4AA]/80 shrink-0" aria-hidden="true" />
           <div className="relative flex-1">
             <input
               ref={indicatorSearchInputRef}
@@ -156,7 +156,7 @@ export function HeatMap({ period }: Props) {
                 }
               }}
               placeholder={t('heatMap.findIndicatorPlaceholder')}
-              className="bg-[#0A0E27] border border-gray-800 rounded px-1.5 py-0.5 pr-5 text-[10px] text-gray-200 placeholder-gray-700 focus:border-[#00D4AA] focus:outline-none w-full"
+              className="bg-white/[0.06] border border-white/20 rounded px-2 py-1 pr-5 text-[11px] text-gray-100 placeholder-gray-400 focus:border-[#00D4AA] focus:ring-1 focus:ring-[#00D4AA]/30 focus:outline-none w-full"
               spellCheck={false}
               aria-label={t('heatMap.findIndicatorAria')}
             />
