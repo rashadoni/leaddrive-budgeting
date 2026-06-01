@@ -446,7 +446,10 @@ export function AISubscriptions() {
             <div className="grid grid-cols-[1fr_1fr_80px_80px] gap-2 text-xs">
               <select
                 value={scope}
-                onChange={(e) => setScope(e.target.value as Scope)}
+                onChange={(e) => {
+                  setScope(e.target.value as Scope);
+                  setScopeValue(""); // reset picker when the scope kind changes
+                }}
                 aria-label={t("subscriptions.scopeAriaLabel")}
                 className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200"
                 data-testid="subscriptions-scope"
@@ -459,23 +462,35 @@ export function AISubscriptions() {
                   {t("subscriptions.scopeIndicator")}
                 </option>
               </select>
-              <input
-                type="text"
+              <select
                 value={scopeValue}
                 onChange={(e) => setScopeValue(e.target.value)}
                 disabled={scope === "any"}
-                placeholder={
-                  scope === "company"
-                    ? t("subscriptions.scopeValueCompanyPlaceholder")
-                    : scope === "indicator"
-                      ? t("subscriptions.scopeValueIndicatorPlaceholder")
-                      : t("subscriptions.scopeValueDisabledPlaceholder")
-                }
                 aria-label={t("subscriptions.scopeValueAriaLabel")}
-                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200 placeholder-gray-700 disabled:opacity-50"
-                spellCheck={false}
+                className="bg-[#0A0E27] border border-white/15 rounded px-1.5 py-1 text-gray-200 disabled:opacity-50 truncate"
                 data-testid="subscriptions-scope-value"
-              />
+              >
+                <option value="">
+                  {scope === "any"
+                    ? t("subscriptions.scopeValueDisabledPlaceholder")
+                    : scope === "company"
+                      ? t("subscriptions.scopeValueCompanySelect")
+                      : t("subscriptions.scopeValueIndicatorSelect")}
+                </option>
+                {scope === "company" &&
+                  (matrix?.companies ?? []).map((c) => (
+                    <option key={c.id} value={c.code}>
+                      {c.code}
+                      {c.name ? ` · ${c.name}` : ""}
+                    </option>
+                  ))}
+                {scope === "indicator" &&
+                  (matrix?.indicators ?? []).map((ind) => (
+                    <option key={ind.id} value={ind.code}>
+                      {ind.code}
+                    </option>
+                  ))}
+              </select>
               <select
                 value={comparator}
                 onChange={(e) => setComparator(e.target.value as Comparator)}

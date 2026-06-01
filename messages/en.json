@@ -2299,6 +2299,8 @@
       "scopeIndicator": "Specific indicator",
       "scopeValueAriaLabel": "Scope value",
       "scopeValueCompanyPlaceholder": "Company code (e.g. AAC-MAIN)",
+      "scopeValueCompanySelect": "Select a company…",
+      "scopeValueIndicatorSelect": "Select an indicator…",
       "scopeValueIndicatorPlaceholder": "Indicator code (e.g. IND_NET_MARGIN)",
       "scopeValueDisabledPlaceholder": "(scope: any)",
       "comparatorAriaLabel": "Comparator",

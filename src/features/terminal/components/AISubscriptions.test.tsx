@@ -142,7 +142,7 @@ describe("AISubscriptions (Tier-3 sub-30)", () => {
     expect(screen.getByTestId("subscriptions-empty")).toBeTruthy();
   });
 
-  it("create form: label + scope + comparator + threshold → persists + appends", () => {
+  it("create form: label + scope + comparator + threshold → persists + appends", async () => {
     render(<AISubscriptions />);
     fireOpen();
     const labelInput = screen.getByTestId(
@@ -155,7 +155,12 @@ describe("AISubscriptions (Tier-3 sub-30)", () => {
     fireEvent.change(scopeSelect, { target: { value: "company" } });
     const scopeValueInput = screen.getByTestId(
       "subscriptions-scope-value",
-    ) as HTMLInputElement;
+    ) as HTMLSelectElement;
+    // scope-value is now a <select> populated from the live matrix companies —
+    // wait for the AAC-MAIN option to load (async fetch) before picking it.
+    await waitFor(() => {
+      expect(scopeValueInput.querySelector('option[value="AAC-MAIN"]')).toBeTruthy();
+    });
     fireEvent.change(scopeValueInput, { target: { value: "AAC-MAIN" } });
     const thresholdInput = screen.getByTestId(
       "subscriptions-threshold",

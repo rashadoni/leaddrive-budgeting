@@ -2299,6 +2299,8 @@
       "scopeIndicator": "Konkret göstərici",
       "scopeValueAriaLabel": "Əhatə dəyəri",
       "scopeValueCompanyPlaceholder": "Şirkət kodu (məs. AAC-MAIN)",
+      "scopeValueCompanySelect": "Şirkət seçin…",
+      "scopeValueIndicatorSelect": "İndikator seçin…",
       "scopeValueIndicatorPlaceholder": "Göstərici kodu (məs. IND_NET_MARGIN)",
       "scopeValueDisabledPlaceholder": "(əhatə: istənilən)",
       "comparatorAriaLabel": "Müqayisə operatoru",

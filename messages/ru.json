@@ -2299,6 +2299,8 @@
       "scopeIndicator": "Конкретный индикатор",
       "scopeValueAriaLabel": "Значение области",
       "scopeValueCompanyPlaceholder": "Код компании (например AAC-MAIN)",
+      "scopeValueCompanySelect": "Выберите компанию…",
+      "scopeValueIndicatorSelect": "Выберите индикатор…",
       "scopeValueIndicatorPlaceholder": "Код индикатора (например IND_NET_MARGIN)",
       "scopeValueDisabledPlaceholder": "(область: любая)",
       "comparatorAriaLabel": "Оператор сравнения",
