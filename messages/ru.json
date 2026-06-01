@@ -3300,10 +3300,10 @@
   },
   "adminIndicatorHealth": {
     "loading": "Загружаю…",
-    "summaryGreen": "🟢 Зелёных",
-    "summaryAmber": "🟡 Жёлтых",
-    "summaryRed": "🔴 Красных",
-    "summaryUnknown": "⚪ Неизвестно",
+    "summaryGreen": "Зелёных",
+    "summaryAmber": "Жёлтых",
+    "summaryRed": "Красных",
+    "summaryUnknown": "Неизвестно",
     "summaryComputed": "Подсчитано",
     "summaryTotalIvs": "{n} всего IV",
     "unknownBreakdown": "Разбивка unknown по error code",
@@ -3330,12 +3330,12 @@
     "pageTitle": "Дашборд здоровья индикаторов",
     "pageDescription": "Обзор каждой ячейки значения индикатора в базе — почему каждый unknown и как это исправить (подключить фид, добавить данные и т.д.). Используйте перед клиентским демо: 🟡/⚪ нужно либо заполнить, либо честно объяснить клиенту.",
     "category": {
-      "external-feed": "🔌 Нужен внешний фид",
-      "ingest-gap": "📥 Пробел в импорте",
-      "formula-edge-case": "⚙ Граничный случай формулы",
-      "no-data": "⚪ Данные не внесены",
-      "leaf-rollup": "📊 Свод (норм для листа)",
-      "code-bug": "🐛 Ошибка в коде"
+      "external-feed": "Нужен внешний фид",
+      "ingest-gap": "Пробел в импорте",
+      "formula-edge-case": "Граничный случай формулы",
+      "no-data": "Данные не внесены",
+      "leaf-rollup": "Свод (норм для листа)",
+      "code-bug": "Ошибка в коде"
     },
     "errorCode": {
       "eval": "Ошибка вычисления формулы",

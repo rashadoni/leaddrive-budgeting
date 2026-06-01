@@ -247,36 +247,36 @@ export function IndicatorHealthView() {
   return (
     <div className="space-y-6">
       {/* ── Summary tiles ────────────────────────────────────── */}
-      <div className="grid grid-cols-5 gap-2">
-        <div className="border rounded p-3 bg-emerald-50 dark:bg-emerald-950/30 ring-1 ring-emerald-200 dark:ring-emerald-800/40">
-          <div className="text-xs text-emerald-800 dark:text-emerald-300 uppercase">{t("summaryGreen")}</div>
-          <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-200">{summary.green}</div>
-          <div className="text-[10px] text-muted-foreground">{greenPct}%</div>
-        </div>
-        <div className="border rounded p-3 bg-amber-50 dark:bg-amber-950/30 ring-1 ring-amber-200 dark:ring-amber-800/40">
-          <div className="text-xs text-amber-800 dark:text-amber-300 uppercase">{t("summaryAmber")}</div>
-          <div className="text-2xl font-bold text-amber-700 dark:text-amber-200">{summary.amber}</div>
-        </div>
-        <div className="border rounded p-3 bg-rose-50 dark:bg-rose-950/30 ring-1 ring-rose-200 dark:ring-rose-800/40">
-          <div className="text-xs text-rose-800 dark:text-rose-300 uppercase">{t("summaryRed")}</div>
-          <div className="text-2xl font-bold text-rose-700 dark:text-rose-200">{summary.red}</div>
-        </div>
-        <div className="border rounded p-3 bg-slate-50 dark:bg-slate-900/40 ring-1 ring-slate-200 dark:ring-slate-700/50">
-          <div className="text-xs text-slate-700 dark:text-slate-300 uppercase">{t("summaryUnknown")}</div>
-          <div className="text-2xl font-bold text-slate-700 dark:text-slate-200">{summary.unknown}</div>
-        </div>
-        <div className="border rounded p-3">
-          <div className="text-xs text-muted-foreground uppercase">{t("summaryComputed")}</div>
-          <div className="text-2xl font-bold">{computedPct}%</div>
-          <div className="text-[10px] text-muted-foreground">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { label: t("summaryGreen"), value: summary.green, sub: `${greenPct}%`, dot: "bg-emerald-500", num: "text-emerald-600 dark:text-emerald-400" },
+          { label: t("summaryAmber"), value: summary.amber, sub: null, dot: "bg-amber-500", num: "text-amber-600 dark:text-amber-400" },
+          { label: t("summaryRed"), value: summary.red, sub: null, dot: "bg-rose-500", num: "text-rose-600 dark:text-rose-400" },
+          { label: t("summaryUnknown"), value: summary.unknown, sub: null, dot: "bg-slate-400", num: "text-slate-600 dark:text-slate-300" },
+        ].map((tile) => (
+          <div key={tile.label} className="rounded-lg border bg-card shadow-sm p-4">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              <span className={`h-2 w-2 rounded-full ${tile.dot}`} aria-hidden />
+              {tile.label}
+            </div>
+            <div className={`text-2xl font-bold tabular-nums mt-1.5 ${tile.num}`}>{tile.value}</div>
+            {tile.sub && <div className="text-[10px] text-muted-foreground mt-0.5">{tile.sub}</div>}
+          </div>
+        ))}
+        <div className="rounded-lg border bg-card shadow-sm p-4">
+          <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+            {t("summaryComputed")}
+          </div>
+          <div className="text-2xl font-bold tabular-nums mt-1.5">{computedPct}%</div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">
             {t("summaryTotalIvs", { n: summary.totalIvs })}
           </div>
         </div>
       </div>
 
       {/* ── Unknown by error code ─────────────────────────────── */}
-      <div className="border rounded p-3">
-        <div className="text-xs uppercase text-muted-foreground mb-2">
+      <div className="rounded-lg border bg-card shadow-sm p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2.5">
           {t("unknownBreakdown")}
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -394,7 +394,7 @@ export function IndicatorHealthView() {
       </div>
 
       {/* ── Gappy indicators table ────────────────────────────── */}
-      <div className="border rounded overflow-hidden">
+      <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted text-xs">
             <tr>
@@ -542,7 +542,7 @@ function Row({
   return (
     <>
       <tr
-        className="border-t align-top hover:bg-accent/30 transition-colors cursor-pointer"
+        className="border-t align-top hover:bg-muted/40 transition-colors cursor-pointer"
         onClick={onToggleExpand}
       >
         <td className="p-2 text-muted-foreground">

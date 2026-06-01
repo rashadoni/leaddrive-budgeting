@@ -3300,10 +3300,10 @@
   },
   "adminIndicatorHealth": {
     "loading": "Loading…",
-    "summaryGreen": "🟢 Green",
-    "summaryAmber": "🟡 Amber",
-    "summaryRed": "🔴 Red",
-    "summaryUnknown": "⚪ Unknown",
+    "summaryGreen": "Green",
+    "summaryAmber": "Amber",
+    "summaryRed": "Red",
+    "summaryUnknown": "Unknown",
     "summaryComputed": "Computed",
     "summaryTotalIvs": "{n} total IVs",
     "unknownBreakdown": "Unknown breakdown by error code",
@@ -3330,12 +3330,12 @@
     "pageTitle": "Indicator Health Dashboard",
     "pageDescription": "Overview of every indicator value cell in the database — why each one is unknown and how to fix it (wire a feed, add data, etc.). Use it before a client demo: 🟡/⚪ items should be filled in or honestly explained to the client.",
     "category": {
-      "external-feed": "🔌 External feed needed",
-      "ingest-gap": "📥 Ingest gap",
-      "formula-edge-case": "⚙ Formula edge case",
-      "no-data": "⚪ Data not entered",
-      "leaf-rollup": "📊 Rollup (OK for leaf)",
-      "code-bug": "🐛 Code bug"
+      "external-feed": "External feed needed",
+      "ingest-gap": "Ingest gap",
+      "formula-edge-case": "Formula edge case",
+      "no-data": "Data not entered",
+      "leaf-rollup": "Rollup (OK for leaf)",
+      "code-bug": "Code bug"
     },
     "errorCode": {
       "eval": "Formula evaluation error",

@@ -3300,10 +3300,10 @@
   },
   "adminIndicatorHealth": {
     "loading": "Yüklənir…",
-    "summaryGreen": "🟢 Yaşıl",
-    "summaryAmber": "🟡 Sarı",
-    "summaryRed": "🔴 Qırmızı",
-    "summaryUnknown": "⚪ Naməlum",
+    "summaryGreen": "Yaşıl",
+    "summaryAmber": "Sarı",
+    "summaryRed": "Qırmızı",
+    "summaryUnknown": "Naməlum",
     "summaryComputed": "Hesablanıb",
     "summaryTotalIvs": "{n} cəmi IV",
     "unknownBreakdown": "Unknown səhv kodları üzrə bölgü",
@@ -3330,12 +3330,12 @@
     "pageTitle": "İndikator sağlamlığı paneli",
     "pageDescription": "Bazadakı hər indikator dəyər xanasının icmalı — hər biri niyə unknown və necə düzəltmək (fid qoşmaq, məlumat əlavə etmək və s.). Müştəri demosundan əvvəl istifadə edin: 🟡/⚪ ya doldurulmalı, ya da müştəriyə dürüst izah edilməlidir.",
     "category": {
-      "external-feed": "🔌 Xarici fid lazımdır",
-      "ingest-gap": "📥 İdxal boşluğu",
-      "formula-edge-case": "⚙ Düstur kənar halı",
-      "no-data": "⚪ Məlumat daxil edilməyib",
-      "leaf-rollup": "📊 Yığım (yarpaq üçün norm)",
-      "code-bug": "🐛 Kod xətası"
+      "external-feed": "Xarici fid lazımdır",
+      "ingest-gap": "İdxal boşluğu",
+      "formula-edge-case": "Düstur kənar halı",
+      "no-data": "Məlumat daxil edilməyib",
+      "leaf-rollup": "Yığım (yarpaq üçün norm)",
+      "code-bug": "Kod xətası"
     },
     "errorCode": {
       "eval": "Düstur hesablama xətası",
