@@ -40,6 +40,7 @@ import { ForecastSection } from "./indicator-detail/ForecastSection";
 // Phase 8 D1 (2026-05-29) — Panel-3 badges + aggregate renderer extracted to siblings.
 import { ProvenanceBadge, MaterialityBadge, TrustAuditStrip } from "./indicator-detail/badges";
 import { AggregateBlock, formatAggValue, hintForKey, unitToHint } from "./indicator-detail/AggregateBlock";
+import { BenchmarkBand } from "./indicator-detail/BenchmarkBand";
 
 export function IndicatorDetail() {
   const t = useTranslations('terminal');
@@ -506,6 +507,17 @@ export function IndicatorDetail() {
       {hint && (
         <p className="text-muted-foreground leading-snug">{hint}</p>
       )}
+
+      {/* Client feedback #1 — benchmark band: floor → target from the
+          indicator's real thresholds, with the current value marked. Renders
+          only for higher/lower_better indicators with numeric green+red
+          thresholds (per-ha + most ratios); auto-omits otherwise. */}
+      <BenchmarkBand
+        thresholds={ind.thresholds as never}
+        direction={ind.direction}
+        value={value}
+        unit={ind.unit}
+      />
 
       {/* Phase B3 — trailing 12-month sparkline. Renders empty baseline
           when sparkline is null/empty (IV pre-dates B2 batch run); user

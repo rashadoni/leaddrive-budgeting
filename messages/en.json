@@ -1967,6 +1967,18 @@
       "scenarioBanner": "⚡ SCENARIO: {label}",
       "revertToBase": "Return to baseline data"
     },
+    "benchmarkBand": {
+      "title": "Target range (benchmark)",
+      "floor": "floor",
+      "target": "target",
+      "current": "Now:",
+      "note": "Bounds are this indicator's configured red / green thresholds.",
+      "verdict": {
+        "green": "at the green target — good",
+        "amber": "in the watch range — room to improve",
+        "red": "outside the acceptable band — needs attention"
+      }
+    },
     "indicatorDetail": {
       "emptyDrillDown": "Click any HeatMap cell to drill down.",
       "emptyOrTypePrefix": "Or type",

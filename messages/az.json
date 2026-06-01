@@ -1967,6 +1967,18 @@
       "scenarioBanner": "⚡ SSENARİ: {label}",
       "revertToBase": "Baza məlumatlarına qayıt"
     },
+    "benchmarkBand": {
+      "title": "Hədəf aralığı (benchmark)",
+      "floor": "aşağı planka",
+      "target": "yuxarı (best)",
+      "current": "İndi:",
+      "note": "Sərhədlər — bu indikatorun konfiqurasiya olunmuş qırmızı / yaşıl həddləridir.",
+      "verdict": {
+        "green": "yaşıl hədəfdə — yaxşı",
+        "amber": "diqqət zonasında — irəliləməyə yer var",
+        "red": "yolverilən aralıqdan kənar — diqqət lazımdır"
+      }
+    },
     "indicatorDetail": {
       "emptyDrillDown": "Detal üçün istənilən xanaya klikləyin.",
       "emptyOrTypePrefix": "Yaxud yazın",
