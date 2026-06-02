@@ -394,7 +394,7 @@ export function IndicatorHealthView() {
       </div>
 
       {/* ── Gappy indicators table ────────────────────────────── */}
-      <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+      <div className="rounded-lg border bg-card shadow-sm overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted text-xs">
             <tr>
@@ -568,7 +568,7 @@ function Row({
         </td>
         <td className="p-2">
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] ${style.cls}`}
+            className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-md text-[10px] ${style.cls}`}
           >
             {t.has(`category.${g.category}` as never) ? t(`category.${g.category}` as never) : style.label}
           </span>
@@ -623,7 +623,7 @@ function Row({
             )}
           </div>
         </td>
-        <td className="p-2 text-[11px] text-foreground/80 max-w-md truncate">
+        <td className="p-2 text-[11px] text-foreground/80 max-w-sm whitespace-normal break-words">
           {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
         </td>
       </tr>
