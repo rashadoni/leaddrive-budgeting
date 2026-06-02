@@ -47,7 +47,7 @@ import {
   type SalesForecastRow,
 } from "../sales-forecast-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
-import { type OrgContext, resolveOrgContext } from "./prod-adapter-context"
+import { type OrgContext, resolveOrgContext, logger } from "./prod-adapter-context"
 
 export function makeLandRegistryHandler(
   prisma: PrismaClient,
@@ -333,13 +333,22 @@ export function makeForwardForecastHandler(
               }),
             )
           }
-          // REPLACE: the budget plan holds only this İcmal budget.
-          await tx.budgetLine.deleteMany({ where: { planId: budgetCtx.planId } })
+          // REPLACE only İcmal-origin lines — NOT user-entered budget lines.
+          // The Workspace defaults to + persists manual edits on this
+          // kind="budget" plan, so a blanket deleteMany({planId}) would
+          // silently wipe those edits on re-import. Scope to our sourceDocument.
+          await tx.budgetLine.deleteMany({
+            where: { planId: budgetCtx.planId, sourceDocument: { startsWith: "multi-import:İcmal-budget" } },
+          })
+          let dropped = 0
           const data = budgetMonthly
             .map((r) => {
               const companyId = budgetCtx.codeToId.get(r.companyCode)
               const accountId = accountIdByCode.get(r.coaCode)
-              if (!companyId || !accountId) return null
+              if (!companyId || !accountId) {
+                dropped++
+                return null
+              }
               return {
                 organizationId: ctx.organizationId,
                 planId: budgetCtx.planId,
@@ -355,6 +364,16 @@ export function makeForwardForecastHandler(
               }
             })
             .filter((x): x is NonNullable<typeof x> => x !== null)
+          if (dropped > 0) {
+            // Surfaced, not silent — dropped budget value would otherwise vanish.
+            logger.warn("İcmal budget: dropped unresolvable lines", {
+              sheet: input.sheetName,
+              dropped,
+              unresolvedCompanies: [
+                ...new Set(budgetMonthly.filter((r) => !budgetCtx.codeToId.get(r.companyCode)).map((r) => r.companyCode)),
+              ],
+            })
+          }
           await tx.budgetLine.createMany({ data })
           written += data.length
         }

@@ -328,6 +328,60 @@ describe("buildProductionAdapterRegistry", () => {
     expect(runCashFlowBatch).toHaveBeenCalledOnce()
   })
 
+  it("CF handler: refund month (positive in an outflow line) → inflow + abs amount + abs expectedSums (recon-safe)", async () => {
+    // Regression guard (2026-06-02 audit): parsePlfCfSheet keeps SIGNED
+    // perMonth; makeCfHandler derives per-month entryType from the sign, stores
+    // a positive magnitude, AND builds ABS expectedSums (the batch reads back
+    // abs). Summing the SIGNED value into expectedSums would make the OUTFLOW
+    // months negative → 2× reconciliation drift vs the abs read-back → false RED.
+    ;(parsePlfCfSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      entries: [
+        {
+          code: "CF.01.02.23", // outflow segment, but January is a refund
+          label: "Payment for Other Materials",
+          activityType: "operating",
+          entryType: "outflow", // line default; per-month direction from sign
+          perMonth: [102239, -122597, -217, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+      ],
+      warnings: [],
+    })
+    ;(runCashFlowBatch as ReturnType<typeof vi.fn>).mockResolvedValue({ metrics: { rowsInserted: 3 } })
+    const prisma = buildPrismaStub({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+      plan: { id: "plan_2026" },
+    })
+    const registry = buildProductionAdapterRegistry(prisma)
+    const result = await registry.get("CF")!({
+      workbook: fakeWorkbook,
+      sheetName: "CF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+    })
+    const fakeTx = {
+      chartOfAccount: {
+        upsert: vi.fn(async (a: { where: { organizationId_code: { code: string } } }) => ({
+          id: `coa_${a.where.organizationId_code.code}`,
+        })),
+      },
+    } as never
+    await result.applyToDb(fakeTx)
+    const opts = (runCashFlowBatch as ReturnType<typeof vi.fn>).mock.calls[0][1] as {
+      rows: Array<{ month: number; amount: number; entryType: string }>
+      expectedSums: Map<unknown, number>
+    }
+    const jan = opts.rows.find((r) => r.month === 1)!
+    expect(jan.entryType).toBe("inflow") // refund booked as inflow
+    expect(jan.amount).toBe(102239) // positive magnitude
+    const feb = opts.rows.find((r) => r.month === 2)!
+    expect(feb.entryType).toBe("outflow")
+    expect(feb.amount).toBe(122597)
+    // expectedSums must be ABS (≥ 0) to match the abs read-back — no signed negatives.
+    expect([...opts.expectedSums.values()].every((v) => v >= 0)).toBe(true)
+  })
+
   it("LAND_REGISTRY handler updates Company.settings via tx", async () => {
     ;(parseLandRegistrySheet as ReturnType<typeof vi.fn>).mockReturnValue({
       parcels: [{ id: "p1", hectares: 100, annualRentAzn: 5000 }],

@@ -206,6 +206,16 @@ export function parseIcmalBudgetLines(
       excluded.push({ group: g, label: l, amount: v })
     }
   }
+  // Sanity gate: a real İcmal P&L spans several operating groups (Revenue,
+  // COGS, Logistics, S&M, OPEX). If fewer than 2 distinct GROUP_MAP groups
+  // matched, this isn't an İcmal budget sheet — e.g. a generic INFO_SUMMARY
+  // summary that merely contains a year cell + one group-like word. Emit
+  // nothing rather than phantom budget lines (which a re-import would then
+  // write into the kind="budget" plan).
+  const distinctGroups = new Set(lines.filter((l) => !l.isSubsidy).map((l) => l.group))
+  if (distinctGroups.size < 2) {
+    return { lines: [], excluded, yearColumn: yearCol, groupColumn: groupCol }
+  }
   return { lines, excluded, yearColumn: yearCol, groupColumn: groupCol }
 }
 

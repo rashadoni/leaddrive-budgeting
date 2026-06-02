@@ -32,6 +32,16 @@ describe("icmal-budget mapping", () => {
     expect(findIcmalYearColumn(AOA, 2099)).toBe(-1)
   })
 
+  it("emits NO lines when fewer than 2 operating groups match (not İcmal-shaped)", () => {
+    // A generic summary sheet that merely contains a year + one group-like word
+    // must NOT be treated as an İcmal budget (else it would write phantom lines).
+    const generic: unknown[][] = [
+      [null, null, null, 2026, 2027],
+      [null, "Revenue", "Total turnover", 1000, 1100], // ONE group only
+    ]
+    expect(parseIcmalBudgetLines(generic, 2026).lines).toHaveLength(0)
+  })
+
   it("parses operating + subsidy lines; skips subtotals + below-EBITDA", () => {
     const { lines, excluded } = parseIcmalBudgetLines(AOA, 2026)
     const labels = lines.map((l) => `${l.group}:${l.label}`)

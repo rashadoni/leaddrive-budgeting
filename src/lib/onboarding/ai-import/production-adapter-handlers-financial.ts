@@ -479,8 +479,12 @@ export function makeCfHandler(
           sourceId,
         })
         const key = buildReconKey(CF_SOURCE_TAG, sourceId, period)
-        // Signed, so cross-file conflict detection compares true values.
-        expectedSums.set(key, (expectedSums.get(key) ?? 0) + signed)
+        // Reconciliation is per-cell MAGNITUDE: CF stores abs(amount) and the
+        // batch read-back sums abs, so expectedSums must be abs too. (Summing
+        // the SIGNED value here would false-flag refund months — a positive
+        // value in an outflow line — as a 2× drift → RED. There is exactly one
+        // CF row per (entity, cfCode, month), so no netting is lost.)
+        expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
       }
     }
     // ── Dynamic fallback: AZSEKER CF parser returned 0 entries on non-empty sheet ──
