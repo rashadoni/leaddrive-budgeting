@@ -34,5 +34,10 @@ Unit (PLF subtotal parser, `listFinancialFacts` range math, resolver branch); ha
 5. Archived 5,181 rows — keep (reversible) vs purge (recommend keep until parity signed off).
 6. Real budget is only partial (sales-plan, revenue-only) — execution % meaningful only for revenue until a full budget is loaded.
 
+## Decision log
+- **2026-06-02 — Option X confirmed (not Y).** Considered Option Y (tag plans `kind: actual|budget`, terminal filters by kind, keep rich lines). Rejected: the only real advantage (avoid subtotal-derivation granularity loss) dissolves because the BS/CF resolvers consume **subtotals only**. Option X (period-facts) wins on: follows the existing `pl_ebitda` precedent; more correct (actuals are period-scoped facts, not plan rows); flag-gated **dual-read** gives bit-perfect verifiability before flip; avoids Y's silent double-count failure mode (a forgotten `kind` filter). Tier-0 stress-test; Codex second opinion attempted but its MCP was unreachable (model unsupported for this account) — decided on own analysis, confidence High.
+- **2026-06-02 — Phase 1 derivation DRY-RUN verified bit-perfect.** `scripts/phase1-derive-facts-dryrun.cjs`: derived totals (Revenue 9,527,380.56 / COGS 7,762,027 / OpEx 4,538,918.29) sum to **21,828,325.86 == Phase-0 checksum**; BS 45 keys + CF 12 keys reconcile; `account.accountType` grouping == `lineType` for this data. NO writes.
+- **Phase 1 refinement:** the P&L fact vocab must include the FX split (`pl_imported_cogs/pl_domestic_cogs/pl_imported_opex/pl_domestic_opex`) and `pl_da` (D&A add-back) that `budgetLineResolver` computes per-line — so the writer must **reuse the resolver's per-line classification** (extract it into a shared pure fn) rather than re-implement, to stay bit-perfect.
+
 ## Critical files
 `src/lib/risk/recompute-data-source.ts`, `recompute-resolvers-b.ts`, `company-financials-snapshot.ts`; `src/lib/onboarding/ai-import/production-adapter-handlers-financial.ts`, `sheet-classifier.ts`, `sheet-meta-extractor.ts`; `src/lib/onboarding/adapters/azseker-plf.ts`, `actuals-import-batch.ts`, `import-batch.ts`.
