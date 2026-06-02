@@ -3357,7 +3357,8 @@
     "expandedTechnicalDetail": "Техническая деталь",
     "ctaManual": "Ввести вручную",
     "ctaImport": "AI-импорт",
-    "ctaFeed": "Настроить источник"
+    "ctaFeed": "Настроить источник",
+    "clearAllFilters": "Сбросить все фильтры"
   },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",

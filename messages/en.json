@@ -3357,7 +3357,8 @@
     "expandedTechnicalDetail": "Technical detail",
     "ctaManual": "Enter manually",
     "ctaImport": "AI Import",
-    "ctaFeed": "Configure source"
+    "ctaFeed": "Configure source",
+    "clearAllFilters": "Clear all filters"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",

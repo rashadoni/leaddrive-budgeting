@@ -3357,7 +3357,8 @@
     "expandedTechnicalDetail": "Texniki təfərrüat",
     "ctaManual": "Əl ilə daxil et",
     "ctaImport": "AI idxal",
-    "ctaFeed": "Mənbə tənzimlə"
+    "ctaFeed": "Mənbə tənzimlə",
+    "clearAllFilters": "Bütün filtrləri təmizlə"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",

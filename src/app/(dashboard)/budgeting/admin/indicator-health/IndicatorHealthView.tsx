@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
-import { ArrowRight, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
+import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
 
 /** Per-category remediation CTAs → the admin tool that resolves that gap, so
  *  the user can jump straight from "what to do" to where they do it. Only
@@ -263,12 +263,12 @@ export function IndicatorHealthView() {
       {/* ── Summary tiles ────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
-          { label: t("summaryGreen"), value: summary.green, sub: `${greenPct}%`, dot: "bg-emerald-500", num: "text-emerald-600 dark:text-emerald-400" },
-          { label: t("summaryAmber"), value: summary.amber, sub: null, dot: "bg-amber-500", num: "text-amber-600 dark:text-amber-400" },
-          { label: t("summaryRed"), value: summary.red, sub: null, dot: "bg-rose-500", num: "text-rose-600 dark:text-rose-400" },
-          { label: t("summaryUnknown"), value: summary.unknown, sub: null, dot: "bg-slate-400", num: "text-slate-600 dark:text-slate-300" },
+          { label: t("summaryGreen"), value: summary.green, sub: `${greenPct}%`, dot: "bg-emerald-500", num: "text-emerald-600 dark:text-emerald-400", accent: "border-l-emerald-500" },
+          { label: t("summaryAmber"), value: summary.amber, sub: null, dot: "bg-amber-500", num: "text-amber-600 dark:text-amber-400", accent: "border-l-amber-500" },
+          { label: t("summaryRed"), value: summary.red, sub: null, dot: "bg-rose-500", num: "text-rose-600 dark:text-rose-400", accent: "border-l-rose-500" },
+          { label: t("summaryUnknown"), value: summary.unknown, sub: null, dot: "bg-slate-400", num: "text-slate-600 dark:text-slate-300", accent: "border-l-slate-400" },
         ].map((tile) => (
-          <div key={tile.label} className="rounded-lg border bg-card shadow-sm p-4">
+          <div key={tile.label} className={`rounded-lg border border-l-[3px] ${tile.accent} bg-card shadow-sm p-4 transition-shadow hover:shadow-md`}>
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               <span className={`h-2 w-2 rounded-full ${tile.dot}`} aria-hidden />
               {tile.label}
@@ -277,12 +277,15 @@ export function IndicatorHealthView() {
             {tile.sub && <div className="text-[10px] text-muted-foreground mt-0.5">{tile.sub}</div>}
           </div>
         ))}
-        <div className="rounded-lg border bg-card shadow-sm p-4">
+        <div className="rounded-lg border border-l-[3px] border-l-primary bg-card shadow-sm p-4 transition-shadow hover:shadow-md">
           <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
             {t("summaryComputed")}
           </div>
           <div className="text-2xl font-bold tabular-nums mt-1.5">{computedPct}%</div>
-          <div className="text-[10px] text-muted-foreground mt-0.5">
+          <div className="mt-2 h-1.5 w-full rounded-full bg-muted overflow-hidden" aria-hidden>
+            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${computedPct}%` }} />
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1">
             {t("summaryTotalIvs", { n: summary.totalIvs })}
           </div>
         </div>
@@ -383,7 +386,7 @@ export function IndicatorHealthView() {
         <button
           type="button"
           onClick={() => setFilterCategory(null)}
-          className={`px-2 py-1 rounded text-xs border ${
+          className={`px-2 py-1 rounded text-xs border transition-colors hover:bg-muted/60 ${
             !filterCategory ? "bg-muted" : ""
           }`}
         >
@@ -397,9 +400,9 @@ export function IndicatorHealthView() {
               key={cat}
               type="button"
               onClick={() => setFilterCategory(cat)}
-              className={`px-2.5 py-1 rounded-md text-xs ${s.cls} ${
+              className={`px-2.5 py-1 rounded-md text-xs ${s.cls} transition-all hover:brightness-95 dark:hover:brightness-110 ${
                 filterCategory === cat ? "ring-2 ring-primary/60" : ""
-              } transition-all`}
+              }`}
             >
               {t.has(`category.${cat}` as never) ? t(`category.${cat}` as never) : s.label} ({count})
             </button>
@@ -466,8 +469,29 @@ export function IndicatorHealthView() {
             })}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-muted-foreground italic">
-                  {hasActiveFilter ? t("emptyFiltered") : t("emptyNoGaps")}
+                <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                  {hasActiveFilter ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <Search className="h-6 w-6 text-muted-foreground/40" aria-hidden />
+                      <p className="text-sm">{t("emptyFiltered")}</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery("")
+                          setFilterCategory(null)
+                          setEntityFilter(null)
+                        }}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        {t("clearAllFilters")}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <CheckCircle2 className="h-6 w-6 text-emerald-500" aria-hidden />
+                      <p className="text-sm">{t("emptyNoGaps")}</p>
+                    </div>
+                  )}
                 </td>
               </tr>
             )}
@@ -637,8 +661,25 @@ function Row({
             )}
           </div>
         </td>
-        <td className="p-2 text-[11px] text-foreground/80 max-w-sm whitespace-normal break-words">
-          {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
+        <td className="p-2 text-[11px] text-foreground/80 max-w-sm align-top">
+          <p className="whitespace-normal break-words leading-relaxed">
+            {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
+          </p>
+          {(CATEGORY_CTA[g.category] ?? []).length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid={`cta-${rowKey(g)}`}>
+              {CATEGORY_CTA[g.category].map((cta) => (
+                <Link
+                  key={cta.href + cta.labelKey}
+                  href={cta.href}
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary ring-1 ring-primary/15 hover:bg-primary/20 hover:ring-primary/30 transition-colors"
+                >
+                  {t(cta.labelKey as never)}
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              ))}
+            </div>
+          )}
         </td>
       </tr>
       {expanded && (
@@ -652,20 +693,6 @@ function Row({
               <p className="text-foreground/90 leading-relaxed">
                 {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
               </p>
-              {(CATEGORY_CTA[g.category] ?? []).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2" data-testid={`cta-${rowKey(g)}`}>
-                  {CATEGORY_CTA[g.category].map((cta) => (
-                    <Link
-                      key={cta.href + cta.labelKey}
-                      href={cta.href}
-                      className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                    >
-                      {t(cta.labelKey as never)}
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  ))}
-                </div>
-              )}
               <div className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground/70">
                 {t("expandedTechnicalDetail")}
               </div>
