@@ -22,6 +22,16 @@ import {
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
 import { parseIcmalSheet } from "../adapters/azseker-farming-strategy"
 import {
+  parseIcmalBudgetLines,
+  allocateIcmalBudget,
+  buildIcmalMonthlyRows,
+} from "../adapters/icmal-budget"
+import {
+  createCoACache,
+  preWarmCoACache,
+  resolveOrCreateAccountId,
+} from "../upsert-chart-of-account"
+import {
   canonicalizeHeaders,
   normalizeRow,
   findWorkbookDuplicates,
@@ -37,7 +47,7 @@ import {
   type SalesForecastRow,
 } from "../sales-forecast-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
-import { type OrgContext } from "./prod-adapter-context"
+import { type OrgContext, resolveOrgContext } from "./prod-adapter-context"
 
 export function makeLandRegistryHandler(
   prisma: PrismaClient,
@@ -249,30 +259,106 @@ export function makeForwardForecastHandler(
       input.sheetName,
       input.XLSX,
     )
+    // İcmal also IS the budget: parse the import-year column into operating
+    // budget lines (single source of truth: adapters/icmal-budget.ts). Empty
+    // for non-İcmal INFO_SUMMARY sheets (no year-pair header / group tokens),
+    // so they safely skip the budget write.
+    const aoaForBudget = input.XLSX.utils.sheet_to_json(
+      input.workbook.Sheets[input.sheetName],
+      { header: 1 },
+    ) as unknown[][]
+    const budgetMonthly = buildIcmalMonthlyRows(
+      allocateIcmalBudget(parseIcmalBudgetLines(aoaForBudget, input.year).lines),
+    )
+
     return {
-      summary: `${parsed.forecast.length} forecast years`,
+      summary:
+        `${parsed.forecast.length} forecast years` +
+        (budgetMonthly.length ? ` + İcmal budget (${budgetMonthly.length} monthly lines)` : ""),
       itemCount: parsed.forecast.length,
       warnings: parsed.warnings,
       applyToDb: async (tx: Prisma.TransactionClient) => {
-        if (parsed.forecast.length === 0) return { rowsInserted: 0 }
-        const org = await tx.organization.findUnique({
-          where: { id: ctx.organizationId },
-          select: { settings: true },
-        })
-        const prev = (org?.settings ?? {}) as Record<string, unknown>
-        await tx.organization.update({
-          where: { id: ctx.organizationId },
-          data: {
-            settings: {
-              ...prev,
-              forwardForecast: {
-                years: parsed.forecast,
-                source: `multi-import:${input.sheetName}`,
-              },
-            } as unknown as Prisma.InputJsonValue,
-          },
-        })
-        return { rowsInserted: parsed.forecast.length }
+        let written = 0
+        // (1) forward-forecast → Organization.settings (multi-year outlook).
+        if (parsed.forecast.length > 0) {
+          const org = await tx.organization.findUnique({
+            where: { id: ctx.organizationId },
+            select: { settings: true },
+          })
+          const prev = (org?.settings ?? {}) as Record<string, unknown>
+          await tx.organization.update({
+            where: { id: ctx.organizationId },
+            data: {
+              settings: {
+                ...prev,
+                forwardForecast: {
+                  years: parsed.forecast,
+                  source: `multi-import:${input.sheetName}`,
+                },
+              } as unknown as Prisma.InputJsonValue,
+            },
+          })
+          written += parsed.forecast.length
+        }
+
+        // (2) İcmal year-column → kind="budget" plan as monthly BudgetLines
+        // (idempotent REPLACE). Makes the 2026 budget reproducible on
+        // re-import — previously a one-off script. Skips when not İcmal-shaped.
+        if (budgetMonthly.length > 0) {
+          const budgetCtx = await resolveOrgContext(
+            tx as unknown as PrismaClient,
+            ctx.organizationId,
+            input.year,
+            "budget",
+          )
+          const coaCache = createCoACache()
+          preWarmCoACache(
+            coaCache,
+            ctx.organizationId,
+            Array.from(budgetCtx.coaByCode.entries()).map(([code, id]) => ({ code, id })),
+          )
+          const specs = new Map<string, { name: string; accountType: string }>()
+          for (const r of budgetMonthly) {
+            if (!specs.has(r.coaCode)) specs.set(r.coaCode, { name: r.name, accountType: r.lineType })
+          }
+          const accountIdByCode = new Map<string, string>()
+          for (const [code, spec] of specs) {
+            accountIdByCode.set(
+              code,
+              await resolveOrCreateAccountId(tx, coaCache, {
+                organizationId: ctx.organizationId,
+                code,
+                defaultName: spec.name,
+                defaultAccountType: spec.accountType,
+              }),
+            )
+          }
+          // REPLACE: the budget plan holds only this İcmal budget.
+          await tx.budgetLine.deleteMany({ where: { planId: budgetCtx.planId } })
+          const data = budgetMonthly
+            .map((r) => {
+              const companyId = budgetCtx.codeToId.get(r.companyCode)
+              const accountId = accountIdByCode.get(r.coaCode)
+              if (!companyId || !accountId) return null
+              return {
+                organizationId: ctx.organizationId,
+                planId: budgetCtx.planId,
+                companyId,
+                accountId,
+                lineType: r.lineType,
+                plannedAmount: r.plannedAmount,
+                monthIndex: r.monthIndex,
+                currencyCode: "AZN",
+                isAutoPlanned: false,
+                isAutoActual: false,
+                sourceDocument: `multi-import:İcmal-budget#${input.sheetName}`,
+              }
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null)
+          await tx.budgetLine.createMany({ data })
+          written += data.length
+        }
+        return { rowsInserted: written }
       },
     }
   }
