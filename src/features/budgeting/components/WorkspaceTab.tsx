@@ -421,7 +421,6 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
         const netPosition = computeOperatingProfit(totalRevenuePlanned, totalCOGSPlanned, totalCostPlanned)
         const grossMarginPct = totalRevenuePlanned > 0 ? ((totalRevenuePlanned - totalCOGSPlanned) / totalRevenuePlanned * 100) : 0
         const revExecPct = totalRevenuePlanned > 0 ? Math.round((totalRevenueActual / totalRevenuePlanned) * 100) : 0
-        const lineCount = lines.length
         return (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Revenue Budget */}
@@ -433,7 +432,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 </div>
               </div>
               <div className="text-2xl font-bold tabular-nums text-indigo-700 dark:text-indigo-300">{fmtK(totalRevenuePlanned)} ₼</div>
-              <div className="text-xs text-muted-foreground mt-1">{new Set(revenueLines.map((l: BudgetLine) => `${l.category}||${l.lineType}`)).size} {t("colCategory").toLowerCase()} · {revExecPct}% {t("kpiExecution").toLowerCase()}</div>
+              <div className="text-xs text-muted-foreground mt-1">{byCategory.filter((c: BudgetCategoryRow) => c.lineType === "revenue").length} {t("colCategory").toLowerCase()} · {revExecPct}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* COGS Budget */}
             <div className="rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-5">
@@ -455,7 +454,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 </div>
               </div>
               <div className="text-2xl font-bold tabular-nums text-orange-700 dark:text-orange-300">{fmtK(totalCostPlanned)} ₼</div>
-              <div className="text-xs text-muted-foreground mt-1">{new Set(expenseLines.map((l: BudgetLine) => `${l.category}||${l.lineType}`)).size} {t("colCategory").toLowerCase()} · {Math.round(expExecPct)}% {t("kpiExecution").toLowerCase()}</div>
+              <div className="text-xs text-muted-foreground mt-1">{byCategory.filter((c: BudgetCategoryRow) => c.lineType === "expense").length} {t("colCategory").toLowerCase()} · {Math.round(expExecPct)}% {t("kpiExecution").toLowerCase()}</div>
             </div>
             {/* Net Budget Position */}
             <div className={`rounded-xl p-5 ${netPosition >= 0 ? "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800" : "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"}`}>
@@ -466,7 +465,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 </div>
               </div>
               <div className={`text-2xl font-bold tabular-nums ${netPosition >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{netPosition < 0 ? "(" + fmtK(Math.abs(netPosition)) + ")" : fmtK(netPosition)} ₼</div>
-              <div className="text-xs text-muted-foreground mt-1">{lineCount} {t("colCategory").toLowerCase()} · {t("kpiVariance")}: {totalVariance >= 0 ? "+" : ""}{fmtK(totalVariance)} ₼</div>
+              <div className="text-xs text-muted-foreground mt-1">{byCategory.length} {t("colCategory").toLowerCase()} · {t("kpiVariance")}: {totalVariance >= 0 ? "+" : ""}{fmtK(totalVariance)} ₼</div>
             </div>
           </div>
         )
