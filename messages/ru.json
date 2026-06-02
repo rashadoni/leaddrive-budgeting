@@ -836,6 +836,7 @@
     "compActualLabel": "Факт",
     "compNoActuals": "Факта нет",
     "compExecutionSuffix": "исполнение",
+    "execContextNote": "Исполнение = факт ÷ годовой бюджет. Факт загружен за {covered} из {total} мес — низкий % в начале года нормален для сезонной (урожайной) выручки.",
     "compDeltaLabel": "Разница",
     "pnlWaterfallTitle": "Водопад P&L",
     "pnlWaterfallSubtitle": "Выручка → Прямые расходы → Валовая прибыль → Накладные → EBITDA (план)",

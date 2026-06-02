@@ -836,6 +836,7 @@
     "compActualLabel": "Faktiki",
     "compNoActuals": "Faktiki yoxdur",
     "compExecutionSuffix": "icra",
+    "execContextNote": "İcra = faktiki ÷ illik büdcə. Faktiki məlumat {total} aydan {covered} ayını əhatə edir — mövsümi (məhsul yığımına bağlı) gəlir üçün ilin əvvəlində aşağı % normaldır.",
     "compDeltaLabel": "Fərq",
     "pnlWaterfallTitle": "P&L şəlaləsi",
     "pnlWaterfallSubtitle": "Gəlir → Birbaşa xərclər → Ümumi mənfəət → Ümumi xərclər → EBITDA (plan)",

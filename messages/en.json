@@ -836,6 +836,7 @@
     "compActualLabel": "Actual",
     "compNoActuals": "No actuals",
     "compExecutionSuffix": "execution",
+    "execContextNote": "Execution = realized actual ÷ full-year budget. Actuals cover {covered} of {total} months — a low early-year % is normal for seasonal (harvest-weighted) revenue.",
     "compDeltaLabel": "Delta",
     "pnlWaterfallTitle": "P&L waterfall",
     "pnlWaterfallSubtitle": "Revenue → Direct costs → Gross profit → Overhead → EBITDA (plan)",

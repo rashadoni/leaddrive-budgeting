@@ -13,7 +13,7 @@ import React, { useState, useMemo, useCallback } from "react"
 import { useTranslations } from "next-intl"
 import {
   Pencil, Plus, Trash2, AlertCircle, Banknote, BarChart2, CheckCircle,
-  ChevronDown, ChevronRight, DollarSign, LayoutGrid, Link2, List, Loader2,
+  ChevronDown, ChevronRight, DollarSign, Info, LayoutGrid, Link2, List, Loader2,
   MessageSquare, TrendingDown, TrendingUp,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -251,7 +251,11 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const totCOGSPlanned = cogsLines.reduce((s: number, l: BudgetLine) => s + leafPlanned(l), 0)
   const totCOGSForecast = cogsLines.reduce((s: number, l: BudgetLine) => s + leafForecast(l), 0)
 
-  const { totalPlanned = 0, totalForecast = 0, totalActual = 0, totalVariance = 0, executionPct = 0, expenseExecutionPct = 0, elapsedPct = 100, autoActualTotal = 0, yearEndProjection = 0, byCategory = [], totalRevenuePlanned = 0, totalRevenueActual = 0, totalRevenueForecast = 0, totalExpensePlanned = 0, totalExpenseActual = 0, totalExpenseForecast = 0, totalCOGSPlanned = 0, totalCOGSActual = 0, totalCOGSForecast = 0, grossProfit = 0, grossProfitActual = 0, margin = 0, marginActual = 0, marginForecast = 0 } = analytics ?? {}
+  const { totalPlanned = 0, totalForecast = 0, totalActual = 0, totalVariance = 0, executionPct = 0, expenseExecutionPct = 0, elapsedPct = 100, autoActualTotal = 0, yearEndProjection = 0, byCategory = [], totalRevenuePlanned = 0, totalRevenueActual = 0, totalRevenueForecast = 0, totalExpensePlanned = 0, totalExpenseActual = 0, totalExpenseForecast = 0, totalCOGSPlanned = 0, totalCOGSActual = 0, totalCOGSForecast = 0, grossProfit = 0, grossProfitActual = 0, margin = 0, marginActual = 0, marginForecast = 0, actualMonthsCovered = 0, periodMonths = 12 } = analytics ?? {}
+
+  // Execution-% framing: on a budget plan whose actuals cover only part of the
+  // period, the raw % reads alarmingly low. Surface the basis honestly.
+  const showExecContext = actualMonthsCovered > 0 && actualMonthsCovered < periodMonths
 
   // Inline edit handlers
   const startEdit = (id: string, field: string, currentVal: number) => {
@@ -415,6 +419,15 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
     <div className="space-y-6">
       {/* ROW 0: Budget Change History */}
       <BudgetChangeHistory planId={planId} />
+
+      {/* Execution-% context — frames a partial-year actual vs the full-year
+          budget so the % isn't misread as a low full-year execution. */}
+      {showExecContext && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{t("execContextNote", { covered: actualMonthsCovered, total: periodMonths })}</span>
+        </div>
+      )}
 
       {/* ROW 1: 4 Dark KPI Scorecards (Power BI style) */}
       {(() => {

@@ -115,6 +115,10 @@ export async function GET(req: NextRequest) {
   let planActualRevenue = 0
   let planActualExpense = 0
   let planActualCOGS = 0
+  // How many distinct months the ACTUAL side actually covers — so the UI can
+  // frame execution % honestly (e.g. "факт за 4 мес из 12") instead of letting
+  // a partial-year actual read as a low full-year execution.
+  let actualMonthsCovered = 0
   if (plan.kind === "budget") {
     const actualsPlan = await prisma.budgetPlan.findFirst({
       where: { organizationId: orgId, year: plan.year, kind: "actual", deletedAt: null },
@@ -129,14 +133,17 @@ export async function GET(req: NextRequest) {
           deletedAt: null,
           ...(companyFilter.kind === "single" ? { companyId: { in: companyFilter.companyIds } } : {}),
         },
-        select: { lineType: true, plannedAmount: true, account: { select: { accountType: true } } },
+        select: { lineType: true, plannedAmount: true, monthIndex: true, account: { select: { accountType: true } } },
       })
+      const monthsWithData = new Set<number>()
       for (const l of aLines) {
         const t = l.account?.accountType ?? l.lineType
         if (t === "revenue") planActualRevenue += l.plannedAmount
         else if (t === "cogs") planActualCOGS += l.plannedAmount
         else if (t === "expense") planActualExpense += l.plannedAmount
+        if (l.plannedAmount !== 0 && l.monthIndex != null) monthsWithData.add(l.monthIndex)
       }
+      actualMonthsCovered = monthsWithData.size
     }
   }
 
@@ -746,6 +753,11 @@ export async function GET(req: NextRequest) {
       executionPct,
       expenseExecutionPct,
       revenueExecutionPct,
+      // Execution-% framing: how many months the ACTUAL side covers vs the
+      // plan period, so the UI can show "факт за N мес из M" and avoid a
+      // partial-year actual reading as a low full-year execution.
+      actualMonthsCovered,
+      periodMonths,
       elapsedPct: Math.round(elapsedPct * 10) / 10,
       autoActualTotal,
       yearEndProjection,

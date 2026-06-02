@@ -125,6 +125,10 @@ export interface BudgetAnalytics {
   executionPct: number
   expenseExecutionPct: number
   revenueExecutionPct: number
+  // Execution-% framing (budget plans): how many months the ACTUAL side
+  // covers vs the plan period, so the UI can show "факт за N из M мес".
+  actualMonthsCovered?: number
+  periodMonths?: number
   elapsedPct: number
   autoActualTotal: number
   yearEndProjection: number
