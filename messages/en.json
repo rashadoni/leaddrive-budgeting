@@ -1039,6 +1039,11 @@
       "sourceNote": "Source / note",
       "sourceNotePlaceholder": "e.g. Q1 internal report, ERP export 2026-03-15",
       "savePreviewLabel": "Will save",
+      "actions": "Actions",
+      "edit": "Edit",
+      "delete": "Delete",
+      "confirmDelete": "Delete this entry?",
+      "deleted": "Entry deleted.",
       "range": {
         "label": "Typical range",
         "ok": "Within the typical range",

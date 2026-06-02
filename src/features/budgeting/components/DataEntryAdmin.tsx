@@ -34,9 +34,9 @@
  */
 
 import Link from "next/link"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { Brain, ArrowRight, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react"
+import { Brain, ArrowRight, CheckCircle2, AlertTriangle, XCircle, Info, Pencil, Trash2, Check } from "lucide-react"
 import {
   OPERATIONAL_METRIC_RULES,
   ESG_DISCLOSURE_RULES,
@@ -263,6 +263,8 @@ function OperationalFactsTab({
   const [rows, setRows] = useState<OperationalFactRow[]>([])
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState<FeedbackState>({ kind: "idle" })
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const formRef = useRef<HTMLElement>(null)
   const locale = useLocale()
 
   const rule = OPERATIONAL_METRIC_RULES.find((r) => r.metric === metric)
@@ -392,6 +394,46 @@ function OperationalFactsTab({
     }
   }
 
+  // Load a recent row back into the form to correct it (re-save overwrites the
+  // same company+metric+date via the POST upsert); scroll the form into view.
+  const editFact = (r: OperationalFactRow) => {
+    setMetric(r.metric)
+    setValue(String(r.value))
+    setDate(r.date.slice(0, 10))
+    setSourceNote(r.source ?? "")
+    setConfirmDeleteId(null)
+    setFeedback({ kind: "idle" })
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
+  // Undo a manual entry — hard-delete via the [id] endpoint (admin-gated,
+  // audit-logged), then refresh the list.
+  const deleteFact = async (id: string) => {
+    try {
+      const res = await fetch(`/api/operational-facts/${id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const j = (await res
+          .json()
+          .catch(() => ({}))) as Record<string, unknown>
+        setFeedback({
+          kind: "error",
+          message: (j.error as string) ?? `HTTP ${res.status}`,
+        })
+        return
+      }
+      setConfirmDeleteId(null)
+      setFeedback({ kind: "saved", message: t("deleted") })
+      await refresh()
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   if (companies.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">{t("noCompanies")}</p>
@@ -412,7 +454,10 @@ function OperationalFactsTab({
         t={t}
       />
 
-      <section className="bg-card border border-border rounded-md p-4 space-y-4">
+      <section
+        ref={formRef}
+        className="bg-card border border-border rounded-md p-4 space-y-4"
+      >
         <h2 className="text-sm font-semibold">{t("operational.formTitle")}</h2>
 
         {/* Step 1 — which company + which metric. */}
@@ -550,6 +595,9 @@ function OperationalFactsTab({
                 <th className="text-right font-normal py-1.5">{t("value")}</th>
                 <th className="text-left font-normal py-1.5">{t("unit")}</th>
                 <th className="text-left font-normal py-1.5">{t("source")}</th>
+                <th className="text-right font-normal py-1.5">
+                  {t("actions")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -564,6 +612,57 @@ function OperationalFactsTab({
                     title={r.source ?? undefined}
                   >
                     {r.source ?? "-"}
+                  </td>
+                  <td className="py-1 text-right whitespace-nowrap">
+                    {confirmDeleteId === r.id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[10px] text-muted-foreground">
+                          {t("confirmDelete")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void deleteFact(r.id)}
+                          title={t("delete")}
+                          aria-label={t("delete")}
+                          data-testid={`fact-delete-confirm-${r.id}`}
+                          className="p-1 rounded text-red-600 hover:bg-red-500/10 transition-colors motion-safe:active:scale-95"
+                        >
+                          <Check className="size-3.5" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          title={t("cancel")}
+                          aria-label={t("cancel")}
+                          className="p-1 rounded text-muted-foreground hover:bg-accent transition-colors"
+                        >
+                          <XCircle className="size-3.5" aria-hidden />
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => editFact(r)}
+                          title={t("edit")}
+                          aria-label={t("edit")}
+                          data-testid={`fact-edit-${r.id}`}
+                          className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors motion-safe:active:scale-95"
+                        >
+                          <Pencil className="size-3.5" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(r.id)}
+                          title={t("delete")}
+                          aria-label={t("delete")}
+                          data-testid={`fact-delete-${r.id}`}
+                          className="p-1 rounded text-muted-foreground hover:text-red-600 hover:bg-red-500/10 transition-colors motion-safe:active:scale-95"
+                        >
+                          <Trash2 className="size-3.5" aria-hidden />
+                        </button>
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1039,6 +1039,11 @@
       "sourceNote": "Mənbə / qeyd",
       "sourceNotePlaceholder": "məs. Q1 daxili hesabat, ERP ixracı 2026-03-15",
       "savePreviewLabel": "Yadda saxlanılacaq",
+      "actions": "Əməliyyatlar",
+      "edit": "Redaktə et",
+      "delete": "Sil",
+      "confirmDelete": "Bu qeyd silinsin?",
+      "deleted": "Qeyd silindi.",
       "range": {
         "label": "Tipik aralıq",
         "ok": "Tipik aralıqdadır",

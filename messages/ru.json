@@ -1039,6 +1039,11 @@
       "sourceNote": "Источник / комментарий",
       "sourceNotePlaceholder": "Например: Q1 internal report, ERP export 2026-03-15",
       "savePreviewLabel": "Будет сохранено",
+      "actions": "Действия",
+      "edit": "Изменить",
+      "delete": "Удалить",
+      "confirmDelete": "Удалить запись?",
+      "deleted": "Запись удалена.",
       "range": {
         "label": "Типичный диапазон",
         "ok": "В типичном диапазоне",
