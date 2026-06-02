@@ -837,7 +837,7 @@ describe('createPrismaDataSource.listBudgetLines — month filter math (monthInd
     });
     expect(findMany).toHaveBeenCalledTimes(1);
     const where = findMany.mock.calls[0][0].where;
-    expect(where.plan).toEqual({ year: 2026 });
+    expect(where.plan).toEqual({ year: 2026, kind: "actual" });
     // monthIndex is the canonical month source; sortOrder is the legacy
     // fallback only when monthIndex is null.
     expect(where.OR).toEqual([
@@ -886,7 +886,7 @@ describe('createPrismaDataSource.listBudgetLines — month filter math (monthInd
       period: parsePeriod('2026'),
     });
     const where = findMany.mock.calls[0][0].where;
-    expect(where.plan).toEqual({ year: 2026 });
+    expect(where.plan).toEqual({ year: 2026, kind: "actual" });
     expect(where.OR).toBeUndefined();
     expect(where.sortOrder).toBeUndefined();
   });

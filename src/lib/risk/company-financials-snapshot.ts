@@ -46,8 +46,9 @@ export async function getCompanyFinancialsSnapshot(
     where: {
       companyId,
       // Filter via the related plan's `year` field through a Prisma
-      // relation predicate.
-      plan: { year },
+      // relation predicate. Decouple plan: ACTUAL plans only (no-op until a
+      // budget plan exists; existing plans default kind="actual").
+      plan: { year, kind: "actual" },
       // deletedAt:null REQUIRED (2026-05-31): BudgetLine uses soft-delete-
       // then-insert on re-import. Without this the snapshot sums archived
       // rows alongside live ones — measured ×6.27 budgetLine inflation on

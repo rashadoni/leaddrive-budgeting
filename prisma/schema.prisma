@@ -406,6 +406,11 @@ model BudgetPlan {
   month          Int?
   quarter        Int?
   status         String       @default("draft")
+  // Decouple plan (2026-06-02): distinguishes a plan holding ACTUAL realized
+  // results (the Risk Terminal's P&L/BS source) from one holding a forward
+  // BUDGET. Default "actual" so every pre-existing plan keeps feeding the
+  // terminal unchanged; only an explicit budget plan is excluded from it.
+  kind           String       @default("actual")
   notes          String?
   submittedBy    String?
   submittedAt    DateTime?
