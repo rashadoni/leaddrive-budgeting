@@ -107,6 +107,39 @@ export async function GET(req: NextRequest) {
 
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
+  // Y4 (decouple): a BUDGET plan's ACTUAL comes from the matching-year ACTUAL
+  // plan's lines — the real results live there now, not in BudgetActual. Only
+  // for kind="budget" plans (viewing an actual plan keeps actual=its own
+  // BudgetActual/auto so we don't report a meaningless 100%). Lowest priority:
+  // explicit manual/auto actuals still win when present.
+  let planActualRevenue = 0
+  let planActualExpense = 0
+  let planActualCOGS = 0
+  if (plan.kind === "budget") {
+    const actualsPlan = await prisma.budgetPlan.findFirst({
+      where: { organizationId: orgId, year: plan.year, kind: "actual", deletedAt: null },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    })
+    if (actualsPlan) {
+      const aLines = await prisma.budgetLine.findMany({
+        where: {
+          planId: actualsPlan.id,
+          organizationId: orgId,
+          deletedAt: null,
+          ...(companyFilter.kind === "single" ? { companyId: { in: companyFilter.companyIds } } : {}),
+        },
+        select: { lineType: true, plannedAmount: true, account: { select: { accountType: true } } },
+      })
+      for (const l of aLines) {
+        const t = l.account?.accountType ?? l.lineType
+        if (t === "revenue") planActualRevenue += l.plannedAmount
+        else if (t === "cogs") planActualCOGS += l.plannedAmount
+        else if (t === "expense") planActualExpense += l.plannedAmount
+      }
+    }
+  }
+
   // === Auto-planned: compute period months + load SalesForecast ===
   const { count: periodMonthCount, months: periodMonthNumbers } = getPeriodMonths(plan)
   const [salesForecasts, expenseForecasts] = hasAutoPlanned
@@ -277,9 +310,11 @@ export async function GET(req: NextRequest) {
     else manualExpenseActual += a.actualAmount
   }
 
-  const totalExpenseActual = autoActualExpense > 0 ? autoActualExpense : manualExpenseActual
-  const totalRevenueActual = autoActualRevenue > 0 ? autoActualRevenue : manualRevenueActual
-  const totalCOGSActual = autoActualCOGS > 0 ? autoActualCOGS : manualCOGSActual
+  // Priority: explicit auto-actual → manual actual (BudgetActual) → Y4 actuals
+  // plan fallback (a budget plan compared against the matching-year actuals).
+  const totalExpenseActual = autoActualExpense > 0 ? autoActualExpense : manualExpenseActual > 0 ? manualExpenseActual : planActualExpense
+  const totalRevenueActual = autoActualRevenue > 0 ? autoActualRevenue : manualRevenueActual > 0 ? manualRevenueActual : planActualRevenue
+  const totalCOGSActual = autoActualCOGS > 0 ? autoActualCOGS : manualCOGSActual > 0 ? manualCOGSActual : planActualCOGS
   const totalActual = totalExpenseActual  // OpEx only (COGS allocates same costs by service)
   const totalAllPlanned = totalExpensePlanned
 
