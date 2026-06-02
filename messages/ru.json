@@ -3354,7 +3354,10 @@
       "leaf-rollup": "Корректно для листовой компании — действий не требуется.",
       "code-bug": "Ошибка в коде — сообщить разработчикам."
     },
-    "expandedTechnicalDetail": "Техническая деталь"
+    "expandedTechnicalDetail": "Техническая деталь",
+    "ctaManual": "Ввести вручную",
+    "ctaImport": "AI-импорт",
+    "ctaFeed": "Настроить источник"
   },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",

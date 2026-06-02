@@ -3354,7 +3354,10 @@
       "leaf-rollup": "Correct for a leaf company — no action needed.",
       "code-bug": "Code bug — report to the dev team."
     },
-    "expandedTechnicalDetail": "Technical detail"
+    "expandedTechnicalDetail": "Technical detail",
+    "ctaManual": "Enter manually",
+    "ctaImport": "AI Import",
+    "ctaFeed": "Configure source"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",

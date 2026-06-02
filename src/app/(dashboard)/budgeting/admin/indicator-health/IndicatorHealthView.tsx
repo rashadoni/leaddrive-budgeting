@@ -1,7 +1,21 @@
 "use client"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
-import { ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
+import Link from "next/link"
+import { ArrowRight, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
+
+/** Per-category remediation CTAs → the admin tool that resolves that gap, so
+ *  the user can jump straight from "what to do" to where they do it. Only
+ *  categories with a real action get a link; formula-edge-case / leaf-rollup /
+ *  code-bug intentionally have none (self-resolve / no-op / dev issue). */
+const CATEGORY_CTA: Record<string, { href: string; labelKey: string }[]> = {
+  "ingest-gap": [{ href: "/budgeting/admin/ai-import", labelKey: "ctaImport" }],
+  "no-data": [
+    { href: "/budgeting/admin/data-entry", labelKey: "ctaManual" },
+    { href: "/budgeting/admin/ai-import", labelKey: "ctaImport" },
+  ],
+  "external-feed": [{ href: "/budgeting/admin/data-sources", labelKey: "ctaFeed" }],
+}
 
 /** Locale-aware display name — English fallback, never forced Russian. */
 function pickName(
@@ -638,6 +652,20 @@ function Row({
               <p className="text-foreground/90 leading-relaxed">
                 {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
               </p>
+              {(CATEGORY_CTA[g.category] ?? []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2" data-testid={`cta-${rowKey(g)}`}>
+                  {CATEGORY_CTA[g.category].map((cta) => (
+                    <Link
+                      key={cta.href + cta.labelKey}
+                      href={cta.href}
+                      className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      {t(cta.labelKey as never)}
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  ))}
+                </div>
+              )}
               <div className="mt-2 text-[10px] uppercase tracking-wider text-muted-foreground/70">
                 {t("expandedTechnicalDetail")}
               </div>

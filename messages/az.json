@@ -3354,7 +3354,10 @@
       "leaf-rollup": "Yarpaq şirkət üçün düzgündür — tədbir lazım deyil.",
       "code-bug": "Kod xətası — developerlərə bildirin."
     },
-    "expandedTechnicalDetail": "Texniki təfərrüat"
+    "expandedTechnicalDetail": "Texniki təfərrüat",
+    "ctaManual": "Əl ilə daxil et",
+    "ctaImport": "AI idxal",
+    "ctaFeed": "Mənbə tənzimlə"
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
