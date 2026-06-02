@@ -29,7 +29,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Every holding company with imports or exports books revenue and cost of goods in AZN through these rates. A 1% move in AZN/USD means ~$200K of difference per quarter for an import-dependent company.",
     },
     interpretation: {
-      en: "AZN is pegged to USD at 1.70. A sharp move >2% is an FX-shock signal for pharma importers.",
+      en: "AZN/USD runs on a peg. A sharp move >2% is an FX-shock signal for pharma importers.",
     },
     cadence: { en: "daily (business days)" },
   },
@@ -41,7 +41,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Brent is the base oil price for logistics (diesel), manufacturing (electricity) and food processing (packaging, raw-material transport). Gas drives the cost of heating plants and LNG imports.",
     },
     interpretation: {
-      en: "Brent above $100 — pressure on the margins of logistics and industrial companies (fuel +10% YoY).",
+      en: "Brent sustained above $80–100 — pressure on the margins of logistics and industrial companies (fuel, packaging, transport).",
     },
     cadence: { en: "monthly (some series weekly)" },
   },
@@ -53,7 +53,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "An index above 130 = a global food crisis, with worldwide procurement prices up ~10-15% YoY. AZSEKER-AZSF / CPC / MALT pay for imported raw materials at these prices.",
     },
     interpretation: {
-      en: "The index is 30.7% above the 2014-2016 base. Food processing is in the 🟡 amber zone — elevated margin pressure.",
+      en: "Index above 130 (2014-2016 base=100) → 🟡 elevated pressure on food-processing procurement prices.",
     },
     cadence: { en: "monthly (first Friday)" },
   },
@@ -65,7 +65,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Grain is the main raw input for food processing (flour, feed) and poultry farms. Soy/cotton signal demand for livestock feed and consumer demand for textiles.",
     },
     interpretation: {
-      en: "Wheat $234/t — below the $250 threshold 🟢. A good time to buy flour 6 months forward.",
+      en: "Wheat below the $250/t threshold → 🟢 a good window to buy flour 6 months forward.",
     },
     cadence: { en: "monthly (daily also available when needed)" },
   },
@@ -77,7 +77,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Copper and aluminum are raw inputs for ATL (pipes, polyethylene, metalworking). Steel and lumber drive construction cost and real-estate prices.",
     },
     interpretation: {
-      en: "Copper above $11k — 🔴 red — industrial cost pressure. ATL-DBZ / ATL-PMZ / ZTP buy copper at high prices.",
+      en: "Copper above the $11k/t threshold → 🔴 high raw-material pressure. ATL-DBZ / ATL-PMZ / ZTP buy copper at high prices.",
     },
     cadence: { en: "monthly" },
   },
@@ -89,7 +89,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Diesel fuels logistics trucking (LLS); gasoline fuels the passenger fleet. The BDI is the world cost of shipping bulk cargo (grain, metal, coal) by sea; it rises when global trade picks up.",
     },
     interpretation: {
-      en: "Diesel $1.04/L — 🔴 red — above the $0.90 threshold. Direct pressure on LLS logistics margins.",
+      en: "Diesel above the $0.90/L threshold → 🔴 direct pressure on LLS logistics margins.",
     },
     cadence: { en: "monthly" },
   },
@@ -101,7 +101,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "EDEN/FARM — Azərşəkər farms sow sugar beet and grain in these regions. A rainfall forecast <10mm = threat to the harvest; >30mm = good moisture. It also shifts hospitality demand (tourism in a hot week).",
     },
     interpretation: {
-      en: "Salyan — 53.8mm forecast over 14 days — 🟢 green. Sufficient moisture for beet at peak growing season.",
+      en: "Salyan rainfall forecast: >30mm over 14 days → 🟢 sufficient moisture for beet; <10mm → harvest threat.",
     },
     cadence: { en: "daily" },
   },
@@ -113,7 +113,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "A direct inflation benchmark for indexing the holding's product prices. Food CPI > 105% YoY = you can raise selling prices ~5% without losing competitiveness. Services drive hiring cost + office-rent pressure.",
     },
     interpretation: {
-      en: "Food CPI +5.5% YoY — 🟡 amber. Retail can lift price tags ~5% without risking traffic loss; food processing gets the same headroom.",
+      en: "Food CPI above 105% YoY → 🟡 retail can lift price tags without risking traffic loss; food processing gets the same headroom.",
     },
     cadence: { en: "monthly (~14th of the following month)" },
   },
@@ -125,7 +125,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "The trade balance is a macro signal for every import-dependent holding business (food processing, pharma, retail). A sharp drop in the surplus = AZN under pressure = currency risk.",
     },
     interpretation: {
-      en: "The 2025 Comtrade preview shows a negative balance (-$23.2bn). This is most likely a publication lag — not all oil is counted yet. We'll re-read it once the UN catches the data up.",
+      en: "Comtrade preview data may show a negative balance due to a publication lag (not all oil counted yet). We'll re-read it once the UN catches the data up.",
     },
     cadence: { en: "annual (2-3 quarter lag)" },
   },
@@ -137,7 +137,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Tourism drives hospitality (Hilton, Marriott, Four Seasons) and entertainment (concerts, F1, Crystal Hall). Education is the addressable market for private universities (ADA, Khazar) + children's retail.",
     },
     interpretation: {
-      en: "2.3M tourists a year — 🔴 red — below the pre-COVID 3.2M. Hospitality is in a recovery zone.",
+      en: "Tourist arrivals below the pre-COVID ~3.2M/year → 🔴 hospitality still in a recovery zone.",
     },
     cadence: { en: "annual (1-2 year lag)" },
   },
@@ -149,7 +149,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Broiler $/lb is a leading indicator for AZ poultry (Azersun, Gilan Quba). A U.S. drop below $1/lb predicts a demand-side shock in AZ within 1-2 months. Feed-chicks are the production pipeline.",
     },
     interpretation: {
-      en: "Broiler $0.67/lb — 🔴 red — below the $1.00 threshold. Margin-compression risk for all poultry farms globally (including AZ within 2 months).",
+      en: "Broiler below the $1.00/lb threshold → 🔴 margin-compression risk for poultry farms (AZ with a ~2-month lag).",
     },
     cadence: { en: "monthly + some series weekly" },
   },
@@ -161,7 +161,7 @@ export const SOURCE_PROSE_I18N: Record<string, SourceProseI18n> = {
       en: "Search demand is the earliest leading indicator of consumer behavior. A 30% drop in the food trend in a month = retail sales fall within 2-4 weeks. The travel trend leads hospitality bookings by ~30 days.",
     },
     interpretation: {
-      en: "Food search interest 79 — 🔴 red — below the 80 threshold. Retail can expect weak grocery-store traffic over the next 2-4 weeks.",
+      en: "Food search interest below 80 → 🔴 expect weak grocery-store traffic over the next 2-4 weeks.",
     },
     cadence: { en: "weekly" },
   },

@@ -3094,7 +3094,9 @@
     "section": {
       "whatItIs": "What it is",
       "businessValue": "Why the holding cares",
-      "freshExample": "Latest sample",
+      "freshExample": "Latest from source",
+      "asOf": "as of {date}",
+      "noData": "no recent data",
       "poweredIndicators": "Powers indicators ({n})",
       "recentCrossings": "Recent crossing events"
     },

@@ -3094,7 +3094,9 @@
     "section": {
       "whatItIs": "Что это",
       "businessValue": "Зачем холдингу",
-      "freshExample": "Свежий пример",
+      "freshExample": "Последнее из источника",
+      "asOf": "на {date}",
+      "noData": "нет свежих данных",
       "poweredIndicators": "Питает индикаторы ({n})",
       "recentCrossings": "Недавние crossing-события"
     },

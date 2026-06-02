@@ -63,7 +63,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "AZN_USD",
       value: "1.70",
       interpretation:
-        "AZN привязан к USD на уровне 1.70. Резкое движение >2% — сигнал валютного шока для фарм-импортёров.",
+        "Курс AZN/USD в режиме привязки. Резкое движение >2% — сигнал валютного шока для фарм-импортёров.",
     },
     cadenceRu: "ежедневно (рабочие дни)",
     vendorUrl: "https://www.cbar.az",
@@ -88,7 +88,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "BRENT_USD_BBL",
       value: "$105.88",
       interpretation:
-        "Brent выше $100 — давление на маржу логистических и промышленных компаний (топливо +10% YoY).",
+        "Brent устойчиво выше $80–100 — давление на маржу логистических и промышленных компаний (топливо, упаковка, транспорт).",
     },
     cadenceRu: "ежемесячно (некоторые серии — недельно)",
     vendorUrl: "https://www.eia.gov/opendata",
@@ -120,7 +120,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "FAO_FFPI_NOMINAL",
       value: "130.7",
       interpretation:
-        "Индекс на 30.7% выше базы 2014-2016. Пищепром в зоне 🟡 amber — повышенное давление на маржу.",
+        "Индекс выше 130 (база 2014-2016=100) → 🟡 повышенное давление на закупочные цены пищепрома.",
     },
     cadenceRu: "ежемесячно (первая пятница)",
     vendorUrl: "https://www.fao.org/worldfoodsituation/foodpricesindex/en/",
@@ -155,7 +155,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "WHEAT_USD_TONNE",
       value: "$234/t",
       interpretation:
-        "Пшеница $234/т — ниже $250 порога 🟢. Хорошее время для закупок муки на 6 мес вперёд.",
+        "Пшеница ниже $250/т порога → 🟢 благоприятное окно для закупок муки на 6 мес вперёд.",
     },
     cadenceRu: "ежемесячно (есть и ежедневно при необходимости)",
     vendorUrl: "https://finance.yahoo.com/quote/ZC=F",
@@ -189,7 +189,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "COPPER_USD_TONNE",
       value: "$13,878/t",
       interpretation:
-        "Медь выше $11k — 🔴 red — industrial cost pressure. ATL-DBZ / ATL-PMZ / ZTP закупают медь по высоким ценам.",
+        "Медь выше порога $11k/т → 🔴 высокое сырьевое давление. ATL-DBZ / ATL-PMZ / ZTP закупают медь по высоким ценам.",
     },
     cadenceRu: "ежемесячно",
     vendorUrl: "https://finance.yahoo.com/quote/HG=F",
@@ -214,7 +214,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "DIESEL_USD_LITRE",
       value: "$1.04/L",
       interpretation:
-        "Дизель $1.04/л — 🔴 red — выше $0.90 порога. Прямое давление на логистическую маржу LLS.",
+        "Дизель выше $0.90/л порога → 🔴 прямое давление на логистическую маржу LLS.",
     },
     cadenceRu: "ежемесячно",
     vendorUrl: "https://finance.yahoo.com/quote/HO=F",
@@ -244,7 +244,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "SALYAN_RAINFALL_MM_14D_FCST",
       value: "53.8 mm",
       interpretation:
-        "Сальян — прогноз 53.8mm на 14 дней — 🟢 green. Достаточная влага для свёклы на пик сезона роста.",
+        "Прогноз осадков по Сальяну: >30mm за 14 дней → 🟢 достаточная влага для свёклы; <10mm → угроза урожаю.",
     },
     cadenceRu: "ежедневно",
     vendorUrl: "https://open-meteo.com/",
@@ -277,7 +277,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "AZ_CPI_FOOD",
       value: "105.5% YoY",
       interpretation:
-        "Food CPI +5.5% YoY — 🟡 amber. Retail может повысить ценник на 5% без риска потери трафика; пищепром получит ту же надбавку.",
+        "Food CPI выше 105% YoY → 🟡 retail может повысить ценник без риска потери трафика; пищепром получит ту же надбавку.",
     },
     cadenceRu: "ежемесячно (~14 числа следующего месяца)",
     vendorUrl: "https://www.stat.gov.az/source/price_tarif/?lang=en",
@@ -306,7 +306,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "AZ_TRADE_BALANCE_USD",
       value: "-$23.2 bn",
       interpretation:
-        "Comtrade preview за 2025 показывает отрицательный баланс (-23 млрд USD). Скорее всего это лаг публикации — нефть не вся посчитана. Перечитаем когда UN докатит данные.",
+        "Предварительные данные Comtrade могут показывать отрицательный баланс из-за лага публикации (нефть посчитана не вся). Перечитаем, когда UN докатит данные.",
     },
     cadenceRu: "ежегодно (с лагом 2-3 квартала)",
     vendorUrl: "https://comtradeplus.un.org/",
@@ -341,7 +341,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "AZ_TOURISM_ARRIVALS",
       value: "2.3 M people",
       interpretation:
-        "2.3 млн туристов в год — 🔴 red — ниже доковидных 3.2 млн. Hospitality в зоне восстановления.",
+        "Турпоток ниже доковидных ~3.2 млн/год → 🔴 hospitality в зоне восстановления.",
     },
     cadenceRu: "ежегодно (с лагом 1-2 года)",
     vendorUrl: "https://data.worldbank.org/country/AZ",
@@ -373,7 +373,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "BROILER_PRICE_USD_LB",
       value: "$0.67/lb",
       interpretation:
-        "Бройлер $0.67/lb — 🔴 red — ниже $1.00 порога. Margin compression risk для всех птицефабрик глобально (включая AZ через 2 мес).",
+        "Бройлер ниже $1.00/lb порога → 🔴 риск сжатия маржи для птицефабрик (AZ с лагом ~2 мес).",
     },
     cadenceRu: "месячно + некоторые серии недельно",
     vendorUrl: "https://quickstats.nass.usda.gov/",
@@ -406,7 +406,7 @@ export const DATA_SOURCES_CATALOG: readonly DataSourceEntry[] = [
       metric: "AZ_TREND_FOOD_RETAIL",
       value: "79 of 100",
       interpretation:
-        "Food search interest 79 — 🔴 red — ниже 80 порога. Retail может ожидать слабый трафик в продуктовых магазинах в ближайшие 2-4 недели.",
+        "Индекс поискового интереса к еде ниже 80 → 🔴 ожидается слабый трафик в продуктовой рознице в ближайшие 2-4 недели.",
     },
     cadenceRu: "еженедельно",
     vendorUrl: "https://trends.google.com",

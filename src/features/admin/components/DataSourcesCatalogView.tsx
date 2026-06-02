@@ -129,9 +129,11 @@ function formatAge(
 function SourceCard({
   source,
   freshness,
+  live,
 }: {
   source: DataSourceEntry
   freshness: FreshnessSnapshot | undefined
+  live: { value: number; unit: string | null; datetime: string } | undefined
 }) {
   const t = useTranslations("adminDataSources")
   const locale = useLocale()
@@ -195,13 +197,27 @@ function SourceCard({
             {t("section.freshExample")}
           </h4>
           <div className="text-sm">
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 flex-wrap">
               <code className="text-xs font-mono text-gray-600">
                 {source.sampleLatest.metric}
               </code>
-              <span className="text-base font-bold text-gray-900">
-                {source.sampleLatest.value}
-              </span>
+              {live ? (
+                <>
+                  <span className="text-base font-bold text-gray-900">
+                    {live.value.toLocaleString(locale)}
+                    {live.unit ? ` ${live.unit}` : ""}
+                  </span>
+                  <span className="text-[11px] text-gray-500">
+                    {t("section.asOf", {
+                      date: new Date(live.datetime).toLocaleDateString(locale),
+                    })}
+                  </span>
+                </>
+              ) : (
+                <span className="text-sm italic text-gray-400">
+                  {t("section.noData")}
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-700 mt-1 italic">
               {L.interpretation}
@@ -317,6 +333,9 @@ export function DataSourcesCatalogView() {
   const [freshness, setFreshness] = useState<Record<string, FreshnessSnapshot>>(
     {},
   )
+  const [latest, setLatest] = useState<
+    Record<string, { value: number; unit: string | null; datetime: string }>
+  >({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -333,6 +352,17 @@ export function DataSourcesCatalogView() {
         // Silent — cards will render with "unknown" badges.
       })
       .finally(() => setLoading(false))
+  }, [])
+
+  // Real latest value per source (display metric) — replaces the hardcoded
+  // sample so the card shows a genuine, dated, source-attributed number.
+  useEffect(() => {
+    fetch("/api/admin/source-latest")
+      .then((r) => r.json())
+      .then((data) => setLatest(data.latest ?? {}))
+      .catch(() => {
+        // Silent — cards fall back to "no recent data".
+      })
   }, [])
 
   return (
@@ -364,6 +394,9 @@ export function DataSourcesCatalogView() {
             key={source.sourceCode}
             source={source}
             freshness={freshness[source.sourceCode]}
+            live={
+              latest[`${source.sourceCode}:${source.sampleLatest.metric}`]
+            }
           />
         ))}
       </div>

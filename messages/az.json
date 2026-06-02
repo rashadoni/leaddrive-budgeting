@@ -3094,7 +3094,9 @@
     "section": {
       "whatItIs": "Bu nədir",
       "businessValue": "Holdinqə nə üçün",
-      "freshExample": "Son nümunə",
+      "freshExample": "Mənbədən sonuncu",
+      "asOf": "{date} tarixinə",
+      "noData": "təzə məlumat yoxdur",
       "poweredIndicators": "Doldurur göstəriciləri ({n})",
       "recentCrossings": "Son kəsişmə hadisələri"
     },
