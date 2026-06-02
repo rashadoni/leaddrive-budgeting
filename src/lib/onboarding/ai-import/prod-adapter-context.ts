@@ -12,7 +12,6 @@ import { getLogger } from "@/lib/log"
 export const logger = getLogger("lib:prod-adapter")
 
 export const CF_SOURCE_TAG = "azseker-workbook-cf"
-const DEFAULT_PLAN_NAME = "Azərşəkər 2026 Budget"
 
 /** Per-orchestrator-call context — resolved lazily on first use. */
 export interface OrgContext {
@@ -47,6 +46,11 @@ export async function resolveOrgContext(
   prisma: PrismaClient,
   organizationId: string,
   year: number,
+  // Decouple plan: resolve the plan by KIND, not by name. "actual" (default)
+  // = the realized-results plan the terminal reads; "budget" = the forward
+  // budget. After the Y3 relabel, finding by name would have collided with the
+  // empty budget plan and mis-routed financial imports into it.
+  kind: "actual" | "budget" = "actual",
 ): Promise<OrgContext> {
   const azsekerCompanies = await prisma.company.findMany({
     where: { organizationId, code: { startsWith: "AZSEKER" } },
@@ -55,13 +59,11 @@ export async function resolveOrgContext(
   const codeToId = new Map<string, string>(
     azsekerCompanies.map((c: { id: string; code: string }) => [c.code, c.id]),
   )
+  const planName = `Azərşəkər ${year} ${kind === "budget" ? "Budget" : "Actuals"}`
+  // Prefer the data-holding plan of this kind (oldest = the canonical one).
   let plan = await prisma.budgetPlan.findFirst({
-    where: {
-      organizationId,
-      year,
-      name: DEFAULT_PLAN_NAME,
-      deletedAt: null,
-    },
+    where: { organizationId, year, kind, deletedAt: null },
+    orderBy: { createdAt: "asc" },
     select: { id: true },
   })
   if (!plan) {
@@ -69,9 +71,10 @@ export async function resolveOrgContext(
       data: {
         organizationId,
         year,
-        name: DEFAULT_PLAN_NAME,
+        name: planName,
         periodType: "annual",
         status: "draft",
+        kind,
       },
       select: { id: true },
     })
