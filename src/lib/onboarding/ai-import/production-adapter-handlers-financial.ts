@@ -451,8 +451,15 @@ export function makeCfHandler(
         })
       }
       for (let m = 0; m < 12; m++) {
-        const amount = entry.perMonth[m]
-        if (amount === 0) continue
+        // 2026-06-02 fix: perMonth is now SIGNED. Derive the per-MONTH
+        // direction from its sign — a positive month in an outflow line
+        // (refund/reversal) is booked as an inflow so it nets correctly,
+        // and vice-versa. amount stays a positive magnitude (the cash-flow
+        // page nets inflows − outflows on magnitudes).
+        const signed = entry.perMonth[m]
+        if (signed === 0) continue
+        const entryType: typeof entry.entryType = signed >= 0 ? "inflow" : "outflow"
+        const amount = Math.abs(signed)
         const period = `${input.year}-${String(m + 1).padStart(2, "0")}`
         const sourceId = `${input.entityCode}::${entry.code}`
         rows.push({
@@ -462,7 +469,7 @@ export function makeCfHandler(
           // Placeholder — overwritten in applyToDb resolution map.
           accountId: "",
           activityType: entry.activityType,
-          entryType: entry.entryType,
+          entryType,
           year: input.year,
           month: m + 1,
           amount,
@@ -472,7 +479,8 @@ export function makeCfHandler(
           sourceId,
         })
         const key = buildReconKey(CF_SOURCE_TAG, sourceId, period)
-        expectedSums.set(key, (expectedSums.get(key) ?? 0) + amount)
+        // Signed, so cross-file conflict detection compares true values.
+        expectedSums.set(key, (expectedSums.get(key) ?? 0) + signed)
       }
     }
     // ── Dynamic fallback: AZSEKER CF parser returned 0 entries on non-empty sheet ──

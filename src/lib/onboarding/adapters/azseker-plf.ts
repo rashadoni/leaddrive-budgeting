@@ -293,9 +293,9 @@ export function parsePlfCfSheet(
     const labelRaw = row[1]
     const label = typeof labelRaw === "string" ? labelRaw.trim() : code
 
-    // Determine inflow vs outflow from sign of values + code segment
-    // CF.XX.01.XX = inflow segment (CF.01.01.XX = inflow from operations)
-    // CF.XX.02.XX = outflow segment (CF.01.02.XX = outflow from operations)
+    // Default entryType for the LINE from its code segment (used downstream
+    // only for the account-type classification, inflow→revenue/outflow→expense).
+    // CF.XX.01.XX = inflow segment; CF.XX.02.XX = outflow segment.
     const segMatch = code.match(/^CF\.\d{2}\.(\d{2})\./)
     const segment = segMatch ? segMatch[1] : null
     let entryType: CfEntryType
@@ -311,11 +311,18 @@ export function parsePlfCfSheet(
       entryType = sum >= 0 ? "inflow" : "outflow"
     }
 
+    // 2026-06-02 fix: keep the SIGNED monthly value. A positive month inside
+    // an outflow line (or negative inside an inflow line) is a refund /
+    // reversal and must net correctly. The previous `Math.abs()` + one
+    // entryType-per-line flipped those refunds into same-direction flows,
+    // overstating MALT operating CF by 2× the refund (204K) and AZSF by 40K.
+    // The handler derives the per-MONTH inflow/outflow direction from this
+    // sign (see makeCfHandler).
     const perMonth: number[] = []
     let allZero = true
     for (let m = 0; m < 12; m++) {
       const v = toNumberOrNull(row[monthCols[m]])
-      const num = Math.abs(v ?? 0)
+      const num = v ?? 0
       perMonth.push(num)
       if (num !== 0) allZero = false
     }

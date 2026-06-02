@@ -105,9 +105,30 @@ describe("parsePlfCfSheet — activity + inflow/outflow inference", () => {
     expect(r.entries[0]).toMatchObject({ activityType: "operating", entryType: "inflow" })
     expect(r.entries[0].perMonth).toEqual([100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100])
     expect(r.entries[1]).toMatchObject({ activityType: "operating", entryType: "outflow" })
-    expect(r.entries[1].perMonth).toEqual([50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50]) // |value|
+    // 2026-06-02: perMonth is now SIGNED (was abs) so refund/reversal months net correctly.
+    expect(r.entries[1].perMonth).toEqual([-50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -50, -50])
     expect(r.entries[2]).toMatchObject({ activityType: "investing", entryType: "outflow" })
     expect(r.entries[3]).toMatchObject({ activityType: "financing", entryType: "inflow" })
+  })
+
+  it("preserves the SIGN of a refund month inside an outflow line (regression: MALT/AZSF op-CF)", () => {
+    // Real shape from CF Malt: an outflow line (CF.01.02.*) whose Jan is a
+    // positive refund. The pre-fix parser abs'd it → flipped the refund into
+    // an outflow, overstating outflow by 2× the refund. perMonth must keep
+    // the sign; the LINE entryType stays "outflow" (segment-based, for
+    // account classification), and the handler re-derives per-month direction.
+    const wb = makeWorkbook("CF_X", [
+      [null, "Cash Flow", null, ...MONTH_DATES],
+      ["CF.01.02.23", "Payment for Other Materials", null, 102239, -122597, -217, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ])
+    const r = parsePlfCfSheet(wb, "CF_X", XLSX)
+    expect(r.entries).toHaveLength(1)
+    expect(r.entries[0].entryType).toBe("outflow") // line default by segment .02
+    expect(r.entries[0].perMonth[0]).toBe(102239) // refund kept POSITIVE (was -102239 pre-fix)
+    expect(r.entries[0].perMonth[1]).toBe(-122597)
+    // Net = refund - outflows = signed sum (was -225053 pre-fix; now -20575)
+    const net = r.entries[0].perMonth.reduce((a, b) => a + b, 0)
+    expect(net).toBe(-20575)
   })
 
   it("skips parent rows + non-CF codes", () => {
