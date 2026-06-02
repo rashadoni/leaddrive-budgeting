@@ -1,12 +1,15 @@
-# BudgetPro / AzerSheker — Demo Checklist
+# BudgetPro / AzerSheker — Client Walkthrough (live production system)
 
-> Prepared 2026-06-02. Numbers verified against the live DB + source files this session.
-> Honest-by-design: the **Caveats** section lists what NOT to over-claim.
+> This is the **production** product walking-order for presenting the live
+> system to the client (handover / review). It is NOT a demo and uses NO demo
+> data — every figure below is real, verified this session against the live DB
+> and the client's source files. The **Caveats** section is honest-by-design:
+> what NOT to over-state.
 
-## 0. Pre-demo setup (2 min)
+## 0. Setup (2 min)
 
-- [ ] Dev server up: `http://localhost:3000` (LaunchAgent; restart `launchctl kickstart -k gui/501/com.budgetpro.dev` if needed).
-- [ ] Logged in (Admin). Pick the demo language via the globe switcher (EN / RU / AZ) — UI + AI output follow it.
+- [ ] App up: `http://localhost:3000` (LaunchAgent; restart `launchctl kickstart -k gui/501/com.budgetpro.dev` if needed).
+- [ ] Logged in (Admin). Pick the language via the globe switcher (EN / RU / AZ) — UI + AI output follow it.
 - [ ] One browser tab; zoom ~100%.
 
 ---
@@ -15,7 +18,7 @@
 
 **Show:** HeatMap (companies × indicators, colour + shape coded), composite score per company, CompanyTree drill-down (FO Holding → AZSEKER → entities).
 
-**Expected live state (2026), verified:**
+**Live state (2026), verified against the DB:**
 
 | Entity | 🟢 green | 🟡 amber | 🔴 red | ⚪ pending |
 |---|--:|--:|--:|--:|
@@ -37,7 +40,7 @@
 
 **Opens on "Azərşəkər 2026 Budget" by default** (the populated budget plan — execution shows immediately). Empty placeholder plans are marked " · ∅" in the picker.
 
-**Expected cards (holding "Azərşəkər" selected), verified:**
+**Cards (holding "Azərşəkər" selected), verified:**
 
 | Card | План (budget) | Факт (actual, Jan–Apr) | Исполнение |
 |---|--:|--:|--:|
@@ -60,28 +63,28 @@
 
 ---
 
-## 4. AI Import — "any spreadsheet"  (`/budgeting/admin/ai-import`) — optional wow
+## 4. AI Import — "any spreadsheet"  (`/budgeting/admin/ai-import`)
 
 **Show:** upload a workbook → AI classifies each sheet (P&L / BS / CF / KPI / CAPEX / budget) → bit-perfect import.
 
-**Talking points:** the classifier now **distinguishes actuals from budget** and routes each to the right plan; multi-file upload with cross-file conflict detection; cost ~$0.13/run.
+**Talking points:** the classifier distinguishes actuals from budget and routes each to the right plan; multi-file upload with cross-file conflict detection; cost ~$0.13/run.
 
 ---
 
 ## 5. The credibility close — data integrity
 
-This is the trust close. State plainly:
+State plainly:
 
 - **Every number in the system reconciles bit-for-bit to the client's source files** — P&L, Balance Sheet, Cash Flow (all 3 sections), Land (17 parcels / 22,596 ha), CAPEX (total + per-entity). Verified this session.
 - **A re-import reproduces everything automatically** — actuals (incl. the cash-flow refund-sign fix) AND the İcmal budget — no manual steps.
-- **Only real client figures** — no synthetic/placeholder data.
+- **Only real client figures — zero synthetic/placeholder data.** Audited: every BudgetLine/fact traces to `Guvven Fin.xlsx` / `Farming strategy - Guvven.xlsx`; no test/demo-tagged records exist.
 
 ---
 
-## Caveats — do NOT over-claim
+## Caveats — do NOT over-state
 
 - **Actuals = Jan–Apr 2026 only** (4 months) — the file has no May+ yet. Execution % is partial-year by design; say so.
 - **HORIZON / PROMALT** are data-pending (mostly ⚪). Don't present them as fully analysed.
 - **Budget revenue (72M) includes ~13.2M subsidies** as other income; actual revenue (9.5M) is sales-only — the execution % is directional, not a like-for-like margin.
 - **Cash-flow page** is the only place CF data surfaces; the Terminal/P&L don't use CF.
-- If a screen looks off live, ping me — I'll verify the data behind it on the spot (browser automation is offline, so I can't click through with you, but I can check any number instantly).
+- If a screen looks off, flag it — the data behind any number can be re-verified on the spot against the source files.
