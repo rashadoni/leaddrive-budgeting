@@ -3190,7 +3190,7 @@
       },
       "indicatorHealth": {
         "title": "Indicator Health",
-        "desc": "Per-indicator green/amber/red/unknown breakdown with remediation guidance. Run before a client demo."
+        "desc": "Per-indicator data-readiness breakdown — computed, partial, or missing — with the action needed to fill each gap."
       },
       "driftDashboard": {
         "title": "Drift Dashboard",
@@ -3329,7 +3329,7 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Affected entities ({n})",
     "pageTitle": "Indicator Health Dashboard",
-    "pageDescription": "Overview of every indicator value cell in the database — why each one is unknown and how to fix it (wire a feed, add data, etc.). Use it before a client demo: 🟡/⚪ items should be filled in or honestly explained to the client.",
+    "pageDescription": "Data readiness for every indicator — which values are computed and where data is still missing, with the action needed to complete each: connect a source, import, or enter manually.",
     "category": {
       "external-feed": "External feed needed",
       "ingest-gap": "Ingest gap",

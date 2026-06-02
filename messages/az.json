@@ -3190,7 +3190,7 @@
       },
       "indicatorHealth": {
         "title": "İndikatorların sağlamlığı",
-        "desc": "İndikator üzrə green/amber/red/unknown bölgüsü və düzəliş tövsiyələri. Müştəri demosundan əvvəl işə salın."
+        "desc": "İndikator üzrə məlumat hazırlığı — hesablanıb, qismən və ya yoxdur — hər boşluğu doldurmaq üçün lazımi addımla."
       },
       "driftDashboard": {
         "title": "Drift paneli",
@@ -3329,7 +3329,7 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Təsirə düşən sahələr ({n})",
     "pageTitle": "İndikator sağlamlığı paneli",
-    "pageDescription": "Bazadakı hər indikator dəyər xanasının icmalı — hər biri niyə unknown və necə düzəltmək (fid qoşmaq, məlumat əlavə etmək və s.). Müştəri demosundan əvvəl istifadə edin: 🟡/⚪ ya doldurulmalı, ya da müştəriyə dürüst izah edilməlidir.",
+    "pageDescription": "Hər indikator üzrə məlumat hazırlığı — hansı dəyərlər hesablanıb, harada məlumat hələ yoxdur və hər birini tamamlamaq üçün nə etmək lazımdır: mənbə qoşmaq, idxal etmək və ya əl ilə daxil etmək.",
     "category": {
       "external-feed": "Xarici fid lazımdır",
       "ingest-gap": "İdxal boşluğu",
