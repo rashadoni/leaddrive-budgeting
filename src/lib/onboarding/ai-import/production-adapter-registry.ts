@@ -70,15 +70,30 @@ export function buildProductionAdapterRegistry(
   // calls within one orchestrator invocation but the input arrives
   // per-handler). Solution: each handler resolves its own context if
   // the cached one doesn't match.
+  // Per-(org, year, kind) context cache. Decouple plan Y5b: a single
+  // import can touch BOTH an "actual" plan and a "budget" plan (e.g. a
+  // PLF "Actual >>>" sheet and a sales-forecast sheet in the same
+  // upload), so the cache MUST be keyed by kind. A single shared ctxRef
+  // (pre-Y5b) would resolve once and route EVERY later sheet to whichever
+  // kind happened to resolve first — silently writing budget rows into
+  // the actuals plan (the terminal's P&L source) or vice-versa.
+  const ctxByKey = new Map<string, OrgContext>()
   function makeEnsure(input: AdapterRunInput): () => Promise<OrgContext> {
     return async () => {
-      const key = `${input.organizationId}::${input.year}`
-      if (ctxRef.orgKey === key && ctxRef.value) return ctxRef.value
+      const kind = input.targetPlanKind ?? "actual"
+      const key = `${input.organizationId}::${input.year}::${kind}`
+      const cached = ctxByKey.get(key)
+      if (cached) {
+        ctxRef.value = cached
+        return cached
+      }
       const next = await resolveOrgContext(
         prisma,
         input.organizationId,
         input.year,
+        kind,
       )
+      ctxByKey.set(key, next)
       ctxRef.value = next
       ctxRef.orgKey = key
       return next

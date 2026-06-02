@@ -43,6 +43,11 @@ export interface AdapterRunInput {
    *  pass the real `import * as XLSX from 'xlsx'`. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   XLSX: any
+  /** Decouple plan: which plan kind this sheet writes into — "actual"
+   *  (realized results, terminal source) or "budget" (forward target).
+   *  Defaults to "actual" when unset. Set from the classification's
+   *  `planKind` (derived from the workbook section). */
+  targetPlanKind?: "actual" | "budget"
 }
 
 export interface AdapterRunResult {

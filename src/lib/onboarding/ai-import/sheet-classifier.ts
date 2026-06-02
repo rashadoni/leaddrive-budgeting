@@ -77,6 +77,50 @@ export interface SheetClassification {
   confidence: number
   /** One-line explanation citing the signal. */
   reasoning: string
+  /**
+   * actual vs budget routing target (decouple plan). Derived from the sheet's
+   * workbook section ("Actual >>>" → actual) with a dataType fallback (sales /
+   * forecast sheets → budget). Tells the importer which plan to write into so a
+   * P&L under "Actual >>>" lands in the actuals plan, not the budget plan.
+   */
+  planKind?: "actual" | "budget"
+}
+
+/** Decide whether a classified sheet is realized ACTUALs or a forward BUDGET. */
+export function planKindForSheet(
+  dataType: SheetDataType,
+  sectionContext: "actual" | "budget" | "kpi" | "capex" | null,
+): "actual" | "budget" {
+  if (sectionContext === "budget") return "budget"
+  if (sectionContext === "actual") return "actual"
+  // No explicit section signal → infer from dataType:
+  //  • SALES / SALES_FORECAST — forward plans (revenue targets).
+  //  • BUDGET_ACTUALS — realized spend recorded AGAINST a budget; its
+  //    BudgetActual rows must share the budget plan's planId so execution
+  //    % (Σactual ÷ Σplanned within one plan) computes. Routing them to
+  //    the actuals plan would orphan them from the budgeted lines.
+  //  • everything else (PLF/BS/CF realized statements) → actuals plan
+  //    (the Risk Terminal's P&L source).
+  if (
+    dataType === "SALES" ||
+    dataType === "SALES_FORECAST" ||
+    dataType === "BUDGET_ACTUALS"
+  ) {
+    return "budget"
+  }
+  return "actual"
+}
+
+/** Stamp planKind onto each classification using its sheet's section context. */
+function withPlanKind(
+  classifications: SheetClassification[],
+  metas: SheetMeta[],
+): SheetClassification[] {
+  const sectionByName = new Map(metas.map((m) => [m.sheetName, m.sectionContext]))
+  return classifications.map((c) => ({
+    ...c,
+    planKind: planKindForSheet(c.dataType, sectionByName.get(c.sheetName) ?? null),
+  }))
 }
 
 export interface SheetClassifierInput {
@@ -240,7 +284,7 @@ export async function classifySheets(
 
   if (needsLLM.length === 0) {
     return {
-      classifications: preClassified,
+      classifications: withPlanKind(preClassified, input.sheetMetas),
       usage: {
         inputTokens: 0,
         outputTokens: 0,
@@ -330,7 +374,7 @@ export async function classifySheets(
   }
 
   return {
-    classifications: ordered,
+    classifications: withPlanKind(ordered, input.sheetMetas),
     usage: {
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,

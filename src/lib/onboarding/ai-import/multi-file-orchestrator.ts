@@ -293,6 +293,7 @@ async function parseFileSheets(
         year: input.year,
         organizationId: input.organizationId,
         XLSX: deps.XLSX,
+        targetPlanKind: cls.planKind,
       })
       const expectedSums =
         (

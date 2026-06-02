@@ -3,7 +3,12 @@
  * the suite hermetic + token-spend-free.
  */
 import { describe, it, expect, vi } from "vitest"
-import { classifySheets, type SheetClassifierAnthropicLike } from "./sheet-classifier"
+import {
+  classifySheets,
+  planKindForSheet,
+  type SheetClassifierAnthropicLike,
+  type SheetDataType,
+} from "./sheet-classifier"
 import type { SheetMeta } from "./sheet-meta-extractor"
 
 function meta(
@@ -415,5 +420,41 @@ describe("classifySheets", () => {
     expect(capturedUserMsg).toContain("Farming strategy - Guvven.xlsx")
     expect(capturedUserMsg).toContain("forward-forecast")
     expect(capturedSystem).toBeTruthy() // system prompt still applied
+  })
+})
+
+describe("planKindForSheet (Decouple Y5b — actual vs budget routing)", () => {
+  it("section context wins over dataType default", () => {
+    // A realized-P&L sheet (PLF) sitting under a 'Budget' section header
+    // must route to the budget plan, not actuals.
+    expect(planKindForSheet("PLF", "budget")).toBe("budget")
+    // A sales sheet under an explicit 'Actual' section routes to actuals,
+    // overriding the SALES→budget default.
+    expect(planKindForSheet("SALES", "actual")).toBe("actual")
+    expect(planKindForSheet("BUDGET_ACTUALS", "actual")).toBe("actual")
+  })
+
+  it("realized statements default to the actuals plan (terminal P&L source)", () => {
+    const actualTypes: SheetDataType[] = ["PLF", "BS", "CF"]
+    for (const t of actualTypes) {
+      expect(planKindForSheet(t, null)).toBe("actual")
+    }
+  })
+
+  it("forward plans default to the budget plan", () => {
+    // SALES / SALES_FORECAST are revenue targets.
+    expect(planKindForSheet("SALES", null)).toBe("budget")
+    expect(planKindForSheet("SALES_FORECAST", null)).toBe("budget")
+    // BUDGET_ACTUALS rows are realized spend recorded AGAINST a budget —
+    // they must share the budget plan's planId so execution % computes
+    // (Σactual ÷ Σplanned within ONE plan). Routing them to the actuals
+    // plan would orphan them from the budgeted lines.
+    expect(planKindForSheet("BUDGET_ACTUALS", null)).toBe("budget")
+  })
+
+  it("kpi / capex section contexts fall through to dataType default", () => {
+    // Non actual/budget sections don't force a kind; the dataType decides.
+    expect(planKindForSheet("PLF", "kpi")).toBe("actual")
+    expect(planKindForSheet("SALES", "capex")).toBe("budget")
   })
 })

@@ -86,6 +86,8 @@ import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
 import { runImportBatch } from "../import-batch"
 import { runBalanceSheetBatch } from "../bs-import-batch"
 import { runCashFlowBatch } from "../cf-import-batch"
+import { parseBudgetActualsWorkbook } from "../budget-actuals-import"
+import { runActualsBatch } from "../actuals-import-batch"
 
 const fakeXLSX = {
   utils: {
@@ -1126,5 +1128,198 @@ describe("buildProductionAdapterRegistry", () => {
     })
     expect(result.itemCount).toBe(0)
     expect(result.warnings).toEqual([`Sheet "MissingSheet" not found`])
+  })
+})
+
+describe("per-kind plan routing (Decouple Y5b — no cross-contamination)", () => {
+  it("resolves DIFFERENT plans for actual vs budget sheets on ONE registry", async () => {
+    // Both handlers produce one row each.
+    ;(parsePlfPlSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      lines: [
+        {
+          code: "PLF.01",
+          accountType: "revenue",
+          perMonth: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+      ],
+      warnings: [],
+    })
+    ;(runImportBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+      reconciliation: { verdict: "green" },
+    })
+    ;(parseBudgetActualsWorkbook as ReturnType<typeof vi.fn>).mockReturnValue({
+      rows: [
+        {
+          rowNumber: 2,
+          category: "REV.01",
+          amount: 50,
+          date: "2026-03-01",
+          monthIndex: 2,
+          department: null,
+          description: null,
+          lineType: "revenue",
+          companyCode: null,
+        },
+      ],
+      errors: [],
+      warnings: [],
+    })
+    ;(runActualsBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+      reconciliation: { verdict: "green" },
+    })
+
+    // findFirst returns a plan id derived from the requested KIND. The two
+    // handlers can only land on the same plan if the registry mis-routes
+    // (the pre-Y5b shared-ctxRef short-circuit bug).
+    const findFirst = vi.fn(
+      async (args: { where: { kind: "actual" | "budget" } }) => ({
+        id: args.where.kind === "budget" ? "plan_budget" : "plan_actual",
+      }),
+    )
+    const prisma = {
+      company: {
+        findMany: vi.fn(async () => [{ id: "c_cpc", code: "AZSEKER-CPC" }]),
+        findUnique: vi.fn(async () => ({ settings: {} })),
+        update: vi.fn(async () => ({})),
+      },
+      budgetPlan: {
+        findFirst,
+        create: vi.fn(async () => ({ id: "plan_new" })),
+      },
+      budgetDepartment: { findMany: vi.fn(async () => []) },
+      chartOfAccount: {
+        findMany: vi.fn(async () => []),
+        upsert: vi.fn(async (a: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${a.where.organizationId_code.code}` })),
+      },
+    } as unknown as PrismaClient
+
+    const registry = buildProductionAdapterRegistry(prisma)
+    const fakeTx = {
+      chartOfAccount: {
+        upsert: vi.fn(async (a: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${a.where.organizationId_code.code}` })),
+      },
+      operationalFact: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
+    } as never
+
+    // 1) PLF "actual" sheet → actuals plan
+    const plfResult = await registry.get("PLF")!({
+      workbook: fakeWorkbook,
+      sheetName: "PLF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+      targetPlanKind: "actual",
+    })
+    await plfResult.applyToDb(fakeTx)
+
+    // 2) BUDGET_ACTUALS "budget" sheet → budget plan (SAME registry).
+    // Handler guards on sheet presence, so the workbook must contain it
+    // (parseBudgetActualsWorkbook is mocked, so content is irrelevant).
+    const baResult = await registry.get("BUDGET_ACTUALS")!({
+      workbook: {
+        Sheets: { "Actuals vs Budget": { "!ref": "A1:C3" } },
+        SheetNames: ["Actuals vs Budget"],
+      },
+      sheetName: "Actuals vs Budget",
+      entityCode: null,
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+      targetPlanKind: "budget",
+    })
+    await baResult.applyToDb(fakeTx)
+
+    // PLF rows carry the ACTUALS plan id.
+    const plfArg = (runImportBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as { rows: Array<{ planId: string }> }
+    expect(plfArg.rows[0].planId).toBe("plan_actual")
+
+    // BUDGET_ACTUALS batch targets the BUDGET plan id — proving the shared
+    // registry did NOT reuse the first-resolved (actual) context.
+    const baArg = (runActualsBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as { planId: string }
+    expect(baArg.planId).toBe("plan_budget")
+
+    // Both kinds were resolved explicitly via findFirst.
+    const kinds = findFirst.mock.calls.map(
+      (c) => (c[0] as { where: { kind: string } }).where.kind,
+    )
+    expect(kinds).toContain("actual")
+    expect(kinds).toContain("budget")
+  })
+
+  it("defaults to the actuals plan when targetPlanKind is unset (back-compat)", async () => {
+    ;(parsePlfPlSheet as ReturnType<typeof vi.fn>).mockReturnValue({
+      lines: [
+        {
+          code: "PLF.01",
+          accountType: "revenue",
+          perMonth: [100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        },
+      ],
+      warnings: [],
+    })
+    ;(runImportBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      metrics: { rowsInserted: 1 },
+      reconciliation: { verdict: "green" },
+    })
+    const findFirst = vi.fn(
+      async (args: { where: { kind: "actual" | "budget" } }) => ({
+        id: args.where.kind === "budget" ? "plan_budget" : "plan_actual",
+      }),
+    )
+    const prisma = {
+      company: {
+        findMany: vi.fn(async () => [{ id: "c_cpc", code: "AZSEKER-CPC" }]),
+        findUnique: vi.fn(async () => ({ settings: {} })),
+        update: vi.fn(async () => ({})),
+      },
+      budgetPlan: { findFirst, create: vi.fn(async () => ({ id: "plan_new" })) },
+      budgetDepartment: { findMany: vi.fn(async () => []) },
+      chartOfAccount: {
+        findMany: vi.fn(async () => []),
+        upsert: vi.fn(async (a: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${a.where.organizationId_code.code}` })),
+      },
+    } as unknown as PrismaClient
+    const registry = buildProductionAdapterRegistry(prisma)
+    const plfResult = await registry.get("PLF")!({
+      workbook: fakeWorkbook,
+      sheetName: "PLF CPC",
+      entityCode: "AZSEKER-CPC",
+      year: 2026,
+      organizationId: "org_1",
+      XLSX: fakeXLSX,
+      // targetPlanKind intentionally omitted
+    })
+    const fakeTx = {
+      chartOfAccount: {
+        upsert: vi.fn(async (a: {
+          where: { organizationId_code: { code: string } }
+        }) => ({ id: `coa_${a.where.organizationId_code.code}` })),
+      },
+      operationalFact: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        createMany: vi.fn(async () => ({ count: 0 })),
+      },
+    } as never
+    await plfResult.applyToDb(fakeTx)
+    const plfArg = (runImportBatch as ReturnType<typeof vi.fn>).mock
+      .calls[0][1] as { rows: Array<{ planId: string }> }
+    expect(plfArg.rows[0].planId).toBe("plan_actual")
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ kind: "actual" }) }),
+    )
   })
 })

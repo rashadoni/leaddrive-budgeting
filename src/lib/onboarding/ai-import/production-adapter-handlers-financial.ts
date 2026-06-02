@@ -65,7 +65,11 @@ export function makePlfHandler(
         applyToDb: async () => ({ rowsInserted: 0 }),
       }
     }
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parsePlfPlSheet(
       input.workbook,
       input.sheetName,
@@ -263,7 +267,11 @@ export function makeBsHandler(
         applyToDb: async () => ({ rowsInserted: 0 }),
       }
     }
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parseWorkbookBsSheet(
       input.workbook,
       input.sheetName,
@@ -412,7 +420,11 @@ export function makeCfHandler(
         applyToDb: async () => ({ rowsInserted: 0 }),
       }
     }
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parsePlfCfSheet(
       input.workbook,
       input.sheetName,
@@ -543,7 +555,11 @@ export function makeKpiHandler(
   kind: "farming" | "processing" | "sales",
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const rows: KpiImportRow[] = []
     const expectedSums = new Map<ReconciliationKey, number>()
     const warnings: string[] = []

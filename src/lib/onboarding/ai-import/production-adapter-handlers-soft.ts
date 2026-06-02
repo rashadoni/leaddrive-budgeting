@@ -45,7 +45,11 @@ export function makeLandRegistryHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parseLandRegistrySheet(
       input.workbook,
       input.sheetName,
@@ -95,7 +99,11 @@ export function makeCapexHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const sheet = input.workbook.Sheets[input.sheetName]
     if (!sheet) {
       return {
@@ -176,7 +184,11 @@ export function makeDescriptionsHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parseTesvirSheet(
       input.workbook,
       input.sheetName,
@@ -227,7 +239,11 @@ export function makeForwardForecastHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const parsed = parseIcmalSheet(
       input.workbook,
       input.sheetName,
@@ -399,7 +415,11 @@ export function makeOpsFactsHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const sheet = input.workbook.Sheets[input.sheetName]
     if (!sheet) {
       return {
@@ -497,7 +517,11 @@ export function makeBudgetActualsHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const sheet = input.workbook.Sheets[input.sheetName]
     if (!sheet) {
       return {
@@ -599,7 +623,11 @@ export function makeSalesForecastHandler(
   ensureCtx: () => Promise<OrgContext>,
 ): AdapterHandler {
   return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
-    const ctx = ctxRef.value ?? (await ensureCtx())
+    // Y5b: resolve via ensureCtx() (per-(org,year,kind) cache) — do NOT
+    // short-circuit on the shared ctxRef, which holds only the
+    // first-resolved kind and would mis-route later sheets of the other
+    // kind (budget rows → actuals plan, or vice-versa).
+    const ctx = await ensureCtx()
     const sheet = input.workbook.Sheets[input.sheetName]
     if (!sheet) {
       return {
