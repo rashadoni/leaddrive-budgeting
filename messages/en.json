@@ -3162,14 +3162,14 @@
     "groupDataQuality": "🩺 Data Quality",
     "groupOperations": "🔒 Operations",
     "groupConfiguration": "⚙ Configuration",
-    "workflowTitle": "Before a client demo",
+    "workflowTitle": "Data readiness review",
     "workflow": {
-      "s1": "Indicator Health — check the % computed and identify red / unknown gaps.",
-      "s2": "Drift Dashboard — make sure every external feed is fresh.",
-      "s3": "Fill any gaps via Data Entry if needed.",
-      "s4": "New client xlsx? Run it through AI Import (works for any workbook).",
+      "s1": "Indicator Health — review which indicators are computed and where data is missing.",
+      "s2": "Drift Dashboard — confirm every external data feed is up to date.",
+      "s3": "Fill any remaining gaps via Data Entry.",
+      "s4": "New spreadsheet to load? Run it through AI Import (works for any workbook).",
       "s5": "After import — run the IFRS conformance check (balance ties, sections, COGS vs OpEx, depreciation).",
-      "s6": "Run npm run smoke-test from the CLI for a final check."
+      "s6": "Open the Risk Terminal for a final review of the holding's risk picture."
     },
     "tools": {
       "aiImport": {

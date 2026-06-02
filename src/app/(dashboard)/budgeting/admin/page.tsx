@@ -159,7 +159,7 @@ export default async function AdminLandingPage() {
       </div>
 
       <div className="mt-10 p-4 border rounded-lg bg-muted/30">
-        <h3 className="text-sm font-semibold mb-2">🎬 {t("workflowTitle")}</h3>
+        <h3 className="text-sm font-semibold mb-2">📋 {t("workflowTitle")}</h3>
         <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside leading-relaxed">
           <li>{t("workflow.s1")}</li>
           <li>{t("workflow.s2")}</li>

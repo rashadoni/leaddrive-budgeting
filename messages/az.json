@@ -3162,14 +3162,14 @@
     "groupDataQuality": "🩺 Məlumat keyfiyyəti",
     "groupOperations": "🔒 Əməliyyatlar",
     "groupConfiguration": "⚙ Konfiqurasiya",
-    "workflowTitle": "Müştəri demosundan əvvəl",
+    "workflowTitle": "Məlumat hazırlığının yoxlanışı",
     "workflow": {
-      "s1": "Indicator Health — hesablanmış faizi yoxlayın və red / unknown boşluqları tapın.",
-      "s2": "Drift Dashboard — bütün xarici fid-lərin təzə olduğuna əmin olun.",
-      "s3": "Lazım gələrsə boşluqları Data Entry vasitəsilə doldurun.",
-      "s4": "Müştəridən yeni xlsx? AI Import vasitəsilə keçirin (istənilən fayl üçün işləyir).",
+      "s1": "İndikatorların sağlamlığı — hansı indikatorların hesablandığını və harada məlumatın çatışmadığını yoxlayın.",
+      "s2": "Drift Dashboard — bütün xarici məlumat mənbələrinin aktual olduğunu təsdiqləyin.",
+      "s3": "Qalan boşluqları «Məlumat daxiletmə» vasitəsilə doldurun.",
+      "s4": "Yeni cədvəl yükləmək lazımdır? Onu AI Import vasitəsilə keçirin (istənilən fayl üçün işləyir).",
       "s5": "İdxaldan sonra — IFRS uyğunluq yoxlamasını işə salın (balans, bölmələr, COGS vs OpEx, amortizasiya).",
-      "s6": "Son yoxlama üçün CLI-dən npm run smoke-test işə salın."
+      "s6": "Holdinqin risk mənzərəsini son dəfə nəzərdən keçirmək üçün Risk Terminal-ı açın."
     },
     "tools": {
       "aiImport": {
