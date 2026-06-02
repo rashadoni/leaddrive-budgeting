@@ -1038,6 +1038,16 @@
       "source": "Source",
       "sourceNote": "Source / note",
       "sourceNotePlaceholder": "e.g. Q1 internal report, ERP export 2026-03-15",
+      "savePreviewLabel": "Will save",
+      "range": {
+        "label": "Typical range",
+        "ok": "Within the typical range",
+        "warnLow": "Below the typical minimum ({bound}) — double-check",
+        "warnHigh": "Above the typical maximum ({bound}) — double-check",
+        "errLow": "Below the allowed minimum ({bound})",
+        "errHigh": "Above the allowed maximum ({bound})",
+        "nan": "Enter a number"
+      },
       "save": "Save",
       "saving": "Saving…",
       "saved": "Entry saved.",
@@ -1051,6 +1061,7 @@
       },
       "operational": {
         "formTitle": "New operational KPI entry",
+        "intro": "Enter one actual value for a single indicator below. To load many values at once, upload an Excel file above or use AI Import.",
         "metric": "Metric",
         "recentTitle": "Recent entries",
         "bulkImport": {

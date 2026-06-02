@@ -8,7 +8,7 @@
  */
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { Brain, ArrowRight } from "lucide-react"
 import {
   OPERATIONAL_METRIC_RULES,
@@ -58,7 +58,7 @@ export function CompanySelect({
 
 // Sector emoji prefix — visual chunking so the dropdown reads like a
 // Bloomberg ticker board instead of a wall of technical strings.
-const SECTOR_EMOJI: Record<MetricValidationRule["sector"], string> = {
+export const SECTOR_EMOJI: Record<MetricValidationRule["sector"], string> = {
   agro: "🌾",
   real_estate: "🏢",
   entertainment: "🎟️",
@@ -82,10 +82,12 @@ export function MetricSelect({
   label: string
   t: ReturnType<typeof useTranslations>
 }) {
-  // Selected rule drives the helper-line beneath the select — shows
-  // unit + typical-range hint so the operator knows what they're
-  // entering before they tab into the value field.
-  const selected = rules.find((r) => r.metric === value)
+  // Locale-aware option label (was labelRu-only → EN/AZ users saw Russian
+  // metric names). The detailed unit + range + description now live in the
+  // richer metric-context card in OperationalFactsTab, so no helper here.
+  const locale = useLocale()
+  const lbl = (r: MetricValidationRule) =>
+    locale === "az" ? r.labelAz : locale === "ru" ? r.labelRu : r.labelEn
   return (
     <label className="text-xs flex flex-col gap-1">
       <span className="text-muted-foreground">{label}</span>
@@ -96,20 +98,11 @@ export function MetricSelect({
       >
         {rules.map((r) => (
           <option key={r.metric} value={r.metric}>
-            {SECTOR_EMOJI[r.sector] ?? ""} {r.labelRu} ({r.unit}) · [
+            {SECTOR_EMOJI[r.sector] ?? ""} {lbl(r)} ({r.unit}) · [
             {t(`operational.sector.${r.sector}` as never)}]
           </option>
         ))}
       </select>
-      {selected && (
-        <span className="text-[10px] text-muted-foreground/80 leading-snug">
-          {selected.unit} ·{" "}
-          {selected.warnMin != null || selected.warnMax != null
-            ? `типичный диапазон ${selected.warnMin ?? "—"}…${selected.warnMax ?? "—"}`
-            : `диапазон ${selected.min}…${selected.max}`}
-          {selected.hintRu ? ` · ${selected.hintRu}` : ""}
-        </span>
-      )}
     </label>
   )
 }

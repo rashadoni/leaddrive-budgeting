@@ -35,8 +35,8 @@
 
 import Link from "next/link"
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
-import { Brain, ArrowRight } from "lucide-react"
+import { useTranslations, useLocale } from "next-intl"
+import { Brain, ArrowRight, CheckCircle2, AlertTriangle, XCircle, Info } from "lucide-react"
 import {
   OPERATIONAL_METRIC_RULES,
   ESG_DISCLOSURE_RULES,
@@ -56,7 +56,9 @@ import {
   LabeledInput,
   FormControls,
   BulkImportSection,
+  SECTOR_EMOJI,
 } from "./data-entry-fields"
+import { checkMetricValue, type ValueCheck } from "./data-entry-validation"
 /**
  * Flatten a roots-with-nested-children tree into a single ordered list
  * of every company, parents first then descendants depth-first. Stable
@@ -200,6 +202,48 @@ function TabButton({
 
 // ---------------------------------------------------------------- Operational
 
+/** Live in-range / out-of-range feedback line under the value input. */
+function ValueCheckLine({
+  vc,
+  t,
+}: {
+  vc: ValueCheck
+  t: ReturnType<typeof useTranslations>
+}) {
+  if (vc.state === "empty") return null
+  let Icon = CheckCircle2
+  let cls = "text-emerald-600 dark:text-emerald-400"
+  let text = t("range.ok")
+  if (vc.state === "warn") {
+    Icon = AlertTriangle
+    cls = "text-amber-600 dark:text-amber-400"
+    text =
+      vc.dir === "low"
+        ? t("range.warnLow", { bound: vc.bound })
+        : t("range.warnHigh", { bound: vc.bound })
+  } else if (vc.state === "error") {
+    Icon = XCircle
+    cls = "text-red-600 dark:text-red-400"
+    text =
+      vc.dir === "low"
+        ? t("range.errLow", { bound: vc.bound })
+        : t("range.errHigh", { bound: vc.bound })
+  } else if (vc.state === "nan") {
+    Icon = XCircle
+    cls = "text-red-600 dark:text-red-400"
+    text = t("range.nan")
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] ${cls}`}
+      data-testid="operational-value-check"
+    >
+      <Icon className="size-3.5 shrink-0" aria-hidden />
+      {text}
+    </span>
+  )
+}
+
 function OperationalFactsTab({
   companies,
   t,
@@ -219,8 +263,32 @@ function OperationalFactsTab({
   const [rows, setRows] = useState<OperationalFactRow[]>([])
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState<FeedbackState>({ kind: "idle" })
+  const locale = useLocale()
 
   const rule = OPERATIONAL_METRIC_RULES.find((r) => r.metric === metric)
+  // Locale-aware label/hint (the catalog carries en/ru/az; the old helper
+  // only showed Russian → EN/AZ users saw mixed-language context).
+  const L = (en: string, ru: string, az: string) =>
+    locale === "az" ? az : locale === "ru" ? ru : en
+  const metricLabel = rule ? L(rule.labelEn, rule.labelRu, rule.labelAz) : ""
+  const metricHint = rule
+    ? L(rule.hintEn ?? "", rule.hintRu ?? "", rule.hintAz ?? "")
+    : ""
+  const rangeText = rule
+    ? `${rule.warnMin ?? rule.min}–${rule.warnMax ?? rule.max}`
+    : ""
+  // Live value check — immediate in-range / out-of-range feedback as the
+  // user types, mirroring the server bounds (no surprise 400 / confirm).
+  const vc: ValueCheck = rule
+    ? checkMetricValue(rule, value)
+    : { state: "empty" }
+  const selectedCompany = companies.find((c) => c.id === companyId)
+  const previewReady =
+    !!companyId &&
+    !!rule &&
+    value.trim() !== "" &&
+    vc.state !== "error" &&
+    vc.state !== "nan"
 
   const refresh = useCallback(async () => {
     if (!companyId) {
@@ -332,15 +400,23 @@ function OperationalFactsTab({
 
   return (
     <div className="space-y-6">
+      {/* Orientation — single value here vs bulk (the "не разобраться" fix). */}
+      <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-xs text-muted-foreground">
+        <Info className="size-4 text-primary mt-0.5 shrink-0" aria-hidden />
+        <p className="leading-relaxed">{t("operational.intro")}</p>
+      </div>
+
       <BulkImportSection
         companies={companies}
         onImported={() => void refresh()}
         t={t}
       />
 
-      <section className="bg-card border border-border rounded-md p-4">
-        <h2 className="text-sm font-semibold mb-3">{t("operational.formTitle")}</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <section className="bg-card border border-border rounded-md p-4 space-y-4">
+        <h2 className="text-sm font-semibold">{t("operational.formTitle")}</h2>
+
+        {/* Step 1 — which company + which metric. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <CompanySelect
             companies={companies}
             value={companyId}
@@ -354,30 +430,96 @@ function OperationalFactsTab({
             label={t("operational.metric")}
             t={t}
           />
+        </div>
+
+        {/* Metric context — what this number means + its typical range. */}
+        {rule && (
+          <div className="rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2.5 space-y-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-medium text-foreground">
+              <span aria-hidden>{SECTOR_EMOJI[rule.sector]}</span>
+              <span>{metricLabel}</span>
+              <span className="text-xs font-normal text-muted-foreground">
+                · {rule.unit}
+              </span>
+            </div>
+            {metricHint && (
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {metricHint}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              {t("range.label")}:{" "}
+              <span className="font-medium text-foreground">{rangeText}</span>{" "}
+              {rule.unit}
+            </p>
+          </div>
+        )}
+
+        {/* Step 2 — the value (focal) with live feedback, + date. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <label className="text-xs flex flex-col gap-1">
+            <span className="text-muted-foreground">
+              {t("value")} ({rule?.unit ?? "-"})
+            </span>
+            <input
+              type="number"
+              inputMode="decimal"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="0"
+              data-testid="operational-value-input"
+              className={`bg-background border rounded px-2 py-1.5 text-base tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+                vc.state === "ok"
+                  ? "border-emerald-500/60 focus-visible:ring-emerald-500/30"
+                  : vc.state === "warn"
+                    ? "border-amber-500/60 focus-visible:ring-amber-500/30"
+                    : vc.state === "error" || vc.state === "nan"
+                      ? "border-red-500/60 focus-visible:ring-red-500/30"
+                      : "border-border focus-visible:ring-ring/30"
+              }`}
+            />
+            <ValueCheckLine vc={vc} t={t} />
+          </label>
           <LabeledInput
             label={t("date")}
             type="date"
             value={date}
             onChange={setDate}
           />
-          <LabeledInput
-            label={`${t("value")} (${rule?.unit ?? "-"})`}
-            type="number"
-            value={value}
-            onChange={setValue}
-            hint={rule?.hintRu ?? rule?.hintEn}
-          />
-          <LabeledInput
-            label={t("sourceNote")}
-            value={sourceNote}
-            onChange={setSourceNote}
-            placeholder={t("sourceNotePlaceholder")}
-            spanFull
-          />
         </div>
+
+        <LabeledInput
+          label={t("sourceNote")}
+          value={sourceNote}
+          onChange={setSourceNote}
+          placeholder={t("sourceNotePlaceholder")}
+          spanFull
+        />
+
+        {/* Save preview — exactly what gets written, before committing. */}
+        {previewReady && rule && (
+          <div
+            className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs"
+            data-testid="operational-save-preview"
+          >
+            <span className="text-muted-foreground">
+              {t("savePreviewLabel")}:{" "}
+            </span>
+            <span className="font-medium text-foreground">
+              {selectedCompany
+                ? `${selectedCompany.code} · ${selectedCompany.name}`
+                : ""}
+              {" · "}
+              {metricLabel} = {value} {rule.unit} · {date}
+            </span>
+          </div>
+        )}
+
         <FormControls
           feedback={feedback}
-          disabled={!companyId || !value}
+          disabled={
+            !companyId || !value || vc.state === "error" || vc.state === "nan"
+          }
           onSave={() => submit(false)}
           onConfirm={() => submit(true)}
           onCancel={() => setFeedback({ kind: "idle" })}

@@ -1038,6 +1038,16 @@
       "source": "Mənbə",
       "sourceNote": "Mənbə / qeyd",
       "sourceNotePlaceholder": "məs. Q1 daxili hesabat, ERP ixracı 2026-03-15",
+      "savePreviewLabel": "Yadda saxlanılacaq",
+      "range": {
+        "label": "Tipik aralıq",
+        "ok": "Tipik aralıqdadır",
+        "warnLow": "Tipik minimumdan aşağı ({bound}) — yoxlayın",
+        "warnHigh": "Tipik maksimumdan yuxarı ({bound}) — yoxlayın",
+        "errLow": "İcazə verilən minimumdan az ({bound})",
+        "errHigh": "İcazə verilən maksimumdan çox ({bound})",
+        "nan": "Rəqəm daxil edin"
+      },
       "save": "Yadda saxla",
       "saving": "Saxlanılır…",
       "saved": "Qeyd yadda saxlanıldı.",
@@ -1051,6 +1061,7 @@
       },
       "operational": {
         "formTitle": "Yeni əməliyyat KPI qeydi",
+        "intro": "Aşağıda bir göstərici üçün bir faktiki dəyər daxil edin. Çoxlu dəyəri birdən daxil etmək üçün yuxarıda Excel faylı yükləyin və ya AI-importdan istifadə edin.",
         "metric": "Metrika",
         "recentTitle": "Son qeydlər",
         "bulkImport": {
