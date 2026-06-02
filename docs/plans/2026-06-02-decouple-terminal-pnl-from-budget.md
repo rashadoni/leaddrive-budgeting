@@ -1,0 +1,38 @@
+# Decouple Risk Terminal P&L from the Budgeting "plan" (Variant B)
+
+**Status:** APPROVED direction (user, 2026-06-02). Plan ready; execution pending scope confirmation.
+**Goal:** Risk Terminal P&L = ACTUALS; `BudgetLine.plannedAmount` = BUDGET only; Budgeting execution = actual ÷ budget. AI import routes "Actual >>>" sheets → actuals, "Budget sales plan" → budget. Migrate existing mislabeled 2026 actuals out of the "2026 Budget" plan with no data loss.
+
+## Verified state
+- Terminal P&L is computed from `BudgetLine.plannedAmount` via `budgetLineResolver` (`src/lib/risk/recompute-resolvers-b.ts:23`), read by `listBudgetLines` (`recompute-data-source.ts:300`, scoped `(companyId, plan.year)`).
+- **A decoupled financial-fact channel ALREADY exists:** `budgetLineResolver` prefers `OperationalFact metric=pl_ebitda` (company+date scoped, no plan) and only falls back to BudgetLine. The PLF import already writes `pl_ebitda`. → extend this pattern to the full P&L (Option 2 below).
+- Live: "Azərşəkər 2026 Budget" (year 2026, draft) = 732 live BudgetLines summing **21,828,325.86** (CPC/AZSF/EDEN/MALT, monthIndex 0–3) — these are 2026 actuals Jan–Apr. 5,181 archived rows. `BudgetActual` = 0. "2021–2025 Actuals" plans empty.
+- The classifier discards the `Actual >>>` / `KPI >>>` / `CAPEX >>>` separator sheets (`sheet-classifier.ts:165`) → the actual-vs-budget section signal is dropped but recoverable from sheet order.
+- BS (`BalanceSheetLine`) and CF (`CashFlowEntry`) are coupled the same way (planId-scoped, terminal reads them).
+
+## Data-model decision
+**Option 2 (RECOMMENDED): period-scoped `OperationalFact pl_*` facts** (`pl_revenue/pl_cogs/pl_opex/pl_ebitda/pl_net_income`, company+date scoped, no plan). The codebase already does this for EBITDA. Lowest-risk true decoupling; matches the grain the "Actual >>>" PLF sheets publish (subtotals).
+- Option 1 (terminal reads `BudgetActual`) — re-couples to a plan; wrong shape (no accountId FK). Rejected.
+- Option 3 (new `FinancialFact` table, per-account) — cleanest long-term, biggest change. Documented escape hatch if per-account actual granularity proves necessary (FX-import split / per-SAP-code D&A).
+
+## Phases (rollout order keeps the live terminal correct throughout)
+- **Phase 0 — safety net:** parity oracle (dump current P&L indicator values per company×period as the "before"); checksum dump of plannedAmount sums (the 21.8M breakdown); add `TERMINAL_PNL_SOURCE` flag = `budgetline`(default)|`actuals`|`dual`.
+- **Phase 1 — write actuals as facts (additive, reversible):** extend PLF parser/handler to emit full `pl_*` facts; migration script derives `pl_*` from the live "2026 Budget" BudgetLines (sum by accountType per company×month); verify Σ matches the checksum bit-perfect. Original BudgetLines untouched.
+- **Phase 2 — dual-read resolver (flag-gated):** add `listFinancialFacts`; make `budgetLineResolver` + `getCompanyFinancialsSnapshot` source-aware (budgetline | actuals | dual). Absent facts → `unknown` (no fabrication).
+- **Phase 3 — AI import routing:** carry the `Actual >>>`/budget section signal through `sheet-meta-extractor` → `sheet-classifier` (`financialKind: actual|budget`); route actual PLF → `pl_*` facts (+ optional `BudgetActual` via the already-built `runActualsBatch`), budget → `BudgetLine`.
+- **Phase 4 — relabel the budget side:** rename "2026 Budget" → "2026 Actuals" (reversible, store original planId); leave a fresh empty "2026 Budget" for the real budget; bit-perfect re-verify (21,828,325.86, 732/5,181 counts). Archived rows kept until parity signed off.
+- **Phase 5 — flip flag + verify parity + remove shim:** dual in staging → assert indicator values identical to Phase 0 oracle → flip to actuals in prod → re-verify → delete the budgetline branch.
+
+## Test strategy
+Unit (PLF subtotal parser, `listFinancialFacts` range math, resolver branch); handler (financialKind routing); **integration parity on real AZSEKER data** — indicator values identical before/after the switch (proves no drift) + Σ pl_facts == plannedAmount checksum (proves no loss/fabrication).
+
+## Open questions (need user decision)
+1. All terminal indicators → actuals? (recommend yes)
+2. **Scope: P&L only, or also BS/CF?** (BS/CF are coupled the same way; including them is bigger but complete.)
+3. Months with no actuals → `unknown`/"no data" (recommend).
+4. Subtotals (Option 2) vs full per-account (Option 3) — affects FX-risk/D&A granularity (recommend Option 2; FX-risk degrades to `unknown` when the split isn't captured).
+5. Archived 5,181 rows — keep (reversible) vs purge (recommend keep until parity signed off).
+6. Real budget is only partial (sales-plan, revenue-only) — execution % meaningful only for revenue until a full budget is loaded.
+
+## Critical files
+`src/lib/risk/recompute-data-source.ts`, `recompute-resolvers-b.ts`, `company-financials-snapshot.ts`; `src/lib/onboarding/ai-import/production-adapter-handlers-financial.ts`, `sheet-classifier.ts`, `sheet-meta-extractor.ts`; `src/lib/onboarding/adapters/azseker-plf.ts`, `actuals-import-batch.ts`, `import-batch.ts`.
