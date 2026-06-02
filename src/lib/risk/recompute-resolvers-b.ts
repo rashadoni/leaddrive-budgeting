@@ -7,7 +7,7 @@
  */
 import { tryEvaluateFormula, type FormulaFunction } from './formula-engine';
 import type { Period } from './periods';
-import { isDaCode } from '../budgeting/da-codes';
+import { aggregatePnlLines } from './pnl-aggregation';
 import {
   getIndustryEmissionFactor,
   type EmissionScope,
@@ -32,70 +32,28 @@ export const budgetLineResolver: NamespaceResolver = {
       period: ctx.period,
     });
 
-    let revenue = 0;
-    let cogs = 0;
-    let opex = 0;
-    let imported_cogs = 0;
-    let domestic_cogs = 0;
-    let imported_opex = 0;
-    let domestic_opex = 0;
-    let missing_rate_count = 0;
-    // Phase 7.O — D&A add-back for true EBITDA.
-    // Scans for SAP codes 703-11 (D&A in COGS) + 721-11 (D&A in OpEx).
-    // For companies without those codes (e.g. PLF-format AZSEKER) da_total=0
-    // so ebitda degrades gracefully to EBIT — honest, not wrong.
-    let da_total = 0;
-
-    // Defensive: a line tagged with the company's base currency is NOT
-    // foreign — treat as base regardless of whether `exchangeRate` is set.
-    // CXLVIII regression class: pre-fix imports stamped every base-currency
-    // line with `currencyCode='AZN'` + no rate, which the strict-foreign
-    // path below skipped, zeroing out 100% of revenue/cogs/opex.
+    // P&L aggregation lives in the shared pure `aggregatePnlLines` so the
+    // period-fact deriver (terminal-PnL/budget decoupling) produces
+    // bit-perfect-identical numbers. Behavior is unchanged from the former
+    // inline loop. `baseCcy` is kept for the foreign-line-count guard below.
     const baseCcy = ctx.baseCurrency;
-    for (const l of lines) {
-      const isForeign = l.currencyCode != null && l.currencyCode !== baseCcy;
-      // Skip foreign lines without an explicit rate rather than silently
-      // assume 1:1 — that would inflate P&L denominators.
-      if (isForeign && l.exchangeRate == null) {
-        missing_rate_count += 1;
-        continue;
-      }
-      const rate = l.exchangeRate ?? 1;
-      const amountBase = isForeign ? l.plannedAmount * rate : l.plannedAmount;
-
-      const type = l.accountType;
-      if (type === 'revenue') {
-        revenue += amountBase;
-      } else if (type === 'cogs') {
-        cogs += amountBase;
-        if (isForeign) imported_cogs += amountBase;
-        else domestic_cogs += amountBase;
-      } else if (type === 'expense') {
-        opex += amountBase;
-        if (isForeign) imported_opex += amountBase;
-        else domestic_opex += amountBase;
-      }
-      // D&A add-back: applies to both cogs and expense lines that are
-      // depreciation/amortization accounts (703-11 / 721-11 SAP codes).
-      if (l.accountCode != null && isDaCode(l.accountCode)) {
-        da_total += Math.abs(amountBase);
-      }
-      // asset/liability/equity rows are ignored for P&L-shaped context.
-    }
-
-    // Semantic split (see resolver jsdoc above):
-    //   - `total_cost`        = full operating base (cogs + opex)
-    //   - `total_input_cost`  = cogs only (input ≠ payroll / rent / marketing)
-    //   - `imported_input_cost` = foreign-denominated cogs only — this is what
-    //     AGRO_FX_RISK divides by `total_input_cost` for an input-side FX share
-    //   - `imported_total_cost` (aggregate-only) = all foreign lines cogs+opex,
-    //     kept for drill-down but NOT used as a denominator
-    const total_cost = cogs + opex;
-    const total_input_cost = cogs;
-    const imported_input_cost = imported_cogs;
-    const domestic_input_cost = domestic_cogs;
-    const gross_profit = revenue - cogs;
-    const net_income = revenue - cogs - opex;
+    const {
+      revenue,
+      cogs,
+      opex,
+      imported_cogs,
+      domestic_cogs,
+      imported_opex,
+      domestic_opex,
+      da_total,
+      missing_rate_count,
+      total_cost,
+      total_input_cost,
+      imported_input_cost,
+      domestic_input_cost,
+      gross_profit,
+      net_income,
+    } = aggregatePnlLines(lines, baseCcy);
     // EBITDA: prefer the source's OWN EBITDA subtotal, captured as `pl_ebitda`
     // operational_facts (SUMMED over the period = flow semantics, like the P&L
     // leaves). 2026-05-31 audit: PLF-format AzerSheker has no SAP D&A codes
