@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent } from "@/lib/audit/log"
+import { recomputeAfterDataChange } from "@/lib/recompute/recompute-on-change"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
@@ -77,6 +78,11 @@ export async function DELETE(
       err: err instanceof Error ? err.message : String(err),
     })
   })
+
+  // Recompute so the removed KPI stops feeding its indicators immediately
+  // (best-effort + serverless-safe synchronous — see helper).
+  const year = existing.date.getUTCFullYear()
+  await recomputeAfterDataChange(session.orgId, existing.companyId, year)
 
   return NextResponse.json({ ok: true })
 }

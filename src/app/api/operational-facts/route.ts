@@ -29,6 +29,7 @@ import {
   validateValue,
 } from "@/lib/risk/metric-validation-rules"
 import { logAuditEvent } from "@/lib/audit/log"
+import { recomputeAfterDataChange } from "@/lib/recompute/recompute-on-change"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 
 const ListQuerySchema = z.object({
@@ -283,5 +284,14 @@ export async function POST(req: NextRequest) {
     })
   })
 
-  return NextResponse.json({ row }, { status: existing ? 200 : 201 })
+  // Recompute the company's indicators so the saved KPI is reflected
+  // immediately (best-effort + serverless-safe synchronous — see helper).
+  const year = new Date(body.date).getUTCFullYear()
+  const recompute = await recomputeAfterDataChange(
+    session.orgId,
+    body.companyId,
+    year,
+  )
+
+  return NextResponse.json({ row, recompute }, { status: existing ? 200 : 201 })
 }
