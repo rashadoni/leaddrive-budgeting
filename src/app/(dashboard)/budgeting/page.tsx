@@ -53,6 +53,7 @@ import {
   type BudgetPlan,
 } from "@/lib/budgeting/types"
 import { COST_MODEL_KEY_OPTIONS } from "@/lib/budgeting/cost-model-map"
+import { pickDefaultPlanId } from "@/lib/budgeting/plan-select"
 import { BudgetConfigTab } from "@/components/budget-config-tab"
 import { SalesForecastTab } from "@/components/sales-forecast-tab"
 import { ExpenseForecastTab } from "@/components/expense-forecast-tab"
@@ -94,6 +95,7 @@ function periodLabel(plan: BudgetPlan, t: (key: string) => string): string {
   if (plan.periodType === "quarterly" && plan.quarter) return `Q${plan.quarter} ${plan.year}`
   return `${plan.year}`
 }
+
 
 // ─── Combined Import Tab ─────────────────────────────────────────────────────
 
@@ -163,8 +165,11 @@ export default function BudgetingPage() {
   const activeTab = searchParams.get("tab") || "workspace"
   const setActiveTab = (tab: string) => router.push(`/budgeting?tab=${tab}`)
 
-  // Auto-select first plan
-  const resolvedPlanId = activePlanId || (plans[0]?.id ?? "")
+  // Auto-select the most useful plan: a POPULATED budget plan (newest year)
+  // so the Workspace's execution % is meaningful on load (plan=budget vs the
+  // actuals plan). Falls back to any populated plan, then the first plan —
+  // never lands on an empty placeholder year-plan (the "0%/empty" complaint).
+  const resolvedPlanId = activePlanId || pickDefaultPlanId(plans)
 
   // Turn 30: per-daughter-company filter. Reads from URL `?company=X` so
   // selection survives navigation; null = org-wide consolidated view (the
@@ -331,9 +336,16 @@ export default function BudgetingPage() {
                   if (selected?.isRolling) setActiveTab("rolling")
                 }}
                 className="border border-border rounded-md px-3 py-1.5 text-sm bg-background min-w-[180px]">
-                {plans.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} — {periodLabel(p, t)}</option>
-                ))}
+                {plans.map(p => {
+                  // Mark empty placeholder plans so the picker reads clearly
+                  // (∅ = no budget lines yet). Populated plans sort first.
+                  const isEmpty = (p._count?.lines ?? 0) === 0
+                  return (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {periodLabel(p, t)}{isEmpty ? " · ∅" : ""}
+                    </option>
+                  )
+                })}
               </select>
               {/* Phase 7.G Turn LXXIV — Phase 4.2 indicator UI badge.
                   Shows lock-icon + period + tooltip when the active plan's

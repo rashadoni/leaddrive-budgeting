@@ -7,6 +7,14 @@ export interface BudgetPlan {
   month?: number | null
   quarter?: number | null
   status: "draft" | "pending_approval" | "approved" | "rejected" | "closed"
+  // Decouple Y1 — plan kind: "actual" (realized results, the terminal's P&L
+  // source) or "budget" (forward target). Execution % is only meaningful on
+  // a "budget" plan (plan=budget, actual=the actuals plan via analytics Y4).
+  kind?: "actual" | "budget"
+  // Live non-deleted line count (API includes `_count.lines`) — lets the
+  // page's default-pick skip empty placeholder plans and prefer a populated
+  // budget plan.
+  _count?: { lines: number }
   notes?: string | null
   submittedBy?: string | null
   submittedAt?: string | null
