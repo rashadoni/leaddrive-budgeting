@@ -1,0 +1,158 @@
+/**
+ * GET /api/cron/refresh-feeds — scheduled FREE-feed refresh (Vercel Cron).
+ *
+ * Pulls the free/public external feeds (CBAR FX, Yahoo commodities, open-meteo
+ * weather, FAO / CPI / USDA, …) into `IntelDataPoint`, then recomputes each
+ * org's operational companies so feed-driven indicators reflect the new values.
+ *
+ * Explicitly does NOT run the paid LLM web-crawl — that stays a manual button
+ * (`/api/intel/refresh`). Only `getCommodityAdapters()` (public feeds) runs here.
+ *
+ * Auth: Vercel Cron sends `Authorization: Bearer $CRON_SECRET` automatically
+ * when the `CRON_SECRET` env is set. Without a matching secret the request is
+ * refused, so a stray public hit can't trigger external fetches + recompute.
+ *
+ * ── One-time setup on Vercel ──────────────────────────────────────────────
+ *   1. Set env `CRON_SECRET` to a long random string.
+ *   2. (optional) Set `EIA_API_KEY` / `USDA_API_KEY` / `SCRAPINGDOG_API_KEY`
+ *      free-tier keys — without them those few adapters skip gracefully.
+ *   3. The schedule is registered in `vercel.json` (`crons`, daily 06:00 UTC).
+ *      NOTE: `maxDuration = 300` needs Vercel **Pro**; Hobby caps execution
+ *      around 10s (too short for ingest + recompute → upgrade, or keep using
+ *      the manual "Запустить impact-scan" button).
+ */
+import { NextRequest, NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+import { getLogger } from "@/lib/log"
+import { enumerateActiveOrgs } from "@/lib/intel/scheduler-bootstrap"
+import { ingestCommodityData } from "@/lib/intel/commodity/ingest"
+import { getCommodityAdapters } from "@/lib/intel/commodity"
+import { filterOperationalCompanies } from "@/lib/risk/targets"
+import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+
+export const dynamic = "force-dynamic"
+export const maxDuration = 300 // Vercel Pro — ingest + recompute can exceed 60s
+
+const log = getLogger("cron:refresh-feeds")
+
+export async function GET(req: NextRequest) {
+  const secret = process.env.CRON_SECRET
+  if (!secret) {
+    return NextResponse.json(
+      { error: "CRON_SECRET is not configured — refusing to run" },
+      { status: 503 },
+    )
+  }
+  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const year = new Date().getUTCFullYear()
+  const adapters = getCommodityAdapters({
+    apiKeys: {
+      eia: process.env.EIA_API_KEY ?? null,
+      usda: process.env.USDA_API_KEY ?? null,
+      gtrends: process.env.SCRAPINGDOG_API_KEY ?? null,
+    },
+  })
+
+  const orgs = await enumerateActiveOrgs(prisma)
+  const summary: Array<{
+    orgId: string
+    pointsWritten: number
+    feedErrors: number
+    recompute: { ok: number; unknown: number; failed: number } | null
+  }> = []
+
+  for (const org of orgs) {
+    let pointsWritten = 0
+    const feedErrors: string[] = []
+
+    // 1. Pull the free feeds (per-adapter try/catch inside ingestCommodityData).
+    try {
+      const ingest = await ingestCommodityData(org.id, adapters)
+      pointsWritten = ingest.pointsWritten
+      feedErrors.push(...ingest.errors)
+    } catch (err) {
+      feedErrors.push(
+        `ingest threw: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+
+    // 2. Recompute the org's operational companies so feed-driven indicators
+    //    pick up the new values. Best-effort — never aborts the cron.
+    let recompute: { ok: number; unknown: number; failed: number } | null = null
+    try {
+      const companies = await prisma.company.findMany({
+        where: { organizationId: org.id, isActive: true },
+        select: {
+          id: true,
+          code: true,
+          industry: true,
+          level: true,
+          isActive: true,
+          role: true,
+          baseCurrencyCode: true,
+        },
+      })
+      const operational = filterOperationalCompanies(companies)
+      if (operational.length > 0) {
+        const r = await runRecomputeForCompanies(
+          prisma,
+          org.id,
+          operational.map((c) => ({ companyId: c.id, year })),
+        )
+        recompute = { ok: r.ok, unknown: r.unknown, failed: r.failed }
+      }
+    } catch (err) {
+      feedErrors.push(
+        `recompute threw: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+
+    // 3. Heartbeat + fail-alert — persist last-run time, points written, and
+    //    any errors to Org.settings (the existing home of `intelLastRunAt`).
+    //    This is the durable, type-safe alert state: a stale `intelLastRunAt`
+    //    or a non-zero `intelLastRunErrorCount` flags a silently-failing feed,
+    //    rather than it hiding behind an old observation date.
+    try {
+      const orgRow = await prisma.organization.findUnique({
+        where: { id: org.id },
+        select: { settings: true },
+      })
+      const settings = (orgRow?.settings ?? {}) as Record<string, unknown>
+      await prisma.organization.update({
+        where: { id: org.id },
+        data: {
+          settings: {
+            ...settings,
+            intelLastRunAt: new Date().toISOString(),
+            intelLastRunPointsWritten: pointsWritten,
+            intelLastRunErrorCount: feedErrors.length,
+            intelLastRunErrors: feedErrors.slice(0, 20),
+          },
+        },
+      })
+    } catch (e) {
+      log.error("failed to persist intel run heartbeat", {
+        orgId: org.id,
+        err: e instanceof Error ? e.message : String(e),
+      })
+    }
+
+    log.info("feed refresh org done", {
+      orgId: org.id,
+      pointsWritten,
+      feedErrors: feedErrors.length,
+      recompute,
+    })
+    summary.push({
+      orgId: org.id,
+      pointsWritten,
+      feedErrors: feedErrors.length,
+      recompute,
+    })
+  }
+
+  return NextResponse.json({ ok: true, year, orgs: summary })
+}
