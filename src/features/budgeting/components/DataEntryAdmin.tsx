@@ -244,6 +244,30 @@ function OperationalFactsTab({
     void refresh()
   }, [refresh])
 
+  // One-shot deep-link prefill. The indicator-health "Ввести вручную" CTA
+  // navigates here with ?company=<code>&metric=<name>, so the user lands with
+  // the right entity + KPI already selected instead of a blank form with the
+  // wrong default metric. Runs once, after the company list resolves (the
+  // code→id match needs it). Unknown/non-catalog values are ignored.
+  const [prefilled, setPrefilled] = useState(false)
+  useEffect(() => {
+    if (prefilled || companies.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const wantCompany = params.get("company")
+    const wantMetric = params.get("metric")
+    if (wantCompany) {
+      const match = companies.find((c) => c.code === wantCompany)
+      if (match) setCompanyId(match.id)
+    }
+    if (
+      wantMetric &&
+      OPERATIONAL_METRIC_RULES.some((r) => r.metric === wantMetric)
+    ) {
+      setMetric(wantMetric)
+    }
+    setPrefilled(true)
+  }, [companies, prefilled])
+
   const submit = async (forceConfirm: boolean) => {
     if (!companyId || !rule) return
     setFeedback({ kind: "saving" })

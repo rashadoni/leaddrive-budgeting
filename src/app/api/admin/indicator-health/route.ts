@@ -47,6 +47,17 @@ const REMEDIATION_MAP: Record<string, { category: string; remediation: string }>
     remediation:
       "Trailing-12M sugar price mean (for AGRO_COMMODITY_VOL). Run intel-scheduler-bootstrap.ts to ingest sugar-yahoo-sb-f data points.",
   },
+  // Legacy variable from a SUPERSEDED AGRO_COMMODITY_VOL formula (the live
+  // formula now uses sugar_price_stdev_12m). It only lingers on stale
+  // pre-2026-05 IVs that predate the formula change; like its successor it is
+  // fed by the commodity-price feed (IntelDataPoint), never hand-entered — so
+  // the honest remediation is "configure the feed", not "enter manually".
+  // Recompute AGRO_COMMODITY_VOL to clear these stale rows entirely.
+  commodity_price_stdev: {
+    category: "external-feed",
+    remediation:
+      "Stale IV from a superseded formula (now sugar_price_stdev_12m). Recompute AGRO_COMMODITY_VOL; the live metric is fed by the commodity-price feed — configure it under Data Sources.",
+  },
   news_sentiment_30d: {
     category: "external-feed",
     remediation:

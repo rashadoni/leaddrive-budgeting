@@ -3,19 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
-
-/** Per-category remediation CTAs → the admin tool that resolves that gap, so
- *  the user can jump straight from "what to do" to where they do it. Only
- *  categories with a real action get a link; formula-edge-case / leaf-rollup /
- *  code-bug intentionally have none (self-resolve / no-op / dev issue). */
-const CATEGORY_CTA: Record<string, { href: string; labelKey: string }[]> = {
-  "ingest-gap": [{ href: "/budgeting/admin/ai-import", labelKey: "ctaImport" }],
-  "no-data": [
-    { href: "/budgeting/admin/data-entry", labelKey: "ctaManual" },
-    { href: "/budgeting/admin/ai-import", labelKey: "ctaImport" },
-  ],
-  "external-feed": [{ href: "/budgeting/admin/data-sources", labelKey: "ctaFeed" }],
-}
+import { buildCtas } from "./cta"
 
 /** Locale-aware display name — English fallback, never forced Russian. */
 function pickName(
@@ -577,6 +565,10 @@ function Row({
         ? "bg-amber-500"
         : "bg-emerald-500"
 
+  // Remediation CTAs — manual entry only when the missing var is actually
+  // hand-enterable; deep-links data-entry with company + metric prefilled.
+  const ctas = buildCtas(g)
+
   return (
     <>
       <tr
@@ -665,9 +657,9 @@ function Row({
           <p className="whitespace-normal break-words leading-relaxed">
             {t.has(`action.${g.category}` as never) ? t(`action.${g.category}` as never) : g.remediation}
           </p>
-          {(CATEGORY_CTA[g.category] ?? []).length > 0 && (
+          {ctas.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1.5" data-testid={`cta-${rowKey(g)}`}>
-              {CATEGORY_CTA[g.category].map((cta) => (
+              {ctas.map((cta) => (
                 <Link
                   key={cta.href + cta.labelKey}
                   href={cta.href}
