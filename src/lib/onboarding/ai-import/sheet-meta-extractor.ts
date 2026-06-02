@@ -36,6 +36,24 @@ export interface SheetMeta {
   columnProfiles: ColumnProfile[]
   /** Is the sheet a section-separator? (e.g. ">>>" markers like "Actual >>>") */
   isSectionSeparator: boolean
+  /**
+   * Which workbook section this sheet falls under, derived from the nearest
+   * preceding separator (e.g. sheets after "Actual >>>" → "actual", after
+   * "KPI >>>" → "kpi"). null before any separator. Drives actual-vs-budget
+   * routing on import (a PLF/BS/CF sheet under "actual" is realized results,
+   * under "budget" is a forward target). Set by `extractWorkbookMeta` (needs
+   * sheet order); `extractSheetMetaFromAoa` defaults it to null.
+   */
+  sectionContext: "actual" | "budget" | "kpi" | "capex" | null
+}
+
+/** Map a section-separator sheet name → the section it starts. */
+export function separatorSection(name: string): "actual" | "budget" | "kpi" | "capex" | null {
+  if (/actual|факт/i.test(name)) return "actual"
+  if (/kpi/i.test(name)) return "kpi"
+  if (/capex|capital/i.test(name)) return "capex"
+  if (/budget|plan|forecast|план|бюджет/i.test(name)) return "budget"
+  return null
 }
 
 export interface ColumnProfile {
@@ -198,6 +216,7 @@ export function extractSheetMetaFromAoa(
       sample: [],
       columnProfiles: [],
       isSectionSeparator: true,
+      sectionContext: null,
     }
   }
 
@@ -243,6 +262,7 @@ export function extractSheetMetaFromAoa(
     sample,
     columnProfiles,
     isSectionSeparator: false,
+    sectionContext: null,
   }
 }
 
@@ -257,6 +277,11 @@ export function extractWorkbookMeta(
   opts: ExtractOptions = {},
 ): SheetMeta[] {
   const out: SheetMeta[] = []
+  // Track the running section as we walk the sheets in order: a separator like
+  // "Actual >>>" starts the "actual" section for every following sheet until
+  // the next separator. This is what lets the importer route a PLF/BS/CF sheet
+  // under "Actual >>>" to the actuals plan vs a budget/plan sheet to the budget.
+  let currentSection: "actual" | "budget" | "kpi" | "capex" | null = null
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName] as {
       "!ref"?: string
@@ -266,7 +291,13 @@ export function extractWorkbookMeta(
       header: 1,
       blankrows: false,
     }) as unknown[][]
-    out.push(extractSheetMetaFromAoa(sheetName, aoa, range, opts))
+    const meta = extractSheetMetaFromAoa(sheetName, aoa, range, opts)
+    if (meta.isSectionSeparator) {
+      currentSection = separatorSection(sheetName)
+    } else {
+      meta.sectionContext = currentSection
+    }
+    out.push(meta)
   }
   return out
 }

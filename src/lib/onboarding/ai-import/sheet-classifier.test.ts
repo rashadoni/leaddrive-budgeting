@@ -20,6 +20,7 @@ function meta(
     sample: [],
     columnProfiles: [],
     isSectionSeparator: false,
+    sectionContext: null,
     ...overrides,
   }
 }

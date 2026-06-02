@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
   extractSheetMetaFromAoa,
+  extractWorkbookMeta,
 } from "./sheet-meta-extractor"
 
 describe("extractSheetMetaFromAoa", () => {
@@ -26,6 +27,31 @@ describe("extractSheetMetaFromAoa", () => {
     expect(r2.isSectionSeparator).toBe(true)
     const r3 = extractSheetMetaFromAoa("CAPEX >>>", [], null)
     expect(r3.isSectionSeparator).toBe(true)
+  })
+
+  it("propagates sectionContext from the nearest preceding separator (Guvven Fin shape)", () => {
+    const SheetNames = [
+      "Farming Budget sales plan",
+      "Actual >>>",
+      "PLF CPC",
+      "BS CPC",
+      "KPI >>>",
+      "Farming KPI",
+      "CAPEX >>>",
+      "CAPEX_Farm",
+    ]
+    const Sheets = Object.fromEntries(SheetNames.map((n) => [n, { "!ref": "A1:C3" }]))
+    const XLSX = {
+      utils: { sheet_to_json: () => [["Account", "Code", "Amt"], ["Rev", "1", 10]] },
+    }
+    const out = extractWorkbookMeta({ Sheets, SheetNames }, XLSX)
+    const byName = Object.fromEntries(out.map((m) => [m.sheetName, m]))
+    expect(byName["Farming Budget sales plan"].sectionContext).toBe(null) // before any separator
+    expect(byName["Actual >>>"].isSectionSeparator).toBe(true)
+    expect(byName["PLF CPC"].sectionContext).toBe("actual")
+    expect(byName["BS CPC"].sectionContext).toBe("actual")
+    expect(byName["Farming KPI"].sectionContext).toBe("kpi")
+    expect(byName["CAPEX_Farm"].sectionContext).toBe("capex")
   })
 
   it("profiles column types correctly", () => {
