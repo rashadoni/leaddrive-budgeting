@@ -24,6 +24,8 @@ const { prismaMock } = vi.hoisted(() => ({
     auditEvent: { findMany: vi.fn() },
     // Phase 7.F sub-group RBAC — getCompanyScope reads user row.
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
+    // getCompanyScope resolves allowedSubGroupIds → company id set.
+    company: { findMany: vi.fn().mockResolvedValue([]) },
     // Audit-log RBAC bulk-fetches IV → companyId for IndicatorValue events.
     indicatorValue: { findMany: vi.fn().mockResolvedValue([]) },
     // Phase 5.2 Stage 2 — withOrgScope wraps auditEvent + indicatorValue reads.
@@ -45,14 +47,17 @@ const ORG_ID = 'cm3rlsauditevt00000001a';
 
 beforeEach(() => {
   prismaMock.auditEvent.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.user.findFirst.mockReset().mockResolvedValue({ allowedSubGroupIds: [] });
+  prismaMock.company.findMany.mockReset().mockResolvedValue([]);
+  prismaMock.indicatorValue.findMany.mockReset().mockResolvedValue([]);
 });
 
-function mkRow(id: string, createdAt: Date) {
+function mkRow(id: string, createdAt: Date, entityId = 'co_a') {
   return {
     id,
     action: 'company_create',
     entityType: 'Company',
-    entityId: 'co_a',
+    entityId,
     metadata: {},
     context: {},
     createdAt,
@@ -119,5 +124,65 @@ describe('GET /api/audit/events — handler shape-lock', () => {
     // The composite OR is AND-ed with the org scope — sibling fields
     // remain on `where` root.
     expect(arg.where.organizationId).toBe(ORG_ID);
+  });
+
+  it('REGRESSION (terminal-audit P1): scoped manager is NOT truncated when the limit+1 window contains out-of-scope rows', async () => {
+    // A scoped (non-admin) manager who can see only company `co_a`.
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    prismaMock.user.findFirst.mockResolvedValue({ allowedSubGroupIds: ['co_a'] });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'co_a' }]); // scope.ids = {co_a}
+
+    const t = new Date('2026-05-05T10:00:00.000Z');
+    const older = (n: number) => new Date(t.getTime() - n * 60_000);
+
+    // limit=2 → BATCH=3. Round 1's limit+1 window has an out-of-scope co_b row,
+    // so only 2 in-scope survive. PRE-FIX: hasMore = 2 > 2 = false → the trail
+    // is silently truncated even though more in-scope rows exist deeper.
+    prismaMock.auditEvent.findMany
+      .mockResolvedValueOnce([
+        mkRow('ev1', older(1), 'co_a'),
+        mkRow('ev2', older(2), 'co_b'), // out of scope — dropped by RBAC
+        mkRow('ev3', older(3), 'co_a'),
+      ])
+      // Round 2 (loop continues post-fix): one more in-scope row, then exhausted.
+      .mockResolvedValueOnce([mkRow('ev4', older(4), 'co_a')]);
+
+    const res = await GET(makeRequest('/api/audit/events?limit=2'));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Only in-scope rows are returned…
+    expect(body.events.map((e: { id: string }) => e.id)).toEqual(['ev1', 'ev3']);
+    // …and the trail is NOT truncated: a deeper in-scope row (ev4) exists.
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe(`${older(3).toISOString()}|ev3`);
+    // It actually looped a second batch rather than stopping at the first.
+    expect(prismaMock.auditEvent.findMany.mock.calls.length).toBe(2);
+    // The 2nd batch advanced the keyset cursor past the last RAW row of batch 1.
+    const batch2Where = prismaMock.auditEvent.findMany.mock.calls[1]?.[0].where;
+    expect(batch2Where.OR).toEqual([
+      { createdAt: { lt: older(3) } },
+      { createdAt: older(3), id: { lt: 'ev3' } },
+    ]);
+  });
+
+  it('scoped manager: source exhausted before a full page → hasMore=false, nextCursor=null', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+    prismaMock.user.findFirst.mockResolvedValue({ allowedSubGroupIds: ['co_a'] });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'co_a' }]);
+
+    const t = new Date('2026-05-05T10:00:00.000Z');
+    // limit=2, BATCH=3 → a single short batch (2 rows < 3) ends the scan.
+    prismaMock.auditEvent.findMany.mockResolvedValueOnce([
+      mkRow('ev1', t, 'co_a'),
+      mkRow('ev2', new Date(t.getTime() - 60_000), 'co_b'), // out of scope
+    ]);
+
+    const res = await GET(makeRequest('/api/audit/events?limit=2'));
+    const body = await res.json();
+    expect(body.events.map((e: { id: string }) => e.id)).toEqual(['ev1']);
+    expect(body.hasMore).toBe(false);
+    expect(body.nextCursor).toBeNull();
+    expect(prismaMock.auditEvent.findMany.mock.calls.length).toBe(1); // short batch → no 2nd round
   });
 });

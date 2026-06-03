@@ -44,6 +44,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
@@ -95,41 +96,32 @@ export async function GET(request: NextRequest) {
   const { events, hasMore, nextCursor } = await withOrgScope(
     session.orgId,
     async (tx) => {
-      // Fetch limit+1 so we can detect `hasMore` without a separate count
-      // query — the (limit+1)-th row is dropped from the response and its
-      // existence signals "more pages to come".
-      const rows = await tx.auditEvent.findMany({
-        where,
-        select: {
-          id: true,
-          action: true,
-          entityType: true,
-          entityId: true,
-          metadata: true,
-          context: true,
-          createdAt: true,
-          actor: {
-            select: { id: true, name: true, email: true },
-          },
+      const limit = parsed.filters.limit;
+
+      const eventSelect = {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        metadata: true,
+        context: true,
+        createdAt: true,
+        actor: {
+          select: { id: true, name: true, email: true },
         },
-        // Composite-cursor secondary key: `id` DESC ties the order on
-        // same-ms rows so the keyset OR-clause in `buildAuditEventsWhere`
-        // produces deterministic, gap-free pagination.
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        take: parsed.filters.limit + 1,
-      });
+      } satisfies Prisma.AuditEventSelect;
+      type Row = Prisma.AuditEventGetPayload<{ select: typeof eventSelect }>;
 
-      type Row = (typeof rows)[number];
-
-      // Phase 7.F sub-group RBAC — filter events whose entity sits in a
-      // company outside the caller's scope. admin → scope.ids === null →
-      // no filtering (full visibility, current behavior preserved).
-      let scopedRows: Row[] = rows;
-      if (scope.ids != null) {
-        // entityId is String? — filter nulls before passing to Prisma `in`
-        const ivEventIds = rows
-          .filter((r: Row) => r.entityType === 'IndicatorValue' && r.entityId != null)
-          .map((r: Row) => r.entityId as string);
+      // Phase 7.F sub-group RBAC — drop events whose entity sits in a company
+      // outside the caller's scope. admin → scope.ids === null → no filtering
+      // (full visibility, current behaviour preserved). Re-resolves the
+      // IndicatorValue→company map per batch (entityId is a free-text column,
+      // not a relation FK, so this can't be expressed in the Prisma `where`).
+      const applyScope = async (batch: Row[]): Promise<Row[]> => {
+        if (scope.ids == null) return batch;
+        const ivEventIds = batch
+          .filter((r) => r.entityType === 'IndicatorValue' && r.entityId != null)
+          .map((r) => r.entityId as string);
         const ivCompanyMap = new Map<string, string>();
         if (ivEventIds.length > 0) {
           const ivs = await tx.indicatorValue.findMany({
@@ -140,7 +132,7 @@ export async function GET(request: NextRequest) {
             ivCompanyMap.set(iv.id, iv.companyId);
           }
         }
-        scopedRows = rows.filter((r: Row) => {
+        return batch.filter((r) => {
           // entityId is non-null on Company / IV events (audit writer always sets it)
           if (r.entityType === 'Company') return scope.ids!.has(r.entityId!);
           if (r.entityType === 'IndicatorValue') {
@@ -149,16 +141,68 @@ export async function GET(request: NextRequest) {
           }
           return true;
         });
+      };
+
+      // Loop-page until we have limit+1 IN-SCOPE rows (enough to know there is
+      // at least one more page) or the source window is exhausted. This
+      // replaces the previous single `take=limit+1` fetch, which derived
+      // hasMore/nextCursor from the POST-RBAC-filter array — so any window
+      // whose limit+1 RAW rows contained an out-of-scope Company/IndicatorValue
+      // event reported hasMore=false and silently TRUNCATED a scoped manager's
+      // audit trail (a compliance gap). MAX_SCAN_ROUNDS bounds the worst case
+      // for a manager whose in-scope events are very sparse in a large window;
+      // on the cap we return a partial page plus a cursor at the last RAW row
+      // so the client can resume the scan rather than lose deeper in-scope rows.
+      const BATCH = limit + 1;
+      const MAX_SCAN_ROUNDS = 25;
+      const collected: Row[] = [];
+      let advanceCursor = parsed.filters.cursor;
+      let exhausted = false;
+      let rounds = 0;
+
+      while (collected.length <= limit && !exhausted && rounds < MAX_SCAN_ROUNDS) {
+        rounds++;
+        const batchWhere = buildAuditEventsWhere(
+          { ...parsed.filters, cursor: advanceCursor },
+          session.orgId,
+        );
+        const batch = await tx.auditEvent.findMany({
+          where: batchWhere,
+          select: eventSelect,
+          // Composite-cursor secondary key: `id` DESC ties the order on
+          // same-ms rows so the keyset OR-clause in `buildAuditEventsWhere`
+          // produces deterministic, gap-free pagination.
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: BATCH,
+        });
+        if (batch.length < BATCH) exhausted = true;
+        if (batch.length === 0) break;
+        const lastRaw = batch[batch.length - 1];
+        advanceCursor = { createdAt: lastRaw.createdAt, id: lastRaw.id };
+        collected.push(...(await applyScope(batch)));
       }
 
-      const hasMore = scopedRows.length > parsed.filters.limit;
-      const page: Row[] = hasMore
-        ? scopedRows.slice(0, parsed.filters.limit)
-        : scopedRows;
-      const nextCursor =
-        hasMore && page.length > 0
-          ? `${page[page.length - 1].createdAt.toISOString()}|${page[page.length - 1].id}`
-          : null;
+      let hasMore: boolean;
+      let page: Row[];
+      let nextCursor: string | null;
+      if (collected.length > limit) {
+        // Enough in-scope rows to fill the page and prove there is ≥1 more.
+        hasMore = true;
+        page = collected.slice(0, limit);
+        const last = page[page.length - 1];
+        nextCursor = `${last.createdAt.toISOString()}|${last.id}`;
+      } else if (!exhausted && advanceCursor) {
+        // Hit the scan cap with a partial page but the window is not exhausted:
+        // return what we have and let the client resume the RAW scan from the
+        // last scanned row, so no deeper in-scope row is silently dropped.
+        hasMore = true;
+        page = collected;
+        nextCursor = `${advanceCursor.createdAt.toISOString()}|${advanceCursor.id}`;
+      } else {
+        hasMore = false;
+        page = collected;
+        nextCursor = null;
+      }
 
       return { events: page, hasMore, nextCursor };
     },
