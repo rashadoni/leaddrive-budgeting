@@ -77,6 +77,11 @@ async function computePL(
     where: {
       organizationId: orgId,
       planId,
+      // Soft-delete: re-import archives prior rows (deletedAt set) under the
+      // SAME planId, then re-inserts live ones. Without this filter the AI
+      // narrative sums archived + live → inflated P&L (measured ×6.27 on live
+      // AzerSheker data). Mirrors pnl/route.ts + analytics/route.ts.
+      deletedAt: null,
       // Phase 7.G — when the user picked a specific company in the
       // budgeting page selector, scope BudgetLine reads to that
       // company so the AI sees the same numbers the visible UI shows.
@@ -172,7 +177,7 @@ async function computeBalanceSheet(
   // balance-sheet breakdown was meaningless. Include the account, read
   // `account.name` (fall back to the code, then accountId).
   const rows = await prisma.balanceSheetLine.findMany({
-    where: { organizationId: orgId, planId },
+    where: { organizationId: orgId, planId, deletedAt: null },
     include: { account: { select: { code: true, name: true } } },
   })
   const byType = { asset: 0, liability: 0, equity: 0 } as Record<string, number>
@@ -257,7 +262,7 @@ async function computeCashFlow(
 ) {
   const plan = await verifyPlan(orgId, planId)
   const entries = await prisma.cashFlowEntry.findMany({
-    where: { organizationId: orgId, year: plan.year },
+    where: { organizationId: orgId, year: plan.year, deletedAt: null },
   })
   const byActivity: Record<string, number> = { operating: 0, investing: 0, financing: 0 }
   const byMonth: Record<number, number> = {}

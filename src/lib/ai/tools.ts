@@ -247,6 +247,10 @@ async function runGetAccountDrill(raw: unknown, ctx: ToolContext) {
     where: {
       organizationId: ctx.orgId,
       planId: ctx.planId,
+      // Soft-delete: re-import archives prior rows under the same planId →
+      // without this the agent sums archived + live (inflated planned/forecast
+      // totals + line count). Every other BudgetLine read filters this.
+      deletedAt: null,
       ...budgetLineWhere,
     },
     take: 20,
