@@ -122,6 +122,35 @@ export function currentBakuYearNumber(): number {
 }
 
 /**
+ * The terminal's default "headline" period — the latest COMPLETE fiscal year.
+ *
+ * A financial terminal should open on the last year for which all 12 months
+ * have elapsed, NOT the in-progress current year. Defaulting to a partial
+ * pre-close year produced misleading classifications — e.g. AzerSheker EDEN's
+ * 2026 EBITDA margin read 169.8% "green" off only ~4 booked months + a one-off
+ * subsidy, while the company was loss-making; the COMPLETE 2025 year is the
+ * defensible 28%. Rule: current Baku year − 1 (the prior calendar year is
+ * always complete once we are in the next one). Single-tenant assumption: the
+ * prior year carries data (AzerSheker holds 2023–2025). Callers wanting the
+ * in-progress year pass `?period=YYYY` explicitly.
+ */
+export function headlinePeriod(): string {
+  return String(currentBakuYearNumber() - 1);
+}
+
+/**
+ * True when `period`'s year is the in-progress (current Baku) year or later —
+ * i.e. a partial / not-yet-complete fiscal year whose figures and green/red
+ * classifications are provisional (YTD), not a full-cycle result. Accepts
+ * annual "YYYY", quarter "YYYY-Qn", or month "YYYY-MM".
+ */
+export function isPartialYear(period: string): boolean {
+  const m = period.match(/^(\d{4})/);
+  if (!m) return false;
+  return Number(m[1]) >= currentBakuYearNumber();
+}
+
+/**
  * Current `(year, month)` tuple anchored to Asia/Baku timezone. Month is
  * 1-indexed (1=January..12=December), matching `now.getMonth() + 1`
  * convention rather than the JS Date 0-indexed quirk.

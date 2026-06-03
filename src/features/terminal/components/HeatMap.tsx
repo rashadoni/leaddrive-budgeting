@@ -19,6 +19,7 @@ import {
   statusColor,
   statusShape,
 } from '@/lib/risk/heatmap-matrix';
+import { isPartialYear } from '@/lib/risk/periods';
 import { resolveIndicatorLabel } from '../lib/resolve-indicator-label';
 import { formatFreshness } from '../lib/relative-time';
 import { inputToSourceCode } from '../hooks/use-drift-health';
@@ -72,6 +73,11 @@ export function HeatMap({ period }: Props) {
     !loading &&
     (!data || data.companies.length === 0 || data.indicators.length === 0);
   const renderedPeriod = data?.period ?? selectedPeriod ?? period ?? '';
+  // Partial / in-progress fiscal year (e.g. the current calendar year): its
+  // figures are year-to-date and its green/red bands provisional. The terminal
+  // DEFAULTS to the last complete year (headlinePeriod), so this banner only
+  // appears when the user explicitly navigates to the in-progress year.
+  const isPartialPeriod = renderedPeriod !== '' && isPartialYear(renderedPeriod);
   // Show the toggle only when there's a sector-aware industry — for org-wide
   // view it would be ambiguous which industry to dim against.
   const showMaterialityToggle = activeCompanyIndustry != null;
@@ -322,6 +328,18 @@ export function HeatMap({ period }: Props) {
               .map((a) => a.label.toLowerCase())
               .join(', ') || '—'}
           </span>
+        </div>
+      )}
+      {isPartialPeriod && (
+        <div
+          data-testid="heatmap-partial-year-banner"
+          className="mb-2 shrink-0 px-2 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 text-[11px] leading-relaxed"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="font-semibold">{renderedPeriod} is a partial year (year-to-date).</span>{' '}
+          Figures cover only the months booked so far, so margins and green/red bands are
+          provisional — not a full-cycle result. The default view is the last complete year.
         </div>
       )}
       {loading && (

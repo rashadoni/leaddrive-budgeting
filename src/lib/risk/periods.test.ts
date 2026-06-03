@@ -3,6 +3,8 @@ import {
   currentBakuYear,
   currentBakuYearMonth,
   currentBakuYearNumber,
+  headlinePeriod,
+  isPartialYear,
   parsePeriod,
   daysInPeriod,
   expandToMonths,
@@ -165,6 +167,54 @@ describe('currentBakuYearNumber', () => {
   it('returns NEXT year at year-boundary footgun (UTC 2026-12-31 23:30 = Baku 2027-01-01 03:30)', () => {
     vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
     expect(currentBakuYearNumber()).toBe(2027);
+  });
+});
+
+describe('headlinePeriod', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns the latest COMPLETE fiscal year (current Baku year − 1)', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(headlinePeriod()).toBe('2025');
+  });
+
+  it('tracks the Baku year boundary (UTC 2026-12-31 23:30 = Baku 2027 → headline 2026)', () => {
+    vi.setSystemTime(new Date('2026-12-31T23:30:00Z'));
+    expect(headlinePeriod()).toBe('2026');
+  });
+});
+
+describe('isPartialYear', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('flags the in-progress (current) year and later as partial — annual/quarter/month', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(isPartialYear('2026')).toBe(true);
+    expect(isPartialYear('2027')).toBe(true);
+    expect(isPartialYear('2026-Q2')).toBe(true);
+    expect(isPartialYear('2026-04')).toBe(true);
+  });
+
+  it('treats complete prior years as NOT partial', () => {
+    vi.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+    expect(isPartialYear('2025')).toBe(false);
+    expect(isPartialYear('2023')).toBe(false);
+    expect(isPartialYear('2025-Q4')).toBe(false);
+  });
+
+  it('returns false for unparseable input (defensive)', () => {
+    expect(isPartialYear('')).toBe(false);
+    expect(isPartialYear('garbage')).toBe(false);
   });
 });
 

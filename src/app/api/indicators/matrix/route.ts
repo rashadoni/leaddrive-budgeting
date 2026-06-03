@@ -45,7 +45,7 @@ const log = getLogger('api:indicators-matrix');
 // they're not removed, just no longer the sole protection.
 import { withOrgScope } from '@/lib/db/with-org-scope';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
-import { currentBakuYear, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
+import { headlinePeriod, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 import { getCompanyScope } from '@/lib/rbac/company-scope';
 import {
@@ -55,10 +55,13 @@ import {
 import { deriveSignalConfidence } from '@/lib/risk/heatmap-matrix';
 import { getCompanyReadiness } from '@/lib/server/get-company-readiness';
 
-// Default period reader — annual, anchored to Asia/Baku (see
-// `currentBakuYear` for rationale). Callers wanting monthly granularity
-// must pass `?period=YYYY-MM` explicitly.
-const defaultPeriodString = currentBakuYear;
+// Default period reader — the latest COMPLETE fiscal year (current Baku year
+// − 1), NOT the in-progress year. A partial pre-close year defaulted execs into
+// misleading classifications (EDEN 2026 read 169.8% "green" off ~4 months + a
+// one-off subsidy, while loss-making; complete 2025 is the defensible 28%). See
+// `headlinePeriod`. Callers wanting the in-progress or monthly view pass
+// `?period=YYYY` / `?period=YYYY-MM` explicitly.
+const defaultPeriodString = headlinePeriod;
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request);
