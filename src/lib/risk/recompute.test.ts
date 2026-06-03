@@ -334,6 +334,43 @@ describe('buildContext — booking aggregation', () => {
     expect(context.fx_revenue_share).toBeCloseTo(0.5);
   });
 
+  it('REGRESSION (terminal-audit P2): a foreign booking with no FX rate is EXCLUDED from revenue, not summed at face value', async () => {
+    const ds = mockDs({
+      bookings: [
+        booking({ revenue: 100, currencyCode: null, exchangeRate: null }),   // domestic 100
+        booking({ revenue: 999, currencyCode: 'USD', exchangeRate: null }),  // foreign, no rate → unconvertible
+      ],
+    });
+    const { context, inputs } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['booking'],
+    });
+    // The 999 USD must NOT inflate room_revenue at face value (rate=1).
+    expect(context.room_revenue).toBeCloseTo(100);
+    expect(context.fx_revenue_share).toBeCloseTo(0); // no convertible foreign revenue
+    const agg = inputs.aggregates.booking as { missing_rate_count: number; booking_count: number };
+    expect(agg.missing_rate_count).toBe(1);
+    expect(agg.booking_count).toBe(2); // both still counted as active bookings (occupancy)
+  });
+
+  it('REGRESSION (terminal-audit P2): a base-currency-tagged booking is domestic, not foreign', async () => {
+    const ds = mockDs({
+      bookings: [
+        booking({ revenue: 100, currencyCode: 'AZN', exchangeRate: null }), // base ccy → domestic
+        booking({ revenue: 100, currencyCode: 'USD', exchangeRate: 1 }),    // foreign
+      ],
+    });
+    const { context } = await buildContext(ds, {
+      ...orgArgs,
+      period: parsePeriod('2026-04'),
+      requiredInputs: ['booking'],
+    });
+    // AZN is the base currency → only the USD 100 is foreign → 100/200 = 0.5.
+    // Pre-fix (currencyCode != null counted as fx) this was 1.0.
+    expect(context.fx_revenue_share).toBeCloseTo(0.5);
+  });
+
   it('computes source_country_hhi (4-way equal split → 2500)', async () => {
     const ds = mockDs({
       bookings: [

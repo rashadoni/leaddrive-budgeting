@@ -29,17 +29,28 @@ export const bookingResolver: NamespaceResolver = {
     let missing_rate_count = 0;
     const rev_by_country = new Map<string, number>();
 
+    const baseCcy = ctx.baseCurrency;
     for (const b of active) {
+      // Occupancy (rooms / nights) is physical and currency-independent — count
+      // it for every active booking regardless of FX.
       rooms_sold += b.roomsBooked ?? 0;
       nights_sold += b.nights;
+      // "Foreign" = a currency tag that differs from the base currency (NOT just
+      // "currencyCode present"); a base-currency-tagged booking is domestic.
+      const isForeign = b.currencyCode != null && b.currencyCode !== baseCcy;
+      // A foreign booking with no exchange rate can't be converted to base.
+      // Mirror aggregatePnlLines (which `continue`s on foreign-no-rate) and
+      // EXCLUDE its revenue from room_revenue / fx_revenue / rev_by_country
+      // instead of summing the raw foreign amount at face value (rate=1) — that
+      // would inflate room_revenue, fx_revenue_share (HOSP_FX_EXPOSURE) and
+      // source_country_hhi (HOSP_SOURCE_HHI) with a wrong-scale number.
+      if (isForeign && b.exchangeRate == null) {
+        missing_rate_count += 1;
+        continue;
+      }
       const revBase = revenueInBase(b);
       room_revenue += revBase;
-      if (b.currencyCode != null) {
-        fx_revenue += revBase;
-        // Non-null currency with no rate means we silently fell back to 1 —
-        // record it so FX-sensitive indicators don't trust a fake zero delta.
-        if (b.exchangeRate == null) missing_rate_count += 1;
-      }
+      if (isForeign) fx_revenue += revBase;
       rev_by_country.set(
         b.sourceCountry,
         (rev_by_country.get(b.sourceCountry) ?? 0) + revBase,
