@@ -3351,7 +3351,7 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Affected entities ({n})",
     "pageTitle": "Indicator Health Dashboard",
-    "pageDescription": "Data readiness for every indicator — which values are computed and where data is still missing, with the action needed to complete each: connect a source, import, or enter manually.",
+    "pageDescription": "For every indicator, shows whether it's computed and — when it isn't — exactly which input is missing (e.g. inventory, raw_input). Three ways to supply it: (1) AI Import — upload any Excel and the classifier maps sheets and columns to the right metric by their headers and the file name; (2) Data Entry — type KPI / ESG values manually; (3) a full P&L / Balance Sheet / Cash Flow import. Each row's 'AI import' button deep-links to the importer for that gap.",
     "category": {
       "external-feed": "External feed needed",
       "ingest-gap": "Ingest gap",

@@ -3351,7 +3351,7 @@
     "expandedMissingVariable": "Missing variable",
     "expandedAffectedEntities": "Təsirə düşən sahələr ({n})",
     "pageTitle": "İndikator sağlamlığı paneli",
-    "pageDescription": "Hər indikator üzrə məlumat hazırlığı — hansı dəyərlər hesablanıb, harada məlumat hələ yoxdur və hər birini tamamlamaq üçün nə etmək lazımdır: mənbə qoşmaq, idxal etmək və ya əl ilə daxil etmək.",
+    "pageDescription": "Hər indikator üçün hesablanıb-hesablanmadığını, hesablanmayıbsa — dəqiq hansı girişin çatışmadığını göstərir (məs. inventory, raw_input). Doldurmağın üç yolu: (1) AI Import — istənilən Excel yükləyin, klassifikator vərəq və sütunları başlıqlarına və fayl adına görə düzgün metrikaya uyğunlaşdırır; (2) Məlumat daxiletmə — KPI / ESG dəyərlərini əl ilə daxil edin; (3) tam Mənfəət/Zərər, Balans və Pul axını idxalı. Hər sətirdəki «AI idxal» düyməsi həmin boşluq üçün idxalçıya keçid verir.",
     "category": {
       "external-feed": "Xarici fid lazımdır",
       "ingest-gap": "İdxal boşluğu",
