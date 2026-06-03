@@ -3308,7 +3308,7 @@
   },
   "adminCompanies": {
     "sectionHeading": "Роль, Статус и Индустрия",
-    "sectionDescription": "role определяет видимость в HeatMap (admin/holding исключены из operational view). status — onboarding gate, pending компании скрыты из матрицы. industry задаёт пак индикаторов и layout settings-формы.",
+    "sectionDescription": "Профиль каждой компании в терминале. Отрасль (Sənaye) задаёт, какой пакет индикаторов применяется (напр. Агро / Пищепром) и раскладку формы ввода данных. Роль (Rol) управляет видимостью в HeatMap: operational-компании видны в матрице рисков, а admin/holding (затратные центры) исключены, чтобы не искажать коэффициенты. Status — шлюз онбординга: active виден в матрице, pending скрыт до готовности данных, archived — в архиве.",
     "loading": "Загрузка…",
     "thCode": "Код",
     "thName": "Название",

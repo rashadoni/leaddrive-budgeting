@@ -3308,7 +3308,7 @@
   },
   "adminCompanies": {
     "sectionHeading": "Rol, Status və Sənaye",
-    "sectionDescription": "role HeatMap-da görünüşü müəyyən edir (admin/holding operational görünüşdən xaric). status onboardinq qapısı — pending şirkətlər matrisdan gizlədilir. industry indikator paketi və settings forma layout-u müəyyən edir.",
+    "sectionDescription": "Hər şirkətin terminaldakı profili. Sənaye — hansı indikator paketinin tətbiq olunacağını (məs. Aqro / Qida emalı) və məlumat-daxiletmə formasının görünüşünü seçir. Rol — HeatMap görünüşünü idarə edir: operational şirkətlər risk matrisində görünür, admin/holding xərc-mərkəzləri isə əmsalları təhrif etməsin deyə xaric edilir. Status — onboardinq qapısı: active matrisdə görünür, pending məlumat hazır olana qədər gizlidir, archived arxivdədir.",
     "loading": "Yüklənir…",
     "thCode": "Kod",
     "thName": "Ad",

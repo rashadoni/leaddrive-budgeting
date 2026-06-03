@@ -3308,7 +3308,7 @@
   },
   "adminCompanies": {
     "sectionHeading": "Role, Status & Industry",
-    "sectionDescription": "role determines HeatMap visibility (admin/holding excluded from operational view). status is the onboarding gate — pending companies are hidden from the matrix. industry drives the indicator pack and the settings form layout.",
+    "sectionDescription": "Each company's profile in the terminal. Industry selects which indicator pack applies (e.g. Agro vs Food Processing) and the data-entry form layout. Role controls HeatMap visibility — operational companies appear in the risk matrix, while admin/holding cost-centres are excluded so they don't skew ratios. Status is the onboarding gate — active shows in the matrix, pending is hidden until data is ready, archived is retired.",
     "loading": "Loading…",
     "thCode": "Code",
     "thName": "Name",
