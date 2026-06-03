@@ -24,7 +24,9 @@ import { useTranslations } from "next-intl";
  * default — broken UX after Turn LIII shipped the picker.
  */
 export function ExportPptxButton({ period }: { period: string }) {
-  const t = useTranslations("boardDeck.exports");
+  // `terminal.boardDeck.exports` — see ExportPdfButton note; bare
+  // "boardDeck.exports" misses and renders raw keys.
+  const t = useTranslations("terminal.boardDeck.exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const searchParams = useSearchParams();

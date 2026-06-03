@@ -35,7 +35,12 @@ export function ExportPdfButton({
   withSummary?: boolean;
   language?: SummaryLanguage;
 }) {
-  const t = useTranslations("boardDeck.exports");
+  // Namespace is `terminal.boardDeck.exports` — board-deck i18n lives under the
+  // `terminal` root (FooterActions + all sibling sections use
+  // getTranslations("terminal")). The bare "boardDeck.exports" missed (root
+  // `boardDeck` is only the nav-label string) → the button rendered RAW keys
+  // ("pdfLabel" / "pdfAriaLabel") to the client. (terminal-audit E2E follow-up.)
+  const t = useTranslations("terminal.boardDeck.exports");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

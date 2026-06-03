@@ -19,7 +19,9 @@ import { useTranslations } from "next-intl";
  *    `/api/budgeting/board-deck/export-pptx`).
  */
 export function PrintButton() {
-  const t = useTranslations("boardDeck.exports");
+  // `terminal.boardDeck.exports` — see ExportPdfButton note; bare
+  // "boardDeck.exports" misses and renders raw keys.
+  const t = useTranslations("terminal.boardDeck.exports");
   return (
     <button
       type="button"
