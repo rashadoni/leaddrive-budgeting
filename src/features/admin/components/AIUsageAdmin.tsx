@@ -215,18 +215,31 @@ function Card({
   secondary: string
   tone?: "green" | "amber" | "red"
 }) {
-  const toneClass =
+  // Keep every card on the dark navy surface (consistent with the budget +
+  // chart cards) so the light-on-dark text always reads. Previously the
+  // green/amber tones used a near-transparent tint (bg-emerald-500/5) which,
+  // in light mode, left white text on the light page background — invisible.
+  // Tone is now carried by the border + the primary-number colour instead.
+  const borderClass =
     tone === "red"
-      ? "border-red-500/50 bg-red-500/10"
+      ? "border-red-500/60"
       : tone === "amber"
-      ? "border-amber-500/50 bg-amber-500/10"
+      ? "border-amber-500/60"
       : tone === "green"
-      ? "border-emerald-500/40 bg-emerald-500/5"
-      : "border-gray-700/80 bg-[#0F1535]"
+      ? "border-emerald-500/50"
+      : "border-gray-700/80"
+  const primaryClass =
+    tone === "red"
+      ? "text-red-400"
+      : tone === "amber"
+      ? "text-amber-300"
+      : tone === "green"
+      ? "text-emerald-400"
+      : "text-gray-100"
   return (
-    <div className={`rounded-md border px-3 py-3 text-gray-100 ${toneClass}`}>
+    <div className={`rounded-md border bg-[#0F1535] px-3 py-3 text-gray-100 ${borderClass}`}>
       <div className="text-[10px] uppercase tracking-wider text-gray-400">{label}</div>
-      <div className="mt-2 text-2xl font-bold tabular-nums">{primary}</div>
+      <div className={`mt-2 text-2xl font-bold tabular-nums ${primaryClass}`}>{primary}</div>
       <div className="text-[10px] text-gray-500 mt-1">{secondary}</div>
     </div>
   )

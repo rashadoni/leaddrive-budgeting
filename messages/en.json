@@ -3288,10 +3288,10 @@
   },
   "adminIndicatorBacklog": {
     "pageTitle": "Indicator Backlog",
-    "pageDescription": "Per-entity action list: which indicators are missing data, who owns the source, and how to import once received. Use this as the single workflow surface when onboarding a new entity or chasing missing client files. Pair with {aiImport} — every successful import closes items here.",
+    "pageDescription": "Per-entity action list: which indicators are missing data, who owns the source, and how to import once received. Use this as the single workflow surface when onboarding a new entity or chasing missing client files. Pair with <aiImport></aiImport> — every successful import closes items here.",
     "aiImportLink": "AI Auto Import",
     "allEntitiesLabel": "All entities",
-    "filteredTo": "Filtered to {code}",
+    "filteredTo": "Filtered to <code></code>",
     "hasData": "Has data",
     "needsData": "Needs data",
     "showAll": "Show all {n}",
@@ -3384,7 +3384,7 @@
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",
-    "description": "Maps each company to its authoritative xlsx file for the nightly drift-watchdog. Edits write atomically to {file}.",
+    "description": "Maps each company to its authoritative xlsx file for the nightly drift-watchdog. Edits write atomically to <file></file>.",
     "entriesHeading": "Entries",
     "loading": "Loading…",
     "emptyEntries": "No entries yet. Add one below.",

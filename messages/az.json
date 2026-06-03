@@ -3288,10 +3288,10 @@
   },
   "adminIndicatorBacklog": {
     "pageTitle": "İndikator Backlog",
-    "pageDescription": "Sahə üzrə fəaliyyət siyahısı: hansı indikatorlarda məlumat yoxdur, mənbə kimə aiddir, və alındıqda necə idxal edilməlidir. Yeni sahə onboardinq və ya müştəri faylların gözlədikdə tək workflow səth kimi istifadə edin. {aiImport} ilə cüt — hər uğurlu idxal buradakı item-ləri bağlayır.",
+    "pageDescription": "Sahə üzrə fəaliyyət siyahısı: hansı indikatorlarda məlumat yoxdur, mənbə kimə aiddir, və alındıqda necə idxal edilməlidir. Yeni sahə onboardinq və ya müştəri faylların gözlədikdə tək workflow səth kimi istifadə edin. <aiImport></aiImport> ilə cüt — hər uğurlu idxal buradakı item-ləri bağlayır.",
     "aiImportLink": "AI Auto Import",
     "allEntitiesLabel": "Bütün sahələr",
-    "filteredTo": "{code} üzrə süzülmüş",
+    "filteredTo": "<code></code> üzrə süzülmüş",
     "hasData": "Məlumat var",
     "needsData": "Məlumat lazımdır",
     "showAll": "Hamısını göstər ({n})",
@@ -3384,7 +3384,7 @@
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",
-    "description": "Hər şirkəti gecə drift-watchdog üçün öz xlsx faylına bağlayır. Dəyişikliklər atomik şəkildə {file} faylına yazılır.",
+    "description": "Hər şirkəti gecə drift-watchdog üçün öz xlsx faylına bağlayır. Dəyişikliklər atomik şəkildə <file></file> faylına yazılır.",
     "entriesHeading": "Yazılar",
     "loading": "Yüklənir…",
     "emptyEntries": "Hələ yazı yoxdur. Aşağıda əlavə edin.",

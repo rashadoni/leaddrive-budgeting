@@ -3288,10 +3288,10 @@
   },
   "adminIndicatorBacklog": {
     "pageTitle": "Backlog индикаторов",
-    "pageDescription": "Список действий по сущностям: какие индикаторы без данных, кто owner источника, как загрузить когда получите. Используйте как single workflow surface при onboarding'е новой сущности или chasing клиентских файлов. Парно с {aiImport} — каждый успешный импорт закрывает item'ы здесь.",
+    "pageDescription": "Список действий по сущностям: какие индикаторы без данных, кто owner источника, как загрузить когда получите. Используйте как single workflow surface при onboarding'е новой сущности или chasing клиентских файлов. Парно с <aiImport></aiImport> — каждый успешный импорт закрывает item'ы здесь.",
     "aiImportLink": "AI Auto Import",
     "allEntitiesLabel": "Все сущности",
-    "filteredTo": "Отфильтровано по {code}",
+    "filteredTo": "Отфильтровано по <code></code>",
     "hasData": "С данными",
     "needsData": "Нужны данные",
     "showAll": "Показать все {n}",
@@ -3384,7 +3384,7 @@
   },
   "adminSourceRegistry": {
     "title": "Реестр источников Drift Watchdog",
-    "description": "Сопоставляет каждую компанию с её авторитетным xlsx-файлом для ночного drift-watchdog. Изменения записываются атомарно в {file}.",
+    "description": "Сопоставляет каждую компанию с её авторитетным xlsx-файлом для ночного drift-watchdog. Изменения записываются атомарно в <file></file>.",
     "entriesHeading": "Записи",
     "loading": "Загрузка…",
     "emptyEntries": "Записей пока нет. Добавьте ниже.",
