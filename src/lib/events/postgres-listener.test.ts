@@ -40,6 +40,13 @@ async function waitForCondition(
 
 const fakeClients: Array<FakeClient> = [];
 
+// When > 0, the next N FakeClient.connect() calls reject (simulating a DB
+// cold-start / restart blip). Decremented per failed connect. Reset per test.
+let failConnectsRemaining = 0;
+// When > 0, the next N FakeClient.query() calls reject (simulating a LISTEN
+// failure right after a successful connect). Decremented per failed query.
+let failQueriesRemaining = 0;
+
 class FakeClient {
   notificationListeners: Array<(msg: { channel: string; payload: string }) => void> = [];
   errorListeners: Array<(err: Error) => void> = [];
@@ -50,12 +57,20 @@ class FakeClient {
 
   async connect() {
     this.connectCalls++;
+    if (failConnectsRemaining > 0) {
+      failConnectsRemaining--;
+      throw new Error('connect failed (simulated cold-start)');
+    }
   }
   on(event: string, cb: (...args: unknown[]) => void) {
     if (event === 'notification') this.notificationListeners.push(cb as never);
     if (event === 'error') this.errorListeners.push(cb as never);
   }
   async query(sql: string) {
+    if (failQueriesRemaining > 0) {
+      failQueriesRemaining--;
+      throw new Error('LISTEN failed (simulated)');
+    }
     this.queries.push(sql);
   }
   async end() {
@@ -95,6 +110,8 @@ const importListener = async () => {
 beforeEach(() => {
   process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/test';
   fakeClients.length = 0;
+  failConnectsRemaining = 0;
+  failQueriesRemaining = 0;
 });
 
 afterEach(() => {
@@ -170,6 +187,60 @@ describe('postgres-listener (Phase B1)', () => {
     fakeClients[1].fireNotification('audit_events_changed', { id: 'after', action: 'a', organizationId: 'o', createdAt: 't' });
     expect(received).toHaveLength(2);
     expect((received[1] as { id: string }).id).toBe('after');
+  });
+
+  it('REGRESSION (terminal-audit P1): a first-connect rejection does NOT poison the singleton — next subscribe() retries a fresh connection', async () => {
+    const { subscribe } = await importListener();
+    // First connect rejects (DB cold-start blip at first subscribe after deploy).
+    failConnectsRemaining = 1;
+    await expect(
+      subscribe('audit_events_changed', () => {}),
+    ).rejects.toThrow(/connect failed/);
+    // First attempt created a client whose connect rejected.
+    expect(fakeClients.length).toBe(1);
+    // Pre-fix: clientPromise held the cached REJECTED promise, so this second
+    // subscribe() would re-throw forever and never create a new client.
+    // Post-fix: the singleton was reset, so a fresh connect succeeds.
+    const received: unknown[] = [];
+    await subscribe('audit_events_changed', (p) => received.push(p));
+    expect(fakeClients.length).toBe(2);
+    // The recovered client re-issued LISTEN and routes NOTIFY to the listener.
+    expect(fakeClients[1].queries).toContain('LISTEN audit_events_changed');
+    fakeClients[1].fireNotification('audit_events_changed', {
+      id: 'recovered',
+      action: 'a',
+      organizationId: 'o',
+      createdAt: 't',
+    });
+    expect(received).toHaveLength(1);
+    expect((received[0] as { id: string }).id).toBe('recovered');
+  });
+
+  it('REGRESSION (terminal-audit P1): a LISTEN-query rejection (connect ok) also resets the singleton', async () => {
+    const { subscribe } = await importListener();
+    // connect() succeeds; the first LISTEN query rejects — exercised by the
+    // same try/catch, since the 'error' event handler does not fire on a
+    // query() promise rejection.
+    failQueriesRemaining = 1;
+    await expect(
+      subscribe('indicator_values_changed', () => {}),
+    ).rejects.toThrow(/LISTEN failed/);
+    expect(fakeClients.length).toBe(1);
+    expect(fakeClients[0].ended).toBe(true); // half-open client torn down
+    // Singleton reset → next subscribe builds a fresh, fully-listening client.
+    const received: unknown[] = [];
+    await subscribe('indicator_values_changed', (p) => received.push(p));
+    expect(fakeClients.length).toBe(2);
+    expect(fakeClients[1].queries).toContain('LISTEN indicator_values_changed');
+    fakeClients[1].fireNotification('indicator_values_changed', {
+      id: 'iv_1',
+      indicatorId: 'ind_1',
+      companyId: 'c_1',
+      organizationId: 'o_1',
+      status: 'red',
+      period: '2026',
+    });
+    expect(received).toHaveLength(1);
   });
 
   it('malformed NOTIFY payload (non-JSON) is silently dropped, not crashed', async () => {
