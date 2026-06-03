@@ -72,7 +72,9 @@ export function createPrismaDataSource(
         // asc + createdAt asc means the snapshot reducer (>=) lands on the most
         // recently written fact at the latest date (i.e. the correction).
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-        select: { value: true, date: true },
+        // `unit` lets currency-sensitive resolvers (captured pl_ebitda) verify
+        // the fact is denominated in the company's base currency before use.
+        select: { value: true, date: true, unit: true },
       });
     },
 

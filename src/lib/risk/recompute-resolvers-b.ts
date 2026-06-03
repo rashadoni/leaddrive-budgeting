@@ -70,7 +70,19 @@ export const budgetLineResolver: NamespaceResolver = {
         start: ctx.period.start,
         end: ctx.period.end,
       });
-      if (ebRows.length > 0) capturedEbitda = ebRows.reduce((s, r) => s + r.value, 0);
+      // Only trust the source's captured EBITDA subtotal when it is denominated
+      // in the company's BASE currency. capture-plf-ebitda stores the value
+      // verbatim from the workbook cell with a hardcoded `unit`, while `revenue`
+      // (the IND_EBITDA_MARGIN denominator) is FX-normalized to base by
+      // aggregatePnlLines. For a non-base-currency entity, dividing a raw-source-
+      // currency EBITDA by FX-converted revenue yields a wrong margin. On a
+      // currency mismatch, ignore the captured value and fall back to the
+      // FX-normalized `net_income + da_total` derivation (already in base ccy).
+      // `unit` absent (legacy facts) → trust, preserving prior all-AZN behaviour.
+      const allBaseCcy = ebRows.every((r) => (r.unit ?? baseCcy) === baseCcy);
+      if (ebRows.length > 0 && allBaseCcy) {
+        capturedEbitda = ebRows.reduce((s, r) => s + r.value, 0);
+      }
     }
     const ebitda = capturedEbitda ?? net_income + da_total;
 

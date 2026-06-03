@@ -3677,6 +3677,59 @@ describe('recomputeIndicator — ebitda D&A add-back via budgetLineResolver (Pha
     expect(result.status).toBe('green');
   });
 
+  it('REGRESSION (terminal-audit P2): ignores a captured pl_ebitda whose unit ≠ base currency (FX-mix guard)', async () => {
+    // Derived path: revenue=1M, cogs=400K (200K is D&A 703-11), opex=200K →
+    // net_income 400K + da 200K = ebitda 600K → margin 60% (green). A captured
+    // pl_ebitda of 100K tagged USD (≠ base AZN) MUST be ignored — trusting it
+    // would divide a raw-USD numerator by FX-converted-AZN revenue (10%, amber).
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '715-01', accountCategory: null,
+          accountName: 'Raw materials', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '703-11', accountCategory: null,
+          accountName: 'Depreciation in COGS', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'expense', accountCode: '720-01', accountCategory: null,
+          accountName: 'Operating expense', monthIndex: null },
+      ],
+      facts: { pl_ebitda: [{ value: 100_000, date: new Date('2025-06-01'), unit: 'USD' }] },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'azseker_1', definition: EBITDA_MARGIN_DEF, period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(60, 2); // derived (USD-tagged 100K ignored), NOT 10%
+    expect(result.status).toBe('green');
+  });
+
+  it('uses a captured pl_ebitda whose unit === base currency', async () => {
+    // revenue=1M; captured pl_ebitda 100K tagged AZN (== base) IS trusted →
+    // 100K / 1M = 10% (amber), distinguishable from the derived 100% it would
+    // otherwise be (net 800K + da 200K = 1M).
+    const ds = mockDs({
+      budgetLines: [
+        { plannedAmount: 1_000_000, currencyCode: null, exchangeRate: null,
+          accountType: 'revenue', accountCode: '611', accountCategory: null,
+          accountName: 'Revenue', monthIndex: null },
+        { plannedAmount: 200_000, currencyCode: null, exchangeRate: null,
+          accountType: 'cogs', accountCode: '703-11', accountCategory: null,
+          accountName: 'Depreciation in COGS', monthIndex: null },
+      ],
+      facts: { pl_ebitda: [{ value: 100_000, date: new Date('2025-06-01'), unit: 'AZN' }] },
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1', companyId: 'azseker_1', definition: EBITDA_MARGIN_DEF, period: '2025',
+    });
+    expect(result.ok).toBe(true);
+    expect(result.value).toBeCloseTo(10, 2); // captured 100K / revenue 1M
+    expect(result.status).toBe('amber');
+  });
+
   it('adds back D&A from OpEx (721-11) → ebitda > net_income', async () => {
     // revenue=500K, cogs=100K, opex=200K (100K is D&A 721-11)
     // net_income = 200K, da_total = 100K → ebitda = 300K → margin = 60%

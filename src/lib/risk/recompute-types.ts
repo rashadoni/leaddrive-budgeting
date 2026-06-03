@@ -44,6 +44,11 @@ export interface BookingRow {
 export interface FactRow {
   value: number;
   date: Date;
+  /** OperationalFact.unit (currency code / physical unit). Optional + nullable
+   *  (Prisma column is `String?`); consumers that care about currency (e.g. the
+   *  captured pl_ebitda guard in recompute-resolvers-b) check it against base
+   *  currency, treating null/undefined as "trust" via `?? baseCcy`. */
+  unit?: string | null;
 }
 
 export interface CurrencyRateRow {
