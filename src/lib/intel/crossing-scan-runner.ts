@@ -195,6 +195,7 @@ async function processOneMatch(
         prisma,
         co.id,
         year,
+        organizationId,
       )
       if (financials.revenueAZN == null) {
         result.skippedNoFinancials++
