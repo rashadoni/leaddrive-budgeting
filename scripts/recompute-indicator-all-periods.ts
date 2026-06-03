@@ -86,6 +86,10 @@ async function main() {
     select: {
       id: true, code: true, formula: true, sparklineFormula: true,
       thresholds: true, requiredInputs: true, unit: true, aggregation: true,
+      // Carry provenance — without it recomputeIndicator stamps the IV
+      // `valueSource: 'computed'`, silently DOWNGRADING macro/disclosed/modeled
+      // indicators on a maintenance recompute (it broke macro-broadcast tags).
+      defaultValueSource: true,
     },
   })
   const defById = new Map(defs.map((d) => [d.id, d]))
@@ -115,6 +119,7 @@ async function main() {
           requiredInputs: def.requiredInputs,
           unit: def.unit,
           aggregation: def.aggregation,
+          defaultValueSource: def.defaultValueSource,
         },
         period: iv.period,
         baseCurrency: co.baseCurrencyCode ?? undefined,

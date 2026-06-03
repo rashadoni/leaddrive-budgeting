@@ -59,6 +59,10 @@ export const agroIndicators: IndicatorSeed[] = [
   },
   {
     code: "AGRO_COMMODITY_VOL",
+    // Market-wide commodity signal (same sugar-volatility value for every
+    // company) — tag as macro so it's labelled a broadcast, not a per-company
+    // computed value (smoke check 3 / signal-confidence = medium).
+    defaultValueSource: "macro",
     nameEn: "Commodity Price Volatility",
     nameAz: "Əmtəə Qiymət Dəyişkənliyi",
     nameRu: "Волатильность цен на товар",
