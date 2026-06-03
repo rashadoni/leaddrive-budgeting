@@ -143,7 +143,17 @@ export function simulateScenario(
 
     const baselineStatus = iv.status as IndicatorStatus
     const scenarioStatus = classifyValue(scenarioValue, seed.thresholds as Thresholds)
-    const changed = scenarioStatus !== baselineStatus
+    // A status flip only counts when BOTH ends are real bands. An "unknown"
+    // baseline (a no-data indicator persisted with value:0, status:"unknown")
+    // ranks 0 in STATUS_ORDER, so without this guard every unknown→real
+    // transition scores as an "improvement" — e.g. a crisis (multiply/delta)
+    // applied to a no-data indicator is reported as a gain, inflating
+    // `improved` and corrupting the worsened/improved summary shown to the
+    // client. Mirrors the driver-path guard in scenario-rederive.ts. The same
+    // flag also gates buildDeltaMap (HeatMap overlay), so an unknown row no
+    // longer paints a fake status change on the grid.
+    const bothReal = baselineStatus !== "unknown" && scenarioStatus !== "unknown"
+    const changed = bothReal && scenarioStatus !== baselineStatus
 
     deltas.push({
       companyId: iv.companyId,
