@@ -45,8 +45,11 @@ export default defineConfig({
 
   // Conservative timeouts for a single-VM dev server doing real DB work.
   // Customer-facing flows (wizard analyze + apply) can legitimately take
-  // 5-15s; pad to 30s default.
-  timeout: 30_000,
+  // 5-15s. Bumped 30s→60s (2026-06-03): a cold-server login can consume up to
+  // 25s (see fixtures/auth.ts), leaving too little of a 30s budget for the
+  // actual flow on heavy specs (board-deck, wizard); 60s absorbs login + flow
+  // without false timeouts on this single-VM, no-CI dev harness.
+  timeout: 60_000,
   expect: {
     timeout: 5_000,
     // Visual-regression defaults for `toHaveScreenshot()` (Phase 7.G Turn E).

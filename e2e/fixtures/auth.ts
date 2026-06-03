@@ -64,7 +64,12 @@ export async function loginAs(
   // rather than waiting for any specific element (which would be
   // page-content-dependent).
   await Promise.all([
-    page.waitForURL(/\/budgeting(\?|$|\/)/, { timeout: 10_000 }),
+    // 25s (was 10s): the post-login redirect waits on the credentials callback
+    // + session write + a first-hit compile of the /budgeting route on a cold
+    // dev server. 10s was too tight and flaked ~4 specs at login under load
+    // (2026-06-03). The redirect is <2s on a warm server; this is headroom for
+    // the cold/contended case, not an expected duration.
+    page.waitForURL(/\/budgeting(\?|$|\/)/, { timeout: 25_000 }),
     page.getByRole('button', { name: /sign in|log in/i }).click(),
   ]);
 
