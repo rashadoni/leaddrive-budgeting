@@ -131,13 +131,16 @@ describe("getEntityFields", () => {
     expect(getEntityFields("nonExistentEntity")).toEqual([])
   })
 
-  it("returns base fields for budgetLines", () => {
+  it("returns base fields for budgetLines (no dropped Phase-2.1 columns)", () => {
     const fields = getEntityFields("budgetLines")
-    // Base fields include category / plannedAmount / forecastAmount
     const names = fields.map((f) => f.name)
-    expect(names).toContain("category")
     expect(names).toContain("plannedAmount")
     expect(names).toContain("forecastAmount")
+    // `category` was DROPPED from BudgetLine in Phase 2.1 — selecting it made the
+    // report engine's findMany throw (blanked the Report Builder). It must not be
+    // offered as a column; the account dimension now comes from the accountId FK.
+    expect(names).not.toContain("category")
+    expect(names).toContain("account.code")
   })
 
   it("flattens relation fields with dotted notation (plan.name, plan.year)", () => {
@@ -145,6 +148,19 @@ describe("getEntityFields", () => {
     const names = fields.map((f) => f.name)
     expect(names).toContain("plan.name")
     expect(names).toContain("plan.year")
+  })
+
+  it("data-bearing entities expose the account relation, not dropped Phase-2.1 columns", () => {
+    // Regression: these scalar columns were dropped in Phase 2.1 (replaced by the
+    // accountId FK). Any entity config still offering them makes the engine's
+    // Prisma findMany throw -> the Report Builder renders blank. Guard against it.
+    for (const entity of ["budgetLines", "cashFlow", "balanceSheet", "cogsBudget"]) {
+      const names = getEntityFields(entity).map((f) => f.name)
+      expect(names).not.toContain("category")
+      expect(names).not.toContain("accountCode")
+      expect(names).not.toContain("accountName")
+      expect(names).toContain("account.code")
+    }
   })
 
   it("relation field labels use ' → ' separator (plan → name)", () => {

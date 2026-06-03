@@ -28,7 +28,6 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     hasPlanId: true,
     hasYearMonth: false,
     fields: [
-      { name: "category", label: "Category", type: "string" },
       { name: "department", label: "Department", type: "string" },
       { name: "lineType", label: "Line Type", type: "string" },
       { name: "lineSubtype", label: "Subtype", type: "string" },
@@ -45,6 +44,10 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "plan", model: "budgetPlan", fields: ["name", "year"] },
       { name: "costType", model: "budgetCostType", fields: ["key", "label"] },
       { name: "budgetDept", model: "budgetDepartment", fields: ["key", "label"] },
+      // Phase 2.1 dropped the scalar `category` column → the account dimension
+      // now lives on the `accountId` FK. Expose it via the relation so reports
+      // keep an account code/name column.
+      { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
 
@@ -93,7 +96,6 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     fields: [
       { name: "year", label: "Year", type: "number" },
       { name: "month", label: "Month", type: "number" },
-      { name: "accountCode", label: "Account Code", type: "string" },
       { name: "productionQty", label: "Production Qty", type: "number" },
       { name: "totalCost", label: "Total Cost", type: "number" },
       { name: "notes", label: "Notes", type: "string" },
@@ -101,6 +103,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     relations: [
       { name: "plan", model: "budgetPlan", fields: ["name", "year"] },
       { name: "productLine", model: "productLine", fields: ["code", "name", "unit"] },
+      { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
 
@@ -109,8 +112,6 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     hasPlanId: true,
     hasYearMonth: true,
     fields: [
-      { name: "accountCode", label: "Account Code", type: "string" },
-      { name: "accountName", label: "Account Name", type: "string" },
       { name: "lineType", label: "Type", type: "string" },
       { name: "subType", label: "Sub Type", type: "string" },
       { name: "year", label: "Year", type: "number" },
@@ -120,6 +121,7 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     ],
     relations: [
       { name: "plan", model: "budgetPlan", fields: ["name", "year"] },
+      { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
 
@@ -135,10 +137,12 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
       { name: "amount", label: "Amount", type: "number" },
       { name: "description", label: "Description", type: "string" },
       { name: "activityType", label: "Activity Type", type: "string" },
-      { name: "category", label: "Category", type: "string" },
       { name: "isProjected", label: "Projected", type: "boolean" },
       { name: "plannedAmount", label: "Planned Amount", type: "number" },
       { name: "createdAt", label: "Created", type: "date" },
+    ],
+    relations: [
+      { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
 

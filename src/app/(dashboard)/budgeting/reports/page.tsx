@@ -7,6 +7,7 @@ import Link from "next/link"
 import {
   BarChart3, Table2, PieChart, LineChart, AreaChart, Save, Download,
   FolderOpen, Plus, Trash2, X, Layers, ChevronRight, Layers3,
+  Loader2, AlertTriangle, Inbox,
 } from "lucide-react"
 import {
   BarChart, Bar, LineChart as RLineChart, Line, PieChart as RPieChart, Pie,
@@ -609,6 +610,34 @@ export default function ReportBuilderPage() {
         {entityType && selectedColumns.length === 0 && (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
             <p className="text-sm">{t("selectColumns")}</p>
+          </div>
+        )}
+
+        {/* Configured-report states — keep the panel from rendering blank when
+            the preview is loading, errored, or returned zero rows (e.g. a data
+            source with no rows for the selected plan). */}
+        {entityType && selectedColumns.length > 0 && preview.isLoading && (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <Loader2 className="h-8 w-8 mb-3 animate-spin opacity-50" />
+            <p className="text-sm">{t("loading")}</p>
+          </div>
+        )}
+
+        {entityType && selectedColumns.length > 0 && preview.isError && (
+          <div className="flex flex-col items-center justify-center h-64 text-destructive">
+            <AlertTriangle className="h-10 w-10 mb-3 opacity-60" />
+            <p className="text-sm font-medium">{t("errorTitle")}</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-md text-center">
+              {preview.error instanceof Error ? preview.error.message : String(preview.error ?? "")}
+            </p>
+          </div>
+        )}
+
+        {entityType && selectedColumns.length > 0 && !preview.isLoading && !preview.isError && !hasRows && (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <Inbox className="h-10 w-10 mb-3 opacity-40" />
+            <p className="text-sm font-medium">{t("noDataTitle")}</p>
+            <p className="text-xs mt-1 max-w-md text-center">{t("noDataDesc")}</p>
           </div>
         )}
 
