@@ -34,7 +34,14 @@ test.describe('Phase 7.G smoke — onboarding wizard', () => {
     await expect(page.getByLabel(/email/i)).toBeVisible({ timeout: 5_000 });
   });
 
-  test('wizard renders 3-step indicator + Step 1 form for authenticated admin', async ({ page }) => {
+  // SKIPPED 2026-06-03: the 3-step ImportWizard these next three tests target
+  // was replaced by the tabbed `OnboardingTabbedPage` redesign — the
+  // `ImportWizard.tsx` component (and its "1. Upload / 2. Review / 3. Applied"
+  // StepIndicator + "Analyze with AI" Step-1 form) is DELETED. These specs
+  // assert removed UI and can never pass as written; they are dead, not flaky.
+  // TODO: rewrite against `src/features/onboarding/components/OnboardingTabbedPage.tsx`.
+  // The auth-gate test above is still live.
+  test.skip('wizard renders 3-step indicator + Step 1 form for authenticated admin', async ({ page }) => {
     await loginAs(page);
     await page.goto('/budgeting/onboarding');
 
@@ -54,7 +61,8 @@ test.describe('Phase 7.G smoke — onboarding wizard', () => {
     ).toBeVisible();
   });
 
-  test('Step 1 form gating: Analyze button disabled until companyId + file both set', async ({ page }) => {
+  // SKIPPED — see note above (tests the deleted 3-step ImportWizard Step-1 form).
+  test.skip('Step 1 form gating: Analyze button disabled until companyId + file both set', async ({ page }) => {
     await loginAs(page);
     await page.goto('/budgeting/onboarding');
 
@@ -100,7 +108,8 @@ test.describe('Phase 7.G smoke — onboarding wizard', () => {
   // LLM-gated full-flow test. Defaults to RUN locally (where dev server
   // typically has ANTHROPIC_API_KEY); set E2E_SKIP_LLM=true on CI or any
   // env where LLM cost / non-determinism is unwanted.
-  test('full flow: submit Analyze → Step 2 review with AI proposal (LLM-gated)', async ({ page }) => {
+  // SKIPPED — see note above (tests the deleted 3-step ImportWizard analyze flow).
+  test.skip('full flow: submit Analyze → Step 2 review with AI proposal (LLM-gated)', async ({ page }) => {
     test.skip(
       process.env.E2E_SKIP_LLM === 'true',
       'E2E_SKIP_LLM=true — full LLM-driven happy-path skipped (CI mode)',
