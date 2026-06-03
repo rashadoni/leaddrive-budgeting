@@ -86,6 +86,12 @@ export function CommodityTickerPanel() {
   // payload manageable. The query keys differ per region so React Query
   // dedupes correctly.
   const weatherQueries = REGIONS.map((region) => {
+    // REGIONS is a module-level constant array, so the hook count + order is
+    // invariant across renders; one useQuery per static region is safe.
+    // (Cleaner long-term: a <WeatherRegionQuery> child component calling
+    // useQuery once — tracked follow-up. The rule stays at error so genuine
+    // violations still fail lint; only this known-safe site is exempted.)
+    // eslint-disable-next-line react-hooks/rules-of-hooks
     const { data, isLoading } = useQuery<DataPoint[]>({
       queryKey: ["intel-weather", region],
       queryFn: async () => {
