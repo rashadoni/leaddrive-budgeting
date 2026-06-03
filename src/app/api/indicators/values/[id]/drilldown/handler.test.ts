@@ -112,6 +112,12 @@ describe("GET /api/indicators/values/[id]/drilldown", () => {
     expect(body.summary.revenue.total).toBe(5000)
     expect(body.resolved).toMatchObject({ opex: 4_300_000 })
     expect(body.truncated).toBe(false)
+    // REGRESSION (terminal-audit P2 #6): the drilldown must mirror the recompute
+    // resolver's plan predicate (`plan: { year, kind: "actual" }`) so a forward
+    // budget plan (kind="budget") can't sum into the drilldown and diverge from
+    // the realized indicator value it explains.
+    const where = prismaMock.budgetLine.findMany.mock.calls[0][0].where
+    expect(where.plan).toMatchObject({ year: 2026, kind: "actual" })
   })
 
   it("truncates when 500-row cap reached", async () => {

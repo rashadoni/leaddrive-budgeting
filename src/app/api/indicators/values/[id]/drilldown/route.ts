@@ -112,7 +112,14 @@ export async function GET(
     where: {
       organizationId: orgId,
       companyId: iv.companyId,
-      plan: { year: period.year },
+      // Mirror the recompute resolver's plan predicate exactly
+      // (recompute-data-source.ts: `plan: { year, kind: "actual" }`). The
+      // drilldown explains a REALIZED indicator value, which the terminal P&L
+      // computes from ACTUAL plans only; without `kind: "actual"` a forward
+      // budget plan (kind="budget", now created by the Y3 actuals/budget split)
+      // would sum into the drilldown total and diverge from the value it
+      // explains. No-op for orgs that still only have actual plans.
+      plan: { year: period.year, kind: "actual" },
       deletedAt: null,
       ...(monthRange
         ? {
