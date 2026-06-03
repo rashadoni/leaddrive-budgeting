@@ -76,6 +76,11 @@ export interface DriverCompositeSwing {
   companyCode: string
   baselineScore: number | null
   scenarioScore: number | null
+  /** True for a leaf operating company (no children). Parents / the holding
+   *  carry a revenue-weighted rollup of the SAME children, so "worst-hit"
+   *  rankings filter to leaves — otherwise a holding + its biggest subsidiary
+   *  surface as two chips for one underlying shock. */
+  isLeaf: boolean
 }
 export interface DriverSimulationResult {
   scenarioCode: string
@@ -313,6 +318,7 @@ export async function simulateByDrivers(
     companyCode: c.code,
     baselineScore: baseAll.get(c.id)?.score ?? null,
     scenarioScore: scenAll.get(c.id)?.score ?? null,
+    isLeaf: isLeaf(c.id),
   }))
 
   const roots = companies.filter((c) => !c.parentCompanyId)

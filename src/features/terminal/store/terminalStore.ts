@@ -156,6 +156,11 @@ export interface ScenarioBriefState {
     companyCode: string;
     baselineScore: number | null;
     scenarioScore: number | null;
+    /** Leaf operating company (no children). Optional because this is untyped
+     *  JSON ingest; consumers treat a missing value as a leaf (show it). The
+     *  simulate API always populates it. Used to keep parents/holding rollups
+     *  out of the "worst-hit" ranking (they'd double-present one shock). */
+    isLeaf?: boolean;
   }>;
   narrative: string | null;
   mitigations: string[];

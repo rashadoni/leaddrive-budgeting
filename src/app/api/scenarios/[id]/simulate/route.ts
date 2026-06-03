@@ -171,7 +171,10 @@ export async function GET(
       deltasByCo.set(d.companyId, l)
     }
     const worstHit = sim.byCompany
-      .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
+      // Leaves only — a parent/holding score is a revenue-weighted rollup of
+      // these same children, so including parents double-presents one shock.
+      // `isLeaf !== false` treats a missing flag (legacy payload) as a leaf.
+      .filter((b) => b.isLeaf !== false && b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
       .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
       .slice(0, 3)
       .map((b) => {

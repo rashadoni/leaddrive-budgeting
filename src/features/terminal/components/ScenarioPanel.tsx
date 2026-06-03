@@ -627,10 +627,14 @@ export function ScenarioPanel() {
 
   // Drivers mode is available when the selected scenario carries a `shock` block.
   const selectedHasShock = !!(selectedScenario?.overrides as { shock?: unknown } | null)?.shock;
-  // Worst-hit companies (largest composite drop) for the brief panel.
+  // Worst-hit companies (largest composite drop) for the brief panel. Leaves
+  // only — a parent/holding score is a revenue-weighted rollup of these same
+  // children, so including parents would double-present one shock (the holding
+  // + its biggest subsidiary as two chips). `isLeaf !== false` treats a missing
+  // flag (untyped ingest / legacy payload) as a leaf, preserving prior behaviour.
   const worstHitCompanies =
     scenarioBrief?.byCompany
-      .filter((b) => b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
+      .filter((b) => b.isLeaf !== false && b.baselineScore != null && b.scenarioScore != null && b.scenarioScore < b.baselineScore)
       .sort((a, b) => a.scenarioScore! - a.baselineScore! - (b.scenarioScore! - b.baselineScore!))
       .slice(0, 4) ?? [];
 

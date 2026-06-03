@@ -49,7 +49,13 @@ describe('GET simulate ?mode=drivers', () => {
     simulateByDrivers.mockResolvedValue({
       scenarioCode: 'INPUT_COST_30', period: '2026',
       deltas: [{ companyId: 'c1', companyCode: 'CPC', companyName: 'CPC', indicatorId: 'i1', code: 'IND_EBITDA_MARGIN', baselineValue: 4.5, baselineStatus: 'red', scenarioValue: -7, scenarioStatus: 'red', changed: false, deltaPct: -255 }],
-      byCompany: [{ companyId: 'c1', companyCode: 'CPC', baselineScore: 49, scenarioScore: 28 }],
+      // CPC is a leaf; HOLDING is a parent with a BIGGER drop (60→20) that must
+      // be EXCLUDED from worst-hit (it's a rollup of the same children). The
+      // worstHit length/content assertions below therefore prove the leaf filter.
+      byCompany: [
+        { companyId: 'c1', companyCode: 'CPC', baselineScore: 49, scenarioScore: 28, isLeaf: true },
+        { companyId: 'h1', companyCode: 'HOLDING', baselineScore: 60, scenarioScore: 20, isLeaf: false },
+      ],
       holdingBaselineScore: 45, holdingScenarioScore: 31, changed: 1, worsened: 1, improved: 0,
       driftSummary: { pairsAttempted: 1, pairsErrored: 0, lastError: null },
     })
