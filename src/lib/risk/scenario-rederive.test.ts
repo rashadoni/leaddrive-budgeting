@@ -152,6 +152,64 @@ describe('simulateByDrivers — financial-stress sub-composite', () => {
   })
 })
 
+describe('simulateByDrivers — skip indicators the shock does not touch (BRENT→wheat regression)', () => {
+  // The user's bug: a BRENT oil-spike (inputCostShock) "improved" FP_WHEAT_PRICE_SIGNAL
+  // (formula `wheat_price_latest`, a pure commodity-feed scalar the shock never
+  // overrides). Root cause: the engine recomputed it anyway, re-reading the CURRENT
+  // feed (237.5) and diffing it against the STORED STALE baseline (380) → spurious
+  // red→green "improve" with no causal link to the oil shock. Fix: skip the recompute
+  // when the formula touches none of the shocked scalars → keep the baseline →
+  // changed=false. The genuinely-shocked margin indicator still recomputes.
+  const cos = [
+    { id: 'c1', code: 'EDEN', name: 'Eden', parentCompanyId: 'p1', industry: 'food_processing', revenue: 1000 },
+    { id: 'p1', code: 'AZSEKER', name: 'Holding', parentCompanyId: null, industry: null, revenue: null },
+  ]
+  const inds = [
+    { id: 'i1', code: 'IND_EBITDA_MARGIN', formula: 'ebitda / revenue * 100', thresholds: {}, requiredInputs: ['budgetLine'], weight: 1 },
+    { id: 'i2', code: 'FP_WHEAT_PRICE_SIGNAL', formula: 'wheat_price_latest', thresholds: {}, requiredInputs: ['commodityPrice:wheat_price_latest'], weight: 1 },
+  ]
+  const bIVs = [
+    { companyId: 'c1', indicatorId: 'i1', value: 20, status: 'green' as const },
+    { companyId: 'c1', indicatorId: 'i2', value: 380, status: 'red' as const }, // STALE stored baseline (feed is now 237.5)
+  ]
+  const scenario = { code: 'BRENT_TO_140', overrides: { shock: { inputCostShock: 0.3 } } }
+
+  it('a no-override indicator with a stale baseline keeps its baseline (no spurious flip); the margin indicator still moves', async () => {
+    const buildContext = vi.fn(
+      async () => ({ context: { ...fullScalars, wheat_price_latest: 237.5 }, inputs: {}, functions: {} }) as never,
+    )
+    const recompute = vi.fn(async (_ds, args: { definition: { code?: string } }) => {
+      // The would-be FRESH wheat value (237.5/green). It must NOT be used — the
+      // skip-guard should keep the stale baseline (380/red) instead.
+      if (args.definition.code === 'FP_WHEAT_PRICE_SIGNAL') return { ok: true, value: 237.5, status: 'green' } as never
+      return { ok: true, value: -5, status: 'red' } as never // margin crashes under the cost shock
+    })
+    const r = await simulateByDrivers(
+      noWriteDs,
+      { organizationId: 'org1', scenario, period: '2026', companies: cos, indicators: inds, baselineIVs: bIVs },
+      { buildContext, recomputeIndicator: recompute },
+    )
+    const wheat = r.deltas.find((d) => d.code === 'FP_WHEAT_PRICE_SIGNAL')!
+    const margin = r.deltas.find((d) => d.code === 'IND_EBITDA_MARGIN')!
+    // Wheat: skipped → baseline preserved → NO spurious red→green "improve".
+    expect(wheat.scenarioValue).toBe(380)
+    expect(wheat.scenarioStatus).toBe('red')
+    expect(wheat.changed).toBe(false)
+    // Proven skip: recompute was NEVER called for the wheat indicator.
+    expect(
+      recompute.mock.calls.some(
+        (c) => (c[1] as { definition: { code?: string } }).definition.code === 'FP_WHEAT_PRICE_SIGNAL',
+      ),
+    ).toBe(false)
+    // Margin: genuinely shocked → recomputed → worsened.
+    expect(margin.scenarioStatus).toBe('red')
+    expect(margin.changed).toBe(true)
+    expect(r.worsened).toBeGreaterThan(0)
+    // No spurious improvements anywhere.
+    expect(r.improved).toBe(0)
+  })
+})
+
 describe('simulateByDrivers — unknown baseline is NOT improved/worsened (regression)', () => {
   // Bug: STATUS_ORDER ranked unknown=0 (worst), so an indicator with NO
   // baseline that the shock gives a value (e.g. via assumedImportShare) flips

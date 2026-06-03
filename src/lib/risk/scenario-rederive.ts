@@ -118,6 +118,36 @@ export function isFinancialIndicator(formula: string): boolean {
   return FINANCIAL_SCALAR_RE.test(formula ?? '')
 }
 
+/**
+ * True when `formula` reads at least one scalar that the shock actually
+ * overrides (the keys of the per-company `overrides` map from
+ * `resolveShockOverrides`). Word-boundary matched so a key like `cogs` never
+ * matches inside another identifier, and `\b` treats `_` as a word char so
+ * `total_input_cost` only matches the full token (not `cost`).
+ *
+ * This is the gate that decides whether a (company, indicator) pair is even
+ * re-derived under the scenario. Indicators that touch NONE of the shocked
+ * scalars are UNAFFECTED — recomputing them would re-read live feed/DB data and
+ * diff it against the STORED (possibly stale) baseline IV, manufacturing a
+ * spurious status flip with no causal link to the shock (e.g. a BRENT oil-spike
+ * "improving" FP_WHEAT_PRICE_SIGNAL / FP_GRAIN_COST_PRESSURE_BLEND, whose
+ * formulas are pure commodity-feed scalars the shock never overrides). NB: this
+ * uses the SHOCK'S OWN keys, not the static FINANCIAL_SCALAR_RE — so it
+ * correctly includes `yield_per_ha` (yieldShock) and excludes `opex` (held
+ * fixed), which that regex gets wrong for this purpose. Empty overrides → false.
+ */
+export function formulaTouchesOverride(
+  formula: string,
+  overrides: Record<string, number>,
+): boolean {
+  const f = formula ?? ''
+  for (const key of Object.keys(overrides)) {
+    const esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    if (new RegExp(`\\b${esc}\\b`).test(f)) return true
+  }
+  return false
+}
+
 function readScalars(ctx: Record<string, unknown>): ResolvedScalars {
   const g = (k: string): number => (typeof ctx[k] === 'number' ? (ctx[k] as number) : NaN)
   return {
@@ -229,30 +259,40 @@ export async function simulateByDrivers(
   pairsAttempted = pairs.length
 
   const results = await mapWithConcurrency(pairs, RECOMPUTE_CONCURRENCY, async ({ co, baseline, ind }) => {
-    const def: IndicatorDefinitionLike = {
-      id: ind.id,
-      code: ind.code,
-      formula: ind.formula,
-      thresholds: ind.thresholds,
-      requiredInputs: ind.requiredInputs,
-      aggregation: (ind as { aggregation?: string }).aggregation, // 2026-05-31 — snapshot/flow
-    }
     let scenarioValue: number | null = baseline.value
     let scenarioStatus: IndicatorStatus | null = baseline.status
-    try {
-      const rr = await recomputeIndicator(ds, {
-        organizationId,
-        companyId: co.id,
-        definition: def,
-        period,
-        industry: co.industry ?? null,
-        scenarioOverrides: overridesByCompany.get(co.id) ?? {},
-      })
-      scenarioValue = rr.status === 'unknown' ? null : rr.value
-      scenarioStatus = rr.status
-    } catch (err) {
-      pairsErrored++
-      lastError = err instanceof Error ? err.message : String(err)
+    const overrides = overridesByCompany.get(co.id) ?? {}
+    // Only re-derive when the shock moves a scalar THIS indicator's formula
+    // reads. An indicator that touches none of the shocked scalars is
+    // UNAFFECTED — recomputing it would diff live feed/DB data against the
+    // STORED (possibly stale) baseline and report a spurious flip with no
+    // causal link to the shock (the user's "BRENT oil-spike → wheat/grain cost
+    // improved" artefact: those formulas are pure commodity-feed scalars the
+    // shock never overrides). Skip → keep the baseline → `changed` stays false.
+    if (formulaTouchesOverride(ind.formula, overrides)) {
+      const def: IndicatorDefinitionLike = {
+        id: ind.id,
+        code: ind.code,
+        formula: ind.formula,
+        thresholds: ind.thresholds,
+        requiredInputs: ind.requiredInputs,
+        aggregation: (ind as { aggregation?: string }).aggregation, // 2026-05-31 — snapshot/flow
+      }
+      try {
+        const rr = await recomputeIndicator(ds, {
+          organizationId,
+          companyId: co.id,
+          definition: def,
+          period,
+          industry: co.industry ?? null,
+          scenarioOverrides: overrides,
+        })
+        scenarioValue = rr.status === 'unknown' ? null : rr.value
+        scenarioStatus = rr.status
+      } catch (err) {
+        pairsErrored++
+        lastError = err instanceof Error ? err.message : String(err)
+      }
     }
     return { co, baseline, ind, scenarioValue, scenarioStatus }
   })
