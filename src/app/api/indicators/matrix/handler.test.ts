@@ -382,6 +382,60 @@ describe('GET /api/indicators/matrix — handler', () => {
       });
     });
 
+    it("REGRESSION (terminal-audit P2 #7): lastComputedAt is populated from IV computedAt (freshness badge was never rendering)", async () => {
+      await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
+      setupCompaniesMock(
+        [
+          {
+            id: 'co_op',
+            code: 'AAC',
+            name: 'AAC',
+            industry: 'industrial',
+            level: 2,
+            isActive: true,
+            role: 'operational',
+            sortOrder: 1,
+          },
+        ],
+        [],
+      );
+      prismaMock.indicatorDefinition.findMany.mockResolvedValue([
+        {
+          id: 'i_op',
+          code: 'GROSS_MARGIN',
+          nameEn: 'Gross Margin',
+          direction: 'higher_is_better',
+          unit: '%',
+          sortOrder: 1,
+        },
+      ]);
+      const newest = new Date('2026-06-03T09:30:00.000Z');
+      setupIVMock(
+        [
+          {
+            id: 'iv_a',
+            companyId: 'co_op',
+            indicatorId: 'i_op',
+            value: 30,
+            status: 'green',
+            inputs: null,
+            sparkline: null,
+            computedAt: newest,
+          },
+        ],
+        [],
+        [],
+      );
+
+      const res = await GET(makeRequest('/api/indicators/matrix'));
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      // Pre-fix: the cell .map()s dropped computedAt, so the loop over `cells`
+      // always saw undefined → lastComputedAt was null → the «Updated Xh ago»
+      // badge (gated on it in HeatMap) never rendered. Now read from raw rows.
+      expect(body.lastComputedAt).toBe(newest.toISOString());
+    });
+
     it("real parent IV beats Turn 33.5 synthetic-average when both could apply (priority lock)", async () => {
       await mockSession({ orgId: ORG_ID, userId: 'u1', role: 'manager' });
       const subgroup = {

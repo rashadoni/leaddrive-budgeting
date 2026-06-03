@@ -685,20 +685,28 @@ export async function GET(request: NextRequest) {
     // recompute event >10s later won't be obscured by stale cached
     // data. At Phase F 60-co × 80-ind scale this header is the
     // safety-net layer; the load-bearing cache is `ensureMatrix`.
-    // 2026-05-27 A4 freshness — aggregate max(computedAt) across all
-    // rendered cells (leaf + rollup + subgroup). Single ISO string the
-    // HeatMap header turns into «Updated 2h ago» via a relative-time
-    // formatter. Null when matrix has no cells (empty org / no recompute
-    // ever fired) — UI degrades to «No data yet». Reading from already-
-    // selected cells keeps this zero-extra-query.
     const allCellsForFreshness = [...cells, ...parentCells, ...subgroupCells];
+
+    // 2026-05-27 A4 freshness — aggregate max(computedAt). Single ISO string
+    // the HeatMap header turns into «Updated 2h ago» via a relative-time
+    // formatter. Null when no IV exists (empty org / no recompute ever fired)
+    // — UI degrades to «No data yet».
+    //
+    // 2026-06-03 fix (terminal-audit run-2 #7): read computedAt from the raw
+    // `values` / `parentValues` rows (which select it), NOT from the emitted
+    // cell objects. The leaf/parent cell `.map()`s never copied `computedAt`
+    // onto the cell, so the previous loop over `cells` always saw `undefined`,
+    // `lastComputedAt` stayed null, and the badge (gated on it in HeatMap)
+    // NEVER rendered. Subgroup cells are synthetic averages with no real
+    // computedAt and derive from the same values, so leaf+parent max covers them.
     let lastComputedAt: string | null = null;
-    for (const c of allCellsForFreshness) {
-      const cellTs = (c as { computedAt?: Date | string | null }).computedAt;
-      if (!cellTs) continue;
-      const iso = cellTs instanceof Date ? cellTs.toISOString() : String(cellTs);
+    const considerTs = (ts: Date | string | null | undefined) => {
+      if (!ts) return;
+      const iso = ts instanceof Date ? ts.toISOString() : String(ts);
       if (!lastComputedAt || iso > lastComputedAt) lastComputedAt = iso;
-    }
+    };
+    for (const v of values) considerTs(v.computedAt);
+    for (const v of parentValues) considerTs(v.computedAt);
 
     return NextResponse.json(
       {
