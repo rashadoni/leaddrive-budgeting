@@ -133,7 +133,12 @@ export const operationalFactResolver: NamespaceResolver = {
       // indicator-level flag is sufficient (verified at migration time).
       const resolved =
         ctx.aggregation === 'snapshot'
-          ? rows.reduce((latest, r) => (r.date > latest.date ? r : latest), rows[0]).value
+          ? // `>=` (not `>`) so that on a same-date tie the LATER row in the
+            // query's deterministic [date asc, createdAt asc] order wins — i.e.
+            // the most recently written fact at the latest date (a correction
+            // re-imported at the same as-of date), picked deterministically
+            // across recomputes. See listOperationalFacts orderBy.
+            rows.reduce((latest, r) => (r.date >= latest.date ? r : latest), rows[0]).value
           : rows.reduce((a, r) => a + r.value, 0) / rows.length;
       state.context[metric] = resolved;
       state.inputs.resolved[metric] = resolved;

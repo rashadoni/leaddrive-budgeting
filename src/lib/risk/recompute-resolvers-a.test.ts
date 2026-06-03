@@ -64,6 +64,26 @@ describe('operationalFactResolver — snapshot vs flow aggregation (ctx-driven)'
     expect(state.context.audit_findings_major_open).toBe(8);
   });
 
+  it('REGRESSION (terminal-audit P3): same-date facts → latest-written wins deterministically', async () => {
+    // Two facts at the SAME as-of date (a value corrected at the same date via
+    // a non-delete-before-insert writer). The production query orders
+    // [date asc, createdAt asc], so the correction (written later) is the LAST
+    // same-date row; the `>=` reducer must land on it, not the stale original.
+    // Pre-fix (strict `>` + no orderBy) the tie-winner was non-deterministic.
+    const ctx = makeCtx(
+      {
+        LEGAL_CASES_ACTIVE: [
+          { value: 6, date: new Date('2026-12-31') }, // original (earlier createdAt)
+          { value: 9, date: new Date('2026-12-31') }, // correction (later createdAt)
+        ],
+      },
+      'snapshot',
+    );
+    const state = makeState();
+    await operationalFactResolver.resolve(['operationalFact:LEGAL_CASES_ACTIVE'], ctx, state);
+    expect(state.context.LEGAL_CASES_ACTIVE).toBe(9); // correction wins, not stale 6
+  });
+
   it('aggregation="flow" averages multiple in-period facts', async () => {
     const ctx = makeCtx(
       {

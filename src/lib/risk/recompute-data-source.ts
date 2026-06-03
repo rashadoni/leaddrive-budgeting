@@ -63,6 +63,15 @@ export function createPrismaDataSource(
           metric,
           date: { gte: start, lt: end },
         },
+        // Deterministic order so the "snapshot" aggregation's latest-by-date
+        // pick is stable across recomputes. OperationalFact has no @@unique on
+        // (companyId, metric, date), and not every writer deletes-before-insert,
+        // so two facts can share an exact as-of date with different values (a
+        // value corrected at the same date). With no orderBy, Postgres row order
+        // was unspecified → the snapshot tie-winner flipped between runs. date
+        // asc + createdAt asc means the snapshot reducer (>=) lands on the most
+        // recently written fact at the latest date (i.e. the correction).
+        orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
         select: { value: true, date: true },
       });
     },
