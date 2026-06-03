@@ -151,3 +151,48 @@ describe('simulateByDrivers — financial-stress sub-composite', () => {
     )
   })
 })
+
+describe('simulateByDrivers — unknown baseline is NOT improved/worsened (regression)', () => {
+  // Bug: STATUS_ORDER ranked unknown=0 (worst), so an indicator with NO
+  // baseline that the shock gives a value (e.g. via assumedImportShare) flips
+  // unknown→status and was counted as "improved" — so a devaluation read as
+  // "4 improved / 0 worsened". A transition involving unknown is NOT comparable.
+  it('unknown → green (or red) is not changed, not improved, not worsened', async () => {
+    const buildContext = vi.fn(
+      async () => ({ context: { ...fullScalars }, inputs: {}, functions: {} }) as never,
+    )
+    const recompute = vi.fn(
+      async (_ds, args: { companyId: string; scenarioOverrides?: Record<string, number> }) => {
+        const scen = !!args.scenarioOverrides && Object.keys(args.scenarioOverrides).length > 0
+        // c1: unknown → green under scenario; c2: unknown → red under scenario.
+        const status = scen ? (args.companyId === 'c1' ? 'green' : 'red') : 'unknown'
+        return { ok: true, value: scen ? 5 : 0, status } as never
+      },
+    )
+    const r = await simulateByDrivers(
+      noWriteDs,
+      {
+        organizationId: 'org1',
+        scenario,
+        period: '2026',
+        companies,
+        indicators,
+        baselineIVs: [
+          { companyId: 'c1', indicatorId: 'i1', value: 0, status: 'unknown' as const },
+          { companyId: 'c2', indicatorId: 'i1', value: 0, status: 'unknown' as const },
+        ],
+      },
+      { buildContext, recomputeIndicator: recompute },
+    )
+    const c1 = r.deltas.find((d) => d.companyId === 'c1')!
+    const c2 = r.deltas.find((d) => d.companyId === 'c2')!
+    expect(c1.baselineStatus).toBe('unknown')
+    expect(c1.scenarioStatus).toBe('green')
+    expect(c1.changed).toBe(false)
+    expect(c2.scenarioStatus).toBe('red')
+    expect(c2.changed).toBe(false)
+    expect(r.changed).toBe(0)
+    expect(r.improved).toBe(0)
+    expect(r.worsened).toBe(0)
+  })
+})

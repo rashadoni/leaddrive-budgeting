@@ -260,7 +260,18 @@ export async function simulateByDrivers(
     if (baselineValue !== null && scenarioValue !== null && Math.abs(baselineValue) > 1e-9) {
       deltaPct = ((scenarioValue - baselineValue) / Math.abs(baselineValue)) * 100
     }
-    const changed = baselineStatus !== null && scenarioStatus !== null && baselineStatus !== scenarioStatus
+    // A meaningful improved/worsened change requires BOTH ends to be REAL
+    // statuses. `unknown` = "no data", NOT a rank on the green>amber>red axis.
+    // Without this, an indicator with no baseline that the shock gives a value
+    // (e.g. via assumedImportShare) flips unknown→status and is miscounted as
+    // "improved" — so a devaluation reads as "4 improved / 0 worsened". Treat
+    // unknown↔real transitions as non-comparable (not changed).
+    const changed =
+      baselineStatus !== null &&
+      baselineStatus !== "unknown" &&
+      scenarioStatus !== null &&
+      scenarioStatus !== "unknown" &&
+      baselineStatus !== scenarioStatus
     deltas.push({
       companyId: co.id,
       companyCode: co.code,
