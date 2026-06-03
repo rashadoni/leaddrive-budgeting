@@ -86,19 +86,32 @@ describe('GET /api/indicators/matrix — handler', () => {
         sortOrder: 1,
       },
     ]);
+    // The default is now DATA-AWARE: the route first resolves the latest
+    // COMPLETE year that actually has IndicatorValues (a distinct-period query
+    // with NO companyId), then scopes the matrix IV query to it. Feed that
+    // first call complete years; max-complete (< current year) is 2025.
+    prismaMock.indicatorValue.findMany.mockResolvedValueOnce([
+      { period: '2023' },
+      { period: '2024' },
+      { period: '2025' },
+    ]);
 
     const res = await GET(makeRequest('/api/indicators/matrix'));
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    // The exact year is wall-clock dependent, but it MUST be a 4-digit
-    // string (annual), not a YYYY-MM monthly key — that's the regression.
+    // Default MUST be a 4-digit annual string (YYYY), not a YYYY-MM monthly
+    // key — the Turn-16 regression. (Latest COMPLETE year with data = 2025.)
     expect(body.period).toMatch(/^\d{4}$/);
     expect(body.period).not.toMatch(/-\d{2}$/);
 
-    // And the indicatorValue.findMany call must scope to that same period.
-    expect(prismaMock.indicatorValue.findMany).toHaveBeenCalledTimes(1);
-    const ivCall = prismaMock.indicatorValue.findMany.mock.calls[0][0];
+    // The MATRIX IV query (the one scoped to companyId — distinct from the
+    // period-resolution query, which has no companyId) must scope to that same
+    // resolved annual period.
+    const ivCall = prismaMock.indicatorValue.findMany.mock.calls.find(
+      (c) => c[0]?.where?.companyId !== undefined,
+    )?.[0];
+    expect(ivCall).toBeDefined();
     expect(ivCall.where.period).toBe(body.period);
     expect(ivCall.where.organizationId).toBe(ORG_ID);
   });

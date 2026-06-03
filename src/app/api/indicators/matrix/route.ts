@@ -45,7 +45,8 @@ const log = getLogger('api:indicators-matrix');
 // they're not removed, just no longer the sole protection.
 import { withOrgScope } from '@/lib/db/with-org-scope';
 import type { IndicatorStatus } from '@/lib/risk/formula-engine';
-import { headlinePeriod, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
+import { currentBakuYearNumber, headlinePeriod, parsePeriod, PeriodParseError } from '@/lib/risk/periods';
+import type { Prisma } from '@prisma/client';
 import { filterOperationalCompanies, isRollupIndicator } from '@/lib/risk/targets';
 import { getCompanyScope } from '@/lib/rbac/company-scope';
 import {
@@ -55,13 +56,38 @@ import {
 import { deriveSignalConfidence } from '@/lib/risk/heatmap-matrix';
 import { getCompanyReadiness } from '@/lib/server/get-company-readiness';
 
-// Default period reader — the latest COMPLETE fiscal year (current Baku year
-// − 1), NOT the in-progress year. A partial pre-close year defaulted execs into
-// misleading classifications (EDEN 2026 read 169.8% "green" off ~4 months + a
-// one-off subsidy, while loss-making; complete 2025 is the defensible 28%). See
-// `headlinePeriod`. Callers wanting the in-progress or monthly view pass
-// `?period=YYYY` / `?period=YYYY-MM` explicitly.
-const defaultPeriodString = headlinePeriod;
+/**
+ * Data-aware default period (no `?period=` given) — the latest COMPLETE fiscal
+ * year that ACTUALLY HAS data for this org, else the latest year that does.
+ *
+ * Why not a static `headlinePeriod()`: a financial terminal should open on the
+ * last full year (e.g. 2025, where EDEN's EBITDA is the defensible 28%, not the
+ * partial-2026 169.8% false-green). But it must NEVER default to an EMPTY year —
+ * a deployment whose DB only carries the in-progress year (e.g. prod before the
+ * historical 2023–25 import runs) would otherwise open on a blank grid. So we
+ * pick the newest annual ("YYYY") period that has IndicatorValues and is before
+ * the current Baku year; if none is complete yet, fall back to the newest year
+ * present; if the org has no annual data at all, `headlinePeriod()`. Callers
+ * wanting a specific or monthly view pass `?period=YYYY` / `?period=YYYY-MM`.
+ */
+async function resolveDefaultPeriod(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+): Promise<string> {
+  const rows = await tx.indicatorValue.findMany({
+    where: { organizationId },
+    select: { period: true },
+    distinct: ['period'],
+  });
+  const annual = rows
+    .map((r) => r.period)
+    .filter((p) => /^\d{4}$/.test(p))
+    .map(Number);
+  if (annual.length === 0) return headlinePeriod();
+  const cur = currentBakuYearNumber();
+  const complete = annual.filter((y) => y < cur);
+  return String(complete.length > 0 ? Math.max(...complete) : Math.max(...annual));
+}
 
 export async function GET(request: NextRequest) {
   const session = await requireAuth(request);
@@ -75,20 +101,22 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url);
-  const rawPeriod = searchParams.get('period') ?? defaultPeriodString();
+  const explicitPeriod = searchParams.get('period');
 
-  // Validate the period string before trusting it in a query — guards both
-  // against garbage input and against `../../`-style path probing hitting the
-  // column as-is.
-  try {
-    parsePeriod(rawPeriod);
-  } catch (err) {
-    if (err instanceof PeriodParseError) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
+  // Validate ONLY explicit user input — guards garbage / `../../`-style path
+  // probing hitting the column as-is. The no-param default is resolved
+  // data-aware inside the org scope below (resolveDefaultPeriod), so it never
+  // needs validation (always a "YYYY" string we constructed).
+  if (explicitPeriod !== null) {
+    try {
+      parsePeriod(explicitPeriod);
+    } catch (err) {
+      if (err instanceof PeriodParseError) {
+        return NextResponse.json({ error: err.message }, { status: 400 });
+      }
+      throw err;
     }
-    throw err;
   }
-  const period = rawPeriod;
 
   // Truth-infra C.3 — admin opt-in toggle. When `?includePending=true`
   // the matrix returns pending-status companies alongside active ones
@@ -237,6 +265,17 @@ export async function GET(request: NextRequest) {
       filterOperationalCompanies<CompanyRawShape>(companiesRaw);
     const operationalIds = operational.map((c) => c.id);
     const indicatorIds = indicatorsForRender.map((i: IndicatorShape) => i.id);
+
+    // Resolve the period: explicit `?period=` (validated above) wins. Otherwise
+    // the data-aware default (latest complete year WITH data). Gated on having
+    // operational companies so an empty org does ZERO extra IV work (matches the
+    // "skips indicatorValue.findMany when no operational companies" guard) — the
+    // period is moot when the matrix is empty, so `headlinePeriod()` suffices.
+    const period =
+      explicitPeriod ??
+      (operationalIds.length === 0
+        ? headlinePeriod()
+        : await resolveDefaultPeriod(tx, session.orgId));
 
     const values =
       operationalIds.length === 0 || indicatorIds.length === 0
