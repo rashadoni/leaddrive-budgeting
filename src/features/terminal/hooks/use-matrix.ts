@@ -38,6 +38,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { HeatMapCell } from "@/lib/risk/heatmap-matrix";
+import { useTerminalStore } from "../store/terminalStore";
 
 export interface MatrixCompanyRow {
   id: string;
@@ -237,7 +238,13 @@ export function useMatrix(
   period?: string,
   includePending: boolean = false,
 ): UseMatrixResult {
-  const key = cacheKey(period, includePending);
+  // When no explicit period is passed, follow the terminal-wide selected period
+  // (2026-06-03 terminal-audit P2) so every panel re-scopes together when the
+  // user picks a quarter/month from the HeatMap chips. HeatMap passes its period
+  // explicitly, which is the same store value, so all consumers stay in lockstep.
+  const storePeriod = useTerminalStore((s) => s.selectedPeriod);
+  const effectivePeriod = period ?? storePeriod;
+  const key = cacheKey(effectivePeriod, includePending);
   const [matrix, setMatrix] = useState<MatrixResponse | null>(
     () => cacheByPeriod.get(key)?.data ?? null,
   );
@@ -251,7 +258,7 @@ export function useMatrix(
 
   useEffect(() => {
     let cancelled = false;
-    ensureMatrix(period, includePending)
+    ensureMatrix(effectivePeriod, includePending)
       .then((data) => {
         if (cancelled) return;
         setMatrix(data);
@@ -265,17 +272,18 @@ export function useMatrix(
     return () => {
       cancelled = true;
     };
-    // `period` + `includePending` together form the cache key — toggling
-    // includePending triggers a separate fetch (admin "Show pending" view).
-  }, [period, includePending]);
+    // `effectivePeriod` + `includePending` together form the cache key —
+    // toggling includePending triggers a separate fetch (admin "Show pending"
+    // view); changing the store-selected period re-scopes every panel.
+  }, [effectivePeriod, includePending]);
 
   const refresh = useMemo(
     () => async (): Promise<void> => {
-      cacheByPeriod.delete(cacheKey(period, includePending));
+      cacheByPeriod.delete(cacheKey(effectivePeriod, includePending));
       setLoading(true);
       setError(null);
       try {
-        const data = await ensureMatrix(period, includePending);
+        const data = await ensureMatrix(effectivePeriod, includePending);
         setMatrix(data);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : String(e));
@@ -283,7 +291,7 @@ export function useMatrix(
         setLoading(false);
       }
     },
-    [period, includePending],
+    [effectivePeriod, includePending],
   );
 
   return { matrix, loading, error, refresh };

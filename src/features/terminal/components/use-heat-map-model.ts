@@ -47,11 +47,23 @@ const PANEL_ID = 2;
 export function useHeatMapModel(period: string | undefined) {
   const t = useTranslations('terminal');
   const locale = useLocale();
-  // CLI Bloomberg-sweep: period chips. Local state so panel switches don't
-  // ripple across other consumers of useMatrix(); seeded from `period` prop
-  // (URL query or default year). Caller can still override via prop change.
-  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(period);
-  useEffect(() => { setSelectedPeriod(period); }, [period]);
+  // CLI Bloomberg-sweep: period chips. Period now lives in the SHARED terminal
+  // store (2026-06-03 terminal-audit P2) — previously this was HeatMap-local
+  // state explicitly to avoid rippling to other panels, but that left the side
+  // panels (Today's Brief, Action Center, CompanyTree) stuck on annual numbers
+  // while the heatmap showed the picked quarter/month. Now every `useMatrix()`
+  // panel follows it. Seed from the `period` prop on mount / prop change; a user
+  // chip click (setSelectedPeriod) overrides it thereafter.
+  const selectedPeriod = useTerminalStore((s) => s.selectedPeriod);
+  const setSelectedPeriod = useTerminalStore((s) => s.setSelectedPeriod);
+  useEffect(() => {
+    // Only seed the store when a period prop is actually supplied. In
+    // production the HeatMap renders as `<HeatMap />` (no prop), so this is a
+    // no-op and the store keeps its default (undefined = annual) until a chip
+    // click; guarding on `!== undefined` also means a remount never clobbers a
+    // user's chip selection back to annual.
+    if (period !== undefined) setSelectedPeriod(period);
+  }, [period, setSelectedPeriod]);
   // User-driven HeatMap row/cell clicks → selectCompany (tracks LRU recent).
   // 2026-05-27 — Drift bridge: per-cell stale + drifted markers
   // (defined here so the row-render loop can read it without an extra

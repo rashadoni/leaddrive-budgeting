@@ -14,6 +14,15 @@ export interface TerminalState {
   /** Active panel — drives the cyan ring + which panel `/`-search focuses. */
   activePanelId: number;
   /**
+   * Active period across ALL panels. The HeatMap period chips drive it, and
+   * every `useMatrix()` consumer follows it (the hook defaults its `period`
+   * arg to this). `undefined` = the API default (annual, current year).
+   * Lifted out of HeatMap-local state (2026-06-03 terminal-audit P2) so
+   * picking a quarter/month re-scopes the WHOLE terminal — previously only
+   * the heatmap moved while the side panels stayed on annual numbers.
+   */
+  selectedPeriod: string | undefined;
+  /**
    * Indicator-value id for Panel 3 (drill-down). Set when the user clicks
    * a HeatMap cell that HAS a computed IndicatorValue row. null = "no
    * cell selected" OR "clicked a missing cell" — the latter case is
@@ -204,6 +213,11 @@ export interface TerminalActions {
   clearCompany: () => void;
   setActiveIndicatorValue: (id: string | null) => void;
   /**
+   * Set the terminal-wide active period (HeatMap chips). `undefined` resets to
+   * the API default (annual). Every `useMatrix()` panel re-scopes to it.
+   */
+  setSelectedPeriod: (period: string | undefined) => void;
+  /**
    * Phase 7.D regression closure — set the Panel 3 no-data hint when user
    * clicks a missing HeatMap cell. Implementation MUST clear
    * activeIndicatorValueId (mutual-exclusion invariant). Pass null to
@@ -312,6 +326,7 @@ let globalState: TerminalState = {
   activeCompanyCode: null,
   activeScenarioCode: null,
   activePanelId: 1,
+  selectedPeriod: undefined,
   activeIndicatorValueId: null,
   pendingMissingCell: null,
   pendingRollupCell: null,
@@ -383,6 +398,7 @@ const setGlobalState = (patch: Partial<TerminalState>): void => {
 // without triggering loops.
 const actions: TerminalActions = {
   setActivePanel: (id) => setGlobalState({ activePanelId: id }),
+  setSelectedPeriod: (period) => setGlobalState({ selectedPeriod: period }),
   setCompany: (code) => {
     // No-track variant — sets active without LRU side-effect. Use for
     // programmatic dispatch (URL hydration, panel-switch hooks, future
@@ -509,6 +525,7 @@ const actions: TerminalActions = {
       activeCompanyCode: null,
       activeScenarioCode: null,
       activePanelId: 1,
+      selectedPeriod: undefined,
       activeIndicatorValueId: null,
       pendingMissingCell: null,
       pendingRollupCell: null,

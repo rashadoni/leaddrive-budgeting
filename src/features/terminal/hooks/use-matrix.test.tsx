@@ -34,6 +34,7 @@ import {
   getMatrixSync,
   __resetMatrixCacheForTests,
 } from "./use-matrix";
+import { useTerminalStore } from "../store/terminalStore";
 
 beforeEach(() => {
   __resetMatrixCacheForTests();
@@ -128,6 +129,34 @@ describe("useMatrix (sub-20)", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(r2026.current.matrix!.period).toBe("2026");
     expect(r2025.current.matrix!.period).toBe("2025");
+  });
+
+  it("REGRESSION (terminal-audit P2): a no-arg useMatrix() follows the store-selected period", async () => {
+    // Picking a period in the HeatMap chips drives the shared store; EVERY
+    // panel that calls useMatrix() with no explicit period must re-scope to it,
+    // instead of staying on the API default (annual). Pre-fix the side panels
+    // were stuck on annual while the heatmap moved → cross-panel desync.
+    const fetchSpy = vi.fn(async (url: RequestInfo | URL) => {
+      const u = String(url);
+      if (u.includes("period=2026-Q1")) {
+        return new Response(JSON.stringify({ ...SAMPLE_2026, period: "2026-Q1" }), { status: 200 });
+      }
+      return new Response(JSON.stringify(SAMPLE_2026), { status: 200 }); // default annual
+    });
+    global.fetch = fetchSpy as never;
+
+    // Drive the shared store period (what the HeatMap chips do).
+    const { result: setter } = renderHook(() => useTerminalStore((s) => s.setSelectedPeriod));
+    act(() => setter.current("2026-Q1"));
+    try {
+      const { result } = renderHook(() => useMatrix()); // NO explicit period
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.matrix!.period).toBe("2026-Q1");
+      expect(fetchSpy.mock.calls.some((c) => String(c[0]).includes("period=2026-Q1"))).toBe(true);
+    } finally {
+      // Reset shared store state so the period doesn't leak into other tests.
+      act(() => setter.current(undefined));
+    }
   });
 
   it("error path: surfaces error string + loading=false", async () => {
