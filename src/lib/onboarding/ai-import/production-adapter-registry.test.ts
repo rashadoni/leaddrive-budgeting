@@ -23,6 +23,7 @@ vi.mock("../adapters/azseker-plf", () => ({
   parsePlfPlSheet: vi.fn(),
   parsePlfCfSheet: vi.fn(),
   parsePlfEbitdaSubtotal: vi.fn(() => []),
+  parsePlfEbitdaSubtotalAllYears: vi.fn(() => []),
 }))
 vi.mock("../adapters/azseker-workbook-bs", () => ({
   parseWorkbookBsSheet: vi.fn(),
@@ -79,7 +80,7 @@ vi.mock("../sales-forecast-batch", () => ({
 }))
 
 import { buildProductionAdapterRegistry } from "./production-adapter-registry"
-import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotal } from "../adapters/azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, parsePlfEbitdaSubtotalAllYears } from "../adapters/azseker-plf"
 import { parseWorkbookBsSheet } from "../adapters/azseker-workbook-bs"
 import { parseLandRegistrySheet } from "../adapters/azseker-land-registry"
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
@@ -229,14 +230,14 @@ describe("buildProductionAdapterRegistry", () => {
     expect(txArg).toBe(fakeTx) // OUTER TX, not prisma
     expect(planArg.organizationId).toBe("org_1")
     expect(planArg.rows).toHaveLength(1)
-    // EBITDA subtotal capture is wired into the PLF handler (2026-05-31) — it
-    // reads the source EBITDA row for the imported sheet+year into pl_ebitda
-    // so the recompute reports true EBITDA (not net).
-    expect(parsePlfEbitdaSubtotal).toHaveBeenCalledWith(
+    // EBITDA subtotal capture is wired into the PLF handler — it now reads the
+    // source EBITDA row for ALL years in the sheet into pl_ebitda (per-year
+    // gated delete, no silent drop), so the recompute reports true EBITDA (not
+    // net) and the EBITDA history survives single-year re-imports.
+    expect(parsePlfEbitdaSubtotalAllYears).toHaveBeenCalledWith(
       expect.anything(),
       "PLF CPC",
       expect.anything(),
-      { preferYear: 2026 },
     )
   })
 

@@ -373,3 +373,80 @@ export function parsePlfEbitdaSubtotal(
   }
   return out
 }
+
+/**
+ * Like `parsePlfEbitdaSubtotal`, but extracts the EBITDA subtotal for EVERY year
+ * present in the sheet — a single PLF header row carries each year's 12 month
+ * columns side by side (Guvven Fin.xlsx spans 2022..2026). Returns one entry per
+ * year that has at least one non-trivial EBITDA month, sorted ascending.
+ *
+ * Why the AI import needs this: the per-sheet import targets ONE `year`, so it
+ * only ever captured that year's `pl_ebitda` — a workbook's prior-year EBITDA
+ * subtotals were never loaded, and a re-import that target-year-scoped its delete
+ * could silently drop a year whose parse came back empty. Capturing all years
+ * (each gated per-year by the caller on having data) makes the EBITDA history
+ * self-sufficient and re-import-safe.
+ */
+export function parsePlfEbitdaSubtotalAllYears(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+  xlsx: typeof XLSX,
+): { year: number; monthly: { month: number; value: number }[] }[] {
+  const sheet = workbook.Sheets[sheetName]
+  if (!sheet) return []
+  const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    raw: true,
+    blankrows: false,
+  }) as unknown[][]
+
+  // Detect ALL fully-populated, monotonic year column-blocks from the header
+  // band (mirrors findPlfHeaderRow's per-year detection, but keeps EVERY year
+  // rather than picking one).
+  let yearCols: Map<number, number[]> | null = null
+  for (let i = 0; i < Math.min(aoa.length, 20); i++) {
+    const row = aoa[i] ?? []
+    const byYear = new Map<number, number[]>()
+    for (let c = 0; c < row.length; c++) {
+      const ym = excelSerialToYearMonth(row[c])
+      if (!ym) continue
+      let cols = byYear.get(ym.year)
+      if (!cols) {
+        cols = Array(12).fill(-1)
+        byYear.set(ym.year, cols)
+      }
+      if (cols[ym.month] === -1) cols[ym.month] = c
+    }
+    const full = new Map<number, number[]>()
+    for (const [year, cols] of byYear) {
+      if (cols.filter((v) => v !== -1).length !== 12) continue
+      let mono = true
+      for (let k = 1; k < 12; k++) if (cols[k] <= cols[k - 1]) { mono = false; break }
+      if (mono) full.set(year, cols)
+    }
+    if (full.size > 0) {
+      yearCols = full
+      break
+    }
+  }
+  if (!yearCols) return []
+
+  const ebitdaRow = aoa.find((r) => {
+    const label = String((r as unknown[])[1] ?? "").toUpperCase()
+    return label.includes("EBITDA") && !label.includes("MARGIN") && !label.includes("%")
+  })
+  if (!ebitdaRow) return []
+
+  const out: { year: number; monthly: { month: number; value: number }[] }[] = []
+  for (const [year, cols] of [...yearCols.entries()].sort((a, b) => a[0] - b[0])) {
+    const monthly: { month: number; value: number }[] = []
+    for (let m = 0; m < 12; m++) {
+      const v = (ebitdaRow as unknown[])[cols[m]]
+      if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) > 0.005) {
+        monthly.push({ month: m + 1, value: v })
+      }
+    }
+    if (monthly.length > 0) out.push({ year, monthly })
+  }
+  return out
+}

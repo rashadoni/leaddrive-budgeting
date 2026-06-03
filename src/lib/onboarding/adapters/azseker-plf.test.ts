@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { parsePlfPlSheet, parsePlfCfSheet, findPlfHeaderRow } from "./azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, findPlfHeaderRow, parsePlfEbitdaSubtotalAllYears } from "./azseker-plf"
 
 function makeWorkbook(sheetName: string, aoa: unknown[][]): XLSX.WorkBook {
   const ws = XLSX.utils.aoa_to_sheet(aoa as (string | number | Date | null)[][])
@@ -142,5 +142,60 @@ describe("parsePlfCfSheet — activity + inflow/outflow inference", () => {
     const r = parsePlfCfSheet(wb, "CF_X", XLSX)
     expect(r.entries).toHaveLength(1)
     expect(r.entries[0].code).toBe("CF.01.01.01")
+  })
+})
+
+describe("parsePlfEbitdaSubtotalAllYears", () => {
+  const Y2025 = Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(2025, m, 1)))
+  const Y2026 = Array.from({ length: 12 }, (_, m) => new Date(Date.UTC(2026, m, 1)))
+
+  it("extracts the EBITDA subtotal for EVERY year block in the sheet", () => {
+    // Header carries 2025 (cols 3..14) and 2026 (cols 16..27) side by side.
+    const wb = makeWorkbook("PLF X", [
+      [null, "P&L", null, ...Y2025, null, ...Y2026],
+      // EBITDA subtotal row: 2025 = 100/mo, 2026 = 200/mo.
+      [null, "EBITDA", null, ...Array(12).fill(100), null, ...Array(12).fill(200)],
+    ])
+    const res = parsePlfEbitdaSubtotalAllYears(wb, "PLF X", XLSX)
+    expect(res.map((r) => r.year)).toEqual([2025, 2026]) // sorted ascending
+    expect(res[0].monthly).toHaveLength(12)
+    expect(res[0].monthly.reduce((s, x) => s + x.value, 0)).toBe(1200)
+    expect(res[1].monthly.reduce((s, x) => s + x.value, 0)).toBe(2400)
+    expect(res[1].monthly[0]).toEqual({ month: 1, value: 200 })
+  })
+
+  it("captures a PARTIAL year (only the months with data)", () => {
+    // 2026 has only Jan–Mar booked; the rest are 0 → 3 months captured.
+    const partial2026 = [300, 300, 300, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    const wb = makeWorkbook("PLF X", [
+      [null, "P&L", null, ...Y2025, null, ...Y2026],
+      [null, "EBITDA", null, ...Array(12).fill(50), null, ...partial2026],
+    ])
+    const res = parsePlfEbitdaSubtotalAllYears(wb, "PLF X", XLSX)
+    expect(res).toHaveLength(2)
+    expect(res[1].year).toBe(2026)
+    expect(res[1].monthly).toHaveLength(3)
+    expect(res[1].monthly.map((x) => x.month)).toEqual([1, 2, 3])
+  })
+
+  it("returns [] when there is no EBITDA subtotal row (so the handler never deletes)", () => {
+    const wb = makeWorkbook("PLF X", [
+      [null, "P&L", null, ...Y2025],
+      ["PLF.01.01.01", "Revenue from Wheat", null, ...Array(12).fill(10)],
+    ])
+    expect(parsePlfEbitdaSubtotalAllYears(wb, "PLF X", XLSX)).toEqual([])
+  })
+
+  it("ignores an EBITDA MARGIN % row (not the absolute subtotal)", () => {
+    const wb = makeWorkbook("PLF X", [
+      [null, "P&L", null, ...Y2025],
+      [null, "EBITDA Margin %", null, ...Array(12).fill(28)],
+    ])
+    expect(parsePlfEbitdaSubtotalAllYears(wb, "PLF X", XLSX)).toEqual([])
+  })
+
+  it("returns [] for a missing sheet", () => {
+    const wb = makeWorkbook("PLF X", [[null, "EBITDA", null, ...Y2025]])
+    expect(parsePlfEbitdaSubtotalAllYears(wb, "NOPE", XLSX)).toEqual([])
   })
 })
