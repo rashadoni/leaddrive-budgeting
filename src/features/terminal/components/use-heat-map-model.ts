@@ -17,6 +17,7 @@ import { clearAISummaryCache } from './heat-map/ai-summary';
 import {
   buildCellMap,
   summarizeMatrix,
+  isAggregateRollup,
   type HeatMapCell,
 } from '@/lib/risk/heatmap-matrix';
 import { useDriftHealth } from '../hooks/use-drift-health';
@@ -340,8 +341,13 @@ export function useHeatMapModel(period: string | undefined) {
     return summarizeMatrix(
       filteredCompanies.map((c) => c.id),
       data.indicators.map((i) => i.id),
-      data.cells.filter((c) =>
-        filteredCompanies.some((co) => co.id === c.companyId),
+      // Exclude aggregate rollup cells (sub-group / holding parents carry a
+      // worst-of-children status) — counting them double-counts the headline
+      // G/A/R distribution against the leaf children they summarize.
+      data.cells.filter(
+        (c) =>
+          !isAggregateRollup(c) &&
+          filteredCompanies.some((co) => co.id === c.companyId),
       ),
     );
   }, [data, filteredCompanies]);
@@ -361,6 +367,10 @@ export function useHeatMapModel(period: string | undefined) {
     let count = 0;
     const alertedCompanyIds = new Set<string>();
     for (const c of data.cells) {
+      // Skip aggregate rollup cells — a sub-group / holding parent carries a
+      // worst-of-children status, so counting it inflates the [alerts N] badge
+      // and marks the parent row as "alerted". Count leaf cells only.
+      if (isAggregateRollup(c)) continue;
       if (c.status === 'amber' || c.status === 'red') {
         count++;
         alertedCompanyIds.add(c.companyId);

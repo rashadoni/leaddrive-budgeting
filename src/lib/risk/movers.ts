@@ -8,6 +8,8 @@
  * Used by TodayBrief (top-5 list) and HeatMap (highlight overlay v2).
  */
 
+import { isAggregateRollup } from "./heatmap-matrix";
+
 export interface MoverRow {
   companyCode: string;
   companyId: string;
@@ -40,6 +42,8 @@ interface MatrixCellLike {
   value: number;
   sparkline?: (number | null)[];
   indicatorValueId?: string;
+  /** Aggregate-rollup discriminator — see isAggregateRollup. Absent = leaf. */
+  kind?: "op" | "synthetic-rollup" | "real-rollup";
 }
 
 interface CompanyLike {
@@ -80,6 +84,10 @@ export function computeTopMovers(
 
   const candidates: MoverRow[] = [];
   for (const cell of cells) {
+    // Skip aggregate rollup cells — a sub-group / holding parent's sparkline is
+    // a rollup of its children, so including it surfaces the same movement twice
+    // (parent + child) in the top-movers list.
+    if (isAggregateRollup(cell)) continue;
     if (!cell.sparkline || cell.sparkline.length < 2) continue;
     const co = coById.get(cell.companyId);
     const ind = indById.get(cell.indicatorId);

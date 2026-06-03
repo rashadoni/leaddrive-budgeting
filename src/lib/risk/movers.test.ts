@@ -69,6 +69,20 @@ describe("computeTopMovers — Phase 7.H Feature 2", () => {
     expect(out[0].status).toBe("unknown")
   })
 
+  it("REGRESSION (terminal-audit P2): excludes aggregate rollup cells", () => {
+    // A sub-group / holding rollup cell carries a worst-of-children status and
+    // a rollup sparkline; including it would surface the same movement twice
+    // (parent + child) and, with a larger magnitude, outrank the real leaf.
+    const cells = [
+      { companyId: "c1", indicatorId: "i1", status: "amber" as const, value: 12, sparkline: [10, 12] }, // leaf +20%
+      { companyId: "c2", indicatorId: "i1", status: "red" as const, value: 1, sparkline: [10, 1], kind: "real-rollup" as const }, // −90% rollup
+      { companyId: "c3", indicatorId: "i2", status: "red" as const, value: 2, sparkline: [10, 2], kind: "synthetic-rollup" as const }, // −80% rollup
+    ]
+    const out = computeTopMovers(cells, COMPANIES, INDICATORS)
+    // Only the leaf survives — both rollups are dropped despite bigger deltas.
+    expect(out.map((m) => m.companyCode)).toEqual(["AAC"])
+  })
+
   it("uses '—' for null industry", () => {
     const cells = [
       { companyId: "c4", indicatorId: "i1", status: "amber" as const, value: 110, sparkline: [100, 110] },

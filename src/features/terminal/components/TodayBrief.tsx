@@ -40,6 +40,7 @@ function fmtValue(v: number, unit: string): string {
   return `${v.toFixed(1)} ${unit}`.trim();
 }
 import { computeTopMovers, type MoverRow } from "@/lib/risk/movers";
+import { isAggregateRollup } from "@/lib/risk/heatmap-matrix";
 
 interface WorstEntry {
   companyCode: string;
@@ -191,6 +192,10 @@ export function TodayBrief() {
 
     const reds: WorstEntry[] = [];
     for (const cell of matrix.cells) {
+      // Skip aggregate rollup cells — a sub-group / holding parent carries a
+      // worst-of-children red, which would duplicate a child's breach in the
+      // "worst" list. Rank leaf cells only.
+      if (isAggregateRollup(cell)) continue;
       const co = coById.get(cell.companyId);
       const ind = indById.get(cell.indicatorId);
       if (!co || !ind) continue;
