@@ -3492,6 +3492,7 @@
     "emailTruncated": "Showing first {shown} of {total} rows. Use the CSV export for the full list.",
     "ariaOpenDrilldown": "Open finding #{idx} details",
     "drilldownTitle": "Finding #{idx}",
+    "courtDrilldownTitle": "Court case",
     "drilldownClose": "Close",
     "drilldownAuditText": "Audit description",
     "drilldownStatusMng": "Status (MNG)",

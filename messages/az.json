@@ -3492,6 +3492,7 @@
     "emailTruncated": "{total} sətirdən {shown} göstərilir. Tam siyahı üçün CSV-eksportdan istifadə edin.",
     "ariaOpenDrilldown": "#{idx} tapıntının detallarını aç",
     "drilldownTitle": "Tapıntı #{idx}",
+    "courtDrilldownTitle": "Məhkəmə işi",
     "drilldownClose": "Bağla",
     "drilldownAuditText": "Audit təsviri",
     "drilldownStatusMng": "Status (MNG)",

@@ -3492,6 +3492,7 @@
     "emailTruncated": "Показано {shown} из {total} строк. Полный список — через CSV-экспорт.",
     "ariaOpenDrilldown": "Открыть детали замечания #{idx}",
     "drilldownTitle": "Замечание #{idx}",
+    "courtDrilldownTitle": "Судебное дело",
     "drilldownClose": "Закрыть",
     "drilldownAuditText": "Описание замечания",
     "drilldownStatusMng": "Статус (MNG)",

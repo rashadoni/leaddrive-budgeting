@@ -324,8 +324,10 @@ export function AuditTable({
 
 export function CourtTable({
   rows,
+  onOpen,
 }: {
   rows: Array<{ entityCode: string; entityName: string; case: CourtCase }>;
+  onOpen?: (row: { entityCode: string; entityName: string; case: CourtCase }) => void;
 }) {
   const t = useTranslations("adminCompliance");
   if (rows.length === 0) {
@@ -351,7 +353,20 @@ export function CourtTable({
         {rows.map((r, idx) => (
           <tr
             key={idx}
-            className="border-t border-border/40 hover:bg-accent/30 transition-colors"
+            onClick={onOpen ? () => onOpen(r) : undefined}
+            onKeyDown={
+              onOpen
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpen(r);
+                    }
+                  }
+                : undefined
+            }
+            role={onOpen ? "button" : undefined}
+            tabIndex={onOpen ? 0 : undefined}
+            className={`border-t border-border/40 hover:bg-accent/30 transition-colors ${onOpen ? "cursor-pointer" : ""}`}
           >
             <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
               {r.entityCode.replace("AZSEKER-", "")}

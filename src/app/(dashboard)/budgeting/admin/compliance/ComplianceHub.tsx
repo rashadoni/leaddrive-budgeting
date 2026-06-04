@@ -105,6 +105,13 @@ export function ComplianceHub({ entities }: Props) {
     entityName: string;
     findingIdx: number;
   } | null>(null);
+  // Court-case drill-down (read-only detail). Mirrors the audit drilldown so a
+  // court row opens a modal instead of being a dead, non-clickable line.
+  const [courtDrilldown, setCourtDrilldown] = useState<{
+    entityCode: string;
+    entityName: string;
+    case: CourtCase;
+  } | null>(null);
   // Reset the manage inputs whenever the drilldown points at a
   // different finding (or closes) so stale text doesn't carry over.
   const drilldownKey = drilldown
@@ -604,9 +611,71 @@ export function ComplianceHub({ entities }: Props) {
             onOpenDrilldown={setDrilldown}
           />
         ) : (
-          <CourtTable rows={filteredCourtRows} />
+          <CourtTable rows={filteredCourtRows} onOpen={setCourtDrilldown} />
         )}
       </div>
+
+      {/* Court-case drill-down — read-only detail modal (mirrors the audit one
+          so a court row is no longer a dead, non-clickable line). */}
+      {courtDrilldown && (
+        <Dialog open={!!courtDrilldown} onOpenChange={(v) => !v && setCourtDrilldown(null)}>
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <DialogTitle>
+                  <span className="font-mono text-xs text-muted-foreground mr-2">
+                    {courtDrilldown.entityCode.replace("AZSEKER-", "")}
+                  </span>
+                  {t("courtDrilldownTitle")}
+                </DialogTitle>
+                <div className="mt-2">
+                  <StatusBadge closed={courtDrilldown.case.closed} />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCourtDrilldown(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors p-1 -mt-1 -mr-1"
+                aria-label={t("drilldownClose")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </DialogHeader>
+          <DialogContent>
+            <div className="space-y-4 text-sm">
+              <section>
+                <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                  {t("thPlaintiffDefendant")}
+                </h3>
+                <p className="leading-relaxed">
+                  <span className="text-muted-foreground">{courtDrilldown.case.claimant || "—"}</span>
+                  <span className="mx-1.5 text-muted-foreground/60">→</span>
+                  <span>{courtDrilldown.case.defendant || "—"}</span>
+                </p>
+              </section>
+              <section className="grid grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t("thDate")}</h3>
+                  <p className="text-xs">{courtDrilldown.case.date || "—"}</p>
+                </div>
+                <div>
+                  <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t("thType")}</h3>
+                  <p className="text-xs">{courtDrilldown.case.disputeType || "—"}</p>
+                </div>
+                <div className="col-span-2">
+                  <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t("thCourt")}</h3>
+                  <p className="text-xs">{courtDrilldown.case.court || "—"}</p>
+                </div>
+                <div>
+                  <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{t("thStatus")}</h3>
+                  <p className="text-xs">{courtDrilldown.case.status || "—"}</p>
+                </div>
+              </section>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Phase 8 E2 — drill-down modal. Reads live finding from
           entities[] so optimistic close/reopen flips reflect without
