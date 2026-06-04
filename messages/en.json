@@ -2532,7 +2532,17 @@
       "factCheck": {
         "title": "Fact-check",
         "summary": "{matched} of {total} cited values matched the indicator snapshot.",
-        "allMatched": "All {total} cited values matched the snapshot."
+        "allMatched": "All {total} cited values matched the snapshot.",
+        "reason": {
+          "numberAbsent": "Number {number} does not appear in the indicator snapshot.",
+          "numberUnmatched": "Number {number} could not be matched against inputs (might be a derived calculation).",
+          "futureYear": "Narrative references future year {year} but the indicator period is {period}."
+        },
+        "suggestion": {
+          "numberAbsent": "Verify this number against source data before quoting in a board pack.",
+          "numberUnmatched": "Cross-check with the resolved variables panel.",
+          "futureYear": "Re-run the explainer — the LLM may have confused forecast horizons."
+        }
       }
     },
     "fxExposure": {

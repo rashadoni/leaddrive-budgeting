@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { localizeFactCheckFlag } from "../lib/localize-fact-check"
 import { Sparkles, RefreshCw } from "lucide-react"
 
 interface BriefInputs {
@@ -38,6 +39,8 @@ interface FactCheckFlagShape {
   reason: string
   claim: string
   suggestion: string
+  code?: "numberAbsent" | "numberUnmatched" | "futureYear"
+  params?: Record<string, string | number>
 }
 
 interface BriefResponse {
@@ -211,15 +214,18 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
                 {t("varianceExplainer.factCheck.title")}
               </div>
               <ul className="space-y-1">
-                {state.data.factCheck.flags.map((f, i) => (
-                  <li key={i} className="text-[9.5px] leading-snug text-gray-200">
-                    <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-300">
-                      {f.claim}
-                    </span>{" "}
-                    — {f.reason}{" "}
-                    <span className="text-gray-500">{f.suggestion}</span>
-                  </li>
-                ))}
+                {state.data.factCheck.flags.map((f, i) => {
+                  const localized = localizeFactCheckFlag(f, t)
+                  return (
+                    <li key={i} className="text-[9.5px] leading-snug text-gray-200">
+                      <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-300">
+                        {f.claim}
+                      </span>{" "}
+                      — {localized.reason}{" "}
+                      <span className="text-gray-500">{localized.suggestion}</span>
+                    </li>
+                  )
+                })}
               </ul>
               <p className="text-gray-600 text-[8.5px] mt-1">
                 {t("varianceExplainer.factCheck.summary", {

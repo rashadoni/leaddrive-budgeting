@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useTerminalStore } from "../store/terminalStore";
 import { CompanySnapshot } from "./CompanySnapshot";
+import { localizeFactCheckFlag } from "../lib/localize-fact-check";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 
 type Language = "en" | "ru" | "az";
@@ -26,6 +27,8 @@ interface FactCheckFlagShape {
   claim: string;
   severity: "warn" | "info";
   suggestion: string;
+  code?: "numberAbsent" | "numberUnmatched" | "futureYear";
+  params?: Record<string, string | number>;
 }
 
 interface ExplainResponse {
@@ -403,17 +406,20 @@ export function VarianceExplainerPanel() {
                   {t("varianceExplainer.factCheck.title")}
                 </div>
                 <ul className="space-y-1">
-                  {data.factCheck.flags.map((f, i) => (
-                    <li key={i} className="text-[10px] leading-snug text-gray-200">
-                      <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                        {f.claim}
-                      </span>{" "}
-                      — {f.reason}{" "}
-                      <span className="text-muted-foreground">
-                        {f.suggestion}
-                      </span>
-                    </li>
-                  ))}
+                  {data.factCheck.flags.map((f, i) => {
+                    const localized = localizeFactCheckFlag(f, t);
+                    return (
+                      <li key={i} className="text-[10px] leading-snug text-gray-200">
+                        <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                          {f.claim}
+                        </span>{" "}
+                        — {localized.reason}{" "}
+                        <span className="text-muted-foreground">
+                          {localized.suggestion}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="text-muted-foreground text-[9px] mt-1">
                   {t("varianceExplainer.factCheck.summary", {

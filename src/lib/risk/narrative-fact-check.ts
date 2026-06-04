@@ -31,15 +31,29 @@ import type { VarianceExplainerInput } from "./variance-explainer"
 /** Severity of a single fact-check flag. */
 export type FactCheckSeverity = "warn" | "info"
 
+/**
+ * Stable machine code for each flag kind. The UI translates these into the
+ * active locale (en/az/ru) via `varianceExplainer.factCheck.{reason,suggestion}.<code>`;
+ * the English `reason`/`suggestion` strings below are kept as a fallback for
+ * non-localized consumers (logs, board-deck export).
+ */
+export type FactCheckCode = "numberAbsent" | "numberUnmatched" | "futureYear"
+
 /** A single fact-check finding. */
 export interface FactCheckFlag {
-  /** Why this number / claim was flagged. Human-readable, EN. */
+  /** Stable code for UI localization (see FactCheckCode). Always set by
+   *  `verifyNarrative`; optional in the type for back-compat with older
+   *  flag literals (tests / cached payloads). */
+  code?: FactCheckCode
+  /** Interpolation values for the localized message (e.g. `{ number }`, `{ year, period }`). */
+  params?: Record<string, string | number>
+  /** Why this number / claim was flagged. EN fallback when not localized. */
   reason: string
   /** The verbatim slice of the narrative that triggered the flag. */
   claim: string
   /** "warn" = looks fabricated / wrong; "info" = couldn't verify. */
   severity: FactCheckSeverity
-  /** Short suggestion the UI surfaces ("check inputs", etc.). */
+  /** Short suggestion (EN fallback). */
   suggestion: string
 }
 
@@ -276,7 +290,10 @@ export function verifyNarrative(
     // can't prove fabrication, but the value isn't in the snapshot).
     const sev: FactCheckSeverity =
       Math.abs(num.value) > 1000 || num.isPercent ? "warn" : "info"
+    const code: FactCheckCode = sev === "warn" ? "numberAbsent" : "numberUnmatched"
     flags.push({
+      code,
+      params: { number: num.text },
       reason:
         sev === "warn"
           ? `Number ${num.text} does not appear in the indicator snapshot.`
@@ -301,6 +318,8 @@ export function verifyNarrative(
     const futureYears = yearsInNarrative.filter((y) => y > ivYear)
     for (const y of futureYears) {
       flags.push({
+        code: "futureYear",
+        params: { year: y, period: input.result.period },
         reason: `Narrative references future year ${y} but the indicator period is ${input.result.period}.`,
         claim: String(y),
         severity: "warn",

@@ -2532,7 +2532,17 @@
       "factCheck": {
         "title": "Fakt yoxlanışı",
         "summary": "{matched} / {total} sitat gətirilən rəqəm göstərici şəkilcəsi ilə uyğundur.",
-        "allMatched": "Bütün {total} sitat gətirilən rəqəm şəkilcə ilə uyğundur."
+        "allMatched": "Bütün {total} sitat gətirilən rəqəm şəkilcə ilə uyğundur.",
+        "reason": {
+          "numberAbsent": "{number} rəqəmi indikatorun anlıq görüntüsündə yoxdur.",
+          "numberUnmatched": "{number} rəqəmi girişlərlə uyğunlaşdırıla bilmədi (törəmə hesablama ola bilər).",
+          "futureYear": "Mətn gələcək {year} ilinə istinad edir, lakin indikator dövrü {period}-dır."
+        },
+        "suggestion": {
+          "numberAbsent": "Bu rəqəmi board-paketdə sitat gətirməzdən əvvəl mənbə məlumatı ilə yoxlayın.",
+          "numberUnmatched": "Həll edilmiş dəyişənlər panelində çarpaz yoxlayın.",
+          "futureYear": "Explainer-i yenidən işə salın — LLM proqnoz üfüqlərini qarışdırmış ola bilər."
+        }
       }
     },
     "fxExposure": {

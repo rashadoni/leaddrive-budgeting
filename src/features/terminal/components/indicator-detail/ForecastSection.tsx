@@ -15,6 +15,7 @@ import { useTranslations } from "next-intl";
 import { forecastNextPeriod, type ForecastConfidence } from "@/lib/risk/forecast";
 import { statusShape } from "@/lib/risk/heatmap-matrix";
 import { formatValue, formatHeadlineValue } from "./format";
+import { localizeFactCheckFlag } from "../../lib/localize-fact-check";
 
 function forecastColor(confidence: ForecastConfidence): string {
   if (confidence === "high") return "text-emerald-600 dark:text-emerald-400";
@@ -61,6 +62,9 @@ interface ForecastFactCheckFlag {
   claim: string;
   severity: "warn" | "info";
   suggestion: string;
+  /** Phase i18n — stable code + params for localizing reason/suggestion. */
+  code?: "numberAbsent" | "numberUnmatched" | "futureYear";
+  params?: Record<string, string | number>;
 }
 interface ForecastExplainResponse {
   indicatorValueId: string;
@@ -300,15 +304,18 @@ export function ForecastSection(props: {
                 {t('varianceExplainer.factCheck.title')}
               </div>
               <ul className="space-y-1">
-                {explain.data.factCheck.flags.map((f, i) => (
-                  <li key={i} className="text-[10px] leading-snug text-gray-200">
-                    <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                      {f.claim}
-                    </span>{" "}
-                    — {f.reason}{" "}
-                    <span className="text-muted-foreground">{f.suggestion}</span>
-                  </li>
-                ))}
+                {explain.data.factCheck.flags.map((f, i) => {
+                  const localized = localizeFactCheckFlag(f, t);
+                  return (
+                    <li key={i} className="text-[10px] leading-snug text-gray-200">
+                      <span className="font-mono px-1 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                        {f.claim}
+                      </span>{" "}
+                      — {localized.reason}{" "}
+                      <span className="text-muted-foreground">{localized.suggestion}</span>
+                    </li>
+                  );
+                })}
               </ul>
               <p className="text-muted-foreground text-[9px] mt-1">
                 {t('varianceExplainer.factCheck.summary', {
