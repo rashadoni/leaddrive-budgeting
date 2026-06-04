@@ -1855,7 +1855,7 @@
       "chatTitle": "Open SubCo Finance Chat (CHT GO equivalent)",
       "scenario": "SCENARIO",
       "scenarioTitle": "Open Scenarios — prefills SCN, type code + GO",
-      "whatif": "WHAT-IF",
+      "whatif": "PREVIEW",
       "whatifTitle": "Open ad-hoc preview: nudge FX rates and see indicators recompute live",
       "peer": "PEER",
       "peerTitle": "Cross-company benchmarking — prefills PEER, type codes + GO",
@@ -2125,8 +2125,8 @@
       "detailAriaLabel": "Scenario detail"
     },
     "whatif": {
-      "title": "What-If preview",
-      "subtitle": "Stress-test FX, commodities, and macro variables → recompute affected indicators. Esc to close.",
+      "title": "Quick preview",
+      "subtitle": "Quick sandbox for FX, commodity & macro variables — recomputes only the feed-based indicators that read them. For full P&L + composite impact use Scenarios → Run crisis. Esc to close.",
       "dialogAriaLabel": "What-If preview",
       "closeAriaLabel": "Close What-If",
       "presetsHeader": "Quick Scenarios",

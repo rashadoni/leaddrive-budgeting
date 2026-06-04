@@ -1855,7 +1855,7 @@
       "chatTitle": "Sub-co maliyyə çatını aç (CHT GO ekvivalenti)",
       "scenario": "SSENARİ",
       "scenarioTitle": "Ssenariləri aç — SCN ilə doldurar, kod + GO yazın",
-      "whatif": "NƏ-ƏGƏR",
+      "whatif": "ÖNBAX",
       "whatifTitle": "Ad-hoc önbax: FX kurslarını dəyiş və indikatorların yenidən hesablanmasını gör",
       "peer": "PİRLƏR",
       "peerTitle": "Şirkətlər arası benchmarking — PEER ilə doldurar, kodlar + GO",
@@ -2125,8 +2125,8 @@
       "detailAriaLabel": "Ssenari detalları"
     },
     "whatif": {
-      "title": "Nə-əgər önbax",
-      "subtitle": "FX, əmtəə qiymətləri və makro dəyişənləri test edin → təsirlənən indikatorlar bazaya yazılmadan yenidən hesablanır. Bağlamaq üçün Esc.",
+      "title": "Sürətli önbax",
+      "subtitle": "FX, əmtəə və makro dəyişənlər üçün sürətli sandbox — yalnız onları oxuyan lent əsaslı indikatorları yenidən hesablayır. Tam P&L + kompozit təsir üçün Ssenarilər → Böhranı işə sal. Bağlamaq üçün Esc.",
       "dialogAriaLabel": "Nə-əgər önbax",
       "closeAriaLabel": "Nə-əgər bağla",
       "presetsHeader": "Sürətli ssenarilər",
