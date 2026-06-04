@@ -148,6 +148,12 @@ export interface BudgetAnalytics {
   grossProfitActual: number
   marginForecast: number
   byCategory: BudgetCategoryRow[]
+  // Whether byCategory[].actual carries real per-category data (true), or the
+  // realized totals exist only in aggregate (false → the detailed P&L table
+  // renders "—" for per-category actual/variance and directs the user to the
+  // aggregate KPI cards). Optional for back-compat with responses cached
+  // before this field shipped — consumers fall back to a byCategory scan.
+  perCategoryActualsAvailable?: boolean
   byDepartment: BudgetDepartmentRow[]
   costModelTotal: number
   matrix?: {

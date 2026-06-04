@@ -848,6 +848,7 @@
     "pnlNetProfitLoss": "Net profit / (Loss)",
     "pnlDeviation": "Deviation",
     "pnlExecution": "Execution",
+    "pnlPerCategoryActualNote": "Per-category actuals aren't available for this plan — the consolidated totals are shown in the summary cards above; the rows below show plan only.",
     "fcMonthlyTrend": "Monthly forecast trend",
     "fcMonthlyTrendSubtitle": "Revenue vs expenses by month ({scenario})",
     "fcScenarioComparison": "Scenario comparison",

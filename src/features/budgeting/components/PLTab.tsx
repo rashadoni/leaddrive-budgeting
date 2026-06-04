@@ -63,7 +63,7 @@ import { execPct } from "@/lib/budgeting/exec-pct"
 import { SECTION_TYPES } from "@/lib/budgeting/types"
 import { isContraRevenueCode } from "@/lib/budgeting/coa-role"
 // Additional lucide icons not in initial import block (caught by tsc).
-import { BarChart2, Settings2 } from "lucide-react"
+import { BarChart2, Settings2, Info } from "lucide-react"
 
 
 import { makePlSection } from "./pl-tab-section"
@@ -148,6 +148,18 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   }
 
   const byCategory = analytics?.byCategory ?? []
+
+  // Per-category actuals availability (2026-06-04). False when the realized
+  // figures exist only in aggregate — a budget plan whose actuals live in the
+  // matching-year Actuals plan under a different account taxonomy (Y4). The
+  // detailed P&L statement then renders "—" for per-category actual / variance
+  // / execution instead of a misleading 0 / −planned; the real totals stay in
+  // the KPI cards above. Prefer the route flag; fall back to a byCategory scan
+  // for responses cached before the flag shipped.
+  const perCatActuals = analytics?.perCategoryActualsAvailable ?? byCategory.some(c => c.actual !== 0)
+  // "—" node for actual/variance cells in the GP / EBITDA / Net blocks +
+  // drill-down when per-category actuals aren't available.
+  const naDash = <span className="text-muted-foreground/50 font-mono">—</span>
 
   const parentCategories = new Set(byCategory.filter(c => c.parentCategory).map(c => c.parentCategory!))
   const leafRows = byCategory.filter(c => !parentCategories.has(c.category) || c.parentCategory)
@@ -295,7 +307,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   const { renderSection, KPICard } = makePlSection({
     t, byCategory, collapsed, toggleCollapse, drilldown, setDrilldown,
     pulseDrilldown, plShowMaterialOnly, isPlMaterial, flashSection, drillToSection,
-    getGroupActual,
+    getGroupActual, perCategoryActualsAvailable: perCatActuals,
   })
 
   return (
@@ -669,6 +681,17 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         )}
       </div>
 
+      {/* Honesty note — per-category actuals unavailable (budget plan whose
+          realized figures live in a different-taxonomy Actuals plan). The
+          detailed rows below show "—" for actual/variance; the real totals
+          are in the KPI cards above. */}
+      {!perCatActuals && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/70 dark:border-amber-700/50 dark:bg-amber-950/20 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+          <Info className="h-4 w-4 shrink-0 mt-0.5" />
+          <span>{t("pnlPerCategoryActualNote")}</span>
+        </div>
+      )}
+
       {/* P&L Income Statement — no COGS (allocated costs shown in Profitability module) */}
       {renderSection(t("plRevenue"), revRows, "auto-revenue", <DollarSign className="h-4 w-4" />, "bg-primary/[0.04]", true, totalRevenuePlanned, totalRevenueActual, false, revGrouped)}
       {renderSection(t("plSectionDirectCosts"), directExpRows, "auto-direct", <Settings2 className="h-4 w-4" />, "bg-orange-50/60 dark:bg-orange-950/20", false, 0, 0, true, directGrouped)}
@@ -695,12 +718,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
           </div>
           <div className="flex items-center gap-6 font-mono font-bold text-base">
             <AnimatedNumber value={grossProfitPlanned} duration={600} />
-            <span className={grossProfitActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
-              <AnimatedNumber value={grossProfitActual} duration={600} />
-            </span>
-            <span className={`text-sm ${grossProfitActual - grossProfitPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              <AnimatedNumber value={grossProfitActual - grossProfitPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
-            </span>
+            {perCatActuals ? (
+              <span className={grossProfitActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
+                <AnimatedNumber value={grossProfitActual} duration={600} />
+              </span>
+            ) : naDash}
+            {perCatActuals ? (
+              <span className={`text-sm ${grossProfitActual - grossProfitPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <AnimatedNumber value={grossProfitActual - grossProfitPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+              </span>
+            ) : naDash}
           </div>
         </div>
       </div>
@@ -729,12 +756,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
           </div>
           <div className="flex items-center gap-6 font-mono font-bold text-base">
             <AnimatedNumber value={opProfitPlanned} duration={600} />
-            <span className={opProfitActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
-              <AnimatedNumber value={opProfitActual} duration={600} />
-            </span>
-            <span className={`text-sm ${opProfitActual - opProfitPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              <AnimatedNumber value={opProfitActual - opProfitPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
-            </span>
+            {perCatActuals ? (
+              <span className={opProfitActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
+                <AnimatedNumber value={opProfitActual} duration={600} />
+              </span>
+            ) : naDash}
+            {perCatActuals ? (
+              <span className={`text-sm ${opProfitActual - opProfitPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                <AnimatedNumber value={opProfitActual - opProfitPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+              </span>
+            ) : naDash}
           </div>
         </div>
       </div>
@@ -766,12 +797,16 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   </div>
                   <div className="flex items-center gap-6 font-mono font-bold text-base">
                     <AnimatedNumber value={netPlanned} duration={600} />
-                    <span className={netActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
-                      <AnimatedNumber value={netActual} duration={600} />
-                    </span>
-                    <span className={`text-sm ${netActual - netPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                      <AnimatedNumber value={netActual - netPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
-                    </span>
+                    {perCatActuals ? (
+                      <span className={netActual >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}>
+                        <AnimatedNumber value={netActual} duration={600} />
+                      </span>
+                    ) : naDash}
+                    {perCatActuals ? (
+                      <span className={`text-sm ${netActual - netPlanned >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        <AnimatedNumber value={netActual - netPlanned} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                      </span>
+                    ) : naDash}
                   </div>
                 </div>
               </div>
@@ -825,11 +860,13 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
               const row = byCategory.find(r => r.category === drilldown)
               if (!row) return <p className="text-sm text-muted-foreground">{t("emptyNoData")}</p>
               const isExp = row.lineType === "expense" || row.lineType === "cogs"
-              const maxVal = Math.max(row.planned, row.forecast, row.actual, 1)
+              const maxVal = Math.max(row.planned, row.forecast, perCatActuals ? row.actual : 0, 1)
               const items = [
                 { label: t("colBudget"), value: row.planned, color: "#3b82f6" },
                 { label: t("colForecast"), value: row.forecast, color: "#a855f7" },
-                { label: t("colActual"), value: row.actual, color: "#10b981" },
+                // Drop the Actual bar when per-category actuals aren't available
+                // (would otherwise render a misleading 0-width "achieved nothing").
+                ...(perCatActuals ? [{ label: t("colActual"), value: row.actual, color: "#10b981" }] : []),
               ]
               return (
                 <div className="space-y-4">
@@ -855,20 +892,20 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
                   <div className="grid grid-cols-3 gap-4 pt-2 border-t border-border/30">
                     <div className="text-center">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("colVariance")}</p>
-                      <p className={`font-bold font-mono text-sm ${row.variance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
-                        <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                      <p className={`font-bold font-mono text-sm ${perCatActuals ? (row.variance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500") : "text-muted-foreground/50"}`}>
+                        {perCatActuals ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : "—"}
                       </p>
                     </div>
                     <div className="text-center">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("pnlDeviation")}</p>
-                      <p className={`font-bold font-mono text-sm ${row.variancePct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"}`}>
-                        {row.variancePct >= 0 ? "+" : ""}{row.variancePct.toFixed(1)}%
+                      <p className={`font-bold font-mono text-sm ${perCatActuals ? (row.variancePct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500") : "text-muted-foreground/50"}`}>
+                        {perCatActuals ? `${row.variancePct >= 0 ? "+" : ""}${row.variancePct.toFixed(1)}%` : "—"}
                       </p>
                     </div>
                     <div className="text-center">
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{t("pnlExecution")}</p>
-                      <p className="font-bold font-mono text-sm">
-                        {row.planned > 0 ? Math.round((row.actual / row.planned) * 100) : 0}%
+                      <p className={`font-bold font-mono text-sm ${perCatActuals ? "" : "text-muted-foreground/50"}`}>
+                        {perCatActuals ? `${row.planned > 0 ? Math.round((row.actual / row.planned) * 100) : 0}%` : "—"}
                       </p>
                     </div>
                   </div>

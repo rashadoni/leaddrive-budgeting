@@ -848,6 +848,7 @@
     "pnlNetProfitLoss": "Xalis mənfəət / (Zərər)",
     "pnlDeviation": "Sapma",
     "pnlExecution": "İcra",
+    "pnlPerCategoryActualNote": "Bu plan üçün kateqoriya üzrə faktiki məlumat mövcud deyil — yekun məbləğlər yuxarıdakı kartlarda göstərilir; aşağıdakı sətirlərdə yalnız plan var.",
     "fcMonthlyTrend": "Aylıq proqnoz tendensiyası",
     "fcMonthlyTrendSubtitle": "Aylar üzrə gəlir vs xərclər ({scenario})",
     "fcScenarioComparison": "Ssenarilərin müqayisəsi",

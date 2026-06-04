@@ -486,18 +486,37 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const isActualsPlan = plan.kind === "actual"
   const byCategory = Array.from(categoryMap.entries()).map(([key, val]) => {
     const [, lineType] = key.split("||")
+    // An actuals plan's own lines ARE the realized figures — surface each
+    // category's planned amount as its per-category actual (variance 0),
+    // mirroring the aggregate-side fix above. Without this the per-category
+    // actual reads 0 (an actuals plan has no separate BudgetActual rows) and
+    // the detailed P&L table shows a misleading "0 actual / −planned variance"
+    // even though the realized data sits right in the plan's lines.
+    const actual = isActualsPlan ? val.planned : val.actual
+    const monthlyActual = isActualsPlan ? val.monthlyPlanned : val.monthlyActual
     const variance = lineType === "revenue"
-      ? val.actual - val.planned
-      : val.planned - val.actual
+      ? actual - val.planned
+      : val.planned - actual
     const variancePct = val.planned > 0 ? (variance / val.planned) * 100 : 0
     // parentLookup is keyed by the legacy "category||lineType" — rebuild the
     // legacy key from our display name so existing children/parent wiring holds.
     const legacyKey = `${val.displayCategory}||${val.lineType}`
     const parentCategory = parentLookup.get(legacyKey) ?? null
-    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual: val.actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual: val.monthlyActual }
+    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual }
   })
+
+  // Whether the per-category ACTUAL column carries real data. False when the
+  // realized totals exist only in aggregate — e.g. a budget plan whose actuals
+  // live in the matching-year Actuals plan under a different account taxonomy
+  // (the Y4 fallback sets totalRevenueActual etc. but can't attribute them per
+  // budget-category). The UI renders "—" for per-category actual/variance in
+  // that case (instead of a misleading 0 / −planned) and points the user to
+  // the aggregate KPI cards. An actuals plan and any plan with auto/manual
+  // BudgetActual rows have real per-category data → true.
+  const perCategoryActualsAvailable = byCategory.some((c) => c.actual !== 0)
 
   // By department — track expense and revenue separately for correct variance.
   // Phase 2.1 session 3: accountId NOT NULL + include:account guarantees
@@ -799,6 +818,7 @@ export async function GET(req: NextRequest) {
       grossProfit: grossProfitPlanned,
       grossProfitActual,
       byCategory,
+      perCategoryActualsAvailable,
       byDepartment,
       matrix,
       costModelTotal: costModel?.grandTotalG ?? 0,

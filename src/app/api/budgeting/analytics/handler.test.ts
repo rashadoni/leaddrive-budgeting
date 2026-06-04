@@ -147,5 +147,50 @@ describe("GET /api/budgeting/analytics — auth + early returns", () => {
     // not 0 — and coincides with the planned side (execution ≈ fully realized).
     expect(body.data.totalRevenueActual).toBe(39_400_000)
     expect(body.data.totalRevenuePlanned).toBe(39_400_000)
+    // …and the PER-CATEGORY rows carry the same realized figures (actual =
+    // planned, variance 0) so the detailed P&L table shows the data that
+    // exists instead of "0 actual / −planned". (User: "где есть данные ты
+    // всё равно игнорируешь" — surface it per-category, not just aggregate.)
+    const rev = body.data.byCategory.find((c: { lineType: string }) => c.lineType === "revenue")
+    expect(rev.actual).toBe(39_400_000)
+    expect(rev.variance).toBe(0)
+    // Flag tells the UI per-category actuals are real → render numbers, not "—".
+    expect(body.data.perCategoryActualsAvailable).toBe(true)
+  })
+
+  it("budget plan with no mappable actuals → perCategoryActualsAvailable=false (UI shows —)", async () => {
+    // A budget plan whose realized figures live in the matching-year Actuals
+    // plan (different account taxonomy) can't map actuals per budget-category.
+    // The route still computes the AGGREGATE (Y4) for the KPI cards, but the
+    // per-category column has no data → flag false so the table renders "—"
+    // instead of a misleading 0/−planned variance.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    ;(resolveCompanyFilter as ReturnType<typeof vi.fn>).mockResolvedValue({ kind: "all" })
+    // First findFirst = the budget plan; second (Y4 actuals lookup) = none.
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({
+        id: "budget-2026",
+        organizationId: ORG_ID,
+        year: 2026,
+        kind: "budget",
+        periodType: "annual",
+        month: null,
+        quarter: null,
+      })
+      .mockResolvedValueOnce(null)
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      {
+        id: "r1", lineType: "revenue", plannedAmount: 9_500_000, forecastAmount: null,
+        monthIndex: 1, isAutoActual: false, isAutoPlanned: false, parentId: null,
+        companyId: "c1", category: null, costType: null, budgetDept: null,
+        account: { code: "4000", name: "Revenue", accountType: "revenue" },
+      },
+    ])
+    const res = await GET(makeRequest("/api/budgeting/analytics?planId=budget-2026"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data.perCategoryActualsAvailable).toBe(false)
+    const rev = body.data.byCategory.find((c: { lineType: string }) => c.lineType === "revenue")
+    expect(rev.actual).toBe(0)
   })
 })

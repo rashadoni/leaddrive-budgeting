@@ -30,14 +30,26 @@ export interface PlSectionCtx {
   flashSection: string | null
   drillToSection: (barKey: string) => void
   getGroupActual: (parentName: string, childRows: BudgetCategoryRow[]) => number
+  // False when per-category actuals aren't available for this plan (a budget
+  // plan whose realized figures live in a different-taxonomy Actuals plan).
+  // The actual / variance / execution cells then render "—" instead of a
+  // misleading 0 / −planned; the aggregate headline stays in the KPI cards.
+  perCategoryActualsAvailable: boolean
 }
 
 export function makePlSection(ctx: PlSectionCtx) {
   const {
     t, byCategory, collapsed, toggleCollapse, drilldown, setDrilldown,
     pulseDrilldown, plShowMaterialOnly, isPlMaterial, flashSection, drillToSection,
-    getGroupActual,
+    getGroupActual, perCategoryActualsAvailable,
   } = ctx
+
+  // "—" placeholder for actual / variance / execution cells when per-category
+  // actuals aren't available. Keeps the column's right-alignment + width so
+  // the table doesn't reflow. `extra` carries the cell's min-width class.
+  const naDash = (extra = "") => (
+    <span className={`text-muted-foreground/50 font-mono ${extra}`}>—</span>
+  )
 
   const execColor = (pct: number, isExpense: boolean) => {
     if (isExpense) return pct > 110 ? "bg-red-500" : pct > 90 ? "bg-amber-500" : "bg-emerald-500"
@@ -123,19 +135,25 @@ export function makePlSection(ctx: PlSectionCtx) {
             )}
           </div>
           <div className="flex items-center gap-4">
-            {/* Execution bar in header */}
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="w-20 h-2 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-500 ${execColor(secExecPct, isExpense)}`} style={{ width: `${Math.min(secExecPct, 100)}%` }} />
+            {/* Execution bar in header — only meaningful with real actuals */}
+            {perCategoryActualsAvailable && (
+              <div className="hidden sm:flex items-center gap-2">
+                <div className="w-20 h-2 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-500 ${execColor(secExecPct, isExpense)}`} style={{ width: `${Math.min(secExecPct, 100)}%` }} />
+                </div>
+                <span className="text-[10px] font-mono opacity-70">{secExecPct}%</span>
               </div>
-              <span className="text-[10px] font-mono opacity-70">{secExecPct}%</span>
-            </div>
+            )}
             <div className="flex gap-6 text-sm font-mono font-bold">
               <AnimatedNumber value={secPlanned} className="text-right min-w-[100px]" duration={800} />
-              <AnimatedNumber value={secActual} className={`text-right min-w-[100px] ${secActual >= 0 ? "" : "text-red-600 dark:text-red-400"}`} duration={800} />
-              <AnimatedNumber value={secVariance} duration={600}
-                formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`}
-                className={`text-right min-w-[80px] text-xs self-center ${secVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`} />
+              {perCategoryActualsAvailable
+                ? <AnimatedNumber value={secActual} className={`text-right min-w-[100px] ${secActual >= 0 ? "" : "text-red-600 dark:text-red-400"}`} duration={800} />
+                : naDash("text-right min-w-[100px]")}
+              {perCategoryActualsAvailable
+                ? <AnimatedNumber value={secVariance} duration={600}
+                    formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`}
+                    className={`text-right min-w-[80px] text-xs self-center ${secVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`} />
+                : naDash("text-right min-w-[80px] text-xs self-center")}
             </div>
           </div>
         </div>
@@ -174,17 +192,19 @@ export function makePlSection(ctx: PlSectionCtx) {
                           </td>
                           <td className="px-4 py-2.5 text-right font-mono text-sm font-bold"><AnimatedNumber value={gPlanned} duration={700} /></td>
                           <td className="px-4 py-2.5 text-right font-mono text-sm font-bold"><AnimatedNumber value={gForecast} duration={700} /></td>
-                          <td className="px-4 py-2.5 text-right font-mono text-sm font-bold"><AnimatedNumber value={gActual} duration={700} /></td>
+                          <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">{perCategoryActualsAvailable ? <AnimatedNumber value={gActual} duration={700} /> : naDash()}</td>
                           <td className="px-4 py-2.5 text-center">
                             <span className="inline-block bg-muted/80 rounded-full px-2 py-0.5 text-[10px] font-mono font-bold">{gPctOfTotal}%</span>
                           </td>
-                          <td className={`px-4 py-2.5 text-right font-mono text-sm font-bold ${gVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`}>
-                            <div className="flex items-center justify-end gap-1.5">
-                              {gVariance >= 0
-                                ? <TrendingUp className="h-3 w-3" />
-                                : <TrendingDown className="h-3 w-3" />}
-                              <AnimatedNumber value={gVariance} duration={600} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
-                            </div>
+                          <td className={`px-4 py-2.5 text-right font-mono text-sm font-bold ${perCategoryActualsAvailable ? (gVariance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                            {perCategoryActualsAvailable ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                {gVariance >= 0
+                                  ? <TrendingUp className="h-3 w-3" />
+                                  : <TrendingDown className="h-3 w-3" />}
+                                <AnimatedNumber value={gVariance} duration={600} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                              </div>
+                            ) : naDash()}
                           </td>
                         </tr>
                         {isGroupOpen && g.children.map((row, i) => {
@@ -206,12 +226,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                               </td>
                               <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                               <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                              <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.actual} duration={500} /></td>
+                              <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                               <td className="px-4 py-2 text-center">
-                                <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} />
+                                {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                               </td>
-                              <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`}>
-                                <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                              <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                                {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                               </td>
                             </tr>
                             {/* Phase 3.1 v1.2 ext — drill expansion row.
@@ -255,12 +275,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                         </td>
                         <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                         <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                        <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.actual} duration={500} /></td>
+                        <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                         <td className="px-4 py-2 text-center">
-                          <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} />
+                          {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                         </td>
-                        <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`}>
-                          <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                        <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                          {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                         </td>
                       </tr>
                       {isActive && rowMonthly && (
@@ -296,12 +316,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                       </td>
                       <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                       <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                      <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.actual} duration={500} /></td>
+                      <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                       <td className="px-4 py-2 text-center">
-                        <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} />
+                        {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                       </td>
-                      <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400"}`}>
-                        <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} />
+                      <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                        {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                       </td>
                     </tr>
                     {isActive && rowMonthly && (

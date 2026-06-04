@@ -848,6 +848,7 @@
     "pnlNetProfitLoss": "Чистая прибыль / (Убыток)",
     "pnlDeviation": "Отклонение",
     "pnlExecution": "Исполнение",
+    "pnlPerCategoryActualNote": "Факт по категориям для этого плана недоступен — сводные итоги показаны в карточках выше; в строках ниже показан только план.",
     "fcMonthlyTrend": "Месячный тренд прогноза",
     "fcMonthlyTrendSubtitle": "Выручка vs расходы по месяцам ({scenario})",
     "fcScenarioComparison": "Сравнение сценариев",
