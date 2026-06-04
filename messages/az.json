@@ -1942,6 +1942,7 @@
       "newsFresh": "təzə cavab",
       "newsItems": "mənbə"
     },
+    "aiUnavailable": "AI müvəqqəti əlçatan deyil. Bir azdan yenidən cəhd edin.",
     "morningBrief": {
       "header": "AI səhər icmalı",
       "loading": "AI gün üçün icmal hazırlayır…",

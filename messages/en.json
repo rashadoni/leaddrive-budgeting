@@ -1942,6 +1942,7 @@
       "newsFresh": "fresh response",
       "newsItems": "sources"
     },
+    "aiUnavailable": "AI is temporarily unavailable. Please try again shortly.",
     "morningBrief": {
       "header": "AI Morning Brief",
       "loading": "AI composing today's brief…",

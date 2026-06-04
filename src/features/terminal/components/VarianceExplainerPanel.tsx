@@ -373,7 +373,9 @@ export function VarianceExplainerPanel() {
           <div className="text-gray-200 text-[11px]">
             {errorCode === "STATUS_NOT_EXPLAINABLE"
               ? t("varianceExplainer.greenNoVariance.body")
-              : error}
+              : /* Neutral copy — never the raw provider error (route now
+                   returns a sanitized code). */
+                t("aiUnavailable")}
           </div>
         </div>
       )}

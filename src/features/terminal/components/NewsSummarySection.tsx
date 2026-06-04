@@ -114,7 +114,8 @@ export function NewsSummarySection() {
         <p className="text-gray-700 text-[10px]">{t("todayBrief.newsLoading")}</p>
       )}
       {state.kind === "error" && (
-        <p className="text-[#FF4757] text-[10px]" role="alert">{state.message}</p>
+        // Neutral, localized — never the raw provider error.
+        <p className="text-gray-600 text-[10px] italic" role="alert">{t("aiUnavailable")}</p>
       )}
       {state.kind === "empty" && (
         <p className="text-gray-600 text-[10px] italic">{t("todayBrief.newsEmpty")}</p>

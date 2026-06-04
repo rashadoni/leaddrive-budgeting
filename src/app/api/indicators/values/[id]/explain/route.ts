@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireRole, isAuthError } from "@/lib/api-auth"
+import { aiErrorBody } from "@/lib/ai/ai-error"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { getLogger } from "@/lib/log"
@@ -323,12 +324,9 @@ export async function POST(
       stack: err instanceof Error ? err.stack : undefined,
     })
     // LLM-side issues = 502 (bad gateway). Catches max_tokens, malformed
-    // JSON, shape violations — all "the upstream model misbehaved".
-    return NextResponse.json(
-      {
-        error: `Variance explainer failed: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      { status: 502 },
-    )
+    // JSON, shape violations — all "the upstream model misbehaved". Return a
+    // sanitized code only — the raw provider message can embed billing text
+    // ("credit balance too low … Plans & Billing"); never surface that.
+    return NextResponse.json(aiErrorBody(err), { status: 502 })
   }
 }

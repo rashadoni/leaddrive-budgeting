@@ -18,6 +18,7 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
 import { getLogger } from "@/lib/log"
+import { aiErrorBody } from "@/lib/ai/ai-error"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger.
 const log = getLogger("api:intel:news-summary")
@@ -169,7 +170,8 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       itemsConsumed: scopedItems.length,
       fromCache: false,
-      error: err instanceof Error ? err.message : String(err),
+      // Sanitized — never the raw provider message (can carry billing text).
+      ...aiErrorBody(err),
     })
   }
 

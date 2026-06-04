@@ -32,6 +32,10 @@ import {
 import { MORNING_BRIEF_PROMPT_VERSION } from "@/lib/llm/prompts/morning-brief-system"
 import { currentBakuYear } from "@/lib/risk/periods"
 import { verifyMorningBriefNarrative } from "@/lib/risk/batch-narrative-fact-check"
+import { aiErrorBody } from "@/lib/ai/ai-error"
+import { getLogger } from "@/lib/log"
+
+const log = getLogger("api:morning-brief")
 
 export const maxDuration = 30
 
@@ -246,10 +250,13 @@ export async function POST(request: NextRequest) {
   try {
     result = await runMorningBrief(shaped)
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 502 },
-    )
+    // Log the raw provider error server-side; return ONLY a stable code.
+    // The raw Anthropic message can embed billing text ("credit balance too
+    // low … Plans & Billing") — never surface that to the client panel.
+    log.error("morning-brief AI call failed", {
+      err: err instanceof Error ? err.message : String(err),
+    })
+    return NextResponse.json(aiErrorBody(err), { status: 502 })
   }
 
   const generatedAt = Date.now()

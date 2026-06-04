@@ -182,8 +182,10 @@ export function MorningBriefIntro({ inputs, matrixReady = true }: Props) {
         <p className="text-gray-700 text-[10px]">{t("morningBrief.loading")}</p>
       )}
       {state.kind === "error" && (
-        <p className="text-[#FF4757] text-[10px]" role="alert">
-          {state.message}
+        // Neutral, localized message — NEVER the raw provider error (the
+        // route now returns a sanitized code; this is the user-facing copy).
+        <p className="text-gray-500 text-[10px] italic" role="alert">
+          {t("aiUnavailable")}
         </p>
       )}
       {state.kind === "empty" && (

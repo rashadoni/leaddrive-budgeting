@@ -193,7 +193,11 @@ describe("VarianceExplainerPanel (Phase 7.D)", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-    expect(screen.getByText("Rate limited")).toBeTruthy();
+    // The error block renders a NEUTRAL localized message — the raw provider
+    // error ("Rate limited", and by extension billing text like "credit
+    // balance too low … Plans & Billing") must NEVER leak to the client.
+    expect(screen.getByText("AI UNAVAILABLE")).toBeTruthy();
+    expect(screen.queryByText("Rate limited")).toBeNull();
   });
 
   it("Re-run button bypasses in-memory cache (forces fresh fetch)", async () => {
