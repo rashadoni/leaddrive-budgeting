@@ -71,7 +71,7 @@ export async function GET(
       }),
       prisma.indicatorDefinition.findMany({
         where: { isActive: true },
-        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true, aggregation: true },
+        select: { id: true, code: true, formula: true, thresholds: true, requiredInputs: true, weight: true, aggregation: true, unit: true },
       }),
       prisma.indicatorValue.findMany({
         where: { organizationId: session.orgId, period },
@@ -142,6 +142,7 @@ export async function GET(
         thresholds: i.thresholds,
         requiredInputs: i.requiredInputs ?? [],
         weight: i.weight ?? null,
+        unit: i.unit ?? null,
       })),
       baselineIVs: baselineRows.map((iv) => ({
         companyId: iv.companyId,

@@ -39,6 +39,9 @@ export interface SimulateByDriversIndicator {
   thresholds: unknown
   requiredInputs: string[]
   weight?: number | null
+  /** Indicator unit ("%", "AZN", "USD/tonne", "ratio", …) — surfaced on the
+   *  delta table so BAZA/SSENARI values read in their measured unit. */
+  unit?: string | null
 }
 export interface SimulateByDriversBaselineIV {
   companyId: string
@@ -64,6 +67,8 @@ export interface DriverIndicatorDelta {
   companyName: string
   indicatorId: string
   code: string
+  /** Indicator unit ("%", "AZN", "USD/tonne", …) — labels baseline/scenario values. */
+  unit: string | null
   baselineValue: number | null
   baselineStatus: IndicatorStatus | null
   scenarioValue: number | null
@@ -323,6 +328,7 @@ export async function simulateByDrivers(
       companyName: co.name,
       indicatorId: ind.id,
       code: ind.code,
+      unit: ind.unit ?? null,
       baselineValue,
       baselineStatus,
       scenarioValue,

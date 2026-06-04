@@ -2713,6 +2713,8 @@
       "colScenario": "Ssenari",
       "colValueWas": "Dəyər idi",
       "colValueNow": "Dəyər oldu",
+      "colDelta": "Δ%",
+      "colDeltaHint": "İndikatorun dəyərinin neçə faiz dəyişdiyi (baza → ssenari), nəyinsə faizi deyil.",
       "deleteConfirm": "Bu ssenari silinsin? Gizlədiləcək, lakin məlumatlar saxlanılacaq.",
       "holdingComposite": "Holdinq kompoziti",
       "category": {

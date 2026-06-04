@@ -39,10 +39,14 @@ interface IndicatorDelta {
   companyCode: string;
   companyName: string;
   code: string;
+  /** Indicator unit ("%", "AZN", "USD/tonne", …) — labels the value columns. */
+  unit?: string | null;
   baselineStatus: string;
   scenarioStatus: string;
   baselineValue: number;
   scenarioValue: number;
+  /** % change of the indicator's value (BAZA → SSENARI). */
+  deltaPct?: number | null;
   changed: boolean;
   note?: string;
 }
@@ -1096,7 +1100,13 @@ export function ScenarioPanel() {
                               <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colBaseline")}</th>
                               <th className="text-left py-1.5 pr-3 font-medium">{t("scenarioPanel.colScenario")}</th>
                               <th className="text-right py-1.5 pr-3 font-medium">{t("scenarioPanel.colValueWas")}</th>
-                              <th className="text-right py-1.5 font-medium">{t("scenarioPanel.colValueNow")}</th>
+                              <th className="text-right py-1.5 pr-3 font-medium">{t("scenarioPanel.colValueNow")}</th>
+                              <th
+                                className="text-right py-1.5 font-medium cursor-help"
+                                title={t("scenarioPanel.colDeltaHint")}
+                              >
+                                {t("scenarioPanel.colDelta")}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1118,6 +1128,9 @@ export function ScenarioPanel() {
                                   </td>
                                   <td className="py-1.5 pr-3 font-mono text-[10px]">
                                     {d.code}
+                                    {d.unit ? (
+                                      <span className="text-gray-500"> · {d.unit}</span>
+                                    ) : null}
                                     {d.note && (
                                       <div className="text-gray-400 opacity-70 text-[9px]">
                                         {d.note}
@@ -1152,10 +1165,20 @@ export function ScenarioPanel() {
                                   <td className="py-1.5 pr-3 text-right font-mono text-gray-400">
                                     {fmt(d.baselineValue)}
                                   </td>
-                                  <td className="py-1.5 text-right font-mono">
+                                  <td className="py-1.5 pr-3 text-right font-mono">
                                     <span className={worsened ? "text-red-400" : "text-emerald-400"}>
                                       {fmt(d.scenarioValue)}
                                     </span>
+                                  </td>
+                                  <td className="py-1.5 text-right font-mono">
+                                    {typeof d.deltaPct === "number" && isFinite(d.deltaPct) ? (
+                                      <span className={worsened ? "text-red-400" : "text-emerald-400"}>
+                                        {d.deltaPct > 0 ? "+" : ""}
+                                        {d.deltaPct.toFixed(1)}%
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-600">—</span>
+                                    )}
                                   </td>
                                 </tr>
                               );

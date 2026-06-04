@@ -2713,6 +2713,8 @@
       "colScenario": "Scenario",
       "colValueWas": "Value was",
       "colValueNow": "Value now",
+      "colDelta": "Δ%",
+      "colDeltaHint": "% change of the indicator's value (baseline → scenario), not a percentage of anything else.",
       "deleteConfirm": "Delete this scenario? It will be hidden but the data is preserved.",
       "holdingComposite": "Holding composite",
       "category": {
