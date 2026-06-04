@@ -265,6 +265,23 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   const opProfitPlanned = grossProfitPlanned - totalIndirectPlanned
   const opProfitActual = grossProfitActual - totalIndirectActual
 
+  // KPI-card actuals (2026-06-04). The per-category `byCategory[].actual` is 0
+  // when the plan's realized figures aren't keyed to the BUDGET categories:
+  //   • a budget plan's actuals live in the matching-year Actuals plan (Y4
+  //     fallback) under a DIFFERENT account taxonomy → can't map per-category;
+  //   • an actuals plan reports its realized totals in aggregate.
+  // In both cases the route still computes the correct AGGREGATE realized
+  // totals (totalRevenueActual / totalCOGSActual / totalExpenseActual). Use
+  // those for the headline cards so they show the real numbers (e.g. 9.5M
+  // revenue / 4 months booked) instead of 0. The detailed P&L table below
+  // stays per-category (honest: per-budget-category actuals aren't available).
+  const cardRevenueActual = analytics?.totalRevenueActual || totalRevenueActual
+  const cardDirectActual = analytics?.totalCOGSActual || totalDirectActual
+  const cardIndirectActual = analytics?.totalExpenseActual || totalIndirectActual
+  const cardExpenseActual = cardDirectActual + cardIndirectActual
+  const cardGrossProfitActual = cardRevenueActual - cardDirectActual
+  const cardOpProfitActual = cardGrossProfitActual - cardIndirectActual
+
   // execPct is imported from @/lib/budgeting/exec-pct (sign-aware, unit-tested).
   // NOTE: thresholds assume planned > 0. Behavior is undefined for the
   // (planned < 0, isExpense=true) edge case (e.g. budget for net refund −100,
@@ -288,7 +305,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         <KPICard
           title={t("plRevenue")}
           planned={totalRevenuePlanned}
-          actual={totalRevenueActual}
+          actual={cardRevenueActual}
           iconEl={<DollarSign className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
           accentClass="bg-indigo-200 dark:bg-indigo-800"
           conditionalBg="bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800"
@@ -297,19 +314,19 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         <KPICard
           title={t("grossProfit")}
           planned={grossProfitPlanned}
-          actual={grossProfitActual}
-          iconEl={grossProfitActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
-          accentClass={grossProfitActual < 0 ? "bg-red-200 dark:bg-red-800" : "bg-emerald-200 dark:bg-emerald-800"}
-          conditionalBg={grossProfitActual < 0
+          actual={cardGrossProfitActual}
+          iconEl={cardGrossProfitActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          accentClass={cardGrossProfitActual < 0 ? "bg-red-200 dark:bg-red-800" : "bg-emerald-200 dark:bg-emerald-800"}
+          conditionalBg={cardGrossProfitActual < 0
             ? "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
             : "bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800"}
-          valueColorClass={grossProfitActual < 0 ? "text-red-700 dark:text-red-300" : "text-emerald-700 dark:text-emerald-300"}
+          valueColorClass={cardGrossProfitActual < 0 ? "text-red-700 dark:text-red-300" : "text-emerald-700 dark:text-emerald-300"}
           marginPct={totalRevenuePlanned > 0 ? `Gross Margin: ${((grossProfitPlanned / totalRevenuePlanned) * 100).toFixed(1)}% (plan)` : undefined}
         />
         <KPICard
           title={t("plExpenses")}
           planned={totalExpensePlanned}
-          actual={totalExpenseActual}
+          actual={cardExpenseActual}
           iconEl={<Banknote className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
           accentClass="bg-orange-200 dark:bg-orange-800"
           conditionalBg="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 dark:from-orange-950/30 dark:to-orange-900/20 dark:border-orange-800"
@@ -319,8 +336,8 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         <KPICard
           title="EBITDA"
           planned={opProfitPlanned}
-          actual={opProfitActual}
-          iconEl={opProfitActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+          actual={cardOpProfitActual}
+          iconEl={cardOpProfitActual < 0 ? <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /> : <Target className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
           accentClass={opProfitActual < 0 ? "bg-red-200 dark:bg-red-800" : "bg-emerald-200 dark:bg-emerald-800"}
           conditionalBg={opProfitPlanned < 0
             ? "bg-gradient-to-br from-red-50 to-red-100 border border-red-200 dark:from-red-950/30 dark:to-red-900/20 dark:border-red-800"
