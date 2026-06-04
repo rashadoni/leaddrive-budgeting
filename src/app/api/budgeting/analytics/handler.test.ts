@@ -104,4 +104,48 @@ describe("GET /api/budgeting/analytics — auth + early returns", () => {
     const res = await GET(makeRequest("/api/budgeting/analytics?planId=p-bogus"))
     expect(res.status).toBe(404)
   })
+
+  it("actuals plan surfaces its own lines as the ACTUAL side (not 0)", async () => {
+    // Fix (2026-06-04): an actuals plan IS the realized P&L — its own lines
+    // must show as the actual headline (39.4M), not 0. Without the fix the
+    // actual column read 0 (no BudgetActual rows; Y4 fallback is budget-only).
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    ;(resolveCompanyFilter as ReturnType<typeof vi.fn>).mockResolvedValue({ kind: "all" })
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({
+      id: "actuals-2025",
+      organizationId: ORG_ID,
+      year: 2025,
+      kind: "actual",
+      periodType: "annual",
+      month: null,
+      quarter: null,
+    })
+    const line = (over: Record<string, unknown>) => ({
+      id: "x",
+      lineType: "expense",
+      plannedAmount: 0,
+      forecastAmount: null,
+      monthIndex: 1,
+      isAutoActual: false,
+      isAutoPlanned: false,
+      parentId: null,
+      companyId: "c1",
+      category: null,
+      account: null,
+      costType: null,
+      budgetDept: null,
+      ...over,
+    })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      line({ id: "r1", lineType: "revenue", plannedAmount: 39_400_000, account: { code: "4000", name: "Revenue", accountType: "revenue" } }),
+      line({ id: "e1", lineType: "expense", plannedAmount: 46_300_000, account: { code: "6000", name: "Expense", accountType: "expense" } }),
+    ])
+    const res = await GET(makeRequest("/api/budgeting/analytics?planId=actuals-2025"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    // The actual side now reflects the plan's own lines (the realized data),
+    // not 0 — and coincides with the planned side (execution ≈ fully realized).
+    expect(body.data.totalRevenueActual).toBe(39_400_000)
+    expect(body.data.totalRevenuePlanned).toBe(39_400_000)
+  })
 })

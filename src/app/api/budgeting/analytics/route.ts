@@ -317,8 +317,29 @@ export async function GET(req: NextRequest) {
     else manualExpenseActual += a.actualAmount
   }
 
+  // An ACTUALS plan IS the realized P&L — its own lines ARE the actual side.
+  // Surface them so the headline shows the real numbers (e.g. 39.4M revenue)
+  // instead of 0: an actuals plan has no separate BudgetActual rows, and the
+  // Y4 budget→actuals fallback above fires ONLY for budget plans — so without
+  // this the "actual" column read 0 even though the data sits right in the
+  // plan. The plan and actual sides then coincide (execution ≈ 100% = fully
+  // realized), which is the honest reading of a final actuals plan. (User:
+  // "где есть данные ты всё равно игнорируешь" — the data was there; show it.)
+  if (plan.kind === "actual") {
+    planActualRevenue = totalRevenuePlanned
+    planActualExpense = totalExpensePlanned
+    planActualCOGS = totalCOGSPlanned
+    if (actualMonthsCovered === 0) {
+      const am = new Set<number>()
+      for (const l of [...revenueLines, ...expenseLines, ...cogsLines]) {
+        if (l.plannedAmount !== 0 && l.monthIndex != null) am.add(l.monthIndex)
+      }
+      actualMonthsCovered = am.size
+    }
+  }
+
   // Priority: explicit auto-actual → manual actual (BudgetActual) → Y4 actuals
-  // plan fallback (a budget plan compared against the matching-year actuals).
+  // plan fallback (budget plan vs matching-year actuals) / own lines (actuals plan).
   const totalExpenseActual = autoActualExpense > 0 ? autoActualExpense : manualExpenseActual > 0 ? manualExpenseActual : planActualExpense
   const totalRevenueActual = autoActualRevenue > 0 ? autoActualRevenue : manualRevenueActual > 0 ? manualRevenueActual : planActualRevenue
   const totalCOGSActual = autoActualCOGS > 0 ? autoActualCOGS : manualCOGSActual > 0 ? manualCOGSActual : planActualCOGS
