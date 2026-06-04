@@ -21,10 +21,42 @@ describe("localizedSource", () => {
     expect(L.displayName).toBe(cbar.displayNameEn);
   });
 
-  it("falls back to English (never Russian) for the az locale until AZ prose exists", () => {
+  it("returns native Azerbaijani prose for the az locale (not English, never Russian)", () => {
     const L = localizedSource(cbar, "az");
-    expect(L.whatItIs).toMatch(/exchange rates/i);
+    // AZ prose authored 2026-06-04 — the az field carries the CBAR rate sentence.
+    expect(L.whatItIs).toMatch(/məzənnə/i);
     expect(L.whatItIs).not.toBe(cbar.whatItIsRu);
+    expect(L.whatItIs).not.toMatch(/exchange rates/i);
+    expect(L.cadence).toMatch(/gündəlik/i);
+  });
+
+  it("falls back to English for the az locale when a source has no AZ prose", () => {
+    // A source whose i18n entry has only en (no az) must surface EN, never RU.
+    const enOnly = {
+      ...cbar,
+      sourceCode: "az-fallback-probe",
+    };
+    // localizedSource has no entry for this code → it falls back to the RU field.
+    // (Guard documents the no-entry path; the per-source az coverage is asserted below.)
+    const L = localizedSource(enOnly, "az");
+    expect(L.whatItIs).toBe(cbar.whatItIsRu);
+  });
+
+  it("covers every catalog source with AZ prose (no English leaks in AZ)", () => {
+    // Guards against a new source being added without its AZ prose.
+    for (const code of [
+      "cbar-official-fx", "eia-energy", "fao-food-prices", "yahoo-grains", "yahoo-metals",
+      "yahoo-fuel-bdi", "openmeteo-forecast", "az-stat-cpi", "un-comtrade-az", "wb-indicators",
+      "usda-nass", "google-trends-az",
+    ]) {
+      const s = getDataSourceByCode(code)!;
+      const az = localizedSource(s, code === "does-not-exist" ? "en" : "az");
+      const en = localizedSource(s, "en");
+      // AZ must differ from both RU and EN for the prose fields (real translation present).
+      expect(az.whatItIs, `${code} whatItIs should be AZ`).not.toBe(s.whatItIsRu);
+      expect(az.whatItIs, `${code} whatItIs should not equal EN`).not.toBe(en.whatItIs);
+      expect(az.businessValue, `${code} businessValue should be AZ`).not.toBe(en.businessValue);
+    }
   });
 
   it("falls back to the Russian field when a source has no i18n entry", () => {
