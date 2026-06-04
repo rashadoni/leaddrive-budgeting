@@ -119,6 +119,12 @@ export async function GET(req: NextRequest) {
   // frame execution % honestly (e.g. "факт за 4 мес из 12") instead of letting
   // a partial-year actual read as a low full-year execution.
   let actualMonthsCovered = 0
+  // Per-CODE actuals from the matching-year ACTUALS plan, scoped to the same
+  // company filter. Lets a BUDGET plan's per-category actual column be populated
+  // by joining on the SHARED account code (once the İcmal budget is re-keyed to
+  // the PLF chart of accounts the actuals use). Empty for non-budget plans /
+  // when no actuals plan exists / when codes still don't match (→ "—").
+  const actualByCode = new Map<string, number>()
   if (plan.kind === "budget") {
     const actualsPlan = await prisma.budgetPlan.findFirst({
       where: { organizationId: orgId, year: plan.year, kind: "actual", deletedAt: null },
@@ -133,7 +139,7 @@ export async function GET(req: NextRequest) {
           deletedAt: null,
           ...(companyFilter.kind === "single" ? { companyId: { in: companyFilter.companyIds } } : {}),
         },
-        select: { lineType: true, plannedAmount: true, monthIndex: true, account: { select: { accountType: true } } },
+        select: { lineType: true, plannedAmount: true, monthIndex: true, account: { select: { accountType: true, code: true } } },
       })
       const monthsWithData = new Set<number>()
       for (const l of aLines) {
@@ -142,6 +148,8 @@ export async function GET(req: NextRequest) {
         else if (t === "cogs") planActualCOGS += l.plannedAmount
         else if (t === "expense") planActualExpense += l.plannedAmount
         if (l.plannedAmount !== 0 && l.monthIndex != null) monthsWithData.add(l.monthIndex)
+        const code = l.account?.code
+        if (code) actualByCode.set(code, (actualByCode.get(code) ?? 0) + l.plannedAmount)
       }
       actualMonthsCovered = monthsWithData.size
     }
@@ -487,15 +495,36 @@ export async function GET(req: NextRequest) {
   }
 
   const isActualsPlan = plan.kind === "actual"
+  // A budget plan with its OWN tracked actuals (auto-actual flags or manual
+  // BudgetActual rows) reports real per-category actuals — a 0 there is a real
+  // "no spend", not "unavailable". Without tracked actuals a budget plan relies
+  // on the Y4 per-code join below.
+  const hasTrackedActuals = hasAutoActual || manualActuals.length > 0
   const byCategory = Array.from(categoryMap.entries()).map(([key, val]) => {
     const [, lineType] = key.split("||")
-    // An actuals plan's own lines ARE the realized figures — surface each
-    // category's planned amount as its per-category actual (variance 0),
-    // mirroring the aggregate-side fix above. Without this the per-category
-    // actual reads 0 (an actuals plan has no separate BudgetActual rows) and
-    // the detailed P&L table shows a misleading "0 actual / −planned variance"
-    // even though the realized data sits right in the plan's lines.
-    const actual = isActualsPlan ? val.planned : val.actual
+    const code = val.accountCode ?? ""
+    // Resolve the per-category ACTUAL + whether it is real data:
+    //  • actuals plan → its own lines ARE the realized figures (actual = planned).
+    //  • plan with tracked auto/manual actuals → trust val.actual (0 = real 0).
+    //  • budget plan → JOIN the matching-year actuals by SHARED code (Y4). This
+    //    is what surfaces per-category actuals once the İcmal budget is re-keyed
+    //    onto the PLF chart of accounts the actuals use.
+    //  • no match → no actual data for this category → render "—".
+    let actual: number
+    let actualAvailable: boolean
+    if (isActualsPlan) {
+      actual = val.planned
+      actualAvailable = true
+    } else if (hasTrackedActuals) {
+      actual = val.actual
+      actualAvailable = true
+    } else if (actualByCode.has(code)) {
+      actual = actualByCode.get(code) ?? 0
+      actualAvailable = true
+    } else {
+      actual = val.actual // 0 — no per-category actual for this code
+      actualAvailable = false
+    }
     const monthlyActual = isActualsPlan ? val.monthlyPlanned : val.monthlyActual
     const variance = lineType === "revenue"
       ? actual - val.planned
@@ -505,18 +534,14 @@ export async function GET(req: NextRequest) {
     // legacy key from our display name so existing children/parent wiring holds.
     const legacyKey = `${val.displayCategory}||${val.lineType}`
     const parentCategory = parentLookup.get(legacyKey) ?? null
-    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual }
+    return { category: val.displayCategory, lineType, planned: val.planned, forecast: val.forecast, actual, variance, variancePct, parentCategory, accountCode: val.accountCode, monthlyPlanned: val.monthlyPlanned, monthlyActual, actualAvailable }
   })
 
-  // Whether the per-category ACTUAL column carries real data. False when the
-  // realized totals exist only in aggregate — e.g. a budget plan whose actuals
-  // live in the matching-year Actuals plan under a different account taxonomy
-  // (the Y4 fallback sets totalRevenueActual etc. but can't attribute them per
-  // budget-category). The UI renders "—" for per-category actual/variance in
-  // that case (instead of a misleading 0 / −planned) and points the user to
-  // the aggregate KPI cards. An actuals plan and any plan with auto/manual
-  // BudgetActual rows have real per-category data → true.
-  const perCategoryActualsAvailable = byCategory.some((c) => c.actual !== 0)
+  // Plan-level: does ANY category carry real per-category actual data? Drives
+  // the "whole table is —" note. PER-ROW availability lives on each byCategory
+  // row (`actualAvailable`) so a mixed plan (mapped products real, subsidies/
+  // unmapped "—") renders correctly instead of all-or-nothing.
+  const perCategoryActualsAvailable = byCategory.some((c) => c.actualAvailable)
 
   // By department — track expense and revenue separately for correct variance.
   // Phase 2.1 session 3: accountId NOT NULL + include:account guarantees

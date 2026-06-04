@@ -105,6 +105,13 @@ export interface BudgetCategoryRow {
   // across qStart..curMonth or 1..curMonth); manual actuals bucketed by
   // BudgetActual.monthIndex. Optional for same back-compat reason.
   monthlyActual?: number[]
+  // Whether THIS row's `actual` is real per-category data (true) or a
+  // placeholder 0 because no actual maps to this category (false → UI shows
+  // "—"). Lets a mixed plan render real numbers for mapped products and "—"
+  // for unmapped lines (subsidies, etc.). Optional for back-compat with
+  // responses cached before the field shipped (consumers fall back to the
+  // plan-level `perCategoryActualsAvailable`).
+  actualAvailable?: boolean
 }
 
 export interface BudgetDepartmentRow {

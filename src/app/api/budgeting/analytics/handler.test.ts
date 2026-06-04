@@ -192,5 +192,38 @@ describe("GET /api/budgeting/analytics — auth + early returns", () => {
     expect(body.data.perCategoryActualsAvailable).toBe(false)
     const rev = body.data.byCategory.find((c: { lineType: string }) => c.lineType === "revenue")
     expect(rev.actual).toBe(0)
+    expect(rev.actualAvailable).toBe(false)
+  })
+
+  it("budget plan: per-category actual JOINS the matching actuals plan by shared code (Y4)", async () => {
+    // The fix for "data should have landed at AI import": once the İcmal budget
+    // is re-keyed onto the PLF chart of accounts the actuals use, a budget
+    // category's actual is the matching actuals-plan line summed by shared code.
+    // A code with no actuals counterpart (subsidy) stays actualAvailable=false → "—".
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    ;(resolveCompanyFilter as ReturnType<typeof vi.fn>).mockResolvedValue({ kind: "all" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "budget-2026", organizationId: ORG_ID, year: 2026, kind: "budget", periodType: "annual", month: null, quarter: null })
+      .mockResolvedValueOnce({ id: "actuals-2026" })
+    prismaMock.budgetLine.findMany
+      .mockResolvedValueOnce([
+        // budget lines, re-keyed: Glucose → PLF code (mappable); Subsidy → ICMAL (no actual)
+        { id: "b1", lineType: "revenue", plannedAmount: 7_000_000, forecastAmount: null, monthIndex: 1, isAutoActual: false, isAutoPlanned: false, parentId: null, companyId: "c1", category: null, department: null, costType: null, budgetDept: null, account: { code: "PLF.01.02.01", name: "Glucose", accountType: "revenue" } },
+        { id: "b2", lineType: "revenue", plannedAmount: 9_000_000, forecastAmount: null, monthIndex: 1, isAutoActual: false, isAutoPlanned: false, parentId: null, companyId: "c1", category: null, department: null, costType: null, budgetDept: null, account: { code: "ICMAL.SUBSIDY.x", name: "Subsidy", accountType: "revenue" } },
+      ])
+      .mockResolvedValueOnce([
+        // matching actuals plan: only Glucose has a realized figure
+        { lineType: "revenue", plannedAmount: 2_600_000, monthIndex: 1, account: { accountType: "revenue", code: "PLF.01.02.01" } },
+      ])
+    const res = await GET(makeRequest("/api/budgeting/analytics?planId=budget-2026"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const glucose = body.data.byCategory.find((c: { accountCode: string }) => c.accountCode === "PLF.01.02.01")
+    expect(glucose.actual).toBe(2_600_000) // joined from actuals by shared code
+    expect(glucose.actualAvailable).toBe(true)
+    const subsidy = body.data.byCategory.find((c: { accountCode: string }) => c.accountCode === "ICMAL.SUBSIDY.x")
+    expect(subsidy.actual).toBe(0)
+    expect(subsidy.actualAvailable).toBe(false) // no actuals code → renders "—"
+    expect(body.data.perCategoryActualsAvailable).toBe(true) // some categories have real actuals
   })
 })

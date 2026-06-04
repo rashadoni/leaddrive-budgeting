@@ -226,12 +226,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                               </td>
                               <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                               <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                              <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
+                              <td className="px-4 py-2 text-right font-mono text-sm">{(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                               <td className="px-4 py-2 text-center">
-                                {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
+                                {(row.actualAvailable ?? perCategoryActualsAvailable) ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                               </td>
-                              <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
-                                {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
+                              <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${(row.actualAvailable ?? perCategoryActualsAvailable) ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                                {(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                               </td>
                             </tr>
                             {/* Phase 3.1 v1.2 ext — drill expansion row.
@@ -275,12 +275,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                         </td>
                         <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                         <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                        <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
+                        <td className="px-4 py-2 text-right font-mono text-sm">{(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                         <td className="px-4 py-2 text-center">
-                          {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
+                          {(row.actualAvailable ?? perCategoryActualsAvailable) ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                         </td>
-                        <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
-                          {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
+                        <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${(row.actualAvailable ?? perCategoryActualsAvailable) ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                          {(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                         </td>
                       </tr>
                       {isActive && rowMonthly && (
@@ -316,12 +316,12 @@ export function makePlSection(ctx: PlSectionCtx) {
                       </td>
                       <td className="px-4 py-2 text-right font-mono text-sm"><AnimatedNumber value={row.planned} duration={500} /></td>
                       <td className="px-4 py-2 text-right font-mono text-sm text-purple-600 dark:text-purple-400"><AnimatedNumber value={row.forecast} duration={500} /></td>
-                      <td className="px-4 py-2 text-right font-mono text-sm">{perCategoryActualsAvailable ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
+                      <td className="px-4 py-2 text-right font-mono text-sm">{(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.actual} duration={500} /> : naDash()}</td>
                       <td className="px-4 py-2 text-center">
-                        {perCategoryActualsAvailable ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
+                        {(row.actualAvailable ?? perCategoryActualsAvailable) ? <ExecBar actual={row.actual} planned={row.planned} isExpense={isExpense} /> : naDash()}
                       </td>
-                      <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${perCategoryActualsAvailable ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
-                        {perCategoryActualsAvailable ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
+                      <td className={`px-4 py-2 text-right font-mono text-sm font-semibold ${(row.actualAvailable ?? perCategoryActualsAvailable) ? (row.variance >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-red-600 dark:text-red-400") : ""}`}>
+                        {(row.actualAvailable ?? perCategoryActualsAvailable) ? <AnimatedNumber value={row.variance} duration={400} formatter={(n) => `${n >= 0 ? "+" : ""}${Math.round(n).toLocaleString()} ₼`} /> : naDash()}
                       </td>
                     </tr>
                     {isActive && rowMonthly && (
