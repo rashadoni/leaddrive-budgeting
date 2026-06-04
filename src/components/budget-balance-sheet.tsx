@@ -36,6 +36,22 @@ interface BSLine {
   amount: number
 }
 
+interface BSResponse {
+  assets: BSLine[]
+  liabilities: BSLine[]
+  equity: BSLine[]
+  all: BSLine[]
+  // Provenance (2026-06-04): when the selected plan is a budget plan (P&L-only),
+  // the balance sheet is read from the matching-year Actuals plan. `fellBack`
+  // drives the "showing the <year> Actuals balance sheet" note.
+  meta?: {
+    requestedPlanId: string
+    sourcePlanId: string
+    fellBack: boolean
+    sourceYear: number | null
+  }
+}
+
 function getSectionData(lines: BSLine[]) {
   const grouped = new Map<string, Record<number, number>>()
   lines.forEach((l) => {
@@ -59,13 +75,13 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const orgId = session?.user?.organizationId
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["assets", "liabilities", "equity"]))
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<BSResponse>({
     queryKey: ["balanceSheet", planId],
-    queryFn: async () => {
+    queryFn: async (): Promise<BSResponse> => {
       const res = await fetch(`/api/budgeting/balance-sheet?planId=${planId}`, {
         headers: { "x-organization-id": orgId || "" },
       })
-      return res.json()
+      return (await res.json()) as BSResponse
     },
     enabled: !!planId && !!orgId,
   })
@@ -182,6 +198,14 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
 
   return (
     <div className="space-y-4">
+      {/* Provenance note: a budget plan carries only the P&L, so its balance
+          sheet is read from the matching-year Actuals plan. Tell the user so
+          the data doesn't look like it's "from" the budget plan. */}
+      {data.meta?.fellBack && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Showing the{data.meta.sourceYear ? ` ${data.meta.sourceYear}` : ""} Actuals balance sheet — the selected budget plan has no balance sheet of its own.
+        </div>
+      )}
       {/* KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 dark:from-blue-950/30 dark:to-blue-900/20 dark:border-blue-800 p-4">

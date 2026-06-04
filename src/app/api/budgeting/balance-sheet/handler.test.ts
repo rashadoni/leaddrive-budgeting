@@ -95,6 +95,54 @@ describe("GET /api/budgeting/balance-sheet", () => {
       }),
     )
   })
+
+  it("budget plan falls back to the matching-year actuals plan for BS reads", async () => {
+    // The fix (2026-06-04): budget plans are P&L-only (no balance sheet) — the
+    // balance sheet must come from the same-year actuals plan, not the empty
+    // budget plan. 1st findFirst = active (budget) plan; 2nd = actuals lookup.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "budget-2026", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce({ id: "actuals-2026", kind: "actual" })
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+      { id: "1", lineType: "asset", month: 1 },
+    ])
+    const res = await GET(
+      makeRequest("/api/budgeting/balance-sheet?planId=budget-2026"),
+    )
+    expect(res.status).toBe(200)
+    // BS rows read from the ACTUALS plan, not the empty budget plan.
+    expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, planId: "actuals-2026", deletedAt: null },
+      }),
+    )
+    const body = await res.json()
+    expect(body.meta.fellBack).toBe(true)
+    expect(body.meta.sourcePlanId).toBe("actuals-2026")
+    expect(body.meta.requestedPlanId).toBe("budget-2026")
+  })
+
+  it("actual plan reads itself — no fallback lookup", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst.mockResolvedValueOnce({
+      id: "actuals-2025",
+      year: 2025,
+      kind: "actual",
+    })
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([])
+    const res = await GET(
+      makeRequest("/api/budgeting/balance-sheet?planId=actuals-2025"),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, planId: "actuals-2025", deletedAt: null },
+      }),
+    )
+    const body = await res.json()
+    expect(body.meta.fellBack).toBe(false)
+  })
 })
 
 describe("POST /api/budgeting/balance-sheet", () => {

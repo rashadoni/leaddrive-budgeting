@@ -5,6 +5,7 @@ import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-loc
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 // Phase 5.2 Stage 2 Tier 3 (2026-05-21) — RLS wrap for balance_sheet_lines + budget_plans reads/writes.
 import { withOrgScope } from "@/lib/db/with-org-scope"
+import { resolveBalanceSheetSourcePlan } from "@/lib/budgeting/statement-plan-fallback"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -14,14 +15,43 @@ export async function GET(req: NextRequest) {
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
-  // deletedAt:null REQUIRED (2026-05-31): BalanceSheetLine uses the
-  // soft-delete-then-insert archive pattern on re-import. Without this
-  // filter the GET returns superseded (archived) rows alongside live ones,
-  // inflating Total Assets/Liabilities/Equity ~2× on re-imported data
-  // (measured ×1.92 on AZSEKER 2026 Budget). Matches plans/route.ts.
-  const lines = await withOrgScope(orgId, async (tx) =>
-    tx.balanceSheetLine.findMany({
-      where: { organizationId: orgId, planId, deletedAt: null },
+  const result = await withOrgScope(orgId, async (tx) => {
+    // Source-plan resolution (2026-06-04, Y4 follow-up): budget plans carry
+    // ONLY the P&L (the İcmal budget is P&L-only) — they have no balance
+    // sheet. So when the page defaults to / the user views a budget plan, the
+    // balance sheet comes from the matching-year ACTUAL plan instead of an
+    // empty state. Mirrors the analytics Y4 actuals fallback. The Workspace
+    // tab is unaffected (it keeps the budget plan for execution %).
+    const active = await tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId },
+      select: { id: true, year: true, kind: true },
+    })
+    // Contract: budget plans are P&L-only by construction here (the İcmal
+    // budget loads no balance sheet), so a budget plan never has its own BS to
+    // override. If a budgeted balance sheet is ever introduced, switch this to
+    // fall back only when the budget plan has 0 live BS lines.
+    let sourcePlanId = planId
+    let fellBack = false
+    if (active?.kind === "budget") {
+      const actuals = await tx.budgetPlan.findFirst({
+        where: { organizationId: orgId, year: active.year, kind: "actual", deletedAt: null },
+        select: { id: true, kind: true },
+        // Deterministic pick when >1 actuals plan exists for a year — mirrors
+        // the analytics Y4 fallback (analytics/route.ts) so both views agree.
+        orderBy: { createdAt: "asc" },
+      })
+      const r = resolveBalanceSheetSourcePlan({ id: active.id, kind: active.kind }, actuals)
+      sourcePlanId = r.sourcePlanId
+      fellBack = r.fellBack
+    }
+
+    // deletedAt:null REQUIRED (2026-05-31): BalanceSheetLine uses the
+    // soft-delete-then-insert archive pattern on re-import. Without this
+    // filter the GET returns superseded (archived) rows alongside live ones,
+    // inflating Total Assets/Liabilities/Equity ~2× on re-imported data
+    // (measured ×1.92 on AZSEKER 2026 Budget). Matches plans/route.ts.
+    const lines = await tx.balanceSheetLine.findMany({
+      where: { organizationId: orgId, planId: sourcePlanId, deletedAt: null },
       // orderBy account.code via the relation (2026-05-31): the scalar
       // `accountCode` column was DROPPED in Phase 2.1 (2026-05-26, replaced by
       // accountId + account FK), but this orderBy still referenced it → Prisma
@@ -34,15 +64,25 @@ export async function GET(req: NextRequest) {
       // account breakdown is keyed off `account.name`/`account.code` now.
       include: { account: { select: { code: true, name: true } } },
     })
-  )
+    return { lines, sourcePlanId, fellBack, sourceYear: active?.year ?? null }
+  })
 
+  const { lines, sourcePlanId, fellBack, sourceYear } = result
   // Group by lineType
   type BSRow = (typeof lines)[number]
   const assets = lines.filter((l: BSRow) => l.lineType === "asset")
   const liabilities = lines.filter((l: BSRow) => l.lineType === "liability")
   const equity = lines.filter((l: BSRow) => l.lineType === "equity")
 
-  return NextResponse.json({ assets, liabilities, equity, all: lines })
+  return NextResponse.json({
+    assets,
+    liabilities,
+    equity,
+    all: lines,
+    // Provenance so the client can note "showing the <year> Actuals balance
+    // sheet" when a budget plan fell back. Non-breaking additive field.
+    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear },
+  })
 }
 
 export async function POST(req: NextRequest) {
