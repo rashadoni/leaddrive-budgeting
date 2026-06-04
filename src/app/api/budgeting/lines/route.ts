@@ -100,7 +100,22 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ success: true, data: lines })
+  // Phase 2.1 dropped the BudgetLine.category scalar in favour of the
+  // accountId FK — but the BudgetLine TYPE still promises `category: string`
+  // and the budgeting UI (WorkspaceTab fact lookup, ForecastTab, materiality,
+  // category grouping) keys on it. Without this it was `undefined`, so every
+  // category-keyed actual/fact lookup silently missed → the Workspace "Fact"
+  // column read 0. Derive it from the account relation (same rule as the
+  // analytics route's `displayCategory`) so those lookups resolve again.
+  const withCategory = lines.map((l) => ({
+    ...l,
+    category: l.account?.name ?? l.account?.code ?? "",
+    children: (l.children ?? []).map((c) => ({
+      ...c,
+      category: c.account?.name ?? c.account?.code ?? "",
+    })),
+  }))
+  return NextResponse.json({ success: true, data: withCategory })
 }
 
 export async function POST(req: NextRequest) {

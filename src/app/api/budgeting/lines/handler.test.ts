@@ -10,7 +10,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
-    budgetLine: { create: vi.fn() },
+    budgetLine: { create: vi.fn(), findMany: vi.fn() },
+    budgetDepartmentOwner: { findMany: vi.fn() },
     budgetPlan: { findFirst: vi.fn() },
     organization: { findUnique: vi.fn() },
     approvalRequest: {
@@ -45,7 +46,7 @@ vi.mock("@/lib/budgeting/currency", () => ({
 }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
-import { POST } from "./route"
+import { POST, GET } from "./route"
 
 // Phase 5.2 — withOrgScope validates 20-32 char cuid-shaped orgId.
 const ORG_ID = "cm3rlslines00000001abc"
@@ -69,6 +70,38 @@ beforeEach(() => {
   prismaMock.approvalRequest.updateMany.mockReset().mockResolvedValue({ count: 1 })
   // Phase 2.1 session 3: always return a valid CoA row so resolveAccountId passes.
   prismaMock.chartOfAccount.findUnique.mockReset().mockResolvedValue({ id: "coa_sales" })
+  // GET path: buildDeptFilter reads owners — empty = no dept scoping (admin view).
+  prismaMock.budgetDepartmentOwner.findMany.mockReset().mockResolvedValue([])
+})
+
+describe("GET /api/budgeting/lines — derives category from the account relation", () => {
+  it("returns category = account.name (Phase-2.1 dropped the scalar; UI keys on it)", async () => {
+    // Regression guard: BudgetLine has no `category` column since Phase 2.1, so
+    // the GET must derive it from the account relation — else the Workspace
+    // fact lookup / ForecastTab / materiality (all keyed on line.category) get
+    // undefined and silently read 0.
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      {
+        id: "ln1", lineType: "revenue", plannedAmount: 100, isAutoPlanned: false,
+        account: { code: "PLF.01.02.01", name: "Revenue from Sales of Glucose" },
+        children: [
+          { id: "ln1c", lineType: "revenue", plannedAmount: 40, isAutoPlanned: false,
+            account: { code: "PLF.01.02.02", name: "Revenue from Sale of Corn Starch" } },
+        ],
+      },
+      {
+        id: "ln2", lineType: "expense", plannedAmount: 50, isAutoPlanned: false,
+        account: null, children: [],
+      },
+    ])
+    const res = await GET(makeRequest("/api/budgeting/lines?planId=p1"))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.data[0].category).toBe("Revenue from Sales of Glucose")
+    expect(body.data[0].children[0].category).toBe("Revenue from Sale of Corn Starch")
+    expect(body.data[1].category).toBe("") // no account → empty, not undefined (no crash)
+  })
 })
 
 describe("POST /api/budgeting/lines — approval-request bypass (Turn LXXII ⚠️ #3)", () => {

@@ -207,7 +207,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
 
   // Materiality check helper — used for opacity in table rows
   const isMaterial = (l: BudgetLine): boolean => {
-    const factValue = l.isAutoActual ? (autoActualMap.get(l.category) ?? 0) : (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
+    const factValue = autoActualMap.get(l.category) ?? (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
     const varianceAbsVal = Math.abs(l.plannedAmount - factValue)
     const variancePctVal = l.plannedAmount > 0 ? (varianceAbsVal / l.plannedAmount) * 100 : 0
     return variancePctVal >= materialityPct || varianceAbsVal >= materialityAbs
@@ -411,9 +411,18 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
   const budgetExecLabel = hasAnyActuals ? `${budgetExecPct}% composite score` : "No actuals yet"
 
   // Turn 36 fix: dedupe by (category, lineType) — see sumActualUniqueCategories jsdoc
-  const totExpActual = sumActualUniqueCategories(expenseLines)
-  const totRevActual = sumActualUniqueCategories(revenueLines)
-  const totCOGSActual = sumActualUniqueCategories(cogsLines)
+  // Section actuals for the GP/EBITDA blocks + section headers: use the
+  // canonical analytics aggregate (auto + manual + the Y4 cross-plan join),
+  // falling back to the per-category dedup sum. The aggregate is the complete
+  // figure — the per-category sum UNDER-counts expenses whose İcmal OpEx codes
+  // don't map 1:1 to the PLF actuals (different scope/granularity: İcmal OpEx
+  // is operating-only + high-level; PLF "expense" is detailed + includes D&A).
+  // Using it keeps GP/EBITDA consistent with the P&L cards instead of showing a
+  // falsely-positive EBITDA (GP minus a 0 expense). Per-category OpEx detail
+  // rows stay "to-map" until an İcmal→PLF expense crosswalk lands.
+  const totExpActual = totalExpenseActual || sumActualUniqueCategories(expenseLines)
+  const totRevActual = totalRevenueActual || sumActualUniqueCategories(revenueLines)
+  const totCOGSActual = totalCOGSActual || sumActualUniqueCategories(cogsLines)
 
   return (
     <div className="space-y-6">
@@ -678,7 +687,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                 </tr>
               </thead>
               <tbody>
-                {renderGroupedSection(t("sectionRevenues"), revenueLines, totRevPlanned, "hintSectionRevenue", "revenue")}
+                {renderGroupedSection(t("sectionRevenues"), revenueLines, totRevPlanned, "hintSectionRevenue", "revenue", totRevActual)}
                 {revenueLines.length === 0 && (
                   <tr className="bg-amber-50/50 dark:bg-amber-950/10">
                     <td colSpan={6} className="px-4 py-2 text-xs text-amber-700 dark:text-amber-400 italic">
@@ -686,7 +695,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                     </td>
                   </tr>
                 )}
-                {renderGroupedSection(t("sectionCOGS"), cogsLines, totCOGSPlanned, "hintSectionCOGS", "cogs")}
+                {renderGroupedSection(t("sectionCOGS"), cogsLines, totCOGSPlanned, "hintSectionCOGS", "cogs", totCOGSActual)}
 
                 {/* Gross Profit row = Revenue − COGS */}
                 {(revenueLines.length > 0 || cogsLines.length > 0) && (() => {
@@ -710,7 +719,7 @@ export function WorkspaceTab({ planId, companyId, onNavigateTab }: { planId: str
                   )
                 })()}
 
-                {renderGroupedSection(t("sectionExpenses"), expenseLines, totExpPlanned, "hintSectionExpenses", "expense")}
+                {renderGroupedSection(t("sectionExpenses"), expenseLines, totExpPlanned, "hintSectionExpenses", "expense", totExpActual)}
 
                 {/* Operating Profit row — math via computeOperatingProfit helper (Revenue − COGS − OpEx) */}
                 {(expenseLines.length > 0 || revenueLines.length > 0 || cogsLines.length > 0) && (() => {

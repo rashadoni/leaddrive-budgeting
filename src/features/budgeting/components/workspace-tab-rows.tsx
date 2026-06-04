@@ -98,7 +98,10 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
 
   const renderRow = (line: BudgetLine) => {
     const catActuals = actualsByCat.get(`${line.category}||${line.lineType}`)
-    const factValue = line.isAutoActual ? (autoActualMap.get(line.category) ?? 0) : (catActuals?.total ?? 0)
+    // Canonical actual = analytics byCategory.actual (auto + manual + Y4
+    // cross-plan code-join), fall back to direct BudgetActual sum. Was gated on
+    // isAutoActual → re-keyed budget lines hit the empty BudgetActual map → 0.
+    const factValue = autoActualMap.get(line.category) ?? (catActuals?.total ?? 0)
     const variance = line.lineType === "revenue" ? factValue - line.plannedAmount : line.plannedAmount - factValue
     const variancePct = line.plannedAmount > 0 ? (variance / line.plannedAmount) * 100 : 0
     const isExpanded = expandId === line.id
@@ -258,10 +261,9 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
     const children = line.children ?? []
     const groupTotal = children.reduce((s, c) => s + c.plannedAmount, 0)
     // If parent group has isAutoActual, use parent's auto-actual (e.g. adminOverhead, techInfraTotal)
-    const groupActual = line.isAutoActual
-      ? (autoActualMap.get(line.category) ?? 0)
-      : children.reduce((s, c) => {
-          return s + (c.isAutoActual ? (autoActualMap.get(c.category) ?? 0) : (actualsByCat.get(`${c.category}||${c.lineType}`)?.total ?? 0))
+    const groupActual = autoActualMap.get(line.category)
+      ?? children.reduce((s, c) => {
+          return s + (autoActualMap.get(c.category) ?? (actualsByCat.get(`${c.category}||${c.lineType}`)?.total ?? 0))
         }, 0)
     const isOpen = expandedGroups.has(groupTag.replace("group:", ""))
     const toggleGroup = () => {
@@ -326,7 +328,7 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
 
   // Render a child (sub-item) row — indented
   const renderChildRow = (child: BudgetLine) => {
-    const factValue = child.isAutoActual ? (autoActualMap.get(child.category) ?? 0) : (actualsByCat.get(`${child.category}||${child.lineType}`)?.total ?? 0)
+    const factValue = autoActualMap.get(child.category) ?? (actualsByCat.get(`${child.category}||${child.lineType}`)?.total ?? 0)
     const variance = child.lineType === "revenue" ? factValue - child.plannedAmount : child.plannedAmount - factValue
     const variancePct = child.plannedAmount > 0 ? (variance / child.plannedAmount) * 100 : 0
     const isExpanded = expandId === child.id
@@ -466,11 +468,14 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
 
   // Helper: get actual for a line (parent auto-actual takes priority over children sum)
   const getLineActual = (l: BudgetLine): number => {
-    if (l.isAutoActual) return autoActualMap.get(l.category) ?? 0
+    // Prefer the canonical analytics actual (auto + manual + Y4 code-join);
+    // fall back to the direct BudgetActual sum. Previously gated on
+    // isAutoActual, which left re-keyed budget lines on the empty BudgetActual
+    // map → fact 0 even though the joined actual existed.
     if (l.children?.length) {
-      return l.children.reduce((cs, c) => cs + (c.isAutoActual ? (autoActualMap.get(c.category) ?? 0) : (actualsByCat.get(`${c.category}||${c.lineType}`)?.total ?? 0)), 0)
+      return l.children.reduce((cs, c) => cs + (autoActualMap.get(c.category) ?? (actualsByCat.get(`${c.category}||${c.lineType}`)?.total ?? 0)), 0)
     }
-    return actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0
+    return autoActualMap.get(l.category) ?? (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
   }
 
   // Turn 36 (Workspace actuals 12× over-count fix): post-Turn-34 BudgetLines
@@ -494,8 +499,11 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
   }
 
   // Universal grouped section renderer with per-section add form
-  const renderGroupedSection = (title: string, sectionLines: BudgetLine[], totPlanned: number, sectionHintKey?: string, sectionLineType?: string) => {
-    const totActual = sumActualUniqueCategories(sectionLines)
+  const renderGroupedSection = (title: string, sectionLines: BudgetLine[], totPlanned: number, sectionHintKey?: string, sectionLineType?: string, aggregateActual?: number) => {
+    // Prefer the caller-supplied analytics aggregate (complete; matches the
+    // GP/EBITDA blocks + P&L cards) over the per-category dedup sum, which
+    // under-counts sections whose budget codes don't all map to the actuals.
+    const totActual = aggregateActual ?? sumActualUniqueCategories(sectionLines)
     const sectionKey = sectionLineType || title.toLowerCase()
     const isCollapsed = collapsedSections.has(sectionKey)
 
@@ -546,7 +554,7 @@ export function makeRowRenderers(ctx: RowRendererCtx) {
             }
 
             const getLineActual = (l: BudgetLine) =>
-              l.isAutoActual ? (autoActualMap.get(l.category) ?? 0) : (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
+              autoActualMap.get(l.category) ?? (actualsByCat.get(`${l.category}||${l.lineType}`)?.total ?? 0)
 
             return (
               <>
