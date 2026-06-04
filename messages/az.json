@@ -3392,7 +3392,26 @@
     "ctaManual": "Əl ilə daxil et",
     "ctaImport": "AI idxal",
     "ctaFeed": "Mənbə tənzimlə",
-    "clearAllFilters": "Bütün filtrləri təmizlə"
+    "clearAllFilters": "Bütün filtrləri təmizlə",
+    "inlineEntry": {
+      "title": "Çatışmayan dəyəri daxil edin",
+      "subtitle": "Bir dəyəri burada yadda saxlayın — indikatorlar dərhal yenidən hesablanır, tam Excel idxalı lazım deyil.",
+      "company": "Şirkət",
+      "metric": "Metrika",
+      "value": "Dəyər",
+      "date": "Tarix",
+      "save": "Yadda saxla",
+      "saving": "Saxlanılır…",
+      "saved": "Saxlanıldı — indikatorlar yenidən hesablandı.",
+      "savedRecomputed": "Saxlanıldı · {ok}/{total} indikator yenidən hesablandı.",
+      "confirmTitle": "Dəyər tipik diapazondan kənardadır",
+      "confirmSave": "Yenə də saxla",
+      "cancel": "Ləğv et",
+      "error": "Saxlanmadı: {message}",
+      "outOfRange": "İcazə verilən diapazondan kənar ({min}–{max}).",
+      "notANumber": "Rəqəm daxil edin.",
+      "noResolvableEntity": "Bu qurumlar üçün sətiriçi daxiletmə mövcud deyil — yuxarıdakı AI idxal və ya məlumat daxiletmə formasından istifadə edin."
+    }
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Mənbə Reyestri",

@@ -3392,7 +3392,26 @@
     "ctaManual": "Enter manually",
     "ctaImport": "AI Import",
     "ctaFeed": "Configure source",
-    "clearAllFilters": "Clear all filters"
+    "clearAllFilters": "Clear all filters",
+    "inlineEntry": {
+      "title": "Enter the missing value",
+      "subtitle": "Save one value here and the indicators recompute immediately — no full Excel import needed.",
+      "company": "Company",
+      "metric": "Metric",
+      "value": "Value",
+      "date": "Date",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved — indicators recomputed.",
+      "savedRecomputed": "Saved · {ok}/{total} indicators recomputed.",
+      "confirmTitle": "Value is outside the typical range",
+      "confirmSave": "Save anyway",
+      "cancel": "Cancel",
+      "error": "Could not save: {message}",
+      "outOfRange": "Outside the allowed range ({min}–{max}).",
+      "notANumber": "Enter a number.",
+      "noResolvableEntity": "Inline entry is unavailable for these entities — use AI Import or the data-entry form above."
+    }
   },
   "adminSourceRegistry": {
     "title": "Drift Watchdog Source Registry",

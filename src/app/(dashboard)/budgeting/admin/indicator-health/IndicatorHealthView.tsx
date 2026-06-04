@@ -1,9 +1,27 @@
 "use client"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
-import { buildCtas } from "./cta"
+import { buildCtas, resolveManualMetric } from "./cta"
+import { InlineFactEntry } from "./InlineFactEntry"
+
+/** Flatten a roots-with-children company tree (the /api/companies shape) into a
+ *  flat code→id map so the inline entry can resolve a gap row's codes to ids. */
+interface CompanyNode {
+  id: string
+  code: string
+  children?: CompanyNode[]
+}
+function buildCompanyIdByCode(roots: CompanyNode[]): Map<string, string> {
+  const map = new Map<string, string>()
+  const walk = (c: CompanyNode): void => {
+    if (c.code && c.id) map.set(c.code, c.id)
+    for (const child of c.children ?? []) walk(child)
+  }
+  for (const r of roots) walk(r)
+  return map
+}
 
 /** Locale-aware display name — English fallback, never forced Russian. */
 function pickName(
@@ -116,6 +134,11 @@ export function IndicatorHealthView() {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
   const [sortColumn, setSortColumn] = useState<SortColumn>("cells")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+  // code → DB id, loaded once — the inline KPI entry needs companyId but the
+  // gap rows only carry company codes.
+  const [companyIdByCode, setCompanyIdByCode] = useState<Map<string, string>>(
+    new Map(),
+  )
 
   // Hydrate sort preference from localStorage on first client mount.
   useEffect(() => {
@@ -137,7 +160,9 @@ export function IndicatorHealthView() {
     }
   }, [sortColumn, sortDir])
 
-  useEffect(() => {
+  // Health fetch — extracted so the inline KPI entry can trigger a re-fetch
+  // after a save (the row's cell-count drops / the row clears live).
+  const reload = useCallback(() => {
     setLoading(true)
     fetch("/api/admin/indicator-health")
       .then(async (r) => {
@@ -147,6 +172,29 @@ export function IndicatorHealthView() {
       .then((j: HealthResponse) => setData(j))
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  // Load the company list once → code→id map for the inline entry. Tolerates
+  // both the flat-array and { companies: [...] } response shapes.
+  useEffect(() => {
+    let cancelled = false
+    fetch("/api/companies")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((json: { companies?: CompanyNode[] } | CompanyNode[]) => {
+        if (cancelled) return
+        const roots = Array.isArray(json) ? json : (json.companies ?? [])
+        setCompanyIdByCode(buildCompanyIdByCode(roots))
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyIdByCode(new Map())
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Derived: filter → entity-filter → search → sort. useMemo keeps it
@@ -450,6 +498,8 @@ export function IndicatorHealthView() {
                   expanded={expanded}
                   maxCells={maxCells}
                   entityFilter={entityFilter}
+                  companyIdByCode={companyIdByCode}
+                  onSaved={reload}
                   onToggleExpand={() => toggleExpanded(key)}
                   onClickEntity={(code) => setEntityFilter(code)}
                 />
@@ -541,6 +591,8 @@ function Row({
   expanded,
   maxCells,
   entityFilter,
+  companyIdByCode,
+  onSaved,
   onToggleExpand,
   onClickEntity,
 }: {
@@ -549,6 +601,8 @@ function Row({
   expanded: boolean
   maxCells: number
   entityFilter: string | null
+  companyIdByCode: Map<string, string>
+  onSaved: () => void
   onToggleExpand: () => void
   onClickEntity: (code: string) => void
 }) {
@@ -732,6 +786,14 @@ function Row({
                 </div>
               </div>
             </div>
+            {resolveManualMetric(g.missingVariable) && (
+              <InlineFactEntry
+                metric={resolveManualMetric(g.missingVariable)!}
+                affectedCodes={g.affectedEntities}
+                companyIdByCode={companyIdByCode}
+                onSaved={onSaved}
+              />
+            )}
           </td>
         </tr>
       )}
