@@ -1,18 +1,20 @@
 # BudgetPro — User Guide
 
 > **Enterprise Holding Risk Terminal**
-> What it is, how to use it, what and where to check.
-> For the client, CFO and holding admin.
+> What it is, how to use it, what to check and where.
+> For the client, CFO, and holding administrator.
 
 ---
 
 ## Table of Contents
 
-1. [What is it and why](#1-what-is-it-and-why)
+1. [What it is and why](#1-what-it-is-and-why)
 2. [Login and navigation](#2-login-and-navigation)
-3. [Risk Terminal — the finance professional's workday](#3-risk-terminal--the-finance-professionals-workday)
+3. [Risk Terminal — finance professional's workday](#3-risk-terminal--finance-professionals-workday)
+   - [3.1 What-if scenarios](#31-what-if-scenarios)
 4. [Board Deck — snapshot for the board](#4-board-deck--snapshot-for-the-board)
 5. [Budgeting](#5-budgeting)
+   - [5.1 Report Builder (ANALYTICS) — custom slices + charts](#51-report-builder-analytics--custom-slices--charts)
 6. [Onboarding a new company](#6-onboarding-a-new-company)
 7. [Admin Tools — 16 tools in 4 groups](#7-admin-tools--16-tools-in-4-groups)
 8. [AI Auto Import — import any Excel](#8-ai-auto-import--import-any-excel)
@@ -25,15 +27,15 @@
 
 ---
 
-## 1. What is it and why
+## 1. What it is and why
 
 **BudgetPro is a terminal for the CFO of a holding with 60+ companies.**
 
-One goal: in 5 minutes in the morning, understand **which of your companies are currently in the risk zone**, **why**, and **what to do about it**.
+One goal: understand in 5 minutes each morning **which of your companies are currently at risk**, **why**, and **what to do about it**.
 
 ### Three levels of questions the system answers
 
-| Question | Where to look | How much time |
+| Question | Where to look | Time needed |
 |---|---|---|
 | "What's on fire today?" | **Risk Terminal** — HeatMap + Morning Brief | 30 seconds |
 | "Why is this indicator red?" | **Variance Explainer** (click on cell → Explain) | 10 seconds + ~15 seconds AI |
@@ -43,7 +45,7 @@ One goal: in 5 minutes in the morning, understand **which of your companies are 
 - **6 live entities** of the AZSEKER holding (Sugar / Eden Agro / CPC / Malt / Horizon / Farm / Promalt MMC + parent)
 - **47 indicators** (P&L, Balance Sheet, Cash Flow, KPI, ESG, operational)
 - **AI agents** on Anthropic Claude: Excel classifier, variance explainer, Board Deck generator, morning briefing
-- **Full audit trail** — every change is written to an IFRS-compliant log for 365 days
+- **Full audit trail** — every change is written to an IFRS-compatible log for 365 days
 
 ---
 
@@ -57,31 +59,31 @@ URL: **`http://localhost:3000/login`** (dev) or your production domain.
 
 Credentials are issued by the system administrator. If you are that administrator and have just deployed the environment — the password is from `scripts/create-admin.ts` or from your deployment secrets.
 
-> 🔒 Passwords are not published in public documentation.
+> 🔒 Passwords are not published in open documentation.
 
 ### 2.2 Sidebar navigation
 
 After login, on the left — 6 main sections:
 
-| Icon | Section | Why |
+| Icon | Section | Purpose |
 |---|---|---|
-| 📊 | **Budgeting** | Plan/actual, P&L, BS, CF — traditional FP&A |
+| 📊 | **Budgeting** | Plan/fact, P&L, BS, CF — traditional FP&A |
 | 🎯 | **Risk Terminal** | Bloomberg-style terminal — main screen of the day |
 | 📋 | **Board Deck** | Snapshot for the board of directors (print / PPTX / PDF) |
-| 🚀 | **Onboarding** | Companies Readiness + import new ones via AI |
+| 🚀 | **Onboarding** | Company readiness + import new ones via AI |
 | 📜 | **Audit Log** | Log of all significant changes |
 | 🛠️ | **Admin Tools** | 16 utilities in 4 groups |
 | ⚙️ | **Settings** | Profile + language + preferences |
 
 ---
 
-## 3. Risk Terminal — the finance professional's workday
+## 3. Risk Terminal — finance professional's workday
 
 **URL:** `/budgeting/terminal`
 
 ![Risk Terminal](guide/screenshots/02-terminal.webp)
 
-This is **the main screen**. Open it in the morning — everything you need is here.
+This is the **main screen**. You open it in the morning — everything you need is here.
 
 ### Four panels
 
@@ -91,7 +93,7 @@ Tree of all holding companies with a **composite-score** badge for each:
 - 🔴 **R##** — number of red indicators
 - **Chips:** `Sub` / `Opq` / `NoD` — qualitative risk flags (see section 9)
 
-**What to check:** click on a company → the right HeatMap filters to this company.
+**What to check:** click on a company → the right HeatMap filters to that company.
 
 #### Panel 2 · Risk HeatMap (top right)
 **Matrix: companies × indicators.** Cell color = status (green/amber/red/n/a).
@@ -99,16 +101,19 @@ Tree of all holding companies with a **composite-score** badge for each:
 Each cell is marked not only by color, but also by **shape** (▲ / ● / ○) — for clinical color-blind safety (Phase M7 regression scan prohibits rollback).
 
 At the top:
-- Quarter filter (2026 / Q1...Q4 / M1...M12)
+- **Period selector** — the terminal opens by default on the **last completed financial year** (currently 2025), not the current unclosed one. This way, headline figures are from a real full year, not 3–4 closed months. Full history **2023–2025** (P&L + balance + cash flow) is loaded, so 2025 is the true headline year.
+- Quarter filter (Q1…Q4 / M1…M12) within the selected year
 - `Material only` — hide non-applicable indicators
 - Counter: `54G / 30A / 16R / 88?`
 
-**What to check:** hover over a cell → tooltip with the number + planned range.
+> ⚠️ **Incomplete year (YTD).** If you manually switch to the ongoing year (2026), an amber banner appears at the top stating "partial year / year-to-date — figures are preliminary, not the result of a full cycle." Cell colors remain honest (real red CPC / AZSF / MALT are visible), but read any "green" in an incomplete year with seasonality adjustments. Example: EDEN's EBITDA margin in unclosed 2026 showed +169.8% — this is an artifact (one-time agricultural subsidy at the beginning of the year on tiny pre-harvest revenue, with a loss for the period); for the full 2025 year, the honest figure is **28%** green.
+
+**What to check:** hover the cursor over a cell → tooltip with the number + planned range.
 
 #### Panel 3 · Indicator Detail (bottom left)
 By default shows **"Today's brief"** — morning AI briefing.
 
-When clicking on a HeatMap cell, it turns into **indicator detail:**
+When clicking on a HeatMap cell, it transforms into **indicator detail:**
 - Formula (`counterparty_hhi_customer`)
 - Resolved variables
 - Source rows from BudgetLine
@@ -120,10 +125,30 @@ When clicking on a HeatMap cell, it turns into **indicator detail:**
 - After clicking `Explain →`: **AI Variance Explainer** — narrative + 3 recommendations
 
 ### What to check in 60 seconds
-1. Expand the AZSEKER tree → should have 7 sub-cos with composite-score
-2. Click on a red cell → Panel 3 will show the formula, Panel 4 — Explain button
-3. Press Explain → in ~15 seconds a narrative with TOP DRIVERS and RECOMMENDATIONS will appear
-4. At the bottom — EVENTS feed (latest LLM calls) and MARKET (USD/AZN, EUR/AZN, Brent)
+1. Expand the AZSEKER tree → should show 7 sub-cos with composite-score
+2. Click on a red cell → Panel 3 shows the formula, Panel 4 — Explain button
+3. Press Explain → in ~15 seconds a narrative with TOP DRIVERS and RECOMMENDATIONS appears
+4. At the bottom — EVENTS feed (recent LLM calls) and MARKET (USD/AZN, EUR/AZN, Brent)
+
+### 3.1 What-if scenarios
+
+In the terminal, there are **two different** what-if surfaces — don't confuse them:
+
+| Surface | How to open | What it does |
+|---|---|---|
+| **Quick preview** | signal panel → calculation button | Substitutes a new **market feed** value (wheat price, FAO index…) and immediately shows how **dependent** indicators shift. Only feed-anchored indicators. |
+| **Scenarios** (Scenario Panel) | `SCN` command / scenarios section | Full simulation: driver scenario changes P&L drivers (revenue, COGS, FX expenses) and recalculates the holding's composite score. |
+
+**How to read calculation numbers (BAZA → SSENARI, Δ%):**
+- **BAZA** — current (baseline) indicator value.
+- **SSENARI** — value **after** your change.
+- **Δ%** — how many percent the indicator value itself shifted (BAZA → SSENARI), not "percent of something." Next to the indicator code, the **unit of measurement** is shown (e.g., `FP_WHEAT_PRICE_SIGNAL · USD/tonne`), so you can see what the line is counting in.
+
+**Why devaluation sometimes "changes nothing."** If you raise the exchange rate (AZN devaluation), and indicators don't move — for current data this is **correct**: AZSEKER companies in loaded figures are **fully domestic** (costs in manats, no imported FX component). FX shock will affect only when cost/purchases in foreign currency appear in the data (see section 9.2.5 on FX exposure). This is not a bug — the model honestly shows "there is no vulnerability in this data."
+
+**What does "quick calculation" mean.** This is the Quick preview mode from the table above — it works **only** for indicators tied to market feed. For driver scenarios (revenue / costs), use the Scenario Panel.
+
+> If the "What-if" hotkey opens the wrong page — this is a known fork of two surfaces; shortcuts and labels are separated, refer to the table above.
 
 ---
 
@@ -133,16 +158,16 @@ When clicking on a HeatMap cell, it turns into **indicator detail:**
 
 ![Board Deck](guide/screenshots/03-board-deck.webp)
 
-**Goal:** one-page document for the board of directors. Open → read → press "Print to PDF" → send to chat.
+**Purpose:** one-page document for the board of directors. You open → read → press "Print to PDF" → send to chat.
 
 ### What's in it
-1. **Narrative headline** — AI generates one phrase like *"Food processing margin squeeze and agro yield shortfall drive five critical alerts across four companies"*
+1. **Header narrative** — AI generates one phrase like *"Food processing margin squeeze and agro yield shortfall drive five critical alerts across four companies"*
 2. **Holding composite score** — large number
 3. **Top movers** — who is above/below plan the most
 4. **Alerts** — critical threshold violations
 5. **🆕 Qualitative Risk Flags** — section with companies that have qualitative risk flags
 
-### Screenshot of qualitative risks section (bottom of page)
+### Screenshot of the qualitative risks section (bottom of page)
 
 ![Board Deck Risk Flags](guide/screenshots/14-board-deck-risk-flags.webp)
 
@@ -151,12 +176,12 @@ Here you can see:
 - **AZSEKER-AZSF** Azərşəkər Sugar — `Non-transparent structure` + `Data absence`
 - **AZSEKER-CPC** CPC — `Subsidy dependency` + `Non-transparent structure`
 
-These flags **automatically reduce the company's composite score** and get into the morning briefing (see section 9).
+These flags **automatically reduce the company's composite score** and appear in the morning briefing (see section 9).
 
 ### Export buttons
 - `Export PPTX` — byte-for-byte identical PowerPoint presentation
-- `Export PDF` — PDF via server-side render
-- `Print to PDF` — browser print
+- `Export PDF` — PDF via server-side rendering
+- `Print to PDF` — browser printing
 - `Open Risk Terminal →` — transition to live terminal for drill-down
 
 ---
@@ -167,29 +192,29 @@ These flags **automatically reduce the company's composite score** and get into 
 
 ![Budgeting](guide/screenshots/04-budgeting.webp)
 
-**This is the "regular" FP&A workspace** — what the finance professional used to do in Excel, now does here.
+**This is the "regular" FP&A workspace** — what a finance professional used to do in Excel, now done here.
 
 ### Left sidebar — work structure
 
 **FINANCE** — three classic reports:
 - 📈 **P&L** — profit and loss statement
-- 💰 **Sales** — sales details
+- 💰 **Sales** — sales detail
 - 📑 **Balance Sheet** — balance sheet
-- 💸 **Cash Flow** — cash flow
+- 💸 **Cash Flow** — cash flow statement
 - 📐 **Assumptions** — model assumptions
 
 **PLANNING** — what we plan:
 - 🗂️ **Workspace** — main budget screen (in screenshot)
 - 📊 **P&L (Plan)** — plan in P&L format
 - 🔮 **Forecast** — forecast
-- ⚖️ **Comparison** — plan vs actual vs forecast
+- ⚖️ **Comparison** — plan vs fact vs forecast
 - 📅 **Plans** — list of all plans
 
 **ANALYTICS** — Report Builder for custom slices.
 
 **SETTINGS** — Import / Configuration.
 
-**ADMIN** — deep settings (Period Locks, Approvals, Chart of Accounts, User Access, Drift Dashboard, Source Registry, Data Sources, **Company Settings ← Risk Registry here**).
+**ADMIN** — deep settings (Period Locks, Approvals, Chart of Accounts, User Access, Drift Dashboard, Source Registry, Data Sources, **Company Settings ← Risk Registry is here**).
 
 ### What's on the main Workspace screen
 - 4 KPI cards at the top: **Revenues / COGS / Expenses / Operating Profit** with execution % and variance
@@ -198,9 +223,22 @@ These flags **automatically reduce the company's composite score** and get into 
 - **Plan/Forecast/Actual by category** — detailed table
 
 ### What to check
-1. Top right of the heading — plan selector (`Azərşəkər 2026 Budget — 2026`) and companies (`All companies (consolidated)`)
+1. At the top right of the header — plan selector (`Azərşəkər 2026 Budget — 2026`) and companies (`All companies (consolidated)`)
 2. `+ Create plan` button — creates a new plan
 3. Bottom right — `AI Analysis` button (purple)
+
+### 5.1 Report Builder (ANALYTICS) — custom slices + charts
+
+**URL:** `/budgeting/reports`
+
+Report builder for any data source (P&L / Sales / Balance Sheet / Cash Flow / budget lines). On the left — configuration, on the right — live preview.
+
+**How to build a report:**
+1. Select **source** (entity) and desired **columns**. Among the columns there is an `account` dimension — chart of accounts code and name.
+2. The preview on the right updates immediately. If there's no data in the source — you'll see a "no data" message, not an empty panel; during loading — a loading indicator, on error — error text.
+3. **Where are the charts.** The visualization type switch (table / bar / stacked / line / pie / area) is located **at the bottom** of the left configuration panel, under the "Calculated fields" block. Select a non-table type → if there are numeric columns, a chart is built.
+
+> If the section previously seemed "broken" and empty — it was a regression after schema migration (the reporting engine was selecting columns removed in Phase 2.1). Fixed; plus loading / error / "no data" states were added so an empty source no longer looks like a breakdown.
 
 ---
 
@@ -210,7 +248,7 @@ These flags **automatically reduce the company's composite score** and get into 
 
 ![Onboarding](guide/screenshots/11-onboarding.webp)
 
-**Goal:** show the progress of data entry for each holding company and help finish "empty" sections.
+**Purpose:** show data entry progress for each holding company and help complete "empty" sections.
 
 ### What's visible
 - **Company cards** with level (LEVEL 1 = parent, LEVEL 2 = sub-co)
@@ -229,7 +267,7 @@ These flags **automatically reduce the company's composite score** and get into 
 | AZSEKER-PROMALT | Promalt MMC | food_processing | 30% | ⏳ PENDING |
 | AZSEKER-CPC | CPC | food_processing | 90% | ✅ VERIFIED |
 
-**What to check:** click on a card → detail expands showing which sections (P&L / BS / CF / KPI / Descriptions / Land / CAPEX) are filled and which need to be completed.
+**What to check:** click on a card → detail expands showing which sections (P&L / BS / CF / KPI / Descriptions / Land / CAPEX) are filled and which need completion.
 
 ---
 
@@ -239,15 +277,15 @@ These flags **automatically reduce the company's composite score** and get into 
 
 ![Admin Tools landing](guide/screenshots/05-admin-landing.webp)
 
-**This is the "engineering panel"** — what to use **before a client demo** and for daily support.
+**This is the "engineering panel"** — what to use **before client demo** and for daily support.
 
 ### Four groups
 
 #### 🧪 Data Ingestion
 | Card | What it does |
 |---|---|
-| **Import data** `Phase 7.M Tier 7` | Drag-drop any xlsx → AI determines type (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) and routes to the correct adapter. One screen instead of 5 different forms. |
-| **Data Entry** | Manual KPI and ESG disclosures input for non-engineer admin. |
+| **Data Import** `Phase 7.M Tier 7` | Drag-drop any xlsx → AI determines type (P&L/BS/CF/KPI/Land/CAPEX/Descriptions/Forecast) and routes to the correct adapter. One screen instead of 5 different forms. |
+| **Data Entry** | Manual KPI and ESG disclosure entry for non-engineer admin. |
 | **Data Sources Catalog** | Client-facing list of external feeds: business value, sample value, dependencies. |
 | **Source Registry** | Drift-watchdog: list of allowed xlsx sources for ingest. |
 
@@ -258,12 +296,12 @@ These flags **automatically reduce the company's composite score** and get into 
 | **Drift Dashboard** | Recent drift events + reference-feed freshness + stalled onboarding cases. |
 | **Companies Readiness** | Per-entity 7-area scoring with tiers (complete/good/partial/thin/empty). CSV export. |
 | **Data Archive** | Self-service archive + restore: BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty. |
-| **Intel Health** | External feed adapter status + recent crawls + news pipeline diagnostics. |
+| **Intel Health** | Status of external feed adapter + recent crawls + news pipeline diagnostics. |
 
 #### 🔒 Operations
 - **Period Locks** — closing closed periods from mutations
 - **Approvals** — workflow for change approvals
-- **AI Usage** — LLM cost monitoring with 30-day trend
+- **AI Usage** — LLM expense monitoring with 30-day trend
 
 #### 👥 Access
 - **User Access** — user and role management
@@ -279,7 +317,7 @@ These flags **automatically reduce the company's composite score** and get into 
 - 🟢 GREEN: 258 (21.5%)
 - 🟡 AMBER: 193
 - 🔴 RED: 73
-- ⚪ UNKNOWN: 677 (43.6% computed from 1201 total IVs)
+- ⚪ UNKNOWN: 677 (43.6% computed out of 1201 total IVs)
 
 **Unknown breakdown by error code:**
 - `eval: 430` — formulas failed
@@ -290,7 +328,7 @@ These flags **automatically reduce the company's composite score** and get into 
 - `parse: 2`
 - `out_of_range: 1`
 
-**At the bottom:** list of specific indicators with problems + remediation in one line.
+**At the bottom:** list of specific indicators with problems + one-line remediation.
 
 **What to check before demo:**
 1. **AGRO_COMMODITY_VOL** → 75 cells, need to investigate
@@ -309,9 +347,9 @@ Per-entity scoring across 7 areas: P&L / BS / CF / KPI / Counterparty / FX tags 
 Columns:
 - **Score** — 0-100%
 - **Tier** — Complete / Good / Partial / Thin / Empty
-- **Top missing** — what needs to be added to raise tier
+- **Top missing** — what to add to raise tier
 
-**Visible in the screenshot:**
+**On screen visible:**
 - HORIZON 15% Thin → need P&L (budget lines), balance sheet, counterparties
 - PROMALT 25% Thin → same
 - MALT 65% Good → need operational KPIs, strategic narrative, FX tags
@@ -325,7 +363,7 @@ Columns:
 
 **URL:** `/budgeting/admin/indicator-backlog`
 
-**Goal:** exactly one page showing "what hasn't been uploaded per entity" — without useless checkboxes, with a specific action plan.
+**Purpose:** exactly one page where you see "what wasn't loaded per entity" — without useless checkboxes, with a specific action plan.
 
 **Structure:**
 - **5 summary cards:** Entities / Applicable indicators / With data / Missing / Overall readiness %
@@ -333,12 +371,12 @@ Columns:
 - **Filters:** Category / Owner / Hide entities with 0 missing
 - **Per-entity cards** with two columns: **"Has data"** (green chips with already filled indicators) and **"Needs data"** (pink rows with owner + action)
 
-**Chips and rows show the readable name (RU)**, and the technical code (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS`, etc.) is displayed in small monospaced text nearby or in a tooltip on hover. This is done so that financial personnel don't learn abbreviations — but when communicating with a developer/AI-import, the code remains at hand.
+**Chips and rows show readable name**, and the technical code (`AGRO_COMMODITY_VOL`, `FP_INVENTORY_TURNS`, etc.) is displayed in small monospaced text nearby or in tooltip on hover. This is done so financial personnel don't have to learn abbreviations — but when communicating with developer/AI import, the code remains at hand.
 
 **Per-row actions:**
-- 📧 **Email** — opens mailto: with pre-filled email body to the owner with a specific list of requested data
+- 📧 **Email** — opens mailto: with pre-filled email body to owner with specific list of requested data
 - ⬆️ **Upload file** (entity-level) — deep-link to `/admin/ai-import?forEntity=AZSEKER-AZSF`
-- 📥 **CSV** (entity-level) — export gap-list to send to client
+- 📥 **CSV** (entity-level) — gap-list export to send to client
 - 📨 **Email all owners** (entity-level) — bulk mailto with grouping by owner
 
 **Integration with AI Auto Import:**
@@ -353,27 +391,28 @@ After successful import in `/admin/ai-import`, a banner appears:
 
 | Data category | Owner role |
 |---|---|
-| Audit findings | Internal Audit / Legal Department |
-| Court cases | Legal Department |
+| Audit findings | Internal Audit / Legal Dept |
+| Court cases | Legal Dept |
 | Customers (counterparty) | Sales Director / Commercial Manager |
-| Suppliers | Procurement / Supply Department |
+| Suppliers | Procurement / Supply Dept |
 | P&L / BS / CF | CFO / Finance Manager |
 | Strategic narrative + Risk Registry + competitors + NPS | Risk Officer (Nəcəf M) |
 | Operational KPIs (harvest / yield / sugar content) | Farm Manager / QA / Production |
 | Commodity / weather / news | BudgetPro System (auto-populated) |
 
-**Per-org customization:** for each organization (FO Holding, in the future azmade / tabia) owner mapping can be overridden via `Organization.settings.dataOwners` JSON — add real names and emails. Without override, a generic role label is used.
+**Per-org customization:** for each organization (FO Holding, in the future azmade / tabia), owner mapping can be overridden via `Organization.settings.dataOwners` JSON — add real names and emails. Without override, generic role label is used.
 
-### 7.3.5 Compliance Hub — unified audit findings + court cases screen
+### 7.3.5 Compliance Hub — single screen for audit findings + courts
 
 **URL:** `/budgeting/admin/compliance`
 
-**Goal:** one page for compliance/legal officer — all 218 audit findings (Major/Minor/Observation/OFI) + 54 court cases across 6 entities, with filters and CSV export.
+**Purpose:** one page for compliance/legal officer — all 218 audit findings (Major/Minor/Observation/OFI) + 54 court cases across 6 entities, with filters and CSV export.
 
 **What's inside:**
 - **2 tabs** — Audit findings / Court cases
 - **5 summary cards at the top** for the active tab (Total / Open / Major / Minor / Observation for audit; Total / Open / Defendant / Plaintiff / Money claims for courts)
-- **Table with color coding** of severity chips: Major (rose), Minor (amber), Observation (slate), OFI (sky)
+- **Table with color-coded** severity chips: Major (rose), Minor (amber), Observation (slate), OFI (sky)
+- **Drill-down on click** — rows of both audit findings and **court cases** open a modal with details (for court: plaintiff → defendant, date, dispute type, court, status, open/closed badge). Previously court rows were "dead," unclickable — now they open with mouse and keyboard (Enter / Space).
 - **Filters:** Entity (one of 6) / Severity / Status (Open/Closed/All)
 - **Export CSV** of filtered slice with timestamp in filename
 
@@ -390,11 +429,11 @@ After successful import in `/admin/ai-import`, a banner appears:
 
 ![Data Archive](guide/screenshots/10-data-archive.webp)
 
-**Why:** made a mistake with import → need to remove rows from calculation, **but not physically delete** for IFRS audit.
+**Why:** made a mistake with import → need to remove rows from calculation, **but not delete physically** for IFRS audit.
 
 **How it works:**
 - Archiving hides data from HeatMap, recompute, reports
-- Data is **not physically deleted** — restore is possible within **90 days**
+- Physically data is **not deleted** — restoration is possible within **90 days**
 - All actions are written to audit trail
 - After 90 days — daily cron `soft-delete-purge` physically deletes
 
@@ -413,40 +452,40 @@ After successful import in `/admin/ai-import`, a banner appears:
 
 ![AI Auto Import](guide/screenshots/06-ai-import.webp)
 
-**This is the manual mapping killer.** Until Phase 7.M Tier 7, each new xlsx required code. Now:
+**This is the manual mapping killer.** Before Phase 7.M Tier 7, each new xlsx required code. Now:
 
 ### How it works (5 phases)
-1. **AI Classifier** (Anthropic) — determines the dataType of the sheet: P&L / BS / CF / Sales / KPI / Land / CAPEX / Descriptions / Forecast
-2. **Adapter Router** — selects the correct adapter from the registry (11 dataTypes)
+1. **AI Classifier** (Anthropic) — determines sheet dataType: P&L / BS / CF / Sales / KPI / Land / CAPEX / Descriptions / Forecast
+2. **Adapter Router** — selects the correct adapter from registry (11 dataTypes)
 3. **5-Phase Import** — parse → validate → upsert CoA → write → recompute
-4. **Mandatory Reconciliation** — each import is reconciled with the source
-5. **GREEN verdict** — no discrepancies or you see a diff
+4. **Mandatory Reconciliation** — every import is reconciled with source
+5. **GREEN verdict** — no discrepancies or you see diff
 
 ### Two modes
 - **`1 file`** — standard, for one workbook
 - **`Multiple files`** 🆕 — multi-file orchestrator (Phase 7.M Tier 5)
   - 1-10 files simultaneously
-  - **Group-level atomicity** — either all groups are written, or none
+  - **Group-level atomicity** — either all groups write, or none
   - **Cross-file conflict detection** — if two files write different values to the same cell → 409 with diff
   - One recompute after all groups (instead of N)
 
 ### What to check
-1. Drag-drop any xlsx into the `Drag xlsx file here` zone
-2. Click `Step 1: AI sheet analysis`
-3. AI will return classification + suggest plan import
-4. Confirm → file imports → automatic recompute
+1. Drag-drop any xlsx into the `Drop xlsx file here` zone
+2. Press `Step 1: AI sheet analysis`
+3. AI returns classification + suggests plan import
+4. You confirm → file imports → automatic recompute
 
 ### Preview: confidence + affected indicators (2026-05-27)
 
-After "Step 1: AI Analysis" for each sheet, you see three layers of information:
+After "Step 1: AI Analysis", for each sheet you see three layers of information:
 
 | What it shows | Why |
 |---|---|
 | **dataType chip** (colored by type) | immediately see which category AI assigned the sheet to — PLF / BS / KPI_FARMING / OPS_FACTS / ... |
-| **Confidence bar + "high · 92%"** | how confident AI is in the classification (green ≥85% / yellow 65-84% / red <65% "⚠ check") |
-| **"Will affect N indicators: …"** with chips | list of specific indicators (in Russian + technical code in small monospaced font) that will receive data after Apply |
+| **Confidence bar + "high · 92%"** | how confident AI is in classification (green ≥85% / yellow 65-84% / red <65% "⚠ check") |
+| **"Will affect N indicators: …"** with chips | list of specific indicators (readable name + technical code in small monospaced text) that will receive data after Apply |
 
-This allows you to **catch AI errors BEFORE** data enters the DB. If confidence is red or the "Will affect" list doesn't look like what you expect — rename the sheet with a clear name and re-upload.
+This allows **catching AI error BEFORE** data enters DB. If confidence is red or the "Will affect" list doesn't look like what you expect — rename the sheet with an understandable name and re-upload.
 
 **Classifier accuracy:**
 
@@ -454,9 +493,9 @@ This allows you to **catch AI errors BEFORE** data enters the DB. If confidence 
 |---|---|---|
 | ≥85% (green) | ~2–5% | Safe to apply |
 | 65–84% (yellow) | ~10–20% | Review "Will affect" — if correct, apply |
-| <65% (red) | ~30–50% | Do not apply without manual check |
+| <65% (red) | ~30–50% | Don't apply without manual check |
 
-**Control point for AZSEKER:** on real `Guvven Fin.xlsx` AI hit 23/23 dataType + 14/14 entity (100%). But this is one file with an obvious structure; on a non-standard workbook the % drops.
+**Checkpoint for AZSEKER:** on real `Guvven Fin.xlsx` AI hit 23/23 dataType + 14/14 entity (100%). But this is one file with clear structure; on non-standard workbook % drops.
 
 ### Limitations
 - Single file: ≤ 20 MB
@@ -468,7 +507,7 @@ This allows you to **catch AI errors BEFORE** data enters the DB. If confidence 
 
 ## 9. Risk Registry — qualitative risk flags
 
-**URL:** `/budgeting/admin/companies` → section **"Company settings"** → expand company card
+**URL:** `/budgeting/admin/companies` → **"Company Settings"** section → expand company card
 
 ![Company Settings + Risk Registry](guide/screenshots/15-risk-registry.webp)
 
@@ -484,18 +523,18 @@ This allows you to **catch AI errors BEFORE** data enters the DB. If confidence 
 
 ### How to set
 1. `/budgeting/admin/companies`
-2. Section **"Company settings"** (bottom of page)
+2. **"Company Settings"** section (bottom of page)
 3. Expand company card (e.g., AZSEKER-EDEN)
-4. Find **"Risk Registry"** — sorted by 8 categories with severity dots `● ● ●` (emerald → amber → rose)
-5. Click on the required flag — it will be highlighted, penalty will be applied after saving
+4. Find **"Risk Registry"** — sorted into 8 categories with severity dots `● ● ●` (emerald → amber → rose)
+5. Click on desired flag — it highlights, penalty applies after save
 
-### Where these flags appear (4 channels, end-to-end verified)
+### Where these flags appear (4 channels, checked end-to-end)
 
 | Channel | Where you'll see |
 |---|---|
 | **Composite score badges** | Risk Terminal → Company Tree (chips `Sub` / `Opq` / `NoD` next to name) |
 | **Morning Brief narrative** | Risk Terminal → Today's Brief (phrases like *"exposure to government policy/subsidy regime"*) |
-| **Board Deck section** | Board Deck → section **"Qualitative Risk Flags"** with FLAGGED ENTITIES count |
+| **Board Deck section** | Board Deck → **"Qualitative Risk Flags"** section with FLAGGED ENTITIES count |
 | **Variance Explainer** | Risk Terminal → click cell → Explain → recommendation #3 cites flag |
 
 ### Current DB state
@@ -505,33 +544,33 @@ This allows you to **catch AI errors BEFORE** data enters the DB. If confidence 
 
 ### Detailed Risk Registry per entity
 
-In addition to the 3 canonical flags, each company can have a detailed risk registry (KRI list) — displayed in the admin panel:
-**`/budgeting/admin/companies` → expand company card → section "Risk Registry"**.
+Besides the 3 canonical flags, each company may have a detailed risk registry (KRI list) — displayed in admin panel:
+**`/budgeting/admin/companies` → expand company card → "Risk Registry" section**.
 
 **Current state:**
 
 | Entity | KRIs | Source |
 |---|---|---|
-| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (file from client) |
+| **EDEN** | 15 | `Top risk - EDEN AGRO MMC.xlsx` (client file) |
 | **AZSF / CPC / MALT / HORIZON / PROMALT / FARM** | 0 | ⏳ Pending — expected from Nəcəf M (CARRYOVER L2) |
 
-Registries for the remaining entities **are intentionally unfilled** — we do NOT generate risks ourselves, waiting for real KRIs from the holding's Risk Officer. There should be no fabricated data here: the financial CFO makes decisions based on these indicators.
+Registries for other entities are **intentionally not filled** — we do NOT generate risks ourselves, waiting for real KRIs from holding's Risk Officer. There should be no fictional data here: financial CFO makes decisions based on these indicators.
 
 ---
 
 ## 9.1 Compliance & Legal — real indicators from audit reports and courts
 
-**Where:** Risk Terminal → HeatMap (3 new columns) + Board Deck → section "Compliance"
+**Where:** Risk Terminal → HeatMap (3 new columns) + Board Deck → "Compliance" section
 
 Three new indicators, fed from client files (`Follow up - For GTC.xlsx` + `Açıq məhkəmə mübahisələri.xlsx`):
 
 | Code | What it measures | Green | Amber | Red |
 |---|---|---|---|---|
-| `AUDIT_CLOSED_PCT` | % of closed audit findings (PBC) | ≥ 80% | 60–79% | < 60% |
+| `AUDIT_CLOSED_PCT` | % closed audit findings (PBC) | ≥ 80% | 60–79% | < 60% |
 | `AUDIT_MAJOR_OPEN` | Open **Major** audit findings | ≤ 1 | 2–5 | > 5 |
 | `LEGAL_CASES_ACTIVE` | Active court cases | ≤ 2 | 3–9 | ≥ 10 |
 
-### What's currently in the DB (live)
+### What's currently in DB (live)
 
 | Entity | AUDIT_CLOSED_PCT | AUDIT_MAJOR_OPEN | LEGAL_CASES_ACTIVE |
 |---|---|---|---|
@@ -540,17 +579,17 @@ Three new indicators, fed from client files (`Follow up - For GTC.xlsx` + `Açı
 | **AZSEKER-EDEN** | ⚪ no data | ⚪ no data | 🟡 4 |
 | MALT / FARM / HORIZON / PROMALT | ⚪ no data in client files | | |
 
-### Data source
+### Source
 
 - **AUDIT_CLOSED_PCT** + **AUDIT_MAJOR_OPEN** — client's internal audit log: 218 findings (Major / Minor / Observation / OFI). AZSF = 159 findings (51% closed, 6 Major open). CPC = 59 findings (39% closed, 3 Major open). Full list available via `Company.settings.auditFindings` for drill-down.
 - **LEGAL_CASES_ACTIVE** — registry of open court cases: 54 cases. AZSF — defendant in 26 (29 open). CPC — defendant in 7 (8 open). EDEN — only plaintiff (4 open). Full registry in `Company.settings.courtDisputes`.
 
 ### What to check
-- HeatMap has 3 new columns (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
-- Click on red AZSF/AUDIT_MAJOR_OPEN cell → Variance Explainer should cite open Major findings in narrative
-- Board Deck → section "Critical alerts" now contains compliance/legal warnings
+- 3 new columns appeared in HeatMap (AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN / LEGAL_CASES_ACTIVE)
+- Click on red cell AZSF/AUDIT_MAJOR_OPEN → Variance Explainer should cite open Major findings in narrative
+- Board Deck → "Critical alerts" section now contains compliance/legal warnings
 
-> **Money-at-risk per case (AZN):** removed from indicators 2026-05-27. Regex covered only 4 of 54 cases (7%) — misleading floor estimate. Will be re-implemented when full claim amounts registry comes from Legal Department.
+> **Money-at-risk per case (AZN):** removed from indicators 2026-05-27. Regex covered only 4 of 54 cases (7%) — misleading floor estimate. Will be re-implemented when full claim amounts registry comes from Legal Dept.
 
 ---
 
@@ -567,14 +606,14 @@ Stored in `Company.settings.fxRevenueAzn/Usd/Eur/Rub` — % of revenue in each c
 | **CPC** | 84% | 14% | 2% | 🟢 16% | `Farming strategy/Sales plan` — real volume splits 2027-2035 |
 | AZSF / MALT / EDEN / HORIZON / PROMALT | — | — | — | ⚪ Pending | Expected from N. Nəcəfzadə file "Customer Summary" (CARRYOVER L1) |
 
-Only CPC has real data (calculated from client's forward plan). For the other 5 entities, we intentionally DO NOT fill the split — `REVENUE_FX_EXPOSURE` shows `unknown` until verified per-customer FX breakdown arrives.
+Only CPC has real data (calculated from client forward plan). For the other 5 entities we do NOT fill split intentionally — `REVENUE_FX_EXPOSURE` shows `unknown` until verified per-customer FX breakdown arrives.
 
 **Thresholds:**
 - 🟢 ≤ 20% — domestic market dominates
 - 🟡 20–50% — mixed exposure
 - 🔴 > 50% — FX fluctuations dominate revenue
 
-**Connection with `FX_IMPORTED_INPUT`** (cost-side): two indicators together will give **NET FX position** when everyone has revenue split. If cost ≈ revenue in one currency → natural hedge.
+**Link to `FX_IMPORTED_INPUT`** (cost-side): two indicators together will give **NET FX position** when everyone has revenue split. If cost ≈ revenue in one currency → natural hedge.
 
 ---
 
@@ -582,27 +621,27 @@ Only CPC has real data (calculated from client's forward plan). For the other 5 
 
 **Where:** Risk Terminal → HeatMap (3 columns) + Board Deck → top movers/alerts.
 
-In addition to HHI (mathematically correct but poorly communicated to CFO), we added **direct concentration indicators** that are immediately readable:
+Besides HHI (mathematically correct, but poorly communicates to CFO), we added **direct concentration indicators** that are immediately readable:
 
 | Code | What it measures | Green | Amber | Red |
 |---|---|---|---|---|
 | `CUSTOMER_HHI` | Herfindahl-Hirschman index (mathematical concentration) | ≤ 0.15 | 0.15–0.25 | > 0.25 |
-| `TOP_CUSTOMER_SHARE` | % of revenue from **one** largest customer | ≤ 20% | 20–30% | > 30% |
-| `TOP3_CUSTOMER_SHARE` | % of revenue from **top 3** largest customers | ≤ 50% | 50–75% | > 75% |
+| `TOP_CUSTOMER_SHARE` | % revenue from **one** largest customer | ≤ 20% | 20–30% | > 30% |
+| `TOP3_CUSTOMER_SHARE` | % revenue from **top-3** largest customers | ≤ 50% | 50–75% | > 75% |
 
 ### Live data
 
 | Entity | TOP_CUSTOMER | TOP3_CUSTOMER | CUSTOMER_HHI | Who dominates |
 |---|---|---|---|---|
-| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 clients total |
-| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | probably AZSF (intercompany) |
+| **HORIZON** | 🔴 80% | 🔴 100% | 🔴 0.68 | 2 customers total |
+| **EDEN** | 🔴 65% | 🔴 93% | 🔴 0.47 | likely AZSF (intercompany) |
 | **MALT** | 🔴 42% | 🔴 80% | 🔴 0.27 | Carlsberg single-buyer |
-| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Confectionery |
+| **AZSF** | 🔴 32% | 🟡 65% | 🟡 0.19 | Bakı Şirniyyat (confectionery) |
 | **CPC** | 🟡 28% | 🟡 64% | 🟡 0.18 | Hacı Şəkər Bakı |
 | **PROMALT** | ⚪ no data | ⚪ | ⚪ | (JV with Azersun) |
 
 ### Why both indicators
-- **TOP_CUSTOMER_SHARE** — "loss of one customer" (e.g. AZSF loses Bakı Confectionery → −32% revenue overnight)
+- **TOP_CUSTOMER_SHARE** — "loss of one customer" (e.g., AZSF loses Bakı Şirniyyat → −32% revenue overnight)
 - **TOP3_CUSTOMER_SHARE** — "long-tail health" (MALT 80% means after top-3 almost nothing — can't replace if all 3 leave)
 - **CUSTOMER_HHI** — academically correct measure, for regulators / due diligence
 
@@ -614,9 +653,9 @@ All LLM calls go to **Anthropic Claude** via server-side API (cost mode + retry 
 
 ### 10.1 Morning Brief
 
-**Where:** Risk Terminal → Panel 3 → section "Today's Brief"
+**Where:** Risk Terminal → Panel 3 → "Today's Brief" section
 
-**What it does:** describes the day's risk cluster in one phrase + lists "top worst" by sectors. Takes into account qualitative risk flags.
+**What it does:** describes the day's risk cluster in one phrase + lists "top worst" by sectors. Considers qualitative risk flags.
 
 **Example output (live, from DB):**
 > *Food processing cluster under severe margin pressure; agro revenue collapse at Eden. Three food processing units show critical distress: Azərşəkər posts −143% EBITDA margin, Malt −95% with 114% OpEx, and CPC flags ESG compliance gap (33.3/100) amid related-party audit caveats. Eden Agro revenue cratered to 64 AZN/ha (1004% MoM) with exposure to subsidy-regime shifts; Azərşəkər Sugar Q4Y rejected at 535 despite partial metric coverage. Horizon shows client concentration risk (HHI 0.48). External environment: no major commodity or policy news overnight, suggesting internal-operational breakdowns rather than market-driven shock.*
@@ -627,11 +666,11 @@ All LLM calls go to **Anthropic Claude** via server-side API (cost mode + retry 
 
 ### 10.2 Variance Explainer
 
-**Where:** Risk Terminal → click on HeatMap cell → button `Explain →`
+**Where:** Risk Terminal → click on HeatMap cell → `Explain →` button
 
 ![Variance Explainer](guide/screenshots/13-variance-explainer.webp)
 
-**What it does:** narrative (1-3 sentences) + 3 actionable recommendations + list of TOP DRIVERS.
+**What it does:** narrative (1-3 sentences) + 3 actionable recommendations + TOP DRIVERS list.
 
 **Example output for EDEN Customer HHI:**
 > NARRATIVE: *Customer HHI is 0.4738, well above the 0.25 critical threshold, meaning a single buyer (likely the state sugar-beet processor AZSF) controls ~67% of Eden Agro's 4,000 ha Salyan sugar-beet sales, creating acute cash-flow vulnerability if payment delays occur.*
@@ -641,23 +680,23 @@ All LLM calls go to **Anthropic Claude** via server-side API (cost mode + retry 
 > 2. Diversify buyer base: contract 20-30% of Q3 yield to alternative processors or export markets before next planting cycle.
 > 3. Strengthen governance: audit state farmgate-price subsidy flows and establish third-party benchmarks for AZSF **intercompany subsidy dependence**.
 
-Note — recommendation #3 cites the `subsidy_dependency` risk flag from the Risk Registry page.
+Note — recommendation #3 cites risk flag `subsidy_dependency` from Risk Registry page.
 
 **Cost:** ~1200 in + ~240 out tokens per call (~ $0.01).
 
 ### 10.3 Board Deck Narration
 
-**Where:** automatically generated when opening Board Deck.
+**Where:** automatically generated when Board Deck opens.
 
-**What it does:** turns quantitative signals into one headline phrase like *"Food processing margin squeeze and agro yield shortfall drive five critical alerts across four companies"*.
+**What it does:** turns quantitative signals into one header phrase like *"Food processing margin squeeze and agro yield shortfall drive five critical alerts across four companies"*.
 
-Cached on (orgId, period) — one call per hour maximum.
+Cached on (orgId, period) — maximum one call per hour.
 
 ### 10.4 AI Auto Import Classifier
 
 **Where:** Admin → AI Auto Import → drag-drop file.
 
-**What it does:** smart-routing for any xlsx. Costs ~$0.13 for a full workbook (23 sheets / 14 entities in test). No new adapters — AI itself determines the type and chooses the right pipeline.
+**What it does:** smart-routing for any xlsx. Costs ~$0.13 per full workbook (23 sheets / 14 entities in test). No new adapters — AI itself determines type and selects correct pipeline.
 
 ---
 
@@ -667,7 +706,7 @@ Cached on (orgId, period) — one call per hour maximum.
 
 ![Audit Log](guide/screenshots/12-audit-log.webp)
 
-**Goal:** IFRS-compliant log of all significant changes. Stored for 365 days.
+**Purpose:** IFRS-compatible log of all significant changes. Retained for 365 days.
 
 ### What's written
 - All imports (filename, rows changed, status)
@@ -684,7 +723,7 @@ Cached on (orgId, period) — one call per hour maximum.
 - **Buttons:** Apply / Reset
 
 ### What to check
-- Table shows `ai_morning_brief_run`, `ai_news_summary_run`, `ai_variance_explainer_run`, `ai_board_deck_narration_run` records
+- Table shows records `ai_morning_brief_run`, `ai_news_summary_run`, `ai_variance_explainer_run`, `ai_board_deck_narration_run`
 - ACTOR column — `Admin` for manual actions
 - SUMMARY contains JSON with `model`, `inputTokens`, `outputTokens`, `language`, `fromCache`
 - Records sorted newest first
@@ -693,26 +732,26 @@ Cached on (orgId, period) — one call per hour maximum.
 
 ## 12. Self-check checklist
 
-Go through this list **now**, clicking in the live application. If something doesn't match — there's a bug somewhere, fix should be queued.
+Go through this list **now**, clicking in the live application. If something doesn't match — there's a bug somewhere, fix needs to be queued.
 
 ### Basic navigation
-- [ ] `/login` → login with admin credentials → redirect to `/budgeting`
+- [ ] `/login` → log in with admin credentials → redirect to `/budgeting`
 - [ ] Sidebar shows 6 items: Budgeting / Risk Terminal / Board Deck / Onboarding / Audit Log / Admin Tools + Settings
 - [ ] Theme switcher (sun/moon) in top right corner works
 
 ### Risk Terminal (`/budgeting/terminal`)
-- [ ] Panel 1: AZSEKER tree expands, shows 7 sub-cos with composite-score (59%, 65%, 83%, 80%, 15%, ...)
+- [ ] Panel 1: AZSEKER tree expands, showing 7 sub-cos with composite-score (59%, 65%, 83%, 80%, 15%, ...)
 - [ ] Panel 1: next to EDEN visible label `Sub`, next to AZSF — `Opq` + `NoD`
 - [ ] Panel 2: HeatMap shows 3 AZSEKER-* rows (MALT 63, EDEN 64, AZSF 62)
 - [ ] Panel 3: "Today's brief" loads, text contains mentions of "subsidy-regime" or "non-transparent" (this is AI Morning Brief with risk flags)
-- [ ] Click on red EDEN row cell, CUSTOMER_HHI column → Panel 3 shows formula `counterparty_hhi_customer`
+- [ ] Click on red cell EDEN row, CUSTOMER_HHI column → Panel 3 shows formula `counterparty_hhi_customer`
 - [ ] Click `Explain →` → in ~15s narrative + 3 recommendations appear
-- [ ] In recommendation #3 a phrase with **subsidy dependency** (or related) is cited
+- [ ] In recommendation #3 phrase with **subsidy dependency** is cited (or related)
 
 ### Board Deck (`/budgeting/board-deck?period=2026`)
-- [ ] AI headline is present (something like "Food processing margin squeeze...")
+- [ ] AI header is present (something like "Food processing margin squeeze...")
 - [ ] Holding composite score = **59** (at time of writing)
-- [ ] Scroll down → section **"Qualitative Risk Flags"** visible
+- [ ] Scroll down → **"Qualitative Risk Flags"** section visible
 - [ ] FLAGGED ENTITIES = **3**
 - [ ] AZSEKER-EDEN card → `Subsidy dependency` chip (amber)
 - [ ] AZSEKER-AZSF card → `Non-transparent structure` (rose) + `Data absence` (slate)
@@ -727,12 +766,12 @@ Go through this list **now**, clicking in the live application. If something doe
 
 ### Onboarding (`/budgeting/onboarding`)
 - [ ] 8 entity cards: AZSEKER (100%) + 7 sub-cos
-- [ ] PROMALT MMC = 30% PENDING — the only one with PENDING
+- [ ] PROMALT MMC = 30% PENDING — only one with PENDING
 - [ ] Rest ≥ 80% VERIFIED
 
 ### Admin Tools (`/budgeting/admin`)
 - [ ] Landing shows 16 cards in 4 groups
-- [ ] Cards `Import data` and `Indicator Health` marked with `Phase 7 M` badge
+- [ ] Cards `Data Import` and `Indicator Health` marked with `Phase 7 M` badge
 - [ ] All cards are clickable
 
 ### AI Auto Import (`/budgeting/admin/ai-import`)
@@ -746,7 +785,7 @@ Go through this list **now**, clicking in the live application. If something doe
 - [ ] Filter chips: All / External feed needed / Input gap / Formula edge case / Data not loaded / Rollup correct fix? / Code bug
 
 ### Companies Readiness (`/budgeting/admin/companies-readiness`)
-- [ ] Table of 6 entities sorts by Score asc (worst first)
+- [ ] Table of 6 entities sorted by Score asc (worst first)
 - [ ] HORIZON and PROMALT MMC at bottom with Thin tier
 - [ ] `Export CSV` button works
 
@@ -756,41 +795,41 @@ Go through this list **now**, clicking in the live application. If something doe
 
 ### Company Settings + Risk Registry (`/budgeting/admin/companies`)
 - [ ] At top Role & Status table with 8 entities
-- [ ] At bottom "Company settings" with expandable cards
-- [ ] Inside EDEN card — section **Risk Registry** with 8 categories
+- [ ] At bottom "Company Settings" with expandable cards
+- [ ] Inside EDEN card — **Risk Registry** section with 8 categories
 - [ ] Categories: Regulatory & compliance / Financial / Operational / Strategic / ESG / Market / Cyber / Reputational
-- [ ] Severity displayed as dots `● ● ●` (emerald / amber / rose)
+- [ ] Severity shown with dots `● ● ●` (emerald / amber / rose)
 
 ### Compliance & Legal (`/budgeting/terminal` HeatMap)
 - [ ] HeatMap has columns `AUDIT_CLOSED_PCT`, `AUDIT_MAJOR_OPEN`, `LEGAL_CASES_ACTIVE`
 - [ ] AZSF — all 3 cells **red** (51% closed / 6 Major / 29 cases)
 - [ ] CPC — `AUDIT_CLOSED_PCT` 🔴, `AUDIT_MAJOR_OPEN` 🟡, `LEGAL_CASES_ACTIVE` 🟡
 - [ ] EDEN — `LEGAL_CASES_ACTIVE` 🟡 (4 cases, all as plaintiff)
-- [ ] Click on red AZSF/AUDIT_MAJOR_OPEN cell → Variance Explainer cites Major findings
+- [ ] Click on red cell AZSF/AUDIT_MAJOR_OPEN → Variance Explainer cites Major findings
 
 ### Audit Log (`/budgeting/audit`)
-- [ ] Event table, newest at top
+- [ ] Event table, newest first
 - [ ] Records `ai_morning_brief_run`, `ai_variance_explainer_run` present
 - [ ] SUMMARY contains JSON with tokens + language + fromCache
 
 ### AI calls (via Audit Log)
 - [ ] At least one `ai_variance_explainer_run` in last 24 hours
 - [ ] `ai_morning_brief_run` exists for today
-- [ ] `ai_board_deck_narration_run` exists (generated when opening Board Deck)
+- [ ] `ai_board_deck_narration_run` exists (generated when Board Deck opens)
 - [ ] `fromCache: true` for repeated requests with same parameters
 
 ---
 
-## Where to go if something breaks
+## Where to go if something broke
 
 | Symptom | Where to look |
 |---|---|
-| Composite score didn't recalculate | `Risk Terminal → Recompute` button |
+| Composite score didn't recompute | `Risk Terminal → Recompute` button |
 | AI brief is old | Audit Log → find last `ai_morning_brief_run` → check `fromCache` |
-| HeatMap empty | `Indicator Health` → check UNKNOWN breakdown |
+| HeatMap is empty | `Indicator Health` → check UNKNOWN breakdown |
 | Import failed | `Admin → Drift Dashboard` → recent events |
 | Need to roll back import | `Admin → Data Archive` → select data type + year + reason → ALL |
-| Closed period accidentally | `Admin → Period Locks` → unlock + audit |
+| Locked period by mistake | `Admin → Period Locks` → unlock + audit |
 
 ---
 
