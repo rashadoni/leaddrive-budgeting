@@ -49,7 +49,9 @@ describe('POST /api/scenarios/[id]/narrative', () => {
     const body = await res.json()
     expect(res.status).toBe(200)
     expect(body.narrative).toBeNull()
-    expect(body.narrativeError).toContain('LLM down')
+    // Sanitized — narrativeError is a stable code, never the raw provider text.
+    expect(body.narrativeError).toBe('ai_unavailable')
+    expect(body.narrativeError).not.toContain('LLM down')
   })
 
   it('404 when the scenario is not found', async () => {

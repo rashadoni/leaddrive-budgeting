@@ -7,6 +7,10 @@ import { AI_MODEL, getAnthropicClient, hasAnthropicKey } from "@/lib/ai/client"
 import { buildKickoffUserMessage, buildSystemPrompt } from "@/lib/ai/prompts"
 import { collectSectionContext, type Section } from "@/lib/ai/section-context"
 import { AI_TOOLS, isCustomTool, runTool, type ToolName } from "@/lib/ai/tools"
+import { aiErrorBody } from "@/lib/ai/ai-error"
+import { getLogger } from "@/lib/log"
+
+const log = getLogger("api:ai-analytics")
 
 export const maxDuration = 120
 export const runtime = "nodejs"
@@ -234,8 +238,12 @@ export async function POST(req: NextRequest) {
         send({ type: "done" })
         controller.close()
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "AI request failed"
-        send({ type: "error", error: message })
+        // Sanitized — stream only a stable code, never the raw provider
+        // message (can embed billing text). Raw goes to the server log.
+        log.error("ai-analytics stream failed", {
+          err: err instanceof Error ? err.message : String(err),
+        })
+        send({ type: "error", error: aiErrorBody(err).code })
         controller.close()
       }
     },

@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireRole, isAuthError } from "@/lib/api-auth";
+import { aiErrorBody } from "@/lib/ai/ai-error";
 import { getCompanyScope } from "@/lib/rbac/company-scope";
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit";
 import { getLogger } from "@/lib/log";
@@ -352,11 +353,8 @@ export async function POST(
       err: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
-    return NextResponse.json(
-      {
-        error: `Forecast explainer failed: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      { status: 502 },
-    );
+    // Sanitized — never leak the raw provider message (can carry billing
+    // text like "credit balance too low … Plans & Billing") to the client.
+    return NextResponse.json(aiErrorBody(err), { status: 502 });
   }
 }

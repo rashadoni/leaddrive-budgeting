@@ -42,6 +42,7 @@ import { getLogger } from "@/lib/log"
 const log = getLogger("api:import:ai-auto-multi")
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
+import { classifyAiError } from "@/lib/ai/ai-error"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
 import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
 import {
@@ -296,10 +297,16 @@ export async function POST(request: NextRequest) {
       },
     )
   } catch (err) {
+    // Broad catch (AI classify + DB apply). Never return the raw provider
+    // message (can carry billing text); log it server-side and surface a
+    // generic admin message + a stable code (AI class when recognized).
+    const raw = err instanceof Error ? err.message : String(err)
+    log.error("multi-file import failed", { err: raw })
     return NextResponse.json(
       {
         ok: false,
-        error: `Multi-file import failed: ${err instanceof Error ? err.message : String(err)}`,
+        error: "Multi-file import failed. Check the server logs for details.",
+        code: classifyAiError(raw),
       },
       { status: 500 },
     )

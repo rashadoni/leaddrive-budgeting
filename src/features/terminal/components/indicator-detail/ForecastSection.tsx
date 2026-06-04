@@ -384,7 +384,8 @@ export function ForecastSection(props: {
           className="text-[10px] text-red-600 dark:text-red-400 mt-1"
           data-testid="forecast-explain-error"
         >
-          {t('indicatorDetail.forecastExplainFailed')}: {explain.message}
+          {/* Neutral, localized — never the raw provider error. */}
+          {t('aiUnavailable')}
         </p>
       )}
     </div>

@@ -415,7 +415,10 @@ describe("POST /api/indicators/values/[id]/forecast/explain — handler", () => 
     const res = await POST(req, paramsFor(IV_ID));
     expect(res.status).toBe(502);
     const body = await res.json();
-    expect(body.error).toContain("Forecast explainer failed");
+    // Sanitized — stable code only, NEVER the raw provider message.
+    expect(body.error).toBe("ai_unavailable");
+    expect(body.code).toBeDefined();
+    expect(JSON.stringify(body)).not.toContain("max_tokens");
   });
 
   it("returns 400 on malformed JSON body", async () => {

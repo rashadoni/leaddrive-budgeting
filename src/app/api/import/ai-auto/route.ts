@@ -45,6 +45,7 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
+import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractWorkbookMeta } from "@/lib/onboarding/ai-import/sheet-meta-extractor"
 import { classifySheets } from "@/lib/onboarding/ai-import/sheet-classifier"
 import {
@@ -162,13 +163,9 @@ export async function POST(request: NextRequest) {
       AI_MODEL,
     )
   } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Classifier failed: ${err instanceof Error ? err.message : String(err)}`,
-      },
-      { status: 500 },
-    )
+    // Sanitized — the classifier is an Anthropic call; never leak the raw
+    // provider message (can carry billing text) to the import screen.
+    return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
   }
 
   // Record token spend

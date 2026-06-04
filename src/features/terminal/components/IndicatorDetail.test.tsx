@@ -533,9 +533,10 @@ describe("IndicatorDetail forecast explain panel (Phase C2 v2)", () => {
     await waitFor(() => {
       expect(screen.getByTestId("forecast-explain-error")).toBeTruthy();
     });
-    expect(
-      screen.getByTestId("forecast-explain-error").textContent,
-    ).toContain("max_tokens");
+    // Neutral, localized fallback — never the raw provider message.
+    const errText = screen.getByTestId("forecast-explain-error").textContent ?? "";
+    expect(errText).not.toContain("max_tokens");
+    expect(errText.length).toBeGreaterThan(0);
   });
 
   it("button is disabled + shows 'Explaining…' during in-flight request", async () => {

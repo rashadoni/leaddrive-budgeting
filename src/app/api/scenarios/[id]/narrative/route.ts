@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireAuth, isAuthError } from '@/lib/api-auth'
 import { hasAnthropicKey } from '@/lib/ai/client'
+import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage, type CrisisBriefWorstHit } from '@/lib/risk/scenario-narrative'
 
 interface NarrativeBody {
@@ -67,10 +68,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     })
     return NextResponse.json({ narrative: brief.narrative, mitigations: brief.mitigations, narrativeError: null })
   } catch (err) {
+    // Sanitized — narrativeError carries only a stable code, never the raw
+    // provider message (can embed billing text).
     return NextResponse.json({
       narrative: null,
       mitigations: [],
-      narrativeError: err instanceof Error ? err.message : String(err),
+      narrativeError: aiErrorBody(err).code,
     })
   }
 }

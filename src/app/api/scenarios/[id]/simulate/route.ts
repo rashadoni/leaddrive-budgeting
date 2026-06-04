@@ -27,6 +27,7 @@ import { createPrismaDataSource } from '@/lib/risk/recompute'
 import { hasShock, readShock } from '@/lib/risk/scenario-shock'
 import { resolveFeedShock, resolveFeedContext, FEED_STALE_DAYS, type FeedSnapshot } from '@/lib/risk/scenario-feed-context'
 import { simulateByDrivers } from '@/lib/risk/scenario-rederive'
+import { aiErrorBody } from '@/lib/ai/ai-error'
 import { runCrisisBrief, type BriefLanguage } from '@/lib/risk/scenario-narrative'
 import { hasAnthropicKey } from '@/lib/ai/client'
 
@@ -212,7 +213,8 @@ export async function GET(
         narrative = brief.narrative
         mitigations = brief.mitigations
       } catch (err) {
-        narrativeError = err instanceof Error ? err.message : String(err)
+        // Sanitized — stable code only, never the raw provider message.
+        narrativeError = aiErrorBody(err).code
       }
     } else if (wantNarrative) {
       narrativeError = 'No Anthropic API key configured — narrative skipped.'

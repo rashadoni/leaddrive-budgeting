@@ -16,6 +16,18 @@ type ToolChip = {
   error?: string
 }
 
+// Map the sanitized AI error codes (from /lib/ai/ai-error) to neutral,
+// user-facing copy — never expose the raw provider message / billing text.
+// Unknown values (e.g. "Conversation limit reached") pass through unchanged.
+const AI_ERROR_MESSAGES: Record<string, string> = {
+  ai_unavailable: "AI is temporarily unavailable. Please try again shortly.",
+  ai_credits: "AI is temporarily unavailable. Please try again shortly.",
+  ai_rate_limit: "AI is busy right now. Please try again in a moment.",
+}
+function displayAiError(e: string): string {
+  return AI_ERROR_MESSAGES[e] ?? e
+}
+
 type Message = {
   role: "user" | "assistant"
   content: string
@@ -442,7 +454,7 @@ export function AIAnalyticsPanel({
           )}
           {error && (
             <div className="text-xs rounded-md border border-destructive/40 bg-destructive/10 text-destructive p-2">
-              {error}
+              {displayAiError(error)}
             </div>
           )}
         </div>
