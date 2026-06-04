@@ -787,6 +787,7 @@ export function WhatIfPreviewPanel() {
                                 </div>
                                 <div className="text-[9px] font-mono text-gray-400 truncate">
                                   {c.indicatorCode}
+                                  {c.unit ? ` · ${c.unit}` : ""}
                                 </div>
                               </div>
                               {/* Baseline: status dot + value */}
