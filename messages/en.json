@@ -3413,6 +3413,27 @@
       "outOfRange": "Outside the allowed range ({min}–{max}).",
       "notANumber": "Enter a number.",
       "noResolvableEntity": "Inline entry is unavailable for these entities — use AI Import or the data-entry form above."
+    },
+    "financialEntry": {
+      "title": "Enter the missing financial figure",
+      "subtitle": "Save the year-end value and the indicators recompute immediately — no full Excel import needed.",
+      "company": "Company",
+      "figure": "Figure",
+      "value": "Value",
+      "year": "Financial year",
+      "yearHint": "Enter the year-end balance. The indicator recomputes for the selected year.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved — indicators recomputed.",
+      "savedRecomputed": "Saved · {ok}/{total} indicators recomputed.",
+      "savedUnlocks": "Unlocks: {indicators}",
+      "confirmTitle": "Value is outside the typical range",
+      "confirmSave": "Save anyway",
+      "cancel": "Cancel",
+      "error": "Could not save: {message}",
+      "outOfRange": "Outside the allowed range ({min}–{max}).",
+      "notANumber": "Enter a number.",
+      "noResolvableEntity": "Inline entry is unavailable for these entities — use AI Import above."
     }
   },
   "adminSourceRegistry": {

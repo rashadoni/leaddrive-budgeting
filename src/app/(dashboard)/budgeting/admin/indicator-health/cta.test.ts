@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   MANUAL_METRICS,
   resolveManualMetric,
+  resolveFinancialVariable,
   buildCtas,
   type GapForCta,
 } from "./cta"
@@ -37,6 +38,35 @@ describe("resolveManualMetric", () => {
     expect(resolveManualMetric(null)).toBeNull()
     // a derived suffix whose base is also not in the catalog → still null
     expect(resolveManualMetric("inventory_stdev")).toBeNull()
+  })
+})
+
+describe("resolveFinancialVariable", () => {
+  it("maps the BARE formula variable to the financial variable", () => {
+    // This is what the health scan actually emits: expr-eval throws
+    // "undefined variable: inventory" for `cogs / inventory`, and
+    // extractMissingVariable regexes out the bare `inventory`. The inline
+    // form MUST attach on this string (verified live — 48 such gaps exist).
+    expect(resolveFinancialVariable("inventory")).toBe("inventory")
+  })
+
+  it("also maps the qualified resolver input key (robustness)", () => {
+    // The seed declares requiredInputs: ["...", "balanceSheetLine.inventory"];
+    // accept that too in case a code path surfaces the qualified key.
+    expect(resolveFinancialVariable("balanceSheetLine.inventory")).toBe("inventory")
+  })
+
+  it("returns null for unrelated vars and null input", () => {
+    expect(resolveFinancialVariable("budgetLine.cogs")).toBeNull()
+    expect(resolveFinancialVariable("harvest_tons")).toBeNull()
+    expect(resolveFinancialVariable(null)).toBeNull()
+  })
+
+  it("is disjoint from resolveManualMetric (no var resolves to both forms)", () => {
+    // A gap must render at most one inline form: "inventory" is financial-only
+    // (not an operational metric); "harvest_tons" is operational-only.
+    expect(resolveManualMetric("inventory")).toBeNull()
+    expect(resolveFinancialVariable("harvest_tons")).toBeNull()
   })
 })
 

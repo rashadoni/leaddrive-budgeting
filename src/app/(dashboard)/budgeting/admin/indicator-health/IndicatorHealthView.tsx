@@ -3,8 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslations, useLocale } from "next-intl"
 import Link from "next/link"
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Search, X } from "lucide-react"
-import { buildCtas, resolveManualMetric } from "./cta"
+import { buildCtas, resolveManualMetric, resolveFinancialVariable } from "./cta"
 import { InlineFactEntry } from "./InlineFactEntry"
+import { FinancialVariableEntry } from "./FinancialVariableEntry"
 
 /** Flatten a roots-with-children company tree (the /api/companies shape) into a
  *  flat code→id map so the inline entry can resolve a gap row's codes to ids. */
@@ -789,6 +790,14 @@ function Row({
             {resolveManualMetric(g.missingVariable) && (
               <InlineFactEntry
                 metric={resolveManualMetric(g.missingVariable)!}
+                affectedCodes={g.affectedEntities}
+                companyIdByCode={companyIdByCode}
+                onSaved={onSaved}
+              />
+            )}
+            {resolveFinancialVariable(g.missingVariable) && (
+              <FinancialVariableEntry
+                variable={resolveFinancialVariable(g.missingVariable)!}
                 affectedCodes={g.affectedEntities}
                 companyIdByCode={companyIdByCode}
                 onSaved={onSaved}

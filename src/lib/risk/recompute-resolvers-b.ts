@@ -597,7 +597,11 @@ export const counterpartyHhiResolver: NamespaceResolver = {
  * No code-pattern matching — CoA numbering varies by company and CoA version.
  * Names are the only reliable discriminator across schemas.
  */
-function bsIsInventoryLine(_accountCode: string, accountName: string): boolean {
+// Exported (additive — no logic change) so the manual financial-entry route
+// (`/api/budgeting/financial-variable`) can reuse the SAME inventory-name
+// heuristic to detect an existing inventory line under a different CoA before a
+// manual write, preventing a silent double-count. Single source of truth.
+export function bsIsInventoryLine(_accountCode: string, accountName: string): boolean {
   const name = accountName.toLowerCase();
   return (
     name.includes('inventory') ||

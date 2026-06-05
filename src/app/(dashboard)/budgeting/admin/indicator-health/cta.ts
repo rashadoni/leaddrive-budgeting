@@ -1,4 +1,5 @@
 import { OPERATIONAL_METRIC_RULES } from "@/lib/risk/metric-validation-rules"
+import { resolveFinancialVariableByInput } from "@/lib/risk/financial-variable-rules"
 
 /** A remediation call-to-action: which admin tool resolves the gap + its label. */
 export interface CtaTarget {
@@ -36,6 +37,19 @@ export const MANUAL_METRICS: ReadonlySet<string> = new Set(
 export function resolveManualMetric(missingVar: string | null): string | null {
   if (!missingVar) return null
   return MANUAL_METRICS.has(missingVar) ? missingVar : null
+}
+
+/** Resolve a missing formula variable to a hand-enterable FINANCIAL statement
+ *  variable (e.g. `"balanceSheetLine.inventory"` → `"inventory"`), or `null`.
+ *
+ *  The financial counterpart to `resolveManualMetric`: when this matches, the
+ *  expanded row renders the inline `FinancialVariableEntry` form, which writes
+ *  the statement figure via `POST /api/budgeting/financial-variable` (no
+ *  separate data-entry page — the figure is a balance-sheet line, not an
+ *  operational KPI). Direct match on the resolver input key only. */
+export function resolveFinancialVariable(missingVar: string | null): string | null {
+  const rule = resolveFinancialVariableByInput(missingVar)
+  return rule ? rule.variable : null
 }
 
 /** Build the remediation CTAs for one gappy indicator.

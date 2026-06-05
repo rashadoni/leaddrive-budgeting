@@ -504,6 +504,28 @@ export type AuditEventInput =
       };
     }
   | {
+      // Phase 7.P — admin entered/updated a manual FINANCIAL statement figure
+      // (e.g. period-end inventory) through the Indicator-Health inline form
+      // (`POST /api/budgeting/financial-variable`). Writes a BalanceSheetLine
+      // the recompute resolver reads; metadata captures variable + year +
+      // value + the plan/account it landed on so a reviewer can replay it.
+      action: 'financial_variable_create' | 'financial_variable_update';
+      entityType: 'BalanceSheetLine';
+      entityId: string;
+      metadata: {
+        companyId: string;
+        companyCode?: string;
+        variable: string;
+        year: number;
+        value: number;
+        unit?: string;
+        planId?: string;
+        accountId?: string;
+        sourceNote?: string;
+        previousValue?: number;
+      };
+    }
+  | {
       // Phase 7.H F4.v2.3 — admin entered/updated/deleted a manual ESG
       // disclosure override. When the create lands, the next recompute
       // flips the IndicatorValue.valueSource from 'modeled_generic' to

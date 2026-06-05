@@ -3413,6 +3413,27 @@
       "outOfRange": "İcazə verilən diapazondan kənar ({min}–{max}).",
       "notANumber": "Rəqəm daxil edin.",
       "noResolvableEntity": "Bu qurumlar üçün sətiriçi daxiletmə mövcud deyil — yuxarıdakı AI idxal və ya məlumat daxiletmə formasından istifadə edin."
+    },
+    "financialEntry": {
+      "title": "Çatışmayan maliyyə göstəricisini daxil edin",
+      "subtitle": "İl sonu dəyərini saxlayın — indikatorlar dərhal yenidən hesablanır, tam Excel idxalına ehtiyac yoxdur.",
+      "company": "Şirkət",
+      "figure": "Göstərici",
+      "value": "Dəyər",
+      "year": "Maliyyə ili",
+      "yearHint": "İl sonu qalığını daxil edin. İndikator seçilmiş il üçün yenidən hesablanır.",
+      "save": "Saxla",
+      "saving": "Saxlanılır…",
+      "saved": "Saxlanıldı — indikatorlar yenidən hesablandı.",
+      "savedRecomputed": "Saxlanıldı · {ok}/{total} indikator yenidən hesablandı.",
+      "savedUnlocks": "Aktivləşdirir: {indicators}",
+      "confirmTitle": "Dəyər tipik diapazondan kənardadır",
+      "confirmSave": "Yenə də saxla",
+      "cancel": "Ləğv et",
+      "error": "Saxlamaq mümkün olmadı: {message}",
+      "outOfRange": "İcazə verilən diapazondan kənar ({min}–{max}).",
+      "notANumber": "Rəqəm daxil edin.",
+      "noResolvableEntity": "Bu qurumlar üçün sətiriçi daxiletmə mövcud deyil — yuxarıdakı AI idxaldan istifadə edin."
     }
   },
   "adminSourceRegistry": {
