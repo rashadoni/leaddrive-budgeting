@@ -51,23 +51,29 @@ const ENTITY_CONFIGS: Record<string, EntityConfig> = {
     ],
   },
 
+  // "Fakt məlumatlar" (realized figures). The legacy BudgetActual table is
+  // empty in this deployment — actuals arrive via import as the matching-year
+  // ACTUALS plan's BudgetLines (Y-series), not as manual BudgetActual records.
+  // So this source reads the budgetLine model; the plan is resolved to the
+  // Actuals plan in executeBudgetReport (a budget plan → its matching-year
+  // actuals via Y4; an actuals plan → itself). For an actuals plan a line's
+  // `plannedAmount` IS the realized figure, surfaced here as "Actual Amount".
   budgetActuals: {
-    model: "budgetActual",
+    model: "budgetLine",
     hasPlanId: true,
     hasYearMonth: false,
     fields: [
-      { name: "category", label: "Category", type: "string" },
-      { name: "department", label: "Department", type: "string" },
       { name: "lineType", label: "Line Type", type: "string" },
-      { name: "actualAmount", label: "Actual Amount", type: "number" },
-      { name: "expenseDate", label: "Expense Date", type: "string" },
-      { name: "description", label: "Description", type: "string" },
-      { name: "createdAt", label: "Created", type: "date" },
+      { name: "department", label: "Department", type: "string" },
+      { name: "plannedAmount", label: "Actual Amount", type: "number" },
+      { name: "forecastAmount", label: "Forecast Amount", type: "number" },
+      { name: "notes", label: "Notes", type: "string" },
     ],
     relations: [
       { name: "plan", model: "budgetPlan", fields: ["name", "year"] },
       { name: "costType", model: "budgetCostType", fields: ["key", "label"] },
       { name: "budgetDept", model: "budgetDepartment", fields: ["key", "label"] },
+      { name: "account", model: "chartOfAccount", fields: ["code", "name"] },
     ],
   },
 
@@ -355,7 +361,27 @@ export async function executeBudgetReport(orgId: string, config: BudgetReportCon
   // `modelDispatch[entityConfig.model]` casts.
   const modelDispatch = prisma as unknown as PrismaModelDispatch
 
-  const where = buildWhere(orgId, config.planId, entityConfig, config.filters)
+  // "Fakt məlumatlar" reads the realized figures from the ACTUALS plan's
+  // BudgetLines. Resolve the requested plan to the actuals plan: a budget plan
+  // → its matching-year actuals (Y4); an actuals plan → itself. (No-op for the
+  // other entities.)
+  let resolvedPlanId = config.planId
+  if (config.entityType === "budgetActuals" && config.planId) {
+    const plan = await prisma.budgetPlan.findFirst({
+      where: { id: config.planId, organizationId: orgId },
+      select: { kind: true, year: true },
+    })
+    if (plan?.kind === "budget") {
+      const actualsPlan = await prisma.budgetPlan.findFirst({
+        where: { organizationId: orgId, year: plan.year, kind: "actual", deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      })
+      if (actualsPlan) resolvedPlanId = actualsPlan.id
+    }
+  }
+
+  const where = buildWhere(orgId, resolvedPlanId, entityConfig, config.filters)
   // Soft-delete tables (2026-05-31): exclude archived rows or re-imported
   // data double-counts in custom reports. Measured on live data: budgetLine
   // ×6.27, balanceSheetLine ×1.92, cashFlowEntry ×1.98. Applied here (after

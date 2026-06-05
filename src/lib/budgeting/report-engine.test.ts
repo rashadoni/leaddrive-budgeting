@@ -176,6 +176,17 @@ describe("getEntityConfigs", () => {
     expect(configs).toHaveProperty("budgetLines")
     expect(configs).toHaveProperty("budgetActuals")
   })
+
+  it("budgetActuals (Fakt) reads realized figures from budgetLine, not the empty BudgetActual table", () => {
+    // The legacy BudgetActual table is empty (imported actuals land as the
+    // actuals-plan's BudgetLines). So "Fakt məlumatlar" reads budgetLine, with
+    // plannedAmount surfaced as "Actual Amount". Guards against reverting to the
+    // dead `budgetActual` model (which made the Report Builder show "no data").
+    const cfg = getEntityConfigs().budgetActuals
+    expect(cfg.model).toBe("budgetLine")
+    const actualField = cfg.fields.find((f) => f.label === "Actual Amount")
+    expect(actualField?.name).toBe("plannedAmount")
+  })
 })
 
 describe("parseNumOrDate", () => {
