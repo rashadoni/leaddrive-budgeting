@@ -272,10 +272,15 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
   const totalExpenseActual = totalDirectActual + totalIndirectActual
   // P&L: Gross Profit = Revenue - Direct Costs
   const grossProfitPlanned = totalRevenuePlanned - totalDirectPlanned
-  const grossProfitActual = totalRevenueActual - totalDirectActual
+  // Actual GP/EBITDA derive from the analytics AGGREGATE (auto + manual + Y4
+  // join, and the FULL expense actual incl. OpEx categories not yet mapped
+  // per-İcmal-code), not the per-category row sums — otherwise an unmapped
+  // OpEx section reads 0 and EBITDA reads GP-minus-0 (falsely positive). This
+  // keeps the GP/EBITDA blocks + section headers consistent with the KPI cards.
+  const grossProfitActual = (analytics?.totalRevenueActual || totalRevenueActual) - (analytics?.totalCOGSActual || totalDirectActual)
   // EBITDA = Gross Profit - Indirect Costs
   const opProfitPlanned = grossProfitPlanned - totalIndirectPlanned
-  const opProfitActual = grossProfitActual - totalIndirectActual
+  const opProfitActual = grossProfitActual - (analytics?.totalExpenseActual || totalIndirectActual)
 
   // KPI-card actuals (2026-06-04). The per-category `byCategory[].actual` is 0
   // when the plan's realized figures aren't keyed to the BUDGET categories:
@@ -693,8 +698,8 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
       )}
 
       {/* P&L Income Statement — no COGS (allocated costs shown in Profitability module) */}
-      {renderSection(t("plRevenue"), revRows, "auto-revenue", <DollarSign className="h-4 w-4" />, "bg-primary/[0.04]", true, totalRevenuePlanned, totalRevenueActual, false, revGrouped)}
-      {renderSection(t("plSectionDirectCosts"), directExpRows, "auto-direct", <Settings2 className="h-4 w-4" />, "bg-orange-50/60 dark:bg-orange-950/20", false, 0, 0, true, directGrouped)}
+      {renderSection(t("plRevenue"), revRows, "auto-revenue", <DollarSign className="h-4 w-4" />, "bg-primary/[0.04]", true, totalRevenuePlanned, totalRevenueActual, false, revGrouped, cardRevenueActual)}
+      {renderSection(t("plSectionDirectCosts"), directExpRows, "auto-direct", <Settings2 className="h-4 w-4" />, "bg-orange-50/60 dark:bg-orange-950/20", false, 0, 0, true, directGrouped, cardDirectActual)}
 
       {/* Gross Profit = Revenue - Direct Costs */}
       {/* Phase 3.3 ext — id targets Waterfall "Gross Profit" bar click. */}
@@ -732,7 +737,7 @@ export function PLTab({ planId, companyId }: { planId: string; companyId?: strin
         </div>
       </div>
 
-      {renderSection(t("plSectionOverheadExpenses"), indirectExpRows, "auto-indirect", <Banknote className="h-4 w-4" />, "bg-amber-50/60 dark:bg-amber-950/20", false, 0, 0, true, indirectGrouped)}
+      {renderSection(t("plSectionOverheadExpenses"), indirectExpRows, "auto-indirect", <Banknote className="h-4 w-4" />, "bg-amber-50/60 dark:bg-amber-950/20", false, 0, 0, true, indirectGrouped, cardIndirectActual)}
 
       {/* EBITDA */}
       {/* Phase 3.3 ext — id targets Waterfall "EBITDA" bar click. */}

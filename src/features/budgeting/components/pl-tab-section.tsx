@@ -97,7 +97,7 @@ export function makePlSection(ctx: PlSectionCtx) {
     )
   }
 
-  const renderSection = (title: string, rawRows: typeof byCategory, sectionId: string, sectionIcon: React.ReactNode, sectionColor: string, isCalculated = false, calcPlanned = 0, calcActual = 0, isExpense = false, rawGrouped?: { groups: { parent: string; children: typeof byCategory }[]; standalone: typeof byCategory }) => {
+  const renderSection = (title: string, rawRows: typeof byCategory, sectionId: string, sectionIcon: React.ReactNode, sectionColor: string, isCalculated = false, calcPlanned = 0, calcActual = 0, isExpense = false, rawGrouped?: { groups: { parent: string; children: typeof byCategory }[]; standalone: typeof byCategory }, aggregateActual?: number) => {
     const isCollapsed = collapsed.has(sectionId)
     // Apply materiality filter if enabled
     const rows = plShowMaterialOnly ? rawRows.filter(r => isPlMaterial(r)) : rawRows
@@ -108,7 +108,11 @@ export function makePlSection(ctx: PlSectionCtx) {
       standalone: plShowMaterialOnly ? rawGrouped.standalone.filter(r => isPlMaterial(r)) : rawGrouped.standalone,
     } : rawGrouped
     const secPlanned = isCalculated ? calcPlanned : rows.reduce((s, r) => s + r.planned, 0)
-    const secActual = isCalculated ? calcActual : rows.reduce((s, r) => s + r.actual, 0)
+    // Prefer the caller-supplied analytics aggregate (complete; matches the
+    // GP/EBITDA blocks + KPI cards) over the per-category row sum, which
+    // under-counts sections whose budget codes don't all map to the actuals
+    // (e.g. OpEx). Keeps the section header consistent with EBITDA.
+    const secActual = aggregateActual ?? (isCalculated ? calcActual : rows.reduce((s, r) => s + r.actual, 0))
     const secVariance = isExpense ? secPlanned - secActual : secActual - secPlanned
     const secExecPct = execPct(secActual, secPlanned)
     const sectionTotal = secPlanned // for % of total per row
