@@ -377,24 +377,34 @@ export function ComparisonTab() {
                   })}
                 </div>
 
-                {/* Delta between first two plans */}
+                {/* Delta of the first (baseline) plan vs EACH other selected plan
+                    — so a 3-/4-plan comparison shows all deltas, not just the
+                    first pair. Baseline = first selected (the focus year). */}
                 {planSummaries.length >= 2 && (
                   <div className="mt-4 pt-4 border-t border-border/50">
-                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-semibold">{t("compDeltaLabel")}: {planSummaries[0].name} vs {planSummaries[1].name}</div>
-                    {(() => {
-                      const delta = planSummaries[0].planned - planSummaries[1].planned
-                      const deltaPct = planSummaries[1].planned > 0 ? ((delta / planSummaries[1].planned) * 100) : 0
-                      return (
-                        <div className="flex items-center gap-3">
-                          <span className={`text-lg font-bold font-mono ${delta >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-                            {delta >= 0 ? "+" : ""}{fmtK(delta)} ₼
-                          </span>
-                          <Badge variant={delta >= 0 ? "default" : "destructive"} className="text-xs">
-                            {delta >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%
-                          </Badge>
-                        </div>
-                      )
-                    })()}
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-semibold">{t("compDeltaLabel")}: {planSummaries[0].name}</div>
+                    <div className="space-y-1.5">
+                      {planSummaries.slice(1).map((ps) => {
+                        const delta = planSummaries[0].planned - ps.planned
+                        const deltaPct = ps.planned > 0 ? ((delta / ps.planned) * 100) : 0
+                        return (
+                          <div key={ps.id} className="flex items-center justify-between gap-3">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ps.color }} />
+                              vs {ps.name}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-base font-bold font-mono ${delta >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+                                {delta >= 0 ? "+" : ""}{fmtK(delta)} ₼
+                              </span>
+                              <Badge variant={delta >= 0 ? "default" : "destructive"} className="text-xs">
+                                {delta >= 0 ? "+" : ""}{deltaPct.toFixed(1)}%
+                              </Badge>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </CardContent>
