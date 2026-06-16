@@ -66,6 +66,25 @@ function makeFakePrisma(opts: { initialRows?: FakeBsRow[] } = {}): PrismaClient 
         }
         return { count }
       }),
+      count: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        const w = args.where as {
+          organizationId?: string
+          planId?: { in: string[] }
+          companyId?: { in: string[] }
+          deletedAt?: null
+          year?: { in: number[] }
+        }
+        let n = 0
+        for (const r of bs) {
+          if (w.organizationId && r.organizationId !== w.organizationId) continue
+          if (w.planId && !w.planId.in.includes(r.planId)) continue
+          if (w.companyId && (r.companyId == null || !w.companyId.in.includes(r.companyId))) continue
+          if (w.deletedAt === null && r.deletedAt !== null) continue
+          if (w.year && !w.year.in.includes(r.year)) continue
+          n += 1
+        }
+        return n
+      }),
       deleteMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
         const w = args.where as {
           organizationId?: string

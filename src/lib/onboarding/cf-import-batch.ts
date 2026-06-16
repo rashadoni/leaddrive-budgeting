@@ -19,6 +19,7 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { assertNoCollateralDeletion } from "./collateral-guard"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger for the
@@ -172,6 +173,22 @@ export async function runCashFlowBatch(
         entityPrefixes.length > 0
           ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
           : {}
+      // Collateral-deletion guard: count live rows within THIS import's own
+      // footprint (the source + entity prefixes the INSERTED rows carry)
+      // before archiving. CashFlowEntry has no companyId/planId — the entity
+      // lives in sourceId — so the footprint IS source + entityScope + year.
+      // If a future edit drops entityScope from the archive WHERE, archived
+      // would exceed this count and the guard trips (the 2026-05-31 sibling-
+      // entity wipe regressing).
+      const footprintLiveCount = await tx.cashFlowEntry.count({
+        where: {
+          organizationId: plan.organizationId,
+          source: plan.sourceTag,
+          ...entityScope,
+          deletedAt: null,
+          ...yearFilter,
+        },
+      })
       if (plan.purgeArchivedFirst) {
         const purgeResult = await tx.cashFlowEntry.deleteMany({
           where: {
@@ -196,6 +213,12 @@ export async function runCashFlowBatch(
         data: stamp as unknown as Prisma.CashFlowEntryUpdateManyMutationInput,
       })
       archived = archiveResult.count
+      assertNoCollateralDeletion({
+        table: "CashFlowEntry",
+        archivedCount: archived,
+        footprintLiveCount,
+        footprint: `source=${plan.sourceTag} entities=[${entityPrefixes.join(",")}]`,
+      })
       log.info("archive phase", { archived, purged })
       if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
         log.warn("archive/insert mismatch — check sourceTag is entity-specific", {

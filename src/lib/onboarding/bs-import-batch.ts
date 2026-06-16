@@ -34,6 +34,7 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { assertNoCollateralDeletion } from "./collateral-guard"
 import { getLogger } from "@/lib/log"
 
 // Phase 8 D4 continuation (2026-05-28) — structured logger for the
@@ -202,6 +203,24 @@ export async function runBalanceSheetBatch(
       ]
       const companyScope =
         incomingCompanyIds.length > 0 ? { companyId: { in: incomingCompanyIds } } : {}
+      // Collateral-deletion guard: count live rows within THIS import's own
+      // footprint (the plans + companies the INSERTED rows carry) before
+      // archiving. `plan.planIds` (used by the archive WHERE) is caller-
+      // supplied and may be broader than the rows; deriving the footprint
+      // from the rows themselves makes the post-archive check non-circular.
+      const footprintPlanIds = [...new Set(plan.rows.map((r) => r.planId))]
+      const footprintLiveCount =
+        footprintPlanIds.length === 0
+          ? 0
+          : await tx.balanceSheetLine.count({
+              where: {
+                organizationId: plan.organizationId,
+                planId: { in: footprintPlanIds },
+                ...companyScope,
+                deletedAt: null,
+                ...yearFilter,
+              },
+            })
       if (plan.purgeArchivedFirst) {
         const purgeResult = await tx.balanceSheetLine.deleteMany({
           where: {
@@ -226,6 +245,12 @@ export async function runBalanceSheetBatch(
         data: stamp as unknown as Prisma.BalanceSheetLineUpdateManyMutationInput,
       })
       archived = archiveResult.count
+      assertNoCollateralDeletion({
+        table: "BalanceSheetLine",
+        archivedCount: archived,
+        footprintLiveCount,
+        footprint: `plans=[${footprintPlanIds.join(",")}] companies=[${incomingCompanyIds.join(",")}]`,
+      })
       log.info("archive phase", { archived, purged })
       if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
         log.warn("archive/insert mismatch — check all entities are in one batch", {

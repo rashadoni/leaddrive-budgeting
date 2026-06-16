@@ -10,6 +10,7 @@ import {
   type KpiImportRow,
 } from "./kpi-import-batch"
 import { buildReconKey, type ReconciliationKey } from "./reconciliation"
+import { CollateralDeletionError } from "./collateral-guard"
 import type { PrismaClient } from "@prisma/client"
 
 interface FakeKpiRow {
@@ -33,19 +34,41 @@ function makeFakePrisma(opts: { initialRows?: FakeKpiRow[] } = {}): PrismaClient
         const w = args.where as {
           organizationId?: string
           companyId?: { in: string[] }
-          date?: { gte?: Date; lte?: Date }
+          metric?: { in: string[] }
+          date?: { gte?: Date; lte?: Date; in?: Date[] }
         }
         let count = 0
         for (let i = kpi.length - 1; i >= 0; i--) {
           const r = kpi[i]
           if (w.organizationId && r.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(r.companyId)) continue
+          if (w.metric && !w.metric.in.includes(r.metric)) continue
           if (w.date?.gte && r.date < w.date.gte) continue
           if (w.date?.lte && r.date > w.date.lte) continue
+          if (w.date?.in && !w.date.in.some((d) => d.getTime() === r.date.getTime())) continue
           kpi.splice(i, 1)
           count += 1
         }
         return { count }
+      }),
+      count: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        const w = args.where as {
+          organizationId?: string
+          companyId?: { in: string[] }
+          metric?: { in: string[] }
+          date?: { gte?: Date; lte?: Date; in?: Date[] }
+        }
+        let n = 0
+        for (const r of kpi) {
+          if (w.organizationId && r.organizationId !== w.organizationId) continue
+          if (w.companyId && !w.companyId.in.includes(r.companyId)) continue
+          if (w.metric && !w.metric.in.includes(r.metric)) continue
+          if (w.date?.gte && r.date < w.date.gte) continue
+          if (w.date?.lte && r.date > w.date.lte) continue
+          if (w.date?.in && !w.date.in.some((d) => d.getTime() === r.date.getTime())) continue
+          n += 1
+        }
+        return n
       }),
       createMany: vi.fn(async (args: { data: ReadonlyArray<Partial<FakeKpiRow>> }) => {
         for (const d of args.data) {
@@ -65,12 +88,14 @@ function makeFakePrisma(opts: { initialRows?: FakeKpiRow[] } = {}): PrismaClient
         const w = args.where as {
           organizationId?: string
           companyId?: { in: string[] }
+          metric?: { in: string[] }
           date?: { gte?: Date; lte?: Date }
         }
         return kpi
           .filter((r) => {
             if (w.organizationId && r.organizationId !== w.organizationId) return false
             if (w.companyId && !w.companyId.in.includes(r.companyId)) return false
+            if (w.metric && !w.metric.in.includes(r.metric)) return false
             if (w.date?.gte && r.date < w.date.gte) return false
             if (w.date?.lte && r.date > w.date.lte) return false
             return true
@@ -164,6 +189,53 @@ describe("runKpiBatch — round-trip", () => {
     await runKpiBatch(prisma, plan)
     // 2025 row survived; 2026 row added.
     expect(prisma.__kpi).toHaveLength(2)
+  })
+
+  it("re-importing ONE metric does NOT wipe a sibling metric in the same company+year (2026-06-16 fix)", async () => {
+    // The bug: the reset deleted EVERY metric for the company in the date
+    // window. Re-importing area_hectares would silently wipe yield_per_ha
+    // (hard-delete, irreversible). The fix scopes the delete to the rows'
+    // own metrics.
+    const prisma = makeFakePrisma({
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", metric: "area_hectares", date: new Date("2026-06-30"), value: 1200, unit: null, source: null },
+        { organizationId: "org_1", companyId: "c_azsf", metric: "yield_per_ha", date: new Date("2026-06-30"), value: 4.0, unit: null, source: null },
+      ],
+    })
+    // Re-import ONLY area_hectares for 2026.
+    const result = await runKpiBatch(prisma, planFor([F("area_hectares", 1500, "2026-12-31")]))
+    expect(result.metrics.resetDeleted).toBe(1) // only the area_hectares row
+    expect(result.reconciliation.verdict).toBe("green")
+    // The sibling metric survived.
+    expect(prisma.__kpi.filter((r) => r.metric === "yield_per_ha")).toHaveLength(1)
+    expect(prisma.__kpi.filter((r) => r.metric === "area_hectares")).toHaveLength(1)
+  })
+
+  it("zero-row import is a safe no-op — deletes nothing (no hard-delete-without-reinsert)", async () => {
+    const prisma = makeFakePrisma({
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", metric: "area_hectares", date: new Date("2026-06-30"), value: 1200, unit: null, source: null },
+      ],
+    })
+    const result = await runKpiBatch(prisma, planFor([]))
+    expect(result.metrics.resetDeleted).toBe(0)
+    expect(result.metrics.rowsInserted).toBe(0)
+    expect(prisma.__kpi).toHaveLength(1) // existing fact untouched
+  })
+
+  it("collateral-deletion guard ABORTS when companyIds is broader than the rows", async () => {
+    const prisma = makeFakePrisma({
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", metric: "area_hectares", date: new Date("2026-06-30"), value: 1200, unit: null, source: null },
+        // Sibling COMPANY fact, same metric+year — must not be wiped.
+        { organizationId: "org_1", companyId: "c_other", metric: "area_hectares", date: new Date("2026-06-30"), value: 9999, unit: null, source: null },
+      ],
+    })
+    // Rows only for c_azsf, but caller declares both companies.
+    const plan = planFor([F("area_hectares", 1500, "2026-12-31")], {
+      companyIds: ["c_azsf", "c_other"],
+    })
+    await expect(runKpiBatch(prisma, plan)).rejects.toBeInstanceOf(CollateralDeletionError)
   })
 
   it("drift detection: tampered expected → red", async () => {

@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, vi } from "vitest"
 import { runImportBatch, type ImportBatchPlan, type ImportBatchRow } from "./import-batch"
+import { CollateralDeletionError } from "./collateral-guard"
 import { buildReconKey, type ReconciliationKey } from "./reconciliation"
 import type { PrismaClient } from "@prisma/client"
 
@@ -125,6 +126,19 @@ function makeFakePrisma(opts: {
             // `coa_${category}`).
             account: { code: accountCodeFromId(r.accountId) },
           }))
+      }),
+      count: vi.fn(async (args: { where: Record<string, unknown> }) => {
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
+        let n = 0
+        for (const row of budgetLines) {
+          if (w.organizationId && row.organizationId !== w.organizationId) continue
+          if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
+          if (w.deletedAt === null && row.deletedAt !== null) continue
+          if (w.planId && !w.planId.in.includes(row.planId)) continue
+          if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
+          n += 1
+        }
+        return n
       }),
     },
     budgetPlan: {
@@ -350,6 +364,38 @@ describe("runImportBatch — clean-slate is scoped to the TARGET plan (cross-pla
     expect(result.metrics.rowsInserted).toBe(0)
     // The pre-existing live row survived the zero-row import.
     expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
+  })
+
+  it("collateral-deletion guard ABORTS when companyIds is broader than the rows (sibling-company wipe)", async () => {
+    // Defense-in-depth: even if a future archive WHERE drifts broader than
+    // the rows' footprint (here the caller declares two companies but only
+    // sends rows for one), the guard catches the over-reach and throws so
+    // the transaction rolls back — the sibling company's live rows are NOT
+    // silently wiped.
+    const prisma = makeFakePrisma({
+      companyCodeById: { c_azsf: "AZSEKER-AZSF", c_other: "AZSEKER-OTHER" },
+      planYearById: { plan_actual: 2026 },
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.ACT.01", lineType: "revenue", plannedAmount: 100, currencyCode: "AZN", exchangeRate: null, monthIndex: 3, sortOrder: 3, planId: "plan_actual", sourceDocument: "x.xlsx", deletedAt: null, deletedBy: null },
+        // Sibling COMPANY's live row in the same plan+period — must not be wiped.
+        { organizationId: "org_1", companyId: "c_other", accountId: "coa_PLF.OTH.01", lineType: "revenue", plannedAmount: 9999, currencyCode: "AZN", exchangeRate: null, monthIndex: 3, sortOrder: 3, planId: "plan_actual", sourceDocument: "x.xlsx", deletedAt: null, deletedBy: null },
+      ],
+    })
+    const row: ImportBatchRow = {
+      companyId: "c_azsf", category: "PLF.ACT.01", accountId: "coa_PLF.ACT.01",
+      lineType: "revenue", period: "2026-04", monthIndex: 3, plannedAmount: 150,
+      currencyCode: "AZN", exchangeRate: null, planId: "plan_actual",
+      sourceCell: "x.xlsx#Sheet1!A1",
+    }
+    const plan: ImportBatchPlan = {
+      organizationId: "org_1", label: "broad-scope import", actorUserId: "ai-multi-import",
+      sourceDocument: "x.xlsx",
+      // Caller declares TWO companies but only sends rows for c_azsf.
+      companyIds: ["c_azsf", "c_other"], periodScope: ["2026-04"],
+      rows: [row],
+      expectedSums: new Map([[buildReconKey("AZSEKER-AZSF", "PLF.ACT.01", "2026-04"), 150]]),
+    }
+    await expect(runImportBatch(prisma, plan)).rejects.toBeInstanceOf(CollateralDeletionError)
   })
 })
 

@@ -25,6 +25,7 @@
  *   4. RECONCILE — file vs DB sums per `${companyId}::${metric}::${date}`.
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
+import { assertNoCollateralDeletion } from "./collateral-guard"
 import {
   reconcile,
   buildReconKey,
@@ -118,21 +119,56 @@ export async function runKpiBatch(
   )
   const explicitDates = plan.dateScope.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
 
+  // Date sub-filter, shared by the reset delete, the collateral-guard
+  // footprint count, and the reconciliation read so all three agree.
+  const dateFilter: Record<string, unknown> = {}
+  if (yearScope.length > 0) {
+    const min = new Date(Date.UTC(Math.min(...yearScope), 0, 1))
+    const max = new Date(Date.UTC(Math.max(...yearScope) + 1, 0, 1) - 1)
+    dateFilter.date = { gte: min, lte: max }
+  } else if (explicitDates.length > 0) {
+    dateFilter.date = { in: explicitDates.map((d) => new Date(d)) }
+  }
+
+  // 2026-06-16 fix — scope the HARD delete to the metrics this import
+  // actually writes. Previously the reset deleted EVERY metric for the
+  // company in the date window, so re-importing one KPI (e.g. sugar
+  // output) silently wiped the company's OTHER metrics in that window —
+  // and OperationalFact has NO soft-delete, so the loss is irreversible.
+  // Deriving the metric scope from the rows also makes a zero-row parse a
+  // no-op (`metric: { in: [] }` matches nothing) instead of wiping the
+  // whole window with no reinsert. The company dimension is still
+  // caller-supplied; the collateral guard below catches it over-reaching.
+  const footprintMetrics = [...new Set(plan.rows.map((r) => r.metric))]
+  const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+
   const writePhase = async (tx: Prisma.TransactionClient) => {
       const filter: Record<string, unknown> = {
         organizationId: plan.organizationId,
         companyId: { in: [...plan.companyIds] },
+        metric: { in: footprintMetrics },
+        ...dateFilter,
       }
-      if (yearScope.length > 0) {
-        const min = new Date(Date.UTC(Math.min(...yearScope), 0, 1))
-        const max = new Date(
-          Date.UTC(Math.max(...yearScope) + 1, 0, 1) - 1,
-        )
-        filter.date = { gte: min, lte: max }
-      } else if (explicitDates.length > 0) {
-        filter.date = { in: explicitDates.map((d) => new Date(d)) }
-      }
+      // Collateral-deletion guard: count facts within THIS import's own
+      // footprint (rows' own companies × metrics × dates) before deleting.
+      const footprintLiveCount =
+        footprintMetrics.length === 0 || footprintCompanyIds.length === 0
+          ? 0
+          : await tx.operationalFact.count({
+              where: {
+                organizationId: plan.organizationId,
+                companyId: { in: footprintCompanyIds },
+                metric: { in: footprintMetrics },
+                ...dateFilter,
+              },
+            })
       const del = await tx.operationalFact.deleteMany({ where: filter })
+      assertNoCollateralDeletion({
+        table: "OperationalFact",
+        archivedCount: del.count,
+        footprintLiveCount,
+        footprint: `companies=[${footprintCompanyIds.join(",")}] metrics=[${footprintMetrics.join(",")}]`,
+      })
 
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
@@ -200,9 +236,14 @@ async function defaultReadActualKpiSums(
         .filter((n) => Number.isFinite(n)),
     ),
   )
+  // Scope the read to the metrics this import wrote — otherwise sibling
+  // metrics in the same company/date window read back as "extra" and
+  // falsely fail reconciliation (they are not part of this import).
+  const footprintMetrics = [...new Set(plan.rows.map((r) => r.metric))]
   const filter: Record<string, unknown> = {
     organizationId: plan.organizationId,
     companyId: { in: [...plan.companyIds] },
+    metric: { in: footprintMetrics },
   }
   if (yearScope.length > 0) {
     const min = new Date(Date.UTC(Math.min(...yearScope), 0, 1))

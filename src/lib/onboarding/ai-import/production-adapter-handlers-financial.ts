@@ -230,6 +230,10 @@ export function makePlfHandler(
           if (monthly.length === 0) continue
           await tx.operationalFact.deleteMany({
             where: {
+              // 2026-06-16: scope by organizationId too (defense-in-depth
+              // cross-org guard) — companyId already implies the org, but a
+              // destructive deleteMany should never rely on that alone.
+              organizationId: ctx.organizationId,
               companyId,
               metric: "pl_ebitda",
               date: {

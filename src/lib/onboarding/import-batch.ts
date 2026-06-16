@@ -56,6 +56,7 @@
  */
 import type { PrismaClient, Prisma } from "@prisma/client"
 import { archiveStamp } from "@/lib/server/soft-delete"
+import { assertNoCollateralDeletion } from "./collateral-guard"
 import { getLogger } from "@/lib/log"
 import {
   reconcile,
@@ -261,6 +262,27 @@ export async function runImportBatch(
         })
         purged = purgeResult.count
       }
+      // Collateral-deletion guard: count the LIVE rows that fall within
+      // this import's OWN footprint — the companies/plans the INSERTED
+      // rows actually carry — BEFORE archiving. `plan.companyIds` (used by
+      // the archive WHERE) is caller-supplied and may be broader than the
+      // rows; deriving the footprint from the rows themselves is what makes
+      // the post-archive check non-circular. If the archive removes more
+      // than this, the scope over-reached into a sibling plan/company.
+      const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+      const footprintLiveCount =
+        footprintCompanyIds.length === 0 || planIds.length === 0
+          ? 0
+          : await tx.budgetLine.count({
+              where: {
+                organizationId: plan.organizationId,
+                companyId: { in: footprintCompanyIds },
+                planId: { in: planIds },
+                deletedAt: null,
+                ...periodFilter,
+              },
+            })
+
       // Soft-archive currently-live rows in scope.
       const stamp = archiveStamp(plan.actorUserId)
       const archiveResult = await tx.budgetLine.updateMany({
@@ -274,6 +296,12 @@ export async function runImportBatch(
         data: stamp as unknown as Prisma.BudgetLineUpdateManyMutationInput,
       })
       archived = archiveResult.count
+      assertNoCollateralDeletion({
+        table: "BudgetLine",
+        archivedCount: archived,
+        footprintLiveCount,
+        footprint: `plans=[${planIds.join(",")}] companies=[${footprintCompanyIds.join(",")}]`,
+      })
 
       // Insert new rows. `createMany` is one round-trip per chunk; a
       // failure mid-chunk rolls back via the surrounding TX.
