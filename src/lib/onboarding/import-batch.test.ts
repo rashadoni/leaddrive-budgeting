@@ -11,7 +11,6 @@
  */
 import { describe, it, expect, vi } from "vitest"
 import { runImportBatch, type ImportBatchPlan, type ImportBatchRow } from "./import-batch"
-import { CollateralDeletionError } from "./collateral-guard"
 import { buildReconKey, type ReconciliationKey } from "./reconciliation"
 import type { PrismaClient } from "@prisma/client"
 
@@ -366,18 +365,20 @@ describe("runImportBatch — clean-slate is scoped to the TARGET plan (cross-pla
     expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
   })
 
-  it("collateral-deletion guard ABORTS when companyIds is broader than the rows (sibling-company wipe)", async () => {
-    // Defense-in-depth: even if a future archive WHERE drifts broader than
-    // the rows' footprint (here the caller declares two companies but only
-    // sends rows for one), the guard catches the over-reach and throws so
-    // the transaction rolls back — the sibling company's live rows are NOT
-    // silently wiped.
+  it("derive-delete-from-write: broader companyIds writes only the rows' companies; sibling company untouched", async () => {
+    // The clean-slate scope is derived from the rows, not the caller's
+    // (possibly broader) companyIds. Here the caller declares two companies
+    // but only sends rows for c_azsf — c_other's live row must survive, the
+    // import succeeds, and reconciliation is green (no spurious "extra" from
+    // the surviving sibling). Pre-derive-from-write this case relied on the
+    // guard to ABORT; now over-deletion is structurally impossible so it
+    // simply does the right thing.
     const prisma = makeFakePrisma({
       companyCodeById: { c_azsf: "AZSEKER-AZSF", c_other: "AZSEKER-OTHER" },
       planYearById: { plan_actual: 2026 },
       initialRows: [
         { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.ACT.01", lineType: "revenue", plannedAmount: 100, currencyCode: "AZN", exchangeRate: null, monthIndex: 3, sortOrder: 3, planId: "plan_actual", sourceDocument: "x.xlsx", deletedAt: null, deletedBy: null },
-        // Sibling COMPANY's live row in the same plan+period — must not be wiped.
+        // Sibling COMPANY's live row in the same plan+period — must survive.
         { organizationId: "org_1", companyId: "c_other", accountId: "coa_PLF.OTH.01", lineType: "revenue", plannedAmount: 9999, currencyCode: "AZN", exchangeRate: null, monthIndex: 3, sortOrder: 3, planId: "plan_actual", sourceDocument: "x.xlsx", deletedAt: null, deletedBy: null },
       ],
     })
@@ -395,7 +396,15 @@ describe("runImportBatch — clean-slate is scoped to the TARGET plan (cross-pla
       rows: [row],
       expectedSums: new Map([[buildReconKey("AZSEKER-AZSF", "PLF.ACT.01", "2026-04"), 150]]),
     }
-    await expect(runImportBatch(prisma, plan)).rejects.toBeInstanceOf(CollateralDeletionError)
+    const result = await runImportBatch(prisma, plan)
+    // Only c_azsf's prior line was archived; c_other's line survives intact.
+    expect(result.metrics.resetArchived).toBe(1)
+    const otherLive = prisma.__budgetLines.filter((b) => b.companyId === "c_other" && b.deletedAt === null)
+    expect(otherLive).toHaveLength(1)
+    expect(otherLive[0].plannedAmount).toBe(9999)
+    // c_azsf replaced; reconciliation green (surviving sibling not read as extra).
+    expect(prisma.__budgetLines.filter((b) => b.companyId === "c_azsf" && b.deletedAt === null)).toHaveLength(1)
+    expect(result.reconciliation.verdict).toBe("green")
   })
 })
 

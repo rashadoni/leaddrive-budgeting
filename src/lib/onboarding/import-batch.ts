@@ -247,6 +247,18 @@ export async function runImportBatch(
       // delete-without-reinsert footgun.
       const planFilter = { planId: { in: planIds } }
 
+      // 2026-06-16 derive-delete-from-write — the clean-slate DELETE scope is
+      // derived from the identity the INSERTED rows actually carry, NOT from
+      // caller-supplied `plan.companyIds` (which can be broader and wipe
+      // sibling companies). `footprintCompanyIds` = the DISTINCT companies in
+      // this batch's rows; purge + archive scope to exactly that, so company-
+      // dimension over-deletion is structurally impossible — the guard below
+      // then holds by construction (kept as a tripwire). Empty rows →
+      // `{ in: [] }` → no-op. Period/year granularity stays caller-controlled
+      // via `periodFilter` (intentional full-year reset semantic); only the
+      // company dimension — the over-deletion vector — is derived.
+      const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+
       let archived = 0
       let purged = 0
       if (plan.purgeArchivedFirst) {
@@ -254,7 +266,7 @@ export async function runImportBatch(
         const purgeResult = await tx.budgetLine.deleteMany({
           where: {
             organizationId: plan.organizationId,
-            companyId: { in: [...plan.companyIds] },
+            companyId: { in: footprintCompanyIds },
             deletedAt: { not: null },
             ...planFilter,
             ...periodFilter,
@@ -262,14 +274,9 @@ export async function runImportBatch(
         })
         purged = purgeResult.count
       }
-      // Collateral-deletion guard: count the LIVE rows that fall within
-      // this import's OWN footprint — the companies/plans the INSERTED
-      // rows actually carry — BEFORE archiving. `plan.companyIds` (used by
-      // the archive WHERE) is caller-supplied and may be broader than the
-      // rows; deriving the footprint from the rows themselves is what makes
-      // the post-archive check non-circular. If the archive removes more
-      // than this, the scope over-reached into a sibling plan/company.
-      const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
+      // Collateral-deletion guard (now redundant-by-construction — kept as a
+      // belt-and-suspenders tripwire): count LIVE rows within this import's
+      // own footprint BEFORE archiving, independently from the archive WHERE.
       const footprintLiveCount =
         footprintCompanyIds.length === 0 || planIds.length === 0
           ? 0
@@ -288,7 +295,7 @@ export async function runImportBatch(
       const archiveResult = await tx.budgetLine.updateMany({
         where: {
           organizationId: plan.organizationId,
-          companyId: { in: [...plan.companyIds] },
+          companyId: { in: footprintCompanyIds },
           deletedAt: null,
           ...planFilter,
           ...periodFilter,
@@ -426,10 +433,15 @@ async function defaultReadActualSums(
   prisma: PrismaClient | Prisma.TransactionClient,
   plan: ImportBatchPlan,
 ): Promise<Map<ReconciliationKey, number>> {
+  // Read back exactly the companies this import wrote (rows' footprint),
+  // matching the derive-delete-from-write archive scope. Reading by the
+  // (possibly broader) caller `plan.companyIds` would surface a surviving
+  // sibling company as a spurious reconciliation "extra".
+  const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
   const rows = await prisma.budgetLine.findMany({
     where: {
       organizationId: plan.organizationId,
-      companyId: { in: [...plan.companyIds] },
+      companyId: { in: footprintCompanyIds },
       deletedAt: null,
     },
     select: {
@@ -441,11 +453,13 @@ async function defaultReadActualSums(
     },
   })
   // We need entity CODE for the key but the rows carry companyId. Pull
-  // the code map once.
+  // the code map once — scoped to the footprint companies (consistent with
+  // the row read above; the caller's broader companyIds would only fetch
+  // unused extra codes).
   const companies = await prisma.company.findMany({
     where: {
       organizationId: plan.organizationId,
-      id: { in: [...plan.companyIds] },
+      id: { in: footprintCompanyIds },
     },
     select: { id: true, code: true },
   })

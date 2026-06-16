@@ -47,6 +47,7 @@ import {
   type SalesForecastRow,
 } from "../sales-forecast-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
+import { assertNoCollateralDeletion } from "../collateral-guard"
 import { type OrgContext, resolveOrgContext, logger } from "./prod-adapter-context"
 
 export function makeLandRegistryHandler(
@@ -337,8 +338,49 @@ export function makeForwardForecastHandler(
           // The Workspace defaults to + persists manual edits on this
           // kind="budget" plan, so a blanket deleteMany({planId}) would
           // silently wipe those edits on re-import. Scope to our sourceDocument.
-          await tx.budgetLine.deleteMany({
-            where: { planId: budgetCtx.planId, sourceDocument: { startsWith: "multi-import:İcmal-budget" } },
+          //
+          // 2026-06-16 derive-delete-from-write — additionally scope the
+          // delete to the COMPANIES this İcmal import actually writes
+          // (`footprintCompanyIds`). Without it, a partial İcmal re-import
+          // (subset of companies) hard-deleted EVERY company's İcmal-budget
+          // lines on the shared plan and only re-inserted the covered ones —
+          // a silent cross-company wipe. Company is the right clean-slate
+          // granularity (account/month changes within a company are fully
+          // replaced); scoping finer would leave dropped accounts/months
+          // stale. The guard below then holds by construction.
+          const footprintCompanyIds = [
+            ...new Set(
+              budgetMonthly
+                .map((r) => budgetCtx.codeToId.get(r.companyCode))
+                .filter((x): x is string => !!x),
+            ),
+          ]
+          // Footprint count — derived from the rows' companies, written
+          // SEPARATELY from the delete WHERE below so a future edit that
+          // broadens the delete (e.g. drops the companyId scope) diverges
+          // from this count and trips the guard.
+          const icmalFootprintCount =
+            footprintCompanyIds.length === 0
+              ? 0
+              : await tx.budgetLine.count({
+                  where: {
+                    planId: budgetCtx.planId,
+                    sourceDocument: { startsWith: "multi-import:İcmal-budget" },
+                    companyId: { in: footprintCompanyIds },
+                  },
+                })
+          const icmalDeleted = await tx.budgetLine.deleteMany({
+            where: {
+              planId: budgetCtx.planId,
+              sourceDocument: { startsWith: "multi-import:İcmal-budget" },
+              companyId: { in: footprintCompanyIds },
+            },
+          })
+          assertNoCollateralDeletion({
+            table: "BudgetLine(İcmal-budget)",
+            archivedCount: icmalDeleted.count,
+            footprintLiveCount: icmalFootprintCount,
+            footprint: `plan=${budgetCtx.planId} companies=[${footprintCompanyIds.join(",")}]`,
           })
           let dropped = 0
           const data = budgetMonthly

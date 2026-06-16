@@ -10,7 +10,6 @@ import {
   type KpiImportRow,
 } from "./kpi-import-batch"
 import { buildReconKey, type ReconciliationKey } from "./reconciliation"
-import { CollateralDeletionError } from "./collateral-guard"
 import type { PrismaClient } from "@prisma/client"
 
 interface FakeKpiRow {
@@ -223,11 +222,14 @@ describe("runKpiBatch — round-trip", () => {
     expect(prisma.__kpi).toHaveLength(1) // existing fact untouched
   })
 
-  it("collateral-deletion guard ABORTS when companyIds is broader than the rows", async () => {
+  it("derive-delete-from-write: broader companyIds deletes only the rows' companies; sibling company's facts survive", async () => {
+    // The hard-delete scope is derived from the rows' companies, not the
+    // caller's (broader) companyIds. c_other's fact must survive even though
+    // the caller declared it; the import succeeds and reconciles green.
     const prisma = makeFakePrisma({
       initialRows: [
         { organizationId: "org_1", companyId: "c_azsf", metric: "area_hectares", date: new Date("2026-06-30"), value: 1200, unit: null, source: null },
-        // Sibling COMPANY fact, same metric+year — must not be wiped.
+        // Sibling COMPANY fact, same metric+year — must survive.
         { organizationId: "org_1", companyId: "c_other", metric: "area_hectares", date: new Date("2026-06-30"), value: 9999, unit: null, source: null },
       ],
     })
@@ -235,7 +237,13 @@ describe("runKpiBatch — round-trip", () => {
     const plan = planFor([F("area_hectares", 1500, "2026-12-31")], {
       companyIds: ["c_azsf", "c_other"],
     })
-    await expect(runKpiBatch(prisma, plan)).rejects.toBeInstanceOf(CollateralDeletionError)
+    const result = await runKpiBatch(prisma, plan)
+    expect(result.metrics.resetDeleted).toBe(1) // only c_azsf's fact
+    // The sibling company's fact survived the import.
+    const otherFacts = prisma.__kpi.filter((r) => r.companyId === "c_other")
+    expect(otherFacts).toHaveLength(1)
+    expect(otherFacts[0].value).toBe(9999)
+    expect(result.reconciliation.verdict).toBe("green")
   })
 
   it("drift detection: tampered expected → red", async () => {

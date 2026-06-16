@@ -137,15 +137,24 @@ export async function runKpiBatch(
   // and OperationalFact has NO soft-delete, so the loss is irreversible.
   // Deriving the metric scope from the rows also makes a zero-row parse a
   // no-op (`metric: { in: [] }` matches nothing) instead of wiping the
-  // whole window with no reinsert. The company dimension is still
-  // caller-supplied; the collateral guard below catches it over-reaching.
+  // whole window with no reinsert. The company dimension is ALSO derived
+  // from the rows (see the delete WHERE below) so a sibling company is
+  // never touched; only the date window stays caller-controlled.
   const footprintMetrics = [...new Set(plan.rows.map((r) => r.metric))]
   const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
 
   const writePhase = async (tx: Prisma.TransactionClient) => {
+      // derive-delete-from-write: company + metric scopes come from the
+      // INSERTED rows (footprintCompanyIds / footprintMetrics), NOT caller
+      // `plan.companyIds` — so re-importing one company's KPIs can't wipe a
+      // sibling company's facts. The DATE window stays caller-controlled via
+      // `dateFilter`: a KPI re-import may intentionally do a FULL-YEAR reset
+      // even from partial rows (incomplete-year data), so deriving the date
+      // from rows would silently break that semantic. Do NOT "complete the
+      // refactor" by deriving date here.
       const filter: Record<string, unknown> = {
         organizationId: plan.organizationId,
-        companyId: { in: [...plan.companyIds] },
+        companyId: { in: footprintCompanyIds },
         metric: { in: footprintMetrics },
         ...dateFilter,
       }
@@ -236,13 +245,16 @@ async function defaultReadActualKpiSums(
         .filter((n) => Number.isFinite(n)),
     ),
   )
-  // Scope the read to the metrics this import wrote — otherwise sibling
-  // metrics in the same company/date window read back as "extra" and
-  // falsely fail reconciliation (they are not part of this import).
+  // Scope the read to the companies AND metrics this import wrote (rows'
+  // footprint), matching the derive-delete-from-write delete scope —
+  // otherwise a sibling company/metric in the same date window reads back
+  // as "extra" and falsely fails reconciliation (it is not part of this
+  // import).
   const footprintMetrics = [...new Set(plan.rows.map((r) => r.metric))]
+  const footprintCompanyIds = [...new Set(plan.rows.map((r) => r.companyId))]
   const filter: Record<string, unknown> = {
     organizationId: plan.organizationId,
-    companyId: { in: [...plan.companyIds] },
+    companyId: { in: footprintCompanyIds },
     metric: { in: footprintMetrics },
   }
   if (yearScope.length > 0) {

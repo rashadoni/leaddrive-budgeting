@@ -354,4 +354,27 @@ describe("runBalanceSheetBatch — per-entity isolation on a shared plan", () =>
     expect(live.find((r) => r.companyId === "co_B")?.amount).toBe(200)
     expect(reA.reconciliation.verdict).toBe("green")
   })
+
+  it("derive-delete-from-write: broader caller planIds archives only the rows' plan; sibling PLAN untouched", async () => {
+    // The archive scope is derived from the plans the rows carry
+    // (footprintPlanIds), not the caller's `plan.planIds`. Seed a live BS row
+    // on plan_other (same company/year), import into plan_2026 while the
+    // caller declares BOTH plans — plan_other's row must survive and recon
+    // must stay green (the surviving sibling plan is not read as "extra").
+    const prisma = makeFakePrisma({
+      initialRows: [
+        { organizationId: "org_1", planId: "plan_other", companyId: "co_A", accountId: "coa_BS.09.09.09", lineType: "asset", subType: "current_asset", year: 2026, month: 4, amount: 8888, notes: null, deletedAt: null, deletedBy: null },
+      ],
+    })
+    const result = await runBalanceSheetBatch(
+      prisma,
+      planFor([R("BS.01.01.01", 100, 4, "co_A")], { planIds: ["plan_2026", "plan_other"] }),
+    )
+    // plan_2026 had nothing prior → 0 archived; plan_other untouched.
+    expect(result.metrics.resetArchived).toBe(0)
+    const otherLive = prisma.__bs.filter((r) => r.planId === "plan_other" && r.deletedAt === null)
+    expect(otherLive).toHaveLength(1)
+    expect(otherLive[0].amount).toBe(8888)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
 })

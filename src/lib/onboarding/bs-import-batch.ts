@@ -203,11 +203,14 @@ export async function runBalanceSheetBatch(
       ]
       const companyScope =
         incomingCompanyIds.length > 0 ? { companyId: { in: incomingCompanyIds } } : {}
-      // Collateral-deletion guard: count live rows within THIS import's own
-      // footprint (the plans + companies the INSERTED rows carry) before
-      // archiving. `plan.planIds` (used by the archive WHERE) is caller-
-      // supplied and may be broader than the rows; deriving the footprint
-      // from the rows themselves makes the post-archive check non-circular.
+      // 2026-06-16 derive-delete-from-write — the purge/archive scope is now
+      // derived from the plans the INSERTED rows actually carry
+      // (`footprintPlanIds`), NOT caller-supplied `plan.planIds` (which can be
+      // broader and archive a sibling entity's lines on a shared plan — the
+      // 2026-05-31 bug). `incomingCompanyIds` already derives the company
+      // dimension; `yearScope` (period) stays caller-controlled. The guard
+      // below now holds by construction (kept as a tripwire). Empty rows →
+      // `{ in: [] }` → no-op.
       const footprintPlanIds = [...new Set(plan.rows.map((r) => r.planId))]
       const footprintLiveCount =
         footprintPlanIds.length === 0
@@ -225,7 +228,7 @@ export async function runBalanceSheetBatch(
         const purgeResult = await tx.balanceSheetLine.deleteMany({
           where: {
             organizationId: plan.organizationId,
-            planId: { in: [...plan.planIds] },
+            planId: { in: footprintPlanIds },
             ...companyScope,
             deletedAt: { not: null },
             ...yearFilter,
@@ -237,7 +240,7 @@ export async function runBalanceSheetBatch(
       const archiveResult = await tx.balanceSheetLine.updateMany({
         where: {
           organizationId: plan.organizationId,
-          planId: { in: [...plan.planIds] },
+          planId: { in: footprintPlanIds },
           ...companyScope,
           deletedAt: null,
           ...yearFilter,
@@ -339,10 +342,13 @@ async function defaultReadActualBsSums(
     ),
   )
 
-  // Match the archive scope (companyId-aware, 2026-05-31 bugfix): recon must
-  // read only the rows THIS batch is responsible for. Sibling entities share
-  // the same plan, so a planId-only read would sum their balances in and trip
-  // a false drift verdict once the archive no longer cross-deletes them.
+  // Match the archive scope (companyId-aware 2026-05-31 + planId-derive
+  // 2026-06-16): recon must read only the rows THIS batch is responsible
+  // for. Sibling entities/plans share scope, so reading by the caller's
+  // (possibly broader) planId/companyId would sum their balances in and
+  // trip a false drift verdict now that the archive no longer cross-deletes
+  // them. Derive BOTH dimensions from the rows.
+  const footprintPlanIds = [...new Set(plan.rows.map((r) => r.planId))]
   const companyIds = [
     ...new Set(plan.rows.map((r) => r.companyId).filter((x): x is string => x != null)),
   ]
@@ -351,7 +357,7 @@ async function defaultReadActualBsSums(
   const rows = await prisma.balanceSheetLine.findMany({
     where: {
       organizationId: plan.organizationId,
-      planId: { in: [...plan.planIds] },
+      planId: { in: footprintPlanIds },
       ...(companyIds.length > 0 ? { companyId: { in: companyIds } } : {}),
       deletedAt: null,
       ...(yearScope.length > 0 ? { year: { in: yearScope } } : {}),

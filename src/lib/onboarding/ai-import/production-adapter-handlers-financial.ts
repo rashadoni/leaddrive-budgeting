@@ -32,6 +32,7 @@ import { runImportBatch, type ImportBatchRow } from "../import-batch"
 import { runBalanceSheetBatch, type BsImportRow } from "../bs-import-batch"
 import { runCashFlowBatch, type CfImportRow } from "../cf-import-batch"
 import { runKpiBatch, type KpiImportRow } from "../kpi-import-batch"
+import { assertNoCollateralDeletion } from "../collateral-guard"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
 import {
   createCoACache,
@@ -228,19 +229,43 @@ export function makePlfHandler(
         )
         for (const { year, monthly } of ebitdaByYear) {
           if (monthly.length === 0) continue
-          await tx.operationalFact.deleteMany({
+          // Clean-slate the WHOLE parsed year's pl_ebitda, then re-insert the
+          // nonzero months. The delete is scoped to the year + company + metric
+          // (the year comes from `ebitdaByYear`, parsed from THIS workbook —
+          // derive-from-write at the year grain). organizationId is scoped for
+          // cross-org defense-in-depth (companyId already implies the org).
+          //
+          // Codex review 2026-06-16: an earlier attempt narrowed the delete to
+          // only the nonzero `monthly` dates — but `parsePlfEbitdaSubtotalAllYears`
+          // OMITS zero/blank months, so a month that was nonzero in a prior
+          // import and is zero in the new one would NOT be cleared, leaving a
+          // stale fact that overcounts the year sum. Deleting the full year
+          // fixes that while the per-year loop keeps it scoped to parsed years.
+          const yearStart = new Date(Date.UTC(year, 0, 1))
+          const yearEnd = new Date(Date.UTC(year + 1, 0, 1))
+          // Footprint count — written SEPARATELY from the delete WHERE so a
+          // future broadening of the delete trips the guard (non-circular).
+          const ebitdaFootprint = await tx.operationalFact.count({
             where: {
-              // 2026-06-16: scope by organizationId too (defense-in-depth
-              // cross-org guard) — companyId already implies the org, but a
-              // destructive deleteMany should never rely on that alone.
               organizationId: ctx.organizationId,
               companyId,
               metric: "pl_ebitda",
-              date: {
-                gte: new Date(Date.UTC(year, 0, 1)),
-                lt: new Date(Date.UTC(year + 1, 0, 1)),
-              },
+              date: { gte: yearStart, lt: yearEnd },
             },
+          })
+          const ebitdaDeleted = await tx.operationalFact.deleteMany({
+            where: {
+              organizationId: ctx.organizationId,
+              companyId,
+              metric: "pl_ebitda",
+              date: { gte: yearStart, lt: yearEnd },
+            },
+          })
+          assertNoCollateralDeletion({
+            table: "OperationalFact(pl_ebitda)",
+            archivedCount: ebitdaDeleted.count,
+            footprintLiveCount: ebitdaFootprint,
+            footprint: `company=${companyId} year=${year}`,
           })
           await tx.operationalFact.createMany({
             data: monthly.map((x) => ({
