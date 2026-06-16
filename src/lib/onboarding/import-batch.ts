@@ -232,6 +232,20 @@ export async function runImportBatch(
             }
           : {}
 
+      // 2026-06-16 fix — scope the clean-slate to the TARGET plan(s).
+      // Previously the archive matched by org+company+year ONLY (via
+      // periodFilter, which keys off the related plan's `year`), so it
+      // crossed the budget/actual boundary: importing into the 2026
+      // ACTUALS plan also soft-deleted the 2026 BUDGET plan's lines
+      // (same company, same year). That was the root cause of the
+      // 2026-06-11 budget wipe — 2700 budget lines archived as collateral
+      // of an actuals import. `planIds` (line above) is the exact set of
+      // plans the rows below write to; restricting the archive to it keeps
+      // sibling same-year plans untouched. When planIds is empty (no rows
+      // to insert) `{ in: [] }` archives nothing — which also closes the
+      // delete-without-reinsert footgun.
+      const planFilter = { planId: { in: planIds } }
+
       let archived = 0
       let purged = 0
       if (plan.purgeArchivedFirst) {
@@ -241,6 +255,7 @@ export async function runImportBatch(
             organizationId: plan.organizationId,
             companyId: { in: [...plan.companyIds] },
             deletedAt: { not: null },
+            ...planFilter,
             ...periodFilter,
           },
         })
@@ -253,6 +268,7 @@ export async function runImportBatch(
           organizationId: plan.organizationId,
           companyId: { in: [...plan.companyIds] },
           deletedAt: null,
+          ...planFilter,
           ...periodFilter,
         },
         data: stamp as unknown as Prisma.BudgetLineUpdateManyMutationInput,

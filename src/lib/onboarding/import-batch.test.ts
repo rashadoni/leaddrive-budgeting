@@ -57,23 +57,30 @@ function makeFakePrisma(opts: {
       updateMany: vi.fn(async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
         let count = 0
         for (const row of budgetLines) {
-          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null }
+          const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: null; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt === null && row.deletedAt !== null) continue
+          // Honor the planId scope (the 2026-06-16 cross-plan clean-slate
+          // fix) and the periodFilter relation (`plan.year`) so the mock
+          // faithfully reproduces Prisma's AND semantics.
+          if (w.planId && !w.planId.in.includes(row.planId)) continue
+          if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           Object.assign(row, args.data)
           count += 1
         }
         return { count }
       }),
       deleteMany: vi.fn(async (args: { where: Record<string, unknown> }) => {
-        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null } }
+        const w = args.where as { organizationId?: string; companyId?: { in: string[] }; deletedAt?: { not: null }; planId?: { in: string[] }; plan?: { year?: { in: number[] } } }
         let count = 0
         for (let i = budgetLines.length - 1; i >= 0; i--) {
           const row = budgetLines[i]
           if (w.organizationId && row.organizationId !== w.organizationId) continue
           if (w.companyId && !w.companyId.in.includes(row.companyId)) continue
           if (w.deletedAt?.not === null && row.deletedAt === null) continue
+          if (w.planId && !w.planId.in.includes(row.planId)) continue
+          if (w.plan?.year && !w.plan.year.in.includes(yearById[row.planId] ?? 2026)) continue
           budgetLines.splice(i, 1)
           count += 1
         }
@@ -249,6 +256,100 @@ describe("runImportBatch — bit-perfect round-trip", () => {
     expect(prisma.__budgetLines).toHaveLength(2)
     const live = prisma.__budgetLines.filter((b) => b.deletedAt === null)
     expect(live).toHaveLength(1)
+  })
+})
+
+describe("runImportBatch — clean-slate is scoped to the TARGET plan (cross-plan wipe regression)", () => {
+  it("importing into the ACTUALS plan does NOT archive the same-year BUDGET plan's lines", async () => {
+    // Regression for the 2026-06-11 budget wipe. The archive matched by
+    // org+company+year ONLY, so an AI multi-file import targeting the 2026
+    // ACTUALS plan soft-deleted the matching-year 2026 BUDGET plan's lines
+    // as collateral (2700 budget rows lost; the Workspace then defaulted to
+    // the actuals plan and showed a tautological "100% executed"). The fix
+    // scopes the clean-slate to the rows' own planId(s).
+    const prisma = makeFakePrisma({
+      planYearById: { plan_budget: 2026, plan_actual: 2026 },
+      initialRows: [
+        // Live 2026 BUDGET lines (January) — must survive an actuals import.
+        { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.BUD.01", lineType: "revenue", plannedAmount: 5000, currencyCode: "AZN", exchangeRate: null, monthIndex: 0, sortOrder: 0, planId: "plan_budget", sourceDocument: "budget.xlsx", deletedAt: null, deletedBy: null },
+        { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.BUD.02", lineType: "revenue", plannedAmount: 7000, currencyCode: "AZN", exchangeRate: null, monthIndex: 0, sortOrder: 0, planId: "plan_budget", sourceDocument: "budget.xlsx", deletedAt: null, deletedBy: null },
+      ],
+    })
+    // Import April actuals into a DIFFERENT plan, SAME company + SAME year.
+    const actualRow: ImportBatchRow = {
+      companyId: "c_azsf", category: "PLF.ACT.01", accountId: "coa_PLF.ACT.01",
+      lineType: "revenue", period: "2026-04", monthIndex: 3, plannedAmount: 1200,
+      currencyCode: "AZN", exchangeRate: null, planId: "plan_actual",
+      sourceCell: "actuals.xlsx#Sheet1!A1",
+    }
+    const plan: ImportBatchPlan = {
+      organizationId: "org_1", label: "actuals import", actorUserId: "ai-multi-import",
+      sourceDocument: "actuals.xlsx", companyIds: ["c_azsf"], periodScope: ["2026-04"],
+      rows: [actualRow],
+      expectedSums: new Map([[buildReconKey("AZSEKER-AZSF", "PLF.ACT.01", "2026-04"), 1200]]),
+    }
+    const result = await runImportBatch(prisma, plan)
+
+    // The budget plan's two lines are untouched (still live, none archived).
+    expect(prisma.__budgetLines.filter((b) => b.planId === "plan_budget" && b.deletedAt === null)).toHaveLength(2)
+    expect(prisma.__budgetLines.filter((b) => b.planId === "plan_budget" && b.deletedAt !== null)).toHaveLength(0)
+    // The actuals import landed in its own plan.
+    expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
+    // Nothing from the sibling plan was archived, and recon is green.
+    expect(result.metrics.resetArchived).toBe(0)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("re-importing the SAME plan still clean-slates that plan (scope didn't over-narrow)", async () => {
+    // Guard the other direction: the planId scope must NOT prevent a normal
+    // same-plan re-import from archiving its own prior lines.
+    const prisma = makeFakePrisma({
+      planYearById: { plan_budget: 2026, plan_actual: 2026 },
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.ACT.01", lineType: "revenue", plannedAmount: 999, currencyCode: "AZN", exchangeRate: null, monthIndex: 3, sortOrder: 3, planId: "plan_actual", sourceDocument: "old.xlsx", deletedAt: null, deletedBy: null },
+      ],
+    })
+    const actualRow: ImportBatchRow = {
+      companyId: "c_azsf", category: "PLF.ACT.01", accountId: "coa_PLF.ACT.01",
+      lineType: "revenue", period: "2026-04", monthIndex: 3, plannedAmount: 1200,
+      currencyCode: "AZN", exchangeRate: null, planId: "plan_actual",
+      sourceCell: "actuals.xlsx#Sheet1!A1",
+    }
+    const plan: ImportBatchPlan = {
+      organizationId: "org_1", label: "re-import", actorUserId: "ai-multi-import",
+      sourceDocument: "actuals.xlsx", companyIds: ["c_azsf"], periodScope: ["2026-04"],
+      rows: [actualRow],
+      expectedSums: new Map([[buildReconKey("AZSEKER-AZSF", "PLF.ACT.01", "2026-04"), 1200]]),
+    }
+    const result = await runImportBatch(prisma, plan)
+    // The prior plan_actual row got archived; the new one is live.
+    expect(result.metrics.resetArchived).toBe(1)
+    expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
+    expect(result.reconciliation.verdict).toBe("green")
+  })
+
+  it("rows: [] is a safe no-op — preserves existing live rows (locks the footgun closure)", async () => {
+    // Codex review nit: the empty-planIds → `{ in: [] }` → archive-nothing
+    // behavior is now safety-critical (it's what stops a parse-zero-rows
+    // import from wiping live data with no reinsert). Lock it: a zero-row
+    // import must archive NOTHING and leave existing live rows intact.
+    const prisma = makeFakePrisma({
+      planYearById: { plan_actual: 2026 },
+      initialRows: [
+        { organizationId: "org_1", companyId: "c_azsf", accountId: "coa_PLF.ACT.01", lineType: "revenue", plannedAmount: 999, currencyCode: "AZN", exchangeRate: null, monthIndex: 0, sortOrder: 0, planId: "plan_actual", sourceDocument: "old.xlsx", deletedAt: null, deletedBy: null },
+      ],
+    })
+    const plan: ImportBatchPlan = {
+      organizationId: "org_1", label: "empty import", actorUserId: "ai-multi-import",
+      sourceDocument: "empty.xlsx", companyIds: ["c_azsf"], periodScope: ["2026-04"],
+      rows: [],
+      expectedSums: new Map(),
+    }
+    const result = await runImportBatch(prisma, plan)
+    expect(result.metrics.resetArchived).toBe(0)
+    expect(result.metrics.rowsInserted).toBe(0)
+    // The pre-existing live row survived the zero-row import.
+    expect(prisma.__budgetLines.filter((b) => b.planId === "plan_actual" && b.deletedAt === null)).toHaveLength(1)
   })
 })
 
