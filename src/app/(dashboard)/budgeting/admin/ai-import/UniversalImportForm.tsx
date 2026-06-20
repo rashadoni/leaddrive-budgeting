@@ -59,6 +59,10 @@ interface ApplyResult {
   controlVerdict?: "green" | "yellow" | "red"
   controlNoData?: boolean
   controlTotals?: ControlTotal[]
+  // Phase A validation engine — graded verdict + findings (dry-run only).
+  validationVerdict?: "certified" | "warn" | "blocked" | "uncertifiable"
+  validationFindings?: Array<{ severity: "blocker" | "warning" | "info"; category: string; message: string }>
+  rowTotalMismatches?: number
   recompute?: { ok: number; unknown: number; failed: number; targets: number }
   indicatorsStale?: boolean
 }
@@ -69,6 +73,15 @@ const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string; la
   green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢", label: "контрольные суммы сходятся" },
   yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡", label: "малое расхождение (≤1%)" },
   red: { fg: "text-red-700 dark:text-red-400", icon: "🔴", label: "крупное расхождение — вероятный мис-маппинг" },
+}
+const VALIDATION_VERDICT: Record<
+  "certified" | "warn" | "blocked" | "uncertifiable",
+  { fg: string; icon: string; label: string }
+> = {
+  certified: { fg: "text-emerald-700 dark:text-emerald-400", icon: "✅", label: "сертифицировано — контроли сошлись" },
+  warn: { fg: "text-amber-700 dark:text-amber-400", icon: "⚠️", label: "с предупреждениями — проверьте находки" },
+  blocked: { fg: "text-red-700 dark:text-red-300", icon: "⛔", label: "заблокировано — данные не пройдут коммит" },
+  uncertifiable: { fg: "text-sky-700 dark:text-sky-400", icon: "❓", label: "нечем авто-подтвердить — нужен ручной review" },
 }
 const fmtN = (n: number) => Math.round(n).toLocaleString("ru-RU")
 
@@ -298,10 +311,14 @@ export function UniversalImportForm() {
   // RED control-total is a HARD block (product decision 2026-06-20) — it
   // cannot be overridden by ackControl; the server also rejects it (409).
   const redBlocked = !!preview && preview.controlVerdict === "red"
+  // Phase A validation engine — a "blocked" verdict (RED control OR zero-revenue
+  // coverage failure) is a hard block; the server also 409s it.
+  const validationBlocked = !!preview && preview.validationVerdict === "blocked"
   const commitBlocked =
     !preview ||
     busy !== null ||
     redBlocked ||
+    validationBlocked ||
     (needsReviewAck && !ackLowConf) ||
     (controlGated && !ackControl)
 
@@ -489,6 +506,34 @@ export function UniversalImportForm() {
                 <div className={`text-xs font-medium ${VERDICT[preview.controlVerdict ?? "green"].fg}`}>
                   Сверка: {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
                   {VERDICT[preview.controlVerdict ?? "green"].label}
+                </div>
+              )}
+
+              {/* Phase A validation engine — graded verdict + findings */}
+              {preview.validationVerdict && (
+                <div className="space-y-1">
+                  <div className={`text-xs font-semibold ${VALIDATION_VERDICT[preview.validationVerdict].fg}`}>
+                    Валидация: {VALIDATION_VERDICT[preview.validationVerdict].icon}{" "}
+                    {VALIDATION_VERDICT[preview.validationVerdict].label}
+                  </div>
+                  {preview.validationFindings && preview.validationFindings.length > 0 && (
+                    <ul className="space-y-0.5">
+                      {preview.validationFindings.map((f, i) => (
+                        <li
+                          key={i}
+                          className={`text-[11px] ${
+                            f.severity === "blocker"
+                              ? "text-red-700 dark:text-red-300"
+                              : f.severity === "warning"
+                                ? "text-amber-700 dark:text-amber-400"
+                                : "text-muted-foreground"
+                          }`}
+                        >
+                          {f.severity === "blocker" ? "⛔" : f.severity === "warning" ? "⚠️" : "ℹ"} {f.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
 
