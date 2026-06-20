@@ -95,26 +95,32 @@ export function validateImport(
     })
   }
 
-  // ── Cost-sign CONVENTION (Phase C C3.1) — the applier flips cogs/expense
-  // assuming costs are stored NEGATIVE. If the inferred convention says the
-  // file stores them POSITIVE, or is AMBIGUOUS, that flip would corrupt the
-  // data — hard block (blocker), never flip-and-warn (Codex 2026-06-20:
-  // warnings are ack-overridable → still commits a corrupted file). Clear
-  // `negative_costs` / `no_evidence` → no finding → today's behaviour. ──
-  const badSign = (c: SignClassification | undefined): boolean =>
-    !!c && (c.convention === "positive_costs" || c.convention === "ambiguous")
+  // ── Cost-sign CONVENTION (Phase C C3.1) — the applier now flips cogs/expense
+  // PER the inferred convention (C3.1b). `positive_costs` is imported correctly
+  // (no flip) → INFO for visibility, not a block. `ambiguous` means we can't
+  // safely decide whether to flip → HARD block (blocker), never flip-and-warn
+  // (Codex 2026-06-20: warnings are ack-overridable → would commit a possibly
+  // corrupted file). Clear `negative_costs` / `no_evidence` → no finding. ──
   const sc = result.signConventions
-  if (badSign(sc?.cogs) || badSign(sc?.expense)) {
+  const isConv = (c: SignClassification | undefined, v: string): boolean => !!c && c.convention === v
+  if (isConv(sc?.cogs, "ambiguous") || isConv(sc?.expense, "ambiguous")) {
     const which = [
-      badSign(sc?.cogs) ? `COGS=${sc!.cogs!.convention}` : null,
-      badSign(sc?.expense) ? `expense=${sc!.expense!.convention}` : null,
+      isConv(sc?.cogs, "ambiguous") ? "COGS" : null,
+      isConv(sc?.expense, "ambiguous") ? "expense" : null,
     ]
       .filter(Boolean)
       .join(", ")
     findings.push({
       severity: "blocker",
       category: "sign",
-      message: `Cost-sign convention is not the expected "stored negative" (${which}) — the importer's sign flip would corrupt these values. Confirm the source sign / fix the mapping before committing.`,
+      message: `Cost-sign convention is AMBIGUOUS (${which}: mixed / dominated by an outlier) — cannot safely decide whether to flip the sign. Confirm the source convention / fix the mapping before committing.`,
+    })
+  }
+  if (isConv(sc?.cogs, "positive_costs") || isConv(sc?.expense, "positive_costs")) {
+    findings.push({
+      severity: "info",
+      category: "sign",
+      message: "Costs detected as stored POSITIVE (debit convention) — imported without the sign flip.",
     })
   }
 

@@ -66,8 +66,8 @@ const redResult = () => ({
   parentRollupsUnallocated: [{ code: 'P-__UNALLOCATED__', parentCode: 'P', plannedAnnual: 500 }], // 50% → red
 });
 
-// Revenue + cost, but the inferred cost-sign convention is positive → the
-// validation engine hard-blocks (the flip would corrupt). Phase C C3.1.
+// Revenue + cost, but the inferred cost-sign convention is AMBIGUOUS → the
+// validation engine hard-blocks (cannot safely decide the flip). Phase C C3.1b.
 const signBlockedResult = () => ({
   sheetName: 'S',
   lines: [
@@ -78,7 +78,7 @@ const signBlockedResult = () => ({
   skippedRowCount: 0,
   parentRollupsDropped: [],
   parentRollupsUnallocated: [],
-  signConventions: { cogs: { convention: 'positive_costs', evidence: { negRows: 0, posRows: 1, negAbs: 0, posAbs: 600, netSum: 600 } } },
+  signConventions: { cogs: { convention: 'ambiguous', evidence: { negRows: 1, posRows: 1, negAbs: 600, posAbs: 600, netSum: 0 } } },
 });
 
 function stage(opts: { status?: string; entityValues?: string[]; anomalies?: unknown[]; overallConfidence?: number } = {}) {

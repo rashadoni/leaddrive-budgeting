@@ -521,24 +521,19 @@ export function applyProposal(
       }
     }
 
-    // Sign convention: AZ accounting workbooks store cogs/expense as
-    // negative. ChartOfAccount.accountType='cogs'/'expense' wants the
-    // absolute amount (positive). Flip at apply time.
-    const flipSign =
-      accountType === 'cogs' || accountType === 'expense' ? -1 : 1;
-
-    const perMonth: number[] = [];
-    let annual = 0;
+    // Phase C C3.1b — pass 1 keeps RAW (pre-flip) per-month values; the
+    // sign flip is applied AFTER the loop, per the INFERRED cost-sign
+    // convention (positive-cost files must NOT be flipped). The Total-column
+    // tie-out below intentionally uses rawAnnual, so it is unaffected.
+    const perMonthRaw: number[] = [];
     let rawAnnual = 0;
     for (const monthCol of monthCols) {
-      const v = toNumberOrNull(row[monthCol]);
-      rawAnnual += v ?? 0;
-      const n = (v ?? 0) * flipSign;
-      perMonth.push(n);
-      annual += n;
+      const v = toNumberOrNull(row[monthCol]) ?? 0;
+      rawAnnual += v;
+      perMonthRaw.push(v);
     }
 
-    if (annual === 0 && perMonth.every((v) => v === 0)) {
+    if (rawAnnual === 0 && perMonthRaw.every((v) => v === 0)) {
       skipped += 1;
       continue;
     }
@@ -570,19 +565,18 @@ export function applyProposal(
     if (accountType === 'cogs') cogsRaw.push(rawAnnual);
     else if (accountType === 'expense') expenseRaw.push(rawAnnual);
 
+    // Stored RAW for now; pass 2 applies the convention-based flip.
     lines.push({
       code,
       label: label || code,
       accountType,
-      plannedAnnual: annual,
-      perMonth,
+      plannedAnnual: rawAnnual,
+      perMonth: perMonthRaw,
     });
   }
 
   // Phase C C3.1 — classify the stored-sign convention from the collected raw
-  // cost values. `negative_costs` (the AZ default) / `no_evidence` → today's
-  // flip is correct; `positive_costs` / `ambiguous` → the flip would corrupt,
-  // and the validation engine turns this into a hard block.
+  // cost values.
   const signConventions =
     cogsRaw.length > 0 || expenseRaw.length > 0
       ? {
@@ -590,6 +584,27 @@ export function applyProposal(
           ...(expenseRaw.length > 0 ? { expense: classifyCostSign(expenseRaw) } : {}),
         }
       : undefined;
+
+  // Phase C C3.1b — pass 2: apply the convention-based sign flip. cogs/expense
+  // are flipped to positive ONLY when the source stores them negative
+  // (`negative_costs`, the AZ default) or there's no evidence (legacy default);
+  // a `positive_costs` file is kept as-is (NOT flipped — the bug fix). revenue
+  // & balances are never flipped. `ambiguous` keeps the default flip but is
+  // hard-blocked by the validation engine downstream, so it never commits.
+  // For `negative_costs` / `no_evidence` this is byte-identical to the old
+  // unconditional flip. Parent + children of one accountType share one
+  // convention, so dedupeParentRollups (below) reconciles consistently.
+  const costFlip = (t: AccountType): number => {
+    if (t !== 'cogs' && t !== 'expense') return 1;
+    const conv = (t === 'cogs' ? signConventions?.cogs : signConventions?.expense)?.convention;
+    return conv === 'positive_costs' ? 1 : -1;
+  };
+  for (const line of lines) {
+    const f = costFlip(line.accountType);
+    if (f === 1) continue; // revenue/balances + positive-cost files: raw is correct
+    line.perMonth = line.perMonth.map((v) => v * f);
+    line.plannedAnnual = line.perMonth.reduce((a, v) => a + v, 0);
+  }
 
   const { kept, dropped, synthetic } = dedupeParentRollups(lines);
   // skippedRowCount = sheet rows that did NOT contribute a final line.

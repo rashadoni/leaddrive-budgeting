@@ -625,7 +625,7 @@ describe('applyProposal — cost-sign convention inference (Phase C C3.1)', () =
     expect(res.lines[0].plannedAnnual).toBe(1200)
   })
 
-  it('infers positive_costs when cost rows are stored positive (the flip would corrupt)', () => {
+  it('infers positive_costs and does NOT flip (C3.1b — costs stay positive)', () => {
     const wb = makeWorkbook([headerRow, ['701-01', 'COGS', ...monthVals(100)]])
     const res = applyProposal(wb, 'Sheet1', buildProposal([
       { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
@@ -635,6 +635,10 @@ describe('applyProposal — cost-sign convention inference (Phase C C3.1)', () =
     expect('error' in res).toBe(false)
     if ('error' in res) return
     expect(res.signConventions?.cogs?.convention).toBe('positive_costs')
+    // No flip applied — stored-positive costs are kept positive (was the bug:
+    // the old unconditional flip negated them to -1200).
+    expect(res.lines[0].plannedAnnual).toBe(1200)
+    expect(res.lines[0].perMonth.every((v) => v === 100)).toBe(true)
   })
 
   it('omits signConventions when there are no cost rows', () => {
