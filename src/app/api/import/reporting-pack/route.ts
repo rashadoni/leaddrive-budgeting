@@ -48,12 +48,31 @@ export async function POST(request: NextRequest) {
   )
   if (rateLimitError) return rateLimitError
 
-  const form = await request.formData()
+  let form: FormData
+  try {
+    form = await request.formData()
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Invalid multipart/form-data body" },
+      { status: 400 },
+    )
+  }
   const file = form.get("file")
   if (!(file instanceof Blob)) {
     return NextResponse.json(
       { ok: false, error: "Missing 'file' field" },
       { status: 400 },
+    )
+  }
+  // Require an .xlsx (mirrors /api/onboarding/import/analyze). XLSX.read
+  // would reject a non-workbook anyway, but failing fast keeps the error
+  // clear. Browser uploads carry the real filename; a missing name defaults
+  // to a passing one so programmatic .xlsx blobs aren't rejected.
+  const fileName = (file as Blob & { name?: string }).name ?? "upload.xlsx"
+  if (!/\.xlsx$/i.test(fileName)) {
+    return NextResponse.json(
+      { ok: false, error: "Only .xlsx files are supported" },
+      { status: 415 },
     )
   }
   if (file.size > MAX_BYTES) {
@@ -62,7 +81,21 @@ export async function POST(request: NextRequest) {
       { status: 413 },
     )
   }
-  const year = Number(form.get("year")) || new Date().getFullYear()
+  // Bounded-integer year — reject NaN / fractional / absurd values instead
+  // of silently importing into a nonsensical year (Number("x") || fallback
+  // also swallowed "year=0.5", "year=99999").
+  const yearRaw = form.get("year")
+  let year = new Date().getFullYear()
+  if (yearRaw != null && String(yearRaw).trim() !== "") {
+    const parsed = Number(yearRaw)
+    if (!Number.isInteger(parsed) || parsed < 2000 || parsed > 2100) {
+      return NextResponse.json(
+        { ok: false, error: "year must be an integer between 2000 and 2100" },
+        { status: 400 },
+      )
+    }
+    year = parsed
+  }
   const applyVal = String(form.get("apply") ?? "").toLowerCase()
   const shouldApply = applyVal === "1" || applyVal === "true"
 
@@ -75,6 +108,22 @@ export async function POST(request: NextRequest) {
       { ok: false, error: `Invalid xlsx: ${err instanceof Error ? err.message : String(err)}` },
       { status: 400 },
     )
+  }
+
+  // DoS guard: a small compressed .xlsx can expand to a huge cell grid, and
+  // the parsers run sheet_to_json over every sheet. Bound each sheet before
+  // parsing (mirrors /api/onboarding/import/analyze).
+  for (const sheetName of wb.SheetNames) {
+    const ref = wb.Sheets[sheetName]?.["!ref"]
+    if (!ref) continue
+    const range = XLSX.utils.decode_range(ref)
+    const cells = (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1)
+    if (cells > 500_000) {
+      return NextResponse.json(
+        { ok: false, error: `Sheet "${sheetName}" is too large (${cells.toLocaleString()} cells)` },
+        { status: 413 },
+      )
+    }
   }
 
   // entityCode → companyId for the post-apply recompute (AZSEKER tree).

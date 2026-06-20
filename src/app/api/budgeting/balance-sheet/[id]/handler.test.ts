@@ -90,6 +90,7 @@ describe("DELETE /api/budgeting/balance-sheet/[id]", () => {
     expect(res.status).toBe(200)
     const arg = prismaMock.balanceSheetLine.updateMany.mock.calls[0][0]
     expect(arg.data.deletedAt).toBeInstanceOf(Date)
+    expect(arg.data.deletedBy).toBe("u1")
     expect(logBudgetChangeMock).toHaveBeenCalledWith(expect.objectContaining({ action: "delete" }))
   })
 

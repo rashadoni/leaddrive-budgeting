@@ -41,7 +41,12 @@ const SESSION = { userId: "u1", orgId: "org1", role: "admin" as const }
 
 function makeReq(fields: Record<string, string | Blob>) {
   const fd = new FormData()
-  for (const [k, v] of Object.entries(fields)) fd.append(k, v)
+  for (const [k, v] of Object.entries(fields)) {
+    // Name Blob file fields .xlsx so they pass the extension gate — mirrors
+    // how a browser file input sends the real filename.
+    if (v instanceof Blob) fd.append(k, v, "Reporting 2026.xlsx")
+    else fd.append(k, v)
+  }
   return new Request("http://t/api/import/reporting-pack", {
     method: "POST",
     body: fd,
@@ -81,6 +86,21 @@ describe("POST /api/import/reporting-pack", () => {
   it("400s when no file is supplied", async () => {
     const res = await POST(makeReq({ year: "2026" }))
     expect(res.status).toBe(400)
+  })
+
+  it("415s a non-.xlsx file", async () => {
+    const fd = new FormData()
+    fd.append("file", xlsxBlob(), "report.csv")
+    const req = new Request("http://t/api/import/reporting-pack", { method: "POST", body: fd }) as never
+    const res = await POST(req)
+    expect(res.status).toBe(415)
+    expect(runReportingPackImport).not.toHaveBeenCalled()
+  })
+
+  it("400s an out-of-range year", async () => {
+    const res = await POST(makeReq({ file: xlsxBlob(), year: "99999" }))
+    expect(res.status).toBe(400)
+    expect(runReportingPackImport).not.toHaveBeenCalled()
   })
 
   it("runs PREVIEW by default (apply omitted) without recompute", async () => {

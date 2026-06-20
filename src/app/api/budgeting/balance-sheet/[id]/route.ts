@@ -105,9 +105,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "DELETE /api/budgeting/balance-sheet/[id]" })
 
   // Soft delete — consumers filter deletedAt:null; restorable via data-archive.
+  // deletedBy mirrors CF delete + archiveStamp so restore/audit keeps ownership.
   await prisma.balanceSheetLine.updateMany({
     where: { id, organizationId: orgId, deletedAt: null },
-    data: { deletedAt: new Date() },
+    data: { deletedAt: new Date(), deletedBy: userId },
   })
   logBudgetChange({ orgId, planId: old.planId, entityType: "balanceSheetLine", entityId: id, action: "delete", oldValue: old, userId })
 
