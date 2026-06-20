@@ -39,6 +39,45 @@ interface AnalyzeResponse {
   company: { id: string; code: string; name: string }
   proposal: MappingProposal
   sourceColumns: SourceColumn[]
+  // Phase C C2.4 — present only for a multi-company-in-one-sheet (entity column).
+  multiEntity?: boolean
+  entityValues?: string[]
+  entitySuggestions?: Record<string, string>
+}
+
+// Phase C C2.4b — /apply-multi-entity response shapes (distinct from the
+// single-company ApplyResult).
+interface MePerEntityPreview {
+  entityValue: string
+  companyId: string | null
+  lineCount: number
+  error?: string
+  wouldDelete: number
+}
+interface MePreviewResult {
+  status: "preview"
+  dryRun: true
+  year: number
+  entityCount: number
+  writeableCount: number
+  perEntity: MePerEntityPreview[]
+  controlVerdict: "green" | "yellow" | "red"
+  mappingIssues: {
+    unmapped: string[]
+    crossOrg: string[]
+    duplicateCompanyIds: string[]
+    parseErrors: Array<{ entityValue: string; error: string }>
+  }
+}
+interface MeAppliedResult {
+  status: "applied"
+  year: number
+  inserted: number
+  deleted: number
+  entityCount: number
+  perEntity: Array<{ entityValue: string; companyId: string; inserted: number; deleted: number }>
+  recompute?: { ok: number; unknown: number; failed: number; targets: number }
+  indicatorsStale?: boolean
 }
 interface ControlTotal {
   code: string
@@ -121,6 +160,12 @@ export function UniversalImportForm() {
   const [applied, setApplied] = useState<ApplyResult | null>(null)
   const [ackLowConf, setAckLowConf] = useState(false)
   const [ackControl, setAckControl] = useState(false)
+  // Phase C C2.4b — multi-entity routing: entityValue → companyId map + the
+  // /apply-multi-entity preview/applied results (kept separate from the
+  // single-company preview/applied so the two paths don't entangle).
+  const [entityMap, setEntityMap] = useState<Record<string, string>>({})
+  const [mePreview, setMePreview] = useState<MePreviewResult | null>(null)
+  const [meApplied, setMeApplied] = useState<MeAppliedResult | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Monotonic token bumped on every mapping/sheet/file change. A dry-run
@@ -185,6 +230,9 @@ export function UniversalImportForm() {
     setEdited([])
     setPreview(null)
     setApplied(null)
+    setEntityMap({})
+    setMePreview(null)
+    setMeApplied(null)
     setAckLowConf(false)
     setAckControl(false)
     setError(null)
@@ -213,6 +261,11 @@ export function UniversalImportForm() {
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       const a = body as AnalyzeResponse
       setAnalysis(a)
+      // Multi-entity: seed the entityValue→company map from the AI's
+      // auto-suggested matches (the reviewer confirms/corrects below).
+      setEntityMap(a.multiEntity ? { ...(a.entitySuggestions ?? {}) } : {})
+      setMePreview(null)
+      setMeApplied(null)
       previewEpoch.current++
       // Normalise to one entry per SOURCE column. If the AI proposal omitted a
       // column, default it to "skip" so the reviewer can still re-map it (an
@@ -277,6 +330,27 @@ export function UniversalImportForm() {
         fd.append("acknowledgeAnomalies", String(ackLowConf))
         fd.append("acknowledgeLowConfidence", String(ackLowConf))
       }
+
+      // Phase C C2.4b — multi-company-in-one-sheet routes to a DIFFERENT
+      // endpoint (per-entity clean-slate + insert) and carries the reviewer's
+      // entityValue→company map.
+      if (analysis.multiEntity) {
+        fd.append("entityMap", JSON.stringify(entityMap))
+        const res = await fetch(
+          `/api/onboarding/import/staging/${analysis.stagingId}/apply-multi-entity`,
+          { method: "POST", body: fd },
+        )
+        const body = await res.json().catch(() => null)
+        if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+        if (dryRun) {
+          if (previewEpoch.current !== myEpoch) return
+          setMePreview(body as MePreviewResult)
+        } else {
+          setMeApplied(body as MeAppliedResult)
+        }
+        return
+      }
+
       const res = await fetch(`/api/onboarding/import/staging/${analysis.stagingId}/apply`, {
         method: "POST",
         body: fd,
@@ -321,6 +395,29 @@ export function UniversalImportForm() {
     validationBlocked ||
     (needsReviewAck && !ackLowConf) ||
     (controlGated && !ackControl)
+
+  // ── Multi-entity gating (mirrors the single path; the server enforces) ──
+  const meIssues = mePreview?.mappingIssues
+  const meHasMappingProblem =
+    !!meIssues &&
+    (meIssues.unmapped.length > 0 ||
+      meIssues.crossOrg.length > 0 ||
+      meIssues.duplicateCompanyIds.length > 0 ||
+      meIssues.parseErrors.length > 0)
+  const meRedBlocked = mePreview?.controlVerdict === "red"
+  const meCommitBlocked =
+    !mePreview ||
+    busy !== null ||
+    meRedBlocked ||
+    meHasMappingProblem ||
+    (needsReviewAck && !ackLowConf)
+  // Invalidate a multi-entity preview when the reviewer changes a BU→company
+  // assignment (the destructive footprint changed).
+  const setEntityMapEntry = (value: string, companyId: string) => {
+    setEntityMap((m) => ({ ...m, [value]: companyId }))
+    setMePreview(null)
+    previewEpoch.current++
+  }
 
   return (
     <div className="space-y-6">
@@ -462,7 +559,7 @@ export function UniversalImportForm() {
       )}
 
       {/* Step 2 — review/edit mapping */}
-      {analysis && !applied && (
+      {analysis && !applied && !meApplied && (
         <MappingReviewTable
           proposal={analysis.proposal}
           sourceColumns={analysis.sourceColumns}
@@ -472,13 +569,60 @@ export function UniversalImportForm() {
             setEdited(next)
             previewEpoch.current++ // invalidate any in-flight preview
             setPreview(null) // mapping changed → previous preview is stale
+            setMePreview(null)
             setAckControl(false)
           }}
         />
       )}
 
-      {/* Step 3 — preview + commit */}
-      {analysis && !applied && (
+      {/* Step 2b — multi-company-in-one-sheet: map each BU value to a company */}
+      {analysis?.multiEntity && !meApplied && (
+        <div className="border rounded p-3 bg-muted/10 space-y-2">
+          <div className="text-sm font-semibold">
+            🏢 Лист содержит несколько компаний (колонка-сущность)
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Каждое значение BU направляется в отдельную компанию. Проверьте
+            авто-сопоставление; одно значение — одна компания.
+          </div>
+          <div className="border rounded overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-muted text-xs">
+                <tr>
+                  <th className="text-left p-2">Значение в файле (BU)</th>
+                  <th className="text-left p-2">→ Компания</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(analysis.entityValues ?? []).map((val) => (
+                  <tr key={val} className="border-t">
+                    <td className="p-2 font-mono text-xs">{val === "" ? "(пусто)" : val}</td>
+                    <td className="p-2">
+                      <select
+                        value={entityMap[val] ?? ""}
+                        disabled={busy !== null}
+                        onChange={(e) => setEntityMapEntry(val, e.target.value)}
+                        className="w-full px-1.5 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+                        aria-label={`Компания для ${val || "(пусто)"}`}
+                      >
+                        <option value="">— выберите —</option>
+                        {companies.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} ({c.code})
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3 (single company) — preview + commit */}
+      {analysis && !analysis.multiEntity && !applied && (
         <div className="space-y-3">
           <button
             type="button"
@@ -610,6 +754,151 @@ export function UniversalImportForm() {
             className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
           >
             {busy === "apply" ? "Записываю…" : "Применить (запись в БД)"}
+          </button>
+        </div>
+      )}
+
+      {/* Step 3b (multi-company) — preview + commit per entity */}
+      {analysis?.multiEntity && !meApplied && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => runApply(true)}
+            disabled={busy !== null}
+            className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
+          >
+            {busy === "preview" ? "Считаю…" : "Превью по компаниям (без записи)"}
+          </button>
+
+          {mePreview && (
+            <div className="border rounded p-3 bg-muted/20 text-sm space-y-2">
+              <div className="font-semibold">
+                👁 Превью · год {mePreview.year} · компаний с данными: {mePreview.writeableCount}/
+                {mePreview.entityCount}
+              </div>
+              <div className={`text-xs font-medium ${VERDICT[mePreview.controlVerdict].fg}`}>
+                Сверка (худшая по компаниям): {VERDICT[mePreview.controlVerdict].icon}{" "}
+                {VERDICT[mePreview.controlVerdict].label}
+              </div>
+              <div className="border rounded overflow-hidden">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left p-1">BU</th>
+                      <th className="text-left p-1">Компания</th>
+                      <th className="text-right p-1">строк</th>
+                      <th className="text-right p-1">заменит</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {mePreview.perEntity.map((p) => {
+                      const co = companies.find((c) => c.id === p.companyId)
+                      return (
+                        <tr key={p.entityValue} className="border-t">
+                          <td className="p-1 font-mono">{p.entityValue === "" ? "(пусто)" : p.entityValue}</td>
+                          <td className="p-1">
+                            {p.error ? (
+                              <span className="text-red-700 dark:text-red-300">ошибка: {p.error}</span>
+                            ) : co ? (
+                              `${co.name} (${co.code})`
+                            ) : (
+                              <span className="text-amber-700 dark:text-amber-400">не назначена</span>
+                            )}
+                          </td>
+                          <td className="p-1 text-right font-mono">{p.lineCount}</td>
+                          <td className="p-1 text-right font-mono">{p.wouldDelete}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mapping issues — each is a hard server-side block */}
+              {meHasMappingProblem && (
+                <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300 space-y-1">
+                  {meIssues!.unmapped.length > 0 && (
+                    <div>Не назначены компании: {meIssues!.unmapped.map((v) => v || "(пусто)").join(", ")}</div>
+                  )}
+                  {meIssues!.duplicateCompanyIds.length > 0 && (
+                    <div>⚠ Несколько BU ведут в одну компанию — это перетёрло бы данные. Назначьте разные компании.</div>
+                  )}
+                  {meIssues!.crossOrg.length > 0 && <div>Назначены компании вне организации.</div>}
+                  {meIssues!.parseErrors.length > 0 && (
+                    <div>Не разобрались: {meIssues!.parseErrors.map((e) => e.entityValue).join(", ")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {meRedBlocked && (
+            <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              🔴 Контроль-сумма RED по одной из компаний — коммит заблокирован.
+              Исправьте разметку и запустите превью заново.
+            </div>
+          )}
+
+          {needsReviewAck && (
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={ackLowConf}
+                onChange={(e) => setAckLowConf(e.target.checked)}
+                className="mt-0.5"
+              />
+              {hasCriticalAnomaly
+                ? "AI пометил критическую аномалию — я проверил разметку вручную."
+                : "Низкая уверенность AI — я проверил разметку колонок вручную."}
+            </label>
+          )}
+
+          <button
+            type="button"
+            onClick={() => runApply(false)}
+            disabled={meCommitBlocked}
+            title={!mePreview ? "Сначала запустите превью" : undefined}
+            className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
+          >
+            {busy === "apply" ? "Записываю…" : "Применить по компаниям (запись в БД)"}
+          </button>
+        </div>
+      )}
+
+      {/* Step 4b — multi-company applied */}
+      {meApplied && (
+        <div className="border rounded p-4 bg-emerald-50 dark:bg-emerald-500/10 text-sm space-y-1">
+          <div className="text-lg font-bold">
+            ✅ Импортировано в {meApplied.entityCount} компани(й) · год {meApplied.year}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            всего строк: <b>{meApplied.inserted}</b> · заменено: {meApplied.deleted}
+            {meApplied.recompute && ` · recompute ok:${meApplied.recompute.ok} failed:${meApplied.recompute.failed}`}
+          </div>
+          <ul className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+            {meApplied.perEntity.map((p) => {
+              const co = companies.find((c) => c.id === p.companyId)
+              return (
+                <li key={p.entityValue} className="font-mono">
+                  {p.entityValue || "(пусто)"} → {co ? `${co.code}` : p.companyId}: {p.inserted} строк
+                </li>
+              )
+            })}
+          </ul>
+          {meApplied.indicatorsStale && (
+            <div className="text-xs text-amber-700 dark:text-amber-400">
+              ⚠ часть индикаторов не пересчиталась — откройте терминал позже/повторите.
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setFile(null)
+              reset()
+            }}
+            className="mt-2 px-3 py-1.5 rounded border border-border text-xs hover:bg-muted/50"
+          >
+            Импортировать ещё файл
           </button>
         </div>
       )}
