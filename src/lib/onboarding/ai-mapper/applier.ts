@@ -433,6 +433,7 @@ export function applyProposal(
   const MIN_NON_EMPTY = 3;
   const MAX_HEADER_CELL_LEN = 80;
   let headerEndRow = Math.min(5, aoa.length);
+  let headerMatched = false;
   for (let r = 0; r < Math.min(HEADER_DETECTION_LIMIT, aoa.length); r++) {
     const row = aoa[r] ?? [];
     const nonEmpty = row.filter((v) => v !== null && v !== undefined && v !== '');
@@ -444,7 +445,30 @@ export function applyProposal(
     );
     if (!allShort) continue;
     headerEndRow = r + 1;
+    headerMatched = true;
     break;
+  }
+  // C2.5 — numeric/date-serial header fallback. The all-strings heuristic
+  // misses a header row that carries Excel date-serial month cells (numbers),
+  // and the fixed row-5 fallback then mis-skips the first DATA rows. When the
+  // heuristic didn't match, anchor on the first true DATA row instead: a code
+  // cell with a DIGIT *and* a label *and* at least one numeric mapped month
+  // value — so a banner/title row (which may carry a stray year in the code
+  // column) does NOT false-trigger (Codex 2026-06-20). A `REVENUE`/`COGS`
+  // section marker that ends up ABOVE this row is recovered by seeding
+  // `currentSection` from the skipped band (below).
+  if (!headerMatched) {
+    for (let r = 0; r < aoa.length; r++) {
+      const row = aoa[r] ?? [];
+      const codeCell = toTrimmedString(row[codeCol]);
+      if (codeCell === '' || !/\d/.test(codeCell)) continue;
+      const hasLabel = labelCol >= 0 && toTrimmedString(row[labelCol]) !== '';
+      const hasNumericMonth = monthCols.some((c) => c >= 0 && toNumberOrNull(row[c]) !== null);
+      if (hasLabel && hasNumericMonth) {
+        headerEndRow = r;
+        break;
+      }
+    }
   }
 
   const lines: ParsedBudgetLine[] = [];
@@ -471,6 +495,15 @@ export function applyProposal(
   // Tracks the current P&L section for NON-SAP code schemes (see
   // detectSectionType). SAP-numeric codes never consult it.
   let currentSection: AccountType | null = null;
+  // C2.5 — seed the section from any header-band row above the data start (a
+  // `REVENUE`/`COGS` marker that the numeric-header code-anchor put above the
+  // first coded row). Harmless for string-header sheets — title/column-header
+  // rows don't match detectSectionType, so currentSection stays null as before.
+  for (let r = 0; r < headerEndRow; r++) {
+    const row = aoa[r] ?? [];
+    const hit = detectSectionType(toTrimmedString(row[labelCol])) ?? detectSectionType(toTrimmedString(row[codeCol]));
+    if (hit) currentSection = hit;
+  }
   for (let r = headerEndRow; r < aoa.length; r++) {
     const row = aoa[r] ?? [];
     const code = toTrimmedString(row[codeCol]);

@@ -700,3 +700,48 @@ describe('resolveColumns — currency selection (Phase C C3.2)', () => {
     if (res.ok) expect(res.columns.currency).toBeNull()
   })
 })
+
+describe('applyProposal — numeric/date-serial header (C2.5)', () => {
+  const serials = [45658, 45689, 45717, 45748, 45778, 45809, 45839, 45870, 45901, 45931, 45962, 45992]
+  const mcols = (): ColumnMappingProposal[] => [
+    { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+    ...fullMonthCols(2),
+  ]
+
+  it('parses ALL data rows when the header carries date-serial months (none dropped)', () => {
+    const wb = makeWorkbook([
+      ['Code', 'Label', ...serials],
+      ['601-01', 'Revenue', ...Array(12).fill(100)],
+      ['701-01', 'COGS', ...Array(12).fill(-50)],
+    ])
+    const res = applyProposal(wb, 'Sheet1', buildProposal(mcols()), XLSX)
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.lines.map((l) => l.code).sort()).toEqual(['601-01', '701-01'])
+    expect(res.lines.find((l) => l.code === '601-01')?.plannedAnnual).toBe(1200)
+  })
+
+  it('seeds currentSection from a section marker that lands above the first coded row', () => {
+    const wb = makeWorkbook([
+      ['Code', 'Label', ...serials], // numeric header → code-anchor fallback
+      [null, 'REVENUE', ...Array(12).fill(null)], // section marker, no code
+      ['PLF.01.01', 'Product sales', ...Array(12).fill(100)], // non-SAP, no override
+    ])
+    const res = applyProposal(wb, 'Sheet1', buildProposal(mcols()), XLSX)
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.lines.find((l) => l.code === 'PLF.01.01')?.accountType).toBe('revenue')
+  })
+
+  it('string-header sheets are unaffected (heuristic still primary)', () => {
+    const wb = makeWorkbook([
+      ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['601-01', 'Revenue', ...Array(12).fill(100)],
+    ])
+    const res = applyProposal(wb, 'Sheet1', buildProposal(mcols()), XLSX)
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.lines.find((l) => l.code === '601-01')?.plannedAnnual).toBe(1200)
+  })
+})
