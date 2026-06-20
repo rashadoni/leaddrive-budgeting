@@ -91,6 +91,10 @@ function flatten(tree: unknown): CompanyOpt[] {
 export function UniversalImportForm() {
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
   const [companyId, setCompanyId] = useState("")
+  // Create-new-company sub-flow (for entities not yet in the org tree).
+  const [showCreate, setShowCreate] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newCo, setNewCo] = useState({ code: "", name: "", industry: "", baseCurrencyCode: "AZN" })
   const [file, setFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [busy, setBusy] = useState<Busy>(null)
@@ -111,12 +115,55 @@ export function UniversalImportForm() {
   // edit made while a preview is in flight discards the now-stale result.
   const previewEpoch = useRef(0)
 
+  const loadCompanies = async (): Promise<CompanyOpt[]> => {
+    try {
+      const r = await fetch("/api/companies")
+      const tree = r.ok ? await r.json() : []
+      const flat = flatten(tree)
+      setCompanies(flat)
+      return flat
+    } catch {
+      setCompanies([])
+      return []
+    }
+  }
+
   useEffect(() => {
-    fetch("/api/companies")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((tree) => setCompanies(flatten(tree)))
-      .catch(() => setCompanies([]))
+    void loadCompanies()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  async function createCompany() {
+    if (!newCo.code.trim() || !newCo.name.trim()) {
+      setError("Код и название компании обязательны")
+      return
+    }
+    setCreating(true)
+    setError(null)
+    try {
+      const res = await fetch("/api/companies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: newCo.code.trim(),
+          name: newCo.name.trim(),
+          industry: newCo.industry.trim() || undefined,
+          baseCurrencyCode: newCo.baseCurrencyCode.trim() || undefined,
+        }),
+      })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
+      await loadCompanies()
+      setCompanyId(body.id) // select the freshly created company
+      setShowCreate(false)
+      setNewCo({ code: "", name: "", industry: "", baseCurrencyCode: "AZN" })
+      reset()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const reset = () => {
     setClassifications([])
@@ -270,6 +317,51 @@ export function UniversalImportForm() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => setShowCreate((v) => !v)}
+            className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400 hover:underline"
+          >
+            {showCreate ? "× отмена" : "+ Новая компания"}
+          </button>
+          {showCreate && (
+            <div className="mt-2 border rounded p-2 space-y-2 bg-muted/20">
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={newCo.code}
+                  onChange={(e) => setNewCo((s) => ({ ...s, code: e.target.value }))}
+                  placeholder="Код (напр. CO-NEW)"
+                  className="px-2 py-1 rounded border border-border bg-background text-xs"
+                />
+                <input
+                  value={newCo.name}
+                  onChange={(e) => setNewCo((s) => ({ ...s, name: e.target.value }))}
+                  placeholder="Название"
+                  className="px-2 py-1 rounded border border-border bg-background text-xs"
+                />
+                <input
+                  value={newCo.industry}
+                  onChange={(e) => setNewCo((s) => ({ ...s, industry: e.target.value }))}
+                  placeholder="Отрасль (опц.)"
+                  className="px-2 py-1 rounded border border-border bg-background text-xs"
+                />
+                <input
+                  value={newCo.baseCurrencyCode}
+                  onChange={(e) => setNewCo((s) => ({ ...s, baseCurrencyCode: e.target.value }))}
+                  placeholder="Валюта (AZN)"
+                  className="px-2 py-1 rounded border border-border bg-background text-xs"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={createCompany}
+                disabled={creating || !newCo.code.trim() || !newCo.name.trim()}
+                className="w-full px-2 py-1 rounded bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-40"
+              >
+                {creating ? "Создаю…" : "Создать и выбрать"}
+              </button>
+            </div>
+          )}
         </div>
         <div
           onDrop={(e: DragEvent<HTMLDivElement>) => {
