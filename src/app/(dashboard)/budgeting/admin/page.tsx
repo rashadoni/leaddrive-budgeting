@@ -54,6 +54,7 @@ const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
     title: "📥 Data Ingestion",
     tools: [
       { href: "/budgeting/admin/ai-import", key: "aiImport", icon: Brain, badge: "Phase 7.M", recentlyAdded: true },
+      { href: "/budgeting/admin/reporting-pack", key: "reportingPack", icon: FileSpreadsheet, recentlyAdded: true },
       { href: "/budgeting/admin/data-entry", key: "dataEntry", icon: ClipboardEdit },
       { href: "/budgeting/admin/data-sources", key: "dataSources", icon: FileSpreadsheet },
       { href: "/budgeting/admin/source-registry", key: "sourceRegistry", icon: FileSpreadsheet },

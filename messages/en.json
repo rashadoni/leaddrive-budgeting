@@ -3212,6 +3212,10 @@
         "title": "AI Import",
         "desc": "Drop any xlsx — financials (P&L/BS/CF), KPIs, land, descriptions, company structure, budget actuals, sales forecast. AI detects the type and routes it. One screen instead of five forms."
       },
+      "reportingPack": {
+        "title": "Reporting Pack",
+        "desc": "Upload the FO Holding monthly reporting pack (Reporting YYYY.xlsx). Reads the detail sheets, splits by BU into entities, previews, then writes actuals + budget P&L per entity in one transaction."
+      },
       "dataEntry": {
         "title": "Data Entry",
         "desc": "Manual entry of KPIs and ESG disclosures for non-engineer admins."

@@ -3212,6 +3212,10 @@
         "title": "AI idxal",
         "desc": "İstənilən xlsx yükləyin — maliyyə (P&L/BS/CF), KPI, torpaq, təsvirlər, şirkət strukturu, büdcə faktları, satış proqnozu. AI tipi müəyyən edir və yönləndirir. Beş forma yerinə bir ekran."
       },
+      "reportingPack": {
+        "title": "Hesabat paketi",
+        "desc": "FO Holding aylıq hesabat paketini (Reporting YYYY.xlsx) yükləyin. Detal vərəqlərini oxuyur, BU üzrə qurumlara bölür, önizləmə göstərir, sonra fakt + büdcə P&L-i hər qurum üçün bir tranzaksiyada yazır."
+      },
       "dataEntry": {
         "title": "Əl ilə daxiletmə",
         "desc": "Texniki olmayan admin üçün KPI və ESG açıqlamalarının əl ilə daxil edilməsi."
