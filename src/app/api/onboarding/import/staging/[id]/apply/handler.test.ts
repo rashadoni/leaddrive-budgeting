@@ -483,6 +483,10 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       controlVerdict: 'green',
       controlNoData: false,
       controlTotals: [],
+      // Phase A validation engine — revenue+cogs present, green control → certified.
+      validationVerdict: 'certified',
+      validationFindings: [],
+      rowTotalMismatches: 0,
     });
 
     // Critical contract: dry-run does NOT mutate state.

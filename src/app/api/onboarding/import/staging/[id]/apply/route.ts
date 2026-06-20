@@ -41,6 +41,7 @@ const log = getLogger('api:apply');
 const recomputeLog = getLogger('api:apply:recompute');
 import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
+import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
@@ -319,6 +320,9 @@ export async function POST(
       applyResult.parentRollupsDropped,
       applyResult.parentRollupsUnallocated,
     );
+    // Phase A validation engine — graded verdict from multiple file-internal
+    // signals (control-total + Total-column tie-out + coverage + margin/sign).
+    const validation = validateImport(applyResult, control);
     return NextResponse.json(
       {
         stagingId: staging.id,
@@ -334,6 +338,9 @@ export async function POST(
         controlVerdict: control.verdict,
         controlNoData: control.noControl,
         controlTotals: control.controlTotals.slice(0, 10),
+        validationVerdict: validation.verdict,
+        validationFindings: validation.findings,
+        rowTotalMismatches: (applyResult.rowTotalMismatches ?? []).length,
       },
       { status: 200 },
     );
@@ -353,13 +360,20 @@ export async function POST(
     applyResult.parentRollupsDropped,
     applyResult.parentRollupsUnallocated,
   );
-  if (commitControl.verdict === 'red') {
+  // Phase A validation engine — graded verdict from multiple file-internal
+  // signals. A "blocked" verdict (RED control-total OR no-revenue coverage
+  // failure) is a HARD 409: these are mis-maps that must never commit.
+  const commitValidation = validateImport(applyResult, commitControl);
+  if (commitValidation.verdict === 'blocked') {
+    const blocker = commitValidation.findings.find((f) => f.severity === 'blocker');
     return NextResponse.json(
       {
         error:
-          'Контроль-сумма RED: родительские строки не сходятся с суммой детей (вероятный мис-маппинг колонки). Коммит заблокирован — проверьте маппинг и переанализируйте файл.',
-        controlVerdict: 'red',
+          blocker?.message ??
+          'Импорт заблокирован валидацией: данные не прошли контроль.',
+        controlVerdict: commitControl.verdict,
         controlTotals: commitControl.controlTotals.slice(0, 10),
+        validationFindings: commitValidation.findings,
       },
       { status: 409 },
     );
