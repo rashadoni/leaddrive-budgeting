@@ -257,6 +257,13 @@ export function UniversalImportForm() {
       if (dryRun) fd.append("dryRun", "true")
       const overrides = buildUserOverrides(analysis.proposal, edited)
       if (overrides) fd.append("userOverrides", JSON.stringify(overrides))
+      if (!dryRun) {
+        // Server re-checks the review gates (Codex P1 #1) — forward the
+        // human's acknowledgement so a legit reviewed commit isn't 409'd.
+        // The commit button is disabled until these acks are given.
+        fd.append("acknowledgeAnomalies", String(ackLowConf))
+        fd.append("acknowledgeLowConfidence", String(ackLowConf))
+      }
       const res = await fetch(`/api/onboarding/import/staging/${analysis.stagingId}/apply`, {
         method: "POST",
         body: fd,
@@ -288,9 +295,13 @@ export function UniversalImportForm() {
       hasCriticalAnomaly)
   const controlGated =
     !!preview && preview.controlVerdict !== undefined && preview.controlVerdict !== "green"
+  // RED control-total is a HARD block (product decision 2026-06-20) — it
+  // cannot be overridden by ackControl; the server also rejects it (409).
+  const redBlocked = !!preview && preview.controlVerdict === "red"
   const commitBlocked =
     !preview ||
     busy !== null ||
+    redBlocked ||
     (needsReviewAck && !ackLowConf) ||
     (controlGated && !ackControl)
 
@@ -510,7 +521,16 @@ export function UniversalImportForm() {
             </div>
           )}
 
-          {controlGated && (
+          {redBlocked && (
+            <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              🔴 Контроль-сумма RED — коммит заблокирован жёстко (нельзя
+              подтвердить). Итог родительских строк не сходится с суммой
+              листьев: вероятный мис-маппинг колонки. Исправьте разметку и
+              нажмите «Предпросмотр» заново. Сервер тоже отклонит такой коммит.
+            </div>
+          )}
+
+          {controlGated && !redBlocked && (
             <label className="flex items-start gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
@@ -518,7 +538,8 @@ export function UniversalImportForm() {
                 onChange={(e) => setAckControl(e.target.checked)}
                 className="mt-0.5"
               />
-              Расхождение контрольных сумм проверено (итог родителя ≠ сумме листьев). 🔴 = вероятный мис-маппинг колонки — перепроверьте разметку.
+              🟡 Малое расхождение контрольных сумм (≤1%) проверено — итог
+              родителя ≈ сумме листьев в пределах округления.
             </label>
           )}
 

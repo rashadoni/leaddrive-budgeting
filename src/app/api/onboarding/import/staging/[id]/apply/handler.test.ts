@@ -540,3 +540,84 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
     expect(prismaMock.budgetLine.count).not.toHaveBeenCalled();
   });
 });
+
+// ── Server-side review gates (Codex P1 #1, 2026-06-20) ─────────────────
+// A direct POST to /apply (no dryRun) must NOT bypass the wizard's gates.
+// RED control-total = hard 409; critical anomalies + low confidence need
+// explicit acknowledgement form fields.
+describe('POST .../apply — server-side review gates', () => {
+  function stage(proposal: unknown) {
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID,
+      companyId: COMPANY_ID,
+      status: 'pending',
+      sourceSheet: 'SOPL',
+      proposal,
+      userOverrides: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      appliedAt: null,
+    });
+  }
+  async function applyReqWith(fields: Record<string, string>): Promise<NextRequestType> {
+    const fd = new FormData();
+    fd.set('file', new File(['fake'], 'aac.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }));
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+    const base = new Request(
+      `http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply`,
+      { method: 'POST', body: fd },
+    );
+    const { NextRequest } = await import('next/server');
+    return new NextRequest(base);
+  }
+
+  beforeEach(() => {
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+  });
+
+  it('RED control-total → 409 hard block, no transaction', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stage({ columns: [{ sourceIndex: 0, role: 'code', confidence: 1 }], anomalies: [], overallConfidence: 0.95, mappings: [] });
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [{ code: 'X', label: 'X', plannedAnnual: 1000, accountType: 'revenue' }],
+      warnings: [],
+      parentRollupsDropped: [{ code: 'P', plannedAnnual: 1000 }],
+      parentRollupsUnallocated: [{ parentCode: 'P', plannedAnnual: 500 }], // 50% delta → red
+    });
+    const res = await POST(await applyReqWith({}), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.controlVerdict).toBe('red');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('critical anomaly without acknowledgeAnomalies → 409', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stage({ columns: [{ sourceIndex: 0, role: 'code', confidence: 1 }], anomalies: [{ row: 5, severity: 'critical', category: 'sign_inversion', description: 'x' }], overallConfidence: 0.95, mappings: [] });
+    applierMocks.applyProposal.mockReturnValue({ lines: [{ code: 'X', label: 'X', plannedAnnual: 1, accountType: 'revenue' }], warnings: [], parentRollupsDropped: [], parentRollupsUnallocated: [] });
+    const res = await POST(await applyReqWith({}), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    expect((await res.json()).requiresAcknowledgement).toBe('acknowledgeAnomalies');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('low-confidence column without acknowledgeLowConfidence → 409', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stage({ columns: [{ sourceIndex: 0, role: 'code', confidence: 0.3 }], anomalies: [], overallConfidence: 0.95, mappings: [] });
+    applierMocks.applyProposal.mockReturnValue({ lines: [{ code: 'X', label: 'X', plannedAnnual: 1, accountType: 'revenue' }], warnings: [], parentRollupsDropped: [], parentRollupsUnallocated: [] });
+    const res = await POST(await applyReqWith({}), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    expect((await res.json()).requiresAcknowledgement).toBe('acknowledgeLowConfidence');
+  });
+
+  it('critical anomaly WITH acknowledgement → passes the gate and commits', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stage({ columns: [{ sourceIndex: 0, role: 'code', confidence: 1 }], anomalies: [{ row: 5, severity: 'critical', category: 'sign_inversion', description: 'x' }], overallConfidence: 0.95, mappings: [] });
+    applierMocks.applyProposal.mockReturnValue({ lines: [{ code: 'X', label: 'X', plannedAnnual: 1, accountType: 'revenue' }], warnings: [], parentRollupsDropped: [], parentRollupsUnallocated: [] });
+    prismaMock.$transaction.mockResolvedValue({ inserted: 1, deleted: 0, warnings: 0, parentRollupsDropped: 0, parentRollupsUnallocated: 0 });
+    const res = await POST(await applyReqWith({ acknowledgeAnomalies: 'true' }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+});

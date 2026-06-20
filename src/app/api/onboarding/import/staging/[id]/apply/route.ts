@@ -339,6 +339,74 @@ export async function POST(
     );
   }
 
+  // ── Server-side review gates (Codex P1 #1, 2026-06-20) ───────────────
+  // The wizard enforces control-total / anomaly / low-confidence gates, but
+  // a direct POST to /apply (no dryRun) previously bypassed them — a manager
+  // could commit a red-verdict or critical-anomaly import via the API. Re-run
+  // the gates here so the server is the real boundary. RED control-total is a
+  // HARD block (per product decision 2026-06-20); critical anomalies and
+  // low-confidence mappings require explicit acknowledgement form fields
+  // (the wizard sends them once the human has reviewed).
+  const isAck = (v: FormDataEntryValue | null): boolean =>
+    typeof v === 'string' && /^(true|1|yes)$/i.test(v.trim());
+  const commitControl = computeControlTotals(
+    applyResult.parentRollupsDropped,
+    applyResult.parentRollupsUnallocated,
+  );
+  if (commitControl.verdict === 'red') {
+    return NextResponse.json(
+      {
+        error:
+          'Контроль-сумма RED: родительские строки не сходятся с суммой детей (вероятный мис-маппинг колонки). Коммит заблокирован — проверьте маппинг и переанализируйте файл.',
+        controlVerdict: 'red',
+        controlTotals: commitControl.controlTotals.slice(0, 10),
+      },
+      { status: 409 },
+    );
+  }
+  // Defensive: a real proposal always carries anomalies[]/columns[]/
+  // overallConfidence, but older/edge staging rows may omit them — treat
+  // missing as "no gate" rather than throwing.
+  const anomalies = Array.isArray(proposal.anomalies) ? proposal.anomalies : [];
+  const columns = Array.isArray(proposal.columns) ? proposal.columns : [];
+  const overall =
+    typeof proposal.overallConfidence === 'number'
+      ? proposal.overallConfidence
+      : 1;
+  const criticalAnomalies = anomalies.filter((a) => a.severity === 'critical');
+  if (criticalAnomalies.length > 0 && !isAck(form.get('acknowledgeAnomalies'))) {
+    return NextResponse.json(
+      {
+        error: `Критических аномалий: ${criticalAnomalies.length}. Требуется явное подтверждение (acknowledgeAnomalies) перед коммитом.`,
+        criticalAnomalies: criticalAnomalies.slice(0, 10),
+        requiresAcknowledgement: 'acknowledgeAnomalies',
+      },
+      { status: 409 },
+    );
+  }
+  const lowConfidenceColumns = columns.filter(
+    (c) => typeof c.confidence === 'number' && c.confidence < 0.6,
+  );
+  const lowOverall = overall < 0.7;
+  if (
+    (lowConfidenceColumns.length > 0 || lowOverall) &&
+    !isAck(form.get('acknowledgeLowConfidence'))
+  ) {
+    return NextResponse.json(
+      {
+        error: `Низкая уверенность маппинга (колонок <0.6: ${lowConfidenceColumns.length}${lowOverall ? `; общая ${overall.toFixed(2)}<0.7` : ''}). Требуется подтверждение (acknowledgeLowConfidence) перед коммитом.`,
+        lowConfidenceColumns: lowConfidenceColumns.map((c) => ({
+          sourceIndex: c.sourceIndex,
+          role: c.role,
+          confidence: c.confidence,
+        })),
+        overallConfidence: overall,
+        requiresAcknowledgement: 'acknowledgeLowConfidence',
+      },
+      { status: 409 },
+    );
+  }
+
   // Transactional delete-then-insert pattern. Plan lookup-or-create +
   // delete + ChartOfAccount upsert + line insert + staging.status='applied'
   // all atomic — if any insert fails, ALL changes roll back.
