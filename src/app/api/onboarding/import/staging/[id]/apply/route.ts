@@ -41,6 +41,8 @@ const log = getLogger('api:apply');
 const recomputeLog = getLogger('api:apply:recompute');
 import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
+import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
+import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 
@@ -227,6 +229,24 @@ export async function POST(
       },
       { status: 400 },
     );
+  }
+
+  // Structure-hash guard (Phase 2 #5): reject when the re-uploaded file's
+  // sheet structure differs from what was analysed — the saved proposal maps
+  // by column INDEX, so an edited file would silently mis-map. Skipped for
+  // pre-guard stagings (no stored hash) for back-compat.
+  const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash;
+  if (storedHash) {
+    const mi = extractMapperInput(workbook, staging.sourceSheet, XLSX);
+    if (!('error' in mi) && computeStructureHash(mi) !== storedHash) {
+      return NextResponse.json(
+        {
+          error:
+            'Файл изменился после анализа (структура колонок не совпадает). Загрузите тот же файл или повторите анализ.',
+        },
+        { status: 409 },
+      );
+    }
   }
 
   // Apply the saved proposal (+ overrides) to the workbook.

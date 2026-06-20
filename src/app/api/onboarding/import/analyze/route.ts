@@ -29,6 +29,7 @@ import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
+import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 60
@@ -168,13 +169,18 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // Embed a structure-hash of the analysed sheet so /apply can reject a
+  // file that was edited between analyze and apply (column indices would
+  // otherwise silently map to the wrong columns). Stored inside the proposal
+  // JSON under a reserved key — no schema change; ignored by applyProposal.
+  const structureHash = computeStructureHash(mapperInput)
   const staging = await prisma.importStaging.create({
     data: {
       organizationId: orgId,
       companyId: company.id,
       sourceFile: filename,
       sourceSheet: sheetName,
-      proposal: proposal as unknown as object,
+      proposal: { ...proposal, __structureHash: structureHash } as unknown as object,
       createdBy: session.userId,
       expiresAt: new Date(Date.now() + STAGING_TTL_MS),
     },
