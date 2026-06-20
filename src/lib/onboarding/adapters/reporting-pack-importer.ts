@@ -52,13 +52,23 @@ export interface DetailSheetConfig {
   buHeader?: string
 }
 
-/** The detail sheets this importer reads, in apply order (P&L → BS → CF). */
+/**
+ * The detail sheets this importer reads, in apply order (P&L → BS → CF).
+ *
+ * NOTE — "Budget CF" is deliberately EXCLUDED. `cash_flow_entries` is
+ * org+year-scoped with NO plan-kind dimension (no planId/kind column), and
+ * the CF handler ignores `targetPlanKind` — it writes every row under one
+ * `source`/`year`/entity scope. So importing a budget CF alongside the actual
+ * CF for the same year makes the budget batch's clean-slate archive the
+ * actual rows (verified on the 2026-06-20 dev apply: budget ProMalt CF wiped
+ * the 52 actual ProMalt CF rows). CF is actuals-only in this data model;
+ * budget cash flow has no distinct home until a CF budget model exists.
+ */
 export const REPORTING_PACK_DETAIL_SHEETS: DetailSheetConfig[] = [
   { sheetName: "Actual PLF", dataType: "PLF", planKind: "actual" },
   { sheetName: "BS Actual", dataType: "BS", planKind: "actual" },
   { sheetName: "CF Actual", dataType: "CF", planKind: "actual" },
   { sheetName: "Budget PLF", dataType: "PLF", planKind: "budget", buHeader: "BU_3" },
-  { sheetName: "Budget CF", dataType: "CF", planKind: "budget" },
 ]
 
 export interface EntityImportReport {
