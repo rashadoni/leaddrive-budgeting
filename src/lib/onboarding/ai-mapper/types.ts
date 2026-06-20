@@ -46,12 +46,17 @@ export interface ColumnMappingProposal {
    *   - `'amount:<period>'` — column is a monthly/annual amount; `<period>`
    *     is `Jan..Dec` for monthly, `Total` for annual sum, `Plan|Actual`
    *     for plan-vs-actual columns.
+   *   - `'entity'` — column carries a business-unit / company value that
+   *     routes each row to a company (Phase C multi-company-in-one-sheet).
+   *     `resolveColumns` ignores it for code/label/month resolution; the
+   *     per-entity split parser (`entity-split.ts`) groups rows by it.
    *   - `'skip'` — column should be ignored (notes, dates, formulas, etc.)
    */
   role:
     | 'code'
     | 'label'
     | `amount:${string}`
+    | 'entity'
     | 'skip';
   /** 0..1 confidence score from the LLM. Below 0.6 → ask user to confirm. */
   confidence: number;
