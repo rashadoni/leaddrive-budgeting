@@ -30,6 +30,8 @@ import { aiErrorBody } from "@/lib/ai/ai-error"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
+import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
 
 export const maxDuration = 60
@@ -150,30 +152,48 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: mapperInput.error }, { status: 400 })
   }
 
-  let proposal
-  try {
-    proposal = await runMapper(mapperInput, { orgId })
-  } catch (err) {
-    // Sanitised — never leak raw provider/billing text to the import screen.
-    return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
-  }
-
-  // Skip usage recording on a 24h-cache hit (runMapper returns zero-token
-  // usage when it serves a cached proposal) — no LLM call happened.
-  if (proposal.usage && (proposal.usage.inputTokens > 0 || proposal.usage.outputTokens > 0)) {
-    await recordUsage(orgId, {
-      inputTokens: proposal.usage.inputTokens,
-      outputTokens: proposal.usage.outputTokens,
-    }).catch(() => {
-      /* non-fatal */
-    })
-  }
-
-  // Embed a structure-hash of the analysed sheet so /apply can reject a
-  // file that was edited between analyze and apply (column indices would
-  // otherwise silently map to the wrong columns). Stored inside the proposal
-  // JSON under a reserved key — no schema change; ignored by applyProposal.
+  // Structure-hash of the analysed sheet — (a) lets /apply reject a file
+  // edited between analyze and apply, and (b) Phase B: keys the approved-
+  // template lookup so a known format pre-fills without re-running the LLM.
   const structureHash = computeStructureHash(mapperInput)
+
+  // Phase B — "learn each format once": if this exact structure was approved
+  // before, reuse that human-approved mapping instead of calling the LLM. The
+  // reviewer still sees + can edit it, and commit still goes through the
+  // Phase-A validation engine (reuse is gated on validation, NOT on the hash
+  // match alone — Codex 2026-06-20).
+  const template = await getApprovedTemplate(prisma, orgId, structureHash)
+  let proposal: MappingProposal
+  let fromTemplate = false
+  if (template) {
+    fromTemplate = true
+    proposal = {
+      sourceFile: filename,
+      sourceSheet: sheetName,
+      columns: template.mapping.columns,
+      accountTypeOverrides: template.mapping.accountTypeOverrides ?? [],
+      anomalies: [],
+      overallConfidence: 0.95,
+      summary: `Reused an approved template for this file shape (v${template.version}, approved ${template.approvedAt.slice(0, 10)}). Review before committing.`,
+    }
+  } else {
+    try {
+      proposal = await runMapper(mapperInput, { orgId })
+    } catch (err) {
+      // Sanitised — never leak raw provider/billing text to the import screen.
+      return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
+    }
+    // Skip usage recording on a 24h-cache hit (runMapper returns zero-token
+    // usage when it serves a cached proposal) — no LLM call happened.
+    if (proposal.usage && (proposal.usage.inputTokens > 0 || proposal.usage.outputTokens > 0)) {
+      await recordUsage(orgId, {
+        inputTokens: proposal.usage.inputTokens,
+        outputTokens: proposal.usage.outputTokens,
+      }).catch(() => {
+        /* non-fatal */
+      })
+    }
+  }
   const staging = await prisma.importStaging.create({
     data: {
       organizationId: orgId,
@@ -193,6 +213,9 @@ export async function POST(request: NextRequest) {
     expiresAt: staging.expiresAt.toISOString(),
     company: { id: company.id, code: company.code, name: company.name },
     proposal,
+    // Phase B — true when the proposal was pre-filled from a prior approved
+    // template (no LLM call); the UI surfaces this so the reviewer knows.
+    fromTemplate,
     // The proposal's columns carry only role/confidence/reasoning; the
     // review table also needs each source column's header + sample values
     // to show the reviewer WHAT they're re-mapping.

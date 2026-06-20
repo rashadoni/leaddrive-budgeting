@@ -47,13 +47,26 @@ vi.mock("@/lib/prisma", () => ({
   prisma: {
     company: { findFirst: vi.fn(async () => ({ id: "c1", code: "AAA", name: "Co", industry: "x" })) },
     importStaging: { create: vi.fn(async () => ({ id: "st1", expiresAt: new Date(0) })) },
+    // Phase B template lookup — default: no approved template (settings empty)
+    // so analyze falls through to the LLM mapper as before.
+    organization: { findUnique: vi.fn(async () => ({ settings: {} })) },
   },
 }))
 
 import { requireRole } from "@/lib/api-auth"
 import { recordUsage } from "@/lib/llm/cost-budget"
+import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
+import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { prisma } from "@/lib/prisma"
 import { POST } from "./route"
+
+// Hash of the fixed mapperInput the extract mock returns — keys the template.
+const FIXED_HASH = computeStructureHash({
+  sourceFile: "x.xlsx",
+  sourceSheet: "PL",
+  columns: [{ index: 0, headerText: "Code", samples: ["601"] }],
+  sampleRows: [],
+})
 
 const SESSION = { userId: "u1", orgId: "org1", role: "manager" as const }
 
@@ -107,5 +120,33 @@ describe("POST /api/onboarding/import/analyze", () => {
     expect(createArg.data.sourceSheet).toBe("PL")
     expect(createArg.data.expiresAt).toBeInstanceOf(Date)
     expect(recordUsage).toHaveBeenCalled()
+  })
+
+  it("reuses an approved template (skips the LLM) when the structure-hash matches", async () => {
+    ;(prisma.organization.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      settings: {
+        importTemplates: {
+          [FIXED_HASH]: [
+            {
+              structureHash: FIXED_HASH,
+              sheetName: "PL",
+              // role "label" ≠ the LLM mock's "code" → proves it came from the template
+              mapping: { columns: [{ sourceIndex: 0, role: "label", confidence: 1, reasoning: "" }], accountTypeOverrides: [] },
+              approvedBy: "u9",
+              approvedAt: "2026-06-20T00:00:00Z",
+              version: 3,
+              sourceFile: "prev.xlsx",
+            },
+          ],
+        },
+      },
+    })
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL", companyId: "c1" }))
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.fromTemplate).toBe(true)
+    expect(body.proposal.columns[0].role).toBe("label") // from template
+    expect(runMapper).not.toHaveBeenCalled() // LLM skipped
+    expect(recordUsage).not.toHaveBeenCalled() // no tokens spent
   })
 })
