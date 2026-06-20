@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -54,12 +54,20 @@ interface BSResponse {
 
 function getSectionData(lines: BSLine[]) {
   const grouped = new Map<string, Record<number, number>>()
+  // Per-(label, month) line id for inline edit. `ambiguous` when >1 line maps
+  // to the same cell (summed) — those cells stay read-only (no single target).
+  const cellIds = new Map<string, Record<number, { id: string; ambiguous: boolean }>>()
   lines.forEach((l) => {
     // accountName/accountCode scalars dropped Phase 2.1 — label from the
     // included account relation, with legacy-scalar + "—" fallbacks.
     const label = l.account?.name ?? l.account?.code ?? l.accountName ?? l.accountCode ?? "—"
-    if (!grouped.has(label)) grouped.set(label, {})
+    if (!grouped.has(label)) {
+      grouped.set(label, {})
+      cellIds.set(label, {})
+    }
     grouped.get(label)![l.month] = (grouped.get(label)![l.month] || 0) + l.amount
+    const ci = cellIds.get(label)!
+    ci[l.month] = ci[l.month] ? { id: ci[l.month].id, ambiguous: true } : { id: l.id, ambiguous: false }
   })
 
   const sectionTotals: Record<number, number> = {}
@@ -67,13 +75,36 @@ function getSectionData(lines: BSLine[]) {
     sectionTotals[m] = lines.filter(l => l.month === m).reduce((s, l) => s + l.amount, 0)
   }
 
-  return { grouped, sectionTotals }
+  return { grouped, sectionTotals, cellIds }
 }
 
 export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
+  const role = session?.user?.role
+  const canEdit = role === "manager" || role === "admin"
+  const queryClient = useQueryClient()
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["assets", "liabilities", "equity"]))
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // Inline-edit a single BS line's amount (Phase 3). PUT → refetch on success.
+  const saveCell = async (id: string, amount: number) => {
+    setSaveError(null)
+    try {
+      const res = await fetch(`/api/budgeting/balance-sheet/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-organization-id": orgId || "" },
+        body: JSON.stringify({ amount }),
+      })
+      if (!res.ok) {
+        const b = await res.json().catch(() => null)
+        throw new Error(b?.error ?? `HTTP ${res.status}`)
+      }
+      queryClient.invalidateQueries({ queryKey: ["balanceSheet", planId] })
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const { data, isLoading } = useQuery<BSResponse>({
     queryKey: ["balanceSheet", planId],
@@ -200,10 +231,30 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
           <tr key={name} className="border-b hover:bg-muted/30">
             <td className="sticky left-0 z-10 bg-card px-3 py-1.5 text-xs whitespace-nowrap pl-8">{name}</td>
             {MONTHS.map((_, i) => {
-              const val = months[i + 1]
+              const month = i + 1
+              const val = months[month]
+              const cell = sectionData.cellIds.get(name)?.[month]
+              const editable = canEdit && cell && !cell.ambiguous
               return (
                 <td key={i} className={`px-2 py-1.5 text-xs text-right tabular-nums whitespace-nowrap ${val && val < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                  {val != null ? fmtNum(val) : "—"}
+                  {editable ? (
+                    <input
+                      key={`${cell!.id}-${val ?? 0}`}
+                      type="number"
+                      defaultValue={val ?? 0}
+                      title="Изменить и снять фокус — сохранится"
+                      className="w-20 bg-transparent text-right border border-transparent hover:border-border focus:border-emerald-500 focus:outline-none rounded px-1 tabular-nums"
+                      onBlur={(e) => {
+                        const next = parseFloat(e.target.value)
+                        if (!Number.isFinite(next) || next === (val ?? 0)) return
+                        void saveCell(cell!.id, next)
+                      }}
+                    />
+                  ) : val != null ? (
+                    fmtNum(val)
+                  ) : (
+                    "—"
+                  )}
                 </td>
               )
             })}
@@ -221,6 +272,16 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
       {data.meta?.fellBack && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           Showing the{data.meta.sourceYear ? ` ${data.meta.sourceYear}` : ""} Actuals balance sheet — the selected budget plan has no balance sheet of its own.
+        </div>
+      )}
+      {canEdit && (
+        <div className="text-[11px] text-muted-foreground">
+          ✎ Значения в детальной таблице ниже можно править — измените ячейку и снимите фокус (сохраняется автоматически).
+        </div>
+      )}
+      {saveError && (
+        <div className="rounded-lg border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+          ❌ Не сохранено: {saveError}
         </div>
       )}
       {/* KPI Strip */}
