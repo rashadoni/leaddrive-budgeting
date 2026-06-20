@@ -50,7 +50,7 @@ export function DataArchiveForm({
   const [confirmCode, setConfirmCode] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<
-    | { ok: true; mode: string; rowsAffected: number }
+    | { ok: true; mode: string; rowsAffected: number; unattributableCfRows?: number }
     | { ok: false; error: string }
     | null
   >(null)
@@ -98,7 +98,7 @@ export function DataArchiveForm({
         }),
       })
       const data = (await res.json()) as
-        | { ok: true; mode: string; rowsAffected: number }
+        | { ok: true; mode: string; rowsAffected: number; unattributableCfRows?: number }
         | { error: string }
       if (!res.ok || !("ok" in data && data.ok)) {
         setResult({
@@ -110,6 +110,7 @@ export function DataArchiveForm({
           ok: true,
           mode: data.mode,
           rowsAffected: data.rowsAffected,
+          unattributableCfRows: data.unattributableCfRows,
         })
         // Refresh recent-events table by reloading the page after
         // a successful action — server component re-fetches the
@@ -304,6 +305,16 @@ export function DataArchiveForm({
                     : t("resultRestored"),
                 rows: result.rowsAffected,
               })}
+              {result.unattributableCfRows != null &&
+                result.unattributableCfRows > 0 && (
+                  <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    ⚠️ {result.unattributableCfRows} записей Cash Flow за этот год
+                    без префикса компании в sourceId (ручные / не из импорта) —
+                    их нельзя привязать к компании, поэтому они НЕ затронуты.
+                    Для них используйте архив по всей организации или правьте
+                    их вручную во вкладке «Записи».
+                  </div>
+                )}
             </>
           ) : (
             <>✗ {t("resultError", { msg: result.error })}</>

@@ -167,11 +167,28 @@ export async function POST(request: NextRequest) {
             reason,
             scope,
           })
+    // CF has no companyId column — a company-scoped CF archive matches only
+    // rows whose sourceId follows the "<code>::" import convention. Manual
+    // entries (null / non-conforming sourceId) cannot be attributed to a
+    // company, so they are intentionally left untouched. Surface that count
+    // so the operator knows the archive wasn't exhaustive (no silent gap).
+    let unattributableCfRows: number | undefined
+    if (mode === "archive" && entityKind === "CashFlowEntry" && companyCode && year) {
+      unattributableCfRows = await prisma.cashFlowEntry.count({
+        where: {
+          organizationId: orgId,
+          year,
+          deletedAt: null,
+          OR: [{ sourceId: null }, { NOT: { sourceId: { contains: "::" } } }],
+        },
+      })
+    }
     return NextResponse.json({
       ok: true,
       mode,
       rowsAffected: result.rowsAffected,
       auditEventId: result.auditEventId,
+      ...(unattributableCfRows !== undefined ? { unattributableCfRows } : {}),
     })
   } catch (err) {
     log.error("data-archive operation failed", {
