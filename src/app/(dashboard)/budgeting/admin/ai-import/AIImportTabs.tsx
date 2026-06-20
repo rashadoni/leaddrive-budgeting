@@ -12,10 +12,11 @@ import { useTranslations } from "next-intl"
 import { AIImportForm } from "./AIImportForm"
 import { MultiFileForm } from "./MultiFileForm"
 import { UniversalImportForm } from "./UniversalImportForm"
+import { MultiSheetImportForm } from "./MultiSheetImportForm"
 
 export function AIImportTabs() {
   const t = useTranslations("adminAiImport")
-  const [mode, setMode] = useState<"single" | "multi" | "universal">("single")
+  const [mode, setMode] = useState<"single" | "multi" | "universal" | "multisheet">("single")
   return (
     <div className="space-y-4">
       <div
@@ -71,6 +72,20 @@ export function AIImportTabs() {
             review
           </span>
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "multisheet"}
+          onClick={() => setMode("multisheet")}
+          className={`px-3 py-1.5 text-sm rounded font-medium transition ${
+            mode === "multisheet"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          data-testid="tab-multisheet"
+        >
+          Неск. листов (AI)
+        </button>
       </div>
 
       <div role="tabpanel">
@@ -78,8 +93,10 @@ export function AIImportTabs() {
           <AIImportForm />
         ) : mode === "multi" ? (
           <MultiFileForm />
-        ) : (
+        ) : mode === "universal" ? (
           <UniversalImportForm />
+        ) : (
+          <MultiSheetImportForm />
         )}
       </div>
     </div>
