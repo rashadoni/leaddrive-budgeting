@@ -91,9 +91,17 @@ describe("mapReportingPackBu", () => {
   it("maps known BU labels case-insensitively", () => {
     expect(mapReportingPackBu("ProMalt")).toBe("AZSEKER-PROMALT")
     expect(mapReportingPackBu("cpc")).toBe("AZSEKER-CPC")
+    expect(mapReportingPackBu("Horizon")).toBe("AZSEKER-HORIZON")
   })
-  it("returns null for unknown / elimination BU", () => {
+  it("returns null for unknown / elimination / rollup BU", () => {
     expect(mapReportingPackBu("EJE")).toBeNull()
+    expect(mapReportingPackBu("AJE")).toBeNull()
+    expect(mapReportingPackBu("Consolidated")).toBeNull()
     expect(mapReportingPackBu("XYZ")).toBeNull()
+  })
+  it("keeps adjustment/rollup BU values in the skip set", () => {
+    for (const v of ["EJE", "AJE", "CONSOLIDATED"]) {
+      expect(REPORTING_PACK_SKIP_BU.has(v)).toBe(true)
+    }
   })
 })
