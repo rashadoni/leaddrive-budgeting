@@ -36,6 +36,14 @@ describe("findPlfHeaderRow", () => {
     const aoa: unknown[][] = [["Code", "Label", "Jan", "Feb", "Mar"]]
     expect(findPlfHeaderRow(aoa)).toBeNull()
   })
+
+  it("STRICT preferYear: returns null when the requested year is absent (Codex re-review)", () => {
+    // Sheet carries only 2026 month dates. Asking for 2025 must NOT fall back
+    // to 2026 (which would write 2026 values into the 2025 plan).
+    const aoa: unknown[][] = [[null, null, null, ...MONTH_DATES]]
+    expect(findPlfHeaderRow(aoa, { preferYear: 2025 })).toBeNull()
+    expect(findPlfHeaderRow(aoa, { preferYear: 2026 })?.year).toBe(2026)
+  })
 })
 
 describe("parsePlfPlSheet — happy path", () => {

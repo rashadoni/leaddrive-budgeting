@@ -167,15 +167,18 @@ export function findPlfHeaderRow(
     // Prefer requested year if it has all 12; else pick year with most months;
     // tie-break by latest year (the user is more likely loading next year's
     // budget than ancient history).
-    const candidates = Array.from(byYear.entries())
+    let candidates = Array.from(byYear.entries())
       .map(([year, cols]) => ({ year, cols, filled: cols.filter((v) => v !== -1).length }))
       .filter((c) => c.filled === 12)
+    // STRICT preferYear (Codex re-review 2026-06-20): when a target year is
+    // requested, ONLY accept that year's full band — never fall back to another
+    // year. Otherwise a 2026-only sheet rescued with preferYear=2025 would write
+    // 2026 values into the 2025 plan (the `apply-multi` Workbook-fallback path).
+    if (opts?.preferYear !== undefined) {
+      candidates = candidates.filter((c) => c.year === opts.preferYear)
+    }
     if (candidates.length === 0) continue
     candidates.sort((a, b) => {
-      if (opts?.preferYear !== undefined) {
-        if (a.year === opts.preferYear && b.year !== opts.preferYear) return -1
-        if (b.year === opts.preferYear && a.year !== opts.preferYear) return 1
-      }
       if (a.filled !== b.filled) return b.filled - a.filled
       return b.year - a.year
     })
