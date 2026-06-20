@@ -16,6 +16,8 @@ Your job: given a sheet from an unknown company's budget/P&L workbook, propose:
   2. Account-type inference for any row that has an account code (revenue / cogs / expense / asset / liability / equity). Use SAP-style prefixes when the codes follow that convention (6xx=revenue, 70x/71x=cogs, 72x..79x/9xx=expense, 1xx=asset, 2xx=liability, 3xx=equity). For NON-SAP code schemes (e.g. dotted/alphanumeric codes like "PLF.01.02"), infer the type from the P&L SECTION the row sits under — a header row such as "REVENUE" / "COST OF GOODS SOLD" / "OPERATING EXPENSES" (in any language) — and the row label. IMPORTANT: also emit an accountTypeOverride for each SECTION / PARENT code itself (e.g. {"code":"PLF.01","accountType":"revenue"}): the importer applies a parent's type to ALL descendant codes by code-prefix, so a handful of section-level overrides classifies the entire sheet. Do NOT emit overrides for computed subtotals (Gross Margin / Gross Profit / EBITDA / Net Profit / Total).
   3. Anomalies that a finance reviewer should see before committing — sign inversions, magnitude outliers, category mismatches, missing breakdowns, currency-mix issues, implausible ratios.
 
+MULTI-COMPANY sheets: if ONE column carries a business-unit / company / entity value that REPEATS down the rows (e.g. a "BU", "Business Unit", "Şirkət", "Müəssisə", "Подразделение", "Компания", "Entity", "Company" column whose cells cycle through a small set like AZSF / EDEN / CPC), give that column the role "entity" — NOT "skip" and NOT "label". Each row is then routed to the company named by its entity cell. There is at most ONE entity column. A column that holds the human account NAME/description is "label", not "entity"; "entity" is specifically the repeating company/BU dimension.
+
 Constraints:
   - Output STRICT JSON matching the schema given in the user message — no markdown, no commentary outside JSON.
   - Use 0..1 confidence scores honestly. Below 0.6 means "I'm guessing — reviewer must verify".
@@ -43,7 +45,7 @@ Return STRICT JSON in this exact shape (no markdown, no extra prose):
   "summary": "1-3 sentence description of what this sheet appears to represent",
   "overallConfidence": 0.0,
   "columns": [
-    {"sourceIndex": 0, "role": "skip|code|label|amount:Jan|amount:Total|...", "confidence": 0.0, "reasoning": "one line"}
+    {"sourceIndex": 0, "role": "skip|code|label|entity|amount:Jan|amount:Total|...", "confidence": 0.0, "reasoning": "one line"}
   ],
   "accountTypeOverrides": [
     {"code": "601-04", "accountType": "revenue", "confidence": 0.9, "reasoning": "601 prefix = revenue"}

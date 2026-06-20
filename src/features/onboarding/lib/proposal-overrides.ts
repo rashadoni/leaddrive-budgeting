@@ -28,6 +28,7 @@ export const ROLE_OPTIONS: Array<{
 }> = [
   { value: "code", label: "Account code" },
   { value: "label", label: "Label / description" },
+  { value: "entity", label: "Entity / company (BU split)" },
   { value: "amount:Total", label: "Amount — Total (annual)" },
   { value: "amount:Plan", label: "Amount — Plan" },
   { value: "amount:Actual", label: "Amount — Actual" },

@@ -43,9 +43,24 @@ vi.mock("@/lib/onboarding/ai-mapper/mapper", () => ({
     }),
   ),
 }))
+// Phase C C2.4 — default to the single-company path (findEntityColumn → null)
+// so the pre-existing tests are unaffected; the multi-entity test overrides.
+vi.mock("@/lib/onboarding/ai-mapper/entity-split", () => ({
+  findEntityColumn: vi.fn(() => null),
+  extractEntityValues: vi.fn(() => []),
+}))
+vi.mock("@/lib/onboarding/ai-mapper/entity-resolve", () => ({
+  resolveEntityCompanies: vi.fn(() => ({ suggestions: {}, unresolved: [] })),
+}))
 vi.mock("@/lib/prisma", () => ({
   prisma: {
-    company: { findFirst: vi.fn(async () => ({ id: "c1", code: "AAA", name: "Co", industry: "x" })) },
+    company: {
+      findFirst: vi.fn(async () => ({ id: "c1", code: "AAA", name: "Co", industry: "x" })),
+      findMany: vi.fn(async () => [
+        { id: "c1", code: "AZSF", name: "Aze Sheker Farm" },
+        { id: "c2", code: "EDEN", name: "Eden Agro" },
+      ]),
+    },
     importStaging: { create: vi.fn(async () => ({ id: "st1", expiresAt: new Date(0) })) },
     // Phase B template lookup — default: no approved template (settings empty)
     // so analyze falls through to the LLM mapper as before.
@@ -57,6 +72,8 @@ import { requireRole } from "@/lib/api-auth"
 import { recordUsage } from "@/lib/llm/cost-budget"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import { findEntityColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
+import { resolveEntityCompanies } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import { prisma } from "@/lib/prisma"
 import { POST } from "./route"
 
@@ -120,6 +137,41 @@ describe("POST /api/onboarding/import/analyze", () => {
     expect(createArg.data.sourceSheet).toBe("PL")
     expect(createArg.data.expiresAt).toBeInstanceOf(Date)
     expect(recordUsage).toHaveBeenCalled()
+  })
+
+  it("detects an entity column → persists __multiEntity + returns entityValues/suggestions", async () => {
+    ;(findEntityColumn as ReturnType<typeof vi.fn>).mockReturnValueOnce(1)
+    ;(extractEntityValues as ReturnType<typeof vi.fn>).mockReturnValueOnce(["AZSF", "EDEN"])
+    ;(resolveEntityCompanies as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      suggestions: { AZSF: "c1", EDEN: "c2" },
+      unresolved: [],
+    })
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL", companyId: "c1" }))
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.multiEntity).toBe(true)
+    expect(body.entityValues).toEqual(["AZSF", "EDEN"])
+    expect(body.entitySuggestions).toEqual({ AZSF: "c1", EDEN: "c2" })
+    // Persisted reviewed set (the apply route re-checks this at commit).
+    const createArg = (prisma.importStaging.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(createArg.data.proposal.__multiEntity).toEqual({
+      entityColumnIndex: 1,
+      entityValues: ["AZSF", "EDEN"],
+    })
+    expect(prisma.company.findMany).toHaveBeenCalledWith({
+      where: { organizationId: "org1" },
+      select: { id: true, code: true, name: true },
+    })
+  })
+
+  it("single-company sheet (no entity column) → multiEntity false, no __multiEntity persisted", async () => {
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL", companyId: "c1" }))
+    const body = await res.json()
+    expect(body.multiEntity).toBe(false)
+    expect(body.entityValues).toBeUndefined()
+    const createArg = (prisma.importStaging.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(createArg.data.proposal.__multiEntity).toBeUndefined()
+    expect(prisma.company.findMany).not.toHaveBeenCalled()
   })
 
   it("reuses an approved template (skips the LLM) when the structure-hash matches", async () => {

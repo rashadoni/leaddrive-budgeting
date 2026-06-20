@@ -31,6 +31,8 @@ import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
+import { findEntityColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
+import { resolveEntityCompanies } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
 
@@ -194,13 +196,37 @@ export async function POST(request: NextRequest) {
       })
     }
   }
+  // Phase C C2.4 — multi-company-in-one-sheet detection. When the mapper (or a
+  // reviewed template) roled a column `entity`, this sheet routes its rows to
+  // SEVERAL companies. Persist the deterministic reviewed entity set into
+  // `__multiEntity` (the apply route re-checks it at commit so a re-upload
+  // can't reroute a different company set — Codex P0-2/P0-3), and return the
+  // distinct values + auto-suggested company mapping for the UI's mapping step.
+  const entityColumnIndex = findEntityColumn(proposal.columns)
+  let multiEntity: { entityColumnIndex: number; entityValues: string[] } | undefined
+  let entityValues: string[] | undefined
+  let entitySuggestions: Record<string, string> | undefined
+  if (entityColumnIndex !== null) {
+    entityValues = extractEntityValues(workbook, sheetName, entityColumnIndex, XLSX)
+    multiEntity = { entityColumnIndex, entityValues }
+    const orgCompanies = await prisma.company.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, code: true, name: true },
+    })
+    entitySuggestions = resolveEntityCompanies(entityValues, orgCompanies).suggestions
+  }
+
   const staging = await prisma.importStaging.create({
     data: {
       organizationId: orgId,
       companyId: company.id,
       sourceFile: filename,
       sourceSheet: sheetName,
-      proposal: { ...proposal, __structureHash: structureHash } as unknown as object,
+      proposal: {
+        ...proposal,
+        __structureHash: structureHash,
+        ...(multiEntity ? { __multiEntity: multiEntity } : {}),
+      } as unknown as object,
       createdBy: session.userId,
       expiresAt: new Date(Date.now() + STAGING_TTL_MS),
     },
@@ -220,5 +246,12 @@ export async function POST(request: NextRequest) {
     // review table also needs each source column's header + sample values
     // to show the reviewer WHAT they're re-mapping.
     sourceColumns: mapperInput.columns,
+    // Phase C C2.4 — present only when the sheet has an `entity` column.
+    // `entityValues` = distinct BU values; `entitySuggestions` = auto-matched
+    // entityValue→companyId the reviewer confirms before commit; `multiEntity`
+    // flags the UI to route the commit to /apply-multi-entity.
+    multiEntity: multiEntity !== undefined,
+    entityValues,
+    entitySuggestions,
   })
 }
