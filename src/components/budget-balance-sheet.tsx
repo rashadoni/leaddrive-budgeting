@@ -115,14 +115,31 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const liabilitiesData = getSectionData(data.liabilities || [])
   const equityData = getSectionData(data.equity || [])
 
-  // Latest month with data (use Dec=12 as default)
-  const latestMonth = 12
+  // Latest month that actually has data. Partial-year actuals stop at the
+  // reporting period (e.g. a March cut only carries Jan–Apr), so December is
+  // empty until year-end — don't hardcode 12 or the headline reads 0.
+  const latestMonth = (() => {
+    for (let m = 12; m >= 1; m--) {
+      if (
+        (assetsData.sectionTotals[m] || 0) !== 0 ||
+        (liabilitiesData.sectionTotals[m] || 0) !== 0 ||
+        (equityData.sectionTotals[m] || 0) !== 0
+      ) {
+        return m
+      }
+    }
+    return 12
+  })()
+  const latestMonthLabel = MONTHS[latestMonth - 1]
   const totalAssets = assetsData.sectionTotals[latestMonth] || 0
   const totalLiabilities = Math.abs(liabilitiesData.sectionTotals[latestMonth] || 0)
-  const totalEquity = equityData.sectionTotals[latestMonth] || 0
+  // Equity is stored as a credit (trial-balance negative: Assets = Liab + Equity
+  // sums to ~0). Negate to present it in normal sign — positive = healthy,
+  // negative = genuine accumulated loss. (Display only; stored sign untouched.)
+  const totalEquity = -(equityData.sectionTotals[latestMonth] || 0)
   const debtToEquity = totalEquity !== 0 ? (totalLiabilities / Math.abs(totalEquity)) : 0
 
-  // Trend: Assets growth from Jan to Dec
+  // Trend: Assets growth from Jan to the latest populated month
   const janAssets = assetsData.sectionTotals[1] || 0
   const assetGrowth = janAssets !== 0 ? ((totalAssets - janAssets) / Math.abs(janAssets)) * 100 : 0
 
@@ -131,7 +148,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
     month: m,
     Assets: assetsData.sectionTotals[i + 1] || 0,
     Liabilities: Math.abs(liabilitiesData.sectionTotals[i + 1] || 0),
-    Equity: equityData.sectionTotals[i + 1] || 0,
+    Equity: -(equityData.sectionTotals[i + 1] || 0),
   }))
 
   // Asset composition donut (Dec values, top accounts)
@@ -217,7 +234,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
           <div className="flex items-center gap-1 mt-1">
             {assetGrowth >= 0 ? <ArrowUpRight className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> : <ArrowDownRight className="h-3 w-3 text-red-600 dark:text-red-400" />}
             <span className={`text-[10px] font-medium ${assetGrowth >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{assetGrowth.toFixed(1)}%</span>
-            <span className="text-[10px] text-muted-foreground">Jan→Dec</span>
+            <span className="text-[10px] text-muted-foreground">Jan→{latestMonthLabel}</span>
           </div>
         </div>
 
@@ -227,7 +244,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
             <Landmark className="h-3.5 w-3.5" /> Total Liabilities
           </div>
           <p className="text-2xl font-bold tracking-tight text-orange-700 dark:text-orange-300">{fmtNum(totalLiabilities)} <span className="text-sm font-normal text-muted-foreground">AZN</span></p>
-          <p className="text-[10px] text-muted-foreground mt-1">Dec {new Date().getFullYear()}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">{latestMonthLabel} {new Date().getFullYear()}</p>
         </div>
 
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 dark:from-emerald-950/30 dark:to-emerald-900/20 dark:border-emerald-800 p-4">
@@ -276,7 +293,7 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
 
         {/* Asset Composition Donut */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Asset Composition (Dec)</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Asset Composition ({latestMonthLabel})</h3>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
               <Pie data={assetAccounts} cx="50%" cy="50%" outerRadius={75} innerRadius={45} paddingAngle={2} dataKey="value" stroke="none">
