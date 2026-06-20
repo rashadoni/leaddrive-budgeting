@@ -149,6 +149,11 @@ export interface ParseResult {
    *  unconditional cogs/expense flip would corrupt the data → the validation
    *  engine hard-blocks. Absent when there are no cost rows. */
   signConventions?: { cogs?: SignClassification; expense?: SignClassification };
+  /** Phase C C3.2 — the currency the selected month columns are denominated in
+   *  (e.g. "USD"), when the sheet tagged currencies. null/undefined → single or
+   *  untagged currency; the apply route tags BudgetLine.currencyCode with the
+   *  company base in that case. */
+  resolvedCurrency?: string | null;
 }
 
 // --- Pure helpers -----------------------------------------------------------

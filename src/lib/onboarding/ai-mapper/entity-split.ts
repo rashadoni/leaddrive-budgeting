@@ -188,7 +188,7 @@ export function applyProposalByEntity(
   proposal: MappingProposal,
   xlsx: typeof XLSX,
   userOverrides?: Partial<MappingProposal>,
-  opts: { preferYear?: number } = {},
+  opts: { preferYear?: number; preferCurrency?: string } = {},
 ): EntitySplitResult | { error: string } {
   const merged = mergeProposal(proposal, userOverrides);
   const entityColumn = findEntityColumn(merged.columns);

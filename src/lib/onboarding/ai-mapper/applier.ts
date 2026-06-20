@@ -62,6 +62,10 @@ interface ResolvedColumns {
   /** Source-column index of an "amount:Total" annual column, or -1 if none.
    *  Used as a per-row reconciliation control: Σ months must equal Total. */
   totalCol: number;
+  /** Phase C C3.2 — the currency the selected month columns are denominated
+   *  in, when the sheet tagged currencies (e.g. "USD"). null when the sheet
+   *  is single/untagged-currency (caller falls back to the company base). */
+  currency: string | null;
 }
 
 /**
@@ -108,16 +112,18 @@ export function mergeProposal(
  */
 export function resolveColumns(
   columns: ColumnMappingProposal[],
-  opts: { preferYear?: number } = {},
+  opts: { preferYear?: number; preferCurrency?: string } = {},
 ): { ok: true; columns: ResolvedColumns } | { ok: false; reason: string } {
   let codeCol = -1;
   let labelCol = -1;
   let totalCol = -1;
-  // Month candidates carry their (monthIdx, year) so a MULTI-YEAR sheet
-  // (Jan-Dec × N years) can select a single target year instead of colliding
-  // on "two Jans" (Phase C 2026-06-20). Single-year / bare-month sheets keep
-  // year=null and behave exactly as before.
-  const monthCandidates: Array<{ monthIdx: number; year: number | null; col: number; period: string }> = [];
+  // Month candidates carry their (monthIdx, year, currency) so a MULTI-YEAR
+  // sheet (Jan-Dec × N years) can select a single target year, and a
+  // MULTI-CURRENCY sheet (same period in reporting + local currency) can
+  // select one currency — both instead of colliding on "two Jans" (Phase C).
+  // Single-year / single-currency / bare sheets keep year=null/currency=null
+  // and behave exactly as before.
+  const monthCandidates: Array<{ monthIdx: number; year: number | null; currency: string | null; col: number; period: string }> = [];
 
   for (const c of columns) {
     if (c.role === 'code') {
@@ -146,9 +152,10 @@ export function resolveColumns(
         }
         continue;
       }
-      monthCandidates.push({ monthIdx, year, col: c.sourceIndex, period });
+      const currency = c.currencyCode ? c.currencyCode.trim().toUpperCase() : null;
+      monthCandidates.push({ monthIdx, year, currency: currency || null, col: c.sourceIndex, period });
     }
-    // role === 'skip' → ignored.
+    // role === 'skip' / 'entity' → ignored.
   }
 
   if (codeCol === -1) {
@@ -170,9 +177,35 @@ export function resolveColumns(
         : Math.max(...years)
       : null;
 
+  const inYear = monthCandidates.filter((m) => chosenYear === null || m.year === chosenYear);
+
+  // Multi-currency selection (Phase C C3.2): when the in-year candidates carry
+  // >1 distinct currency (same period in reporting + local), pick ONE — the
+  // `preferCurrency` (e.g. the company base). With >1 currency and no matching
+  // preference we cannot guess which to import → fail SAFE with a clear error
+  // (the reviewer specifies the target currency). 0/1 currency → no selection.
+  const currencies = [
+    ...new Set(inYear.map((m) => m.currency).filter((c): c is string => c !== null)),
+  ];
+  let chosenCurrency: string | null = null;
+  if (currencies.length > 1) {
+    const pref = opts.preferCurrency ? opts.preferCurrency.trim().toUpperCase() : null;
+    if (pref && currencies.includes(pref)) {
+      chosenCurrency = pref;
+    } else {
+      return {
+        ok: false,
+        reason: `Multiple currencies (${currencies.join(', ')}) mapped to the same periods — specify the target currency to import.`,
+      };
+    }
+  } else if (currencies.length === 1) {
+    chosenCurrency = currencies[0];
+  }
+
   const monthCols = new Array<number>(12).fill(-1);
-  for (const m of monthCandidates) {
-    if (chosenYear !== null && m.year !== chosenYear) continue; // other year — skip
+  for (const m of inYear) {
+    // Skip a tagged column of a non-selected currency (untagged columns kept).
+    if (chosenCurrency !== null && m.currency !== null && m.currency !== chosenCurrency) continue;
     if (monthCols[m.monthIdx] !== -1) {
       return {
         ok: false,
@@ -192,7 +225,7 @@ export function resolveColumns(
     };
   }
 
-  return { ok: true, columns: { codeCol, labelCol, monthCols, totalCol } };
+  return { ok: true, columns: { codeCol, labelCol, monthCols, totalCol, currency: chosenCurrency } };
 }
 
 /**
@@ -362,7 +395,7 @@ export function applyProposal(
   proposal: MappingProposal,
   xlsx: typeof XLSX,
   userOverrides?: Partial<MappingProposal>,
-  opts: { preferYear?: number } = {},
+  opts: { preferYear?: number; preferCurrency?: string } = {},
 ):
   | ParseResult
   | { error: string } {
@@ -374,7 +407,7 @@ export function applyProposal(
   const merged = mergeProposal(proposal, userOverrides);
   const colsResult = resolveColumns(merged.columns, opts);
   if (!colsResult.ok) return { error: colsResult.reason };
-  const { codeCol, labelCol, monthCols, totalCol } = colsResult.columns;
+  const { codeCol, labelCol, monthCols, totalCol, currency: resolvedCurrency } = colsResult.columns;
 
   // Index account-type overrides by code for O(1) lookup.
   const acctByCode = new Map<string, AccountType>();
@@ -629,5 +662,6 @@ export function applyProposal(
     rowTotalMismatches,
     sectionTypeConflicts,
     signConventions,
+    resolvedCurrency,
   };
 }

@@ -18,6 +18,8 @@ Your job: given a sheet from an unknown company's budget/P&L workbook, propose:
 
 MULTI-COMPANY sheets: if ONE column carries a business-unit / company / entity value that REPEATS down the rows (e.g. a "BU", "Business Unit", "Şirkət", "Müəssisə", "Подразделение", "Компания", "Entity", "Company" column whose cells cycle through a small set like AZSF / EDEN / CPC), give that column the role "entity" — NOT "skip" and NOT "label". Each row is then routed to the company named by its entity cell. There is at most ONE entity column. A column that holds the human account NAME/description is "label", not "entity"; "entity" is specifically the repeating company/BU dimension.
 
+MULTI-CURRENCY sheets: if the SAME period appears in MORE than one currency — e.g. a reporting-currency column AND a local-currency column for the same month (headers / sub-headers like "USD", "$", "AZN", "manat", "EUR", "₼") — then for each "amount:<Month>" column ALSO set its "currencyCode" field to the ISO code ("USD", "AZN", "EUR", …). Only set currencyCode when the sheet actually mixes currencies; a single-currency sheet omits it. An FX-RATE column (a column of EXCHANGE RATES, not money — header like "rate", "məzənnə", "курс", "kurs", values typically ~0.5–10) is NOT an amount and NOT a currency column → role it "skip".
+
 Constraints:
   - Output STRICT JSON matching the schema given in the user message — no markdown, no commentary outside JSON.
   - Use 0..1 confidence scores honestly. Below 0.6 means "I'm guessing — reviewer must verify".
@@ -45,7 +47,7 @@ Return STRICT JSON in this exact shape (no markdown, no extra prose):
   "summary": "1-3 sentence description of what this sheet appears to represent",
   "overallConfidence": 0.0,
   "columns": [
-    {"sourceIndex": 0, "role": "skip|code|label|entity|amount:Jan|amount:Total|...", "confidence": 0.0, "reasoning": "one line"}
+    {"sourceIndex": 0, "role": "skip|code|label|entity|amount:Jan|amount:Total|...", "confidence": 0.0, "reasoning": "one line", "currencyCode": "USD (ONLY on amount columns of a multi-currency sheet; omit otherwise)"}
   ],
   "accountTypeOverrides": [
     {"code": "601-04", "accountType": "revenue", "confidence": 0.9, "reasoning": "601 prefix = revenue"}

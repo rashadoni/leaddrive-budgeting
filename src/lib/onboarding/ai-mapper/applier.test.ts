@@ -653,3 +653,50 @@ describe('applyProposal — cost-sign convention inference (Phase C C3.1)', () =
     expect(res.signConventions).toBeUndefined()
   })
 })
+
+describe('resolveColumns — currency selection (Phase C C3.2)', () => {
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const head: ColumnMappingProposal[] = [
+    { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+  ]
+  const curCols = (start: number, currency?: string): ColumnMappingProposal[] =>
+    M.map((m, i) => ({ sourceIndex: start + i, role: `amount:${m}` as const, confidence: 0.9, reasoning: '', currencyCode: currency }))
+  const range = (start: number) => Array.from({ length: 12 }, (_, i) => start + i)
+
+  it('single tagged currency → uses it + reports the currency', () => {
+    const res = resolveColumns([...head, ...curCols(2, 'USD')])
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.columns.currency).toBe('USD')
+      expect(res.columns.monthCols).toEqual(range(2))
+    }
+  })
+
+  it('two currencies for the same months, no preference → fail-safe error', () => {
+    const res = resolveColumns([...head, ...curCols(2, 'USD'), ...curCols(14, 'AZN')])
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.reason).toMatch(/Multiple currencies/)
+  })
+
+  it('two currencies + preferCurrency → selects that currency\'s columns', () => {
+    const res = resolveColumns([...head, ...curCols(2, 'USD'), ...curCols(14, 'AZN')], { preferCurrency: 'AZN' })
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      expect(res.columns.currency).toBe('AZN')
+      expect(res.columns.monthCols).toEqual(range(14))
+    }
+  })
+
+  it('preferCurrency is case-insensitive', () => {
+    const res = resolveColumns([...head, ...curCols(2, 'USD'), ...curCols(14, 'AZN')], { preferCurrency: 'azn' })
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.columns.currency).toBe('AZN')
+  })
+
+  it('untagged sheet → currency null, behaviour unchanged', () => {
+    const res = resolveColumns([...head, ...curCols(2)])
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.columns.currency).toBeNull()
+  })
+})

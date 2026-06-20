@@ -280,15 +280,23 @@ export async function POST(
     targetYear = yearHint;
   }
 
+  // Phase C C3.2 — optional target currency (reviewer picks when the sheet
+  // carries the same period in >1 currency). Defaults to undefined → the
+  // applier only needs it when currencies actually collide.
+  const tcRaw = form.get('targetCurrency');
+  const preferCurrency =
+    typeof tcRaw === 'string' && tcRaw.trim() !== '' ? tcRaw.trim() : undefined;
+
   // Apply the saved proposal (+ overrides), selecting the target year's
-  // columns on a multi-year sheet.
+  // columns on a multi-year sheet (and the target currency on a multi-currency
+  // sheet).
   const applyResult = applyProposal(
     workbook,
     staging.sourceSheet,
     proposal,
     XLSX,
     userOverrides,
-    { preferYear: targetYear },
+    { preferYear: targetYear, preferCurrency },
   );
   if ('error' in applyResult) {
     return NextResponse.json({ error: applyResult.error }, { status: 400 });
@@ -444,7 +452,11 @@ export async function POST(
     where: { id: companyId },
     select: { baseCurrencyCode: true },
   });
-  const baseCurrencyCode = companyForCurrency?.baseCurrencyCode ?? 'AZN';
+  // Phase C C3.2 — tag with the sheet's resolved currency when it specified
+  // one (e.g. an imported USD sheet → currencyCode "USD", which lets
+  // FX_IMPORTED_INPUT flag it as non-base); else the company base currency.
+  const baseCurrencyCode =
+    applyResult.resolvedCurrency ?? companyForCurrency?.baseCurrencyCode ?? 'AZN';
   let diagnostics: ApplyDiagnostics;
   try {
     diagnostics = await prisma.$transaction(

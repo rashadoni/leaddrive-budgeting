@@ -62,6 +62,14 @@ export interface ColumnMappingProposal {
   confidence: number;
   /** One-line LLM-generated reasoning (short, for UI tooltip). */
   reasoning: string;
+  /**
+   * Phase C C3.2 — optional ISO currency of an `amount:*` column (e.g. "USD",
+   * "AZN"). Set when the sheet carries the SAME period in MORE than one
+   * currency (reporting + local). `resolveColumns` selects one currency
+   * (`preferCurrency`) instead of colliding on "two Jans"; the chosen currency
+   * tags `BudgetLine.currencyCode`. Absent for single-currency sheets.
+   */
+  currencyCode?: string;
 }
 
 /** A single anomaly found by the LLM during analysis. */
