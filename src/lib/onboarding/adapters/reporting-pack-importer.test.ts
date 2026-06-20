@@ -59,9 +59,7 @@ describe("runReportingPackImport — preview", () => {
     expect(eje.skipped).toBe(true)
 
     const budget = res.reports.find((r) => r.sheetName === "Budget PLF")!
-    // Budget PLF = the multi-year farming-STRATEGY budget → "strategy" plan,
-    // kept separate from the operational "budget" plan (2026-06-20).
-    expect(budget.planKind).toBe("strategy")
+    expect(budget.planKind).toBe("budget")
     // skipped EJE excluded from total
     expect(res.totalLineCount).toBe(2 + 1 + 1) // AZSF(2)+EDEN(1) actual + AZSF(1) budget
   })
@@ -108,7 +106,7 @@ describe("runReportingPackImport — apply", () => {
     expect(calls.some((c) => c.entityCode === null)).toBe(false)
     // planKind routed from sheet config
     const budgetCall = calls.find((c) => c.sheetName === "Budget PLF")!
-    expect(budgetCall.targetPlanKind).toBe("strategy")
+    expect(budgetCall.targetPlanKind).toBe("budget")
     const actualCall = calls.find((c) => c.sheetName === "Actual PLF")!
     expect(actualCall.targetPlanKind).toBe("actual")
     // single transaction, all writes inside it
