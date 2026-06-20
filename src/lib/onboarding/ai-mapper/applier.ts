@@ -69,7 +69,7 @@ interface ResolvedColumns {
  * as `skip` is actually `amount:Jan`") — overrides win on a per-column
  * basis. accountTypeOverrides merge by code (override wins).
  */
-function mergeProposal(
+export function mergeProposal(
   base: MappingProposal,
   overrides: Partial<MappingProposal> | undefined,
 ): MappingProposal {

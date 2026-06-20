@@ -39,9 +39,10 @@ import { getLogger } from '@/lib/log';
 // (transaction-failed + recompute pair-error callback).
 const log = getLogger('api:apply');
 const recomputeLog = getLogger('api:apply:recompute');
-import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
+import { applyProposal, detectProposalYear, mergeProposal } from '@/lib/onboarding/ai-mapper/applier';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
+import { saveApprovedTemplate } from '@/lib/onboarding/ai-mapper/template-store';
 import { extractMapperInput } from '@/lib/onboarding/ai-mapper/extract';
 import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
@@ -91,6 +92,7 @@ export async function POST(
       companyId: true,
       status: true,
       sourceSheet: true,
+      sourceFile: true,
       proposal: true,
       userOverrides: true,
       expiresAt: true,
@@ -649,6 +651,28 @@ export async function POST(
     }),
   });
   const auditStale = !auditResult.ok;
+
+  // Phase B — "learn each format once". Persist the human-approved mapping
+  // keyed by the file's structure-hash, so the next file of the same shape can
+  // be pre-filled (commit still goes through Phase-A validation). Best-effort:
+  // a template-save failure must NOT fail an import that already committed.
+  if (storedHash) {
+    const approved = mergeProposal(proposal, userOverrides);
+    void saveApprovedTemplate(prisma, orgId, {
+      structureHash: storedHash,
+      sheetName: staging.sourceSheet,
+      sourceFile: staging.sourceFile,
+      approvedBy: session.userId,
+      mapping: {
+        columns: approved.columns,
+        accountTypeOverrides: approved.accountTypeOverrides,
+      },
+    }).catch((err) =>
+      log.error('approved-template save failed (import already committed)', {
+        err: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
 
   return NextResponse.json(
     {
