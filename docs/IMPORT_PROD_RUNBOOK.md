@@ -12,6 +12,33 @@ currencies and/or with a numeric/date-serial header.
 - Know which **year** the sheet covers and which **entity (BU)** values map to
   which companies in the org tree.
 
+## (Optional) Wipe a company to a clean slate first — `/budgeting/admin/data-archive`
+
+You do **not** have to delete anything before importing — the import's **Apply**
+step already **clean-slates each mapped company** before re-inserting (the
+Preview shows exactly how many rows it would delete). But if you want to SEE the
+company empty first (a true clean-slate test), use the **Data Archive** tool:
+
+1. Go to **`/budgeting/admin/data-archive`** (admin only).
+2. Mode = **Архивировать**. Entity kind: archive each that holds data —
+   **BudgetLine** (P&L), then **BalanceSheetLine** (BS), then **CashFlowEntry**
+   (CF). Repeat the form once per kind.
+3. **Company** = the target company; **Year** = the year you'll re-import.
+4. Type the **company code** in the confirm box (the button stays disabled until
+   it matches — can't fat-finger it). Add a reason ("clean-slate test").
+5. **Архивировать** → it returns **rowsAffected** (how many rows it removed).
+6. **Verify the clean slate:** open the Risk Terminal HeatMap / the company's
+   budget page — that company's cells go empty.
+
+**This is a SOFT delete — fully reversible.** If the import test goes wrong,
+come back here, switch Mode = **Восстановить** with the SAME scope, and the
+original rows come back. (A background cron only physically purges rows after a
+90-day retention window.) The delete is scoped to **that company + year** only —
+sibling companies are never touched.
+
+> Start with **ONE** company for the first test — lowest risk, and because it's
+> reversible you can restore it if the import doesn't look right.
+
 ## Steps — `/budgeting/admin/ai-import` → tab **«Любой файл (AI)»**
 
 1. **Pick the target / create companies.** If a BU in the file isn't in the
