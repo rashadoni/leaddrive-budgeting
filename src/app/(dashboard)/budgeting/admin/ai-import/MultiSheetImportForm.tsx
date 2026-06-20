@@ -184,6 +184,12 @@ export function MultiSheetImportForm() {
       fd.append("file", file)
       const ov = buildOverridesForm()
       if (ov) fd.append("userOverrides", ov)
+      if (!dryRun) {
+        // Server re-checks the review gates (Codex P1 #1) — forward the
+        // human's acknowledgement so a reviewed commit isn't 409'd.
+        fd.append("acknowledgeAnomalies", String(ackReview))
+        fd.append("acknowledgeLowConfidence", String(ackReview))
+      }
       const url = `/api/onboarding/import/staging/${analysis.stagingId}/apply-multi${dryRun ? "?dryRun=true" : ""}`
       const res = await fetch(url, { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
@@ -211,8 +217,18 @@ export function MultiSheetImportForm() {
         s.proposal.anomalies.some((a) => a.severity === "critical"),
     )
   const controlGated = !!preview && preview.controlVerdict !== undefined && preview.controlVerdict !== "green"
+  // RED control-total = hard block (can't be ack-overridden; server rejects too).
+  const redBlocked = !!preview && preview.controlVerdict === "red"
+  // All-or-none (Codex P1 #2): any failed sheet blocks the whole commit —
+  // otherwise the company's full P&L would be replaced by a partial subset.
+  const failureBlocked = !!preview && preview.sheetCount.failure > 0
   const commitBlocked =
-    !preview || busy !== null || (needsReviewAck && !ackReview) || (controlGated && !ackControl)
+    !preview ||
+    busy !== null ||
+    redBlocked ||
+    failureBlocked ||
+    (needsReviewAck && !ackReview) ||
+    (controlGated && !ackControl)
 
   return (
     <div className="space-y-6">
@@ -364,6 +380,21 @@ export function MultiSheetImportForm() {
                 <div className={`text-xs font-medium ${VERDICT[preview.controlVerdict ?? "green"].fg}`}>
                   Сверка: {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
                   {VERDICT[preview.controlVerdict ?? "green"].label}
+                </div>
+              )}
+              {failureBlocked && (
+                <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-2 py-1.5 text-[11px] text-red-700 dark:text-red-300">
+                  ⛔ {preview.sheetCount.failure} лист(ов) не разобрались — коммит
+                  заблокирован (режим «всё-или-ничего»). Иначе данные компании
+                  заменятся неполным набором. Исправьте проблемные листы и
+                  обновите превью.
+                </div>
+              )}
+              {redBlocked && (
+                <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-2 py-1.5 text-[11px] text-red-700 dark:text-red-300">
+                  🔴 Контроль-сумма RED — коммит заблокирован жёстко (нельзя
+                  подтвердить). Вероятный мис-маппинг колонки. Сервер тоже
+                  отклонит такой коммит.
                 </div>
               )}
               {preview.controlTotals && preview.controlTotals.length > 0 && (

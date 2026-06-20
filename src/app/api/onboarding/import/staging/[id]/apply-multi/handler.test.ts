@@ -260,7 +260,10 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     expect(prismaMock.$transaction).toHaveBeenCalledOnce()
   })
 
-  it("200 with per-sheet failure isolation: 1 sheet errors, other succeeds + persists", async () => {
+  // Codex P1 #2 (2026-06-20): ALL-OR-NONE. A single unrecoverable sheet
+  // failure now blocks the whole commit — previously it committed the
+  // successful subset, replacing the company's full P&L with a partial set.
+  it("409 all-or-none: one sheet fails → whole commit blocked, no transaction", async () => {
     applierMocks.applyMultiSheetProposal.mockReturnValue({
       perSheet: [
         { sheetName: "P&L", error: "extract failed" },
@@ -279,14 +282,85 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
         },
       ],
     })
-    prismaMock.$transaction.mockResolvedValue({ inserted: 1, deleted: 0 })
     const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(409)
     const body = await res.json()
-    expect(body.successCount).toBe(1)
-    expect(body.failureCount).toBe(1)
+    expect(body.sheetCount).toMatchObject({ success: 1, failure: 1 })
     expect(body.perSheet[0]).toMatchObject({ sheetName: "P&L", error: "extract failed" })
-    expect(body.perSheet[1]).toMatchObject({ sheetName: "BS", inserted: 1 })
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("409 RED control-total across sheets (hard block, no transaction)", async () => {
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [{ code: "601", label: "S", accountType: "revenue", perMonth: Array(12).fill(100) }],
+            warnings: [],
+            parentRollupsDropped: [{ code: "P", plannedAnnual: 1000 }],
+            parentRollupsUnallocated: [{ parentCode: "P", plannedAnnual: 500 }], // 50% → red
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(res.status).toBe(409)
+    expect((await res.json()).controlVerdict).toBe("red")
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
+  it("409 critical anomaly without ack; 200 once acknowledged", async () => {
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      ...validStagingRow,
+      proposal: {
+        sheets: [
+          {
+            sheetName: "P&L",
+            proposal: {
+              columns: [],
+              summary: "x",
+              overallConfidence: 0.9,
+              accountTypeOverrides: [],
+              anomalies: [{ row: 5, severity: "critical", category: "sign_inversion", description: "x" }],
+            },
+          },
+        ],
+      },
+    })
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [{ code: "601", label: "S", accountType: "revenue", perMonth: Array(12).fill(100) }],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    const resNoAck = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(resNoAck.status).toBe(409)
+    expect((await resNoAck.json()).requiresAcknowledgement).toBe("acknowledgeAnomalies")
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+
+    // With acknowledgement → commits.
+    prismaMock.$transaction.mockResolvedValue({ inserted: 1, deleted: 0 })
+    const fd = new FormData()
+    fd.set("file", new File(["fake"], "aac.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
+    fd.set("acknowledgeAnomalies", "true")
+    const { NextRequest } = await import("next/server")
+    const reqAck = new NextRequest(
+      new Request(`http://localhost/api/onboarding/import/staging/${STAGING_ID}/apply-multi`, { method: "POST", body: fd }),
+    )
+    const resAck = await POST(reqAck, paramsFor(STAGING_ID))
+    expect(resAck.status).toBe(200)
     expect(prismaMock.$transaction).toHaveBeenCalledOnce()
   })
 

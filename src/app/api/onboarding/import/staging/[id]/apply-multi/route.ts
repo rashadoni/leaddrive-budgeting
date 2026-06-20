@@ -14,11 +14,13 @@
  *
  * Auth: `manager` role + org-scoped (same as /apply).
  *
- * Per-sheet error isolation at apply time: if a sheet errors during
- * `applyProposal`, the failure is recorded BUT the transaction proceeds
- * with the OTHER sheets' lines. Rationale: caller shouldn't lose 4 good
- * sheets to 1 bad one. Caller can re-analyze the failed sheet via
- * `/analyze-multi?sheetNames=<bad>` and re-apply.
+ * Commit policy (2026-06-20, Codex P1 #2): ALL-OR-NONE. A sheet that errors
+ * is first given a deterministic Workbook-adapter rescue; if it STILL fails,
+ * the whole commit is blocked (409) rather than committing the successful
+ * subset — otherwise the delete-then-insert would replace the company's full
+ * P&L with a partial set (silent data loss). Caller fixes/re-analyzes the
+ * failed sheet via `/analyze-multi?sheetNames=<bad>` and re-applies. (The old
+ * behaviour proceeded with the good sheets and blocked only when ALL failed.)
  *
  * **v1 simplifications (deferred to v1.1+):**
  *   - No dry-run support (single-sheet `/apply` has it; mirror in v1.1)
@@ -516,6 +518,75 @@ export async function POST(
         }
       })(),
     })
+  }
+
+  // ── Server-side commit gates (Codex P1 #1 + #2, 2026-06-20) ──────────
+  // (a) ALL-OR-NONE: if any selected sheet failed (after the Workbook
+  //     rescue), block the commit. Otherwise the delete-then-insert below
+  //     would replace the company's FULL P&L with only the successful
+  //     subset — silent partial data loss. (Old behaviour committed
+  //     partials and blocked only when ALL sheets failed.)
+  if (failureCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Импорт заблокирован: ${failureCount} из ${perSheet.length} лист(ов) не разобрались. Режим «всё-или-ничего» — иначе данные компании заменятся неполным набором. Исправьте/переанализируйте проблемные листы и повторите.`,
+        perSheet,
+        sheetCount: { success: successCount, failure: failureCount },
+      },
+      { status: 409 },
+    )
+  }
+  // (b) Control-total RED across the aggregated sheets = hard block.
+  const commitControl = computeControlTotals(allDropped, allSynthetic)
+  if (commitControl.verdict === "red") {
+    return NextResponse.json(
+      {
+        error:
+          "Контроль-сумма RED по листам: родительские строки не сходятся с суммой детей (вероятный мис-маппинг колонки). Коммит заблокирован.",
+        controlVerdict: "red",
+        controlTotals: commitControl.controlTotals.slice(0, 10),
+      },
+      { status: 409 },
+    )
+  }
+  // (c) Critical anomalies / low confidence in ANY sheet require explicit ack.
+  const isAck = (v: FormDataEntryValue | null): boolean =>
+    typeof v === "string" && /^(true|1|yes)$/i.test(v.trim())
+  const allAnomalies = multi.sheets.flatMap((s) =>
+    Array.isArray(s.proposal?.anomalies) ? s.proposal.anomalies : [],
+  )
+  const criticalAnomalies = allAnomalies.filter((a) => a.severity === "critical")
+  if (criticalAnomalies.length > 0 && !isAck(form.get("acknowledgeAnomalies"))) {
+    return NextResponse.json(
+      {
+        error: `Критических аномалий по листам: ${criticalAnomalies.length}. Требуется подтверждение (acknowledgeAnomalies) перед коммитом.`,
+        criticalAnomalies: criticalAnomalies.slice(0, 10),
+        requiresAcknowledgement: "acknowledgeAnomalies",
+      },
+      { status: 409 },
+    )
+  }
+  const lowConfColumns = multi.sheets.flatMap((s) =>
+    (Array.isArray(s.proposal?.columns) ? s.proposal.columns : []).filter(
+      (c) => typeof c.confidence === "number" && c.confidence < 0.6,
+    ),
+  )
+  const anyLowOverall = multi.sheets.some(
+    (s) =>
+      typeof s.proposal?.overallConfidence === "number" &&
+      s.proposal.overallConfidence < 0.7,
+  )
+  if (
+    (lowConfColumns.length > 0 || anyLowOverall) &&
+    !isAck(form.get("acknowledgeLowConfidence"))
+  ) {
+    return NextResponse.json(
+      {
+        error: `Низкая уверенность маппинга по листам (колонок <0.6: ${lowConfColumns.length}${anyLowOverall ? "; есть лист с общей уверенностью <0.7" : ""}). Требуется подтверждение (acknowledgeLowConfidence) перед коммитом.`,
+        requiresAcknowledgement: "acknowledgeLowConfidence",
+      },
+      { status: 409 },
+    )
   }
 
   // Transactional delete-then-insert. Identical to single-sheet — operates
