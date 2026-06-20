@@ -165,19 +165,35 @@ export function resolveColumns(
     return { ok: false, reason: 'Proposal has no "label" column — cannot describe accounts' };
   }
 
-  // Multi-year selection: when month roles carry >1 distinct year, keep only
-  // the target year's columns (preferYear if present, else the latest year).
+  // Year selection. The sheet may carry month roles for one or more years.
+  // Codex re-review (2026-06-20): be STRICT on `preferYear` — when the caller
+  // asks for a year and the sheet has embedded years that DON'T include it, the
+  // sheet has no data for the target year → error, instead of silently reading
+  // a DIFFERENT year's columns (which wrote, e.g., 2026 values into a 2025
+  // plan). Bare-month sheets (no embedded year) are unaffected.
   const years = [
     ...new Set(monthCandidates.map((m) => m.year).filter((y): y is number => y !== null)),
   ];
-  const chosenYear =
-    years.length > 1
-      ? opts.preferYear !== undefined && years.includes(opts.preferYear)
-        ? opts.preferYear
-        : Math.max(...years)
-      : null;
+  let chosenYear: number | null;
+  if (years.length === 0) {
+    chosenYear = null; // bare months — no year info, read as-is
+  } else if (opts.preferYear !== undefined) {
+    if (!years.includes(opts.preferYear)) {
+      return {
+        ok: false,
+        reason: `Sheet has no columns for year ${opts.preferYear} (available: ${[...years].sort().join(', ')}).`,
+      };
+    }
+    chosenYear = opts.preferYear;
+  } else {
+    // No explicit target — keep the single year, or the latest of several.
+    chosenYear = years.length > 1 ? Math.max(...years) : years[0];
+  }
 
-  const inYear = monthCandidates.filter((m) => chosenYear === null || m.year === chosenYear);
+  // Keep the chosen year's columns + any bare (year-less) month columns.
+  const inYear = monthCandidates.filter(
+    (m) => chosenYear === null || m.year === null || m.year === chosenYear,
+  );
 
   // Multi-currency selection (Phase C C3.2): when the in-year candidates carry
   // >1 distinct currency (same period in reporting + local), pick ONE — the

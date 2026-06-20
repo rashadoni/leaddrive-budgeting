@@ -597,6 +597,17 @@ describe('resolveColumns — multi-year selection (Phase C)', () => {
     expect(res.ok).toBe(true)
     if (res.ok) expect(res.columns.monthCols).toEqual(r2025) // cols 2..13
   })
+  it('STRICT: errors when preferYear is not among the sheet years (Codex re-review)', () => {
+    // Sheet has only 2026 columns; caller asks for 2025 → must error, NOT
+    // silently read 2026 into the 2025 plan.
+    const res = resolveColumns([...head, ...yearCols(2026, 2)], { preferYear: 2025 })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.reason).toMatch(/no columns for year 2025/)
+  })
+  it('STRICT: errors when preferYear misses a multi-year set', () => {
+    const res = resolveColumns([...head, ...yearCols(2025, 2), ...yearCols(2026, 14)], { preferYear: 2024 })
+    expect(res.ok).toBe(false)
+  })
   it('still errors on a bare duplicate month (no year to disambiguate)', () => {
     const res = resolveColumns([
       ...head,

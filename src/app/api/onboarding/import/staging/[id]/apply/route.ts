@@ -256,15 +256,17 @@ export async function POST(
   const proposal = staging.proposal as unknown as MappingProposal;
 
   // ── Reject a MULTI-ENTITY staging on this single-company path (Codex P0 #1,
-  // 2026-06-20). A staging with an `entity` column / persisted `__multiEntity`
-  // routes rows to SEVERAL companies; committing it here would parse all BUs
-  // together and write them into the single `staging.companyId`, bypassing the
-  // entity-map / injective / cross-org / per-entity gates. Force it to
-  // /apply-multi-entity. Defends against a direct API POST (the wizard already
-  // routes correctly).
+  // 2026-06-20 + re-review). A staging with an `entity` column / persisted
+  // `__multiEntity` routes rows to SEVERAL companies; committing it here would
+  // parse all BUs together and write them into the single `staging.companyId`,
+  // bypassing the entity-map / injective / cross-org / per-entity gates. Check
+  // the proposal AND the userOverrides columns so a direct caller can't sneak an
+  // `entity` role in via userOverrides. Force it to /apply-multi-entity.
+  const overrideColumns = (userOverrides as { columns?: typeof proposal.columns } | undefined)?.columns;
   const hasMultiEntity =
     !!(staging.proposal as { __multiEntity?: unknown }).__multiEntity ||
-    (Array.isArray(proposal.columns) && findEntityColumn(proposal.columns) !== null);
+    (Array.isArray(proposal.columns) && findEntityColumn(proposal.columns) !== null) ||
+    (Array.isArray(overrideColumns) && findEntityColumn(overrideColumns) !== null);
   if (hasMultiEntity) {
     return NextResponse.json(
       {
