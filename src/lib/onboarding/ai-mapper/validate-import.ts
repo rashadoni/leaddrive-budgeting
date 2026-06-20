@@ -19,6 +19,7 @@
  */
 import type { ParseResult } from "../adapters/azmade-sopl"
 import type { ControlTotalReport } from "./control-totals"
+import type { SignClassification } from "./sign-infer"
 
 export type ValidationVerdict = "certified" | "warn" | "blocked" | "uncertifiable"
 
@@ -91,6 +92,29 @@ export function validateImport(
       severity: "info",
       category: "sign",
       message: "COGS/expense net is negative after sign normalisation — unusual source convention.",
+    })
+  }
+
+  // ── Cost-sign CONVENTION (Phase C C3.1) — the applier flips cogs/expense
+  // assuming costs are stored NEGATIVE. If the inferred convention says the
+  // file stores them POSITIVE, or is AMBIGUOUS, that flip would corrupt the
+  // data — hard block (blocker), never flip-and-warn (Codex 2026-06-20:
+  // warnings are ack-overridable → still commits a corrupted file). Clear
+  // `negative_costs` / `no_evidence` → no finding → today's behaviour. ──
+  const badSign = (c: SignClassification | undefined): boolean =>
+    !!c && (c.convention === "positive_costs" || c.convention === "ambiguous")
+  const sc = result.signConventions
+  if (badSign(sc?.cogs) || badSign(sc?.expense)) {
+    const which = [
+      badSign(sc?.cogs) ? `COGS=${sc!.cogs!.convention}` : null,
+      badSign(sc?.expense) ? `expense=${sc!.expense!.convention}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ")
+    findings.push({
+      severity: "blocker",
+      category: "sign",
+      message: `Cost-sign convention is not the expected "stored negative" (${which}) — the importer's sign flip would corrupt these values. Confirm the source sign / fix the mapping before committing.`,
     })
   }
 

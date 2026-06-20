@@ -67,6 +67,10 @@ interface MePreviewResult {
     crossOrg: string[]
     duplicateCompanyIds: string[]
     parseErrors: Array<{ entityValue: string; error: string }>
+    validationBlocked?: Array<{
+      entityValue: string
+      findings: Array<{ severity: string; category: string; message: string }>
+    }>
   }
 }
 interface MeAppliedResult {
@@ -403,7 +407,8 @@ export function UniversalImportForm() {
     (meIssues.unmapped.length > 0 ||
       meIssues.crossOrg.length > 0 ||
       meIssues.duplicateCompanyIds.length > 0 ||
-      meIssues.parseErrors.length > 0)
+      meIssues.parseErrors.length > 0 ||
+      (meIssues.validationBlocked?.length ?? 0) > 0)
   const meRedBlocked = mePreview?.controlVerdict === "red"
   const meCommitBlocked =
     !mePreview ||
@@ -826,6 +831,14 @@ export function UniversalImportForm() {
                   {meIssues!.crossOrg.length > 0 && <div>Назначены компании вне организации.</div>}
                   {meIssues!.parseErrors.length > 0 && (
                     <div>Не разобрались: {meIssues!.parseErrors.map((e) => e.entityValue).join(", ")}</div>
+                  )}
+                  {(meIssues!.validationBlocked?.length ?? 0) > 0 && (
+                    <div>
+                      ⛔ Валидация заблокировала:{" "}
+                      {meIssues!.validationBlocked!
+                        .map((b) => `${b.entityValue || "(пусто)"} — ${b.findings.map((f) => f.message).join("; ")}`)
+                        .join(" | ")}
+                    </div>
                   )}
                 </div>
               )}

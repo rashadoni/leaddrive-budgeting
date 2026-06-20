@@ -606,3 +606,46 @@ describe('resolveColumns — multi-year selection (Phase C)', () => {
     expect(res.ok).toBe(false)
   })
 })
+
+describe('applyProposal — cost-sign convention inference (Phase C C3.1)', () => {
+  const monthVals = (v: number) => Array.from({ length: 12 }, () => v)
+  const headerRow = ['KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  it('infers negative_costs when cost rows are stored negative (AZ default; flip unchanged)', () => {
+    const wb = makeWorkbook([headerRow, ['701-01', 'COGS', ...monthVals(-100)]])
+    const res = applyProposal(wb, 'Sheet1', buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+      ...fullMonthCols(2),
+    ]), XLSX);
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.signConventions?.cogs?.convention).toBe('negative_costs')
+    // Flip math unchanged: stored-negative cogs normalises to POSITIVE.
+    expect(res.lines[0].plannedAnnual).toBe(1200)
+  })
+
+  it('infers positive_costs when cost rows are stored positive (the flip would corrupt)', () => {
+    const wb = makeWorkbook([headerRow, ['701-01', 'COGS', ...monthVals(100)]])
+    const res = applyProposal(wb, 'Sheet1', buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+      ...fullMonthCols(2),
+    ]), XLSX);
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.signConventions?.cogs?.convention).toBe('positive_costs')
+  })
+
+  it('omits signConventions when there are no cost rows', () => {
+    const wb = makeWorkbook([headerRow, ['601-01', 'Revenue', ...monthVals(100)]])
+    const res = applyProposal(wb, 'Sheet1', buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+      ...fullMonthCols(2),
+    ]), XLSX);
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    expect(res.signConventions).toBeUndefined()
+  })
+})

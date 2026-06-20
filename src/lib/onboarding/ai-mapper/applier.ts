@@ -34,6 +34,7 @@ import type {
   ColumnMappingProposal,
   MappingProposal,
 } from './types';
+import { classifyCostSign } from './sign-infer';
 
 const MONTH_ROLE_PREFIX = 'amount:';
 
@@ -426,6 +427,12 @@ export function applyProposal(
     resolvedType: string;
     sectionType: string;
   }> = [];
+  // Phase C C3.1 — collect RAW (pre-flip) annual values of cost rows per
+  // accountType, to INFER the file's stored-sign convention. The flip math
+  // below is unchanged; this only feeds the validation engine (a wrong /
+  // ambiguous convention hard-blocks the import).
+  const cogsRaw: number[] = [];
+  const expenseRaw: number[] = [];
   let skipped = 0;
 
   // Tracks the current P&L section for NON-SAP code schemes (see
@@ -559,6 +566,10 @@ export function applyProposal(
       }
     }
 
+    // Sign-convention evidence: record the row's RAW (pre-flip) annual.
+    if (accountType === 'cogs') cogsRaw.push(rawAnnual);
+    else if (accountType === 'expense') expenseRaw.push(rawAnnual);
+
     lines.push({
       code,
       label: label || code,
@@ -567,6 +578,18 @@ export function applyProposal(
       perMonth,
     });
   }
+
+  // Phase C C3.1 — classify the stored-sign convention from the collected raw
+  // cost values. `negative_costs` (the AZ default) / `no_evidence` → today's
+  // flip is correct; `positive_costs` / `ambiguous` → the flip would corrupt,
+  // and the validation engine turns this into a hard block.
+  const signConventions =
+    cogsRaw.length > 0 || expenseRaw.length > 0
+      ? {
+          ...(cogsRaw.length > 0 ? { cogs: classifyCostSign(cogsRaw) } : {}),
+          ...(expenseRaw.length > 0 ? { expense: classifyCostSign(expenseRaw) } : {}),
+        }
+      : undefined;
 
   const { kept, dropped, synthetic } = dedupeParentRollups(lines);
   // skippedRowCount = sheet rows that did NOT contribute a final line.
@@ -590,5 +613,6 @@ export function applyProposal(
     parentRollupsUnallocated: synthetic,
     rowTotalMismatches,
     sectionTypeConflicts,
+    signConventions,
   };
 }

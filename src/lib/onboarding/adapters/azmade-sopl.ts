@@ -53,6 +53,7 @@
  */
 
 import type * as XLSX from 'xlsx';
+import type { SignClassification } from '../ai-mapper/sign-infer';
 
 export type AccountType =
   | 'revenue'
@@ -143,6 +144,11 @@ export interface ParseResult {
    *  The "ties-out-but-wrong" class — arithmetic can be fine yet the meaning
    *  wrong. Surfaced for review. Only populated on the non-SAP path. */
   sectionTypeConflicts?: Array<{ code: string; resolvedType: string; sectionType: string }>;
+  /** Phase C C3.1 — inferred cost-sign convention per accountType, from the
+   *  RAW (pre-flip) annual values. `positive_costs` / `ambiguous` mean the
+   *  unconditional cogs/expense flip would corrupt the data → the validation
+   *  engine hard-blocks. Absent when there are no cost rows. */
+  signConventions?: { cogs?: SignClassification; expense?: SignClassification };
 }
 
 // --- Pure helpers -----------------------------------------------------------

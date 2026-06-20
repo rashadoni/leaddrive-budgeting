@@ -80,6 +80,32 @@ describe("validateImport", () => {
   })
 })
 
+describe("validateImport — cost-sign convention (Phase C C3.1)", () => {
+  const conv = (c: string) => ({ convention: c, evidence: { negRows: 0, posRows: 0, negAbs: 0, posAbs: 0, netSum: 0 } }) as never
+
+  it("hard-blocks when costs look stored POSITIVE (the flip would corrupt)", () => {
+    const r = validateImport(result(healthy, { signConventions: { cogs: conv("positive_costs") } }), control())
+    expect(r.verdict).toBe("blocked")
+    expect(r.findings.some((f) => f.category === "sign" && f.severity === "blocker")).toBe(true)
+  })
+
+  it("hard-blocks on an AMBIGUOUS cost-sign convention", () => {
+    const r = validateImport(result(healthy, { signConventions: { expense: conv("ambiguous") } }), control())
+    expect(r.verdict).toBe("blocked")
+  })
+
+  it("does NOT block on the clear negative-cost convention (today's behaviour)", () => {
+    const r = validateImport(result(healthy, { signConventions: { cogs: conv("negative_costs"), expense: conv("negative_costs") } }), control())
+    expect(r.findings.some((f) => f.category === "sign" && f.severity === "blocker")).toBe(false)
+    expect(r.verdict).toBe("certified")
+  })
+
+  it("does NOT block when there is no cost-sign evidence", () => {
+    const r = validateImport(result(healthy, { signConventions: { cogs: conv("no_evidence") } }), control())
+    expect(r.findings.some((f) => f.category === "sign" && f.severity === "blocker")).toBe(false)
+  })
+})
+
 describe("validateImport — semantic section↔type", () => {
   it("warns when rows are classified against their visual section", () => {
     const r = validateImport(

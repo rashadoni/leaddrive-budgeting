@@ -66,6 +66,21 @@ const redResult = () => ({
   parentRollupsUnallocated: [{ code: 'P-__UNALLOCATED__', parentCode: 'P', plannedAnnual: 500 }], // 50% → red
 });
 
+// Revenue + cost, but the inferred cost-sign convention is positive → the
+// validation engine hard-blocks (the flip would corrupt). Phase C C3.1.
+const signBlockedResult = () => ({
+  sheetName: 'S',
+  lines: [
+    { code: 'R', label: 'R', accountType: 'revenue', plannedAnnual: 1000, perMonth: [1000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+    { code: 'C', label: 'C', accountType: 'cogs', plannedAnnual: 600, perMonth: [600, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+  ],
+  warnings: [],
+  skippedRowCount: 0,
+  parentRollupsDropped: [],
+  parentRollupsUnallocated: [],
+  signConventions: { cogs: { convention: 'positive_costs', evidence: { negRows: 0, posRows: 1, negAbs: 0, posAbs: 600, netSum: 600 } } },
+});
+
 function stage(opts: { status?: string; entityValues?: string[]; anomalies?: unknown[]; overallConfidence?: number } = {}) {
   prismaMock.importStaging.findFirst.mockResolvedValue({
     id: STAGING_ID,
@@ -225,6 +240,26 @@ describe('POST .../apply-multi-entity', () => {
     expect(res.status).toBe(409);
     expect((await res.json()).controlVerdict).toBe('red');
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('409 + ZERO writes when an entity has a wrong/ambiguous cost-sign convention (validation hard-block)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage();
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14,
+      entityValues: ['AZSF', 'EDEN'],
+      perEntity: [
+        { entityValue: 'AZSF', result: greenResult('X', 100) },
+        { entityValue: 'EDEN', result: signBlockedResult() },
+      ],
+    });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'coA', baseCurrencyCode: 'AZN' }, { id: 'coB', baseCurrencyCode: 'AZN' }]);
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.blockedEntities.some((b: { entityValue: string }) => b.entityValue === 'EDEN')).toBe(true);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(applyLinesMock.applyParsedLinesToCompany).not.toHaveBeenCalled();
   });
 
   it('409 + ZERO writes when one entity fails to parse (all-or-none)', async () => {
