@@ -41,8 +41,10 @@ export interface ArchiveScope {
   /** Which table to operate on. */
   entityKind: ArchiveEntityKind
   /** Limit to a single company. Required for BudgetLine and
-   *  Counterparty (they have companyId); ignored for BalanceSheetLine
-   *  (joined via plan) and CashFlowEntry (org-only schema today). */
+   *  Counterparty (they have companyId). OPTIONAL but honoured for
+   *  BalanceSheetLine (scopes by its `companyId` column) and
+   *  CashFlowEntry (scopes by the `<companyCode>::…` sourceId prefix).
+   *  Omit it on BS/CF for a deliberate org-wide-per-year archive. */
   companyCode?: string
   /** Limit to a specific calendar year. Required for BudgetLine via
    *  plan.year filter, and for BalanceSheetLine / CashFlowEntry which
@@ -98,18 +100,41 @@ async function buildScopeWhere(
   if (scope.entityKind === "BalanceSheetLine") {
     if (!scope.year) return null
     base.year = scope.year
-    // companyCode is honoured indirectly: BS lines are linked to a
-    // plan; we restrict to plans containing budget_lines for that
-    // company. Looking that up to keep this helper synchronous would
-    // be a separate query — instead, the UI is expected to scope BS
-    // archive to the whole org+year (per the schema where BS is
-    // plan-scoped, not company-scoped).
+    // Phase 3 fix (2026-06-20): balance_sheet_lines HAS a `companyId`
+    // column, so scope to the single company when one is given.
+    // Previously this returned org+year only — archiving one company's
+    // BS would silently wipe EVERY company's BS for that year. With no
+    // companyCode the scope stays org-wide-per-year (the "ALL" path the
+    // confirmCode="ALL" gate guards).
+    if (scope.companyCode) {
+      const company = await prisma.company.findFirst({
+        where: { organizationId: scope.organizationId, code: scope.companyCode },
+        select: { id: true },
+      })
+      if (!company) return null
+      base.companyId = company.id
+    }
     return base
   }
 
   if (scope.entityKind === "CashFlowEntry") {
     if (!scope.year) return null
     base.year = scope.year
+    // Phase 3 fix (2026-06-20): cash_flow_entries has no companyId
+    // column, but every row's `sourceId` is prefixed `<companyCode>::…`
+    // (verified 2424/2424 live rows). Scope by that prefix when a
+    // company is given — the "::" delimiter prevents prefix collisions
+    // (e.g. "AZSEKER::" never matches "AZSEKER-AZSF::"). Previously this
+    // returned org+year only — same all-companies wipe risk as BS above.
+    // No companyCode → org-wide-per-year ("ALL" path).
+    if (scope.companyCode) {
+      const company = await prisma.company.findFirst({
+        where: { organizationId: scope.organizationId, code: scope.companyCode },
+        select: { id: true },
+      })
+      if (!company) return null
+      base.sourceId = { startsWith: `${scope.companyCode}::` }
+    }
     return base
   }
 

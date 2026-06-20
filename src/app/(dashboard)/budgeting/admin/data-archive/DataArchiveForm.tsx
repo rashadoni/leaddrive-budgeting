@@ -55,10 +55,18 @@ export function DataArchiveForm({
     | null
   >(null)
 
-  // companyCode required for BudgetLine + Counterparty; for BS+CF
-  // the schema doesn't surface companyId so we hide the picker.
+  // companyCode REQUIRED for BudgetLine + Counterparty (they have a
+  // companyId FK). For BS+CF it is OPTIONAL (2026-06-20 fix): blank =
+  // deliberate org-wide-per-year archive; a selected company narrows the
+  // archive to that entity only — BS via its companyId column, CF via the
+  // "<code>::" sourceId prefix. Previously BS/CF hid the picker and always
+  // wiped every company's rows for the year.
   const needsCompany =
     entityKind === "BudgetLine" || entityKind === "Counterparty"
+  const allowsCompany =
+    needsCompany ||
+    entityKind === "BalanceSheetLine" ||
+    entityKind === "CashFlowEntry"
   const needsYear = entityKind !== "Counterparty"
   const needsPeriod = entityKind === "Counterparty"
 
@@ -82,7 +90,7 @@ export function DataArchiveForm({
         body: JSON.stringify({
           mode,
           entityKind,
-          companyCode: needsCompany ? companyCode : undefined,
+          companyCode: companyCode.length > 0 ? companyCode : undefined,
           year: needsYear && year ? parseInt(year, 10) : undefined,
           period: needsPeriod ? period : undefined,
           reason: reason || undefined,
@@ -170,15 +178,24 @@ export function DataArchiveForm({
       </div>
 
       {/* Scope: company */}
-      {needsCompany && (
+      {allowsCompany && (
         <div>
-          <label className="block text-sm font-semibold mb-2">{t("companyLabel")}</label>
+          <label className="block text-sm font-semibold mb-2">
+            {t("companyLabel")}
+            {!needsCompany && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                (опционально — пусто = вся организация за год)
+              </span>
+            )}
+          </label>
           <select
             value={companyCode}
             onChange={(e) => setCompanyCode(e.target.value)}
             className="w-full border rounded px-3 py-2 text-sm bg-background"
           >
-            <option value="">{t("companyPickerPlaceholder")}</option>
+            <option value="">
+              {needsCompany ? t("companyPickerPlaceholder") : "— вся организация (org-wide) —"}
+            </option>
             {companies.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.code} — {c.name}
