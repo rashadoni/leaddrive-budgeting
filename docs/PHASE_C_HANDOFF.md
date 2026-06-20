@@ -36,8 +36,13 @@ The canonical model Codex confirmed: **`account × period × entity × scenario 
 - **Sign (C3.1a/b):** Codex-reviewed. `sign-infer.ts` `classifyCostSign` infers the stored-sign convention per accountType from RAW pre-flip values (abs-share AND row-count majority → `negative_costs | positive_costs | ambiguous | no_evidence`). The applier flip is now **convention-based** (two-pass): negative/no-evidence → flip (AZ default, byte-identical); positive → NO flip (the fix); ambiguous → hard-blocked by `validate-import`. Covers both apply paths (`apply-multi-entity` now runs the full `validateImport` per entity — closed Codex #5).
 - **Currency (C3.2):** `ColumnMappingProposal.currencyCode?`; `resolveColumns({preferCurrency})` selects one currency on a multi-currency sheet (fail-safe error if no preference); `ParseResult.resolvedCurrency` tags `BudgetLine.currencyCode`; mapper classifies currency columns + FX-rate-as-skip; routes accept `targetCurrency`.
 
-## PHASE C COMPLETE
-The canonical model `account × period × entity × scenario × currency` is realized in the generic Universal Import: period (multi-year), entity (multi-company-in-one-sheet), sign, currency; scenario = BudgetPlan. Optional follow-ups (not blocking): UI currency-picker (routes already take `targetCurrency`), per-visual-section sign granularity (C3.1c), generic numeric/date-serial header support in `applyProposal` (C2.5).
+## PHASE C COMPLETE (+ follow-ups closed)
+The canonical model `account × period × entity × scenario × currency` is realized in the generic Universal Import: period (multi-year), entity (multi-company-in-one-sheet), sign, currency; scenario = BudgetPlan. Follow-ups resolved 2026-06-20:
+- **C2.5 — numeric/date-serial header support** ✅ (all-strings heuristic primary; strict code-anchor fallback + section-seed; **real-file verified** on `Actual PLF`).
+- **Multi-currency UI picker** ✅ (wizard derives tagged currencies + threads `targetCurrency`).
+- **C3.1c — per-visual-section sign** ❌ DECLINED per Codex (breaks the parent+children single-convention invariant `dedupeParentRollups` relies on; per-accountType + hard-block-on-mixed is safer). Only revisit behind a hierarchy guard.
+
+Only knowingly-unverified-on-real paths: positive-cost + multi-currency imports (no such file in the AzerSheker set — unit-covered; a real file is the natural confidence check).
 - **Sign:** today `applier.ts` flips cogs/expense globally (`flipSign`). Codex: make sign a per-template / per-section inferred dimension; validate via subtotal equations + expected polarity; never globally flip on weak evidence.
 - **FX/multi-currency:** distinguish reporting vs local vs FX-rate columns; a `valueColumn.currencyRole`; catch "USD + local as duplicate periods/entities". The mapper must classify currency role.
 
