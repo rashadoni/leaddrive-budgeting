@@ -249,3 +249,22 @@ describe('renderInputForPrompt', () => {
     expect(rendered).toContain('…');
   });
 });
+
+describe('extractMapperInput — stratified samples (C2.6)', () => {
+  it('samples a contiguous block column across its full range (entity detection)', () => {
+    // A BU/entity column whose values are CONTIGUOUS blocks: 8×AZSF, 8×EDEN,
+    // 8×CPC. First-N sampling would show only AZSF; stratified must reveal the
+    // other blocks so the mapper can recognise the entity dimension.
+    const aoa: (string | number | null)[][] = [['Code', 'Label', 'BU']]
+    const blocks = ['AZSF', 'EDEN', 'CPC']
+    for (const bu of blocks) for (let i = 0; i < 8; i++) aoa.push([`PLF.0${blocks.indexOf(bu) + 1}.${i}`, `${bu} line ${i}`, bu])
+    const res = extractMapperInput(makeWorkbook(aoa), 'Sheet1', XLSX)
+    expect('error' in res).toBe(false)
+    if ('error' in res) return
+    const buCol = res.columns.find((c) => c.headerText === 'BU')!
+    const distinct = new Set(buCol.samples.map(String))
+    // Must surface >1 distinct BU (not just the first block).
+    expect(distinct.size).toBeGreaterThan(1)
+    expect(distinct.has('EDEN') || distinct.has('CPC')).toBe(true)
+  })
+})

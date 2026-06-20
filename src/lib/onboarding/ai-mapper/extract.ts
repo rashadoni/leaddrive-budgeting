@@ -102,15 +102,25 @@ export function extractMapperInput(
     if (typeof v === 'string' && v.trim() !== '') {
       headerText = v.trim();
     }
-    // Samples from past the header band.
-    for (
-      let r = headerEndRow;
-      r < aoa.length && samples.length < MAX_SAMPLES_PER_COLUMN;
-      r++
-    ) {
-      const v = aoa[r]?.[c];
-      if (v !== null && v !== undefined && v !== '') {
-        samples.push(v);
+    // STRATIFIED samples (C2.6) — spread the picks across the FULL data range,
+    // not just the first rows. A column that changes in BLOCKS — e.g. a
+    // business-unit / entity column whose values are contiguous (all AZSF, then
+    // all EDEN, then CPC…) — would otherwise show only the FIRST block's value
+    // repeated, so the mapper saw a constant and MISSED the entity dimension on
+    // real multi-company sheets (proven on `Reporting 2026.xlsx` `Actual PLF`).
+    // Picking evenly across all non-null values reveals the variation. The
+    // sample COUNT is unchanged (MAX_SAMPLES_PER_COLUMN), so the structure-hash
+    // sample-TYPE signature — and thus the template cache key — stays stable.
+    const colNonNull: Array<string | number | null> = [];
+    for (let r = headerEndRow; r < aoa.length; r++) {
+      const cv = aoa[r]?.[c];
+      if (cv !== null && cv !== undefined && cv !== '') colNonNull.push(cv);
+    }
+    if (colNonNull.length <= MAX_SAMPLES_PER_COLUMN) {
+      samples.push(...colNonNull);
+    } else {
+      for (let i = 0; i < MAX_SAMPLES_PER_COLUMN; i++) {
+        samples.push(colNonNull[Math.floor((i * colNonNull.length) / MAX_SAMPLES_PER_COLUMN)]);
       }
     }
     columns.push({ index: c, headerText, samples });
