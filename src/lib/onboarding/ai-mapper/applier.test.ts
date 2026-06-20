@@ -570,3 +570,39 @@ describe('applyProposal — section↔type semantic conflict', () => {
     });
   });
 })
+
+describe('resolveColumns — multi-year selection (Phase C)', () => {
+  const MS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const yearCols = (year: number, start: number): ColumnMappingProposal[] =>
+    MS.map((m, i) => ({ sourceIndex: start + i, role: `amount:${m}${year}` as const, confidence: 0.9, reasoning: '' }))
+  const head: ColumnMappingProposal[] = [
+    { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+  ]
+  const r2025 = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  const r2026 = [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+
+  it('picks the LATEST year when multiple years and no preferYear', () => {
+    const res = resolveColumns([...head, ...yearCols(2025, 2), ...yearCols(2026, 14)])
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.columns.monthCols).toEqual(r2026)
+  })
+  it('picks preferYear when given', () => {
+    const res = resolveColumns([...head, ...yearCols(2025, 2), ...yearCols(2026, 14)], { preferYear: 2025 })
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.columns.monthCols).toEqual(r2025)
+  })
+  it('handles a single year-qualified set', () => {
+    const res = resolveColumns([...head, ...yearCols(2026, 2)])
+    expect(res.ok).toBe(true)
+    if (res.ok) expect(res.columns.monthCols).toEqual(r2025) // cols 2..13
+  })
+  it('still errors on a bare duplicate month (no year to disambiguate)', () => {
+    const res = resolveColumns([
+      ...head,
+      ...fullMonthCols(2),
+      { sourceIndex: 99, role: 'amount:Jan', confidence: 0.9, reasoning: '' },
+    ])
+    expect(res.ok).toBe(false)
+  })
+})

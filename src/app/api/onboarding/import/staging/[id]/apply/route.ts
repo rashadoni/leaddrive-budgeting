@@ -252,40 +252,46 @@ export async function POST(
     }
   }
 
-  // Apply the saved proposal (+ overrides) to the workbook.
   const proposal = staging.proposal as unknown as MappingProposal;
+
+  // Resolve the target BudgetPlan year FIRST — the applier needs it to pick
+  // the right year's columns on a MULTI-YEAR sheet (Phase C 2026-06-20).
+  // Priority:
+  //   1. explicit `targetYear` form field (lets the user pick for a multi-year
+  //      file or when the year isn't in the headers)
+  //   2. single year embedded in the column roles (`amount:Jan2026`)
+  //   3. multi-year roles with no explicit pick → the LATEST year
+  //      (multi-year sheets are now supported, not rejected)
+  //   4. current calendar year — fallback when no year hint at all
+  const yearHint = detectProposalYear(proposal.columns);
+  const formYearRaw = form.get('targetYear');
+  const formYear =
+    typeof formYearRaw === 'string' && /^\d{4}$/.test(formYearRaw.trim())
+      ? Number(formYearRaw.trim())
+      : undefined;
+  let targetYear: number;
+  if (formYear !== undefined) {
+    targetYear = formYear;
+  } else if (yearHint === null) {
+    targetYear = currentBakuYearNumber();
+  } else if (typeof yearHint === 'object' && 'conflict' in yearHint) {
+    targetYear = Math.max(...yearHint.conflict);
+  } else {
+    targetYear = yearHint;
+  }
+
+  // Apply the saved proposal (+ overrides), selecting the target year's
+  // columns on a multi-year sheet.
   const applyResult = applyProposal(
     workbook,
     staging.sourceSheet,
     proposal,
     XLSX,
     userOverrides,
+    { preferYear: targetYear },
   );
   if ('error' in applyResult) {
     return NextResponse.json({ error: applyResult.error }, { status: 400 });
-  }
-
-  // Resolve target BudgetPlan year. Priority:
-  //   1. Year embedded in proposal's column roles (`amount:Plan2026`,
-  //      `amount:Jan2026`, etc.) — most reliable, matches what the LLM
-  //      saw in the source sheet.
-  //   2. Current calendar year — fallback when no year hint present.
-  // Conflicting years across columns return 400 (workbook split across
-  // years isn't supported by this MVP — Turn 2c can add explicit
-  // `targetYear` form field).
-  const yearHint = detectProposalYear(proposal.columns);
-  let targetYear: number;
-  if (yearHint === null) {
-    targetYear = currentBakuYearNumber();
-  } else if (typeof yearHint === 'object' && 'conflict' in yearHint) {
-    return NextResponse.json(
-      {
-        error: `Proposal has columns referencing multiple years (${yearHint.conflict.join(', ')}). MVP requires a single-year workbook; submit separate xlsx per year.`,
-      },
-      { status: 400 },
-    );
-  } else {
-    targetYear = yearHint;
   }
 
   // Dry-run early-return — before opening the prisma transaction.

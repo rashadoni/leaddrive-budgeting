@@ -107,11 +107,16 @@ export function mergeProposal(
  */
 export function resolveColumns(
   columns: ColumnMappingProposal[],
+  opts: { preferYear?: number } = {},
 ): { ok: true; columns: ResolvedColumns } | { ok: false; reason: string } {
   let codeCol = -1;
   let labelCol = -1;
   let totalCol = -1;
-  const monthCols = new Array<number>(12).fill(-1);
+  // Month candidates carry their (monthIdx, year) so a MULTI-YEAR sheet
+  // (Jan-Dec × N years) can select a single target year instead of colliding
+  // on "two Jans" (Phase C 2026-06-20). Single-year / bare-month sheets keep
+  // year=null and behave exactly as before.
+  const monthCandidates: Array<{ monthIdx: number; year: number | null; col: number; period: string }> = [];
 
   for (const c of columns) {
     if (c.role === 'code') {
@@ -126,26 +131,21 @@ export function resolveColumns(
       labelCol = c.sourceIndex;
     } else if (c.role.startsWith(MONTH_ROLE_PREFIX)) {
       const period = c.role.slice(MONTH_ROLE_PREFIX.length).toLowerCase();
-      // `amount:Total` / `amount:Plan` / etc. — annual or aggregate columns.
-      // Skip them at apply time; we sum the 12 monthly amounts ourselves
-      // from the per-month columns. Annual-only sheets are not supported
-      // by this Turn 2b — covered by Turn 2c if needed.
-      const monthIdx = MONTH_INDEX[period];
+      // Split an optional 4-digit year off the month token: "jan2026" →
+      // month "jan", year 2026; bare "jan" → year null.
+      const ym = period.match(/(20\d{2})/);
+      const year = ym ? Number(ym[1]) : null;
+      const monthToken = period.replace(/20\d{2}/g, '').trim();
+      const monthIdx = MONTH_INDEX[monthToken];
       if (monthIdx === undefined) {
-        // Capture the annual "Total" column (first one wins) as a per-row
-        // reconciliation control — Σ months must equal it.
-        if (totalCol === -1 && period.startsWith('total')) {
+        // `amount:Total` / `amount:Plan` — annual/aggregate columns. Capture
+        // the annual "Total" (first wins) as a per-row reconciliation control.
+        if (totalCol === -1 && monthToken.startsWith('total')) {
           totalCol = c.sourceIndex;
         }
         continue;
       }
-      if (monthCols[monthIdx] !== -1) {
-        return {
-          ok: false,
-          reason: `Multiple columns mapped to month ${period} (cols ${monthCols[monthIdx]} and ${c.sourceIndex})`,
-        };
-      }
-      monthCols[monthIdx] = c.sourceIndex;
+      monthCandidates.push({ monthIdx, year, col: c.sourceIndex, period });
     }
     // role === 'skip' → ignored.
   }
@@ -156,6 +156,31 @@ export function resolveColumns(
   if (labelCol === -1) {
     return { ok: false, reason: 'Proposal has no "label" column — cannot describe accounts' };
   }
+
+  // Multi-year selection: when month roles carry >1 distinct year, keep only
+  // the target year's columns (preferYear if present, else the latest year).
+  const years = [
+    ...new Set(monthCandidates.map((m) => m.year).filter((y): y is number => y !== null)),
+  ];
+  const chosenYear =
+    years.length > 1
+      ? opts.preferYear !== undefined && years.includes(opts.preferYear)
+        ? opts.preferYear
+        : Math.max(...years)
+      : null;
+
+  const monthCols = new Array<number>(12).fill(-1);
+  for (const m of monthCandidates) {
+    if (chosenYear !== null && m.year !== chosenYear) continue; // other year — skip
+    if (monthCols[m.monthIdx] !== -1) {
+      return {
+        ok: false,
+        reason: `Multiple columns mapped to month ${m.period} (cols ${monthCols[m.monthIdx]} and ${m.col})`,
+      };
+    }
+    monthCols[m.monthIdx] = m.col;
+  }
+
   const missingMonths = monthCols
     .map((c, i) => (c === -1 ? Object.entries(MONTH_INDEX).find(([, v]) => v === i)?.[0] : null))
     .filter((m): m is string => m !== null);
@@ -336,6 +361,7 @@ export function applyProposal(
   proposal: MappingProposal,
   xlsx: typeof XLSX,
   userOverrides?: Partial<MappingProposal>,
+  opts: { preferYear?: number } = {},
 ):
   | ParseResult
   | { error: string } {
@@ -345,7 +371,7 @@ export function applyProposal(
   }
 
   const merged = mergeProposal(proposal, userOverrides);
-  const colsResult = resolveColumns(merged.columns);
+  const colsResult = resolveColumns(merged.columns, opts);
   if (!colsResult.ok) return { error: colsResult.reason };
   const { codeCol, labelCol, monthCols, totalCol } = colsResult.columns;
 
