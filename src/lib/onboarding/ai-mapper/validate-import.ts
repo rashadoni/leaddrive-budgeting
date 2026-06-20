@@ -29,6 +29,7 @@ export interface ValidationFinding {
     | "margin"
     | "sign"
     | "total_mismatch"
+    | "semantic"
     | "control_total"
     | "no_control"
   message: string
@@ -99,6 +100,16 @@ export function validateImport(
       severity: "warning",
       category: "margin",
       message: `Implausible gross margin ${(grossMarginPct * 100).toFixed(0)}% — check COGS/revenue mapping.`,
+    })
+  }
+
+  // ── Semantic: resolved type vs visual section ("ties-out-but-wrong") ──
+  const sectionConflicts = result.sectionTypeConflicts ?? []
+  if (sectionConflicts.length > 0) {
+    findings.push({
+      severity: "warning",
+      category: "semantic",
+      message: `${sectionConflicts.length} row(s) classified against their visual P&L section (e.g. ${sectionConflicts[0].resolvedType} under a ${sectionConflicts[0].sectionType} section) — verify the account type.`,
     })
   }
 

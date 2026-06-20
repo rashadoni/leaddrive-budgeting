@@ -541,3 +541,32 @@ describe('applyProposal — Total-column reconciliation control (2026-06-20)', (
     if (r.ok) expect(r.columns.totalCol).toBe(14);
   });
 });
+
+describe('applyProposal — section↔type semantic conflict', () => {
+  it('flags a row whose override type disagrees with its visual section', () => {
+    const cols: ColumnMappingProposal[] = [
+      { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+      ...fullMonthCols(2),
+    ];
+    const aoa: (string | number | null)[][] = [
+      ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['PLF.01', 'REVENUE', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // section = revenue
+      ['PLF.01.99', 'Suspicious', 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], // override says cogs → conflict
+    ];
+    const proposal: MappingProposal = {
+      ...buildProposal(cols),
+      accountTypeOverrides: [
+        { code: 'PLF.01.99', accountType: 'cogs', confidence: 0.9, reasoning: 'llm says cogs' },
+      ],
+    };
+    const res = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX);
+    if ('error' in res) throw new Error(res.error);
+    expect(res.sectionTypeConflicts).toHaveLength(1);
+    expect(res.sectionTypeConflicts![0]).toMatchObject({
+      code: 'PLF.01.99',
+      resolvedType: 'cogs',
+      sectionType: 'revenue',
+    });
+  });
+})

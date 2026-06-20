@@ -79,3 +79,14 @@ describe("validateImport", () => {
     expect(r.totals.grossMarginPct).toBeCloseTo(0.4, 5)
   })
 })
+
+describe("validateImport — semantic section↔type", () => {
+  it("warns when rows are classified against their visual section", () => {
+    const r = validateImport(
+      result(healthy, { sectionTypeConflicts: [{ code: "PLF.01.99", resolvedType: "cogs", sectionType: "revenue" }] }),
+      control(),
+    )
+    expect(r.verdict).toBe("warn")
+    expect(r.findings.some((f) => f.category === "semantic")).toBe(true)
+  })
+})

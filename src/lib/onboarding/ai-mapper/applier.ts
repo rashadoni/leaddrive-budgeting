@@ -395,6 +395,11 @@ export function applyProposal(
     computed: number;
     delta: number;
   }> = [];
+  const sectionTypeConflicts: Array<{
+    code: string;
+    resolvedType: string;
+    sectionType: string;
+  }> = [];
   let skipped = 0;
 
   // Tracks the current P&L section for NON-SAP code schemes (see
@@ -456,11 +461,23 @@ export function applyProposal(
       }
       // Resolution order: exact override → longest-prefix override (AI
       // section/parent classification) → tracked section header → skip.
-      accountType =
-        acctByCode.get(code) ??
-        resolveTypeByPrefix(code, acctByCode) ??
-        currentSection ??
-        null;
+      const overrideType =
+        acctByCode.get(code) ?? resolveTypeByPrefix(code, acctByCode) ?? null;
+      accountType = overrideType ?? currentSection ?? null;
+      // Semantic check (the "ties-out-but-wrong" class): an override/prefix
+      // type that DISAGREES with the visual section the row sits under is a
+      // mis-classification signal — surface it for review, keep the override.
+      if (overrideType && currentSection && overrideType !== currentSection) {
+        sectionTypeConflicts.push({
+          code,
+          resolvedType: overrideType,
+          sectionType: currentSection,
+        });
+        warnings.push({
+          row: r + 1,
+          reason: `code "${code}" classified ${overrideType} but sits under a ${currentSection} section`,
+        });
+      }
       if (!accountType) {
         warnings.push({
           row: r + 1,
@@ -546,5 +563,6 @@ export function applyProposal(
     parentRollupsDropped: dropped,
     parentRollupsUnallocated: synthetic,
     rowTotalMismatches,
+    sectionTypeConflicts,
   };
 }

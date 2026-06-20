@@ -137,6 +137,12 @@ export interface ParseResult {
    *  tolerance — a format-independent signal that the months were mis-mapped.
    *  Empty when the sheet has no Total column or every row ties out. */
   rowTotalMismatches?: Array<{ code: string; stated: number; computed: number; delta: number }>;
+  /** Semantic conflicts (2026-06-20): rows whose resolved accountType (from an
+   *  AI/user override or code-prefix) DISAGREES with the P&L section header the
+   *  row sits under (e.g. classified "cogs" while under a "REVENUE" section).
+   *  The "ties-out-but-wrong" class — arithmetic can be fine yet the meaning
+   *  wrong. Surfaced for review. Only populated on the non-SAP path. */
+  sectionTypeConflicts?: Array<{ code: string; resolvedType: string; sectionType: string }>;
 }
 
 // --- Pure helpers -----------------------------------------------------------
