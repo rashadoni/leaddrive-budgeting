@@ -488,17 +488,17 @@ function findProcessingKpiLayout(
     }
     if (byYear.size === 0) continue
 
-    const candidates = Array.from(byYear.entries())
+    let candidates = Array.from(byYear.entries())
       .map(([year, cols]) => ({ year, cols, filled: cols.filter((v) => v !== -1).length }))
       .filter((c) => c.filled === 12)
+    // STRICT preferYear (Codex re-review 2026-06-20) — only accept the
+    // requested year's band; never fall back to another year (would write a
+    // different year's KPI facts). Mirrors findPlfHeaderRow.
+    if (preferYear !== undefined) {
+      candidates = candidates.filter((c) => c.year === preferYear)
+    }
     if (candidates.length === 0) continue
-    candidates.sort((a, b) => {
-      if (preferYear !== undefined) {
-        if (a.year === preferYear && b.year !== preferYear) return -1
-        if (b.year === preferYear && a.year !== preferYear) return 1
-      }
-      return b.year - a.year
-    })
+    candidates.sort((a, b) => b.year - a.year)
     const pick = candidates[0]
     return {
       headerRow: i,
