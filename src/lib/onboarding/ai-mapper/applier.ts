@@ -58,6 +58,9 @@ interface ResolvedColumns {
   labelCol: number;
   /** Length 12. Month index → source-column index. -1 means missing. */
   monthCols: number[];
+  /** Source-column index of an "amount:Total" annual column, or -1 if none.
+   *  Used as a per-row reconciliation control: Σ months must equal Total. */
+  totalCol: number;
 }
 
 /**
@@ -107,6 +110,7 @@ export function resolveColumns(
 ): { ok: true; columns: ResolvedColumns } | { ok: false; reason: string } {
   let codeCol = -1;
   let labelCol = -1;
+  let totalCol = -1;
   const monthCols = new Array<number>(12).fill(-1);
 
   for (const c of columns) {
@@ -127,7 +131,14 @@ export function resolveColumns(
       // from the per-month columns. Annual-only sheets are not supported
       // by this Turn 2b — covered by Turn 2c if needed.
       const monthIdx = MONTH_INDEX[period];
-      if (monthIdx === undefined) continue;
+      if (monthIdx === undefined) {
+        // Capture the annual "Total" column (first one wins) as a per-row
+        // reconciliation control — Σ months must equal it.
+        if (totalCol === -1 && period.startsWith('total')) {
+          totalCol = c.sourceIndex;
+        }
+        continue;
+      }
       if (monthCols[monthIdx] !== -1) {
         return {
           ok: false,
@@ -155,7 +166,7 @@ export function resolveColumns(
     };
   }
 
-  return { ok: true, columns: { codeCol, labelCol, monthCols } };
+  return { ok: true, columns: { codeCol, labelCol, monthCols, totalCol } };
 }
 
 /**
@@ -336,7 +347,7 @@ export function applyProposal(
   const merged = mergeProposal(proposal, userOverrides);
   const colsResult = resolveColumns(merged.columns);
   if (!colsResult.ok) return { error: colsResult.reason };
-  const { codeCol, labelCol, monthCols } = colsResult.columns;
+  const { codeCol, labelCol, monthCols, totalCol } = colsResult.columns;
 
   // Index account-type overrides by code for O(1) lookup.
   const acctByCode = new Map<string, AccountType>();
@@ -378,6 +389,12 @@ export function applyProposal(
 
   const lines: ParsedBudgetLine[] = [];
   const warnings: ParseWarning[] = [];
+  const rowTotalMismatches: Array<{
+    code: string;
+    stated: number;
+    computed: number;
+    delta: number;
+  }> = [];
   let skipped = 0;
 
   // Tracks the current P&L section for NON-SAP code schemes (see
@@ -462,8 +479,10 @@ export function applyProposal(
 
     const perMonth: number[] = [];
     let annual = 0;
+    let rawAnnual = 0;
     for (const monthCol of monthCols) {
       const v = toNumberOrNull(row[monthCol]);
+      rawAnnual += v ?? 0;
       const n = (v ?? 0) * flipSign;
       perMonth.push(n);
       annual += n;
@@ -472,6 +491,29 @@ export function applyProposal(
     if (annual === 0 && perMonth.every((v) => v === 0)) {
       skipped += 1;
       continue;
+    }
+
+    // Per-row control (2026-06-20): the file's own "Total" column must equal
+    // Σ of the 12 monthly cells (raw, pre-sign-flip). A mismatch means the
+    // months were mapped wrong — a format-independent correctness signal,
+    // surfaced as a warning + recorded for the review gate.
+    if (totalCol >= 0) {
+      const stated = toNumberOrNull(row[totalCol]);
+      if (stated !== null) {
+        const tol = Math.max(1, Math.abs(stated) * 0.01);
+        if (Math.abs(rawAnnual - stated) > tol) {
+          rowTotalMismatches.push({
+            code,
+            stated,
+            computed: rawAnnual,
+            delta: rawAnnual - stated,
+          });
+          warnings.push({
+            row: r + 1,
+            reason: `code "${code}": Σ months ${rawAnnual.toFixed(0)} ≠ stated Total ${stated.toFixed(0)}`,
+          });
+        }
+      }
     }
 
     lines.push({
@@ -503,5 +545,6 @@ export function applyProposal(
     skippedRowCount: skipped + dropped.length - synthetic.length,
     parentRollupsDropped: dropped,
     parentRollupsUnallocated: synthetic,
+    rowTotalMismatches,
   };
 }

@@ -132,6 +132,11 @@ export interface ParseResult {
    *  than the reconciliation tolerance. Preserves the delta so finance data
    *  isn't silently lost. Empty when every dropped parent reconciles. */
   parentRollupsUnallocated: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
+  /** Per-row control (2026-06-20): rows whose file-stated "Total" column did
+   *  NOT equal the sum of their 12 monthly cells (raw, pre-sign-flip) beyond
+   *  tolerance — a format-independent signal that the months were mis-mapped.
+   *  Empty when the sheet has no Total column or every row ties out. */
+  rowTotalMismatches?: Array<{ code: string; stated: number; computed: number; delta: number }>;
 }
 
 // --- Pure helpers -----------------------------------------------------------

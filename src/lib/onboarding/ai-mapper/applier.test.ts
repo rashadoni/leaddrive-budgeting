@@ -500,3 +500,44 @@ describe('resolveTypeByPrefix', () => {
     expect(resolveTypeByPrefix('XYZ.99', m)).toBe(null);
   });
 });
+
+describe('applyProposal — Total-column reconciliation control (2026-06-20)', () => {
+  const cols: ColumnMappingProposal[] = [
+    { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+    ...fullMonthCols(2), // cols 2..13
+    { sourceIndex: 14, role: 'amount:Total', confidence: 0.9, reasoning: 'annual' },
+  ];
+  it('flags rows whose Σ months ≠ the stated Total column', () => {
+    const aoa: (string | number | null)[][] = [
+      ['KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Total'],
+      ['601-04', 'Good', 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 120], // Σ=120=Total ✓
+      ['601-05', 'Bad', 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 999], // Σ=120≠999 ✗
+    ];
+    const res = applyProposal(makeWorkbook(aoa), 'Sheet1', buildProposal(cols), XLSX);
+    if ('error' in res) throw new Error(res.error);
+    expect(res.rowTotalMismatches).toHaveLength(1);
+    expect(res.rowTotalMismatches![0].code).toBe('601-05');
+    expect(res.rowTotalMismatches![0].stated).toBe(999);
+    expect(res.rowTotalMismatches![0].computed).toBe(120);
+  });
+  it('no mismatches recorded when the sheet has no Total column', () => {
+    const aoa: (string | number | null)[][] = [
+      ['KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['601-04', 'Rev', 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 999],
+    ];
+    const noTotal = buildProposal([
+      { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+      { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+      ...fullMonthCols(2),
+    ]);
+    const res = applyProposal(makeWorkbook(aoa), 'Sheet1', noTotal, XLSX);
+    if ('error' in res) throw new Error(res.error);
+    expect(res.rowTotalMismatches).toEqual([]);
+  });
+  it('resolveColumns captures the Total column index', () => {
+    const r = resolveColumns(cols);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.columns.totalCol).toBe(14);
+  });
+});
