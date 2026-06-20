@@ -517,6 +517,15 @@ export function useCashFlow(year: number) {
         }>
         totalInflows: number
         totalOutflows: number
+        entries?: Array<{
+          id: string
+          month: number
+          entryType: string
+          amount: number
+          description: string | null
+          activityType: string | null
+          source: string | null
+        }>
       }
     },
     enabled: !!orgId,

@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { BudgetCashFlowChart } from "@/components/budget-cash-flow-chart"
 import { BudgetCashFlowTable } from "@/components/budget-cash-flow-table"
 import { BudgetCashFlowAlerts } from "@/components/budget-cash-flow-alerts"
+import { BudgetCashFlowEntries } from "@/components/budget-cash-flow-entries"
 import { BudgetODDSReport } from "@/components/budget-odds-report"
 import { BudgetPlanFactDashboard } from "@/components/budget-plan-fact-dashboard"
 import {
@@ -29,7 +30,7 @@ import {
 export function CashFlowTab() {
   const t = useTranslations("budgeting")
   const [year] = useState(new Date().getFullYear())
-  const [subView, setSubView] = useState<"overview" | "odds" | "plan-fact">("overview")
+  const [subView, setSubView] = useState<"overview" | "odds" | "plan-fact" | "entries">("overview")
   const { data: cashFlowData } = useCashFlow(year)
   const { data: alerts = [] } = useCashFlowAlerts(year)
   const resolveAlert = useResolveCashFlowAlert()
@@ -42,6 +43,7 @@ export function CashFlowTab() {
         <div className="flex gap-1 bg-muted rounded-lg p-1">
           {[
             { key: "overview" as const, label: t("cashFlowSubviewOverview") },
+            { key: "entries" as const, label: "Записи" },
             { key: "odds" as const, label: t("cashFlowSubviewOdds") },
             { key: "plan-fact" as const, label: t("cashFlowSubviewPlanFact") },
           ].map(({ key, label }) => (
@@ -110,6 +112,9 @@ export function CashFlowTab() {
         </>
       )}
 
+      {subView === "entries" && (
+        <BudgetCashFlowEntries entries={cashFlowData?.entries ?? []} year={year} />
+      )}
       {subView === "odds" && <BudgetODDSReport year={year} />}
       {subView === "plan-fact" && <BudgetPlanFactDashboard year={year} />}
     </div>

@@ -83,6 +83,16 @@ export async function GET(req: NextRequest) {
     months: monthlyData,
     totalInflows: entries.filter((e: CashFlowEntry) => e.entryType === "inflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
     totalOutflows: entries.filter((e: CashFlowEntry) => e.entryType === "outflow").reduce((s: number, e: CashFlowEntry) => s + e.amount, 0),
+    // Phase 3 — flat per-entry list (with ids) for the inline-edit view.
+    entries: entries.map((e: CashFlowEntry) => ({
+      id: e.id,
+      month: e.month,
+      entryType: e.entryType,
+      amount: e.amount,
+      description: e.description,
+      activityType: e.activityType,
+      source: e.source,
+    })),
   })
 }
 
