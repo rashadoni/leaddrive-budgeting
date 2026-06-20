@@ -65,6 +65,7 @@ import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { computeControlTotals } from "@/lib/onboarding/ai-mapper/control-totals"
+import { validateImport } from "@/lib/onboarding/ai-mapper/validate-import"
 // Phase 7.I Turn — Workbook-shape deterministic fallback. When AI Mapper
 // produces a structurally-valid proposal but extraction returns 0 leaves
 // (typical for multi-year sheets where AI Mapper picked the wrong year's
@@ -408,6 +409,14 @@ export async function POST(
     sheetName: string
     report: ReturnType<typeof computeControlTotals>
   }> = []
+  // Per-sheet cost-SIGN blocker (Codex #5 / C3.1, 2026-06-20: the multi-sheet
+  // path must enforce the sign-convention hard-block — a positive/ambiguous
+  // cost convention would corrupt the data under the flip — mirroring the
+  // single /apply + apply-multi-entity paths). Scoped to the `sign` blocker
+  // specifically (not the full verdict) so the pre-existing control-total RED
+  // gate below stays the control authority and multi-sheet coverage behaviour
+  // is unchanged.
+  const blockedSheets: Array<{ sheetName: string; findings: ReturnType<typeof validateImport>["findings"] }> = []
   for (const sheetResult of multiResult.perSheet) {
     if ("error" in sheetResult) {
       perSheet.push({ sheetName: sheetResult.sheetName, error: sheetResult.error })
@@ -422,10 +431,15 @@ export async function POST(
       parentRollupsUnallocated: r.parentRollupsUnallocated.length,
     })
     allLines.push(...r.lines)
-    sheetControls.push({
-      sheetName: sheetResult.sheetName,
-      report: computeControlTotals(r.parentRollupsDropped, r.parentRollupsUnallocated),
-    })
+    const controlReport = computeControlTotals(r.parentRollupsDropped, r.parentRollupsUnallocated)
+    sheetControls.push({ sheetName: sheetResult.sheetName, report: controlReport })
+    const validation = validateImport(r, controlReport)
+    const signBlockers = validation.findings.filter(
+      (f) => f.category === "sign" && f.severity === "blocker",
+    )
+    if (signBlockers.length > 0) {
+      blockedSheets.push({ sheetName: sheetResult.sheetName, findings: signBlockers })
+    }
   }
 
   // Worst verdict across sheets + mismatching rows tagged by sheet name.
@@ -567,6 +581,18 @@ export async function POST(
           "Контроль-сумма RED по листам: родительские строки не сходятся с суммой детей (вероятный мис-маппинг колонки). Коммит заблокирован.",
         controlVerdict: "red",
         controlTotals: aggControlTotals,
+      },
+      { status: 409 },
+    )
+  }
+  // (b2) Cost-SIGN convention hard-block on ANY sheet (Codex #5 / C3.1): a
+  //      positive/ambiguous stored-sign would be corrupted by the flip. The
+  //      multi-sheet path now enforces it, mirroring single /apply.
+  if (blockedSheets.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Импорт заблокирован: неоднозначная конвенция знака затрат на листах: ${blockedSheets.map((s) => s.sheetName).join(", ")}. Подтвердите знак источника / исправьте маппинг.`,
+        blockedSheets,
       },
       { status: 409 },
     )

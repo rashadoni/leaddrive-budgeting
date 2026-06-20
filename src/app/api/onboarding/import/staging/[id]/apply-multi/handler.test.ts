@@ -312,6 +312,36 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
+  // Phase C C3.1 / Codex #5 (2026-06-20): the multi-sheet path now enforces the
+  // cost-SIGN convention hard-block (a positive/ambiguous stored sign would be
+  // corrupted by the flip), mirroring single /apply + apply-multi-entity.
+  it("409 ambiguous cost-sign convention on a sheet (hard block, no transaction)", async () => {
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L",
+          result: {
+            lines: [
+              { code: "601", label: "R", accountType: "revenue", plannedAnnual: 1200, perMonth: Array(12).fill(100) },
+              { code: "701", label: "C", accountType: "cogs", plannedAnnual: 600, perMonth: Array(12).fill(50) },
+            ],
+            warnings: [],
+            parentRollupsDropped: [],
+            parentRollupsUnallocated: [],
+            sheetName: "P&L",
+            skippedRowCount: 0,
+            signConventions: { cogs: { convention: "ambiguous", evidence: { negRows: 1, posRows: 1, negAbs: 50, posAbs: 50, netSum: 0 } } },
+          },
+        },
+      ],
+    })
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(res.status).toBe(409)
+    const body = await res.json()
+    expect(body.blockedSheets[0].sheetName).toBe("P&L")
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
   // Codex re-review P1 (2026-06-20): per-sheet control verdict, so a RED on
   // one sheet is NOT masked by a larger same-parent-code total on another.
   // Old flat-concat code keyed statedByParent by code (last wins): sheet B's
