@@ -237,6 +237,7 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
           sheetName: "BS",
           result: {
             lines: [
+              { code: "601-09", label: "Other rev", accountType: "revenue", perMonth: Array(12).fill(80) },
               { code: "801-01", label: "OpEx", accountType: "expense", perMonth: Array(12).fill(20) },
             ],
             warnings: [],
@@ -271,6 +272,7 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
           sheetName: "BS",
           result: {
             lines: [
+              { code: "601-09", label: "Other rev", accountType: "revenue", perMonth: Array(12).fill(80) },
               { code: "801-01", label: "OpEx", accountType: "expense", perMonth: Array(12).fill(20) },
             ],
             warnings: [],
@@ -507,6 +509,7 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — recompute + a
           sheetName: "BS",
           result: {
             lines: [
+              { code: "601-09", label: "Other rev", accountType: "revenue", perMonth: Array(12).fill(80) },
               { code: "801-01", label: "OpEx", accountType: "expense", perMonth: Array(12).fill(20) },
             ],
             warnings: [],
@@ -585,7 +588,10 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — recompute + a
         {
           sheetName: "BS",
           result: {
-            lines: [{ code: "801-01", label: "O", accountType: "expense", perMonth: Array(12).fill(20) }],
+            lines: [
+              { code: "601-09", label: "R", accountType: "revenue", perMonth: Array(12).fill(80) },
+              { code: "801-01", label: "O", accountType: "expense", perMonth: Array(12).fill(20) },
+            ],
             warnings: ["w3"],
             parentRollupsDropped: [],
             parentRollupsUnallocated: ["u3"],

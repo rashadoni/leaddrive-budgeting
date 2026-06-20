@@ -203,7 +203,7 @@ describe('POST .../apply-multi-entity', () => {
     prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         budgetPlan: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'plan1' }) },
-        importStaging: { update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
+        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
       };
       return cb(tx);
     });
@@ -332,7 +332,7 @@ describe('POST .../apply-multi-entity', () => {
     prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
       const tx = {
         budgetPlan: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'plan1' }) },
-        importStaging: { update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
+        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
       };
       return cb(tx);
     });
@@ -389,6 +389,22 @@ describe('POST .../apply-multi-entity', () => {
     expect(body.dryRun).toBe(true);
     expect(body.entityCount).toBe(2);
     expect(body.mappingIssues.unmapped).toContain('EDEN');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('409 when the entity column index differs from the reviewed one (Codex P1 #6)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    stage({ entityValues: ['AZSF', 'EDEN'] }); // __multiEntity.entityColumnIndex defaults to 14
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 99, // overridden to a DIFFERENT column than reviewed (14)
+      entityValues: ['AZSF', 'EDEN'],
+      perEntity: [
+        { entityValue: 'AZSF', result: greenResult('X', 100) },
+        { entityValue: 'EDEN', result: greenResult('Y', 50) },
+      ],
+    });
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });

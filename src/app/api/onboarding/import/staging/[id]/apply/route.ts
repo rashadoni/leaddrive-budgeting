@@ -40,6 +40,7 @@ import { getLogger } from '@/lib/log';
 const log = getLogger('api:apply');
 const recomputeLog = getLogger('api:apply:recompute');
 import { applyProposal, detectProposalYear, mergeProposal } from '@/lib/onboarding/ai-mapper/applier';
+import { findEntityColumn } from '@/lib/onboarding/ai-mapper/entity-split';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
 import { saveApprovedTemplate } from '@/lib/onboarding/ai-mapper/template-store';
@@ -254,6 +255,26 @@ export async function POST(
 
   const proposal = staging.proposal as unknown as MappingProposal;
 
+  // ── Reject a MULTI-ENTITY staging on this single-company path (Codex P0 #1,
+  // 2026-06-20). A staging with an `entity` column / persisted `__multiEntity`
+  // routes rows to SEVERAL companies; committing it here would parse all BUs
+  // together and write them into the single `staging.companyId`, bypassing the
+  // entity-map / injective / cross-org / per-entity gates. Force it to
+  // /apply-multi-entity. Defends against a direct API POST (the wizard already
+  // routes correctly).
+  const hasMultiEntity =
+    !!(staging.proposal as { __multiEntity?: unknown }).__multiEntity ||
+    (Array.isArray(proposal.columns) && findEntityColumn(proposal.columns) !== null);
+  if (hasMultiEntity) {
+    return NextResponse.json(
+      {
+        error:
+          'Это многокомпанийный лист (entity-колонка). Используйте /api/onboarding/import/staging/[id]/apply-multi-entity.',
+      },
+      { status: 422 },
+    );
+  }
+
   // Resolve the target BudgetPlan year FIRST — the applier needs it to pick
   // the right year's columns on a MULTI-YEAR sheet (Phase C 2026-06-20).
   // Priority:
@@ -461,6 +482,18 @@ export async function POST(
   try {
     diagnostics = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        // Concurrency claim (Codex P0 #2, 2026-06-20): the pre-tx status check
+        // is not race-safe — two concurrent POSTs both see `pending`, both
+        // delete-then-insert → duplicate rows (budget_lines has no unique
+        // constraint). Claim the row INSIDE the tx with a conditional
+        // updateMany; the 2nd POST blocks on the row lock, then sees count 0 →
+        // throws → its deletes roll back. count must be exactly 1.
+        const claim = await tx.importStaging.updateMany({
+          where: { id: staging.id, status: 'pending' },
+          data: { status: 'applied', appliedAt: new Date() },
+        });
+        if (claim.count !== 1) throw new Error('STAGING_RACE');
+
         // Plan lookup-or-create. Per-org plan, year-scoped.
         const planName = `AI-Imported ${targetYear} Budget`;
         let plan = await tx.budgetPlan.findFirst({
@@ -571,13 +604,11 @@ export async function POST(
           inserted += 1;
         }
 
-        // Mark staging applied. Same transaction = atomic with the
-        // BudgetLine writes; if anything aborts, status stays `pending`.
+        // Persist the reviewer overrides. status/appliedAt were already set by
+        // the concurrency claim at the top of this tx.
         await tx.importStaging.update({
           where: { id: staging.id },
           data: {
-            status: 'applied',
-            appliedAt: new Date(),
             userOverrides:
               (userOverrides as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
           },
@@ -596,6 +627,14 @@ export async function POST(
       { timeout: 60_000 },
     );
   } catch (err) {
+    // Lost the concurrency claim (another POST applied this staging first) —
+    // 409, and DON'T overwrite the winner's errorMessage.
+    if (err instanceof Error && err.message === 'STAGING_RACE') {
+      return NextResponse.json(
+        { error: 'Эта загрузка уже применяется/применена (параллельный запрос).', status: 'applied' },
+        { status: 409 },
+      );
+    }
     log.error('transaction failed', {
       stagingId: staging.id,
       err: err instanceof Error ? err.message : String(err),

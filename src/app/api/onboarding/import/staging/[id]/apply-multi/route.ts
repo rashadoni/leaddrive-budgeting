@@ -274,16 +274,12 @@ export async function POST(
     }
   }
 
-  // Apply the multi-sheet proposal to the workbook (with reviewer overrides).
-  const multiResult = applyMultiSheetProposal(workbook, multi, XLSX, userOverridesBySheet)
-
-  // Year resolution. Order of precedence:
-  //   1. `?year=YYYY` query override — explicit user intent. Skips
-  //      `detectProposalYear` rejection on multi-year workbooks.
-  //   2. First successful sheet's proposal — single-year inference.
-  //   3. `currentBakuYearNumber()` fallback when no AI-Mapper proposal
-  //      survived (e.g. all sheets fell to applier errors and Workbook
-  //      adapter will rescue them).
+  // Year resolution FIRST (Codex P0 #4) — must precede the parse so the applier
+  // selects the right year's columns on a multi-year sheet. Derived from the
+  // proposals' column roles (no parse needed). Order of precedence:
+  //   1. `?year=YYYY` query override — explicit user intent.
+  //   2. First sheet proposal whose roles carry a single embedded year.
+  //   3. `currentBakuYearNumber()` fallback.
   let targetYear = currentBakuYearNumber()
   const yearOverrideRaw = request.nextUrl.searchParams.get("year")
   const yearOverride = yearOverrideRaw != null ? Number(yearOverrideRaw) : null
@@ -292,26 +288,35 @@ export async function POST(
   if (yearOverrideValid) {
     targetYear = yearOverride
   } else {
-    const firstSuccessForYear = multiResult.perSheet.find(
-      (s): s is { sheetName: string; result: ParseResult } => "result" in s,
-    )
-    const firstSheetProposalForYear = firstSuccessForYear
-      ? multi.sheets.find((s) => s.sheetName === firstSuccessForYear.sheetName)?.proposal
-      : undefined
-    if (firstSheetProposalForYear) {
-      const yearHint = detectProposalYear(firstSheetProposalForYear.columns)
+    for (const s of multi.sheets) {
+      const yearHint = detectProposalYear(s.proposal.columns)
       if (typeof yearHint === "number") {
         targetYear = yearHint
-      } else if (yearHint && typeof yearHint === "object" && "conflict" in yearHint) {
+        break
+      }
+      if (yearHint && typeof yearHint === "object" && "conflict" in yearHint) {
         return NextResponse.json(
           {
-            error: `First sheet has columns referencing multiple years (${yearHint.conflict.join(", ")}). MVP requires single-year workbooks or a ?year=YYYY override.`,
+            error: `Sheet "${s.sheetName}" references multiple years (${yearHint.conflict.join(", ")}). Use a ?year=YYYY override to pick one.`,
           },
           { status: 400 },
         )
       }
     }
   }
+  // Optional target currency (multi-currency sheet).
+  const curOverrideRaw = request.nextUrl.searchParams.get("currency")
+  const preferCurrency =
+    typeof curOverrideRaw === "string" && /^[A-Za-z]{3}$/.test(curOverrideRaw.trim())
+      ? curOverrideRaw.trim().toUpperCase()
+      : undefined
+
+  // Apply the multi-sheet proposal to the workbook (with reviewer overrides),
+  // now selecting the resolved year/currency.
+  const multiResult = applyMultiSheetProposal(workbook, multi, XLSX, userOverridesBySheet, {
+    preferYear: targetYear,
+    preferCurrency,
+  })
 
   // Workbook-shape deterministic fallback — runs BEFORE the all-failed
   // gate so it can rescue 422-style applier errors that the multi-year
@@ -409,13 +414,11 @@ export async function POST(
     sheetName: string
     report: ReturnType<typeof computeControlTotals>
   }> = []
-  // Per-sheet cost-SIGN blocker (Codex #5 / C3.1, 2026-06-20: the multi-sheet
-  // path must enforce the sign-convention hard-block — a positive/ambiguous
-  // cost convention would corrupt the data under the flip — mirroring the
-  // single /apply + apply-multi-entity paths). Scoped to the `sign` blocker
-  // specifically (not the full verdict) so the pre-existing control-total RED
-  // gate below stays the control authority and multi-sheet coverage behaviour
-  // is unchanged.
+  // Per-sheet FULL validation-engine block (Codex P0 #3, 2026-06-20: the
+  // multi-sheet path must hard-block on ANY `blocked` verdict — zero-revenue
+  // coverage AND wrong/ambiguous cost-sign — not just sign, otherwise a
+  // mis-mapped (no-revenue) sheet would delete the company's full P&L and write
+  // a partial set. Mirrors single /apply + apply-multi-entity.
   const blockedSheets: Array<{ sheetName: string; findings: ReturnType<typeof validateImport>["findings"] }> = []
   for (const sheetResult of multiResult.perSheet) {
     if ("error" in sheetResult) {
@@ -434,11 +437,11 @@ export async function POST(
     const controlReport = computeControlTotals(r.parentRollupsDropped, r.parentRollupsUnallocated)
     sheetControls.push({ sheetName: sheetResult.sheetName, report: controlReport })
     const validation = validateImport(r, controlReport)
-    const signBlockers = validation.findings.filter(
-      (f) => f.category === "sign" && f.severity === "blocker",
-    )
-    if (signBlockers.length > 0) {
-      blockedSheets.push({ sheetName: sheetResult.sheetName, findings: signBlockers })
+    if (validation.verdict === "blocked") {
+      blockedSheets.push({
+        sheetName: sheetResult.sheetName,
+        findings: validation.findings.filter((f) => f.severity === "blocker"),
+      })
     }
   }
 
@@ -591,7 +594,7 @@ export async function POST(
   if (blockedSheets.length > 0) {
     return NextResponse.json(
       {
-        error: `Импорт заблокирован: неоднозначная конвенция знака затрат на листах: ${blockedSheets.map((s) => s.sheetName).join(", ")}. Подтвердите знак источника / исправьте маппинг.`,
+        error: `Импорт заблокирован валидацией для листов: ${blockedSheets.map((s) => s.sheetName).join(", ")} (нет выручки / неоднозначный знак затрат). Исправьте маппинг.`,
         blockedSheets,
       },
       { status: 409 },
@@ -644,6 +647,14 @@ export async function POST(
   try {
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        // Concurrency claim (Codex P0 #2) — race-safe status flip inside the tx
+        // before any delete; the 2nd POST blocks then sees count 0.
+        const claim = await tx.importStaging.updateMany({
+          where: { id: staging.id, status: "pending" },
+          data: { status: "applied", appliedAt: new Date() },
+        })
+        if (claim.count !== 1) throw new Error("STAGING_RACE")
+
         const planName = `AI-Imported ${targetYear} Budget`
         let plan = await tx.budgetPlan.findFirst({
           where: { organizationId: orgIdLocal, year: targetYear, name: planName, deletedAt: null },
@@ -724,11 +735,7 @@ export async function POST(
           inserted += 1
         }
 
-        await tx.importStaging.update({
-          where: { id: staging.id },
-          data: { status: "applied", appliedAt: new Date() },
-        })
-
+        // status/appliedAt were set by the concurrency claim above.
         return { inserted, deleted: del.count }
       },
       { timeout: 120_000 },
@@ -736,6 +743,12 @@ export async function POST(
     totalInserted = result.inserted
     totalDeleted = result.deleted
   } catch (err) {
+    if (err instanceof Error && err.message === "STAGING_RACE") {
+      return NextResponse.json(
+        { error: "Эта загрузка уже применяется/применена (параллельный запрос).", status: "applied" },
+        { status: 409 },
+      )
+    }
     log.error("transaction failed", {
       err: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,

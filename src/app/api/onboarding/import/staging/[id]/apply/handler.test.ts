@@ -329,6 +329,7 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
             create: coaCreate,
           },
           importStaging: {
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }), // concurrency claim
             update: vi.fn().mockResolvedValue({ id: STAGING_ID }),
           },
         };
@@ -623,5 +624,48 @@ describe('POST .../apply — server-side review gates', () => {
     const res = await POST(await applyReqWith({ acknowledgeAnomalies: 'true' }), paramsFor(STAGING_ID));
     expect(res.status).toBe(200);
     expect(prismaMock.$transaction).toHaveBeenCalled();
+  });
+});
+
+// ── Codex pre-prod fixes (2026-06-20) ──────────────────────────────────
+describe("POST .../apply — Codex pre-prod guards", () => {
+  it("P0 #1: rejects a multi-entity staging (entity column) → 422, no tx", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_mgr", role: "manager" });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID, companyId: COMPANY_ID, status: "pending", sourceSheet: "SOPL",
+      proposal: { columns: [{ sourceIndex: 0, role: "code" }, { sourceIndex: 5, role: "entity" }] },
+      userOverrides: null, expiresAt: new Date(Date.now() + 60_000), appliedAt: null,
+    });
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    expect(res.status).toBe(422);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("P0 #2: 409 + no delete when the concurrency claim loses (count 0)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_mgr", role: "manager" });
+    prismaMock.importStaging.findFirst.mockResolvedValue({
+      id: STAGING_ID, companyId: COMPANY_ID, status: "pending", sourceSheet: "SOPL",
+      proposal: { columns: [{ sourceIndex: 2, role: "amount:Plan2026" }] },
+      userOverrides: null, expiresAt: new Date(Date.now() + 60_000), appliedAt: null,
+    });
+    applierMocks.applyProposal.mockReturnValue({
+      lines: [{ code: "601", label: "R", accountType: "revenue", plannedAnnual: 1200, perMonth: Array(12).fill(100) }],
+      warnings: [], parentRollupsDropped: [], parentRollupsUnallocated: [],
+    });
+    applierMocks.detectProposalYear.mockReturnValue(2026);
+    const deleteMany = vi.fn().mockResolvedValue({ count: 0 });
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), update: vi.fn() }, // lost the claim
+        budgetPlan: { findFirst: vi.fn().mockResolvedValue({ id: "plan1" }), create: vi.fn() },
+        budgetLine: { deleteMany, create: vi.fn() },
+        chartOfAccount: { findUnique: vi.fn(), create: vi.fn() },
+      };
+      return cb(tx);
+    });
+    const res = await POST(await makeMultipartApplyRequest(), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    // The claim is the FIRST tx op — delete must never run when it loses.
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 });

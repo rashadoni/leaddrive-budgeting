@@ -307,11 +307,15 @@ export function applyMultiSheetProposal(
   multi: MultiSheetProposal,
   xlsx: typeof XLSX,
   userOverridesBySheet?: Record<string, Partial<MappingProposal>>,
+  // Codex P0 #4 (2026-06-20) — thread the resolved target year/currency so a
+  // MULTI-YEAR sheet selects the RIGHT year's columns (was defaulting to the
+  // latest, writing the wrong year's values into the target plan).
+  opts: { preferYear?: number; preferCurrency?: string } = {},
 ): MultiSheetApplyResult {
   const perSheet: MultiSheetApplyResult["perSheet"] = []
   for (const { sheetName, proposal } of multi.sheets) {
     const overrides = userOverridesBySheet?.[sheetName]
-    const result = applyProposal(workbook, sheetName, proposal, xlsx, overrides)
+    const result = applyProposal(workbook, sheetName, proposal, xlsx, overrides, opts)
     if ("error" in result) {
       perSheet.push({ sheetName, error: result.error })
     } else {

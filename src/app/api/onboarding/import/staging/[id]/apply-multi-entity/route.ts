@@ -61,7 +61,10 @@ interface MultiEntityMeta {
   entityValues: string[];
 }
 
-const sortedKey = (vals: string[]): string => [...vals].sort().join(' ');
+// Codex P1 #5 — JSON-encode the sorted set so values are not run together
+// (a plain `join(' ')` made ['A B','C'] and ['A','B C'] compare equal, a
+// crafted-payload bypass of the reviewed-entity-set gate).
+const sortedKey = (vals: string[]): string => JSON.stringify([...vals].sort());
 
 export async function POST(
   request: NextRequest,
@@ -246,6 +249,22 @@ export async function POST(
   });
   if ('error' in split) {
     return NextResponse.json({ error: split.error }, { status: 400 });
+  }
+
+  // Entity COLUMN-INDEX guard (Codex P1 #6) — `applyProposalByEntity` re-merges
+  // userOverrides and splits on the MERGED entity column. A direct POST could
+  // move the `entity` role to a different column whose distinct values happen
+  // to match the reviewed set, routing rows by the wrong column. Pin the split
+  // column to the one the reviewer approved.
+  if (typeof meta.entityColumnIndex === 'number' && split.entityColumn !== meta.entityColumnIndex) {
+    return NextResponse.json(
+      {
+        error: 'Колонка-сущность отличается от согласованной при анализе. Повторите анализ.',
+        reviewed: meta.entityColumnIndex,
+        current: split.entityColumn,
+      },
+      { status: 409 },
+    );
   }
 
   // Entity-set equality (Codex P0-3) — the re-uploaded file's BU distribution
@@ -449,6 +468,14 @@ export async function POST(
   try {
     txReports = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        // Concurrency claim (Codex P0 #2) — race-safe status flip inside the tx
+        // before any per-entity delete; the 2nd POST blocks then sees count 0.
+        const claim = await tx.importStaging.updateMany({
+          where: { id: staging.id, status: 'pending' },
+          data: { status: 'applied', appliedAt: new Date() },
+        });
+        if (claim.count !== 1) throw new Error('STAGING_RACE');
+
         const planName = `AI-Imported ${targetYear} Budget`;
         let plan = await tx.budgetPlan.findFirst({
           where: { organizationId: orgId, year: targetYear, name: planName, deletedAt: null },
@@ -477,14 +504,12 @@ export async function POST(
           reports.push({ entityValue: p.entityValue, companyId, inserted, deleted });
         }
 
+        // Persist the committed entity map (audit snapshot of the exact
+        // destructive footprint — Codex P0-2). status/appliedAt were set by the
+        // claim above.
         await tx.importStaging.update({
           where: { id: staging.id },
           data: {
-            status: 'applied',
-            appliedAt: new Date(),
-            // Persist the committed entity map (audit snapshot of the exact
-            // destructive footprint — Codex P0-2). Merged onto any column
-            // overrides already present.
             userOverrides: {
               ...((staging.userOverrides as object) ?? {}),
               ...(userOverrides ?? {}),
@@ -497,6 +522,12 @@ export async function POST(
       { timeout: 120_000 },
     );
   } catch (err) {
+    if (err instanceof Error && err.message === 'STAGING_RACE') {
+      return NextResponse.json(
+        { error: 'Эта загрузка уже применяется/применена (параллельный запрос).', status: 'applied' },
+        { status: 409 },
+      );
+    }
     log.error('transaction failed', {
       stagingId: staging.id,
       err: err instanceof Error ? err.message : String(err),
