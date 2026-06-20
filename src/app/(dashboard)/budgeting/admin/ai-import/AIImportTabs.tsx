@@ -11,10 +11,11 @@ import { useState } from "react"
 import { useTranslations } from "next-intl"
 import { AIImportForm } from "./AIImportForm"
 import { MultiFileForm } from "./MultiFileForm"
+import { UniversalImportForm } from "./UniversalImportForm"
 
 export function AIImportTabs() {
   const t = useTranslations("adminAiImport")
-  const [mode, setMode] = useState<"single" | "multi">("single")
+  const [mode, setMode] = useState<"single" | "multi" | "universal">("single")
   return (
     <div className="space-y-4">
       <div
@@ -53,10 +54,33 @@ export function AIImportTabs() {
             {t("tabs.newBadge")}
           </span>
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "universal"}
+          onClick={() => setMode("universal")}
+          className={`px-3 py-1.5 text-sm rounded font-medium transition ${
+            mode === "universal"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          data-testid="tab-universal"
+        >
+          Любой файл (AI)
+          <span className="ml-1 inline-block text-[10px] uppercase tracking-wide text-emerald-600 font-semibold">
+            review
+          </span>
+        </button>
       </div>
 
       <div role="tabpanel">
-        {mode === "single" ? <AIImportForm /> : <MultiFileForm />}
+        {mode === "single" ? (
+          <AIImportForm />
+        ) : mode === "multi" ? (
+          <MultiFileForm />
+        ) : (
+          <UniversalImportForm />
+        )}
       </div>
     </div>
   )

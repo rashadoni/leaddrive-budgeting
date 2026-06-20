@@ -184,29 +184,16 @@ export function AIImportForm() {
   }
 
   const handleConfirmImport = async () => {
-    if (!file || !preview) return
+    // The legacy single-file commit endpoint (/api/admin/import-workbook) was
+    // never implemented — POSTing here used to 404. The working apply paths
+    // are the "Любой файл (AI)" tab (per-column mapping review + reconcile +
+    // commit) and the "Несколько файлов" tab (multi-file orchestrator). Guide
+    // the user there instead of hitting a dead route.
     setIsImporting(true)
-    setError(null)
-    setImportResult(null)
-    try {
-      const form = new FormData()
-      form.append("file", file)
-      form.append("year", "2026")
-      form.append("purge", "1")
-      const res = await fetch("/api/admin/import-workbook", {
-        method: "POST",
-        body: form,
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null)
-        throw new Error(body?.error ?? `HTTP ${res.status}`)
-      }
-      setImportResult((await res.json()) as ImportApplyResult)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setIsImporting(false)
-    }
+    setError(
+      "Запись из этого экрана отключена. Для импорта откройте вкладку «Любой файл (AI)» (проверка разметки колонок + сверка) или «Несколько файлов».",
+    )
+    setIsImporting(false)
   }
 
   return (
