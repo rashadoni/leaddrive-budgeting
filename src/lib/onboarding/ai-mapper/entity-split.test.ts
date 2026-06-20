@@ -80,7 +80,7 @@ describe('extractEntityValues', () => {
       row('PLF.01.01', 'Sales', 200, 'EDEN'),
       row('PLF.01.02', 'Other', 50, 'AZSF'),
     ]);
-    expect(extractEntityValues(wb, 'Sheet1', 14, XLSX)).toEqual(['AZSF', 'EDEN']);
+    expect(extractEntityValues(wb, 'Sheet1', 14, 0, XLSX)).toEqual(['AZSF', 'EDEN']);
   });
 
   it('surfaces a blank entity cell as its own "" bucket (never dropped)', () => {
@@ -89,7 +89,22 @@ describe('extractEntityValues', () => {
       row('PLF.01.01', 'Sales', 100, 'AZSF'),
       row('PLF.01.02', 'Mystery', 70, null),
     ]);
-    expect(extractEntityValues(wb, 'Sheet1', 14, XLSX)).toEqual(['AZSF', '']);
+    expect(extractEntityValues(wb, 'Sheet1', 14, 0, XLSX)).toEqual(['AZSF', '']);
+  });
+
+  it('anchors the data start on the code column (numeric headers do not derail it)', () => {
+    // Header row carries Excel date-serial month headers (numbers) — the
+    // all-strings heuristic would skip it; the code-column anchor must not.
+    const numericHeader: (string | number | null)[] = [
+      'Code', 'Label', 45658, 45689, 45717, 45748, 45778, 45809, 45839, 45870, 45901, 45931, 45962, 45992, 'BU',
+    ];
+    const wb = makeWorkbook([
+      numericHeader,
+      row('PLF.01.01', 'Sales', 100, 'AZSF'),
+      row('PLF.01.01', 'Sales', 200, 'EDEN'),
+    ]);
+    // codeCol=0; the first digit-bearing code is row 1 → AZSF/EDEN both seen.
+    expect(extractEntityValues(wb, 'Sheet1', 14, 0, XLSX)).toEqual(['AZSF', 'EDEN']);
   });
 });
 
@@ -175,6 +190,31 @@ describe('applyProposalByEntity', () => {
       columns: [{ sourceIndex: 14, role: 'entity', confidence: 1, reasoning: 'manual' }],
     });
     if ('error' in out) throw new Error(out.error);
+    expect(out.entityValues).toEqual(['AZSF', 'EDEN']);
+  });
+
+  it('anchors the header band on the code column (numeric header row not swallowed as data)', () => {
+    // Real-file regression (Reporting 2026 Actual PLF): the header row carries
+    // Excel date-serial month cells. The OLD all-strings `detectHeaderEndRow`
+    // fell back to row 5 and pulled the first entity's data rows into the
+    // SHARED header band (slice(0, headerEndRow)), so they'd be replicated into
+    // every entity's synthetic sheet. The code-column anchor keeps the band at
+    // exactly [0,1) here. We assert the band did not absorb AZSF's data row by
+    // checking the entity grouping still sees both BUs (NOTE: downstream
+    // applyProposal has its own numeric-header limitation — see C2.5 follow-up
+    // — which is why we assert the split, not the parsed line totals).
+    const numericHeader: (string | number | null)[] = [
+      'Code', 'Label', 45658, 45689, 45717, 45748, 45778, 45809, 45839, 45870, 45901, 45931, 45962, 45992, 'BU',
+    ];
+    const wb = makeWorkbook([
+      numericHeader,
+      row('PLF.01.01', 'AZSF sales', 100, 'AZSF'),
+      row('PLF.01.02', 'EDEN sales', 200, 'EDEN'),
+    ]);
+    const out = applyProposalByEntity(wb, 'Sheet1', multiEntityProposal(), XLSX);
+    if ('error' in out) throw new Error(out.error);
+    // Both BUs grouped (the header row was NOT mis-grouped as an entity, and
+    // AZSF's data row was NOT swallowed into the header band → mislabelled).
     expect(out.entityValues).toEqual(['AZSF', 'EDEN']);
   });
 

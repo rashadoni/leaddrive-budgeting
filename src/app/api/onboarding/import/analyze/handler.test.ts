@@ -47,6 +47,7 @@ vi.mock("@/lib/onboarding/ai-mapper/mapper", () => ({
 // so the pre-existing tests are unaffected; the multi-entity test overrides.
 vi.mock("@/lib/onboarding/ai-mapper/entity-split", () => ({
   findEntityColumn: vi.fn(() => null),
+  findCodeColumn: vi.fn(() => 0),
   extractEntityValues: vi.fn(() => []),
 }))
 vi.mock("@/lib/onboarding/ai-mapper/entity-resolve", () => ({

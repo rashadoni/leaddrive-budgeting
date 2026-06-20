@@ -61,6 +61,44 @@ function entityKey(v: Cell): string {
   return '';
 }
 
+/**
+ * A code cell looks like real account data (vs a header label) when it has a
+ * digit — finance codes always contain digits ("PLF.01", "601-04", "BS.02"),
+ * header labels never ("Code", "KOD", "BU", "Account"). This is the reliable
+ * data-start anchor: `detectHeaderEndRow`'s all-strings heuristic FAILS on
+ * sheets whose header row carries numeric cells (e.g. Excel date-serial month
+ * headers on the reporting-pack `Actual PLF`), falling back to row 5 and
+ * pulling the first data rows into the header band — which, in
+ * `applyProposalByEntity`, would replicate them into EVERY entity (verified
+ * 2026-06-20 real-file run: AZSF lost 4 rows to cross-entity contamination).
+ */
+function looksLikeCode(v: Cell): boolean {
+  if (v === null || v === undefined) return false;
+  const s = String(v).trim();
+  return s !== '' && /\d/.test(s);
+}
+
+/** Source-column index of the `code`-roled column, or -1 when none. */
+export function findCodeColumn(columns: ColumnMappingProposal[]): number {
+  for (const c of columns) {
+    if (c.role === 'code') return c.sourceIndex;
+  }
+  return -1;
+}
+
+/**
+ * First row index that carries DATA (a code-like value in the code column).
+ * Everything above is the header band. Falls back to the all-strings
+ * `detectHeaderEndRow` heuristic when there is no code column.
+ */
+function firstDataRow(aoa: Cell[][], codeCol: number): number {
+  if (codeCol < 0) return detectHeaderEndRow(aoa);
+  for (let r = 0; r < aoa.length; r++) {
+    if (looksLikeCode((aoa[r] ?? [])[codeCol])) return r;
+  }
+  return detectHeaderEndRow(aoa);
+}
+
 /** A row carries data when any cell OTHER than the entity column is non-empty. */
 function rowHasData(row: Cell[], entityColIdx: number): boolean {
   return row.some(
@@ -91,19 +129,23 @@ export function findEntityColumn(columns: ColumnMappingProposal[]): number | nul
 }
 
 /**
- * Distinct entity values over the sheet's DATA rows, in first-appearance
- * order. A blank entity cell on a data row is included once as `""`. Cheap
- * scan (no parse) — used to show the reviewer the BU list to map.
+ * Distinct entity values over the sheet's DATA rows (rows from the first
+ * code-bearing row), in first-appearance order. A blank entity cell on a data
+ * row is included once as `""`. Cheap scan (no parse) — used to show the
+ * reviewer the BU list to map. `codeColIdx` anchors the data start (pass -1 to
+ * fall back to the header heuristic); MUST match `applyProposalByEntity`'s
+ * anchor so the persisted reviewed set equals the commit-time recompute.
  */
 export function extractEntityValues(
   workbook: XLSX.WorkBook,
   sheetName: string,
   entityColIdx: number,
+  codeColIdx: number,
   xlsx: typeof XLSX,
 ): string[] {
   const aoa = readAoa(workbook, sheetName, xlsx);
   if (!aoa) return [];
-  const headerEndRow = detectHeaderEndRow(aoa);
+  const headerEndRow = firstDataRow(aoa, codeColIdx);
   const seen = new Set<string>();
   const order: string[] = [];
   for (let r = headerEndRow; r < aoa.length; r++) {
@@ -158,7 +200,12 @@ export function applyProposalByEntity(
   if (!aoa) return { error: `Sheet "${sheetName}" not found in workbook` };
   if (aoa.length === 0) return { error: 'Sheet is empty' };
 
-  const headerEndRow = detectHeaderEndRow(aoa);
+  // Anchor the header band on the code column (a digit-bearing code marks the
+  // first data row) — NOT the all-strings heuristic, which mis-fires on sheets
+  // with numeric (date-serial) month headers and would leak the first entity's
+  // data rows into the shared header band, replicating them across all entities.
+  const codeCol = findCodeColumn(merged.columns);
+  const headerEndRow = firstDataRow(aoa, codeCol);
   const headerBand = aoa.slice(0, headerEndRow);
 
   // Group data rows by entity value, preserving first-appearance order.

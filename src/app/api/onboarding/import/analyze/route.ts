@@ -31,7 +31,7 @@ import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
 import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
-import { findEntityColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
+import { findEntityColumn, findCodeColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
 import { resolveEntityCompanies } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
@@ -207,7 +207,13 @@ export async function POST(request: NextRequest) {
   let entityValues: string[] | undefined
   let entitySuggestions: Record<string, string> | undefined
   if (entityColumnIndex !== null) {
-    entityValues = extractEntityValues(workbook, sheetName, entityColumnIndex, XLSX)
+    entityValues = extractEntityValues(
+      workbook,
+      sheetName,
+      entityColumnIndex,
+      findCodeColumn(proposal.columns),
+      XLSX,
+    )
     multiEntity = { entityColumnIndex, entityValues }
     const orgCompanies = await prisma.company.findMany({
       where: { organizationId: orgId },
