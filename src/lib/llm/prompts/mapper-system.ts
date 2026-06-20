@@ -13,7 +13,7 @@ export const MAPPER_SYSTEM_PROMPT = `You are an expert financial-data analyst on
 
 Your job: given a sheet from an unknown company's budget/P&L workbook, propose:
   1. What each column means (account code, label, monthly amount, annual total, plan/actual flag, or skip).
-  2. Account-type inference for any rows that have an account code (revenue / cogs / expense / asset / liability / equity), based on SAP-style prefixes (6xx=revenue, 70x/71x=cogs, 72x..79x/9xx=expense, 1xx=asset, 2xx=liability, 3xx=equity).
+  2. Account-type inference for any row that has an account code (revenue / cogs / expense / asset / liability / equity). Use SAP-style prefixes when the codes follow that convention (6xx=revenue, 70x/71x=cogs, 72x..79x/9xx=expense, 1xx=asset, 2xx=liability, 3xx=equity). For NON-SAP code schemes (e.g. dotted/alphanumeric codes like "PLF.01.02"), infer the type from the P&L SECTION the row sits under — a header row such as "REVENUE" / "COST OF GOODS SOLD" / "OPERATING EXPENSES" (in any language) — and the row label. IMPORTANT: also emit an accountTypeOverride for each SECTION / PARENT code itself (e.g. {"code":"PLF.01","accountType":"revenue"}): the importer applies a parent's type to ALL descendant codes by code-prefix, so a handful of section-level overrides classifies the entire sheet. Do NOT emit overrides for computed subtotals (Gross Margin / Gross Profit / EBITDA / Net Profit / Total).
   3. Anomalies that a finance reviewer should see before committing — sign inversions, magnitude outliers, category mismatches, missing breakdowns, currency-mix issues, implausible ratios.
 
 Constraints:
@@ -22,7 +22,7 @@ Constraints:
   - Reasoning fields: ONE LINE max. UI-tooltip-grade. No paragraphs.
   - When source columns have multilingual headers (Azerbaijani, Russian, English), recognize the language and parse accordingly.
   - Months: support AZ ("Yanvar"…"Dekabr"), EN ("Jan"…"Dec" / "January"…"December"), RU ("Январь"…"Декабрь" / "Янв"…"Дек").
-  - For the SAP-prefix rule: codes like \`601-04\`, \`701-01-02\`, \`721-02\` follow this convention. If you see a code that doesn't match, flag as anomaly category="other".`
+  - For the SAP-prefix rule: codes like \`601-04\`, \`701-01-02\`, \`721-02\` follow this convention. A code that matches NEITHER the SAP convention NOR a resolvable P&L section is fine to flag as anomaly category="other" — but do NOT flag a non-SAP code merely for being non-SAP if you can classify it from its section/label.`
 
 /**
  * Auto-derived prompt version. SHA-256 of the system prompt text, first 8

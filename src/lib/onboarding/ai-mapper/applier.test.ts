@@ -12,7 +12,9 @@ import {
   detectProposalYear,
   detectSectionType,
   isSubtotalLabel,
+  resolveTypeByPrefix,
 } from './applier';
+import type { AccountType } from './types';
 import type {
   ColumnMappingProposal,
   MappingProposal,
@@ -468,5 +470,33 @@ describe('applyProposal — arbitrary (non-SAP) code scheme', () => {
       .filter((l) => l.accountType === 'revenue')
       .reduce((s, l) => s + l.plannedAnnual, 0);
     expect(revAnnual).toBe(100);
+  });
+});
+
+describe('resolveTypeByPrefix', () => {
+  const m = new Map<string, AccountType>([
+    ['PLF.01', 'revenue'],
+    ['PLF.02', 'cogs'],
+    ['PLF.04', 'expense'],
+    ['PLF.04.02', 'expense'],
+  ]);
+  it('resolves a leaf to its longest-prefix ancestor override', () => {
+    expect(resolveTypeByPrefix('PLF.01.02.05', m)).toBe('revenue');
+    expect(resolveTypeByPrefix('PLF.02.02.07', m)).toBe('cogs');
+  });
+  it('prefers the most specific (longest) matching override', () => {
+    // PLF.04.02.* should match PLF.04.02 (len 7) over PLF.04 (len 6) — both expense here,
+    // but the longest-match rule is what matters for mixed types.
+    const m2 = new Map<string, AccountType>([['PLF.04', 'expense'], ['PLF.04.99', 'revenue']]);
+    expect(resolveTypeByPrefix('PLF.04.99.01', m2)).toBe('revenue');
+    expect(resolveTypeByPrefix('PLF.04.01.01', m2)).toBe('expense');
+  });
+  it('respects the "." / "-" boundary (PLF.1 never matches PLF.10)', () => {
+    const m3 = new Map<string, AccountType>([['PLF.1', 'revenue']]);
+    expect(resolveTypeByPrefix('PLF.10.01', m3)).toBe(null);
+    expect(resolveTypeByPrefix('PLF.1.01', m3)).toBe('revenue');
+  });
+  it('returns null when no ancestor override exists', () => {
+    expect(resolveTypeByPrefix('XYZ.99', m)).toBe(null);
   });
 });

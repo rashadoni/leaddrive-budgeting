@@ -273,7 +273,7 @@ export function detectSectionType(text: string | null): AccountType | null {
   if (/cost of (goods|sales)|\bcogs\b|maya dəyər|maya deyer|себестоим/.test(t)) {
     return 'cogs';
   }
-  if (/expense|\bopex\b|\bsg&a\b|administrativ|marketing|operating cost|xərc|xerc|əməliyyat xərc|расход|издержк/.test(t)) {
+  if (/expense|\bopex\b|\bsg&a\b|administrativ|marketing|operating cost|depreciat|amortiz|amortis|köhnəlmə|amortizasiya|xərc|xerc|əməliyyat xərc|расход|издержк|амортизац|износ/.test(t)) {
     return 'expense';
   }
   if (/revenue|income|turnover|\bsales\b|gəlir|gelir|satış|выручк|доход|продаж/.test(t)) {
@@ -293,6 +293,30 @@ export function isSubtotalLabel(text: string | null): boolean {
   return /gross (margin|profit)|operating (profit|income|margin)|\bebitda\b|net (profit|loss|income)|profit before tax|\bsubtotal\b|\btotal\b|итого|ümumi mənfəət|əməliyyat mənfəət|xalis mənfəət|mənfəət \(zərər\)/i.test(
     text,
   );
+}
+
+/**
+ * Resolve a non-SAP code's accountType from the AI overrides by LONGEST code
+ * prefix. The mapper emits section/parent overrides (e.g. PLF.01→revenue) and
+ * the importer applies a parent's type to all descendants: "PLF.01.02.05"
+ * matches override "PLF.01". Longest (most specific) ancestor wins. Hierarchy
+ * boundary is "." or "-" so "PLF.1" never matches "PLF.10".
+ */
+export function resolveTypeByPrefix(
+  code: string,
+  acctByCode: Map<string, AccountType>,
+): AccountType | null {
+  let best: { len: number; type: AccountType } | null = null;
+  for (const [oc, t] of acctByCode) {
+    if (
+      code === oc ||
+      code.startsWith(oc + '.') ||
+      code.startsWith(oc + '-')
+    ) {
+      if (!best || oc.length > best.len) best = { len: oc.length, type: t };
+    }
+  }
+  return best?.type ?? null;
 }
 
 export function applyProposal(
@@ -413,7 +437,13 @@ export function applyProposal(
         skipped += 1;
         continue;
       }
-      accountType = acctByCode.get(code) ?? currentSection ?? null;
+      // Resolution order: exact override → longest-prefix override (AI
+      // section/parent classification) → tracked section header → skip.
+      accountType =
+        acctByCode.get(code) ??
+        resolveTypeByPrefix(code, acctByCode) ??
+        currentSection ??
+        null;
       if (!accountType) {
         warnings.push({
           row: r + 1,
