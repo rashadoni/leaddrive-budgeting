@@ -479,6 +479,10 @@ describe('POST /api/onboarding/import/staging/[id]/apply — handler (lazy-flip 
       warnings: 1,                  // applyResult.warnings.length
       parentRollupsDropped: 1,      // applyResult.parentRollupsDropped.length
       parentRollupsUnallocated: 0,
+      // Phase 2 — control-total verdict (1 parent, 0 unallocated → reconciles).
+      controlVerdict: 'green',
+      controlNoData: false,
+      controlTotals: [],
     });
 
     // Critical contract: dry-run does NOT mutate state.

@@ -40,6 +40,13 @@ interface AnalyzeResponse {
   proposal: MappingProposal
   sourceColumns: SourceColumn[]
 }
+interface ControlTotal {
+  code: string
+  statedTotal: number
+  leafSum: number
+  delta: number
+  deltaPct: number
+}
 interface ApplyResult {
   status: "preview" | "applied"
   year: number
@@ -48,11 +55,22 @@ interface ApplyResult {
   warnings: number
   parentRollupsDropped: number
   parentRollupsUnallocated: number
+  // Phase 2 — control-total verdict (dry-run only).
+  controlVerdict?: "green" | "yellow" | "red"
+  controlNoData?: boolean
+  controlTotals?: ControlTotal[]
   recompute?: { ok: number; unknown: number; failed: number; targets: number }
   indicatorsStale?: boolean
 }
 
 type Busy = null | "classify" | "preview" | "apply"
+
+const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string; label: string }> = {
+  green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢", label: "контрольные суммы сходятся" },
+  yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡", label: "малое расхождение (≤1%)" },
+  red: { fg: "text-red-700 dark:text-red-400", icon: "🔴", label: "крупное расхождение — вероятный мис-маппинг" },
+}
+const fmtN = (n: number) => Math.round(n).toLocaleString("ru-RU")
 
 // Flatten the /api/companies tree (roots → children → children).
 function flatten(tree: unknown): CompanyOpt[] {
@@ -85,6 +103,7 @@ export function UniversalImportForm() {
   const [preview, setPreview] = useState<ApplyResult | null>(null)
   const [applied, setApplied] = useState<ApplyResult | null>(null)
   const [ackLowConf, setAckLowConf] = useState(false)
+  const [ackControl, setAckControl] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Monotonic token bumped on every mapping/sheet/file change. A dry-run
@@ -107,6 +126,7 @@ export function UniversalImportForm() {
     setPreview(null)
     setApplied(null)
     setAckLowConf(false)
+    setAckControl(false)
     setError(null)
     previewEpoch.current++
   }
@@ -183,6 +203,7 @@ export function UniversalImportForm() {
     const myEpoch = previewEpoch.current
     setBusy(dryRun ? "preview" : "apply")
     setError(null)
+    if (dryRun) setAckControl(false) // fresh preview → fresh verdict to acknowledge
     try {
       const fd = new FormData()
       fd.append("file", file)
@@ -214,7 +235,13 @@ export function UniversalImportForm() {
     !!analysis &&
     (analysis.proposal.overallConfidence < 0.7 ||
       analysis.proposal.columns.some((c) => c.confidence < 0.6))
-  const commitBlocked = !preview || busy !== null || (lowConf && !ackLowConf)
+  const controlGated =
+    !!preview && preview.controlVerdict !== undefined && preview.controlVerdict !== "green"
+  const commitBlocked =
+    !preview ||
+    busy !== null ||
+    (lowConf && !ackLowConf) ||
+    (controlGated && !ackControl)
 
   return (
     <div className="space-y-6">
@@ -321,6 +348,7 @@ export function UniversalImportForm() {
             setEdited(next)
             previewEpoch.current++ // invalidate any in-flight preview
             setPreview(null) // mapping changed → previous preview is stale
+            setAckControl(false)
           }}
         />
       )}
@@ -338,19 +366,64 @@ export function UniversalImportForm() {
           </button>
 
           {preview && (
-            <div className="border rounded p-3 bg-muted/20 text-sm">
-              <div className="font-semibold mb-1">👁 Превью · год {preview.year}</div>
+            <div className="border rounded p-3 bg-muted/20 text-sm space-y-2">
+              <div className="font-semibold">👁 Превью · год {preview.year}</div>
               <div className="text-xs text-muted-foreground">
                 строк к записи: <b>{preview.inserted}</b> · заменит существующих: {preview.deleted} ·
-                предупреждений: {preview.warnings} · нераспределённых родительских итогов:{" "}
-                <b>{preview.parentRollupsUnallocated}</b>
+                предупреждений: {preview.warnings}
               </div>
-              {preview.parentRollupsUnallocated > 0 && (
-                <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                  ⚠ итог родителя ≠ сумме строк-листьев — проверьте разметку перед записью.
+
+              {/* Control-total verdict (parent rows vs sum of their leaves) */}
+              {preview.controlNoData ? (
+                <div className="text-xs text-sky-700 dark:text-sky-400">
+                  ℹ В файле нет родительских итогов для авто-сверки — проверьте разметку вручную.
+                </div>
+              ) : (
+                <div className={`text-xs font-medium ${VERDICT[preview.controlVerdict ?? "green"].fg}`}>
+                  Сверка: {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
+                  {VERDICT[preview.controlVerdict ?? "green"].label}
+                </div>
+              )}
+
+              {preview.controlTotals && preview.controlTotals.length > 0 && (
+                <div className="border rounded overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-1">Родитель</th>
+                        <th className="text-right p-1">Заявлено</th>
+                        <th className="text-right p-1">Σ листьев</th>
+                        <th className="text-right p-1">Δ</th>
+                        <th className="text-right p-1">Δ%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.controlTotals.map((c) => (
+                        <tr key={c.code} className="border-t">
+                          <td className="p-1 font-mono">{c.code}</td>
+                          <td className="p-1 text-right font-mono">{fmtN(c.statedTotal)}</td>
+                          <td className="p-1 text-right font-mono">{fmtN(c.leafSum)}</td>
+                          <td className="p-1 text-right font-mono">{fmtN(c.delta)}</td>
+                          <td className="p-1 text-right font-mono">{(c.deltaPct * 100).toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
+          )}
+
+          {controlGated && (
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={ackControl}
+                onChange={(e) => setAckControl(e.target.checked)}
+                className="mt-0.5"
+              />
+              Расхождение контрольных сумм проверено (итог родителя ≠ сумме листьев). 🔴 = вероятный мис-маппинг колонки — перепроверьте разметку.
+            </label>
           )}
 
           {lowConf && (

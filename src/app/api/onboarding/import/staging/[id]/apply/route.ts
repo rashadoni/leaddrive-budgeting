@@ -40,6 +40,7 @@ import { getLogger } from '@/lib/log';
 const log = getLogger('api:apply');
 const recomputeLog = getLogger('api:apply:recompute');
 import { applyProposal, detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
+import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 
@@ -291,6 +292,13 @@ export async function POST(
     // `inserted` counts parsed LINES (matching the real-apply contract;
     // each line fans out to 12 BudgetLine rows at sortOrder 0..11).
     const wouldBeInserted = applyResult.lines.length;
+    // Phase 2 — control-total verdict from the file's own parent/leaf
+    // redundancy (green/yellow/red). A large parent-vs-leaf delta is the
+    // mis-mapped-column signature; the wizard gates commit on it.
+    const control = computeControlTotals(
+      applyResult.parentRollupsDropped,
+      applyResult.parentRollupsUnallocated,
+    );
     return NextResponse.json(
       {
         stagingId: staging.id,
@@ -303,6 +311,9 @@ export async function POST(
         parentRollupsDropped: applyResult.parentRollupsDropped.length,
         parentRollupsUnallocated:
           applyResult.parentRollupsUnallocated.length,
+        controlVerdict: control.verdict,
+        controlNoData: control.noControl,
+        controlTotals: control.controlTotals.slice(0, 10),
       },
       { status: 200 },
     );
