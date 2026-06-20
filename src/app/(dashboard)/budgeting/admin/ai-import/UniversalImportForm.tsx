@@ -170,6 +170,9 @@ export function UniversalImportForm() {
   const [entityMap, setEntityMap] = useState<Record<string, string>>({})
   const [mePreview, setMePreview] = useState<MePreviewResult | null>(null)
   const [meApplied, setMeApplied] = useState<MeAppliedResult | null>(null)
+  // Phase C C3.2 — target currency for a multi-currency sheet (the same period
+  // in >1 currency). Empty = let the server default to the company base.
+  const [targetCurrency, setTargetCurrency] = useState("")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Monotonic token bumped on every mapping/sheet/file change. A dry-run
@@ -237,6 +240,7 @@ export function UniversalImportForm() {
     setEntityMap({})
     setMePreview(null)
     setMeApplied(null)
+    setTargetCurrency("")
     setAckLowConf(false)
     setAckControl(false)
     setError(null)
@@ -265,6 +269,17 @@ export function UniversalImportForm() {
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       const a = body as AnalyzeResponse
       setAnalysis(a)
+      // Multi-currency: when the AI tagged >1 currency on the amount columns,
+      // default the picker to the first so the preview works out of the box;
+      // the reviewer can switch it. Single/untagged → empty (server uses base).
+      const curs = [
+        ...new Set(
+          a.proposal.columns
+            .filter((c) => c.role.startsWith("amount:") && c.currencyCode)
+            .map((c) => (c.currencyCode as string).trim().toUpperCase()),
+        ),
+      ]
+      setTargetCurrency(curs.length > 1 ? curs[0] : "")
       // Multi-entity: seed the entityValue→company map from the AI's
       // auto-suggested matches (the reviewer confirms/corrects below).
       setEntityMap(a.multiEntity ? { ...(a.entitySuggestions ?? {}) } : {})
@@ -325,6 +340,7 @@ export function UniversalImportForm() {
       const fd = new FormData()
       fd.append("file", file)
       if (dryRun) fd.append("dryRun", "true")
+      if (targetCurrency) fd.append("targetCurrency", targetCurrency)
       const overrides = buildUserOverrides(analysis.proposal, edited)
       if (overrides) fd.append("userOverrides", JSON.stringify(overrides))
       if (!dryRun) {
@@ -422,6 +438,24 @@ export function UniversalImportForm() {
     setEntityMap((m) => ({ ...m, [value]: companyId }))
     setMePreview(null)
     previewEpoch.current++
+  }
+
+  // Phase C C3.2 — distinct currencies the AI tagged on the amount columns.
+  // >1 → the sheet is multi-currency and the reviewer picks which to import.
+  const availableCurrencies = analysis
+    ? [
+        ...new Set(
+          analysis.proposal.columns
+            .filter((c) => c.role.startsWith("amount:") && c.currencyCode)
+            .map((c) => (c.currencyCode as string).trim().toUpperCase()),
+        ),
+      ]
+    : []
+  const changeCurrency = (cur: string) => {
+    setTargetCurrency(cur)
+    setPreview(null)
+    setMePreview(null)
+    previewEpoch.current++ // invalidate any in-flight preview
   }
 
   return (
@@ -578,6 +612,29 @@ export function UniversalImportForm() {
             setAckControl(false)
           }}
         />
+      )}
+
+      {/* Step 2a — multi-currency: pick the currency to import */}
+      {analysis && availableCurrencies.length > 1 && !applied && !meApplied && (
+        <div className="flex items-center gap-2 text-sm border rounded p-3 bg-muted/10">
+          <span className="text-xs">💱 Лист в нескольких валютах — импортировать в:</span>
+          <select
+            value={targetCurrency}
+            disabled={busy !== null}
+            onChange={(e) => changeCurrency(e.target.value)}
+            className="px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+            aria-label="Валюта импорта"
+          >
+            {availableCurrencies.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <span className="text-[11px] text-muted-foreground">
+            строки пометятся этой валютой (BudgetLine.currencyCode)
+          </span>
+        </div>
       )}
 
       {/* Step 2b — multi-company-in-one-sheet: map each BU value to a company */}
