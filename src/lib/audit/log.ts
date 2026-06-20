@@ -146,6 +146,18 @@ export type AuditEventInput =
         sheetCount?: number;
         successCount?: number;
         failureCount?: number;
+        // Phase C slice C2.3 — multi-COMPANY-in-one-sheet apply emits the same
+        // enum value with these optional fields. `companyId` carries the
+        // staging anchor; the real per-company footprint is in `entities[]`.
+        // Distinguishable by `multiEntity: true`.
+        multiEntity?: boolean;
+        entityCount?: number;
+        entities?: Array<{
+          entityValue: string;
+          companyId: string;
+          inserted: number;
+          deleted: number;
+        }>;
       };
     }
   | {
