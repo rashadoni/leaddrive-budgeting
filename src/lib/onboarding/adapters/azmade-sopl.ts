@@ -669,17 +669,22 @@ export function dedupeParentRollups(
   // reconcile `721` against BOTH `721-02` AND `721-02-01` (transitive sum)
   // and trigger a false synthetic-unallocated injection.
   const codeSet = new Set(lines.map((l) => l.code));
+  // Hierarchy separator is dash (SAP "601-01") OR dot (arbitrary schemes like
+  // AzerSheker "PLF.01.02") — 2026-06-20. SAP codes never contain a dot, so
+  // accepting both is additive: dash-coded files behave exactly as before.
+  const isChildOf = (code: string, parent: string): boolean =>
+    code.length > parent.length + 1 &&
+    (code.startsWith(parent + '-') || code.startsWith(parent + '.'));
   const hasDescendant = (parent: string): boolean => {
-    const prefix = parent + '-';
     for (const c of codeSet) {
-      if (c.length > prefix.length && c.startsWith(prefix)) return true;
+      if (isChildOf(c, parent)) return true;
     }
     return false;
   };
-  /** Walk up D by stripping the last `-<...>` segment. Returns null once we
-   *  hit the top. Assumes dash-delimited hierarchy. */
+  /** Walk up D by stripping the last `-<...>` or `.<...>` segment. Returns
+   *  null once we hit the top (no separator left). */
   const stripLastSegment = (code: string): string | null => {
-    const i = code.lastIndexOf('-');
+    const i = Math.max(code.lastIndexOf('-'), code.lastIndexOf('.'));
     return i === -1 ? null : code.slice(0, i);
   };
   /** True when descendant D reaches parent C via ancestor walk without
@@ -694,12 +699,8 @@ export function dedupeParentRollups(
     return false;
   };
   const topmostDescendantsOf = (parent: string): ParsedBudgetLine[] => {
-    const prefix = parent + '-';
     return lines.filter(
-      (l) =>
-        l.code.length > prefix.length &&
-        l.code.startsWith(prefix) &&
-        isTopmostDescendantOf(l.code, parent),
+      (l) => isChildOf(l.code, parent) && isTopmostDescendantOf(l.code, parent),
     );
   };
   const kept: ParsedBudgetLine[] = [];

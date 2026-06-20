@@ -6,7 +6,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
-import { applyProposal, resolveColumns, detectProposalYear } from './applier';
+import {
+  applyProposal,
+  resolveColumns,
+  detectProposalYear,
+  detectSectionType,
+  isSubtotalLabel,
+} from './applier';
 import type {
   ColumnMappingProposal,
   MappingProposal,
@@ -377,5 +383,90 @@ describe('applyProposal — error paths', () => {
     const result = applyProposal(wb, 'Sheet1', proposal, XLSX);
     expect('error' in result).toBe(true);
     if ('error' in result) expect(result.error).toMatch(/empty/i);
+  });
+});
+
+// ── Arbitrary (non-SAP) code-scheme self-serve path (2026-06-20) ──────────
+describe('detectSectionType', () => {
+  it('classifies revenue / cogs / expense headers (EN)', () => {
+    expect(detectSectionType('REVENUE')).toBe('revenue');
+    expect(detectSectionType('Total Income')).toBe('revenue'); // "total" not subtotal here, just section name
+    expect(detectSectionType('COST OF GOODS SOLD')).toBe('cogs');
+    expect(detectSectionType('Operating Expenses')).toBe('expense');
+  });
+  it('orders so "cost of sales" → cogs and "sales & marketing" → expense (not revenue)', () => {
+    expect(detectSectionType('Cost of Sales')).toBe('cogs');
+    expect(detectSectionType('Sales & Marketing')).toBe('expense');
+    expect(detectSectionType('Revenue from Sales')).toBe('revenue');
+  });
+  it('matches RU / AZ keywords', () => {
+    expect(detectSectionType('Выручка')).toBe('revenue');
+    expect(detectSectionType('Gəlir')).toBe('revenue');
+    expect(detectSectionType('Расходы')).toBe('expense');
+  });
+  it('returns null for non-section text', () => {
+    expect(detectSectionType('Malt Costs')).toBe(null);
+    expect(detectSectionType(null)).toBe(null);
+  });
+});
+
+describe('isSubtotalLabel', () => {
+  it('flags computed subtotals', () => {
+    expect(isSubtotalLabel('GROSS MARGIN')).toBe(true);
+    expect(isSubtotalLabel('Gross Profit')).toBe(true);
+    expect(isSubtotalLabel('EBITDA')).toBe(true);
+    expect(isSubtotalLabel('Net Profit/(Loss)')).toBe(true);
+    expect(isSubtotalLabel('Total')).toBe(true);
+  });
+  it('does NOT flag real account lines', () => {
+    expect(isSubtotalLabel('Revenue from Sale of Malt')).toBe(false);
+    expect(isSubtotalLabel('Malt Costs')).toBe(false);
+    expect(isSubtotalLabel(null)).toBe(false);
+  });
+});
+
+describe('applyProposal — arbitrary (non-SAP) code scheme', () => {
+  const cols: ColumnMappingProposal[] = [
+    { sourceIndex: 0, role: 'code', confidence: 0.9, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.9, reasoning: '' },
+    ...fullMonthCols(2),
+  ];
+  // PLF.* dotted codes; children labelled neutrally so accountType MUST come
+  // from the tracked section header, not the label itself.
+  const months = (jan: number) => [jan, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+  const aoa: (string | number | null)[][] = [
+    ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    ['PLF.01', 'REVENUE', ...months(100)],
+    ['PLF.01.01', 'Product A', ...months(60)],
+    ['PLF.01.02', 'Product B', ...months(40)],
+    ['PLF.02', 'COST OF GOODS SOLD', ...months(30)],
+    ['PLF.02.01', 'Material X', ...months(30)],
+    ['PLF.03', 'GROSS MARGIN', ...months(70)],
+  ];
+
+  it('parses dotted codes via section-tracking, dedups dot-hierarchy, skips subtotals', () => {
+    const wb = makeWorkbook(aoa);
+    const res = applyProposal(wb, 'Sheet1', buildProposal(cols), XLSX);
+    expect('error' in res).toBe(false);
+    if ('error' in res) return;
+
+    const byCode = new Map(res.lines.map((l) => [l.code, l]));
+    // children parsed with the SECTION's type (labels were neutral)
+    expect(byCode.get('PLF.01.01')?.accountType).toBe('revenue');
+    expect(byCode.get('PLF.01.02')?.accountType).toBe('revenue');
+    expect(byCode.get('PLF.02.01')?.accountType).toBe('cogs');
+    // dot-hierarchy parents reconcile to children → dropped (not double-counted)
+    expect(byCode.has('PLF.01')).toBe(false);
+    expect(byCode.has('PLF.02')).toBe(false);
+    expect(res.parentRollupsDropped.map((d) => d.code)).toEqual(
+      expect.arrayContaining(['PLF.01', 'PLF.02']),
+    );
+    // computed subtotal never imported
+    expect(byCode.has('PLF.03')).toBe(false);
+    // revenue total = Σ children = 100 (not 200 from parent+children)
+    const revAnnual = res.lines
+      .filter((l) => l.accountType === 'revenue')
+      .reduce((s, l) => s + l.plannedAnnual, 0);
+    expect(revAnnual).toBe(100);
   });
 });

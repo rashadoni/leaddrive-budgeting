@@ -256,6 +256,45 @@ export function applyMultiSheetProposal(
  * dedup + reconciliation already applied. Caller (apply route) wraps the
  * insert in a transaction.
  */
+/**
+ * Map a P&L section-header label (or code) to an account type. This is the
+ * accountType source for NON-SAP code schemes (e.g. "PLF.01.02") where the
+ * code doesn't encode the type: the applier tracks the "current section" from
+ * header rows and assigns the rows beneath it. Multilingual (EN / RU / AZ) so
+ * an arbitrary client P&L resolves without per-file code. SAP-numeric codes
+ * never reach this — they keep the accountTypeFromCode() prefix heuristic.
+ *
+ * Order matters: COGS ("cost of sales") and expenses ("sales & marketing")
+ * both contain "sales", so they are matched BEFORE the generic revenue rule.
+ */
+export function detectSectionType(text: string | null): AccountType | null {
+  if (!text) return null;
+  const t = text.toLowerCase();
+  if (/cost of (goods|sales)|\bcogs\b|maya dəyər|maya deyer|себестоим/.test(t)) {
+    return 'cogs';
+  }
+  if (/expense|\bopex\b|\bsg&a\b|administrativ|marketing|operating cost|xərc|xerc|əməliyyat xərc|расход|издержк/.test(t)) {
+    return 'expense';
+  }
+  if (/revenue|income|turnover|\bsales\b|gəlir|gelir|satış|выручк|доход|продаж/.test(t)) {
+    return 'revenue';
+  }
+  return null;
+}
+
+/**
+ * True when a label is a COMPUTED P&L subtotal (Gross Margin/Profit, EBITDA,
+ * Net Profit, Operating Profit, "Total") rather than a real account line.
+ * Used by the NON-SAP path to skip these — section-tracking would otherwise
+ * mis-file e.g. "GROSS MARGIN" under the preceding COGS section. Multilingual.
+ */
+export function isSubtotalLabel(text: string | null): boolean {
+  if (!text) return false;
+  return /gross (margin|profit)|operating (profit|income|margin)|\bebitda\b|net (profit|loss|income)|profit before tax|\bsubtotal\b|\btotal\b|итого|ümumi mənfəət|əməliyyat mənfəət|xalis mənfəət|mənfəət \(zərər\)/i.test(
+    text,
+  );
+}
+
 export function applyProposal(
   workbook: XLSX.WorkBook,
   sheetName: string,
@@ -317,45 +356,72 @@ export function applyProposal(
   const warnings: ParseWarning[] = [];
   let skipped = 0;
 
+  // Tracks the current P&L section for NON-SAP code schemes (see
+  // detectSectionType). SAP-numeric codes never consult it.
+  let currentSection: AccountType | null = null;
   for (let r = headerEndRow; r < aoa.length; r++) {
     const row = aoa[r] ?? [];
     const code = toTrimmedString(row[codeCol]);
+    const label = toTrimmedString(row[labelCol]);
+
+    // Update the current section from any header-ish row (including ones we
+    // then skip) so the rows beneath a "REVENUE"/"COGS"/"EXPENSE" header
+    // inherit the right type. No effect on the SAP path below.
+    const sectionHit = detectSectionType(label) ?? detectSectionType(code);
+    if (sectionHit) currentSection = sectionHit;
+
     if (!code) {
       skipped += 1;
       continue;
     }
-    // Reject anything that doesn't look like a SAP-style code. Catches
-    // category-header rows where the code col is blank but other cells
-    // are set, plus garbage rows.
-    if (!/^\d{3,}(-\d+)*$/.test(code)) {
-      skipped += 1;
-      continue;
-    }
 
-    // Silent-skip for 4xx / 5xx / 8xx codes BEFORE consulting accountType
-    // overrides. These are informational rows in AZ accounting workbooks
-    // (statistical accounts, off-balance items) — they MUST never land in
-    // BudgetLine even if the LLM optimistically suggested an account type
-    // override for them. Matches azmade-sopl invariant.
-    const firstDigit = code.replace(/^[^\d]+/, '').charAt(0);
-    if (firstDigit === '4' || firstDigit === '5' || firstDigit === '8') {
-      skipped += 1;
-      continue;
-    }
+    const isSapCode = /^\d{3,}(-\d+)*$/.test(code);
+    let accountType: AccountType | null;
 
-    const label = toTrimmedString(row[labelCol]);
-
-    // Account-type resolution: explicit override wins; fall back to
-    // SAP-prefix heuristic. Codes that match neither get a warning.
-    let accountType: AccountType | null = acctByCode.get(code) ?? null;
-    if (!accountType) accountType = accountTypeFromCode(code);
-    if (!accountType) {
-      warnings.push({
-        row: r + 1,
-        reason: `code "${code}" didn't map to any accountType (no override + no SAP prefix match)`,
-      });
-      skipped += 1;
-      continue;
+    if (isSapCode) {
+      // ── SAP-numeric path (unchanged behaviour) ──
+      // Silent-skip for 4xx / 5xx / 8xx codes BEFORE consulting accountType
+      // overrides. These are informational rows in AZ accounting workbooks
+      // (statistical accounts, off-balance items) — they MUST never land in
+      // BudgetLine even if the LLM optimistically suggested an override for
+      // them. Matches azmade-sopl invariant.
+      const firstDigit = code.replace(/^[^\d]+/, '').charAt(0);
+      if (firstDigit === '4' || firstDigit === '5' || firstDigit === '8') {
+        skipped += 1;
+        continue;
+      }
+      // Account-type resolution: explicit override wins; fall back to
+      // SAP-prefix heuristic. Codes that match neither get a warning.
+      accountType = acctByCode.get(code) ?? accountTypeFromCode(code);
+      if (!accountType) {
+        warnings.push({
+          row: r + 1,
+          reason: `code "${code}" didn't map to any accountType (no override + no SAP prefix match)`,
+        });
+        skipped += 1;
+        continue;
+      }
+    } else {
+      // ── Arbitrary code-scheme path (2026-06-20) ──
+      // The code doesn't encode the type (e.g. "PLF.01.02"). First drop
+      // computed subtotals (Gross Margin / EBITDA / Net Profit / Total) —
+      // section-tracking would otherwise mis-file them under the preceding
+      // section. Then resolve via an explicit override (AI/user) else the
+      // tracked P&L section. A row that resolves to neither is skipped with a
+      // warning — never a silent mis-map. Unlocks self-serve for non-SAP P&Ls.
+      if (isSubtotalLabel(label)) {
+        skipped += 1;
+        continue;
+      }
+      accountType = acctByCode.get(code) ?? currentSection ?? null;
+      if (!accountType) {
+        warnings.push({
+          row: r + 1,
+          reason: `code "${code}" — no accountType (non-SAP code, no override, no P&L section context)`,
+        });
+        skipped += 1;
+        continue;
+      }
     }
 
     // Sign convention: AZ accounting workbooks store cogs/expense as
