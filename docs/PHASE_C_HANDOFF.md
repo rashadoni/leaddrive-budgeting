@@ -31,7 +31,13 @@ The canonical model Codex confirmed: **`account × period × entity × scenario 
 - **Real-file verified:** generic split partitions `Reporting 2026.xlsx` `Actual PLF` into AZSF/EDEN/CPC/ProMalt (EJE skipped) matching the bespoke partition. The generic per-entity PARSE diverges from the bespoke kopeck parser BY DESIGN (coarser generic parser; review-gated) — the bespoke path stays kopeck-perfect for AzerSheker's own files.
 - **Surfaced, NOT yet fixed (candidate next slice C2.5):** `applyProposal`'s own header detection shares the all-strings limitation → date-serial-header sheets under-parse via the generic path (fails SAFE to the review gate). A future slice could teach the generic header detector to recognize numeric/date-serial month headers (broadens Universal Import; touches the applier core → Codex-review it).
 
-### 2. Sign + currency as first-class dimensions — ⬜ REMAINING (Phase C Part 2; see `docs/PHASE_C_PLAN.md` slices C3.1/C3.2)
+### 2. Sign + currency as first-class dimensions — ✅ DONE 2026-06-20 (Phase C Part 2)
+**COMPLETE + shipped.** See the `docs/ROADMAP.md` 2026-06-20 changelog (C3.1a/C3.1b/C3.2). Summary:
+- **Sign (C3.1a/b):** Codex-reviewed. `sign-infer.ts` `classifyCostSign` infers the stored-sign convention per accountType from RAW pre-flip values (abs-share AND row-count majority → `negative_costs | positive_costs | ambiguous | no_evidence`). The applier flip is now **convention-based** (two-pass): negative/no-evidence → flip (AZ default, byte-identical); positive → NO flip (the fix); ambiguous → hard-blocked by `validate-import`. Covers both apply paths (`apply-multi-entity` now runs the full `validateImport` per entity — closed Codex #5).
+- **Currency (C3.2):** `ColumnMappingProposal.currencyCode?`; `resolveColumns({preferCurrency})` selects one currency on a multi-currency sheet (fail-safe error if no preference); `ParseResult.resolvedCurrency` tags `BudgetLine.currencyCode`; mapper classifies currency columns + FX-rate-as-skip; routes accept `targetCurrency`.
+
+## PHASE C COMPLETE
+The canonical model `account × period × entity × scenario × currency` is realized in the generic Universal Import: period (multi-year), entity (multi-company-in-one-sheet), sign, currency; scenario = BudgetPlan. Optional follow-ups (not blocking): UI currency-picker (routes already take `targetCurrency`), per-visual-section sign granularity (C3.1c), generic numeric/date-serial header support in `applyProposal` (C2.5).
 - **Sign:** today `applier.ts` flips cogs/expense globally (`flipSign`). Codex: make sign a per-template / per-section inferred dimension; validate via subtotal equations + expected polarity; never globally flip on weak evidence.
 - **FX/multi-currency:** distinguish reporting vs local vs FX-rate columns; a `valueColumn.currencyRole`; catch "USD + local as duplicate periods/entities". The mapper must classify currency role.
 
