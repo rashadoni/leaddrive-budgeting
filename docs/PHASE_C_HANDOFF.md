@@ -21,14 +21,17 @@ Baseline: `npx tsc --noEmit` = 0 errors; `npx vitest run` = **5865 passing**.
 
 The canonical model Codex confirmed: **`account × period × entity × scenario × currency`**. Two big pieces left, both genuinely multi-day — this is a **canonical-model refactor, NOT a one-commit slice**:
 
-### 1. Multi-company-in-one-sheet (entity as a first-class dimension)
-A sheet with a "business unit / company" column (e.g. the reporting-pack `Actual PLF` BU column) currently imports as ONE company via the generic path. Make entity a per-row dimension:
-- Add a column role like `entity` (a column whose value routes each row to a company), OR a per-section entity (like the bespoke BU-split).
-- `applyProposal` must emit lines tagged with their entity; the apply route must route them to multiple companies in ONE transaction.
-- **Hard constraint:** `ImportStaging.companyId` is a SINGLE company today (schema `prisma/schema.prisma:1669`), and `apply` writes to that one company with a clean-slate-then-insert scoped to `(org, plan, company)`. Multi-company means the clean-slate + insert must run per-entity — **this is the #1 corruption surface; see `memory/project_import_clean_slate_guard.md` + `feedback_server_side_gates.md`.** The collateral-deletion guard must hold per-entity.
-- **Reference implementation that already does this correctly:** the bespoke `src/lib/onboarding/adapters/reporting-pack-detail.ts` + `reporting-pack-importer.ts` (BU-split AzerSheker → per-entity, kopeck-verified). Mirror its per-entity transactional pattern in the generic path.
+### 1. Multi-company-in-one-sheet (entity as a first-class dimension) — ✅ DONE 2026-06-20
+**COMPLETE + verified on the real file + shipped** (commits `cc0b6693`→`fa961f7b`). Full design + corruption invariants in `docs/PHASE_C_PLAN.md`; per-slice detail in the `docs/ROADMAP.md` 2026-06-20 changelog. Summary of what landed:
+- `entity` column role (`types.ts`); pure `entity-split.ts` (`findEntityColumn`/`findCodeColumn`/`extractEntityValues`/`applyProposalByEntity`) splits a sheet by its BU column and runs the EXISTING `applyProposal` per entity-group (dedup/control-totals stay entity-local). Header band anchored on the CODE column (digit-bearing) — NOT the all-strings heuristic, which mis-fires on date-serial headers.
+- `entity-resolve.ts` (`resolveEntityCompanies`) auto-suggests entity-value→company (injective).
+- Shared `apply-lines.ts` (`applyParsedLinesToCompany`) one-company delete-then-insert primitive (clean-slate scoped to `(org,plan,company)`), reused by the new route.
+- `POST /staging/[id]/apply-multi-entity` — per-entity clean-slate+insert in ONE tx; all Codex-reviewed invariants (injective `entityMap`, entity-set equality vs persisted `proposal.__multiEntity`, all-or-none, per-entity scope, RED hard-block, ack gates).
+- Mapper prompt + `analyze` persist `__multiEntity` + suggest the map; `UniversalImportForm` renders the BU→company mapping step and routes commit to the multi-entity route.
+- **Real-file verified:** generic split partitions `Reporting 2026.xlsx` `Actual PLF` into AZSF/EDEN/CPC/ProMalt (EJE skipped) matching the bespoke partition. The generic per-entity PARSE diverges from the bespoke kopeck parser BY DESIGN (coarser generic parser; review-gated) — the bespoke path stays kopeck-perfect for AzerSheker's own files.
+- **Surfaced, NOT yet fixed (candidate next slice C2.5):** `applyProposal`'s own header detection shares the all-strings limitation → date-serial-header sheets under-parse via the generic path (fails SAFE to the review gate). A future slice could teach the generic header detector to recognize numeric/date-serial month headers (broadens Universal Import; touches the applier core → Codex-review it).
 
-### 2. Sign + currency as first-class dimensions
+### 2. Sign + currency as first-class dimensions — ⬜ REMAINING (Phase C Part 2; see `docs/PHASE_C_PLAN.md` slices C3.1/C3.2)
 - **Sign:** today `applier.ts` flips cogs/expense globally (`flipSign`). Codex: make sign a per-template / per-section inferred dimension; validate via subtotal equations + expected polarity; never globally flip on weak evidence.
 - **FX/multi-currency:** distinguish reporting vs local vs FX-rate columns; a `valueColumn.currencyRole`; catch "USD + local as duplicate periods/entities". The mapper must classify currency role.
 
