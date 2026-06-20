@@ -278,16 +278,20 @@ export function UniversalImportForm() {
     }
   }
 
-  const lowConf =
+  const hasCriticalAnomaly =
+    !!analysis && analysis.proposal.anomalies.some((a) => a.severity === "critical")
+  // Block one-click commit when the AI is unsure OR flagged a critical anomaly.
+  const needsReviewAck =
     !!analysis &&
     (analysis.proposal.overallConfidence < 0.7 ||
-      analysis.proposal.columns.some((c) => c.confidence < 0.6))
+      analysis.proposal.columns.some((c) => c.confidence < 0.6) ||
+      hasCriticalAnomaly)
   const controlGated =
     !!preview && preview.controlVerdict !== undefined && preview.controlVerdict !== "green"
   const commitBlocked =
     !preview ||
     busy !== null ||
-    (lowConf && !ackLowConf) ||
+    (needsReviewAck && !ackLowConf) ||
     (controlGated && !ackControl)
 
   return (
@@ -518,7 +522,7 @@ export function UniversalImportForm() {
             </label>
           )}
 
-          {lowConf && (
+          {needsReviewAck && (
             <label className="flex items-start gap-2 text-xs text-muted-foreground">
               <input
                 type="checkbox"
@@ -526,7 +530,9 @@ export function UniversalImportForm() {
                 onChange={(e) => setAckLowConf(e.target.checked)}
                 className="mt-0.5"
               />
-              Низкая уверенность AI — я проверил разметку колонок вручную.
+              {hasCriticalAnomaly
+                ? "AI пометил критическую аномалию (см. таблицу выше) — я проверил разметку вручную."
+                : "Низкая уверенность AI — я проверил разметку колонок вручную."}
             </label>
           )}
 
