@@ -60,6 +60,9 @@ import {
 import type { ParseResult, ParsedBudgetLine } from "@/lib/onboarding/adapters/azmade-sopl"
 import { currentBakuYearNumber } from "@/lib/risk/periods"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
+import { extractMapperInput } from "@/lib/onboarding/ai-mapper/extract"
+import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
+import { computeControlTotals } from "@/lib/onboarding/ai-mapper/control-totals"
 // Phase 7.I Turn — Workbook-shape deterministic fallback. When AI Mapper
 // produces a structurally-valid proposal but extraction returns 0 leaves
 // (typical for multi-year sheets where AI Mapper picked the wrong year's
@@ -231,8 +234,45 @@ export async function POST(
     )
   }
 
-  // Apply the multi-sheet proposal to the workbook.
-  const multiResult = applyMultiSheetProposal(workbook, multi, XLSX)
+  // Optional per-sheet user overrides — JSON map { sheetName: Partial<MappingProposal> }
+  // produced by the review UI's edits. applyMultiSheetProposal merges them.
+  let userOverridesBySheet: Record<string, Partial<MappingProposal>> | undefined
+  const overridesRaw = form.get("userOverrides")
+  if (typeof overridesRaw === "string" && overridesRaw.trim() !== "") {
+    try {
+      userOverridesBySheet = JSON.parse(overridesRaw)
+    } catch (err) {
+      return NextResponse.json(
+        { error: `Invalid userOverrides JSON: ${err instanceof Error ? err.message : err}` },
+        { status: 400 },
+      )
+    }
+  }
+
+  // Structure-hash guard (Phase 2 #5): reject a file edited since analyze —
+  // the multi proposal maps columns by index per sheet. Stored hash is the
+  // per-sheet hashes joined with "|". Skipped for pre-guard stagings.
+  const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash
+  if (storedHash) {
+    const currentHash = multi.sheets
+      .map((s) => {
+        const mi = extractMapperInput(workbook, s.sheetName, XLSX)
+        return "error" in mi ? "" : computeStructureHash(mi)
+      })
+      .join("|")
+    if (currentHash !== storedHash) {
+      return NextResponse.json(
+        {
+          error:
+            "Файл изменился после анализа (структура листов не совпадает). Загрузите тот же файл или повторите анализ.",
+        },
+        { status: 409 },
+      )
+    }
+  }
+
+  // Apply the multi-sheet proposal to the workbook (with reviewer overrides).
+  const multiResult = applyMultiSheetProposal(workbook, multi, XLSX, userOverridesBySheet)
 
   // Year resolution. Order of precedence:
   //   1. `?year=YYYY` query override — explicit user intent. Skips
@@ -357,6 +397,9 @@ export async function POST(
   // Aggregate per-sheet success/failure stats + flat-concat ParsedBudgetLine[]
   const perSheet: PerSheetResult[] = []
   const allLines: ParsedBudgetLine[] = []
+  // Aggregate parent-rollup deltas across sheets for the control-total verdict.
+  const allDropped: Array<{ code: string; plannedAnnual: number }> = []
+  const allSynthetic: Array<{ parentCode: string; plannedAnnual: number }> = []
   for (const sheetResult of multiResult.perSheet) {
     if ("error" in sheetResult) {
       perSheet.push({ sheetName: sheetResult.sheetName, error: sheetResult.error })
@@ -371,6 +414,8 @@ export async function POST(
       parentRollupsUnallocated: r.parentRollupsUnallocated.length,
     })
     allLines.push(...r.lines)
+    allDropped.push(...r.parentRollupsDropped)
+    allSynthetic.push(...r.parentRollupsUnallocated)
   }
 
   const successCount = perSheet.filter((r) => !isFailure(r)).length
@@ -461,6 +506,15 @@ export async function POST(
         incoming: ebitdaOf(incoming),
         deltaPct: pct(ebitdaOf(current), ebitdaOf(incoming)),
       },
+      // Phase 2 #1/#4 — control-total verdict aggregated across all sheets.
+      ...(() => {
+        const control = computeControlTotals(allDropped, allSynthetic)
+        return {
+          controlVerdict: control.verdict,
+          controlNoData: control.noControl,
+          controlTotals: control.controlTotals.slice(0, 10),
+        }
+      })(),
     })
   }
 
