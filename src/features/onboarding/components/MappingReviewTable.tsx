@@ -28,6 +28,8 @@ interface Props {
   /** Current edited roles (one per source column), lifted to the parent. */
   edited: ColumnMappingProposal[]
   onChange: (edited: ColumnMappingProposal[]) => void
+  /** Lock the selects while a preview/apply is in flight. */
+  disabled?: boolean
 }
 
 const BAND_STYLE: Record<"high" | "med" | "low", string> = {
@@ -36,14 +38,17 @@ const BAND_STYLE: Record<"high" | "med" | "low", string> = {
   low: "text-red-700 dark:text-red-400 font-semibold",
 }
 
-export function MappingReviewTable({ proposal, sourceColumns, edited, onChange }: Props) {
+export function MappingReviewTable({ proposal, sourceColumns, edited, onChange, disabled }: Props) {
   const editedByIdx = new Map(edited.map((c) => [c.sourceIndex, c]))
   const origByIdx = new Map(proposal.columns.map((c) => [c.sourceIndex, c]))
 
   const setRole = (sourceIndex: number, role: ColumnMappingProposal["role"]) => {
-    const next = edited.map((c) =>
-      c.sourceIndex === sourceIndex ? { ...c, role } : c,
-    )
+    // Append when the AI proposal omitted this source column (LLM dropped it):
+    // otherwise the reviewer's override would silently vanish (no entry to map).
+    const exists = edited.some((c) => c.sourceIndex === sourceIndex)
+    const next = exists
+      ? edited.map((c) => (c.sourceIndex === sourceIndex ? { ...c, role } : c))
+      : [...edited, { sourceIndex, role, confidence: 1, reasoning: "Manual override" }]
     onChange(next)
   }
 
@@ -118,8 +123,9 @@ export function MappingReviewTable({ proposal, sourceColumns, edited, onChange }
                   <td className="p-2">
                     <select
                       value={role}
+                      disabled={disabled}
                       onChange={(e) => setRole(col.index, e.target.value as ColumnMappingProposal["role"])}
-                      className={`w-full px-1.5 py-1 rounded border bg-background text-xs ${
+                      className={`w-full px-1.5 py-1 rounded border bg-background text-xs disabled:opacity-50 ${
                         changed ? "border-emerald-500/60" : "border-border"
                       }`}
                       aria-label={`Роль колонки ${col.index}`}

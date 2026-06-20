@@ -114,11 +114,30 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  if (!workbook.Sheets[sheetName]) {
+  const sheet = workbook.Sheets[sheetName]
+  if (!sheet) {
     return NextResponse.json(
       { ok: false, error: `Sheet "${sheetName}" not found in workbook` },
       { status: 400 },
     )
+  }
+  // DoS guard: a 10 MB compressed xlsx can expand to a huge cell grid, and
+  // extractMapperInput runs sheet_to_json over the whole sheet. Bound the
+  // grid before parsing — analyze only needs a sample, not millions of cells.
+  const ref = sheet["!ref"]
+  if (ref) {
+    const range = XLSX.utils.decode_range(ref)
+    const cells =
+      (range.e.r - range.s.r + 1) * (range.e.c - range.s.c + 1)
+    if (cells > 500_000) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Sheet "${sheetName}" is too large to analyze (${cells.toLocaleString()} cells). Split it or pick a smaller sheet.`,
+        },
+        { status: 413 },
+      )
+    }
   }
 
   const mapperInput = extractMapperInput(workbook, sheetName, XLSX, {
@@ -138,7 +157,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, ...aiErrorBody(err) }, { status: 500 })
   }
 
-  if (proposal.usage) {
+  // Skip usage recording on a 24h-cache hit (runMapper returns zero-token
+  // usage when it serves a cached proposal) — no LLM call happened.
+  if (proposal.usage && (proposal.usage.inputTokens > 0 || proposal.usage.outputTokens > 0)) {
     await recordUsage(orgId, {
       inputTokens: proposal.usage.inputTokens,
       outputTokens: proposal.usage.outputTokens,

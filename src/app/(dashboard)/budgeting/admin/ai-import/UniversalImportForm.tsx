@@ -87,6 +87,10 @@ export function UniversalImportForm() {
   const [ackLowConf, setAckLowConf] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Monotonic token bumped on every mapping/sheet/file change. A dry-run
+  // preview only applies if the token still matches when it resolves — an
+  // edit made while a preview is in flight discards the now-stale result.
+  const previewEpoch = useRef(0)
 
   useEffect(() => {
     fetch("/api/companies")
@@ -104,6 +108,7 @@ export function UniversalImportForm() {
     setApplied(null)
     setAckLowConf(false)
     setError(null)
+    previewEpoch.current++
   }
   const pickFile = (f: File | null | undefined) => {
     if (!f) return
@@ -128,7 +133,18 @@ export function UniversalImportForm() {
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       const a = body as AnalyzeResponse
       setAnalysis(a)
-      setEdited(a.proposal.columns.map((c) => ({ ...c })))
+      previewEpoch.current++
+      // Normalise to one entry per SOURCE column. If the AI proposal omitted a
+      // column, default it to "skip" so the reviewer can still re-map it (an
+      // edit on a missing entry would otherwise silently vanish).
+      setEdited(
+        a.sourceColumns.map((sc) => {
+          const c = a.proposal.columns.find((x) => x.sourceIndex === sc.index)
+          return c
+            ? { ...c }
+            : { sourceIndex: sc.index, role: "skip" as const, confidence: 0, reasoning: "" }
+        }),
+      )
       setSheetName(targetSheet)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -164,6 +180,7 @@ export function UniversalImportForm() {
 
   async function runApply(dryRun: boolean) {
     if (!file || !analysis) return
+    const myEpoch = previewEpoch.current
     setBusy(dryRun ? "preview" : "apply")
     setError(null)
     try {
@@ -178,8 +195,14 @@ export function UniversalImportForm() {
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
-      if (dryRun) setPreview(body as ApplyResult)
-      else setApplied(body as ApplyResult)
+      if (dryRun) {
+        // Discard a preview whose mapping was edited while it was in flight —
+        // otherwise a stale preview could re-enable the commit gate.
+        if (previewEpoch.current !== myEpoch) return
+        setPreview(body as ApplyResult)
+      } else {
+        setApplied(body as ApplyResult)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -293,8 +316,10 @@ export function UniversalImportForm() {
           proposal={analysis.proposal}
           sourceColumns={analysis.sourceColumns}
           edited={edited}
+          disabled={busy !== null}
           onChange={(next) => {
             setEdited(next)
+            previewEpoch.current++ // invalidate any in-flight preview
             setPreview(null) // mapping changed → previous preview is stale
           }}
         />

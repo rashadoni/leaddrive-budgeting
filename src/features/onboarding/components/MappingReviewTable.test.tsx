@@ -57,4 +57,36 @@ describe("MappingReviewTable", () => {
     // other column untouched
     expect(next.find((c) => c.sourceIndex === 1)?.role).toBe("skip")
   })
+
+  it("appends an override when the AI proposal omitted a source column", () => {
+    // edited only covers column 0 — column 1 has no entry (AI dropped it).
+    const onChange = vi.fn()
+    const editedMissing: ColumnMappingProposal[] = [{ ...proposal.columns[0] }]
+    render(
+      <MappingReviewTable
+        proposal={proposal}
+        sourceColumns={sourceColumns}
+        edited={editedMissing}
+        onChange={onChange}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("Роль колонки 1"), { target: { value: "amount:Jan" } })
+    const next = onChange.mock.calls[0][0] as ColumnMappingProposal[]
+    // column 1 is appended, not lost
+    expect(next.find((c) => c.sourceIndex === 1)?.role).toBe("amount:Jan")
+    expect(next.find((c) => c.sourceIndex === 0)?.role).toBe("code")
+  })
+
+  it("locks selects when disabled", () => {
+    render(
+      <MappingReviewTable
+        proposal={proposal}
+        sourceColumns={sourceColumns}
+        edited={proposal.columns.map((c) => ({ ...c }))}
+        onChange={() => {}}
+        disabled
+      />,
+    )
+    expect((screen.getByLabelText("Роль колонки 0") as HTMLSelectElement).disabled).toBe(true)
+  })
 })
