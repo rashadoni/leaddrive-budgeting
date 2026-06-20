@@ -312,6 +312,43 @@ describe("POST /api/onboarding/import/staging/[id]/apply-multi — apply outcome
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
+  // Codex re-review P1 (2026-06-20): per-sheet control verdict, so a RED on
+  // one sheet is NOT masked by a larger same-parent-code total on another.
+  // Old flat-concat code keyed statedByParent by code (last wins): sheet B's
+  // 100k stated swallowed sheet A's 50% delta → yellow → committable. Now red.
+  it("409 RED on one sheet not masked by a same-parent-code total on another", async () => {
+    applierMocks.applyMultiSheetProposal.mockReturnValue({
+      perSheet: [
+        {
+          sheetName: "P&L-A",
+          result: {
+            lines: [{ code: "601", label: "A", accountType: "revenue", perMonth: Array(12).fill(10) }],
+            warnings: [],
+            parentRollupsDropped: [{ code: "P", plannedAnnual: 1000 }],
+            parentRollupsUnallocated: [{ parentCode: "P", plannedAnnual: 500 }], // 50% → RED on sheet A
+            sheetName: "P&L-A",
+            skippedRowCount: 0,
+          },
+        },
+        {
+          sheetName: "P&L-B",
+          result: {
+            lines: [{ code: "602", label: "B", accountType: "revenue", perMonth: Array(12).fill(10) }],
+            warnings: [],
+            parentRollupsDropped: [{ code: "P", plannedAnnual: 100000 }], // same code, large total
+            parentRollupsUnallocated: [],
+            sheetName: "P&L-B",
+            skippedRowCount: 0,
+          },
+        },
+      ],
+    })
+    const res = await POST(await makeRequest(), paramsFor(STAGING_ID))
+    expect(res.status).toBe(409)
+    expect((await res.json()).controlVerdict).toBe("red")
+    expect(prismaMock.$transaction).not.toHaveBeenCalled()
+  })
+
   it("409 critical anomaly without ack; 200 once acknowledged", async () => {
     prismaMock.importStaging.findFirst.mockResolvedValue({
       ...validStagingRow,

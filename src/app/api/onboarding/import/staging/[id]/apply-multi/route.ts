@@ -399,9 +399,15 @@ export async function POST(
   // Aggregate per-sheet success/failure stats + flat-concat ParsedBudgetLine[]
   const perSheet: PerSheetResult[] = []
   const allLines: ParsedBudgetLine[] = []
-  // Aggregate parent-rollup deltas across sheets for the control-total verdict.
-  const allDropped: Array<{ code: string; plannedAnnual: number }> = []
-  const allSynthetic: Array<{ parentCode: string; plannedAnnual: number }> = []
+  // Control-total reports computed PER SHEET (not on a flat cross-sheet
+  // concat). Codex re-review P1 (2026-06-20): two sheets can reuse the same
+  // parent code; concatenating drops them into one Map<code,total> where a
+  // large stated total on sheet B masks a RED mismatch on sheet A. Keep them
+  // separate and take the WORST verdict across sheets.
+  const sheetControls: Array<{
+    sheetName: string
+    report: ReturnType<typeof computeControlTotals>
+  }> = []
   for (const sheetResult of multiResult.perSheet) {
     if ("error" in sheetResult) {
       perSheet.push({ sheetName: sheetResult.sheetName, error: sheetResult.error })
@@ -416,9 +422,29 @@ export async function POST(
       parentRollupsUnallocated: r.parentRollupsUnallocated.length,
     })
     allLines.push(...r.lines)
-    allDropped.push(...r.parentRollupsDropped)
-    allSynthetic.push(...r.parentRollupsUnallocated)
+    sheetControls.push({
+      sheetName: sheetResult.sheetName,
+      report: computeControlTotals(r.parentRollupsDropped, r.parentRollupsUnallocated),
+    })
   }
+
+  // Worst verdict across sheets + mismatching rows tagged by sheet name.
+  const aggVerdict: "green" | "yellow" | "red" = sheetControls.some(
+    (s) => s.report.verdict === "red",
+  )
+    ? "red"
+    : sheetControls.some((s) => s.report.verdict === "yellow")
+      ? "yellow"
+      : "green"
+  const aggControlTotals = sheetControls
+    .flatMap((s) =>
+      s.report.controlTotals.map((c) => ({ ...c, sheetName: s.sheetName })),
+    )
+    .sort((a, b) => b.deltaPct - a.deltaPct)
+    .slice(0, 10)
+  // noControl only when EVERY sheet lacked parent rows to check against.
+  const aggNoControl =
+    sheetControls.length > 0 && sheetControls.every((s) => s.report.noControl)
 
   const successCount = perSheet.filter((r) => !isFailure(r)).length
   const failureCount = perSheet.filter(isFailure).length
@@ -508,15 +534,11 @@ export async function POST(
         incoming: ebitdaOf(incoming),
         deltaPct: pct(ebitdaOf(current), ebitdaOf(incoming)),
       },
-      // Phase 2 #1/#4 — control-total verdict aggregated across all sheets.
-      ...(() => {
-        const control = computeControlTotals(allDropped, allSynthetic)
-        return {
-          controlVerdict: control.verdict,
-          controlNoData: control.noControl,
-          controlTotals: control.controlTotals.slice(0, 10),
-        }
-      })(),
+      // Phase 2 #1/#4 — worst control-total verdict across sheets (computed
+      // per-sheet to avoid duplicate-parent-code masking; Codex re-review P1).
+      controlVerdict: aggVerdict,
+      controlNoData: aggNoControl,
+      controlTotals: aggControlTotals,
     })
   }
 
@@ -536,15 +558,15 @@ export async function POST(
       { status: 409 },
     )
   }
-  // (b) Control-total RED across the aggregated sheets = hard block.
-  const commitControl = computeControlTotals(allDropped, allSynthetic)
-  if (commitControl.verdict === "red") {
+  // (b) Control-total RED on ANY sheet = hard block (per-sheet verdict, so a
+  //     large parent total on one sheet can't mask another sheet's RED).
+  if (aggVerdict === "red") {
     return NextResponse.json(
       {
         error:
           "Контроль-сумма RED по листам: родительские строки не сходятся с суммой детей (вероятный мис-маппинг колонки). Коммит заблокирован.",
         controlVerdict: "red",
-        controlTotals: commitControl.controlTotals.slice(0, 10),
+        controlTotals: aggControlTotals,
       },
       { status: 409 },
     )

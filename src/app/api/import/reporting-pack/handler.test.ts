@@ -24,6 +24,9 @@ vi.mock("@/lib/ai/ai-error", () => ({
 }))
 vi.mock("xlsx", () => ({
   read: vi.fn(() => ({ SheetNames: [], Sheets: {} })),
+  // decode_range used by the per-sheet cell-count DoS guard. Default range is
+  // tiny; the cell-guard test overrides read() to return a big-!ref sheet.
+  utils: { decode_range: vi.fn(() => ({ s: { r: 0, c: 0 }, e: { r: 99999, c: 19 } })) },
 }))
 vi.mock("@/lib/onboarding/adapters/reporting-pack-importer", () => ({
   runReportingPackImport: vi.fn(),
@@ -32,6 +35,7 @@ vi.mock("@/lib/risk/recompute-trigger", () => ({
   runRecomputeForCompanies: vi.fn(async () => ({ ok: 1, unknown: 0, failed: 0, targets: 1 })),
 }))
 
+import * as XLSX from "xlsx"
 import { requireRole } from "@/lib/api-auth"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
@@ -100,6 +104,18 @@ describe("POST /api/import/reporting-pack", () => {
   it("400s an out-of-range year", async () => {
     const res = await POST(makeReq({ file: xlsxBlob(), year: "99999" }))
     expect(res.status).toBe(400)
+    expect(runReportingPackImport).not.toHaveBeenCalled()
+  })
+
+  it("413s a sheet that expands past the cell-count DoS guard", async () => {
+    // read() returns a sheet whose !ref decodes (via the mocked decode_range)
+    // to 100000×20 = 2,000,000 cells > 500k.
+    ;(XLSX.read as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      SheetNames: ["Big"],
+      Sheets: { Big: { "!ref": "A1:T100000" } },
+    })
+    const res = await POST(makeReq({ file: xlsxBlob(), year: "2026" }))
+    expect(res.status).toBe(413)
     expect(runReportingPackImport).not.toHaveBeenCalled()
   })
 

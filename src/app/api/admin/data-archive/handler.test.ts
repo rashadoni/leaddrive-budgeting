@@ -63,10 +63,12 @@ describe("POST /api/admin/data-archive", () => {
     expect(body.ok).toBe(true)
     expect(body.rowsAffected).toBe(84)
     expect(body.unattributableCfRows).toBe(5)
-    // the count query targets live, non-"::"-prefixed rows for the year
+    // the count query targets live rows for the year whose sourceId is null
+    // OR lacks the "<code>::" prefix — assert the exact predicate, not just
+    // its presence (Codex re-review note).
     const w = prismaMock.cashFlowEntry.count.mock.calls[0][0].where
     expect(w).toMatchObject({ organizationId: "org1", year: 2026, deletedAt: null })
-    expect(w.OR).toBeTruthy()
+    expect(w.OR).toEqual([{ sourceId: null }, { NOT: { sourceId: { contains: "::" } } }])
   })
 
   it("does NOT compute unattributable count for non-CF kinds", async () => {
