@@ -7,7 +7,12 @@
  * sheets directly:
  *
  *   Actual PLF / BS Actual / CF Actual   → "actual" plan
- *   Budget PLF / Budget CF               → "budget" plan
+ *   Budget PLF                           → "strategy" plan (2026-06-20: this
+ *     sheet carries the 10-year farming-STRATEGY budget — verified to the
+ *     manat against Farming strategy `İcmal` 2026 = 58,880,102 — NOT the
+ *     operational budget. Kept as its own plan so it never masquerades as the
+ *     operational budget. The operational budget arrives as a separate file
+ *     and imports into the "budget" plan.)
  *
  * Two modes:
  *   • preview — uses the PURE BU-aware parsers (parseReportingPack*). Zero
@@ -40,7 +45,7 @@ import {
   parseReportingPackCf,
 } from "./reporting-pack-detail"
 
-export type ReportingPackPlanKind = "actual" | "budget"
+export type ReportingPackPlanKind = "actual" | "budget" | "strategy"
 export type ReportingPackDataType = "PLF" | "BS" | "CF"
 
 export interface DetailSheetConfig {
@@ -68,7 +73,10 @@ export const REPORTING_PACK_DETAIL_SHEETS: DetailSheetConfig[] = [
   { sheetName: "Actual PLF", dataType: "PLF", planKind: "actual" },
   { sheetName: "BS Actual", dataType: "BS", planKind: "actual" },
   { sheetName: "CF Actual", dataType: "CF", planKind: "actual" },
-  { sheetName: "Budget PLF", dataType: "PLF", planKind: "budget", buHeader: "BU_3" },
+  // Budget PLF carries the multi-year farming-STRATEGY budget (verified
+  // 2026-06-20), so it lands in the "strategy" plan — NOT "budget". The
+  // operational budget arrives as a separate file → "budget" plan.
+  { sheetName: "Budget PLF", dataType: "PLF", planKind: "strategy", buHeader: "BU_3" },
 ]
 
 export interface EntityImportReport {

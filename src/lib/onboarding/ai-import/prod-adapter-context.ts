@@ -48,9 +48,13 @@ export async function resolveOrgContext(
   year: number,
   // Decouple plan: resolve the plan by KIND, not by name. "actual" (default)
   // = the realized-results plan the terminal reads; "budget" = the forward
-  // budget. After the Y3 relabel, finding by name would have collided with the
-  // empty budget plan and mis-routed financial imports into it.
-  kind: "actual" | "budget" = "actual",
+  // (operational) budget; "strategy" = the multi-year farming-strategy plan
+  // (2026-06-20: the reporting-pack's "Budget PLF" carries the 10-yr strategy,
+  // not the operational budget — kept as its own plan so standard
+  // actual/budget variance never conflates the two). After the Y3 relabel,
+  // finding by name would have collided with the empty budget plan and
+  // mis-routed financial imports into it.
+  kind: "actual" | "budget" | "strategy" = "actual",
 ): Promise<OrgContext> {
   const azsekerCompanies = await prisma.company.findMany({
     where: { organizationId, code: { startsWith: "AZSEKER" } },
@@ -59,7 +63,8 @@ export async function resolveOrgContext(
   const codeToId = new Map<string, string>(
     azsekerCompanies.map((c: { id: string; code: string }) => [c.code, c.id]),
   )
-  const planName = `Azərşəkər ${year} ${kind === "budget" ? "Budget" : "Actuals"}`
+  const planLabel = kind === "budget" ? "Budget" : kind === "strategy" ? "Strategy" : "Actuals"
+  const planName = `Azərşəkər ${year} ${planLabel}`
   // Prefer the data-holding plan of this kind (oldest = the canonical one).
   let plan = await prisma.budgetPlan.findFirst({
     where: { organizationId, year, kind, deletedAt: null },
