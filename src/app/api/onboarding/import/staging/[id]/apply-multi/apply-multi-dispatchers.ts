@@ -272,11 +272,17 @@ export async function runBsDispatcher({
             parsed.lines.flatMap((l) => Object.keys(l.monthlyAmounts)),
           ),
         ).map((k) => Number(k.split("-")[1]))
+        // Per-company clean-slate (Codex re-review 2026-06-20): scope by
+        // companyId — `accountCode` was dropped from BalanceSheetLine (Phase
+        // 2.1), and the previous code-scoped delete also left rows unscoped to
+        // a company. Clear THIS company's BS rows for the sheet's months, then
+        // re-insert. `codesInSheet` retained only for the warning/leaf count.
+        void codesInSheet;
         await tx.balanceSheetLine.deleteMany({
           where: {
             organizationId: orgIdLocal,
             planId: bsPlanId!,
-            accountCode: { in: codesInSheet },
+            companyId: company.id,
             year: targetYear,
             month: { in: monthsInSheet },
           },
@@ -288,8 +294,7 @@ export async function runBsDispatcher({
         const rows: Array<{
           organizationId: string
           planId: string
-          accountCode: string
-          accountName: string
+          companyId: string
           accountId: string
           lineType: string
           subType: string | null
@@ -329,8 +334,7 @@ export async function runBsDispatcher({
             rows.push({
               organizationId: orgIdLocal,
               planId: bsPlanId!,
-              accountCode: codeKey,
-              accountName: line.label || line.code,
+              companyId: company.id,
               accountId: coaId,
               lineType: line.lineType,
               subType: line.subType,
