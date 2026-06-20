@@ -167,10 +167,19 @@ export function renderInputForPrompt(input: MapperInput): string {
     )
     .join('\n');
 
+  // C2.7 — show the sample-row grid WIDE enough to cover a multi-year /
+  // multi-company sheet. The old 18-column cap hid the 2nd year band (e.g.
+  // 2026 months at cols 19-30) AND the business-unit column (col 37) from the
+  // row grid, so the LLM mapped only the year/entity it could "see" in
+  // context (proven on `Actual PLF`: only 2025 was mapped). Capped to bound
+  // tokens on pathologically wide sheets; the colSummary still lists every
+  // column. Display-only — does NOT affect `sampleRows` or the structure-hash.
+  const MAX_DISPLAY_COLS = 48;
+  const displayCols = Math.min(input.columns.length, MAX_DISPLAY_COLS);
   const rowsBlock = input.sampleRows
     .map(
       (row, i) =>
-        `R${String(i + 1).padStart(2)}: ${row.slice(0, 18).map((v) => truncate(v, 20)).join(' | ')}`,
+        `R${String(i + 1).padStart(2)}: ${row.slice(0, displayCols).map((v) => truncate(v, 20)).join(' | ')}`,
     )
     .join('\n');
 

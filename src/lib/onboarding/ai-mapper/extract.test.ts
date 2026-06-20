@@ -268,3 +268,15 @@ describe('extractMapperInput — stratified samples (C2.6)', () => {
     expect(distinct.has('EDEN') || distinct.has('CPC')).toBe(true)
   })
 })
+
+describe('renderInputForPrompt — wide row display (C2.7)', () => {
+  it('shows columns beyond the old 18-col cap (multi-year / multi-company)', () => {
+    const columns = Array.from({ length: 40 }, (_, i) => ({ index: i, headerText: `H${i}`, samples: [] as string[] }))
+    const wideRow = Array.from({ length: 40 }, (_, i) => `c${i}`)
+    const input = { sourceFile: 'f', sourceSheet: 's', columns, sampleRows: [wideRow] }
+    const out = renderInputForPrompt(input as Parameters<typeof renderInputForPrompt>[0])
+    // c25 + c39 sit past the old slice(0, 18) cutoff — they must now appear.
+    expect(out).toContain('c25')
+    expect(out).toContain('c39')
+  })
+})

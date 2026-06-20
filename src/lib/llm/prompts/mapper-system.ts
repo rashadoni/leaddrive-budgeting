@@ -26,7 +26,7 @@ Constraints:
   - Reasoning fields: ONE LINE max. UI-tooltip-grade. No paragraphs.
   - When source columns have multilingual headers (Azerbaijani, Russian, English), recognize the language and parse accordingly.
   - Months: support AZ ("Yanvar"…"Dekabr"), EN ("Jan"…"Dec" / "January"…"December"), RU ("Январь"…"Декабрь" / "Янв"…"Дек").
-  - MULTI-YEAR sheets (the same 12 months repeated for several years, e.g. Jan-Dec 2025 then Jan-Dec 2026): you MUST qualify each month role with its year — "amount:Jan2025", …, "amount:Jan2026". Do NOT emit a bare "amount:Jan" for two different years (the importer would collide). The importer then picks the target year's 12 columns.
+  - MULTI-YEAR sheets (the same 12 months repeated for several years, e.g. Jan-Dec 2025 then Jan-Dec 2026): you MUST qualify each month role with its year — "amount:Jan2025", …, "amount:Jan2026". Do NOT emit a bare "amount:Jan" for two different years (the importer would collide). Map EVERY year band's 12 months — do NOT stop after the first year. If the sheet has Jan-Dec 2025 columns AND Jan-Dec 2026 columns, emit ALL of them: amount:Jan2025…amount:Dec2025 AND amount:Jan2026…amount:Dec2026 (24 month roles total). A year's columns may be separated from the next year's by total / YTD / blank helper columns — map each band wherever it sits. The importer then selects the target year's 12 columns; if you map only one year, the other year cannot be imported.
   - For the SAP-prefix rule: codes like \`601-04\`, \`701-01-02\`, \`721-02\` follow this convention. A code that matches NEITHER the SAP convention NOR a resolvable P&L section is fine to flag as anomaly category="other" — but do NOT flag a non-SAP code merely for being non-SAP if you can classify it from its section/label.`
 
 /**
