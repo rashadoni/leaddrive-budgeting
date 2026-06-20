@@ -52,6 +52,8 @@ vi.mock("@/lib/onboarding/ai-mapper/entity-split", () => ({
 }))
 vi.mock("@/lib/onboarding/ai-mapper/entity-resolve", () => ({
   resolveEntityCompanies: vi.fn(() => ({ suggestions: {}, unresolved: [] })),
+  looksLikeEliminationBU: vi.fn((v: string) => /^(eje|aje|cons|consolidated)$/i.test(v.trim())),
+  SKIP_ENTITY: "__SKIP__",
 }))
 vi.mock("@/lib/prisma", () => ({
   prisma: {

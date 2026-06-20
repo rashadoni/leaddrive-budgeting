@@ -187,6 +187,36 @@ describe('POST .../apply-multi-entity', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
+  it('skips a __SKIP__ entity (EJE) — not written, not required to be mapped', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u_mgr', role: 'manager' });
+    stage({ entityValues: ['AZSF', 'EJE'] });
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14,
+      entityValues: ['AZSF', 'EJE'],
+      perEntity: [
+        { entityValue: 'AZSF', result: greenResult('X', 100) },
+        { entityValue: 'EJE', result: greenResult('Y', 50) }, // has lines, but reviewer skips it
+      ],
+    });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'coA', baseCurrencyCode: 'AZN' }]);
+    applyLinesMock.applyParsedLinesToCompany.mockResolvedValueOnce({ inserted: 1, deleted: 0 });
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        budgetPlan: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'plan1' }) },
+        importStaging: { update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
+      };
+      return cb(tx);
+    });
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EJE: '__SKIP__' }) }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.skipped).toEqual(['EJE']);
+    expect(body.entityCount).toBe(1);
+    // EJE excluded from the write; only AZSF committed (no unmapped-409 for EJE).
+    expect(applyLinesMock.applyParsedLinesToCompany).toHaveBeenCalledTimes(1);
+    expect(applyLinesMock.applyParsedLinesToCompany.mock.calls[0][1].companyId).toBe('coA');
+  });
+
   it('409 when two entity values map to the SAME company (collateral-wipe path)', async () => {
     await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
     stage();

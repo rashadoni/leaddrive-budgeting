@@ -25,6 +25,38 @@ export interface CompanyLite {
   name: string;
 }
 
+/**
+ * Sentinel `entityMap` value meaning "do NOT import this BU" — used for
+ * elimination / consolidation / adjustment blocks (EJE/AJE/CONSOLIDATED) that
+ * are not standalone companies. A skipped entity is excluded from the write and
+ * is NOT required to be mapped (so the all-or-none gate doesn't force the
+ * reviewer to send an elimination block to a real company).
+ */
+export const SKIP_ENTITY = '__SKIP__';
+
+const ELIMINATION_EXACT = new Set([
+  'EJE', 'AJE', 'ELIM', 'IC', 'CONS', 'CONSO', 'ADJ', 'ELIMINATION',
+  'ELIMINATIONS', 'CONSOLIDATED', 'CONSOLIDATION', 'INTERCOMPANY',
+  'ADJUSTMENT', 'ADJUSTMENTS', 'TOTAL', 'GROUP',
+]);
+
+/**
+ * Heuristic: does a BU value look like an elimination / consolidation / rollup
+ * / adjustment block rather than a real operating company? The generic
+ * analogue of the bespoke `REPORTING_PACK_SKIP_BU` set. Short codes match
+ * EXACTLY (so "IC" doesn't match "ICELAND"); descriptive long forms match as a
+ * substring, multilingual (EN/RU/AZ). Advisory only — the reviewer decides;
+ * the route just lets them skip.
+ */
+export function looksLikeEliminationBU(value: string): boolean {
+  const v = value.trim().toUpperCase();
+  if (v === '') return false;
+  if (ELIMINATION_EXACT.has(v)) return true;
+  return /elimin|consolidat|inter[\s-]?company|adjustment|rollup|roll-up|консолид|элиминац|корректировк|внутригрупп|устранен|ixtisar|konsolid/i.test(
+    value,
+  );
+}
+
 export interface EntityResolution {
   /** entityValue → companyId for the auto-matched values. */
   suggestions: Record<string, string>;

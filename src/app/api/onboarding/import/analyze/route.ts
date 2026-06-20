@@ -32,7 +32,7 @@ import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import { getApprovedTemplate } from "@/lib/onboarding/ai-mapper/template-store"
 import { findEntityColumn, findCodeColumn, extractEntityValues } from "@/lib/onboarding/ai-mapper/entity-split"
-import { resolveEntityCompanies } from "@/lib/onboarding/ai-mapper/entity-resolve"
+import { resolveEntityCompanies, looksLikeEliminationBU } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
 
@@ -206,6 +206,7 @@ export async function POST(request: NextRequest) {
   let multiEntity: { entityColumnIndex: number; entityValues: string[] } | undefined
   let entityValues: string[] | undefined
   let entitySuggestions: Record<string, string> | undefined
+  let entityEliminations: string[] | undefined
   if (entityColumnIndex !== null) {
     entityValues = extractEntityValues(
       workbook,
@@ -220,6 +221,10 @@ export async function POST(request: NextRequest) {
       select: { id: true, code: true, name: true },
     })
     entitySuggestions = resolveEntityCompanies(entityValues, orgCompanies).suggestions
+    // BU values that look like elimination / consolidation / rollup blocks
+    // (EJE/AJE/CONSOLIDATED…) — the UI pre-marks them "skip" so the reviewer
+    // doesn't have to route a non-company block to a real company.
+    entityEliminations = entityValues.filter(looksLikeEliminationBU)
   }
 
   const staging = await prisma.importStaging.create({
@@ -259,5 +264,7 @@ export async function POST(request: NextRequest) {
     multiEntity: multiEntity !== undefined,
     entityValues,
     entitySuggestions,
+    // BU values that look like eliminations/rollups → the UI pre-selects "skip".
+    entityEliminations,
   })
 }

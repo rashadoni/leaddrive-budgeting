@@ -43,7 +43,12 @@ interface AnalyzeResponse {
   multiEntity?: boolean
   entityValues?: string[]
   entitySuggestions?: Record<string, string>
+  // Phase C C2.8 — BU values that look like eliminations/rollups (pre-skip).
+  entityEliminations?: string[]
 }
+
+// Sentinel entityMap value meaning "do not import this BU" (eliminations).
+const SKIP_ENTITY = "__SKIP__"
 
 // Phase C C2.4b — /apply-multi-entity response shapes (distinct from the
 // single-company ApplyResult).
@@ -282,7 +287,17 @@ export function UniversalImportForm() {
       setTargetCurrency(curs.length > 1 ? curs[0] : "")
       // Multi-entity: seed the entityValue→company map from the AI's
       // auto-suggested matches (the reviewer confirms/corrects below).
-      setEntityMap(a.multiEntity ? { ...(a.entitySuggestions ?? {}) } : {})
+      // Seed entity→company from the AI's suggestions, and PRE-SKIP any BU that
+      // looks like an elimination/rollup (EJE/AJE/CONSOLIDATED…) so the reviewer
+      // only confirms rather than having to route a non-company block.
+      setEntityMap(
+        a.multiEntity
+          ? {
+              ...(a.entitySuggestions ?? {}),
+              ...Object.fromEntries((a.entityEliminations ?? []).map((v) => [v, SKIP_ENTITY])),
+            }
+          : {},
+      )
       setMePreview(null)
       setMeApplied(null)
       previewEpoch.current++
@@ -645,7 +660,8 @@ export function UniversalImportForm() {
           </div>
           <div className="text-xs text-muted-foreground">
             Каждое значение BU направляется в отдельную компанию. Проверьте
-            авто-сопоставление; одно значение — одна компания.
+            авто-сопоставление; одно значение — одна компания. Блоки элиминаций/
+            консолидации (EJE/AJE/…) можно «Пропустить».
           </div>
           <div className="border rounded overflow-hidden">
             <table className="w-full text-sm">
@@ -656,27 +672,39 @@ export function UniversalImportForm() {
                 </tr>
               </thead>
               <tbody>
-                {(analysis.entityValues ?? []).map((val) => (
-                  <tr key={val} className="border-t">
-                    <td className="p-2 font-mono text-xs">{val === "" ? "(пусто)" : val}</td>
-                    <td className="p-2">
-                      <select
-                        value={entityMap[val] ?? ""}
-                        disabled={busy !== null}
-                        onChange={(e) => setEntityMapEntry(val, e.target.value)}
-                        className="w-full px-1.5 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
-                        aria-label={`Компания для ${val || "(пусто)"}`}
-                      >
-                        <option value="">— выберите —</option>
-                        {companies.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name} ({c.code})
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                {(analysis.entityValues ?? []).map((val) => {
+                  const isElim = (analysis.entityEliminations ?? []).includes(val)
+                  const isSkipped = entityMap[val] === SKIP_ENTITY
+                  return (
+                    <tr key={val} className={`border-t ${isSkipped ? "opacity-60" : ""}`}>
+                      <td className="p-2 font-mono text-xs">
+                        {val === "" ? "(пусто)" : val}
+                        {isElim && (
+                          <span className="ml-2 text-amber-700 dark:text-amber-400" title="Похоже на элиминацию/консолидацию — обычно не импортируется">
+                            ⚠ элиминация?
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <select
+                          value={entityMap[val] ?? ""}
+                          disabled={busy !== null}
+                          onChange={(e) => setEntityMapEntry(val, e.target.value)}
+                          className="w-full px-1.5 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+                          aria-label={`Компания для ${val || "(пусто)"}`}
+                        >
+                          <option value="">— выберите —</option>
+                          <option value={SKIP_ENTITY}>⊘ Пропустить (не импортировать)</option>
+                          {companies.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.code})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

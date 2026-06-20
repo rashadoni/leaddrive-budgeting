@@ -37,6 +37,7 @@ import {
   findEntityColumn,
 } from '@/lib/onboarding/ai-mapper/entity-split';
 import { applyParsedLinesToCompany } from '@/lib/onboarding/ai-mapper/apply-lines';
+import { SKIP_ENTITY } from '@/lib/onboarding/ai-mapper/entity-resolve';
 import { computeControlTotals } from '@/lib/onboarding/ai-mapper/control-totals';
 import { validateImport } from '@/lib/onboarding/ai-mapper/validate-import';
 import { detectProposalYear } from '@/lib/onboarding/ai-mapper/applier';
@@ -267,11 +268,20 @@ export async function POST(
     (p): p is { entityValue: string; result: ParseResult } => 'result' in p && p.result.lines.length > 0,
   );
 
+  // A BU the reviewer marked `__SKIP__` (an elimination / consolidation / rollup
+  // block, e.g. EJE/AJE/CONSOLIDATED) is NOT imported: excluded from the write
+  // and from the all-mapped / injective / validation gates. `toWrite` is the
+  // set we actually commit.
+  const isSkip = (v: string) => entityMap[v] === SKIP_ENTITY;
+  const skippedValues = writeable.filter((p) => isSkip(p.entityValue)).map((p) => p.entityValue);
+  const toWrite = writeable.filter((p) => !isSkip(p.entityValue));
+
   // Per-entity control verdict + FULL validation engine (Codex #5, 2026-06-20:
   // the multi-entity path must run validateImport per entity, not just
   // control-totals — so coverage / sign-convention / etc. hard-block here too,
-  // mirroring the single /apply route).
-  const perEntityChecks = writeable.map((p) => {
+  // mirroring the single /apply route). Skipped entities aren't written → not
+  // validated for blocking.
+  const perEntityChecks = toWrite.map((p) => {
     const control = computeControlTotals(p.result.parentRollupsDropped, p.result.parentRollupsUnallocated);
     return { entityValue: p.entityValue, control, validation: validateImport(p.result, control) };
   });
@@ -284,8 +294,9 @@ export async function POST(
   // coverage OR wrong/ambiguous cost-sign convention).
   const blockedEntities = perEntityChecks.filter((c) => c.validation.verdict === 'blocked');
 
-  // Validate the entity map (companies in-org + injective + all-mapped).
-  const mappedCompanyIds = [...new Set(writeable.map((p) => entityMap[p.entityValue]).filter((v): v is string => !!v))];
+  // Validate the entity map (companies in-org + injective + all-mapped) over the
+  // to-be-written entities only.
+  const mappedCompanyIds = [...new Set(toWrite.map((p) => entityMap[p.entityValue]).filter((v): v is string => !!v))];
   const inOrgCompanies = mappedCompanyIds.length
     ? await prisma.company.findMany({
         where: { id: { in: mappedCompanyIds }, organizationId: orgId },
@@ -295,10 +306,10 @@ export async function POST(
   const inOrgIds = new Set(inOrgCompanies.map((c) => c.id));
   const baseCurrencyByCompany = new Map(inOrgCompanies.map((c) => [c.id, c.baseCurrencyCode ?? 'AZN']));
 
-  const unmapped = writeable.filter((p) => !entityMap[p.entityValue]).map((p) => p.entityValue);
+  const unmapped = toWrite.filter((p) => !entityMap[p.entityValue]).map((p) => p.entityValue);
   const crossOrg = mappedCompanyIds.filter((id) => !inOrgIds.has(id));
-  // Injective: each writeable entity → a DISTINCT company.
-  const assigned = writeable.map((p) => entityMap[p.entityValue]).filter((v): v is string => !!v);
+  // Injective: each to-be-written entity → a DISTINCT company (skips excluded).
+  const assigned = toWrite.map((p) => entityMap[p.entityValue]).filter((v): v is string => !!v);
   const dupCompanyIds = assigned.filter((id, i) => assigned.indexOf(id) !== i);
 
   // ── Dry-run preview — advisory, never blocks ────────────────────────────
@@ -318,6 +329,7 @@ export async function POST(
         return {
           entityValue: p.entityValue,
           companyId: companyId ?? null,
+          skipped: isSkip(p.entityValue),
           lineCount: 'result' in p ? p.result.lines.length : 0,
           error: 'error' in p ? p.error : undefined,
           wouldDelete,
@@ -330,7 +342,8 @@ export async function POST(
       dryRun: true,
       year: targetYear,
       entityCount: split.entityValues.length,
-      writeableCount: writeable.length,
+      writeableCount: toWrite.length,
+      skipped: skippedValues,
       perEntity: perEntityPreview,
       controlVerdict: aggVerdict,
       // Advisory mapping issues — the UI gates on these; the commit enforces.
@@ -357,8 +370,11 @@ export async function POST(
       { status: 409 },
     );
   }
-  if (writeable.length === 0) {
-    return NextResponse.json({ error: 'Нет строк для импорта (0 компаний с данными).' }, { status: 400 });
+  if (toWrite.length === 0) {
+    return NextResponse.json(
+      { error: 'Нет компаний для импорта (0 строк с данными или все BU помечены «пропустить»).' },
+      { status: 400 },
+    );
   }
   if (unmapped.length > 0) {
     return NextResponse.json(
@@ -417,8 +433,11 @@ export async function POST(
   }
 
   // ── Transaction: shared plan, per-entity clean-slate + insert ───────────
+  // committedMap records the FULL reviewer decision (written companies + the
+  // explicit skips) as the audit snapshot of the destructive footprint.
   const committedMap: Record<string, string> = {};
-  for (const p of writeable) committedMap[p.entityValue] = entityMap[p.entityValue];
+  for (const p of toWrite) committedMap[p.entityValue] = entityMap[p.entityValue];
+  for (const v of skippedValues) committedMap[v] = SKIP_ENTITY;
 
   interface EntityWriteReport {
     entityValue: string;
@@ -443,7 +462,7 @@ export async function POST(
         }
 
         const reports: EntityWriteReport[] = [];
-        for (const p of writeable) {
+        for (const p of toWrite) {
           const companyId = entityMap[p.entityValue];
           const { inserted, deleted } = await applyParsedLinesToCompany(tx, {
             organizationId: orgId,
@@ -523,9 +542,9 @@ export async function POST(
   const totalDeleted = txReports.reduce((s, r) => s + r.deleted, 0);
   // Aggregate parse diagnostics across the written entities (the audit base
   // shape requires them; the per-company footprint is in metadata.entities).
-  const aggWarnings = writeable.reduce((s, p) => s + p.result.warnings.length, 0);
-  const aggDropped = writeable.reduce((s, p) => s + p.result.parentRollupsDropped.length, 0);
-  const aggUnalloc = writeable.reduce((s, p) => s + p.result.parentRollupsUnallocated.length, 0);
+  const aggWarnings = toWrite.reduce((s, p) => s + p.result.warnings.length, 0);
+  const aggDropped = toWrite.reduce((s, p) => s + p.result.parentRollupsDropped.length, 0);
+  const aggUnalloc = toWrite.reduce((s, p) => s + p.result.parentRollupsUnallocated.length, 0);
 
   const { logAuditEvent, buildAuditContext } = await import('@/lib/audit/log');
   const auditResult = await logAuditEvent(prisma, {
@@ -567,6 +586,7 @@ export async function POST(
       deleted: totalDeleted,
       entityCount: txReports.length,
       perEntity: txReports,
+      skipped: skippedValues,
       recompute: recomputeResult,
       indicatorsStale,
       auditStale,

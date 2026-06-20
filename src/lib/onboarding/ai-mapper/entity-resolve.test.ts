@@ -61,3 +61,26 @@ describe('resolveEntityCompanies', () => {
     expect(r.unresolved).toEqual(['']);
   });
 });
+
+import { looksLikeEliminationBU, SKIP_ENTITY } from './entity-resolve'
+
+describe('looksLikeEliminationBU', () => {
+  it('flags the bespoke elimination codes (EJE/AJE/CONSOLIDATED)', () => {
+    for (const v of ['EJE', 'AJE', 'eje', 'Consolidated', 'CONS', 'IC', 'ADJ']) {
+      expect(looksLikeEliminationBU(v)).toBe(true)
+    }
+  })
+  it('flags descriptive long forms (multilingual)', () => {
+    for (const v of ['Eliminations', 'Intercompany', 'inter-company', 'Adjustment block', 'Консолидация', 'Элиминация']) {
+      expect(looksLikeEliminationBU(v)).toBe(true)
+    }
+  })
+  it('does NOT flag real operating companies', () => {
+    for (const v of ['AZSF', 'EDEN', 'CPC', 'ProMalt', 'ICELAND', 'Acme Corp', '']) {
+      expect(looksLikeEliminationBU(v)).toBe(false)
+    }
+  })
+  it('exposes the skip sentinel', () => {
+    expect(SKIP_ENTITY).toBe('__SKIP__')
+  })
+})
