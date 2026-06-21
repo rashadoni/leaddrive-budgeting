@@ -35,10 +35,11 @@ import { findEntityColumn, findCodeColumn, extractEntityValues } from "@/lib/onb
 import { resolveEntityCompanies, looksLikeEliminationBU } from "@/lib/onboarding/ai-mapper/entity-resolve"
 import type { MappingProposal } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 60
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+const MAX_FILE_SIZE = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 const RATE_LIMIT = { name: "onboarding-analyze", max: 10, windowMs: 60 * 60_000 }
 // One mapper call is ~3-5K input + ~2K output; reserve conservatively.
 const TOKEN_RESERVE = 8000

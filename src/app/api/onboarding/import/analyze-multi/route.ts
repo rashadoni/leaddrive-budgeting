@@ -28,10 +28,11 @@ import { runMapper } from "@/lib/onboarding/ai-mapper/mapper"
 import { computeStructureHash } from "@/lib/onboarding/ai-mapper/structure-hash"
 import type { MappingProposal, SourceColumn } from "@/lib/onboarding/ai-mapper/types"
 import { prisma } from "@/lib/prisma"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 120
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_FILE_SIZE = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 const MAX_SHEETS = 20
 const RATE_LIMIT = { name: "onboarding-analyze-multi", max: 6, windowMs: 60 * 60_000 }
 const TOKEN_PER_SHEET = 8000

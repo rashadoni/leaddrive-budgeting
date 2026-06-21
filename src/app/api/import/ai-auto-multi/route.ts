@@ -55,6 +55,10 @@ export const maxDuration = 120
 
 /** Hard caps protecting the LLM budget + dev server liveness. */
 const MAX_FILES = 10
+// Total SUM across all files in one batch — a memory/LLM-budget guard, NOT the
+// per-file import cap (that's MAX_IMPORT_UPLOAD_BYTES, 64MB). Kept separate +
+// lower on purpose: 10 files near the per-file cap would be ~640MB. A single
+// large workbook belongs on the single-file tab.
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024 // 20 MB sum across all files
 const PER_FILE_TOKEN_BUDGET = 35_000 // Phase 7.M Tier 4 measured cost
 

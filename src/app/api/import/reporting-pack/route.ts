@@ -25,11 +25,12 @@ import { aiErrorBody } from "@/lib/ai/ai-error"
 import { prisma } from "@/lib/prisma"
 import { runReportingPackImport } from "@/lib/onboarding/adapters/reporting-pack-importer"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 300
 
 const RATE_LIMIT = { name: "import-reporting-pack", max: 6, windowMs: 60 * 60_000 }
-const MAX_BYTES = 20 * 1024 * 1024 // 20 MB
+const MAX_BYTES = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 
 export async function POST(request: NextRequest) {
   const session = await requireRole(request, "admin")

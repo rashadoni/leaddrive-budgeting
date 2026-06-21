@@ -22,7 +22,12 @@ const nextConfig: NextConfig = {
     // route at once. Files beyond this should hit the in-handler Content-Length
     // guard with a clean message; truly huge files need a streaming-to-disk
     // redesign rather than formData() buffering.
-    proxyClientMaxBodySize: "64mb",
+    //
+    // 96MB here is deliberately ABOVE the 64MB per-file import cap
+    // (MAX_IMPORT_UPLOAD_BYTES) so a max-size file plus its multipart
+    // boundaries + form fields still fits in the proxy buffer without being
+    // truncated. Keep this > that cap whenever either changes.
+    proxyClientMaxBodySize: "96mb",
   },
 }
 

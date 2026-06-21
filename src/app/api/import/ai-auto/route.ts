@@ -55,6 +55,7 @@ import {
   affectedIndicatorsForDataType,
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
 import { prisma } from "@/lib/prisma"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 // 120s, not 60: a real 26MB / 29-sheet workbook took 57s end-to-end (≈10s
 // parse + ≈45s classifier) — uncomfortably close to a 60s cutoff. The classify
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
   // broken multipart → an uncaught, opaque 500. Reject early with a clear,
   // actionable message instead (caught the 26MB Reporting 2026.xlsx 500 on
   // 2026-06-21). Content-Length is the whole multipart body (file + fields).
-  const MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+  const MAX_UPLOAD_BYTES = MAX_IMPORT_UPLOAD_BYTES
   const contentLength = Number(request.headers.get("content-length") ?? 0)
   if (contentLength > MAX_UPLOAD_BYTES) {
     return NextResponse.json(

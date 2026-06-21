@@ -41,13 +41,14 @@ import {
   parseSummaryRollupSheet,
   type ParsedBudgetLine,
 } from "@/lib/onboarding/adapters/azmade-sopl"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 60
 
 // 10 MB — same cap as AI Mapper's analyze endpoint. Typical workbooks
 // observed at 200-400 KB; this leaves 25× headroom for plan-vs-actual
 // + multi-year sheets without becoming a memory DoS vector.
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_FILE_SIZE = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 
 // Stricter than the read endpoints: a budget import touches BudgetPlan +
 // ChartOfAccount + N BudgetLine rows + recompute. 5/min/org keeps an

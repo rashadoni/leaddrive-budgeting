@@ -88,10 +88,11 @@ import {
   type ParsedKpiFact,
 } from "@/lib/onboarding/adapters/azseker-workbook-kpi"
 import { runKpiDispatcher, runBsDispatcher } from "./apply-multi-dispatchers"
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 export const maxDuration = 120 // larger than single-sheet — N parallel writes
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
+const MAX_FILE_SIZE = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 const RATE_LIMIT = { name: "onboarding-apply-multi", max: 5, windowMs: 60_000 }
 
 interface PerSheetSuccess {

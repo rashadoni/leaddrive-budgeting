@@ -46,13 +46,14 @@ import { computeStructureHash } from '@/lib/onboarding/ai-mapper/structure-hash'
 import { currentBakuYearNumber } from '@/lib/risk/periods';
 import type { MappingProposal } from '@/lib/onboarding/ai-mapper/types';
 import type { ParseResult } from '@/lib/onboarding/adapters/azmade-sopl';
+import { MAX_IMPORT_UPLOAD_BYTES } from "@/lib/import/upload-limits"
 
 const log = getLogger('api:apply-multi-entity');
 const recomputeLog = getLogger('api:apply-multi-entity:recompute');
 
 export const maxDuration = 120;
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = MAX_IMPORT_UPLOAD_BYTES // shared cap — see src/lib/import/upload-limits.ts
 const RATE_LIMIT = { name: 'onboarding-apply-multi-entity', max: 5, windowMs: 60_000 };
 
 /** Reserved proposal key persisted by /analyze for a multi-entity sheet. */
