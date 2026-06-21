@@ -3758,5 +3758,46 @@
       "applyBtn": "Tətbiq et (bazaya yazı)",
       "applyBusy": "Yazılır…"
     }
+  },
+  "adminMultiSheet": {
+    "intro": "Bir faylda bir <b>şirkətin bir neçə P&L vərəqi</b>: AI hər vərəqi uyğunlaşdırır, siz yoxlayıb/düzəlişlər edirsiniz, ümumi üzləşdirməni görürsünüz və atomar tətbiq edirsiniz. Bir vərəq üçün — «İstənilən fayl (AI)» tabı.",
+    "companyLabel": "Şirkət (qurum)",
+    "selectPlaceholder": "— seçin —",
+    "dropOrClick": ".xlsx atın və ya klikləyin",
+    "classifyBusy": "AI vərəqləri tanıyır…",
+    "classifyBtn": "Vərəqləri tanı",
+    "selectPlfSheets": "P&L vərəqlərini seçin (≥2):",
+    "analyzeBusy": "AI uyğunlaşdırır…",
+    "analyzeBtn": "Seçilmişləri analiz et ({count})",
+    "lessThan2Plf": "2-dən az P&L vərəqi tapıldı. Bir vərəq üçün «İstənilən fayl (AI)» tabından istifadə edin.",
+    "previewBusy": "Hesablanır…",
+    "previewBtn": "Önizləmə (yazısız)",
+    "previewTitle": "Önizləmə · il {year}",
+    "rowsToWriteLabel": "yazılacaq sətirlər",
+    "sheetsOk": "vərəq ok",
+    "errors": "xəta",
+    "noControlData": "ℹ Avtomatik üzləşdirmə üçün valideyn cəmləri yoxdur — uyğunlaşdırmanı əl ilə yoxlayın.",
+    "reconcileLabel": "Üzləşdirmə:",
+    "failureBlocked": "⛔ {count} vərəq oxunmadı — kommit bloklandı («hamısı və ya heç biri» rejimi). Əks halda şirkətin datası natamam dəstlə əvəz olunardı. Problemli vərəqləri düzəldin və önizləməni yeniləyin.",
+    "redBlocked": "🔴 Nəzarət cəmi RED — kommit sərt bloklandı (təsdiq edilə bilməz). Ehtimal ki, sütun səhv uyğunlaşdırılıb. Server də belə kommiti rədd edəcək.",
+    "thParent": "Valideyn",
+    "thStated": "Bəyan edilmiş",
+    "thLeafSum": "Σ yarpaqlar",
+    "thDeltaPct": "Δ%",
+    "ackReview": "Vərəqlərdən birində aşağı AI inamı / kritik anomaliya — uyğunlaşdırmanı əl ilə yoxladım.",
+    "ackControl": "Nəzarət cəmi fərqi yoxlanıldı (🔴 = ehtimal ki, səhv uyğunlaşdırma).",
+    "applyHint": "Əvvəlcə önizləməni işə salın",
+    "applyBusy": "Yazılır…",
+    "applyBtn": "Bütün vərəqləri tətbiq et (bazaya yazı)",
+    "appliedTitle": "İdxal edildi · il {year}",
+    "writtenRowsLabel": "yazılmış sətirlər",
+    "replaced": "əvəz edildi",
+    "indicatorsStale": "⚠ bəzi göstəricilər yenidən hesablanmadı — sonra təkrarlayın/yoxlayın.",
+    "importAnother": "Daha bir fayl idxal et",
+    "verdict": {
+      "green": "nəzarət cəmləri uyğundur",
+      "yellow": "kiçik fərq (≤1%)",
+      "red": "böyük fərq — ehtimal ki, səhv uyğunlaşdırma"
+    }
   }
 }

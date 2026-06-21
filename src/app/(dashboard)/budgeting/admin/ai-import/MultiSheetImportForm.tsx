@@ -12,6 +12,7 @@
  * aware) + MappingReviewTable + proposal-overrides helpers.
  */
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react"
+import { useTranslations } from "next-intl"
 import type { ColumnMappingProposal, MappingProposal, SourceColumn } from "@/lib/onboarding/ai-mapper/types"
 import { buildUserOverrides } from "@/features/onboarding/lib/proposal-overrides"
 import { MappingReviewTable } from "@/features/onboarding/components/MappingReviewTable"
@@ -47,10 +48,10 @@ interface AppliedResult {
 
 type Busy = null | "classify" | "analyze" | "preview" | "apply"
 
-const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string; label: string }> = {
-  green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢", label: "контрольные суммы сходятся" },
-  yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡", label: "малое расхождение (≤1%)" },
-  red: { fg: "text-red-700 dark:text-red-400", icon: "🔴", label: "крупное расхождение — вероятный мис-маппинг" },
+const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string }> = {
+  green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢" },
+  yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡" },
+  red: { fg: "text-red-700 dark:text-red-400", icon: "🔴" },
 }
 const fmtN = (n: number) => Math.round(n).toLocaleString("ru-RU")
 
@@ -68,6 +69,7 @@ function flatten(tree: unknown): CompanyOpt[] {
 }
 
 export function MultiSheetImportForm() {
+  const t = useTranslations("adminMultiSheet")
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
   const [companyId, setCompanyId] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -233,13 +235,12 @@ export function MultiSheetImportForm() {
   return (
     <div className="space-y-6">
       <div className="text-xs text-muted-foreground leading-relaxed border rounded p-3 bg-muted/20">
-        Несколько <b>P&amp;L-листов одной компании</b> в одном файле: AI размечает каждый лист, вы
-        проверяете/правите, видите общую сверку, и применяете атомарно. Для одного листа — вкладка «Любой файл (AI)».
+        {t.rich("intro", { b: (chunks) => <b>{chunks}</b> })}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="text-xs text-muted-foreground">Компания (сущность)</label>
+          <label className="text-xs text-muted-foreground">{t("companyLabel")}</label>
           <select
             value={companyId}
             onChange={(e) => {
@@ -248,7 +249,7 @@ export function MultiSheetImportForm() {
             }}
             className="w-full mt-1 px-2 py-2 rounded border border-border bg-background text-sm"
           >
-            <option value="">— выберите —</option>
+            <option value="">{t("selectPlaceholder")}</option>
             {companies.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} ({c.code})
@@ -279,7 +280,7 @@ export function MultiSheetImportForm() {
             className="hidden"
             onChange={(e: ChangeEvent<HTMLInputElement>) => pickFile(e.target.files?.[0])}
           />
-          <div className="text-sm">{file ? <span className="font-mono">{file.name}</span> : "Перетащите .xlsx или нажмите"}</div>
+          <div className="text-sm">{file ? <span className="font-mono">{file.name}</span> : t("dropOrClick")}</div>
         </div>
       </div>
 
@@ -289,7 +290,7 @@ export function MultiSheetImportForm() {
         disabled={!file || !companyId || busy !== null}
         className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
       >
-        {busy === "classify" ? "AI распознаёт листы…" : "Распознать листы"}
+        {busy === "classify" ? t("classifyBusy") : t("classifyBtn")}
       </button>
 
       {error && (
@@ -301,7 +302,7 @@ export function MultiSheetImportForm() {
       {/* Sheet multi-select */}
       {plfSheets.length > 0 && !analysis && (
         <div className="space-y-2">
-          <div className="text-xs text-muted-foreground">Выберите P&L-листы (≥2):</div>
+          <div className="text-xs text-muted-foreground">{t("selectPlfSheets")}</div>
           <div className="grid grid-cols-2 gap-1">
             {plfSheets.map((c) => (
               <label key={c.sheetName} className="flex items-center gap-2 text-sm">
@@ -325,11 +326,11 @@ export function MultiSheetImportForm() {
             disabled={selected.length < 2 || busy !== null}
             className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "analyze" ? "AI размечает…" : `Анализировать выбранные (${selected.length})`}
+            {busy === "analyze" ? t("analyzeBusy") : t("analyzeBtn", { count: selected.length })}
           </button>
           {classifications.length > 0 && plfSheets.length < 2 && (
             <div className="text-xs text-amber-700 dark:text-amber-400">
-              Найдено &lt;2 P&L-листов. Для одного листа используйте вкладку «Любой файл (AI)».
+              {t("lessThan2Plf")}
             </div>
           )}
         </div>
@@ -362,39 +363,34 @@ export function MultiSheetImportForm() {
             disabled={busy !== null}
             className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "preview" ? "Считаю…" : "Превью (без записи)"}
+            {busy === "preview" ? t("previewBusy") : t("previewBtn")}
           </button>
 
           {preview && (
             <div className="border rounded p-3 bg-muted/20 text-sm space-y-2">
-              <div className="font-semibold">👁 Превью · год {preview.year}</div>
+              <div className="font-semibold">👁 {t("previewTitle", { year: preview.year })}</div>
               <div className="text-xs text-muted-foreground">
-                строк к записи: <b>{preview.incomingLineCount}</b> · листов ок:{" "}
-                {preview.sheetCount.success} · ошибок: {preview.sheetCount.failure}
+                {t("rowsToWriteLabel")}: <b>{preview.incomingLineCount}</b> · {t("sheetsOk")}:{" "}
+                {preview.sheetCount.success} · {t("errors")}: {preview.sheetCount.failure}
               </div>
               {preview.controlNoData ? (
                 <div className="text-xs text-sky-700 dark:text-sky-400">
-                  ℹ Нет родительских итогов для авто-сверки — проверьте разметку вручную.
+                  {t("noControlData")}
                 </div>
               ) : (
                 <div className={`text-xs font-medium ${VERDICT[preview.controlVerdict ?? "green"].fg}`}>
-                  Сверка: {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
-                  {VERDICT[preview.controlVerdict ?? "green"].label}
+                  {t("reconcileLabel")} {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
+                  {t(`verdict.${preview.controlVerdict ?? "green"}`)}
                 </div>
               )}
               {failureBlocked && (
                 <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-2 py-1.5 text-[11px] text-red-700 dark:text-red-300">
-                  ⛔ {preview.sheetCount.failure} лист(ов) не разобрались — коммит
-                  заблокирован (режим «всё-или-ничего»). Иначе данные компании
-                  заменятся неполным набором. Исправьте проблемные листы и
-                  обновите превью.
+                  {t("failureBlocked", { count: preview.sheetCount.failure })}
                 </div>
               )}
               {redBlocked && (
                 <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-2 py-1.5 text-[11px] text-red-700 dark:text-red-300">
-                  🔴 Контроль-сумма RED — коммит заблокирован жёстко (нельзя
-                  подтвердить). Вероятный мис-маппинг колонки. Сервер тоже
-                  отклонит такой коммит.
+                  {t("redBlocked")}
                 </div>
               )}
               {preview.controlTotals && preview.controlTotals.length > 0 && (
@@ -402,10 +398,10 @@ export function MultiSheetImportForm() {
                   <table className="w-full text-[11px]">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="text-left p-1">Родитель</th>
-                        <th className="text-right p-1">Заявлено</th>
-                        <th className="text-right p-1">Σ листьев</th>
-                        <th className="text-right p-1">Δ%</th>
+                        <th className="text-left p-1">{t("thParent")}</th>
+                        <th className="text-right p-1">{t("thStated")}</th>
+                        <th className="text-right p-1">{t("thLeafSum")}</th>
+                        <th className="text-right p-1">{t("thDeltaPct")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -427,13 +423,13 @@ export function MultiSheetImportForm() {
           {needsReviewAck && (
             <label className="flex items-start gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={ackReview} onChange={(e) => setAckReview(e.target.checked)} className="mt-0.5" />
-              Низкая уверенность AI / критическая аномалия на одном из листов — я проверил разметку вручную.
+              {t("ackReview")}
             </label>
           )}
           {controlGated && (
             <label className="flex items-start gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={ackControl} onChange={(e) => setAckControl(e.target.checked)} className="mt-0.5" />
-              Расхождение контрольных сумм проверено (🔴 = вероятный мис-маппинг).
+              {t("ackControl")}
             </label>
           )}
 
@@ -441,25 +437,25 @@ export function MultiSheetImportForm() {
             type="button"
             onClick={() => runApply(false)}
             disabled={commitBlocked}
-            title={!preview ? "Сначала запустите превью" : undefined}
+            title={!preview ? t("applyHint") : undefined}
             className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "apply" ? "Записываю…" : "Применить все листы (запись в БД)"}
+            {busy === "apply" ? t("applyBusy") : t("applyBtn")}
           </button>
         </div>
       )}
 
       {applied && (
         <div className="border rounded p-4 bg-emerald-50 dark:bg-emerald-500/10 text-sm space-y-1">
-          <div className="text-lg font-bold">✅ Импортировано · год {applied.year}</div>
+          <div className="text-lg font-bold">✅ {t("appliedTitle", { year: applied.year })}</div>
           <div className="text-xs text-muted-foreground">
-            записано строк: <b>{applied.inserted}</b> · заменено: {applied.deleted} · листов ок:{" "}
-            {applied.successCount} · ошибок: {applied.failureCount}
+            {t("writtenRowsLabel")}: <b>{applied.inserted}</b> · {t("replaced")}: {applied.deleted} · {t("sheetsOk")}:{" "}
+            {applied.successCount} · {t("errors")}: {applied.failureCount}
             {applied.recompute && ` · recompute ok:${applied.recompute.ok} failed:${applied.recompute.failed}`}
           </div>
           {applied.indicatorsStale && (
             <div className="text-xs text-amber-700 dark:text-amber-400">
-              ⚠ часть индикаторов не пересчиталась — повторите/проверьте позже.
+              {t("indicatorsStale")}
             </div>
           )}
           <button
@@ -470,7 +466,7 @@ export function MultiSheetImportForm() {
             }}
             className="mt-2 px-3 py-1.5 rounded border border-border text-xs hover:bg-muted/50"
           >
-            Импортировать ещё файл
+            {t("importAnother")}
           </button>
         </div>
       )}

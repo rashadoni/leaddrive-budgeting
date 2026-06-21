@@ -3758,5 +3758,46 @@
       "applyBtn": "Apply (write to DB)",
       "applyBusy": "Writing…"
     }
+  },
+  "adminMultiSheet": {
+    "intro": "Several <b>P&L sheets of one company</b> in one file: AI maps each sheet, you review/edit, see the combined reconciliation, and apply atomically. For a single sheet — the “Any file (AI)” tab.",
+    "companyLabel": "Company (entity)",
+    "selectPlaceholder": "— select —",
+    "dropOrClick": "Drop .xlsx or click",
+    "classifyBusy": "AI is detecting sheets…",
+    "classifyBtn": "Detect sheets",
+    "selectPlfSheets": "Select P&L sheets (≥2):",
+    "analyzeBusy": "AI is mapping…",
+    "analyzeBtn": "Analyze selected ({count})",
+    "lessThan2Plf": "Fewer than 2 P&L sheets found. For a single sheet use the “Any file (AI)” tab.",
+    "previewBusy": "Computing…",
+    "previewBtn": "Preview (no writes)",
+    "previewTitle": "Preview · year {year}",
+    "rowsToWriteLabel": "rows to write",
+    "sheetsOk": "sheets ok",
+    "errors": "errors",
+    "noControlData": "ℹ No parent totals for auto-reconciliation — check the mapping manually.",
+    "reconcileLabel": "Reconciliation:",
+    "failureBlocked": "⛔ {count} sheet(s) failed to parse — commit blocked (all-or-none mode). Otherwise the company’s data would be replaced by a partial set. Fix the problem sheets and refresh the preview.",
+    "redBlocked": "🔴 Control total RED — commit hard-blocked (cannot be overridden). Likely column mis-mapping. The server will reject this commit too.",
+    "thParent": "Parent",
+    "thStated": "Stated",
+    "thLeafSum": "Σ leaves",
+    "thDeltaPct": "Δ%",
+    "ackReview": "Low AI confidence / critical anomaly on one of the sheets — I reviewed the mapping manually.",
+    "ackControl": "Control-total discrepancy reviewed (🔴 = likely mis-mapping).",
+    "applyHint": "Run the preview first",
+    "applyBusy": "Writing…",
+    "applyBtn": "Apply all sheets (write to DB)",
+    "appliedTitle": "Imported · year {year}",
+    "writtenRowsLabel": "rows written",
+    "replaced": "replaced",
+    "indicatorsStale": "⚠ some indicators didn’t recompute — retry/check later.",
+    "importAnother": "Import another file",
+    "verdict": {
+      "green": "control totals match",
+      "yellow": "small discrepancy (≤1%)",
+      "red": "large discrepancy — likely mis-mapping"
+    }
   }
 }
