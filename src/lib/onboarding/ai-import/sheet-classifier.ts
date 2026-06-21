@@ -66,6 +66,25 @@ export type SheetDataType =
   // and from existing SALES dataType (which writes operational_facts via
   // Azik KPI handler). Writes to `sales_forecasts` table via runSalesForecastBatch.
   | "SALES_FORECAST"
+  // 2026-06-21 — counterparty register (top customers / suppliers by turnover,
+  // typically per entity side-by-side). Each block: counterparty name + turnover.
+  // The adapter derives sharePct and writes the `Counterparty` table, which
+  // counterpartyHhiResolver reads to compute CUSTOMER_HHI / SUPPLIER_HHI.
+  // Distinct from SALES (Azik KPI shape) — DO NOT classify a top-customers
+  // table as SALES (that misroutes turnover into operational_facts).
+  | "COUNTERPARTY"
+  // 2026-06-21 — active court cases / legal disputes register (rows: case #,
+  // date, court, claimant, defendant entity, claim amount, status). Writes to
+  // Company.settings.courtDisputes; feeds LEGAL_CASES_ACTIVE.
+  | "LEGAL_CASES"
+  // 2026-06-21 — internal-audit findings / observations register (rows:
+  // observation, severity major/minor, responsible unit, status). Writes to
+  // Company.settings.auditFindings; feeds AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN.
+  | "AUDIT_FINDINGS"
+  // 2026-06-21 — enterprise risk register / KRI taxonomy (Level 1/2/3 risk
+  // categories + criticality + description). Recognized so it is NOT
+  // misclassified; a dedicated importer is added once a KRI consumer exists.
+  | "RISK_REGISTER"
   | "UNKNOWN"
 
 export interface SheetClassification {
@@ -178,6 +197,10 @@ const VALID_DATA_TYPES = new Set<SheetDataType>([
   "OPS_FACTS",
   "BUDGET_ACTUALS",
   "SALES_FORECAST",
+  "COUNTERPARTY",
+  "LEGAL_CASES",
+  "AUDIT_FINDINGS",
+  "RISK_REGISTER",
   "UNKNOWN",
 ])
 

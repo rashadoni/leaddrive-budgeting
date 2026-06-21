@@ -193,6 +193,26 @@ const DATATYPE_RULES: Record<SheetDataType, DataTypeRule> = {
     note: "ни один индикатор пока не читает sales_forecasts напрямую",
     match: () => false,
   },
+  COUNTERPARTY: {
+    writes: "Counterparty (топ клиенты/поставщики по обороту → доля %)",
+    note: "питает CUSTOMER_HHI / SUPPLIER_HHI через counterpartyHhiResolver",
+    match: (i) => i.startsWith("counterparty:"),
+  },
+  LEGAL_CASES: {
+    writes: "Company.settings.courtDisputes (реестр судебных дел)",
+    note: "питает LEGAL_CASES_ACTIVE",
+    match: () => false,
+  },
+  AUDIT_FINDINGS: {
+    writes: "Company.settings.auditFindings (реестр аудиторских находок)",
+    note: "питает AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN",
+    match: () => false,
+  },
+  RISK_REGISTER: {
+    writes: "Company.settings.riskRegister (KRI taxonomy)",
+    note: "распознаётся, но реальный импортёр преждевременен — нет индикатора-потребителя",
+    match: () => false,
+  },
   UNKNOWN: {
     writes: "Не определено классификатором",
     note: "AI не смог определить тип листа — данные не будут импортированы",
