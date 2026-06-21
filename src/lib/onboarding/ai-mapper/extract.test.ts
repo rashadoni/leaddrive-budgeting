@@ -316,4 +316,20 @@ describe('extractMapperInput — Excel date-serial month headers (Reporting 2026
     expect(result.columns[0].headerText).toBe('Kod')
     expect(result.columns[2].headerText).toBe('Jan')
   })
+
+  it('detects a MIXED header row — string dimensions + serial-date months (Reporting 2026 "Actual"/"Budget")', () => {
+    // Real layout: string dimension headers (#, Group, Entity, FS, Note, a text
+    // YTD month) sitting NEXT TO serial-date month headers in the SAME row.
+    const aoa: (string | number | null)[][] = [
+      ['#', 'Group', 'Entity', 'FS', 'Note Line', 'Dec-25 YT', 46053, 46081],
+      [0, 'Azərşəkər', 'Consolidated', 'PL', 'Revenue', 5754.66, 0, 15.21],
+      [0, 'Azərşəkər', 'AZSF', 'PL', 'Revenue', 3160.37, 0.07, 0],
+    ]
+    const result = extractMapperInput(makeWorkbook(aoa, 'Actual'), 'Actual', XLSX)
+    if ('error' in result) throw new Error(result.error)
+    expect(result.columns[2].headerText).toBe('Entity') // string dim header kept
+    expect(result.columns[6].headerText).toBe('Jan 2026') // serial decoded
+    expect(result.columns[7].headerText).toBe('Feb 2026')
+    expect(result.columns[2].samples.map(String)).toContain('Consolidated') // BU samples from row 1+
+  })
 })
