@@ -56,7 +56,10 @@ import {
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
 import { prisma } from "@/lib/prisma"
 
-export const maxDuration = 60
+// 120s, not 60: a real 26MB / 29-sheet workbook took 57s end-to-end (≈10s
+// parse + ≈45s classifier) — uncomfortably close to a 60s cutoff. The classify
+// cost scales with sheet count, so a wider workbook needs the headroom (2026-06-21).
+export const maxDuration = 120
 
 const RATE_LIMIT = { name: "import-ai-auto", max: 6, windowMs: 60 * 60_000 }
 
@@ -88,6 +91,24 @@ export async function POST(request: NextRequest) {
         error: `LLM budget exceeded (${budgetCheck.reason}). Resets at ${budgetCheck.resetAt.toISOString()}`,
       },
       { status: 429 },
+    )
+  }
+
+  // Body-size guard. The request is buffered by the Next 16 proxy up to
+  // `proxyClientMaxBodySize` (64MB, next.config.ts); a larger upload is
+  // silently TRUNCATED, after which `request.formData()` throws parsing the
+  // broken multipart → an uncaught, opaque 500. Reject early with a clear,
+  // actionable message instead (caught the 26MB Reporting 2026.xlsx 500 on
+  // 2026-06-21). Content-Length is the whole multipart body (file + fields).
+  const MAX_UPLOAD_BYTES = 64 * 1024 * 1024
+  const contentLength = Number(request.headers.get("content-length") ?? 0)
+  if (contentLength > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `File too large: ${(contentLength / 1024 / 1024).toFixed(0)}MB exceeds the ${MAX_UPLOAD_BYTES / 1024 / 1024}MB upload limit. Most of an xlsx this size is pivot-cache/data-model sheets — remove those (or split the workbook), then re-upload.`,
+      },
+      { status: 413 },
     )
   }
 
@@ -143,12 +164,24 @@ export async function POST(request: NextRequest) {
       ? ((org.settings as Record<string, unknown>).industry as string | undefined)
       : undefined
 
-  // Extract metas
-  const metas = extractWorkbookMeta(wb, XLSX, {
-    sampleRows: 4,
-    maxColumns: 12,
-    profileRows: 60,
-  })
+  // Extract metas. Guarded — a malformed/corrupt sheet (or an extreme
+  // pivot-cache sheet) must surface as a clean 422, not an uncaught 500.
+  let metas
+  try {
+    metas = extractWorkbookMeta(wb, XLSX, {
+      sampleRows: 4,
+      maxColumns: 12,
+      profileRows: 60,
+    })
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Could not read the workbook structure: ${err instanceof Error ? err.message : String(err)}. A sheet may be malformed or corrupt.`,
+      },
+      { status: 422 },
+    )
+  }
 
   // Classify via LLM
   let classifierResult
