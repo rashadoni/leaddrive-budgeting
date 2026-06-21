@@ -241,7 +241,17 @@ export async function POST(
   // pre-guard stagings (no stored hash) for back-compat.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash;
   if (storedHash) {
-    const mi = extractMapperInput(workbook, staging.sourceSheet, XLSX);
+    // Re-extract with the SAME company industry analyze used — computeStructureHash
+    // includes it, so omitting it made the guard always reject legit re-uploads
+    // for companies that have an industry (bug fix 2026-06-21).
+    const anchorCompany = await prisma.company.findUnique({
+      where: { id: staging.companyId },
+      select: { name: true, industry: true },
+    });
+    const mi = extractMapperInput(workbook, staging.sourceSheet, XLSX, {
+      companyName: anchorCompany?.name ?? undefined,
+      industry: anchorCompany?.industry ?? undefined,
+    });
     if (!('error' in mi) && computeStructureHash(mi) !== storedHash) {
       return NextResponse.json(
         {

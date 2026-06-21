@@ -257,9 +257,19 @@ export async function POST(
   // per-sheet hashes joined with "|". Skipped for pre-guard stagings.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash
   if (storedHash) {
+    // Re-extract with the SAME company industry analyze used (computeStructureHash
+    // includes it) — bug fix 2026-06-21: omitting it rejected every legit
+    // re-upload for a company that has an industry.
+    const anchorCompany = await prisma.company.findUnique({
+      where: { id: staging.companyId },
+      select: { name: true, industry: true },
+    })
     const currentHash = multi.sheets
       .map((s) => {
-        const mi = extractMapperInput(workbook, s.sheetName, XLSX)
+        const mi = extractMapperInput(workbook, s.sheetName, XLSX, {
+          companyName: anchorCompany?.name ?? undefined,
+          industry: anchorCompany?.industry ?? undefined,
+        })
         return "error" in mi ? "" : computeStructureHash(mi)
       })
       .join("|")

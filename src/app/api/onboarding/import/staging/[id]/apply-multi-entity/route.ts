@@ -216,7 +216,20 @@ export async function POST(
   // Structure-hash guard (columns). Skipped for pre-guard stagings.
   const storedHash = (staging.proposal as { __structureHash?: string }).__structureHash;
   if (storedHash) {
-    const mi = extractMapperInput(workbook, staging.sourceSheet, XLSX);
+    // Re-extract with the SAME company context the analyze used. Bug fix
+    // (2026-06-21): `computeStructureHash` includes the company industry, but
+    // this guard re-extracted WITHOUT it → industry=null → the hash never
+    // matched for a company that has an industry, so every legit re-upload was
+    // rejected as "file changed". Pass the anchor company's industry so the
+    // hash reproduces what analyze stored.
+    const anchorCompany = await prisma.company.findUnique({
+      where: { id: staging.companyId },
+      select: { name: true, industry: true },
+    });
+    const mi = extractMapperInput(workbook, staging.sourceSheet, XLSX, {
+      companyName: anchorCompany?.name ?? undefined,
+      industry: anchorCompany?.industry ?? undefined,
+    });
     if (!('error' in mi) && computeStructureHash(mi) !== storedHash) {
       return NextResponse.json(
         { error: 'Файл изменился после анализа (структура колонок не совпадает). Загрузите тот же файл или повторите анализ.' },

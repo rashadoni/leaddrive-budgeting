@@ -74,6 +74,12 @@ describe("computeStructureHash", () => {
     expect(a).not.toBe(b)
   })
 
+  it("industry presence vs absence → different hash (apply routes MUST pass the anchor company industry to the re-extract, else the structure-hash guard rejects every legit re-upload — bug 2026-06-21)", () => {
+    const withIndustry = computeStructureHash(baseInput({ companyContext: { industry: "food_processing" } }))
+    const withoutIndustry = computeStructureHash(baseInput())
+    expect(withIndustry).not.toBe(withoutIndustry)
+  })
+
   it("language-sensitive", () => {
     const a = computeStructureHash(baseInput(), "en")
     const b = computeStructureHash(baseInput(), "ru")
