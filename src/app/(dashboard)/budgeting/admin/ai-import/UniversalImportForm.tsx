@@ -15,6 +15,7 @@
  * later phases — the UI says so explicitly.
  */
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react"
+import { useTranslations } from "next-intl"
 import type {
   ColumnMappingProposal,
   MappingProposal,
@@ -129,19 +130,19 @@ interface ApplyResult {
 
 type Busy = null | "classify" | "preview" | "apply"
 
-const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string; label: string }> = {
-  green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢", label: "контрольные суммы сходятся" },
-  yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡", label: "малое расхождение (≤1%)" },
-  red: { fg: "text-red-700 dark:text-red-400", icon: "🔴", label: "крупное расхождение — вероятный мис-маппинг" },
+const VERDICT: Record<"green" | "yellow" | "red", { fg: string; icon: string }> = {
+  green: { fg: "text-emerald-700 dark:text-emerald-400", icon: "🟢" },
+  yellow: { fg: "text-amber-700 dark:text-amber-400", icon: "🟡" },
+  red: { fg: "text-red-700 dark:text-red-400", icon: "🔴" },
 }
 const VALIDATION_VERDICT: Record<
   "certified" | "warn" | "blocked" | "uncertifiable",
-  { fg: string; icon: string; label: string }
+  { fg: string; icon: string }
 > = {
-  certified: { fg: "text-emerald-700 dark:text-emerald-400", icon: "✅", label: "сертифицировано — контроли сошлись" },
-  warn: { fg: "text-amber-700 dark:text-amber-400", icon: "⚠️", label: "с предупреждениями — проверьте находки" },
-  blocked: { fg: "text-red-700 dark:text-red-300", icon: "⛔", label: "заблокировано — данные не пройдут коммит" },
-  uncertifiable: { fg: "text-sky-700 dark:text-sky-400", icon: "❓", label: "нечем авто-подтвердить — нужен ручной review" },
+  certified: { fg: "text-emerald-700 dark:text-emerald-400", icon: "✅" },
+  warn: { fg: "text-amber-700 dark:text-amber-400", icon: "⚠️" },
+  blocked: { fg: "text-red-700 dark:text-red-300", icon: "⛔" },
+  uncertifiable: { fg: "text-sky-700 dark:text-sky-400", icon: "❓" },
 }
 const fmtN = (n: number) => Math.round(n).toLocaleString("ru-RU")
 
@@ -176,21 +177,22 @@ function flatten(tree: unknown): CompanyOpt[] {
 // reviewer can tell whether they're choosing the WHOLE holding (e.g. Azərşəkər)
 // or one company inside it (e.g. Azərşəkər Sugar) even when the names look alike.
 function CompanyOptionList({ companies }: { companies: CompanyOpt[] }) {
+  const t = useTranslations("adminUniversal")
   const groups = companies.filter((c) => c.isGroup)
   const leaves = companies.filter((c) => !c.isGroup)
   return (
     <>
       {groups.length > 0 && (
-        <optgroup label="🏛 Холдинг / группа (вся группа — консолидация)">
+        <optgroup label={t("groupOptLabel")}>
           {groups.map((c) => (
             <option key={c.id} value={c.id}>
               {"— ".repeat(c.depth)}
-              {c.name} ({c.code}) · вся группа
+              {c.name} ({c.code}) · {t("wholeGroupSuffix")}
             </option>
           ))}
         </optgroup>
       )}
-      <optgroup label="Компании (отдельная компания)">
+      <optgroup label={t("companyOptLabel")}>
         {leaves.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name} ({c.code})
@@ -202,6 +204,7 @@ function CompanyOptionList({ companies }: { companies: CompanyOpt[] }) {
 }
 
 export function UniversalImportForm() {
+  const t = useTranslations("adminUniversal")
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
   const [companyId, setCompanyId] = useState("")
   // Create-new-company sub-flow (for entities not yet in the org tree).
@@ -279,7 +282,7 @@ export function UniversalImportForm() {
 
   async function createCompany() {
     if (!newCo.code.trim() || !newCo.name.trim()) {
-      setError("Код и название компании обязательны")
+      setError(t("codeNameRequired"))
       return
     }
     setCreating(true)
@@ -567,15 +570,13 @@ export function UniversalImportForm() {
   return (
     <div className="space-y-6">
       <div className="text-xs text-muted-foreground leading-relaxed border rounded p-3 bg-muted/20">
-        Загрузка <b>произвольного</b> файла: AI предлагает разметку колонок, вы
-        проверяете/правите, видите сверку без записи, и только потом применяете.
-        Фаза 1 — один лист <b>P&amp;L</b> (баланс/кэш-флоу и мультилист — позже).
+        {t.rich("intro", { b: (chunks) => <b>{chunks}</b> })}
       </div>
 
       {/* Step 1 — company + file */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="text-xs text-muted-foreground">Компания (сущность)</label>
+          <label className="text-xs text-muted-foreground">{t("companyLabel")}</label>
           <select
             value={companyId}
             onChange={(e) => {
@@ -584,7 +585,7 @@ export function UniversalImportForm() {
             }}
             className="w-full mt-1 px-2 py-2 rounded border border-border bg-background text-sm"
           >
-            <option value="">— выберите —</option>
+            <option value="">{t("selectPlaceholder")}</option>
             <CompanyOptionList companies={companies} />
           </select>
           <button
@@ -592,7 +593,7 @@ export function UniversalImportForm() {
             onClick={() => setShowCreate((v) => !v)}
             className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400 hover:underline"
           >
-            {showCreate ? "× отмена" : "+ Новая компания"}
+            {showCreate ? t("cancelCreate") : t("newCompany")}
           </button>
           {showCreate && (
             <div className="mt-2 border rounded p-2 space-y-2 bg-muted/20">
@@ -600,25 +601,25 @@ export function UniversalImportForm() {
                 <input
                   value={newCo.code}
                   onChange={(e) => setNewCo((s) => ({ ...s, code: e.target.value }))}
-                  placeholder="Код (напр. CO-NEW)"
+                  placeholder={t("phCode")}
                   className="px-2 py-1 rounded border border-border bg-background text-xs"
                 />
                 <input
                   value={newCo.name}
                   onChange={(e) => setNewCo((s) => ({ ...s, name: e.target.value }))}
-                  placeholder="Название"
+                  placeholder={t("phName")}
                   className="px-2 py-1 rounded border border-border bg-background text-xs"
                 />
                 <input
                   value={newCo.industry}
                   onChange={(e) => setNewCo((s) => ({ ...s, industry: e.target.value }))}
-                  placeholder="Отрасль (опц.)"
+                  placeholder={t("phIndustry")}
                   className="px-2 py-1 rounded border border-border bg-background text-xs"
                 />
                 <input
                   value={newCo.baseCurrencyCode}
                   onChange={(e) => setNewCo((s) => ({ ...s, baseCurrencyCode: e.target.value }))}
-                  placeholder="Валюта (AZN)"
+                  placeholder={t("phCurrency")}
                   className="px-2 py-1 rounded border border-border bg-background text-xs"
                 />
               </div>
@@ -628,7 +629,7 @@ export function UniversalImportForm() {
                 disabled={creating || !newCo.code.trim() || !newCo.name.trim()}
                 className="w-full px-2 py-1 rounded bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 disabled:opacity-40"
               >
-                {creating ? "Создаю…" : "Создать и выбрать"}
+                {creating ? t("createBusy") : t("createBtn")}
               </button>
             </div>
           )}
@@ -657,7 +658,7 @@ export function UniversalImportForm() {
             onChange={(e: ChangeEvent<HTMLInputElement>) => pickFile(e.target.files?.[0])}
           />
           <div className="text-sm">
-            {file ? <span className="font-mono">{file.name}</span> : "Перетащите .xlsx или нажмите"}
+            {file ? <span className="font-mono">{file.name}</span> : t("dropOrClick")}
           </div>
         </div>
       </div>
@@ -668,7 +669,7 @@ export function UniversalImportForm() {
         disabled={!file || !companyId || busy !== null}
         className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
       >
-        {busy === "classify" ? "AI анализирует…" : "Анализировать файл"}
+        {busy === "classify" ? t("analyzeBusy") : t("analyzeBtn")}
       </button>
 
       {error && (
@@ -680,7 +681,7 @@ export function UniversalImportForm() {
       {/* Sheet picker (after classify) */}
       {classifications.length > 0 && analysis && (
         <div className="flex items-center gap-2 text-sm">
-          <label className="text-xs text-muted-foreground">Лист</label>
+          <label className="text-xs text-muted-foreground">{t("sheetLabel")}</label>
           <select
             value={sheetName}
             onChange={(e) => analyzeSheet(e.target.value)}
@@ -719,13 +720,13 @@ export function UniversalImportForm() {
       {/* Step 2a — multi-currency: pick the currency to import */}
       {analysis && availableCurrencies.length > 1 && !applied && !meApplied && (
         <div className="flex items-center gap-2 text-sm border rounded p-3 bg-muted/10">
-          <span className="text-xs">💱 Лист в нескольких валютах — импортировать в:</span>
+          <span className="text-xs">{t("multiCurrencyLabel")}</span>
           <select
             value={targetCurrency}
             disabled={busy !== null}
             onChange={(e) => changeCurrency(e.target.value)}
             className="px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
-            aria-label="Валюта импорта"
+            aria-label={t("currencyAria")}
           >
             {availableCurrencies.map((c) => (
               <option key={c} value={c}>
@@ -734,7 +735,7 @@ export function UniversalImportForm() {
             ))}
           </select>
           <span className="text-[11px] text-muted-foreground">
-            строки пометятся этой валютой (BudgetLine.currencyCode)
+            {t("currencyHint")}
           </span>
         </div>
       )}
@@ -743,19 +744,17 @@ export function UniversalImportForm() {
       {analysis?.multiEntity && !meApplied && (
         <div className="border rounded p-3 bg-muted/10 space-y-2">
           <div className="text-sm font-semibold">
-            🏢 Лист содержит несколько компаний (колонка-сущность)
+            {t("multiEntityTitle")}
           </div>
           <div className="text-xs text-muted-foreground">
-            Каждое значение BU направляется в отдельную компанию. Проверьте
-            авто-сопоставление; одно значение — одна компания. Блоки элиминаций/
-            консолидации (EJE/AJE/…) можно «Пропустить».
+            {t("multiEntityDesc")}
           </div>
           <div className="border rounded overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-muted text-xs">
                 <tr>
-                  <th className="text-left p-2">Значение в файле (BU)</th>
-                  <th className="text-left p-2">→ Компания</th>
+                  <th className="text-left p-2">{t("thBuValue")}</th>
+                  <th className="text-left p-2">{t("thCompanyArrow")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -765,10 +764,10 @@ export function UniversalImportForm() {
                   return (
                     <tr key={val} className={`border-t ${isSkipped ? "opacity-60" : ""}`}>
                       <td className="p-2 font-mono text-xs">
-                        {val === "" ? "(пусто)" : val}
+                        {val === "" ? t("empty") : val}
                         {isElim && (
-                          <span className="ml-2 text-amber-700 dark:text-amber-400" title="Похоже на элиминацию/консолидацию — обычно не импортируется">
-                            ⚠ элиминация?
+                          <span className="ml-2 text-amber-700 dark:text-amber-400" title={t("elimTitle")}>
+                            {t("elimWarn")}
                           </span>
                         )}
                       </td>
@@ -778,10 +777,10 @@ export function UniversalImportForm() {
                           disabled={busy !== null}
                           onChange={(e) => setEntityMapEntry(val, e.target.value)}
                           className="w-full px-1.5 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
-                          aria-label={`Компания для ${val || "(пусто)"}`}
+                          aria-label={t("companyForAria", { val: val || t("empty") })}
                         >
-                          <option value="">— выберите —</option>
-                          <option value={SKIP_ENTITY}>⊘ Пропустить (не импортировать)</option>
+                          <option value="">{t("selectPlaceholder")}</option>
+                          <option value={SKIP_ENTITY}>{t("skipOption")}</option>
                           <CompanyOptionList companies={companies} />
                         </select>
                       </td>
@@ -803,26 +802,26 @@ export function UniversalImportForm() {
             disabled={busy !== null}
             className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "preview" ? "Считаю…" : "Превью (без записи)"}
+            {busy === "preview" ? t("previewBusy") : t("previewBtn")}
           </button>
 
           {preview && (
             <div className="border rounded p-3 bg-muted/20 text-sm space-y-2">
-              <div className="font-semibold">👁 Превью · год {preview.year}</div>
+              <div className="font-semibold">👁 {t("previewTitle", { year: preview.year })}</div>
               <div className="text-xs text-muted-foreground">
-                строк к записи: <b>{preview.inserted}</b> · заменит существующих: {preview.deleted} ·
-                предупреждений: {preview.warnings}
+                {t("rowsToWriteLabel")}: <b>{preview.inserted}</b> · {t("willReplace")}: {preview.deleted} ·
+                {t("warningsLabel")}: {preview.warnings}
               </div>
 
               {/* Control-total verdict (parent rows vs sum of their leaves) */}
               {preview.controlNoData ? (
                 <div className="text-xs text-sky-700 dark:text-sky-400">
-                  ℹ В файле нет родительских итогов для авто-сверки — проверьте разметку вручную.
+                  {t("noControlData")}
                 </div>
               ) : (
                 <div className={`text-xs font-medium ${VERDICT[preview.controlVerdict ?? "green"].fg}`}>
-                  Сверка: {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
-                  {VERDICT[preview.controlVerdict ?? "green"].label}
+                  {t("reconcileLabel")} {VERDICT[preview.controlVerdict ?? "green"].icon}{" "}
+                  {t(`verdict.${preview.controlVerdict ?? "green"}`)}
                 </div>
               )}
 
@@ -830,8 +829,8 @@ export function UniversalImportForm() {
               {preview.validationVerdict && (
                 <div className="space-y-1">
                   <div className={`text-xs font-semibold ${VALIDATION_VERDICT[preview.validationVerdict].fg}`}>
-                    Валидация: {VALIDATION_VERDICT[preview.validationVerdict].icon}{" "}
-                    {VALIDATION_VERDICT[preview.validationVerdict].label}
+                    {t("validationLabel")} {VALIDATION_VERDICT[preview.validationVerdict].icon}{" "}
+                    {t(`validation.${preview.validationVerdict}`)}
                   </div>
                   {preview.validationFindings && preview.validationFindings.length > 0 && (
                     <ul className="space-y-0.5">
@@ -859,11 +858,11 @@ export function UniversalImportForm() {
                   <table className="w-full text-[11px]">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="text-left p-1">Родитель</th>
-                        <th className="text-right p-1">Заявлено</th>
-                        <th className="text-right p-1">Σ листьев</th>
-                        <th className="text-right p-1">Δ</th>
-                        <th className="text-right p-1">Δ%</th>
+                        <th className="text-left p-1">{t("thParent")}</th>
+                        <th className="text-right p-1">{t("thStated")}</th>
+                        <th className="text-right p-1">{t("thLeafSum")}</th>
+                        <th className="text-right p-1">{t("thDelta")}</th>
+                        <th className="text-right p-1">{t("thDeltaPct")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -885,10 +884,7 @@ export function UniversalImportForm() {
 
           {redBlocked && (
             <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-              🔴 Контроль-сумма RED — коммит заблокирован жёстко (нельзя
-              подтвердить). Итог родительских строк не сходится с суммой
-              листьев: вероятный мис-маппинг колонки. Исправьте разметку и
-              нажмите «Предпросмотр» заново. Сервер тоже отклонит такой коммит.
+              {t("redBlocked")}
             </div>
           )}
 
@@ -900,8 +896,7 @@ export function UniversalImportForm() {
                 onChange={(e) => setAckControl(e.target.checked)}
                 className="mt-0.5"
               />
-              🟡 Малое расхождение контрольных сумм (≤1%) проверено — итог
-              родителя ≈ сумме листьев в пределах округления.
+              {t("ackControlYellow")}
             </label>
           )}
 
@@ -914,8 +909,8 @@ export function UniversalImportForm() {
                 className="mt-0.5"
               />
               {hasCriticalAnomaly
-                ? "AI пометил критическую аномалию (см. таблицу выше) — я проверил разметку вручную."
-                : "Низкая уверенность AI — я проверил разметку колонок вручную."}
+                ? t("ackCritical")
+                : t("ackLowConf")}
             </label>
           )}
 
@@ -923,10 +918,10 @@ export function UniversalImportForm() {
             type="button"
             onClick={() => runApply(false)}
             disabled={commitBlocked}
-            title={!preview ? "Сначала запустите превью" : undefined}
+            title={!preview ? t("applyHint") : undefined}
             className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "apply" ? "Записываю…" : "Применить (запись в БД)"}
+            {busy === "apply" ? t("applyBusy") : t("applyBtn")}
           </button>
         </div>
       )}
@@ -934,17 +929,17 @@ export function UniversalImportForm() {
       {/* Step 3b (multi-company) — preview + commit per entity */}
       {analysis?.multiEntity && !meApplied && (
         <div className="space-y-3">
-          {/* Option C — куда записать данные (план-цель) */}
+          {/* Option C — where to write the data (plan target) */}
           <div className="border rounded p-3 bg-muted/10 space-y-2">
-            <div className="text-sm font-semibold">📋 Куда записать данные</div>
+            <div className="text-sm font-semibold">{t("planTargetTitle")}</div>
             <div className="flex gap-4 text-sm">
               <label className="flex items-center gap-1.5">
                 <input type="radio" checked={planMode === "create"} onChange={() => { setPlanMode("create"); invalidateMePreview() }} disabled={busy !== null} />
-                Создать новый план
+                {t("createNewPlan")}
               </label>
               <label className="flex items-center gap-1.5">
                 <input type="radio" checked={planMode === "update"} onChange={() => { setPlanMode("update"); invalidateMePreview() }} disabled={busy !== null} />
-                Обновить существующий
+                {t("updateExisting")}
               </label>
             </div>
             {planMode === "create" ? (
@@ -952,7 +947,7 @@ export function UniversalImportForm() {
                 <input
                   value={newPlanName}
                   onChange={(e) => { setNewPlanName(e.target.value); invalidateMePreview() }}
-                  placeholder="Имя плана (необязательно)"
+                  placeholder={t("planNamePh")}
                   disabled={busy !== null}
                   className="flex-1 min-w-[180px] px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
                 />
@@ -962,8 +957,8 @@ export function UniversalImportForm() {
                   disabled={busy !== null}
                   className="px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
                 >
-                  <option value="actual">Факт (actual)</option>
-                  <option value="budget">Бюджет/план (budget)</option>
+                  <option value="actual">{t("planKindActual")}</option>
+                  <option value="budget">{t("planKindBudget")}</option>
                 </select>
               </div>
             ) : (
@@ -972,9 +967,9 @@ export function UniversalImportForm() {
                 onChange={(e) => { setTargetPlanId(e.target.value); invalidateMePreview() }}
                 disabled={busy !== null}
                 className="w-full px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
-                aria-label="План для обновления"
+                aria-label={t("planUpdateAria")}
               >
-                <option value="">— выберите план для обновления —</option>
+                <option value="">{t("selectPlanToUpdate")}</option>
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {p.year} · {p.kind}
@@ -983,9 +978,7 @@ export function UniversalImportForm() {
               </select>
             )}
             <p className="text-[11px] text-muted-foreground">
-              «Обновить» перезапишет строки этих компаний в выбранном плане. Создавать новый
-              <b> факт</b>-план, когда факт-план за год уже есть, не стоит — это даст двойной счёт
-              в терминале (выберите «Обновить»).
+              {t.rich("planUpdateNote", { b: (chunks) => <b>{chunks}</b> })}
             </p>
           </div>
 
@@ -995,27 +988,26 @@ export function UniversalImportForm() {
             disabled={busy !== null || (planMode === "update" && !targetPlanId)}
             className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "preview" ? "Считаю…" : "Превью по компаниям (без записи)"}
+            {busy === "preview" ? t("previewBusy") : t("previewByCompaniesBtn")}
           </button>
 
           {mePreview && (
             <div className="border rounded p-3 bg-muted/20 text-sm space-y-2">
               <div className="font-semibold">
-                👁 Превью · год {mePreview.year} · компаний с данными: {mePreview.writeableCount}/
-                {mePreview.entityCount}
+                👁 {t("mePreviewTitle", { year: mePreview.year, writeable: mePreview.writeableCount, total: mePreview.entityCount })}
               </div>
               <div className={`text-xs font-medium ${VERDICT[mePreview.controlVerdict].fg}`}>
-                Сверка (худшая по компаниям): {VERDICT[mePreview.controlVerdict].icon}{" "}
-                {VERDICT[mePreview.controlVerdict].label}
+                {t("meReconcileLabel")} {VERDICT[mePreview.controlVerdict].icon}{" "}
+                {t(`verdict.${mePreview.controlVerdict}`)}
               </div>
               <div className="border rounded overflow-hidden">
                 <table className="w-full text-[11px]">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="text-left p-1">BU</th>
-                      <th className="text-left p-1">Компания</th>
-                      <th className="text-right p-1">строк</th>
-                      <th className="text-right p-1">заменит</th>
+                      <th className="text-left p-1">{t("meThBu")}</th>
+                      <th className="text-left p-1">{t("meThCompany")}</th>
+                      <th className="text-right p-1">{t("meThRows")}</th>
+                      <th className="text-right p-1">{t("meThReplace")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1023,14 +1015,14 @@ export function UniversalImportForm() {
                       const co = companies.find((c) => c.id === p.companyId)
                       return (
                         <tr key={p.entityValue} className="border-t">
-                          <td className="p-1 font-mono">{p.entityValue === "" ? "(пусто)" : p.entityValue}</td>
+                          <td className="p-1 font-mono">{p.entityValue === "" ? t("empty") : p.entityValue}</td>
                           <td className="p-1">
                             {p.error ? (
-                              <span className="text-red-700 dark:text-red-300">ошибка: {p.error}</span>
+                              <span className="text-red-700 dark:text-red-300">{t("meError", { error: p.error })}</span>
                             ) : co ? (
                               `${co.name} (${co.code})`
                             ) : (
-                              <span className="text-amber-700 dark:text-amber-400">не назначена</span>
+                              <span className="text-amber-700 dark:text-amber-400">{t("meNotAssigned")}</span>
                             )}
                           </td>
                           <td className="p-1 text-right font-mono">{p.lineCount}</td>
@@ -1046,21 +1038,20 @@ export function UniversalImportForm() {
               {meHasMappingProblem && (
                 <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300 space-y-1">
                   {meIssues!.unmapped.length > 0 && (
-                    <div>Не назначены компании: {meIssues!.unmapped.map((v) => v || "(пусто)").join(", ")}</div>
+                    <div>{t("meUnmapped", { list: meIssues!.unmapped.map((v) => v || t("empty")).join(", ") })}</div>
                   )}
                   {meIssues!.duplicateCompanyIds.length > 0 && (
-                    <div>⚠ Несколько BU ведут в одну компанию — это перетёрло бы данные. Назначьте разные компании.</div>
+                    <div>{t("meDuplicate")}</div>
                   )}
-                  {meIssues!.crossOrg.length > 0 && <div>Назначены компании вне организации.</div>}
+                  {meIssues!.crossOrg.length > 0 && <div>{t("meCrossOrg")}</div>}
                   {meIssues!.parseErrors.length > 0 && (
-                    <div>Не разобрались: {meIssues!.parseErrors.map((e) => e.entityValue).join(", ")}</div>
+                    <div>{t("meParseErrors", { list: meIssues!.parseErrors.map((e) => e.entityValue).join(", ") })}</div>
                   )}
                   {(meIssues!.validationBlocked?.length ?? 0) > 0 && (
                     <div>
-                      ⛔ Валидация заблокировала:{" "}
-                      {meIssues!.validationBlocked!
-                        .map((b) => `${b.entityValue || "(пусто)"} — ${b.findings.map((f) => f.message).join("; ")}`)
-                        .join(" | ")}
+                      {t("meValidationBlocked", { list: meIssues!.validationBlocked!
+                        .map((b) => `${b.entityValue || t("empty")} — ${b.findings.map((f) => f.message).join("; ")}`)
+                        .join(" | ") })}
                     </div>
                   )}
                 </div>
@@ -1070,8 +1061,7 @@ export function UniversalImportForm() {
 
           {meRedBlocked && (
             <div className="rounded border border-red-500/40 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
-              🔴 Контроль-сумма RED по одной из компаний — коммит заблокирован.
-              Исправьте разметку и запустите превью заново.
+              {t("meRedBlocked")}
             </div>
           )}
 
@@ -1084,8 +1074,8 @@ export function UniversalImportForm() {
                 className="mt-0.5"
               />
               {hasCriticalAnomaly
-                ? "AI пометил критическую аномалию — я проверил разметку вручную."
-                : "Низкая уверенность AI — я проверил разметку колонок вручную."}
+                ? t("ackCriticalShort")
+                : t("ackLowConf")}
             </label>
           )}
 
@@ -1097,8 +1087,7 @@ export function UniversalImportForm() {
                 onChange={(e) => setAckSecondActual(e.target.checked)}
                 className="mt-0.5"
               />
-              ⚠ За этот год уже есть факт-план — новый факт-план даст двойной счёт в терминале.
-              Подтверждаю, что хочу второй факт-план (лучше выбрать «Обновить существующий»).
+              {t("ackSecondActual")}
             </label>
           )}
 
@@ -1106,10 +1095,10 @@ export function UniversalImportForm() {
             type="button"
             onClick={() => runApply(false)}
             disabled={meCommitBlocked || (mePreview?.wouldDoubleActual && !ackSecondActual)}
-            title={!mePreview ? "Сначала запустите превью" : undefined}
+            title={!mePreview ? t("applyHint") : undefined}
             className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
           >
-            {busy === "apply" ? "Записываю…" : "Применить по компаниям (запись в БД)"}
+            {busy === "apply" ? t("applyBusy") : t("applyByCompaniesBtn")}
           </button>
         </div>
       )}
@@ -1118,10 +1107,10 @@ export function UniversalImportForm() {
       {meApplied && (
         <div className="border rounded p-4 bg-emerald-50 dark:bg-emerald-500/10 text-sm space-y-1">
           <div className="text-lg font-bold">
-            ✅ Импортировано в {meApplied.entityCount} компани(й) · год {meApplied.year}
+            ✅ {t("meAppliedTitle", { count: meApplied.entityCount, year: meApplied.year })}
           </div>
           <div className="text-xs text-muted-foreground">
-            всего строк: <b>{meApplied.inserted}</b> · заменено: {meApplied.deleted}
+            {t("meAppliedRowsLabel")}: <b>{meApplied.inserted}</b> · {t("replaced")}: {meApplied.deleted}
             {meApplied.recompute && ` · recompute ok:${meApplied.recompute.ok} failed:${meApplied.recompute.failed}`}
           </div>
           <ul className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
@@ -1129,14 +1118,14 @@ export function UniversalImportForm() {
               const co = companies.find((c) => c.id === p.companyId)
               return (
                 <li key={p.entityValue} className="font-mono">
-                  {p.entityValue || "(пусто)"} → {co ? `${co.code}` : p.companyId}: {p.inserted} строк
+                  {p.entityValue || t("empty")} → {co ? `${co.code}` : p.companyId}: {p.inserted} {t("meRowSuffix")}
                 </li>
               )
             })}
           </ul>
           {meApplied.indicatorsStale && (
             <div className="text-xs text-amber-700 dark:text-amber-400">
-              ⚠ часть индикаторов не пересчиталась — откройте терминал позже/повторите.
+              {t("indicatorsStale")}
             </div>
           )}
           <button
@@ -1147,7 +1136,7 @@ export function UniversalImportForm() {
             }}
             className="mt-2 px-3 py-1.5 rounded border border-border text-xs hover:bg-muted/50"
           >
-            Импортировать ещё файл
+            {t("importAnother")}
           </button>
         </div>
       )}
@@ -1155,15 +1144,15 @@ export function UniversalImportForm() {
       {/* Step 4 — applied */}
       {applied && (
         <div className="border rounded p-4 bg-emerald-50 dark:bg-emerald-500/10 text-sm space-y-1">
-          <div className="text-lg font-bold">✅ Импортировано · год {applied.year}</div>
+          <div className="text-lg font-bold">✅ {t("appliedTitle", { year: applied.year })}</div>
           <div className="text-xs text-muted-foreground">
-            записано строк: <b>{applied.inserted}</b> · заменено: {applied.deleted} · предупреждений:{" "}
+            {t("appliedRowsLabel")}: <b>{applied.inserted}</b> · {t("replaced")}: {applied.deleted} · {t("warningsLabel")}:{" "}
             {applied.warnings}
             {applied.recompute && ` · recompute ok:${applied.recompute.ok} failed:${applied.recompute.failed}`}
           </div>
           {applied.indicatorsStale && (
             <div className="text-xs text-amber-700 dark:text-amber-400">
-              ⚠ часть индикаторов не пересчиталась — откройте терминал позже/повторите.
+              {t("indicatorsStale")}
             </div>
           )}
           <button
@@ -1174,7 +1163,7 @@ export function UniversalImportForm() {
             }}
             className="mt-2 px-3 py-1.5 rounded border border-border text-xs hover:bg-muted/50"
           >
-            Импортировать ещё файл
+            {t("importAnother")}
           </button>
         </div>
       )}
