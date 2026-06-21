@@ -190,9 +190,7 @@ export function AIImportForm() {
     // commit) and the "Несколько файлов" tab (multi-file orchestrator). Guide
     // the user there instead of hitting a dead route.
     setIsImporting(true)
-    setError(
-      "Запись из этого экрана отключена. Для импорта откройте вкладку «Любой файл (AI)» (проверка разметки колонок + сверка) или «Несколько файлов».",
-    )
+    setError(t("writeDisabled"))
     setIsImporting(false)
   }
 

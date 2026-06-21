@@ -3009,7 +3009,8 @@
           "extra": "Extra",
           "verdict": "Verdict"
         }
-      }
+      },
+      "writeDisabled": "Bu ekrandan yazı söndürülüb. İdxal üçün «İstənilən fayl (AI)» (sütun uyğunlaşdırması + üzləşdirmə) və ya «Bir neçə fayl» tabını açın."
     }
   },
   "adminQueue": {
