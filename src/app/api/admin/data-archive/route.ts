@@ -60,11 +60,16 @@ interface ArchiveBody {
   mode?: unknown
   entityKind?: unknown
   companyCode?: unknown
+  /** AllImportData (reset) only — multiple companies / whole holding in one go. */
+  companyCodes?: unknown
   year?: unknown
   period?: unknown
   reason?: unknown
   confirmCode?: unknown
 }
+
+// A whole-holding reset loops per-company (delete + recompute) — give it room.
+export const maxDuration = 120
 
 export async function POST(request: NextRequest) {
   const session = await requireRole(request, "admin")
@@ -116,6 +121,17 @@ export async function POST(request: NextRequest) {
     typeof body.companyCode === "string" && body.companyCode.length > 0
       ? body.companyCode
       : undefined
+  // Reset can target several companies (or the whole holding) at once. Dedup +
+  // drop blanks; cap to a sane ceiling so a malformed payload can't fan out.
+  const companyCodes = Array.isArray(body.companyCodes)
+    ? [
+        ...new Set(
+          body.companyCodes.filter(
+            (c): c is string => typeof c === "string" && c.length > 0,
+          ),
+        ),
+      ].slice(0, 200)
+    : undefined
   const year =
     typeof body.year === "number" && Number.isInteger(body.year)
       ? body.year
@@ -133,8 +149,13 @@ export async function POST(request: NextRequest) {
 
   // Defensive: confirmCode acts as the "type the entity code to
   // confirm" safety pattern. For org-wide scopes (no companyCode)
-  // we require the literal string "ALL".
-  const expectedConfirm = companyCode ?? "ALL"
+  // we require the literal string "ALL". A bulk reset (companyCodes[])
+  // ALWAYS requires "ALL" — otherwise a mixed payload
+  // `{companyCode:"SAFE", companyCodes:["A","B"], confirmCode:"SAFE"}` would
+  // pass the single-company confirm yet wipe A/B (the reset branch prefers
+  // companyCodes). Codex 2026-06-21 HIGH.
+  const expectedConfirm =
+    companyCodes && companyCodes.length > 0 ? "ALL" : companyCode ?? "ALL"
   if (confirmCode !== expectedConfirm) {
     return NextResponse.json(
       {
@@ -156,7 +177,8 @@ export async function POST(request: NextRequest) {
     period,
   }
 
-  // ── AllImportData — full per-company reset (no-tails) + recompute ──────
+  // ── AllImportData — full reset (no-tails) + recompute, for one or many
+  //    companies (or the whole holding) in a single action ─────────────────
   if (entityKind === "AllImportData") {
     if (mode !== "archive") {
       return NextResponse.json(
@@ -164,35 +186,81 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-    if (!companyCode) {
+    // Accept a single companyCode (back-compat) OR companyCodes[] (multi / whole
+    // holding). The confirm gate already required the literal "ALL" whenever no
+    // single companyCode was given, so a bulk wipe can't be fat-fingered.
+    const codes =
+      companyCodes && companyCodes.length > 0
+        ? companyCodes
+        : companyCode
+          ? [companyCode]
+          : []
+    if (codes.length === 0) {
       return NextResponse.json(
-        { error: "AllImportData requires companyCode (reset is per-company)" },
+        { error: "AllImportData requires at least one company (companyCode or companyCodes)" },
         { status: 400 },
       )
     }
-    try {
-      const reset = await resetCompanyImportData({
-        prisma,
-        actorUserId: session.userId,
-        reason,
-        scope,
-      })
-      // Recompute so stale IndicatorValues fall back to `unknown` — no tails in
-      // the terminal either. Scope to the reset year, else every period the
-      // company still carries indicators for.
-      const company = await prisma.company.findFirst({
-        where: { organizationId: orgId, code: companyCode },
-        select: { id: true },
-      })
-      let recomputed = 0
-      if (company) {
+    // Resolve + validate EVERY code belongs to this org BEFORE any delete — a
+    // single unknown code aborts the whole batch (no partial wipe on a typo).
+    const targets = await prisma.company.findMany({
+      where: { organizationId: orgId, code: { in: codes } },
+      select: { id: true, code: true },
+    })
+    const found = new Set(targets.map((c) => c.code))
+    const missing = codes.filter((c) => !found.has(c))
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `Unknown companies for this org: ${missing.join(", ")}` },
+        { status: 400 },
+      )
+    }
+    // Per-company reset — each is its own transaction inside
+    // resetCompanyImportData and writes its own `data_reset` audit event — then
+    // recompute. Aggregate; on a per-company failure keep going and report it
+    // rather than half-aborting (the ones that succeeded are already audited).
+    let rowsAffected = 0
+    let recomputed = 0
+    const breakdown: Record<string, number> = {}
+    const perCompany: Array<
+      | { code: string; rowsAffected: number; recomputed: number }
+      | { code: string; error: string }
+    > = []
+    for (const target of targets) {
+      let reset
+      try {
+        reset = await resetCompanyImportData({
+          prisma,
+          actorUserId: session.userId,
+          reason,
+          scope: { ...scope, companyCode: target.code },
+        })
+      } catch (err) {
+        // The reset itself failed → nothing was deleted for this company (it
+        // runs in a single transaction). Record + move on.
+        log.error("data-archive reset failed for company", {
+          company: target.code,
+          err: err instanceof Error ? err.message : String(err),
+        })
+        perCompany.push({ code: target.code, error: err instanceof Error ? err.message : String(err) })
+        continue
+      }
+      // Reset SUCCEEDED — count it regardless of how recompute goes. The data is
+      // already gone; a recompute hiccup must NOT mark the company as failed,
+      // else companiesReset under-reports a real wipe. Codex 2026-06-21 MED.
+      rowsAffected += reset.rowsAffected
+      for (const [k, v] of Object.entries(reset.breakdown ?? {})) {
+        breakdown[k] = (breakdown[k] ?? 0) + v
+      }
+      let rc = 0
+      try {
         const years = year
           ? [year]
           : Array.from(
               new Set(
                 (
                   await prisma.indicatorValue.findMany({
-                    where: { companyId: company.id },
+                    where: { companyId: target.id },
                     select: { period: true },
                     distinct: ["period"],
                   })
@@ -201,29 +269,43 @@ export async function POST(request: NextRequest) {
                   .filter((n) => Number.isFinite(n)),
               ),
             )
-        const affected = years.map((y) => ({ companyId: company.id, year: y }))
+        const affected = years.map((y) => ({ companyId: target.id, year: y }))
         if (affected.length > 0) {
-          const rc = await runRecomputeForCompanies(prisma, orgId, affected)
-          recomputed = rc.ok ?? 0
+          const r = await runRecomputeForCompanies(prisma, orgId, affected)
+          rc = r.ok ?? 0
         }
+      } catch (err) {
+        // Non-fatal: the reset committed; stale IndicatorValues get cleaned by
+        // the next recompute. Surface it, but don't fail the company.
+        log.error("recompute after reset failed (non-fatal)", {
+          company: target.code,
+          err: err instanceof Error ? err.message : String(err),
+        })
       }
-      return NextResponse.json({
-        ok: true,
-        mode: "reset",
-        rowsAffected: reset.rowsAffected,
-        breakdown: reset.breakdown,
-        auditEventId: reset.auditEventId,
-        recomputed,
-      })
-    } catch (err) {
-      log.error("data-archive reset failed", {
-        err: err instanceof Error ? err.message : String(err),
-      })
-      return NextResponse.json(
-        { error: err instanceof Error ? err.message : String(err) },
-        { status: 500 },
-      )
+      recomputed += rc
+      perCompany.push({ code: target.code, rowsAffected: reset.rowsAffected, recomputed: rc })
     }
+    const failures = perCompany.filter(
+      (p): p is { code: string; error: string } => "error" in p,
+    )
+    return NextResponse.json(
+      {
+        ok: failures.length === 0,
+        mode: "reset",
+        rowsAffected,
+        breakdown,
+        recomputed,
+        companiesReset: perCompany.length - failures.length,
+        perCompany,
+        ...(failures.length > 0
+          ? { error: `${failures.length} of ${targets.length} companies failed: ${failures.map((f) => f.code).join(", ")}` }
+          : {}),
+      },
+      // 207 Multi-Status on any failure so status-keyed clients/log parsers
+      // don't read a partial wipe as success (Codex 2026-06-21). The form keys
+      // on body.ok, so its behaviour is unchanged.
+      { status: failures.length > 0 ? 207 : 200 },
+    )
   }
 
   try {

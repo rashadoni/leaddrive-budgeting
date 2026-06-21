@@ -46,6 +46,8 @@ export function DataArchiveForm({
   const [mode, setMode] = useState<"archive" | "restore">("archive")
   const [entityKind, setEntityKind] = useState<EntityKind>("BudgetLine")
   const [companyCode, setCompanyCode] = useState<string>("")
+  // Reset only: several companies / whole holding selected via checkboxes.
+  const [resetCodes, setResetCodes] = useState<string[]>([])
   const [year, setYear] = useState<string>("")
   const [period, setPeriod] = useState<string>("")
   const [reason, setReason] = useState<string>("")
@@ -59,6 +61,7 @@ export function DataArchiveForm({
         unattributableCfRows?: number
         breakdown?: Record<string, number>
         recomputed?: number
+        companiesReset?: number
       }
     | { ok: false; error: string }
     | null
@@ -82,10 +85,14 @@ export function DataArchiveForm({
   const allowsYear = needsYear || isReset
   const needsPeriod = entityKind === "Counterparty"
 
-  const expectedConfirm = companyCode || "ALL"
+  // Reset is a bulk wipe → always confirm with the literal "ALL". Archive/
+  // restore confirm with the entity code (or "ALL" for an org-wide scope).
+  const expectedConfirm = isReset ? "ALL" : companyCode || "ALL"
   const canSubmit =
     confirmCode === expectedConfirm &&
-    (!needsCompany || companyCode.length > 0) &&
+    (isReset
+      ? resetCodes.length > 0
+      : !needsCompany || companyCode.length > 0) &&
     (!needsYear || year.length > 0) &&
     (!needsPeriod || period.length > 0) &&
     !submitting
@@ -102,8 +109,13 @@ export function DataArchiveForm({
         body: JSON.stringify({
           mode,
           entityKind,
-          companyCode: companyCode.length > 0 ? companyCode : undefined,
-          year: needsYear && year ? parseInt(year, 10) : undefined,
+          // Reset → many companies (or the whole holding) in one POST.
+          ...(isReset
+            ? { companyCodes: resetCodes }
+            : { companyCode: companyCode.length > 0 ? companyCode : undefined }),
+          // `allowsYear` (not `needsYear`) so a reset's OPTIONAL year is sent —
+          // previously the shown reset year field was silently dropped.
+          year: allowsYear && year ? parseInt(year, 10) : undefined,
           period: needsPeriod ? period : undefined,
           reason: reason || undefined,
           confirmCode,
@@ -117,6 +129,7 @@ export function DataArchiveForm({
             unattributableCfRows?: number
             breakdown?: Record<string, number>
             recomputed?: number
+            companiesReset?: number
           }
         | { error: string }
       if (!res.ok || !("ok" in data && data.ok)) {
@@ -132,6 +145,7 @@ export function DataArchiveForm({
           unattributableCfRows: data.unattributableCfRows,
           breakdown: data.breakdown,
           recomputed: data.recomputed,
+          companiesReset: data.companiesReset,
         })
         // Refresh recent-events table by reloading the page after
         // a successful action — server component re-fetches the
@@ -228,20 +242,55 @@ export function DataArchiveForm({
               </span>
             )}
           </label>
-          <select
-            value={companyCode}
-            onChange={(e) => setCompanyCode(e.target.value)}
-            className="w-full border rounded px-3 py-2 text-sm bg-background"
-          >
-            <option value="">
-              {needsCompany ? t("companyPickerPlaceholder") : t("orgWideOption")}
-            </option>
-            {companies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} — {c.name}
+          {isReset ? (
+            // Reset can wipe several companies — or the whole holding — at once.
+            <div className="space-y-1.5 border rounded p-3 bg-background max-h-72 overflow-auto">
+              <label className="flex items-center gap-2 text-sm font-semibold border-b pb-1.5 mb-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={companies.length > 0 && resetCodes.length === companies.length}
+                  onChange={(e) =>
+                    setResetCodes(e.target.checked ? companies.map((c) => c.code) : [])
+                  }
+                />
+                🏛 {t("selectAllHolding")}
+              </label>
+              {companies.map((c) => (
+                <label key={c.code} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={resetCodes.includes(c.code)}
+                    onChange={(e) =>
+                      setResetCodes((prev) =>
+                        e.target.checked
+                          ? [...prev, c.code]
+                          : prev.filter((x) => x !== c.code),
+                      )
+                    }
+                  />
+                  {c.code} — {c.name}
+                </label>
+              ))}
+              <div className="text-xs text-muted-foreground pt-1">
+                {t("selectedCount", { n: resetCodes.length })}
+              </div>
+            </div>
+          ) : (
+            <select
+              value={companyCode}
+              onChange={(e) => setCompanyCode(e.target.value)}
+              className="w-full border rounded px-3 py-2 text-sm bg-background"
+            >
+              <option value="">
+                {needsCompany ? t("companyPickerPlaceholder") : t("orgWideOption")}
               </option>
-            ))}
-          </select>
+              {companies.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
@@ -350,6 +399,9 @@ export function DataArchiveForm({
               {result.mode === "reset" ? (
                 <>
                   ✓ {t("resultReset", { rows: result.rowsAffected })}
+                  {result.companiesReset != null && result.companiesReset > 1 && (
+                    <span className="ml-1">· {t("resultCompaniesReset", { n: result.companiesReset })}</span>
+                  )}
                   {result.breakdown && (
                     <div className="mt-2 text-xs font-mono space-y-0.5">
                       {Object.entries(result.breakdown).map(([k, v]) => (

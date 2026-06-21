@@ -3100,7 +3100,10 @@
       "resultReset": "Sıfırlandı: {rows} sətir (qalıqsız)",
       "breakdownRecomputed": "↻ yenidən hesablanan göstəricilər: {n}",
       "cfUnattributableNote": "⚠️ Bu il üçün {count} Cash Flow sətrində sourceId-də şirkət prefiksi yoxdur (əl ilə / idxaldan deyil) — şirkətə bağlamaq olmur, ona görə TOXUNULMADI. Təşkilat üzrə arxivdən istifadə edin və ya əl ilə redaktə edin.",
-      "submitReset": "🧹 Sıfırla — hər şeyi sil (qalıqsız)"
+      "submitReset": "🧹 Sıfırla — hər şeyi sil (qalıqsız)",
+      "selectAllHolding": "Bütün qrup (bütün şirkətlər)",
+      "selectedCount": "Seçildi: {n}",
+      "resultCompaniesReset": "sıfırlanan şirkətlər: {n}"
     }
   },
   "adminDataSources": {
