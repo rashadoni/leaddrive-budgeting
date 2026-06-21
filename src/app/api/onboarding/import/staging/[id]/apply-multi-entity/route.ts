@@ -242,6 +242,46 @@ export async function POST(
   const tcRaw = form.get('targetCurrency');
   const preferCurrency = typeof tcRaw === 'string' && tcRaw.trim() !== '' ? tcRaw.trim() : undefined;
 
+  // ── Plan target (Option C, 2026-06-21) — the client EXPLICITLY chooses where
+  // the import lands, instead of a hardcoded "AI-Imported <year> Budget" plan
+  // created with a silent kind="actual" (which double-counted against the
+  // canonical actual plan, since the terminal aggregates ALL kind="actual"
+  // plans for a year). Either:
+  //   • targetPlanId  → UPDATE an existing plan (must be same org + year), or
+  //   • newPlanName + planKind → CREATE a new plan with an EXPLICIT kind.
+  const rawTargetPlanId = form.get('targetPlanId');
+  const targetPlanId =
+    typeof rawTargetPlanId === 'string' && rawTargetPlanId.trim() ? rawTargetPlanId.trim() : null;
+  const rawNewName = form.get('newPlanName');
+  const newPlanName =
+    typeof rawNewName === 'string' && rawNewName.trim() ? rawNewName.trim().slice(0, 120) : null;
+  const planKind = form.get('planKind') === 'budget' ? 'budget' : 'actual';
+
+  let existingTargetPlan: { id: string } | null = null;
+  if (targetPlanId) {
+    existingTargetPlan = await prisma.budgetPlan.findFirst({
+      where: { id: targetPlanId, organizationId: orgId, year: targetYear, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existingTargetPlan) {
+      return NextResponse.json(
+        { error: `Выбранный план не найден, не за ${targetYear} год, или не в вашей организации.` },
+        { status: 400 },
+      );
+    }
+  }
+
+  // Double-count guard: creating a NEW actual plan while an actual plan already
+  // exists for this year would inflate the terminal (which sums all actuals).
+  // Advisory in dry-run; hard-blocked on commit unless acknowledged.
+  const creatingNewActual = !existingTargetPlan && planKind === 'actual';
+  const existingActualCount = creatingNewActual
+    ? await prisma.budgetPlan.count({
+        where: { organizationId: orgId, year: targetYear, kind: 'actual', deletedAt: null },
+      })
+    : 0;
+  const wouldDoubleActual = creatingNewActual && existingActualCount > 0;
+
   // Split by entity + parse per entity.
   const split = applyProposalByEntity(workbook, staging.sourceSheet, proposal, XLSX, userOverrides, {
     preferYear: targetYear,
@@ -333,17 +373,15 @@ export async function POST(
 
   // ── Dry-run preview — advisory, never blocks ────────────────────────────
   if (dryRun) {
-    const planName = `AI-Imported ${targetYear} Budget`;
-    const existingPlan = await prisma.budgetPlan.findFirst({
-      where: { organizationId: orgId, year: targetYear, name: planName, deletedAt: null },
-      select: { id: true },
-    });
+    // wouldDelete is counted ONLY when updating an existing plan; a fresh plan
+    // deletes nothing.
+    const previewPlan = existingTargetPlan;
     const perEntityPreview = await Promise.all(
       split.perEntity.map(async (p) => {
         const companyId = entityMap[p.entityValue];
         const wouldDelete =
-          existingPlan && companyId && inOrgIds.has(companyId)
-            ? await prisma.budgetLine.count({ where: { planId: existingPlan.id, companyId } })
+          previewPlan && companyId && inOrgIds.has(companyId)
+            ? await prisma.budgetLine.count({ where: { planId: previewPlan.id, companyId } })
             : 0;
         return {
           entityValue: p.entityValue,
@@ -363,6 +401,11 @@ export async function POST(
       entityCount: split.entityValues.length,
       writeableCount: toWrite.length,
       skipped: skippedValues,
+      // Plan target echo + the double-count warning (Option C).
+      planTarget: existingTargetPlan
+        ? { mode: 'update', planId: existingTargetPlan.id }
+        : { mode: 'create', name: newPlanName ?? `Imported ${targetYear}`, kind: planKind },
+      wouldDoubleActual,
       perEntity: perEntityPreview,
       controlVerdict: aggVerdict,
       // Advisory mapping issues — the UI gates on these; the commit enforces.
@@ -450,6 +493,18 @@ export async function POST(
       { status: 409 },
     );
   }
+  // Double-count guard (Option C): creating a 2nd actual plan for a year that
+  // already has one inflates the terminal → require explicit acknowledgement.
+  if (wouldDoubleActual && !isAck(form.get('acknowledgeSecondActualPlan'))) {
+    return NextResponse.json(
+      {
+        error: `За ${targetYear} год уже есть actual-план. Новый actual-план даст двойной счёт в терминале — обновите существующий план или подтвердите (acknowledgeSecondActualPlan).`,
+        requiresAcknowledgement: 'acknowledgeSecondActualPlan',
+        existingActualCount,
+      },
+      { status: 409 },
+    );
+  }
 
   // ── Transaction: shared plan, per-entity clean-slate + insert ───────────
   // committedMap records the FULL reviewer decision (written companies + the
@@ -476,14 +531,28 @@ export async function POST(
         });
         if (claim.count !== 1) throw new Error('STAGING_RACE');
 
-        const planName = `AI-Imported ${targetYear} Budget`;
-        let plan = await tx.budgetPlan.findFirst({
-          where: { organizationId: orgId, year: targetYear, name: planName, deletedAt: null },
-          select: { id: true },
-        });
-        if (!plan) {
+        // Plan target (Option C): UPDATE the chosen existing plan, or CREATE a
+        // new one with an EXPLICIT name + kind (no more silent kind="actual").
+        let plan: { id: string };
+        if (targetPlanId) {
+          // Re-resolve INSIDE the tx (Codex TOCTOU 2026-06-21): the pre-tx
+          // validation could go stale if the plan is soft-deleted in between.
+          const rechecked = await tx.budgetPlan.findFirst({
+            where: { id: targetPlanId, organizationId: orgId, year: targetYear, deletedAt: null },
+            select: { id: true },
+          });
+          if (!rechecked) throw new Error('TARGET_PLAN_GONE');
+          plan = rechecked;
+        } else {
           plan = await tx.budgetPlan.create({
-            data: { organizationId: orgId, name: planName, year: targetYear, periodType: 'yearly', status: 'active' },
+            data: {
+              organizationId: orgId,
+              name: newPlanName ?? `Imported ${targetYear}`,
+              year: targetYear,
+              periodType: 'yearly',
+              status: 'active',
+              kind: planKind,
+            },
             select: { id: true },
           });
         }
@@ -525,6 +594,12 @@ export async function POST(
     if (err instanceof Error && err.message === 'STAGING_RACE') {
       return NextResponse.json(
         { error: 'Эта загрузка уже применяется/применена (параллельный запрос).', status: 'applied' },
+        { status: 409 },
+      );
+    }
+    if (err instanceof Error && err.message === 'TARGET_PLAN_GONE') {
+      return NextResponse.json(
+        { error: 'Выбранный план был удалён во время импорта. Обновите список планов и повторите.' },
         { status: 409 },
       );
     }

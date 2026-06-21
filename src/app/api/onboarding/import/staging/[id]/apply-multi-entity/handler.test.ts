@@ -14,7 +14,7 @@ const { prismaMock, entityMocks, applierMocks, applyLinesMock, recomputeMock } =
   prismaMock: {
     importStaging: { findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
     company: { findMany: vi.fn(), updateMany: vi.fn() },
-    budgetPlan: { findFirst: vi.fn() },
+    budgetPlan: { findFirst: vi.fn(), count: vi.fn() },
     budgetLine: { count: vi.fn() },
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
@@ -116,6 +116,8 @@ beforeEach(() => {
   }
   prismaMock.auditEvent.create.mockResolvedValue({ id: 'a1' });
   prismaMock.company.updateMany.mockResolvedValue({ count: 0 });
+  prismaMock.budgetPlan.count.mockResolvedValue(0); // no pre-existing actual plan by default
+  prismaMock.budgetPlan.findFirst.mockResolvedValue(null); // no targetPlanId match by default
   entityMocks.findEntityColumn.mockReset().mockReturnValue(14);
   entityMocks.applyProposalByEntity.mockReset();
   applierMocks.detectProposalYear.mockReset().mockReturnValue(2026);
@@ -406,5 +408,80 @@ describe('POST .../apply-multi-entity', () => {
     const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA', EDEN: 'coB' }) }), paramsFor(STAGING_ID));
     expect(res.status).toBe(409);
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  // ── Option C: explicit plan target (2026-06-21) ──────────────────────────
+  function txWithPlanCreate(inTxPlan: { id: string } | null = { id: 'existing-plan' }) {
+    const planCreate = vi.fn().mockResolvedValue({ id: 'newplan' });
+    const planFindFirst = vi.fn().mockResolvedValue(inTxPlan); // in-tx TOCTOU recheck
+    prismaMock.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        budgetPlan: { create: planCreate, findFirst: planFindFirst },
+        importStaging: { updateMany: vi.fn().mockResolvedValue({ count: 1 }), update: vi.fn().mockResolvedValue({ id: STAGING_ID }) },
+      };
+      return cb(tx);
+    });
+    return { planCreate, planFindFirst };
+  }
+  function oneEntity() {
+    stage({ entityValues: ['AZSF'] });
+    entityMocks.applyProposalByEntity.mockReturnValue({
+      entityColumn: 14, entityValues: ['AZSF'], perEntity: [{ entityValue: 'AZSF', result: greenResult('X', 100) }],
+    });
+    prismaMock.company.findMany.mockResolvedValue([{ id: 'coA', baseCurrencyCode: 'AZN' }]);
+  }
+
+  it('targetPlanId → UPDATES the existing plan (no new plan created)', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    oneEntity();
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({ id: 'existing-plan' }); // org+year match
+    const { planCreate } = txWithPlanCreate();
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), targetPlanId: 'existing-plan' }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    expect(planCreate).not.toHaveBeenCalled(); // used existing, didn't create
+    expect(applyLinesMock.applyParsedLinesToCompany.mock.calls[0][1].planId).toBe('existing-plan');
+  });
+
+  it('targetPlanId soft-deleted DURING the tx (TOCTOU) → 409, no create', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    oneEntity();
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({ id: 'existing-plan' }); // pre-tx OK
+    const { planCreate } = txWithPlanCreate(null); // in-tx recheck → gone
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), targetPlanId: 'existing-plan' }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(409);
+    expect(planCreate).not.toHaveBeenCalled();
+  });
+
+  it('targetPlanId not found / wrong year → 400, no tx', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    oneEntity();
+    prismaMock.budgetPlan.findFirst.mockResolvedValue(null); // no match
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), targetPlanId: 'bogus' }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(400);
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('newPlanName + planKind=budget → creates plan with explicit name + kind', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    oneEntity();
+    const { planCreate } = txWithPlanCreate();
+    const res = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), newPlanName: 'My 2026 Plan', planKind: 'budget' }), paramsFor(STAGING_ID));
+    expect(res.status).toBe(200);
+    expect(planCreate).toHaveBeenCalledOnce();
+    expect(planCreate.mock.calls[0][0].data).toMatchObject({ name: 'My 2026 Plan', kind: 'budget' });
+  });
+
+  it('creating a 2nd actual plan when one exists → 409 requiresAcknowledgement; ack → 200', async () => {
+    await mockSession({ orgId: ORG_ID, userId: 'u', role: 'manager' });
+    oneEntity();
+    prismaMock.budgetPlan.count.mockResolvedValue(1); // an actual plan already exists this year
+    txWithPlanCreate();
+    // no ack → blocked
+    const blocked = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), planKind: 'actual' }), paramsFor(STAGING_ID));
+    expect(blocked.status).toBe(409);
+    expect((await blocked.json()).requiresAcknowledgement).toBe('acknowledgeSecondActualPlan');
+    // with ack → proceeds
+    const ok = await POST(await reqWith({ entityMap: JSON.stringify({ AZSF: 'coA' }), planKind: 'actual', acknowledgeSecondActualPlan: 'true' }), paramsFor(STAGING_ID));
+    expect(ok.status).toBe(200);
   });
 });

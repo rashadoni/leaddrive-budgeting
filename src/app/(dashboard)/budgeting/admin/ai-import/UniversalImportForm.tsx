@@ -28,6 +28,12 @@ interface CompanyOpt {
   code: string
   name: string
 }
+interface PlanOpt {
+  id: string
+  name: string
+  year: number
+  kind: string
+}
 interface Classification {
   sheetName: string
   dataType: string
@@ -65,6 +71,7 @@ interface MePreviewResult {
   year: number
   entityCount: number
   writeableCount: number
+  wouldDoubleActual?: boolean
   perEntity: MePerEntityPreview[]
   controlVerdict: "green" | "yellow" | "red"
   mappingIssues: {
@@ -178,6 +185,14 @@ export function UniversalImportForm() {
   // Phase C C3.2 — target currency for a multi-currency sheet (the same period
   // in >1 currency). Empty = let the server default to the company base.
   const [targetCurrency, setTargetCurrency] = useState("")
+  // Option C — plan target. Client picks: create a new plan (name + kind) or
+  // update an existing one. Prevents the silent kind="actual" double-count.
+  const [plans, setPlans] = useState<PlanOpt[]>([])
+  const [planMode, setPlanMode] = useState<"create" | "update">("create")
+  const [targetPlanId, setTargetPlanId] = useState("")
+  const [newPlanName, setNewPlanName] = useState("")
+  const [planKind, setPlanKind] = useState<"actual" | "budget">("actual")
+  const [ackSecondActual, setAckSecondActual] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Monotonic token bumped on every mapping/sheet/file change. A dry-run
@@ -200,6 +215,20 @@ export function UniversalImportForm() {
 
   useEffect(() => {
     void loadCompanies()
+    void (async () => {
+      try {
+        const r = await fetch("/api/budgeting/plans")
+        const j = r.ok ? await r.json() : null
+        const data: PlanOpt[] = Array.isArray(j?.data)
+          ? j.data.map((p: { id: string; name: string; year: number; kind?: string }) => ({
+              id: p.id, name: p.name, year: p.year, kind: p.kind ?? "actual",
+            }))
+          : []
+        setPlans(data)
+      } catch {
+        setPlans([])
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -356,6 +385,14 @@ export function UniversalImportForm() {
       fd.append("file", file)
       if (dryRun) fd.append("dryRun", "true")
       if (targetCurrency) fd.append("targetCurrency", targetCurrency)
+      // Option C — explicit plan target (update existing vs create new + kind).
+      if (planMode === "update" && targetPlanId) {
+        fd.append("targetPlanId", targetPlanId)
+      } else if (planMode === "create") {
+        if (newPlanName.trim()) fd.append("newPlanName", newPlanName.trim())
+        fd.append("planKind", planKind)
+      }
+      if (!dryRun && ackSecondActual) fd.append("acknowledgeSecondActualPlan", "true")
       const overrides = buildUserOverrides(analysis.proposal, edited)
       if (overrides) fd.append("userOverrides", JSON.stringify(overrides))
       if (!dryRun) {
@@ -452,6 +489,15 @@ export function UniversalImportForm() {
   const setEntityMapEntry = (value: string, companyId: string) => {
     setEntityMap((m) => ({ ...m, [value]: companyId }))
     setMePreview(null)
+    previewEpoch.current++
+  }
+
+  // Changing the plan target invalidates a stale preview (Codex 2026-06-21) —
+  // otherwise a user could preview plan A, switch to B, and commit into B
+  // without seeing B's would-delete footprint.
+  const invalidateMePreview = () => {
+    setMePreview(null)
+    setAckSecondActual(false)
     previewEpoch.current++
   }
 
@@ -851,10 +897,65 @@ export function UniversalImportForm() {
       {/* Step 3b (multi-company) — preview + commit per entity */}
       {analysis?.multiEntity && !meApplied && (
         <div className="space-y-3">
+          {/* Option C — куда записать данные (план-цель) */}
+          <div className="border rounded p-3 bg-muted/10 space-y-2">
+            <div className="text-sm font-semibold">📋 Куда записать данные</div>
+            <div className="flex gap-4 text-sm">
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={planMode === "create"} onChange={() => { setPlanMode("create"); invalidateMePreview() }} disabled={busy !== null} />
+                Создать новый план
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="radio" checked={planMode === "update"} onChange={() => { setPlanMode("update"); invalidateMePreview() }} disabled={busy !== null} />
+                Обновить существующий
+              </label>
+            </div>
+            {planMode === "create" ? (
+              <div className="flex flex-wrap gap-2 items-center">
+                <input
+                  value={newPlanName}
+                  onChange={(e) => { setNewPlanName(e.target.value); invalidateMePreview() }}
+                  placeholder="Имя плана (необязательно)"
+                  disabled={busy !== null}
+                  className="flex-1 min-w-[180px] px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+                />
+                <select
+                  value={planKind}
+                  onChange={(e) => { setPlanKind(e.target.value as "actual" | "budget"); invalidateMePreview() }}
+                  disabled={busy !== null}
+                  className="px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+                >
+                  <option value="actual">Факт (actual)</option>
+                  <option value="budget">Бюджет/план (budget)</option>
+                </select>
+              </div>
+            ) : (
+              <select
+                value={targetPlanId}
+                onChange={(e) => { setTargetPlanId(e.target.value); invalidateMePreview() }}
+                disabled={busy !== null}
+                className="w-full px-2 py-1 rounded border border-border bg-background text-xs disabled:opacity-50"
+                aria-label="План для обновления"
+              >
+                <option value="">— выберите план для обновления —</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} · {p.year} · {p.kind}
+                  </option>
+                ))}
+              </select>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              «Обновить» перезапишет строки этих компаний в выбранном плане. Создавать новый
+              <b> факт</b>-план, когда факт-план за год уже есть, не стоит — это даст двойной счёт
+              в терминале (выберите «Обновить»).
+            </p>
+          </div>
+
           <button
             type="button"
             onClick={() => runApply(true)}
-            disabled={busy !== null}
+            disabled={busy !== null || (planMode === "update" && !targetPlanId)}
             className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
           >
             {busy === "preview" ? "Считаю…" : "Превью по компаниям (без записи)"}
@@ -951,10 +1052,23 @@ export function UniversalImportForm() {
             </label>
           )}
 
+          {mePreview?.wouldDoubleActual && (
+            <label className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400">
+              <input
+                type="checkbox"
+                checked={ackSecondActual}
+                onChange={(e) => setAckSecondActual(e.target.checked)}
+                className="mt-0.5"
+              />
+              ⚠ За этот год уже есть факт-план — новый факт-план даст двойной счёт в терминале.
+              Подтверждаю, что хочу второй факт-план (лучше выбрать «Обновить существующий»).
+            </label>
+          )}
+
           <button
             type="button"
             onClick={() => runApply(false)}
-            disabled={meCommitBlocked}
+            disabled={meCommitBlocked || (mePreview?.wouldDoubleActual && !ackSecondActual)}
             title={!mePreview ? "Сначала запустите превью" : undefined}
             className="w-full px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
           >
