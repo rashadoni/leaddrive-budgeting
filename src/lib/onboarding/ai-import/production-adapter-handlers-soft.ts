@@ -25,6 +25,7 @@ import {
   parseCounterpartyRegister,
   counterpartyRoleFromSheet,
 } from "./counterparty-register"
+import { parseCourtDisputes, COURT_DISPUTE_METRICS } from "./court-disputes-parse"
 import {
   parseIcmalBudgetLines,
   allocateIcmalBudget,
@@ -941,6 +942,92 @@ export function makeCounterpartyHandler(
           })),
         })
         return { rowsInserted: rows.length }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// LEGAL_CASES — court-disputes register → 5 court_disputes_* OperationalFacts
+// (court_disputes_open → LEGAL_CASES_ACTIVE) + Company.settings.courtDisputes.
+// Ports scripts/import-court-disputes-detailed.mjs. 2026-06-21.
+// ──────────────────────────────────────────────────────────────────────
+
+export function makeLegalCasesHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  void prisma
+  void ctxRef
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parseCourtDisputes(input.workbook, input.sheetName, input.XLSX)
+    const period = String(input.year)
+    const recordDate = new Date(`${period}-12-31T00:00:00.000Z`)
+    const warnings = [...parsed.warnings]
+    const entries = Object.entries(parsed.byCompany)
+      .map(([code, agg]) => ({ code, companyId: ctx.codeToId.get(code), agg }))
+      .filter((e): e is { code: string; companyId: string; agg: (typeof parsed.byCompany)[string] } => {
+        if (!e.companyId) warnings.push(`Company "${e.code}" not in org — court cases skipped`)
+        return Boolean(e.companyId)
+      })
+    const totalCases = entries.reduce((s, e) => s + e.agg.total, 0)
+
+    return {
+      summary: `${totalCases} court case(s) across ${entries.length} entit${entries.length === 1 ? "y" : "ies"} (${period})`,
+      itemCount: totalCases,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        let rows = 0
+        for (const { companyId, agg } of entries) {
+          // Re-import-safe: replace this year-end snapshot's facts for the metric
+          // set + date (scoped to one company), then re-create.
+          await tx.operationalFact.deleteMany({
+            where: { companyId, metric: { in: [...COURT_DISPUTE_METRICS] }, date: recordDate },
+          })
+          await tx.operationalFact.createMany({
+            data: [
+              { metric: "court_disputes_total", value: agg.total },
+              { metric: "court_disputes_open", value: agg.open },
+              { metric: "court_disputes_as_defendant", value: agg.as_defendant },
+              { metric: "court_disputes_as_plaintiff", value: agg.as_plaintiff },
+              { metric: "court_disputes_money_claims", value: agg.money_claims },
+            ].map((m) => ({
+              organizationId: ctx.organizationId,
+              companyId,
+              metric: m.metric,
+              date: recordDate,
+              value: m.value,
+              unit: "count",
+              source: `multi-import:${input.sheetName}`,
+            })),
+          })
+          const company = await tx.company.findUnique({ where: { id: companyId }, select: { settings: true } })
+          const prev = (company?.settings ?? {}) as Record<string, unknown>
+          await tx.company.update({
+            where: { id: companyId },
+            data: {
+              settings: {
+                ...prev,
+                courtDisputes: {
+                  source: input.sheetName,
+                  importedAt: new Date().toISOString(),
+                  summary: {
+                    total: agg.total,
+                    open: agg.open,
+                    as_defendant: agg.as_defendant,
+                    as_plaintiff: agg.as_plaintiff,
+                    money_claims: agg.money_claims,
+                  },
+                  cases: agg.cases,
+                },
+              } as unknown as Prisma.InputJsonValue,
+            },
+          })
+          rows += COURT_DISPUTE_METRICS.length
+        }
+        return { rowsInserted: rows }
       },
     }
   }
