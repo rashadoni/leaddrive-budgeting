@@ -3099,7 +3099,8 @@
       "orgWideOption": "— whole organization (org-wide) —",
       "resultReset": "Reset: {rows} rows (no leftovers)",
       "breakdownRecomputed": "↻ indicators recomputed: {n}",
-      "cfUnattributableNote": "⚠️ {count} Cash Flow rows this year have no company prefix in sourceId (manual / non-import) — they can't be attributed to a company, so they were NOT touched. Use an org-wide archive or edit them manually."
+      "cfUnattributableNote": "⚠️ {count} Cash Flow rows this year have no company prefix in sourceId (manual / non-import) — they can't be attributed to a company, so they were NOT touched. Use an org-wide archive or edit them manually.",
+      "submitReset": "🧹 Reset — delete everything (no leftovers)"
     }
   },
   "adminDataSources": {

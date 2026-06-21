@@ -319,17 +319,21 @@ export function DataArchiveForm({
         disabled={!canSubmit}
         className={`w-full py-2.5 px-4 rounded text-sm font-semibold transition-colors ${
           canSubmit
-            ? mode === "archive"
-              ? "bg-amber-600 hover:bg-amber-700 text-white"
-              : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            ? isReset
+              ? "bg-red-600 hover:bg-red-700 text-white"
+              : mode === "archive"
+                ? "bg-amber-600 hover:bg-amber-700 text-white"
+                : "bg-emerald-600 hover:bg-emerald-700 text-white"
             : "bg-muted text-muted-foreground cursor-not-allowed"
         }`}
       >
         {submitting
           ? t("submitRunning")
-          : mode === "archive"
-            ? t("submitArchive")
-            : t("submitRestore")}
+          : isReset
+            ? t("submitReset")
+            : mode === "archive"
+              ? t("submitArchive")
+              : t("submitRestore")}
       </button>
 
       {/* Result */}
