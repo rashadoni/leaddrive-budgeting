@@ -27,13 +27,25 @@ type EntityKind =
   | "BalanceSheetLine"
   | "CashFlowEntry"
   | "Counterparty"
+  | "AllImportData"
 
 const ENTITY_KIND_KEYS: EntityKind[] = [
   "BudgetLine",
   "BalanceSheetLine",
   "CashFlowEntry",
   "Counterparty",
+  "AllImportData",
 ]
+
+// AllImportData is a meta-kind (full per-company reset) — i18n-less, plain RU,
+// matching the form's existing hybrid t()+hardcoded style.
+const RESET_LABEL = "🧹 Полный сброс данных компании (всё, без хвостов)"
+const RESET_DESCRIPTION =
+  "Очищает ВСЁ, что импорт записал для одной компании: финансы (P&L/BS/CF) + " +
+  "контрагентов (архивируются, обратимо) + операционные факты импорта + аудит/суды/" +
+  "риски/землю/CAPEX в settings (удаляются). Ручные факты (manual/inline) сохраняются. " +
+  "Год опционален (пусто = все годы). После сброса пересчитываются индикаторы. " +
+  "Необратимо для фактов/settings — восстанавливается повторным импортом."
 
 export function DataArchiveForm({
   companies,
@@ -50,7 +62,14 @@ export function DataArchiveForm({
   const [confirmCode, setConfirmCode] = useState<string>("")
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<
-    | { ok: true; mode: string; rowsAffected: number; unattributableCfRows?: number }
+    | {
+        ok: true
+        mode: string
+        rowsAffected: number
+        unattributableCfRows?: number
+        breakdown?: Record<string, number>
+        recomputed?: number
+      }
     | { ok: false; error: string }
     | null
   >(null)
@@ -61,13 +80,16 @@ export function DataArchiveForm({
   // archive to that entity only — BS via its companyId column, CF via the
   // "<code>::" sourceId prefix. Previously BS/CF hid the picker and always
   // wiped every company's rows for the year.
+  const isReset = entityKind === "AllImportData"
   const needsCompany =
-    entityKind === "BudgetLine" || entityKind === "Counterparty"
+    entityKind === "BudgetLine" || entityKind === "Counterparty" || isReset
   const allowsCompany =
     needsCompany ||
     entityKind === "BalanceSheetLine" ||
     entityKind === "CashFlowEntry"
-  const needsYear = entityKind !== "Counterparty"
+  // Reset: year is OPTIONAL (blank = all years) — shown but not required.
+  const needsYear = entityKind !== "Counterparty" && !isReset
+  const allowsYear = needsYear || isReset
   const needsPeriod = entityKind === "Counterparty"
 
   const expectedConfirm = companyCode || "ALL"
@@ -98,7 +120,14 @@ export function DataArchiveForm({
         }),
       })
       const data = (await res.json()) as
-        | { ok: true; mode: string; rowsAffected: number; unattributableCfRows?: number }
+        | {
+            ok: true
+            mode: string
+            rowsAffected: number
+            unattributableCfRows?: number
+            breakdown?: Record<string, number>
+            recomputed?: number
+          }
         | { error: string }
       if (!res.ok || !("ok" in data && data.ok)) {
         setResult({
@@ -111,6 +140,8 @@ export function DataArchiveForm({
           mode: data.mode,
           rowsAffected: data.rowsAffected,
           unattributableCfRows: data.unattributableCfRows,
+          breakdown: data.breakdown,
+          recomputed: data.recomputed,
         })
         // Refresh recent-events table by reloading the page after
         // a successful action — server component re-fetches the
@@ -146,17 +177,27 @@ export function DataArchiveForm({
             />
             <span>{t("modeArchive")}</span>
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label
+            className={`flex items-center gap-2 text-sm ${
+              isReset ? "opacity-40 cursor-not-allowed" : ""
+            }`}
+          >
             <input
               type="radio"
               name="mode"
               value="restore"
               checked={mode === "restore"}
               onChange={() => setMode("restore")}
+              disabled={isReset}
             />
             <span>{t("modeRestore")}</span>
           </label>
         </div>
+        {isReset && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Полный сброс необратим для фактов/settings — только архив (восстановление = повторный импорт).
+          </p>
+        )}
       </div>
 
       {/* Entity kind */}
@@ -164,17 +205,25 @@ export function DataArchiveForm({
         <label className="block text-sm font-semibold mb-2">{t("entityKindLabel")}</label>
         <select
           value={entityKind}
-          onChange={(e) => setEntityKind(e.target.value as EntityKind)}
+          onChange={(e) => {
+            const next = e.target.value as EntityKind
+            setEntityKind(next)
+            if (next === "AllImportData") setMode("archive") // reset is archive-only
+          }}
           className="w-full border rounded px-3 py-2 text-sm bg-background"
         >
           {ENTITY_KIND_KEYS.map((k) => (
             <option key={k} value={k}>
-              {t(`entityKind.${k}.label`)}
+              {k === "AllImportData" ? RESET_LABEL : t(`entityKind.${k}.label`)}
             </option>
           ))}
         </select>
-        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-          {t(`entityKind.${entityKind}.description`)}
+        <p
+          className={`text-xs mt-1 leading-relaxed ${
+            isReset ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"
+          }`}
+        >
+          {isReset ? RESET_DESCRIPTION : t(`entityKind.${entityKind}.description`)}
         </p>
       </div>
 
@@ -207,9 +256,16 @@ export function DataArchiveForm({
       )}
 
       {/* Scope: year */}
-      {needsYear && (
+      {allowsYear && (
         <div>
-          <label className="block text-sm font-semibold mb-2">{t("yearLabel")}</label>
+          <label className="block text-sm font-semibold mb-2">
+            {t("yearLabel")}
+            {isReset && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground">
+                (опционально — пусто = все годы)
+              </span>
+            )}
+          </label>
           <input
             type="number"
             value={year}
@@ -297,14 +353,34 @@ export function DataArchiveForm({
         >
           {result.ok ? (
             <>
-              ✓{" "}
-              {t("resultOk", {
-                action:
-                  result.mode === "archive"
-                    ? t("resultArchived")
-                    : t("resultRestored"),
-                rows: result.rowsAffected,
-              })}
+              {result.mode === "reset" ? (
+                <>
+                  ✓ Сброшено: {result.rowsAffected} строк (без хвостов)
+                  {result.breakdown && (
+                    <div className="mt-2 text-xs font-mono space-y-0.5">
+                      {Object.entries(result.breakdown).map(([k, v]) => (
+                        <div key={k}>
+                          {k}: {v}
+                        </div>
+                      ))}
+                      {result.recomputed != null && (
+                        <div className="mt-1">↻ пересчитано индикаторов: {result.recomputed}</div>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  ✓{" "}
+                  {t("resultOk", {
+                    action:
+                      result.mode === "archive"
+                        ? t("resultArchived")
+                        : t("resultRestored"),
+                    rows: result.rowsAffected,
+                  })}
+                </>
+              )}
               {result.unattributableCfRows != null &&
                 result.unattributableCfRows > 0 && (
                   <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
