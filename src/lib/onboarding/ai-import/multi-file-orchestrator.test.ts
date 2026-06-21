@@ -67,7 +67,7 @@ function stubPrisma(
     $transaction: vi.fn(async (cb: (tx: unknown) => Promise<void>) => {
       counters.n++
       if (opts.failTx) throw new Error("synthetic tx failure")
-      await cb({})
+      await cb({ company: { findMany: vi.fn(async () => []), update: vi.fn(async () => {}) } })
     }),
     company: {
       findMany: vi.fn(async () => opts.companies ?? []),

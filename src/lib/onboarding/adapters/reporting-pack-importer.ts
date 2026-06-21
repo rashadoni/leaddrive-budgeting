@@ -29,6 +29,7 @@
 import type { PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
 import { buildProductionAdapterRegistry } from "../ai-import/production-adapter-registry"
+import { clearDataPendingBanners } from "../clear-data-pending-banner"
 import type {
   AdapterRegistry,
   AdapterRunResult,
@@ -260,6 +261,9 @@ export async function runReportingPackImport(
       totalRowsWritten += applied.rowsInserted
       if (c.report) c.report.rowsWritten = applied.rowsInserted
     }
+    // Companies that just received data are no longer "awaiting data" — clear any
+    // stale settings.dataPendingBanner atomically with the write (2026-06-21).
+    await clearDataPendingBanners(tx, organizationId, Array.from(affected))
   })
 
   const affectedEntities = Array.from(affected)

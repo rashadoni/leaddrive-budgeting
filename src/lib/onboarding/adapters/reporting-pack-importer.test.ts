@@ -89,7 +89,7 @@ describe("runReportingPackImport — apply", () => {
     const prisma = {
       $transaction: async (fn: (tx: unknown) => Promise<void>) => {
         txCalls.push(1)
-        await fn({})
+        await fn({ company: { findMany: async () => [], update: async () => {} } })
       },
     } as never
     const onAfterApply = vi.fn(async () => {})

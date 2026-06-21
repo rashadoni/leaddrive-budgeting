@@ -77,6 +77,7 @@ import {
 } from "./universal-reconciler"
 import type { LLMUsage } from "@/lib/llm/types"
 import type { ReconciliationKey } from "../reconciliation"
+import { clearDataPendingBanners } from "../clear-data-pending-banner"
 import {
   runRecomputeForCompanies,
   type RunRecomputeResult,
@@ -695,6 +696,16 @@ export async function runMultiFileImport(
           const applied = await r.adapterResult.applyToDb(tx)
           totalRowsInserted += applied.rowsInserted
         }
+
+        // Companies that just received data are no longer "awaiting data" —
+        // clear any stale settings.dataPendingBanner atomically (2026-06-21).
+        await clearDataPendingBanners(
+          tx,
+          input.organizationId,
+          groupRecords
+            .map((r) => r.classification.entityCode)
+            .filter((c): c is string => !!c),
+        )
 
         // Post-write reconciliation (inside the tx so re-reads see
         // uncommitted writes). Use the supplied actualSums reader if
