@@ -6,6 +6,7 @@
  * Drives POST /api/import/reporting-pack.
  */
 import { useState, useRef, type DragEvent, type ChangeEvent } from "react"
+import { useTranslations } from "next-intl"
 
 interface EntityReport {
   sheetName: string
@@ -41,6 +42,7 @@ const fmt = (n: number) =>
   Math.round(n).toLocaleString("ru-RU")
 
 export function ReportingPackForm() {
+  const t = useTranslations("adminReportingPack.form")
   const [file, setFile] = useState<File | null>(null)
   const [year, setYear] = useState("2026")
   const [isDragging, setIsDragging] = useState(false)
@@ -65,9 +67,7 @@ export function ReportingPackForm() {
   const run = async (apply: boolean) => {
     if (!file) return
     if (apply) {
-      const ok = window.confirm(
-        `Запись в БД за ${year} год. Существующие данные по AZSF/EDEN/CPC/ProMalt (P&L/BS/CF + бюджетный P&L) будут заменены данными из файла (clean-slate по сущности). Продолжить?`,
-      )
+      const ok = window.confirm(t("applyConfirm", { year }))
       if (!ok) return
     }
     setBusy(apply ? "apply" : "preview")
@@ -113,20 +113,20 @@ export function ReportingPackForm() {
           <div>
             <div className="text-sm font-mono">{file.name}</div>
             <div className="text-xs text-muted-foreground mt-1">
-              {(file.size / 1024).toFixed(0)} KB · нажмите, чтобы заменить
+              {(file.size / 1024).toFixed(0)} KB · {t("clickToReplace")}
             </div>
           </div>
         ) : (
           <div>
-            <div className="text-base font-medium mb-1">Перетащите «Reporting YYYY.xlsx» сюда</div>
-            <div className="text-xs text-muted-foreground">или нажмите для выбора · только .xlsx</div>
+            <div className="text-base font-medium mb-1">{t("dropHere")}</div>
+            <div className="text-xs text-muted-foreground">{t("orClickXlsx")}</div>
           </div>
         )}
       </div>
 
       {/* Controls */}
       <div className="flex items-center gap-3">
-        <label className="text-sm text-muted-foreground">Год</label>
+        <label className="text-sm text-muted-foreground">{t("yearLabel")}</label>
         <input
           value={year}
           onChange={(e) => setYear(e.target.value.replace(/[^0-9]/g, ""))}
@@ -139,7 +139,7 @@ export function ReportingPackForm() {
           disabled={!file || busy !== null}
           className="px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
         >
-          {busy === "preview" ? "Считаю…" : "Превью (без записи)"}
+          {busy === "preview" ? t("previewBusy") : t("previewBtn")}
         </button>
       </div>
 
@@ -153,12 +153,12 @@ export function ReportingPackForm() {
         <div className="space-y-4">
           <div className={`border rounded p-4 ${applied ? "bg-emerald-50 dark:bg-emerald-500/10" : "bg-muted/20"}`}>
             <div className="text-lg font-bold">
-              {applied ? "✅ Импортировано" : "👁 Превью (записи нет)"} · {result.year}
+              {applied ? `✅ ${t("importedTitle")}` : `👁 ${t("previewTitle")}`} · {result.year}
             </div>
             <div className="text-xs text-muted-foreground mt-1">
-              строк к загрузке: {result.totalLineCount}
-              {applied && ` · записано: ${result.totalRowsWritten}`}
-              {applied && ` · сущности: ${result.affectedEntities.join(", ") || "—"}`}
+              {t("rowsToLoad")}: {result.totalLineCount}
+              {applied && ` · ${t("written")}: ${result.totalRowsWritten}`}
+              {applied && ` · ${t("entities")}: ${result.affectedEntities.join(", ") || "—"}`}
             </div>
           </div>
 
@@ -166,14 +166,14 @@ export function ReportingPackForm() {
             <table className="w-full text-sm">
               <thead className="bg-muted text-xs">
                 <tr>
-                  <th className="text-left p-2">Лист</th>
-                  <th className="text-left p-2">Сущность</th>
-                  <th className="text-left p-2">Тип</th>
-                  <th className="text-left p-2">План</th>
-                  <th className="text-right p-2">Строк</th>
-                  <th className="text-right p-2">Сумма</th>
-                  {applied && <th className="text-right p-2">Записано</th>}
-                  <th className="text-left p-2">Статус</th>
+                  <th className="text-left p-2">{t("thSheet")}</th>
+                  <th className="text-left p-2">{t("thEntity")}</th>
+                  <th className="text-left p-2">{t("thType")}</th>
+                  <th className="text-left p-2">{t("thPlan")}</th>
+                  <th className="text-right p-2">{t("thRows")}</th>
+                  <th className="text-right p-2">{t("thSum")}</th>
+                  {applied && <th className="text-right p-2">{t("thWritten")}</th>}
+                  <th className="text-left p-2">{t("thStatus")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -192,9 +192,9 @@ export function ReportingPackForm() {
                     )}
                     <td className="p-2 text-xs">
                       {r.skipped ? (
-                        <span className="text-muted-foreground">· пропущен</span>
+                        <span className="text-muted-foreground">{t("skipped")}</span>
                       ) : (
-                        <span className="text-emerald-700 dark:text-emerald-400">→ запись</span>
+                        <span className="text-emerald-700 dark:text-emerald-400">{t("willWrite")}</span>
                       )}
                     </td>
                   </tr>
@@ -206,7 +206,7 @@ export function ReportingPackForm() {
           {result.warnings.length > 0 && (
             <details className="border rounded p-3 text-xs">
               <summary className="cursor-pointer font-medium">
-                Предупреждения ({result.warnings.length})
+                {t("warnings", { count: result.warnings.length })}
               </summary>
               <ul className="mt-2 space-y-1 list-disc pl-4 text-muted-foreground">
                 {result.warnings.map((w, i) => (
@@ -227,7 +227,7 @@ export function ReportingPackForm() {
                 }}
                 className="flex-1 px-4 py-2 rounded border border-border text-sm hover:bg-muted/50 transition-colors"
               >
-                Отмена
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -235,7 +235,7 @@ export function ReportingPackForm() {
                 disabled={busy !== null || result.totalLineCount === 0}
                 className="flex-1 px-4 py-2 rounded bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-40 transition-colors"
               >
-                {busy === "apply" ? "Записываю…" : "Применить (запись в БД)"}
+                {busy === "apply" ? t("applyBusy") : t("applyBtn")}
               </button>
             </div>
           )}

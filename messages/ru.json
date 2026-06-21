@@ -3724,5 +3724,38 @@
     "error": "Ошибка: {msg}",
     "empty": "Нет недавних crossing-событий",
     "companies": "{count, plural, one {# компания} few {# компании} many {# компаний} other {# компаний}}"
+  },
+  "adminReportingPack": {
+    "title": "Импорт месячного пакета отчётности",
+    "intro": "Загрузите «Reporting YYYY.xlsx». Импортёр читает детальные листы (Actual PLF / BS Actual / CF Actual → факт; Budget PLF → бюджет), делит каждый по колонке BU на сущности (AZSF / EDEN / CPC / ProMalt; EJE/AJE/Consolidated пропускаются) и пишет через проверенный конвейер по сущности в одной транзакции.",
+    "applyNote": "Сначала «Превью» — без единой записи в БД. Затем «Применить» — clean-slate по сущности (существующие данные года заменяются), с пересчётом индикаторов. CF — только факт (бюджетный CF не импортируется: у таблицы нет измерения plan-kind).",
+    "form": {
+      "dropHere": "Перетащите «Reporting YYYY.xlsx» сюда",
+      "orClickXlsx": "или нажмите для выбора · только .xlsx",
+      "clickToReplace": "нажмите, чтобы заменить",
+      "yearLabel": "Год",
+      "previewBtn": "Превью (без записи)",
+      "previewBusy": "Считаю…",
+      "applyConfirm": "Запись в БД за {year} год. Существующие данные по AZSF/EDEN/CPC/ProMalt (P&L/BS/CF + бюджетный P&L) будут заменены данными из файла (clean-slate по сущности). Продолжить?",
+      "importedTitle": "Импортировано",
+      "previewTitle": "Превью (записи нет)",
+      "rowsToLoad": "строк к загрузке",
+      "written": "записано",
+      "entities": "сущности",
+      "thSheet": "Лист",
+      "thEntity": "Сущность",
+      "thType": "Тип",
+      "thPlan": "План",
+      "thRows": "Строк",
+      "thSum": "Сумма",
+      "thWritten": "Записано",
+      "thStatus": "Статус",
+      "skipped": "· пропущен",
+      "willWrite": "→ запись",
+      "warnings": "Предупреждения ({count})",
+      "cancel": "Отмена",
+      "applyBtn": "Применить (запись в БД)",
+      "applyBusy": "Записываю…"
+    }
   }
 }

@@ -3724,5 +3724,38 @@
     "error": "Error: {msg}",
     "empty": "No recent crossing events",
     "companies": "{count, plural, one {# company} other {# companies}}"
+  },
+  "adminReportingPack": {
+    "title": "Monthly reporting pack import",
+    "intro": "Upload “Reporting YYYY.xlsx”. The importer reads the detail sheets (Actual PLF / BS Actual / CF Actual → actual; Budget PLF → budget), splits each by the BU column into entities (AZSF / EDEN / CPC / ProMalt; EJE/AJE/Consolidated are skipped) and writes through the audited per-entity pipeline in one transaction.",
+    "applyNote": "First “Preview” — no DB writes at all. Then “Apply” — clean-slate per entity (the year’s existing data is replaced), with indicator recompute. CF is actual-only (budget CF is not imported: the table has no plan-kind dimension).",
+    "form": {
+      "dropHere": "Drag “Reporting YYYY.xlsx” here",
+      "orClickXlsx": "or click to choose · .xlsx only",
+      "clickToReplace": "click to replace",
+      "yearLabel": "Year",
+      "previewBtn": "Preview (no writes)",
+      "previewBusy": "Computing…",
+      "applyConfirm": "Writing to the DB for {year}. Existing AZSF/EDEN/CPC/ProMalt data (P&L/BS/CF + budget P&L) will be replaced with the file’s data (clean-slate per entity). Continue?",
+      "importedTitle": "Imported",
+      "previewTitle": "Preview (no writes)",
+      "rowsToLoad": "rows to load",
+      "written": "written",
+      "entities": "entities",
+      "thSheet": "Sheet",
+      "thEntity": "Entity",
+      "thType": "Type",
+      "thPlan": "Plan",
+      "thRows": "Rows",
+      "thSum": "Sum",
+      "thWritten": "Written",
+      "thStatus": "Status",
+      "skipped": "· skipped",
+      "willWrite": "→ write",
+      "warnings": "Warnings ({count})",
+      "cancel": "Cancel",
+      "applyBtn": "Apply (write to DB)",
+      "applyBusy": "Writing…"
+    }
   }
 }

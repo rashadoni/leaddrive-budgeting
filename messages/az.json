@@ -3724,5 +3724,38 @@
     "error": "Xəta: {msg}",
     "empty": "Son crossing hadisəsi yoxdur",
     "companies": "{count} şirkət"
+  },
+  "adminReportingPack": {
+    "title": "Aylıq hesabat paketinin idxalı",
+    "intro": "«Reporting YYYY.xlsx» yükləyin. İdxalçı detallı vərəqləri oxuyur (Actual PLF / BS Actual / CF Actual → fakt; Budget PLF → büdcə), hər birini BU sütunu üzrə qurumlara bölür (AZSF / EDEN / CPC / ProMalt; EJE/AJE/Consolidated buraxılır) və qurum üzrə yoxlanılmış konveyerlə bir tranzaksiyada yazır.",
+    "applyNote": "Əvvəlcə «Önizləmə» — bazaya heç bir yazı yoxdur. Sonra «Tətbiq et» — qurum üzrə clean-slate (ilin mövcud datası əvəz olunur), göstəricilərin yenidən hesablanması ilə. CF yalnız faktdır (büdcə CF idxal olunmur: cədvəldə plan-kind ölçüsü yoxdur).",
+    "form": {
+      "dropHere": "«Reporting YYYY.xlsx»-i bura çəkin",
+      "orClickXlsx": "və ya seçmək üçün klikləyin · yalnız .xlsx",
+      "clickToReplace": "əvəz etmək üçün klikləyin",
+      "yearLabel": "İl",
+      "previewBtn": "Önizləmə (yazısız)",
+      "previewBusy": "Hesablanır…",
+      "applyConfirm": "{year} ili üçün bazaya yazı. AZSF/EDEN/CPC/ProMalt üzrə mövcud data (P&L/BS/CF + büdcə P&L) faylın datası ilə əvəz olunacaq (qurum üzrə clean-slate). Davam edilsin?",
+      "importedTitle": "İdxal edildi",
+      "previewTitle": "Önizləmə (yazı yoxdur)",
+      "rowsToLoad": "yüklənəcək sətirlər",
+      "written": "yazıldı",
+      "entities": "qurumlar",
+      "thSheet": "Vərəq",
+      "thEntity": "Qurum",
+      "thType": "Növ",
+      "thPlan": "Plan",
+      "thRows": "Sətir",
+      "thSum": "Məbləğ",
+      "thWritten": "Yazıldı",
+      "thStatus": "Status",
+      "skipped": "· buraxıldı",
+      "willWrite": "→ yazı",
+      "warnings": "Xəbərdarlıqlar ({count})",
+      "cancel": "Ləğv et",
+      "applyBtn": "Tətbiq et (bazaya yazı)",
+      "applyBusy": "Yazılır…"
+    }
   }
 }
