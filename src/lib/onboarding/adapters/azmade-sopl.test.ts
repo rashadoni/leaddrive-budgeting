@@ -2,13 +2,17 @@ import { describe, it, expect } from 'vitest';
 import * as XLSX from 'xlsx';
 import {
   accountTypeFromCode,
+  baseCode,
+  costCenterOf,
   dedupeParentRollups,
   findHeaderRow,
+  isRegionCode,
   mapColumns,
   matchRollupLabel,
   parseSoplSheet,
   parseSummaryRollupSheet,
 } from './azmade-sopl';
+import { computeControlTotals } from '../ai-mapper/control-totals';
 
 describe('accountTypeFromCode', () => {
   it('maps 6xx → revenue', () => {
@@ -680,5 +684,154 @@ describe('parseSoplSheet — parent/child double-count dedup', () => {
       .filter((l) => l.accountType === 'expense')
       .reduce((s, l) => s + l.plannedAnnual, 0);
     expect(opexAnnual).toBe(600);
+  });
+});
+
+describe('cost-center helpers (isRegionCode / baseCode / costCenterOf)', () => {
+  it('isRegionCode detects a trailing ".R" segment only', () => {
+    expect(isRegionCode('PLF.05.R')).toBe(true);
+    expect(isRegionCode('PLF.05.01.01.R')).toBe(true);
+    expect(isRegionCode('  PLF.05.R  ')).toBe(true); // trimmed
+    expect(isRegionCode('PLF.05')).toBe(false);
+    expect(isRegionCode('PLF.05.01.01')).toBe(false);
+    // ".R" must be its OWN trailing segment — not a substring / mid-code / 2-char.
+    expect(isRegionCode('PLF.05.RX')).toBe(false);
+    expect(isRegionCode('PLF.0R.01')).toBe(false);
+    // SAP dash codes never trip it (the dash-coded SOPL path stays inert).
+    expect(isRegionCode('721-02-01')).toBe(false);
+  });
+
+  it('baseCode strips a trailing ".R" and is the identity otherwise', () => {
+    expect(baseCode('PLF.05.R')).toBe('PLF.05');
+    expect(baseCode('PLF.05.01.01.R')).toBe('PLF.05.01.01');
+    expect(baseCode('PLF.05.01.01')).toBe('PLF.05.01.01');
+    expect(baseCode('721-02-01')).toBe('721-02-01');
+    // Idempotent on an already-base code.
+    expect(baseCode(baseCode('PLF.05.R'))).toBe('PLF.05');
+  });
+
+  it('costCenterOf maps base → "Head Office", ".R" → "Region"', () => {
+    expect(costCenterOf('PLF.05')).toBe('Head Office');
+    expect(costCenterOf('PLF.05.01.01')).toBe('Head Office');
+    expect(costCenterOf('PLF.05.R')).toBe('Region');
+    expect(costCenterOf('PLF.05.01.01.R')).toBe('Region');
+  });
+});
+
+describe('dedupeParentRollups — ".R" Head Office / Region cost-center split', () => {
+  // perMonth is an even 1/12 split of the annual — enough to exercise the
+  // per-month delta path alongside plannedAnnual.
+  function rline(
+    code: string,
+    accountType: 'revenue' | 'cogs' | 'expense',
+    amount: number,
+  ) {
+    return {
+      code,
+      label: code,
+      accountType,
+      plannedAnnual: amount,
+      perMonth: Array.from({ length: 12 }, () => amount / 12),
+    };
+  }
+
+  // Mirrors the real Guvven Fin.xlsx "PLF CPC" structure with the ACCEPTANCE
+  // numbers: PLF.05 (HEAD OFFICE) = -158,887 reconciles to ITS leaves, and
+  // PLF.05.R (REGION) = -342,085 reconciles to ITS leaves — independently.
+  // (-83,231 + -75,656 = -158,887;  -165,633 + -176,452 = -342,085.)
+  const fixture = [
+    // HEAD OFFICE (base codes)
+    rline('PLF.05', 'expense', -158887),
+    rline('PLF.05.01', 'expense', -83231),
+    rline('PLF.05.02', 'expense', -75656),
+    // REGION (".R" codes — same structure, independent amounts)
+    rline('PLF.05.R', 'expense', -342085),
+    rline('PLF.05.01.R', 'expense', -165633),
+    rline('PLF.05.02.R', 'expense', -176452),
+  ];
+
+  it('reconciles Head Office and Region independently → no synthetic, GREEN control-total', () => {
+    const { dropped, synthetic } = dedupeParentRollups(fixture);
+
+    // Each parent reconciles to its OWN cost center's leaves → both dropped, no
+    // unallocated delta injected anywhere. That absence is the GREEN signal.
+    expect(synthetic).toHaveLength(0);
+    // dropped keeps the ORIGINAL codes so HO and Region parents stay distinct.
+    expect(dropped.map((d) => d.code).sort()).toEqual(['PLF.05', 'PLF.05.R']);
+
+    // The control-total verdict the import commit-gate reads is GREEN (was RED
+    // before the split: region summed under head office injected a ~4× delta).
+    const control = computeControlTotals(dropped, synthetic);
+    expect(control.verdict).toBe('green');
+    expect(control.controlTotals).toHaveLength(0);
+    expect(control.noControl).toBe(false);
+  });
+
+  it('imports the two cost centers as SEPARATE department lines (not summed, no 4× inflation)', () => {
+    const { kept } = dedupeParentRollups(fixture);
+
+    // Only the 4 leaves survive (parents dropped). Region leaves carry the
+    // RECOVERED base code (".R" stripped) so they share the account with their
+    // head-office twin, distinguished ONLY by department.
+    const ho = kept.filter((l) => l.department === 'Head Office');
+    const rg = kept.filter((l) => l.department === 'Region');
+    expect(ho.map((l) => l.code).sort()).toEqual(['PLF.05.01', 'PLF.05.02']);
+    expect(rg.map((l) => l.code).sort()).toEqual(['PLF.05.01', 'PLF.05.02']);
+
+    // Each cost center totals its OWN amount — NOT one combined/inflated total.
+    const hoTotal = ho.reduce((s, l) => s + l.plannedAnnual, 0);
+    const rgTotal = rg.reduce((s, l) => s + l.plannedAnnual, 0);
+    expect(hoTotal).toBe(-158887);
+    expect(rgTotal).toBe(-342085);
+
+    // No synthetic __UNALLOCATED__ leaf — the old 4×-inflation symptom is gone.
+    expect(kept.some((l) => l.code.includes('__UNALLOCATED__'))).toBe(false);
+    expect(kept).toHaveLength(4);
+  });
+
+  it('handles a 3-level region hierarchy (PLF.05.01.01.R is NOT a child of PLF.05.01.01)', () => {
+    const input = [
+      // HEAD OFFICE: PLF.05.01 = sum of its two leaves
+      rline('PLF.05.01', 'expense', -100),
+      rline('PLF.05.01.01', 'expense', -60),
+      rline('PLF.05.01.02', 'expense', -40),
+      // REGION: PLF.05.01.R = sum of ITS OWN two leaves (different magnitudes)
+      rline('PLF.05.01.R', 'expense', -300),
+      rline('PLF.05.01.01.R', 'expense', -175),
+      rline('PLF.05.01.02.R', 'expense', -125),
+    ];
+    const { kept, dropped, synthetic } = dedupeParentRollups(input);
+
+    // No cross-cost-center double counting: each subtotal reconciles to its own
+    // leaves → both subtotals dropped, no synthetic.
+    expect(synthetic).toHaveLength(0);
+    expect(dropped.map((d) => d.code).sort()).toEqual([
+      'PLF.05.01',
+      'PLF.05.01.R',
+    ]);
+
+    // The region leaf shares the base code with its HO twin but a different dept
+    // and carries the REGION amount (not the head-office one).
+    const hoLeaf = kept.find(
+      (l) => l.code === 'PLF.05.01.01' && l.department === 'Head Office',
+    );
+    const rgLeaf = kept.find(
+      (l) => l.code === 'PLF.05.01.01' && l.department === 'Region',
+    );
+    expect(hoLeaf?.plannedAnnual).toBe(-60);
+    expect(rgLeaf?.plannedAnnual).toBe(-175);
+  });
+
+  it('does NOT tag department when the sheet has no ".R" codes (single cost center unchanged)', () => {
+    const input = [
+      rline('PLF.05', 'expense', -100),
+      rline('PLF.05.01', 'expense', -60),
+      rline('PLF.05.02', 'expense', -40),
+    ];
+    const { kept, dropped, synthetic } = dedupeParentRollups(input);
+    expect(kept.every((l) => l.department === undefined)).toBe(true);
+    expect(kept.map((l) => l.code).sort()).toEqual(['PLF.05.01', 'PLF.05.02']);
+    expect(dropped.map((d) => d.code)).toEqual(['PLF.05']);
+    expect(synthetic).toHaveLength(0);
   });
 });

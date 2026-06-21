@@ -89,7 +89,9 @@ export async function applyParsedLinesToCompany(
         planId,
         companyId,
         accountId: coaId,
-        department: null,
+        // Cost-center tag from the ".R" Head Office / Region split
+        // (dedupeParentRollups). null for single-cost-center sheets.
+        department: line.department ?? null,
         lineType,
         plannedAmount: monthlyAmount,
         sortOrder: monthIdx,

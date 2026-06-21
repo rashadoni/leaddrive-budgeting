@@ -73,6 +73,7 @@ import { validateImport } from "@/lib/onboarding/ai-mapper/validate-import"
 // retry using the requested targetYear as preferYear hint.
 import {
   parsePlfPlSheet,
+  plfSheetHasRegionCodes,
   type ParsedPlfLine,
 } from "@/lib/onboarding/adapters/azseker-plf"
 import {
@@ -358,6 +359,24 @@ export async function POST(
     const hasError = "error" in entry
     const hasZeroLines = !hasError && entry.result.lines.length === 0
     if (!hasError && !hasZeroLines) continue
+
+    // Cost-center safety (2026-06-21): the deterministic Workbook fallback
+    // (parsePlfPlSheet) is NOT ".R" Head Office/Region aware — it drops region
+    // leaves and writes no department, silently corrupting a destructive
+    // financial write. REFUSE the rescue for cost-center sheets and surface a
+    // clear error so the AI Data Mapper applier path (which splits cost centers
+    // via dedupeParentRollups) is used instead. Ordinary PLF sheets (no ".R")
+    // are unaffected.
+    if (plfSheetHasRegionCodes(workbook, sheetName, XLSX)) {
+      const prior = hasError
+        ? ` (applier error: ${(entry as { error: string }).error})`
+        : ""
+      multiResult.perSheet[i] = {
+        sheetName,
+        error: `Sheet "${sheetName}" uses ".R" Head Office/Region cost-center codes; the deterministic Workbook fallback cannot split them safely. Import this sheet via the AI Data Mapper applier path.${prior}`,
+      }
+      continue
+    }
 
     const fallback = parsePlfPlSheet(workbook, sheetName, XLSX, {
       preferYear: targetYear,
@@ -732,7 +751,9 @@ export async function POST(
               planId: plan.id,
               companyId,
               accountId: coaId,
-              department: null,
+              // Cost-center tag from the ".R" Head Office / Region split
+              // (dedupeParentRollups). null for single-cost-center sheets.
+              department: line.department ?? null,
               lineType,
               plannedAmount: monthlyAmount,
               sortOrder: monthIdx,

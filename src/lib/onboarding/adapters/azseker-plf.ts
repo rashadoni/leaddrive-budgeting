@@ -50,7 +50,7 @@
  */
 
 import type * as XLSX from "xlsx"
-import { toNumberOrNull } from "./azmade-sopl"
+import { toNumberOrNull, isRegionCode } from "./azmade-sopl"
 
 export type PlfAccountType = "revenue" | "cogs" | "expense"
 export type CfActivityType = "operating" | "investing" | "financing"
@@ -194,6 +194,38 @@ export function findPlfHeaderRow(
 
 // Leaf items: numeric like PLF.05.01.01 OR letter-keyed like PLF.05.01.R (G&A rollup lines)
 const LEAF_CODE_RE = /^(PLF|CF)\.\d{2}\.\d{2}\.([0-9]{1,2}|[A-Za-z]{1,2})$/
+
+/**
+ * True when a PLF sheet's code column carries ANY trailing ".R" REGION
+ * cost-center code (e.g. "PLF.05.R" / "PLF.05.01.01.R"; see `dedupeParentRollups`
+ * in azmade-sopl.ts for the Head Office vs Region split).
+ *
+ * `parsePlfPlSheet` is NOT cost-center aware — its fixed-depth `LEAF_CODE_RE`
+ * drops depth-5 ".R" leaves (PLF.XX.XX.XX.R) and mis-keys depth-4 ".R"
+ * subsections (PLF.XX.XX.R) as leaves, with no `department`. The apply-multi
+ * deterministic fallback uses this guard to REFUSE the rescue for cost-center
+ * sheets (fail loud) rather than silently writing lossy region data into a
+ * destructive financial write — the AI Data Mapper applier path handles cost
+ * centers correctly via `dedupeParentRollups`. Returns false for ordinary
+ * single-cost-center PLF sheets (no ".R" codes), leaving the fallback unchanged.
+ */
+export function plfSheetHasRegionCodes(
+  workbook: XLSX.WorkBook,
+  sheetName: string,
+  xlsx: typeof XLSX,
+): boolean {
+  const sheet = workbook.Sheets[sheetName]
+  if (!sheet) return false
+  const aoa = xlsx.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1,
+    raw: true,
+    blankrows: false,
+  }) as unknown[][]
+  return aoa.some((row) => {
+    const c = row?.[0]
+    return typeof c === "string" && isRegionCode(c)
+  })
+}
 
 /** Parse PL_X or PLF_X sheet → ParsedPlfLine[] (only leaves).
  *

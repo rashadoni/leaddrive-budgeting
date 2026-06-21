@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest"
 import * as XLSX from "xlsx"
-import { parsePlfPlSheet, parsePlfCfSheet, findPlfHeaderRow, parsePlfEbitdaSubtotalAllYears } from "./azseker-plf"
+import { parsePlfPlSheet, parsePlfCfSheet, findPlfHeaderRow, parsePlfEbitdaSubtotalAllYears, plfSheetHasRegionCodes } from "./azseker-plf"
 
 function makeWorkbook(sheetName: string, aoa: unknown[][]): XLSX.WorkBook {
   const ws = XLSX.utils.aoa_to_sheet(aoa as (string | number | Date | null)[][])
@@ -79,6 +79,32 @@ describe("parsePlfPlSheet — happy path", () => {
     const r = parsePlfPlSheet(wb, "PL_X", XLSX)
     expect(r.lines).toHaveLength(1)
     expect(r.lines[0].code).toBe("PLF.01.01.02")
+  })
+})
+
+describe("plfSheetHasRegionCodes", () => {
+  it("detects a trailing .R region cost-center code in the code column", () => {
+    const wb = makeWorkbook("PL_X", [
+      [null, "P&L", null, ...MONTH_DATES],
+      ["PLF.05", "Support - Head Office", null, ...Array(12).fill(-1)],
+      ["PLF.05.R", "Support - Region", null, ...Array(12).fill(-2)],
+      ["PLF.05.01.01.R", "Staff Salaries", null, ...Array(12).fill(-3)],
+    ])
+    expect(plfSheetHasRegionCodes(wb, "PL_X", XLSX)).toBe(true)
+  })
+
+  it("returns false for an ordinary single-cost-center sheet (no .R)", () => {
+    const wb = makeWorkbook("PL_X", [
+      [null, "P&L", null, ...MONTH_DATES],
+      ["PLF.01.01.01", "Revenue", null, ...Array(12).fill(10)],
+      ["PLF.02.01.01", "COGS", null, ...Array(12).fill(5)],
+    ])
+    expect(plfSheetHasRegionCodes(wb, "PL_X", XLSX)).toBe(false)
+  })
+
+  it("returns false when the sheet is missing", () => {
+    const wb = makeWorkbook("Other", [["x"]])
+    expect(plfSheetHasRegionCodes(wb, "PL_X", XLSX)).toBe(false)
   })
 })
 

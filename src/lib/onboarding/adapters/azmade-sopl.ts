@@ -111,6 +111,12 @@ export interface ParsedBudgetLine {
   accountType: AccountType;
   plannedAnnual: number;
   perMonth: number[]; // length 12, index 0=Jan ... 11=Dec
+  /** Cost-center / department tag. Set by `dedupeParentRollups` when a sheet
+   *  carries a ".R" REGION split: "Head Office" for base codes, "Region" for
+   *  ".R" codes. Maps directly to `BudgetLine.department` (a free-form String —
+   *  no `BudgetDepartment` row is required). Undefined for single-cost-center
+   *  sheets (SAP SOPL, summary rollups), so those paths are unchanged. */
+  department?: string;
 }
 
 export interface ParseWarning {
@@ -600,6 +606,37 @@ export function parseSummaryRollupSheet(
   };
 }
 
+// --- Cost-center (Head Office vs Region) helpers ----------------------------
+//
+// AzerSheker PLF workbooks encode a SECOND cost center as a trailing ".R"
+// segment on the account code: "PLF.05" is HEAD OFFICE, "PLF.05.R" is its
+// REGION twin (same label, independent amount). The ".R" is a DIMENSION, not a
+// deeper hierarchy level — "PLF.05.01.01.R" is the region twin of
+// "PLF.05.01.01", NOT its child. `dedupeParentRollups` uses these to split the
+// two into SEPARATE reconciliation trees (head office and region each reconcile
+// on their own) and to recover the real (base) account code while tagging the
+// cost center via `department`. SAP-numeric codes ("721-02-01") never end in a
+// letter segment, so `isRegionCode` is always false and `baseCode` is the
+// identity for the dash-coded SOPL path — that path is byte-identical.
+
+export type CostCenter = 'Head Office' | 'Region';
+
+/** True when `code` carries a trailing ".R" REGION cost-center marker. */
+export function isRegionCode(code: string): boolean {
+  return /\.R$/.test(code.trim());
+}
+
+/** Strip a trailing ".R" cost-center marker to recover the real account code.
+ *  Identity for non-region codes (idempotent). */
+export function baseCode(code: string): string {
+  return code.trim().replace(/\.R$/, '');
+}
+
+/** "Region" for a ".R"-suffixed code, "Head Office" otherwise. */
+export function costCenterOf(code: string): CostCenter {
+  return isRegionCode(code) ? 'Region' : 'Head Office';
+}
+
 /**
  * Drop parent rollup rows whose leaf children are present in the same sheet.
  *
@@ -676,6 +713,59 @@ export function dedupeParentRollups(
   if (!enabled) {
     return { kept: [...lines], dropped: [], synthetic: [] };
   }
+
+  // Cost-center split (2026-06-21). When ANY ".R" REGION code is present, the
+  // base codes (HEAD OFFICE) and ".R" codes (REGION) are two SEPARATE cost
+  // centers, NOT one hierarchy. Treating "PLF.05.01.01.R" as a child of
+  // "PLF.05.01.01" summed region into head office (~4× inflation → RED
+  // control-total). Reconcile each cost center INDEPENDENTLY, stamp the
+  // department, and recover the real (base) account code so the two import as
+  // separate department lines. A sheet with no ".R" code skips this entirely →
+  // single untagged tree, behaviour byte-identical to before.
+  if (lines.some((l) => isRegionCode(l.code))) {
+    const headOffice = dedupeOneTree(
+      lines.filter((l) => !isRegionCode(l.code)),
+      'Head Office',
+    );
+    const region = dedupeOneTree(
+      lines.filter((l) => isRegionCode(l.code)),
+      'Region',
+    );
+    return {
+      kept: [...headOffice.kept, ...region.kept],
+      dropped: [...headOffice.dropped, ...region.dropped],
+      synthetic: [...headOffice.synthetic, ...region.synthetic],
+    };
+  }
+  return dedupeOneTree(lines, null);
+}
+
+/**
+ * Reconcile ONE hierarchy tree — a single cost center, or the whole sheet when
+ * there is no ".R" split. `department`, when non-null, is stamped onto every
+ * kept line (the write path persists it to `BudgetLine.department`).
+ *
+ * Hierarchy detection runs on `baseCode()` (".R" stripped), so a REGION tree
+ * reconciles its own ".R" parents against its own ".R" leaves, and kept lines
+ * carry the real (base) account code shared with the head-office twin. For a
+ * head-office / SAP / rollup tree `baseCode` is the identity, so this is the
+ * original algorithm verbatim. See `dedupeParentRollups` for the
+ * parent-detection rule, reconciliation tolerance, and synthetic-__UNALLOCATED__
+ * contract — all unchanged.
+ *
+ * The audit-trail outputs (`dropped`, `synthetic.parentCode`) keep the ORIGINAL
+ * code (e.g. "PLF.05.R") so head-office and region parents stay distinct across
+ * the merged report; the kept synthetic leaf uses the base code + department so
+ * it writes against the shared account.
+ */
+function dedupeOneTree(
+  lines: ParsedBudgetLine[],
+  department: CostCenter | null,
+): {
+  kept: ParsedBudgetLine[];
+  dropped: Array<{ code: string; label: string; plannedAnnual: number }>;
+  synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
+} {
   // Parent detection uses ANY descendant (transitive) — presence of `C-X-Y`
   // means `C` has children and is a parent.
   //
@@ -690,7 +780,10 @@ export function dedupeParentRollups(
   // Without this, a 3-level hierarchy `721 / 721-02 / 721-02-01` would
   // reconcile `721` against BOTH `721-02` AND `721-02-01` (transitive sum)
   // and trigger a false synthetic-unallocated injection.
-  const codeSet = new Set(lines.map((l) => l.code));
+  //
+  // All hierarchy math uses the BASE code (".R" stripped) so a region tree's
+  // ".R" parents/leaves form a proper hierarchy among themselves.
+  const codeSet = new Set(lines.map((l) => baseCode(l.code)));
   // Hierarchy separator is dash (SAP "601-01") OR dot (arbitrary schemes like
   // AzerSheker "PLF.01.02") — 2026-06-20. SAP codes never contain a dot, so
   // accepting both is additive: dash-coded files behave exactly as before.
@@ -722,23 +815,32 @@ export function dedupeParentRollups(
   };
   const topmostDescendantsOf = (parent: string): ParsedBudgetLine[] => {
     return lines.filter(
-      (l) => isChildOf(l.code, parent) && isTopmostDescendantOf(l.code, parent),
+      (l) =>
+        isChildOf(baseCode(l.code), parent) &&
+        isTopmostDescendantOf(baseCode(l.code), parent),
     );
   };
   const kept: ParsedBudgetLine[] = [];
   const dropped: Array<{ code: string; label: string; plannedAnnual: number }> = [];
   const synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }> = [];
 
+  // Stamp the (optional) department onto a kept line. When `department` is null
+  // (no cost-center split) this is a no-op spread, so the line keeps exactly the
+  // fields it had — preserving the original behaviour.
+  const tag = (line: ParsedBudgetLine): ParsedBudgetLine =>
+    department ? { ...line, department } : line;
+
   for (const l of lines) {
-    if (!hasDescendant(l.code)) {
-      // No descendants → guaranteed leaf, keep as-is.
-      kept.push(l);
+    const ec = baseCode(l.code);
+    if (!hasDescendant(ec)) {
+      // No descendants → guaranteed leaf, keep (with recovered base code).
+      kept.push(tag({ ...l, code: ec }));
       continue;
     }
-    const children = topmostDescendantsOf(l.code);
+    const children = topmostDescendantsOf(ec);
     if (children.length === 0) {
-      // No descendants → guaranteed leaf, keep as-is.
-      kept.push(l);
+      // No descendants → guaranteed leaf, keep (with recovered base code).
+      kept.push(tag({ ...l, code: ec }));
       continue;
     }
 
@@ -768,16 +870,17 @@ export function dedupeParentRollups(
     }
     const unallocatedPerMonth = l.perMonth.map((v, i) => v - childMonthly[i]);
 
-    const syntheticCode = `${l.code}-__UNALLOCATED__`;
-    kept.push({
-      code: syntheticCode,
-      label: `${l.label} (unallocated)`,
-      accountType: l.accountType,
-      plannedAnnual: delta,
-      perMonth: unallocatedPerMonth,
-    });
+    kept.push(
+      tag({
+        code: `${ec}-__UNALLOCATED__`,
+        label: `${l.label} (unallocated)`,
+        accountType: l.accountType,
+        plannedAnnual: delta,
+        perMonth: unallocatedPerMonth,
+      }),
+    );
     synthetic.push({
-      code: syntheticCode,
+      code: `${l.code}-__UNALLOCATED__`,
       parentCode: l.code,
       plannedAnnual: delta,
     });

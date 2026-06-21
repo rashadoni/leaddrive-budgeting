@@ -438,7 +438,9 @@ async function insertBudgetLineTx(
         companyId,
         accountId,
         category: parsed.code,
-        department: null,
+        // Cost-center tag from the ".R" Head Office / Region split
+        // (dedupeParentRollups). null for single-cost-center SOPL sheets.
+        department: parsed.department ?? null,
         lineType,
         plannedAmount: monthlyAmount,
         sortOrder: monthIdx,
