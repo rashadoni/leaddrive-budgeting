@@ -67,9 +67,9 @@ export function AIImportTabs() {
           }`}
           data-testid="tab-universal"
         >
-          Любой файл (AI)
+          {t("tabs.universal")}
           <span className="ml-1 inline-block text-[10px] uppercase tracking-wide text-emerald-600 font-semibold">
-            review
+            {t("tabs.reviewBadge")}
           </span>
         </button>
         <button
@@ -84,7 +84,7 @@ export function AIImportTabs() {
           }`}
           data-testid="tab-multisheet"
         >
-          Неск. листов (AI)
+          {t("tabs.multisheet")}
         </button>
       </div>
 

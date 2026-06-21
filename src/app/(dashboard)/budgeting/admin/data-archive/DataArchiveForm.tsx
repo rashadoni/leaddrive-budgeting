@@ -37,16 +37,6 @@ const ENTITY_KIND_KEYS: EntityKind[] = [
   "AllImportData",
 ]
 
-// AllImportData is a meta-kind (full per-company reset) — i18n-less, plain RU,
-// matching the form's existing hybrid t()+hardcoded style.
-const RESET_LABEL = "🧹 Полный сброс данных компании (всё, без хвостов)"
-const RESET_DESCRIPTION =
-  "Очищает ВСЁ, что импорт записал для одной компании: финансы (P&L/BS/CF) + " +
-  "контрагентов (архивируются, обратимо) + операционные факты импорта + аудит/суды/" +
-  "риски/землю/CAPEX в settings (удаляются). Ручные факты (manual/inline) сохраняются. " +
-  "Год опционален (пусто = все годы). После сброса пересчитываются индикаторы. " +
-  "Необратимо для фактов/settings — восстанавливается повторным импортом."
-
 export function DataArchiveForm({
   companies,
 }: {
@@ -195,7 +185,7 @@ export function DataArchiveForm({
         </div>
         {isReset && (
           <p className="text-xs text-muted-foreground mt-1">
-            Полный сброс необратим для фактов/settings — только архив (восстановление = повторный импорт).
+            {t("resetRestoreNote")}
           </p>
         )}
       </div>
@@ -214,7 +204,7 @@ export function DataArchiveForm({
         >
           {ENTITY_KIND_KEYS.map((k) => (
             <option key={k} value={k}>
-              {k === "AllImportData" ? RESET_LABEL : t(`entityKind.${k}.label`)}
+              {k === "AllImportData" ? t("resetLabel") : t(`entityKind.${k}.label`)}
             </option>
           ))}
         </select>
@@ -223,7 +213,7 @@ export function DataArchiveForm({
             isReset ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"
           }`}
         >
-          {isReset ? RESET_DESCRIPTION : t(`entityKind.${entityKind}.description`)}
+          {isReset ? t("resetDesc") : t(`entityKind.${entityKind}.description`)}
         </p>
       </div>
 
@@ -234,7 +224,7 @@ export function DataArchiveForm({
             {t("companyLabel")}
             {!needsCompany && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                (опционально — пусто = вся организация за год)
+                {t("companyOptionalOrgYear")}
               </span>
             )}
           </label>
@@ -244,7 +234,7 @@ export function DataArchiveForm({
             className="w-full border rounded px-3 py-2 text-sm bg-background"
           >
             <option value="">
-              {needsCompany ? t("companyPickerPlaceholder") : "— вся организация (org-wide) —"}
+              {needsCompany ? t("companyPickerPlaceholder") : t("orgWideOption")}
             </option>
             {companies.map((c) => (
               <option key={c.code} value={c.code}>
@@ -262,7 +252,7 @@ export function DataArchiveForm({
             {t("yearLabel")}
             {isReset && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">
-                (опционально — пусто = все годы)
+                {t("yearOptionalAllYears")}
               </span>
             )}
           </label>
@@ -355,7 +345,7 @@ export function DataArchiveForm({
             <>
               {result.mode === "reset" ? (
                 <>
-                  ✓ Сброшено: {result.rowsAffected} строк (без хвостов)
+                  ✓ {t("resultReset", { rows: result.rowsAffected })}
                   {result.breakdown && (
                     <div className="mt-2 text-xs font-mono space-y-0.5">
                       {Object.entries(result.breakdown).map(([k, v]) => (
@@ -364,7 +354,7 @@ export function DataArchiveForm({
                         </div>
                       ))}
                       {result.recomputed != null && (
-                        <div className="mt-1">↻ пересчитано индикаторов: {result.recomputed}</div>
+                        <div className="mt-1">{t("breakdownRecomputed", { n: result.recomputed })}</div>
                       )}
                     </div>
                   )}
@@ -384,11 +374,7 @@ export function DataArchiveForm({
               {result.unattributableCfRows != null &&
                 result.unattributableCfRows > 0 && (
                   <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                    ⚠️ {result.unattributableCfRows} записей Cash Flow за этот год
-                    без префикса компании в sourceId (ручные / не из импорта) —
-                    их нельзя привязать к компании, поэтому они НЕ затронуты.
-                    Для них используйте архив по всей организации или правьте
-                    их вручную во вкладке «Записи».
+                    {t("cfUnattributableNote", { count: result.unattributableCfRows })}
                   </div>
                 )}
             </>

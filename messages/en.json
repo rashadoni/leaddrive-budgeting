@@ -2896,7 +2896,10 @@
       "ariaLabel": "AI Import mode",
       "single": "1 file",
       "multi": "Multiple files",
-      "newBadge": "new"
+      "newBadge": "new",
+      "universal": "Any file (AI)",
+      "multisheet": "Multi-sheet (AI)",
+      "reviewBadge": "review"
     },
     "multi": {
       "dropZone": {
@@ -3086,7 +3089,16 @@
       "resultOk": "Done. {action} {rows} rows. Page will refresh…",
       "resultArchived": "Archived",
       "resultRestored": "Restored",
-      "resultError": "Error: {msg}"
+      "resultError": "Error: {msg}",
+      "resetLabel": "🧹 Full company data reset (everything, no leftovers)",
+      "resetDesc": "Clears EVERYTHING an import wrote for one company: financials (P&L/BS/CF) + counterparties (archived, reversible) + import-sourced operational facts + audit/court/risk/land/CAPEX in settings (deleted). Manually-entered facts (manual/inline) are kept. Year optional (blank = all years). Indicators recompute after the reset. Irreversible for facts/settings — restored by re-importing.",
+      "resetRestoreNote": "A full reset is irreversible for facts/settings — archive only (restore = re-import).",
+      "yearOptionalAllYears": "(optional — blank = all years)",
+      "companyOptionalOrgYear": "(optional — blank = whole org for the year)",
+      "orgWideOption": "— whole organization (org-wide) —",
+      "resultReset": "Reset: {rows} rows (no leftovers)",
+      "breakdownRecomputed": "↻ indicators recomputed: {n}",
+      "cfUnattributableNote": "⚠️ {count} Cash Flow rows this year have no company prefix in sourceId (manual / non-import) — they can't be attributed to a company, so they were NOT touched. Use an org-wide archive or edit them manually."
     }
   },
   "adminDataSources": {

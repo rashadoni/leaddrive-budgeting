@@ -2896,7 +2896,10 @@
       "ariaLabel": "AI İmport rejimi",
       "single": "1 fayl",
       "multi": "Bir neçə fayl",
-      "newBadge": "yeni"
+      "newBadge": "yeni",
+      "universal": "İstənilən fayl (AI)",
+      "multisheet": "Çox vərəqli (AI)",
+      "reviewBadge": "baxış"
     },
     "multi": {
       "dropZone": {
@@ -3086,7 +3089,16 @@
       "resultOk": "Hazır. {action} {rows} sətir. Səhifə yenilənəcək…",
       "resultArchived": "Arxivləşdirildi",
       "resultRestored": "Bərpa edildi",
-      "resultError": "Xəta: {msg}"
+      "resultError": "Xəta: {msg}",
+      "resetLabel": "🧹 Şirkət datasının tam sıfırlanması (hər şey, qalıqsız)",
+      "resetDesc": "İdxalın bir şirkət üçün yazdığı HƏR ŞEYİ təmizləyir: maliyyə (P&L/BS/CF) + qarşı tərəflər (arxivlənir, geri qaytarıla bilən) + idxal mənşəli əməliyyat faktları + settings-də audit/məhkəmə/risk/torpaq/CAPEX (silinir). Əl ilə daxil edilən faktlar (manual/inline) saxlanılır. İl opsionaldır (boş = bütün illər). Sıfırlamadan sonra göstəricilər yenidən hesablanır. Faktlar/settings üçün geri qaytarılmazdır — təkrar idxalla bərpa olunur.",
+      "resetRestoreNote": "Tam sıfırlama faktlar/settings üçün geri qaytarılmazdır — yalnız arxiv (bərpa = təkrar idxal).",
+      "yearOptionalAllYears": "(opsional — boş = bütün illər)",
+      "companyOptionalOrgYear": "(opsional — boş = il üzrə bütün təşkilat)",
+      "orgWideOption": "— bütün təşkilat (org-wide) —",
+      "resultReset": "Sıfırlandı: {rows} sətir (qalıqsız)",
+      "breakdownRecomputed": "↻ yenidən hesablanan göstəricilər: {n}",
+      "cfUnattributableNote": "⚠️ Bu il üçün {count} Cash Flow sətrində sourceId-də şirkət prefiksi yoxdur (əl ilə / idxaldan deyil) — şirkətə bağlamaq olmur, ona görə TOXUNULMADI. Təşkilat üzrə arxivdən istifadə edin və ya əl ilə redaktə edin."
     }
   },
   "adminDataSources": {
