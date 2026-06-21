@@ -102,7 +102,8 @@
       "ERP": "ERP",
       "Route & Field": "Marşrut & Sahə",
       "Settings": "Parametrlər"
-    }
+    },
+    "alerts": "Siqnallar"
   },
   "common": {
     "save": "Saxla",
@@ -1625,7 +1626,7 @@
     "emptyTitle": "Hesabat Konstruktoru",
     "emptyDesc": "Hesabat qurmaq üçün məlumat mənbəyi seçin",
     "selectColumns": "Məlumatları görmək üçün sütunlar seçin",
-    "loading": "Önizləmə yüklənir…",
+    "loading": "Yüklənir...",
     "errorTitle": "Hesabat qurulmadı",
     "noDataTitle": "Bu seçim üçün məlumat yoxdur",
     "noDataDesc": "Seçilmiş plan üçün bu məlumat mənbəyində sətir yoxdur. Başqa mənbə (məs. Mənfəət/Zərər, Balans, Pul axını) və ya başqa plan seçin.",
@@ -1636,7 +1637,6 @@
     "dataPreview": "Məlumat önizləməsi",
     "execution": "İcra %",
     "breadcrumbBudgeting": "Büdcələşdirmə",
-    "loading": "Yüklənir...",
     "entities": {
       "budgetLines": "Büdcə sətirləri",
       "budgetActuals": "Fakt məlumatlar",
@@ -3194,10 +3194,10 @@
   "adminLanding": {
     "pageTitle": "Admin Alətləri",
     "statsLine": "{groups} qrupda {total} alət · {new} yeni.",
-    "groupDataIngestion": "📥 Məlumat yükləməsi",
-    "groupDataQuality": "🩺 Məlumat keyfiyyəti",
+    "groupDataIngestion": "Məlumat yükləmə",
+    "groupDataQuality": "Məlumat keyfiyyəti",
     "groupOperations": "🔒 Əməliyyatlar",
-    "groupConfiguration": "⚙ Konfiqurasiya",
+    "groupConfiguration": "Konfiqurasiya",
     "workflowTitle": "Məlumat hazırlığının yoxlanışı",
     "workflow": {
       "s1": "İndikatorların sağlamlığı — hansı indikatorların hesablandığını və harada məlumatın çatışmadığını yoxlayın.",
@@ -3287,8 +3287,14 @@
       "userAccess": {
         "title": "İstifadəçi girişi",
         "desc": "İstifadəçi rolları və alt-qrup girişinin idarəsi (RBAC)."
+      },
+      "queue": {
+        "title": "Tapşırıq növbəsi",
+        "desc": "Arxa fon tapşırıqları — yenidən hesablama, importlar, planlı tapşırıqlar."
       }
-    }
+    },
+    "groupDataLifecycle": "Məlumatın həyat dövrü",
+    "groupCompliance": "Uyğunluq"
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Şirkət məlumatlarının hazırlığı",

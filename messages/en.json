@@ -102,7 +102,8 @@
       "ERP": "ERP",
       "Route & Field": "Route & Field",
       "Settings": "Settings"
-    }
+    },
+    "alerts": "Alerts"
   },
   "common": {
     "save": "Save",
@@ -1625,7 +1626,7 @@
     "emptyTitle": "Report Builder",
     "emptyDesc": "Select a data source to start building your report",
     "selectColumns": "Select columns to preview data",
-    "loading": "Loading preview…",
+    "loading": "Loading...",
     "errorTitle": "Couldn't build the report",
     "noDataTitle": "No data for this selection",
     "noDataDesc": "This data source has no rows for the selected plan. Pick another data source (e.g. P&L, Balance Sheet, Cash Flow) or a different plan.",
@@ -1636,7 +1637,6 @@
     "dataPreview": "Data Preview",
     "execution": "Execution %",
     "breadcrumbBudgeting": "Budgeting",
-    "loading": "Loading...",
     "entities": {
       "budgetLines": "Budget Lines",
       "budgetActuals": "Actuals",
@@ -3194,10 +3194,10 @@
   "adminLanding": {
     "pageTitle": "Admin Tools",
     "statsLine": "{total} tools across {groups} groups · {new} new.",
-    "groupDataIngestion": "📥 Data Ingestion",
-    "groupDataQuality": "🩺 Data Quality",
+    "groupDataIngestion": "Data ingestion",
+    "groupDataQuality": "Data quality",
     "groupOperations": "🔒 Operations",
-    "groupConfiguration": "⚙ Configuration",
+    "groupConfiguration": "Configuration",
     "workflowTitle": "Data readiness review",
     "workflow": {
       "s1": "Indicator Health — review which indicators are computed and where data is missing.",
@@ -3287,8 +3287,14 @@
       "userAccess": {
         "title": "User Access",
         "desc": "User roles and sub-group access management (RBAC)."
+      },
+      "queue": {
+        "title": "Job queue",
+        "desc": "Background job queue — recompute, imports, scheduled tasks."
       }
-    }
+    },
+    "groupDataLifecycle": "Data lifecycle",
+    "groupCompliance": "Compliance"
   },
   "adminCompaniesReadiness": {
     "pageTitle": "Company data readiness",

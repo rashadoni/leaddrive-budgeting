@@ -16,88 +16,10 @@ import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import Link from "next/link"
-import {
-  Brain,
-  ClipboardEdit,
-  FileSpreadsheet,
-  Activity,
-  AlertTriangle,
-  Archive,
-  CheckSquare,
-  Lock,
-  Sparkles,
-  Key,
-  BookOpen,
-  Building2,
-  Users,
-  Stethoscope,
-  Shield,
-  ListChecks,
-  Scale,
-} from "lucide-react"
+import { ADMIN_GROUPS, ADMIN_TOOLS } from "@/lib/nav/admin-tools"
 
 export const metadata = {
   title: "Admin · BudgetPro",
-}
-
-interface AdminTool {
-  href: string
-  /** i18n key under `adminLanding.tools.<key>` for title + desc. */
-  key: string
-  icon: React.ComponentType<{ className?: string }>
-  badge?: string
-  recentlyAdded?: boolean
-}
-
-const GROUPS: Array<{ title: string; tools: AdminTool[] }> = [
-  {
-    title: "📥 Data Ingestion",
-    tools: [
-      { href: "/budgeting/admin/ai-import", key: "aiImport", icon: Brain, badge: "Phase 7.M", recentlyAdded: true },
-      { href: "/budgeting/admin/reporting-pack", key: "reportingPack", icon: FileSpreadsheet, recentlyAdded: true },
-      { href: "/budgeting/admin/data-entry", key: "dataEntry", icon: ClipboardEdit },
-      { href: "/budgeting/admin/data-sources", key: "dataSources", icon: FileSpreadsheet },
-      { href: "/budgeting/admin/source-registry", key: "sourceRegistry", icon: FileSpreadsheet },
-    ],
-  },
-  {
-    title: "🩺 Data Quality",
-    tools: [
-      { href: "/budgeting/admin/indicator-health", key: "indicatorHealth", icon: Activity, badge: "Phase 7.M", recentlyAdded: true },
-      { href: "/budgeting/admin/drift", key: "driftDashboard", icon: AlertTriangle },
-      { href: "/budgeting/admin/companies-readiness", key: "companiesReadiness", icon: Stethoscope },
-      { href: "/budgeting/admin/ifrs-conformance", key: "ifrsConformance", icon: Scale, badge: "Phase 7.N", recentlyAdded: true },
-      { href: "/budgeting/admin/data-archive", key: "dataArchive", icon: Archive },
-      { href: "/budgeting/admin/intel-health", key: "intelHealth", icon: Activity },
-      { href: "/budgeting/admin/compliance", key: "complianceHub", icon: Shield },
-      { href: "/budgeting/admin/indicator-backlog", key: "indicatorBacklog", icon: ListChecks },
-    ],
-  },
-  {
-    title: "🔒 Operations",
-    tools: [
-      { href: "/budgeting/admin/periods", key: "periodLocks", icon: Lock },
-      { href: "/budgeting/admin/approval-requests", key: "approvals", icon: CheckSquare },
-      { href: "/budgeting/admin/ai-usage", key: "aiUsage", icon: Sparkles },
-      { href: "/budgeting/admin/api-keys", key: "apiKeys", icon: Key },
-    ],
-  },
-  {
-    title: "⚙ Configuration",
-    tools: [
-      { href: "/budgeting/admin/chart-of-accounts", key: "chartOfAccounts", icon: BookOpen },
-      { href: "/budgeting/admin/companies", key: "companySettings", icon: Building2 },
-      { href: "/budgeting/admin/users", key: "userAccess", icon: Users },
-    ],
-  },
-]
-
-// Map each English GROUPS title to its translation key.
-const GROUP_TITLE_KEY: Record<string, string> = {
-  "📥 Data Ingestion": "groupDataIngestion",
-  "🩺 Data Quality": "groupDataQuality",
-  "🔒 Operations": "groupOperations",
-  "⚙ Configuration": "groupConfiguration",
 }
 
 export default async function AdminLandingPage() {
@@ -106,23 +28,23 @@ export default async function AdminLandingPage() {
   if (!hasRole(role, "admin")) redirect("/budgeting")
   const t = await getTranslations("adminLanding")
 
-  const totalTools = GROUPS.reduce((s, g) => s + g.tools.length, 0)
-  const newTools = GROUPS.reduce((s, g) => s + g.tools.filter((tool) => tool.recentlyAdded).length, 0)
+  const totalTools = ADMIN_TOOLS.length
+  const newTools = ADMIN_TOOLS.filter((tool) => tool.badge).length
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-6xl">
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">{t("pageTitle")}</h1>
         <p className="text-sm text-muted-foreground leading-relaxed">
-          {t("statsLine", { total: totalTools, groups: GROUPS.length, new: newTools })}
+          {t("statsLine", { total: totalTools, groups: ADMIN_GROUPS.length, new: newTools })}
         </p>
       </div>
 
       <div className="space-y-8">
-        {GROUPS.map((group) => (
-          <section key={group.title}>
+        {ADMIN_GROUPS.map((group) => (
+          <section key={group.key}>
             <h2 className="text-lg font-semibold mb-3 text-muted-foreground">
-              {GROUP_TITLE_KEY[group.title] ? t(GROUP_TITLE_KEY[group.title] as never) : group.title}
+              {t(group.key as never)}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {group.tools.map((tool) => {

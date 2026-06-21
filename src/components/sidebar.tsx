@@ -27,20 +27,13 @@ import {
   Upload,
   ScrollText,
   Presentation,
-  Lock,
-  CheckSquare,
-  BookOpen,
-  Users,
-  ClipboardEdit,
-  AlertTriangle,
-  Building2,
-  Sparkles,
   BookText,
-  Shield,
-  ListChecks,
+  Bell,
+  ChevronDown,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
+import { ADMIN_GROUPS } from "@/lib/nav/admin-tools"
 
 type NavItem = {
   href: string
@@ -67,11 +60,16 @@ type NavItem = {
 // flagged it on 2026-05-27. Brand names (Risk Terminal / Board Deck)
 // stay English across all locales by convention (they're product
 // names, not generic UI labels).
+// 2026-06-21 menu restructure: Risk Terminal first (the holding risk view is the
+// product centrepiece), the legacy Budgeting planner expands to its OWN tabs
+// only (admin links moved OUT — see the Admin row, which expands to the 5
+// ADMIN_GROUPS). `alerts` was an orphaned route (page existed, no nav entry).
 const navItems: NavItem[] = [
-  { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
+  { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
   { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
+  { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   { href: "/budgeting/admin", icon: Settings, labelKey: "adminTools", minRole: "admin" },
   { href: "/guide", icon: BookText, labelKey: "guide" },
@@ -116,34 +114,14 @@ const budgetSubNav = [
     ],
   },
   {
+    // 2026-06-21 restructure: the planner "Settings" group is just the
+    // Configuration tab now. The old "Import" item (→ a planner tab) was a 4th
+    // scattered import entry-point — import lives under Onboarding + Admin →
+    // AI Import only. The whole Admin group moved out of here into the Admin
+    // top-level row (which expands to the 5 ADMIN_GROUPS — single source).
     group: "Settings",
     items: [
-      { value: "integrations", icon: FileSpreadsheet, label: "Import" },
       { value: "config", icon: Settings2, label: "Configuration" },
-    ],
-  },
-  // 2026-05-27 — admin sub-nav items now use `labelKey` (against the
-  // `nav` namespace) so they honour user locale. Previously hardcoded
-  // mix of EN + 1 RU («Импорт данных») produced a half-Cyrillic sidebar
-  // that user explicitly flagged.
-  {
-    group: "Admin",
-    minRole: "admin" as Role,
-    items: [
-      { href: "/budgeting/admin/periods", icon: Lock, labelKey: "periodLocks", isPage: true },
-      { href: "/budgeting/admin/approval-requests", icon: CheckSquare, labelKey: "approvals", isPage: true },
-      { href: "/budgeting/admin/chart-of-accounts", icon: BookOpen, labelKey: "chartOfAccounts", isPage: true },
-      { href: "/budgeting/admin/users", icon: Users, labelKey: "userAccess", isPage: true },
-      { href: "/budgeting/admin/data-entry", icon: ClipboardEdit, labelKey: "dataEntry", isPage: true },
-      { href: "/budgeting/admin/drift", icon: AlertTriangle, labelKey: "driftDashboard", isPage: true },
-      { href: "/budgeting/admin/data-sources", icon: FileSpreadsheet, labelKey: "dataSources", isPage: true },
-      { href: "/budgeting/admin/source-registry", icon: FileSpreadsheet, labelKey: "sourceRegistry", isPage: true },
-      { href: "/budgeting/admin/companies", icon: Building2, labelKey: "companySettings", isPage: true },
-      { href: "/budgeting/admin/ai-usage", icon: Sparkles, labelKey: "aiUsage", isPage: true },
-      { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "importData", isPage: true },
-      { href: "/budgeting/admin/indicator-health", icon: Activity, labelKey: "indicatorHealth", isPage: true },
-      { href: "/budgeting/admin/compliance", icon: Shield, labelKey: "complianceHub", isPage: true },
-      { href: "/budgeting/admin/indicator-backlog", icon: ListChecks, labelKey: "indicatorBacklog", isPage: true },
     ],
   },
 ]
@@ -177,6 +155,9 @@ export function Sidebar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const t = useTranslations("nav")
+  // adminLanding namespace — the Admin sub-nav renders the shared ADMIN_GROUPS
+  // using the SAME labels as the admin landing hub (single source).
+  const t2 = useTranslations("adminLanding")
   const [collapsed, setCollapsed] = useState(false)
   const { data: session } = useSession()
   const availability = useTabAvailability()
@@ -205,13 +186,17 @@ export function Sidebar() {
   // Risk Terminal / Board Deck / Onboarding / Audit Log / Settings
   // below the viewport fold. Click the chevron next to Budgeting to
   // toggle.
-  const isBudgetingSection = pathname.startsWith("/budgeting")
+  // Budgeting section EXCLUDES /admin/* — Admin is its own top-level row with
+  // its own expandable (the 5 ADMIN_GROUPS). Pre-restructure both shared one
+  // tangled sub-nav.
+  const isBudgetingSection =
+    pathname.startsWith("/budgeting") && !pathname.startsWith("/budgeting/admin")
+  const isAdminSection = pathname.startsWith("/budgeting/admin")
   // Auto-open on legacy /budgeting (sub-tabs ARE the page's main UI),
-  // auto-closed on /budgeting/terminal | /onboarding | /board-deck |
-  // /admin/* (the page itself is the destination — sub-nav is a quick
-  // jump-back to the legacy planner). User toggle persists for the
-  // session.
+  // auto-closed on /budgeting/terminal | /onboarding | /board-deck (the page
+  // itself is the destination). User toggle persists for the session.
   const [budgetExpanded, setBudgetExpanded] = useState(isBudgetingLegacy)
+  const [adminExpanded, setAdminExpanded] = useState(isAdminSection)
   const activeTab = searchParams.get("tab") || "workspace"
 
   return (
@@ -284,6 +269,22 @@ export function Sidebar() {
                     />
                   </button>
                 )}
+                {item.href === "/budgeting/admin" && isAdminSection && !collapsed && (
+                  <button
+                    type="button"
+                    onClick={() => setAdminExpanded((v) => !v)}
+                    aria-expanded={adminExpanded}
+                    aria-label="Toggle admin sub-menu"
+                    className="ml-1 mr-1 rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 transition-transform",
+                        adminExpanded ? "rotate-180" : ""
+                      )}
+                    />
+                  </button>
+                )}
               </div>
 
               {/* Budget sub-navigation — togglable across the whole
@@ -294,9 +295,6 @@ export function Sidebar() {
               {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav
-                    // Phase 7.G Turn LXXXXII: filter groups by minRole
-                    // (Admin group is admin-only — matches API enforcement).
-                    .filter((group) => !group.minRole || hasRole(userRole, group.minRole))
                     .map((group) => ({
                       ...group,
                       // Bug #6: filter sub-items to those whose backing data
@@ -318,24 +316,19 @@ export function Sidebar() {
                           {group.group}
                         </p>
                         {group.items.map((sub) => {
-                          // Three URL shapes:
-                          //   (a) `value` only        → /budgeting?tab=<value>
-                          //   (b) `value` + isPage    → /budgeting/reports
-                          //   (c) `href` (LXXXXII)    → use href verbatim (admin pages)
-                          const href = "href" in sub
-                            ? sub.href
-                            : (sub as { isPage?: boolean; value: string }).isPage
-                              ? "/budgeting/reports"
-                              : `/budgeting?tab=${(sub as { value: string }).value}`
-                          const isSubActive = "href" in sub
-                            ? pathname === sub.href || pathname.startsWith(sub.href + "/")
-                            : (sub as { isPage?: boolean; value: string }).isPage
-                              ? pathname === "/budgeting/reports"
-                              : activeTab === (sub as { value: string }).value
-                          const key = "href" in sub ? sub.href : (sub as { value: string }).value
+                          // Planner tabs only now (admin moved to its own row):
+                          //   value        → /budgeting?tab=<value>
+                          //   value+isPage → /budgeting/reports (Report Builder)
+                          const isPage = "isPage" in sub && sub.isPage
+                          const href = isPage
+                            ? "/budgeting/reports"
+                            : `/budgeting?tab=${sub.value}`
+                          const isSubActive = isPage
+                            ? pathname === "/budgeting/reports"
+                            : activeTab === sub.value
                           return (
                             <Link
-                              key={key}
+                              key={sub.value}
                               href={href}
                               className={cn(
                                 "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
@@ -345,14 +338,46 @@ export function Sidebar() {
                               )}
                             >
                               <sub.icon className="h-3.5 w-3.5 shrink-0" />
-                              {"labelKey" in sub && sub.labelKey
-                                ? t(sub.labelKey)
-                                : ("label" in sub ? sub.label : "")}
+                              {sub.label}
                             </Link>
                           )
                         })}
                       </div>
                     ))}
+                </div>
+              )}
+
+              {/* Admin sub-navigation — the 5 ADMIN_GROUPS (single source of
+                  truth shared with the admin landing hub). Renders only inside
+                  /budgeting/admin/*, togglable, role-gated at the row level. */}
+              {item.href === "/budgeting/admin" && isAdminSection && adminExpanded && !collapsed && (
+                <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
+                  {ADMIN_GROUPS.map((adminGroup) => (
+                    <div key={adminGroup.key}>
+                      <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
+                        {t2(adminGroup.key as never)}
+                      </p>
+                      {adminGroup.tools.map((tool) => {
+                        const isToolActive =
+                          pathname === tool.href || pathname.startsWith(tool.href + "/")
+                        return (
+                          <Link
+                            key={tool.href}
+                            href={tool.href}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors",
+                              isToolActive
+                                ? "bg-white/15 text-white font-medium"
+                                : "text-white/60 hover:bg-white/10 hover:text-white"
+                            )}
+                          >
+                            <tool.icon className="h-3.5 w-3.5 shrink-0" />
+                            {t2(`tools.${tool.key}.title` as never)}
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
