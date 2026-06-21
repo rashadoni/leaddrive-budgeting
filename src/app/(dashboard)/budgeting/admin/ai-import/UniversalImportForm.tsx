@@ -27,6 +27,11 @@ interface CompanyOpt {
   id: string
   code: string
   name: string
+  /** true = a holding / sub-group (has children → a consolidation roll-up),
+   *  false = an operating company (a leaf you import data into). */
+  isGroup: boolean
+  /** depth in the holding tree (0 = top holding). */
+  depth: number
 }
 interface PlanOpt {
   id: string
@@ -140,20 +145,60 @@ const VALIDATION_VERDICT: Record<
 }
 const fmtN = (n: number) => Math.round(n).toLocaleString("ru-RU")
 
-// Flatten the /api/companies tree (roots → children → children).
+// Flatten the /api/companies tree (roots → children → children), tagging each
+// node as a holding/group (has children → a consolidation roll-up) vs an
+// operating company (a leaf), plus its depth — so the picker can make it clear
+// whether you're choosing the WHOLE holding or one company inside it.
 function flatten(tree: unknown): CompanyOpt[] {
   const out: CompanyOpt[] = []
-  const walk = (nodes: unknown) => {
+  const walk = (nodes: unknown, depth: number) => {
     if (!Array.isArray(nodes)) return
     for (const n of nodes as Array<Record<string, unknown>>) {
+      const hasChildren = !!(n && Array.isArray(n.children) && n.children.length > 0)
       if (n && typeof n.id === "string") {
-        out.push({ id: n.id, code: String(n.code ?? ""), name: String(n.name ?? "") })
+        out.push({
+          id: n.id,
+          code: String(n.code ?? ""),
+          name: String(n.name ?? ""),
+          isGroup: hasChildren,
+          depth,
+        })
       }
-      if (n && Array.isArray(n.children)) walk(n.children)
+      if (hasChildren) walk(n.children, depth + 1)
     }
   }
-  walk(tree)
+  walk(tree, 0)
   return out
+}
+
+// Grouped <option>s for a company picker — separates the holding / sub-groups
+// (whole-group consolidation entities) from the operating companies, so the
+// reviewer can tell whether they're choosing the WHOLE holding (e.g. Azərşəkər)
+// or one company inside it (e.g. Azərşəkər Sugar) even when the names look alike.
+function CompanyOptionList({ companies }: { companies: CompanyOpt[] }) {
+  const groups = companies.filter((c) => c.isGroup)
+  const leaves = companies.filter((c) => !c.isGroup)
+  return (
+    <>
+      {groups.length > 0 && (
+        <optgroup label="🏛 Холдинг / группа (вся группа — консолидация)">
+          {groups.map((c) => (
+            <option key={c.id} value={c.id}>
+              {"— ".repeat(c.depth)}
+              {c.name} ({c.code}) · вся группа
+            </option>
+          ))}
+        </optgroup>
+      )}
+      <optgroup label="Компании (отдельная компания)">
+        {leaves.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name} ({c.code})
+          </option>
+        ))}
+      </optgroup>
+    </>
+  )
 }
 
 export function UniversalImportForm() {
@@ -540,11 +585,7 @@ export function UniversalImportForm() {
             className="w-full mt-1 px-2 py-2 rounded border border-border bg-background text-sm"
           >
             <option value="">— выберите —</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.code})
-              </option>
-            ))}
+            <CompanyOptionList companies={companies} />
           </select>
           <button
             type="button"
@@ -741,11 +782,7 @@ export function UniversalImportForm() {
                         >
                           <option value="">— выберите —</option>
                           <option value={SKIP_ENTITY}>⊘ Пропустить (не импортировать)</option>
-                          {companies.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name} ({c.code})
-                            </option>
-                          ))}
+                          <CompanyOptionList companies={companies} />
                         </select>
                       </td>
                     </tr>
