@@ -332,4 +332,21 @@ describe('extractMapperInput — Excel date-serial month headers (Reporting 2026
     expect(result.columns[7].headerText).toBe('Feb 2026')
     expect(result.columns[2].samples.map(String)).toContain('Consolidated') // BU samples from row 1+
   })
+
+  it('detects a header row mixing serial-date months AND a bare year-sum column (Guvven Fin "PLF CPC")', () => {
+    // Real layout: 12 serial-date month columns + an annual-sum column headed by
+    // the plain YEAR (2022). The year (out of the serial range) used to break the
+    // row → fallback → months mis-roled as `code`.
+    const aoa: (string | number | null)[][] = [
+      [null, null, 44562, 44593, 44896, 2022],
+      ['PLF.01', 'REVENUE', 639324, 1021487, 1769513, 15303059],
+      ['PLF.01.0', 'Revenue', 0, 0, 0, 0],
+    ]
+    const result = extractMapperInput(makeWorkbook(aoa, 'PLF CPC'), 'PLF CPC', XLSX)
+    if ('error' in result) throw new Error(result.error)
+    expect(result.columns[2].headerText).toBe('Jan 2022') // serial month decoded
+    expect(result.columns[4].headerText).toBe('Dec 2022')
+    expect(result.columns[5].headerText).toBe('2022') // bare year kept (not header-less)
+    expect(result.columns[0].samples.map(String)).toContain('PLF.01')
+  })
 })

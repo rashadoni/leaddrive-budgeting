@@ -96,18 +96,21 @@ export function extractMapperInput(
       (v) => v !== null && v !== undefined && v !== '',
     );
     if (nonEmptyCells.length < MIN_NON_EMPTY) continue;
-    // A header cell is either a short text label OR an integer Excel date-serial
-    // (a month/period header, e.g. 46053 = Jan 2026). Real monthly P&L exports
-    // (Reporting 2026 "Actual"/"Budget"/"Actual PLF") use a MIXED header row —
-    // string dimension columns (#, Group, Entity, FS line…) NEXT TO serial-date
-    // month columns. The old "all non-empty cells are strings" rule rejected
-    // such rows, so detection fell through to a data row and every month column
-    // came out header-less → the LLM mis-roled them as `code`. Amounts
-    // (fractional or out of the serial range) are NOT header cells, so genuine
-    // data rows still don't match.
+    // A header cell is a short text label, an integer Excel date-serial (a
+    // month/period header, 46053 = Jan 2026), OR a bare year number (2022). Real
+    // P&L exports (Guvven Fin "PLF CPC", Reporting 2026 "Actual"/"Budget") use a
+    // MIXED header row — string dimension columns (#, Group, Entity, FS line…)
+    // NEXT TO 12 serial-date month columns AND an annual-sum column headed by
+    // the plain YEAR (e.g. 44562…44896 = Jan…Dec 2022, then 2022). The old
+    // all-strings rule (and the serial-only relaxation) rejected such rows, so
+    // detection fell through to a data row and every month column came out
+    // header-less → the LLM mis-roled them as `code`. Fractional / out-of-range
+    // amounts are NOT header cells, so genuine data rows still don't match.
     const isHeaderCell = (v: unknown): boolean =>
       (typeof v === 'string' && v.length <= MAX_HEADER_CELL_LEN) ||
-      (typeof v === 'number' && Number.isInteger(v) && v >= 20000 && v <= 60000);
+      (typeof v === 'number' &&
+        Number.isInteger(v) &&
+        ((v >= 20000 && v <= 60000) || (v >= 1990 && v <= 2100)));
     if (!nonEmptyCells.every(isHeaderCell)) continue;
     headerEndRow = r + 1; // header is THIS row; samples start AFTER it
     break;
