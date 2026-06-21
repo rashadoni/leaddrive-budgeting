@@ -2008,6 +2008,10 @@ enum AuditAction {
   // 7-year audit trail.
   data_archive
   data_restore
+  // 2026-06-21 — full per-company "reset imported data" (no-tails). Metadata:
+  // { companyCode, year?, breakdown: {budgetLine, balanceSheetLine, cashFlowEntry,
+  //   counterparty, operationalFact, budgetActual, settingsKeys}, rowsAffected, reason? }.
+  data_reset
   // Phase 1.4 (2026-05-26) — BullMQ cleanup processor physically
   // removed soft-deleted rows whose deletedAt is older than the
   // 30-day retention window. One audit event per scheduled run with
