@@ -284,6 +284,39 @@ describe("runCashFlowBatch — round-trip", () => {
     expect(otherSource?.deletedAt).toBeNull()
   })
 
+  it("cross-source-tag re-import archives the entity's prior rows (no doubling) — 2026-06-21 bug", async () => {
+    // The historical loader tagged CF `workbook-cf-historical`; the reporting-
+    // pack re-import uses a DIFFERENT tag. The OLD source-constrained reset left
+    // the historical rows live, so the insert DOUBLED the entity's CF. With the
+    // fix, an entity-scoped reset archives the prior rows regardless of source.
+    const prisma = makeFakePrisma({
+      initialRows: [
+        {
+          organizationId: "org_1",
+          year: 2026,
+          month: 4,
+          entryType: "inflow",
+          source: "workbook-cf-historical", // different tag than this import
+          sourceId: "AZSF::CF.01.01", // entity-prefixed → matches entityScope
+          amount: 1000,
+          currencyCode: "AZN",
+          description: "historical",
+          isProjected: false,
+          activityType: "operating",
+          category: "X",
+          deletedAt: null,
+          deletedBy: null,
+        },
+      ],
+    })
+    const r = await runCashFlowBatch(prisma, planFor([E("AZSF", "CF.01.01", 1000)]))
+    expect(r.metrics.resetArchived).toBe(1) // the historical-tag row archived
+    const live = prisma.__cf.filter((x) => x.deletedAt === null)
+    expect(live).toHaveLength(1) // only the fresh insert is live — NOT doubled
+    const historical = prisma.__cf.find((x) => x.source === "workbook-cf-historical")
+    expect(historical?.deletedAt).not.toBeNull()
+  })
+
   it("drift detection: tampered expected → red", async () => {
     const prisma = makeFakePrisma()
     const plan = planFor([E("AZSF", "CF.01.01", 50)])

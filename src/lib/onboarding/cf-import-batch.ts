@@ -169,10 +169,21 @@ export async function runCashFlowBatch(
       // prefix (mirrors the BS companyId fix). Fall back to sourceTag-only when
       // no incoming row carries an entityCode (legacy / single-entity batches).
       const entityPrefixes = [...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean))]
+      const hasEntityScope = entityPrefixes.length > 0
       const entityScope =
-        entityPrefixes.length > 0
+        hasEntityScope
           ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
           : {}
+      // BUGFIX 2026-06-21: when we CAN scope by entity (sourceId prefix), the
+      // reset footprint is (organization + entity + year) — the `source` tag must
+      // NOT constrain it. The SAME entity's CF for a year can have been loaded
+      // under a DIFFERENT source tag (historical loader uses
+      // 'workbook-cf-historical', the reporting-pack re-import uses 'workbook-cf').
+      // Constraining the archive by the current `sourceTag` left the other-tag
+      // rows live, so the re-import's insert DOUBLED the entity's CF. Drop the
+      // source constraint when entity-scoped; keep it ONLY for the legacy
+      // single-entity fallback (no entityCode), where it is the only safe scope.
+      const resetSourceScope = hasEntityScope ? {} : { source: plan.sourceTag }
       // Collateral-deletion guard: count live rows within THIS import's own
       // footprint (the source + entity prefixes the INSERTED rows carry)
       // before archiving. CashFlowEntry has no companyId/planId — the entity
@@ -183,7 +194,7 @@ export async function runCashFlowBatch(
       const footprintLiveCount = await tx.cashFlowEntry.count({
         where: {
           organizationId: plan.organizationId,
-          source: plan.sourceTag,
+          ...resetSourceScope,
           ...entityScope,
           deletedAt: null,
           ...yearFilter,
@@ -193,7 +204,7 @@ export async function runCashFlowBatch(
         const purgeResult = await tx.cashFlowEntry.deleteMany({
           where: {
             organizationId: plan.organizationId,
-            source: plan.sourceTag,
+            ...resetSourceScope,
             ...entityScope,
             deletedAt: { not: null },
             ...yearFilter,
@@ -205,7 +216,7 @@ export async function runCashFlowBatch(
       const archiveResult = await tx.cashFlowEntry.updateMany({
         where: {
           organizationId: plan.organizationId,
-          source: plan.sourceTag,
+          ...resetSourceScope,
           ...entityScope,
           deletedAt: null,
           ...yearFilter,
@@ -217,7 +228,9 @@ export async function runCashFlowBatch(
         table: "CashFlowEntry",
         archivedCount: archived,
         footprintLiveCount,
-        footprint: `source=${plan.sourceTag} entities=[${entityPrefixes.join(",")}]`,
+        footprint: hasEntityScope
+          ? `entities=[${entityPrefixes.join(",")}] (any source)`
+          : `source=${plan.sourceTag}`,
       })
       log.info("archive phase", { archived, purged })
       if (archived > 0 && plan.rows.length > 0 && archived > plan.rows.length * 1.2) {
