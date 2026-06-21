@@ -692,7 +692,16 @@ export function applyProposal(
     line.plannedAnnual = line.perMonth.reduce((a, v) => a + v, 0);
   }
 
-  const { kept, dropped, synthetic } = dedupeParentRollups(lines);
+  // Deep dotted hierarchies (e.g. AzerSheker `PLF.05.01.01.02`) carry a subtotal
+  // row at EVERY level. Those non-leaf codes are pure computed aggregates, so we
+  // keep ONLY the deepest leaves and reconcile each section root against them
+  // (see DedupeOptions.computedSubtotals) — never summing a subtotal as a leaf.
+  // Gated to dotted, non-SAP schemes so the SAP/dash rollup path is unchanged.
+  const usesSapCodes = lines.some((l) => /^\d{3,}(-\d+)*$/.test(l.code));
+  const usesDotHierarchy = lines.some((l) => l.code.includes('.'));
+  const { kept, dropped, synthetic } = dedupeParentRollups(lines, {
+    computedSubtotals: usesDotHierarchy && !usesSapCodes,
+  });
   // skippedRowCount = sheet rows that did NOT contribute a final line.
   //   `skipped`           — rows skipped at parse time (header band, bare
   //                         labels with no code, zero-only rows, 4xx/5xx/8xx

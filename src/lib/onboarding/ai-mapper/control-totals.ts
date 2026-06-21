@@ -43,7 +43,7 @@ export interface ControlTotalReport {
 }
 
 export function computeControlTotals(
-  dropped: Array<{ code: string; plannedAnnual: number }>,
+  dropped: Array<{ code: string; plannedAnnual: number; leafSum?: number }>,
   synthetic: Array<{ parentCode: string; plannedAnnual: number }>,
   opts: { toleranceAzn?: number; yellowPct?: number } = {},
 ): ControlTotalReport {
@@ -52,19 +52,40 @@ export function computeControlTotals(
 
   const statedByParent = new Map(dropped.map((d) => [d.code, d.plannedAnnual]))
 
-  const controlTotals: ControlTotal[] = synthetic
-    .map((s) => {
-      const statedTotal = statedByParent.get(s.parentCode) ?? 0
-      const delta = s.plannedAnnual
-      const leafSum = statedTotal - delta
-      const deltaPct =
-        Math.abs(statedTotal) > 1e-9
-          ? Math.abs(delta) / Math.abs(statedTotal)
-          : Math.abs(delta) > tol
-            ? 1
-            : 0
-      return { code: s.parentCode, statedTotal, leafSum, delta, deltaPct }
+  const deltaPctOf = (statedTotal: number, delta: number): number =>
+    Math.abs(statedTotal) > 1e-9
+      ? Math.abs(delta) / Math.abs(statedTotal)
+      : Math.abs(delta) > tol
+        ? 1
+        : 0
+
+  // (A) Computed-subtotal mode (deep dotted hierarchies): dedup tagged each
+  // SECTION-ROOT parent with an explicit `leafSum` = Σ deepest-leaf
+  // descendants. Reconcile the section's STATED total against its TRUE leaves
+  // directly — intermediate subtotals carry no `leafSum` and are NOT checked
+  // (they're redundant computed displays). No synthetic is produced in this
+  // mode, so (A) and (B) never both fire for the same sheet.
+  const fromLeafSum: ControlTotal[] = dropped
+    .filter((d): d is { code: string; plannedAnnual: number; leafSum: number } =>
+      typeof d.leafSum === 'number',
+    )
+    .map((d) => {
+      const statedTotal = d.plannedAnnual
+      const leafSum = d.leafSum
+      const delta = statedTotal - leafSum
+      return { code: d.code, statedTotal, leafSum, delta, deltaPct: deltaPctOf(statedTotal, delta) }
     })
+
+  // (B) SAP rollup mode: each `synthetic` __UNALLOCATED__ leaf carries the
+  // parent-minus-children delta; leafSum is back-derived from it.
+  const fromSynthetic: ControlTotal[] = synthetic.map((s) => {
+    const statedTotal = statedByParent.get(s.parentCode) ?? 0
+    const delta = s.plannedAnnual
+    const leafSum = statedTotal - delta
+    return { code: s.parentCode, statedTotal, leafSum, delta, deltaPct: deltaPctOf(statedTotal, delta) }
+  })
+
+  const controlTotals: ControlTotal[] = [...fromLeafSum, ...fromSynthetic]
     // Only keep genuine mismatches (drop IEEE-754 noise within tolerance).
     .filter((c) => Math.abs(c.delta) > tol)
     .sort((a, b) => b.deltaPct - a.deltaPct)

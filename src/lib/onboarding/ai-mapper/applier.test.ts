@@ -14,6 +14,7 @@ import {
   isSubtotalLabel,
   resolveTypeByPrefix,
 } from './applier';
+import { computeControlTotals } from './control-totals';
 import type { AccountType } from './types';
 import type {
   ColumnMappingProposal,
@@ -470,6 +471,103 @@ describe('applyProposal — arbitrary (non-SAP) code scheme', () => {
       .filter((l) => l.accountType === 'revenue')
       .reduce((s, l) => s + l.plannedAnnual, 0);
     expect(revAnnual).toBe(100);
+  });
+});
+
+describe('applyProposal — deep dotted hierarchy (AzerSheker PLF.05.01.01.02)', () => {
+  // The "PLF CPC" failure: a subtotal row at EVERY code level plus the detail
+  // rows. The fix must keep ONLY the deepest leaves, never sum a subtotal as a
+  // leaf, and reconcile the section root against its true leaves.
+  const cols: ColumnMappingProposal[] = [
+    { sourceIndex: 0, role: 'code', confidence: 0.95, reasoning: '' },
+    { sourceIndex: 1, role: 'label', confidence: 0.95, reasoning: '' },
+    ...fullMonthCols(2),
+  ];
+  const proposal: MappingProposal = {
+    sourceFile: 'Guvven Fin.xlsx',
+    sourceSheet: 'Sheet1',
+    columns: cols,
+    accountTypeOverrides: [
+      { code: 'PLF.01', accountType: 'revenue', confidence: 0.95, reasoning: 'revenue section' },
+      { code: 'PLF.05', accountType: 'expense', confidence: 0.95, reasoning: 'opex section' },
+    ],
+    anomalies: [],
+    overallConfidence: 0.9,
+    summary: '',
+  };
+  // Jan-only spread so the annual = the single value (keeps the fixture compact).
+  const m = (jan: number) => [jan, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+  it('writes each account once and reconciles GREEN despite an inconsistent intermediate subtotal', () => {
+    // Section PLF.05 (−158,887) = Σ deepest leaves. The intermediate subtotal
+    // PLF.05.01 is INFLATED (−999,999) — the hand-built-Excel reality the old
+    // direct-children reconciliation choked on. Costs stored negative.
+    const aoa: (string | number | null)[][] = [
+      ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['PLF.01', 'REVENUE', ...m(200000)],
+      ['PLF.01.01.01', 'Wheat sales', ...m(200000)],
+      ['PLF.05', 'G&A EXPENSES', ...m(-158887)],
+      ['PLF.05.01', 'Depreciation group (inflated subtotal)', ...m(-999999)],
+      ['PLF.05.01.01', 'Depreciation', ...m(-58887)],
+      ['PLF.05.01.01.01', 'Dep machinery', ...m(-40000)],
+      ['PLF.05.01.01.02', 'Dep buildings', ...m(-18887)],
+      ['PLF.05.02', 'Rent', ...m(-100000)],
+    ];
+    const res = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX, undefined, {
+      preferYear: undefined,
+    });
+    expect('error' in res).toBe(false);
+    if ('error' in res) return;
+
+    const keptCodes = res.lines.map((l) => l.code).sort();
+    // ONLY the deepest leaves are kept — every subtotal level dropped.
+    expect(keptCodes).toEqual([
+      'PLF.01.01.01',
+      'PLF.05.01.01.01',
+      'PLF.05.01.01.02',
+      'PLF.05.02',
+    ]);
+    // No subtotal leaked into the written set, and no synthetic __UNALLOCATED__.
+    expect(res.lines.some((l) => l.code.includes('__UNALLOCATED__'))).toBe(false);
+    expect(res.parentRollupsUnallocated).toHaveLength(0);
+
+    // Expense leaves sum to the section total once (sign-flipped to positive).
+    const expenseSum = res.lines
+      .filter((l) => l.accountType === 'expense')
+      .reduce((s, l) => s + l.plannedAnnual, 0);
+    expect(expenseSum).toBe(158887);
+
+    // Control-total reconciles GREEN: the section root checks against its true
+    // deepest leaves, ignoring the inconsistent intermediate subtotal.
+    const control = computeControlTotals(
+      res.parentRollupsDropped,
+      res.parentRollupsUnallocated,
+    );
+    expect(control.verdict).toBe('green');
+    // PLF.05 carried a leafSum reference equal to its OWN stated total (the
+    // section reconciles to its true deepest leaves). Costs are sign-flipped to
+    // positive at parse time, so both sit at +158,887.
+    const root = res.parentRollupsDropped.find((d) => d.code === 'PLF.05');
+    expect(root?.leafSum).toBe(158887);
+    expect(root?.leafSum).toBe(root?.plannedAnnual);
+  });
+
+  it('still RED when the deepest leaves genuinely do not sum to the section total', () => {
+    const aoa: (string | number | null)[][] = [
+      ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['PLF.01', 'REVENUE', ...m(200000)],
+      ['PLF.01.01.01', 'Wheat sales', ...m(200000)],
+      ['PLF.05', 'G&A EXPENSES', ...m(-100000)], // stated −100,000
+      ['PLF.05.01.01', 'Dep', ...m(-30000)],
+      ['PLF.05.02', 'Rent', ...m(-30000)], // leaves only sum to −60,000
+    ];
+    const res = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX);
+    if ('error' in res) throw new Error(res.error);
+    const control = computeControlTotals(
+      res.parentRollupsDropped,
+      res.parentRollupsUnallocated,
+    );
+    expect(control.verdict).toBe('red');
   });
 });
 

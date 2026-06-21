@@ -4,10 +4,12 @@ import {
   accountTypeFromCode,
   dedupeParentRollups,
   findHeaderRow,
+  isLeafCode,
   mapColumns,
   matchRollupLabel,
   parseSoplSheet,
   parseSummaryRollupSheet,
+  partitionHierarchy,
 } from './azmade-sopl';
 
 describe('accountTypeFromCode', () => {
@@ -626,6 +628,164 @@ describe('dedupeParentRollups', () => {
     expect(kept.map((l) => l.code)).toEqual(['721-02-01']);
     expect(dropped.map((l) => l.code)).toEqual(['721']);
     expect(synthetic).toHaveLength(0);
+  });
+});
+
+describe('isLeafCode — canonical leaf rule for multi-level dotted codes', () => {
+  // AzerSheker "PLF CPC" shape: a subtotal row at EVERY level + the detail rows.
+  const codes = [
+    'PLF.05',
+    'PLF.05.01',
+    'PLF.05.01.01',
+    'PLF.05.01.01.01',
+    'PLF.05.01.01.02',
+    'PLF.05.01.02',
+    'PLF.05.02',
+  ];
+
+  it('a code is a leaf iff no OTHER code has it as a dotted prefix', () => {
+    // Deepest detail rows — leaves.
+    expect(isLeafCode('PLF.05.01.01.01', codes)).toBe(true);
+    expect(isLeafCode('PLF.05.01.01.02', codes)).toBe(true);
+    expect(isLeafCode('PLF.05.01.02', codes)).toBe(true); // 3-deep leaf (mixed depth)
+    expect(isLeafCode('PLF.05.02', codes)).toBe(true); // 2-deep leaf (no children)
+    // Every intermediate subtotal is a PARENT, not a leaf.
+    expect(isLeafCode('PLF.05', codes)).toBe(false);
+    expect(isLeafCode('PLF.05.01', codes)).toBe(false);
+    expect(isLeafCode('PLF.05.01.01', codes)).toBe(false);
+  });
+
+  it('respects the dot boundary — PLF.05.1 is not a parent of PLF.05.10', () => {
+    expect(isLeafCode('PLF.05.1', ['PLF.05.1', 'PLF.05.10'])).toBe(true);
+    expect(isLeafCode('PLF.05.10', ['PLF.05.1', 'PLF.05.10'])).toBe(true);
+  });
+
+  it('handles letter-keyed leaves (PLF.05.R regions section)', () => {
+    const c = ['PLF.05.R', 'PLF.05.R.01', 'PLF.05.R.01.AB'];
+    expect(isLeafCode('PLF.05.R', c)).toBe(false); // parent of PLF.05.R.01
+    expect(isLeafCode('PLF.05.R.01', c)).toBe(false); // parent of PLF.05.R.01.AB
+    expect(isLeafCode('PLF.05.R.01.AB', c)).toBe(true); // deepest
+  });
+
+  it('handles dash-separated SAP codes the same way', () => {
+    expect(isLeafCode('721-02', ['721-02', '721-02-01'])).toBe(false);
+    expect(isLeafCode('721-02-01', ['721-02', '721-02-01'])).toBe(true);
+  });
+
+  it('a lone code with no relatives is a leaf', () => {
+    expect(isLeafCode('PLF.99', ['PLF.99'])).toBe(true);
+  });
+});
+
+describe('partitionHierarchy — leaves / parents / section roots', () => {
+  it('splits a 4-level dotted hierarchy and finds the section root', () => {
+    const { leaves, parents, topLevelParents } = partitionHierarchy([
+      'PLF.05',
+      'PLF.05.01',
+      'PLF.05.01.01',
+      'PLF.05.01.01.01',
+      'PLF.05.01.01.02',
+      'PLF.05.02',
+    ]);
+    expect(leaves.sort()).toEqual(['PLF.05.01.01.01', 'PLF.05.01.01.02', 'PLF.05.02']);
+    expect(parents.sort()).toEqual(['PLF.05', 'PLF.05.01', 'PLF.05.01.01']);
+    // Only PLF.05 has no ancestor in the set → the lone section root.
+    expect(topLevelParents).toEqual(['PLF.05']);
+  });
+
+  it('returns multiple section roots for multiple top-level sections', () => {
+    const { topLevelParents } = partitionHierarchy([
+      'PLF.01',
+      'PLF.01.01',
+      'PLF.05',
+      'PLF.05.01',
+    ]);
+    expect(topLevelParents.sort()).toEqual(['PLF.01', 'PLF.05']);
+  });
+
+  it('a flat leaf-only set has no parents', () => {
+    const { leaves, parents, topLevelParents } = partitionHierarchy([
+      'PLF.01.01.01',
+      'PLF.01.01.02',
+    ]);
+    expect(leaves).toHaveLength(2);
+    expect(parents).toHaveLength(0);
+    expect(topLevelParents).toHaveLength(0);
+  });
+});
+
+describe('dedupeParentRollups — computedSubtotals mode (deep dotted P&L)', () => {
+  function line(
+    code: string,
+    accountType: 'revenue' | 'cogs' | 'expense',
+    amount: number,
+  ) {
+    return {
+      code,
+      label: code,
+      accountType,
+      plannedAnnual: amount,
+      perMonth: Array.from({ length: 12 }, () => amount / 12),
+    } as const;
+  }
+
+  it('keeps ONLY deepest leaves, drops every subtotal, injects NO synthetics', () => {
+    // PLF.05 = Σ direct children; every subtotal level present.
+    const input = [
+      line('PLF.05', 'expense', 100),
+      line('PLF.05.01', 'expense', 60),
+      line('PLF.05.01.01', 'expense', 30),
+      line('PLF.05.01.02', 'expense', 30),
+      line('PLF.05.02', 'expense', 40),
+    ];
+    const { kept, dropped, synthetic } = dedupeParentRollups(input, {
+      computedSubtotals: true,
+    });
+    expect(kept.map((l) => l.code).sort()).toEqual([
+      'PLF.05.01.01',
+      'PLF.05.01.02',
+      'PLF.05.02',
+    ]);
+    expect(kept.reduce((s, l) => s + l.plannedAnnual, 0)).toBe(100);
+    expect(dropped.map((d) => d.code).sort()).toEqual(['PLF.05', 'PLF.05.01']);
+    expect(synthetic).toHaveLength(0);
+  });
+
+  it('tags the section root with leafSum = Σ deepest leaves (intermediates untagged)', () => {
+    const input = [
+      line('PLF.05', 'expense', 100),
+      line('PLF.05.01', 'expense', 999), // INCONSISTENT intermediate subtotal
+      line('PLF.05.01.01', 'expense', 30),
+      line('PLF.05.01.02', 'expense', 30),
+      line('PLF.05.02', 'expense', 40),
+    ];
+    const { dropped } = dedupeParentRollups(input, { computedSubtotals: true });
+    const root = dropped.find((d) => d.code === 'PLF.05');
+    const mid = dropped.find((d) => d.code === 'PLF.05.01');
+    // Section root reconciles against TRUE deepest leaves (30+30+40 = 100),
+    // not the inconsistent intermediate (999).
+    expect(root?.leafSum).toBe(100);
+    // Intermediate subtotal is dropped but NOT reconciled (no leafSum).
+    expect(mid?.leafSum).toBeUndefined();
+  });
+
+  it('does not over-count: a never-deduped clean tree keeps each leaf once', () => {
+    const input = [
+      line('PLF.05', 'expense', 158887),
+      line('PLF.05.01', 'expense', 60000),
+      line('PLF.05.01.01', 'expense', 60000),
+      line('PLF.05.01.01.01', 'expense', 20000),
+      line('PLF.05.01.01.02', 'expense', 40000),
+      line('PLF.05.02', 'expense', 98887),
+    ];
+    const { kept } = dedupeParentRollups(input, { computedSubtotals: true });
+    // Three deepest leaves, summing to the section total exactly once.
+    expect(kept.map((l) => l.code).sort()).toEqual([
+      'PLF.05.01.01.01',
+      'PLF.05.01.01.02',
+      'PLF.05.02',
+    ]);
+    expect(kept.reduce((s, l) => s + l.plannedAnnual, 0)).toBe(158887);
   });
 });
 

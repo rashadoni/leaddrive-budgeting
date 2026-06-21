@@ -126,8 +126,13 @@ export interface ParseResult {
   skippedRowCount: number;
   /** Parent-rollup codes that were dropped because their leaf children are
    *  present in the same sheet (summing both would double-count). Empty for
-   *  sheets that only list leaves (AAC, ATL, SPARK, ZTP). */
-  parentRollupsDropped: Array<{ code: string; label: string; plannedAnnual: number }>;
+   *  sheets that only list leaves (AAC, ATL, SPARK, ZTP).
+   *
+   *  `leafSum` is populated ONLY in `computedSubtotals` mode (dotted P&L
+   *  hierarchies) on SECTION-ROOT parents — it carries Σ of the DEEPEST leaf
+   *  descendants, so `computeControlTotals` reconciles the section's stated
+   *  total against its true leaves (not against intermediate subtotals). */
+  parentRollupsDropped: Array<{ code: string; label: string; plannedAnnual: number; leafSum?: number }>;
   /** Synthetic `<parent>-__UNALLOCATED__` leaves injected by the dedup step
    *  when a parent's plannedAnnual exceeded the sum of its children by more
    *  than the reconciliation tolerance. Preserves the delta so finance data
@@ -662,6 +667,93 @@ export interface DedupeOptions {
    *  `ROLLUP-REVENUE-OTHER`. Defaults to true; callers with non-
    *  hierarchical codespaces pass `enabled: false` explicitly. */
   enabled?: boolean;
+  /**
+   * COMPUTED-SUBTOTAL mode for deep dotted hierarchies (2026-06-21) — e.g.
+   * AzerSheker `PLF.05.01.01.02`, where a subtotal row exists at EVERY level
+   * (PLF.05 → PLF.05.01 → PLF.05.01.01 → …) plus the detail rows.
+   *
+   * In these files EVERY non-leaf code is a PURE computed aggregate (a display
+   * subtotal), carrying NO independent data. The default mode reconciles each
+   * parent against its DIRECT children — which are themselves subtotals — so a
+   * single inconsistent intermediate subtotal (common in hand-built Excel)
+   * injects spurious `__UNALLOCATED__` leaves and reds the control-total even
+   * though the deepest leaves reconcile to the section total.
+   *
+   * When true:
+   *   - a code is a LEAF iff no OTHER code has it as a dotted/dashed prefix;
+   *   - ONLY deepest leaves are KEPT (each account written once);
+   *   - ALL parents are dropped, their stated values NEVER summed into data;
+   *   - NO `__UNALLOCATED__` synthetics are injected;
+   *   - SECTION-ROOT parents (those with no ancestor in the set) carry a
+   *     `leafSum` = Σ deepest-leaf descendants, so `computeControlTotals`
+   *     reconciles the section's STATED total against its TRUE leaves while
+   *     IGNORING intermediate subtotal inconsistencies (they're redundant
+   *     displays — the deepest leaves are the source of truth).
+   *
+   * Defaults to false → the SAP/dash rollup path is byte-for-byte unchanged.
+   */
+  computedSubtotals?: boolean;
+}
+
+/**
+ * True when `code` is a hierarchical child of `parent`. The boundary is a dash
+ * (SAP "721-02") OR a dot (dotted schemes like AzerSheker "PLF.05.01"), so a
+ * code like `PLF.1` never matches `PLF.10`. SAP codes never contain a dot, so
+ * accepting both separators is additive.
+ */
+function isHierarchyChild(code: string, parent: string): boolean {
+  return (
+    code.length > parent.length + 1 &&
+    (code.startsWith(parent + '-') || code.startsWith(parent + '.'))
+  );
+}
+
+/**
+ * Canonical LEAF rule for hierarchical account codes: `code` is a LEAF iff no
+ * OTHER code in `allCodes` has it as a dotted/dashed prefix (i.e. it has no
+ * descendant). `PLF.05.01` is a PARENT when `PLF.05.01.xx` exists; a bottom
+ * `PLF.05.01.01.02` with nothing beneath it is a leaf. Pure — exported for
+ * unit-testing multi-level dotted leaf-vs-parent detection.
+ */
+export function isLeafCode(code: string, allCodes: Iterable<string>): boolean {
+  for (const c of allCodes) {
+    // Another code is a descendant of `code` → `code` is a parent, not a leaf.
+    if (c !== code && isHierarchyChild(c, code)) return false;
+  }
+  return true;
+}
+
+/**
+ * Partition a hierarchical code set into:
+ *   - `leaves`           — deepest codes (no descendant); the ONLY rows to keep.
+ *   - `parents`          — codes with ≥1 descendant (computed subtotals).
+ *   - `topLevelParents`  — section roots: parents with NO ancestor present in
+ *                          the set. Their stated total is what reconciles
+ *                          against the deepest-leaf sum; intermediate parents
+ *                          are pure redundant displays and are not checked.
+ * Pure — exported for unit-testing. O(n²) over the code set (fine for the
+ * few-hundred-code P&L sheets; the analyze route caps sheet size upstream).
+ */
+export function partitionHierarchy(codes: string[]): {
+  leaves: string[];
+  parents: string[];
+  topLevelParents: string[];
+} {
+  const set = new Set(codes);
+  const leaves: string[] = [];
+  const parents: string[] = [];
+  for (const code of codes) {
+    if (isLeafCode(code, set)) leaves.push(code);
+    else parents.push(code);
+  }
+  const hasAncestorInSet = (code: string): boolean => {
+    for (const c of set) {
+      if (c !== code && isHierarchyChild(code, c)) return true;
+    }
+    return false;
+  };
+  const topLevelParents = parents.filter((p) => !hasAncestorInSet(p));
+  return { leaves, parents, topLevelParents };
 }
 
 export function dedupeParentRollups(
@@ -669,12 +761,15 @@ export function dedupeParentRollups(
   options: DedupeOptions = {},
 ): {
   kept: ParsedBudgetLine[];
-  dropped: Array<{ code: string; label: string; plannedAnnual: number }>;
+  dropped: Array<{ code: string; label: string; plannedAnnual: number; leafSum?: number }>;
   synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
 } {
-  const { enabled = true } = options;
+  const { enabled = true, computedSubtotals = false } = options;
   if (!enabled) {
     return { kept: [...lines], dropped: [], synthetic: [] };
+  }
+  if (computedSubtotals) {
+    return dedupeComputedSubtotals(lines);
   }
   // Parent detection uses ANY descendant (transitive) — presence of `C-X-Y`
   // means `C` has children and is a parent.
@@ -789,6 +884,64 @@ export function dedupeParentRollups(
   }
 
   return { kept, dropped, synthetic };
+}
+
+/**
+ * COMPUTED-SUBTOTAL dedup for deep dotted hierarchies (see
+ * `DedupeOptions.computedSubtotals`).
+ *
+ * Unlike the SAP rollup path, EVERY non-leaf code here is a pure computed
+ * subtotal carrying no independent data, so:
+ *   - KEEP only the deepest leaves (each account written exactly once);
+ *   - DROP every parent — its stated value is NEVER summed into the data;
+ *   - inject NO `__UNALLOCATED__` synthetics (a multi-level subtotal hierarchy
+ *     must not spawn fictional leaves);
+ *   - tag SECTION-ROOT parents with `leafSum` = Σ deepest-leaf descendants so
+ *     `computeControlTotals` reconciles the section's stated total against its
+ *     TRUE leaves, ignoring intermediate-subtotal inconsistencies.
+ *
+ * Result: a file whose deepest leaves reconcile to each section's stated total
+ * is GREEN and writes each leaf once, regardless of how many redundant subtotal
+ * levels sit between the section root and the leaves.
+ */
+function dedupeComputedSubtotals(lines: ParsedBudgetLine[]): {
+  kept: ParsedBudgetLine[];
+  dropped: Array<{ code: string; label: string; plannedAnnual: number; leafSum?: number }>;
+  synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
+} {
+  const { leaves, topLevelParents } = partitionHierarchy(lines.map((l) => l.code));
+  const leafSet = new Set(leaves);
+  const topSet = new Set(topLevelParents);
+
+  // Deepest-leaf sum per section root — the integrity reference for the
+  // control-total. Σ over kept leaves whose code is a descendant of the root.
+  const leafSumFor = (root: string): number =>
+    lines.reduce(
+      (s, l) =>
+        leafSet.has(l.code) && isHierarchyChild(l.code, root)
+          ? s + l.plannedAnnual
+          : s,
+      0,
+    );
+
+  const kept: ParsedBudgetLine[] = [];
+  const dropped: Array<{ code: string; label: string; plannedAnnual: number; leafSum?: number }> = [];
+  for (const l of lines) {
+    if (leafSet.has(l.code)) {
+      kept.push(l);
+      continue;
+    }
+    dropped.push({
+      code: l.code,
+      label: l.label,
+      plannedAnnual: l.plannedAnnual,
+      ...(topSet.has(l.code) ? { leafSum: leafSumFor(l.code) } : {}),
+    });
+  }
+  // No synthetics: parents are pure computed aggregates. A section whose
+  // deepest leaves don't reconcile to its stated total surfaces as a
+  // control-total mismatch (for human review), never a written `__UNALLOCATED__`.
+  return { kept, dropped, synthetic: [] };
 }
 
 export function parseSoplSheet(
