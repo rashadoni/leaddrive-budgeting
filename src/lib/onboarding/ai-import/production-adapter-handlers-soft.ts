@@ -27,6 +27,11 @@ import {
 } from "./counterparty-register"
 import { parseCourtDisputes, COURT_DISPUTE_METRICS } from "./court-disputes-parse"
 import {
+  parseAuditFindings,
+  auditCompletedPct,
+  AUDIT_FINDING_METRICS,
+} from "./audit-findings-parse"
+import {
   parseIcmalBudgetLines,
   allocateIcmalBudget,
   buildIcmalMonthlyRows,
@@ -1026,6 +1031,93 @@ export function makeLegalCasesHandler(
             },
           })
           rows += COURT_DISPUTE_METRICS.length
+        }
+        return { rowsInserted: rows }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// AUDIT_FINDINGS — internal-audit register → 6 audit_findings_* OperationalFacts
+// (completed_pct → AUDIT_CLOSED_PCT, major_open → AUDIT_MAJOR_OPEN) +
+// Company.settings.auditFindings. Ports scripts/import-audit-findings.mjs.
+// ──────────────────────────────────────────────────────────────────────
+
+export function makeAuditFindingsHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  void prisma
+  void ctxRef
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parseAuditFindings(input.workbook, input.sheetName, input.XLSX)
+    const period = String(input.year)
+    const recordDate = new Date(`${period}-12-31T00:00:00.000Z`)
+    const warnings = [...parsed.warnings]
+    const entries = Object.entries(parsed.byCompany)
+      .map(([code, agg]) => ({ code, companyId: ctx.codeToId.get(code), agg }))
+      .filter((e): e is { code: string; companyId: string; agg: (typeof parsed.byCompany)[string] } => {
+        if (!e.companyId) warnings.push(`Company "${e.code}" not in org — audit findings skipped`)
+        return Boolean(e.companyId)
+      })
+    const totalFindings = entries.reduce((s, e) => s + e.agg.total, 0)
+
+    return {
+      summary: `${totalFindings} audit finding(s) across ${entries.length} entit${entries.length === 1 ? "y" : "ies"} (${period})`,
+      itemCount: totalFindings,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        let rows = 0
+        for (const { companyId, agg } of entries) {
+          const pct = auditCompletedPct(agg)
+          await tx.operationalFact.deleteMany({
+            where: { companyId, metric: { in: [...AUDIT_FINDING_METRICS] }, date: recordDate },
+          })
+          await tx.operationalFact.createMany({
+            data: [
+              { metric: "audit_findings_total", value: agg.total },
+              { metric: "audit_findings_completed", value: agg.completed },
+              { metric: "audit_findings_major_open", value: agg.major_open },
+              { metric: "audit_findings_minor_open", value: agg.minor_open },
+              { metric: "audit_findings_observation_open", value: agg.observation_open },
+              { metric: "audit_findings_completed_pct", value: pct },
+            ].map((m) => ({
+              organizationId: ctx.organizationId,
+              companyId,
+              metric: m.metric,
+              date: recordDate,
+              value: m.value,
+              unit: m.metric.endsWith("_pct") ? "%" : "count",
+              source: `multi-import:${input.sheetName}`,
+            })),
+          })
+          const company = await tx.company.findUnique({ where: { id: companyId }, select: { settings: true } })
+          const prev = (company?.settings ?? {}) as Record<string, unknown>
+          await tx.company.update({
+            where: { id: companyId },
+            data: {
+              settings: {
+                ...prev,
+                auditFindings: {
+                  source: input.sheetName,
+                  importedAt: new Date().toISOString(),
+                  summary: {
+                    total: agg.total,
+                    completed: agg.completed,
+                    completedPct: pct,
+                    major_open: agg.major_open,
+                    minor_open: agg.minor_open,
+                    observation_open: agg.observation_open,
+                  },
+                  items: agg.findings,
+                },
+              } as unknown as Prisma.InputJsonValue,
+            },
+          })
+          rows += AUDIT_FINDING_METRICS.length
         }
         return { rowsInserted: rows }
       },
