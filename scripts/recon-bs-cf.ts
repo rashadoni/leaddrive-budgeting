@@ -1,32 +1,35 @@
 /**
- * recon-bs-cf — companion to recon-actual-plf, for the Balance Sheet and Cash
- * Flow actual sheets.
+ * recon-bs-cf — reconcile Balance Sheet + Cash Flow actuals file ↔ DB.
  *
- *   BS Actual → balance_sheet_lines.  Balance (point-in-time): compare the
- *     YEAR-END value (the latest month present per year), NOT a sum.
- *   CF Actual → cash_flow_entries.    Flow: sum the months. The table has no
- *     companyId — company+code come from `sourceId` = "<COMPANY-CODE>::<CFcode>".
+ * Uses the SAME bespoke parsers the importer uses (parseReportingPackBs /
+ * parseReportingPackCf) to compute the EXPECTED leaf values — so "file" means
+ * exactly what the import would insert (leaf selection + BU split applied
+ * identically). A raw column re-sum diverges from the parser on BS depth and CF
+ * structure; parsing removes that whole class of false positives.
+ *
+ * Compares per (company, leaf code, year, MONTH) by |magnitude|:
+ *   - CF perMonth carries direction in the sign (an inflow line can hold a
+ *     negative correction month); the DB stores the magnitude and carries
+ *     direction in `entryType`. So abs() on both sides is the right grain — the
+ *     same cost-sign convention recon-actual-plf uses. A MAGNITUDE difference is
+ *     the real bug.
+ *   - BS lines carry a sparse monthlyAmounts map; only the months the DB stores
+ *     (2025 = Dec year-end; 2026 = the actuals loaded so far) are compared.
  *
  *   npx tsx scripts/recon-bs-cf.ts ["/path/Reporting 2026.xlsx"]
  *
- * Compares |value| per leaf (the cost-sign flip is intended convention). Exit 0
- * if both sheets reconcile, 1 otherwise.
+ * Exit 0 if both reconcile, 1 otherwise.
  */
 import * as XLSX from "xlsx"
 import fs from "fs"
 import { execFileSync } from "child_process"
+import { parseReportingPackBs, parseReportingPackCf } from "../src/lib/onboarding/adapters/reporting-pack-detail"
 
 const HOME = process.env.HOME ?? ""
 const FILE = process.argv.find((a, i) => i >= 2 && !a.startsWith("--")) ?? `${HOME}/Documents/budget azersheker/Reporting 2026.xlsx`
+const YEARS = [2025, 2026]
 const TOL = 1
-const BU_TO_CO: Record<string, string> = {
-  AZSF: "AZSEKER-AZSF",
-  EDEN: "AZSEKER-EDEN",
-  CPC: "AZSEKER-CPC",
-  ProMalt: "AZSEKER-PROMALT",
-}
-const COMPANIES = Object.values(BU_TO_CO)
-const EPOCH = Date.UTC(1899, 11, 30)
+const COMPANIES = ["AZSEKER-AZSF", "AZSEKER-EDEN", "AZSEKER-CPC", "AZSEKER-PROMALT"]
 
 function dbUrl(): string {
   if (process.env.DATABASE_URL) return process.env.DATABASE_URL
@@ -37,125 +40,105 @@ function dbUrl(): string {
 }
 function psql(sql: string): string[][] {
   return execFileSync("psql", [dbUrl(), "-tAF", "\t", "-c", sql], { encoding: "utf8" })
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => l.split("\t"))
+    .trim().split("\n").filter(Boolean).map((l) => l.split("\t"))
 }
 
 const wb = XLSX.read(fs.readFileSync(FILE), { type: "buffer" })
 
-/** Read a sheet → company|code → year → value. `mode`: "sum" or "yearend". */
-function fileSide(sheet: string, mode: "sum" | "yearend"): { vals: Record<string, Record<number, number>>; years: number[] } {
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheet], { header: 1, blankrows: false, defval: null }) as unknown[][]
-  const header = aoa[0] ?? []
-  let buCol = -1
-  const cols: Array<{ c: number; year: number; month: number }> = []
-  for (let c = 0; c < header.length; c++) {
-    const v = header[c]
-    if (String(v ?? "").trim() === "BU") buCol = c
-    if (typeof v === "number" && v >= 40000 && v <= 60000) {
-      const d = new Date(EPOCH + v * 86400000)
-      cols.push({ c, year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 })
+// Normalize either parser line shape → a 12-slot perMonth for `year`:
+//   CF / PLF line → `perMonth: number[]`
+//   BS line       → `monthlyAmounts: { "YYYY-MM": n }` (sparse)
+type AnyLine = { code: string; perMonth?: number[]; monthlyAmounts?: Record<string, number> }
+function lineToPerMonth(line: AnyLine, year: number): number[] {
+  const pm = new Array(12).fill(0)
+  if (Array.isArray(line.perMonth)) {
+    for (let m = 0; m < 12; m++) pm[m] = line.perMonth[m] ?? 0
+  } else if (line.monthlyAmounts) {
+    for (const [k, v] of Object.entries(line.monthlyAmounts)) {
+      const [y, mo] = k.split("-").map(Number)
+      if (y === year && mo >= 1 && mo <= 12) pm[mo - 1] += v
     }
   }
-  if (buCol < 0) throw new Error(`No BU column in ${sheet}`)
-  const years = [...new Set(cols.map((x) => x.year))].sort((a, b) => a - b)
-  // for "yearend": the latest-month column of each year
-  const yearEndCol: Record<number, number> = {}
-  for (const y of years) {
-    const ys = cols.filter((x) => x.year === y).sort((a, b) => b.month - a.month)
-    yearEndCol[y] = ys[0].c
-  }
-  const out: Record<string, Record<number, number>> = {}
-  for (let r = 1; r < aoa.length; r++) {
-    const row = aoa[r] ?? []
-    const code = String(row[0] ?? "").trim()
-    const co = BU_TO_CO[String(row[buCol] ?? "").trim()]
-    if (!co || !code || code.includes(" ")) continue
-    const key = `${co}|${code}`
-    out[key] ??= {}
-    for (const y of years) {
-      if (mode === "yearend") {
-        const v = row[yearEndCol[y]]
-        if (typeof v === "number" && isFinite(v)) out[key][y] = v
-      } else {
-        let s = 0
-        for (const x of cols) if (x.year === y) { const v = row[x.c]; if (typeof v === "number" && isFinite(v)) s += v }
-        out[key][y] = s
+  return pm
+}
+
+// expected[`${company}|${code}|${year}`] = perMonth[12], summed across appearances.
+function expectedFromParser(parse: typeof parseReportingPackBs | typeof parseReportingPackCf, sheet: string) {
+  const exp: Record<string, number[]> = {}
+  for (const year of YEARS) {
+    const res = parse(wb, sheet, XLSX, { preferYear: year }) as {
+      entities: Array<{ entityCode: string | null; skipped?: boolean; lines: AnyLine[] }>
+    }
+    for (const e of res.entities) {
+      if (e.skipped || !e.entityCode) continue
+      for (const l of e.lines) {
+        const k = `${e.entityCode}|${l.code}|${year}`
+        if (!exp[k]) exp[k] = new Array(12).fill(0)
+        const pm = lineToPerMonth(l, year)
+        for (let m = 0; m < 12; m++) exp[k][m] += pm[m]
       }
     }
   }
-  return { vals: out, years }
+  return exp
 }
 
-function compare(label: string, F: { vals: Record<string, Record<number, number>>; years: number[] }, DB: Record<string, Record<number, number>>): boolean {
+// db[`${company}|${code}|${year}|${month}`] = amount, from a per-month query that
+// yields columns (company, code, year, month, amount).
+function dbCells(rows: string[][]): Record<string, number> {
+  const db: Record<string, number> = {}
+  for (const [co, acct, y, mo, v] of rows) db[`${co}|${acct}|${y}|${mo}`] = Number(v)
+  return db
+}
+
+// Per (company, code, year, month) |magnitude| compare. Returns mismatch lines.
+function compare(exp: Record<string, number[]>, db: Record<string, number>) {
+  const mism: string[] = []
   let ok = 0
-  const mismatch: string[] = []
-  const dbKeys = new Set(Object.keys(DB))
-  for (const k of dbKeys) {
-    const f = F.vals[k]
-    if (!f) {
-      mismatch.push(`${k} — in DB, NOT in file`)
-      continue
+  const seen = new Set<string>()
+  for (const [k, pm] of Object.entries(exp)) {
+    for (let m = 0; m < 12; m++) {
+      const cell = `${k}|${m + 1}`
+      seen.add(cell)
+      const e = Math.abs(pm[m] ?? 0)
+      const d = Math.abs(db[cell] ?? 0)
+      if (Math.abs(e - d) > TOL) mism.push(`${cell}  |parser|=${Math.round(e)} |db|=${Math.round(d)}`)
+      else if (e > TOL || d > TOL) ok++
     }
-    const bad = F.years.filter((y) => Math.abs(Math.abs(f[y] ?? 0) - Math.abs(DB[k][y] ?? 0)) > TOL)
-    if (bad.length === 0) ok++
-    else mismatch.push(`${k}  ` + F.years.map((y) => `${y}: file=${Math.round(f[y] ?? 0)} db=${Math.round(DB[k][y] ?? 0)}`).join("  |  "))
   }
-  const missingDb = Object.keys(F.vals).filter(
-    (k) => !dbKeys.has(k) && F.years.some((y) => Math.abs(F.vals[k][y] ?? 0) > TOL),
-  )
-  console.log(`\n=== ${label}: file ↔ DB (per leaf) — years ${F.years.join(", ")} ===`)
-  console.log(`matched: ${ok}  |  mismatches: ${mismatch.length}  |  in-file-not-DB: ${missingDb.length}`)
-  mismatch.slice(0, 20).forEach((m) => console.log("  ✗ " + m))
-  if (mismatch.length > 20) console.log(`  … +${mismatch.length - 20} more`)
-  missingDb.slice(0, 20).forEach((k) => console.log("  ? " + k + " — in file, never loaded"))
-  return mismatch.length === 0 && missingDb.length === 0
+  for (const cell of Object.keys(db)) {
+    if (!seen.has(cell) && Math.abs(db[cell]) > TOL) mism.push(`${cell}  |parser|=0 |db|=${Math.round(Math.abs(db[cell]))} (DB has, parser doesn't)`)
+  }
+  return { ok, mism }
 }
 
-// ── BS: year-end balance ────────────────────────────────────────────────
-function bsDb(): Record<string, Record<number, number>> {
-  const rows = psql(`
-    SELECT c.code, coa.code, b.year, b.month, ROUND(b.amount::numeric)
-    FROM balance_sheet_lines b
-    JOIN chart_of_accounts coa ON coa.id=b."accountId"
-    JOIN companies c ON c.id=b."companyId"
-    WHERE b."deletedAt" IS NULL AND c.code = ANY('{${COMPANIES.join(",")}}')`)
-  // keep the latest-month value per (company, code, year)
-  const latest: Record<string, Record<number, { m: number; v: number }>> = {}
-  for (const [co, acct, yStr, mStr, vStr] of rows) {
-    const k = `${co}|${acct}`, y = Number(yStr), m = Number(mStr), v = Number(vStr)
-    latest[k] ??= {}
-    if (!latest[k][y] || m > latest[k][y].m) latest[k][y] = { m, v }
-  }
-  const out: Record<string, Record<number, number>> = {}
-  for (const [k, byYear] of Object.entries(latest)) {
-    out[k] = {}
-    for (const [y, { v }] of Object.entries(byYear)) out[k][Number(y)] = v
-  }
-  return out
+function report(label: string, ok: number, mism: string[]): boolean {
+  console.log(`\n=== ${label} — parser ↔ DB (per month, |value|) ===`)
+  console.log(`matched cells: ${ok}  |  mismatches: ${mism.length}`)
+  mism.slice(0, 30).forEach((m) => console.log("  ✗ " + m))
+  if (mism.length > 30) console.log(`  … +${mism.length - 30} more`)
+  return mism.length === 0
 }
 
-// ── CF: flow sum, company+code from sourceId "<co>::<code>" ─────────────
-function cfDb(): Record<string, Record<number, number>> {
-  const rows = psql(`
-    SELECT split_part("sourceId",'::',1) AS co, split_part("sourceId",'::',2) AS acct,
-      year, ROUND(SUM(amount)::numeric)
-    FROM cash_flow_entries
-    WHERE "deletedAt" IS NULL AND "sourceId" LIKE '%::CF%'
-      AND split_part("sourceId",'::',1) = ANY('{${COMPANIES.join(",")}}')
-    GROUP BY 1,2,3`)
-  const out: Record<string, Record<number, number>> = {}
-  for (const [co, acct, yStr, vStr] of rows) {
-    const k = `${co}|${acct}`
-    out[k] ??= {}
-    out[k][Number(yStr)] = Number(vStr)
-  }
-  return out
-}
+// ── BS ──────────────────────────────────────────────────────────────────
+const bsExp = expectedFromParser(parseReportingPackBs, "BS Actual")
+const bsDb = dbCells(psql(`
+  SELECT c.code, coa.code, b.year, b.month, ROUND(b.amount::numeric)
+  FROM balance_sheet_lines b
+  JOIN chart_of_accounts coa ON coa.id=b."accountId"
+  JOIN companies c ON c.id=b."companyId"
+  WHERE b."deletedAt" IS NULL AND c.code = ANY('{${COMPANIES.join(",")}}') AND b.year = ANY('{${YEARS.join(",")}}')`))
+const bs = compare(bsExp, bsDb)
+const bsOk = report("BS Actual (balance)", bs.ok, bs.mism)
 
-const bsOk = compare("BS Actual (year-end balance)", fileSide("BS Actual", "yearend"), bsDb())
-const cfOk = compare("CF Actual (flow)", fileSide("CF Actual", "sum"), cfDb())
+// ── CF ──────────────────────────────────────────────────────────────────
+const cfExp = expectedFromParser(parseReportingPackCf, "CF Actual")
+const cfDb = dbCells(psql(`
+  SELECT split_part("sourceId",'::',1), split_part("sourceId",'::',2), year, month, ROUND(amount::numeric)
+  FROM cash_flow_entries
+  WHERE "deletedAt" IS NULL AND "sourceId" LIKE '%::CF%'
+    AND split_part("sourceId",'::',1) = ANY('{${COMPANIES.join(",")}}') AND year = ANY('{${YEARS.join(",")}}')`))
+const cf = compare(cfExp, cfDb)
+const cfOk = report("CF Actual (flow)", cf.ok, cf.mism)
+
 console.log(`\nVERDICT: BS ${bsOk ? "✅" : "⚠️"}  ·  CF ${cfOk ? "✅" : "⚠️"}`)
 process.exit(bsOk && cfOk ? 0 : 1)
