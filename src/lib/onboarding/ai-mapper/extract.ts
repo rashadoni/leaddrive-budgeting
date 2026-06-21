@@ -22,6 +22,27 @@ const MIN_NON_EMPTY = 3;
 // board members") typically exceed 80 anyway.
 const MAX_HEADER_CELL_LEN = 80;
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * An Excel date-serial used as a column HEADER (e.g. 45992 → "Dec 2025")
+ * decoded to a readable month label, so the LLM maps the column to
+ * `amount:<Month><Year>` instead of receiving an EMPTY header and guessing
+ * `code`. Real monthly P&L exports (Reporting 2026 "Actual PLF" / "Budget PLF")
+ * carry serial-date month headers, which the old `typeof v === 'string'` gate
+ * dropped → the monthly amount columns all landed in account-code (live
+ * 2026-06-21). Range-gated to ~[1954, 2064] so a literal year / small numeric
+ * code isn't misread as a date; applied ONLY to the header cell, never to data
+ * (a data amount that happens to fall in the serial range is untouched).
+ */
+function serialDateHeaderLabel(xlsx: typeof XLSX, n: number): string | null {
+  if (!Number.isFinite(n) || n < 20000 || n > 60000) return null;
+  const ssf = (xlsx as { SSF?: { parse_date_code?: (v: number) => { y?: number; m?: number } | null } }).SSF;
+  const d = ssf?.parse_date_code?.(n);
+  if (!d || !d.y || !d.m) return null;
+  return `${MONTH_ABBR[d.m - 1]} ${d.y}`;
+}
+
 /**
  * Walk a sheet and return the first non-empty row's column count + a few
  * sample data rows. We do NOT try to detect a header — the LLM is better
@@ -76,11 +97,23 @@ export function extractMapperInput(
     );
     if (nonEmptyCells.length < MIN_NON_EMPTY) continue;
     const allStrings = nonEmptyCells.every((v) => typeof v === 'string');
-    if (!allStrings) continue;
-    const allShort = nonEmptyCells.every(
-      (v) => typeof v === 'string' && v.length <= MAX_HEADER_CELL_LEN,
+    // Also accept a DATE-SERIAL period header — a row whose non-empty cells are
+    // all integer Excel date serials (e.g. 45658…45992 = Jan…Dec 2025). Monthly
+    // P&L exports (Reporting 2026 "Actual PLF"/"Budget PLF") use these; being
+    // all-numbers, the all-strings rule rejected them, so header detection fell
+    // through to a data row and the monthly columns came out header-less → the
+    // LLM guessed `code`. Integer + range-gated so amount rows don't match.
+    const allSerialDates = nonEmptyCells.every(
+      (v) => typeof v === 'number' && Number.isInteger(v) && v >= 20000 && v <= 60000,
     );
-    if (!allShort) continue;
+    if (allStrings) {
+      const allShort = nonEmptyCells.every(
+        (v) => typeof v === 'string' && v.length <= MAX_HEADER_CELL_LEN,
+      );
+      if (!allShort) continue;
+    } else if (!allSerialDates) {
+      continue;
+    }
     headerEndRow = r + 1; // header is THIS row; samples start AFTER it
     break;
   }
@@ -101,6 +134,12 @@ export function extractMapperInput(
     const v = aoa[headerRowIdx]?.[c];
     if (typeof v === 'string' && v.trim() !== '') {
       headerText = v.trim();
+    } else if (typeof v === 'number') {
+      // Numeric header — usually an Excel date-serial month column. Decode it to
+      // a month label (45992 → "Dec 2025") so the LLM maps it to
+      // amount:<Month><Year>; otherwise stringify (e.g. a bare year header
+      // "2026") so the column is never header-less and mis-roled as `code`.
+      headerText = serialDateHeaderLabel(xlsx, v) ?? String(v);
     }
     // STRATIFIED samples (C2.6) — spread the picks across the FULL data range,
     // not just the first rows. A column that changes in BLOCKS — e.g. a
