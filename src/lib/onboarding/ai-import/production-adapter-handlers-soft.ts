@@ -22,6 +22,10 @@ import {
 import { parseTesvirSheet } from "../adapters/azseker-workbook-descriptions"
 import { parseIcmalSheet } from "../adapters/azseker-farming-strategy"
 import {
+  parseCounterpartyRegister,
+  counterpartyRoleFromSheet,
+} from "./counterparty-register"
+import {
   parseIcmalBudgetLines,
   allocateIcmalBudget,
   buildIcmalMonthlyRows,
@@ -853,3 +857,91 @@ export const noopHandler: AdapterHandler = async (input) => ({
   warnings: [],
   applyToDb: async () => ({ rowsInserted: 0 }),
 })
+
+// ──────────────────────────────────────────────────────────────────────
+// COUNTERPARTY — top customers / suppliers by turnover → `Counterparty` table.
+// Feeds CUSTOMER_HHI / SUPPLIER_HHI via counterpartyHhiResolver. 2026-06-21.
+// ──────────────────────────────────────────────────────────────────────
+
+export function makeCounterpartyHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  void prisma
+  void ctxRef
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const role = counterpartyRoleFromSheet(input.sheetName)
+    if (!role) {
+      return {
+        summary: `Sheet "${input.sheetName}" — counterparty role (customer/supplier) not recognized; skipped`,
+        itemCount: 0,
+        warnings: [
+          `Cannot derive customer/supplier role from sheet name "${input.sheetName}"`,
+        ],
+        applyToDb: async () => ({ rowsInserted: 0 }),
+      }
+    }
+    const knownCodes = Array.from(ctx.codeToId.keys())
+    const parsed = parseCounterpartyRegister(
+      input.workbook,
+      input.sheetName,
+      input.XLSX,
+      role,
+      knownCodes,
+    )
+    const period = String(input.year)
+    const warnings = [...parsed.warnings]
+    const rows: Array<{ companyId: string; name: string; sharePct: number; annualAmount: number }> = []
+    const companyIds = new Set<string>()
+    for (const b of parsed.blocks) {
+      if (!b.entityCode) continue
+      const companyId = ctx.codeToId.get(b.entityCode)
+      if (!companyId) {
+        warnings.push(`Company "${b.entityCode}" not in org — block "${b.entityHeader}" skipped`)
+        continue
+      }
+      companyIds.add(companyId)
+      for (const cp of b.counterparties) {
+        rows.push({ companyId, name: cp.name, sharePct: cp.sharePct, annualAmount: cp.turnover })
+      }
+    }
+
+    return {
+      summary: `${rows.length} ${role}(s) across ${companyIds.size} entit${companyIds.size === 1 ? "y" : "ies"} (${period})`,
+      itemCount: rows.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (rows.length === 0) return { rowsInserted: 0 }
+        // Clean-slate this (role, period) snapshot for the touched companies — a
+        // re-import fully replaces the top-N list so a counterparty that dropped
+        // out doesn't linger and skew the HHI. Scoped to exactly the companies
+        // we write + this role + this period: no sibling/other-period/other-role
+        // data is touched. HARD delete (not soft) because
+        // @@unique(companyId, role, name, period) would collide with a
+        // re-inserted same-named row if the prior were only archived.
+        await tx.counterparty.deleteMany({
+          where: {
+            organizationId: ctx.organizationId,
+            companyId: { in: Array.from(companyIds) },
+            role,
+            period,
+          },
+        })
+        await tx.counterparty.createMany({
+          data: rows.map((r) => ({
+            organizationId: ctx.organizationId,
+            companyId: r.companyId,
+            role,
+            name: r.name,
+            sharePct: r.sharePct,
+            annualAmount: r.annualAmount,
+            period,
+          })),
+        })
+        return { rowsInserted: rows.length }
+      },
+    }
+  }
+}
