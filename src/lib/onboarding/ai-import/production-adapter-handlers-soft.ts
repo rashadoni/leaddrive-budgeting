@@ -990,7 +990,11 @@ export function makeLegalCasesHandler(
           // Re-import-safe: replace this year-end snapshot's facts for the metric
           // set + date (scoped to one company), then re-create.
           await tx.operationalFact.deleteMany({
-            where: { companyId, metric: { in: [...COURT_DISPUTE_METRICS] }, date: recordDate },
+            where: {
+              companyId,
+              metric: { in: [...COURT_DISPUTE_METRICS, "LEGAL_CASES_ACTIVE"] },
+              date: recordDate,
+            },
           })
           await tx.operationalFact.createMany({
             data: [
@@ -999,13 +1003,17 @@ export function makeLegalCasesHandler(
               { metric: "court_disputes_as_defendant", value: agg.as_defendant },
               { metric: "court_disputes_as_plaintiff", value: agg.as_plaintiff },
               { metric: "court_disputes_money_claims", value: agg.money_claims },
+              // Canonical metric the LEGAL_CASES_ACTIVE indicator reads directly,
+              // so the import lights up the indicator with NO separate alias step
+              // (= court_disputes_open: active = not-closed cases).
+              { metric: "LEGAL_CASES_ACTIVE", value: agg.open },
             ].map((m) => ({
               organizationId: ctx.organizationId,
               companyId,
               metric: m.metric,
               date: recordDate,
               value: m.value,
-              unit: "count",
+              unit: m.metric === "LEGAL_CASES_ACTIVE" ? "cases" : "count",
               source: `multi-import:${input.sheetName}`,
             })),
           })
@@ -1031,7 +1039,7 @@ export function makeLegalCasesHandler(
               } as unknown as Prisma.InputJsonValue,
             },
           })
-          rows += COURT_DISPUTE_METRICS.length
+          rows += COURT_DISPUTE_METRICS.length + 1 // +1 canonical LEGAL_CASES_ACTIVE
         }
         return { rowsInserted: rows }
       },
@@ -1075,7 +1083,11 @@ export function makeAuditFindingsHandler(
         for (const { companyId, agg } of entries) {
           const pct = auditCompletedPct(agg)
           await tx.operationalFact.deleteMany({
-            where: { companyId, metric: { in: [...AUDIT_FINDING_METRICS] }, date: recordDate },
+            where: {
+              companyId,
+              metric: { in: [...AUDIT_FINDING_METRICS, "AUDIT_CLOSED_PCT", "AUDIT_MAJOR_OPEN"] },
+              date: recordDate,
+            },
           })
           await tx.operationalFact.createMany({
             data: [
@@ -1085,13 +1097,17 @@ export function makeAuditFindingsHandler(
               { metric: "audit_findings_minor_open", value: agg.minor_open },
               { metric: "audit_findings_observation_open", value: agg.observation_open },
               { metric: "audit_findings_completed_pct", value: pct },
+              // Canonical metrics the AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN indicators
+              // read directly — so the import lights them up with no alias step.
+              { metric: "AUDIT_CLOSED_PCT", value: pct },
+              { metric: "AUDIT_MAJOR_OPEN", value: agg.major_open },
             ].map((m) => ({
               organizationId: ctx.organizationId,
               companyId,
               metric: m.metric,
               date: recordDate,
               value: m.value,
-              unit: m.metric.endsWith("_pct") ? "%" : "count",
+              unit: m.metric.endsWith("_pct") || m.metric === "AUDIT_CLOSED_PCT" ? "%" : "count",
               source: `multi-import:${input.sheetName}`,
             })),
           })
@@ -1118,7 +1134,7 @@ export function makeAuditFindingsHandler(
               } as unknown as Prisma.InputJsonValue,
             },
           })
-          rows += AUDIT_FINDING_METRICS.length
+          rows += AUDIT_FINDING_METRICS.length + 2 // +2 canonical AUDIT_CLOSED_PCT / AUDIT_MAJOR_OPEN
         }
         return { rowsInserted: rows }
       },
