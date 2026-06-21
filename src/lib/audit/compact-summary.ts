@@ -333,6 +333,18 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
         verbose: `${kind} · ${scope} · ${rows} rows${reason}`,
       };
     }
+    case 'data_reset': {
+      // 2026-06-21 — full per-company import reset (no-tails). Verbose:
+      // "reset <companyCode> · <year|all years> · N rows · reason".
+      const co = typeof m.companyCode === 'string' ? m.companyCode : 'company';
+      const scope = m.year ? String(m.year) : 'all years';
+      const rows = typeof m.rowsAffected === 'number' ? m.rowsAffected : 0;
+      const reason = typeof m.reason === 'string' ? ` · "${m.reason}"` : '';
+      return {
+        compact: e.action,
+        verbose: `reset ${co} · ${scope} · ${rows} rows${reason}`,
+      };
+    }
     case 'soft_delete_purge': {
       // Phase 1.4 — BullMQ cleanup processor purged soft-deleted rows
       // past 30-day retention. Verbose: "N rows · 30d · 245ms".

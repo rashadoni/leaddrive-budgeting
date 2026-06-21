@@ -67,6 +67,8 @@ const ALL_ACTIONS = [
   // Phase 7.M Step 4 — self-service archive trail.
   "data_archive",
   "data_restore",
+  // 2026-06-21 — full per-company import reset (no-tails).
+  "data_reset",
   // Phase 1.4 — BullMQ soft-delete physical-purge cron.
   "soft_delete_purge",
   // Truth-Infra Phase C.1 — admin manually changed Company.status.
