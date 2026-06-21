@@ -655,6 +655,22 @@ export type AuditEventInput =
       };
     }
   | {
+      // 2026-06-21 — full per-company "reset imported data" (no-tails cleanup):
+      // soft-archives financial + counterparty, hard-deletes operational facts,
+      // and clears import-derived settings keys. One audit event carries a
+      // per-source breakdown so the IFRS trail records exactly what was cleared.
+      action: 'data_reset';
+      entityType: 'Company';
+      entityId: string; // companyCode + ":" + (year | "ALL")
+      metadata: {
+        companyCode: string;
+        year?: number;
+        breakdown: Record<string, number>;
+        rowsAffected: number;
+        reason?: string;
+      };
+    }
+  | {
       // Phase 1.4 (2026-05-26) — BullMQ cleanup processor physically
       // removed soft-deleted rows past the 30-day retention. One audit
       // event per scheduled run (per-row would explode the table on a

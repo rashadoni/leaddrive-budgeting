@@ -35,6 +35,44 @@ export type ArchiveEntityKind =
   | "CashFlowEntry"
   | "Counterparty"
 
+/**
+ * Company.settings keys an import writes (and a full reset must clear — they are
+ * the "tails" no per-table archive touches). ORG-level `forwardForecast` is NOT
+ * here: it lives on Organization.settings, so a per-company reset leaves it.
+ */
+export const IMPORT_SETTINGS_KEYS = [
+  "courtDisputes", // LEGAL_CASES
+  "auditFindings", // AUDIT_FINDINGS
+  "riskRegister", // RISK_REGISTER
+  "landParcels", // LAND_REGISTRY
+  "landTotalHectares",
+  "landTotalAnnualRentAzn",
+  "landRegistrySource",
+  "capexInitiatives", // CAPEX
+  "capexLastImportSource",
+  "strategicDescription", // DESCRIPTIONS (Təsvir) — the handler writes these 4,
+  "competitiveAdvantage", //   not a bare `description` (Codex 2026-06-21).
+  "strategicFullText",
+  "strategicSource",
+  "dataPendingBanner", // pre-load placeholder banner
+] as const
+
+/**
+ * Exact `OperationalFact.source` values written by an import path. The reset
+ * deletes facts whose source is one of these OR starts with `import:` /
+ * `multi-import:` OR ends with `.xlsx` (legacy .mjs file-name sources). MANUAL
+ * provenance — `manual`, `manual-bulk`, `inline:*`, and any custom sourceNote —
+ * is NOT here, so user-entered facts survive the reset. A NEW import adapter
+ * MUST use one of these source shapes (add its exact value here) to stay
+ * reset-clean. (Codex 2026-06-21: enumerated from the import code + DB.)
+ */
+export const IMPORT_FACT_SOURCES = [
+  "xlsx_multi_import",
+  "xlsx_import",
+  "ai_import_ops_facts",
+  "import",
+] as const
+
 export interface ArchiveScope {
   /** Tenant — required, defense-in-depth at the SQL level. */
   organizationId: string
@@ -318,5 +356,152 @@ export async function restoreRows(
       rowsAffected,
       auditEventId: audit.ok ? audit.id : null,
     }
+  })
+}
+
+export interface ResetResult {
+  rowsAffected: number
+  /** Per-source counts so the operator sees nothing was missed. */
+  breakdown: Record<string, number>
+  auditEventId: string | null
+}
+
+/**
+ * Full "reset a company's imported data" — the no-tails cleanup. Clears EVERY
+ * surface an import writes for one company, atomically:
+ *   • soft-archives BudgetLine / BalanceSheetLine / CashFlowEntry / Counterparty
+ *     (reversible — the IFRS trail is kept; reads exclude them);
+ *   • HARD-deletes import-sourced OperationalFact (KPI / legal / audit /
+ *     counterparty-derived — no soft-delete column; the classic tail that kept
+ *     indicators lit after a re-import) — manually-entered facts (manual /
+ *     inline / custom provenance) survive;
+ *   • HARD-deletes BudgetActual (BUDGET_ACTUALS import; no soft-delete column);
+ *   • removes the import-derived Company.settings keys (IMPORT_SETTINGS_KEYS).
+ *
+ * OUT OF SCOPE (org-level, no companyId — a per-company reset cannot target them):
+ * Organization.settings.forwardForecast and the `sales_forecasts` table. A
+ * separate org-level reset would own those.
+ *
+ * `year` is optional — omit for an all-years reset (the deepest clean), pass it
+ * to scope BudgetLine (plan.year) / BS / CF (year) and OperationalFact (date in
+ * that year). Counterparty is keyed by `period`, scoped when `scope.period` set.
+ *
+ * Irreversible parts (OperationalFact, settings) are re-derivable by re-importing
+ * the file — which is the point. The caller (route) must trigger a recompute
+ * afterwards so stale IndicatorValues fall back to `unknown`.
+ */
+export async function resetCompanyImportData(
+  args: Omit<ArchiveActionArgs, "scope"> & {
+    scope: Omit<ArchiveScope, "entityKind">
+  },
+): Promise<ResetResult> {
+  const { prisma, actorUserId, reason, scope } = args
+  if (!scope.companyCode) {
+    throw new Error("resetCompanyImportData: companyCode is required (per-company reset)")
+  }
+  const company = await prisma.company.findFirst({
+    where: { organizationId: scope.organizationId, code: scope.companyCode },
+    select: { id: true, settings: true },
+  })
+  if (!company) {
+    throw new Error(`resetCompanyImportData: company "${scope.companyCode}" not found`)
+  }
+  const companyId = company.id
+  const orgId = scope.organizationId
+  const companyCode = scope.companyCode // narrowed to string by the guard above
+  const stamp = archiveStamp(actorUserId)
+
+  return prisma.$transaction(async (tx) => {
+    const breakdown: Record<string, number> = {}
+
+    // 1. Soft-archive financial + counterparty (reversible; reads exclude them).
+    const blWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+    if (scope.year) blWhere.plan = { year: scope.year }
+    breakdown.budgetLine = (await tx.budgetLine.updateMany({ where: blWhere as never, data: stamp })).count
+
+    const bsWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+    if (scope.year) bsWhere.year = scope.year
+    breakdown.balanceSheetLine = (await tx.balanceSheetLine.updateMany({ where: bsWhere as never, data: stamp })).count
+
+    // cash_flow_entries has no companyId — scope by the "<code>::" sourceId prefix.
+    const cfWhere: Record<string, unknown> = {
+      organizationId: orgId,
+      sourceId: { startsWith: `${companyCode}::` },
+      deletedAt: null,
+    }
+    if (scope.year) cfWhere.year = scope.year
+    breakdown.cashFlowEntry = (await tx.cashFlowEntry.updateMany({ where: cfWhere as never, data: stamp })).count
+
+    const cpWhere: Record<string, unknown> = { organizationId: orgId, companyId, deletedAt: null }
+    if (scope.period) cpWhere.period = scope.period
+    breakdown.counterparty = (await tx.counterparty.updateMany({ where: cpWhere as never, data: stamp })).count
+
+    // 2. HARD-delete import-sourced OperationalFact only (no soft-delete column —
+    //    the classic tail that kept indicators lit after a re-import). Matches by
+    //    KNOWN IMPORT source prefixes rather than excluding "manual", because the
+    //    inline UI writes source "inline:indicator-health" and bulk writes
+    //    "manual-bulk" — an exclude-"manual" filter would wrongly delete those.
+    //    Inverting (delete only import provenance) STRUCTURALLY preserves every
+    //    manually-entered fact (Codex 2026-06-21). New import adapters must use
+    //    one of these source prefixes (`multi-import:` / `import:` / `import` /
+    //    `xlsx_multi_import` / a `*.xlsx` legacy file name) to be reset-clean.
+    const ofWhere: Record<string, unknown> = {
+      organizationId: orgId,
+      companyId,
+      OR: [
+        { source: { in: IMPORT_FACT_SOURCES } },
+        { source: { startsWith: "import:" } }, // import:plf-subtotal
+        { source: { startsWith: "multi-import:" } }, // multi-import:<sheet>
+        { source: { endsWith: ".xlsx" } }, // legacy .mjs file-name sources
+      ],
+    }
+    if (scope.year) {
+      ofWhere.date = {
+        gte: new Date(`${scope.year}-01-01T00:00:00.000Z`),
+        lt: new Date(`${scope.year + 1}-01-01T00:00:00.000Z`),
+      }
+    }
+    breakdown.operationalFact = (await tx.operationalFact.deleteMany({ where: ofWhere as never })).count
+
+    // 2b. HARD-delete BudgetActual (no soft-delete column) — the BUDGET_ACTUALS
+    //     import writes here. Scoped to this company; companyId-null rows are
+    //     unattributable and intentionally left (Codex 2026-06-21).
+    const baWhere: Record<string, unknown> = { organizationId: orgId, companyId }
+    if (scope.year) baWhere.plan = { year: scope.year }
+    breakdown.budgetActual = (await tx.budgetActual.deleteMany({ where: baWhere as never })).count
+
+    // 3. Clear import-derived Company.settings keys (the settings tail).
+    const settings = { ...((company.settings as Record<string, unknown>) ?? {}) }
+    let settingsKeysCleared = 0
+    for (const k of IMPORT_SETTINGS_KEYS) {
+      if (k in settings) {
+        delete settings[k]
+        settingsKeysCleared++
+      }
+    }
+    if (settingsKeysCleared > 0) {
+      await tx.company.update({ where: { id: companyId }, data: { settings: settings as never } })
+    }
+    breakdown.settingsKeys = settingsKeysCleared
+
+    const rowsAffected = Object.values(breakdown).reduce((s, n) => s + n, 0)
+    const audit = await logAuditEvent(tx as PrismaClient, {
+      organizationId: orgId,
+      actorUserId,
+      event: {
+        action: "data_reset",
+        entityType: "Company",
+        entityId: `${companyCode}:${scope.year ?? "ALL"}`,
+        metadata: {
+          companyCode,
+          year: scope.year,
+          breakdown,
+          rowsAffected,
+          reason,
+        },
+      },
+    })
+
+    return { rowsAffected, breakdown, auditEventId: audit.ok ? audit.id : null }
   })
 }

@@ -41,7 +41,8 @@ import { getLogger } from "@/lib/log"
 // Phase 8 D4 final (2026-05-29) — structured logger.
 const log = getLogger("api:admin:data-archive")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { archiveRows, restoreRows } from "@/lib/server/archive"
+import { archiveRows, restoreRows, resetCompanyImportData } from "@/lib/server/archive"
+import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 
 const RATE_LIMIT = { name: "data-archive", max: 5, windowMs: 60_000 }
 
@@ -50,6 +51,9 @@ const VALID_KINDS = new Set([
   "BalanceSheetLine",
   "CashFlowEntry",
   "Counterparty",
+  // Meta-kind: full "reset a company's imported data" (no-tails) — clears every
+  // table + settings key an import writes, then recomputes. Archive-only.
+  "AllImportData",
 ])
 
 interface ArchiveBody {
@@ -102,7 +106,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "entityKind must be one of: BudgetLine, BalanceSheetLine, CashFlowEntry, Counterparty",
+          "entityKind must be one of: BudgetLine, BalanceSheetLine, CashFlowEntry, Counterparty, AllImportData",
       },
       { status: 400 },
     )
@@ -150,6 +154,76 @@ export async function POST(request: NextRequest) {
     companyCode,
     year,
     period,
+  }
+
+  // ── AllImportData — full per-company reset (no-tails) + recompute ──────
+  if (entityKind === "AllImportData") {
+    if (mode !== "archive") {
+      return NextResponse.json(
+        { error: "AllImportData supports mode 'archive' only — a reset isn't restorable; re-import to restore" },
+        { status: 400 },
+      )
+    }
+    if (!companyCode) {
+      return NextResponse.json(
+        { error: "AllImportData requires companyCode (reset is per-company)" },
+        { status: 400 },
+      )
+    }
+    try {
+      const reset = await resetCompanyImportData({
+        prisma,
+        actorUserId: session.userId,
+        reason,
+        scope,
+      })
+      // Recompute so stale IndicatorValues fall back to `unknown` — no tails in
+      // the terminal either. Scope to the reset year, else every period the
+      // company still carries indicators for.
+      const company = await prisma.company.findFirst({
+        where: { organizationId: orgId, code: companyCode },
+        select: { id: true },
+      })
+      let recomputed = 0
+      if (company) {
+        const years = year
+          ? [year]
+          : Array.from(
+              new Set(
+                (
+                  await prisma.indicatorValue.findMany({
+                    where: { companyId: company.id },
+                    select: { period: true },
+                    distinct: ["period"],
+                  })
+                )
+                  .map((r) => parseInt(r.period, 10))
+                  .filter((n) => Number.isFinite(n)),
+              ),
+            )
+        const affected = years.map((y) => ({ companyId: company.id, year: y }))
+        if (affected.length > 0) {
+          const rc = await runRecomputeForCompanies(prisma, orgId, affected)
+          recomputed = rc.ok ?? 0
+        }
+      }
+      return NextResponse.json({
+        ok: true,
+        mode: "reset",
+        rowsAffected: reset.rowsAffected,
+        breakdown: reset.breakdown,
+        auditEventId: reset.auditEventId,
+        recomputed,
+      })
+    } catch (err) {
+      log.error("data-archive reset failed", {
+        err: err instanceof Error ? err.message : String(err),
+      })
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : String(err) },
+        { status: 500 },
+      )
+    }
   }
 
   try {
