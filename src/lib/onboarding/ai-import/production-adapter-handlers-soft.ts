@@ -31,6 +31,7 @@ import {
   auditCompletedPct,
   AUDIT_FINDING_METRICS,
 } from "./audit-findings-parse"
+import { parseRiskRegister } from "./risk-register-parse"
 import {
   parseIcmalBudgetLines,
   allocateIcmalBudget,
@@ -1120,6 +1121,57 @@ export function makeAuditFindingsHandler(
           rows += AUDIT_FINDING_METRICS.length
         }
         return { rowsInserted: rows }
+      },
+    }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// RISK_REGISTER — enterprise KRI taxonomy → Company.settings.riskRegister.
+// Greenfield: no indicator consumes it yet, so it lands the register as a
+// drill-down surface (like courtDisputes/auditFindings) and writes NO facts.
+// ──────────────────────────────────────────────────────────────────────
+
+export function makeRiskRegisterHandler(
+  prisma: PrismaClient,
+  ctxRef: { value: OrgContext | null },
+  ensureCtx: () => Promise<OrgContext>,
+): AdapterHandler {
+  void prisma
+  void ctxRef
+  return async (input: AdapterRunInput): Promise<AdapterRunResult> => {
+    const ctx = await ensureCtx()
+    const parsed = parseRiskRegister(input.workbook, input.sheetName, input.XLSX)
+    // The risk register is per-entity; the classifier resolves the entity from
+    // the filename/sheet (e.g. "Top risk - EDEN AGRO" → AZSEKER-EDEN).
+    const target = input.entityCode ?? "AZSEKER-EDEN"
+    const companyId = ctx.codeToId.get(target)
+    const warnings = [...parsed.warnings]
+    if (!companyId) warnings.push(`Company "${target}" not in org — risk register skipped`)
+
+    return {
+      summary: `${parsed.risks.length} KRI risk(s) for ${target} — stored for a future KRI indicator (no consumer yet)`,
+      itemCount: parsed.risks.length,
+      warnings,
+      applyToDb: async (tx: Prisma.TransactionClient) => {
+        if (!companyId || parsed.risks.length === 0) return { rowsInserted: 0 }
+        const company = await tx.company.findUnique({ where: { id: companyId }, select: { settings: true } })
+        const prev = (company?.settings ?? {}) as Record<string, unknown>
+        await tx.company.update({
+          where: { id: companyId },
+          data: {
+            settings: {
+              ...prev,
+              riskRegister: {
+                source: input.sheetName,
+                importedAt: new Date().toISOString(),
+                summary: { total: parsed.risks.length, byCriticality: parsed.byCriticality },
+                risks: parsed.risks,
+              },
+            } as unknown as Prisma.InputJsonValue,
+          },
+        })
+        return { rowsInserted: parsed.risks.length }
       },
     }
   }

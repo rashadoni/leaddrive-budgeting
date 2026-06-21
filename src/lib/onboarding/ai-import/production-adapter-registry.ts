@@ -43,6 +43,7 @@ import {
   makeCounterpartyHandler,
   makeLegalCasesHandler,
   makeAuditFindingsHandler,
+  makeRiskRegisterHandler,
   noopHandler,
 } from "./production-adapter-handlers-soft"
 
@@ -126,6 +127,7 @@ export function buildProductionAdapterRegistry(
     COUNTERPARTY: wrap(makeCounterpartyHandler),
     LEGAL_CASES: wrap(makeLegalCasesHandler),
     AUDIT_FINDINGS: wrap(makeAuditFindingsHandler),
+    RISK_REGISTER: wrap(makeRiskRegisterHandler),
     // forward-forecast file-type uses INFO_SUMMARY classification on
     // its main sheet (İcmal). The file-type detector picks it up by
     // having ≥3 INFO_SUMMARY sheets without PLF/BS/CF. So we wire the
