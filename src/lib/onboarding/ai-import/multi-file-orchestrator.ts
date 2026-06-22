@@ -95,6 +95,28 @@ import {
  *  and Anthropic's default rate limit is comfortable at 3 concurrent. */
 const LLM_CONCURRENCY = 3
 
+/**
+ * INVARIANT (2026-06-23, Codex review): cash flow is per-company ONLY.
+ * `CashFlowEntry` has no companyId/planId — the entity lives only in
+ * `sourceId = "<entityCode>::<cfCode>"`. So a consolidated CF that resolves to
+ * the holding company writes a separate `"<holding>::"` layer that over-counts
+ * every org-level CF sum (~10× on AzerSheker). This holds whether the CF
+ * arrived via the holding sentinel OR a classifier entityCode equal to the
+ * holding code — CF stays per-company; the holding gets no cash flow.
+ */
+export function cfTargetsHolding(
+  dataType: string,
+  effectiveEntityCode: string | null,
+  holdingCompanyCode: string | null | undefined,
+): boolean {
+  return (
+    dataType === "CF" &&
+    effectiveEntityCode != null &&
+    holdingCompanyCode != null &&
+    effectiveEntityCode === holdingCompanyCode
+  )
+}
+
 /** Apply-order dependency graph (lower index = applied first). See
  *  module header for rationale. unknown is always last (skipped). */
 const APPLY_ORDER: Record<FileType, number> = {
@@ -357,6 +379,16 @@ async function parseFileSheets(
       }
     } else if (cls.entityCodeOverride) {
       effectiveEntityCode = cls.entityCodeOverride
+    }
+
+    // CF-on-holding invariant (Codex P1): a consolidated CF must never become a
+    // "<holding>::" layer — it over-counts every org-level CF sum (CashFlowEntry
+    // has no companyId/planId). Refused via the sentinel OR a classifier guess.
+    if (cfTargetsHolding(cls.dataType, effectiveEntityCode, input.holdingCompanyCode)) {
+      warnings.push(
+        `${filename}: sheet "${cls.sheetName}" is cash flow targeting the holding "${input.holdingCompanyCode}" — refused (CF is per-company only); skipped (0 rows)`,
+      )
+      effectiveEntityCode = null
     }
 
     // Gate 1 — skip derived/summary views of a PLAN-RELEVANT statement so the
