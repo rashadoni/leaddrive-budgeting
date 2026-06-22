@@ -162,6 +162,70 @@ describe('applyProposal — happy path', () => {
     expect(exp.plannedAnnual).toBe(240); // 12 × 20
   });
 
+  const expenseOverride = (code: string) => ({
+    code,
+    accountType: 'expense' as const,
+    confidence: 0.9,
+    reasoning: 'section',
+  });
+
+  it('treats a SYSTEMATIC `.R` mirror as a Region cost center (HO + Region reconcile separately)', () => {
+    const m = (v: number) => Array.from({ length: 12 }, () => v);
+    const aoa: (string | number | null)[][] = [
+      ['NUM', 'KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      [1, 'PLF.05', 'Opex', ...m(15)], // HO parent = PLF.05.01 + PLF.05.02
+      [2, 'PLF.05.01', 'Salary', ...m(10)],
+      [3, 'PLF.05.02', 'Rent', ...m(5)],
+      [4, 'PLF.05.R', 'Opex', ...m(28)], // Region parent = PLF.05.01.R + PLF.05.02.R (3 mirror pairs)
+      [5, 'PLF.05.01.R', 'Salary', ...m(20)],
+      [6, 'PLF.05.02.R', 'Rent', ...m(8)],
+    ];
+    const proposal: MappingProposal = {
+      ...buildProposal([
+        { sourceIndex: 0, role: 'skip', confidence: 1, reasoning: '' },
+        { sourceIndex: 1, role: 'code', confidence: 0.95, reasoning: '' },
+        { sourceIndex: 2, role: 'label', confidence: 0.95, reasoning: '' },
+        ...fullMonthCols(3),
+      ]),
+      accountTypeOverrides: [expenseOverride('PLF.05')], // prefix-classifies the whole tree
+    };
+    const result = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX);
+    if ('error' in result) throw new Error(result.error);
+    // 3 same-label mirror pairs + no `.R.` → cost-center mode ON: each parent
+    // reconciles against its OWN cost center → both dropped, no unallocated, the
+    // four leaves remain (Region NOT double-counted under Head Office).
+    expect(result.parentRollupsUnallocated).toHaveLength(0);
+    expect(result.lines.map((l) => l.code).sort()).toEqual([
+      'PLF.05.01',
+      'PLF.05.01.R',
+      'PLF.05.02',
+      'PLF.05.02.R',
+    ]);
+  });
+
+  it('does NOT treat a one-off `.R` code as a cost center (real terminal sub-account)', () => {
+    const m = (v: number) => Array.from({ length: 12 }, () => v);
+    const aoa: (string | number | null)[][] = [
+      ['NUM', 'KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      [1, 'PLF.05', 'Rent', ...m(10)],
+      [2, 'PLF.05.R', 'Rent', ...m(10)], // single same-label `.R` → real sub-account, NOT a systematic mirror
+    ];
+    const proposal: MappingProposal = {
+      ...buildProposal([
+        { sourceIndex: 0, role: 'skip', confidence: 1, reasoning: '' },
+        { sourceIndex: 1, role: 'code', confidence: 0.95, reasoning: '' },
+        { sourceIndex: 2, role: 'label', confidence: 0.95, reasoning: '' },
+        ...fullMonthCols(3),
+      ]),
+      accountTypeOverrides: [expenseOverride('PLF.05')],
+    };
+    const result = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX);
+    if ('error' in result) throw new Error(result.error);
+    // <3 mirror pairs → cost-center mode OFF → `PLF.05.R` is a normal child of
+    // PLF.05 (reconciles, parent dropped) → no double-count.
+    expect(result.lines.map((l) => l.code)).toEqual(['PLF.05.R']);
+  });
+
   it('uses accountTypeOverrides when LLM proposed something exotic', () => {
     // Proposal classifies 611-01 as revenue (non-standard 6xx prefix), even
     // though SAP fallback would also call it revenue. Override should win.

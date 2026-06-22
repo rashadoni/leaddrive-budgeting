@@ -493,6 +493,35 @@ describe('dedupeParentRollups', () => {
     expect(synthetic).toHaveLength(0);
   });
 
+  it('treats a `.R` cost-center suffix as a separate dimension, not a hierarchy level', () => {
+    // AzerSheker: PLF.05 = Head Office, PLF.05.R = Region (mirror hierarchy,
+    // same labels). The `.R` codes must NOT nest under the Head-Office tree.
+    const input = [
+      line('PLF.05', 'expense', 100),
+      line('PLF.05.01', 'expense', 60),
+      line('PLF.05.02', 'expense', 40),
+      line('PLF.05.R', 'expense', 200),
+      line('PLF.05.01.R', 'expense', 150),
+      line('PLF.05.02.R', 'expense', 50),
+    ];
+
+    // WITHOUT the option: `.R` codes are wrongly read as children of PLF.05 /
+    // PLF.05.01 → parents don't reconcile → synthetic unallocated rows (the bug).
+    expect(dedupeParentRollups(input).synthetic.length).toBeGreaterThan(0);
+
+    // WITH the option: Head Office and Region each reconcile on their own → both
+    // parents safe-drop, the four leaves kept, no synthetic unallocated.
+    const fixed = dedupeParentRollups(input, { costCenterSuffixes: ['.R'] });
+    expect(fixed.kept.map((l) => l.code).sort()).toEqual([
+      'PLF.05.01',
+      'PLF.05.01.R',
+      'PLF.05.02',
+      'PLF.05.02.R',
+    ]);
+    expect(fixed.dropped.map((l) => l.code).sort()).toEqual(['PLF.05', 'PLF.05.R']);
+    expect(fixed.synthetic).toHaveLength(0);
+  });
+
   it('handles 3-level hierarchy — drops both levels of parents when reconciled', () => {
     // `721` = 700 (children 721-02 = 700 ✓). `721-02` = 700 (children sum
     // 500+200 = 700 ✓). Both reconcile inside tolerance → both parents drop.

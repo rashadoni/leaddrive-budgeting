@@ -662,6 +662,16 @@ export interface DedupeOptions {
    *  `ROLLUP-REVENUE-OTHER`. Defaults to true; callers with non-
    *  hierarchical codespaces pass `enabled: false` explicitly. */
   enabled?: boolean;
+  /** Code suffixes that mark a PARALLEL COST-CENTER dimension rather than a
+   *  hierarchy level. E.g. AzerSheker P&L sheets append `.R` to mirror every
+   *  account for a second cost center (`PLF.05` = Head Office, `PLF.05.R` =
+   *  Region — SAME label, NOT a sub-account). A code ending in such a suffix is
+   *  NEVER a child of a code in a different cost center, and hierarchy is
+   *  computed on the code with the suffix stripped, WITHIN the same cost
+   *  center. Without this, `PLF.05.01.01.R` is read as a child of
+   *  `PLF.05.01.01` → Region double-counts under Head Office → control-total
+   *  RED. Empty (default) → behaviour is byte-identical to before. */
+  costCenterSuffixes?: string[];
 }
 
 export function dedupeParentRollups(
@@ -672,10 +682,22 @@ export function dedupeParentRollups(
   dropped: Array<{ code: string; label: string; plannedAnnual: number }>;
   synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
 } {
-  const { enabled = true } = options;
+  const { enabled = true, costCenterSuffixes = [] } = options;
   if (!enabled) {
     return { kept: [...lines], dropped: [], synthetic: [] };
   }
+  // Cost-center dimension (e.g. AzerSheker `.R` = Region). The matched suffix
+  // of a code (or '' when none) labels its cost center; the BASE code (suffix
+  // stripped) is what the dotted/dashed hierarchy is computed on. With no
+  // suffixes configured these are identity functions → byte-identical behaviour.
+  const suffixOf = (code: string): string =>
+    costCenterSuffixes
+      .filter((s) => s.length > 0 && code.endsWith(s))
+      .reduce((best, s) => (s.length > best.length ? s : best), '');
+  const baseOf = (code: string): string => {
+    const s = suffixOf(code);
+    return s ? code.slice(0, -s.length) : code;
+  };
   // Parent detection uses ANY descendant (transitive) — presence of `C-X-Y`
   // means `C` has children and is a parent.
   //
@@ -694,20 +716,29 @@ export function dedupeParentRollups(
   // Hierarchy separator is dash (SAP "601-01") OR dot (arbitrary schemes like
   // AzerSheker "PLF.01.02") — 2026-06-20. SAP codes never contain a dot, so
   // accepting both is additive: dash-coded files behave exactly as before.
-  const isChildOf = (code: string, parent: string): boolean =>
-    code.length > parent.length + 1 &&
-    (code.startsWith(parent + '-') || code.startsWith(parent + '.'));
+  const isChildOf = (code: string, parent: string): boolean => {
+    // A code is NEVER a child of one in a different cost center (e.g. a `.R`
+    // Region code is not a child of a Head-Office code). Hierarchy is on the
+    // suffix-stripped base codes within the same cost center.
+    if (suffixOf(code) !== suffixOf(parent)) return false;
+    const c = baseOf(code);
+    const p = baseOf(parent);
+    return c.length > p.length + 1 && (c.startsWith(p + '-') || c.startsWith(p + '.'));
+  };
   const hasDescendant = (parent: string): boolean => {
     for (const c of codeSet) {
       if (isChildOf(c, parent)) return true;
     }
     return false;
   };
-  /** Walk up D by stripping the last `-<...>` or `.<...>` segment. Returns
-   *  null once we hit the top (no separator left). */
+  /** Walk up D by stripping the last `-<...>` or `.<...>` segment of its BASE
+   *  code, re-appending the cost-center suffix so the ancestor walk stays
+   *  within the same cost center. Returns null at the top (no separator left). */
   const stripLastSegment = (code: string): string | null => {
-    const i = Math.max(code.lastIndexOf('-'), code.lastIndexOf('.'));
-    return i === -1 ? null : code.slice(0, i);
+    const s = suffixOf(code);
+    const b = baseOf(code);
+    const i = Math.max(b.lastIndexOf('-'), b.lastIndexOf('.'));
+    return i === -1 ? null : b.slice(0, i) + s;
   };
   /** True when descendant D reaches parent C via ancestor walk without
    *  passing through any other code present in the set. */

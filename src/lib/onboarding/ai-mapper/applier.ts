@@ -692,7 +692,31 @@ export function applyProposal(
     line.plannedAnnual = line.perMonth.reduce((a, v) => a + v, 0);
   }
 
-  const { kept, dropped, synthetic } = dedupeParentRollups(lines);
+  // AzerSheker P&L sheets carry a parallel REGION cost center as a `.R` suffix
+  // (PLF.05.01.01 = Head Office, PLF.05.01.01.R = Region — SAME label, NOT a
+  // sub-account). Detect that specific MIRROR shape and ONLY then tell dedupe to
+  // treat `.R` as a cost-center dimension (else Region double-counts as leaves
+  // under Head Office → control-total RED). Two guards keep this from misfiring
+  // on a file where `.R` is a GENUINE hierarchy level (Codex 2026-06-22 HIGH —
+  // e.g. `ABC.R.01` under `ABC.R` would otherwise be silently double-counted):
+  //   1. a `.R` code must mirror an EXISTING base code WITH THE SAME LABEL, and
+  //   2. `.R` must only ever be TERMINAL — no code contains it mid-path (`.R.`).
+  // Neither holds → no option → byte-identical to the prior behaviour.
+  const byCode = new Map(lines.map((l) => [l.code, l] as const));
+  // SYSTEMATIC mirror only: count `.R` codes that mirror an existing base WITH
+  // THE SAME LABEL. A real, terminal `.R` sub-account that happens to share its
+  // parent's label is a one-off (Codex 2026-06-22 MED — `ABC "Rent"` / `ABC.R
+  // "Rent"` would otherwise silently double-count); a true cost-center mirror
+  // restates DOZENS of accounts (AzerSheker has 92). Require ≥3 such pairs.
+  const mirrorPairs = lines.filter(
+    (l) => l.code.endsWith('.R') && byCode.get(l.code.slice(0, -2))?.label === l.label,
+  ).length;
+  const hasRegionCostCenter =
+    mirrorPairs >= 3 && !lines.some((l) => l.code.includes('.R.'));
+  const { kept, dropped, synthetic } = dedupeParentRollups(
+    lines,
+    hasRegionCostCenter ? { costCenterSuffixes: ['.R'] } : {},
+  );
   // skippedRowCount = sheet rows that did NOT contribute a final line.
   //   `skipped`           — rows skipped at parse time (header band, bare
   //                         labels with no code, zero-only rows, 4xx/5xx/8xx
