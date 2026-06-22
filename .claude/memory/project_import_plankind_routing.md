@@ -33,10 +33,24 @@ unresolved sheet to `actual` — BUT the unresolved policy must be WORKBOOK-AWAR
 (a pure-actuals file like Guvven Fin has no budget signal → default actual is
 safe there; only a MIXED workbook blocks; otherwise the working Guvven import
 regresses). Spec + remaining build order:
-`docs/superpowers/specs/2026-06-22-deterministic-sheet-routing-design.md`. Core
-module + 15 tests committed; orchestrator wiring + the reporting-pack config map
-remain (tracked in `docs/CARRYOVER.md`). The earlier BS/CF-single-file spec
-(`2026-06-22-bs-cf-single-sheet-routing.md`) is superseded by this.
+`docs/superpowers/specs/2026-06-22-deterministic-sheet-routing-design.md`. **SHIPPED 2026-06-22 (commits `fb4e082e`→`04764ed5`, pushed):** the full chain
+— classifier wiring, all 4 gates, `REPORTING_PACK_SHEET_MAP`, route cap 20→40MB
++ reporting-pack auto-detect. Codex code-reviewed (P0
+conflict-resolution-map-doesn't-gate-the-actual-writes flagged separately → chip
+`task_961c2ce8`). 239 tests; Reporting dry-run GREEN. The earlier
+BS/CF-single-file spec (`2026-06-22-bs-cf-single-sheet-routing.md`) is superseded.
+
+**APPLY-VERIFY FINDING (the real demo blocker, 2026-06-22):** Reporting 2026's
+structured financials (`Actual PLF`/`BS Actual`/`CF Actual`/`Budget PLF`/`Budget
+CF`) are **CONSOLIDATED / cross-entity** — classified entityCode=null. The
+adapter CORRECTLY refuses them per-company (`Actual PLF`+entity=CPC → 773 items;
++null → 0 + "no entityCode — likely cross-entity"), so importing Reporting
+per-company → **0 rows BY DESIGN** (the old "732" was the corrupt collapse, now
+correctly gone — NOT a regression). **Per-company account-level data lives in
+Guvven Fin** (`PLF CPC`/`PLF EDEN` → 1128/996). Reporting = HOLDING-level
+(consolidated budget = the 58.88M strategic plan, [[project-azsheker-budget-is-strategy]]);
+to make "drop Reporting" import, default a cross-entity plan-relevant sheet's
+entityCode to the org's holding company. User paused on the data-model strategy.
 
 See also [[project-import-clean-slate-guard]] (the delete-scope corruption
 sibling) and [[feedback-server-side-gates]].
