@@ -127,6 +127,22 @@ function descHandler(rowsInserted = 1): AdapterHandler {
   })
 }
 
+/** BS adapter stub with a BS-specific recon key (distinct from PLF). Both
+ *  files emit the same value, so BS never conflicts — and a resolution on a
+ *  PLF cell does NOT also drop the BS sheet (production keys are owned by a
+ *  single dataType; reusing plfHandler for BS muddied that). */
+function bsHandler(rowsInserted = 1): AdapterHandler {
+  return async () => ({
+    summary: "BS ok",
+    itemCount: rowsInserted,
+    warnings: [],
+    applyToDb: vi.fn(async () => ({ rowsInserted })),
+    expectedSums: new Map([
+      [buildReconKey("AZSEKER-CPC", "BS.01", "2026-01"), 500],
+    ]),
+  } as unknown as Awaited<ReturnType<AdapterHandler>>)
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────
 
 describe("runMultiFileImport", () => {
@@ -569,7 +585,9 @@ describe("runMultiFileImport", () => {
         model: "claude-test",
         registry: buildRegistryWith({
           PLF: conflictingPlf,
-          BS: plfHandler(1),
+          // BS owns its own recon key (BS.01) → skipping the PLF cell drops
+          // only the PLF sheets, leaving the BS sheets to commit.
+          BS: bsHandler(1),
         }),
         XLSX: fakeXLSX,
       },
@@ -758,6 +776,263 @@ describe("runMultiFileImport", () => {
     expect(result.conflicts.length).toBeGreaterThan(0)
     expect(prisma.__txCallCount.n).toBeGreaterThan(0) // tx opened
     expect(result.perGroup.length).toBeGreaterThan(0)
+  })
+
+  // Phase 7.M Tier 6 — Codex P0 (2026-06-22, thread 019eefc1): a resolved
+  // cross-file conflict MUST change what is WRITTEN, not just the preview.
+  // Before the fix, both files' adapters ran and the loser's clean-slate
+  // write clobbered the winner by adapter order (the "budget-wipe" class).
+  // This asserts WHICH rows survive — the loser's adapter must never write.
+  it("resolution=pick fileA (+forceOverride) → only fileA's rows persist; fileB's conflicting adapter never writes", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      // fileA: PLF + BS for AZSEKER-CPC
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      // fileB: same scope, conflicting PLF value
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    // Each PLF sheet gets its OWN applyToDb spy so we can prove which file
+    // wrote. Parse order is file-major: call 1 = fileA's PLF, 2 = fileB's.
+    const plfApply: Array<ReturnType<typeof vi.fn>> = []
+    let callCount = 0
+    const conflictingPlf: AdapterHandler = async () => {
+      callCount++
+      const value = callCount === 1 ? 100 : 150
+      const applyToDb = vi.fn(async () => ({ rowsInserted: 1 }))
+      plfApply.push(applyToDb)
+      return {
+        summary: "x",
+        itemCount: 1,
+        warnings: [],
+        applyToDb,
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), value],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const conflictKey = buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01")
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "fileA.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+          {
+            filename: "fileB.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        forceOverride: true,
+        // Pick fileA as the winner for the conflicting cell.
+        conflictResolutions: {
+          [conflictKey]: { mode: "pick", filename: "fileA.xlsx" },
+        },
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({
+          PLF: conflictingPlf,
+          BS: bsHandler(1),
+        }),
+        XLSX: fakeXLSX,
+      },
+    )
+
+    // Both PLF sheets were parsed (an adapterResult + spy built for each)…
+    expect(plfApply).toHaveLength(2)
+    // …but only fileA's PLF survived to write. fileB's PLF (the loser) must
+    // NOT have written — this is the budget-wipe guard the fix installs.
+    expect(plfApply[0]).toHaveBeenCalledTimes(1) // fileA — winner, written
+    expect(plfApply[1]).not.toHaveBeenCalled() // fileB — dropped, never writes
+    // The group still committed and the resolution removed the conflict.
+    expect(result.conflicts).toEqual([])
+    const mainGroup = result.perGroup.find(
+      (g) => g.fileType === "main-financial",
+    )
+    expect(mainGroup?.committed).toBe(true)
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
+  // Architect finding #1 (2026-06-22): a CONTRADICTORY same-scope
+  // resolution — pick fileA for one cell, fileB for another cell in the
+  // SAME (entity, dataType) clean-slate scope — cannot be honored, because
+  // a clean-slate write is all-or-nothing per sheet. The safe outcome is to
+  // drop BOTH conflicting sheets (neither writes) + warn, NEVER to silently
+  // write a corrupted mix. The non-conflicting BS sheets still commit, which
+  // proves the drop is surgical to the contradictory scope. This pins the
+  // behavior so a future "merge cells" refactor can't regress it into a
+  // corrupt partial write.
+  it("contradictory same-scope resolution drops BOTH conflicting sheets (neither writes) + warns — never a corrupt mix", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+      [
+        {
+          sheetName: "PLF CPC",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "x",
+        },
+        {
+          sheetName: "BS CPC",
+          dataType: "BS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "y",
+        },
+      ],
+    ])
+    // Each file's PLF sheet emits TWO conflicting cells (PLF.01 + PLF.02).
+    const plfApply: Array<ReturnType<typeof vi.fn>> = []
+    let callCount = 0
+    const twoCellPlf: AdapterHandler = async () => {
+      callCount++
+      const v1 = callCount === 1 ? 100 : 150
+      const v2 = callCount === 1 ? 200 : 250
+      const applyToDb = vi.fn(async () => ({ rowsInserted: 2 }))
+      plfApply.push(applyToDb)
+      return {
+        summary: "x",
+        itemCount: 2,
+        warnings: [],
+        applyToDb,
+        expectedSums: new Map([
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01"), v1],
+          [buildReconKey("AZSEKER-CPC", "PLF.02", "2026-01"), v2],
+        ]),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const result = await runMultiFileImport(
+      {
+        files: [
+          {
+            filename: "fileA.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+          {
+            filename: "fileB.xlsx",
+            workbook: {
+              Sheets: {
+                "PLF CPC": { "!ref": "A1:C3" },
+                "BS CPC": { "!ref": "A1:C3" },
+              },
+              SheetNames: ["PLF CPC", "BS CPC"],
+            },
+          },
+        ],
+        organizationId: "org1",
+        year: 2026,
+        // Contradictory: fileA wins PLF.01, fileB wins PLF.02 — same scope.
+        conflictResolutions: {
+          [buildReconKey("AZSEKER-CPC", "PLF.01", "2026-01")]: {
+            mode: "pick",
+            filename: "fileA.xlsx",
+          },
+          [buildReconKey("AZSEKER-CPC", "PLF.02", "2026-01")]: {
+            mode: "pick",
+            filename: "fileB.xlsx",
+          },
+        },
+      },
+      {
+        prisma,
+        anthropicClient: client,
+        model: "claude-test",
+        registry: buildRegistryWith({ PLF: twoCellPlf, BS: bsHandler(1) }),
+        XLSX: fakeXLSX,
+      },
+    )
+    // Both PLF sheets parsed, but NEITHER wrote — no corrupt PLF mix lands.
+    expect(plfApply).toHaveLength(2)
+    expect(plfApply[0]).not.toHaveBeenCalled()
+    expect(plfApply[1]).not.toHaveBeenCalled()
+    // Both dropped PLF sheets are recorded in warnings (visible, not silent).
+    expect(
+      result.warnings.filter((w) =>
+        w.includes("Cross-file resolution: dropped"),
+      ),
+    ).toHaveLength(2)
+    // The drop is surgical: the non-conflicting BS sheets still commit, so
+    // only their 2 rows land — proof the contradictory PLF writes (2 rows
+    // each = 4) were excluded, not merged.
+    const mainGroup = result.perGroup.find(
+      (g) => g.fileType === "main-financial",
+    )
+    expect(mainGroup?.committed).toBe(true)
+    expect(mainGroup?.totalRowsInserted).toBe(2)
   })
 
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {

@@ -510,37 +510,96 @@ export async function runMultiFileImport(
   }
 
   // Phase 7.M Tier 6 — apply per-conflict resolutions BEFORE the
-  // short-circuit. For each conflict that has a resolution: rewrite the
-  // per-file expectedSums map so the chosen value wins (or drop the cell
-  // entirely for "skip"). After rewriting, re-detect — fully-resolved
-  // conflicts disappear from the list, so the short-circuit only fires
-  // for unresolved conflicts.
+  // short-circuit.
+  //
+  // TWO distinct effects, BOTH required (Codex P0 fix 2026-06-22, thread
+  // 019eefc1 — the "budget-wipe" data-corruption class):
+  //
+  //   1. PREVIEW / RE-DETECTION — rewrite the per-file expectedSums map so
+  //      the chosen value wins (or drop the cell for "skip"), then re-run
+  //      the detector. Fully-resolved conflicts disappear from the list so
+  //      the short-circuit below only fires for *unresolved* conflicts.
+  //      This map feeds the conflict gate + the perFile preview — it does
+  //      NOT, on its own, change what any adapter writes.
+  //
+  //   2. APPLY — collect the LOSING file's records into `recordsToSkip` so
+  //      Phase E never calls their `applyToDb`. Mutating the expected map
+  //      alone is NOT enough: Phase E builds `groupRecords` from
+  //      `perFileRecords[].adapterResult` (untouched by the map rewrite),
+  //      so without this both files' adapters still run and the loser's
+  //      clean-slate write overwrites the winner by adapter order.
+  //
+  // The apply-side drop is whole-record (sheet), not per-cell, on purpose:
+  // each adapter clean-slates its entire (entity, dataType, planKind) scope
+  // on write, so a source sheet either wins its scope or is dropped — you
+  // cannot preserve "some cells" of a losing sheet through the winner's
+  // clean-slate write. A record claims a conflict key iff its expectedSums
+  // contains that key; in production each (entity, account, period) key is
+  // owned by exactly one sheet/dataType, so the record→key mapping is
+  // unambiguous.
+  const recordsToSkip = new Set<ParseRecord>()
   const resolutionMap = input.conflictResolutions
   if (resolutionMap && Object.keys(resolutionMap).length > 0 && conflicts.length > 0) {
     for (const conflict of conflicts) {
       const r = resolutionMap[conflict.key]
       if (!r) continue
+
+      // Resolve the winner (pick only) and the set of files that LOSE this
+      // cell — their rows must not land.
+      //   • skip → every file that claimed the cell loses (nobody writes).
+      //   • pick → every file except the winner loses. Unknown winner
+      //            filename → leave unresolved (short-circuit handles it).
+      let winnerFilename: string | null = null
+      let winnerValue: number | null = null
+      let losingFilenames: string[]
       if (r.mode === "skip") {
-        // Remove the conflicting cell from EVERY file's expected map
-        // so no adapter writes it.
-        for (const fileMap of perFileExpected.values()) {
-          fileMap.delete(conflict.key)
-        }
-      } else if (r.mode === "pick") {
+        losingFilenames = conflict.occurrences.map((o) => o.filename)
+      } else {
         const winningOccurrence = conflict.occurrences.find(
           (o) => o.filename === r.filename,
         )
         if (!winningOccurrence) continue // unknown filename — leave unresolved
-        // Set the winning value on every file that had a value for this
-        // key, dropping it from the losing files so duplicate-cell write
-        // collisions don't happen at apply time.
-        for (const [fn, fileMap] of perFileExpected.entries()) {
-          if (!fileMap.has(conflict.key)) continue
-          if (fn === r.filename) {
-            fileMap.set(conflict.key, winningOccurrence.value)
-          } else {
-            fileMap.delete(conflict.key)
+        winnerFilename = r.filename
+        winnerValue = winningOccurrence.value
+        losingFilenames = conflict.occurrences
+          .filter((o) => o.filename !== r.filename)
+          .map((o) => o.filename)
+      }
+
+      // APPLY-side: drop the losing files' records that carry this key so
+      // their adapter never writes. This is what actually enforces the
+      // resolution at write time.
+      for (const fn of losingFilenames) {
+        for (const rec of perFileRecords.get(fn) ?? []) {
+          if (
+            rec.adapterResult &&
+            rec.skippedReason === null &&
+            rec.expectedSums.has(conflict.key) &&
+            !recordsToSkip.has(rec)
+          ) {
+            recordsToSkip.add(rec)
+            warnings.push(
+              `Cross-file resolution: dropped "${rec.filename}" sheet ` +
+                `"${rec.classification.sheetName}" ` +
+                `(${rec.classification.dataType}) — lost conflict on ` +
+                `${conflict.key}` +
+                (winnerFilename
+                  ? ` (kept: ${winnerFilename})`
+                  : ` (skipped by user — whole sheet dropped)`),
+            )
           }
+        }
+      }
+
+      // PREVIEW / RE-DETECTION: mutate the expected maps so the re-detector
+      // sees the resolved state. winnerFilename=null (skip) deletes the key
+      // from every file; pick sets the winner's value and deletes the rest.
+      for (const [fn, fileMap] of perFileExpected.entries()) {
+        if (!fileMap.has(conflict.key)) continue
+        if (winnerFilename !== null && fn === winnerFilename) {
+          fileMap.set(conflict.key, winnerValue!)
+        } else {
+          fileMap.delete(conflict.key)
         }
       }
     }
@@ -614,12 +673,19 @@ export async function runMultiFileImport(
       continue
     }
 
-    // Build the committable records list for this group.
+    // Build the committable records list for this group. Records dropped by
+    // a cross-file conflict resolution (recordsToSkip) are excluded here so
+    // the losing file's adapter never writes — without this, the resolution
+    // would only affect the preview, not the committed data.
     const groupRecords: ParseRecord[] = []
     for (const fn of filenames) {
       const recs = perFileRecords.get(fn) ?? []
       for (const r of recs) {
-        if (r.adapterResult && r.skippedReason === null) {
+        if (
+          r.adapterResult &&
+          r.skippedReason === null &&
+          !recordsToSkip.has(r)
+        ) {
           groupRecords.push(r)
         }
       }
