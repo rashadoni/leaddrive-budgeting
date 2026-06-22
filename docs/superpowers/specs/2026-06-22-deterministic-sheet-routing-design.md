@@ -108,3 +108,40 @@ AI-assisted, and it learns file shapes.
 - zero clean-slate collisions (each scope has exactly one source sheet);
 - the entity whose BS broke (4 rows) back to its full ~70;
 - ambiguous/derived sheets reported, not silently dropped.
+
+## Discovered during implementation (2026-06-22)
+
+Part 1 (the pure `resolveSheetRouting` core + 15 tests) is built, committed,
+and passing. Wiring it into the orchestrator surfaced two subtleties the
+next build session MUST honor:
+
+1. **The unresolved-source policy must be WORKBOOK-AWARE — or it regresses
+   the working files.** Guvven Fin (pure actuals) has no budget tabs. If we
+   blocked every `planKind=null` source sheet, a pure-actuals workbook whose
+   sheets carry no `>>>`/keyword signal would break (it currently — correctly
+   — lands in the actuals plan). Policy: compute a workbook-level
+   `hasBudgetSignal` (any sheet resolved to budget, or any budget keyword/
+   section present). Then for a SOURCE sheet with `planKind=null`:
+   `hasBudgetSignal → BLOCK` (mixed workbook, can't guess);
+   `!hasBudgetSignal → actual` (pure-actuals, safe, preserves Guvven). The
+   registry's existing `targetPlanKind ?? "actual"` is only safe AFTER this
+   gate has run — a raw null must never reach the adapter in a mixed workbook.
+
+2. **Entity-specific source sheets overlap the all-entity source.**
+   Reporting's `PL EDEN` / `BS EDEN` carry no derived-name pattern, so the
+   pure module marks them `role=source`. But they re-present numbers already
+   in `Actual PLF` / `BS Actual`, so two source sheets land in the same
+   `(entity, dataType, planKind)` scope → collision. Two defenses (use both):
+   the **collision-block** (≥2 source → one scope → BLOCK) catches it
+   generically, and the **reporting-pack config map** should mark the
+   entity-view tabs `role=derived_summary` so they're skipped cleanly. Building
+   that map requires inspecting which Reporting tab is the canonical source per
+   scope (e.g. is `BS Actual` all-entity, or does EDEN only live in `BS EDEN`?)
+   — a short data-inspection task, not a guess.
+
+**Remaining build order (unchanged from above, with #1/#2 folded in):**
+classifier stamps planKind+role via `resolveSheetRouting` (allow null) → add
+`role` to `SheetClassification` → orchestrator: skip derived, workbook-aware
+unresolved policy, collision-block, completeness-block → reporting-pack config
+map (after inspecting tab structure) → route cap 20→40MB → Codex review →
+reset+apply Reporting verify.
