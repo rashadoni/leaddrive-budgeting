@@ -52,5 +52,20 @@ Guvven Fin** (`PLF CPC`/`PLF EDEN` → 1128/996). Reporting = HOLDING-level
 to make "drop Reporting" import, default a cross-entity plan-relevant sheet's
 entityCode to the org's holding company. User paused on the data-model strategy.
 
+**SHIPPED 2026-06-22 (commit `0bcb4901`, pushed):** cross-entity→holding done.
+Per-sheet config override (`SheetMapEntry.entityCode` = `HOLDING_ENTITY_SENTINEL`,
+resolved at apply-time to the org's level-1 holding); `effectiveEntityCode`
+first-class via the `writeEntity(r)` helper through ALL gates + post-write
+bookkeeping (preserves an intentional null no-op, never the classifier guess);
+BUDGET-ONLY (Budget PLF/CF carry the sentinel → holding; consolidated ACTUAL tabs
+stay null→0-row no-ops, so budget≠actual → NO double-count); PER-FILE sheet-map
+(`files[].sheetMap`, so a sibling file's same-named tab isn't overridden);
+holding = exactly-one level-1 else no-op. **Codex 4-round-reviewed (thread
+019ef023) — no data-corruption concern.** Apply-verified on the real Reporting:
+holding AZSEKER got 2057 `kind=budget` lines; the four children kept `kind=actual`
+unchanged. Path A complete. (The P0 conflict-resolution-doesn't-gate-writes chip
+`task_961c2ce8` is still separate/open. Non-blocking: make an unresolved sentinel
+a RED gate for operability.)
+
 See also [[project-import-clean-slate-guard]] (the delete-scope corruption
 sibling) and [[feedback-server-side-gates]].
