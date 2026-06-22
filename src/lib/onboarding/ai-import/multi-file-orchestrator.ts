@@ -740,7 +740,12 @@ export async function runMultiFileImport(
             )
           }
         }
-      })
+        // Interactive-tx timeout bumped from Prisma's 5s default: the main-
+        // financial group writes PLF+BS+CF for EVERY entity PLUS in-tx
+        // post-write reconciliation re-reads, which blows past 5s on a real
+        // workbook — caught by the multi-file E2E on Guvven Fin (5114ms >
+        // 5000ms → "Transaction already closed"). 2026-06-22.
+      }, { maxWait: 15_000, timeout: 120_000 })
 
       perGroup.push({
         fileType,
