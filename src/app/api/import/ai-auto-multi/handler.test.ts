@@ -169,15 +169,15 @@ describe("POST /api/import/ai-auto-multi", () => {
     expect(body.error).toMatch(/Max 10 files/i)
   })
 
-  it("returns 400 when total size exceeds 20 MB", async () => {
+  it("returns 400 when total size exceeds 40 MB", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
-    // 5 × 5 MB = 25 MB
+    // 5 × 9 MB = 45 MB (cap raised to 40 MB for reporting packs ≈ 25 MB)
     const res = await POST(
-      makeMultipartRequest({ fileCount: 5, fileSize: 5 * 1024 * 1024 }) as never,
+      makeMultipartRequest({ fileCount: 5, fileSize: 9 * 1024 * 1024 }) as never,
     )
     expect(res.status).toBe(400)
     const body = (await res.json()) as { error: string }
-    expect(body.error).toMatch(/exceeds 20 MB cap/i)
+    expect(body.error).toMatch(/exceeds 40 MB cap/i)
   })
 
   it("returns 400 when year is out of range", async () => {

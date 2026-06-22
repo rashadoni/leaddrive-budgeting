@@ -46,6 +46,10 @@ import { classifyAiError } from "@/lib/ai/ai-error"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
 import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
 import {
+  REPORTING_PACK_SHEET_MAP,
+  looksLikeReportingPack,
+} from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
+import {
   affectedIndicatorsForDataType,
   type DataTypeImpact,
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
@@ -57,9 +61,11 @@ export const maxDuration = 120
 const MAX_FILES = 10
 // Total SUM across all files in one batch — a memory/LLM-budget guard, NOT the
 // per-file import cap (that's MAX_IMPORT_UPLOAD_BYTES, 64MB). Kept separate +
-// lower on purpose: 10 files near the per-file cap would be ~640MB. A single
-// large workbook belongs on the single-file tab.
-const MAX_TOTAL_BYTES = 20 * 1024 * 1024 // 20 MB sum across all files
+// lower on purpose: 10 files near the per-file cap would be ~640MB. Raised to
+// 40 MB (2026-06-22): the multi-file flow IS the correct path for a
+// comprehensive reporting pack (e.g. AzerSheker Reporting 2026 ≈ 25 MB) now that
+// deterministic routing handles its budget/actual split + derived views.
+const MAX_TOTAL_BYTES = 40 * 1024 * 1024 // 40 MB sum across all files
 const PER_FILE_TOKEN_BUDGET = 35_000 // Phase 7.M Tier 4 measured cost
 
 const RATE_LIMIT = {
@@ -231,6 +237,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Apply the deterministic per-shape sheet-map when the upload matches a known
+  // recurring shape. Detection is exact-tab-name based, so it's a no-op on any
+  // other workbook (e.g. Guvven Fin). Robust follow-up: per-org importConfig.
+  const allSheetNames = files.flatMap((f) => f.workbook.SheetNames)
+  const sheetMap = looksLikeReportingPack(allSheetNames)
+    ? REPORTING_PACK_SHEET_MAP
+    : undefined
+
   // ── Context: known entity codes + org industry hint ─────────────
   const entities = await prisma.company.findMany({
     where: { organizationId: orgId, status: { not: "archived" } },
@@ -285,6 +299,7 @@ export async function POST(request: NextRequest) {
         year,
         knownEntityCodes,
         orgIndustry,
+        sheetMap,
         allowYellow,
         forceOverride,
         conflictResolutions,
