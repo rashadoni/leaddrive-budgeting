@@ -80,27 +80,28 @@ export async function importConsolidatedHoldingBs(
 
   // 3. Upsert a dedicated CONS.BS.* account per leaf label (verbatim, no fuzzy map).
   const accountIdByLabel = new Map<string, string>()
+  const codeToLabel = new Map<string, string>()
   for (const leaf of parsed.leaves) {
     if (accountIdByLabel.has(leaf.label)) continue
     const code = consolidatedAccountCode(leaf.label)
-    const existing = await prisma.chartOfAccount.findFirst({
-      where: { organizationId, code },
+    // Two distinct official labels must never collapse to one account code —
+    // that would merge their balances under a single display name.
+    const prior = codeToLabel.get(code)
+    if (prior != null && prior !== leaf.label) {
+      throw new Error(
+        `consolidated BS: account-code collision "${code}" between "${prior}" and "${leaf.label}"`,
+      )
+    }
+    codeToLabel.set(code, leaf.label)
+    // Race-safe upsert on the (organizationId, code) unique — concurrent
+    // imports won't trip a unique-constraint error (findFirst+create would).
+    const account = await prisma.chartOfAccount.upsert({
+      where: { organizationId_code: { organizationId, code } },
+      create: { organizationId, code, name: leaf.label, accountType: leaf.section },
+      update: { name: leaf.label, accountType: leaf.section },
       select: { id: true },
     })
-    const id =
-      existing?.id ??
-      (
-        await prisma.chartOfAccount.create({
-          data: {
-            organizationId,
-            code,
-            name: leaf.label,
-            accountType: leaf.section,
-          },
-          select: { id: true },
-        })
-      ).id
-    accountIdByLabel.set(leaf.label, id)
+    accountIdByLabel.set(leaf.label, account.id)
   }
 
   // 4. Resolve the actuals plan per published year (skip "superseded").

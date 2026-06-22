@@ -102,6 +102,9 @@ export function parseConsolidatedBs(
   for (const ym of months) {
     officialTotals.set(ym, { asset: 0, equity: 0, liability: 0 })
   }
+  // Track which section headers were actually present (vs. the default-0
+  // total) so a renamed/missing header can't silently drop a whole section.
+  const sectionsSeen = new Set<BsSection>()
 
   let section: BsSection | null = null
   let subType: string | null = null
@@ -125,6 +128,7 @@ export function parseConsolidatedBs(
     const headerSection = SECTION_HEADERS[label]
     if (headerSection) {
       section = headerSection
+      sectionsSeen.add(headerSection)
       subType =
         headerSection === "asset"
           ? "non_current"
@@ -147,11 +151,27 @@ export function parseConsolidatedBs(
       continue
     }
 
-    // Otherwise a leaf, if it carries any numeric value and we're in a section.
-    if (section == null) continue
+    // Otherwise a leaf row. A numeric leaf before any section header means the
+    // sheet shape changed (or a header was renamed) — refuse to guess.
     const byMonth = readMonthValues(row)
     if (byMonth.size === 0) continue
+    if (section == null) {
+      throw new Error(
+        `consolidated BS: numeric row "${label}" before any ASSETS/EQUITY/LIABILITIES section header`,
+      )
+    }
     leaves.push({ label, section, subType, byMonth })
+  }
+
+  // 4a. Every section must have had a real header row — otherwise a missing /
+  // renamed header leaves its official total at the default 0 and the
+  // per-section guard below would pass as 0 == 0 while leaves were dropped.
+  for (const required of ["asset", "equity", "liability"] as const) {
+    if (!sectionsSeen.has(required)) {
+      throw new Error(
+        `consolidated BS: no "${required}" section header found — refusing to write`,
+      )
+    }
   }
 
   // 4. HARD reconciliation guard — Σ(leaves per section) == subtotal cell, per month.
@@ -188,6 +208,5 @@ export function consolidatedAccountCode(label: string): string {
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
-    .slice(0, 40)
   return `CONS.BS.${slug}`
 }

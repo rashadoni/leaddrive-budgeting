@@ -91,6 +91,18 @@ describe("parseConsolidatedBs", () => {
     expect(() => parseConsolidatedBs(bad)).toThrow(/reconciliation FAILED.*asset/i)
   })
 
+  it("THROWS when a whole section header is missing (else the section drops silently)", () => {
+    const rows = fixture()
+    for (const r of [18, 19, 20, 22, 23]) rows[r] = [] // remove the LIABILITIES section
+    expect(() => parseConsolidatedBs(rows)).toThrow(/no "liability" section header/i)
+  })
+
+  it("THROWS on a numeric leaf before the first section header", () => {
+    const rows = fixture()
+    rows[3] = ["Stray Number", null, 42] // numeric row before ASSETS (r4)
+    expect(() => parseConsolidatedBs(rows)).toThrow(/before any.*section header/i)
+  })
+
   it("throws when no date row is present", () => {
     expect(() => parseConsolidatedBs([["ASSETS", null, 1]])).toThrow(/no date row/i)
   })
