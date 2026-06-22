@@ -272,6 +272,11 @@ interface ParseRecord {
   /** The plan kind actually used for the adapter write (post null-resolution).
    *  Drives the collision gate's scope grouping. */
   effectivePlanKind?: PlanKind
+  /** The entity the sheet ACTUALLY writes to (post entity-override resolution —
+   *  e.g. a consolidated reporting-pack budget tab mapped to the holding). All
+   *  routing gates + post-write bookkeeping key on THIS, not the classifier's
+   *  entityCode, so they match the real write target. */
+  effectiveEntityCode?: string | null
 }
 
 /** dataTypes whose write target IS a budget/actual plan — these are the ones
@@ -308,6 +313,12 @@ async function parseFileSheets(
   )
 
   for (const cls of classifications) {
+    // The entity the sheet actually writes to. = classifier entity for now; the
+    // per-sheet config entity-override (cross-entity → holding) plugs in here in
+    // a later step. Threaded onto every record so the gates + post-write
+    // bookkeeping key on the real write target, not the classifier's guess.
+    const effectiveEntityCode: string | null = cls.entityCode
+
     // Gate 1 — skip derived/summary views of a PLAN-RELEVANT statement so the
     // multiple same-dataType views in a reporting pack can't clean-slate the
     // source sheet. Scoped to PLF/BS/CF: a KPI/SALES sheet named "…Summary"
@@ -371,7 +382,7 @@ async function parseFileSheets(
       const ar = await handler({
         workbook,
         sheetName: cls.sheetName,
-        entityCode: cls.entityCode,
+        entityCode: effectiveEntityCode,
         year: input.year,
         organizationId: input.organizationId,
         XLSX: deps.XLSX,
@@ -391,6 +402,7 @@ async function parseFileSheets(
         skippedReason: null,
         blockedReason: null,
         effectivePlanKind,
+        effectiveEntityCode,
       })
       if (ar.warnings.length > 0) {
         warnings.push(
@@ -669,7 +681,7 @@ export async function runMultiFileImport(
     // several harmless 0-row PLF sheets in one file falsely abort the whole
     // import (regressed the Farming-strategy forward-forecast load 2026-06-22).
     if ((r.adapterResult?.itemCount ?? 0) <= 0) continue
-    const scope = `${r.filename}::${r.classification.entityCode ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
+    const scope = `${r.filename}::${(r.effectiveEntityCode ?? r.classification.entityCode) ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
     const arr = byScope.get(scope)
     if (arr) arr.push(r)
     else byScope.set(scope, [r])
@@ -684,7 +696,7 @@ export async function runMultiFileImport(
   // NOT a loss when such a source exists for that dataType.
   const allEntitySourceTypes = new Set<SheetDataType>()
   for (const r of sourceRecords) {
-    if (r.classification.entityCode == null)
+    if ((r.effectiveEntityCode ?? r.classification.entityCode) == null)
       allEntitySourceTypes.add(r.classification.dataType)
   }
   const byEntityType = new Map<
@@ -701,8 +713,8 @@ export async function runMultiFileImport(
     // Only guard REAL entities. A cross-entity/consolidated sheet (entityCode
     // null — e.g. "CONS PL") is inherently a derived rollup with no source of
     // its own; completeness must not fire on it.
-    if (r.classification.entityCode == null) continue
-    const key = `${r.classification.entityCode}::${r.classification.dataType}`
+    if ((r.effectiveEntityCode ?? r.classification.entityCode) == null) continue
+    const key = `${(r.effectiveEntityCode ?? r.classification.entityCode)}::${r.classification.dataType}`
     const e = byEntityType.get(key) ?? {
       dataType: r.classification.dataType,
       hasDerived: false,
@@ -843,7 +855,7 @@ export async function runMultiFileImport(
     const dryInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
       sheetName: `${r.filename}::${r.classification.sheetName}`,
       dataType: r.classification.dataType,
-      entityCode: r.classification.entityCode,
+      entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
       expectedSums: r.expectedSums,
       actualSums: r.expectedSums,
     }))
@@ -902,7 +914,7 @@ export async function runMultiFileImport(
           tx,
           input.organizationId,
           groupRecords
-            .map((r) => r.classification.entityCode)
+            .map((r) => (r.effectiveEntityCode ?? r.classification.entityCode))
             .filter((c): c is string => !!c),
         )
 
@@ -915,14 +927,14 @@ export async function runMultiFileImport(
             const actual = await deps.readActualSums({
               sheetName: r.classification.sheetName,
               dataType: r.classification.dataType,
-              entityCode: r.classification.entityCode,
+              entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
               organizationId: input.organizationId,
               year: input.year,
             })
             postInputs.push({
               sheetName: `${r.filename}::${r.classification.sheetName}`,
               dataType: r.classification.dataType,
-              entityCode: r.classification.entityCode,
+              entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
               expectedSums: r.expectedSums,
               actualSums: actual,
             })
@@ -958,11 +970,11 @@ export async function runMultiFileImport(
 
       // Track touched companies for the single recompute pass.
       for (const r of groupRecords) {
-        // Adapters report touched companies via the standard sheet
-        // classification's entityCode. We map code → id lazily before
-        // the recompute call; for now, store the codes.
-        if (r.classification.entityCode) {
-          touchedCompanies.add(r.classification.entityCode)
+        // Recompute the entity actually written (effective target), not the
+        // classifier's guess. Map code → id lazily before the recompute call.
+        const ec = r.effectiveEntityCode ?? r.classification.entityCode
+        if (ec) {
+          touchedCompanies.add(ec)
         }
       }
     } catch (err) {
