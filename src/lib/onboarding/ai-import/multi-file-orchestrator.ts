@@ -663,6 +663,12 @@ export async function runMultiFileImport(
     // Only plan tables clean-slate by (entity,dataType,planKind); KPI/SALES
     // append to operational_facts (metric-scoped), so they don't collide here.
     if (!PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType)) continue
+    // A sheet that parsed 0 items (e.g. a cross-entity/null-entity sheet the
+    // adapter refused, or a forward-forecast sub-sheet the LLM mislabeled PLF)
+    // is a NO-OP — it clean-slates nothing, so it can't collide. Without this,
+    // several harmless 0-row PLF sheets in one file falsely abort the whole
+    // import (regressed the Farming-strategy forward-forecast load 2026-06-22).
+    if ((r.adapterResult?.itemCount ?? 0) <= 0) continue
     const scope = `${r.filename}::${r.classification.entityCode ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
     const arr = byScope.get(scope)
     if (arr) arr.push(r)

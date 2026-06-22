@@ -88,11 +88,21 @@ describe("resolveSheetRouting — role (source vs derived_summary)", () => {
       "PL Comparison",
       "Marginality",
       "BU PL",
-      "BS Data",
     ]) {
       const r = route({ sheetName: name })
       expect(r.role, name).toBe("derived_summary")
       expect(r.roleSignal, name).toBe("name-pattern")
+    }
+  })
+
+  it("does NOT over-match context-specific summary words (they belong in a config map)", () => {
+    // AZ "İcmal" is the MAIN sheet of a forward-forecast file, not a summary;
+    // "BS Data"/"Summary" are source sheets in other workbooks. The general
+    // pattern must NOT skip them (a false 'derived' silently drops real data —
+    // it regressed the Farming-strategy İcmal import). Config map handles the
+    // reporting pack's own BS Data etc.
+    for (const name of ["İcmal", "BS Data", "Annual Summary", "Total"]) {
+      expect(route({ sheetName: name }).role, name).toBe("source")
     }
   })
 
@@ -119,7 +129,7 @@ describe("resolveSheetRouting — reporting-pack shape (regression)", () => {
   })
 
   it("the derived P&L/BS views are skipped (so they cannot collide)", () => {
-    const derived = ["CONS PL_1", "CONS PL_2", "BU PL", "Marginality", "PL Comparison", "BS Pivot", "BS Data"]
+    const derived = ["CONS PL_1", "CONS PL_2", "BU PL", "Marginality", "PL Comparison", "BS Pivot"]
     for (const name of derived) {
       expect(route({ sheetName: name }).role, name).toBe("derived_summary")
     }

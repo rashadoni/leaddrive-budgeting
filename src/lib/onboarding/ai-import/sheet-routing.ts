@@ -65,12 +65,20 @@ const BUDGET_NAME = /\b(budget|büdcə|budcə|бюджет|proqnoz|forecast)\b/i
 const ACTUAL_NAME = /\b(actual|faktiki|fakt|факт\w*)\b/i
 
 /**
- * Derived/summary view names: a re-presentation of source numbers, NOT a source
- * of record. Consolidations, pivots, comparisons, margin analyses, dashboards.
- * These are skipped on write so they don't collide with the source sheet.
+ * Derived/summary view names — a re-presentation of source numbers, NOT a source
+ * of record (consolidations, pivots, comparisons, margin analyses, dashboards,
+ * business-unit rollups). Skipped on write so they can't collide with the source.
+ *
+ * DELIBERATELY CONSERVATIVE: only words that unambiguously mean a derived view,
+ * never a main data sheet. Context-specific summary words are NOT here — they go
+ * in a per-shape config map. Notably AZ "İcmal" (overview) is the MAIN sheet of a
+ * forward-forecast file, and "Data"/"Summary" tabs are sources in other files;
+ * matching them here silently DROPS real data (it regressed the Farming-strategy
+ * İcmal import 2026-06-22). A false "source" is caught by the collision gate; a
+ * false "derived" is a silent data loss — so err toward "source".
  */
 const DERIVED_NAME =
-  /(consolidat|\bcons\b|консолид|icmal|İcmal|məcmu|pivot|свод|comparison|müqayis|сравн|marginalit|mənfəət|маржинал|dashboard|\bsummary\b|обзор|сводка|\bBU\b|\bdata\b)/i
+  /(consolidat|\bcons\b|консолид|pivot|свод|comparison|müqayis|сравн|marginalit|маржинал|dashboard|\bBU\b)/i
 
 /** dataTypes that are inherently forward plans (route to the budget plan). */
 const BUDGET_DATATYPES = new Set<SheetDataType>([

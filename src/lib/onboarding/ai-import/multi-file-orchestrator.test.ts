@@ -941,6 +941,44 @@ describe("runMultiFileImport", () => {
     expect(prisma.__txCallCount.n).toBeGreaterThan(0)
   })
 
+  it("Gate: 0-item sheets (cross-entity / LLM-mislabeled) do NOT trigger a false collision (Farming-strategy regression)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-EDEN" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "İcmal", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "cross-entity → 0 items" },
+        { sheetName: "PL Support", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "cross-entity → 0 items" },
+        { sheetName: "Taxes", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "cross-entity → 0 items" },
+        { sheetName: "BS EDEN", dataType: "BS", entityCode: "AZSEKER-EDEN", confidence: 0.9, reasoning: "real source (2 items)" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "forecast.xlsx",
+          workbook: {
+            Sheets: { "İcmal": { "!ref": "A1:C3" }, "PL Support": { "!ref": "A1:C3" }, "Taxes": { "!ref": "A1:C3" }, "BS EDEN": { "!ref": "A1:C3" } },
+            SheetNames: ["İcmal", "PL Support", "Taxes", "BS EDEN"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      // PLF handler parses 0 items (the cross-entity sheets); BS parses 2.
+      registry: buildRegistryWith({ PLF: plfHandler(0), BS: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    // The 3 null-entity PLF sheets are no-ops (0 items) → no false collision.
+    expect(result.overallVerdict).not.toBe("red")
+    expect(result.warnings.some((w) => /COLLISION/i.test(w))).toBe(false)
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {
     const prisma = stubPrisma()
     const client = stubClientPerCall([
