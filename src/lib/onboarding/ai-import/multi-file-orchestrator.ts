@@ -291,8 +291,17 @@ async function parseFileSheets(
   // Workbook-aware: only a MIXED workbook (some sheet resolved to budget)
   // blocks an unresolved plan-relevant sheet. A pure-actuals workbook (no
   // budget signal) safely defaults unresolved → actual — preserves files like
-  // Guvven Fin that carry no >>> section / budget keyword.
-  const hasBudgetSignal = classifications.some((c) => c.planKind === "budget")
+  // Guvven Fin that carry no >>> section / budget keyword. The budget signal
+  // must itself be a SOURCE, PLAN-RELEVANT sheet (a budget PLF/BS/CF) — not a
+  // derived "Budget Summary" view nor a SALES/forecast sheet (different write
+  // space) — so a pure-actuals workbook with e.g. a sales forecast can't
+  // over-block its actual statements (Codex P2).
+  const hasBudgetSignal = classifications.some(
+    (c) =>
+      c.planKind === "budget" &&
+      c.role !== "derived_summary" &&
+      PLAN_KIND_RELEVANT_DATATYPES.has(c.dataType),
+  )
 
   for (const cls of classifications) {
     // Gate 1 — skip derived/summary views so the multiple same-dataType views
@@ -647,7 +656,40 @@ export async function runMultiFileImport(
   }
   const collisions = [...byScope.entries()].filter(([, rs]) => rs.length > 1)
 
-  if (blockedRecords.length > 0 || collisions.length > 0) {
+  // Gate C: completeness — if every candidate for a plan-relevant
+  // (entity, dataType) is a derived/summary view (skipped), importing it would
+  // write NOTHING for that entity. Block rather than silently drop its data.
+  const byEntityType = new Map<
+    string,
+    { hasDerived: boolean; hasSource: boolean; sheets: string[] }
+  >()
+  for (const r of allRecords) {
+    if (!PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType)) continue
+    // Only guard REAL entities. A cross-entity/consolidated sheet (entityCode
+    // null — e.g. "CONS PL") is inherently a derived rollup with no source of
+    // its own; completeness must not fire on it.
+    if (r.classification.entityCode == null) continue
+    const key = `${r.classification.entityCode}::${r.classification.dataType}`
+    const e = byEntityType.get(key) ?? {
+      hasDerived: false,
+      hasSource: false,
+      sheets: [] as string[],
+    }
+    if (r.classification.role === "derived_summary") e.hasDerived = true
+    if (r.adapterResult && r.skippedReason === null && r.blockedReason === null)
+      e.hasSource = true
+    e.sheets.push(r.classification.sheetName)
+    byEntityType.set(key, e)
+  }
+  const incompletes = [...byEntityType.entries()].filter(
+    ([, e]) => e.hasDerived && !e.hasSource,
+  )
+
+  if (
+    blockedRecords.length > 0 ||
+    collisions.length > 0 ||
+    incompletes.length > 0
+  ) {
     const reasons = [
       ...blockedRecords.map((r) => `BLOCKED: ${r.blockedReason}`),
       ...collisions.map(
@@ -655,6 +697,12 @@ export async function runMultiFileImport(
           `COLLISION: ${rs.length} source sheets target the same write scope [${scope}] — they would clean-slate each other (${rs
             .map((r) => `"${r.classification.sheetName}"`)
             .join(", ")}). Mark all but one as a derived view, or split the scope.`,
+      ),
+      ...incompletes.map(
+        ([key, e]) =>
+          `COMPLETENESS: [${key}] has only derived/summary view(s) (${e.sheets
+            .map((s) => `"${s}"`)
+            .join(", ")}) and no source sheet — importing it would write nothing. Provide a source sheet or a config mapping.`,
       ),
     ]
     return {

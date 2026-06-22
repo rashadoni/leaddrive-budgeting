@@ -871,6 +871,76 @@ describe("runMultiFileImport", () => {
     expect(result.warnings.some((w) => /COLLISION.*BS (Actual|Faktiki)/i.test(w))).toBe(true)
   })
 
+  it("Gate: BLOCKS when an entity's only plan-relevant sheet is a derived view (completeness)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "Actual PLF", dataType: "PLF", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "source P&L" },
+        { sheetName: "BS Pivot", dataType: "BS", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "derived BS pivot — no source BS" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: {
+            Sheets: { "Actual PLF": { "!ref": "A1:C3" }, "BS Pivot": { "!ref": "A1:C3" } },
+            SheetNames: ["Actual PLF", "BS Pivot"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    expect(result.overallVerdict).toBe("red")
+    expect(prisma.__txCallCount.n).toBe(0) // CPC BS would import nothing → block
+    expect(result.warnings.some((w) => /COMPLETENESS.*BS/i.test(w))).toBe(true)
+  })
+
+  it("Gate: a SALES/forecast budget sheet does NOT over-block a pure-actuals workbook (Codex P2)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "PLF CPC", dataType: "PLF", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "actual P&L (no keyword)" },
+        { sheetName: "BS CPC", dataType: "BS", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "actual BS (no keyword)" },
+        { sheetName: "Sales 2027", dataType: "SALES", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "sales forecast → budget by dataType, but not plan-relevant" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "actuals.xlsx",
+          workbook: {
+            Sheets: { "PLF CPC": { "!ref": "A1:C3" }, "BS CPC": { "!ref": "A1:C3" }, "Sales 2027": { "!ref": "A1:C3" } },
+            SheetNames: ["PLF CPC", "BS CPC", "Sales 2027"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    // SALES is not a plan-relevant source budget sheet → hasBudgetSignal stays
+    // false → the unresolved actual PLF/BS default to actual and commit.
+    expect(result.overallVerdict).not.toBe("red")
+    expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {
     const prisma = stubPrisma()
     const client = stubClientPerCall([
