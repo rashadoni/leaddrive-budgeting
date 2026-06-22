@@ -21,7 +21,9 @@ describe("REPORTING_PACK_SHEET_MAP", () => {
     expect(route("Budget PLF", "PLF")).toMatchObject({ planKind: "budget", role: "source" })
     expect(route("BS Actual", "BS")).toMatchObject({ planKind: "actual", role: "source" })
     expect(route("CF Actual", "CF")).toMatchObject({ planKind: "actual", role: "source" })
-    expect(route("Budget CF", "CF")).toMatchObject({ planKind: "budget", role: "source" })
+    // Budget CF is intentionally NOT a source (2026-06-23): budget is P&L-only,
+    // and routing this consolidated CF to the holding inflated CashFlowEntry ~10×.
+    expect(route("Budget CF", "CF")).toMatchObject({ role: "derived_summary" })
   })
 
   it("skips every derived / summary / elimination / flat-feed view", () => {

@@ -36,7 +36,13 @@ export const REPORTING_PACK_SHEET_MAP: SheetMap = [
   { match: "Budget PLF", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
   { match: "BS Actual", planKind: "actual", role: "source" },
   { match: "CF Actual", planKind: "actual", role: "source" },
-  { match: "Budget CF", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
+  // Budget CF skipped (2026-06-23): the İcmal budget is P&L-ONLY by design — a
+  // budget plan carries no balance sheet and no cash flow. Routing this
+  // consolidated CF to the holding wrote a hierarchical (parent+child) layer
+  // with no dedup into CashFlowEntry (no companyId/planId), inflating the
+  // holding CF ~10× (873 rows / 988M vs the correct per-company ~95M). The real
+  // cash flow is the per-entity Guvven CF; the budget stays P&L-only.
+  { match: "Budget CF", role: "derived_summary" },
   // ── Derived / summary / elimination / flat-feed views (skipped) ─────
   { match: "Actual", role: "derived_summary" },
   { match: "Budget", role: "derived_summary" },
