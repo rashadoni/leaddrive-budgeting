@@ -1008,11 +1008,11 @@ describe("runMultiFileImport", () => {
             Sheets: { "Budget PLF": { "!ref": "A1:C3" }, "BS Actual": { "!ref": "A1:C3" }, "PL EDEN": { "!ref": "A1:C3" } },
             SheetNames: ["Budget PLF", "BS Actual", "PL EDEN"],
           },
+          sheetMap: REPORTING_PACK_SHEET_MAP,
         },
       ],
       organizationId: "org1",
       year: 2026,
-      sheetMap: REPORTING_PACK_SHEET_MAP,
       holdingCompanyCode: "AZSEKER",
     }
     const deps: MultiFileImportDependencies = {
@@ -1027,6 +1027,60 @@ describe("runMultiFileImport", () => {
     expect(captured["PL EDEN"]).toBeUndefined() // config-derived → skipped (handler not called)
     expect(result.overallVerdict).not.toBe("red") // EDEN config-view did NOT trip completeness
     expect(result.warnings.some((w) => /consolidated.*holding entity "AZSEKER"/i.test(w))).toBe(true)
+  })
+
+  it("Cross-entity (per-file scope): a SIBLING file's same-named tab is NOT holding-routed (Codex P0)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "h", code: "AZSEKER" }, { id: "c", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      // file A — the reporting pack (gets REPORTING_PACK_SHEET_MAP)
+      [
+        { sheetName: "Budget PLF", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "consolidated budget" },
+        { sheetName: "BS Actual", dataType: "BS", entityCode: null, confidence: 0.9, reasoning: "BS" },
+      ],
+      // file B — NOT a pack (no sheetMap), but happens to have a tab literally named "Budget PLF"
+      [
+        { sheetName: "Budget PLF", dataType: "PLF", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "CPC's own budget" },
+        { sheetName: "BS X", dataType: "BS", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "CPC BS" },
+      ],
+    ])
+    const budgetPlf: Array<string | null> = []
+    const cap: AdapterHandler = async (i: { sheetName: string; entityCode?: string | null }) => {
+      if (i.sheetName === "Budget PLF") budgetPlf.push(i.entityCode ?? null)
+      const n = i.entityCode ? 5 : 0
+      return {
+        summary: "ok",
+        itemCount: n,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: n })),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: { Sheets: { "Budget PLF": { "!ref": "A1:C3" }, "BS Actual": { "!ref": "A1:C3" } }, SheetNames: ["Budget PLF", "BS Actual"] },
+          sheetMap: REPORTING_PACK_SHEET_MAP, // only THIS file is a reporting pack
+        },
+        {
+          filename: "cpc.xlsx",
+          workbook: { Sheets: { "Budget PLF": { "!ref": "A1:C3" }, "BS X": { "!ref": "A1:C3" } }, SheetNames: ["Budget PLF", "BS X"] },
+          // NO sheetMap — its "Budget PLF" must keep its own entity
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      holdingCompanyCode: "AZSEKER",
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: cap, BS: cap }),
+      XLSX: fakeXLSX,
+    }
+    await runMultiFileImport(input, deps)
+    expect(budgetPlf).toContain("AZSEKER") // file A's consolidated budget → holding
+    expect(budgetPlf).toContain("AZSEKER-CPC") // file B's same-named tab kept its entity — per-file scope, not request-wide
   })
 
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {

@@ -49,6 +49,7 @@ import {
   REPORTING_PACK_SHEET_MAP,
   looksLikeReportingPack,
 } from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
+import type { SheetMap } from "@/lib/onboarding/ai-import/sheet-routing"
 import {
   affectedIndicatorsForDataType,
   type DataTypeImpact,
@@ -215,6 +216,7 @@ export async function POST(request: NextRequest) {
   const files: Array<{
     filename: string
     workbook: XLSX.WorkBook
+    sheetMap?: SheetMap
   }> = []
   for (const blob of fileEntries) {
     const filename = blob instanceof File ? blob.name : "uploaded.xlsx"
@@ -225,7 +227,16 @@ export async function POST(request: NextRequest) {
         cellHTML: false,
         type: "buffer",
       })
-      files.push({ filename, workbook: wb })
+      // Per-FILE sheet-map: detect the reporting-pack shape on THIS file's own
+      // tabs (exact-name → no-op on any other workbook). Per-file so a sibling
+      // file with a same-named tab isn't wrongly overridden (Codex P0).
+      files.push({
+        filename,
+        workbook: wb,
+        sheetMap: looksLikeReportingPack(wb.SheetNames)
+          ? REPORTING_PACK_SHEET_MAP
+          : undefined,
+      })
     } catch (err) {
       return NextResponse.json(
         {
@@ -237,19 +248,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Apply the deterministic per-shape sheet-map when the upload matches a known
-  // recurring shape. Detection is exact-tab-name based, so it's a no-op on any
-  // other workbook (e.g. Guvven Fin). Robust follow-up: per-org importConfig.
-  const allSheetNames = files.flatMap((f) => f.workbook.SheetNames)
-  const isReportingPack = looksLikeReportingPack(allSheetNames)
-  const sheetMap = isReportingPack ? REPORTING_PACK_SHEET_MAP : undefined
-  // The reporting pack's consolidated budget tabs carry the holding sentinel in
-  // the sheet-map; resolve the org's holding (level-1) company so the
-  // orchestrator routes those tabs there.
-  // Resolve the holding deterministically: require EXACTLY ONE level-1 company.
-  // 0 or >1 → leave unset, so the consolidated sentinel no-ops rather than
-  // routing the whole group's budget to an arbitrary sub-group (Codex P1).
-  const level1 = isReportingPack
+  // Per-file sheet-maps were assigned during parse (looksLikeReportingPack on
+  // each file's own tabs). If ANY file is a reporting pack, its consolidated
+  // budget tabs carry the holding sentinel → resolve the org's holding (level-1)
+  // company. Require EXACTLY ONE level-1; 0 or >1 → leave unset so the sentinel
+  // no-ops rather than routing the group's budget to an arbitrary sub-group.
+  const anyReportingPack = files.some((f) => f.sheetMap !== undefined)
+  const level1 = anyReportingPack
     ? await prisma.company.findMany({
         where: { organizationId: orgId, level: 1 },
         select: { code: true },
@@ -312,7 +317,6 @@ export async function POST(request: NextRequest) {
         year,
         knownEntityCodes,
         orgIndustry,
-        sheetMap,
         holdingCompanyCode,
         allowYellow,
         forceOverride,

@@ -135,6 +135,11 @@ export interface MultiFileImportInput {
     // Phase 8 D3 (2026-05-28) — tightened to XLSX.WorkBook so the
     // adapter chain doesn't need `as any` bridges.
     workbook: XLSXType.WorkBook
+    /** Per-FILE sheet-map (deterministic role/planKind/entity overrides) — set by
+     *  the caller based on THIS file's shape (e.g. looksLikeReportingPack on its
+     *  own tabs). Per-file, NOT request-wide, so a sibling file with a same-named
+     *  tab isn't wrongly overridden (Codex P0). */
+    sheetMap?: SheetMap
   }>
   organizationId: string
   year: number
@@ -142,10 +147,6 @@ export interface MultiFileImportInput {
   knownEntityCodes?: string[]
   /** Org primary industry hint forwarded to LLM. */
   orgIndustry?: string
-  /** Optional per-shape sheet-map (deterministic role/planKind overrides for
-   *  recurring workbook shapes, e.g. the reporting pack). Threaded to the
-   *  classifier's resolveSheetRouting. */
-  sheetMap?: SheetMap
   /** The holding (level-1) company code, used to resolve a sheet-map
    *  HOLDING_ENTITY_SENTINEL entity-override (e.g. consolidated budget tabs that
    *  belong on the holding, not split per-company). */
@@ -291,6 +292,18 @@ interface ParseRecord {
  *  an ambiguous planKind can corrupt (route budget into actuals). Non-plan
  *  dataTypes (KPI/SALES/LAND/…) ignore planKind, so a null there is harmless. */
 const PLAN_KIND_RELEVANT_DATATYPES = new Set<SheetDataType>(["PLF", "BS", "CF"])
+
+/** The entity a record's data is actually written to / accounted against. Use
+ *  the EFFECTIVE entity whenever it was resolved (even if null — an unresolved
+ *  holding sentinel intentionally writes NOWHERE; bookkeeping must NOT fall back
+ *  to the classifier's child guess, else it'd clear a child banner / recompute a
+ *  child for a no-op record). Records that never resolved one (non-source) fall
+ *  back to the classifier entity. `?? ` would wrongly collapse null → guess (Codex). */
+function writeEntity(r: ParseRecord): string | null {
+  return r.effectiveEntityCode !== undefined
+    ? r.effectiveEntityCode
+    : (r.classification.entityCode ?? null)
+}
 
 /** Run adapter parse phase for one file (no DB writes). Applies the per-sheet
  *  routing safety gates: skip derived/summary views, and resolve planKind —
@@ -504,7 +517,7 @@ export async function runMultiFileImport(
           {
             sheetMetas: metas,
             knownEntityCodes: input.knownEntityCodes,
-            sheetMap: input.sheetMap,
+            sheetMap: file.sheetMap,
             orgIndustry: input.orgIndustry,
             filenameHint: file.filename,
           },
@@ -708,7 +721,7 @@ export async function runMultiFileImport(
     // several harmless 0-row PLF sheets in one file falsely abort the whole
     // import (regressed the Farming-strategy forward-forecast load 2026-06-22).
     if ((r.adapterResult?.itemCount ?? 0) <= 0) continue
-    const scope = `${r.filename}::${(r.effectiveEntityCode ?? r.classification.entityCode) ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
+    const scope = `${r.filename}::${writeEntity(r) ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
     const arr = byScope.get(scope)
     if (arr) arr.push(r)
     else byScope.set(scope, [r])
@@ -728,7 +741,7 @@ export async function runMultiFileImport(
     // effective entity — it's holding-only, not all-entity) AND it actually
     // wrote rows (a 0-item null sheet covers nothing).
     if (
-      (r.effectiveEntityCode ?? r.classification.entityCode) == null &&
+      writeEntity(r) == null &&
       (r.adapterResult?.itemCount ?? 0) > 0
     )
       allEntitySourceTypes.add(r.classification.dataType)
@@ -747,8 +760,8 @@ export async function runMultiFileImport(
     // Only guard REAL entities. A cross-entity/consolidated sheet (entityCode
     // null — e.g. "CONS PL") is inherently a derived rollup with no source of
     // its own; completeness must not fire on it.
-    if ((r.effectiveEntityCode ?? r.classification.entityCode) == null) continue
-    const key = `${(r.effectiveEntityCode ?? r.classification.entityCode)}::${r.classification.dataType}`
+    if (writeEntity(r) == null) continue
+    const key = `${writeEntity(r)}::${r.classification.dataType}`
     const e = byEntityType.get(key) ?? {
       dataType: r.classification.dataType,
       hasDerived: false,
@@ -902,7 +915,7 @@ export async function runMultiFileImport(
     const dryInputs: SheetReconciliationInput[] = groupRecords.map((r) => ({
       sheetName: `${r.filename}::${r.classification.sheetName}`,
       dataType: r.classification.dataType,
-      entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
+      entityCode: writeEntity(r),
       expectedSums: r.expectedSums,
       actualSums: r.expectedSums,
     }))
@@ -961,7 +974,7 @@ export async function runMultiFileImport(
           tx,
           input.organizationId,
           groupRecords
-            .map((r) => (r.effectiveEntityCode ?? r.classification.entityCode))
+            .map((r) => writeEntity(r))
             .filter((c): c is string => !!c),
         )
 
@@ -974,14 +987,14 @@ export async function runMultiFileImport(
             const actual = await deps.readActualSums({
               sheetName: r.classification.sheetName,
               dataType: r.classification.dataType,
-              entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
+              entityCode: writeEntity(r),
               organizationId: input.organizationId,
               year: input.year,
             })
             postInputs.push({
               sheetName: `${r.filename}::${r.classification.sheetName}`,
               dataType: r.classification.dataType,
-              entityCode: (r.effectiveEntityCode ?? r.classification.entityCode),
+              entityCode: writeEntity(r),
               expectedSums: r.expectedSums,
               actualSums: actual,
             })
@@ -1019,7 +1032,7 @@ export async function runMultiFileImport(
       for (const r of groupRecords) {
         // Recompute the entity actually written (effective target), not the
         // classifier's guess. Map code → id lazily before the recompute call.
-        const ec = r.effectiveEntityCode ?? r.classification.entityCode
+        const ec = writeEntity(r)
         if (ec) {
           touchedCompanies.add(ec)
         }
