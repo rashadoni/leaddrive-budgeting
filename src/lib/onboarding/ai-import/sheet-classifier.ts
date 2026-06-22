@@ -190,6 +190,9 @@ export interface SheetClassifierInput {
    *  classifier (e.g. "Farming strategy - Guvven.xlsx" → suggests
    *  forward-forecast). Does NOT override sheet-shape evidence. */
   filenameHint?: string
+  /** Optional per-shape sheet-map (deterministic role/planKind overrides),
+   *  forwarded to resolveSheetRouting via withPlanKind. */
+  sheetMap?: SheetMap
 }
 
 export interface SheetClassifierResult {
@@ -345,7 +348,7 @@ export async function classifySheets(
 
   if (needsLLM.length === 0) {
     return {
-      classifications: withPlanKind(preClassified, input.sheetMetas),
+      classifications: withPlanKind(preClassified, input.sheetMetas, input.sheetMap),
       usage: {
         inputTokens: 0,
         outputTokens: 0,
@@ -435,7 +438,7 @@ export async function classifySheets(
   }
 
   return {
-    classifications: withPlanKind(ordered, input.sheetMetas),
+    classifications: withPlanKind(ordered, input.sheetMetas, input.sheetMap),
     usage: {
       inputTokens: response.usage?.input_tokens ?? 0,
       outputTokens: response.usage?.output_tokens ?? 0,

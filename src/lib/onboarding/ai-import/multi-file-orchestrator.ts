@@ -60,7 +60,7 @@ import {
   type SheetClassification,
   type SheetDataType,
 } from "./sheet-classifier"
-import type { PlanKind } from "./sheet-routing"
+import type { PlanKind, SheetMap } from "./sheet-routing"
 import {
   detectFileType,
   type FileType,
@@ -138,6 +138,10 @@ export interface MultiFileImportInput {
   knownEntityCodes?: string[]
   /** Org primary industry hint forwarded to LLM. */
   orgIndustry?: string
+  /** Optional per-shape sheet-map (deterministic role/planKind overrides for
+   *  recurring workbook shapes, e.g. the reporting pack). Threaded to the
+   *  classifier's resolveSheetRouting. */
+  sheetMap?: SheetMap
   /** Commit yellow-verdict groups (default false — abort on yellow). */
   allowYellow?: boolean
   /** Don't touch DB even on green (parse + classify + conflict-detect only). */
@@ -304,9 +308,15 @@ async function parseFileSheets(
   )
 
   for (const cls of classifications) {
-    // Gate 1 — skip derived/summary views so the multiple same-dataType views
-    // in a reporting pack can't clean-slate the source sheet.
-    if (cls.role === "derived_summary") {
+    // Gate 1 — skip derived/summary views of a PLAN-RELEVANT statement so the
+    // multiple same-dataType views in a reporting pack can't clean-slate the
+    // source sheet. Scoped to PLF/BS/CF: a KPI/SALES sheet named "…Summary"
+    // appends to operational_facts (no clean-slate-by-scope), so skipping it
+    // would silently drop real data.
+    if (
+      cls.role === "derived_summary" &&
+      PLAN_KIND_RELEVANT_DATATYPES.has(cls.dataType)
+    ) {
       records.push({
         filename,
         classification: cls,
@@ -455,6 +465,7 @@ export async function runMultiFileImport(
           {
             sheetMetas: metas,
             knownEntityCodes: input.knownEntityCodes,
+            sheetMap: input.sheetMap,
             orgIndustry: input.orgIndustry,
             filenameHint: file.filename,
           },
@@ -649,6 +660,9 @@ export async function runMultiFileImport(
   )
   const byScope = new Map<string, ParseRecord[]>()
   for (const r of sourceRecords) {
+    // Only plan tables clean-slate by (entity,dataType,planKind); KPI/SALES
+    // append to operational_facts (metric-scoped), so they don't collide here.
+    if (!PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType)) continue
     const scope = `${r.filename}::${r.classification.entityCode ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
     const arr = byScope.get(scope)
     if (arr) arr.push(r)
@@ -659,9 +673,22 @@ export async function runMultiFileImport(
   // Gate C: completeness — if every candidate for a plan-relevant
   // (entity, dataType) is a derived/summary view (skipped), importing it would
   // write NOTHING for that entity. Block rather than silently drop its data.
+  // An ALL-ENTITY source (entityCode null, e.g. a consolidated "BS Actual" with
+  // entity columns) covers every entity, so an entity's derived-only view is
+  // NOT a loss when such a source exists for that dataType.
+  const allEntitySourceTypes = new Set<SheetDataType>()
+  for (const r of sourceRecords) {
+    if (r.classification.entityCode == null)
+      allEntitySourceTypes.add(r.classification.dataType)
+  }
   const byEntityType = new Map<
     string,
-    { hasDerived: boolean; hasSource: boolean; sheets: string[] }
+    {
+      dataType: SheetDataType
+      hasDerived: boolean
+      hasSource: boolean
+      sheets: string[]
+    }
   >()
   for (const r of allRecords) {
     if (!PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType)) continue
@@ -671,6 +698,7 @@ export async function runMultiFileImport(
     if (r.classification.entityCode == null) continue
     const key = `${r.classification.entityCode}::${r.classification.dataType}`
     const e = byEntityType.get(key) ?? {
+      dataType: r.classification.dataType,
       hasDerived: false,
       hasSource: false,
       sheets: [] as string[],
@@ -682,7 +710,8 @@ export async function runMultiFileImport(
     byEntityType.set(key, e)
   }
   const incompletes = [...byEntityType.entries()].filter(
-    ([, e]) => e.hasDerived && !e.hasSource,
+    ([, e]) =>
+      e.hasDerived && !e.hasSource && !allEntitySourceTypes.has(e.dataType),
   )
 
   if (
