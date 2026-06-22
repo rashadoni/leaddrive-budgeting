@@ -41,7 +41,12 @@ import { getLogger } from "@/lib/log"
 // Phase 8 D4 final (2026-05-29) — structured logger.
 const log = getLogger("api:admin:data-archive")
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
-import { archiveRows, restoreRows, resetCompanyImportData } from "@/lib/server/archive"
+import {
+  archiveRows,
+  restoreRows,
+  resetCompanyImportData,
+  archiveOrgOrphanBudgetLines,
+} from "@/lib/server/archive"
 import { runRecomputeForCompanies } from "@/lib/risk/recompute-trigger"
 
 const RATE_LIMIT = { name: "data-archive", max: 5, windowMs: 60_000 }
@@ -215,6 +220,18 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+    // Whole-holding reset? Only then do we sweep org-level ORPHAN lines
+    // (companyId = NULL) — the un-attributed import residue a per-company WHERE
+    // can't reach. A partial selection leaves them (we can't attribute an
+    // un-owned line to a subset). "Whole holding" = every OPERATIONAL company
+    // (level > 1) targeted — matching the picker the UI offers (page.tsx filters
+    // `level: { gt: 1 }`, so a level-1 subgroup parent must NOT gate this off).
+    const operationalCompanies = await prisma.company.findMany({
+      where: { organizationId: orgId, isActive: true, level: { gt: 1 } },
+      select: { code: true },
+    })
+    const isWholeHolding =
+      operationalCompanies.length > 0 && operationalCompanies.every((c) => found.has(c.code))
     // Per-company reset — each is its own transaction inside
     // resetCompanyImportData and writes its own `data_reset` audit event — then
     // recompute. Aggregate; on a per-company failure keep going and report it
@@ -288,23 +305,59 @@ export async function POST(request: NextRequest) {
     const failures = perCompany.filter(
       (p): p is { code: string; error: string } => "error" in p,
     )
+    // ONCE, after the per-company loop: if this was a whole-holding reset and
+    // EVERY company succeeded, sweep org-level ORPHAN BudgetLines (companyId =
+    // NULL un-attributed residue a per-company WHERE can't reach). Gated to
+    // all-succeeded so we never leave a partial state where org rows are gone but
+    // a company didn't reset (Codex 2026-06-22 MED Q3). Mixed-plans-only inside.
+    let orphanRowsAffected = 0
+    let orphanError: string | null = null
+    if (isWholeHolding && failures.length === 0) {
+      try {
+        const orphan = await archiveOrgOrphanBudgetLines({
+          prisma,
+          actorUserId: session.userId,
+          reason,
+          organizationId: orgId,
+          year: scope.year,
+        })
+        orphanRowsAffected = orphan.rowsAffected
+        rowsAffected += orphan.rowsAffected
+        if (orphan.rowsAffected > 0) {
+          breakdown.orphanBudgetLine = (breakdown.orphanBudgetLine ?? 0) + orphan.rowsAffected
+        }
+      } catch (err) {
+        // The per-company resets COMMITTED, but the org-level orphan tail was NOT
+        // removed — a "no-tails" reset that still left tails. Report non-success
+        // so the operator knows to retry (Codex 2026-06-22 MED). Idempotent: a
+        // re-run of the whole-holding reset re-sweeps (archived company lines no-op).
+        orphanError = err instanceof Error ? err.message : String(err)
+        log.error("org-orphan sweep after whole-holding reset FAILED — tails remain", {
+          err: orphanError,
+        })
+      }
+    }
+    const ok = failures.length === 0 && !orphanError
     return NextResponse.json(
       {
-        ok: failures.length === 0,
+        ok,
         mode: "reset",
         rowsAffected,
         breakdown,
+        orphanRowsAffected,
         recomputed,
         companiesReset: perCompany.length - failures.length,
         perCompany,
         ...(failures.length > 0
           ? { error: `${failures.length} of ${targets.length} companies failed: ${failures.map((f) => f.code).join(", ")}` }
-          : {}),
+          : orphanError
+            ? { error: `org-level orphan sweep failed after a clean per-company reset (tails remain): ${orphanError}` }
+            : {}),
       },
-      // 207 Multi-Status on any failure so status-keyed clients/log parsers
-      // don't read a partial wipe as success (Codex 2026-06-21). The form keys
-      // on body.ok, so its behaviour is unchanged.
-      { status: failures.length > 0 ? 207 : 200 },
+      // 207 Multi-Status on ANY failure (a failed company OR a failed orphan
+      // sweep) so status-keyed clients/log parsers don't read an incomplete reset
+      // as success (Codex 2026-06-21 / 2026-06-22). The form keys on body.ok.
+      { status: ok ? 200 : 207 },
     )
   }
 

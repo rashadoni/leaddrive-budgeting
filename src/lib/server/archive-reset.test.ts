@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from "vitest"
-import { resetCompanyImportData, IMPORT_SETTINGS_KEYS } from "./archive"
+import {
+  resetCompanyImportData,
+  archiveOrgOrphanBudgetLines,
+  IMPORT_SETTINGS_KEYS,
+} from "./archive"
 
 vi.mock("@/lib/audit/log", () => ({
   logAuditEvent: vi.fn(async () => ({ ok: true, id: "audit_1" })),
@@ -101,5 +105,64 @@ describe("resetCompanyImportData", () => {
     await expect(
       resetCompanyImportData({ prisma, actorUserId: "u1", scope: { organizationId: "org1" } }),
     ).rejects.toThrow(/companyCode is required/)
+  })
+})
+
+function fakeOrphanPrisma(mixedPlanIds: string[], sweptCount: number) {
+  const tx = {
+    budgetLine: {
+      findMany: vi.fn(async () => mixedPlanIds.map((planId) => ({ planId }))),
+      updateMany: vi.fn(async () => ({ count: sweptCount })),
+    },
+  }
+  const prisma = {
+    $transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx)),
+  }
+  return { prisma: prisma as never, tx }
+}
+
+describe("archiveOrgOrphanBudgetLines", () => {
+  it("sweeps NULL-company lines ONLY in mixed plans (plans that have company-attributed lines)", async () => {
+    const { prisma, tx } = fakeOrphanPrisma(["plan_2023"], 214)
+    const res = await archiveOrgOrphanBudgetLines({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+      year: 2023,
+    })
+    // 1) residue plans = those with ≥1 company-attributed line (companyId not null)
+    const fm = tx.budgetLine.findMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown>; distinct: string[] }]
+    >
+    expect(fm[0][0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: { not: null },
+      plan: { year: 2023 },
+    })
+    expect(fm[0][0].distinct).toEqual(["planId"])
+    // 2) soft-archive the NULL lines IN THOSE PLANS — never a blanket companyId:null wipe
+    const um = tx.budgetLine.updateMany.mock.calls as unknown as Array<
+      [{ where: Record<string, unknown> }]
+    >
+    expect(um[0][0].where).toMatchObject({
+      organizationId: "org1",
+      companyId: null,
+      planId: { in: ["plan_2023"] },
+      deletedAt: null,
+      plan: { year: 2023 },
+    })
+    expect(res.rowsAffected).toBe(214)
+    expect(res.auditEventId).toBe("audit_1")
+  })
+
+  it("leaves a wholly company-less plan alone (no mixed plans → no sweep)", async () => {
+    const { prisma, tx } = fakeOrphanPrisma([], 0)
+    const res = await archiveOrgOrphanBudgetLines({
+      prisma,
+      actorUserId: "u1",
+      organizationId: "org1",
+    })
+    expect(tx.budgetLine.updateMany).not.toHaveBeenCalled()
+    expect(res.rowsAffected).toBe(0)
   })
 })

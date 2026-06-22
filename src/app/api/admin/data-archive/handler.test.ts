@@ -9,17 +9,19 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock, archiveRowsMock, restoreRowsMock, resetMock, recomputeMock } = vi.hoisted(() => ({
-  prismaMock: {
-    cashFlowEntry: { count: vi.fn() },
-    company: { findMany: vi.fn(), findFirst: vi.fn() },
-    indicatorValue: { findMany: vi.fn() },
-  },
-  archiveRowsMock: vi.fn(),
-  restoreRowsMock: vi.fn(),
-  resetMock: vi.fn(),
-  recomputeMock: vi.fn(),
-}))
+const { prismaMock, archiveRowsMock, restoreRowsMock, resetMock, orphanSweepMock, recomputeMock } =
+  vi.hoisted(() => ({
+    prismaMock: {
+      cashFlowEntry: { count: vi.fn() },
+      company: { findMany: vi.fn(), findFirst: vi.fn() },
+      indicatorValue: { findMany: vi.fn() },
+    },
+    archiveRowsMock: vi.fn(),
+    restoreRowsMock: vi.fn(),
+    resetMock: vi.fn(),
+    orphanSweepMock: vi.fn(),
+    recomputeMock: vi.fn(),
+  }))
 
 vi.mock("@/lib/api-auth", () => ({
   requireRole: vi.fn(),
@@ -35,6 +37,7 @@ vi.mock("@/lib/server/archive", () => ({
   archiveRows: archiveRowsMock,
   restoreRows: restoreRowsMock,
   resetCompanyImportData: resetMock,
+  archiveOrgOrphanBudgetLines: orphanSweepMock,
 }))
 vi.mock("@/lib/risk/recompute-trigger", () => ({ runRecomputeForCompanies: recomputeMock }))
 
@@ -62,6 +65,9 @@ beforeEach(() => {
     breakdown: { budgetLines: 60, balanceSheetLines: 40 },
     auditEventId: "r1",
   })
+  // Default: org-orphan sweep finds nothing (a no-op) so existing reset tests are
+  // unaffected whether or not the whole-holding gate happens to fire.
+  orphanSweepMock.mockResolvedValue({ rowsAffected: 0, auditEventId: null })
   recomputeMock.mockResolvedValue({ ok: 3 })
   prismaMock.indicatorValue.findMany.mockResolvedValue([])
 })
@@ -131,6 +137,97 @@ describe("POST /api/admin/data-archive — AllImportData multi-company reset", (
     // each reset is scoped to its OWN company (no cross-company bleed)
     expect(resetMock.mock.calls[0][0].scope.companyCode).toBe("AZSEKER-CPC")
     expect(resetMock.mock.calls[1][0].scope.companyCode).toBe("AZSEKER-EDEN")
+  })
+
+  it("sweeps org-level orphan lines ONCE after a whole-holding reset (all operational companies targeted)", async () => {
+    prismaMock.company.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ]) // targets
+      .mockResolvedValueOnce([{ code: "AZSEKER-CPC" }, { code: "AZSEKER-EDEN" }]) // operational (level>1) — all targeted
+    orphanSweepMock.mockResolvedValue({ rowsAffected: 214, auditEventId: "o1" })
+    const res = await POST(
+      req({
+        mode: "archive",
+        entityKind: "AllImportData",
+        companyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+        confirmCode: "ALL",
+      }),
+    )
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(orphanSweepMock).toHaveBeenCalledTimes(1) // ONCE, after the loop
+    expect(orphanSweepMock.mock.calls[0][0]).toMatchObject({ organizationId: "org1" })
+    expect(body.orphanRowsAffected).toBe(214)
+    expect(body.breakdown.orphanBudgetLine).toBe(214)
+    expect(body.rowsAffected).toBe(200 + 214)
+  })
+
+  it("does NOT sweep orphans on a partial selection (not every operational company targeted)", async () => {
+    prismaMock.company.findMany
+      .mockResolvedValueOnce([{ id: "c1", code: "AZSEKER-CPC" }]) // targets (1)
+      .mockResolvedValueOnce([{ code: "AZSEKER-CPC" }, { code: "AZSEKER-EDEN" }]) // operational (2) → not all targeted
+    const res = await POST(
+      req({
+        mode: "archive",
+        entityKind: "AllImportData",
+        companyCodes: ["AZSEKER-CPC"],
+        confirmCode: "ALL",
+      }),
+    )
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(orphanSweepMock).not.toHaveBeenCalled()
+    expect(body.orphanRowsAffected).toBe(0)
+  })
+
+  it("skips the orphan sweep if ANY company reset failed (no partial-state tails)", async () => {
+    prismaMock.company.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ]) // targets
+      .mockResolvedValueOnce([{ code: "AZSEKER-CPC" }, { code: "AZSEKER-EDEN" }]) // operational → whole holding
+    resetMock
+      .mockResolvedValueOnce({ rowsAffected: 100, breakdown: {}, auditEventId: "r1" }) // CPC ok
+      .mockRejectedValueOnce(new Error("EDEN reset boom")) // EDEN fails
+    const res = await POST(
+      req({
+        mode: "archive",
+        entityKind: "AllImportData",
+        companyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+        confirmCode: "ALL",
+      }),
+    )
+    const body = await res.json()
+    expect(res.status).toBe(207)
+    expect(body.ok).toBe(false)
+    expect(orphanSweepMock).not.toHaveBeenCalled() // failures.length > 0 → no sweep
+  })
+
+  it("reports non-success when the orphan sweep itself fails after a clean per-company reset", async () => {
+    prismaMock.company.findMany
+      .mockResolvedValueOnce([
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ]) // targets
+      .mockResolvedValueOnce([{ code: "AZSEKER-CPC" }, { code: "AZSEKER-EDEN" }]) // operational → whole holding
+    orphanSweepMock.mockRejectedValue(new Error("sweep boom"))
+    const res = await POST(
+      req({
+        mode: "archive",
+        entityKind: "AllImportData",
+        companyCodes: ["AZSEKER-CPC", "AZSEKER-EDEN"],
+        confirmCode: "ALL",
+      }),
+    )
+    const body = await res.json()
+    expect(res.status).toBe(207) // tails remain → NOT a clean success
+    expect(body.ok).toBe(false)
+    expect(body.error).toMatch(/orphan sweep failed/i)
+    expect(body.companiesReset).toBe(2) // the per-company resets DID commit
   })
 
   it("400s on an unknown company code BEFORE any reset (no partial wipe on a typo)", async () => {

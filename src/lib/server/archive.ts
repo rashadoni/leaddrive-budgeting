@@ -378,9 +378,11 @@ export interface ResetResult {
  *   • HARD-deletes BudgetActual (BUDGET_ACTUALS import; no soft-delete column);
  *   • removes the import-derived Company.settings keys (IMPORT_SETTINGS_KEYS).
  *
- * OUT OF SCOPE (org-level, no companyId — a per-company reset cannot target them):
- * Organization.settings.forwardForecast and the `sales_forecasts` table. A
- * separate org-level reset would own those.
+ * OUT OF SCOPE — company-less rows (companyId = NULL) a per-company WHERE can't
+ * reach: org-level ORPHAN BudgetLines (the "reset everything but 1.3M survived"
+ * tail), Organization.settings.forwardForecast, and `sales_forecasts`. The
+ * whole-holding reset path sweeps orphan BudgetLines separately via
+ * `archiveOrgOrphanBudgetLines` (once, after every per-company reset succeeds).
  *
  * `year` is optional — omit for an all-years reset (the deepest clean), pass it
  * to scope BudgetLine (plan.year) / BS / CF (year) and OperationalFact (date in
@@ -503,5 +505,94 @@ export async function resetCompanyImportData(
     })
 
     return { rowsAffected, breakdown, auditEventId: audit.ok ? audit.id : null }
+  })
+}
+
+export interface OrphanSweepResult {
+  rowsAffected: number
+  auditEventId: string | null
+}
+
+/**
+ * Sweep ORG-LEVEL ORPHAN BudgetLines — company-less (companyId = NULL) rows a
+ * per-company reset WHERE can't reach. Legacy imports that pre-date per-company
+ * attribution leave them in an org-level plan (the "I reset everything but 1.3M
+ * survived" tail).
+ *
+ * SAFETY (destructive, scope-broadening — see project_import_clean_slate_guard):
+ *   • MIXED PLANS ONLY — a plan is swept only if it ALSO holds ≥1 company-
+ *     attributed line (live OR archived). A NULL line in a per-company plan is
+ *     un-attributed residue; a plan that is WHOLLY company-less is a deliberate
+ *     org-level plan and is LEFT ALONE. (Closes Codex 2026-06-22 HIGH Q1 — the
+ *     guard is "the plan has real per-company owners", not merely "shared plan".)
+ *   • Soft-archive (deletedAt stamp), never a hard delete; reads exclude it. NOTE
+ *     the generic UI restore is per-company, so it cannot reach companyId=NULL
+ *     rows — recovery is a manual DB un-stamp (Codex HIGH Q4: not UI-reversible).
+ *   • Caller MUST gate to a WHOLE-HOLDING reset that fully SUCCEEDED — never a
+ *     partial/surgical reset (an orphan can't be attributed to a subset), and
+ *     run this ONCE after the per-company loop (Codex MED Q3: no partial state).
+ *
+ * `year` optional — scope to BudgetPlan.year, else all years.
+ */
+export async function archiveOrgOrphanBudgetLines(args: {
+  prisma: PrismaClient
+  actorUserId: string
+  reason?: string
+  organizationId: string
+  year?: number
+}): Promise<OrphanSweepResult> {
+  const { prisma, actorUserId, reason, organizationId, year } = args
+  const stamp = archiveStamp(actorUserId)
+  return prisma.$transaction(async (tx) => {
+    // Plans that hold ANY company-attributed line (live OR archived — by the
+    // time the per-company resets have run those lines are already soft-archived,
+    // so a deletedAt:null filter here would wrongly exclude the residue plan).
+    const attrWhere: Record<string, unknown> = {
+      organizationId,
+      companyId: { not: null },
+    }
+    if (year) attrWhere.plan = { year }
+    const mixedPlanIds = (
+      await tx.budgetLine.findMany({
+        where: attrWhere as never,
+        select: { planId: true },
+        distinct: ["planId"],
+      })
+    ).map((r) => r.planId)
+
+    let rowsAffected = 0
+    if (mixedPlanIds.length > 0) {
+      const orphanWhere: Record<string, unknown> = {
+        organizationId,
+        companyId: null,
+        planId: { in: mixedPlanIds },
+        deletedAt: null,
+      }
+      if (year) orphanWhere.plan = { year }
+      rowsAffected = (await tx.budgetLine.updateMany({ where: orphanWhere as never, data: stamp }))
+        .count
+    }
+
+    // Reuse the `data_reset` action (already in the Prisma AuditAction enum — no
+    // migration, no runtime "Invalid value for argument action" trap). Its
+    // contract requires a Company entityType + companyCode, so we tag this
+    // org-level sweep with a marker code that can't collide with a real one.
+    const audit = await logAuditEvent(tx as PrismaClient, {
+      organizationId,
+      actorUserId,
+      event: {
+        action: "data_reset",
+        entityType: "Company",
+        entityId: `org-orphan-budgetlines:${year ?? "ALL"}`,
+        metadata: {
+          companyCode: "__ORG_ORPHANS__",
+          year,
+          breakdown: { orphanBudgetLine: rowsAffected },
+          rowsAffected,
+          reason,
+        },
+      },
+    })
+    return { rowsAffected, auditEventId: audit.ok ? audit.id : null }
   })
 }
