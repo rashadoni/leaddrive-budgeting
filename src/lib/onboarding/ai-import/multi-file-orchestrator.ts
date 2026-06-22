@@ -60,7 +60,11 @@ import {
   type SheetClassification,
   type SheetDataType,
 } from "./sheet-classifier"
-import type { PlanKind, SheetMap } from "./sheet-routing"
+import {
+  HOLDING_ENTITY_SENTINEL,
+  type PlanKind,
+  type SheetMap,
+} from "./sheet-routing"
 import {
   detectFileType,
   type FileType,
@@ -142,6 +146,10 @@ export interface MultiFileImportInput {
    *  recurring workbook shapes, e.g. the reporting pack). Threaded to the
    *  classifier's resolveSheetRouting. */
   sheetMap?: SheetMap
+  /** The holding (level-1) company code, used to resolve a sheet-map
+   *  HOLDING_ENTITY_SENTINEL entity-override (e.g. consolidated budget tabs that
+   *  belong on the holding, not split per-company). */
+  holdingCompanyCode?: string
   /** Commit yellow-verdict groups (default false — abort on yellow). */
   allowYellow?: boolean
   /** Don't touch DB even on green (parse + classify + conflict-detect only). */
@@ -313,11 +321,30 @@ async function parseFileSheets(
   )
 
   for (const cls of classifications) {
-    // The entity the sheet actually writes to. = classifier entity for now; the
-    // per-sheet config entity-override (cross-entity → holding) plugs in here in
-    // a later step. Threaded onto every record so the gates + post-write
-    // bookkeeping key on the real write target, not the classifier's guess.
-    const effectiveEntityCode: string | null = cls.entityCode
+    // The entity the sheet actually writes to. Resolve the per-sheet config
+    // entity-override here: a consolidated reporting-pack tab carries the holding
+    // sentinel → route to the org's holding; a literal override → that code;
+    // absent → the classifier's entityCode. Threaded onto every record so the
+    // gates + post-write bookkeeping key on the real write target.
+    let effectiveEntityCode: string | null = cls.entityCode
+    if (cls.entityCodeOverride === HOLDING_ENTITY_SENTINEL) {
+      if (input.holdingCompanyCode) {
+        effectiveEntityCode = input.holdingCompanyCode
+        warnings.push(
+          `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) is consolidated — routed to the holding entity "${input.holdingCompanyCode}"`,
+        )
+      } else {
+        // No holding resolved → a consolidated sheet must NOT fall back to the
+        // classifier's per-entity guess (that would write the whole group's
+        // numbers onto one child). Force null → adapter no-op (Codex P0).
+        effectiveEntityCode = null
+        warnings.push(
+          `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) is consolidated (holding sentinel) but no unique holding company was resolved — skipped (0 rows)`,
+        )
+      }
+    } else if (cls.entityCodeOverride) {
+      effectiveEntityCode = cls.entityCodeOverride
+    }
 
     // Gate 1 — skip derived/summary views of a PLAN-RELEVANT statement so the
     // multiple same-dataType views in a reporting pack can't clean-slate the
@@ -696,7 +723,14 @@ export async function runMultiFileImport(
   // NOT a loss when such a source exists for that dataType.
   const allEntitySourceTypes = new Set<SheetDataType>()
   for (const r of sourceRecords) {
-    if ((r.effectiveEntityCode ?? r.classification.entityCode) == null)
+    // Only a GENUINE all-entity source counts as coverage: still null after the
+    // entity-override (a sheet that fell back to the holding has a NON-null
+    // effective entity — it's holding-only, not all-entity) AND it actually
+    // wrote rows (a 0-item null sheet covers nothing).
+    if (
+      (r.effectiveEntityCode ?? r.classification.entityCode) == null &&
+      (r.adapterResult?.itemCount ?? 0) > 0
+    )
       allEntitySourceTypes.add(r.classification.dataType)
   }
   const byEntityType = new Map<
@@ -721,8 +755,21 @@ export async function runMultiFileImport(
       hasSource: false,
       sheets: [] as string[],
     }
-    if (r.classification.role === "derived_summary") e.hasDerived = true
-    if (r.adapterResult && r.skippedReason === null && r.blockedReason === null)
+    // Only a PATTERN-derived skip is a potential SILENT drop (the heuristic
+    // guessed). A CONFIG-derived skip is an explicit decision (the config-author
+    // knows the entity's data is consolidated/elsewhere) — not silent, so it must
+    // not trip completeness (else a reporting pack's entity-view tabs falsely block).
+    if (
+      r.classification.role === "derived_summary" &&
+      r.classification.roleSignal === "name-pattern"
+    )
+      e.hasDerived = true
+    if (
+      r.adapterResult &&
+      r.skippedReason === null &&
+      r.blockedReason === null &&
+      (r.adapterResult.itemCount ?? 0) > 0
+    )
       e.hasSource = true
     e.sheets.push(r.classification.sheetName)
     byEntityType.set(key, e)

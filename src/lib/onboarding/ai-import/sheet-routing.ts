@@ -29,8 +29,17 @@ export interface SheetMapEntry {
   dataType?: SheetDataType
   planKind?: PlanKind
   role?: SheetRole
+  /** Force the write entity for this sheet. Use HOLDING_ENTITY_SENTINEL to route
+   *  a consolidated sheet to the org's holding (resolved at apply-time), or a
+   *  literal company code. Absent → the classifier's entityCode is used. */
+  entityCode?: string
 }
 export type SheetMap = SheetMapEntry[]
+
+/** Sentinel for SheetMapEntry.entityCode meaning "the org's holding (level-1)
+ *  company" — resolved to a real code by the orchestrator at apply-time, since
+ *  the static config can't know the per-org holding code. */
+export const HOLDING_ENTITY_SENTINEL = "__HOLDING__"
 
 export type PlanKindSignal =
   | "section"
@@ -54,6 +63,9 @@ export interface RoutingResult {
   role: SheetRole
   planKindSignal: PlanKindSignal
   roleSignal: RoleSignal
+  /** Per-sheet write-entity override from the config (e.g. HOLDING_ENTITY_SENTINEL
+   *  for a consolidated sheet). The orchestrator resolves the sentinel to a code. */
+  entityCodeOverride?: string
 }
 
 /**
@@ -139,5 +151,8 @@ function resolvePlanKind(input: RoutingInput): {
 export function resolveSheetRouting(input: RoutingInput): RoutingResult {
   const { role, roleSignal } = resolveRole(input)
   const { planKind, planKindSignal } = resolvePlanKind(input)
-  return { planKind, role, planKindSignal, roleSignal }
+  const entityCodeOverride = input.config?.find(
+    (e) => e.entityCode !== undefined && matchEntry(e, input.sheetName),
+  )?.entityCode
+  return { planKind, role, planKindSignal, roleSignal, entityCodeOverride }
 }

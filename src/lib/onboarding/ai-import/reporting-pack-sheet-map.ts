@@ -24,15 +24,19 @@
  * Organization.importConfig so each org's recurring shapes are configurable
  * without code; for now it's a code default the route applies.
  */
-import type { SheetMap } from "./sheet-routing"
+import { HOLDING_ENTITY_SENTINEL, type SheetMap } from "./sheet-routing"
 
 export const REPORTING_PACK_SHEET_MAP: SheetMap = [
   // ── Structured sources (planKind explicit; role source) ─────────────
+  // Actuals stay null-entity → 0-row no-ops here (per-company actuals come from
+  // the per-entity file, e.g. Guvven). Only the BUDGET is consolidated/holding-
+  // level → routed to the holding entity. Budget≠actual, so no double-count with
+  // the children's per-company actuals.
   { match: "Actual PLF", planKind: "actual", role: "source" },
-  { match: "Budget PLF", planKind: "budget", role: "source" },
+  { match: "Budget PLF", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
   { match: "BS Actual", planKind: "actual", role: "source" },
   { match: "CF Actual", planKind: "actual", role: "source" },
-  { match: "Budget CF", planKind: "budget", role: "source" },
+  { match: "Budget CF", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
   // ── Derived / summary / elimination / flat-feed views (skipped) ─────
   { match: "Actual", role: "derived_summary" },
   { match: "Budget", role: "derived_summary" },

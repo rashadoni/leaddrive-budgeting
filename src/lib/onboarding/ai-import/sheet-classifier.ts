@@ -122,6 +122,9 @@ export interface SheetClassification {
   /** Which signal resolved planKind / role — surfaced in the import report. */
   planKindSignal?: PlanKindSignal
   roleSignal?: RoleSignal
+  /** Per-sheet write-entity override from the config (e.g. the holding sentinel
+   *  for a consolidated reporting-pack tab). Resolved to a code by the orchestrator. */
+  entityCodeOverride?: string
 }
 
 /** Decide whether a classified sheet is realized ACTUALs or a forward BUDGET. */
@@ -176,6 +179,7 @@ function withPlanKind(
       role: r.role,
       planKindSignal: r.planKindSignal,
       roleSignal: r.roleSignal,
+      entityCodeOverride: r.entityCodeOverride,
     }
   })
 }

@@ -20,6 +20,7 @@ import {
 } from "./multi-file-orchestrator"
 import { buildRegistryWith, type AdapterHandler } from "./adapter-registry"
 import type { SheetClassifierAnthropicLike } from "./sheet-classifier"
+import { REPORTING_PACK_SHEET_MAP } from "./reporting-pack-sheet-map"
 import type { PrismaClient } from "@prisma/client"
 import { buildReconKey } from "../reconciliation"
 
@@ -977,6 +978,55 @@ describe("runMultiFileImport", () => {
     expect(result.overallVerdict).not.toBe("red")
     expect(result.warnings.some((w) => /COLLISION/i.test(w))).toBe(false)
     expect(prisma.__txCallCount.n).toBeGreaterThan(0)
+  })
+
+  it("Cross-entity (config): a HOLDING-sentinel budget tab routes to the holding; config-derived entity views don't trip completeness", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "h", code: "AZSEKER" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "Budget PLF", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "consolidated budget" },
+        { sheetName: "BS Actual", dataType: "BS", entityCode: null, confidence: 0.9, reasoning: "consolidated actual BS" },
+        { sheetName: "PL EDEN", dataType: "PLF", entityCode: "AZSEKER-EDEN", confidence: 0.9, reasoning: "EDEN summary view" },
+      ],
+    ])
+    const captured: Record<string, string | null> = {}
+    const cap: AdapterHandler = async (i: { sheetName: string; entityCode?: string | null }) => {
+      captured[i.sheetName] = i.entityCode ?? null
+      const n = i.entityCode ? 5 : 0
+      return {
+        summary: "ok",
+        itemCount: n,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: n })),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: {
+            Sheets: { "Budget PLF": { "!ref": "A1:C3" }, "BS Actual": { "!ref": "A1:C3" }, "PL EDEN": { "!ref": "A1:C3" } },
+            SheetNames: ["Budget PLF", "BS Actual", "PL EDEN"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      sheetMap: REPORTING_PACK_SHEET_MAP,
+      holdingCompanyCode: "AZSEKER",
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: cap, BS: cap }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    expect(captured["Budget PLF"]).toBe("AZSEKER") // consolidated budget → holding
+    expect(captured["PL EDEN"]).toBeUndefined() // config-derived → skipped (handler not called)
+    expect(result.overallVerdict).not.toBe("red") // EDEN config-view did NOT trip completeness
+    expect(result.warnings.some((w) => /consolidated.*holding entity "AZSEKER"/i.test(w))).toBe(true)
   })
 
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {

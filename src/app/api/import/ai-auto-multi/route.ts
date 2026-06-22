@@ -241,9 +241,22 @@ export async function POST(request: NextRequest) {
   // recurring shape. Detection is exact-tab-name based, so it's a no-op on any
   // other workbook (e.g. Guvven Fin). Robust follow-up: per-org importConfig.
   const allSheetNames = files.flatMap((f) => f.workbook.SheetNames)
-  const sheetMap = looksLikeReportingPack(allSheetNames)
-    ? REPORTING_PACK_SHEET_MAP
-    : undefined
+  const isReportingPack = looksLikeReportingPack(allSheetNames)
+  const sheetMap = isReportingPack ? REPORTING_PACK_SHEET_MAP : undefined
+  // The reporting pack's consolidated budget tabs carry the holding sentinel in
+  // the sheet-map; resolve the org's holding (level-1) company so the
+  // orchestrator routes those tabs there.
+  // Resolve the holding deterministically: require EXACTLY ONE level-1 company.
+  // 0 or >1 → leave unset, so the consolidated sentinel no-ops rather than
+  // routing the whole group's budget to an arbitrary sub-group (Codex P1).
+  const level1 = isReportingPack
+    ? await prisma.company.findMany({
+        where: { organizationId: orgId, level: 1 },
+        select: { code: true },
+        take: 2,
+      })
+    : []
+  const holdingCompanyCode = level1.length === 1 ? level1[0].code : undefined
 
   // ── Context: known entity codes + org industry hint ─────────────
   const entities = await prisma.company.findMany({
@@ -300,6 +313,7 @@ export async function POST(request: NextRequest) {
         knownEntityCodes,
         orgIndustry,
         sheetMap,
+        holdingCompanyCode,
         allowYellow,
         forceOverride,
         conflictResolutions,
