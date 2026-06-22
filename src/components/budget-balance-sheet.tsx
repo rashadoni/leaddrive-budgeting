@@ -49,6 +49,12 @@ interface BSResponse {
     sourcePlanId: string
     fellBack: boolean
     sourceYear: number | null
+    // Consolidated-holding view (2026-06-23): when true, the figures are the
+    // client's OFFICIAL consolidated balance sheet on the holding entity (not a
+    // naive cross-company sum that double-counts intercompany holdings).
+    consolidated?: boolean
+    holding?: { id: string; name: string; code: string } | null
+    viewCompanyId?: string | null
   }
 }
 
@@ -272,6 +278,14 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
       {data.meta?.fellBack && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           Showing the{data.meta.sourceYear ? ` ${data.meta.sourceYear}` : ""} Actuals balance sheet — the selected budget plan has no balance sheet of its own.
+        </div>
+      )}
+      {data.meta?.consolidated && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          📊 Официальный консолидированный баланс группы
+          {data.meta.holding?.name ? ` «${data.meta.holding.name}»` : ""} — с
+          элиминацией внутригрупповых долей (источник: Reporting). Это НЕ простая
+          сумма компаний. Разбивку по компаниям смотрите в drill-down.
         </div>
       )}
       {canEdit && (

@@ -13,9 +13,11 @@ const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     balanceSheetLine: {
       findMany: vi.fn(),
+      count: vi.fn(),
       create: vi.fn(),
       createMany: vi.fn(),
     },
+    company: { findMany: vi.fn() },
     budgetPlan: { findFirst: vi.fn() },
     organization: { findFirst: vi.fn(), findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -38,6 +40,8 @@ const ORG_ID = "cm3rlsbalancesht000001a"
 
 beforeEach(() => {
   prismaMock.balanceSheetLine.findMany.mockReset().mockResolvedValue([])
+  prismaMock.balanceSheetLine.count.mockReset().mockResolvedValue(0)
+  prismaMock.company.findMany.mockReset().mockResolvedValue([])
   prismaMock.balanceSheetLine.create.mockReset().mockResolvedValue({ id: "bs1" })
   prismaMock.balanceSheetLine.createMany.mockReset().mockResolvedValue({ count: 3 })
   prismaMock.budgetPlan.findFirst.mockReset().mockResolvedValue({
@@ -142,6 +146,71 @@ describe("GET /api/budgeting/balance-sheet", () => {
     )
     const body = await res.json()
     expect(body.meta.fellBack).toBe(false)
+  })
+
+  it("consolidated holding view: single level-1 holding with BS lines → shows ONLY the holding's lines (not the cross-company sum)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "holding1", name: "Holding", code: "AZSEKER" },
+    ])
+    prismaMock.balanceSheetLine.count.mockResolvedValue(24) // holding carries its consolidated BS
+    prismaMock.balanceSheetLine.findMany.mockResolvedValue([
+      { id: "1", lineType: "asset", month: 4 },
+    ])
+    const res = await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
+    expect(res.status).toBe(200)
+    expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: ORG_ID,
+          planId: "p1",
+          deletedAt: null,
+          companyId: "holding1",
+        },
+      }),
+    )
+    const body = await res.json()
+    expect(body.meta.consolidated).toBe(true)
+    expect(body.meta.viewCompanyId).toBe("holding1")
+  })
+
+  it("?companyId drills into one entity's standalone BS (consolidated=false)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "holding1", name: "Holding", code: "AZSEKER" },
+    ])
+    prismaMock.balanceSheetLine.count.mockResolvedValue(24)
+    const res = await GET(
+      makeRequest("/api/budgeting/balance-sheet?planId=p1&companyId=child9"),
+    )
+    expect(res.status).toBe(200)
+    expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          organizationId: ORG_ID,
+          planId: "p1",
+          deletedAt: null,
+          companyId: "child9",
+        },
+      }),
+    )
+    const body = await res.json()
+    expect(body.meta.consolidated).toBe(false)
+    expect(body.meta.viewCompanyId).toBe("child9")
+  })
+
+  it("no unique holding (≠1 level-1 company) → unchanged cross-company behavior", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.company.findMany.mockResolvedValue([
+      { id: "a", name: "A", code: "A" },
+      { id: "b", name: "B", code: "B" },
+    ])
+    await GET(makeRequest("/api/budgeting/balance-sheet?planId=p1"))
+    expect(prismaMock.balanceSheetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, planId: "p1", deletedAt: null },
+      }),
+    )
   })
 })
 

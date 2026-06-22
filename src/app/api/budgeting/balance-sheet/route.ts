@@ -14,6 +14,12 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
+  // Consolidated-holding view (2026-06-23): with no companyId requested, if the
+  // org's single level-1 holding carries its own consolidated BS lines on this
+  // plan, show ONLY those (the official ~253M) — NOT the naive cross-company sum
+  // (~339M) that double-counts intercompany "Investments in Joint Ventures".
+  // `?companyId=` drills into one entity's standalone balance sheet.
+  const requestedCompanyId = searchParams.get("companyId")
 
   const result = await withOrgScope(orgId, async (tx) => {
     // Source-plan resolution (2026-06-04, Y4 follow-up): budget plans carry
@@ -45,13 +51,43 @@ export async function GET(req: NextRequest) {
       fellBack = r.fellBack
     }
 
+    // Resolve the single level-1 holding (exactly-one rule, mirrors import
+    // routing): it carries the consolidated BS; children carry standalone.
+    const level1 = await tx.company.findMany({
+      where: { organizationId: orgId, level: 1 },
+      select: { id: true, name: true, code: true },
+      take: 2,
+    })
+    const holding = level1.length === 1 ? level1[0] : null
+    let companyFilter: { companyId?: string } = {}
+    let consolidated = false
+    let viewCompanyId: string | null = null
+    if (requestedCompanyId) {
+      companyFilter = { companyId: requestedCompanyId }
+      viewCompanyId = requestedCompanyId
+    } else if (holding) {
+      const holdingLines = await tx.balanceSheetLine.count({
+        where: {
+          organizationId: orgId,
+          planId: sourcePlanId,
+          companyId: holding.id,
+          deletedAt: null,
+        },
+      })
+      if (holdingLines > 0) {
+        companyFilter = { companyId: holding.id }
+        consolidated = true
+        viewCompanyId = holding.id
+      }
+    }
+
     // deletedAt:null REQUIRED (2026-05-31): BalanceSheetLine uses the
     // soft-delete-then-insert archive pattern on re-import. Without this
     // filter the GET returns superseded (archived) rows alongside live ones,
     // inflating Total Assets/Liabilities/Equity ~2× on re-imported data
     // (measured ×1.92 on AZSEKER 2026 Budget). Matches plans/route.ts.
     const lines = await tx.balanceSheetLine.findMany({
-      where: { organizationId: orgId, planId: sourcePlanId, deletedAt: null },
+      where: { organizationId: orgId, planId: sourcePlanId, deletedAt: null, ...companyFilter },
       // orderBy account.code via the relation (2026-05-31): the scalar
       // `accountCode` column was DROPPED in Phase 2.1 (2026-05-26, replaced by
       // accountId + account FK), but this orderBy still referenced it → Prisma
@@ -64,10 +100,18 @@ export async function GET(req: NextRequest) {
       // account breakdown is keyed off `account.name`/`account.code` now.
       include: { account: { select: { code: true, name: true } } },
     })
-    return { lines, sourcePlanId, fellBack, sourceYear: active?.year ?? null }
+    return {
+      lines,
+      sourcePlanId,
+      fellBack,
+      sourceYear: active?.year ?? null,
+      consolidated,
+      holding,
+      viewCompanyId,
+    }
   })
 
-  const { lines, sourcePlanId, fellBack, sourceYear } = result
+  const { lines, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId } = result
   // Group by lineType
   type BSRow = (typeof lines)[number]
   const assets = lines.filter((l: BSRow) => l.lineType === "asset")
@@ -81,7 +125,7 @@ export async function GET(req: NextRequest) {
     all: lines,
     // Provenance so the client can note "showing the <year> Actuals balance
     // sheet" when a budget plan fell back. Non-breaking additive field.
-    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear },
+    meta: { requestedPlanId: planId, sourcePlanId, fellBack, sourceYear, consolidated, holding, viewCompanyId },
   })
 }
 
