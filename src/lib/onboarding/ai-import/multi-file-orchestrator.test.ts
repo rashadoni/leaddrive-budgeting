@@ -760,6 +760,117 @@ describe("runMultiFileImport", () => {
     expect(result.perGroup.length).toBeGreaterThan(0)
   })
 
+  // ── Routing safety gates (deterministic-sheet-routing fix 2026-06-22) ──
+
+  it("Gate: skips a derived/summary view (role) so it can't collide with the source", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "Actual PLF", dataType: "PLF", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "source actual P&L" },
+        { sheetName: "BS CPC", dataType: "BS", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "balance sheet (gives PLF+BS → main-financial)" },
+        { sheetName: "CONS PL", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "consolidated view (derived)" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: {
+            Sheets: { "Actual PLF": { "!ref": "A1:C3" }, "BS CPC": { "!ref": "A1:C3" }, "CONS PL": { "!ref": "A1:C3" } },
+            SheetNames: ["Actual PLF", "BS CPC", "CONS PL"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: plfHandler(2), BS: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    const main = result.perGroup.find((g) => g.fileType === "main-financial")
+    // 2 source sheets wrote (Actual PLF + BS CPC = 4 rows); "CONS PL" derived
+    // was skipped (would have been 6). Proves the derived view is excluded.
+    expect(main?.totalRowsInserted).toBe(4)
+    expect(
+      result.warnings.some((w) => /CONS PL.*derived\/summary/i.test(w)),
+    ).toBe(true)
+  })
+
+  it("Gate: BLOCKS an ambiguous plan-relevant sheet in a mixed workbook (never guesses budget→actual)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "Budget PLF", dataType: "PLF", entityCode: "AZSEKER-CPC", confidence: 0.9, reasoning: "budget P&L" },
+        { sheetName: "Mystery PL", dataType: "PLF", entityCode: "AZSEKER-AZSF", confidence: 0.9, reasoning: "ambiguous P&L" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: {
+            Sheets: { "Budget PLF": { "!ref": "A1:C3" }, "Mystery PL": { "!ref": "A1:C3" } },
+            SheetNames: ["Budget PLF", "Mystery PL"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    expect(result.overallVerdict).toBe("red")
+    expect(prisma.__txCallCount.n).toBe(0) // aborted before any tx
+    expect(
+      result.warnings.some((w) => /Ambiguous plan kind.*Mystery PL/i.test(w)),
+    ).toBe(true)
+  })
+
+  it("Gate: BLOCKS two source sheets in ONE file that target the same write scope (the EDEN-BS=4 corruption)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-EDEN" }] })
+    const client = stubClientPerCall([
+      [
+        { sheetName: "BS Actual", dataType: "BS", entityCode: "AZSEKER-EDEN", confidence: 0.9, reasoning: "balance sheet" },
+        { sheetName: "BS Faktiki", dataType: "BS", entityCode: "AZSEKER-EDEN", confidence: 0.9, reasoning: "balance sheet (dup view)" },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "rep.xlsx",
+          workbook: {
+            Sheets: { "BS Actual": { "!ref": "A1:C3" }, "BS Faktiki": { "!ref": "A1:C3" } },
+            SheetNames: ["BS Actual", "BS Faktiki"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ BS: plfHandler(2) }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    expect(result.overallVerdict).toBe("red")
+    expect(prisma.__txCallCount.n).toBe(0)
+    expect(result.warnings.some((w) => /COLLISION.*BS (Actual|Faktiki)/i.test(w))).toBe(true)
+  })
+
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {
     const prisma = stubPrisma()
     const client = stubClientPerCall([

@@ -26,6 +26,14 @@ import {
 } from "@/lib/llm/prompts/sheet-classifier-system"
 import type { SheetMeta } from "./sheet-meta-extractor"
 import type { LLMUsage } from "@/lib/llm/types"
+import {
+  resolveSheetRouting,
+  type PlanKind,
+  type SheetRole,
+  type PlanKindSignal,
+  type RoleSignal,
+  type SheetMap,
+} from "./sheet-routing"
 
 export type SheetDataType =
   | "PLF"
@@ -97,12 +105,23 @@ export interface SheetClassification {
   /** One-line explanation citing the signal. */
   reasoning: string
   /**
-   * actual vs budget routing target (decouple plan). Derived from the sheet's
-   * workbook section ("Actual >>>" → actual) with a dataType fallback (sales /
-   * forecast sheets → budget). Tells the importer which plan to write into so a
-   * P&L under "Actual >>>" lands in the actuals plan, not the budget plan.
+   * actual vs budget routing target (decouple plan). Stamped by `withPlanKind`
+   * via the deterministic `resolveSheetRouting` authority chain (>>> section >
+   * config > tab-name keyword > dataType rule). `null` = NO trusted signal
+   * fired — the orchestrator must NOT silently treat it as actual (it blocks a
+   * mixed workbook, defaults actual only for a pure-actuals one). `undefined`
+   * only before `withPlanKind` runs.
    */
-  planKind?: "actual" | "budget"
+  planKind?: PlanKind | null
+  /**
+   * Source-of-record vs a derived/summary view (consolidation, pivot,
+   * comparison, margin). Derived sheets are SKIPPED on write so the multiple
+   * same-dataType views in a reporting pack can't clean-slate the source.
+   */
+  role?: SheetRole
+  /** Which signal resolved planKind / role — surfaced in the import report. */
+  planKindSignal?: PlanKindSignal
+  roleSignal?: RoleSignal
 }
 
 /** Decide whether a classified sheet is realized ACTUALs or a forward BUDGET. */
@@ -130,16 +149,35 @@ export function planKindForSheet(
   return "actual"
 }
 
-/** Stamp planKind onto each classification using its sheet's section context. */
+/**
+ * Stamp planKind + role onto each classification via the deterministic
+ * `resolveSheetRouting` chain — the sheet's section context (from the
+ * meta-extractor) plus an optional per-shape config map. Supersedes the
+ * section-only `planKindForSheet`: it adds tab-name keyword resolution, a
+ * source-vs-derived `role`, and a `null` planKind (instead of a silent
+ * "actual" default) when no trusted signal fires.
+ */
 function withPlanKind(
   classifications: SheetClassification[],
   metas: SheetMeta[],
+  config?: SheetMap,
 ): SheetClassification[] {
   const sectionByName = new Map(metas.map((m) => [m.sheetName, m.sectionContext]))
-  return classifications.map((c) => ({
-    ...c,
-    planKind: planKindForSheet(c.dataType, sectionByName.get(c.sheetName) ?? null),
-  }))
+  return classifications.map((c) => {
+    const r = resolveSheetRouting({
+      dataType: c.dataType,
+      sheetName: c.sheetName,
+      section: sectionByName.get(c.sheetName) ?? null,
+      config,
+    })
+    return {
+      ...c,
+      planKind: r.planKind,
+      role: r.role,
+      planKindSignal: r.planKindSignal,
+      roleSignal: r.roleSignal,
+    }
+  })
 }
 
 export interface SheetClassifierInput {

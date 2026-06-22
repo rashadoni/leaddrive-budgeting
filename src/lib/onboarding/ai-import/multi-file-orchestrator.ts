@@ -58,7 +58,9 @@ import {
   classifySheets,
   type SheetClassifierAnthropicLike,
   type SheetClassification,
+  type SheetDataType,
 } from "./sheet-classifier"
+import type { PlanKind } from "./sheet-routing"
 import {
   detectFileType,
   type FileType,
@@ -259,9 +261,24 @@ interface ParseRecord {
   adapterResult: AdapterRunResult | null
   expectedSums: Map<ReconciliationKey, number>
   skippedReason: string | null
+  /** Set when a routing safety gate refuses to write this sheet (ambiguous
+   *  plan kind in a mixed workbook). ANY blocked record aborts the whole
+   *  import before a tx opens. Distinct from skippedReason (intentional skip). */
+  blockedReason: string | null
+  /** The plan kind actually used for the adapter write (post null-resolution).
+   *  Drives the collision gate's scope grouping. */
+  effectivePlanKind?: PlanKind
 }
 
-/** Run adapter parse phase for one file (no DB writes). */
+/** dataTypes whose write target IS a budget/actual plan — these are the ones
+ *  an ambiguous planKind can corrupt (route budget into actuals). Non-plan
+ *  dataTypes (KPI/SALES/LAND/…) ignore planKind, so a null there is harmless. */
+const PLAN_KIND_RELEVANT_DATATYPES = new Set<SheetDataType>(["PLF", "BS", "CF"])
+
+/** Run adapter parse phase for one file (no DB writes). Applies the per-sheet
+ *  routing safety gates: skip derived/summary views, and resolve planKind —
+ *  blocking (never guessing) an ambiguous plan-relevant sheet in a mixed
+ *  workbook. */
 async function parseFileSheets(
   filename: string,
   workbook: MultiFileImportInput["files"][number]["workbook"],
@@ -271,7 +288,51 @@ async function parseFileSheets(
   warnings: string[],
 ): Promise<ParseRecord[]> {
   const records: ParseRecord[] = []
+  // Workbook-aware: only a MIXED workbook (some sheet resolved to budget)
+  // blocks an unresolved plan-relevant sheet. A pure-actuals workbook (no
+  // budget signal) safely defaults unresolved → actual — preserves files like
+  // Guvven Fin that carry no >>> section / budget keyword.
+  const hasBudgetSignal = classifications.some((c) => c.planKind === "budget")
+
   for (const cls of classifications) {
+    // Gate 1 — skip derived/summary views so the multiple same-dataType views
+    // in a reporting pack can't clean-slate the source sheet.
+    if (cls.role === "derived_summary") {
+      records.push({
+        filename,
+        classification: cls,
+        adapterResult: null,
+        expectedSums: new Map(),
+        skippedReason: `Derived/summary view (role via ${cls.roleSignal ?? "pattern"}) — skipped so it can't collide with the source sheet`,
+        blockedReason: null,
+      })
+      warnings.push(
+        `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) is a derived/summary view — skipped (not written) so it can't clean-slate the source sheet`,
+      )
+      continue
+    }
+
+    // Gate 2 — resolve planKind. NEVER silently default budget→actual: an
+    // unresolved PLAN-RELEVANT sheet in a MIXED workbook is BLOCKED for review.
+    let effectivePlanKind: PlanKind = "actual"
+    if (cls.planKind === "actual" || cls.planKind === "budget") {
+      effectivePlanKind = cls.planKind
+    } else if (
+      PLAN_KIND_RELEVANT_DATATYPES.has(cls.dataType) &&
+      hasBudgetSignal
+    ) {
+      records.push({
+        filename,
+        classification: cls,
+        adapterResult: null,
+        expectedSums: new Map(),
+        skippedReason: null,
+        blockedReason: `Ambiguous plan kind — "${cls.sheetName}" (${cls.dataType}) has no actual/budget signal, but this workbook also contains budget sheet(s). Refusing to guess (would risk routing budget into the actuals plan). Add a sheet-map entry or an "Actual >>>"/"Budget >>>" marker.`,
+      })
+      continue
+    }
+    // else: pure-actuals workbook OR a non-plan dataType → "actual" is safe.
+
     const handler = deps.registry.get(cls.dataType)
     if (!handler) {
       records.push({
@@ -280,6 +341,7 @@ async function parseFileSheets(
         adapterResult: null,
         expectedSums: new Map(),
         skippedReason: `No adapter for "${cls.dataType}"`,
+        blockedReason: null,
       })
       warnings.push(
         `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) — no adapter; skipped`,
@@ -294,7 +356,7 @@ async function parseFileSheets(
         year: input.year,
         organizationId: input.organizationId,
         XLSX: deps.XLSX,
-        targetPlanKind: cls.planKind,
+        targetPlanKind: effectivePlanKind,
       })
       const expectedSums =
         (
@@ -308,6 +370,8 @@ async function parseFileSheets(
         adapterResult: ar,
         expectedSums,
         skippedReason: null,
+        blockedReason: null,
+        effectivePlanKind,
       })
       if (ar.warnings.length > 0) {
         warnings.push(
@@ -322,6 +386,7 @@ async function parseFileSheets(
         adapterResult: null,
         expectedSums: new Map(),
         skippedReason: `Adapter threw: ${msg}`,
+        blockedReason: null,
       })
       warnings.push(
         `${filename}: sheet "${cls.sheetName}" parse error — ${msg}`,
@@ -555,6 +620,57 @@ export async function runMultiFileImport(
       conflicts.length,
       ...detectCrossFileConflicts(perFileExpected),
     )
+  }
+
+  // ── Routing safety gates (block — never guess — before any tx) ──────
+  const allRecords = [...perFileRecords.values()].flat()
+  // Gate A: ambiguous plan kind — parseFileSheets flagged blockedReason on a
+  // plan-relevant sheet with no actual/budget signal in a mixed workbook.
+  const blockedRecords = allRecords.filter((r) => r.blockedReason)
+  // Gate B: collision — ≥2 SOURCE sheets WITHIN ONE FILE writing the same
+  // clean-slate scope (entity, dataType, planKind) overwrite each other. This
+  // is the reporting-pack "EDEN BS = 4 rows" corruption: multiple BS views in
+  // one workbook all clean-slated the same scope. (Cross-file same-scope is the
+  // conflict-detector's job — it compares cells across files and is
+  // forceOverride-able; double-blocking it here would defeat forceOverride.
+  // Residual gap: cross-file DISJOINT-cell same-scope writes — rare, tracked.)
+  const sourceRecords = allRecords.filter(
+    (r) =>
+      r.adapterResult && r.skippedReason === null && r.blockedReason === null,
+  )
+  const byScope = new Map<string, ParseRecord[]>()
+  for (const r of sourceRecords) {
+    const scope = `${r.filename}::${r.classification.entityCode ?? "*"}::${r.classification.dataType}::${r.effectivePlanKind ?? "actual"}`
+    const arr = byScope.get(scope)
+    if (arr) arr.push(r)
+    else byScope.set(scope, [r])
+  }
+  const collisions = [...byScope.entries()].filter(([, rs]) => rs.length > 1)
+
+  if (blockedRecords.length > 0 || collisions.length > 0) {
+    const reasons = [
+      ...blockedRecords.map((r) => `BLOCKED: ${r.blockedReason}`),
+      ...collisions.map(
+        ([scope, rs]) =>
+          `COLLISION: ${rs.length} source sheets target the same write scope [${scope}] — they would clean-slate each other (${rs
+            .map((r) => `"${r.classification.sheetName}"`)
+            .join(", ")}). Mark all but one as a derived view, or split the scope.`,
+      ),
+    ]
+    return {
+      perFile,
+      conflicts,
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: aggLlmUsage,
+      durationMs: Date.now() - t0,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [
+        ...warnings,
+        ...reasons,
+        `Routing safety gate — ${reasons.length} issue(s); aborted before any DB write.`,
+      ],
+    }
   }
 
   // Conflict short-circuit: if non-empty AND not forceOverride → abort
