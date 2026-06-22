@@ -27,6 +27,7 @@ interface FakeCfRow {
   isProjected: boolean
   activityType: string
   category: string | null
+  companyId?: string | null
   deletedAt: Date | null
   deletedBy: string | null
 }
@@ -126,6 +127,7 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
             isProjected: d.isProjected ?? false,
             activityType: d.activityType!,
             category: d.category ?? null,
+            companyId: d.companyId ?? null,
             deletedAt: null,
             deletedBy: null,
           })
@@ -156,6 +158,14 @@ function makeFakePrisma(opts: { initialRows?: FakeCfRow[] } = {}): PrismaClient 
             month: r.month,
             amount: r.amount,
           }))
+      }),
+    },
+    company: {
+      // CF companyId resolution (2026-06-23): entityCode → Company. The fake
+      // returns one company per requested code so the write sets companyId.
+      findMany: vi.fn(async (args: { where: { code?: { in?: string[] } } }) => {
+        const codes = args.where?.code?.in ?? []
+        return codes.map((code) => ({ id: `co_${code}`, code }))
       }),
     },
     $transaction: vi.fn(async (fn: (tx: PrismaClient) => Promise<unknown>) => fn(fake as unknown as PrismaClient)),
@@ -426,5 +436,15 @@ describe("runCashFlowBatch — per-entity isolation on a shared sourceTag", () =
     expect(live.find((r) => r.sourceId === "AZSEKER-AZSF::CF.01.01")?.amount).toBe(150)
     expect(live.find((r) => r.sourceId === "AZSEKER-CPC::CF.02.01")?.amount).toBe(200)
     expect(reAzsf.reconciliation.verdict).toBe("green")
+  })
+})
+
+describe("runCashFlowBatch — companyId (CF double-layer fix)", () => {
+  it("sets companyId on inserted rows, resolved from the entityCode", async () => {
+    const prisma = makeFakePrisma()
+    await runCashFlowBatch(prisma, planFor([E("AZSEKER-CPC", "CF.01.01", 100)]))
+    const live = prisma.__cf.filter((r) => r.deletedAt === null)
+    expect(live).toHaveLength(1)
+    expect((live[0] as { companyId?: string | null }).companyId).toBe("co_AZSEKER-CPC")
   })
 })

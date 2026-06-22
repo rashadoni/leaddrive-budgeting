@@ -242,6 +242,20 @@ export async function runCashFlowBatch(
         })
       }
 
+      // 2026-06-23 — populate companyId (CF double-layer fix): resolve each
+      // row's entityCode to its Company so CF is per-company-scoped like
+      // BalanceSheetLine. Unresolved (consolidated/holding) → null.
+      const entityCodes = [
+        ...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean)),
+      ]
+      const companyByCode = new Map<string, string>()
+      if (entityCodes.length > 0) {
+        const companies = await tx.company.findMany({
+          where: { organizationId: plan.organizationId, code: { in: entityCodes } },
+          select: { id: true, code: true },
+        })
+        for (const c of companies) companyByCode.set(c.code, c.id)
+      }
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
         year: r.year,
@@ -257,6 +271,7 @@ export async function runCashFlowBatch(
         // Phase 2.1 session 3: `category` String dropped from
         // CashFlowEntry; `accountId` is required NOT NULL.
         accountId: r.accountId,
+        companyId: companyByCode.get(r.entityCode) ?? null,
       }))
       let inserted = 0
       if (payload.length > 0) {

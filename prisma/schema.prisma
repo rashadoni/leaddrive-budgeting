@@ -285,6 +285,11 @@ model CashFlowEntry {
   activityType   String          @default("operating")
   accountId      String
   account        ChartOfAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  // 2026-06-23 — companyId mirrors BalanceSheetLine so cash flow can be scoped
+  // per company (holding vs child) and the holding-CF double-layer cannot recur.
+  // Nullable: legacy rows + any consolidated/holding layer carry null.
+  companyId      String?
+  company        Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   counterpartyId String?
   plannedAmount  Float?
   createdAt      DateTime        @default(now())
@@ -296,6 +301,8 @@ model CashFlowEntry {
   @@index([organizationId, activityType])
   @@index([accountId])
   @@index([organizationId, deletedAt])
+  @@index([companyId])
+  @@index([companyId, year, month])
   @@map("cash_flow_entries")
 }
 
@@ -1144,6 +1151,8 @@ model Company {
   // Phase 7.O — company-scoped balance sheet lines for per-entity
   // resolver queries (inventory, equity, etc).
   balanceSheetLines     BalanceSheetLine[]
+  // 2026-06-23 — company-scoped cash flow (CF double-layer fix).
+  cashFlowEntries       CashFlowEntry[]
 
   @@unique([organizationId, code])
   @@index([organizationId, parentCompanyId, industry])
