@@ -158,20 +158,22 @@ async function buildScopeWhere(
   if (scope.entityKind === "CashFlowEntry") {
     if (!scope.year) return null
     base.year = scope.year
-    // Phase 3 fix (2026-06-20): cash_flow_entries has no companyId
-    // column, but every row's `sourceId` is prefixed `<companyCode>::…`
-    // (verified 2424/2424 live rows). Scope by that prefix when a
-    // company is given — the "::" delimiter prevents prefix collisions
-    // (e.g. "AZSEKER::" never matches "AZSEKER-AZSF::"). Previously this
-    // returned org+year only — same all-companies wipe risk as BS above.
-    // No companyCode → org-wide-per-year ("ALL" path).
+    // Phase 3 (2026-06-20) + companyId (2026-06-23): CashFlowEntry now has a
+    // companyId column (mirrors BalanceSheetLine). Prefer companyId, keeping the
+    // sourceId-prefix fallback for legacy rows not yet backfilled (companyId
+    // null) — every imported row's sourceId is `<companyCode>::…`. The "::"
+    // delimiter prevents prefix collisions ("AZSEKER::" never matches
+    // "AZSEKER-AZSF::"). No companyCode → org-wide-per-year ("ALL" path).
     if (scope.companyCode) {
       const company = await prisma.company.findFirst({
         where: { organizationId: scope.organizationId, code: scope.companyCode },
         select: { id: true },
       })
       if (!company) return null
-      base.sourceId = { startsWith: `${scope.companyCode}::` }
+      base.OR = [
+        { companyId: company.id },
+        { sourceId: { startsWith: `${scope.companyCode}::` } },
+      ]
     }
     return base
   }

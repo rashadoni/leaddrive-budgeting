@@ -5,10 +5,10 @@
  *
  * Schema differences vs P&L / BS / KPI
  * ────────────────────────────────────
- *  • Target table: `cash_flow_entries`. Org-scoped, NO `companyId` —
- *    a single org's CF is reported at the consolidated level.
- *    Per-entity drill-down has to flow through `category` /
- *    `accountId`, which is intentional in the existing schema.
+ *  • Target table: `cash_flow_entries`. Org-scoped. A `companyId` column
+ *    was added 2026-06-23 (mirrors BalanceSheetLine) so CF is per-company;
+ *    the reset/import paths prefer it, with the `sourceId = '<entity>::…'`
+ *    prefix as the fallback for legacy un-backfilled rows. No `planId` yet.
  *  • Key fields: (organizationId, year, month, source, sourceId,
  *    category, activityType, entryType). To get bit-perfect re-import
  *    we use `source = 'workbook-cf'` + `sourceId = '<entity>::<code>'`.
@@ -160,19 +160,32 @@ export async function runCashFlowBatch(
 
       let archived = 0
       let purged = 0
-      // BUGFIX 2026-05-31: the reset scoped by `source` (sourceTag) only.
-      // cash_flow_entries has NO companyId — the entity lives in sourceId as
-      // `<entityCode>::<cfCode>`. The AzerSheker multi-import used ONE shared
-      // sourceTag ('azseker-workbook-cf') for every entity, so each entity's
-      // batch archived the siblings' live CF — only the last entity survived
-      // (37 live of 309). Scope the reset to THIS batch's entities by sourceId
-      // prefix (mirrors the BS companyId fix). Fall back to sourceTag-only when
+      // BUGFIX 2026-05-31: the reset scoped by `source` (sourceTag) only, so the
+      // AzerSheker multi-import (ONE shared sourceTag for every entity) archived
+      // siblings' live CF (only the last survived: 37 of 309). Scope the reset to
+      // THIS batch's entities. 2026-06-23: CashFlowEntry now has a companyId
+      // column — prefer it, with the sourceId `<entityCode>::` prefix as the
+      // fallback for legacy un-backfilled rows. Fall back to sourceTag-only when
       // no incoming row carries an entityCode (legacy / single-entity batches).
       const entityPrefixes = [...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean))]
       const hasEntityScope = entityPrefixes.length > 0
+      const companyByCode = new Map<string, string>()
+      if (entityPrefixes.length > 0) {
+        const cos = await tx.company.findMany({
+          where: { organizationId: plan.organizationId, code: { in: entityPrefixes } },
+          select: { id: true, code: true },
+        })
+        for (const c of cos) companyByCode.set(c.code, c.id)
+      }
+      const companyIds = [...companyByCode.values()]
       const entityScope =
         hasEntityScope
-          ? { OR: entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })) }
+          ? {
+              OR: [
+                ...(companyIds.length > 0 ? [{ companyId: { in: companyIds } }] : []),
+                ...entityPrefixes.map((e) => ({ sourceId: { startsWith: `${e}::` } })),
+              ],
+            }
           : {}
       // BUGFIX 2026-06-21: when we CAN scope by entity (sourceId prefix), the
       // reset footprint is (organization + entity + year) — the `source` tag must
@@ -186,8 +199,8 @@ export async function runCashFlowBatch(
       const resetSourceScope = hasEntityScope ? {} : { source: plan.sourceTag }
       // Collateral-deletion guard: count live rows within THIS import's own
       // footprint (the source + entity prefixes the INSERTED rows carry)
-      // before archiving. CashFlowEntry has no companyId/planId — the entity
-      // lives in sourceId — so the footprint IS source + entityScope + year.
+      // before archiving. The footprint IS source + entityScope (companyId OR
+      // sourceId prefix, 2026-06-23) + year — the SAME scope the archive uses.
       // If a future edit drops entityScope from the archive WHERE, archived
       // would exceed this count and the guard trips (the 2026-05-31 sibling-
       // entity wipe regressing).
@@ -242,20 +255,8 @@ export async function runCashFlowBatch(
         })
       }
 
-      // 2026-06-23 — populate companyId (CF double-layer fix): resolve each
-      // row's entityCode to its Company so CF is per-company-scoped like
-      // BalanceSheetLine. Unresolved (consolidated/holding) → null.
-      const entityCodes = [
-        ...new Set(plan.rows.map((r) => r.entityCode).filter(Boolean)),
-      ]
-      const companyByCode = new Map<string, string>()
-      if (entityCodes.length > 0) {
-        const companies = await tx.company.findMany({
-          where: { organizationId: plan.organizationId, code: { in: entityCodes } },
-          select: { id: true, code: true },
-        })
-        for (const c of companies) companyByCode.set(c.code, c.id)
-      }
+      // companyId resolved above (reused from the reset scope) — populate it so
+      // CF is per-company-scoped like BalanceSheetLine; unresolved → null.
       const payload = plan.rows.map((r) => ({
         organizationId: plan.organizationId,
         year: r.year,

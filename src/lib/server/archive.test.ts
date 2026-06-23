@@ -55,9 +55,14 @@ describe("archiveRows — scope WHERE", () => {
     expect(w).not.toHaveProperty("companyId")
   })
 
-  it("CashFlowEntry WITH companyCode scopes by sourceId prefix (the fix)", async () => {
+  it("CashFlowEntry WITH companyCode prefers companyId, with sourceId-prefix fallback", async () => {
     await archiveRows({ prisma: prismaMock as never, actorUserId: "u1", scope: { organizationId: ORG, entityKind: "CashFlowEntry", companyCode: "AZSEKER-AZSF", year: 2026 } })
-    expect(where(prismaMock.cashFlowEntry)).toMatchObject({ organizationId: ORG, deletedAt: null, year: 2026, sourceId: { startsWith: "AZSEKER-AZSF::" } })
+    expect(where(prismaMock.cashFlowEntry)).toMatchObject({
+      organizationId: ORG,
+      deletedAt: null,
+      year: 2026,
+      OR: [{ companyId: "c1" }, { sourceId: { startsWith: "AZSEKER-AZSF::" } }],
+    })
   })
 
   it("CashFlowEntry WITHOUT companyCode stays org-wide-per-year (no sourceId filter)", async () => {
@@ -88,8 +93,11 @@ describe("restoreRows — inverts the soft-delete filter", () => {
     expect(w).toMatchObject({ organizationId: ORG, year: 2026, companyId: "c1", deletedAt: { not: null } })
   })
 
-  it("CF restore keeps the sourceId prefix scope", async () => {
+  it("CF restore keeps the companyId/sourceId scope, targeting archived rows", async () => {
     await restoreRows({ prisma: prismaMock as never, actorUserId: "u1", scope: { organizationId: ORG, entityKind: "CashFlowEntry", companyCode: "AZSEKER-CPC", year: 2026 } })
-    expect(where(prismaMock.cashFlowEntry)).toMatchObject({ sourceId: { startsWith: "AZSEKER-CPC::" }, deletedAt: { not: null } })
+    expect(where(prismaMock.cashFlowEntry)).toMatchObject({
+      OR: [{ companyId: "c1" }, { sourceId: { startsWith: "AZSEKER-CPC::" } }],
+      deletedAt: { not: null },
+    })
   })
 })
