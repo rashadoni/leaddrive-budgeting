@@ -293,6 +293,7 @@ export async function runCashFlowBatch(
             where: {
               organizationId: plan.organizationId,
               source: "budget_line",
+              isProjected: true,
               companyId: { in: companyIds },
               month: { in: importedMonths },
               ...yearFilter,

@@ -371,13 +371,18 @@ export async function POST(request: NextRequest) {
   // Gate on a COMMITTED import (Codex P1): runMultiFileImport can return a red
   // verdict or conflicts WITHOUT writing the main data (the route 409s / returns
   // the rejection below). The holding BS must not write on a rejected import —
-  // require no conflicts AND that the main import actually inserted rows.
+  // require no conflicts AND that the financial (main-financial) group itself
+  // committed rows.
   const consolidatedBsWarnings: string[] = []
   if (
     shouldApply &&
     holdingCompanyCode &&
     result.conflicts.length === 0 &&
-    result.perGroup.some((g) => g.totalRowsInserted > 0)
+    // the financial/reporting-pack group (which carries the consolidated BS tab)
+    // must itself have COMMITTED — an unrelated group's rows don't count (Codex P1).
+    result.perGroup.some(
+      (g) => g.fileType === "main-financial" && g.committed && g.totalRowsInserted > 0,
+    )
   ) {
     for (const f of files) {
       if (!looksLikeReportingPack(f.workbook.SheetNames)) continue
