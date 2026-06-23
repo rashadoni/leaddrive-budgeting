@@ -210,12 +210,11 @@ export function makePlfHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
-          // Hard-delete previously-archived rows in THIS import's own scope
-          // (footprint company + plan + period) before writing, so repeated
-          // delete→re-import cycles don't accumulate an unbounded archived tail
-          // (was 8–10k stale rows/entity). Scope is derive-from-write, so no
-          // sibling-company collateral (memory project_import_clean_slate_guard).
-          purgeArchivedFirst: true,
+          // NO purgeArchivedFirst (2026-06-24): keep the soft-archived prior
+          // version as a restore/undo buffer (user wants "сможешь вернуть"). The
+          // import soft-archives the replaced rows (deletedAt) instead of hard-
+          // deleting, so a bad import is reversible. Pileup is harmless to reads
+          // (deletedAt:null filter); prune old archives explicitly when confident.
         })
         // Capture the source's OWN EBITDA subtotal → `pl_ebitda` operational_facts
         // for EVERY year the sheet carries (not just `input.year`). The recompute
@@ -437,8 +436,8 @@ export function makeBsHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
-          // See PLF note — scoped purge of this import's archived tail.
-          purgeArchivedFirst: true,
+          // No purge — keep the soft-archived prior version as an undo buffer
+          // (see PLF note 2026-06-24).
         })
         return { rowsInserted: result.metrics.rowsInserted }
       },
@@ -595,8 +594,8 @@ export function makeCfHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
-          // See PLF note — scoped purge of this import's archived tail.
-          purgeArchivedFirst: true,
+          // No purge — keep the soft-archived prior version as an undo buffer
+          // (see PLF note 2026-06-24).
         })
         return { rowsInserted: result.metrics.rowsInserted }
       },
