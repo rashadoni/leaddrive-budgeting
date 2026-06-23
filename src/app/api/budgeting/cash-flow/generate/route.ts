@@ -58,7 +58,23 @@ export async function POST(req: NextRequest) {
     where: { organizationId: orgId, year, source: "budget_line" },
   })
 
+  // 2026-06-23 — actuals override the forecast for closed months. A month that
+  // already carries actual (imported, non-projected) CF must NOT also receive a
+  // projected budget_line entry, or org-level reads would sum actual+projected
+  // for the SAME month (the CF actual-vs-projected mixing Codex flagged). Project
+  // only the gap months; the cash flow = actuals (past) + projection (future).
+  const actualMonths = new Set(
+    (
+      await prisma.cashFlowEntry.findMany({
+        where: { organizationId: orgId, year, isProjected: false, deletedAt: null },
+        select: { month: true },
+        distinct: ["month"],
+      })
+    ).map((r: { month: number }) => r.month),
+  )
+
   let created = 0
+  let skippedActualMonths = 0
 
   for (const plan of plans) {
     const lines = await prisma.budgetLine.findMany({
@@ -84,6 +100,10 @@ export async function POST(req: NextRequest) {
       const entryType = line.lineType === "revenue" ? "inflow" : "outflow"
 
       for (const m of months) {
+        if (actualMonths.has(m)) {
+          skippedActualMonths++
+          continue // actuals already cover this month — don't double-count
+        }
         await prisma.cashFlowEntry.create({
           data: {
             organizationId: orgId,
@@ -92,6 +112,8 @@ export async function POST(req: NextRequest) {
             entryType,
             source: "budget_line",
             sourceId: line.id,
+            // inherit the budget line's company so projected CF is per-company too
+            companyId: line.companyId,
             // accountId is NOT NULL on CashFlowEntry — inherit the budget line's
             // account (BudgetLine.accountId is itself NOT NULL since Phase 2.1).
             accountId: line.accountId,
@@ -157,6 +179,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     entriesCreated: created,
+    // Months left to the imported actuals (forecast covers only the gap months).
+    skippedActualMonths,
     year,
   })
 }

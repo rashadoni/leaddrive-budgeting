@@ -135,6 +135,35 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     expect(planArg.where.year).toBe(2025)
     expect(planArg.where.isRolling).toBe(false)
   })
+
+  it("skips months that already carry actual CF (forecast fills only the gaps)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findMany.mockResolvedValue([
+      { id: "p1", organizationId: ORG_ID, year: 2025, periodType: "annual", month: null, quarter: null, isRolling: false },
+    ])
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      { id: "bl1", plannedAmount: 1200, lineType: "revenue", accountId: "acc1", companyId: "co1", account: { code: "X", name: "X" } },
+    ])
+    // Months 1-3 already have actual CF. The actualMonths fetch is the FIRST
+    // cashFlowEntry.findMany; subsequent calls (alerts) keep the default [].
+    prismaMock.cashFlowEntry.findMany.mockResolvedValueOnce([{ month: 1 }, { month: 2 }, { month: 3 }])
+    const res = await POST(
+      makeRequest("/api/budgeting/cash-flow/generate", { method: "POST", json: { year: 2025 } }),
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Record<string, unknown>
+    expect(body.entriesCreated).toBe(9) // 12 − 3 actual months
+    expect(body.skippedActualMonths).toBe(3)
+    const createdMonths = prismaMock.cashFlowEntry.create.mock.calls.map(
+      (c) => (c[0] as { data: { month: number } }).data.month,
+    )
+    expect(createdMonths).not.toContain(1)
+    expect(createdMonths).toContain(4)
+    // companyId inherited from the budget line (per-company projected CF).
+    expect(
+      (prismaMock.cashFlowEntry.create.mock.calls[0][0] as { data: { companyId: string } }).data.companyId,
+    ).toBe("co1")
+  })
 })
 
 describe("POST /api/budgeting/cash-flow/generate — Phase 4.2 period lock (Turn LXVIII)", () => {
