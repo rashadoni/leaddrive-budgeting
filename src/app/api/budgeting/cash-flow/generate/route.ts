@@ -58,23 +58,23 @@ export async function POST(req: NextRequest) {
     where: { organizationId: orgId, year, source: "budget_line" },
   })
 
-  // 2026-06-23 — actuals override the forecast for closed months. A month that
+  // 2026-06-23 — actuals override the forecast. A (company, month) cell that
   // already carries actual (imported, non-projected) CF must NOT also receive a
-  // projected budget_line entry, or org-level reads would sum actual+projected
-  // for the SAME month (the CF actual-vs-projected mixing Codex flagged). Project
-  // only the gap months; the cash flow = actuals (past) + projection (future).
-  const actualMonths = new Set(
+  // projected budget_line entry, or org reads would sum actual+projected for the
+  // SAME cell (the CF mixing Codex flagged). Scope by (company, month) so a
+  // PARTIAL company import doesn't suppress other companies' projections (P2).
+  const actualKeys = new Set(
     (
       await prisma.cashFlowEntry.findMany({
         where: { organizationId: orgId, year, isProjected: false, deletedAt: null },
-        select: { month: true },
-        distinct: ["month"],
+        select: { companyId: true, month: true },
+        distinct: ["companyId", "month"],
       })
-    ).map((r: { month: number }) => r.month),
+    ).map((r: { companyId: string | null; month: number }) => `${r.companyId ?? ""}|${r.month}`),
   )
 
   let created = 0
-  let skippedActualMonths = 0
+  let skippedActualCells = 0
 
   for (const plan of plans) {
     const lines = await prisma.budgetLine.findMany({
@@ -100,9 +100,9 @@ export async function POST(req: NextRequest) {
       const entryType = line.lineType === "revenue" ? "inflow" : "outflow"
 
       for (const m of months) {
-        if (actualMonths.has(m)) {
-          skippedActualMonths++
-          continue // actuals already cover this month — don't double-count
+        if (actualKeys.has(`${line.companyId ?? ""}|${m}`)) {
+          skippedActualCells++
+          continue // this company's actuals already cover this (company, month)
         }
         await prisma.cashFlowEntry.create({
           data: {
@@ -179,8 +179,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     entriesCreated: created,
-    // Months left to the imported actuals (forecast covers only the gap months).
-    skippedActualMonths,
+    // (company, month) cells left to the imported actuals (forecast fills gaps).
+    skippedActualCells,
     year,
   })
 }

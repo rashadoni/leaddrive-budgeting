@@ -280,6 +280,29 @@ export async function runCashFlowBatch(
         inserted = result.count
       }
       log.info("insert phase", { inserted })
+
+      // Codex P1 (2026-06-23) — actuals override the forecast: drop any
+      // budget_line PROJECTIONS for the (company, year, month) cells this import
+      // just wrote, so a generate-then-import order can't leave a double-counting
+      // overlap (the generate route also skips actual cells the other direction).
+      // No-op when no projections exist (the common case).
+      if (companyIds.length > 0) {
+        const importedMonths = [...new Set(plan.rows.map((r) => r.month))]
+        if (importedMonths.length > 0) {
+          const dropped = await tx.cashFlowEntry.deleteMany({
+            where: {
+              organizationId: plan.organizationId,
+              source: "budget_line",
+              companyId: { in: companyIds },
+              month: { in: importedMonths },
+              ...yearFilter,
+            },
+          })
+          if (dropped.count > 0) {
+            log.info("dropped overlapping budget_line projections", { count: dropped.count })
+          }
+        }
+      }
       return { resetArchived: archived, resetPurged: purged, rowsInserted: inserted }
   }
   const { resetArchived, resetPurged, rowsInserted } = isOuterTx

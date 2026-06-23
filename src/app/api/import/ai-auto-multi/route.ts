@@ -368,8 +368,17 @@ export async function POST(request: NextRequest) {
   // Apply-only + unique holding; the importer's reconciliation guard throws if
   // the parse doesn't sum to the sheet's own subtotals, so a bad parse is
   // skipped non-fatally rather than writing a wrong number.
+  // Gate on a COMMITTED import (Codex P1): runMultiFileImport can return a red
+  // verdict or conflicts WITHOUT writing the main data (the route 409s / returns
+  // the rejection below). The holding BS must not write on a rejected import —
+  // require no conflicts AND that the main import actually inserted rows.
   const consolidatedBsWarnings: string[] = []
-  if (shouldApply && holdingCompanyCode) {
+  if (
+    shouldApply &&
+    holdingCompanyCode &&
+    result.conflicts.length === 0 &&
+    result.perGroup.some((g) => g.totalRowsInserted > 0)
+  ) {
     for (const f of files) {
       if (!looksLikeReportingPack(f.workbook.SheetNames)) continue
       const ws = f.workbook.Sheets["BS"]

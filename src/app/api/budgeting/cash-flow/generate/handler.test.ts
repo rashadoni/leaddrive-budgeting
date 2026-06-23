@@ -144,16 +144,20 @@ describe("POST /api/budgeting/cash-flow/generate — happy path", () => {
     prismaMock.budgetLine.findMany.mockResolvedValue([
       { id: "bl1", plannedAmount: 1200, lineType: "revenue", accountId: "acc1", companyId: "co1", account: { code: "X", name: "X" } },
     ])
-    // Months 1-3 already have actual CF. The actualMonths fetch is the FIRST
+    // co1 has actual CF for months 1-3. The actualKeys fetch is the FIRST
     // cashFlowEntry.findMany; subsequent calls (alerts) keep the default [].
-    prismaMock.cashFlowEntry.findMany.mockResolvedValueOnce([{ month: 1 }, { month: 2 }, { month: 3 }])
+    prismaMock.cashFlowEntry.findMany.mockResolvedValueOnce([
+      { companyId: "co1", month: 1 },
+      { companyId: "co1", month: 2 },
+      { companyId: "co1", month: 3 },
+    ])
     const res = await POST(
       makeRequest("/api/budgeting/cash-flow/generate", { method: "POST", json: { year: 2025 } }),
     )
     expect(res.status).toBe(200)
     const body = (await res.json()) as Record<string, unknown>
-    expect(body.entriesCreated).toBe(9) // 12 − 3 actual months
-    expect(body.skippedActualMonths).toBe(3)
+    expect(body.entriesCreated).toBe(9) // 12 − 3 actual (co1) cells
+    expect(body.skippedActualCells).toBe(3)
     const createdMonths = prismaMock.cashFlowEntry.create.mock.calls.map(
       (c) => (c[0] as { data: { month: number } }).data.month,
     )
