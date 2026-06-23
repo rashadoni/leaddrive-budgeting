@@ -49,6 +49,7 @@ import {
   REPORTING_PACK_SHEET_MAP,
   looksLikeReportingPack,
 } from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
+import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
 import type { SheetMap } from "@/lib/onboarding/ai-import/sheet-routing"
 import {
   affectedIndicatorsForDataType,
@@ -359,6 +360,50 @@ export async function POST(request: NextRequest) {
     })
   }
 
+  // ── Consolidated holding balance sheet (2026-06-23) ──────────────
+  // The reporting-pack `BS` tab is the client's OFFICIAL consolidated balance
+  // sheet (in thousands). runMultiFileImport skips it (role=derived_summary)
+  // because it isn't a per-entity statement; import it onto the holding here so
+  // the holding shows the official ~253M instead of the naive cross-company sum.
+  // Apply-only + unique holding; the importer's reconciliation guard throws if
+  // the parse doesn't sum to the sheet's own subtotals, so a bad parse is
+  // skipped non-fatally rather than writing a wrong number.
+  const consolidatedBsWarnings: string[] = []
+  if (shouldApply && holdingCompanyCode) {
+    for (const f of files) {
+      if (!looksLikeReportingPack(f.workbook.SheetNames)) continue
+      const ws = f.workbook.Sheets["BS"]
+      if (!ws) continue
+      try {
+        const rows = XLSX.utils.sheet_to_json(ws, {
+          header: 1,
+          raw: true,
+          defval: null,
+        }) as unknown[][]
+        const res = await importConsolidatedHoldingBs(prisma, {
+          worksheetRows: rows,
+          organizationId: orgId,
+          holdingCompanyCode,
+          actorUserId: session.userId,
+        })
+        consolidatedBsWarnings.push(...res.warnings)
+        log.info("consolidated holding BS imported", {
+          file: f.filename,
+          warnings: res.warnings.length,
+        })
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        log.warn("consolidated holding BS import skipped (non-fatal)", {
+          file: f.filename,
+          err: msg,
+        })
+        consolidatedBsWarnings.push(
+          `${f.filename}: consolidated balance sheet skipped — ${msg}`,
+        )
+      }
+    }
+  }
+
   // ── Decorate response with per-sheet «affected indicators» preview ──
   // 2026-05-27 — extends each classification with the indicators its
   // dataType writes will feed (matched against indicator-seeds
@@ -471,6 +516,7 @@ export async function POST(request: NextRequest) {
     ...result,
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
     backlogClosed,
+    consolidatedBsWarnings,
     durationMs: Date.now() - t0,
   })
 }
