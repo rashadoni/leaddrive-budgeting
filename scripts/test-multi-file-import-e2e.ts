@@ -53,7 +53,9 @@ const FILES = [
 const ORG_SLUG = "azmade"
 const YEAR = 2026
 const MAX_BUDGET_DOLLARS = 0.5
-const MAX_DURATION_MS = 120_000
+// 180s headroom: a real 3-file run measured ~119s, too close to a 120s budget
+// to be a stable assertion. Still catches a gross (>50%) perf regression.
+const MAX_DURATION_MS = 180_000
 const APPLY = process.argv.includes("--apply")
 const DRY_RUN = !APPLY
 

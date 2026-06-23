@@ -57,7 +57,10 @@ import {
 } from "@/lib/onboarding/ai-import/datatype-indicator-map"
 import { prisma } from "@/lib/prisma"
 
-export const maxDuration = 120
+// 300s (not 120) — a real 3-file AI import measured 119.2s end-to-end, i.e.
+// 0.8s under the old ceiling. Multi-file batches legitimately run long; match
+// the reporting-pack route precedent (also 300) so prod doesn't kill them.
+export const maxDuration = 300
 
 /** Hard caps protecting the LLM budget + dev server liveness. */
 const MAX_FILES = 10
