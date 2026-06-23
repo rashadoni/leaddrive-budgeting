@@ -66,6 +66,10 @@ export interface RoutingResult {
   /** Per-sheet write-entity override from the config (e.g. HOLDING_ENTITY_SENTINEL
    *  for a consolidated sheet). The orchestrator resolves the sentinel to a code. */
   entityCodeOverride?: string
+  /** Per-sheet dataType override from the config. Used for deterministically-
+   *  generated sheets (e.g. the per-entity virtual sheets a consolidated PLF is
+   *  split into) so routing never depends on the LLM re-classifying them. */
+  dataTypeOverride?: SheetDataType
 }
 
 /**
@@ -154,5 +158,15 @@ export function resolveSheetRouting(input: RoutingInput): RoutingResult {
   const entityCodeOverride = input.config?.find(
     (e) => e.entityCode !== undefined && matchEntry(e, input.sheetName),
   )?.entityCode
-  return { planKind, role, planKindSignal, roleSignal, entityCodeOverride }
+  const dataTypeOverride = input.config?.find(
+    (e) => e.dataType !== undefined && matchEntry(e, input.sheetName),
+  )?.dataType
+  return {
+    planKind,
+    role,
+    planKindSignal,
+    roleSignal,
+    entityCodeOverride,
+    dataTypeOverride,
+  }
 }

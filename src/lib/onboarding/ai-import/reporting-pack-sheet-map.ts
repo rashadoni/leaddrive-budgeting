@@ -33,7 +33,16 @@ export const REPORTING_PACK_SHEET_MAP: SheetMap = [
   // level → routed to the holding entity. Budget≠actual, so no double-count with
   // the children's per-company actuals.
   { match: "Actual PLF", planKind: "actual", role: "source" },
-  { match: "Budget PLF", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
+  // `Budget PLF` is NOT a single consolidated P&L — it is 5 vertically-stacked
+  // per-entity blocks (EDEN/AZSF/ProMalt/CPC + a holding VAT block). Routing it
+  // whole to the holding stacked every entity onto AZSEKER and left each
+  // operating entity's budget EMPTY — the recurring "delete→AI-import wrong" bug
+  // (memory project_budget_plf_five_blocks). The route now PRE-SPLITS it into one
+  // virtual per-entity sheet each (applyBudgetPlfSplit, keyed by
+  // REPORTING_PACK_BUDGET_PLF_BLOCK_ENTITIES) and REMOVES this raw sheet before
+  // classification. This entry is the SAFE FALLBACK for when the split can't run
+  // (block count changed): skip the raw sheet rather than re-introduce stacking.
+  { match: "Budget PLF", role: "derived_summary" },
   { match: "BS Actual", planKind: "actual", role: "source" },
   { match: "CF Actual", planKind: "actual", role: "source" },
   // Budget CF skipped (2026-06-23): the İcmal budget is P&L-ONLY by design — a
@@ -63,6 +72,28 @@ export const REPORTING_PACK_SHEET_MAP: SheetMap = [
   // deterministically either way (so they can't block or double-count).
   { match: "Farming Revenue", role: "derived_summary" },
   { match: "Farming COGS", role: "derived_summary" },
+]
+
+/**
+ * Ordered block→entity mapping for the `Budget PLF` sheet's stacked per-entity
+ * blocks, IN DOCUMENT ORDER. Verified 2026-06-23 against the live DB +
+ * _import-baseline.json by exact annual-revenue signature:
+ *   block#1 EDEN 31,986,950 · block#2 AZSF 250,000 · block#3 ProMalt 8,308,790 ·
+ *   block#4 CPC 18,334,363 · block#5 holding (group VAT only, 0 revenue).
+ * Σ = 58,880,103 = the verified consolidated Budget PLF revenue (58.88M).
+ *
+ * `HOLDING_ENTITY_SENTINEL` is resolved to the org's level-1 company at apply
+ * time. The split aborts (and the raw sheet is skipped) unless the detected
+ * block count equals this list's length, so a reshaped file fails LOUDLY rather
+ * than silently mis-mapping. Block ORDER is the only in-file signal (no per-block
+ * entity label exists), so this is positional + count-guarded by design.
+ */
+export const REPORTING_PACK_BUDGET_PLF_BLOCK_ENTITIES: readonly string[] = [
+  "AZSEKER-EDEN",
+  "AZSEKER-AZSF",
+  "AZSEKER-PROMALT",
+  "AZSEKER-CPC",
+  HOLDING_ENTITY_SENTINEL,
 ]
 
 /** Signature tabs that identify the reporting-pack shape — the structured

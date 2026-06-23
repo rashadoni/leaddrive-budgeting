@@ -18,12 +18,42 @@ function route(sheetName: string, dataType: SheetDataType = "PLF") {
 describe("REPORTING_PACK_SHEET_MAP", () => {
   it("routes the structured sources to the correct plan kind", () => {
     expect(route("Actual PLF", "PLF")).toMatchObject({ planKind: "actual", role: "source" })
-    expect(route("Budget PLF", "PLF")).toMatchObject({ planKind: "budget", role: "source" })
+    // Raw "Budget PLF" is now a DERIVED skip (2026-06-23): it is 5 stacked
+    // per-entity blocks, so the route PRE-SPLITS it into one virtual per-entity
+    // sheet each (applyBudgetPlfSplit) and removes the raw sheet. This entry is
+    // the safe fallback for when the split can't run — skip, never holding-stack.
+    expect(route("Budget PLF", "PLF")).toMatchObject({ role: "derived_summary" })
     expect(route("BS Actual", "BS")).toMatchObject({ planKind: "actual", role: "source" })
     expect(route("CF Actual", "CF")).toMatchObject({ planKind: "actual", role: "source" })
     // Budget CF is intentionally NOT a source (2026-06-23): budget is P&L-only,
     // and routing this consolidated CF to the holding inflated CashFlowEntry ~10×.
     expect(route("Budget CF", "CF")).toMatchObject({ role: "derived_summary" })
+  })
+
+  it("the virtual per-entity Budget PLF sheets route to budget/source with the right entity + dataType override", () => {
+    // applyBudgetPlfSplit emits these sheet-map entries; verify routing pins them
+    // deterministically (planKind=budget, role=source, dataType=PLF, entity).
+    const cfg = [
+      {
+        match: "Budget PLF [AZSEKER-EDEN]",
+        dataType: "PLF" as SheetDataType,
+        planKind: "budget" as const,
+        role: "source" as const,
+        entityCode: "AZSEKER-EDEN",
+      },
+    ]
+    const r = resolveSheetRouting({
+      dataType: "UNKNOWN",
+      sheetName: "Budget PLF [AZSEKER-EDEN]",
+      section: null,
+      config: cfg,
+    })
+    expect(r).toMatchObject({
+      planKind: "budget",
+      role: "source",
+      entityCodeOverride: "AZSEKER-EDEN",
+      dataTypeOverride: "PLF",
+    })
   })
 
   it("skips every derived / summary / elimination / flat-feed view", () => {

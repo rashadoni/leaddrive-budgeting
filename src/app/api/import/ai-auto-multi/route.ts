@@ -47,8 +47,11 @@ import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/produ
 import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
 import {
   REPORTING_PACK_SHEET_MAP,
+  REPORTING_PACK_BUDGET_PLF_BLOCK_ENTITIES,
   looksLikeReportingPack,
 } from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
+import { applyBudgetPlfSplit } from "@/lib/onboarding/ai-import/consolidated-plf-split"
+import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
 import type { SheetMap } from "@/lib/onboarding/ai-import/sheet-routing"
 import {
@@ -266,6 +269,41 @@ export async function POST(request: NextRequest) {
       })
     : []
   const holdingCompanyCode = level1.length === 1 ? level1[0].code : undefined
+
+  // ── Pre-split the consolidated "Budget PLF" into per-entity sheets ──────
+  // The reporting-pack `Budget PLF` is 5 vertically-stacked per-entity blocks
+  // (EDEN/AZSF/ProMalt/CPC + a holding VAT block). Splitting it into one virtual
+  // sheet per entity BEFORE classification lets the existing one-sheet→one-entity
+  // pipeline write each entity's budget correctly (and the holding its own block)
+  // instead of stacking all 5 onto the holding — THE recurring "delete→import
+  // wrong" bug (memory project_budget_plf_five_blocks). Mutates each pack file's
+  // workbook + augments its sheet-map with deterministic per-block entries.
+  const budgetPlfSplits: Array<{
+    filename: string
+    applied: boolean
+    mapping: Array<{ sheetName: string; entityCode: string; revenueAnnual: number }>
+    warnings: string[]
+  }> = []
+  for (const f of files) {
+    if (!looksLikeReportingPack(f.workbook.SheetNames)) continue
+    if (!f.workbook.SheetNames.includes("Budget PLF")) continue
+    const split = applyBudgetPlfSplit(f.workbook, XLSX, {
+      blockEntityCodes: REPORTING_PACK_BUDGET_PLF_BLOCK_ENTITIES,
+      holdingCompanyCode,
+    })
+    if (split.applied) {
+      // Per-block source entries first (exact-name match on the virtual sheets),
+      // then the base pack map for every other tab. The raw "Budget PLF" entry in
+      // the base map is now derived_summary, so even a stray match is a safe skip.
+      f.sheetMap = [...split.sheetMapEntries, ...REPORTING_PACK_SHEET_MAP]
+    }
+    budgetPlfSplits.push({
+      filename: f.filename,
+      applied: split.applied,
+      mapping: split.mapping,
+      warnings: split.warnings,
+    })
+  }
 
   // ── Context: known entity codes + org industry hint ─────────────
   const entities = await prisma.company.findMany({
@@ -526,6 +564,65 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // ── Audit trail (2026-06-23) ────────────────────────────────────
+  // The AI multi-import is the PRIMARY import path but historically wrote NO
+  // audit_event (only the legacy staging route + resets did) — a hole in the
+  // IFRS trail. Record one committed-import event per apply. Reuse the existing
+  // `import_staging_apply` action with `multiEntity:true` (its documented reuse
+  // shape) so no AuditAction enum migration is needed. Best-effort: a failed
+  // audit write must never roll back a committed import.
+  const committedGroups = result.perGroup.filter((g) => g.committed)
+  const totalInserted = committedGroups.reduce(
+    (s, g) => s + g.totalRowsInserted,
+    0,
+  )
+  if (shouldApply && committedGroups.length > 0) {
+    try {
+      // companyId is required on the audit metadata — anchor to the holding when
+      // resolved, else the first known entity (the trail is org-scoped anyway).
+      const anchor = await prisma.company.findFirst({
+        where: {
+          organizationId: orgId,
+          ...(holdingCompanyCode ? { code: holdingCompanyCode } : {}),
+        },
+        select: { id: true },
+      })
+      await logAuditEvent(prisma, {
+        organizationId: orgId,
+        actorUserId: session.userId,
+        event: {
+          action: "import_staging_apply",
+          entityType: "ImportStaging",
+          entityId: `ai-multi:${year}:${t0}`,
+          metadata: {
+            companyId: anchor?.id ?? "unknown",
+            year,
+            inserted: totalInserted,
+            deleted: 0,
+            warnings: result.warnings.length,
+            parentRollupsDropped: 0,
+            parentRollupsUnallocated: 0,
+            recompute: result.recompute,
+            multiSheet: true,
+            sheetCount: result.perFile.reduce(
+              (s, f) => s + f.classifications.length,
+              0,
+            ),
+            successCount: committedGroups.length,
+            failureCount: result.perGroup.length - committedGroups.length,
+            multiEntity: true,
+            entityCount: new Set(committedGroups.flatMap((g) => g.filenames))
+              .size,
+          },
+        },
+      })
+    } catch (e) {
+      log.warn("audit event for ai-multi import failed (non-fatal)", {
+        err: e instanceof Error ? e.message : String(e),
+      })
+    }
+  }
+
   // ── Normal path ─────────────────────────────────────────────────
   return NextResponse.json({
     ok: true,
@@ -534,6 +631,7 @@ export async function POST(request: NextRequest) {
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
     backlogClosed,
     consolidatedBsWarnings,
+    budgetPlfSplits,
     durationMs: Date.now() - t0,
   })
 }

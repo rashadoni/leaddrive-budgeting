@@ -175,6 +175,9 @@ function withPlanKind(
     })
     return {
       ...c,
+      // Config dataType override (deterministic) supersedes the LLM's guess —
+      // used for the per-entity virtual sheets a consolidated PLF is split into.
+      dataType: r.dataTypeOverride ?? c.dataType,
       planKind: r.planKind,
       role: r.role,
       planKindSignal: r.planKindSignal,

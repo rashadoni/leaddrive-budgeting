@@ -210,6 +210,12 @@ export function makePlfHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
+          // Hard-delete previously-archived rows in THIS import's own scope
+          // (footprint company + plan + period) before writing, so repeated
+          // delete→re-import cycles don't accumulate an unbounded archived tail
+          // (was 8–10k stale rows/entity). Scope is derive-from-write, so no
+          // sibling-company collateral (memory project_import_clean_slate_guard).
+          purgeArchivedFirst: true,
         })
         // Capture the source's OWN EBITDA subtotal → `pl_ebitda` operational_facts
         // for EVERY year the sheet carries (not just `input.year`). The recompute
@@ -431,6 +437,8 @@ export function makeBsHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
+          // See PLF note — scoped purge of this import's archived tail.
+          purgeArchivedFirst: true,
         })
         return { rowsInserted: result.metrics.rowsInserted }
       },
@@ -587,6 +595,8 @@ export function makeCfHandler(
           periodScope: buildPeriodScope(input.year),
           rows: resolvedRows,
           expectedSums,
+          // See PLF note — scoped purge of this import's archived tail.
+          purgeArchivedFirst: true,
         })
         return { rowsInserted: result.metrics.rowsInserted }
       },

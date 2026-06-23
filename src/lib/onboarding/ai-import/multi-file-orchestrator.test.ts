@@ -21,6 +21,7 @@ import {
 import { buildRegistryWith, type AdapterHandler } from "./adapter-registry"
 import type { SheetClassifierAnthropicLike } from "./sheet-classifier"
 import { REPORTING_PACK_SHEET_MAP } from "./reporting-pack-sheet-map"
+import { HOLDING_ENTITY_SENTINEL, type SheetMap } from "./sheet-routing"
 import type { PrismaClient } from "@prisma/client"
 import { buildReconKey } from "../reconciliation"
 
@@ -980,7 +981,12 @@ describe("runMultiFileImport", () => {
     expect(prisma.__txCallCount.n).toBeGreaterThan(0)
   })
 
-  it("Cross-entity (config): a HOLDING-sentinel budget tab routes to the holding; config-derived entity views don't trip completeness", async () => {
+  it("Pack map: raw 'Budget PLF' is SKIPPED as derived (not holding-stacked); the route pre-splits it instead", async () => {
+    // 2026-06-23: REPORTING_PACK_SHEET_MAP no longer holding-routes the raw
+    // "Budget PLF" (that stacked all 5 per-entity blocks onto the holding). It is
+    // now role=derived_summary — the route pre-splits it into per-entity virtual
+    // sheets BEFORE this orchestrator runs. So a raw "Budget PLF" reaching the
+    // orchestrator under the pack map must be SKIPPED, never written to any entity.
     const prisma = stubPrisma({ companies: [{ id: "h", code: "AZSEKER" }] })
     const client = stubClientPerCall([
       [
@@ -1023,10 +1029,54 @@ describe("runMultiFileImport", () => {
       XLSX: fakeXLSX,
     }
     const result = await runMultiFileImport(input, deps)
-    expect(captured["Budget PLF"]).toBe("AZSEKER") // consolidated budget → holding
+    expect(captured["Budget PLF"]).toBeUndefined() // derived → skipped, NOT holding-stacked
     expect(captured["PL EDEN"]).toBeUndefined() // config-derived → skipped (handler not called)
-    expect(result.overallVerdict).not.toBe("red") // EDEN config-view did NOT trip completeness
-    expect(result.warnings.some((w) => /consolidated.*holding entity "AZSEKER"/i.test(w))).toBe(true)
+    expect(result.overallVerdict).not.toBe("red") // config-derived views did NOT trip completeness
+  })
+
+  it("HOLDING_ENTITY_SENTINEL mechanism: a synthetic-config consolidated tab still routes to the holding", async () => {
+    // The sentinel mechanism is generic (any future per-org config can use it),
+    // so keep it covered even though the pack map no longer routes Budget PLF
+    // through it. A sheet pinned to the sentinel resolves to holdingCompanyCode.
+    const prisma = stubPrisma({ companies: [{ id: "h", code: "AZSEKER" }] })
+    const client = stubClientPerCall([
+      [{ sheetName: "Consolidated PL", dataType: "PLF", entityCode: null, confidence: 0.9, reasoning: "consolidated" }],
+    ])
+    const captured: Record<string, string | null> = {}
+    const cap: AdapterHandler = async (i: { sheetName: string; entityCode?: string | null }) => {
+      captured[i.sheetName] = i.entityCode ?? null
+      const n = i.entityCode ? 5 : 0
+      return {
+        summary: "ok",
+        itemCount: n,
+        warnings: [],
+        applyToDb: vi.fn(async () => ({ rowsInserted: n })),
+      } as unknown as Awaited<ReturnType<AdapterHandler>>
+    }
+    const syntheticMap: SheetMap = [
+      { match: "Consolidated PL", planKind: "budget", role: "source", entityCode: HOLDING_ENTITY_SENTINEL },
+    ]
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "syn.xlsx",
+          workbook: { Sheets: { "Consolidated PL": { "!ref": "A1:C3" } }, SheetNames: ["Consolidated PL"] },
+          sheetMap: syntheticMap,
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      holdingCompanyCode: "AZSEKER",
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: cap }),
+      XLSX: fakeXLSX,
+    }
+    await runMultiFileImport(input, deps)
+    expect(captured["Consolidated PL"]).toBe("AZSEKER") // sentinel → holding
   })
 
   it("Cross-entity (per-file scope): a SIBLING file's same-named tab is NOT holding-routed (Codex P0)", async () => {
@@ -1079,8 +1129,12 @@ describe("runMultiFileImport", () => {
       XLSX: fakeXLSX,
     }
     await runMultiFileImport(input, deps)
-    expect(budgetPlf).toContain("AZSEKER") // file A's consolidated budget → holding
-    expect(budgetPlf).toContain("AZSEKER-CPC") // file B's same-named tab kept its entity — per-file scope, not request-wide
+    // File A's pack "Budget PLF" is now skipped-as-derived (the route pre-splits
+    // it per-entity), so it is NOT holding-stacked and never reaches the handler.
+    expect(budgetPlf).not.toContain("AZSEKER")
+    // Per-file scope (Codex P0): file B has NO sheetMap, so its same-named tab
+    // keeps its own entity — the pack map of file A did not leak to file B.
+    expect(budgetPlf).toContain("AZSEKER-CPC")
   })
 
   it("dryRun=true → 0 DB writes, perGroup shows preview", async () => {
