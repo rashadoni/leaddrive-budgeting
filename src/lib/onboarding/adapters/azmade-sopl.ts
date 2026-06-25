@@ -133,6 +133,22 @@ export interface ParseResult {
    *  than the reconciliation tolerance. Preserves the delta so finance data
    *  isn't silently lost. Empty when every dropped parent reconciles. */
   parentRollupsUnallocated: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
+  /** Partial-subtotal parents (2026-06-25): parents whose CHILDREN sum to MORE
+   *  than the parent's stated total — the parent is a subtotal that excludes
+   *  some of its own coded children (e.g. an above-EBITDA "Supporting Functions"
+   *  subtotal that omits its Depreciation & Amortization line). The detailed
+   *  leaves are the economic truth, so the dedup step TRUSTS the children (drops
+   *  the parent WITHOUT a cancelling synthetic, which would silently subtract
+   *  the excluded child back out). Surfaced here AND as a `warnings` row — a
+   *  non-blocking WARNING, never a hard control-total RED — so the overshoot is
+   *  never silent. Empty when no parent overshoots its children. */
+  parentPartialSubtotals?: Array<{
+    code: string;
+    label: string;
+    statedTotal: number;
+    childSum: number;
+    excluded: number;
+  }>;
   /** Per-row control (2026-06-20): rows whose file-stated "Total" column did
    *  NOT equal the sum of their 12 monthly cells (raw, pre-sign-flip) beyond
    *  tolerance — a format-independent signal that the months were mis-mapped.
@@ -681,10 +697,23 @@ export function dedupeParentRollups(
   kept: ParsedBudgetLine[];
   dropped: Array<{ code: string; label: string; plannedAnnual: number }>;
   synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }>;
+  /** Parents whose CHILDREN sum to MORE than the parent's stated total — the
+   *  parent is a PARTIAL subtotal that excludes some of its own coded children
+   *  (e.g. an above-EBITDA "Supporting Functions" subtotal that omits its
+   *  Depreciation & Amortization line). We trust the detailed leaves (drop the
+   *  parent, NO cancelling synthetic) and record it here so the caller can WARN
+   *  (never block) — distinct from `synthetic` which drives the control-total. */
+  partialSubtotals: Array<{
+    code: string;
+    label: string;
+    statedTotal: number;
+    childSum: number;
+    excluded: number;
+  }>;
 } {
   const { enabled = true, costCenterSuffixes = [] } = options;
   if (!enabled) {
-    return { kept: [...lines], dropped: [], synthetic: [] };
+    return { kept: [...lines], dropped: [], synthetic: [], partialSubtotals: [] };
   }
   // Cost-center dimension (e.g. AzerSheker `.R` = Region). The matched suffix
   // of a code (or '' when none) labels its cost center; the BASE code (suffix
@@ -759,6 +788,13 @@ export function dedupeParentRollups(
   const kept: ParsedBudgetLine[] = [];
   const dropped: Array<{ code: string; label: string; plannedAnnual: number }> = [];
   const synthetic: Array<{ code: string; parentCode: string; plannedAnnual: number }> = [];
+  const partialSubtotals: Array<{
+    code: string;
+    label: string;
+    statedTotal: number;
+    childSum: number;
+    excluded: number;
+  }> = [];
 
   for (const l of lines) {
     if (!hasDescendant(l.code)) {
@@ -788,7 +824,37 @@ export function dedupeParentRollups(
       continue;
     }
 
-    // Unexplained delta → preserve it as a synthetic __UNALLOCATED__ leaf.
+    // CHILDREN OVERSHOOT the parent (|Σchildren| > |parent| beyond tol): the
+    // parent is a PARTIAL subtotal that excludes some of its own coded children
+    // — e.g. an above-EBITDA "Supporting Functions Cost" subtotal that omits its
+    // Depreciation & Amortization line (verified on AzerSheker actual-budget-v1
+    // 2026-06-25: PLF.05 stated −2,059,529 vs Σchildren −3,008,012; the −948,484
+    // gap == PLF.05.15 D&A). The DETAILED LEAVES are the economic truth (D&A IS a
+    // real expense), so TRUST the children: drop the parent WITHOUT a cancelling
+    // __UNALLOCATED__ synthetic — which would otherwise SUBTRACT the excluded
+    // child back out and silently drop D&A from the P&L. topmost-descendant
+    // recursion keeps only the deepest leaves, so trusting children introduces NO
+    // double-count. Recorded in `partialSubtotals` (a WARNING) instead of
+    // `synthetic` (which drives the blocking control-total RED).
+    if (Math.abs(childAnnualSum) > Math.abs(l.plannedAnnual) + tol) {
+      dropped.push({
+        code: l.code,
+        label: l.label,
+        plannedAnnual: l.plannedAnnual,
+      });
+      partialSubtotals.push({
+        code: l.code,
+        label: l.label,
+        statedTotal: l.plannedAnnual,
+        childSum: childAnnualSum,
+        excluded: childAnnualSum - l.plannedAnnual,
+      });
+      continue;
+    }
+
+    // Children UNDERSHOOT (the parent has an unallocated remainder, e.g. a
+    // mis-mapped amount column zeroed the children) → preserve the parent's
+    // total via a synthetic __UNALLOCATED__ leaf.
     // Per-month delta computed in the same basis as plannedAnnual (children
     // may not cover every month — if a child has no `perMonth[i]`, treat as 0).
     const childMonthly = new Array<number>(12).fill(0);
@@ -819,7 +885,7 @@ export function dedupeParentRollups(
     });
   }
 
-  return { kept, dropped, synthetic };
+  return { kept, dropped, synthetic, partialSubtotals };
 }
 
 export function parseSoplSheet(
@@ -963,7 +1029,19 @@ export function parseSoplSheet(
     });
   }
 
-  const { kept, dropped, synthetic } = dedupeParentRollups(lines);
+  const { kept, dropped, synthetic, partialSubtotals } = dedupeParentRollups(lines);
+  // Partial-subtotal parents (children overshoot → parent excludes a coded
+  // child, e.g. a D&A line). Trust the detailed leaves; surface as a
+  // non-blocking WARNING so the overshoot is never silent.
+  for (const ps of partialSubtotals) {
+    warnings.push({
+      row: 0,
+      reason:
+        `parent "${ps.code}" (${ps.label}) is a partial subtotal: children sum ${ps.childSum} ` +
+        `exceeds the stated ${ps.statedTotal} by ${ps.excluded} — trusted the detailed children, ` +
+        `dropped the parent (review if the overshoot is an inflated/duplicated child, not an excluded line)`,
+    });
+  }
   return {
     sheetName,
     lines: kept,
@@ -975,5 +1053,6 @@ export function parseSoplSheet(
     skippedRowCount: skipped + dropped.length - synthetic.length,
     parentRollupsDropped: dropped,
     parentRollupsUnallocated: synthetic,
+    parentPartialSubtotals: partialSubtotals,
   };
 }

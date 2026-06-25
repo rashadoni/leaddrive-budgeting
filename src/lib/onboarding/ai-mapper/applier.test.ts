@@ -203,6 +203,44 @@ describe('applyProposal — happy path', () => {
     ]);
   });
 
+  it('partial-subtotal parent (children overshoot) → trust children, surface a WARNING, no synthetic (2026-06-25)', () => {
+    const m = (v: number) => Array.from({ length: 12 }, () => v);
+    // PLF.05 stated 120/yr but its two coded children sum to 180/yr — the parent
+    // is a PARTIAL subtotal that excludes 60 of its own children (the D&A class).
+    // Trust the detailed leaves; the overshoot must surface as a warning, never
+    // a silent drop or a cancelling negative synthetic.
+    const aoa: (string | number | null)[][] = [
+      ['NUM', 'KOD', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      [1, 'PLF.05', 'Supporting Functions', ...m(10)], // stated subtotal = 120
+      [2, 'PLF.05.01', 'Salary', ...m(8)],
+      [3, 'PLF.05.02', 'Depreciation', ...m(7)], // children sum 180 > parent 120
+    ];
+    const proposal: MappingProposal = {
+      ...buildProposal([
+        { sourceIndex: 0, role: 'skip', confidence: 1, reasoning: '' },
+        { sourceIndex: 1, role: 'code', confidence: 0.95, reasoning: '' },
+        { sourceIndex: 2, role: 'label', confidence: 0.95, reasoning: '' },
+        ...fullMonthCols(3),
+      ]),
+      accountTypeOverrides: [expenseOverride('PLF.05')],
+    };
+    const result = applyProposal(makeWorkbook(aoa), 'Sheet1', proposal, XLSX);
+    if ('error' in result) throw new Error(result.error);
+    // No cancelling synthetic — children trusted as-is.
+    expect(result.parentRollupsUnallocated).toHaveLength(0);
+    expect(result.lines.map((l) => l.code).sort()).toEqual(['PLF.05.01', 'PLF.05.02']);
+    // Structured carrier populated with the excluded delta.
+    expect(result.parentPartialSubtotals).toHaveLength(1);
+    expect(result.parentPartialSubtotals![0]).toMatchObject({
+      code: 'PLF.05',
+      statedTotal: 120,
+      childSum: 180,
+      excluded: 60,
+    });
+    // …AND surfaced in the warnings channel the route/UI already renders.
+    expect(result.warnings.some((w) => /partial subtotal/i.test(w.reason))).toBe(true);
+  });
+
   it('does NOT treat a one-off `.R` code as a cost center (real terminal sub-account)', () => {
     const m = (v: number) => Array.from({ length: 12 }, () => v);
     const aoa: (string | number | null)[][] = [

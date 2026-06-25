@@ -713,10 +713,24 @@ export function applyProposal(
   ).length;
   const hasRegionCostCenter =
     mirrorPairs >= 3 && !lines.some((l) => l.code.includes('.R.'));
-  const { kept, dropped, synthetic } = dedupeParentRollups(
+  const { kept, dropped, synthetic, partialSubtotals } = dedupeParentRollups(
     lines,
     hasRegionCostCenter ? { costCenterSuffixes: ['.R'] } : {},
   );
+  // Partial-subtotal parents (children overshoot the parent → the parent
+  // excludes some of its own coded children, e.g. a D&A line). The dedup step
+  // trusts the detailed leaves; surface each as a non-blocking WARNING so the
+  // overshoot is never silent (the #1 silent-corruption guard: an inflated /
+  // double-counted child would also overshoot, and must be reviewable).
+  for (const ps of partialSubtotals) {
+    warnings.push({
+      row: 0,
+      reason:
+        `parent "${ps.code}" (${ps.label}) is a partial subtotal: children sum ${ps.childSum} ` +
+        `exceeds the stated ${ps.statedTotal} by ${ps.excluded} — trusted the detailed children, ` +
+        `dropped the parent (review if the overshoot is an inflated/duplicated child, not an excluded line)`,
+    });
+  }
   // skippedRowCount = sheet rows that did NOT contribute a final line.
   //   `skipped`           — rows skipped at parse time (header band, bare
   //                         labels with no code, zero-only rows, 4xx/5xx/8xx
@@ -736,6 +750,7 @@ export function applyProposal(
     skippedRowCount: skipped + dropped.length - synthetic.length,
     parentRollupsDropped: dropped,
     parentRollupsUnallocated: synthetic,
+    parentPartialSubtotals: partialSubtotals,
     rowTotalMismatches,
     sectionTypeConflicts,
     signConventions,

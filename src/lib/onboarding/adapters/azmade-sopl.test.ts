@@ -506,11 +506,15 @@ describe('dedupeParentRollups', () => {
     ];
 
     // WITHOUT the option: `.R` codes are wrongly read as children of PLF.05 /
-    // PLF.05.01 → parents don't reconcile → synthetic unallocated rows (the bug).
-    expect(dedupeParentRollups(input).synthetic.length).toBeGreaterThan(0);
+    // PLF.05.01 → children OVERSHOOT the parents → the bug surfaces as
+    // partial-subtotal warnings (post-2026-06-25 overshoot is a partialSubtotal,
+    // no longer a negative synthetic).
+    const broken = dedupeParentRollups(input);
+    expect(broken.partialSubtotals.length).toBeGreaterThan(0);
+    expect(broken.synthetic).toHaveLength(0);
 
     // WITH the option: Head Office and Region each reconcile on their own → both
-    // parents safe-drop, the four leaves kept, no synthetic unallocated.
+    // parents safe-drop, the four leaves kept, no synthetic and no partial.
     const fixed = dedupeParentRollups(input, { costCenterSuffixes: ['.R'] });
     expect(fixed.kept.map((l) => l.code).sort()).toEqual([
       'PLF.05.01',
@@ -520,6 +524,7 @@ describe('dedupeParentRollups', () => {
     ]);
     expect(fixed.dropped.map((l) => l.code).sort()).toEqual(['PLF.05', 'PLF.05.R']);
     expect(fixed.synthetic).toHaveLength(0);
+    expect(fixed.partialSubtotals).toHaveLength(0);
   });
 
   it('handles 3-level hierarchy — drops both levels of parents when reconciled', () => {
@@ -616,20 +621,35 @@ describe('dedupeParentRollups', () => {
     expect(synthetic.map((s) => s.code)).toEqual([synCode]);
   });
 
-  it('reconciliation — children OVER parent → synthetic __UNALLOCATED__ captures the negative delta', () => {
-    // Parent 800, children sum 1000 → delta -200. Finance-visible: children
-    // list is larger than the parent stated, suggesting an over-budgeted
-    // sub-line or a signed-amount workbook oddity. Preserve the -200.
+  it('reconciliation — children OVER parent → partial subtotal: trust children, no synthetic, warn (2026-06-25)', () => {
+    // Parent 800, children sum 1000 → children OVERSHOOT by 200. The parent is a
+    // PARTIAL subtotal that excludes some of its own coded children (verified on
+    // AzerSheker actual-budget-v1: an above-EBITDA "Supporting Functions"
+    // subtotal that omits its Depreciation & Amortization line). The detailed
+    // leaves are the economic truth, so TRUST the children: drop the parent
+    // WITHOUT a cancelling synthetic (a negative __UNALLOCATED__ would silently
+    // subtract the excluded child — e.g. D&A — back out of the P&L). Record it
+    // in partialSubtotals as a non-blocking WARNING instead.
     const input = [
       line('721-02', 'expense', 800),
       line('721-02-01', 'expense', 600),
       line('721-02-02', 'expense', 400),
     ];
-    const { kept, synthetic } = dedupeParentRollups(input);
-    const syn = kept.find((l) => l.code === '721-02-__UNALLOCATED__');
-    expect(syn).toBeDefined();
-    expect(syn!.plannedAnnual).toBe(-200);
-    expect(synthetic).toHaveLength(1);
+    const { kept, dropped, synthetic, partialSubtotals } = dedupeParentRollups(input);
+    // No synthetic — children trusted as-is.
+    expect(kept.find((l) => l.code === '721-02-__UNALLOCATED__')).toBeUndefined();
+    expect(synthetic).toHaveLength(0);
+    // Parent dropped; both leaves kept untouched.
+    expect(dropped.map((l) => l.code)).toEqual(['721-02']);
+    expect(kept.map((l) => l.code).sort()).toEqual(['721-02-01', '721-02-02']);
+    // Surfaced as a partial-subtotal WARNING carrying the excluded delta.
+    expect(partialSubtotals).toHaveLength(1);
+    expect(partialSubtotals[0]).toMatchObject({
+      code: '721-02',
+      statedTotal: 800,
+      childSum: 1000,
+      excluded: 200,
+    });
   });
 
   it('reconciliation — tiny rounding difference stays within tolerance (no synthetic)', () => {
