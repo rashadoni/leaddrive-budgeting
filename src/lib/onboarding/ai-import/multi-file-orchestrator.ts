@@ -66,6 +66,10 @@ import {
   type SheetMap,
 } from "./sheet-routing"
 import {
+  inferEntities,
+  type EntityInferenceSource,
+} from "./entity-inference"
+import {
   detectFileType,
   type FileType,
   type FileTypeResult,
@@ -327,6 +331,62 @@ function writeEntity(r: ParseRecord): string | null {
     : (r.classification.entityCode ?? null)
 }
 
+/**
+ * Signals safe to AUTO-APPLY (stamp entityCode). Both are non-ambiguous:
+ * a file named after an entity, or a workbook where every entity-bearing
+ * sheet resolves to the same one. The review-grade `holding-consolidated`
+ * guess is deliberately NOT here — routing an entity-less statement onto the
+ * holding is a one-time human confirm, never a silent write (mirrors the
+ * Codex P0 consolidated-sentinel guard in parseFileSheets).
+ */
+const AUTO_APPLY_INFERENCE: ReadonlySet<EntityInferenceSource> = new Set<EntityInferenceSource>([
+  "filename",
+  "single-entity-propagation",
+])
+
+/**
+ * Enrich a file's classifications with deterministic entity auto-inference.
+ * Auto-stamps the entityCode for high-confidence signals; surfaces the
+ * review-grade holding-consolidated guess as a warning WITHOUT writing it
+ * (the entity stays null → adapter no-op → one-time manual confirm). Pure
+ * apart from the warnings sink.
+ */
+function applyEntityInference(
+  classifications: ReadonlyArray<SheetClassification>,
+  filename: string,
+  input: MultiFileImportInput,
+  warnings: string[],
+): SheetClassification[] {
+  const inferred = inferEntities(classifications, {
+    filenameHint: filename,
+    knownEntityCodes: input.knownEntityCodes,
+    holdingCompanyCode: input.holdingCompanyCode,
+  })
+  if (inferred.length === 0) return [...classifications]
+  const byName = new Map(inferred.map((r) => [r.sheetName, r]))
+  return classifications.map((cls) => {
+    const inf = byName.get(cls.sheetName)
+    // Only act on sheets the helper resolved AND that are still entity-less
+    // (never override an entity the classifier or config already set).
+    if (!inf || cls.entityCode) return cls
+    if (AUTO_APPLY_INFERENCE.has(inf.inferredBy)) {
+      warnings.push(
+        `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) had no entity in its name — auto-resolved to ${inf.entityCode} via ${inf.inferredBy} (confidence ${inf.confidence})`,
+      )
+      return {
+        ...cls,
+        entityCode: inf.entityCode,
+        reasoning: `${cls.reasoning} · entity ${inf.entityCode} inferred (${inf.inferredBy})`,
+      }
+    }
+    // holding-consolidated — review-grade. Suggest, do NOT write.
+    warnings.push(
+      `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) has no entity — most likely the consolidated ${inf.entityCode} statement; left null for one-time review (not auto-written)`,
+    )
+    return cls
+  })
+}
+
 /** Run adapter parse phase for one file (no DB writes). Applies the per-sheet
  *  routing safety gates: skip derived/summary views, and resolve planKind —
  *  blocking (never guessing) an ambiguous plan-relevant sheet in a mixed
@@ -556,9 +616,18 @@ export async function runMultiFileImport(
           deps.anthropicClient,
           deps.model,
         )
+        // Deterministic entity auto-inference for entity-less PLF/BS/CF.
+        // Auto-applies filename / single-entity signals; the holding guess is
+        // surfaced for review only (see applyEntityInference).
+        const classifications = applyEntityInference(
+          cls.classifications,
+          file.filename,
+          input,
+          warnings,
+        )
         return {
           filename: file.filename,
-          classifications: cls.classifications,
+          classifications,
           metas,
           usage: cls.usage,
           error: null,

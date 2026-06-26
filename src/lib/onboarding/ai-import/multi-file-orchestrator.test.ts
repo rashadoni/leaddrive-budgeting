@@ -1451,4 +1451,136 @@ describe("runMultiFileImport", () => {
     expect(result.llmUsage.outputTokens).toBe(100)
     expect(result.llmUsage.modelName).toBe("claude-test")
   })
+
+  it("auto-infers entity for an entity-less statement (single-entity propagation)", async () => {
+    // A workbook where the only resolved entity is CPC + an entity-less PLF.
+    // The deterministic inference layer must stamp the PLF with AZSEKER-CPC so
+    // the user no longer has to pick it manually.
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "Satış CPC Fakt",
+          dataType: "BUDGET_ACTUALS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "cpc sales",
+        },
+        {
+          sheetName: "PLF Actual 2025",
+          dataType: "PLF",
+          entityCode: null, // no entity in the sheet name → classifier returns null
+          confidence: 0.95,
+          reasoning: "PLF.01 codes",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "actuals.xlsx", // no entity in filename → not rule 1
+          workbook: {
+            Sheets: {
+              "Satış CPC Fakt": { "!ref": "A1:C3" },
+              "PLF Actual 2025": { "!ref": "A1:C3" },
+            },
+            SheetNames: ["Satış CPC Fakt", "PLF Actual 2025"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BUDGET_ACTUALS: plfHandler(2),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    const plf = result.perFile[0].classifications.find(
+      (c) => c.sheetName === "PLF Actual 2025",
+    )
+    expect(plf?.entityCode).toBe("AZSEKER-CPC")
+  })
+
+  it("does NOT auto-write the holding-consolidated guess — entity-less PLF stays null", async () => {
+    // Eden + CPC both present + a known holding → the entity-less PLF is a
+    // review-grade holding-consolidated guess, which must NOT be silently
+    // written (entityCode stays null; the orchestrator surfaces a warning).
+    const prisma = stubPrisma({
+      companies: [
+        { id: "c1", code: "AZSEKER-CPC" },
+        { id: "c2", code: "AZSEKER-EDEN" },
+      ],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "Satış CPC Fakt",
+          dataType: "BUDGET_ACTUALS",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.9,
+          reasoning: "cpc sales",
+        },
+        {
+          sheetName: "Satış Əkinçilik Fakt",
+          dataType: "BUDGET_ACTUALS",
+          entityCode: "AZSEKER-EDEN",
+          confidence: 0.9,
+          reasoning: "farming sales",
+        },
+        {
+          sheetName: "PLF Actual 2025",
+          dataType: "PLF",
+          entityCode: null,
+          confidence: 0.95,
+          reasoning: "PLF.01 codes",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "actuals.xlsx",
+          workbook: {
+            Sheets: {
+              "Satış CPC Fakt": { "!ref": "A1:C3" },
+              "Satış Əkinçilik Fakt": { "!ref": "A1:C3" },
+              "PLF Actual 2025": { "!ref": "A1:C3" },
+            },
+            SheetNames: [
+              "Satış CPC Fakt",
+              "Satış Əkinçilik Fakt",
+              "PLF Actual 2025",
+            ],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      holdingCompanyCode: "AZSEKER",
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+        BUDGET_ACTUALS: plfHandler(2),
+      }),
+      XLSX: fakeXLSX,
+    }
+    const result = await runMultiFileImport(input, deps)
+    const plf = result.perFile[0].classifications.find(
+      (c) => c.sheetName === "PLF Actual 2025",
+    )
+    expect(plf?.entityCode).toBeNull()
+  })
 })
