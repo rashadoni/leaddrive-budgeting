@@ -36,6 +36,7 @@ import type { SheetDataType } from "./sheet-classifier"
 
 /** Which deterministic signal resolved an otherwise-null entity. */
 export type EntityInferenceSource =
+  | "cell-scan"
   | "filename"
   | "single-entity-propagation"
   | "holding-consolidated"
@@ -186,5 +187,72 @@ export function inferEntities(
     // else: no deterministic signal — leave null for one-time manual pick.
   }
 
+  return results
+}
+
+/**
+ * Scan a sheet's cells for a dominant entity code/alias. Many client
+ * statements (e.g. AzerSheker's PLF/BS) carry the owning entity as a repeated
+ * code in a trailing data column ("CPC", "AZSF") the classifier never sees —
+ * its meta only samples the first ~12 columns. This reads the FULL sheet and,
+ * when ONE known alias appears as an exact cell value far more than any other,
+ * returns it. Exact-cell-match (not substring) avoids product/customer names
+ * coincidentally matching.
+ */
+export function scanDominantEntity(
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  aliasMap: Record<string, string>,
+  opts: { minCells?: number } = {},
+): { entityCode: string; matchedCells: number } | null {
+  const minCells = opts.minCells ?? 3
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    for (const cell of row) {
+      if (cell === null || cell === undefined) continue
+      const v = String(cell).trim().toUpperCase()
+      if (!v) continue
+      const code = aliasMap[v]
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+  }
+  if (counts.size === 0) return null
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
+  const [topCode, topN] = sorted[0]
+  const secondN = sorted[1]?.[1] ?? 0
+  // Require a repeated AND strictly dominant signal — enough matching cells and
+  // strictly more than any other entity (a tie ⇒ genuinely ambiguous ⇒ null).
+  if (topN >= minCells && topN > secondN) {
+    return { entityCode: topCode, matchedCells: topN }
+  }
+  return null
+}
+
+/**
+ * Resolve entity-less financial statements (PLF/BS/CF) by scanning each sheet's
+ * cells for a dominant entity code. `getRows` yields the sheet's full rows
+ * (header:1 shape). Returns the resolved sheets (cell-scan source, high
+ * confidence — exact-match dominance is a strong signal, safe to auto-apply).
+ */
+export function scanStatementEntities(
+  sheets: ReadonlyArray<EntityInferenceSheet>,
+  getRows: (sheetName: string) => ReadonlyArray<ReadonlyArray<unknown>>,
+  aliasMap: Record<string, string>,
+  opts: { minCells?: number } = {},
+): EntityInferenceResult[] {
+  const results: EntityInferenceResult[] = []
+  for (const s of sheets) {
+    if (s.entityCode) continue
+    if (!STATEMENT_TYPES.has(s.dataType)) continue
+    const hit = scanDominantEntity(getRows(s.sheetName), aliasMap, opts)
+    if (hit) {
+      results.push({
+        sheetName: s.sheetName,
+        entityCode: hit.entityCode,
+        inferredBy: "cell-scan",
+        confidence: 0.9,
+        reasoning: `Entity ${hit.entityCode} read from ${hit.matchedCells} matching cells in the sheet`,
+      })
+    }
+  }
   return results
 }

@@ -1583,4 +1583,101 @@ describe("runMultiFileImport", () => {
     )
     expect(plf?.entityCode).toBeNull()
   })
+
+  it("cell-scan: reads CPC from the PLF's trailing cells (classifier returned null)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER-CPC" }] })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF Actual 2025",
+          dataType: "PLF",
+          entityCode: null, // entity sits in col ~17, unseen by the classifier
+          confidence: 0.95,
+          reasoning: "PLF.01 codes",
+        },
+      ],
+    ])
+    const cpcRows = [
+      ["PLF.01", "REVENUE", "", 100, "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.02", "COGS", "", 50, "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.03", "OPEX", "", 10, "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+    ]
+    const xlsx = { utils: { sheet_to_json: () => cpcRows } }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "actuals.xlsx",
+          workbook: {
+            Sheets: { "PLF Actual 2025": { "!ref": "A1:S3" } },
+            SheetNames: ["PLF Actual 2025"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      knownEntityCodes: ["AZSEKER-CPC"],
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ PLF: plfHandler(2) }),
+      XLSX: xlsx,
+    }
+    const result = await runMultiFileImport(input, deps)
+    const plf = result.perFile[0].classifications.find(
+      (c) => c.sheetName === "PLF Actual 2025",
+    )
+    expect(plf?.entityCode).toBe("AZSEKER-CPC")
+  })
+
+  it("cell-scan honours org entityAliases (AZSF cells → holding AZSEKER)", async () => {
+    const prisma = stubPrisma({ companies: [{ id: "c1", code: "AZSEKER" }] })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "BS Actual 2026",
+          dataType: "BS",
+          entityCode: null,
+          confidence: 0.95,
+          reasoning: "BS codes",
+        },
+      ],
+    ])
+    const azsfRows = [
+      ["BS.01", "ASSETS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["BS.02", "LIAB", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["BS.03", "EQUITY", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+    ]
+    const xlsx = { utils: { sheet_to_json: () => azsfRows } }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "actuals.xlsx",
+          workbook: {
+            Sheets: { "BS Actual 2026": { "!ref": "A1:R3" } },
+            SheetNames: ["BS Actual 2026"],
+          },
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      knownEntityCodes: ["AZSEKER", "AZSEKER-CPC"],
+      entityAliases: { AZSF: "AZSEKER" },
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({ BS: plfHandler(2) }),
+      XLSX: xlsx,
+    }
+    const result = await runMultiFileImport(input, deps)
+    const bs = result.perFile[0].classifications.find(
+      (c) => c.sheetName === "BS Actual 2026",
+    )
+    expect(bs?.entityCode).toBe("AZSEKER")
+  })
 })

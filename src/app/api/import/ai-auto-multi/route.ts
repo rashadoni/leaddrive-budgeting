@@ -328,6 +328,16 @@ export async function POST(request: NextRequest) {
     org?.settings && typeof org.settings === "object"
       ? ((org.settings as Record<string, unknown>).industry as string | undefined)
       : undefined
+  // Per-org entity aliases (UPPERCASE alias → canonical code), e.g.
+  // { "AZSF": "AZSEKER" } — lets the cell-scan resolve a statement whose owning
+  // entity is written as an abbreviation in a data column the classifier never
+  // sees. Stored under Organization.settings.entityAliases.
+  const entityAliases =
+    org?.settings && typeof org.settings === "object"
+      ? ((org.settings as Record<string, unknown>).entityAliases as
+          | Record<string, string>
+          | undefined)
+      : undefined
 
   // ── Snapshot backlog BEFORE apply (for closed-items diff) ──────
   // Only when shouldApply — preview runs don't change DB so no diff.
@@ -360,6 +370,7 @@ export async function POST(request: NextRequest) {
         knownEntityCodes,
         orgIndustry,
         holdingCompanyCode,
+        entityAliases,
         allowYellow,
         forceOverride,
         conflictResolutions,

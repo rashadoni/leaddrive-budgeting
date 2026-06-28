@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest"
 import {
   inferEntities,
   buildEntityAliasMap,
+  scanDominantEntity,
+  scanStatementEntities,
   type EntityInferenceSheet,
 } from "./entity-inference"
 
@@ -180,6 +182,93 @@ describe("inferEntities — scope + no-op guards", () => {
   })
 
   it("matches the real actual-budget-v1.xlsx shape (Eden+CPC sales, null PLF/BS → holding)", () => {
+    // (kept below — see original holding-default case)
+    expect(true).toBe(true)
+  })
+})
+
+describe("scanDominantEntity (cell content scan)", () => {
+  const aliasMap = buildEntityAliasMap(known, { AZSF: "AZSEKER" })
+
+  it("reads the dominant entity code repeated in a trailing column", () => {
+    // Mirrors PLF Actual 2025: 'CPC' repeated in cols 17-18 across rows.
+    const rows = [
+      ["PLF.01", "REVENUE", "", 100, 200, "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.02", "COGS", "", 50, 60, "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.03", "OPEX", "", 10, 20, "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+    ]
+    expect(scanDominantEntity(rows, aliasMap)?.entityCode).toBe("AZSEKER-CPC")
+  })
+
+  it("maps the AZSF alias to the holding code", () => {
+    const rows = [
+      ["BS.01", "ASSETS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["BS.02", "LIAB", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["BS.03", "EQUITY", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+    ]
+    expect(scanDominantEntity(rows, aliasMap)?.entityCode).toBe("AZSEKER")
+  })
+
+  it("returns null on a tie between two entities (ambiguous)", () => {
+    const rows = [
+      ["x", "CPC", "EDEN"],
+      ["y", "CPC", "EDEN"],
+      ["z", "CPC", "EDEN"],
+    ]
+    expect(scanDominantEntity(rows, aliasMap)).toBeNull()
+  })
+
+  it("returns null below the minimum-cells threshold (stray mention)", () => {
+    const rows = [["note: see CPC report", "", "CPC"]]
+    expect(scanDominantEntity(rows, aliasMap)).toBeNull()
+  })
+
+  it("does not substring-match (CONCEPCION ≠ CPC)", () => {
+    const rows = [["CONCEPCION"], ["CONCEPCION"], ["CONCEPCION"]]
+    expect(scanDominantEntity(rows, aliasMap)).toBeNull()
+  })
+})
+
+describe("scanStatementEntities", () => {
+  const aliasMap = buildEntityAliasMap(known, { AZSF: "AZSEKER" })
+  const rowsByName: Record<string, unknown[][]> = {
+    "PLF Actual 2025": [
+      ["PLF.01", "REVENUE", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.02", "COGS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+      ["PLF.03", "OPEX", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "CPC", "CPC"],
+    ],
+    "PLF Actual 2026": [
+      ["PLF.01", "REVENUE", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["PLF.02", "COGS", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+      ["PLF.03", "OPEX", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "AZSF", "AZSF"],
+    ],
+    "Satış CPC Fakt": [["x"], ["y"]], // already has entity — skipped
+  }
+
+  it("auto-resolves CPC for 2025 and the holding for 2026 (AZSF alias)", () => {
+    const sheets: EntityInferenceSheet[] = [
+      sheet("PLF Actual 2025", "PLF"),
+      sheet("PLF Actual 2026", "PLF"),
+      sheet("Satış CPC Fakt", "BUDGET_ACTUALS", "AZSEKER-CPC"),
+    ]
+    const res = scanStatementEntities(sheets, (n) => rowsByName[n] ?? [], aliasMap)
+    expect(res).toHaveLength(2)
+    const byName = Object.fromEntries(res.map((r) => [r.sheetName, r.entityCode]))
+    expect(byName["PLF Actual 2025"]).toBe("AZSEKER-CPC")
+    expect(byName["PLF Actual 2026"]).toBe("AZSEKER")
+    expect(res.every((r) => r.inferredBy === "cell-scan")).toBe(true)
+  })
+
+  it("skips sheets that already carry an entity", () => {
+    const sheets: EntityInferenceSheet[] = [
+      sheet("Satış CPC Fakt", "BUDGET_ACTUALS", "AZSEKER-CPC"),
+    ]
+    expect(scanStatementEntities(sheets, (n) => rowsByName[n] ?? [], aliasMap)).toHaveLength(0)
+  })
+})
+
+describe("inferEntities — original holding-default case (kept)", () => {
+  it("real actual-budget-v1.xlsx shape (Eden+CPC sales, null PLF/BS → holding)", () => {
     // Mirrors the live dry-run preview classification.
     const sheets = [
       sheet("İcmal", "RISK_REGISTER"),

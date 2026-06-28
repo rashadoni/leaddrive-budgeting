@@ -67,6 +67,8 @@ import {
 } from "./sheet-routing"
 import {
   inferEntities,
+  scanStatementEntities,
+  buildEntityAliasMap,
   type EntityInferenceSource,
 } from "./entity-inference"
 import {
@@ -177,6 +179,11 @@ export interface MultiFileImportInput {
    *  HOLDING_ENTITY_SENTINEL entity-override (e.g. consolidated budget tabs that
    *  belong on the holding, not split per-company). */
   holdingCompanyCode?: string
+  /** Per-org entity aliases (UPPERCASE alias → canonical code), e.g.
+   *  { "AZSF": "AZSEKER" }. Lets the cell-scan resolve statements whose owning
+   *  entity is written as an abbreviation in a data column. Sourced from
+   *  Organization.settings.entityAliases. */
+  entityAliases?: Record<string, string>
   /** Commit yellow-verdict groups (default false — abort on yellow). */
   allowYellow?: boolean
   /** Don't touch DB even on green (parse + classify + conflict-detect only). */
@@ -340,6 +347,7 @@ function writeEntity(r: ParseRecord): string | null {
  * Codex P0 consolidated-sentinel guard in parseFileSheets).
  */
 const AUTO_APPLY_INFERENCE: ReadonlySet<EntityInferenceSource> = new Set<EntityInferenceSource>([
+  "cell-scan",
   "filename",
   "single-entity-propagation",
 ])
@@ -356,15 +364,41 @@ function applyEntityInference(
   filename: string,
   input: MultiFileImportInput,
   warnings: string[],
+  getRows: (sheetName: string) => ReadonlyArray<ReadonlyArray<unknown>>,
 ): SheetClassification[] {
-  const inferred = inferEntities(classifications, {
+  const aliasMap = buildEntityAliasMap(
+    input.knownEntityCodes ?? [],
+    input.entityAliases ?? {},
+  )
+
+  // ── Pass 1 — cell-scan (highest priority): read the owning entity from a
+  // repeated code in the sheet's cells (the classifier never sees the trailing
+  // column). Auto-applied — exact-match dominance is a strong, safe signal.
+  const scanned = scanStatementEntities(classifications, getRows, aliasMap)
+  const scanByName = new Map(scanned.map((r) => [r.sheetName, r]))
+  let working: SheetClassification[] = classifications.map((cls) => {
+    const hit = scanByName.get(cls.sheetName)
+    if (!hit || cls.entityCode) return cls
+    warnings.push(
+      `${filename}: sheet "${cls.sheetName}" (${cls.dataType}) — entity ${hit.entityCode} read from cells (${hit.reasoning})`,
+    )
+    return {
+      ...cls,
+      entityCode: hit.entityCode,
+      reasoning: `${cls.reasoning} · entity ${hit.entityCode} (cell-scan)`,
+    }
+  })
+
+  // ── Pass 2 — filename / single-entity / holding inference for what remains.
+  const inferred = inferEntities(working, {
     filenameHint: filename,
     knownEntityCodes: input.knownEntityCodes,
     holdingCompanyCode: input.holdingCompanyCode,
+    aliases: input.entityAliases,
   })
-  if (inferred.length === 0) return [...classifications]
+  if (inferred.length === 0) return working
   const byName = new Map(inferred.map((r) => [r.sheetName, r]))
-  return classifications.map((cls) => {
+  return working.map((cls) => {
     const inf = byName.get(cls.sheetName)
     // Only act on sheets the helper resolved AND that are still entity-less
     // (never override an entity the classifier or config already set).
@@ -624,6 +658,12 @@ export async function runMultiFileImport(
           file.filename,
           input,
           warnings,
+          (sheetName) =>
+            deps.XLSX.utils.sheet_to_json(file.workbook.Sheets[sheetName], {
+              header: 1,
+              blankrows: false,
+              defval: "",
+            }) as unknown[][],
         )
         return {
           filename: file.filename,
