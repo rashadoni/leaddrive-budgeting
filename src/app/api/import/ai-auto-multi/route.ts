@@ -51,9 +51,14 @@ import {
   looksLikeReportingPack,
 } from "@/lib/onboarding/ai-import/reporting-pack-sheet-map"
 import { applyBudgetPlfSplit } from "@/lib/onboarding/ai-import/consolidated-plf-split"
+import {
+  applyBuColumnSplit,
+  inferStatementMeta,
+} from "@/lib/onboarding/ai-import/bu-column-split"
+import { buildEntityAliasMap } from "@/lib/onboarding/ai-import/entity-inference"
 import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
-import type { SheetMap } from "@/lib/onboarding/ai-import/sheet-routing"
+import type { SheetMap, SheetMapEntry } from "@/lib/onboarding/ai-import/sheet-routing"
 import {
   affectedIndicatorsForDataType,
   type DataTypeImpact,
@@ -338,6 +343,52 @@ export async function POST(request: NextRequest) {
           | Record<string, string>
           | undefined)
       : undefined
+
+  // ── Pre-split consolidated multi-BU statements (2026-06-28) ─────────────
+  // Some files ship per-entity P&L/BS/CF as ONE sheet with a "BU" (business-unit)
+  // column self-labeling each row's owning entity, the entities stacked in
+  // vertical blocks (e.g. "PLF Actual 2025" = CPC + holding + EDEN). The flat
+  // cell-scan would collapse such a sheet onto its majority block; split each one
+  // into a virtual per-entity sheet (entity read from the BU column) so the
+  // existing per-entity write pipeline lands each block on its own company.
+  // Reporting-pack files own their own split (`applyBudgetPlfSplit`), so skip them.
+  const buColumnSplits: Array<{
+    filename: string
+    sheetName: string
+    mapping: Array<{
+      sheetName: string
+      entityCode: string
+      buValue: string
+      rowCount: number
+    }>
+    warnings: string[]
+  }> = []
+  const buAliasMap = buildEntityAliasMap(knownEntityCodes, entityAliases ?? {})
+  for (const f of files) {
+    if (looksLikeReportingPack(f.workbook.SheetNames)) continue
+    const entries: SheetMapEntry[] = []
+    // Snapshot the names first — applyBuColumnSplit mutates workbook.SheetNames.
+    for (const sheetName of [...f.workbook.SheetNames]) {
+      const meta = inferStatementMeta(sheetName)
+      if (!meta) continue
+      const split = applyBuColumnSplit(f.workbook, XLSX, {
+        sheetName,
+        dataType: meta.dataType,
+        planKind: meta.planKind,
+        aliasMap: buAliasMap,
+      })
+      if (split.applied) {
+        entries.push(...split.sheetMapEntries)
+        buColumnSplits.push({
+          filename: f.filename,
+          sheetName,
+          mapping: split.mapping,
+          warnings: split.warnings,
+        })
+      }
+    }
+    if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
+  }
 
   // ── Snapshot backlog BEFORE apply (for closed-items diff) ──────
   // Only when shouldApply — preview runs don't change DB so no diff.
@@ -643,6 +694,7 @@ export async function POST(request: NextRequest) {
     backlogClosed,
     consolidatedBsWarnings,
     budgetPlfSplits,
+    buColumnSplits,
     durationMs: Date.now() - t0,
   })
 }

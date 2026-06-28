@@ -227,6 +227,25 @@ describe("scanDominantEntity (cell content scan)", () => {
     const rows = [["CONCEPCION"], ["CONCEPCION"], ["CONCEPCION"]]
     expect(scanDominantEntity(rows, aliasMap)).toBeNull()
   })
+
+  it("returns null on a NEAR-tie (consolidated sheet — runner-up within 2×)", () => {
+    // EDEN 4 vs AZSF 3 — a marginal lead, not 2× dominance ⇒ ambiguous multi-
+    // entity ⇒ null (the 1070-vs-1068 consolidated-collapse class).
+    const rows = [
+      ["a", "EDEN"], ["b", "EDEN"], ["c", "EDEN"], ["d", "EDEN"],
+      ["e", "AZSF"], ["f", "AZSF"], ["g", "AZSF"],
+    ]
+    expect(scanDominantEntity(rows, aliasMap)).toBeNull()
+  })
+
+  it("resolves when the top is ≥2× the runner-up (clear owner + stray mention)", () => {
+    const rows = [
+      ["a", "CPC"], ["b", "CPC"], ["c", "CPC"],
+      ["d", "CPC"], ["e", "CPC"], ["f", "CPC"],
+      ["g", "EDEN"], ["h", "EDEN"], // 2 vs 6 → 6 ≥ 2×2 ⇒ CPC
+    ]
+    expect(scanDominantEntity(rows, aliasMap)?.entityCode).toBe("AZSEKER-CPC")
+  })
 })
 
 describe("scanStatementEntities", () => {

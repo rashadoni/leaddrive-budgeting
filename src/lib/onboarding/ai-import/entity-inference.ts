@@ -202,9 +202,18 @@ export function inferEntities(
 export function scanDominantEntity(
   rows: ReadonlyArray<ReadonlyArray<unknown>>,
   aliasMap: Record<string, string>,
-  opts: { minCells?: number } = {},
+  opts: { minCells?: number; dominanceRatio?: number } = {},
 ): { entityCode: string; matchedCells: number } | null {
   const minCells = opts.minCells ?? 3
+  // The top entity must out-number the runner-up by at least this factor to be
+  // accepted. >1 guards CONSOLIDATED multi-entity sheets: a sheet stacking
+  // CPC+EDEN+holding blocks has several entities with comparable cell counts, so
+  // the bare "strictly more" rule mis-collapsed the whole sheet onto whichever
+  // block was marginally larger (EDEN beat the holding 1070 vs 1068 → a 4-entity
+  // P&L silently routed to one child). Such sheets must NOT cell-scan-resolve —
+  // they go through `bu-column-split.ts` (or a one-time manual pick) instead. A
+  // genuine single-entity statement has secondN≈0, so 2× is easily cleared.
+  const dominanceRatio = opts.dominanceRatio ?? 2
   const counts = new Map<string, number>()
   for (const row of rows) {
     for (const cell of row) {
@@ -219,9 +228,9 @@ export function scanDominantEntity(
   const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1])
   const [topCode, topN] = sorted[0]
   const secondN = sorted[1]?.[1] ?? 0
-  // Require a repeated AND strictly dominant signal — enough matching cells and
-  // strictly more than any other entity (a tie ⇒ genuinely ambiguous ⇒ null).
-  if (topN >= minCells && topN > secondN) {
+  // Require a repeated AND clearly-dominant signal — enough matching cells AND
+  // at least `dominanceRatio`× the runner-up (a near-tie ⇒ multi-entity ⇒ null).
+  if (topN >= minCells && topN >= secondN * dominanceRatio) {
     return { entityCode: topCode, matchedCells: topN }
   }
   return null
