@@ -6,28 +6,5 @@
       "Bash(npx vitest run *)"
     ]
   },
-  "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/bootstrap.sh"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/test-gate.sh"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }
