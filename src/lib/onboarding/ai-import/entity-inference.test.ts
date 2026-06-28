@@ -284,6 +284,22 @@ describe("scanStatementEntities", () => {
     ]
     expect(scanStatementEntities(sheets, (n) => rowsByName[n] ?? [], aliasMap)).toHaveLength(0)
   })
+
+  it("skips a consolidated multi-entity BU sheet (never collapses it)", () => {
+    // An un-splittable multi-BU sheet (e.g. PLF Budget 2026's BU_1..BU_4) must
+    // not cell-scan-resolve — it stays null → adapter no-op, not a wrong write.
+    const rows: Record<string, unknown[][]> = {
+      "PLF Consolidated": [
+        ["PLF.01", "REVENUE", "BU"],
+        ["PLF.01", "r", "CPC"],
+        ["PLF.02", "r", "CPC"],
+        ["PLF.01", "r", "EDEN"],
+        ["PLF.02", "r", "EDEN"],
+      ],
+    }
+    const sheets: EntityInferenceSheet[] = [sheet("PLF Consolidated", "PLF")]
+    expect(scanStatementEntities(sheets, (n) => rows[n] ?? [], aliasMap)).toEqual([])
+  })
 })
 
 describe("inferEntities — original holding-default case (kept)", () => {

@@ -38,6 +38,9 @@ import type { PlanKind, SheetMapEntry } from "./sheet-routing"
 
 /** Header label (exact, case-insensitive) that marks the owning-entity column. */
 const BU_HEADER = "BU"
+/** BU dimension header incl. numbered variants ("BU_1", "BU_3") that some
+ *  workbooks use for MULTI-dimensional tagging (entity × sub-unit). */
+const BU_HEADER_RE = /^BU(_\d+)?$/i
 /** Rows from the top scanned for the BU header before giving up. */
 const HEADER_SCAN_ROWS = 6
 /** A block must carry at least this many rows to count (filters stray labels). */
@@ -59,6 +62,44 @@ export function findBuColumn(
     }
   }
   return -1
+}
+
+/**
+ * True when a sheet carries a "BU"/"BU_N" dimension column in which ≥2 DISTINCT
+ * known entities appear — i.e. a consolidated cross-entity statement.
+ *
+ * Such a sheet must NEVER be cell-scan-collapsed onto its majority entity. A
+ * clean single-"BU" sheet is split per-entity by `applyBuColumnSplit` upstream;
+ * a sheet whose BU dimensions are ambiguous (several BU_N columns disagreeing —
+ * the same row tagged with different entities, e.g. an entity×sub-unit budget)
+ * CAN'T be split deterministically, so the cell-scan uses this guard to leave it
+ * a no-op (entity null) for one-time review instead of a wrong single-entity
+ * write. Cheap header-region scan; returns false for ordinary single-entity or
+ * BU-less sheets so the normal cell-scan path is untouched.
+ */
+export function hasMultiEntityBuColumn(
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  aliasMap: Record<string, string>,
+): boolean {
+  const buCols: number[] = []
+  for (let r = 0; r < Math.min(HEADER_SCAN_ROWS, rows.length); r++) {
+    const row = rows[r] ?? []
+    for (let c = 0; c < row.length; c++) {
+      const v = row[c]
+      if (typeof v === "string" && BU_HEADER_RE.test(v.trim())) buCols.push(c)
+    }
+  }
+  for (const c of buCols) {
+    const distinct = new Set<string>()
+    for (const row of rows) {
+      const v = row[c]
+      if (v === null || v === undefined) continue
+      const code = aliasMap[String(v).trim().toUpperCase()]
+      if (code) distinct.add(code)
+    }
+    if (distinct.size >= 2) return true
+  }
+  return false
 }
 
 export interface BuBlock {

@@ -6,6 +6,7 @@ import {
   applyBuColumnSplit,
   looksLikeBuConsolidated,
   inferStatementMeta,
+  hasMultiEntityBuColumn,
 } from "./bu-column-split"
 import { buildEntityAliasMap } from "./entity-inference"
 
@@ -175,6 +176,37 @@ describe("looksLikeBuConsolidated", () => {
   it("false when there is no BU column", () => {
     const ws = XLSX.utils.aoa_to_sheet([["Code", "Amount"], ["PLF.01", 1]])
     expect(looksLikeBuConsolidated(wbWith("X", ws), "X", XLSX, aliasMap)).toBe(false)
+  })
+})
+
+describe("hasMultiEntityBuColumn", () => {
+  it("true when a 'BU' column carries ≥2 distinct entities", () => {
+    const rows = [
+      ["Code", "Name", "Jan", "BU"],
+      ["PLF.01", "r", 1, "CPC"],
+      ["PLF.02", "r", 1, "CPC"],
+      ["PLF.01", "r", 1, "EDEN"],
+      ["PLF.02", "r", 1, "EDEN"],
+    ]
+    expect(hasMultiEntityBuColumn(rows, aliasMap)).toBe(true)
+  })
+
+  it("true for a numbered BU_N dimension column (e.g. an entity×sub-unit budget)", () => {
+    const rows = [
+      ["Code", "Name", "BU_1", "BU_3"],
+      ["x", "r", "EDEN", "EDEN"],
+      ["x", "r", "EDEN", "CPC"], // BU_3 disagrees with BU_1 → multi-entity dimension
+    ]
+    expect(hasMultiEntityBuColumn(rows, aliasMap)).toBe(true)
+  })
+
+  it("false for a single-entity BU column", () => {
+    const rows = [["Code", "BU"], ["PLF.01", "EDEN"], ["PLF.02", "EDEN"]]
+    expect(hasMultiEntityBuColumn(rows, aliasMap)).toBe(false)
+  })
+
+  it("false when there is no BU column at all", () => {
+    expect(hasMultiEntityBuColumn([["Code", "Amount"], ["PLF.01", 1]], aliasMap)).toBe(false)
   })
 })
 

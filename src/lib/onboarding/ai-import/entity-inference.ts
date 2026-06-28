@@ -33,6 +33,7 @@
  */
 
 import type { SheetDataType } from "./sheet-classifier"
+import { hasMultiEntityBuColumn } from "./bu-column-split"
 
 /** Which deterministic signal resolved an otherwise-null entity. */
 export type EntityInferenceSource =
@@ -252,7 +253,15 @@ export function scanStatementEntities(
   for (const s of sheets) {
     if (s.entityCode) continue
     if (!STATEMENT_TYPES.has(s.dataType)) continue
-    const hit = scanDominantEntity(getRows(s.sheetName), aliasMap, opts)
+    const rows = getRows(s.sheetName)
+    // A consolidated sheet carrying a multi-entity "BU"/"BU_N" dimension column
+    // must NEVER be collapsed onto its majority entity. The clean single-"BU"
+    // case is already split per-entity upstream (bu-column-split); an
+    // un-splittable multi-dimensional one (several disagreeing BU_N columns, e.g.
+    // an entity×sub-unit budget) is left null here → adapter no-op → one-time
+    // review, instead of a wrong single-entity write.
+    if (hasMultiEntityBuColumn(rows, aliasMap)) continue
+    const hit = scanDominantEntity(rows, aliasMap, opts)
     if (hit) {
       results.push({
         sheetName: s.sheetName,
