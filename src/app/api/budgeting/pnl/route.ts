@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { getSession } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
@@ -48,6 +49,24 @@ const PNL_SECTIONS = [
   { key: "tax", label: "Vergi xərcləri", codes: ["771"] },
   { key: "net_profit", label: "Xalis mənfəət", computed: true },
 ]
+
+// Phase 6 (2026-06-29) perf — mirror the analytics route: load only the columns
+// the P&L aggregation reads from each of the (up to thousands of) budget lines,
+// not `SELECT *`. `BUDGET_LINE_SELECT` is the single source of truth for both the
+// query and the row type, so any access to a non-selected field is a COMPILE
+// error (tsc-driven completeness). The narrow account select keeps code/name/type
+// available; the dropped wide scalars (notes / currency / vat / forecastAmount /
+// sourceDocument / timestamps / etc.) were never read here.
+const BUDGET_LINE_SELECT = {
+  companyId: true,
+  department: true,
+  lineType: true,
+  sortOrder: true,
+  monthIndex: true,
+  plannedAmount: true,
+  account: { select: { code: true, name: true, accountType: true } },
+} satisfies Prisma.BudgetLineSelect
+type BudgetLineRow = Prisma.BudgetLineGetPayload<{ select: typeof BUDGET_LINE_SELECT }>
 
 export async function GET(req: NextRequest) {
   const session = await getSession(req)
@@ -119,21 +138,17 @@ export async function GET(req: NextRequest) {
     blWhere.companyId = { in: companyFilter.companyIds }
   }
 
-  // Get all budget lines + sales + COGS data + actuals
-  const [budgetLines, salesLines, cogsLines, actuals] = await Promise.all([
+  // Get all budget lines + actuals. (Prior code also fetched salesBudgetLine
+  // + cOGSBudgetLine here with a productLine join, but their results were never
+  // read — two dead per-request queries removed 2026-06-29; the P&L is built
+  // entirely from budgetLines + actuals below.)
+  const [budgetLines, actuals] = await Promise.all([
     prisma.budgetLine.findMany({
       where: blWhere,
-      // Include the FK'd account so reads prefer canonical code/name from
-      // the Chart of Accounts over the denormalised category/department strings
-      include: { account: { select: { code: true, name: true, accountType: true } } },
-    }),
-    prisma.salesBudgetLine.findMany({
-      where: { organizationId: orgId, planId, year },
-      include: { productLine: true },
-    }),
-    prisma.cOGSBudgetLine.findMany({
-      where: { organizationId: orgId, planId, year },
-      include: { productLine: true },
+      // Narrow select (FK'd account included) so reads prefer canonical
+      // code/name from the Chart of Accounts over the denormalised
+      // category/department strings — only the columns the aggregation uses.
+      select: BUDGET_LINE_SELECT,
     }),
     prisma.budgetActual.findMany({
       // Turn 35: per-company filter applies to actuals too. Pre-Turn-35
@@ -167,7 +182,7 @@ export async function GET(req: NextRequest) {
   // This ensures products sharing the same SAP code (e.g. 601-01-02) appear as separate rows
   const accountMap = new Map<string, { code: string; name: string; type: string; sortOrder: number; monthlyAmounts: Record<number, number> }>()
 
-  type BL = (typeof budgetLines)[number]
+  type BL = BudgetLineRow
   budgetLines.forEach((bl: BL) => {
     // Preferred path: the FK to Chart of Accounts is set, so use canonical
     // code + name from there. Everything else is fallback for legacy rows
@@ -231,7 +246,7 @@ export async function GET(req: NextRequest) {
   // map from raw budgetLines, then `isParentCode(code)` returns true only
   // if SOME company has both `code` AND a descendant starting with `code-`.
   const codesByCompanyPnl = new Map<string, Set<string>>()
-  for (const bl of budgetLines as any[]) {
+  for (const bl of budgetLines) {
     const code = bl.account?.code ?? bl.department ?? ""
     if (!code) continue
     const cid = bl.companyId ?? ""
