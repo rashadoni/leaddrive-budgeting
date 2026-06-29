@@ -12,15 +12,9 @@ export async function GET(req: NextRequest) {
 
   const year = parseInt(req.nextUrl.searchParams.get("year") || currentBakuYear())
 
-  // Get planned amounts from budget lines
-  const budgetLines = await prisma.budgetLine.findMany({
-    where: {
-      organizationId: orgId,
-      plan: { year, status: { in: ["approved", "draft"] } },
-      deletedAt: null,
-    },
-    select: { lineType: true, plannedAmount: true, department: true },
-  })
+  // (Removed a dead `budgetLine.findMany` here 2026-06-29 — its result was
+  // never read; the monthly plan figures come from SalesForecast +
+  // ExpenseForecast below, and the facts from BudgetActual.)
 
   // Get actual amounts
   const budgetActuals = await prisma.budgetActual.findMany({
