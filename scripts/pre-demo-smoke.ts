@@ -291,15 +291,30 @@ async function checkLowReadiness(orgId: string): Promise<CheckResult> {
       code: true,
       _count: {
         select: {
-          budgetLines: true,
+          // OperationalFact has no deletedAt → _count is accurate.
           operationalFacts: true,
         },
       },
     },
   })
-  const low = companies.filter(
+  // 2026-06-29 fix — count LIVE budget lines (deletedAt IS NULL), NOT the
+  // Prisma `_count.budgetLines` relation aggregate. `_count` does NOT honor
+  // the soft-delete filter, so a company whose lines were all archived by a
+  // reset/re-import cycle (10k+ soft-deleted rows, 0 live) counted as
+  // "has data" and passed — exactly the half-imported state that leaves its
+  // P&L empty. The P&L / analytics / recompute readers all filter
+  // `deletedAt: null`, so the readiness check must too.
+  const withLive = await Promise.all(
+    companies.map(async (c) => ({
+      ...c,
+      liveBudgetLines: await prisma.budgetLine.count({
+        where: { companyId: c.id, deletedAt: null },
+      }),
+    })),
+  )
+  const low = withLive.filter(
     (c) =>
-      c._count.budgetLines < 50 &&
+      c.liveBudgetLines < 50 &&
       c._count.operationalFacts < SALES_ONLY_OPS_THRESHOLD,
   )
   return {
@@ -315,8 +330,51 @@ async function checkLowReadiness(orgId: string): Promise<CheckResult> {
       .slice(0, 8)
       .map(
         (c) =>
-          `  ${c.code.padEnd(22)} ${c._count.budgetLines} budget_lines · ${c._count.operationalFacts} ops_facts`,
+          `  ${c.code.padEnd(22)} ${c.liveBudgetLines} live budget_lines · ${c._count.operationalFacts} ops_facts`,
       ),
+  }
+}
+
+// ─── Check 7: orphaned actuals (half-imported state) ─────────────────────────
+// Catches the 2026-06-29 failure class: a reset/re-import cycle soft-deleted a
+// company's budget lines but never re-inserted live ones, so the company has
+// archived rows yet 0 live lines. The P&L / analytics / recompute readers all
+// filter `deletedAt: null`, so this renders an EMPTY financial layer for that
+// company (e.g. ESG composite degenerates to a fake 100 when revenue=0).
+// checkLowReadiness alone can flag the symptom only if ops_facts are also thin;
+// this check fires regardless, because archived-but-not-reinserted is always a
+// bug — never an intentional "sales-only" shape.
+async function checkOrphanedActuals(orgId: string): Promise<CheckResult> {
+  const companies = await prisma.company.findMany({
+    where: {
+      organizationId: orgId,
+      isActive: true,
+      status: { notIn: ["pending", "archived"] },
+      level: { gt: 1 },
+    },
+    select: { id: true, code: true },
+  })
+  const orphaned: string[] = []
+  for (const c of companies) {
+    const live = await prisma.budgetLine.count({
+      where: { companyId: c.id, deletedAt: null },
+    })
+    if (live > 0) continue
+    const archived = await prisma.budgetLine.count({
+      where: { companyId: c.id, deletedAt: { not: null } },
+    })
+    if (archived > 0) orphaned.push(`  ${c.code.padEnd(22)} 0 live · ${archived} archived`)
+  }
+  return {
+    id: "orphaned-actuals",
+    title: "Orphaned actuals (company has archived budget lines but 0 live — half-imported)",
+    severity: orphaned.length === 0 ? "green" : "red",
+    count: orphaned.length,
+    message:
+      orphaned.length === 0
+        ? "No orphaned companies — every active leaf with archived lines also has live ones."
+        : `${orphaned.length} active companies were archived by a reset/re-import but never re-inserted — their P&L / analytics / indicators are EMPTY. Complete the re-import before demo.`,
+    samples: orphaned.slice(0, 8),
   }
 }
 
@@ -384,6 +442,7 @@ async function main(): Promise<number> {
     checkStaleAdapters(orgId),
     checkLowReadiness(orgId),
     checkZombies(orgId, period),
+    checkOrphanedActuals(orgId),
   ])
 
   for (const c of checks) {
