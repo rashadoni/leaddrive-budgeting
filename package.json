@@ -19,6 +19,7 @@
     "test:e2e:install": "playwright install chromium",
     "demo:check": "bash scripts/pre-demo-check.sh",
     "smoke-test": "npx tsx scripts/pre-demo-smoke.ts",
+    "perf-monitor": "npx tsx scripts/perf-monitor.ts",
     "sparklines:refresh": "tsx scripts/compute-sparklines.ts",
     "carryover:bump": "node scripts/carryover-bump.mjs",
     "carryover:sla": "tsx scripts/carryover-sla-scan.ts",
