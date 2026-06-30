@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ChevronRight } from "lucide-react"
 import { CompanySettingsForm } from "./CompanySettingsForm"
+import { useIndustryLabel } from "@/lib/industries/label"
 
 interface CompanyRow {
   id: string
@@ -58,6 +59,7 @@ export function CompanySettingsAdmin() {
   const orgId = session?.user?.organizationId ?? ""
   const userRole = session?.user?.role
   const canEdit = userRole === "admin" || userRole === "manager"
+  const industryLabel = useIndustryLabel()
   const queryClient = useQueryClient()
 
   const { data: companies, isLoading } = useQuery({
@@ -108,7 +110,7 @@ export function CompanySettingsAdmin() {
                   // Phase 3.3 pattern — hover reveals the fully-qualified
                   // "<code> — <name> · <industry>" identifier when the
                   // name truncates in the flex-1 cell.
-                  title={`${c.code} — ${c.name}${c.industry ? ` · ${c.industry}` : ""}`}
+                  title={`${c.code} — ${c.name}${c.industry ? ` · ${industryLabel(c.industry)}` : ""}`}
                   className="w-full flex items-center gap-3 p-3 hover:bg-muted/40 text-left"
                 >
                   <ChevronRight
@@ -119,7 +121,7 @@ export function CompanySettingsAdmin() {
                   </span>
                   <span className="flex-1 truncate">{c.name}</span>
                   <Badge variant="secondary" className="text-[10px]">
-                    {c.industry ?? "—"}
+                    {industryLabel(c.industry)}
                   </Badge>
                 </button>
                 {isOpen && (

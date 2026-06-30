@@ -18,6 +18,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, RefreshCw, CheckCircle2, Circle, AlertTriangle, MinusCircle, ClipboardCopy } from "lucide-react";
+import { useIndustryLabel } from "@/lib/industries/label";
 
 type SectionStatus = "missing" | "partial" | "complete" | "n_a";
 
@@ -125,6 +126,7 @@ export function OnboardingCompletenessDashboard() {
 
 function CompanyCompletenessCard({ company }: { company: CompanyRow }) {
   const t = useTranslations("onboardingDashboard");
+  const industryLabel = useIndustryLabel();
   const [expanded, setExpanded] = React.useState(false);
   const { data, isLoading, refetch, isFetching } = useQuery<CompletenessReport>({
     queryKey: ["onboarding", company.id],
@@ -147,15 +149,15 @@ function CompanyCompletenessCard({ company }: { company: CompanyRow }) {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         // Phase 3.3 hover pattern — full identifier on hover when name truncates.
-        title={`${company.code} — ${company.name}${company.industry ? ` · ${company.industry}` : ""}`}
+        title={`${company.code} — ${company.name}${company.industry ? ` · ${industryLabel(company.industry)}` : ""}`}
         className="w-full p-4 flex items-start justify-between gap-3 text-left hover:bg-accent/30 transition-colors rounded-t-lg"
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
             <span className="font-mono">{company.code}</span>
             {company.industry && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded border border-border/60 bg-muted">
-                {company.industry}
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-border/60 bg-muted normal-case">
+                {industryLabel(company.industry)}
               </span>
             )}
             <span className="text-[10px] px-1.5 py-0.5 rounded border border-border/60">
