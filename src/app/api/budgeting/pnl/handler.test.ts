@@ -95,6 +95,48 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body.success).toBe(true)
     expect(body.year).toBe(2025)
+    expect(body.monthlyActualOpex).toEqual({
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 0,
+      "11": 0,
+      "12": 0,
+    })
+    expect(body.monthlyActualBelowEbitda).toEqual({
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 0,
+      "11": 0,
+      "12": 0,
+    })
+    expect(body.monthlyActualDa).toEqual({
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 0,
+      "11": 0,
+      "12": 0,
+    })
     // Org filter applied to budget-line query
     const blArg = prismaMock.budgetLine.findMany.mock.calls[0][0]
     expect(blArg.where.organizationId).toBe(ORG_ID)
@@ -124,7 +166,83 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body.success).toBe(true)
     expect(body.year).toBe(2025)
+    expect(body.monthlyActualOpex).toEqual({})
+    expect(body.monthlyActualBelowEbitda).toEqual({})
+    expect(body.monthlyActualDa).toEqual({})
     // Empty-children short-circuit: no Prisma reads on budget-lines
     expect(prismaMock.budgetLine.findMany).not.toHaveBeenCalled()
+  })
+
+  it("aggregates monthly actuals for OPEX, below-EBITDA and D&A", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst.mockResolvedValue({ year: 2025 })
+    prismaMock.budgetActual.findMany.mockResolvedValue([
+      {
+        department: "601-01",
+        category: "Revenue",
+        lineType: "revenue",
+        actualAmount: 1_000,
+        expenseDate: new Date("2025-01-15T00:00:00.000Z"),
+      },
+      {
+        department: "701-01",
+        category: "COGS",
+        lineType: "cogs",
+        actualAmount: 300,
+        expenseDate: new Date("2025-01-16T00:00:00.000Z"),
+      },
+      {
+        department: "721-02",
+        category: "Admin expense",
+        lineType: "expense",
+        actualAmount: 200,
+        expenseDate: new Date("2025-01-17T00:00:00.000Z"),
+      },
+      {
+        department: "721-11",
+        category: "D&A",
+        lineType: "expense",
+        actualAmount: 25,
+        expenseDate: new Date("2025-01-18T00:00:00.000Z"),
+      },
+      {
+        department: "741-01",
+        category: "Finance cost",
+        lineType: "expense",
+        actualAmount: 50,
+        expenseDate: new Date("2025-01-19T00:00:00.000Z"),
+      },
+      {
+        department: "721-11",
+        category: "Out-of-year D&A",
+        lineType: "expense",
+        actualAmount: 10,
+        expenseDate: new Date("2024-01-18T00:00:00.000Z"),
+      },
+    ])
+
+    const res = await GET(makeRequest("/api/budgeting/pnl?planId=p1"))
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      sectionActuals: Record<string, number>
+      monthlyActualRevenue: Record<string, number>
+      monthlyActualCogs: Record<string, number>
+      monthlyActualOpex: Record<string, number>
+      monthlyActualBelowEbitda: Record<string, number>
+      monthlyActualDa: Record<string, number>
+    }
+    expect(body.monthlyActualRevenue["1"]).toBe(1_000)
+    expect(body.monthlyActualCogs["1"]).toBe(300)
+    expect(body.monthlyActualOpex["1"]).toBe(225)
+    expect(body.monthlyActualBelowEbitda["1"]).toBe(50)
+    expect(body.monthlyActualDa["1"]).toBe(25)
+    expect(body.monthlyActualDa["2"]).toBe(0)
+    expect(body.sectionActuals).toMatchObject({
+      revenue: 1_000,
+      cogs: 300,
+      opex: 225,
+      belowEbitda: 50,
+    })
   })
 })

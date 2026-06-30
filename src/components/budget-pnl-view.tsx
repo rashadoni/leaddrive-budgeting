@@ -14,11 +14,17 @@ import { isDaCode } from "@/lib/budgeting/da-codes"
 import { isLumpyMonthly, sumPerRowSmoothed } from "@/lib/budgeting/margin-smoothing"
 import { aggregateRowsForEbitda, computeEbitda, computeActualEbitda } from "@/lib/budgeting/ebitda"
 import {
+  buildEbitdaBridge,
+  buildPnlPerformancePoint,
+  type PnlPerformanceMetric,
+} from "@/lib/budgeting/pnl-performance"
+import {
   ClientReconDrawer,
   type ClientReconciliationRow,
   type PnlContributorRow,
 } from "@/features/budgeting/components/ClientReconDrawer"
 import { BudgetPnlDrillPanel, type DrillRow } from "./budget-pnl-drill-panel"
+import { PnlPerformanceCharts } from "./pnl-performance-charts"
 // Phase 8 D1 (2026-05-29) — pure formatters extracted to a sibling.
 import { fmtNum, fmtCurrency, pctOfRev, varianceStr, varianceClass } from "./budget-pnl-format"
 
@@ -163,6 +169,11 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const actualMonthlyByKey: Record<string, Record<number, number>> =
     data.actualMonthlyByKey ?? {}
   const sectionActuals = data.sectionActuals ?? { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
+  const monthlyActualRevenue: Record<number, number> = data.monthlyActualRevenue ?? {}
+  const monthlyActualCogs: Record<number, number> = data.monthlyActualCogs ?? {}
+  const monthlyActualOpex: Record<number, number> = data.monthlyActualOpex ?? {}
+  const monthlyActualBelowEbitda: Record<number, number> = data.monthlyActualBelowEbitda ?? {}
+  const monthlyActualDa: Record<number, number> = data.monthlyActualDa ?? {}
   const hasActuals: boolean = Boolean(data.hasActuals)
 
   // Calculate totals — revenue/cogs already pre-aggregated by the API route.
@@ -261,6 +272,15 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const monthlyDaInCogsRaw = Array.from({ length: 12 }, (_, i) =>
     daRowsInCogs.reduce((s, r) => s + Math.abs(r.monthly[i + 1] || 0), 0),
   )
+  const monthlyDaInOpexRaw = Array.from({ length: 12 }, (_, i) =>
+    daRowsInOpex.reduce((s, r) => s + Math.abs(r.monthly[i + 1] || 0), 0),
+  )
+  const monthlyOpexBudgetRaw = Array.from({ length: 12 }, (_, i) =>
+    Math.abs(opexRows.reduce((s, r) => s + (r.monthly[i + 1] || 0), 0)),
+  )
+  const monthlyBelowEbitdaBudgetRaw = Array.from({ length: 12 }, (_, i) =>
+    Math.abs(belowEbitdaRows.reduce((s, r) => s + (r.monthly[i + 1] || 0), 0)),
+  )
 
   const marginData = MONTHS.map((m, i) => {
     const rev = monthlyRevenue?.[i + 1] || 0
@@ -295,6 +315,71 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     ...(totalBelowEbitda > 0 ? [{ name: "D&A/Tax", value: -totalBelowEbitda, fill: "#94a3b8" }] : []),
     { name: "Net Profit", value: netProfit, fill: netProfit >= 0 ? "#10b981" : "#ef4444" },
   ]
+
+  const monthlyPerformance: Record<PnlPerformanceMetric, ReturnType<typeof buildPnlPerformancePoint>[]> = {
+    revenue: MONTHS.map((month, i) => buildPnlPerformancePoint({
+      month,
+      budget: monthlyRevenue?.[i + 1] || 0,
+      actual: monthlyActualRevenue?.[i + 1] || 0,
+    })),
+    cogs: MONTHS.map((month, i) => buildPnlPerformancePoint({
+      month,
+      budget: Math.abs(monthlyCogs?.[i + 1] || 0),
+      actual: monthlyActualCogs?.[i + 1] || 0,
+    })),
+    opex: MONTHS.map((month, i) => buildPnlPerformancePoint({
+      month,
+      budget: monthlyOpexBudgetRaw[i] || 0,
+      actual: monthlyActualOpex?.[i + 1] || 0,
+    })),
+    ebitda: MONTHS.map((month, i) => {
+      const revenueBudget = monthlyRevenue?.[i + 1] || 0
+      const cogsBudget = Math.abs(monthlyCogs?.[i + 1] || 0)
+      const opexBudget = monthlyOpexBudgetRaw[i] || 0
+      const daBudget = (monthlyDaInCogsRaw[i] || 0) + (monthlyDaInOpexRaw[i] || 0)
+      const revenueActual = monthlyActualRevenue?.[i + 1] || 0
+      const cogsActual = monthlyActualCogs?.[i + 1] || 0
+      const opexActual = monthlyActualOpex?.[i + 1] || 0
+      const daActual = monthlyActualDa?.[i + 1] || 0
+      return buildPnlPerformancePoint({
+        month,
+        budget: revenueBudget - cogsBudget - opexBudget + daBudget,
+        actual: revenueActual - cogsActual - opexActual + daActual,
+      })
+    }),
+    netProfit: MONTHS.map((month, i) => {
+      const revenueBudget = monthlyRevenue?.[i + 1] || 0
+      const cogsBudget = Math.abs(monthlyCogs?.[i + 1] || 0)
+      const opexBudget = monthlyOpexBudgetRaw[i] || 0
+      const belowBudget = monthlyBelowEbitdaBudgetRaw[i] || 0
+      const revenueActual = monthlyActualRevenue?.[i + 1] || 0
+      const cogsActual = monthlyActualCogs?.[i + 1] || 0
+      const opexActual = monthlyActualOpex?.[i + 1] || 0
+      const belowActual = monthlyActualBelowEbitda?.[i + 1] || 0
+      return buildPnlPerformancePoint({
+        month,
+        budget: revenueBudget - cogsBudget - opexBudget - belowBudget,
+        actual: revenueActual - cogsActual - opexActual - belowActual,
+      })
+    }),
+  }
+
+  const ebitdaBridge = buildEbitdaBridge({
+    budget: {
+      revenue: totalRevenue,
+      cogs: totalCogs,
+      opex: totalOpex,
+      da: totalDa,
+      ebitda,
+    },
+    actual: {
+      revenue: sectionActuals.revenue,
+      cogs: sectionActuals.cogs,
+      opex: sectionActuals.opex,
+      da: actualBreakdown.totalDa,
+      ebitda: actualEbitda,
+    },
+  })
 
   // Group rows by type
   const revenueRows = rows.filter((r: PnlRow) => r.accountType === "revenue" && r.total !== 0)
@@ -529,6 +614,12 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
         </div>
       </div>
 
+      <PnlPerformanceCharts
+        monthly={monthlyPerformance}
+        bridge={ebitdaBridge}
+        hasActuals={hasActuals}
+      />
+
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Revenue vs COGS */}
@@ -639,7 +730,7 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
             <h3 className="text-sm font-semibold text-foreground">P&L Statement — Detail</h3>
             {!hasActuals && (
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-                No actuals imported — Δ% columns show "—"
+                No actuals imported - variance columns show no value
               </span>
             )}
           </div>

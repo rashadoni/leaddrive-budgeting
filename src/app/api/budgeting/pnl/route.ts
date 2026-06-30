@@ -10,6 +10,7 @@ import {
   isContraRevenueCode,
   pnlSectionFromRole,
 } from "@/lib/budgeting/coa-role"
+import { isDaCode } from "@/lib/budgeting/da-codes"
 
 /**
  * GET /api/budgeting/pnl
@@ -130,7 +131,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         success: true,
         sections: [], rows: [], monthlyRevenue: {}, monthlyCogs: {},
-        monthlyActualRevenue: {}, monthlyActualCogs: {}, actualByKey: {},
+        monthlyActualRevenue: {}, monthlyActualCogs: {}, monthlyActualOpex: {},
+        monthlyActualBelowEbitda: {}, monthlyActualDa: {}, actualByKey: {},
         actualMonthlyByKey: {}, sectionActuals: {}, year, hasActuals: false,
         _emptyReason: "subgroup_no_children",
       })
@@ -340,9 +342,15 @@ export async function GET(req: NextRequest) {
   const sectionActuals = { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 }
   const monthlyActualRevenue: Record<number, number> = {}
   const monthlyActualCogs: Record<number, number> = {}
+  const monthlyActualOpex: Record<number, number> = {}
+  const monthlyActualBelowEbitda: Record<number, number> = {}
+  const monthlyActualDa: Record<number, number> = {}
   for (let m = 1; m <= 12; m++) {
     monthlyActualRevenue[m] = 0
     monthlyActualCogs[m] = 0
+    monthlyActualOpex[m] = 0
+    monthlyActualBelowEbitda[m] = 0
+    monthlyActualDa[m] = 0
   }
 
   for (const a of actuals) {
@@ -366,6 +374,9 @@ export async function GET(req: NextRequest) {
     // predicate.
     const role = deriveRoleFromCode(code)
     const section = pnlSectionFromRole(role)
+    if (isDaCode(code)) {
+      monthlyActualDa[month] += Math.abs(amount)
+    }
     if (section === "revenue") {
       const sign = isContraRevenueCode(code) ? -1 : 1
       sectionActuals.revenue += sign * amount
@@ -375,8 +386,10 @@ export async function GET(req: NextRequest) {
       monthlyActualCogs[month] += amount
     } else if (section === "opex") {
       sectionActuals.opex += amount
+      monthlyActualOpex[month] += amount
     } else if (section === "belowEbitda") {
       sectionActuals.belowEbitda += amount
+      monthlyActualBelowEbitda[month] += amount
     }
   }
 
@@ -391,6 +404,9 @@ export async function GET(req: NextRequest) {
     monthlyCogs,
     monthlyActualRevenue,
     monthlyActualCogs,
+    monthlyActualOpex,
+    monthlyActualBelowEbitda,
+    monthlyActualDa,
     actualByKey,
     actualMonthlyByKey,
     sectionActuals,
