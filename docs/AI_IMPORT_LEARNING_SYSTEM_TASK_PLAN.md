@@ -94,7 +94,7 @@ Latest local benchmark after Task 2:
 
 ## Task 3 - Approved Template Memory
 
-Status: todo
+Status: done
 
 Persist confirmed workbook decisions so repeated formats become mostly automatic.
 
@@ -108,6 +108,29 @@ Acceptance:
 - A successful GREEN import can be saved as a reusable template.
 - Re-uploading the same/similar workbook uses the approved template before calling AI.
 - Template use still runs preview and reconciliation before apply.
+
+Implemented:
+- `src/lib/onboarding/ai-import/import-template-memory.ts`
+- `Organization.settings.aiImportWorkbookTemplates` versioned template book
+- Workbook/batch structure hash based on deterministic workbook profile
+- Multi-file orchestrator `templateClassifications` fast path with 0-token classifier usage
+- `POST /api/import/ai-auto-templates` and `GET /api/import/ai-auto-templates`
+- AI Import UI actions: use saved templates, save template, update template
+- Preview response `templateUsage` and per-file `templateApplied` metadata
+
+Verification:
+- `npx vitest run src/lib/onboarding/ai-import/import-template-memory.test.ts src/lib/onboarding/ai-import/multi-file-orchestrator.test.ts 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx' src/app/api/import/ai-auto-multi/handler.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T17-44-06-745Z.json`
+
+Latest local benchmark after Task 3:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T18-16-22-406Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 63.8 (Task 2: 63.8)
+- Human confirmations: 14 (Task 2: 14)
+- Conflicts: 0
+- Parsed: 5,829 items / 5,594 cells
+- Scores unchanged on the current corpus; template reuse is covered by focused tests because benchmark fixtures do not yet persist approved templates.
 
 ## Task 4 - Semantic CoA Mapper
 

@@ -214,6 +214,115 @@ describe("MultiFileForm", () => {
     expect(screen.getByText(/PROFILE DUPLICATES/)).toBeTruthy()
   })
 
+  it("sends useTemplate=0 when saved-template reuse is disabled", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 100, outputTokens: 50, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+      templateUsage: { requested: false, matched: false, skippedAiFiles: [] },
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("a.xlsx")] },
+    })
+    const toggle = screen
+      .getByTestId("use-template-toggle")
+      .querySelector("input") as HTMLInputElement
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    const sentBody = (fetchMock.mock.calls[0] as [string, RequestInit])[1]
+      .body as FormData
+    expect(sentBody.get("useTemplate")).toBe("0")
+  })
+
+  it("saves a GREEN preview as an approved template", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "profiled.xlsx",
+          workbookProfile: {
+            filename: "profiled.xlsx",
+            sheetCount: 1,
+            totalRows: 10,
+            totalColumns: 14,
+            workbookPlanHint: "actual",
+            sourceLikeSheets: 1,
+            summaryLikeSheets: 0,
+            monthLikeSheets: 1,
+            sheetsWithBuColumns: 0,
+            sheetsWithFormulas: 0,
+            sheetsWithEliminations: 0,
+            duplicateGroups: [],
+            repeatedDataHints: [],
+            sheets: [{ sheetName: "PLF CPC" }],
+          },
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.95,
+            reasoning: "PLF",
+            sheetCounts: {},
+          },
+          classifications: [
+            {
+              sheetName: "PLF CPC",
+              dataType: "PLF",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.95,
+              reasoning: "reviewed",
+              planKind: "actual",
+              role: "source",
+            },
+          ],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 100, outputTokens: 50, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+      templateUsage: { requested: true, matched: false, skippedAiFiles: [] },
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      template: { name: "AI import template (profiled.xlsx)", version: 1 },
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("profiled.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("preview-result")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId("btn-save-template"))
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(url).toBe("/api/import/ai-auto-templates")
+    expect(init.method).toBe("POST")
+    const body = JSON.parse(String(init.body)) as {
+      files: Array<{ filename: string }>
+      templateId?: string
+    }
+    expect(body.templateId).toBeUndefined()
+    expect(body.files[0].filename).toBe("profiled.xlsx")
+    expect(screen.getByTestId("template-save-status")).toBeTruthy()
+  })
+
   it("renders conflict banner on 409 response", async () => {
     mockFetchOnce(409, {
       ok: false,

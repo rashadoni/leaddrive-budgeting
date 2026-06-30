@@ -55,10 +55,17 @@ import {
   applyBuColumnSplit,
   inferStatementMeta,
 } from "@/lib/onboarding/ai-import/bu-column-split"
+import { extractWorkbookMeta } from "@/lib/onboarding/ai-import/sheet-meta-extractor"
+import { buildWorkbookProfile } from "@/lib/onboarding/ai-import/workbook-profile"
+import {
+  findMatchingAiImportTemplate,
+  markAiImportTemplateUsed,
+} from "@/lib/onboarding/ai-import/import-template-memory"
 import { buildEntityAliasMap } from "@/lib/onboarding/ai-import/entity-inference"
 import { logAuditEvent } from "@/lib/audit/log"
 import { importConsolidatedHoldingBs } from "@/lib/onboarding/adapters/azseker-consolidated-bs-import"
 import type { SheetMap, SheetMapEntry } from "@/lib/onboarding/ai-import/sheet-routing"
+import type { SheetClassification } from "@/lib/onboarding/ai-import/sheet-classifier"
 import {
   affectedIndicatorsForDataType,
   type DataTypeImpact,
@@ -165,6 +172,10 @@ export async function POST(request: NextRequest) {
   const allowYellow =
     String(form.get("allowYellow") ?? "").toLowerCase() === "1" ||
     String(form.get("allowYellow") ?? "").toLowerCase() === "true"
+  const useTemplate =
+    !["0", "false", "off"].includes(
+      String(form.get("useTemplate") ?? "1").toLowerCase(),
+    )
 
   // Phase 7.M Tier 6 — per-conflict resolution map. JSON:
   //   { "<conflict-key>": { "mode": "pick", "filename": "fileA.xlsx" } }
@@ -208,27 +219,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Cost-budget gate ────────────────────────────────────────────
-  // Each file uses ~35K tokens (input + output). Pre-check before
-  // burning any spend.
-  const estTokens = fileEntries.length * PER_FILE_TOKEN_BUDGET
-  const budgetCheck = await checkBudget(orgId, undefined, estTokens)
-  if (!budgetCheck.ok) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `LLM budget exceeded (${budgetCheck.reason}). Resets at ${budgetCheck.resetAt.toISOString()}`,
-      },
-      { status: 429 },
-    )
-  }
-
   // ── Parse all workbooks before LLM call ─────────────────────────
   // If any xlsx is malformed, fail fast with 400 — no LLM cost burned.
   const files: Array<{
     filename: string
     workbook: XLSX.WorkBook
     sheetMap?: SheetMap
+    templateClassifications?: SheetClassification[]
+    template?: {
+      id: string
+      name: string
+      version: number
+      structureHash: string
+    }
   }> = []
   for (const blob of fileEntries) {
     const filename = blob instanceof File ? blob.name : "uploaded.xlsx"
@@ -388,6 +391,91 @@ export async function POST(request: NextRequest) {
       }
     }
     if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
+  }
+
+  // ── Approved template fast path ─────────────────────────────────
+  // Build the same deterministic workbook profile the orchestrator will expose,
+  // but do it before the classifier so a saved GREEN template can replace the
+  // LLM call. Matching happens after deterministic pre-splits because templates
+  // must remember the actual virtual sheets that will be parsed/applied.
+  let templateUsage: {
+    requested: boolean
+    matched: boolean
+    template?: {
+      id: string
+      name: string
+      version: number
+      structureHash: string
+      fileCount: number
+    }
+    skippedAiFiles: string[]
+  } = {
+    requested: useTemplate,
+    matched: false,
+    skippedAiFiles: [],
+  }
+  if (useTemplate) {
+    const profiles = files.map((f) => {
+      const metas = extractWorkbookMeta(f.workbook, XLSX, {
+        sampleRows: 5,
+        maxColumns: 15,
+        profileRows: 80,
+      })
+      return buildWorkbookProfile(f.workbook, XLSX, {
+        filename: f.filename,
+        sheetMetas: metas,
+        knownEntityCodes,
+        entityAliases,
+      })
+    })
+    const match = findMatchingAiImportTemplate(org?.settings, profiles)
+    if (match) {
+      for (const matchedFile of match.files) {
+        const file = files[matchedFile.profileIndex]
+        file.templateClassifications = matchedFile.classifications
+        file.template = {
+          id: match.template.id,
+          name: match.template.name,
+          version: match.template.version,
+          structureHash: match.template.structureHash,
+        }
+      }
+      templateUsage = {
+        requested: true,
+        matched: true,
+        template: {
+          id: match.template.id,
+          name: match.template.name,
+          version: match.template.version,
+          structureHash: match.template.structureHash,
+          fileCount: match.template.files.length,
+        },
+        skippedAiFiles: files.map((f) => f.filename),
+      }
+      await markAiImportTemplateUsed(prisma, orgId, match.template.id).catch((err) => {
+        log.warn("ai-import template usage counter failed", {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      })
+    }
+  }
+
+  // ── Cost-budget gate ────────────────────────────────────────────
+  // Each classifier call uses ~35K tokens. Approved templates skip the
+  // classifier, so budget only the files that still need AI.
+  const filesNeedingAi = files.filter((f) => !f.templateClassifications)
+  const estTokens = filesNeedingAi.length * PER_FILE_TOKEN_BUDGET
+  if (estTokens > 0) {
+    const budgetCheck = await checkBudget(orgId, undefined, estTokens)
+    if (!budgetCheck.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `LLM budget exceeded (${budgetCheck.reason}). Resets at ${budgetCheck.resetAt.toISOString()}`,
+        },
+        { status: 429 },
+      )
+    }
   }
 
   // ── Snapshot backlog BEFORE apply (for closed-items diff) ──────
@@ -594,6 +682,7 @@ export async function POST(request: NextRequest) {
         error: "Cross-file conflicts detected",
         ...result,
         sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
+        templateUsage,
         durationMs: Date.now() - t0,
       },
       { status: 409 },
@@ -691,6 +780,7 @@ export async function POST(request: NextRequest) {
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
+    templateUsage,
     backlogClosed,
     consolidatedBsWarnings,
     budgetPlfSplits,

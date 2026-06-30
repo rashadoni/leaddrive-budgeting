@@ -192,6 +192,76 @@ describe("runMultiFileImport", () => {
     expect(result.conflicts).toEqual([])
   })
 
+  it("reuses approved template classifications and skips the classifier LLM", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    const create = vi.fn(async () => {
+      throw new Error("classifier should not be called")
+    })
+    const client: SheetClassifierAnthropicLike = {
+      messages: { create },
+    }
+    const input: MultiFileImportInput = {
+      files: [
+        {
+          filename: "Guvven Fin.xlsx",
+          workbook: fakeWorkbook("PLF CPC"),
+          template: {
+            id: "tpl_1",
+            name: "Approved Guvven",
+            version: 3,
+            structureHash: "hash_1",
+          },
+          templateClassifications: [
+            {
+              sheetName: "PLF CPC",
+              dataType: "PLF",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.98,
+              reasoning: "reviewed template mapping",
+              planKind: "actual",
+              role: "source",
+              planKindSignal: "config",
+              roleSignal: "config",
+            },
+          ],
+        },
+      ],
+      organizationId: "org1",
+      year: 2026,
+      dryRun: true,
+    }
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "claude-test",
+      registry: buildRegistryWith({
+        PLF: plfHandler(2),
+      }),
+      XLSX: fakeXLSX,
+    }
+
+    const result = await runMultiFileImport(input, deps)
+
+    expect(create).not.toHaveBeenCalled()
+    expect(result.llmUsage.inputTokens).toBe(0)
+    expect(result.llmUsage.outputTokens).toBe(0)
+    expect(result.llmUsage.promptVersion).toBe("template:tpl_1:v3")
+    expect(result.perFile[0].templateApplied).toMatchObject({
+      id: "tpl_1",
+      name: "Approved Guvven",
+      version: 3,
+    })
+    expect(result.perFile[0].classifications[0]).toMatchObject({
+      dataType: "PLF",
+      entityCode: "AZSEKER-CPC",
+      planKind: "actual",
+      role: "source",
+    })
+    expect(result.overallVerdict).toBe("green")
+  })
+
   it("3 files (descriptions + main + land) → 3 groups commit in dependency order", async () => {
     const prisma = stubPrisma({
       companies: [{ id: "c_cpc", code: "AZSEKER-CPC" }],

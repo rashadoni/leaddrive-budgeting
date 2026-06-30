@@ -173,6 +173,16 @@ export interface MultiFileImportInput {
      *  own tabs). Per-file, NOT request-wide, so a sibling file with a same-named
      *  tab isn't wrongly overridden (Codex P0). */
     sheetMap?: SheetMap
+    /** Approved-template fast path. When present and covering every sheet in the
+     *  workbook, the orchestrator skips the sheet-classifier LLM and reuses these
+     *  reviewer-confirmed decisions. All parse/reconciliation/apply gates still run. */
+    templateClassifications?: SheetClassification[]
+    template?: {
+      id: string
+      name: string
+      version: number
+      structureHash: string
+    }
   }>
   organizationId: string
   year: number
@@ -212,6 +222,13 @@ export interface PerFileResult {
   filename: string
   /** Deterministic workbook-wide signals used by classifier + preview. */
   workbookProfile: WorkbookProfile | null
+  /** Present when approved template memory replaced the LLM classifier. */
+  templateApplied?: {
+    id: string
+    name: string
+    version: number
+    structureHash: string
+  }
   /** Detected file-type (incl. confidence + reasoning). */
   fileTypeResult: FileTypeResult
   classifications: SheetClassification[]
@@ -661,6 +678,12 @@ export async function runMultiFileImport(
     classifications: SheetClassification[]
     metas: SheetMeta[]
     workbookProfile: WorkbookProfile | null
+    templateApplied?: {
+      id: string
+      name: string
+      version: number
+      structureHash: string
+    }
     usage: LLMUsage
     error: string | null
   }
@@ -683,6 +706,48 @@ export async function runMultiFileImport(
           knownEntityCodes: input.knownEntityCodes,
           entityAliases: input.entityAliases,
         })
+
+        if (file.templateClassifications && file.templateClassifications.length > 0) {
+          const bySheet = new Map(
+            file.templateClassifications.map((c) => [c.sheetName, c]),
+          )
+          const classifications: SheetClassification[] = []
+          const missingSheets: string[] = []
+          for (const meta of metas) {
+            const cls = bySheet.get(meta.sheetName)
+            if (cls) classifications.push(cls)
+            else missingSheets.push(meta.sheetName)
+          }
+
+          if (missingSheets.length === 0) {
+            if (file.template) {
+              warnings.push(
+                `${file.filename}: reused approved AI import template "${file.template.name}" v${file.template.version}; sheet-classifier LLM skipped, preview/reconciliation still ran`,
+              )
+            }
+            return {
+              filename: file.filename,
+              classifications,
+              metas,
+              workbookProfile,
+              usage: {
+                inputTokens: 0,
+                outputTokens: 0,
+                modelName: deps.model,
+                promptVersion: file.template
+                  ? `template:${file.template.id}:v${file.template.version}`
+                  : "template",
+              },
+              error: null,
+              templateApplied: file.template,
+            }
+          }
+
+          warnings.push(
+            `${file.filename}: saved template did not cover ${missingSheets.length} sheet(s); falling back to AI classifier`,
+          )
+        }
+
         const cls = await classifySheets(
           {
             sheetMetas: metas,
@@ -717,6 +782,7 @@ export async function runMultiFileImport(
           workbookProfile,
           usage: cls.usage,
           error: null,
+          templateApplied: undefined,
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -733,6 +799,7 @@ export async function runMultiFileImport(
             promptVersion: "n/a",
           },
           error: msg,
+          templateApplied: undefined,
         }
       }
     },
@@ -813,6 +880,7 @@ export async function runMultiFileImport(
     return {
       filename: f.filename,
       workbookProfile: cr.workbookProfile,
+      ...(cr.templateApplied ? { templateApplied: cr.templateApplied } : {}),
       fileTypeResult: fileTypeResults.get(f.filename)!,
       classifications: cr.classifications,
       expectedSums: perFileExpected.get(f.filename) ?? new Map(),

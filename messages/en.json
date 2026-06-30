@@ -2995,6 +2995,18 @@
         "medium": "medium",
         "low": "low"
       },
+      "template": {
+        "useSaved": "Use saved templates",
+        "used": "Using template “{name}” v{version}; AI classifier skipped for {n} file(s). Preview and reconciliation still ran.",
+        "noMatch": "No approved template matched this workbook shape. After a GREEN preview, save it so the next upload can skip AI classification.",
+        "disabled": "Saved template reuse is disabled for this run.",
+        "saveButton": "Save template",
+        "updateButton": "Update template",
+        "saving": "Saving...",
+        "saved": "Saved template “{name}” v{version}.",
+        "updated": "Updated template “{name}” to v{version}.",
+        "saveError": "Template save failed: {msg}"
+      },
       "conflict": {
         "title": "🚫 Cross-file conflict — {n} cells disagree",
         "description": "Two or more files contain different values for the same cell. Import is blocked until conflicts are resolved.",

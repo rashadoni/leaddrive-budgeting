@@ -2995,6 +2995,18 @@
         "medium": "orta",
         "low": "aşağı"
       },
+      "template": {
+        "useSaved": "Saxlanmış şablonlardan istifadə et",
+        "used": "“{name}” v{version} şablonu istifadə olunur; {n} fayl üçün AI klassifikatoru buraxıldı. Preview və üzləşdirmə yenə işləyib.",
+        "noMatch": "Bu workbook strukturuna uyğun təsdiqlənmiş şablon tapılmadı. GREEN preview-dən sonra saxlayın ki, növbəti idxal AI klassifikasiyasını keçsin.",
+        "disabled": "Bu işlətdirmədə saxlanmış şablonların təkrar istifadəsi söndürülüb.",
+        "saveButton": "Şablonu saxla",
+        "updateButton": "Şablonu yenilə",
+        "saving": "Saxlanır...",
+        "saved": "“{name}” v{version} şablonu saxlandı.",
+        "updated": "“{name}” şablonu v{version}-a yeniləndi.",
+        "saveError": "Şablon saxlanmadı: {msg}"
+      },
       "conflict": {
         "title": "🚫 Fayllar arası konflikt — {n} xana fərqlidir",
         "description": "İki və ya daha çox fayl eyni xana üçün fərqli dəyərlər göstərir. İdxal konflikt həll olunana qədər bloklanıb.",

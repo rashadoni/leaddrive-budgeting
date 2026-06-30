@@ -56,20 +56,37 @@ interface SheetClassification {
   entityCode: string | null
   confidence: number
   reasoning: string
+  planKind?: "actual" | "budget" | null
+  role?: "source" | "derived_summary"
+  planKindSignal?: string
+  roleSignal?: string
+  entityCodeOverride?: string
 }
 
 interface PerFileResult {
   filename: string
   workbookProfile?: {
+    filename?: string
     sheetCount: number
+    totalRows?: number
+    totalColumns?: number
     workbookPlanHint: "actual" | "budget" | "mixed" | "unknown"
     sourceLikeSheets: number
     summaryLikeSheets: number
     monthLikeSheets: number
     sheetsWithBuColumns: number
+    sheetsWithFormulas?: number
     sheetsWithEliminations: number
     duplicateGroups: Array<{ id: string; sheetNames: string[] }>
+    repeatedDataHints?: Array<{ sheetNames: string[]; reason: string }>
+    sheets?: Array<Record<string, unknown>>
   } | null
+  templateApplied?: {
+    id: string
+    name: string
+    version: number
+    structureHash: string
+  }
   fileTypeResult: FileTypeResult
   classifications: SheetClassification[]
   error: string | null
@@ -127,6 +144,18 @@ interface MultiFileApiResponse {
   recompute: { ok: number; unknown: number; failed: number; targets: number }
   warnings: string[]
   error?: string
+  templateUsage?: {
+    requested: boolean
+    matched: boolean
+    template?: {
+      id: string
+      name: string
+      version: number
+      structureHash: string
+      fileCount: number
+    }
+    skippedAiFiles: string[]
+  }
   /** 2026-05-27 — indicators that moved from `unknown` → present
    *  thanks to this import. Surfaced as «✅ Closed N backlog items»
    *  banner below the apply result. */
@@ -244,6 +273,9 @@ export function MultiFileForm() {
     useState<MultiFileApiResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [forceOverride, setForceOverride] = useState(false)
+  const [useTemplates, setUseTemplates] = useState(true)
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [templateSaveStatus, setTemplateSaveStatus] = useState<string | null>(null)
   // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
   // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
   //   { mode: "pick", filename: <filename to win> }  — use that file's value
@@ -267,6 +299,14 @@ export function MultiFileForm() {
   const allConflictsResolved =
     hasConflicts &&
     (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
+  const activeTemplate = previewResult?.templateUsage?.template
+  const canSaveTemplate =
+    !!previewResult &&
+    previewResult.overallVerdict === "green" &&
+    !hasConflicts &&
+    previewResult.perFile.some(
+      (f) => f.workbookProfile && f.classifications.length > 0,
+    )
 
   function handleFiles(newFiles: FileList | File[]): void {
     const incoming = Array.from(newFiles).filter((f) =>
@@ -276,6 +316,7 @@ export function MultiFileForm() {
     setPreviewResult(null)
     setApplyResult(null)
     setError(null)
+    setTemplateSaveStatus(null)
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>): void {
@@ -291,6 +332,7 @@ export function MultiFileForm() {
     setFiles((prev) => prev.filter((_, i) => i !== idx))
     setPreviewResult(null)
     setApplyResult(null)
+    setTemplateSaveStatus(null)
   }
 
   function resetAll(): void {
@@ -299,7 +341,9 @@ export function MultiFileForm() {
     setApplyResult(null)
     setError(null)
     setForceOverride(false)
+    setUseTemplates(true)
     setResolutions({})
+    setTemplateSaveStatus(null)
     if (inputRef.current) inputRef.current.value = ""
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -317,6 +361,7 @@ export function MultiFileForm() {
       const form = new FormData()
       for (const f of files) form.append("files", f)
       form.append("year", String(new Date().getFullYear()))
+      form.append("useTemplate", useTemplates ? "1" : "0")
       if (apply) form.append("apply", "1")
       if (forceOverride) form.append("forceOverride", "1")
       // Per-conflict resolutions take precedence over forceOverride —
@@ -350,6 +395,54 @@ export function MultiFileForm() {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  async function saveTemplate(): Promise<void> {
+    if (!previewResult || !canSaveTemplate) return
+    const templateFiles = previewResult.perFile
+      .filter((f) => f.workbookProfile && f.classifications.length > 0)
+      .map((f) => ({
+        filename: f.filename,
+        workbookProfile: f.workbookProfile,
+        classifications: f.classifications,
+      }))
+    setIsSavingTemplate(true)
+    setTemplateSaveStatus(null)
+    try {
+      const res = await fetch("/api/import/ai-auto-templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId: activeTemplate?.id,
+          name:
+            activeTemplate?.name ??
+            `AI import template (${templateFiles.map((f) => f.filename).join(", ")})`,
+          files: templateFiles,
+        }),
+      })
+      const data = (await res.json()) as {
+        ok: boolean
+        error?: string
+        template?: { name: string; version: number }
+      }
+      if (!res.ok || !data.ok || !data.template) {
+        throw new Error(data.error ?? `HTTP ${res.status}`)
+      }
+      setTemplateSaveStatus(
+        t(activeTemplate ? "template.updated" : "template.saved", {
+          name: data.template.name,
+          version: data.template.version,
+        }),
+      )
+    } catch (err) {
+      setTemplateSaveStatus(
+        t("template.saveError", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+      )
+    } finally {
+      setIsSavingTemplate(false)
     }
   }
 
@@ -425,7 +518,7 @@ export function MultiFileForm() {
       )}
 
       {/* Step 1 button */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           disabled={
@@ -437,6 +530,22 @@ export function MultiFileForm() {
         >
           {isProcessing && !applyResult ? t("step1.running") : t("step1.button")}
         </button>
+        <label
+          className="inline-flex items-center gap-2 rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+          data-testid="use-template-toggle"
+        >
+          <input
+            type="checkbox"
+            checked={useTemplates}
+            onChange={(e) => {
+              setUseTemplates(e.target.checked)
+              setPreviewResult(null)
+              setApplyResult(null)
+              setTemplateSaveStatus(null)
+            }}
+          />
+          <span>{t("template.useSaved")}</span>
+        </label>
         {previewResult && (
           <button
             type="button"
@@ -589,19 +698,62 @@ export function MultiFileForm() {
           impact before clicking Apply. */}
       {previewResult && previewResult.perFile.length > 0 && (
         <div className="space-y-3" data-testid="preview-result">
-          <div className="flex items-end justify-between">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h3 className="font-semibold text-sm">{t("preview.title")}</h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 {t("preview.subtitle")}
               </p>
             </div>
-            <div className="text-[10px] text-slate-400 leading-tight text-right hidden md:block">
-              <div>{t("preview.legendHigh")}</div>
-              <div>{t("preview.legendMedium")}</div>
-              <div>{t("preview.legendLow")}</div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                disabled={!canSaveTemplate || isSavingTemplate}
+                onClick={saveTemplate}
+                className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-800"
+                data-testid="btn-save-template"
+              >
+                {isSavingTemplate
+                  ? t("template.saving")
+                  : activeTemplate
+                    ? t("template.updateButton")
+                    : t("template.saveButton")}
+              </button>
+              <div className="text-[10px] text-slate-400 leading-tight text-right hidden md:block">
+                <div>{t("preview.legendHigh")}</div>
+                <div>{t("preview.legendMedium")}</div>
+                <div>{t("preview.legendLow")}</div>
+              </div>
             </div>
           </div>
+          {previewResult.templateUsage && (
+            <div
+              className={`rounded border px-3 py-2 text-xs ${
+                previewResult.templateUsage.matched
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-slate-200 bg-slate-50 text-slate-600"
+              }`}
+              data-testid="template-usage-banner"
+            >
+              {previewResult.templateUsage.matched && activeTemplate
+                ? t("template.used", {
+                    name: activeTemplate.name,
+                    version: activeTemplate.version,
+                    n: previewResult.templateUsage.skippedAiFiles.length,
+                  })
+                : previewResult.templateUsage.requested
+                  ? t("template.noMatch")
+                  : t("template.disabled")}
+            </div>
+          )}
+          {templateSaveStatus && (
+            <div
+              className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800"
+              data-testid="template-save-status"
+            >
+              {templateSaveStatus}
+            </div>
+          )}
           {previewResult.perFile.map((f) => {
             const impacts =
               previewResult.sheetImpactsByFilename?.[f.filename] ?? []
