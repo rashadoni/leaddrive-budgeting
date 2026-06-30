@@ -31,7 +31,7 @@ import {
   Bell,
   ChevronDown,
 } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ADMIN_GROUPS } from "@/lib/nav/admin-tools"
 
@@ -126,31 +126,6 @@ const budgetSubNav = [
   },
 ]
 
-// Hook: fetch per-org tab availability map. Sidebar uses this to hide
-// budget sub-nav entries pointing at empty data domains (Bug #6 demo
-// polish — customer demo Friday 2026-05-01). Endpoint is `GET /api/
-// budgeting/availability` which returns a flat `{ [tabValue]: boolean }`.
-// Tabs missing from the map (e.g. fetch in flight) default to TRUE so we
-// don't blink-hide-blink while loading.
-function useTabAvailability(): Record<string, boolean> {
-  const [map, setMap] = useState<Record<string, boolean>>({})
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/budgeting/availability")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        if (!cancelled && body && typeof body === "object") setMap(body)
-      })
-      .catch(() => {
-        // Silent fail — sidebar shows all tabs (existing behavior) on error.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-  return map
-}
-
 export function Sidebar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -160,7 +135,6 @@ export function Sidebar() {
   const t2 = useTranslations("adminLanding")
   const [collapsed, setCollapsed] = useState(false)
   const { data: session } = useSession()
-  const availability = useTabAvailability()
   // Cast: next-auth's `Session.user` type is augmented in this project to
   // include `role` (see `src/lib/api-auth.ts`); the cast keeps the
   // sidebar from depending on the augmentation file directly.
@@ -182,15 +156,10 @@ export function Sidebar() {
     pathname === "/budgeting" || pathname === "/budgeting/reports"
   // Section-wide test — when ANY /budgeting/* route is active, the
   // Budgeting sub-nav is OFFERED but collapsed by default outside the
-  // legacy page. Without collapsing the 20-item sub-list would push
-  // Risk Terminal / Board Deck / Onboarding / Audit Log / Settings
-  // below the viewport fold. Click the chevron next to Budgeting to
-  // toggle.
-  // Budgeting section EXCLUDES /admin/* — Admin is its own top-level row with
-  // its own expandable (the 5 ADMIN_GROUPS). Pre-restructure both shared one
-  // tangled sub-nav.
-  const isBudgetingSection =
-    pathname.startsWith("/budgeting") && !pathname.startsWith("/budgeting/admin")
+  // legacy page. This includes /budgeting/admin/*: admin tools are their own
+  // expandable row, but finance tabs like Cash Flow must remain discoverable
+  // from import/admin workflows.
+  const isBudgetingSection = pathname.startsWith("/budgeting")
   const isAdminSection = pathname.startsWith("/budgeting/admin")
   // Auto-open on legacy /budgeting (sub-tabs ARE the page's main UI),
   // auto-closed on /budgeting/terminal | /onboarding | /board-deck (the page
@@ -291,25 +260,12 @@ export function Sidebar() {
                   /budgeting section (legacy /budgeting page + nested
                   routes like /terminal, /onboarding, /board-deck,
                   /admin/*). User can collapse to avoid pushing other
-                  top-level items below the viewport fold. */}
+                  top-level items below the viewport fold. Keep structural
+                  finance tabs visible even when the underlying table is empty;
+                  the page-level empty states explain what is missing. */}
               {item.href === "/budgeting" && isBudgetingSection && budgetExpanded && !collapsed && (
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav
-                    .map((group) => ({
-                      ...group,
-                      // Bug #6: filter sub-items to those whose backing data
-                      // exists for this org. `availability` may be empty
-                      // (loading) — in that case treat unknown as visible
-                      // so we don't blink-hide on first paint. The flag
-                      // explicitly being `false` is what hides the entry.
-                      // Admin entries (no `value`, only `href`) bypass
-                      // availability check — they are always visible to admin.
-                      items: group.items.filter((sub) =>
-                        "value" in sub ? availability[sub.value] !== false : true
-                      ),
-                    }))
-                    // Drop entire group if all its items are hidden.
-                    .filter((group) => group.items.length > 0)
                     .map((group) => (
                       <div key={group.group}>
                         <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
