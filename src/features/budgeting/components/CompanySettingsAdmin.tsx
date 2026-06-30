@@ -16,6 +16,7 @@
 import { useState, useMemo } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
+import { useTranslations } from "next-intl"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ChevronRight } from "lucide-react"
@@ -60,6 +61,7 @@ export function CompanySettingsAdmin() {
   const userRole = session?.user?.role
   const canEdit = userRole === "admin" || userRole === "manager"
   const industryLabel = useIndustryLabel()
+  const t = useTranslations("adminCompanies")
   const queryClient = useQueryClient()
 
   const { data: companies, isLoading } = useQuery({
@@ -82,19 +84,19 @@ export function CompanySettingsAdmin() {
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Настройки компаний</h1>
+          <h1 className="text-2xl font-bold">{t("settingsHeading")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Отраслевые операционные параметры (га, регион, мощность и др.). Влияют на индикаторы и объяснения AI.
+            {t("settingsDescription")}
           </p>
         </div>
         {!canEdit && (
-          <Badge variant="outline">Только чтение (роль viewer/editor)</Badge>
+          <Badge variant="outline">{t("readOnly")}</Badge>
         )}
       </div>
 
       {isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Загрузка компаний…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("loadingCompanies")}
         </div>
       )}
 

@@ -107,6 +107,7 @@
     "alerts": "Siqnallar"
   },
   "common": {
+    "toggleTheme": "Temanı dəyiş",
     "save": "Saxla",
     "cancel": "Ləğv et",
     "delete": "Sil",
@@ -3400,6 +3401,10 @@
   "adminCompanies": {
     "sectionHeading": "Rol, Status və Sənaye",
     "sectionDescription": "Hər şirkətin terminaldakı profili. Sənaye — hansı indikator paketinin tətbiq olunacağını (məs. Aqro / Qida emalı) və məlumat-daxiletmə formasının görünüşünü seçir. Rol — HeatMap görünüşünü idarə edir: operational şirkətlər risk matrisində görünür, admin/holding xərc-mərkəzləri isə əmsalları təhrif etməsin deyə xaric edilir. Status — onboardinq qapısı: active matrisdə görünür, pending məlumat hazır olana qədər gizlidir, archived arxivdədir.",
+    "settingsHeading": "Şirkət parametrləri",
+    "settingsDescription": "Sahə üzrə əməliyyat parametrləri (ha, region, güc və s.). İndikatorlara və AI izahlarına təsir edir.",
+    "readOnly": "Yalnız oxuma (viewer/editor rolu)",
+    "loadingCompanies": "Şirkətlər yüklənir…",
     "loading": "Yüklənir…",
     "thCode": "Kod",
     "thName": "Ad",

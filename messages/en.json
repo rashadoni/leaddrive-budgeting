@@ -107,6 +107,7 @@
     "alerts": "Alerts"
   },
   "common": {
+    "toggleTheme": "Toggle theme",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -3400,6 +3401,10 @@
   "adminCompanies": {
     "sectionHeading": "Role, Status & Industry",
     "sectionDescription": "Each company's profile in the terminal. Industry selects which indicator pack applies (e.g. Agro vs Food Processing) and the data-entry form layout. Role controls HeatMap visibility — operational companies appear in the risk matrix, while admin/holding cost-centres are excluded so they don't skew ratios. Status is the onboarding gate — active shows in the matrix, pending is hidden until data is ready, archived is retired.",
+    "settingsHeading": "Company Settings",
+    "settingsDescription": "Per-industry operational parameters (hectares, region, capacity, etc.). They drive indicators and AI explanations.",
+    "readOnly": "Read-only (viewer/editor role)",
+    "loadingCompanies": "Loading companies…",
     "loading": "Loading…",
     "thCode": "Code",
     "thName": "Name",
