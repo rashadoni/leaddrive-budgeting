@@ -44,6 +44,7 @@ export default async function AIImportPage({
     initialYearRaw && Number.isInteger(Number(initialYearRaw))
       ? Number(initialYearRaw)
       : undefined
+  const importYear = initialYear ?? new Date().getFullYear()
   const [organization, companies] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
@@ -82,11 +83,11 @@ export default async function AIImportPage({
         <ImportDataResetPanel
           scopes={resetScopes}
           initialCompanyCode={initialCompanyCode}
-          initialYear={initialYear}
+          initialYear={importYear}
         />
       </div>
 
-      <AIImportTabs />
+      <AIImportTabs initialYear={importYear} />
     </div>
   )
 }

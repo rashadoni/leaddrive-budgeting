@@ -14,7 +14,7 @@ import { MultiFileForm } from "./MultiFileForm"
 import { UniversalImportForm } from "./UniversalImportForm"
 import { MultiSheetImportForm } from "./MultiSheetImportForm"
 
-export function AIImportTabs() {
+export function AIImportTabs({ initialYear }: { initialYear?: number }) {
   const t = useTranslations("adminAiImport")
   const [mode, setMode] = useState<"single" | "multi" | "universal" | "multisheet">("single")
   return (
@@ -94,7 +94,7 @@ export function AIImportTabs() {
         ) : mode === "multi" ? (
           <MultiFileForm />
         ) : mode === "universal" ? (
-          <UniversalImportForm />
+          <UniversalImportForm preferredYear={initialYear} />
         ) : (
           <MultiSheetImportForm />
         )}

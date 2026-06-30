@@ -23,6 +23,10 @@ import type {
 } from "@/lib/onboarding/ai-mapper/types"
 import { buildUserOverrides } from "@/features/onboarding/lib/proposal-overrides"
 import { MappingReviewTable } from "@/features/onboarding/components/MappingReviewTable"
+import {
+  pickDefaultAnalysisSheet,
+  type SheetClassificationCandidate,
+} from "./sheet-selection"
 
 interface CompanyOpt {
   id: string
@@ -40,11 +44,7 @@ interface PlanOpt {
   year: number
   kind: string
 }
-interface Classification {
-  sheetName: string
-  dataType: string
-  confidence: number
-}
+type Classification = SheetClassificationCandidate
 interface AnalyzeResponse {
   ok: true
   stagingId: string
@@ -203,8 +203,10 @@ function CompanyOptionList({ companies }: { companies: CompanyOpt[] }) {
   )
 }
 
-export function UniversalImportForm() {
+export function UniversalImportForm({ preferredYear }: { preferredYear?: number } = {}) {
   const t = useTranslations("adminUniversal")
+  const targetYear =
+    preferredYear && Number.isInteger(preferredYear) ? preferredYear : new Date().getFullYear()
   const [companies, setCompanies] = useState<CompanyOpt[]>([])
   const [companyId, setCompanyId] = useState("")
   // Create-new-company sub-flow (for entities not yet in the org tree).
@@ -406,14 +408,13 @@ export function UniversalImportForm() {
     try {
       const fd = new FormData()
       fd.append("file", file)
+      fd.append("year", String(targetYear))
       const res = await fetch("/api/import/ai-auto", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
       const cls = (body.classifications ?? []) as Classification[]
       setClassifications(cls)
-      // Prefer the highest-confidence P&L (PLF) sheet; fall back to first sheet.
-      const plf = cls.filter((c) => c.dataType === "PLF").sort((a, b) => b.confidence - a.confidence)
-      const best = plf[0]?.sheetName ?? cls[0]?.sheetName ?? ""
+      const best = pickDefaultAnalysisSheet(cls, targetYear)
       if (!best) throw new Error("No sheets detected in workbook")
       await analyzeSheet(best)
     } catch (e) {
