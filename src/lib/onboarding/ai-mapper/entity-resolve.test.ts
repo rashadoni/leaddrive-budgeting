@@ -16,6 +16,12 @@ const COMPANIES = [
   { id: 'c3', code: 'CPC', name: 'CPC Processing' },
 ];
 
+const AZSEKER_COMPANIES = [
+  { id: 'c_azsf', code: 'AZSEKER-AZSF', name: 'AzerSheker' },
+  { id: 'c_eden', code: 'AZSEKER-EDEN', name: 'Eden Agro MMC' },
+  { id: 'c_cpc', code: 'AZSEKER-CPC', name: 'Can Production Company' },
+];
+
 describe('resolveEntityCompanies', () => {
   it('matches by exact code (case-insensitive)', () => {
     const r = resolveEntityCompanies(['azsf'], COMPANIES);
@@ -31,6 +37,21 @@ describe('resolveEntityCompanies', () => {
   it('matches a code token embedded in a longer value', () => {
     const r = resolveEntityCompanies(['AZSF 2026 actual'], COMPANIES);
     expect(r.suggestions['AZSF 2026 actual']).toBe('c1');
+  });
+
+  it('matches BU codes to trailing segments of canonical holding company codes', () => {
+    const r = resolveEntityCompanies(['CPC', 'AZSF', 'EDEN'], AZSEKER_COMPANIES);
+    expect(r.suggestions).toEqual({
+      CPC: 'c_cpc',
+      AZSF: 'c_azsf',
+      EDEN: 'c_eden',
+    });
+    expect(r.unresolved).toEqual([]);
+  });
+
+  it('matches embedded BU tokens to canonical holding company code tails', () => {
+    const r = resolveEntityCompanies(['BU CPC 2025'], AZSEKER_COMPANIES);
+    expect(r.suggestions['BU CPC 2025']).toBe('c_cpc');
   });
 
   it('leaves an unknown value unresolved (no spurious match)', () => {

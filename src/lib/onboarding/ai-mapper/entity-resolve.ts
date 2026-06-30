@@ -14,7 +14,8 @@
  * Match strength, strongest first across the WHOLE value set (so the strongest
  * claim on a company wins before weaker ones):
  *   1. exact code or name (case-insensitive)
- *   2. a value token equal to the company code (e.g. "AZSF 2026" → AZSF)
+ *   2. a value token equal to the company code or its trailing segment
+ *      (e.g. "CPC" → AZSEKER-CPC, "AZSF 2026" → AZSEKER-AZSF)
  *   3. name substring either direction (min length 4)
  * Blank ("") is never auto-mapped.
  */
@@ -70,6 +71,18 @@ const tokens = (s: string): string[] =>
     .split(/[^\p{L}\p{N}]+/u)
     .filter((t) => t.length > 0);
 
+function codeAliases(code: string): Set<string> {
+  const aliases = new Set<string>();
+  const full = norm(code);
+  if (full) aliases.add(full);
+
+  const parts = tokens(code);
+  const tail = parts.at(-1);
+  if (parts.length > 1 && tail && tail.length >= 3) aliases.add(tail);
+
+  return aliases;
+}
+
 export function resolveEntityCompanies(
   values: string[],
   companies: CompanyLite[],
@@ -89,11 +102,16 @@ export function resolveEntityCompanies(
     return null;
   };
   const matchCodeToken = (v: string): string | null => {
+    const nv = norm(v);
     const vt = new Set(tokens(v));
-    if (vt.size === 0) return null;
+    if (nv === '' || vt.size === 0) return null;
     for (const c of companies) {
       if (usedCompanyIds.has(c.id)) continue;
-      if (vt.has(norm(c.code))) return c.id;
+      const aliases = codeAliases(c.code);
+      if (aliases.has(nv)) return c.id;
+      for (const alias of aliases) {
+        if (vt.has(alias)) return c.id;
+      }
     }
     return null;
   };
