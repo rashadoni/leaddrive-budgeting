@@ -30,7 +30,80 @@ export async function GET(req: NextRequest) {
     }),
   ])
 
+  if (cogsLines.length === 0) {
+    const fallbackLines = await prisma.budgetLine.findMany({
+      where: { organizationId: orgId, planId, lineType: "cogs", deletedAt: null },
+      select: {
+        id: true,
+        department: true,
+        plannedAmount: true,
+        quantity: true,
+        monthIndex: true,
+        sortOrder: true,
+        account: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: [{ sortOrder: "asc" }],
+    })
+    if (fallbackLines.length > 0) {
+      const buckets = new Map<string, {
+        id: string
+        productLineId: string
+        productLine: { id: string; name: string }
+        year: number
+        month: number
+        productionQty: number
+        totalCost: number
+        source: "budget_lines"
+      }>()
+      const plan = await prisma.budgetPlan.findFirst({
+        where: { id: planId, organizationId: orgId },
+        select: { year: true },
+      })
+      for (const line of fallbackLines) {
+        const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
+        if (month == null) continue
+        const productLineId = `budget-line:${line.account.id}:${line.department || ""}`
+        const bucketKey = `${productLineId}:${month}`
+        const current = buckets.get(bucketKey)
+        const totalCost = Math.abs(line.plannedAmount || 0)
+        const productionQty = line.quantity ?? 0
+        if (current) {
+          current.totalCost += totalCost
+          current.productionQty += productionQty
+        } else {
+          buckets.set(bucketKey, {
+            id: `budget-line-cogs:${bucketKey}`,
+            productLineId,
+            productLine: {
+              id: productLineId,
+              name: line.account.name || line.department || line.account.code,
+            },
+            year: plan?.year ?? new Date().getFullYear(),
+            month,
+            productionQty,
+            totalCost,
+            source: "budget_lines",
+          })
+        }
+      }
+      return NextResponse.json({
+        cogsLines: Array.from(buckets.values()),
+        components,
+        details: [],
+        source: "budget_lines",
+        fallbackReason: "cogs_budget_lines_empty",
+      })
+    }
+  }
+
   return NextResponse.json({ cogsLines, components, details })
+}
+
+function resolveBudgetLineMonth(monthIndex: number | null, sortOrder: number): number | null {
+  if (monthIndex != null && monthIndex >= 0 && monthIndex < 12) return monthIndex + 1
+  const fromSort = sortOrder % 100
+  if (fromSort >= 0 && fromSort < 12) return fromSort + 1
+  return null
 }
 
 export async function POST(req: NextRequest) {

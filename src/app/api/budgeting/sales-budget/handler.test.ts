@@ -17,6 +17,7 @@ const { prismaMock } = vi.hoisted(() => ({
       create: vi.fn(),
       upsert: vi.fn(),
     },
+    budgetLine: { findMany: vi.fn() },
     budgetPlan: { findFirst: vi.fn() },
     organization: { findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -35,6 +36,7 @@ beforeEach(() => {
   prismaMock.salesBudgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.salesBudgetLine.create.mockReset().mockResolvedValue({ id: "sb1" })
   prismaMock.salesBudgetLine.upsert.mockReset().mockResolvedValue({ id: "sb1" })
+  prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetPlan.findFirst.mockReset().mockResolvedValue({
     id: "p1",
     periodType: "annual",
@@ -74,6 +76,55 @@ describe("GET /api/budgeting/sales-budget", () => {
           { productLine: { sortOrder: "asc" } },
           { month: "asc" },
         ]),
+      }),
+    )
+  })
+
+  it("falls back to BudgetLine revenue rows when product sales table is empty", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      {
+        id: "bl1",
+        department: "CPC",
+        plannedAmount: 1000,
+        unitPrice: null,
+        quantity: null,
+        monthIndex: 0,
+        sortOrder: 0,
+        account: { id: "acc601", code: "601-01", name: "Revenue" },
+      },
+      {
+        id: "bl2",
+        department: "CPC",
+        plannedAmount: 1200,
+        unitPrice: null,
+        quantity: null,
+        monthIndex: 1,
+        sortOrder: 1,
+        account: { id: "acc601", code: "601-01", name: "Revenue" },
+      },
+    ])
+
+    const res = await GET(makeRequest("/api/budgeting/sales-budget?planId=p1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.source).toBe("budget_lines")
+    expect(body.lines).toMatchObject([
+      {
+        month: 1,
+        amount: 1000,
+        productLine: { code: "601-01", name: "Revenue" },
+      },
+      {
+        month: 2,
+        amount: 1200,
+        productLine: { code: "601-01", name: "Revenue" },
+      },
+    ])
+    expect(prismaMock.budgetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, planId: "p1", lineType: "revenue", deletedAt: null },
       }),
     )
   })

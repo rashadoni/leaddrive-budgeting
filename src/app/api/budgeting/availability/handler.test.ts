@@ -72,7 +72,10 @@ describe("GET /api/budgeting/availability (Turn 33.5)", () => {
 
   it("budgetLine count > 0 enables pnl-report + workspace + pl + forecast + report-builder", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" });
-    prismaMock.budgetLine.count.mockResolvedValue(568);
+    prismaMock.budgetLine.count
+      .mockResolvedValueOnce(568)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
     const res = await GET(makeRequest("http://localhost/api/budgeting/availability"));
     const body = await res.json();
     expect(body["pnl-report"]).toBe(true);
@@ -82,6 +85,19 @@ describe("GET /api/budgeting/availability (Turn 33.5)", () => {
     expect(body["report-builder"]).toBe(true);
     // Other domain tabs still false (their counts not mocked)
     expect(body["sales-budget"]).toBe(false);
+    expect(body.cogs).toBe(false);
+  });
+
+  it("budgetLine revenue/cogs fallback enables sales-budget and cogs tabs", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" });
+    prismaMock.budgetLine.count
+      .mockResolvedValueOnce(568)
+      .mockResolvedValueOnce(24)
+      .mockResolvedValueOnce(12);
+    const res = await GET(makeRequest("http://localhost/api/budgeting/availability"));
+    const body = await res.json();
+    expect(body["sales-budget"]).toBe(true);
+    expect(body.cogs).toBe(true);
   });
 
   it("each domain count maps to its tab independently", async () => {
@@ -115,10 +131,22 @@ describe("GET /api/budgeting/availability (Turn 33.5)", () => {
   it("all 9 prisma.count calls scope by organizationId (security regression guard)", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" });
     await GET(makeRequest("http://localhost/api/budgeting/availability"));
-    // The 3 soft-delete tables additionally filter deletedAt:null so the
+    // BudgetLine is counted three ways: all lines, revenue fallback for
+    // sales-budget, and cogs fallback for COGS. The soft-delete tables
+    // additionally filter deletedAt:null so the
     // tab-presence boolean reflects LIVE rows, not archived ones (2026-05-31).
-    const softDelete = new Set(["budgetLine", "balanceSheetLine", "cashFlowEntry"]);
+    expect(prismaMock.budgetLine.count).toHaveBeenNthCalledWith(1, {
+      where: { organizationId: ORG_ID, deletedAt: null },
+    });
+    expect(prismaMock.budgetLine.count).toHaveBeenNthCalledWith(2, {
+      where: { organizationId: ORG_ID, lineType: "revenue", deletedAt: null },
+    });
+    expect(prismaMock.budgetLine.count).toHaveBeenNthCalledWith(3, {
+      where: { organizationId: ORG_ID, lineType: "cogs", deletedAt: null },
+    });
+    const softDelete = new Set(["balanceSheetLine", "cashFlowEntry"]);
     for (const [name, model] of Object.entries(prismaMock)) {
+      if (name === "budgetLine") continue;
       expect(model.count, `${name}.count called with orgId`).toHaveBeenCalledWith({
         where: softDelete.has(name)
           ? { organizationId: ORG_ID, deletedAt: null }

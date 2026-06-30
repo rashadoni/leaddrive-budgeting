@@ -37,6 +37,7 @@ interface CogsLine {
   month: number
   productionQty: number
   totalCost: number
+  source?: "budget_lines"
 }
 
 interface CogsDetail {
@@ -55,6 +56,8 @@ interface CogsResponse {
   cogsLines: CogsLine[]
   components: unknown[]
   details: CogsDetail[]
+  source?: "budget_lines"
+  fallbackReason?: string
 }
 
 /** Recharts chart row for monthly stacked bars — `month` is the
@@ -77,6 +80,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
     },
     enabled: !!planId && !!orgId,
   })
+  const fromBudgetLines = data?.source === "budget_lines"
 
   if (isLoading) {
     return (
@@ -214,6 +218,11 @@ export function COGSCalculator({ planId }: { planId: string }) {
 
   return (
     <div className="space-y-4">
+      {fromBudgetLines && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
+          Showing imported P&L COGS rows because the dedicated COGS product table is empty.
+        </div>
+      )}
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4">

@@ -2,14 +2,16 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, ComposedChart, Line,
 } from "recharts"
-import { TrendingUp, Package, ShoppingCart, DollarSign, ChevronDown, ChevronRight } from "lucide-react"
+import { TrendingUp, Package, ShoppingCart, DollarSign, ChevronDown, ChevronRight, Upload } from "lucide-react"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
@@ -31,23 +33,35 @@ interface SalesLine {
   unitPrice: number
   amount: number
   productLine: { id: string; code: string; name: string; unit: string }
+  source?: "budget_lines"
+}
+
+interface SalesResponseEnvelope {
+  lines: SalesLine[]
+  source?: "budget_lines"
+  fallbackReason?: string
 }
 
 export function SalesBudgetTable({ planId }: { planId: string }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const orgId = session?.user?.organizationId
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
-  const { data: lines, isLoading } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["salesBudget", planId],
     queryFn: async () => {
       const res = await fetch(`/api/budgeting/sales-budget?planId=${planId}`, {
         headers: { "x-organization-id": orgId || "" },
       })
-      return res.json() as Promise<SalesLine[]>
+      const body = await res.json()
+      if (Array.isArray(body)) return { lines: body as SalesLine[] } satisfies SalesResponseEnvelope
+      return body as SalesResponseEnvelope
     },
     enabled: !!planId && !!orgId,
   })
+  const lines = data?.lines ?? []
+  const fromBudgetLines = data?.source === "budget_lines"
 
   if (isLoading) {
     return (
@@ -65,13 +79,18 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
     )
   }
 
-  if (!lines || lines.length === 0) {
+  if (lines.length === 0) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-muted-foreground">
+        <CardContent className="p-12 text-center">
           <ShoppingCart className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No sales data available</p>
-          <p className="text-sm mt-1">Import an Excel file to populate sales budget.</p>
+          <p className="font-medium text-foreground">No sales data in this plan</p>
+          <p className="text-sm mt-1 text-muted-foreground">
+            The selected plan exists, but it has no revenue rows yet. Creating a plan only creates an empty container.
+          </p>
+          <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
+            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+          </Button>
         </CardContent>
       </Card>
     )
@@ -133,6 +152,11 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
 
   return (
     <div className="space-y-4">
+      {fromBudgetLines && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-300">
+          Showing imported P&L revenue rows because the dedicated sales-budget product table is empty.
+        </div>
+      )}
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">

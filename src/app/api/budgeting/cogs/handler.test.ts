@@ -11,10 +11,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     cOGSBudgetLine: {
+      findMany: vi.fn(),
       upsert: vi.fn(),
       create: vi.fn(),
     },
-    budgetPlan: { findMany: vi.fn() },
+    costComponent: { findMany: vi.fn() },
+    cOGSCostDetail: { findMany: vi.fn() },
+    budgetLine: { findMany: vi.fn() },
+    budgetPlan: { findMany: vi.fn(), findFirst: vi.fn() },
     organization: { findUnique: vi.fn() },
     // Phase 8 D3 final — accountId is a required CoA FK since Phase 2.1, so
     // the route resolves it via chartOfAccount.findUnique before writing.
@@ -26,7 +30,7 @@ vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
-import { POST } from "./route"
+import { GET, POST } from "./route"
 
 const ORG_ID = "org_demo"
 const validBody = {
@@ -42,13 +46,101 @@ const validBody = {
 }
 
 beforeEach(() => {
+  prismaMock.cOGSBudgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.cOGSBudgetLine.upsert.mockReset().mockResolvedValue({ id: "c1" })
   prismaMock.cOGSBudgetLine.create.mockReset().mockResolvedValue({ id: "c1" })
+  prismaMock.costComponent.findMany.mockReset().mockResolvedValue([])
+  prismaMock.cOGSCostDetail.findMany.mockReset().mockResolvedValue([])
+  prismaMock.budgetLine.findMany.mockReset().mockResolvedValue([])
   prismaMock.budgetPlan.findMany.mockReset().mockResolvedValue([
     { id: "p1", periodType: "annual", year: 2026, month: null, quarter: null },
   ])
+  prismaMock.budgetPlan.findFirst.mockReset().mockResolvedValue({ id: "p1", year: 2026 })
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: [] })
   prismaMock.chartOfAccount.findUnique.mockReset().mockResolvedValue({ id: "acc1" })
+})
+
+describe("GET /api/budgeting/cogs", () => {
+  it("returns 401 unauthenticated", async () => {
+    await mockSession(null)
+    const res = await GET(makeRequest("/api/budgeting/cogs?planId=p1"))
+    expect(res.status).toBe(401)
+  })
+
+  it("returns 400 when planId is missing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    const res = await GET(makeRequest("/api/budgeting/cogs"))
+    expect(res.status).toBe(400)
+  })
+
+  it("returns legacy COGS product rows when the dedicated table has data", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.cOGSBudgetLine.findMany.mockResolvedValue([
+      {
+        id: "cogs1",
+        planId: "p1",
+        month: 1,
+        totalCost: 1500,
+        productLine: { id: "product1", name: "Sugar", sortOrder: 1 },
+      },
+    ])
+
+    const res = await GET(makeRequest("/api/budgeting/cogs?planId=p1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.source).toBeUndefined()
+    expect(body.cogsLines).toHaveLength(1)
+    expect(body.cogsLines[0]).toMatchObject({ id: "cogs1", month: 1, totalCost: 1500 })
+    expect(prismaMock.budgetLine.findMany).not.toHaveBeenCalled()
+  })
+
+  it("falls back to BudgetLine COGS rows when the dedicated COGS table is empty", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetLine.findMany.mockResolvedValue([
+      {
+        id: "bl1",
+        department: "CPC",
+        plannedAmount: -1250,
+        quantity: null,
+        monthIndex: 0,
+        sortOrder: 0,
+        account: { id: "acc701", code: "701-01", name: "Raw materials" },
+      },
+      {
+        id: "bl2",
+        department: "CPC",
+        plannedAmount: -1750,
+        quantity: null,
+        monthIndex: 1,
+        sortOrder: 1,
+        account: { id: "acc701", code: "701-01", name: "Raw materials" },
+      },
+    ])
+
+    const res = await GET(makeRequest("/api/budgeting/cogs?planId=p1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.source).toBe("budget_lines")
+    expect(body.cogsLines).toMatchObject([
+      {
+        month: 1,
+        totalCost: 1250,
+        productLine: { name: "Raw materials" },
+      },
+      {
+        month: 2,
+        totalCost: 1750,
+        productLine: { name: "Raw materials" },
+      },
+    ])
+    expect(prismaMock.budgetLine.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { organizationId: ORG_ID, planId: "p1", lineType: "cogs", deletedAt: null },
+      }),
+    )
+  })
 })
 
 describe("POST /api/budgeting/cogs — period lock (Turn LXVIII)", () => {

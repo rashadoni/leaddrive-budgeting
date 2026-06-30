@@ -3,6 +3,7 @@ import { getOrgId } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
+import { isContraRevenueCode } from "@/lib/budgeting/coa-role"
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -17,7 +18,77 @@ export async function GET(req: NextRequest) {
     include: { productLine: true },
     orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
   })
+  if (lines.length === 0) {
+    const fallbackLines = await prisma.budgetLine.findMany({
+      where: { organizationId: orgId, planId, lineType: "revenue", deletedAt: null },
+      select: {
+        id: true,
+        department: true,
+        plannedAmount: true,
+        unitPrice: true,
+        quantity: true,
+        monthIndex: true,
+        sortOrder: true,
+        account: { select: { id: true, code: true, name: true } },
+      },
+      orderBy: [{ sortOrder: "asc" }],
+    })
+    if (fallbackLines.length > 0) {
+      const buckets = new Map<string, {
+        id: string
+        month: number
+        quantity: number
+        unitPrice: number
+        amount: number
+        productLine: { id: string; code: string; name: string; unit: string }
+        source: "budget_lines"
+      }>()
+      for (const line of fallbackLines) {
+        const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
+        if (month == null) continue
+        const code = line.account.code
+        const name = line.account.name || line.department || code
+        const productId = `budget-line:${line.account.id}:${line.department || ""}`
+        const bucketKey = `${productId}:${month}`
+        const amount = (isContraRevenueCode(code) ? -1 : 1) * (line.plannedAmount || 0)
+        const quantity = line.quantity ?? 0
+        const current = buckets.get(bucketKey)
+        if (current) {
+          current.amount += amount
+          current.quantity += quantity
+          current.unitPrice = current.quantity > 0 ? current.amount / current.quantity : 0
+        } else {
+          buckets.set(bucketKey, {
+            id: `budget-line-revenue:${bucketKey}`,
+            month,
+            quantity,
+            unitPrice: line.unitPrice ?? 0,
+            amount,
+            productLine: {
+              id: productId,
+              code,
+              name,
+              unit: quantity > 0 ? "unit" : "AZN",
+            },
+            source: "budget_lines",
+          })
+        }
+      }
+      return NextResponse.json({
+        lines: Array.from(buckets.values()),
+        source: "budget_lines",
+        fallbackReason: "sales_budget_lines_empty",
+      })
+    }
+  }
   return NextResponse.json(lines)
+}
+
+function resolveBudgetLineMonth(monthIndex: number | null, sortOrder: number): number | null {
+  if (monthIndex != null && monthIndex >= 0 && monthIndex < 12) return monthIndex + 1
+  const fromSort = sortOrder % 100
+  if (fromSort >= 0 && fromSort < 12) return fromSort + 1
+  return null
 }
 
 export async function POST(req: NextRequest) {

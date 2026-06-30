@@ -24,6 +24,8 @@ export async function GET(req: NextRequest) {
 
   const [
     budgetLines,
+    budgetRevenueLines,
+    budgetCogsLines,
     salesBudget,
     cogsBudget,
     balanceSheet,
@@ -37,6 +39,8 @@ export async function GET(req: NextRequest) {
     // CashFlowEntry) so the tab-availability presence check reflects LIVE rows,
     // not archived ones (2026-05-31). The other tables have no soft-delete column.
     prisma.budgetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
+    prisma.budgetLine.count({ where: { organizationId: orgId, lineType: "revenue", deletedAt: null } }),
+    prisma.budgetLine.count({ where: { organizationId: orgId, lineType: "cogs", deletedAt: null } }),
     prisma.salesBudgetLine.count({ where: { organizationId: orgId } }),
     prisma.cOGSBudgetLine.count({ where: { organizationId: orgId } }),
     prisma.balanceSheetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
@@ -50,8 +54,8 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     {
       "pnl-report": budgetLines > 0,
-      "sales-budget": salesBudget > 0,
-      cogs: cogsBudget > 0,
+      "sales-budget": salesBudget > 0 || budgetRevenueLines > 0,
+      cogs: cogsBudget > 0 || budgetCogsLines > 0,
       "balance-sheet": balanceSheet > 0,
       "cash-flow": cashFlow > 0,
       assumptions: assumptions > 0,
