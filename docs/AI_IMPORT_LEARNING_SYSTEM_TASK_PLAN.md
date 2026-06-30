@@ -55,7 +55,7 @@ Latest local baseline:
 
 ## Task 2 - Workbook Brain
 
-Status: todo
+Status: done
 
 Add a workbook-level profiling layer before sheet classification.
 
@@ -70,6 +70,27 @@ Acceptance:
 - Profile is available in AI Import preview.
 - Classifier receives richer workbook context without sending full workbook content.
 - Existing imports behave the same or better.
+
+Implemented:
+- `src/lib/onboarding/ai-import/workbook-profile.ts`
+- Workbook profile is built before sheet classification in `runMultiFileImport`
+- Compact workbook profile is passed into `buildSheetClassifierUserMessage`
+- Preview UI shows workbook profile chips per file
+- Tests cover source/summary, actual/budget, BU/entity, formula, total/subtotal, elimination, duplicate signals, prompt wiring, and UI rendering
+
+Verification:
+- `npx vitest run src/lib/onboarding/ai-import/workbook-profile.test.ts src/lib/onboarding/ai-import/sheet-classifier.test.ts 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx'`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T17-22-35-622Z.json`
+
+Latest local benchmark after Task 2:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T17-44-06-745Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 63.8 (Task 1 baseline: 60)
+- Human confirmations: 14 (Task 1 baseline: 16)
+- Conflicts: 0
+- Existing real cases: unchanged scores for main-financial, reporting-pack, and multi-BU
+- Generated elimination/summary case: 52.3 (+30.3 vs Task 1 baseline), GREEN
 
 ## Task 3 - Approved Template Memory
 

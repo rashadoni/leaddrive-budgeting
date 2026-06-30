@@ -3021,7 +3021,14 @@
         "aiConfidenceTooltip": "AI etibarlılığı: {pct}",
         "writes": "Yazır",
         "affectsIndicators": "{n} göstəriciyə təsir edir",
-        "sheetsClassified": "Klassifikasiya olunan vərəq: {n}"
+        "sheetsClassified": "Klassifikasiya olunan vərəq: {n}",
+        "profilePlan": "Plan: {plan}",
+        "profileSource": "Mənbə {n}",
+        "profileSummary": "Summary {n}",
+        "profileMonths": "Aylıq vərəq {n}",
+        "profileBu": "BU vərəq {n}",
+        "profileElim": "Elim {n}",
+        "profileDuplicates": "Dublikat {n}"
       },
       "result": {
         "title": "Tətbiq nəticəsi",

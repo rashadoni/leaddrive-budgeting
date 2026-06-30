@@ -3021,7 +3021,14 @@
         "aiConfidenceTooltip": "AI confidence: {pct}",
         "writes": "Writes",
         "affectsIndicators": "Affects {n} indicators",
-        "sheetsClassified": "Sheets classified: {n}"
+        "sheetsClassified": "Sheets classified: {n}",
+        "profilePlan": "Plan: {plan}",
+        "profileSource": "Source-like {n}",
+        "profileSummary": "Summary-like {n}",
+        "profileMonths": "Month sheets {n}",
+        "profileBu": "BU sheets {n}",
+        "profileElim": "Elim {n}",
+        "profileDuplicates": "Duplicates {n}"
       },
       "result": {
         "title": "Apply result",

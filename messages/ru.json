@@ -3021,7 +3021,14 @@
         "aiConfidenceTooltip": "AI уверенность: {pct}",
         "writes": "Запишет",
         "affectsIndicators": "Затронет {n} показателей",
-        "sheetsClassified": "Листов классифицировано: {n}"
+        "sheetsClassified": "Листов классифицировано: {n}",
+        "profilePlan": "План: {plan}",
+        "profileSource": "Источник {n}",
+        "profileSummary": "Summary {n}",
+        "profileMonths": "Месячные листы {n}",
+        "profileBu": "BU-листы {n}",
+        "profileElim": "Elim {n}",
+        "profileDuplicates": "Дубликаты {n}"
       },
       "result": {
         "title": "Результат применения",

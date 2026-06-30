@@ -60,6 +60,16 @@ interface SheetClassification {
 
 interface PerFileResult {
   filename: string
+  workbookProfile?: {
+    sheetCount: number
+    workbookPlanHint: "actual" | "budget" | "mixed" | "unknown"
+    sourceLikeSheets: number
+    summaryLikeSheets: number
+    monthLikeSheets: number
+    sheetsWithBuColumns: number
+    sheetsWithEliminations: number
+    duplicateGroups: Array<{ id: string; sheetNames: string[] }>
+  } | null
   fileTypeResult: FileTypeResult
   classifications: SheetClassification[]
   error: string | null
@@ -614,6 +624,54 @@ export function MultiFileForm() {
                 <p className="text-xs text-slate-600">
                   {f.fileTypeResult.reasoning}
                 </p>
+                {f.workbookProfile && (
+                  <div
+                    className="flex flex-wrap gap-1.5 text-[10px]"
+                    data-testid={`workbook-profile-${f.filename}`}
+                  >
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
+                      {t("preview.profilePlan", {
+                        plan: f.workbookProfile.workbookPlanHint,
+                      })}
+                    </span>
+                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                      {t("preview.profileSource", {
+                        n: f.workbookProfile.sourceLikeSheets,
+                      })}
+                    </span>
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">
+                      {t("preview.profileSummary", {
+                        n: f.workbookProfile.summaryLikeSheets,
+                      })}
+                    </span>
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-700">
+                      {t("preview.profileMonths", {
+                        n: f.workbookProfile.monthLikeSheets,
+                      })}
+                    </span>
+                    {f.workbookProfile.sheetsWithBuColumns > 0 && (
+                      <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-cyan-700">
+                        {t("preview.profileBu", {
+                          n: f.workbookProfile.sheetsWithBuColumns,
+                        })}
+                      </span>
+                    )}
+                    {f.workbookProfile.sheetsWithEliminations > 0 && (
+                      <span className="rounded bg-orange-50 px-1.5 py-0.5 text-orange-700">
+                        {t("preview.profileElim", {
+                          n: f.workbookProfile.sheetsWithEliminations,
+                        })}
+                      </span>
+                    )}
+                    {f.workbookProfile.duplicateGroups.length > 0 && (
+                      <span className="rounded bg-violet-50 px-1.5 py-0.5 text-violet-700">
+                        {t("preview.profileDuplicates", {
+                          n: f.workbookProfile.duplicateGroups.length,
+                        })}
+                      </span>
+                    )}
+                  </div>
+                )}
                 {f.error && (
                   <p className="text-xs text-red-700">⚠ {f.error}</p>
                 )}

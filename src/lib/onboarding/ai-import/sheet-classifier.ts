@@ -25,6 +25,7 @@ import {
   buildSheetClassifierUserMessage,
 } from "@/lib/llm/prompts/sheet-classifier-system"
 import type { SheetMeta } from "./sheet-meta-extractor"
+import type { compactWorkbookProfileForClassifier } from "./workbook-profile"
 import type { LLMUsage } from "@/lib/llm/types"
 import {
   resolveSheetRouting,
@@ -200,6 +201,8 @@ export interface SheetClassifierInput {
   /** Optional per-shape sheet-map (deterministic role/planKind overrides),
    *  forwarded to resolveSheetRouting via withPlanKind. */
   sheetMap?: SheetMap
+  /** Optional deterministic workbook-wide context. Compact: no full workbook cells. */
+  workbookProfile?: ReturnType<typeof compactWorkbookProfileForClassifier>
 }
 
 export interface SheetClassifierResult {
@@ -374,6 +377,7 @@ export async function classifySheets(
     knownEntityCodes: input.knownEntityCodes,
     orgIndustry: input.orgIndustry,
     filenameHint: input.filenameHint,
+    workbookProfile: input.workbookProfile,
   })
 
   const response = await anthropicClient.messages.create({

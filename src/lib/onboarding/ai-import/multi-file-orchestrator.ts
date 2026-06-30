@@ -55,6 +55,11 @@ import {
   type SheetMeta,
 } from "./sheet-meta-extractor"
 import {
+  buildWorkbookProfile,
+  compactWorkbookProfileForClassifier,
+  type WorkbookProfile,
+} from "./workbook-profile"
+import {
   classifySheets,
   type SheetClassifierAnthropicLike,
   type SheetClassification,
@@ -205,6 +210,8 @@ export interface MultiFileImportInput {
 
 export interface PerFileResult {
   filename: string
+  /** Deterministic workbook-wide signals used by classifier + preview. */
+  workbookProfile: WorkbookProfile | null
   /** Detected file-type (incl. confidence + reasoning). */
   fileTypeResult: FileTypeResult
   classifications: SheetClassification[]
@@ -653,6 +660,7 @@ export async function runMultiFileImport(
     filename: string
     classifications: SheetClassification[]
     metas: SheetMeta[]
+    workbookProfile: WorkbookProfile | null
     usage: LLMUsage
     error: string | null
   }
@@ -662,11 +670,18 @@ export async function runMultiFileImport(
   >(
     input.files,
     async (file) => {
+      let workbookProfile: WorkbookProfile | null = null
       try {
         const metas = extractWorkbookMeta(file.workbook, deps.XLSX, {
           sampleRows: 5,
           maxColumns: 15,
           profileRows: 80,
+        })
+        workbookProfile = buildWorkbookProfile(file.workbook, deps.XLSX, {
+          filename: file.filename,
+          sheetMetas: metas,
+          knownEntityCodes: input.knownEntityCodes,
+          entityAliases: input.entityAliases,
         })
         const cls = await classifySheets(
           {
@@ -675,6 +690,7 @@ export async function runMultiFileImport(
             sheetMap: file.sheetMap,
             orgIndustry: input.orgIndustry,
             filenameHint: file.filename,
+            workbookProfile: compactWorkbookProfileForClassifier(workbookProfile),
           },
           deps.anthropicClient,
           deps.model,
@@ -698,6 +714,7 @@ export async function runMultiFileImport(
           filename: file.filename,
           classifications,
           metas,
+          workbookProfile,
           usage: cls.usage,
           error: null,
         }
@@ -708,6 +725,7 @@ export async function runMultiFileImport(
           filename: file.filename,
           classifications: [],
           metas: [],
+          workbookProfile,
           usage: {
             inputTokens: 0,
             outputTokens: 0,
@@ -794,6 +812,7 @@ export async function runMultiFileImport(
     const cr = classifyResults[i]
     return {
       filename: f.filename,
+      workbookProfile: cr.workbookProfile,
       fileTypeResult: fileTypeResults.get(f.filename)!,
       classifications: cr.classifications,
       expectedSums: perFileExpected.get(f.filename) ?? new Map(),

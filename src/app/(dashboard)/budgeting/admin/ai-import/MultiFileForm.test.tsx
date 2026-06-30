@@ -167,6 +167,53 @@ describe("MultiFileForm", () => {
     expect(screen.getByText(/main-financial/)).toBeTruthy()
   })
 
+  it("renders workbook profile chips when preview includes workbookProfile", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "profiled.xlsx",
+          workbookProfile: {
+            sheetCount: 4,
+            workbookPlanHint: "mixed",
+            sourceLikeSheets: 2,
+            summaryLikeSheets: 1,
+            monthLikeSheets: 2,
+            sheetsWithBuColumns: 1,
+            sheetsWithEliminations: 1,
+            duplicateGroups: [{ id: "dup-1", sheetNames: ["A", "B"] }],
+          },
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.95,
+            reasoning: "PLF+BS+CF",
+            sheetCounts: {},
+          },
+          classifications: [{ sheetName: "PLF CPC" }],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 100, outputTokens: 50, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("profiled.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("workbook-profile-profiled.xlsx")).toBeTruthy()
+    })
+    expect(screen.getByText(/PROFILE BU/)).toBeTruthy()
+    expect(screen.getByText(/PROFILE DUPLICATES/)).toBeTruthy()
+  })
+
   it("renders conflict banner on 409 response", async () => {
     mockFetchOnce(409, {
       ok: false,

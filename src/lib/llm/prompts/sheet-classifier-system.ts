@@ -9,10 +9,11 @@
  * (sha256 substring) — cache invalidates automatically on prompt edits.
  */
 import { createHash } from "crypto"
+import type { compactWorkbookProfileForClassifier } from "@/lib/onboarding/ai-import/workbook-profile"
 
 export const SHEET_CLASSIFIER_SYSTEM_PROMPT = `You are an expert financial-data analyst routing sheets from an uploaded Excel workbook to the correct parser.
 
-For each sheet, given its name, headers, sample rows, and column type profiles, decide:
+For each sheet, given its name, headers, sample rows, column type profiles, and optional workbookProfile hints, decide:
 
 1. **dataType** — exactly one of:
    - "PLF"           = Profit & Loss / Income Statement (Revenue, COGS, OPEX rows)
@@ -56,6 +57,8 @@ For each sheet, given its name, headers, sample rows, and column type profiles, 
 Constraints:
   - Output STRICT JSON matching the schema in the user message — no markdown, no commentary.
   - Recognise multilingual sheet names (Azerbaijani / Russian / English / Turkish).
+  - Use workbookProfile only as deterministic context: source_like sheets are usually safer write candidates than summary_like / pivot / duplicate / elimination sheets, but never override clear sheet evidence.
+  - If workbookProfile marks a sheet with eliminationSignalCount > 0, duplicateGroupId, or summary_like role, be conservative: classify EJE/AJE/elimination/intercompany/pivot/summary views as INFO_SUMMARY unless the sheet is clearly the only source-of-record. Do NOT guess an operational entity for elimination sheets.
   - If a sheet name contains ">>>" or "<<<" markers, classify as INFO_SUMMARY (it's a section separator).
   - When in doubt between PLF and BS: PLF has month columns + Revenue/COGS labels;
     BS has period snapshots (year-end values) + Assets/Liabilities/Equity labels.
@@ -90,6 +93,7 @@ export function buildSheetClassifierUserMessage(payload: {
    *  shape (10-year projection in İcmal). Use only when sheet evidence
    *  is ambiguous; do NOT override clear sheet-shape evidence. */
   filenameHint?: string
+  workbookProfile?: ReturnType<typeof compactWorkbookProfileForClassifier>
 }): string {
   const hint =
     payload.knownEntityCodes && payload.knownEntityCodes.length
@@ -101,8 +105,11 @@ export function buildSheetClassifierUserMessage(payload: {
   const filenameLine = payload.filenameHint
     ? `\nSource filename: "${payload.filenameHint}" — use as soft prior when sheet content is ambiguous (e.g. "Farming strategy" or "strategy" in name → likely forward-forecast file; "land" / "Çıxar" → land registry; "actuals" → actual financial data). Do NOT override clear sheet-shape evidence.`
     : ""
+  const workbookProfileLine = payload.workbookProfile
+    ? `\n\nWorkbook profile hints (deterministic, compact; use for source-vs-summary, actual-vs-budget, BU/entity, formula, elimination, duplicate context):\n${JSON.stringify(payload.workbookProfile, null, 2)}`
+    : ""
   const sheetsJson = JSON.stringify(payload.sheets, null, 2)
-  return `Classify each of these ${payload.sheets.length} sheets.${hint}${industryLine}${filenameLine}
+  return `Classify each of these ${payload.sheets.length} sheets.${hint}${industryLine}${filenameLine}${workbookProfileLine}
 
 Sheets:
 ${sheetsJson}

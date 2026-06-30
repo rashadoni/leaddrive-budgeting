@@ -104,6 +104,65 @@ describe("classifySheets", () => {
     expect(result.usage.outputTokens).toBe(200)
   })
 
+  it("passes compact workbook profile hints to the LLM prompt", async () => {
+    const client = stubClient(
+      JSON.stringify({
+        classifications: [
+          {
+            sheetName: "PLF CPC",
+            dataType: "PLF",
+            entityCode: "AZSEKER-CPC",
+            confidence: 0.95,
+            reasoning: "profile says source-like PLF",
+          },
+        ],
+      }),
+    )
+    await classifySheets(
+      {
+        sheetMetas: [meta("PLF CPC")],
+        workbookProfile: {
+          filename: "profiled.xlsx",
+          sheetCount: 1,
+          workbookPlanHint: "actual",
+          sourceLikeSheets: 1,
+          summaryLikeSheets: 0,
+          monthLikeSheets: 1,
+          sheetsWithBuColumns: 1,
+          sheetsWithFormulas: 0,
+          sheetsWithEliminations: 0,
+          duplicateGroups: [],
+          repeatedDataHints: [],
+          sheets: [
+            {
+              sheetName: "PLF CPC",
+              roleHint: "source_like",
+              planHint: "actual",
+              sourceScore: 95,
+              summaryScore: 5,
+              monthHeaderCount: 12,
+              buColumnCount: 1,
+              entityLikeValues: ["CPC"],
+              formulaCells: 0,
+              codeLikeCells: 20,
+              totalRowsCount: 1,
+              subtotalRowsCount: 0,
+              eliminationSignalCount: 0,
+              duplicateGroupId: null,
+            },
+          ],
+        } as never,
+      },
+      client,
+      "claude-test",
+    )
+    const create = client.messages.create as ReturnType<typeof vi.fn>
+    const userMessage = create.mock.calls[0][0].messages[0].content
+    expect(userMessage).toContain("Workbook profile hints")
+    expect(userMessage).toContain('"roleHint": "source_like"')
+    expect(userMessage).toContain('"buColumnCount": 1')
+  })
+
   it("merges pre-classified separators with LLM output, preserving sheet order", async () => {
     const client = stubClient(
       JSON.stringify({
