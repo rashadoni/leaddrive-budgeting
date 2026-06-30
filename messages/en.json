@@ -3059,6 +3059,26 @@
         "skipRow": "skip this row",
         "allResolved": "✓ All CoA rows resolved — re-run preview or apply."
       },
+      "fixes": {
+        "title": "Guided fixes — {n} sheet(s)",
+        "description": "Resolve risky sheet routing here, then rerun preview so adapters and reconciliation validate the corrected plan.",
+        "loadCompanies": "Load companies",
+        "noCompany": "AI / unresolved",
+        "planAuto": "AI / auto",
+        "planActual": "Actual",
+        "planBudget": "Budget",
+        "roleSource": "Source",
+        "roleSkip": "Skip summary",
+        "rerun": "Rerun preview",
+        "stale": "Preview is stale after these fixes. Rerun preview before applying.",
+        "appliedToPreview": "Fixes are included in this preview.",
+        "col": {
+          "sheet": "Sheet",
+          "company": "Company",
+          "plan": "Actual/Budget",
+          "role": "Source/Skip"
+        }
+      },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
         "description": "BU-column sheets were split before import. Write rows go to the listed company; elimination/unknown blocks are skipped.",

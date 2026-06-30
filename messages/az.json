@@ -3059,6 +3059,26 @@
         "skipRow": "bu sətri atla",
         "allResolved": "✓ Bütün CoA sətirləri həll olundu — preview-u yenidən hesablayın və ya tətbiq edin."
       },
+      "fixes": {
+        "title": "Guided fixes — {n} vərəq",
+        "description": "Riskli vərəq yönləndirməsini burada düzəldin, sonra preview-u yenidən hesablayın ki, adapters və reconciliation düzəlişi yoxlasın.",
+        "loadCompanies": "Şirkətləri yüklə",
+        "noCompany": "AI / həll olunmayıb",
+        "planAuto": "AI / auto",
+        "planActual": "Actual",
+        "planBudget": "Budget",
+        "roleSource": "Mənbə",
+        "roleSkip": "Summary atla",
+        "rerun": "Preview-u yenidən hesabla",
+        "stale": "Bu fixes-dən sonra preview köhnəlib. Tətbiqdən əvvəl preview-u yenidən hesablayın.",
+        "appliedToPreview": "Fixes bu preview-a daxildir.",
+        "col": {
+          "sheet": "Vərəq",
+          "company": "Şirkət",
+          "plan": "Actual/Budget",
+          "role": "Mənbə/Skip"
+        }
+      },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
         "description": "BU-column vərəqləri importdan əvvəl bölündü. Write sətirləri göstərilən şirkətə gedir; elimination/unknown blokları atlanır.",

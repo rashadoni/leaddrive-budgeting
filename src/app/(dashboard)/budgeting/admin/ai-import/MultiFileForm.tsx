@@ -214,6 +214,14 @@ interface CoaDecision {
   action: "map" | "skip"
 }
 
+interface SheetFix {
+  filename: string
+  sheetName: string
+  entityCode?: string
+  planKind?: "actual" | "budget"
+  role?: "source" | "derived_summary"
+}
+
 interface EntityAliasCompany {
   code: string
   name: string | null
@@ -262,6 +270,10 @@ function coaDecisionKey(
   sourceLabel: string,
 ): string {
   return `${filename}\u001f${sheetName}\u001f${sourceLabel}`
+}
+
+function sheetFixKey(filename: string, sheetName: string): string {
+  return `${filename}\u001f${sheetName}`
 }
 
 /** Map LLM classifier confidence (0..1) → readable band + Tailwind chip class.
@@ -354,6 +366,8 @@ export function MultiFileForm() {
   const [coaDecisions, setCoaDecisions] = useState<Record<string, CoaDecision>>(
     {},
   )
+  const [sheetFixes, setSheetFixes] = useState<Record<string, SheetFix>>({})
+  const [previewFixSignature, setPreviewFixSignature] = useState("[]")
   const [aliasEditorOpen, setAliasEditorOpen] = useState(false)
   const [aliasRows, setAliasRows] = useState<EntityAliasRow[]>([])
   const [aliasCompanies, setAliasCompanies] = useState<EntityAliasCompany[]>([])
@@ -394,16 +408,72 @@ export function MultiFileForm() {
         coaDecisionKey(item.filename, item.sheetName, item.sourceLabel)
       ],
   )
+  const guidedFixItems =
+    previewResult?.perFile.flatMap((f) =>
+      f.classifications
+        .filter(
+          (cls) =>
+            ["PLF", "BS", "CF"].includes(cls.dataType) ||
+            !cls.entityCode ||
+            cls.planKind === null ||
+            cls.role === "derived_summary" ||
+            cls.confidence < 0.65,
+        )
+        .map((cls) => ({
+          filename: f.filename,
+          classification: cls,
+        })),
+    ) ?? []
+  const sheetFixList = Object.values(sheetFixes).filter(
+    (fix) =>
+      fix.entityCode !== undefined ||
+      fix.planKind !== undefined ||
+      fix.role !== undefined,
+  )
+  const currentFixSignature = JSON.stringify(
+    sheetFixList
+      .map((fix) => ({
+        filename: fix.filename,
+        sheetName: fix.sheetName,
+        entityCode: fix.entityCode ?? null,
+        planKind: fix.planKind ?? null,
+        role: fix.role ?? null,
+      }))
+      .sort((a, b) =>
+        `${a.filename}\u001f${a.sheetName}`.localeCompare(
+          `${b.filename}\u001f${b.sheetName}`,
+        ),
+      ),
+  )
+  const hasStaleSheetFixes =
+    !!previewResult && currentFixSignature !== previewFixSignature
   const allConflictsResolved =
     hasConflicts &&
     (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
   const activeTemplate = previewResult?.templateUsage?.template
   const buRoutingSplits = previewResult?.buColumnSplits ?? []
+  const entityOptions = Array.from(
+    new Map(
+      [
+        ...aliasCompanies.map((company) => [
+          company.code,
+          company.name ? `${company.name} (${company.code})` : company.code,
+        ] as const),
+        ...(previewResult?.perFile.flatMap((f) =>
+          f.classifications
+            .map((classification) => classification.entityCode)
+            .filter((code): code is string => !!code)
+            .map((code) => [code, code] as const),
+        ) ?? []),
+      ].filter(([code]) => !!code),
+    ),
+  )
   const canSaveTemplate =
     !!previewResult &&
     previewResult.overallVerdict === "green" &&
     !hasConflicts &&
     !hasUnresolvedCoaReviews &&
+    !hasStaleSheetFixes &&
     previewResult.perFile.some(
       (f) => f.workbookProfile && f.classifications.length > 0,
     )
@@ -418,6 +488,8 @@ export function MultiFileForm() {
     setError(null)
     setTemplateSaveStatus(null)
     setCoaDecisions({})
+    setSheetFixes({})
+    setPreviewFixSignature("[]")
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>): void {
@@ -435,6 +507,8 @@ export function MultiFileForm() {
     setApplyResult(null)
     setTemplateSaveStatus(null)
     setCoaDecisions({})
+    setSheetFixes({})
+    setPreviewFixSignature("[]")
   }
 
   function resetAll(): void {
@@ -447,6 +521,8 @@ export function MultiFileForm() {
     setResolutions({})
     setTemplateSaveStatus(null)
     setCoaDecisions({})
+    setSheetFixes({})
+    setPreviewFixSignature("[]")
     if (inputRef.current) inputRef.current.value = ""
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -486,6 +562,25 @@ export function MultiFileForm() {
       if (alias && code) out[alias] = code
     }
     return out
+  }
+
+  function updateSheetFix(
+    filename: string,
+    sheetName: string,
+    patch: Partial<Omit<SheetFix, "filename" | "sheetName">>,
+  ): void {
+    const key = sheetFixKey(filename, sheetName)
+    setSheetFixes((prev) => {
+      const current = prev[key] ?? { filename, sheetName }
+      const next = { ...current, ...patch }
+      if (next.entityCode === undefined && next.planKind === undefined && next.role === undefined) {
+        const copy = { ...prev }
+        delete copy[key]
+        return copy
+      }
+      return { ...prev, [key]: next }
+    })
+    setApplyResult(null)
   }
 
   async function saveEntityAliases(): Promise<void> {
@@ -553,6 +648,9 @@ export function MultiFileForm() {
       if (selectedCoaDecisions.length > 0) {
         form.append("semanticCoaMappings", JSON.stringify(selectedCoaDecisions))
       }
+      if (sheetFixList.length > 0) {
+        form.append("guidedSheetFixes", JSON.stringify(sheetFixList))
+      }
       const res = await fetch("/api/import/ai-auto-multi", {
         method: "POST",
         body: form,
@@ -568,6 +666,7 @@ export function MultiFileForm() {
         setTimeout(() => applyResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
       } else {
         setPreviewResult(data)
+        setPreviewFixSignature(currentFixSignature)
         // Scroll to conflict banner if conflicts exist, otherwise to the analysis section
         if ((data.conflicts?.length ?? 0) > 0) {
           setTimeout(() => conflictBannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50)
@@ -930,6 +1029,7 @@ export function MultiFileForm() {
             disabled={
               isProcessing ||
               hasUnresolvedCoaReviews ||
+              hasStaleSheetFixes ||
               (hasConflicts && !forceOverride && !allConflictsResolved)
             }
             onClick={() => submit(true)}
@@ -1189,6 +1289,159 @@ export function MultiFileForm() {
               {t("coaReview.allResolved")}
             </p>
           )}
+        </div>
+      )}
+
+      {previewResult && guidedFixItems.length > 0 && (
+        <div
+          className="rounded border border-violet-200 bg-violet-50 p-4 space-y-3"
+          data-testid="guided-fixes-panel"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-violet-950">
+                {t("fixes.title", { n: guidedFixItems.length })}
+              </h3>
+              <p className="mt-1 text-xs text-violet-900">
+                {t("fixes.description")}
+              </p>
+            </div>
+            {aliasCompanies.length === 0 && (
+              <button
+                type="button"
+                onClick={loadEntityAliases}
+                disabled={isLoadingAliases}
+                className="rounded border border-violet-200 bg-white px-3 py-1.5 text-xs font-medium text-violet-800 disabled:opacity-50"
+                data-testid="btn-load-fix-companies"
+              >
+                {isLoadingAliases ? t("aliases.loading") : t("fixes.loadCompanies")}
+              </button>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-violet-200 text-left">
+                  <th className="py-1 pr-2">{t("fixes.col.sheet")}</th>
+                  <th className="py-1 pr-2">{t("fixes.col.company")}</th>
+                  <th className="py-1 pr-2">{t("fixes.col.plan")}</th>
+                  <th className="py-1 pr-2">{t("fixes.col.role")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {guidedFixItems.map(({ filename, classification }) => {
+                  const key = sheetFixKey(filename, classification.sheetName)
+                  const fix = sheetFixes[key]
+                  const entityValue =
+                    fix?.entityCode ?? classification.entityCode ?? ""
+                  const planValue = fix?.planKind ?? classification.planKind ?? ""
+                  const roleValue = fix?.role ?? classification.role ?? "source"
+                  return (
+                    <tr
+                      key={key}
+                      className="border-b border-violet-100 last:border-b-0"
+                    >
+                      <td className="py-1.5 pr-2 align-top">
+                        <div className="font-medium text-slate-900">
+                          {classification.sheetName}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-500">
+                          {filename} · {classification.dataType} ·{" "}
+                          {Math.round(classification.confidence * 100)}%
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-2 align-top">
+                        <select
+                          value={entityValue}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            updateSheetFix(filename, classification.sheetName, {
+                              entityCode: value || undefined,
+                            })
+                          }}
+                          className="w-full min-w-[12rem] rounded border border-violet-200 bg-white px-2 py-1"
+                          data-testid={`fix-entity-${encodeURIComponent(key)}`}
+                        >
+                          <option value="">
+                            {t("fixes.noCompany")}
+                          </option>
+                          {entityOptions.map(([code, label]) => (
+                            <option key={code} value={code}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-1.5 pr-2 align-top">
+                        <select
+                          value={planValue}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            updateSheetFix(filename, classification.sheetName, {
+                              planKind:
+                                value === "actual" || value === "budget"
+                                  ? value
+                                  : undefined,
+                            })
+                          }}
+                          className="w-full min-w-[8rem] rounded border border-violet-200 bg-white px-2 py-1"
+                          data-testid={`fix-plan-${encodeURIComponent(key)}`}
+                        >
+                          <option value="">{t("fixes.planAuto")}</option>
+                          <option value="actual">{t("fixes.planActual")}</option>
+                          <option value="budget">{t("fixes.planBudget")}</option>
+                        </select>
+                      </td>
+                      <td className="py-1.5 pr-2 align-top">
+                        <select
+                          value={roleValue}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            updateSheetFix(filename, classification.sheetName, {
+                              role:
+                                value === "derived_summary"
+                                  ? "derived_summary"
+                                  : "source",
+                            })
+                          }}
+                          className="w-full min-w-[9rem] rounded border border-violet-200 bg-white px-2 py-1"
+                          data-testid={`fix-role-${encodeURIComponent(key)}`}
+                        >
+                          <option value="source">{t("fixes.roleSource")}</option>
+                          <option value="derived_summary">
+                            {t("fixes.roleSkip")}
+                          </option>
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isProcessing || sheetFixList.length === 0}
+              onClick={() => submit(false)}
+              className="rounded bg-violet-700 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-violet-800"
+              data-testid="btn-rerun-fixes"
+            >
+              {isProcessing ? t("step1.running") : t("fixes.rerun")}
+            </button>
+            {hasStaleSheetFixes ? (
+              <span
+                className="text-xs font-medium text-amber-800"
+                data-testid="stale-fixes-warning"
+              >
+                {t("fixes.stale")}
+              </span>
+            ) : sheetFixList.length > 0 ? (
+              <span className="text-xs font-medium text-emerald-700">
+                {t("fixes.appliedToPreview")}
+              </span>
+            ) : null}
+          </div>
         </div>
       )}
 

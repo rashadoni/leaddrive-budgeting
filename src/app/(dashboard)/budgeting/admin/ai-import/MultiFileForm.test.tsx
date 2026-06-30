@@ -743,6 +743,104 @@ describe("MultiFileForm", () => {
     expect(screen.getByText(/skip/i)).toBeTruthy()
   })
 
+  it("guided sheet fixes mark preview stale and rerun preview with guidedSheetFixes", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "fix.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [
+            {
+              sheetName: "PLF",
+              dataType: "PLF",
+              entityCode: null,
+              confidence: 0.9,
+              reasoning: "entity missing",
+              planKind: null,
+              role: "source",
+            },
+            {
+              sheetName: "Sales CPC",
+              dataType: "SALES",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.95,
+              reasoning: "entity signal",
+              planKind: "budget",
+              role: "source",
+            },
+          ],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 90,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("fix.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("guided-fixes-panel")).toBeTruthy()
+    })
+    const fixKey = "fix.xlsx\u001fPLF"
+    fireEvent.change(
+      screen.getByTestId(`fix-entity-${encodeURIComponent(fixKey)}`),
+      { target: { value: "AZSEKER-CPC" } },
+    )
+    fireEvent.change(
+      screen.getByTestId(`fix-plan-${encodeURIComponent(fixKey)}`),
+      { target: { value: "budget" } },
+    )
+    fireEvent.change(
+      screen.getByTestId(`fix-role-${encodeURIComponent(fixKey)}`),
+      { target: { value: "source" } },
+    )
+    expect(screen.getByTestId("stale-fixes-warning")).toBeTruthy()
+    expect((screen.getByTestId("btn-apply") as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByTestId("btn-rerun-fixes"))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const body = (fetchMock.mock.calls[1] as [string, RequestInit])[1]
+      .body as FormData
+    expect(body.get("guidedSheetFixes")).toBe(
+      JSON.stringify([
+        {
+          filename: "fix.xlsx",
+          sheetName: "PLF",
+          entityCode: "AZSEKER-CPC",
+          planKind: "budget",
+          role: "source",
+        },
+      ]),
+    )
+  })
+
   it("Apply click POSTs with apply=1 + renders per-group results", async () => {
     mockFetchOnce(200, {
       ok: true,

@@ -61,6 +61,7 @@ function makeMultipartRequest(opts: {
   apply?: string
   forceOverride?: string
   conflictResolutions?: string
+  guidedSheetFixes?: string
 }): Request {
   const form = new FormData()
   for (let i = 0; i < opts.fileCount; i++) {
@@ -75,6 +76,8 @@ function makeMultipartRequest(opts: {
   if (opts.forceOverride) form.append("forceOverride", opts.forceOverride)
   if (opts.conflictResolutions)
     form.append("conflictResolutions", opts.conflictResolutions)
+  if (opts.guidedSheetFixes)
+    form.append("guidedSheetFixes", opts.guidedSheetFixes)
   return new Request("http://localhost/api/import/ai-auto-multi", {
     method: "POST",
     body: form,
@@ -322,6 +325,55 @@ describe("POST /api/import/ai-auto-multi", () => {
     expect(res.status).toBe(400)
     const body = (await res.json()) as { error: string }
     expect(body.error).toMatch(/conflictResolutions\[k1\]/i)
+  })
+
+  it("guidedSheetFixes become exact per-file sheetMap overrides and disable template fast path", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    prismaMock.company.findMany.mockResolvedValueOnce([
+      { code: "AZSEKER-CPC", industry: null },
+    ])
+    orchestratorMock.runMultiFileImport.mockResolvedValue(defaultOrchResult())
+    const fixes = [
+      {
+        filename: "file1.xlsx",
+        sheetName: "S1",
+        entityCode: "AZSEKER-CPC",
+        planKind: "budget",
+        role: "source",
+      },
+    ]
+
+    const res = await POST(
+      makeMultipartRequest({
+        fileCount: 1,
+        guidedSheetFixes: JSON.stringify(fixes),
+      }) as never,
+    )
+
+    expect(res.status).toBe(200)
+    const call = orchestratorMock.runMultiFileImport.mock.calls[0]
+    expect(call[0].files[0].templateClassifications).toBeUndefined()
+    expect(call[0].files[0].sheetMap).toContainEqual({
+      match: "S1",
+      entityCode: "AZSEKER-CPC",
+      planKind: "budget",
+      role: "source",
+    })
+  })
+
+  it("guidedSheetFixes reject stale sheet names", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const res = await POST(
+      makeMultipartRequest({
+        fileCount: 1,
+        guidedSheetFixes: JSON.stringify([
+          { filename: "file1.xlsx", sheetName: "Missing", role: "source" },
+        ]),
+      }) as never,
+    )
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as { error: string }
+    expect(body.error).toMatch(/guidedSheetFixes sheet not found/i)
   })
 
   it("apply=true switches mode to 'applied' and propagates dryRun=false to orchestrator", async () => {

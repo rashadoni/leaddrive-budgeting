@@ -3059,6 +3059,26 @@
         "skipRow": "пропустить строку",
         "allResolved": "✓ Все CoA-строки решены — пересчитайте preview или применяйте."
       },
+      "fixes": {
+        "title": "Guided fixes — {n} лист(ов)",
+        "description": "Исправьте рискованную маршрутизацию листа здесь, затем пересчитайте preview, чтобы adapters и reconciliation проверили исправленный план.",
+        "loadCompanies": "Загрузить компании",
+        "noCompany": "AI / не решено",
+        "planAuto": "AI / авто",
+        "planActual": "Actual",
+        "planBudget": "Budget",
+        "roleSource": "Источник",
+        "roleSkip": "Пропустить summary",
+        "rerun": "Пересчитать preview",
+        "stale": "Preview устарел после этих fixes. Перед применением пересчитайте preview.",
+        "appliedToPreview": "Fixes включены в этот preview.",
+        "col": {
+          "sheet": "Лист",
+          "company": "Компания",
+          "plan": "Actual/Budget",
+          "role": "Источник/Skip"
+        }
+      },
       "routing": {
         "title": "Маршрутизация компаний — {n} split-лист(ов)",
         "description": "Листы с BU-колонкой разделены до импорта. Write-строки пойдут в указанную компанию; elimination/unknown блоки будут пропущены.",

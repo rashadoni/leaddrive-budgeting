@@ -97,6 +97,14 @@ const RATE_LIMIT = {
   windowMs: 60 * 60_000,
 }
 
+type GuidedSheetFixInput = {
+  filename: string
+  sheetName: string
+  entityCode?: string
+  planKind?: "actual" | "budget"
+  role?: "source" | "derived_summary"
+}
+
 export async function POST(request: NextRequest) {
   const t0 = Date.now()
 
@@ -179,6 +187,7 @@ export async function POST(request: NextRequest) {
     !["0", "false", "off"].includes(
       String(form.get("useTemplate") ?? "1").toLowerCase(),
     )
+  let shouldUseTemplate = useTemplate
 
   // Phase 7.M Tier 6 — per-conflict resolution map. JSON:
   //   { "<conflict-key>": { "mode": "pick", "filename": "fileA.xlsx" } }
@@ -221,7 +230,6 @@ export async function POST(request: NextRequest) {
       )
     }
   }
-
   let semanticCoaMappings: MultiFileImportInput["semanticCoaMappings"] | undefined
   const rawSemanticCoaMappings = form.get("semanticCoaMappings")
   if (
@@ -287,6 +295,87 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
+  }
+
+  let guidedSheetFixes: GuidedSheetFixInput[] | undefined
+  const rawGuidedSheetFixes = form.get("guidedSheetFixes")
+  if (
+    typeof rawGuidedSheetFixes === "string" &&
+    rawGuidedSheetFixes.length > 0
+  ) {
+    try {
+      const parsed = JSON.parse(rawGuidedSheetFixes) as unknown
+      if (!Array.isArray(parsed)) {
+        return NextResponse.json(
+          { ok: false, error: "guidedSheetFixes must be an array" },
+          { status: 400 },
+        )
+      }
+      guidedSheetFixes = []
+      for (const [index, value] of parsed.entries()) {
+        const item = value as {
+          filename?: unknown
+          sheetName?: unknown
+          entityCode?: unknown
+          planKind?: unknown
+          role?: unknown
+        }
+        if (
+          typeof item.filename !== "string" ||
+          typeof item.sheetName !== "string"
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `guidedSheetFixes[${index}] must include filename and sheetName`,
+            },
+            { status: 400 },
+          )
+        }
+        const fix: GuidedSheetFixInput = {
+          filename: item.filename,
+          sheetName: item.sheetName,
+        }
+        if (typeof item.entityCode === "string" && item.entityCode.trim()) {
+          fix.entityCode = item.entityCode.trim()
+        }
+        if (item.planKind === "actual" || item.planKind === "budget") {
+          fix.planKind = item.planKind
+        } else if (item.planKind !== undefined && item.planKind !== null) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `guidedSheetFixes[${index}].planKind must be "actual" or "budget"`,
+            },
+            { status: 400 },
+          )
+        }
+        if (item.role === "source" || item.role === "derived_summary") {
+          fix.role = item.role
+        } else if (item.role !== undefined && item.role !== null) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `guidedSheetFixes[${index}].role must be "source" or "derived_summary"`,
+            },
+            { status: 400 },
+          )
+        }
+        if (!fix.entityCode && !fix.planKind && !fix.role) continue
+        guidedSheetFixes.push(fix)
+      }
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid guidedSheetFixes JSON: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+  if ((guidedSheetFixes?.length ?? 0) > 0) {
+    shouldUseTemplate = false
   }
 
   // ── Parse all workbooks before LLM call ─────────────────────────
@@ -465,6 +554,47 @@ export async function POST(request: NextRequest) {
     if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
   }
 
+  if ((guidedSheetFixes?.length ?? 0) > 0) {
+    const knownCodes = new Set(knownEntityCodes)
+    const unmatched = new Set(
+      guidedSheetFixes!.map((fix) => `${fix.filename}\u001f${fix.sheetName}`),
+    )
+    for (const f of files) {
+      const entries: SheetMapEntry[] = []
+      for (const fix of guidedSheetFixes ?? []) {
+        if (fix.filename !== f.filename) continue
+        if (!f.workbook.SheetNames.includes(fix.sheetName)) continue
+        unmatched.delete(`${fix.filename}\u001f${fix.sheetName}`)
+        if (fix.entityCode && !knownCodes.has(fix.entityCode)) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `guidedSheetFixes target company not found: ${fix.entityCode}`,
+            },
+            { status: 400 },
+          )
+        }
+        entries.push({
+          match: fix.sheetName,
+          ...(fix.planKind ? { planKind: fix.planKind } : {}),
+          ...(fix.role ? { role: fix.role } : {}),
+          ...(fix.entityCode ? { entityCode: fix.entityCode } : {}),
+        })
+      }
+      if (entries.length > 0) f.sheetMap = [...entries, ...(f.sheetMap ?? [])]
+    }
+    if (unmatched.size > 0) {
+      const first = [...unmatched][0].split("\u001f")
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `guidedSheetFixes sheet not found: ${first[0]} / ${first[1]}`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+
   // ── Approved template fast path ─────────────────────────────────
   // Build the same deterministic workbook profile the orchestrator will expose,
   // but do it before the classifier so a saved GREEN template can replace the
@@ -482,11 +612,11 @@ export async function POST(request: NextRequest) {
     }
     skippedAiFiles: string[]
   } = {
-    requested: useTemplate,
+    requested: shouldUseTemplate,
     matched: false,
     skippedAiFiles: [],
   }
-  if (useTemplate) {
+  if (shouldUseTemplate) {
     const profiles = files.map((f) => {
       const metas = extractWorkbookMeta(f.workbook, XLSX, {
         sampleRows: 5,

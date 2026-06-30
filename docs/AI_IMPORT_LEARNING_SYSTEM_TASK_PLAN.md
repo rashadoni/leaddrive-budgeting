@@ -220,7 +220,7 @@ Latest local benchmark after Task 5:
 
 ## Task 6 - Guided Fix UI
 
-Status: todo
+Status: done
 
 Turn warnings into direct actions.
 
@@ -236,6 +236,32 @@ Acceptance:
 - User can resolve import blockers without leaving AI Import.
 - Each fix invalidates stale preview and reruns validation.
 - Confirmed fixes can be saved into template memory.
+
+Implemented:
+- AI Import multi-file preview now shows a Guided Fixes panel for risky sheet routing.
+- No-entity fix: company selector can set a target company for a sheet.
+- Ambiguous actual/budget fix: Actual/Budget selector writes a deterministic sheet-map override.
+- Source/summary/skip selector: users can mark a sheet as source or `derived_summary` skip.
+- CoA review selector remains integrated from Task 4 for unknown/no-code CoA lines.
+- Existing conflict resolution UI remains the winning-file / skip-cell path.
+- Changing a guided fix marks the preview stale and disables Apply until the user reruns preview.
+- `guidedSheetFixes` form payload is validated by `/api/import/ai-auto-multi` and converted into exact per-file `SheetMap` entries.
+- Guided fixes disable saved-template fast path for that preview so stale template rules cannot override user corrections.
+- Rerun preview executes the normal adapter/reconciliation gates; GREEN corrected previews can then be saved into template memory.
+
+Verification:
+- `npx vitest run 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx' src/app/api/import/ai-auto-multi/handler.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T19-40-22-476Z.json`
+
+Latest local benchmark after Task 6:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T20-14-09-676Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 64.9 (Task 5: 64.9)
+- Human confirmations: 15 (Task 5: 15)
+- Conflicts: 0
+- Parsed: 5,902 items / 5,667 cells
+- No benchmark regression; guided fixes are user-driven and covered by focused UI/API tests.
 
 ## Task 7 - Visible Safety Receipt
 
