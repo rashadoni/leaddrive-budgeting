@@ -232,6 +232,33 @@ export interface PerGroupResult {
   skipReason: string | null
 }
 
+export interface MultiFileParseMetrics {
+  /** Current workbook sheet count after deterministic preprocessing/splitting. */
+  workbookSheets: number
+  /** Sheets that reached classifier output (classification errors produce 0). */
+  classifiedSheets: number
+  /** Files whose classifier call failed hard. */
+  classificationErrors: number
+  /** Adapter records that parsed at least one item. */
+  parsedSheets: number
+  /** Sum of adapter itemCount values across parse phase. */
+  parsedItems: number
+  /** Sum of reconciliation keys emitted by adapters. */
+  parsedCells: number
+  /** Sheets intentionally skipped by routing or missing adapter. */
+  skippedSheets: number
+  /** Sheets blocked by safety gates before any write. */
+  blockedSheets: number
+  /** Non-fatal adapter warnings emitted during parse phase. */
+  adapterWarnings: number
+  /** PLF/BS/CF sheets, where plan/entity routing can affect finance tables. */
+  planRelevantSheets: number
+  /** PLF/BS/CF sheets with a concrete write entity after routing. */
+  planRelevantSheetsWithEntity: number
+  /** PLF/BS/CF sheets still entity-less and likely requiring review/template. */
+  missingEntitySheets: number
+}
+
 export interface MultiFileImportResult {
   perFile: PerFileResult[]
   /** Conflicts detected pre-apply. Empty when no conflicts. */
@@ -250,6 +277,8 @@ export interface MultiFileImportResult {
     failed: number
     targets: number
   }
+  /** Dry-run benchmark counters. These are informational and never drive writes. */
+  parseMetrics: MultiFileParseMetrics
   /** Non-fatal issues observed. */
   warnings: string[]
 }
@@ -837,6 +866,36 @@ export async function runMultiFileImport(
 
   // ── Routing safety gates (block — never guess — before any tx) ──────
   const allRecords = [...perFileRecords.values()].flat()
+  const parseMetrics: MultiFileParseMetrics = {
+    workbookSheets: input.files.reduce((sum, f) => sum + f.workbook.SheetNames.length, 0),
+    classifiedSheets: perFile.reduce((sum, f) => sum + f.classifications.length, 0),
+    classificationErrors: perFile.filter((f) => f.error).length,
+    parsedSheets: allRecords.filter((r) => (r.adapterResult?.itemCount ?? 0) > 0).length,
+    parsedItems: allRecords.reduce(
+      (sum, r) => sum + (r.adapterResult?.itemCount ?? 0),
+      0,
+    ),
+    parsedCells: allRecords.reduce((sum, r) => sum + r.expectedSums.size, 0),
+    skippedSheets: allRecords.filter((r) => r.skippedReason !== null).length,
+    blockedSheets: allRecords.filter((r) => r.blockedReason !== null).length,
+    adapterWarnings: allRecords.reduce(
+      (sum, r) => sum + (r.adapterResult?.warnings.length ?? 0),
+      0,
+    ),
+    planRelevantSheets: allRecords.filter((r) =>
+      PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType),
+    ).length,
+    planRelevantSheetsWithEntity: allRecords.filter(
+      (r) =>
+        PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType) &&
+        writeEntity(r) != null,
+    ).length,
+    missingEntitySheets: allRecords.filter(
+      (r) =>
+        PLAN_KIND_RELEVANT_DATATYPES.has(r.classification.dataType) &&
+        writeEntity(r) == null,
+    ).length,
+  }
   // Gate A: ambiguous plan kind — parseFileSheets flagged blockedReason on a
   // plan-relevant sheet with no actual/budget signal in a mixed workbook.
   const blockedRecords = allRecords.filter((r) => r.blockedReason)
@@ -961,6 +1020,7 @@ export async function runMultiFileImport(
       llmUsage: aggLlmUsage,
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      parseMetrics,
       warnings: [
         ...warnings,
         ...reasons,
@@ -980,6 +1040,7 @@ export async function runMultiFileImport(
       llmUsage: aggLlmUsage,
       durationMs: Date.now() - t0,
       recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      parseMetrics,
       warnings: [
         ...warnings,
         `Cross-file conflict gate — ${conflicts.length} cell(s) disagree across files; aborted before any DB write`,
@@ -1250,6 +1311,7 @@ export async function runMultiFileImport(
     llmUsage: aggLlmUsage,
     durationMs: Date.now() - t0,
     recompute,
+    parseMetrics,
     warnings,
   }
 }

@@ -20,6 +20,7 @@
     "demo:check": "bash scripts/pre-demo-check.sh",
     "smoke-test": "npx tsx scripts/pre-demo-smoke.ts",
     "perf-monitor": "npx tsx scripts/perf-monitor.ts",
+    "benchmark:ai-import": "npx tsx scripts/benchmark-ai-import.ts",
     "sparklines:refresh": "tsx scripts/compute-sparklines.ts",
     "carryover:bump": "node scripts/carryover-bump.mjs",
     "carryover:sla": "tsx scripts/carryover-sla-scan.ts",
