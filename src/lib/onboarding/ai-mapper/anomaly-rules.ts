@@ -284,22 +284,28 @@ function ruleImplausibleRatio(
 }
 
 /**
- * Rule 8: other — code present but doesn't match `^\d{3,}(-\d+)*$` regex.
- * Severity: info. (Already silent-skipped in applier.ts:279; surface so
- * user knows about garbage rows.)
+ * Rule 8: other — code present but doesn't match a recognized account-code
+ * hierarchy. Severity: info.
+ *
+ * SAP-style numeric codes are valid (`601-01`). AzerSheker/reporting-pack
+ * dotted hierarchies are also valid (`PLF.01`, `BS.01.02`, `CF.03.01.R`) and
+ * are resolved by section/parent overrides in applier.ts, so they must not be
+ * surfaced as "not SAP" noise.
  */
 function ruleOtherInvalidCode(
   proposal: Pick<MappingProposal, "accountTypeOverrides">,
 ): Anomaly[] {
-  const codePattern = /^\d{3,}(-\d+)*$/
+  const sapCodePattern = /^\d{3,}(-\d+)*$/
+  const dottedHierarchyPattern = /^[A-Z][A-Z0-9]*\.\d{1,3}(?:\.[A-Z0-9]{1,4})*$/i
   const found: Anomaly[] = []
   for (const o of proposal.accountTypeOverrides ?? []) {
-    if (!codePattern.test(o.code.trim())) {
+    const code = o.code.trim()
+    if (!sapCodePattern.test(code) && !dottedHierarchyPattern.test(code)) {
       found.push({
         row: null,
         severity: "info",
         category: "other",
-        description: `Code "${o.code}" does not match SAP-style pattern (digits + dash-separated). Will be silently skipped at apply.`,
+        description: `Code "${o.code}" does not match a recognized account-code pattern. Verify the row or map it to skip before apply.`,
       })
     }
   }

@@ -229,6 +229,18 @@ describe("Rule 8: other (invalid code pattern)", () => {
     const found = detectHeuristicAnomalies(baseInput(), proposal)
     expect(found.find((a) => a.category === "other")).toBeUndefined()
   })
+
+  it("accepts dotted PLF/BS/CF hierarchy codes used by reporting packs", () => {
+    const proposal = baseProposal({
+      accountTypeOverrides: [
+        { code: "PLF.01", accountType: "revenue", confidence: 0.9, reasoning: "" },
+        { code: "BS.01.02", accountType: "asset", confidence: 0.9, reasoning: "" },
+        { code: "CF.03.01.R", accountType: "expense", confidence: 0.9, reasoning: "" },
+      ],
+    })
+    const found = detectHeuristicAnomalies(baseInput(), proposal)
+    expect(found.find((a) => a.category === "other")).toBeUndefined()
+  })
 })
 
 describe("mergeAnomalies", () => {

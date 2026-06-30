@@ -3873,6 +3873,7 @@
     "intro": "<b>İstənilən</b> faylın yüklənməsi: AI sütun uyğunlaşdırmasını təklif edir, siz yoxlayıb/düzəlişlər edirsiniz, yazısız üzləşdirməni görürsünüz və yalnız sonra tətbiq edirsiniz. Faza 1 — bir <b>P&L</b> vərəqi (balans/pul axını və çoxvərəqli — sonra).",
     "companyLabel": "Şirkət (qurum)",
     "selectPlaceholder": "— seçin —",
+    "companyOptionalHint": "BU/şirkət sütunu olan fayllarda seçim opsionaldır; tək şirkət vərəqi üçün seçim mütləqdir.",
     "cancelCreate": "× ləğv",
     "newCompany": "+ Yeni şirkət",
     "phCode": "Kod (məs. CO-NEW)",

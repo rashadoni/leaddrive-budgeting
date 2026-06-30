@@ -112,10 +112,17 @@ describe("POST /api/onboarding/import/analyze", () => {
     expect(res.status).toBe(403)
   })
 
-  it("400s on missing file / sheetName / companyId", async () => {
+  it("400s on missing file / sheetName", async () => {
     expect((await POST(makeReq({ sheetName: "PL", companyId: "c1" }))).status).toBe(400)
     expect((await POST(makeReq({ file: xlsx(), companyId: "c1" }))).status).toBe(400)
-    expect((await POST(makeReq({ file: xlsx(), sheetName: "PL" }))).status).toBe(400)
+  })
+
+  it("requires a company for single-company sheets when no BU/entity column exists", async () => {
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL" }))
+    const body = await res.json()
+    expect(res.status).toBe(400)
+    expect(body.error).toMatch(/Select the target company/)
+    expect(prisma.importStaging.create).not.toHaveBeenCalled()
   })
 
   it("404s when the company is not in the org", async () => {
@@ -165,6 +172,23 @@ describe("POST /api/onboarding/import/analyze", () => {
       where: { organizationId: "org1" },
       select: { id: true, code: true, name: true },
     })
+  })
+
+  it("allows no selected company for multi-entity sheets and uses an anchor only for staging", async () => {
+    ;(findEntityColumn as ReturnType<typeof vi.fn>).mockReturnValueOnce(1)
+    ;(extractEntityValues as ReturnType<typeof vi.fn>).mockReturnValueOnce(["AZSF", "EDEN"])
+    ;(resolveEntityCompanies as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      suggestions: { AZSF: "c1", EDEN: "c2" },
+      unresolved: [],
+    })
+    const res = await POST(makeReq({ file: xlsx(), sheetName: "PL" }))
+    const body = await res.json()
+    expect(res.status).toBe(200)
+    expect(body.multiEntity).toBe(true)
+    expect(body.company.autoSelected).toBe(true)
+    const createArg = (prisma.importStaging.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(createArg.data.companyId).toBe("c1")
+    expect(createArg.data.proposal.__multiEntity.entityValues).toEqual(["AZSF", "EDEN"])
   })
 
   it("single-company sheet (no entity column) → multiEntity false, no __multiEntity persisted", async () => {

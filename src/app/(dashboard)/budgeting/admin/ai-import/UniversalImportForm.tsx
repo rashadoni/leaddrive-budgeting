@@ -335,7 +335,7 @@ export function UniversalImportForm() {
   }
 
   async function analyzeSheet(targetSheet: string) {
-    if (!file || !companyId || !targetSheet) return
+    if (!file || !targetSheet) return
     setBusy("classify")
     setError(null)
     setAnalysis(null)
@@ -345,7 +345,7 @@ export function UniversalImportForm() {
       const fd = new FormData()
       fd.append("file", file)
       fd.append("sheetName", targetSheet)
-      fd.append("companyId", companyId)
+      if (companyId) fd.append("companyId", companyId)
       const res = await fetch("/api/onboarding/import/analyze", { method: "POST", body: fd })
       const body = await res.json().catch(() => null)
       if (!res.ok || !body?.ok) throw new Error(body?.error ?? `HTTP ${res.status}`)
@@ -399,7 +399,7 @@ export function UniversalImportForm() {
 
   // Step 1: classify sheets, then auto-analyze the best P&L sheet.
   async function onStart() {
-    if (!file || !companyId) return
+    if (!file) return
     setBusy("classify")
     setError(null)
     reset()
@@ -595,6 +595,9 @@ export function UniversalImportForm() {
           >
             {showCreate ? t("cancelCreate") : t("newCompany")}
           </button>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {t("companyOptionalHint")}
+          </div>
           {showCreate && (
             <div className="mt-2 border rounded p-2 space-y-2 bg-muted/20">
               <div className="grid grid-cols-2 gap-2">
@@ -666,7 +669,7 @@ export function UniversalImportForm() {
       <button
         type="button"
         onClick={onStart}
-        disabled={!file || !companyId || busy !== null}
+        disabled={!file || busy !== null}
         className="w-full px-4 py-2 rounded bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-40 transition-colors"
       >
         {busy === "classify" ? t("analyzeBusy") : t("analyzeBtn")}

@@ -9,7 +9,8 @@
  *   POST /api/onboarding/import/analyze   (multipart/form-data)
  *     file       — xlsx blob (required)
  *     sheetName  — which sheet to map (required)
- *     companyId  — target Company.id this sheet belongs to (required)
+ *     companyId  — target Company.id this sheet belongs to (optional for
+ *                  multi-company sheets that carry a BU/entity column)
  *
  *   → runs the AI mapper (cached) → persists an ImportStaging row →
  *   returns { stagingId, proposal } for the MappingReviewTable to edit.
@@ -97,17 +98,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Missing 'sheetName' field" }, { status: 400 })
   }
   const companyId = String(form.get("companyId") ?? "").trim()
-  if (!companyId) {
-    return NextResponse.json({ ok: false, error: "Missing 'companyId' field" }, { status: 400 })
-  }
+  const companySelect = { id: true, code: true, name: true, industry: true } as const
 
   // Company must belong to this org (404 — don't leak cross-org id existence).
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: orgId },
-    select: { id: true, code: true, name: true, industry: true },
-  })
+  // When omitted, use a level-1 holding (or first active company) only as a
+  // staging/hash anchor. Missing company is accepted only for multi-entity sheets
+  // whose rows carry their own BU/company routing column.
+  let company = companyId
+    ? await prisma.company.findFirst({
+        where: { id: companyId, organizationId: orgId },
+        select: companySelect,
+      })
+    : await prisma.company.findFirst({
+        where: { organizationId: orgId, isActive: true, level: 1 },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+        select: companySelect,
+      })
+  if (!company && !companyId) {
+    company = await prisma.company.findFirst({
+      where: { organizationId: orgId, isActive: true },
+      orderBy: [{ level: "asc" }, { sortOrder: "asc" }, { name: "asc" }],
+      select: companySelect,
+    })
+  }
   if (!company) {
-    return NextResponse.json({ ok: false, error: "Company not found" }, { status: 404 })
+    return NextResponse.json(
+      {
+        ok: false,
+        error: companyId
+          ? "Company not found"
+          : "No active company found for this organization. Create/select a company before analysis.",
+      },
+      { status: 404 },
+    )
   }
 
   let workbook: XLSX.WorkBook
@@ -227,6 +250,16 @@ export async function POST(request: NextRequest) {
     // doesn't have to route a non-company block to a real company.
     entityEliminations = entityValues.filter(looksLikeEliminationBU)
   }
+  if (!companyId && entityColumnIndex === null) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "This sheet does not contain a BU/company column. Select the target company, then analyze again.",
+      },
+      { status: 400 },
+    )
+  }
 
   const staging = await prisma.importStaging.create({
     data: {
@@ -249,7 +282,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     stagingId: staging.id,
     expiresAt: staging.expiresAt.toISOString(),
-    company: { id: company.id, code: company.code, name: company.name },
+    company: { id: company.id, code: company.code, name: company.name, autoSelected: !companyId },
     proposal,
     // Phase B — true when the proposal was pre-filled from a prior approved
     // template (no LLM call); the UI surfaces this so the reviewer knows.

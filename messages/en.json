@@ -3873,6 +3873,7 @@
     "intro": "Upload an <b>arbitrary</b> file: AI proposes a column mapping, you review/edit, see the reconciliation with no writes, and only then apply. Phase 1 — a single <b>P&L</b> sheet (balance sheet / cash flow and multi-sheet — later).",
     "companyLabel": "Company (entity)",
     "selectPlaceholder": "— select —",
+    "companyOptionalHint": "Optional for files with a BU/company column; required for single-company sheets.",
     "cancelCreate": "× cancel",
     "newCompany": "+ New company",
     "phCode": "Code (e.g. CO-NEW)",
