@@ -12,6 +12,7 @@ import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
 import { ImportDataResetPanel } from "@/features/admin/components/ImportDataResetPanel"
+import { buildImportResetScopes } from "@/features/admin/lib/import-reset-scopes"
 import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
@@ -43,14 +44,23 @@ export default async function AIImportPage({
     initialYearRaw && Number.isInteger(Number(initialYearRaw))
       ? Number(initialYearRaw)
       : undefined
-  const companies = await prisma.company.findMany({
-    where: {
-      organizationId: orgId,
-      isActive: true,
-      level: { gt: 1 },
-    },
-    select: { code: true, name: true },
-    orderBy: { code: "asc" },
+  const [organization, companies] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { name: true },
+    }),
+    prisma.company.findMany({
+      where: {
+        organizationId: orgId,
+        isActive: true,
+      },
+      select: { id: true, code: true, name: true, level: true, parentCompanyId: true },
+      orderBy: [{ level: "asc" }, { code: "asc" }],
+    }),
+  ])
+  const resetScopes = buildImportResetScopes({
+    organizationName: organization?.name ?? "Whole holding",
+    companies,
   })
 
   return (
@@ -70,7 +80,7 @@ export default async function AIImportPage({
 
       <div className="mb-6">
         <ImportDataResetPanel
-          companies={companies}
+          scopes={resetScopes}
           initialCompanyCode={initialCompanyCode}
           initialYear={initialYear}
         />

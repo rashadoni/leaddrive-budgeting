@@ -4,11 +4,7 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { AlertTriangle, ArchiveRestore, DatabaseZap, RotateCcw, ShieldCheck } from "lucide-react"
-
-export interface ImportResetCompanyOption {
-  code: string
-  name: string
-}
+import type { ImportResetScopeOption } from "@/features/admin/lib/import-reset-scopes"
 
 type ResetIntent = "reset" | "reimport" | "rollback"
 
@@ -50,22 +46,25 @@ const BREAKDOWN_KEYS = [
 ] as const
 
 export function ImportDataResetPanel({
-  companies,
+  scopes,
   initialCompanyCode,
   initialYear,
 }: {
-  companies: ReadonlyArray<ImportResetCompanyOption>
+  scopes: ReadonlyArray<ImportResetScopeOption>
   initialCompanyCode?: string
   initialYear?: number
 }) {
   const t = useTranslations("adminAiImport.reset")
-  const initialCode = useMemo(() => {
-    if (initialCompanyCode && companies.some((c) => c.code === initialCompanyCode)) {
-      return initialCompanyCode
+  const initialScopeId = useMemo(() => {
+    if (initialCompanyCode) {
+      const holding = scopes.find((s) => s.kind === "holding" && s.code === initialCompanyCode)
+      if (holding) return holding.id
+      const company = scopes.find((s) => s.kind === "company" && s.code === initialCompanyCode)
+      if (company) return company.id
     }
     return ""
-  }, [companies, initialCompanyCode])
-  const [companyCode, setCompanyCode] = useState(initialCode)
+  }, [scopes, initialCompanyCode])
+  const [scopeId, setScopeId] = useState(initialScopeId)
   const [year, setYear] = useState(String(initialYear ?? new Date().getFullYear()))
   const [reason, setReason] = useState(t("defaultReason"))
   const [confirmCode, setConfirmCode] = useState("")
@@ -76,11 +75,13 @@ export function ImportDataResetPanel({
   const [error, setError] = useState<string | null>(null)
   const [intent, setIntent] = useState<ResetIntent>("reset")
 
-  const selectedCompany = companies.find((c) => c.code === companyCode)
+  const selectedScope = scopes.find((s) => s.id === scopeId)
+  const holdingScopes = scopes.filter((s) => s.kind === "holding")
+  const companyScopes = scopes.filter((s) => s.kind === "company")
   const expectedConfirm = "ALL"
   const parsedYear = parseOptionalYear(year)
   const yearValue = parsedYear.valid ? parsedYear.value : undefined
-  const canPreview = companyCode.length > 0 && parsedYear.valid && !loadingPreview
+  const canPreview = selectedScope != null && parsedYear.valid && !loadingPreview
   const canReset =
     preview != null &&
     preview.rowsAffected >= 0 &&
@@ -88,7 +89,7 @@ export function ImportDataResetPanel({
     !submitting
 
   async function loadPreview(nextIntent: ResetIntent = intent) {
-    if (!canPreview) return
+    if (!canPreview || !selectedScope) return
     setIntent(nextIntent)
     setLoadingPreview(true)
     setError(null)
@@ -100,7 +101,7 @@ export function ImportDataResetPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           entityKind: "AllImportData",
-          companyCodes: [companyCode],
+          companyCodes: selectedScope.companyCodes,
           year: yearValue,
         }),
       })
@@ -120,7 +121,7 @@ export function ImportDataResetPanel({
   }
 
   async function runReset() {
-    if (!canReset) return
+    if (!canReset || !selectedScope) return
     setSubmitting(true)
     setError(null)
     setResult(null)
@@ -131,7 +132,7 @@ export function ImportDataResetPanel({
         body: JSON.stringify({
           mode: "archive",
           entityKind: "AllImportData",
-          companyCodes: [companyCode],
+          companyCodes: selectedScope.companyCodes,
           year: yearValue,
           reason: reason.trim() || t("defaultReason"),
           confirmCode,
@@ -177,22 +178,33 @@ export function ImportDataResetPanel({
 
       <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_120px]">
         <label className="space-y-1">
-          <span className="text-xs font-semibold text-foreground">{t("companyLabel")}</span>
+          <span className="text-xs font-semibold text-foreground">{t("scopeLabel")}</span>
           <select
-            value={companyCode}
+            value={scopeId}
             onChange={(e) => {
-              setCompanyCode(e.target.value)
+              setScopeId(e.target.value)
               setPreview(null)
               setResult(null)
             }}
             className="h-10 w-full rounded border border-border bg-background px-3 text-sm"
           >
-            <option value="">{t("companyPlaceholder")}</option>
-            {companies.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.code} - {c.name}
-              </option>
-            ))}
+            <option value="">{t("scopePlaceholder")}</option>
+            {holdingScopes.length > 0 && (
+              <optgroup label={t("holdingGroupLabel")}>
+                {holdingScopes.map((scope) => (
+                  <option key={scope.id} value={scope.id}>
+                    {scopeOptionLabel(t, scope)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label={t("companyGroupLabel")}>
+              {companyScopes.map((scope) => (
+                <option key={scope.id} value={scope.id}>
+                  {scopeOptionLabel(t, scope)}
+                </option>
+              ))}
+            </optgroup>
           </select>
         </label>
         <label className="space-y-1">
@@ -258,10 +270,11 @@ export function ImportDataResetPanel({
         <p className="mt-2 text-xs text-red-700 dark:text-red-300">{t("yearError")}</p>
       )}
 
-      {selectedCompany && (
+      {selectedScope && (
         <p className="mt-2 text-xs text-muted-foreground">
           {t("scopeLine", {
-            company: selectedCompany.code,
+            scope: scopeOptionLabel(t, selectedScope),
+            count: selectedScope.companyCount,
             year: yearValue ? String(yearValue) : t("allYears"),
           })}
         </p>
@@ -276,10 +289,16 @@ export function ImportDataResetPanel({
               </div>
               <p className="text-xs text-muted-foreground">{intentCopy(t, intent)}</p>
             </div>
-            <span className="text-xs font-mono text-muted-foreground">
+            <span className="text-xs font-mono text-muted-foreground sm:max-w-md sm:text-right">
               {preview.companies.map((c) => c.companyCode).join(", ")}
             </span>
           </div>
+
+          {preview.isWholeHolding && (
+            <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-2 text-xs leading-relaxed text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+              {t("wholeHoldingPreviewNote", { count: preview.companies.length })}
+            </div>
+          )}
 
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {BREAKDOWN_KEYS.map((key) => (
@@ -360,4 +379,18 @@ function resetButtonCopy(t: ReturnType<typeof useTranslations>, intent: ResetInt
   if (intent === "reimport") return t("confirmResetAndReimport")
   if (intent === "rollback") return t("confirmRollbackSafePath")
   return t("confirmReset")
+}
+
+function scopeOptionLabel(
+  t: ReturnType<typeof useTranslations>,
+  scope: ImportResetScopeOption,
+): string {
+  if (scope.kind === "holding") {
+    return t("holdingOption", {
+      name: scope.name,
+      root: scope.rootCode ?? scope.code,
+      count: scope.companyCount,
+    })
+  }
+  return `${scope.code} - ${scope.name}`
 }
