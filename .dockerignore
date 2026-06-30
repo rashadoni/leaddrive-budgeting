@@ -30,9 +30,9 @@ Thumbs.db
 coverage
 .nyc_output
 
-# Documentation & internal tooling (not needed in image)
-docs
+# Documentation used by the in-app `/guide` route at runtime.
 *.md
+!docs/**
 !deploy/README.md
 .claude
 
