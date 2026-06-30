@@ -163,6 +163,49 @@ describe("AI import approved template memory", () => {
     )
   })
 
+  it("persists approved semantic CoA mappings on sheet rules", () => {
+    const draft = buildAiImportTemplateDraft({
+      name: "No-code actuals",
+      approvedBy: "u1",
+      files: [
+        {
+          filename: "actuals.xlsx",
+          workbookProfile: profile("actuals.xlsx"),
+          classifications: [
+            {
+              ...classifications[0],
+              coaMappings: [
+                {
+                  sourceLabel: "Raw materials",
+                  targetCode: "PLF.02.01.01",
+                  confidence: 1,
+                  action: "map",
+                },
+              ],
+            },
+            classifications[1],
+          ],
+        },
+      ],
+    })
+    const { settings } = upsertAiImportTemplateInSettings(
+      {},
+      draft,
+      "2026-06-30T10:00:00Z",
+    )
+
+    const match = findMatchingAiImportTemplate(settings, [profile("renamed.xlsx")])
+
+    expect(match?.files[0].classifications[0].coaMappings).toEqual([
+      {
+        sourceLabel: "Raw materials",
+        targetCode: "PLF.02.01.01",
+        confidence: 1,
+        action: "map",
+      },
+    ])
+  })
+
   it("returns null when sheet coverage no longer matches", () => {
     const draft = buildAiImportTemplateDraft({
       name: "AzerSheker Actuals",

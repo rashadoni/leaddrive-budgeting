@@ -20,7 +20,41 @@
  */
 import type { Prisma, PrismaClient } from "@prisma/client"
 import type * as XLSXType from "xlsx"
+import type { AccountType } from "../ai-mapper/types"
 import type { SheetDataType } from "./sheet-classifier"
+
+export interface SemanticCoaDecision {
+  sourceLabel: string
+  targetCode: string | null
+  confidence: number
+  action?: "map" | "skip"
+}
+
+export interface AdapterSemanticCoaCandidate {
+  targetCode: string
+  accountType: AccountType
+  confidence: number
+  source: string
+  matchedLabel: string
+  reasoning: string
+}
+
+export interface AdapterSemanticCoaMapping {
+  sourceLabel: string
+  targetCode: string | null
+  confidence: number
+  action: "map" | "skip"
+  source: "approved" | "existing-coa" | "standard-dictionary"
+  matchedLabel?: string
+  reasoning: string
+}
+
+export interface AdapterSemanticCoaReviewItem {
+  dataType: "PLF" | "BS" | "CF"
+  sourceLabel: string
+  reason: string
+  candidates: AdapterSemanticCoaCandidate[]
+}
 
 export interface AdapterRunInput {
   /** Full xlsx workbook object.
@@ -48,6 +82,8 @@ export interface AdapterRunInput {
    *  Defaults to "actual" when unset. Set from the classification's
    *  `planKind` (derived from the workbook section). */
   targetPlanKind?: "actual" | "budget"
+  /** Reviewer/template-approved mappings for no-code rows in this sheet. */
+  semanticCoaMappings?: SemanticCoaDecision[]
 }
 
 export interface AdapterRunResult {
@@ -57,6 +93,11 @@ export interface AdapterRunResult {
   itemCount: number
   /** Non-fatal warnings emitted during parsing. */
   warnings: string[]
+  /** No-code CoA resolution preview. Low-confidence review items block apply. */
+  semanticCoa?: {
+    mappings: AdapterSemanticCoaMapping[]
+    reviewItems: AdapterSemanticCoaReviewItem[]
+  }
   /** Apply step — invoked by orchestrator AFTER reconciliation passes. */
   applyToDb: (
     /**

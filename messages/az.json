@@ -3023,6 +3023,19 @@
         "allResolved": "✓ Bütün konfliktlər həll olundu — tətbiq etmək mümkündür.",
         "forceOverride": "Ehtiyat variant: bütün konfliktləri last-write-wins ilə tətbiq et (bir-bir seçmək yerinə)"
       },
+      "coaReview": {
+        "title": "CoA təsdiqi lazımdır — {n} sətir",
+        "description": "Bu kodsuz sətirlər etibarlı uyğunlaşmadı. Tətbiqdən əvvəl plan hesabı kodunu seçin və ya sətri atlayın.",
+        "col": {
+          "source": "Mənbə sətri",
+          "reason": "Səbəb",
+          "decision": "Qərar"
+        },
+        "pickPlaceholder": "— mapping seçin —",
+        "useCode": "{code} ilə bağla ({pct}%)",
+        "skipRow": "bu sətri atla",
+        "allResolved": "✓ Bütün CoA sətirləri həll olundu — preview-u yenidən hesablayın və ya tətbiq edin."
+      },
       "preview": {
         "title": "Faylların analizi",
         "subtitle": "Hər vərəq üçün dataType və etibarlılığı yoxlayın. Aşağı etibarlılıq (<65%) — AI çox güman ki, səhv edib, özünüz yoxlayın və ya vərəq adı daha aydın olan faylı yenidən yükləyin.",

@@ -30,8 +30,9 @@ export interface AiImportTemplateSheetRule {
   /** Reserved for Task 4: semantic CoA mappings confirmed by review UI. */
   coaMappings?: Array<{
     sourceLabel: string
-    targetCode: string
+    targetCode: string | null
     confidence: number
+    action?: "map" | "skip"
   }>
   /** Reserved for future adapter-specific column-role review. */
   columnRoles?: Array<{
@@ -193,6 +194,14 @@ function buildFileTemplate(input: AiImportTemplateFileInput): AiImportTemplateFi
       if (c.entityCodeOverride) rule.entityCodeOverride = c.entityCodeOverride
       if (c.planKindSignal) rule.planKindSignal = c.planKindSignal
       if (c.roleSignal) rule.roleSignal = c.roleSignal
+      if (c.coaMappings && c.coaMappings.length > 0) {
+        rule.coaMappings = c.coaMappings.map((mapping) => ({
+          sourceLabel: mapping.sourceLabel,
+          targetCode: mapping.targetCode,
+          confidence: mapping.confidence,
+          ...(mapping.action ? { action: mapping.action } : {}),
+        }))
+      }
       return rule
     })
 
@@ -280,6 +289,9 @@ function classificationsFromTemplateFile(
       roleSignal: rule.roleSignal ?? "config",
       ...(rule.entityCodeOverride
         ? { entityCodeOverride: rule.entityCodeOverride }
+        : {}),
+      ...(rule.coaMappings && rule.coaMappings.length > 0
+        ? { coaMappings: rule.coaMappings }
         : {}),
     })
   }

@@ -25,12 +25,26 @@ import {
   createCoACache,
   resolveOrCreateAccountId,
 } from "../upsert-chart-of-account"
-import type { AdapterRunInput, AdapterRunResult } from "./adapter-registry"
+import type {
+  AdapterRunInput,
+  AdapterRunResult,
+  AdapterSemanticCoaCandidate,
+  AdapterSemanticCoaMapping,
+  AdapterSemanticCoaReviewItem,
+} from "./adapter-registry"
 import { extractMapperInput } from "../ai-mapper/extract"
 import { getOrCreateProposal } from "../ai-mapper/proposal-cache"
 import { resolveColumns, detectProposalYear } from "../ai-mapper/applier"
+import type { ColumnMappingProposal } from "../ai-mapper/types"
 import { runImportBatch, type ImportBatchRow } from "../import-batch"
 import { buildReconKey, type ReconciliationKey } from "../reconciliation"
+import {
+  findApprovedSemanticCoaDecision,
+  isDerivedFinancialLabel,
+  loadSemanticCoaAccounts,
+  rankSemanticCoaCandidates,
+  resolveSemanticCoaLabel,
+} from "./semantic-coa-mapper"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PLF account-type helper (mirrors private function in azseker-plf.ts)
@@ -86,6 +100,85 @@ function detectHeaderEndRow(aoa: Array<Array<string | number | null>>): number {
 const PLF_LEAF_RE =
   /^PLF\.\d{2}\.\d{2}\.([0-9]{1,2}|[A-Za-z]{1,2})$/
 
+function toSemanticCoaCandidates(
+  matches: ReturnType<typeof rankSemanticCoaCandidates>,
+): AdapterSemanticCoaCandidate[] {
+  return matches.map((match) => ({
+    targetCode: match.code,
+    accountType: match.accountType,
+    confidence: match.confidence,
+    source: match.source,
+    matchedLabel: match.matchedLabel,
+    reasoning: match.reasoning,
+  }))
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0, january: 0,
+  feb: 1, february: 1,
+  mar: 2, march: 2,
+  apr: 3, april: 3,
+  may: 4,
+  jun: 5, june: 5,
+  jul: 6, july: 6,
+  aug: 7, august: 7,
+  sep: 8, sept: 8, september: 8,
+  oct: 9, october: 9,
+  nov: 10, november: 10,
+  dec: 11, december: 11,
+}
+
+interface SemanticPlfColumns {
+  codeCol: number
+  labelCol: number
+  monthCols: number[]
+  semanticLabelFallback: boolean
+}
+
+function resolveColumnsWithSemanticFallback(
+  columns: ColumnMappingProposal[],
+): { ok: true; columns: SemanticPlfColumns } | { ok: false; reason: string } {
+  const strict = resolveColumns(columns)
+  if (strict.ok) {
+    return {
+      ok: true,
+      columns: {
+        codeCol: strict.columns.codeCol,
+        labelCol: strict.columns.labelCol,
+        monthCols: strict.columns.monthCols,
+        semanticLabelFallback: false,
+      },
+    }
+  }
+
+  let labelCol = -1
+  const monthCols = new Array<number>(12).fill(-1)
+  for (const c of columns) {
+    if (c.role === "label") {
+      if (labelCol !== -1) return { ok: false, reason: `Multiple "label" columns` }
+      labelCol = c.sourceIndex
+    } else if (c.role.startsWith("amount:")) {
+      const period = c.role.slice("amount:".length).toLowerCase()
+      const monthToken = period.replace(/20\d{2}/g, "").trim()
+      const monthIdx = MONTH_INDEX[monthToken]
+      if (monthIdx !== undefined && monthCols[monthIdx] === -1) {
+        monthCols[monthIdx] = c.sourceIndex
+      }
+    }
+  }
+  if (labelCol === -1) return { ok: false, reason: strict.reason }
+  if (monthCols.some((col) => col === -1)) return { ok: false, reason: strict.reason }
+  return {
+    ok: true,
+    columns: {
+      codeCol: labelCol,
+      labelCol,
+      monthCols,
+      semanticLabelFallback: true,
+    },
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main export
 // ─────────────────────────────────────────────────────────────────────────────
@@ -97,14 +190,13 @@ const PLF_LEAF_RE =
  * @param input      Standard adapter input (workbook, sheetName, XLSX, …).
  * @param planId     Budget-plan ID — resolved by the calling handler from OrgContext.
  * @param companyId  DB company row ID — resolved by the calling handler.
- * @param _prisma    Injected for future CoA lookups; not used in v1.
+ * @param prisma     Used for existing CoA label/code matches before static fallback.
  */
 export async function runDynamicPlfAdapter(
   input: AdapterRunInput,
   planId: string,
   companyId: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _prisma: PrismaClient,
+  prisma: PrismaClient,
 ): Promise<AdapterRunResult> {
   // ── Guard: cross-entity sheets have no entityCode ─────────────────────────
   if (!input.entityCode) {
@@ -177,7 +269,7 @@ export async function runDynamicPlfAdapter(
   }
 
   // ── 4. Resolve column positions from proposal roles ───────────────────────
-  const colsResult = resolveColumns(proposal.columns)
+  const colsResult = resolveColumnsWithSemanticFallback(proposal.columns)
   if (!colsResult.ok) {
     return {
       summary: `Dynamic PLF: column resolution failed — ${colsResult.reason}`,
@@ -190,7 +282,8 @@ export async function runDynamicPlfAdapter(
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
-  const { codeCol, labelCol, monthCols } = colsResult.columns
+  const { codeCol, labelCol, monthCols, semanticLabelFallback } =
+    colsResult.columns
 
   // ── 5. Detect effective year ───────────────────────────────────────────────
   const detectedYear = detectProposalYear(proposal.columns)
@@ -240,6 +333,18 @@ export async function runDynamicPlfAdapter(
   // ── 8. Extract rows ───────────────────────────────────────────────────────
   const rows: ImportBatchRow[] = []
   const expectedSums = new Map<ReconciliationKey, number>()
+  const lineLabelByCode = new Map<string, string>()
+  const semanticAccounts = await loadSemanticCoaAccounts(
+    prisma,
+    input.organizationId,
+    "PLF",
+  )
+  const semanticMatches: string[] = []
+  const semanticReview: string[] = []
+  const semanticCoaMappings: AdapterSemanticCoaMapping[] = []
+  const semanticCoaReviewItems: AdapterSemanticCoaReviewItem[] = []
+  const semanticMappedLabels = new Set<string>()
+  const semanticReviewLabels = new Set<string>()
 
   const periodScope: string[] = Array.from({ length: 12 }, (_, m) =>
     `${effectiveYear}-${String(m + 1).padStart(2, "0")}`,
@@ -248,14 +353,128 @@ export async function runDynamicPlfAdapter(
   for (let r = headerEndRow; r < aoa.length; r++) {
     const row = aoa[r] ?? []
     const codeRaw = row[codeCol]
-    const code =
+    let code =
       typeof codeRaw === "string"
         ? codeRaw.trim()
         : typeof codeRaw === "number"
           ? String(codeRaw)
           : ""
+    const labelRaw = row[labelCol]
+    const label = typeof labelRaw === "string" ? labelRaw.trim() : code
+    if (!code && label) code = label
     if (!code) continue
-    if (!PLF_LEAF_RE.test(code)) continue
+    if (!PLF_LEAF_RE.test(code)) {
+      if (!semanticLabelFallback && /^PLF\./i.test(code)) continue
+      const approved = findApprovedSemanticCoaDecision(
+        label,
+        input.semanticCoaMappings,
+      )
+      if (approved) {
+        if (approved.action === "skip" || approved.targetCode === null) {
+          if (!semanticMappedLabels.has(label)) {
+            semanticMappedLabels.add(label)
+            semanticCoaMappings.push({
+              sourceLabel: label,
+              targetCode: null,
+              confidence: approved.confidence,
+              action: "skip",
+              source: "approved",
+              reasoning: `Approved decision skipped "${label}"`,
+            })
+          }
+          continue
+        }
+        if (PLF_LEAF_RE.test(approved.targetCode)) {
+          code = approved.targetCode
+          if (!semanticMappedLabels.has(label)) {
+            semanticMappedLabels.add(label)
+            semanticCoaMappings.push({
+              sourceLabel: label,
+              targetCode: approved.targetCode,
+              confidence: approved.confidence,
+              action: "map",
+              source: "approved",
+              matchedLabel: label,
+              reasoning: `Approved decision mapped "${label}" to ${approved.targetCode}`,
+            })
+          }
+        } else {
+          if (!semanticReviewLabels.has(label)) {
+            semanticReviewLabels.add(label)
+            semanticReview.push(
+              `Dynamic PLF semantic CoA review needed: "${label}" has invalid approved PLF code "${approved.targetCode}"`,
+            )
+            semanticCoaReviewItems.push({
+              dataType: "PLF",
+              sourceLabel: label,
+              reason: `Approved code "${approved.targetCode}" is not a valid P&L leaf code`,
+              candidates: toSemanticCoaCandidates(
+                rankSemanticCoaCandidates({
+                  dataType: "PLF",
+                  label,
+                  accounts: semanticAccounts,
+                  minScore: 0.35,
+                  limit: 4,
+                }),
+              ),
+            })
+          }
+          continue
+        }
+      } else {
+        const semantic = resolveSemanticCoaLabel({
+          dataType: "PLF",
+          label,
+          accounts: semanticAccounts,
+        })
+        if (!semantic) {
+          if (
+            label &&
+            !isDerivedFinancialLabel(label) &&
+            !semanticReviewLabels.has(label)
+          ) {
+            semanticReviewLabels.add(label)
+            semanticReview.push(
+              `Dynamic PLF semantic CoA review needed: "${label}" did not confidently map to a P&L code`,
+            )
+            semanticCoaReviewItems.push({
+              dataType: "PLF",
+              sourceLabel: label,
+              reason: "No high-confidence P&L code match",
+              candidates: toSemanticCoaCandidates(
+                rankSemanticCoaCandidates({
+                  dataType: "PLF",
+                  label,
+                  accounts: semanticAccounts,
+                  minScore: 0.35,
+                  limit: 4,
+                }),
+              ),
+            })
+          }
+          continue
+        }
+        code = semantic.code
+        if (!semanticMappedLabels.has(label)) {
+          semanticMappedLabels.add(label)
+          semanticMatches.push(
+            `Dynamic PLF semantic CoA: "${label}" -> ${semantic.code} (${Math.round(
+              semantic.confidence * 100,
+            )}%, ${semantic.source})`,
+          )
+          semanticCoaMappings.push({
+            sourceLabel: label,
+            targetCode: semantic.code,
+            confidence: semantic.confidence,
+            action: "map",
+            source: semantic.source,
+            matchedLabel: semantic.matchedLabel,
+            reasoning: semantic.reasoning,
+          })
+        }
+      }
+    }
+    if (label) lineLabelByCode.set(code, label)
 
     // Determine account type — inline rule first, LLM override as fallback
     let accountType = plfAccountTypeLocal(code)
@@ -263,10 +482,6 @@ export async function runDynamicPlfAdapter(
       accountType = acctOverrides.get(code) ?? null
     }
     if (!accountType) continue // net-profit or unrecognised prefix — skip
-
-    const labelRaw = row[labelCol]
-    const label =
-      typeof labelRaw === "string" ? labelRaw.trim() : code
 
     // Sign convention: COGS and expense values are stored as positive in DB.
     // The Excel may store them as negative — negate so they become positive.
@@ -318,6 +533,11 @@ export async function runDynamicPlfAdapter(
   const baseWarnings = [
     `Dynamic detection used, cache key hint: ${cacheKeyHint}`,
     cacheHit ? "(cache hit — no LLM cost)" : "(cache miss — LLM called)",
+    ...(semanticLabelFallback
+      ? ["No code column detected — semantic CoA mapper used labels as account keys"]
+      : []),
+    ...semanticMatches,
+    ...semanticReview,
     ...(proposal.overallConfidence < 0.7
       ? [
           `Confidence ${proposal.overallConfidence.toFixed(2)} < 0.70 — review imported rows`,
@@ -335,6 +555,10 @@ export async function runDynamicPlfAdapter(
     summary: `${rows.length} dynamic PLF rows for ${input.entityCode} (conf=${proposal.overallConfidence.toFixed(2)}, sheet="${input.sheetName}")`,
     itemCount: rows.length,
     warnings: baseWarnings,
+    semanticCoa: {
+      mappings: semanticCoaMappings,
+      reviewItems: semanticCoaReviewItems,
+    },
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
@@ -357,7 +581,7 @@ export async function runDynamicPlfAdapter(
         const id = await resolveOrCreateAccountId(tx, coaCache, {
           organizationId: input.organizationId,
           code: lineCode,
-          defaultName: lineCode,
+          defaultName: lineLabelByCode.get(lineCode) ?? lineCode,
           defaultAccountType: r.lineType,
         })
         accountIdByLineCode.set(lineCode, id)

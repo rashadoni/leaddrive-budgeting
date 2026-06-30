@@ -225,9 +225,9 @@ describe("runDynamicCfAdapter", () => {
     expect(result.warnings.some((w) => w.includes("cache hit"))).toBe(true)
   })
 
-  // ── 5. Missing "code" column → column resolution fails ───────────────────
+  // ── 5. Missing "code" column falls back to semantic CoA review ───────────
 
-  it("proposal with no code column → 0 rows, reason in warnings", async () => {
+  it("proposal with no code column and unknown label → 0 rows + CoA review", async () => {
     vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
     vi.mocked(getOrCreateProposal).mockResolvedValue({
       proposal: {
@@ -241,10 +241,65 @@ describe("runDynamicCfAdapter", () => {
       usage: { inputTokens: 50, outputTokens: 20, modelName: "m", promptVersion: "v" },
     })
 
-    const result = await runDynamicCfAdapter(makeFakeInput(), FAKE_PRISMA)
+    const unknownAoa = [
+      ["Code", "Label", "Jan 2026"],
+      ["", "Mystery cash item", 1000],
+    ]
+    const result = await runDynamicCfAdapter(
+      makeFakeInput({
+        workbook: makeFakeWorkbook(unknownAoa),
+        XLSX: makeFakeXLSX(unknownAoa),
+      }),
+      FAKE_PRISMA,
+    )
     expect(result.itemCount).toBe(0)
-    expect(result.warnings.some((w) => w.includes("Column mapping incomplete"))).toBe(true)
+    expect(result.semanticCoa?.reviewItems[0]).toMatchObject({
+      dataType: "CF",
+      sourceLabel: "Mystery cash item",
+    })
     expect(runCashFlowBatch).not.toHaveBeenCalled()
+  })
+
+  it("no code column → semantic mapper imports common CF labels", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue(MOCK_MAPPER_INPUT)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: {
+        ...buildProposal(0.9, ["Jan"]),
+        columns: [
+          { sourceIndex: 0, role: "label" as const, confidence: 0.95, reasoning: "" },
+          { sourceIndex: 1, role: "amount:Jan2026" as `amount:${string}`, confidence: 0.9, reasoning: "" },
+          { sourceIndex: 2, role: "skip" as const, confidence: 0.9, reasoning: "" },
+        ],
+      },
+      cacheHit: false,
+      usage: { inputTokens: 100, outputTokens: 50, modelName: "m", promptVersion: "v" },
+    })
+    mockBatchOk()
+
+    const noCodeAoa = [
+      ["Line", "Jan 2026", "Notes"],
+      ["Cash received from customers", 100000, ""],
+      ["Payments to suppliers", -40000, ""],
+      ["CAPEX", -20000, ""],
+      ["Loan repayment", -10000, ""],
+      ["Closing cash balance", 30000, ""],
+    ]
+    const result = await runDynamicCfAdapter(
+      makeFakeInput({
+        workbook: makeFakeWorkbook(noCodeAoa),
+        XLSX: makeFakeXLSX(noCodeAoa),
+      }),
+      FAKE_PRISMA,
+    )
+
+    expect(result.itemCount).toBe(4)
+    expect(result.semanticCoa?.mappings.map((m) => m.targetCode)).toEqual([
+      "CF.01.01.01",
+      "CF.01.02.01",
+      "CF.02.02.01",
+      "CF.03.02.01",
+    ])
+    expect(result.semanticCoa?.reviewItems).toEqual([])
   })
 
   // ── 6. Activity type classification ──────────────────────────────────────

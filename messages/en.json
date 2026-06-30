@@ -3023,6 +3023,19 @@
         "allResolved": "✓ All conflicts resolved — ready to apply.",
         "forceOverride": "Fallback: apply all conflicts last-write-wins (instead of picking one by one)"
       },
+      "coaReview": {
+        "title": "CoA review required — {n} row(s)",
+        "description": "These no-code rows were not matched confidently. Choose a chart-of-accounts code or skip the row before applying.",
+        "col": {
+          "source": "Source row",
+          "reason": "Reason",
+          "decision": "Decision"
+        },
+        "pickPlaceholder": "— choose mapping —",
+        "useCode": "map to {code} ({pct}%)",
+        "skipRow": "skip this row",
+        "allResolved": "✓ All CoA rows resolved — re-run preview or apply."
+      },
       "preview": {
         "title": "File analysis",
         "subtitle": "Verify the dataType and confidence per sheet. Low confidence (<65%) means the AI was probably wrong — check yourself or re-upload with clearer sheet names.",

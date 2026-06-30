@@ -89,6 +89,32 @@ interface PerFileResult {
   }
   fileTypeResult: FileTypeResult
   classifications: SheetClassification[]
+  semanticCoa?: {
+    mappings: Array<{
+      sheetName: string
+      sourceLabel: string
+      targetCode: string | null
+      confidence: number
+      action: "map" | "skip"
+      source: string
+      matchedLabel?: string
+      reasoning: string
+    }>
+    reviewItems: Array<{
+      sheetName: string
+      dataType: "PLF" | "BS" | "CF"
+      sourceLabel: string
+      reason: string
+      candidates: Array<{
+        targetCode: string
+        accountType: string
+        confidence: number
+        source: string
+        matchedLabel: string
+        reasoning: string
+      }>
+    }>
+  }
   error: string | null
 }
 
@@ -166,6 +192,15 @@ interface MultiFileApiResponse {
   sheetImpactsByFilename?: Record<string, SheetImpact[]>
 }
 
+interface CoaDecision {
+  filename: string
+  sheetName: string
+  sourceLabel: string
+  targetCode: string | null
+  confidence: number
+  action: "map" | "skip"
+}
+
 const MAX_FILES = 10
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024
 
@@ -187,6 +222,14 @@ function verdictEmoji(v: string): string {
   if (v === "yellow") return "🟡"
   if (v === "red") return "🔴"
   return "⚪"
+}
+
+function coaDecisionKey(
+  filename: string,
+  sheetName: string,
+  sourceLabel: string,
+): string {
+  return `${filename}\u001f${sheetName}\u001f${sourceLabel}`
 }
 
 /** Map LLM classifier confidence (0..1) → readable band + Tailwind chip class.
@@ -276,6 +319,9 @@ export function MultiFileForm() {
   const [useTemplates, setUseTemplates] = useState(true)
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [templateSaveStatus, setTemplateSaveStatus] = useState<string | null>(null)
+  const [coaDecisions, setCoaDecisions] = useState<Record<string, CoaDecision>>(
+    {},
+  )
   // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
   // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
   //   { mode: "pick", filename: <filename to win> }  — use that file's value
@@ -296,6 +342,19 @@ export function MultiFileForm() {
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
   const overCountCap = files.length > MAX_FILES
   const hasConflicts = (previewResult?.conflicts.length ?? 0) > 0
+  const coaReviewItems =
+    previewResult?.perFile.flatMap((f) =>
+      (f.semanticCoa?.reviewItems ?? []).map((item) => ({
+        ...item,
+        filename: f.filename,
+      })),
+    ) ?? []
+  const hasUnresolvedCoaReviews = coaReviewItems.some(
+    (item) =>
+      !coaDecisions[
+        coaDecisionKey(item.filename, item.sheetName, item.sourceLabel)
+      ],
+  )
   const allConflictsResolved =
     hasConflicts &&
     (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
@@ -304,6 +363,7 @@ export function MultiFileForm() {
     !!previewResult &&
     previewResult.overallVerdict === "green" &&
     !hasConflicts &&
+    !hasUnresolvedCoaReviews &&
     previewResult.perFile.some(
       (f) => f.workbookProfile && f.classifications.length > 0,
     )
@@ -317,6 +377,7 @@ export function MultiFileForm() {
     setApplyResult(null)
     setError(null)
     setTemplateSaveStatus(null)
+    setCoaDecisions({})
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>): void {
@@ -333,6 +394,7 @@ export function MultiFileForm() {
     setPreviewResult(null)
     setApplyResult(null)
     setTemplateSaveStatus(null)
+    setCoaDecisions({})
   }
 
   function resetAll(): void {
@@ -344,6 +406,7 @@ export function MultiFileForm() {
     setUseTemplates(true)
     setResolutions({})
     setTemplateSaveStatus(null)
+    setCoaDecisions({})
     if (inputRef.current) inputRef.current.value = ""
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -370,6 +433,10 @@ export function MultiFileForm() {
       // not in the map.
       if (apply && Object.keys(resolutions).length > 0) {
         form.append("conflictResolutions", JSON.stringify(resolutions))
+      }
+      const selectedCoaDecisions = Object.values(coaDecisions)
+      if (selectedCoaDecisions.length > 0) {
+        form.append("semanticCoaMappings", JSON.stringify(selectedCoaDecisions))
       }
       const res = await fetch("/api/import/ai-auto-multi", {
         method: "POST",
@@ -402,11 +469,54 @@ export function MultiFileForm() {
     if (!previewResult || !canSaveTemplate) return
     const templateFiles = previewResult.perFile
       .filter((f) => f.workbookProfile && f.classifications.length > 0)
-      .map((f) => ({
-        filename: f.filename,
-        workbookProfile: f.workbookProfile,
-        classifications: f.classifications,
-      }))
+      .map((f) => {
+        const mappingsBySheet = new Map<string, CoaDecision[]>()
+        for (const mapping of f.semanticCoa?.mappings ?? []) {
+          const item: CoaDecision = {
+            filename: f.filename,
+            sheetName: mapping.sheetName,
+            sourceLabel: mapping.sourceLabel,
+            targetCode: mapping.targetCode,
+            confidence: mapping.confidence,
+            action: mapping.action,
+          }
+          mappingsBySheet.set(mapping.sheetName, [
+            ...(mappingsBySheet.get(mapping.sheetName) ?? []),
+            item,
+          ])
+        }
+        for (const decision of Object.values(coaDecisions)) {
+          if (decision.filename !== f.filename) continue
+          mappingsBySheet.set(decision.sheetName, [
+            ...(mappingsBySheet.get(decision.sheetName) ?? []),
+            decision,
+          ])
+        }
+        const classifications = f.classifications.map((classification) => {
+          const seen = new Set<string>()
+          const coaMappings = (mappingsBySheet.get(classification.sheetName) ?? [])
+            .filter((mapping) => {
+              const key = mapping.sourceLabel.trim().toLowerCase()
+              if (!key || seen.has(key)) return false
+              seen.add(key)
+              return true
+            })
+            .map((mapping) => ({
+              sourceLabel: mapping.sourceLabel,
+              targetCode: mapping.targetCode,
+              confidence: mapping.confidence,
+              action: mapping.action,
+            }))
+          return coaMappings.length > 0
+            ? { ...classification, coaMappings }
+            : classification
+        })
+        return {
+          filename: f.filename,
+          workbookProfile: f.workbookProfile,
+          classifications,
+        }
+      })
     setIsSavingTemplate(true)
     setTemplateSaveStatus(null)
     try {
@@ -551,6 +661,7 @@ export function MultiFileForm() {
             type="button"
             disabled={
               isProcessing ||
+              hasUnresolvedCoaReviews ||
               (hasConflicts && !forceOverride && !allConflictsResolved)
             }
             onClick={() => submit(true)}
@@ -689,6 +800,127 @@ export function MultiFileForm() {
             />
             <span>{t("conflict.forceOverride")}</span>
           </label>
+        </div>
+      )}
+
+      {previewResult && coaReviewItems.length > 0 && (
+        <div
+          className="rounded border border-amber-300 bg-amber-50 p-4 space-y-3"
+          data-testid="coa-review-banner"
+        >
+          <div>
+            <h3 className="font-semibold text-amber-900">
+              {t("coaReview.title", { n: coaReviewItems.length })}
+            </h3>
+            <p className="text-xs text-amber-800 mt-1">
+              {t("coaReview.description")}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-amber-200 text-left">
+                  <th className="py-1 pr-2">{t("coaReview.col.source")}</th>
+                  <th className="py-1 pr-2">{t("coaReview.col.reason")}</th>
+                  <th className="py-1 pr-2">{t("coaReview.col.decision")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coaReviewItems.map((item) => {
+                  const key = coaDecisionKey(
+                    item.filename,
+                    item.sheetName,
+                    item.sourceLabel,
+                  )
+                  const selected = coaDecisions[key]
+                  const selectedValue = !selected
+                    ? ""
+                    : selected.action === "skip"
+                      ? "__skip__"
+                      : selected.targetCode ?? ""
+                  return (
+                    <tr
+                      key={key}
+                      className="border-b border-amber-100 last:border-b-0"
+                    >
+                      <td className="py-1.5 pr-2 align-top">
+                        <div className="font-medium text-slate-900">
+                          {item.sourceLabel}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-500">
+                          {item.filename} · {item.sheetName} · {item.dataType}
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-2 align-top text-amber-900">
+                        {item.reason}
+                      </td>
+                      <td className="py-1.5 pr-2 align-top">
+                        <select
+                          value={selectedValue}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setCoaDecisions((prev) => {
+                              const next = { ...prev }
+                              if (!value) {
+                                delete next[key]
+                                return next
+                              }
+                              if (value === "__skip__") {
+                                next[key] = {
+                                  filename: item.filename,
+                                  sheetName: item.sheetName,
+                                  sourceLabel: item.sourceLabel,
+                                  targetCode: null,
+                                  confidence: 1,
+                                  action: "skip",
+                                }
+                                return next
+                              }
+                              const candidate = item.candidates.find(
+                                (c) => c.targetCode === value,
+                              )
+                              next[key] = {
+                                filename: item.filename,
+                                sheetName: item.sheetName,
+                                sourceLabel: item.sourceLabel,
+                                targetCode: value,
+                                confidence: candidate?.confidence ?? 1,
+                                action: "map",
+                              }
+                              return next
+                            })
+                          }}
+                          className="w-full min-w-[14rem] rounded border border-amber-200 bg-white px-2 py-1"
+                          data-testid={`coa-review-${encodeURIComponent(key)}`}
+                        >
+                          <option value="">{t("coaReview.pickPlaceholder")}</option>
+                          {item.candidates.map((candidate) => (
+                            <option
+                              key={candidate.targetCode}
+                              value={candidate.targetCode}
+                            >
+                              {t("coaReview.useCode", {
+                                code: candidate.targetCode,
+                                pct: Math.round(candidate.confidence * 100),
+                              })}
+                            </option>
+                          ))}
+                          <option value="__skip__">
+                            {t("coaReview.skipRow")}
+                          </option>
+                        </select>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {!hasUnresolvedCoaReviews && (
+            <p className="text-xs font-medium text-emerald-700">
+              {t("coaReview.allResolved")}
+            </p>
+          )}
         </div>
       )}
 

@@ -35,6 +35,7 @@ import {
   type RoleSignal,
   type SheetMap,
 } from "./sheet-routing"
+import type { SemanticCoaDecision } from "./adapter-registry"
 
 export type SheetDataType =
   | "PLF"
@@ -126,6 +127,8 @@ export interface SheetClassification {
   /** Per-sheet write-entity override from the config (e.g. the holding sentinel
    *  for a consolidated reporting-pack tab). Resolved to a code by the orchestrator. */
   entityCodeOverride?: string
+  /** Reviewer/template-approved no-code row mappings for this sheet. */
+  coaMappings?: SemanticCoaDecision[]
 }
 
 /** Decide whether a classified sheet is realized ACTUALs or a forward BUDGET. */

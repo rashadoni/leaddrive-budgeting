@@ -1371,6 +1371,74 @@ describe("runMultiFileImport", () => {
     expect(prisma.__txCallCount.n).toBe(0)
   })
 
+  it("blocks apply before transaction when semantic CoA review is required", async () => {
+    const prisma = stubPrisma({
+      companies: [{ id: "c1", code: "AZSEKER-CPC" }],
+    })
+    const client = stubClientPerCall([
+      [
+        {
+          sheetName: "PLF",
+          dataType: "PLF",
+          entityCode: "AZSEKER-CPC",
+          confidence: 0.95,
+          reasoning: "P&L",
+        },
+      ],
+    ])
+    const input: MultiFileImportInput = {
+      files: [{ filename: "nocode.xlsx", workbook: fakeWorkbook("PLF") }],
+      organizationId: "org1",
+      year: 2026,
+      knownEntityCodes: ["AZSEKER-CPC"],
+      dryRun: false,
+    }
+    const handler: AdapterHandler = async () => ({
+      summary: "needs CoA review",
+      itemCount: 0,
+      warnings: [],
+      semanticCoa: {
+        mappings: [],
+        reviewItems: [
+          {
+            dataType: "PLF",
+            sourceLabel: "Management fees",
+            reason: "No high-confidence P&L code match",
+            candidates: [
+              {
+                targetCode: "PLF.06.01.01",
+                accountType: "expense",
+                confidence: 0.7,
+                source: "standard-dictionary",
+                matchedLabel: "admin expenses",
+                reasoning: "similar expense label",
+              },
+            ],
+          },
+        ],
+      },
+      applyToDb: vi.fn(async () => ({ rowsInserted: 0 })),
+    })
+    const deps: MultiFileImportDependencies = {
+      prisma,
+      anthropicClient: client,
+      model: "m",
+      registry: buildRegistryWith({ PLF: handler }),
+      XLSX: fakeXLSX,
+    }
+
+    const result = await runMultiFileImport(input, deps)
+
+    expect(result.overallVerdict).toBe("red")
+    expect(result.perGroup).toEqual([])
+    expect(result.warnings.some((w) => /COA_REVIEW/.test(w))).toBe(true)
+    expect(prisma.__txCallCount.n).toBe(0)
+    expect(result.perFile[0].semanticCoa?.reviewItems[0]).toMatchObject({
+      sourceLabel: "Management fees",
+      sheetName: "PLF",
+    })
+  })
+
   it("adapter throws inside group tx → that group's writes roll back, others continue", async () => {
     // Simulate: 2 files, group A (descriptions) commits, group B (main-financial) throws.
     const prisma = stubPrisma({

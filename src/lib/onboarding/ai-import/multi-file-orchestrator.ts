@@ -85,7 +85,13 @@ import {
   detectCrossFileConflicts,
   type CrossFileConflict,
 } from "./conflict-detector"
-import type { AdapterRegistry, AdapterRunResult } from "./adapter-registry"
+import type {
+  AdapterRegistry,
+  AdapterRunResult,
+  AdapterSemanticCoaMapping,
+  AdapterSemanticCoaReviewItem,
+  SemanticCoaDecision,
+} from "./adapter-registry"
 import {
   reconcileAllSheets,
   decideAction,
@@ -216,6 +222,13 @@ export interface MultiFileImportInput {
     string,
     { mode: "pick"; filename: string } | { mode: "skip" }
   >
+  /** Reviewer decisions for low-confidence no-code CoA rows. */
+  semanticCoaMappings?: Array<
+    SemanticCoaDecision & {
+      filename: string
+      sheetName: string
+    }
+  >
 }
 
 export interface PerFileResult {
@@ -234,6 +247,10 @@ export interface PerFileResult {
   classifications: SheetClassification[]
   /** Sum maps the adapters declared during parse phase (no DB writes). */
   expectedSums: Map<ReconciliationKey, number>
+  semanticCoa?: {
+    mappings: Array<AdapterSemanticCoaMapping & { sheetName: string }>
+    reviewItems: Array<AdapterSemanticCoaReviewItem & { sheetName: string }>
+  }
   /** Set when a non-recoverable error stopped this file from being
    *  classified/parsed. The group it belongs to is treated as skipped. */
   error: string | null
@@ -474,6 +491,29 @@ function applyEntityInference(
   })
 }
 
+function semanticCoaDecisionsForSheet(
+  input: MultiFileImportInput,
+  filename: string,
+  cls: SheetClassification,
+): SemanticCoaDecision[] | undefined {
+  const decisions: SemanticCoaDecision[] = []
+  for (const mapping of cls.coaMappings ?? []) {
+    decisions.push(mapping)
+  }
+  for (const mapping of input.semanticCoaMappings ?? []) {
+    if (mapping.filename !== filename || mapping.sheetName !== cls.sheetName) {
+      continue
+    }
+    decisions.push({
+      sourceLabel: mapping.sourceLabel,
+      targetCode: mapping.targetCode,
+      confidence: mapping.confidence,
+      ...(mapping.action ? { action: mapping.action } : {}),
+    })
+  }
+  return decisions.length > 0 ? decisions : undefined
+}
+
 /** Run adapter parse phase for one file (no DB writes). Applies the per-sheet
  *  routing safety gates: skip derived/summary views, and resolve planKind —
  *  blocking (never guessing) an ambiguous plan-relevant sheet in a mixed
@@ -606,6 +646,7 @@ async function parseFileSheets(
         organizationId: input.organizationId,
         XLSX: deps.XLSX,
         targetPlanKind: effectivePlanKind,
+        semanticCoaMappings: semanticCoaDecisionsForSheet(input, filename, cls),
       })
       const expectedSums =
         (
@@ -877,6 +918,19 @@ export async function runMultiFileImport(
   // Build perFile result objects regardless of conflict outcome.
   const perFile: PerFileResult[] = input.files.map((f, i) => {
     const cr = classifyResults[i]
+    const records = perFileRecords.get(f.filename) ?? []
+    const semanticCoaMappings = records.flatMap((r) =>
+      (r.adapterResult?.semanticCoa?.mappings ?? []).map((mapping) => ({
+        ...mapping,
+        sheetName: r.classification.sheetName,
+      })),
+    )
+    const semanticCoaReviewItems = records.flatMap((r) =>
+      (r.adapterResult?.semanticCoa?.reviewItems ?? []).map((item) => ({
+        ...item,
+        sheetName: r.classification.sheetName,
+      })),
+    )
     return {
       filename: f.filename,
       workbookProfile: cr.workbookProfile,
@@ -884,6 +938,14 @@ export async function runMultiFileImport(
       fileTypeResult: fileTypeResults.get(f.filename)!,
       classifications: cr.classifications,
       expectedSums: perFileExpected.get(f.filename) ?? new Map(),
+      ...(semanticCoaMappings.length > 0 || semanticCoaReviewItems.length > 0
+        ? {
+            semanticCoa: {
+              mappings: semanticCoaMappings,
+              reviewItems: semanticCoaReviewItems,
+            },
+          }
+        : {}),
       error: cr.error,
       llmUsage: cr.usage,
     }
@@ -986,6 +1048,16 @@ export async function runMultiFileImport(
   // Gate A: ambiguous plan kind — parseFileSheets flagged blockedReason on a
   // plan-relevant sheet with no actual/budget signal in a mixed workbook.
   const blockedRecords = allRecords.filter((r) => r.blockedReason)
+  // Gate A2: no-code rows whose label could not be mapped confidently to CoA.
+  // These must be reviewed before apply; the adapter skips them in preview, but
+  // applying without an explicit decision would silently omit financial rows.
+  const semanticCoaReviewItems = allRecords.flatMap((r) =>
+    (r.adapterResult?.semanticCoa?.reviewItems ?? []).map((item) => ({
+      ...item,
+      filename: r.filename,
+      sheetName: r.classification.sheetName,
+    })),
+  )
   // Gate B: collision — ≥2 SOURCE sheets WITHIN ONE FILE writing the same
   // clean-slate scope (entity, dataType, planKind) overwrite each other. This
   // is the reporting-pack "EDEN BS = 4 rows" corruption: multiple BS views in
@@ -1081,11 +1153,16 @@ export async function runMultiFileImport(
 
   if (
     blockedRecords.length > 0 ||
+    semanticCoaReviewItems.length > 0 ||
     collisions.length > 0 ||
     incompletes.length > 0
   ) {
     const reasons = [
       ...blockedRecords.map((r) => `BLOCKED: ${r.blockedReason}`),
+      ...semanticCoaReviewItems.map(
+        (item) =>
+          `COA_REVIEW: ${item.filename} / "${item.sheetName}" label "${item.sourceLabel}" requires a confirmed CoA mapping before apply.`,
+      ),
       ...collisions.map(
         ([scope, rs]) =>
           `COLLISION: ${rs.length} source sheets target the same write scope [${scope}] — they would clean-slate each other (${rs

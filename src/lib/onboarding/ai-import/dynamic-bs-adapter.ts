@@ -15,7 +15,13 @@
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client"
-import type { AdapterRunInput, AdapterRunResult } from "./adapter-registry"
+import type {
+  AdapterRunInput,
+  AdapterRunResult,
+  AdapterSemanticCoaCandidate,
+  AdapterSemanticCoaMapping,
+  AdapterSemanticCoaReviewItem,
+} from "./adapter-registry"
 import { extractMapperInput } from "../ai-mapper/extract"
 import { getOrCreateProposal } from "../ai-mapper/proposal-cache"
 import { detectProposalYear } from "../ai-mapper/applier"
@@ -26,6 +32,13 @@ import {
   createCoACache,
   resolveOrCreateAccountId,
 } from "../upsert-chart-of-account"
+import {
+  findApprovedSemanticCoaDecision,
+  isDerivedFinancialLabel,
+  loadSemanticCoaAccounts,
+  rankSemanticCoaCandidates,
+  resolveSemanticCoaLabel,
+} from "./semantic-coa-mapper"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BS account classification (mirrors classifyBsLineType in azseker-workbook-bs.ts)
@@ -37,6 +50,19 @@ type BsSubType = "non_current" | "current" | "long_term" | "short_term" | null
 interface BsClassification {
   lineType: BsLineType
   subType: BsSubType
+}
+
+function toSemanticCoaCandidates(
+  matches: ReturnType<typeof rankSemanticCoaCandidates>,
+): AdapterSemanticCoaCandidate[] {
+  return matches.map((match) => ({
+    targetCode: match.code,
+    accountType: match.accountType,
+    confidence: match.confidence,
+    source: match.source,
+    matchedLabel: match.matchedLabel,
+    reasoning: match.reasoning,
+  }))
 }
 
 /**
@@ -126,6 +152,7 @@ interface PartialResolvedColumns {
   labelCol: number
   /** monthIndex (0-11) → source column index; sparse — only mapped months present */
   monthCols: Map<number, number>
+  semanticLabelFallback: boolean
 }
 
 function resolveColumnsPartial(
@@ -154,11 +181,18 @@ function resolveColumnsPartial(
     // role === "skip" → ignored
   }
 
-  if (codeCol === -1) return { ok: false, reason: 'No "code" column in proposal' }
   if (labelCol === -1) return { ok: false, reason: 'No "label" column in proposal' }
   if (monthCols.size === 0) return { ok: false, reason: "No month columns in proposal — sheet may be annual-only" }
 
-  return { ok: true, columns: { codeCol, labelCol, monthCols } }
+  return {
+    ok: true,
+    columns: {
+      codeCol: codeCol === -1 ? labelCol : codeCol,
+      labelCol,
+      monthCols,
+      semanticLabelFallback: codeCol === -1,
+    },
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,7 +205,7 @@ function resolveColumnsPartial(
  *
  * @param input      Standard adapter input (workbook, sheetName, XLSX, …).
  * @param planId     Budget-plan ID — resolved by the calling handler from OrgContext.
- * @param _prisma    Injected for future CoA lookups; not used in v1.
+ * @param prisma     Used for existing CoA label/code matches before static fallback.
  * @param companyId  Phase 7.O — optional company scope for per-entity resolver
  *                   queries (inventory, equity ratios, etc.). Pass null when
  *                   entityCode cannot be resolved to a company DB row.
@@ -179,8 +213,7 @@ function resolveColumnsPartial(
 export async function runDynamicBsAdapter(
   input: AdapterRunInput,
   planId: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _prisma: PrismaClient,
+  prisma: PrismaClient,
   companyId?: string | null,
 ): Promise<AdapterRunResult> {
   // ── Guard: cross-entity sheets have no entityCode ─────────────────────────
@@ -263,7 +296,8 @@ export async function runDynamicBsAdapter(
       applyToDb: async () => ({ rowsInserted: 0 }),
     }
   }
-  const { codeCol, labelCol, monthCols } = colsResult.columns
+  const { codeCol, labelCol, monthCols, semanticLabelFallback } =
+    colsResult.columns
 
   // ── 5. Detect effective year ───────────────────────────────────────────────
   const detectedYear = detectProposalYear(proposal.columns)
@@ -300,24 +334,146 @@ export async function runDynamicBsAdapter(
   // ── 7. Extract rows ───────────────────────────────────────────────────────
   const rows: BsImportRow[] = []
   const expectedSums = new Map<ReconciliationKey, number>()
+  const lineLabelByCode = new Map<string, string>()
+  const semanticAccounts = await loadSemanticCoaAccounts(
+    prisma,
+    input.organizationId,
+    "BS",
+  )
+  const semanticMatches: string[] = []
+  const semanticReview: string[] = []
+  const semanticCoaMappings: AdapterSemanticCoaMapping[] = []
+  const semanticCoaReviewItems: AdapterSemanticCoaReviewItem[] = []
+  const semanticMappedLabels = new Set<string>()
+  const semanticReviewLabels = new Set<string>()
 
   for (let r = headerEndRow; r < aoa.length; r++) {
     const row = aoa[r] ?? []
     const codeRaw = row[codeCol]
-    const code =
+    let code =
       typeof codeRaw === "string"
         ? codeRaw.trim()
         : typeof codeRaw === "number"
           ? String(codeRaw)
           : ""
-    if (!code) continue
-    if (!BS_LEAF_RE.test(code)) continue
-
-    const classification = bsAccountTypeLocal(code)
-    if (!classification) continue
-
     const labelRaw = row[labelCol]
     const label = typeof labelRaw === "string" ? labelRaw.trim() : code
+    if (!code && label) code = label
+    if (!code) continue
+    if (!BS_LEAF_RE.test(code)) {
+      if (!semanticLabelFallback && /^BS\./i.test(code)) continue
+      const approved = findApprovedSemanticCoaDecision(
+        label,
+        input.semanticCoaMappings,
+      )
+      if (approved) {
+        if (approved.action === "skip" || approved.targetCode === null) {
+          if (!semanticMappedLabels.has(label)) {
+            semanticMappedLabels.add(label)
+            semanticCoaMappings.push({
+              sourceLabel: label,
+              targetCode: null,
+              confidence: approved.confidence,
+              action: "skip",
+              source: "approved",
+              reasoning: `Approved decision skipped "${label}"`,
+            })
+          }
+          continue
+        }
+        if (BS_LEAF_RE.test(approved.targetCode)) {
+          code = approved.targetCode
+          if (!semanticMappedLabels.has(label)) {
+            semanticMappedLabels.add(label)
+            semanticCoaMappings.push({
+              sourceLabel: label,
+              targetCode: approved.targetCode,
+              confidence: approved.confidence,
+              action: "map",
+              source: "approved",
+              matchedLabel: label,
+              reasoning: `Approved decision mapped "${label}" to ${approved.targetCode}`,
+            })
+          }
+        } else {
+          if (!semanticReviewLabels.has(label)) {
+            semanticReviewLabels.add(label)
+            semanticReview.push(
+              `Dynamic BS semantic CoA review needed: "${label}" has invalid approved BS code "${approved.targetCode}"`,
+            )
+            semanticCoaReviewItems.push({
+              dataType: "BS",
+              sourceLabel: label,
+              reason: `Approved code "${approved.targetCode}" is not a valid Balance Sheet leaf code`,
+              candidates: toSemanticCoaCandidates(
+                rankSemanticCoaCandidates({
+                  dataType: "BS",
+                  label,
+                  accounts: semanticAccounts,
+                  minScore: 0.35,
+                  limit: 4,
+                }),
+              ),
+            })
+          }
+          continue
+        }
+      } else {
+        const semantic = resolveSemanticCoaLabel({
+          dataType: "BS",
+          label,
+          accounts: semanticAccounts,
+        })
+        if (!semantic) {
+          if (
+            label &&
+            !isDerivedFinancialLabel(label) &&
+            !semanticReviewLabels.has(label)
+          ) {
+            semanticReviewLabels.add(label)
+            semanticReview.push(
+              `Dynamic BS semantic CoA review needed: "${label}" did not confidently map to a BS code`,
+            )
+            semanticCoaReviewItems.push({
+              dataType: "BS",
+              sourceLabel: label,
+              reason: "No high-confidence Balance Sheet code match",
+              candidates: toSemanticCoaCandidates(
+                rankSemanticCoaCandidates({
+                  dataType: "BS",
+                  label,
+                  accounts: semanticAccounts,
+                  minScore: 0.35,
+                  limit: 4,
+                }),
+              ),
+            })
+          }
+          continue
+        }
+        code = semantic.code
+        if (!semanticMappedLabels.has(label)) {
+          semanticMappedLabels.add(label)
+          semanticMatches.push(
+            `Dynamic BS semantic CoA: "${label}" -> ${semantic.code} (${Math.round(
+              semantic.confidence * 100,
+            )}%, ${semantic.source})`,
+          )
+          semanticCoaMappings.push({
+            sourceLabel: label,
+            targetCode: semantic.code,
+            confidence: semantic.confidence,
+            action: "map",
+            source: semantic.source,
+            matchedLabel: semantic.matchedLabel,
+            reasoning: semantic.reasoning,
+          })
+        }
+      }
+    }
+    const classification = bsAccountTypeLocal(code)
+    if (!classification) continue
+    if (label) lineLabelByCode.set(code, label)
 
     // accountCode uses compound key: entityCode prefix + BS code
     const accountCode = `${input.entityCode}-${code}`
@@ -361,6 +517,11 @@ export async function runDynamicBsAdapter(
   const baseWarnings = [
     `Dynamic detection used, cache key hint: ${cacheKeyHint}`,
     cacheHit ? "(cache hit — no LLM cost)" : "(cache miss — LLM called)",
+    ...(semanticLabelFallback
+      ? ["No code column detected — semantic CoA mapper used labels as account keys"]
+      : []),
+    ...semanticMatches,
+    ...semanticReview,
     ...(proposal.overallConfidence < 0.7
       ? [`Confidence ${proposal.overallConfidence.toFixed(2)} < 0.70 — review imported rows`]
       : []),
@@ -380,6 +541,10 @@ export async function runDynamicBsAdapter(
     summary: `${rows.length} dynamic BS rows for ${input.entityCode} (conf=${proposal.overallConfidence.toFixed(2)}, sheet="${input.sheetName}")`,
     itemCount: rows.length,
     warnings: baseWarnings,
+    semanticCoa: {
+      mappings: semanticCoaMappings,
+      reviewItems: semanticCoaReviewItems,
+    },
     ...extra,
     applyToDb: async (tx: Prisma.TransactionClient) => {
       if (rows.length === 0) return { rowsInserted: 0 }
@@ -397,7 +562,7 @@ export async function runDynamicBsAdapter(
           code: lineCode,
           // Phase 2.1 session 3: BsImportRow no longer carries accountName
           // (dropped column); use accountCode as the default display name.
-          defaultName: r.accountCode,
+          defaultName: lineLabelByCode.get(lineCode) ?? r.accountCode,
           defaultAccountType: r.lineType,
         })
         accountIdByLineCode.set(lineCode, id)

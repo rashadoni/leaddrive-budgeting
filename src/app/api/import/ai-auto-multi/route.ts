@@ -44,7 +44,10 @@ import { checkBudget, recordUsage } from "@/lib/llm/cost-budget"
 import { getAnthropicClient, AI_MODEL } from "@/lib/ai/client"
 import { classifyAiError } from "@/lib/ai/ai-error"
 import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/production-adapter-registry"
-import { runMultiFileImport } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
+import {
+  runMultiFileImport,
+  type MultiFileImportInput,
+} from "@/lib/onboarding/ai-import/multi-file-orchestrator"
 import {
   REPORTING_PACK_SHEET_MAP,
   REPORTING_PACK_BUDGET_PLF_BLOCK_ENTITIES,
@@ -213,6 +216,73 @@ export async function POST(request: NextRequest) {
         {
           ok: false,
           error: `Invalid conflictResolutions JSON: ${err instanceof Error ? err.message : String(err)}`,
+        },
+        { status: 400 },
+      )
+    }
+  }
+
+  let semanticCoaMappings: MultiFileImportInput["semanticCoaMappings"] | undefined
+  const rawSemanticCoaMappings = form.get("semanticCoaMappings")
+  if (
+    typeof rawSemanticCoaMappings === "string" &&
+    rawSemanticCoaMappings.length > 0
+  ) {
+    try {
+      const parsed = JSON.parse(rawSemanticCoaMappings) as unknown
+      if (!Array.isArray(parsed)) {
+        return NextResponse.json(
+          { ok: false, error: "semanticCoaMappings must be an array" },
+          { status: 400 },
+        )
+      }
+      semanticCoaMappings = []
+      for (const [index, value] of parsed.entries()) {
+        const item = value as {
+          filename?: unknown
+          sheetName?: unknown
+          sourceLabel?: unknown
+          targetCode?: unknown
+          confidence?: unknown
+          action?: unknown
+        }
+        if (
+          typeof item.filename !== "string" ||
+          typeof item.sheetName !== "string" ||
+          typeof item.sourceLabel !== "string" ||
+          !(
+            typeof item.targetCode === "string" ||
+            item.targetCode === null
+          )
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `semanticCoaMappings[${index}] must include filename, sheetName, sourceLabel, and targetCode|string|null`,
+            },
+            { status: 400 },
+          )
+        }
+        const action =
+          item.action === "skip" || item.targetCode === null ? "skip" : "map"
+        semanticCoaMappings.push({
+          filename: item.filename,
+          sheetName: item.sheetName,
+          sourceLabel: item.sourceLabel,
+          targetCode: item.targetCode,
+          confidence:
+            typeof item.confidence === "number" &&
+            Number.isFinite(item.confidence)
+              ? Math.max(0, Math.min(1, item.confidence))
+              : 1,
+          action,
+        })
+      }
+    } catch (err) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid semanticCoaMappings JSON: ${err instanceof Error ? err.message : String(err)}`,
         },
         { status: 400 },
       )
@@ -513,6 +583,7 @@ export async function POST(request: NextRequest) {
         allowYellow,
         forceOverride,
         conflictResolutions,
+        semanticCoaMappings,
         // Apply only when caller asked explicitly. Default: preview-only
         // (dryRun=true) — matches the 2-step UX shipped in Tier 4.
         dryRun: !shouldApply,

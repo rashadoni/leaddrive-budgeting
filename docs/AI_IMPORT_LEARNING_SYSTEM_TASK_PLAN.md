@@ -134,7 +134,7 @@ Latest local benchmark after Task 3:
 
 ## Task 4 - Semantic CoA Mapper
 
-Status: todo
+Status: done
 
 Support P&L, Balance Sheet, and Cash Flow files that do not contain `PLF.*`, `BS.*`, or `CF.*` codes.
 
@@ -149,6 +149,31 @@ Acceptance:
 - High-confidence mappings can be prefilled.
 - Low-confidence mappings require confirmation before apply.
 - Confirmed mappings are reused on future imports.
+
+Implemented:
+- `src/lib/onboarding/ai-import/semantic-coa-mapper.ts`
+- PLF/BS/CF dynamic adapters now support no-code label fallback for leaf rows.
+- Existing CoA candidates are filtered to leaf write-target codes only; parent codes such as `PLF.01` / `BS.02` are skipped to avoid ambiguous writes.
+- Low-confidence no-code labels surface structured `semanticCoa.reviewItems` and block apply before any transaction.
+- AI Import multi-file UI renders a CoA review table with candidate dropdowns and skip-row decision.
+- `semanticCoaMappings` can be submitted on preview/apply and saved into approved template memory.
+- Saved templates replay confirmed CoA mappings before semantic matching.
+
+Verification:
+- `npx vitest run src/lib/onboarding/ai-import/semantic-coa-mapper.test.ts src/lib/onboarding/ai-import/dynamic-plf-adapter.test.ts src/lib/onboarding/ai-import/dynamic-bs-adapter.test.ts src/lib/onboarding/ai-import/dynamic-cf-adapter.test.ts src/lib/onboarding/ai-import/import-template-memory.test.ts src/lib/onboarding/ai-import/multi-file-orchestrator.test.ts 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx'`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T18-16-22-406Z.json`
+
+Latest local benchmark after Task 4:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T19-14-34-210Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 64.9 (Task 3: 63.8)
+- Human confirmations: 15 (Task 3: 14)
+- Conflicts: 0
+- Parsed: 5,902 items / 5,667 cells
+- No-code BS: 51 (+5 vs Task 3)
+- No-code CF: 61.6 (+15.6 vs Task 3)
+- No-code PL remains RED because generic `Revenue` / `Payroll` labels require explicit CoA confirmation in the current chart of accounts; the new review UI handles this instead of silently writing an ambiguous mapping.
 
 ## Task 5 - Entity Intelligence
 

@@ -288,6 +288,130 @@ describe("runDynamicPlfAdapter", () => {
     expect(runImportBatch).not.toHaveBeenCalled()
   })
 
+  it("no code column → semantic mapper imports common P&L labels", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue({
+      sourceFile: "",
+      sourceSheet: "",
+      columns: [],
+      sampleRows: [],
+      headerRowIndex: 0,
+    } as any)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: {
+        ...buildProposal(0.9),
+        columns: [
+          { sourceIndex: 0, role: "label" as const, confidence: 0.95, reasoning: "" },
+          ...MONTH_NAMES.map((m, i) => ({
+            sourceIndex: i + 1,
+            role: `amount:${m}` as `amount:${string}`,
+            confidence: 0.9,
+            reasoning: "",
+          })),
+        ],
+      },
+      cacheHit: false,
+      usage: { inputTokens: 100, outputTokens: 50, modelName: "m", promptVersion: "v" },
+    })
+    vi.mocked(runImportBatch).mockResolvedValue({
+      metrics: { rowsInserted: 3, resetArchived: 0, resetPurged: 0 },
+      reconciliation: { verdict: "green", checks: [] },
+    } as any)
+
+    const noCodeAoa = [
+      ["Line", ...MONTH_NAMES],
+      ["Revenue", 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      ["Raw materials", -40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      ["Admin expenses", -10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      ["EBITDA", 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ]
+
+    const result = await runDynamicPlfAdapter(
+      makeFakeInput({
+        workbook: makeFakeWorkbook(noCodeAoa),
+        XLSX: makeFakeXLSX(noCodeAoa),
+      }),
+      "plan_1",
+      "company_1",
+      FAKE_PRISMA,
+    )
+
+    expect(result.itemCount).toBe(3)
+    expect(result.semanticCoa?.mappings.map((m) => m.targetCode)).toEqual([
+      "PLF.01.01.01",
+      "PLF.02.01.01",
+      "PLF.06.01.01",
+    ])
+    expect(result.semanticCoa?.reviewItems).toEqual([])
+
+    await result.applyToDb(FAKE_TX)
+    const rows = vi.mocked(runImportBatch).mock.calls[0][1].rows as any[]
+    expect(rows.map((r) => r.category)).toEqual([
+      "TEST-CPC-PLF.01.01.01",
+      "TEST-CPC-PLF.02.01.01",
+      "TEST-CPC-PLF.06.01.01",
+    ])
+  })
+
+  it("approved semantic CoA decision maps a custom no-code label", async () => {
+    vi.mocked(extractMapperInput).mockReturnValue({
+      sourceFile: "",
+      sourceSheet: "",
+      columns: [],
+      sampleRows: [],
+      headerRowIndex: 0,
+    } as any)
+    vi.mocked(getOrCreateProposal).mockResolvedValue({
+      proposal: {
+        ...buildProposal(0.9),
+        columns: [
+          { sourceIndex: 0, role: "label" as const, confidence: 0.95, reasoning: "" },
+          ...MONTH_NAMES.map((m, i) => ({
+            sourceIndex: i + 1,
+            role: `amount:${m}` as `amount:${string}`,
+            confidence: 0.9,
+            reasoning: "",
+          })),
+        ],
+      },
+      cacheHit: true,
+      usage: { inputTokens: 0, outputTokens: 0, modelName: "m", promptVersion: "v" },
+    })
+    vi.mocked(runImportBatch).mockResolvedValue({
+      metrics: { rowsInserted: 1, resetArchived: 0, resetPurged: 0 },
+      reconciliation: { verdict: "green", checks: [] },
+    } as any)
+
+    const noCodeAoa = [
+      ["Line", ...MONTH_NAMES],
+      ["Management fees", -700, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    ]
+    const result = await runDynamicPlfAdapter(
+      makeFakeInput({
+        workbook: makeFakeWorkbook(noCodeAoa),
+        XLSX: makeFakeXLSX(noCodeAoa),
+        semanticCoaMappings: [
+          {
+            sourceLabel: "Management fees",
+            targetCode: "PLF.06.01.01",
+            confidence: 1,
+            action: "map",
+          },
+        ],
+      }),
+      "plan_1",
+      "company_1",
+      FAKE_PRISMA,
+    )
+
+    expect(result.itemCount).toBe(1)
+    expect(result.semanticCoa?.mappings[0]).toMatchObject({
+      sourceLabel: "Management fees",
+      targetCode: "PLF.06.01.01",
+      source: "approved",
+    })
+    expect(result.semanticCoa?.reviewItems).toEqual([])
+  })
+
   // ── 6. Account type classification ───────────────────────────────────────
 
   it("PLF.10 skipped; PLF.01→revenue, PLF.02→cogs, PLF.05→expense", async () => {

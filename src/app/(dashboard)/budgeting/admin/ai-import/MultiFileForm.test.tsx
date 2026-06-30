@@ -541,6 +541,100 @@ describe("MultiFileForm", () => {
     )
   })
 
+  it("CoA review selection enables apply and sends semanticCoaMappings", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "nocode.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [],
+          semanticCoa: {
+            mappings: [],
+            reviewItems: [
+              {
+                sheetName: "PL",
+                dataType: "PLF",
+                sourceLabel: "Management fees",
+                reason: "No high-confidence P&L code match",
+                candidates: [
+                  {
+                    targetCode: "PLF.06.01.01",
+                    accountType: "expense",
+                    confidence: 0.7,
+                    source: "standard-dictionary",
+                    matchedLabel: "admin expenses",
+                    reasoning: "similar expense label",
+                  },
+                ],
+              },
+            ],
+          },
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "red",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "applied",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("nocode.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("coa-review-banner")).toBeTruthy()
+    })
+    const applyBtn = screen.getByTestId("btn-apply") as HTMLButtonElement
+    expect(applyBtn.disabled).toBe(true)
+
+    const select = screen
+      .getByTestId("coa-review-banner")
+      .querySelector("select") as HTMLSelectElement
+    fireEvent.change(select, { target: { value: "PLF.06.01.01" } })
+    expect(applyBtn.disabled).toBe(false)
+    fireEvent.click(applyBtn)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const body = (fetchMock.mock.calls[1] as [string, RequestInit])[1]
+      .body as FormData
+    expect(body.get("semanticCoaMappings")).toBe(
+      JSON.stringify([
+        {
+          filename: "nocode.xlsx",
+          sheetName: "PL",
+          sourceLabel: "Management fees",
+          targetCode: "PLF.06.01.01",
+          confidence: 0.7,
+          action: "map",
+        },
+      ]),
+    )
+  })
+
   it("Apply click POSTs with apply=1 + renders per-group results", async () => {
     mockFetchOnce(200, {
       ok: true,
