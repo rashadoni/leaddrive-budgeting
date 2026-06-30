@@ -79,41 +79,44 @@ const navItems: NavItem[] = [
 
 const topLevelAdminToolHrefs = new Set(["/budgeting/admin/ai-import"])
 
-// Budget sub-navigation groups
+// Budget sub-navigation groups.
+// 2026-06-30 (UX P1-2b): group headers + item labels moved to i18n keys (the
+// `nav.*` namespace) — they were hardcoded English and rendered untranslated on
+// RU/AZ locales (the "Büdcə + English submenu" mix the user flagged).
 const budgetSubNav = [
   {
-    group: "Finance",
+    groupKey: "navGroupFinance",
     items: [
-      { value: "pnl-report", icon: BarChart2, label: "P&L" },
-      { value: "sales-budget", icon: TrendingUp, label: "Sales" },
-      { value: "cogs", icon: DollarSign, label: "COGS" },
-      { value: "balance-sheet", icon: List, label: "Balance Sheet" },
-      { value: "cash-flow", icon: Banknote, label: "Cash Flow" },
-      { value: "assumptions", icon: Target, label: "Assumptions" },
+      { value: "pnl-report", icon: BarChart2, labelKey: "navPnl" },
+      { value: "sales-budget", icon: TrendingUp, labelKey: "navSales" },
+      { value: "cogs", icon: DollarSign, labelKey: "navCogs" },
+      { value: "balance-sheet", icon: List, labelKey: "navBalanceSheet" },
+      { value: "cash-flow", icon: Banknote, labelKey: "navCashFlow" },
+      { value: "assumptions", icon: Target, labelKey: "navAssumptions" },
     ],
   },
   {
-    group: "Planning",
+    groupKey: "navGroupPlanning",
     items: [
-      { value: "workspace", icon: LayoutGrid, label: "Workspace" },
-      { value: "pl", icon: BarChart2, label: "P&L (Plan)" },
-      { value: "forecast", icon: Brain, label: "Forecast" },
-      { value: "comparison", icon: ChevronRight, label: "Comparison" },
-      { value: "plans", icon: FileSpreadsheet, label: "Plans" },
+      { value: "workspace", icon: LayoutGrid, labelKey: "navWorkspace" },
+      { value: "pl", icon: BarChart2, labelKey: "navPnlPlan" },
+      { value: "forecast", icon: Brain, labelKey: "navForecast" },
+      { value: "comparison", icon: ChevronRight, labelKey: "navComparison" },
+      { value: "plans", icon: FileSpreadsheet, labelKey: "navPlans" },
     ],
   },
   {
-    group: "Forecasts",
+    groupKey: "navGroupForecasts",
     items: [
-      { value: "sales-forecast", icon: TrendingUp, label: "Sales" },
-      { value: "expense-forecast", icon: TrendingDown, label: "Expenses" },
-      { value: "rolling", icon: CalendarRange, label: "Rolling" },
+      { value: "sales-forecast", icon: TrendingUp, labelKey: "navSales" },
+      { value: "expense-forecast", icon: TrendingDown, labelKey: "navExpenses" },
+      { value: "rolling", icon: CalendarRange, labelKey: "navRolling" },
     ],
   },
   {
-    group: "Analytics",
+    groupKey: "navGroupAnalytics",
     items: [
-      { value: "report-builder", icon: BarChart3, label: "Report Builder", isPage: true },
+      { value: "report-builder", icon: BarChart3, labelKey: "navReportBuilder", isPage: true },
     ],
   },
   {
@@ -122,9 +125,9 @@ const budgetSubNav = [
     // scattered import entry-point — import lives under Onboarding + Admin →
     // AI Import only. The whole Admin group moved out of here into the Admin
     // top-level row (which expands to the 5 ADMIN_GROUPS — single source).
-    group: "Settings",
+    groupKey: "navGroupSettings",
     items: [
-      { value: "config", icon: Settings2, label: "Configuration" },
+      { value: "config", icon: Settings2, labelKey: "navConfiguration" },
     ],
   },
 ]
@@ -275,9 +278,9 @@ export function Sidebar() {
                 <div className="mt-1 ml-2 space-y-3 border-l border-white/10 pl-2">
                   {budgetSubNav
                     .map((group) => (
-                      <div key={group.group}>
+                      <div key={group.groupKey}>
                         <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
-                          {group.group}
+                          {t(group.groupKey as never)}
                         </p>
                         {group.items.map((sub) => {
                           // Planner tabs only now (admin moved to its own row):
@@ -302,7 +305,7 @@ export function Sidebar() {
                               )}
                             >
                               <sub.icon className="h-3.5 w-3.5 shrink-0" />
-                              {sub.label}
+                              {t(sub.labelKey as never)}
                             </Link>
                           )
                         })}
