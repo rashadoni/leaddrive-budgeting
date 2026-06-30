@@ -177,7 +177,7 @@ Latest local benchmark after Task 4:
 
 ## Task 5 - Entity Intelligence
 
-Status: todo
+Status: done
 
 Improve company/holding/elimination routing.
 
@@ -192,6 +192,31 @@ Acceptance:
 - Common aliases route automatically after approval.
 - Elimination rows/sheets default to skip, not company write.
 - Holding-consolidated guesses remain review-grade unless template-approved.
+
+Implemented:
+- `src/app/api/import/entity-aliases/route.ts` admin API for UI-managed alias dictionary stored in `Organization.settings.entityAliases`.
+- AI Import multi-file UI now has an Entity Aliases panel for loading, adding, removing, and saving alias -> company mappings without leaving the import screen.
+- Entity alias normalization is shared via `src/lib/onboarding/ai-import/entity-alias-utils.ts`.
+- Entity matching now covers filename, repeated cells, BU columns, and title/header rows (`header-scan`).
+- EJE/AJE/Elim/Consolidation-style BU values are treated as skipped blocks, not company targets.
+- General sheet routing now treats EJE/AJE/elimination/intercompany/intragroup tab names as `derived_summary`.
+- Multi-BU split responses now include a visible routing grid with write vs skip rows and skip reason.
+- Existing holding-consolidated inference remains review-grade and is not auto-written by the orchestrator unless a saved template already approved the sheet classification.
+
+Verification:
+- `npx vitest run src/lib/onboarding/ai-import/entity-inference.test.ts src/lib/onboarding/ai-import/bu-column-split.test.ts src/lib/onboarding/ai-import/sheet-routing.test.ts 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx'`
+- `npx vitest run src/lib/onboarding/ai-import/multi-file-orchestrator.test.ts src/app/api/import/ai-auto-multi/handler.test.ts src/lib/onboarding/ai-import/import-template-memory.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T19-14-34-210Z.json`
+
+Latest local benchmark after Task 5:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T19-40-22-476Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 64.9 (Task 4: 64.9)
+- Human confirmations: 15 (Task 4: 15)
+- Conflicts: 0
+- Parsed: 5,902 items / 5,667 cells
+- No benchmark regression; Task 5 improvements are primarily safety/UX/entity-routing coverage and are covered by focused tests.
 
 ## Task 6 - Guided Fix UI
 

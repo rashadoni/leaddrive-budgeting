@@ -190,6 +190,19 @@ interface MultiFileApiResponse {
    *  by the preview card to render confidence + affected-indicator list
    *  per classified sheet. */
   sheetImpactsByFilename?: Record<string, SheetImpact[]>
+  buColumnSplits?: Array<{
+    filename: string
+    sheetName: string
+    mapping: Array<{
+      sheetName: string
+      entityCode: string | null
+      buValue: string
+      rowCount: number
+      action: "write" | "skip"
+      reason?: "elimination" | "unknown_alias"
+    }>
+    warnings: string[]
+  }>
 }
 
 interface CoaDecision {
@@ -199,6 +212,25 @@ interface CoaDecision {
   targetCode: string | null
   confidence: number
   action: "map" | "skip"
+}
+
+interface EntityAliasCompany {
+  code: string
+  name: string | null
+  level?: number | null
+}
+
+interface EntityAliasRow {
+  alias: string
+  code: string
+}
+
+interface EntityAliasesApiResponse {
+  ok: boolean
+  aliases?: Record<string, string>
+  companies?: EntityAliasCompany[]
+  rejected?: string[]
+  error?: string
 }
 
 const MAX_FILES = 10
@@ -322,6 +354,13 @@ export function MultiFileForm() {
   const [coaDecisions, setCoaDecisions] = useState<Record<string, CoaDecision>>(
     {},
   )
+  const [aliasEditorOpen, setAliasEditorOpen] = useState(false)
+  const [aliasRows, setAliasRows] = useState<EntityAliasRow[]>([])
+  const [aliasCompanies, setAliasCompanies] = useState<EntityAliasCompany[]>([])
+  const [aliasesLoaded, setAliasesLoaded] = useState(false)
+  const [isLoadingAliases, setIsLoadingAliases] = useState(false)
+  const [isSavingAliases, setIsSavingAliases] = useState(false)
+  const [aliasStatus, setAliasStatus] = useState<string | null>(null)
   // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
   // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
   //   { mode: "pick", filename: <filename to win> }  — use that file's value
@@ -359,6 +398,7 @@ export function MultiFileForm() {
     hasConflicts &&
     (previewResult?.conflicts ?? []).every((c) => resolutions[c.key])
   const activeTemplate = previewResult?.templateUsage?.template
+  const buRoutingSplits = previewResult?.buColumnSplits ?? []
   const canSaveTemplate =
     !!previewResult &&
     previewResult.overallVerdict === "green" &&
@@ -409,6 +449,81 @@ export function MultiFileForm() {
     setCoaDecisions({})
     if (inputRef.current) inputRef.current.value = ""
     window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  async function loadEntityAliases(): Promise<void> {
+    setIsLoadingAliases(true)
+    setAliasStatus(null)
+    try {
+      const res = await fetch("/api/import/entity-aliases")
+      const data = (await res.json()) as EntityAliasesApiResponse
+      if (!res.ok || !data.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+      const aliases = data.aliases ?? {}
+      setAliasRows(
+        Object.entries(aliases)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([alias, code]) => ({ alias, code })),
+      )
+      setAliasCompanies(data.companies ?? [])
+      setAliasesLoaded(true)
+      setAliasStatus(t("aliases.loaded", { n: Object.keys(aliases).length }))
+    } catch (err) {
+      setAliasStatus(
+        t("aliases.error", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+      )
+    } finally {
+      setIsLoadingAliases(false)
+    }
+  }
+
+  function aliasRowsToMap(): Record<string, string> {
+    const out: Record<string, string> = {}
+    for (const row of aliasRows) {
+      const alias = row.alias.trim().toUpperCase().replace(/\s+/g, " ")
+      const code = row.code.trim()
+      if (alias && code) out[alias] = code
+    }
+    return out
+  }
+
+  async function saveEntityAliases(): Promise<void> {
+    setIsSavingAliases(true)
+    setAliasStatus(null)
+    try {
+      const res = await fetch("/api/import/entity-aliases", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aliases: aliasRowsToMap() }),
+      })
+      const data = (await res.json()) as EntityAliasesApiResponse
+      if (!res.ok || !data.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+      const aliases = data.aliases ?? {}
+      setAliasRows(
+        Object.entries(aliases)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([alias, code]) => ({ alias, code })),
+      )
+      setAliasCompanies(data.companies ?? aliasCompanies)
+      const rejected = data.rejected?.length
+        ? ` ${t("aliases.rejected", { n: data.rejected.length })}`
+        : ""
+      setAliasStatus(
+        `${t("aliases.saved", { n: Object.keys(aliases).length })}${rejected}`,
+      )
+      setAliasesLoaded(true)
+      setPreviewResult(null)
+      setApplyResult(null)
+    } catch (err) {
+      setAliasStatus(
+        t("aliases.error", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+      )
+    } finally {
+      setIsSavingAliases(false)
+    }
   }
 
   async function submit(apply: boolean): Promise<void> {
@@ -558,6 +673,159 @@ export function MultiFileForm() {
 
   return (
     <div className="space-y-6">
+      <div
+        className="rounded-lg border border-slate-200 bg-white p-4 text-sm"
+        data-testid="entity-aliases-panel"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-900">
+              {t("aliases.title")}
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              {t("aliases.description")}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextOpen = !aliasEditorOpen
+              setAliasEditorOpen(nextOpen)
+              if (nextOpen && !aliasesLoaded && !isLoadingAliases) {
+                void loadEntityAliases()
+              }
+            }}
+            className="rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            data-testid="btn-toggle-aliases"
+          >
+            {aliasEditorOpen ? t("aliases.close") : t("aliases.open")}
+          </button>
+        </div>
+        {aliasEditorOpen && (
+          <div className="mt-4 space-y-3" data-testid="entity-aliases-editor">
+            {isLoadingAliases ? (
+              <p className="text-xs text-slate-500">{t("aliases.loading")}</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto rounded border border-slate-200">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 text-left text-slate-600">
+                      <tr>
+                        <th className="px-2 py-1.5">{t("aliases.col.alias")}</th>
+                        <th className="px-2 py-1.5">{t("aliases.col.company")}</th>
+                        <th className="px-2 py-1.5 text-right">{t("aliases.col.action")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {aliasRows.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={3}
+                            className="px-2 py-3 text-center text-slate-400"
+                          >
+                            {t("aliases.empty")}
+                          </td>
+                        </tr>
+                      )}
+                      {aliasRows.map((row, idx) => (
+                        <tr key={`${row.alias}-${idx}`} className="border-t">
+                          <td className="px-2 py-1.5">
+                            <input
+                              value={row.alias}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setAliasRows((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx ? { ...r, alias: value } : r,
+                                  ),
+                                )
+                              }}
+                              className="w-full min-w-[9rem] rounded border border-slate-200 px-2 py-1"
+                              placeholder={t("aliases.aliasPlaceholder")}
+                              data-testid={`entity-alias-input-${idx}`}
+                            />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select
+                              value={row.code}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                setAliasRows((prev) =>
+                                  prev.map((r, i) =>
+                                    i === idx ? { ...r, code: value } : r,
+                                  ),
+                                )
+                              }}
+                              className="w-full min-w-[14rem] rounded border border-slate-200 bg-white px-2 py-1"
+                              data-testid={`entity-alias-company-${idx}`}
+                            >
+                              <option value="">{t("aliases.companyPlaceholder")}</option>
+                              {aliasCompanies.map((company) => (
+                                <option key={company.code} value={company.code}>
+                                  {company.name
+                                    ? `${company.name} (${company.code})`
+                                    : company.code}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5 text-right">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAliasRows((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                              className="rounded px-2 py-1 text-slate-500 hover:bg-red-50 hover:text-red-700"
+                              data-testid={`entity-alias-remove-${idx}`}
+                            >
+                              {t("aliases.remove")}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setAliasRows((prev) => [
+                        ...prev,
+                        { alias: "", code: aliasCompanies[0]?.code ?? "" },
+                      ])
+                    }
+                    className="rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    data-testid="btn-add-alias"
+                  >
+                    {t("aliases.add")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingAliases}
+                    onClick={saveEntityAliases}
+                    className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-800"
+                    data-testid="btn-save-aliases"
+                  >
+                    {isSavingAliases ? t("aliases.saving") : t("aliases.save")}
+                  </button>
+                  {aliasStatus && (
+                    <span
+                      className="text-xs text-slate-500"
+                      data-testid="entity-alias-status"
+                    >
+                      {aliasStatus}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Drop zone */}
       <div
         data-testid="multi-drop-zone"
@@ -921,6 +1189,78 @@ export function MultiFileForm() {
               {t("coaReview.allResolved")}
             </p>
           )}
+        </div>
+      )}
+
+      {previewResult && buRoutingSplits.length > 0 && (
+        <div
+          className="rounded border border-cyan-200 bg-cyan-50 p-4 space-y-3"
+          data-testid="bu-routing-grid"
+        >
+          <div>
+            <h3 className="font-semibold text-cyan-900">
+              {t("routing.title", { n: buRoutingSplits.length })}
+            </h3>
+            <p className="mt-1 text-xs text-cyan-800">
+              {t("routing.description")}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cyan-200 text-left">
+                  <th className="py-1 pr-2">{t("routing.col.source")}</th>
+                  <th className="py-1 pr-2">{t("routing.col.bu")}</th>
+                  <th className="py-1 pr-2">{t("routing.col.target")}</th>
+                  <th className="py-1 pr-2 text-right">{t("routing.col.rows")}</th>
+                  <th className="py-1 pr-2">{t("routing.col.action")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {buRoutingSplits.flatMap((split) =>
+                  split.mapping.map((row, idx) => (
+                    <tr
+                      key={`${split.filename}-${split.sheetName}-${row.buValue}-${idx}`}
+                      className="border-b border-cyan-100 last:border-b-0"
+                    >
+                      <td className="py-1.5 pr-2 align-top">
+                        <div className="font-medium text-slate-900">
+                          {split.sheetName}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-500">
+                          {split.filename}
+                        </div>
+                      </td>
+                      <td className="py-1.5 pr-2 align-top font-mono">
+                        {row.buValue}
+                      </td>
+                      <td className="py-1.5 pr-2 align-top font-mono">
+                        {row.entityCode ?? "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 align-top text-right">
+                        {row.rowCount.toLocaleString()}
+                      </td>
+                      <td className="py-1.5 pr-2 align-top">
+                        <span
+                          className={`rounded px-1.5 py-0.5 font-medium ${
+                            row.action === "write"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-orange-100 text-orange-800"
+                          }`}
+                        >
+                          {row.action === "write"
+                            ? t("routing.write")
+                            : row.reason === "elimination"
+                              ? t("routing.skipElim")
+                              : t("routing.skipUnknown")}
+                        </span>
+                      </td>
+                    </tr>
+                  )),
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

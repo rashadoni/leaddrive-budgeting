@@ -430,9 +430,11 @@ export async function POST(request: NextRequest) {
     sheetName: string
     mapping: Array<{
       sheetName: string
-      entityCode: string
+      entityCode: string | null
       buValue: string
       rowCount: number
+      action: "write" | "skip"
+      reason?: "elimination" | "unknown_alias"
     }>
     warnings: string[]
   }> = []

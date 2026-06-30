@@ -3007,6 +3007,29 @@
         "updated": "“{name}” şablonu v{version}-a yeniləndi.",
         "saveError": "Şablon saxlanmadı: {msg}"
       },
+      "aliases": {
+        "title": "Şirkət aliasları",
+        "description": "Müştərinin qısaltmalarını AI Import-a bir dəfə öyrədin: sonra filenames, headers, cells və BU columns avtomatik yönləndiriləcək.",
+        "open": "Aliasları idarə et",
+        "close": "Aliasları gizlət",
+        "loading": "Aliaslar yüklənir...",
+        "loaded": "{n} alias yükləndi.",
+        "saved": "{n} alias saxlandı.",
+        "saving": "Saxlanır...",
+        "save": "Aliasları saxla",
+        "add": "Alias əlavə et",
+        "remove": "Sil",
+        "empty": "Hələ saxlanmış alias yoxdur.",
+        "error": "Alias yenilənmədi: {msg}",
+        "rejected": "{n} rədd edildi",
+        "aliasPlaceholder": "məs. CPC, AZSF, EDEN",
+        "companyPlaceholder": "Şirkət seçin",
+        "col": {
+          "alias": "Fayldakı alias",
+          "company": "Hədəf şirkət",
+          "action": "Əməl"
+        }
+      },
       "conflict": {
         "title": "🚫 Fayllar arası konflikt — {n} xana fərqlidir",
         "description": "İki və ya daha çox fayl eyni xana üçün fərqli dəyərlər göstərir. İdxal konflikt həll olunana qədər bloklanıb.",
@@ -3035,6 +3058,20 @@
         "useCode": "{code} ilə bağla ({pct}%)",
         "skipRow": "bu sətri atla",
         "allResolved": "✓ Bütün CoA sətirləri həll olundu — preview-u yenidən hesablayın və ya tətbiq edin."
+      },
+      "routing": {
+        "title": "Şirkət yönləndirməsi — {n} split vərəq",
+        "description": "BU-column vərəqləri importdan əvvəl bölündü. Write sətirləri göstərilən şirkətə gedir; elimination/unknown blokları atlanır.",
+        "write": "yaz",
+        "skipElim": "elimination atla",
+        "skipUnknown": "unknown atla",
+        "col": {
+          "source": "Mənbə vərəqi",
+          "bu": "BU dəyəri",
+          "target": "Hədəf",
+          "rows": "Sətir",
+          "action": "Əməl"
+        }
       },
       "preview": {
         "title": "Faylların analizi",

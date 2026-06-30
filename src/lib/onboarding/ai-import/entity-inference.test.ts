@@ -3,7 +3,9 @@ import {
   inferEntities,
   buildEntityAliasMap,
   scanDominantEntity,
+  scanHeaderEntity,
   scanStatementEntities,
+  isEliminationLikeEntityValue,
   type EntityInferenceSheet,
 } from "./entity-inference"
 
@@ -36,6 +38,11 @@ describe("buildEntityAliasMap", () => {
   it("explicit aliases override derived ones", () => {
     const m = buildEntityAliasMap(known, { Guvven: "AZSEKER-CPC" })
     expect(m["GUVVEN"]).toBe("AZSEKER-CPC")
+  })
+
+  it("normalizes explicit aliases before storing them", () => {
+    const m = buildEntityAliasMap(known, { " az sf ": "AZSEKER-AZSF" })
+    expect(m["AZ SF"]).toBe("AZSEKER-AZSF")
   })
 })
 
@@ -248,6 +255,29 @@ describe("scanDominantEntity (cell content scan)", () => {
   })
 })
 
+describe("scanHeaderEntity", () => {
+  const aliasMap = buildEntityAliasMap(known, { Guvven: "AZSEKER-CPC" })
+
+  it("resolves a single entity from title/header text", () => {
+    const rows = [
+      ["Guvven CPC P&L Actual 2026"],
+      ["Code", "Name", "Jan", "Feb"],
+      ["PLF.01", "Revenue", 1, 2],
+    ]
+    expect(scanHeaderEntity(rows, aliasMap)?.entityCode).toBe("AZSEKER-CPC")
+  })
+
+  it("returns null when headers mention multiple entities", () => {
+    const rows = [["CPC vs EDEN"], ["Code", "Jan"]]
+    expect(scanHeaderEntity(rows, aliasMap)).toBeNull()
+  })
+
+  it("does not treat elimination headers as entity aliases", () => {
+    expect(isEliminationLikeEntityValue("EJE")).toBe(true)
+    expect(scanHeaderEntity([["EJE elimination"]], aliasMap)).toBeNull()
+  })
+})
+
 describe("scanStatementEntities", () => {
   const aliasMap = buildEntityAliasMap(known, { AZSF: "AZSEKER" })
   const rowsByName: Record<string, unknown[][]> = {
@@ -299,6 +329,23 @@ describe("scanStatementEntities", () => {
     }
     const sheets: EntityInferenceSheet[] = [sheet("PLF Consolidated", "PLF")]
     expect(scanStatementEntities(sheets, (n) => rows[n] ?? [], aliasMap)).toEqual([])
+  })
+
+  it("resolves an entity-less statement from a single header alias", () => {
+    const rows: Record<string, unknown[][]> = {
+      "PLF": [
+        ["Actual P&L for EDEN"],
+        ["Code", "Name", "Jan"],
+        ["PLF.01.01", "Revenue", 1],
+      ],
+    }
+    const sheets: EntityInferenceSheet[] = [sheet("PLF", "PLF")]
+    const res = scanStatementEntities(sheets, (n) => rows[n] ?? [], aliasMap)
+    expect(res).toHaveLength(1)
+    expect(res[0]).toMatchObject({
+      entityCode: "AZSEKER-EDEN",
+      inferredBy: "header-scan",
+    })
   })
 })
 

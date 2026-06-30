@@ -99,6 +99,19 @@ describe("splitByBuColumn", () => {
     expect(blocks.map((b) => b.entityCode)).toEqual(["AZSEKER-CPC", null, "AZSEKER-EDEN"])
   })
 
+  it("marks EJE/AJE/elimination BU values as skipped blocks", () => {
+    const wb = wbWith(
+      "PLF Actual 2025",
+      makeConsolidated([["CPC", 4], ["EJE", 4], ["EDEN", 4]]),
+    )
+    const { blocks } = splitByBuColumn(wb, "PLF Actual 2025", XLSX, aliasMap)
+    expect(blocks.map((b) => [b.buValue, b.entityCode, b.skipReason])).toEqual([
+      ["CPC", "AZSEKER-CPC", undefined],
+      ["EJE", null, "elimination"],
+      ["EDEN", "AZSEKER-EDEN", undefined],
+    ])
+  })
+
   it("filters a too-short stray block (< minBlockRows)", () => {
     const wb = wbWith(
       "PLF Actual 2025",
@@ -154,6 +167,37 @@ describe("applyBuColumnSplit", () => {
     expect(res.applied).toBe(true)
     expect(res.sheetMapEntries.map((e) => e.entityCode)).toEqual(["AZSEKER-CPC", "AZSEKER-EDEN"])
     expect(res.warnings.some((w) => w.includes("HORIZON"))).toBe(true)
+    expect(res.mapping.some((m) => m.action === "skip" && m.reason === "unknown_alias")).toBe(true)
+    expect(wb.SheetNames).not.toContain("PLF Actual 2025")
+  })
+
+  it("splits one known entity plus an EJE block so elimination rows are skipped", () => {
+    const wb = wbWith("PLF Actual 2025", makeConsolidated([["CPC", 5], ["EJE", 5]]))
+    const res = applyBuColumnSplit(wb, XLSX, {
+      sheetName: "PLF Actual 2025",
+      dataType: "PLF",
+      planKind: "actual",
+      aliasMap,
+    })
+    expect(res.applied).toBe(true)
+    expect(res.sheetMapEntries).toHaveLength(1)
+    expect(res.mapping).toEqual([
+      {
+        sheetName: "PLF Actual 2025 [AZSEKER-CPC]",
+        entityCode: "AZSEKER-CPC",
+        buValue: "CPC",
+        rowCount: 5,
+        action: "write",
+      },
+      {
+        sheetName: "PLF Actual 2025",
+        entityCode: null,
+        buValue: "EJE",
+        rowCount: 5,
+        action: "skip",
+        reason: "elimination",
+      },
+    ])
     expect(wb.SheetNames).not.toContain("PLF Actual 2025")
   })
 

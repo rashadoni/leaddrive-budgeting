@@ -88,6 +88,9 @@ describe("resolveSheetRouting — role (source vs derived_summary)", () => {
       "PL Comparison",
       "Marginality",
       "BU PL",
+      "BS EDEN EJE",
+      "AJE Adjustments",
+      "Intercompany eliminations",
     ]) {
       const r = route({ sheetName: name })
       expect(r.role, name).toBe("derived_summary")

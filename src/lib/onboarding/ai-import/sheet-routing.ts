@@ -94,7 +94,7 @@ const ACTUAL_NAME = /\b(actual|faktiki|fakt|факт\w*)\b/i
  * false "derived" is a silent data loss — so err toward "source".
  */
 const DERIVED_NAME =
-  /(consolidat|\bcons\b|консолид|pivot|свод|comparison|müqayis|сравн|marginalit|маржинал|dashboard|\bBU\b)/i
+  /(consolidat|\bcons\b|консолид|pivot|свод|comparison|müqayis|сравн|marginalit|маржинал|dashboard|\bBU\b|\beje\b|\baje\b|\belim(?:ination)?\b|eliminasiya|intercompany|intragroup)/i
 
 /** dataTypes that are inherently forward plans (route to the budget plan). */
 const BUDGET_DATATYPES = new Set<SheetDataType>([

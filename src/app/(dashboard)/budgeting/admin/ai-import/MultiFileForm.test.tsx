@@ -243,6 +243,52 @@ describe("MultiFileForm", () => {
     expect(sentBody.get("useTemplate")).toBe("0")
   })
 
+  it("manages entity aliases without running import preview", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      aliases: { CPC: "AZSEKER-CPC" },
+      companies: [
+        { code: "AZSEKER-CPC", name: "CPC", level: 2 },
+        { code: "AZSEKER-EDEN", name: "EDEN", level: 2 },
+      ],
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      aliases: { CPC: "AZSEKER-CPC", EDEN: "AZSEKER-EDEN" },
+      companies: [
+        { code: "AZSEKER-CPC", name: "CPC", level: 2 },
+        { code: "AZSEKER-EDEN", name: "EDEN", level: 2 },
+      ],
+      rejected: [],
+    })
+
+    render(<MultiFileForm />)
+    fireEvent.click(screen.getByTestId("btn-toggle-aliases"))
+    await waitFor(() => {
+      expect(screen.getByTestId("entity-aliases-editor")).toBeTruthy()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toBe(
+      "/api/import/entity-aliases",
+    )
+
+    fireEvent.click(screen.getByTestId("btn-add-alias"))
+    fireEvent.change(screen.getByTestId("entity-alias-input-1"), {
+      target: { value: "eden" },
+    })
+    fireEvent.change(screen.getByTestId("entity-alias-company-1"), {
+      target: { value: "AZSEKER-EDEN" },
+    })
+    fireEvent.click(screen.getByTestId("btn-save-aliases"))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(url).toBe("/api/import/entity-aliases")
+    expect(init.method).toBe("PUT")
+    expect(JSON.parse(String(init.body))).toEqual({
+      aliases: { CPC: "AZSEKER-CPC", EDEN: "AZSEKER-EDEN" },
+    })
+  })
+
   it("saves a GREEN preview as an approved template", async () => {
     mockFetchOnce(200, {
       ok: true,
@@ -633,6 +679,68 @@ describe("MultiFileForm", () => {
         },
       ]),
     )
+  })
+
+  it("renders BU routing grid with write and skipped elimination blocks", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "multi-bu.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+      buColumnSplits: [
+        {
+          filename: "multi-bu.xlsx",
+          sheetName: "PLF Actual",
+          mapping: [
+            {
+              sheetName: "PLF Actual [AZSEKER-CPC]",
+              entityCode: "AZSEKER-CPC",
+              buValue: "CPC",
+              rowCount: 10,
+              action: "write",
+            },
+            {
+              sheetName: "PLF Actual",
+              entityCode: null,
+              buValue: "EJE",
+              rowCount: 3,
+              action: "skip",
+              reason: "elimination",
+            },
+          ],
+          warnings: [],
+        },
+      ],
+    })
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("multi-bu.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("bu-routing-grid")).toBeTruthy()
+    })
+    expect(screen.getByText("CPC")).toBeTruthy()
+    expect(screen.getByText("EJE")).toBeTruthy()
+    expect(screen.getByText(/skip/i)).toBeTruthy()
   })
 
   it("Apply click POSTs with apply=1 + renders per-group results", async () => {

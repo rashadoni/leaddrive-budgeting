@@ -34,10 +34,16 @@
 
 import type { SheetDataType } from "./sheet-classifier"
 import { hasMultiEntityBuColumn } from "./bu-column-split"
+import {
+  isEliminationLikeEntityValue,
+  normalizeEntityAlias,
+} from "./entity-alias-utils"
+export { isEliminationLikeEntityValue, normalizeEntityAlias } from "./entity-alias-utils"
 
 /** Which deterministic signal resolved an otherwise-null entity. */
 export type EntityInferenceSource =
   | "cell-scan"
+  | "header-scan"
   | "filename"
   | "single-entity-propagation"
   | "holding-consolidated"
@@ -102,7 +108,8 @@ export function buildEntityAliasMap(
   }
   // Explicit aliases win (caller knows the org's naming).
   for (const [alias, code] of Object.entries(explicit)) {
-    if (alias) map[alias.toUpperCase()] = code
+    const normalized = normalizeEntityAlias(alias)
+    if (normalized) map[normalized] = code
   }
   return map
 }
@@ -238,10 +245,53 @@ export function scanDominantEntity(
 }
 
 /**
+ * Scan the top header/title rows for a single entity alias. This catches files
+ * where the owning company appears in a merged title/header ("CPC P&L 2026")
+ * instead of repeated body cells. It requires exactly one resolved entity across
+ * the header window; multi-company headers stay unresolved for review/BU split.
+ */
+export function scanHeaderEntity(
+  rows: ReadonlyArray<ReadonlyArray<unknown>>,
+  aliasMap: Record<string, string>,
+  opts: { maxRows?: number; minCells?: number } = {},
+): { entityCode: string; matchedCells: number } | null {
+  const maxRows = opts.maxRows ?? 6
+  const minCells = opts.minCells ?? 1
+  const counts = new Map<string, number>()
+  for (let r = 0; r < Math.min(maxRows, rows.length); r++) {
+    const row = rows[r] ?? []
+    const first = row[0] === null || row[0] === undefined ? "" : normalizeEntityAlias(String(row[0]))
+    if (/^(PLF|BS|CF)[.\-_]/.test(first)) continue
+    for (const cell of row) {
+      if (cell === null || cell === undefined) continue
+      const text = normalizeEntityAlias(String(cell))
+      if (!text || isEliminationLikeEntityValue(text)) continue
+      const exact = aliasMap[text]
+      if (exact) {
+        counts.set(exact, (counts.get(exact) ?? 0) + 1)
+        continue
+      }
+      const hits = new Set<string>()
+      for (const [alias, code] of Object.entries(aliasMap)) {
+        if (alias.length >= 3 && aliasAppearsAsToken(text, alias)) hits.add(code)
+      }
+      if (hits.size === 1) {
+        const [code] = [...hits]
+        counts.set(code, (counts.get(code) ?? 0) + 1)
+      }
+    }
+  }
+  if (counts.size !== 1) return null
+  const [[entityCode, matchedCells]] = [...counts.entries()]
+  if (matchedCells < minCells) return null
+  return { entityCode, matchedCells }
+}
+
+/**
  * Resolve entity-less financial statements (PLF/BS/CF) by scanning each sheet's
  * cells for a dominant entity code. `getRows` yields the sheet's full rows
- * (header:1 shape). Returns the resolved sheets (cell-scan source, high
- * confidence — exact-match dominance is a strong signal, safe to auto-apply).
+ * (header:1 shape). Returns the resolved sheets (header-scan/cell-scan source,
+ * high confidence — exact-match dominance is a strong signal, safe to auto-apply).
  */
 export function scanStatementEntities(
   sheets: ReadonlyArray<EntityInferenceSheet>,
@@ -261,6 +311,17 @@ export function scanStatementEntities(
     // an entity×sub-unit budget) is left null here → adapter no-op → one-time
     // review, instead of a wrong single-entity write.
     if (hasMultiEntityBuColumn(rows, aliasMap)) continue
+    const headerHit = scanHeaderEntity(rows, aliasMap)
+    if (headerHit) {
+      results.push({
+        sheetName: s.sheetName,
+        entityCode: headerHit.entityCode,
+        inferredBy: "header-scan",
+        confidence: 0.88,
+        reasoning: `Entity ${headerHit.entityCode} read from ${headerHit.matchedCells} header/title cell(s)`,
+      })
+      continue
+    }
     const hit = scanDominantEntity(rows, aliasMap, opts)
     if (hit) {
       results.push({

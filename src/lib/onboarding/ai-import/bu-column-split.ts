@@ -35,6 +35,7 @@
 import type * as XLSX from "xlsx"
 import type { SheetDataType } from "./sheet-classifier"
 import type { PlanKind, SheetMapEntry } from "./sheet-routing"
+import { isEliminationLikeEntityValue } from "./entity-alias-utils"
 
 /** Header label (exact, case-insensitive) that marks the owning-entity column. */
 const BU_HEADER = "BU"
@@ -107,6 +108,8 @@ export interface BuBlock {
   buValue: string
   /** Resolved canonical entity code, or null when the BU value is not a known alias. */
   entityCode: string | null
+  /** Why a null-entity block is skipped. */
+  skipReason?: "elimination" | "unknown_alias"
   /** Inclusive 0-based AOA row range of the block's own rows (excludes preamble). */
   rowStart: number
   rowEnd: number
@@ -214,12 +217,16 @@ export function splitByBuColumn(
       )
       continue
     }
-    const entityCode = aliasMap[run.buValue] ?? null
+    const isElimination = isEliminationLikeEntityValue(run.buValue)
+    const entityCode = isElimination ? null : (aliasMap[run.buValue] ?? null)
     const blockRows = aoa.slice(run.start, run.end + 1)
     const worksheet = xlsx.utils.aoa_to_sheet([...preamble, ...blockRows])
     blocks.push({
       buValue: run.buValue,
       entityCode,
+      ...(entityCode
+        ? {}
+        : { skipReason: isElimination ? "elimination" : "unknown_alias" }),
       rowStart: run.start,
       rowEnd: run.end,
       rowCount,
@@ -234,7 +241,14 @@ export interface BuColumnSplitApplied {
   /** True iff the sheet was a consolidated multi-BU sheet and was split + removed. */
   applied: boolean
   sheetMapEntries: SheetMapEntry[]
-  mapping: Array<{ sheetName: string; entityCode: string; buValue: string; rowCount: number }>
+  mapping: Array<{
+    sheetName: string
+    entityCode: string | null
+    buValue: string
+    rowCount: number
+    action: "write" | "skip"
+    reason?: "elimination" | "unknown_alias"
+  }>
   warnings: string[]
 }
 
@@ -276,16 +290,35 @@ export function applyBuColumnSplit(
   out.warnings.push(...split.warnings)
 
   const resolved = split.blocks.filter((b) => b.entityCode)
+  const skipped = split.blocks.filter((b) => !b.entityCode)
   const distinct = new Set(resolved.map((b) => b.entityCode))
-  // Need a genuinely cross-entity sheet: ≥2 blocks, ≥2 distinct entities.
-  if (split.blocks.length < 2 || distinct.size < 2) return out
+  // Need a genuine routing decision: either cross-entity writes, or at least one
+  // write block plus skipped elimination/unknown blocks. The latter prevents a
+  // raw CPC+EJE sheet from flowing downstream and writing EJE rows as CPC.
+  if (
+    split.blocks.length < 2 ||
+    resolved.length < 1 ||
+    (distinct.size < 2 && skipped.length === 0)
+  ) {
+    return out
+  }
 
   const usedNames = new Set<string>(workbook.SheetNames)
   for (const block of split.blocks) {
     if (!block.entityCode) {
       out.warnings.push(
-        `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is not a known entity alias — skipped (not imported)`,
+        block.skipReason === "elimination"
+          ? `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) looks like elimination/consolidation — skipped (not imported)`
+          : `Sheet "${sheetName}": BU block "${block.buValue}" (${block.rowCount} rows) is not a known entity alias — skipped (not imported)`,
       )
+      out.mapping.push({
+        sheetName,
+        entityCode: null,
+        buValue: block.buValue,
+        rowCount: block.rowCount,
+        action: "skip",
+        reason: block.skipReason ?? "unknown_alias",
+      })
       continue
     }
     let newName = `${sheetName} [${block.entityCode}]`
@@ -307,13 +340,13 @@ export function applyBuColumnSplit(
       entityCode: block.entityCode,
       buValue: block.buValue,
       rowCount: block.rowCount,
+      action: "write",
     })
   }
 
-  if (out.sheetMapEntries.length < 2) {
-    // Fewer than two virtual sheets actually materialised (e.g. unknown aliases)
-    // — undo nothing (the adds above are distinct names) but DON'T remove the raw
-    // sheet; treat as no-op so the raw sheet still flows normally.
+  if (out.sheetMapEntries.length < 1) {
+    // No virtual write sheet materialised (e.g. all blocks are unknown aliases)
+    // — keep the raw sheet so the preview can surface the unresolved routing.
     return out
   }
 

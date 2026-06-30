@@ -418,6 +418,7 @@ function writeEntity(r: ParseRecord): string | null {
  */
 const AUTO_APPLY_INFERENCE: ReadonlySet<EntityInferenceSource> = new Set<EntityInferenceSource>([
   "cell-scan",
+  "header-scan",
   "filename",
   "single-entity-propagation",
 ])

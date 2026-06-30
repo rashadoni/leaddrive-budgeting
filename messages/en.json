@@ -3007,6 +3007,29 @@
         "updated": "Updated template “{name}” to v{version}.",
         "saveError": "Template save failed: {msg}"
       },
+      "aliases": {
+        "title": "Entity aliases",
+        "description": "Teach AI Import the client’s abbreviations once: filenames, headers, cells and BU columns then route automatically.",
+        "open": "Manage aliases",
+        "close": "Hide aliases",
+        "loading": "Loading aliases...",
+        "loaded": "Loaded {n} alias(es).",
+        "saved": "Saved {n} alias(es).",
+        "saving": "Saving...",
+        "save": "Save aliases",
+        "add": "Add alias",
+        "remove": "Remove",
+        "empty": "No aliases saved yet.",
+        "error": "Alias update failed: {msg}",
+        "rejected": "{n} rejected",
+        "aliasPlaceholder": "e.g. CPC, AZSF, EDEN",
+        "companyPlaceholder": "Choose company",
+        "col": {
+          "alias": "Alias in file",
+          "company": "Target company",
+          "action": "Action"
+        }
+      },
       "conflict": {
         "title": "🚫 Cross-file conflict — {n} cells disagree",
         "description": "Two or more files contain different values for the same cell. Import is blocked until conflicts are resolved.",
@@ -3035,6 +3058,20 @@
         "useCode": "map to {code} ({pct}%)",
         "skipRow": "skip this row",
         "allResolved": "✓ All CoA rows resolved — re-run preview or apply."
+      },
+      "routing": {
+        "title": "Entity routing grid — {n} split sheet(s)",
+        "description": "BU-column sheets were split before import. Write rows go to the listed company; elimination/unknown blocks are skipped.",
+        "write": "write",
+        "skipElim": "skip elimination",
+        "skipUnknown": "skip unknown",
+        "col": {
+          "source": "Source sheet",
+          "bu": "BU value",
+          "target": "Target",
+          "rows": "Rows",
+          "action": "Action"
+        }
       },
       "preview": {
         "title": "File analysis",
