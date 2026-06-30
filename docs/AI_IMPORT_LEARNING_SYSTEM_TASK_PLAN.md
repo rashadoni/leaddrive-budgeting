@@ -300,7 +300,7 @@ Latest local benchmark after Task 7:
 
 ## Task 8 - Rollout And Production Verification
 
-Status: todo
+Status: done
 
 Roll out in safe phases.
 
@@ -317,6 +317,27 @@ Acceptance:
 - EJE/eliminations do not write as companies.
 - Unknown sheets cannot silently corrupt import.
 - Risk Terminal recompute is triggered and visibly reported.
+
+Implemented / rollout:
+- Preview-only rollout completed first: Task 1-7 changes were benchmarked locally and deployed to production without running a production import/apply.
+- Production DB backup taken before rebuild: `/opt/budgetpro/backups/budgetpro_pre_task8_20260630_205141.sql.gz`.
+- Production source was synced from committed `HEAD` only (`git archive`) to avoid copying local untracked/dirty files.
+- Docker Compose production rebuild completed on VM `root@46.225.60.142` in `/opt/budgetpro`.
+- App entrypoint ran `prisma migrate deploy`; result: 5 migrations found, no pending migrations.
+- Production containers after deploy: `budgetpro-app`, `budgetpro-db`, and `budgetpro-nginx` healthy/running.
+
+Verification:
+- Focused suite:
+  `npx vitest run src/lib/onboarding/ai-import/import-template-memory.test.ts src/lib/onboarding/ai-import/semantic-coa-mapper.test.ts src/lib/onboarding/ai-import/dynamic-plf-adapter.test.ts src/lib/onboarding/ai-import/dynamic-bs-adapter.test.ts src/lib/onboarding/ai-import/dynamic-cf-adapter.test.ts src/lib/onboarding/ai-import/entity-inference.test.ts src/lib/onboarding/ai-import/bu-column-split.test.ts src/lib/onboarding/ai-import/sheet-routing.test.ts src/lib/onboarding/ai-import/reporting-pack-sheet-map.test.ts src/lib/onboarding/ai-import/multi-file-orchestrator.test.ts src/app/api/import/ai-auto-multi/handler.test.ts 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx'`
+- Focused suite result: 12 test files passed, 190 tests passed.
+- Local production build: `npx next build` passed.
+- Benchmark after Task 7: `tmp/ai-import-benchmark/report-2026-06-30T20-41-44-142Z.json`, average score 64.9, confirmations 15, conflicts 0, parsed 5,902 items / 5,667 cells.
+- VM-side post-deploy smoke: `bash deploy/smoke-test.sh http://127.0.0.1` passed 8/8.
+- Browser live-route check: `http://46.225.60.142/budgeting/admin/ai-import` reached the deployed app and redirected to `/login?callbackUrl=%2Fbudgeting%2Fadmin%2Fai-import`, confirming the protected route and auth gate after deploy.
+
+Production scope note:
+- No production AI import/apply was executed in Task 8, so no production financial rows were written or reset during rollout.
+- Authenticated UI import preview should be run by an admin session before any client demo apply; the deployed code now shows the visible safety receipt for that preview/apply flow.
 
 ## Completion Metrics
 
