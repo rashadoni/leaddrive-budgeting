@@ -3,11 +3,14 @@
 import { useState, useEffect, useRef } from "react"
 import { signIn } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { LanguageSwitcher } from "@/components/language-switcher"
 
 export default function LoginPage() {
   const router = useRouter()
+  const t = useTranslations("auth")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -33,7 +36,7 @@ export default function LoginPage() {
     })
 
     if (result?.error) {
-      setError("Invalid email or password")
+      setError(t("invalidCredentials"))
       setLoading(false)
     } else {
       router.push("/budgeting")
@@ -57,6 +60,12 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-black/50" />
       </div>
 
+      {/* Language switcher — anonymous users can pick EN/RU/AZ before login;
+          the NEXT_LOCALE cookie persists into the app after sign-in. */}
+      <div className="absolute right-4 top-4 z-20">
+        <LanguageSwitcher buttonClassName="text-white/80 hover:text-white hover:bg-white/10" />
+      </div>
+
       {/* Login form */}
       <div className="relative z-10 w-full max-w-sm space-y-6 rounded-2xl border border-white/10 bg-black/40 p-8 backdrop-blur-xl shadow-2xl">
         <div className="text-center">
@@ -65,7 +74,7 @@ export default function LoginPage() {
           </div>
           <h1 className="text-2xl font-bold text-white">BudgetPro</h1>
           <p className="mt-1 text-sm text-white/60">
-            Enterprise Budgeting & Financial Planning
+            {t("signInToAccount")}
           </p>
         </div>
 
@@ -77,7 +86,7 @@ export default function LoginPage() {
           )}
 
           <div className="space-y-2">
-            <label htmlFor="login-email" className="text-sm font-medium text-white/80">Email</label>
+            <label htmlFor="login-email" className="text-sm font-medium text-white/80">{t("email")}</label>
             <Input
               id="login-email"
               type="email"
@@ -91,7 +100,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-2">
-            <label htmlFor="login-password" className="text-sm font-medium text-white/80">Password</label>
+            <label htmlFor="login-password" className="text-sm font-medium text-white/80">{t("password")}</label>
             <Input
               id="login-password"
               type="password"
@@ -105,7 +114,7 @@ export default function LoginPage() {
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
+            {loading ? t("signingIn") : t("signIn")}
           </Button>
         </form>
       </div>

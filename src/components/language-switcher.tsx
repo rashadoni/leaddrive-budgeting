@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { useTranslations } from "next-intl"
-import { LOCALE_COOKIE_NAME } from "@/i18n/routing"
+import { LOCALE_COOKIE_NAME, defaultLocale, locales, type Locale } from "@/i18n/routing"
 
 const LANGUAGE_CODES = ["ru", "az", "en"] as const
 const LANGUAGE_KEYS: Record<string, string> = {
@@ -14,20 +14,29 @@ const LANGUAGE_KEYS: Record<string, string> = {
   en: "langEnglish",
 }
 
-function getLocaleFromCookie(): string {
-  if (typeof document === "undefined") return "en"
-  return (
-    document.cookie
-      .split("; ")
-      .find((row) => row.startsWith(`${LOCALE_COOKIE_NAME}=`))
-      ?.split("=")[1] || "ru"
-  )
+function getLocaleFromCookie(): Locale {
+  if (typeof document === "undefined") return defaultLocale
+  const raw = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${LOCALE_COOKIE_NAME}=`))
+    ?.split("=")[1]
+  // Validate against supported locales; fall back to the SERVER default
+  // (`defaultLocale` = "en"), not a hardcoded "ru" — the old mismatch made an
+  // anonymous no-cookie visit render EN server-side but show RU as selected.
+  return (locales as readonly string[]).includes(raw ?? "")
+    ? (raw as Locale)
+    : defaultLocale
 }
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({
+  buttonClassName,
+}: {
+  /** Extra classes for the trigger button (e.g. white globe on the dark login). */
+  buttonClassName?: string
+} = {}) {
   const tc = useTranslations("common")
   const [open, setOpen] = useState(false)
-  const [current, setCurrent] = useState("en")
+  const [current, setCurrent] = useState(defaultLocale)
   const [pos, setPos] = useState({ top: 0, right: 0 })
   const ref = useRef<HTMLDivElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -65,7 +74,7 @@ export function LanguageSwitcher() {
     window.location.reload()
   }
 
-  const currentLabel = tc(LANGUAGE_KEYS[current] || "langRussian")
+  const currentLabel = tc(LANGUAGE_KEYS[current] || "langEnglish")
 
   return (
     <div ref={ref} className="relative">
@@ -74,6 +83,7 @@ export function LanguageSwitcher() {
         size="icon"
         onClick={toggleOpen}
         title={currentLabel}
+        className={buttonClassName}
       >
         <Globe className="h-4 w-4" />
       </Button>

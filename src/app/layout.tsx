@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next"
 import { NextIntlClientProvider } from "next-intl"
-import { getMessages } from "next-intl/server"
+import { getLocale, getMessages } from "next-intl/server"
 import { Providers } from "@/components/providers"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
@@ -24,9 +24,10 @@ export default async function RootLayout({
   children: React.ReactNode
 }>) {
   const messages = await getMessages()
+  const locale = await getLocale()
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.googleapis.com" crossOrigin="anonymous" />
