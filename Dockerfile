@@ -70,6 +70,12 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static    ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public          ./public
 
+# In-app User Guide (`/guide`) reads `docs/USER_GUIDE.<lang>.md` at request time
+# via fs. The standalone output does NOT trace plain data files, so without this
+# COPY the guide 500s on prod (the file simply isn't in the image). Keep this in
+# sync with any other page that reads from `docs/` at runtime.
+COPY --from=build --chown=nextjs:nodejs /app/docs            ./docs
+
 # Prisma schema + generated client, required at runtime:
 #   /app/prisma                     → schema.prisma + migrations/ folder
 #   /app/node_modules/.prisma       → generated client (types + WASM engine)

@@ -50,7 +50,18 @@ export default async function GuidePage({
     "docs",
     `USER_GUIDE.${lang}.md`,
   );
-  const raw = await readFile(guidePath, "utf8");
+
+  // The prod image is Next.js `output: "standalone"`; the Dockerfile must
+  // COPY `docs/` into the runtime stage (it does as of the P0-1 UX fix). If
+  // the file is still missing for any reason, degrade to a friendly notice
+  // INSIDE the dashboard layout instead of throwing a 500 — a single missing
+  // file must never take down the page a non-technical user opens to learn.
+  let raw: string;
+  try {
+    raw = await readFile(guidePath, "utf8");
+  } catch {
+    return <GuideUnavailable lang={lang} />;
+  }
 
   // Rewrite relative image paths so they resolve to public/.
   const markdown = raw.replace(
@@ -59,4 +70,32 @@ export default async function GuidePage({
   );
 
   return <GuideViewer markdown={markdown} lang={lang} />;
+}
+
+const UNAVAILABLE_COPY: Record<GuideLanguage, { title: string; body: string }> =
+  {
+    en: {
+      title: "Guide temporarily unavailable",
+      body: "The user guide could not be loaded right now. Please try again in a moment or contact your administrator.",
+    },
+    ru: {
+      title: "Руководство временно недоступно",
+      body: "Не удалось загрузить руководство. Попробуйте позже или обратитесь к администратору.",
+    },
+    az: {
+      title: "Bələdçi müvəqqəti əlçatmazdır",
+      body: "Bələdçini hazırda yükləmək mümkün olmadı. Bir azdan yenidən cəhd edin və ya administratora müraciət edin.",
+    },
+  };
+
+function GuideUnavailable({ lang }: { lang: GuideLanguage }) {
+  const copy = UNAVAILABLE_COPY[lang];
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center p-8">
+      <div className="max-w-md text-center">
+        <h1 className="text-xl font-semibold text-foreground">{copy.title}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{copy.body}</p>
+      </div>
+    </div>
+  );
 }
