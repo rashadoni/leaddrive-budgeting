@@ -345,6 +345,7 @@ export async function GET(req: NextRequest) {
   const monthlyActualOpex: Record<number, number> = {}
   const monthlyActualBelowEbitda: Record<number, number> = {}
   const monthlyActualDa: Record<number, number> = {}
+  let hasActualRowsForYear = false
   for (let m = 1; m <= 12; m++) {
     monthlyActualRevenue[m] = 0
     monthlyActualCogs[m] = 0
@@ -358,6 +359,7 @@ export async function GET(req: NextRequest) {
     const d = new Date(a.expenseDate)
     if (Number.isNaN(d.getTime())) continue
     if (d.getFullYear() !== year) continue
+    hasActualRowsForYear = true
     const month = d.getMonth() + 1
 
     const { code, key } = resolveActualKey(a.department, a.category)
@@ -411,6 +413,6 @@ export async function GET(req: NextRequest) {
     actualMonthlyByKey,
     sectionActuals,
     year,
-    hasActuals: actuals.length > 0,
+    hasActuals: hasActualRowsForYear,
   })
 }

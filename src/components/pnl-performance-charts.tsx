@@ -55,11 +55,12 @@ export function PnlPerformanceCharts({
     ),
     [selectedData],
   )
-  const annualVariance = annual.actual - annual.budget
-  const annualExecution = annual.budget === 0 ? null : (annual.actual / annual.budget) * 100
+  const annualActual = hasActuals ? annual.actual : null
+  const annualVariance = hasActuals ? annual.actual - annual.budget : null
+  const annualExecution = hasActuals && annual.budget !== 0 ? executionPercent(annual.actual, annual.budget) : null
   const varianceIsFavorable = activeMetric.favorable === "up"
-    ? annualVariance >= 0
-    : annualVariance <= 0
+    ? (annualVariance ?? 0) >= 0
+    : (annualVariance ?? 0) <= 0
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
@@ -73,6 +74,11 @@ export function PnlPerformanceCharts({
             <p className="mt-1 text-xs text-muted-foreground">
               Monthly comparison for Revenue, COGS, OPEX, EBITDA and Net Profit.
             </p>
+            {!hasActuals && (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                Actual data is not available for this period yet.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-1 rounded-lg bg-muted/60 p-1" role="tablist" aria-label="P&L metric">
             {METRICS.map((item) => (
@@ -97,11 +103,12 @@ export function PnlPerformanceCharts({
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
           <MetricSummary label="Budget" value={annual.budget} />
-          <MetricSummary label="Actual" value={annual.actual} muted={!hasActuals} />
+          <MetricSummary label="Actual" value={annualActual} emptyLabel="No data" muted={!hasActuals} />
           <MetricSummary
             label="Variance"
             value={annualVariance}
             tone={varianceIsFavorable ? "positive" : "negative"}
+            emptyLabel="Waiting for actuals"
             suffix={annualExecution == null ? "" : ` · ${annualExecution.toFixed(0)}%`}
             signed
           />
@@ -113,18 +120,22 @@ export function PnlPerformanceCharts({
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
-              <Tooltip content={<MonthlyTooltip metric={activeMetric.label} />} />
+              <Tooltip content={<MonthlyTooltip metric={activeMetric.label} hasActuals={hasActuals} />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="budget" name="Budget" fill={BUDGET_COLORS.planIndigo} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="actual" name="Actual" fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} opacity={hasActuals ? 1 : 0.35} />
-              <Line
-                type="monotone"
-                dataKey="variance"
-                name="Variance"
-                stroke={BUDGET_COLORS.forecastAmber}
-                strokeWidth={2}
-                dot={{ r: 2 }}
-              />
+              {hasActuals && (
+                <>
+                  <Bar dataKey="actual" name="Actual" fill={BUDGET_COLORS.actualGreen} radius={[4, 4, 0, 0]} />
+                  <Line
+                    type="monotone"
+                    dataKey="variance"
+                    name="Variance"
+                    stroke={BUDGET_COLORS.forecastAmber}
+                    strokeWidth={2}
+                    dot={{ r: 2 }}
+                  />
+                </>
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -148,28 +159,42 @@ export function PnlPerformanceCharts({
           )}
         </div>
 
-        <div className="mt-4 h-[340px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-            <BarChart data={bridge} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
-              <YAxis
-                type="category"
-                dataKey="label"
-                tick={{ fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                width={106}
-              />
-              <Tooltip content={<BridgeTooltip />} />
-              <Bar dataKey="range" radius={[4, 4, 4, 4]} minPointSize={2}>
-                {bridge.map((entry) => (
-                  <Cell key={entry.key} fill={bridgeColor(entry)} opacity={hasActuals || entry.kind === "endpoint" ? 1 : 0.35} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {hasActuals ? (
+          <div className="mt-4 h-[340px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+              <BarChart data={bridge} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />
+                <YAxis
+                  type="category"
+                  dataKey="label"
+                  tick={{ fontSize: 11 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={106}
+                />
+                <Tooltip content={<BridgeTooltip />} />
+                <Bar dataKey="range" radius={[4, 4, 4, 4]} minPointSize={2}>
+                  {bridge.map((entry) => (
+                    <Cell key={entry.key} fill={bridgeColor(entry)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="mt-4 flex h-[340px] items-center justify-center rounded-lg border border-dashed bg-muted/20 p-6 text-center">
+            <div className="max-w-[260px]">
+              <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <Activity className="h-5 w-5" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Bridge waits for actuals</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Import or sync actual P&L data for this year to compare Budget EBITDA with Actual EBITDA.
+              </p>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   )
@@ -179,13 +204,15 @@ function MetricSummary({
   label,
   value,
   tone,
+  emptyLabel = "No data",
   suffix = "",
   signed = false,
   muted = false,
 }: {
   label: string
-  value: number
+  value: number | null
   tone?: "positive" | "negative"
+  emptyLabel?: string
   suffix?: string
   signed?: boolean
   muted?: boolean
@@ -197,12 +224,13 @@ function MetricSummary({
       : muted
         ? "text-muted-foreground"
         : "text-foreground"
-  const prefix = signed && value > 0 ? "+" : ""
+  const hasValue = value != null
+  const prefix = hasValue && signed && value > 0 ? "+" : ""
   return (
     <div className="rounded-lg border bg-muted/20 px-3 py-2">
       <div className="text-[10px] font-medium uppercase text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 truncate font-mono text-sm font-semibold tabular-nums", color)}>
-        {prefix}{formatAmount(value)}{suffix}
+        {hasValue ? `${prefix}${formatAmount(value)}${suffix}` : emptyLabel}
       </div>
     </div>
   )
@@ -213,11 +241,13 @@ function MonthlyTooltip({
   payload,
   label,
   metric,
+  hasActuals,
 }: {
   active?: boolean
   payload?: Array<{ dataKey?: string | number; name?: string | number; value?: number; color?: string; fill?: string }>
   label?: string
   metric: string
+  hasActuals: boolean
 }) {
   if (!active || !payload?.length) return null
   const budget = payload.find((item) => item.dataKey === "budget")?.value ?? 0
@@ -229,8 +259,16 @@ function MonthlyTooltip({
         {metric} · {label}
       </div>
       <TooltipRow label="Budget" value={budget} color={BUDGET_COLORS.planIndigo} />
-      <TooltipRow label="Actual" value={actual} color={BUDGET_COLORS.actualGreen} />
-      <TooltipRow label="Variance" value={variance} color={variance >= 0 ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
+      {hasActuals ? (
+        <>
+          <TooltipRow label="Actual" value={actual} color={BUDGET_COLORS.actualGreen} />
+          <TooltipRow label="Variance" value={variance} color={variance >= 0 ? BUDGET_COLORS.positive : BUDGET_COLORS.negative} signed />
+        </>
+      ) : (
+        <div className="mt-2 border-t pt-2 text-xs font-medium text-muted-foreground">
+          Actual data is not available for this period.
+        </div>
+      )}
     </div>
   )
 }
@@ -292,4 +330,11 @@ function bridgeColor(step: EbitdaBridgeStep): string {
 function formatAmount(value: number): string {
   const sign = value < 0 ? "-" : ""
   return `${sign}${fmtK(Math.abs(value))} AZN`
+}
+
+function executionPercent(actual: number, budget: number): number {
+  if (budget < 0) {
+    return 100 + ((actual - budget) / Math.abs(budget)) * 100
+  }
+  return (actual / budget) * 100
 }

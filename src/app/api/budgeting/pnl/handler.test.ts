@@ -95,6 +95,7 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body.success).toBe(true)
     expect(body.year).toBe(2025)
+    expect(body.hasActuals).toBe(false)
     expect(body.monthlyActualOpex).toEqual({
       "1": 0,
       "2": 0,
@@ -226,6 +227,7 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
       sectionActuals: Record<string, number>
+      hasActuals: boolean
       monthlyActualRevenue: Record<string, number>
       monthlyActualCogs: Record<string, number>
       monthlyActualOpex: Record<string, number>
@@ -238,6 +240,7 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     expect(body.monthlyActualBelowEbitda["1"]).toBe(50)
     expect(body.monthlyActualDa["1"]).toBe(25)
     expect(body.monthlyActualDa["2"]).toBe(0)
+    expect(body.hasActuals).toBe(true)
     expect(body.sectionActuals).toMatchObject({
       revenue: 1_000,
       cogs: 300,
