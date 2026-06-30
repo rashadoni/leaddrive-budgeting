@@ -84,6 +84,23 @@ function formatValueCompact(value: number, unit: string): string {
   return `${mantissa}${suffix}${unitTag}`;
 }
 
+function formatValueTiny(value: number, unit: string): string {
+  if (!Number.isFinite(value)) return '—';
+  if (unit === '%') return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 1)}%`;
+  if (unit === 'ratio') return value.toFixed(2);
+
+  const abs = Math.abs(value);
+  let mantissa: string;
+  let suffix: string;
+  if (abs >= 1e9) { mantissa = (value / 1e9).toFixed(1); suffix = 'B'; }
+  else if (abs >= 1e6) { mantissa = (value / 1e6).toFixed(1); suffix = 'M'; }
+  else if (abs >= 1e3) { mantissa = (value / 1e3).toFixed(1); suffix = 'K'; }
+  else { mantissa = abs >= 100 ? value.toFixed(0) : abs >= 10 ? value.toFixed(1) : value.toFixed(1); suffix = ''; }
+
+  const unitTag = unit === 'AZN' ? '₼' : unit === 'USD' ? '$' : unit === 'EUR' ? '€' : '';
+  return `${mantissa}${suffix}${unitTag}`;
+}
+
 type HeatMapCellTdProps = {
   co: CompanyRow;
   ind: IndicatorCol;
@@ -471,6 +488,22 @@ export function HeatMapCellTd({
                 </span>
               )
             )}
+            {/* Compact mode still needs a numeric readout. The cell is too
+                small for sparkline + unit labels, so render a tiny centered
+                value while keeping the status color as the primary signal. */}
+            {compactMode && cell ? (
+              <span
+                className="absolute inset-y-0 left-0.5 right-1.5 flex items-center justify-center font-mono leading-none text-white/95 truncate pointer-events-none"
+                style={{
+                  fontSize: 7,
+                  mixBlendMode: status === 'unknown' ? 'normal' : 'difference',
+                  textShadow: status === 'unknown' ? '0 0 2px rgba(0,0,0,0.7)' : undefined,
+                }}
+                title={status === 'unknown' ? '—' : formatValueCompact(cell.value, ind.unit)}
+              >
+                {status === 'unknown' ? '—' : formatValueTiny(cell.value, ind.unit)}
+              </span>
+            ) : null}
             {/* CLI Bloomberg-sweep: inline sparkline + value in normal mode.
                 Bloomberg-class analyst gets trend AT A GLANCE without
                 hovering. Empty-sparkline cells get an identical-height
