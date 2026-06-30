@@ -10,19 +10,48 @@ import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import { auth } from "@/lib/auth"
 import { hasRole } from "@/lib/api-auth"
+import { prisma } from "@/lib/prisma"
+import { ImportDataResetPanel } from "@/features/admin/components/ImportDataResetPanel"
 import { AIImportTabs } from "./AIImportTabs"
 
 export const metadata = {
   title: "AI Import · Admin · BudgetPro",
 }
 
-export default async function AIImportPage() {
+type PageSearchParams = Promise<Record<string, string | string[] | undefined>>
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
+export default async function AIImportPage({
+  searchParams,
+}: {
+  searchParams?: PageSearchParams
+}) {
   const t = await getTranslations("adminAiImport")
   const session = await auth()
   const role = session?.user?.role
   if (!hasRole(role, "admin")) redirect("/budgeting")
   const orgId = session?.user?.organizationId
   if (!orgId) redirect("/budgeting")
+  const params = searchParams ? await searchParams : {}
+  const initialCompanyCode =
+    firstParam(params.forEntity) ?? firstParam(params.company) ?? undefined
+  const initialYearRaw = firstParam(params.year)
+  const initialYear =
+    initialYearRaw && Number.isInteger(Number(initialYearRaw))
+      ? Number(initialYearRaw)
+      : undefined
+  const companies = await prisma.company.findMany({
+    where: {
+      organizationId: orgId,
+      isActive: true,
+      level: { gt: 1 },
+    },
+    select: { code: true, name: true },
+    orderBy: { code: "asc" },
+  })
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-4xl">
@@ -38,6 +67,14 @@ export default async function AIImportPage() {
       <p className="text-xs text-muted-foreground mb-6 leading-relaxed">
         {t("page.stackLine")}
       </p>
+
+      <div className="mb-6">
+        <ImportDataResetPanel
+          companies={companies}
+          initialCompanyCode={initialCompanyCode}
+          initialYear={initialYear}
+        />
+      </div>
 
       <AIImportTabs />
     </div>

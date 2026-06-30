@@ -368,6 +368,190 @@ export interface ResetResult {
   auditEventId: string | null
 }
 
+export interface ResetPreviewCompany {
+  companyCode: string
+  companyId: string
+  breakdown: Record<string, number>
+  rowsAffected: number
+}
+
+export interface ResetPreviewResult {
+  year?: number
+  companies: ResetPreviewCompany[]
+  breakdown: Record<string, number>
+  rowsAffected: number
+  orphanBudgetLine: number
+  isWholeHolding: boolean
+}
+
+function importOperationalFactWhere(args: {
+  organizationId: string
+  companyId: string
+  year?: number
+}): Record<string, unknown> {
+  const where: Record<string, unknown> = {
+    organizationId: args.organizationId,
+    companyId: args.companyId,
+    OR: [
+      { source: { in: IMPORT_FACT_SOURCES } },
+      { source: { startsWith: "import:" } },
+      { source: { startsWith: "multi-import:" } },
+      { source: { endsWith: ".xlsx" } },
+    ],
+  }
+  if (args.year) {
+    where.date = {
+      gte: new Date(`${args.year}-01-01T00:00:00.000Z`),
+      lt: new Date(`${args.year + 1}-01-01T00:00:00.000Z`),
+    }
+  }
+  return where
+}
+
+async function countOrgOrphanBudgetLines(args: {
+  prisma: PrismaClient
+  organizationId: string
+  year?: number
+}): Promise<number> {
+  const attrWhere: Record<string, unknown> = {
+    organizationId: args.organizationId,
+    companyId: { not: null },
+  }
+  if (args.year) attrWhere.plan = { year: args.year }
+  const mixedPlanIds = (
+    await args.prisma.budgetLine.findMany({
+      where: attrWhere as never,
+      select: { planId: true },
+      distinct: ["planId"],
+    })
+  ).map((r) => r.planId)
+
+  if (mixedPlanIds.length === 0) return 0
+  const orphanWhere: Record<string, unknown> = {
+    organizationId: args.organizationId,
+    companyId: null,
+    planId: { in: mixedPlanIds },
+    deletedAt: null,
+  }
+  if (args.year) orphanWhere.plan = { year: args.year }
+  return args.prisma.budgetLine.count({ where: orphanWhere as never })
+}
+
+/**
+ * Read-only companion to `resetCompanyImportData()`. It mirrors the reset
+ * scopes exactly so the UI can show a concrete blast radius before a write.
+ */
+export async function previewCompanyImportReset(args: {
+  prisma: PrismaClient
+  organizationId: string
+  companyCodes: string[]
+  year?: number
+}): Promise<ResetPreviewResult> {
+  const codes = [...new Set(args.companyCodes.filter(Boolean))]
+  if (codes.length === 0) {
+    return {
+      year: args.year,
+      companies: [],
+      breakdown: {},
+      rowsAffected: 0,
+      orphanBudgetLine: 0,
+      isWholeHolding: false,
+    }
+  }
+
+  const targets = await args.prisma.company.findMany({
+    where: { organizationId: args.organizationId, code: { in: codes } },
+    select: { id: true, code: true, settings: true },
+    orderBy: { code: "asc" },
+  })
+  const found = new Set(targets.map((c) => c.code))
+  const missing = codes.filter((c) => !found.has(c))
+  if (missing.length > 0) {
+    throw new Error(`Unknown companies for this org: ${missing.join(", ")}`)
+  }
+
+  const operationalCompanies = await args.prisma.company.findMany({
+    where: { organizationId: args.organizationId, isActive: true, level: { gt: 1 } },
+    select: { code: true },
+  })
+  const isWholeHolding =
+    operationalCompanies.length > 0 && operationalCompanies.every((c) => found.has(c.code))
+
+  const companies: ResetPreviewCompany[] = []
+  const aggregate: Record<string, number> = {}
+
+  for (const company of targets) {
+    const breakdown: Record<string, number> = {}
+    const base = { organizationId: args.organizationId, companyId: company.id, deletedAt: null }
+
+    const blWhere: Record<string, unknown> = { ...base }
+    if (args.year) blWhere.plan = { year: args.year }
+    breakdown.budgetLine = await args.prisma.budgetLine.count({ where: blWhere as never })
+
+    const bsWhere: Record<string, unknown> = { ...base }
+    if (args.year) bsWhere.year = args.year
+    breakdown.balanceSheetLine = await args.prisma.balanceSheetLine.count({ where: bsWhere as never })
+
+    const cfWhere: Record<string, unknown> = {
+      organizationId: args.organizationId,
+      sourceId: { startsWith: `${company.code}::` },
+      deletedAt: null,
+    }
+    if (args.year) cfWhere.year = args.year
+    breakdown.cashFlowEntry = await args.prisma.cashFlowEntry.count({ where: cfWhere as never })
+
+    const cpWhere: Record<string, unknown> = { ...base }
+    breakdown.counterparty = await args.prisma.counterparty.count({ where: cpWhere as never })
+
+    breakdown.operationalFact = await args.prisma.operationalFact.count({
+      where: importOperationalFactWhere({
+        organizationId: args.organizationId,
+        companyId: company.id,
+        year: args.year,
+      }) as never,
+    })
+
+    const baWhere: Record<string, unknown> = {
+      organizationId: args.organizationId,
+      companyId: company.id,
+    }
+    if (args.year) baWhere.plan = { year: args.year }
+    breakdown.budgetActual = await args.prisma.budgetActual.count({ where: baWhere as never })
+
+    const settings = (company.settings as Record<string, unknown> | null) ?? {}
+    breakdown.settingsKeys = IMPORT_SETTINGS_KEYS.filter((k) => k in settings).length
+
+    const rowsAffected = Object.values(breakdown).reduce((sum, n) => sum + n, 0)
+    for (const [key, count] of Object.entries(breakdown)) {
+      aggregate[key] = (aggregate[key] ?? 0) + count
+    }
+    companies.push({
+      companyCode: company.code,
+      companyId: company.id,
+      breakdown,
+      rowsAffected,
+    })
+  }
+
+  const orphanBudgetLine = isWholeHolding
+    ? await countOrgOrphanBudgetLines({
+        prisma: args.prisma,
+        organizationId: args.organizationId,
+        year: args.year,
+      })
+    : 0
+  if (orphanBudgetLine > 0) aggregate.orphanBudgetLine = orphanBudgetLine
+
+  return {
+    year: args.year,
+    companies,
+    breakdown: aggregate,
+    rowsAffected: Object.values(aggregate).reduce((sum, n) => sum + n, 0),
+    orphanBudgetLine,
+    isWholeHolding,
+  }
+}
+
 /**
  * Full "reset a company's imported data" — the no-tails cleanup. Clears EVERY
  * surface an import writes for one company, atomically:
@@ -449,22 +633,11 @@ export async function resetCompanyImportData(
     //    manually-entered fact (Codex 2026-06-21). New import adapters must use
     //    one of these source prefixes (`multi-import:` / `import:` / `import` /
     //    `xlsx_multi_import` / a `*.xlsx` legacy file name) to be reset-clean.
-    const ofWhere: Record<string, unknown> = {
+    const ofWhere = importOperationalFactWhere({
       organizationId: orgId,
       companyId,
-      OR: [
-        { source: { in: IMPORT_FACT_SOURCES } },
-        { source: { startsWith: "import:" } }, // import:plf-subtotal
-        { source: { startsWith: "multi-import:" } }, // multi-import:<sheet>
-        { source: { endsWith: ".xlsx" } }, // legacy .mjs file-name sources
-      ],
-    }
-    if (scope.year) {
-      ofWhere.date = {
-        gte: new Date(`${scope.year}-01-01T00:00:00.000Z`),
-        lt: new Date(`${scope.year + 1}-01-01T00:00:00.000Z`),
-      }
-    }
+      year: scope.year,
+    })
     breakdown.operationalFact = (await tx.operationalFact.deleteMany({ where: ofWhere as never })).count
 
     // 2b. HARD-delete BudgetActual (no soft-delete column) — the BUDGET_ACTUALS

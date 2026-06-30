@@ -1,5 +1,6 @@
 "use client";
 
+import Link from 'next/link';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations, useLocale } from 'next-intl';
 import { useTerminalStore } from '../store/terminalStore';
@@ -13,6 +14,7 @@ import {
   computeCompanyTrustStatus,
   type TrustStatus,
 } from '@/lib/risk/trust-status';
+import { Archive } from 'lucide-react';
 
 const PANEL_ID = 1;
 
@@ -477,6 +479,9 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
     }
   };
 
+  const dataResetHref = (code: string) =>
+    `/budgeting/admin/ai-import?forEntity=${encodeURIComponent(code)}&year=${new Date().getFullYear()}#import-cleanup`;
+
   // The all-roots check (vs filteredRoots) keeps "no matches" from
   // appearing as the same empty-state message as "no companies onboarded".
   const allRoots = companies.filter((c) => !c.parentCompanyId);
@@ -616,6 +621,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
       <li
         key={root.id}
         role="treeitem"
+        aria-selected={isActive}
         aria-expanded={hasChildren ? !isCollapsed : undefined}
         className={isPlaceholder ? 'opacity-50' : undefined}
       >
@@ -625,7 +631,7 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
           tabIndex={0}
           onClick={() => select(root.code)}
           onKeyDown={(e) => onRowKeyDown(e, root.code)}
-          className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
+          className={`group flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
             isActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
           }`}
         >
@@ -671,6 +677,18 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
             {root.name}
           </span>
           <RiskTagChips tags={root.riskTags} />
+          <Link
+            href={dataResetHref(root.code)}
+            onClick={(e) => e.stopPropagation()}
+            className={`inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900/80 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-400 transition hover:border-amber-500/60 hover:text-amber-300 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-amber-400/50 ${
+              isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
+            title={t('companyTree.dataResetTitle', { company: root.code })}
+            aria-label={t('companyTree.dataResetTitle', { company: root.code })}
+          >
+            <Archive className="h-3 w-3" aria-hidden="true" />
+            {t('companyTree.dataResetLabel')}
+          </Link>
           {hasChildren && (
             <span
               className="text-gray-600 tabular-nums"
@@ -691,12 +709,13 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                 <li
                   key={child.id}
                   role="treeitem"
+                  aria-selected={childActive}
                   data-testid="company-tree-row"
                   data-company-code={child.code}
                   tabIndex={0}
                   onClick={() => select(child.code)}
                   onKeyDown={(e) => onRowKeyDown(e, child.code)}
-                  className={`flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
+                  className={`group flex items-center gap-1.5 px-1 py-0.5 cursor-pointer hover:bg-gray-800/40 focus:outline-none focus:ring-1 focus:ring-[#00D4AA]/40 ${
                     childActive ? 'bg-[#00D4AA]/10 text-[#00D4AA]' : ''
                   }`}
                 >
@@ -728,6 +747,18 @@ export function CompanyTree({ companies, loading, onSelect }: Props) {
                     {child.name}
                   </span>
                   <RiskTagChips tags={child.riskTags} />
+                  <Link
+                    href={dataResetHref(child.code)}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`inline-flex items-center gap-1 rounded border border-gray-700 bg-gray-900/80 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-gray-400 transition hover:border-amber-500/60 hover:text-amber-300 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-amber-400/50 ${
+                      childActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={t('companyTree.dataResetTitle', { company: child.code })}
+                    aria-label={t('companyTree.dataResetTitle', { company: child.code })}
+                  >
+                    <Archive className="h-3 w-3" aria-hidden="true" />
+                    {t('companyTree.dataResetLabel')}
+                  </Link>
                   {child.dataPendingBanner && (
                     <span
                       className="text-amber-400/80 text-[10px] italic px-1.5 py-0.5 rounded bg-amber-900/20 border border-amber-700/30"
