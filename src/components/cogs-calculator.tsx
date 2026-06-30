@@ -2,14 +2,16 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, ComposedChart, Line, AreaChart, Area,
 } from "recharts"
-import { TrendingDown, Factory, Percent, Package, ChevronDown, ChevronRight } from "lucide-react"
+import { TrendingDown, Factory, Percent, Package, ChevronDown, ChevronRight, Upload } from "lucide-react"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#06b6d4", "#8b5cf6"]
@@ -61,6 +63,7 @@ type MonthlyDataRow = { month: string; Total: number } & Record<string, number |
 
 export function COGSCalculator({ planId }: { planId: string }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const orgId = session?.user?.organizationId
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set())
 
@@ -94,10 +97,19 @@ export function COGSCalculator({ planId }: { planId: string }) {
   if (!data?.cogsLines || data.cogsLines.length === 0) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-muted-foreground">
+        <CardContent className="p-12 text-center">
           <Factory className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No COGS data available</p>
-          <p className="text-sm mt-1">Import an Excel file to populate cost of goods sold.</p>
+          <p className="font-medium text-foreground">No COGS data in this plan</p>
+          <p className="text-sm mt-1 text-muted-foreground">
+            The selected plan exists, but it does not contain product-level cost of goods sold rows yet.
+            Creating a plan only creates an empty container.
+          </p>
+          <Button
+            className="mt-5"
+            onClick={() => router.push("/budgeting/admin/ai-import")}
+          >
+            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+          </Button>
         </CardContent>
       </Card>
     )

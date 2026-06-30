@@ -150,6 +150,15 @@ const COMPANY_FILTERED_TABS: ReadonlySet<string> = new Set([
   "forecast",
 ])
 
+const DATA_IMPORT_TABS: ReadonlySet<string> = new Set([
+  "pnl-report",
+  "sales-budget",
+  "cogs",
+  "balance-sheet",
+  "cash-flow",
+  "assumptions",
+])
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BudgetingPage() {
@@ -170,6 +179,8 @@ export default function BudgetingPage() {
   // actuals plan). Falls back to any populated plan, then the first plan —
   // never lands on an empty placeholder year-plan (the "0%/empty" complaint).
   const resolvedPlanId = activePlanId || pickDefaultPlanId(plans)
+  const activePlan = plans.find((p: BudgetPlan) => p.id === resolvedPlanId) ?? null
+  const importYear = activePlan?.year ?? new Date().getFullYear()
 
   // Turn 30: per-daughter-company filter. Reads from URL `?company=X` so
   // selection survives navigation; null = org-wide consolidated view (the
@@ -392,9 +403,23 @@ export default function BudgetingPage() {
               })}
             </select>
           )}
-          <Button size="sm" onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4 mr-1" /> {t("createPlan")}
-          </Button>
+          {DATA_IMPORT_TABS.has(activeTab) ? (
+            <Button
+              size="sm"
+              onClick={() => router.push(`/budgeting/admin/ai-import?year=${importYear}`)}
+              title="Import Excel data into a budget plan. Creating a plan alone does not create COGS/P&L rows."
+            >
+              <Upload className="h-4 w-4 mr-1" /> AI idxal
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => setShowCreate(true)}
+              title="Creates an empty budget plan. Import data or add rows after creating it."
+            >
+              <Plus className="h-4 w-4 mr-1" /> {t("createPlan")}
+            </Button>
+          )}
         </div>
       </div>
 
