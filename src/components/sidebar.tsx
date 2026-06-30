@@ -69,6 +69,7 @@ const navItems: NavItem[] = [
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
   { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
   { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
+  { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },
   { href: "/budgeting/alerts", icon: Bell, labelKey: "alerts" },
   { href: "/budgeting/audit", icon: ScrollText, labelKey: "auditLog", minRole: "manager" },
   { href: "/budgeting/admin", icon: Settings, labelKey: "adminTools", minRole: "admin" },
@@ -161,6 +162,9 @@ export function Sidebar() {
   // from import/admin workflows.
   const isBudgetingSection = pathname.startsWith("/budgeting")
   const isAdminSection = pathname.startsWith("/budgeting/admin")
+  const isDirectAdminShortcut =
+    pathname === "/budgeting/admin/ai-import" ||
+    pathname.startsWith("/budgeting/admin/ai-import/")
   // Auto-open on legacy /budgeting (sub-tabs ARE the page's main UI),
   // auto-closed on /budgeting/terminal | /onboarding | /board-deck (the page
   // itself is the destination). User toggle persists for the session.
@@ -202,6 +206,8 @@ export function Sidebar() {
           const isActive =
             item.href === "/budgeting"
               ? isBudgetingLegacy
+              : item.href === "/budgeting/admin"
+                ? isAdminSection && !isDirectAdminShortcut
               : pathname === item.href || pathname.startsWith(item.href + "/")
           // Budget row has an inline chevron toggle when we're anywhere
           // in /budgeting/* — clicking it expands/collapses the sub-nav
