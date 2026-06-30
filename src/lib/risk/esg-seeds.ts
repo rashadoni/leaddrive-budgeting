@@ -130,9 +130,12 @@ export const esgIndicators: IndicatorSeed[] = [
     unit: "score",
     direction: "higher_better",
     // ESG composite — penalize companies with higher industry-modeled
-    // total emissions (Scope 1+2+3 normalized). 100 = pristine,
-    // 0 = exceeds threshold. Formula caps to [0..100].
-    formula: `max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 100000)))`,
+    // total emissions (Scope 1+2+3 normalized), but keep the scale aligned
+    // with the component Scope thresholds. The prior /100 divisor could
+    // mark a company red on the composite while Scope 1/2/3 were all green.
+    // This remains a directional modeled score until a disclosed ESG rating
+    // overrides it via IndicatorDisclosure.
+    formula: `max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 1000000)))`,
     thresholds: {
       green: { op: ">=", value: 70 },
       amber: { op: ">=", value: 40 },

@@ -23,6 +23,7 @@ async function main() {
       organizationId: org.id,
       level: 2,
       industry: { not: null },
+      status: { not: "pending" },
     },
     select: { id: true, code: true, industry: true, name: true },
   })

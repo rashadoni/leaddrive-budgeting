@@ -2896,7 +2896,7 @@ describe('recomputeIndicator — industryFactor resolver (Phase 7.H F4.v2.2)', (
       id: 'ind_esg_composite_v22',
       code: 'IND_ESG_COMPOSITE',
       formula:
-        'max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 100000)))',
+        'max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 1000000)))',
       thresholds: {
         green: { op: '>=', value: 70 },
         amber: { op: '>=', value: 40 },
@@ -2919,6 +2919,52 @@ describe('recomputeIndicator — industryFactor resolver (Phase 7.H F4.v2.2)', (
       period: '2026',
       industry: 'industrial',
     });
+    expect(ds.state.upserts[0].confidence).toBe('C');
+  });
+
+  it('ESG composite stays directionally aligned with all-green component scopes', async () => {
+    const COMPOSITE: IndicatorDefinitionLike = {
+      id: 'ind_esg_composite_v22_aligned',
+      code: 'IND_ESG_COMPOSITE',
+      formula:
+        'max(0, min(100, 100 - (revenue * (industryFactor("scope_1") + industryFactor("scope_2") + industryFactor("scope_3")) / 1000000)))',
+      thresholds: {
+        green: { op: '>=', value: 70 },
+        amber: { op: '>=', value: 40 },
+        red: { op: '<', value: 40 },
+      },
+      requiredInputs: [
+        'budgetLine',
+        'industryFactor:scope_1',
+        'industryFactor:scope_2',
+        'industryFactor:scope_3',
+      ],
+      unit: 'score',
+      defaultValueSource: 'modeled_industry',
+    };
+    const ds = mockDs({
+      budgetLines: [
+        {
+          plannedAmount: 8_423_055.84,
+          currencyCode: null,
+          exchangeRate: null,
+          accountType: 'revenue',
+          accountCode: '601',
+          accountCategory: 'sales',
+          accountName: 'Revenue',
+          monthIndex: null,
+        },
+      ],
+    });
+    const result = await recomputeIndicator(ds, {
+      organizationId: 'org_1',
+      companyId: 'co_cpc',
+      definition: COMPOSITE,
+      period: '2026',
+      industry: 'food_processing',
+    });
+    expect(result.value).toBeCloseTo(91.32, 2);
+    expect(result.status).toBe('green');
     expect(ds.state.upserts[0].confidence).toBe('C');
   });
 
