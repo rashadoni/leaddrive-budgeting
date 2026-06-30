@@ -3093,6 +3093,41 @@
           "action": "Action"
         }
       },
+      "receipt": {
+        "title": "Safety receipt",
+        "previewSubtitle": "What this preview would write, archive, skip, reconcile, and recompute before any DB change.",
+        "appliedSubtitle": "What committed and whether downstream recompute is complete, pending, or failed.",
+        "status": {
+          "blocked": "Blocked",
+          "previewReady": "Ready for apply",
+          "appliedComplete": "Applied and recomputed",
+          "recomputePending": "Applied, recompute pending",
+          "recomputeFailed": "Applied, recompute failed",
+          "noWrites": "No writes"
+        },
+        "rowsToWrite": "Rows to write",
+        "rowsCommitted": "Rows committed",
+        "rowsToArchive": "Rows to archive",
+        "archiveCalculated": "Scoped reset; exact count is calculated inside apply",
+        "reconciliation": "Reconciliation",
+        "conflicts": "{n} conflict(s)",
+        "recompute": "Recompute",
+        "recomputeOk": "OK",
+        "recomputePending": "pending",
+        "recomputeFailed": "failed",
+        "recomputeNotRun": "not run",
+        "recomputeDetail": "unknown {unknown}, failed {failed}",
+        "affectedCompanies": "Affected companies",
+        "affectedPlans": "Affected plans",
+        "sectionsDetected": "Sections detected",
+        "archiveScope": "Archive/reset scope",
+        "skippedSheets": "Skipped sheets",
+        "groups": "Committed groups",
+        "none": "none",
+        "openRiskTerminal": "Risk Terminal",
+        "openIndicatorHealth": "Indicator Health",
+        "openRollback": "Cleanup / rollback"
+      },
       "preview": {
         "title": "File analysis",
         "subtitle": "Verify the dataType and confidence per sheet. Low confidence (<65%) means the AI was probably wrong — check yourself or re-upload with clearer sheet names.",

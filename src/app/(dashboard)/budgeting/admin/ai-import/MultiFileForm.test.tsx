@@ -167,6 +167,150 @@ describe("MultiFileForm", () => {
     expect(screen.getByText(/main-financial/)).toBeTruthy()
   })
 
+  it("renders safety receipts before apply and after apply", async () => {
+    const previewReceipt = {
+      mode: "preview",
+      status: "preview_ready",
+      year: 2026,
+      rows: {
+        toWrite: 144,
+        committed: 0,
+        toArchive: null,
+        archiveScopeCount: 1,
+      },
+      affectedCompanies: ["AZSEKER-CPC"],
+      affectedPlans: ["actual"],
+      sectionsDetected: [{ dataType: "PLF", sheets: 1 }],
+      skippedSheets: [],
+      archiveScopes: [
+        { companyCode: "AZSEKER-CPC", dataType: "PLF", planKind: "actual" },
+      ],
+      reconciliation: {
+        verdict: "green",
+        conflicts: 0,
+        groups: [],
+      },
+      recompute: {
+        status: "not_run",
+        predictedTargets: 1,
+        targets: 0,
+        ok: 0,
+        unknown: 0,
+        failed: 0,
+      },
+      links: {
+        riskTerminal: "/budgeting/terminal",
+        indicatorHealth: "/budgeting/admin/indicator-health",
+        rollback: "/budgeting/admin/ai-import#import-cleanup",
+      },
+    }
+    const appliedReceipt = {
+      ...previewReceipt,
+      mode: "applied",
+      status: "applied_recompute_failed",
+      rows: {
+        toWrite: 144,
+        committed: 144,
+        toArchive: null,
+        archiveScopeCount: 1,
+      },
+      reconciliation: {
+        verdict: "green",
+        conflicts: 0,
+        groups: [
+          {
+            fileType: "main-financial",
+            verdict: "green",
+            committed: true,
+            rows: 144,
+            skipReason: null,
+          },
+        ],
+      },
+      recompute: {
+        status: "failed",
+        predictedTargets: 1,
+        targets: 1,
+        ok: 0,
+        unknown: 0,
+        failed: 1,
+      },
+    }
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "receipt.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.95,
+            reasoning: "PLF",
+            sheetCounts: {},
+          },
+          classifications: [
+            {
+              sheetName: "PLF",
+              dataType: "PLF",
+              entityCode: "AZSEKER-CPC",
+              confidence: 0.95,
+              reasoning: "entity",
+              planKind: "actual",
+              role: "source",
+            },
+          ],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 100, outputTokens: 50, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+      safetyReceipt: previewReceipt,
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "applied",
+      perFile: [],
+      conflicts: [],
+      perGroup: [
+        {
+          fileType: "main-financial",
+          filenames: ["receipt.xlsx"],
+          verdict: "green",
+          committed: true,
+          totalRowsInserted: 144,
+          skipReason: null,
+        },
+      ],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 100, outputTokens: 50, modelName: "x" },
+      durationMs: 200,
+      recompute: { ok: 0, unknown: 0, failed: 1, targets: 1 },
+      warnings: [],
+      safetyReceipt: appliedReceipt,
+    })
+
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("receipt.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+    await waitFor(() => {
+      expect(screen.getByTestId("safety-receipt-preview")).toBeTruthy()
+    })
+    expect(screen.getByTestId("safety-receipt-status-preview")).toBeTruthy()
+
+    fireEvent.click(screen.getByTestId("btn-apply"))
+    await waitFor(() => {
+      expect(screen.getByTestId("safety-receipt-applied")).toBeTruthy()
+    })
+    expect(screen.getByTestId("safety-receipt-status-applied")).toBeTruthy()
+  })
+
   it("renders workbook profile chips when preview includes workbookProfile", async () => {
     mockFetchOnce(200, {
       ok: true,

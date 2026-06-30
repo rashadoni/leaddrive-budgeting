@@ -265,7 +265,7 @@ Latest local benchmark after Task 6:
 
 ## Task 7 - Visible Safety Receipt
 
-Status: todo
+Status: done
 
 Make the safety state explicit before and after apply.
 
@@ -276,6 +276,27 @@ Deliverables:
 Acceptance:
 - A demo user can see whether import is fully complete or only written with recompute pending.
 - Failed recompute is visible and retryable.
+
+Implemented:
+- `/api/import/ai-auto-multi` now returns a structured `safetyReceipt` on preview, normal apply, and conflict/blocked responses.
+- Before apply, the receipt shows rows to write, archive/reset scope, affected companies, affected plans, detected sections, skipped sheets, reconciliation verdict/conflicts, and predicted Risk Terminal recompute targets.
+- After apply, the receipt shows committed row/group counts, recompute ok/unknown/failed state, and direct links to Risk Terminal, Indicator Health, and cleanup/rollback.
+- Recompute states are explicit: not-run, ok, pending, failed. Failed recompute is visible even when rows committed successfully.
+- Archive row counts are not guessed: UI shows exact scope and explains that the final archive count is calculated inside the apply transaction.
+
+Verification:
+- `npx vitest run 'src/app/(dashboard)/budgeting/admin/ai-import/MultiFileForm.test.tsx' src/app/api/import/ai-auto-multi/handler.test.ts`
+- `npx tsc --noEmit --pretty false`
+- `set -a; source .env; set +a; npm run benchmark:ai-import -- --year 2026 --baseline tmp/ai-import-benchmark/report-2026-06-30T20-14-09-676Z.json`
+
+Latest local benchmark after Task 7:
+- Report: `tmp/ai-import-benchmark/report-2026-06-30T20-41-44-142Z.json`
+- Cases: 8 executed, 0 skipped
+- Average score: 64.9 (Task 6: 64.9)
+- Human confirmations: 15 (Task 6: 15)
+- Conflicts: 0
+- Parsed: 5,902 items / 5,667 cells
+- No benchmark regression; Task 7 changes response/UI observability, not import classification/parsing.
 
 ## Task 8 - Rollout And Production Verification
 

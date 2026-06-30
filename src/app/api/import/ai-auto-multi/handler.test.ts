@@ -127,7 +127,7 @@ function defaultOrchResult() {
         reconciliation: null,
         committed: false,
         totalRowsInserted: 0,
-        skipReason: "dryRun=true",
+        skipReason: "dryRun=true" as string | null,
       },
     ],
     overallVerdict: "green",
@@ -139,6 +139,20 @@ function defaultOrchResult() {
     },
     durationMs: 100,
     recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+    parseMetrics: {
+      workbookSheets: 1,
+      classifiedSheets: 0,
+      classificationErrors: 0,
+      parsedSheets: 0,
+      parsedItems: 0,
+      parsedCells: 0,
+      skippedSheets: 0,
+      blockedSheets: 0,
+      adapterWarnings: 0,
+      planRelevantSheets: 0,
+      planRelevantSheetsWithEntity: 0,
+      missingEntitySheets: 0,
+    },
     warnings: [],
   }
 }
@@ -214,12 +228,108 @@ describe("POST /api/import/ai-auto-multi", () => {
       perFile: unknown[]
       perGroup: unknown[]
       overallVerdict: string
+      safetyReceipt: { status: string; rows: { toWrite: number } }
     }
     expect(body.ok).toBe(true)
     expect(body.mode).toBe("preview")
     expect(body.perFile).toHaveLength(1)
     expect(body.perGroup).toHaveLength(1)
     expect(body.overallVerdict).toBe("green")
+    expect(body.safetyReceipt.status).toBe("preview_ready")
+    expect(body.safetyReceipt.rows.toWrite).toBe(0)
+  })
+
+  it("returns a safety receipt with affected scope before apply", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.perFile[0].classifications = [
+      {
+        sheetName: "PLF CPC",
+        dataType: "PLF",
+        entityCode: "AZSEKER-CPC",
+        confidence: 0.96,
+        reasoning: "entity in sheet name",
+        planKind: "actual",
+        role: "source",
+      },
+      {
+        sheetName: "CONS",
+        dataType: "BS",
+        entityCode: "AZSEKER",
+        confidence: 0.88,
+        reasoning: "summary",
+        planKind: "actual",
+        role: "derived_summary",
+        roleSignal: "name-pattern",
+      },
+    ] as never
+    orchResult.parseMetrics.parsedItems = 144
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(makeMultipartRequest({ fileCount: 1 }) as never)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      safetyReceipt: {
+        rows: { toWrite: number; toArchive: number | null }
+        affectedCompanies: string[]
+        affectedPlans: string[]
+        archiveScopes: Array<{ companyCode: string; dataType: string }>
+        skippedSheets: Array<{ sheetName: string }>
+        recompute: { predictedTargets: number; status: string }
+      }
+    }
+    expect(body.safetyReceipt.rows.toWrite).toBe(144)
+    expect(body.safetyReceipt.rows.toArchive).toBeNull()
+    expect(body.safetyReceipt.affectedCompanies).toEqual([
+      "AZSEKER",
+      "AZSEKER-CPC",
+    ])
+    expect(body.safetyReceipt.affectedPlans).toEqual(["actual"])
+    expect(body.safetyReceipt.archiveScopes).toEqual([
+      { companyCode: "AZSEKER-CPC", dataType: "PLF", planKind: "actual" },
+    ])
+    expect(body.safetyReceipt.skippedSheets).toEqual([
+      expect.objectContaining({ sheetName: "CONS" }),
+    ])
+    expect(body.safetyReceipt.recompute.predictedTargets).toBe(1)
+    expect(body.safetyReceipt.recompute.status).toBe("not_run")
+  })
+
+  it("surfaces applied recompute failure in the safety receipt", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "admin" })
+    const orchResult = defaultOrchResult()
+    orchResult.perFile[0].classifications = [
+      {
+        sheetName: "PLF CPC",
+        dataType: "PLF",
+        entityCode: "AZSEKER-CPC",
+        confidence: 0.96,
+        reasoning: "entity in sheet name",
+        planKind: "actual",
+        role: "source",
+      },
+    ] as never
+    orchResult.perGroup[0].committed = true
+    orchResult.perGroup[0].skipReason = null
+    orchResult.perGroup[0].totalRowsInserted = 12
+    orchResult.recompute = { ok: 0, unknown: 0, failed: 1, targets: 1 }
+    orchestratorMock.runMultiFileImport.mockResolvedValue(orchResult)
+
+    const res = await POST(
+      makeMultipartRequest({ fileCount: 1, apply: "1" }) as never,
+    )
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      safetyReceipt: {
+        status: string
+        rows: { committed: number }
+        recompute: { failed: number; status: string }
+      }
+    }
+    expect(body.safetyReceipt.status).toBe("applied_recompute_failed")
+    expect(body.safetyReceipt.rows.committed).toBe(12)
+    expect(body.safetyReceipt.recompute.failed).toBe(1)
+    expect(body.safetyReceipt.recompute.status).toBe("failed")
   })
 
   it("returns 409 when cross-file conflicts detected", async () => {

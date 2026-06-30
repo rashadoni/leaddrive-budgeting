@@ -3093,6 +3093,41 @@
           "action": "Əməl"
         }
       },
+      "receipt": {
+        "title": "Safety receipt",
+        "previewSubtitle": "Bu preview DB-də dəyişiklik etmədən əvvəl nəyi yazacaq, arxivləyəcək, atlayacaq, üzləşdirəcək və yenidən hesablayacaq.",
+        "appliedSubtitle": "Nəyin tətbiq olunduğunu və downstream recompute-un tamamlanıb-tamamlanmadığını göstərir.",
+        "status": {
+          "blocked": "Bloklanıb",
+          "previewReady": "Tətbiqə hazırdır",
+          "appliedComplete": "Tətbiq edildi və hesablandı",
+          "recomputePending": "Tətbiq edildi, recompute gözləyir",
+          "recomputeFailed": "Tətbiq edildi, recompute xətası",
+          "noWrites": "Yazı yoxdur"
+        },
+        "rowsToWrite": "Yazılacaq sətir",
+        "rowsCommitted": "Yazılmış sətir",
+        "rowsToArchive": "Arxivlənəcək sətir",
+        "archiveCalculated": "Scoped reset; dəqiq say apply daxilində hesablanır",
+        "reconciliation": "Üzləşdirmə",
+        "conflicts": "{n} konflikt",
+        "recompute": "Recompute",
+        "recomputeOk": "uğurlu",
+        "recomputePending": "gözləyir",
+        "recomputeFailed": "xəta",
+        "recomputeNotRun": "işləməyib",
+        "recomputeDetail": "unknown {unknown}, failed {failed}",
+        "affectedCompanies": "Təsirlənən şirkətlər",
+        "affectedPlans": "Təsirlənən planlar",
+        "sectionsDetected": "Tapılan bölmələr",
+        "archiveScope": "Reset/archive scope",
+        "skippedSheets": "Atlanan vərəqlər",
+        "groups": "Yazı qrupları",
+        "none": "yoxdur",
+        "openRiskTerminal": "Risk Terminal",
+        "openIndicatorHealth": "Indicator Health",
+        "openRollback": "Cleanup / rollback"
+      },
       "preview": {
         "title": "Faylların analizi",
         "subtitle": "Hər vərəq üçün dataType və etibarlılığı yoxlayın. Aşağı etibarlılıq (<65%) — AI çox güman ki, səhv edib, özünüz yoxlayın və ya vərəq adı daha aydın olan faylı yenidən yükləyin.",

@@ -47,6 +47,7 @@ import { buildProductionAdapterRegistry } from "@/lib/onboarding/ai-import/produ
 import {
   runMultiFileImport,
   type MultiFileImportInput,
+  type MultiFileImportResult,
 } from "@/lib/onboarding/ai-import/multi-file-orchestrator"
 import {
   REPORTING_PACK_SHEET_MAP,
@@ -103,6 +104,223 @@ type GuidedSheetFixInput = {
   entityCode?: string
   planKind?: "actual" | "budget"
   role?: "source" | "derived_summary"
+}
+
+type SafetyReceiptStatus =
+  | "blocked"
+  | "preview_ready"
+  | "applied_complete"
+  | "applied_recompute_pending"
+  | "applied_recompute_failed"
+  | "applied_no_writes"
+
+type SafetyReceipt = {
+  mode: "preview" | "applied"
+  status: SafetyReceiptStatus
+  year: number
+  rows: {
+    toWrite: number
+    committed: number
+    toArchive: number | null
+    archiveScopeCount: number
+  }
+  affectedCompanies: string[]
+  affectedPlans: string[]
+  sectionsDetected: Array<{ dataType: string; sheets: number }>
+  skippedSheets: Array<{
+    filename: string
+    sheetName: string
+    dataType: string
+    reason: string
+  }>
+  archiveScopes: Array<{
+    companyCode: string
+    dataType: string
+    planKind: "actual" | "budget" | "unknown"
+  }>
+  reconciliation: {
+    verdict: MultiFileImportResult["overallVerdict"]
+    conflicts: number
+    groups: Array<{
+      fileType: string
+      verdict: string
+      committed: boolean
+      rows: number
+      skipReason: string | null
+    }>
+  }
+  recompute: {
+    status: "not_run" | "ok" | "pending" | "failed"
+    predictedTargets: number
+    targets: number
+    ok: number
+    unknown: number
+    failed: number
+  }
+  links: {
+    riskTerminal: string
+    indicatorHealth: string
+    rollback: string
+  }
+}
+
+const PLAN_SCOPE_DATATYPES = new Set(["PLF", "BS", "CF"])
+
+function uniqueSorted(values: Iterable<string>): string[] {
+  return Array.from(new Set(Array.from(values).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b),
+  )
+}
+
+function effectiveEntityCode(classification: SheetClassification): string | null {
+  return classification.entityCodeOverride ?? classification.entityCode ?? null
+}
+
+function effectivePlanKind(
+  classification: SheetClassification,
+): "actual" | "budget" | "unknown" {
+  return classification.planKind === "actual" ||
+    classification.planKind === "budget"
+    ? classification.planKind
+    : "unknown"
+}
+
+function buildSafetyReceipt(
+  result: MultiFileImportResult,
+  opts: { shouldApply: boolean; year: number },
+): SafetyReceipt {
+  const classifications = result.perFile.flatMap((file) =>
+    file.classifications.map((classification) => ({
+      filename: file.filename,
+      classification,
+    })),
+  )
+  const committedRows = result.perGroup.reduce(
+    (sum, group) => sum + (group.committed ? group.totalRowsInserted : 0),
+    0,
+  )
+  const sectionCounts = new Map<string, number>()
+  for (const { classification } of classifications) {
+    sectionCounts.set(
+      classification.dataType,
+      (sectionCounts.get(classification.dataType) ?? 0) + 1,
+    )
+  }
+
+  const archiveScopeMap = new Map<
+    string,
+    { companyCode: string; dataType: string; planKind: "actual" | "budget" | "unknown" }
+  >()
+  for (const { classification } of classifications) {
+    if (!PLAN_SCOPE_DATATYPES.has(classification.dataType)) continue
+    if (classification.role === "derived_summary") continue
+    const companyCode = effectiveEntityCode(classification)
+    if (!companyCode) continue
+    const planKind = effectivePlanKind(classification)
+    const key = `${companyCode}\u001f${classification.dataType}\u001f${planKind}`
+    archiveScopeMap.set(key, {
+      companyCode,
+      dataType: classification.dataType,
+      planKind,
+    })
+  }
+  const archiveScopes = Array.from(archiveScopeMap.values()).sort((a, b) =>
+    `${a.companyCode}:${a.dataType}:${a.planKind}`.localeCompare(
+      `${b.companyCode}:${b.dataType}:${b.planKind}`,
+    ),
+  )
+  const affectedCompanies = uniqueSorted(
+    classifications
+      .map(({ classification }) => effectiveEntityCode(classification))
+      .filter((code): code is string => !!code),
+  )
+  const affectedPlans = uniqueSorted(
+    classifications
+      .map(({ classification }) => effectivePlanKind(classification))
+      .filter((kind) => kind !== "unknown"),
+  )
+  const skippedSheets = classifications
+    .filter(({ classification }) => classification.role === "derived_summary")
+    .map(({ filename, classification }) => ({
+      filename,
+      sheetName: classification.sheetName,
+      dataType: classification.dataType,
+      reason:
+        classification.roleSignal ??
+        classification.reasoning ??
+        "derived_summary",
+    }))
+
+  const recomputeStatus: SafetyReceipt["recompute"]["status"] = !opts.shouldApply
+    ? "not_run"
+    : result.recompute.failed > 0
+      ? "failed"
+      : result.recompute.unknown > 0
+        ? "pending"
+        : result.recompute.targets > 0 &&
+            result.recompute.ok === result.recompute.targets
+          ? "ok"
+          : "not_run"
+  const status: SafetyReceiptStatus =
+    result.conflicts.length > 0 || result.overallVerdict === "red"
+      ? "blocked"
+      : !opts.shouldApply
+        ? "preview_ready"
+        : committedRows === 0
+          ? "applied_no_writes"
+          : recomputeStatus === "failed"
+            ? "applied_recompute_failed"
+            : recomputeStatus === "pending" || recomputeStatus === "not_run"
+              ? "applied_recompute_pending"
+              : "applied_complete"
+
+  return {
+    mode: opts.shouldApply ? "applied" : "preview",
+    status,
+    year: opts.year,
+    rows: {
+      toWrite: opts.shouldApply ? committedRows : result.parseMetrics.parsedItems,
+      committed: committedRows,
+      toArchive: null,
+      archiveScopeCount: archiveScopes.length,
+    },
+    affectedCompanies,
+    affectedPlans,
+    sectionsDetected: Array.from(sectionCounts.entries())
+      .map(([dataType, sheets]) => ({ dataType, sheets }))
+      .sort((a, b) => a.dataType.localeCompare(b.dataType)),
+    skippedSheets,
+    archiveScopes,
+    reconciliation: {
+      verdict: result.overallVerdict,
+      conflicts: result.conflicts.length,
+      groups: result.perGroup.map((group) => ({
+        fileType: group.fileType,
+        verdict: group.verdict,
+        committed: group.committed,
+        rows: group.totalRowsInserted,
+        skipReason: group.skipReason,
+      })),
+    },
+    recompute: {
+      status: recomputeStatus,
+      predictedTargets:
+        result.recompute.targets > 0
+          ? result.recompute.targets
+          : archiveScopes.length > 0
+            ? uniqueSorted(archiveScopes.map((scope) => scope.companyCode)).length
+            : affectedCompanies.length,
+      targets: result.recompute.targets,
+      ok: result.recompute.ok,
+      unknown: result.recompute.unknown,
+      failed: result.recompute.failed,
+    },
+    links: {
+      riskTerminal: "/budgeting/terminal",
+      indicatorHealth: "/budgeting/admin/indicator-health",
+      rollback: "/budgeting/admin/ai-import#import-cleanup",
+    },
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -863,6 +1081,7 @@ export async function POST(request: NextRequest) {
   for (const f of result.perFile) {
     sheetImpactsByFilename.set(f.filename, buildSheetImpacts(f.classifications))
   }
+  const safetyReceipt = buildSafetyReceipt(result, { shouldApply, year })
 
   // ── Conflict short-circuit → 409 ────────────────────────────────
   // The orchestrator already returned early when conflicts were
@@ -885,6 +1104,7 @@ export async function POST(request: NextRequest) {
         error: "Cross-file conflicts detected",
         ...result,
         sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
+        safetyReceipt,
         templateUsage,
         durationMs: Date.now() - t0,
       },
@@ -983,6 +1203,7 @@ export async function POST(request: NextRequest) {
     mode: shouldApply ? ("applied" as const) : ("preview" as const),
     ...result,
     sheetImpactsByFilename: Object.fromEntries(sheetImpactsByFilename),
+    safetyReceipt,
     templateUsage,
     backlogClosed,
     consolidatedBsWarnings,

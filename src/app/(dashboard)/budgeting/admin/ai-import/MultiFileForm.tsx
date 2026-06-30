@@ -154,6 +154,62 @@ interface SheetImpact {
   }
 }
 
+interface SafetyReceipt {
+  mode: "preview" | "applied"
+  status:
+    | "blocked"
+    | "preview_ready"
+    | "applied_complete"
+    | "applied_recompute_pending"
+    | "applied_recompute_failed"
+    | "applied_no_writes"
+  year: number
+  rows: {
+    toWrite: number
+    committed: number
+    toArchive: number | null
+    archiveScopeCount: number
+  }
+  affectedCompanies: string[]
+  affectedPlans: string[]
+  sectionsDetected: Array<{ dataType: string; sheets: number }>
+  skippedSheets: Array<{
+    filename: string
+    sheetName: string
+    dataType: string
+    reason: string
+  }>
+  archiveScopes: Array<{
+    companyCode: string
+    dataType: string
+    planKind: "actual" | "budget" | "unknown"
+  }>
+  reconciliation: {
+    verdict: "green" | "yellow" | "red"
+    conflicts: number
+    groups: Array<{
+      fileType: string
+      verdict: string
+      committed: boolean
+      rows: number
+      skipReason: string | null
+    }>
+  }
+  recompute: {
+    status: "not_run" | "ok" | "pending" | "failed"
+    predictedTargets: number
+    targets: number
+    ok: number
+    unknown: number
+    failed: number
+  }
+  links: {
+    riskTerminal: string
+    indicatorHealth: string
+    rollback: string
+  }
+}
+
 interface MultiFileApiResponse {
   ok: boolean
   mode?: "preview" | "applied"
@@ -190,6 +246,7 @@ interface MultiFileApiResponse {
    *  by the preview card to render confidence + affected-indicator list
    *  per classified sheet. */
   sheetImpactsByFilename?: Record<string, SheetImpact[]>
+  safetyReceipt?: SafetyReceipt
   buColumnSplits?: Array<{
     filename: string
     sheetName: string
@@ -250,11 +307,35 @@ function formatBytes(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`
 }
 
+function formatInt(n: number): string {
+  return new Intl.NumberFormat().format(n)
+}
+
 function verdictColor(v: string): string {
   if (v === "green") return "text-emerald-700 bg-emerald-50 border-emerald-200"
   if (v === "yellow") return "text-amber-700 bg-amber-50 border-amber-200"
   if (v === "red") return "text-red-700 bg-red-50 border-red-200"
   return "text-slate-500 bg-slate-50 border-slate-200"
+}
+
+function receiptStatusClass(status: SafetyReceipt["status"]): string {
+  if (status === "blocked" || status === "applied_recompute_failed") {
+    return "border-red-200 bg-red-50 text-red-900"
+  }
+  if (status === "applied_recompute_pending" || status === "applied_no_writes") {
+    return "border-amber-200 bg-amber-50 text-amber-900"
+  }
+  if (status === "applied_complete") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-900"
+  }
+  return "border-blue-200 bg-blue-50 text-blue-900"
+}
+
+function recomputeStatusClass(status: SafetyReceipt["recompute"]["status"]): string {
+  if (status === "failed") return "bg-red-100 text-red-800"
+  if (status === "pending") return "bg-amber-100 text-amber-800"
+  if (status === "ok") return "bg-emerald-100 text-emerald-800"
+  return "bg-slate-100 text-slate-600"
 }
 
 function verdictEmoji(v: string): string {
@@ -768,6 +849,257 @@ export function MultiFileForm() {
     } finally {
       setIsSavingTemplate(false)
     }
+  }
+
+  function receiptStatusLabel(status: SafetyReceipt["status"]): string {
+    switch (status) {
+      case "blocked":
+        return t("receipt.status.blocked")
+      case "preview_ready":
+        return t("receipt.status.previewReady")
+      case "applied_complete":
+        return t("receipt.status.appliedComplete")
+      case "applied_recompute_pending":
+        return t("receipt.status.recomputePending")
+      case "applied_recompute_failed":
+        return t("receipt.status.recomputeFailed")
+      case "applied_no_writes":
+        return t("receipt.status.noWrites")
+    }
+  }
+
+  function recomputeStatusLabel(
+    status: SafetyReceipt["recompute"]["status"],
+  ): string {
+    switch (status) {
+      case "ok":
+        return t("receipt.recomputeOk")
+      case "pending":
+        return t("receipt.recomputePending")
+      case "failed":
+        return t("receipt.recomputeFailed")
+      case "not_run":
+        return t("receipt.recomputeNotRun")
+    }
+  }
+
+  function compactList(values: string[], max = 6): string {
+    if (values.length === 0) return t("receipt.none")
+    const shown = values.slice(0, max).join(", ")
+    return values.length > max
+      ? `${shown} +${values.length - max}`
+      : shown
+  }
+
+  function renderSafetyReceipt(
+    receipt: SafetyReceipt,
+    placement: "preview" | "applied",
+  ) {
+    const archiveRows =
+      receipt.rows.toArchive === null
+        ? t("receipt.archiveCalculated")
+        : formatInt(receipt.rows.toArchive)
+    const recomputeTargets =
+      receipt.recompute.targets > 0
+        ? receipt.recompute.targets
+        : receipt.recompute.predictedTargets
+    return (
+      <div
+        className={`rounded-lg border p-4 text-sm ${receiptStatusClass(receipt.status)}`}
+        data-testid={`safety-receipt-${placement}`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-slate-950">
+              {t("receipt.title")}
+            </h3>
+            <p className="mt-1 text-xs text-current opacity-75">
+              {placement === "preview"
+                ? t("receipt.previewSubtitle")
+                : t("receipt.appliedSubtitle")}
+            </p>
+          </div>
+          <span
+            className="rounded border border-current/15 bg-white/70 px-2.5 py-1 text-xs font-semibold"
+            data-testid={`safety-receipt-status-${placement}`}
+          >
+            {receiptStatusLabel(receipt.status)}
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-2 md:grid-cols-4">
+          <div className="rounded border border-current/10 bg-white/65 p-2.5">
+            <div className="text-[10px] uppercase tracking-wide opacity-60">
+              {placement === "preview"
+                ? t("receipt.rowsToWrite")
+                : t("receipt.rowsCommitted")}
+            </div>
+            <div className="mt-1 font-mono text-base font-semibold">
+              {formatInt(
+                placement === "preview"
+                  ? receipt.rows.toWrite
+                  : receipt.rows.committed,
+              )}
+            </div>
+          </div>
+          <div className="rounded border border-current/10 bg-white/65 p-2.5">
+            <div className="text-[10px] uppercase tracking-wide opacity-60">
+              {t("receipt.rowsToArchive")}
+            </div>
+            <div className="mt-1 text-xs font-medium">{archiveRows}</div>
+          </div>
+          <div className="rounded border border-current/10 bg-white/65 p-2.5">
+            <div className="text-[10px] uppercase tracking-wide opacity-60">
+              {t("receipt.reconciliation")}
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-semibold ${verdictColor(
+                  receipt.reconciliation.verdict,
+                )}`}
+              >
+                {receipt.reconciliation.verdict.toUpperCase()}
+              </span>
+              {receipt.reconciliation.conflicts > 0 && (
+                <span className="text-xs">
+                  {t("receipt.conflicts", {
+                    n: receipt.reconciliation.conflicts,
+                  })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="rounded border border-current/10 bg-white/65 p-2.5">
+            <div className="text-[10px] uppercase tracking-wide opacity-60">
+              {t("receipt.recompute")}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <span
+                className={`rounded px-1.5 py-0.5 text-xs font-semibold ${recomputeStatusClass(
+                  receipt.recompute.status,
+                )}`}
+              >
+                {recomputeStatusLabel(receipt.recompute.status)}
+              </span>
+              <span className="font-mono text-xs">
+                {receipt.recompute.ok}/{recomputeTargets}
+              </span>
+              {receipt.recompute.unknown > 0 || receipt.recompute.failed > 0 ? (
+                <span className="text-xs">
+                  {t("receipt.recomputeDetail", {
+                    unknown: receipt.recompute.unknown,
+                    failed: receipt.recompute.failed,
+                  })}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="space-y-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide opacity-60">
+                {t("receipt.affectedCompanies")}
+              </div>
+              <p className="mt-0.5 break-words font-mono text-xs">
+                {compactList(receipt.affectedCompanies)}
+              </p>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide opacity-60">
+                {t("receipt.affectedPlans")}
+              </div>
+              <p className="mt-0.5 text-xs">
+                {compactList(receipt.affectedPlans)}
+              </p>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide opacity-60">
+                {t("receipt.sectionsDetected")}
+              </div>
+              <p className="mt-0.5 text-xs">
+                {receipt.sectionsDetected.length === 0
+                  ? t("receipt.none")
+                  : receipt.sectionsDetected
+                      .map((section) => `${section.dataType} ${section.sheets}`)
+                      .join(" · ")}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <div className="text-[10px] uppercase tracking-wide opacity-60">
+                {t("receipt.archiveScope")}
+              </div>
+              <p className="mt-0.5 break-words font-mono text-xs">
+                {receipt.archiveScopes.length === 0
+                  ? t("receipt.none")
+                  : compactList(
+                      receipt.archiveScopes.map(
+                        (scope) =>
+                          `${scope.companyCode}/${scope.dataType}/${scope.planKind}`,
+                      ),
+                    )}
+              </p>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wide opacity-60">
+                {t("receipt.skippedSheets")}
+              </div>
+              <p className="mt-0.5 break-words text-xs">
+                {receipt.skippedSheets.length === 0
+                  ? t("receipt.none")
+                  : compactList(
+                      receipt.skippedSheets.map(
+                        (sheet) => `${sheet.filename}: ${sheet.sheetName}`,
+                      ),
+                      4,
+                    )}
+              </p>
+            </div>
+            {receipt.reconciliation.groups.length > 0 && (
+              <div>
+                <div className="text-[10px] uppercase tracking-wide opacity-60">
+                  {t("receipt.groups")}
+                </div>
+                <p className="mt-0.5 break-words text-xs">
+                  {compactList(
+                    receipt.reconciliation.groups.map(
+                      (group) =>
+                        `${group.fileType}: ${group.committed ? formatInt(group.rows) : group.verdict}`,
+                    ),
+                    4,
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+          <a
+            href={receipt.links.riskTerminal}
+            className="rounded border border-current/15 bg-white/70 px-2.5 py-1 font-medium hover:bg-white"
+          >
+            {t("receipt.openRiskTerminal")}
+          </a>
+          <a
+            href={receipt.links.indicatorHealth}
+            className="rounded border border-current/15 bg-white/70 px-2.5 py-1 font-medium hover:bg-white"
+          >
+            {t("receipt.openIndicatorHealth")}
+          </a>
+          <a
+            href={receipt.links.rollback}
+            className="rounded border border-current/15 bg-white/70 px-2.5 py-1 font-medium hover:bg-white"
+          >
+            {t("receipt.openRollback")}
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -1517,6 +1849,9 @@ export function MultiFileForm() {
         </div>
       )}
 
+      {previewResult?.safetyReceipt &&
+        renderSafetyReceipt(previewResult.safetyReceipt, "preview")}
+
       {/* Preview result — 2026-05-27 expanded: per-sheet dataType chip,
           AI confidence bar, and affected-indicators chip list, so the
           admin can verify both classification correctness AND downstream
@@ -1761,6 +2096,8 @@ export function MultiFileForm() {
             {verdictEmoji(applyResult.overallVerdict)} {t("result.title")} ·{" "}
             {applyResult.durationMs}ms
           </h3>
+          {applyResult.safetyReceipt &&
+            renderSafetyReceipt(applyResult.safetyReceipt, "applied")}
           {applyResult.perGroup.map((g) => (
             <div
               key={g.fileType}

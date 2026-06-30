@@ -3093,6 +3093,41 @@
           "action": "Действие"
         }
       },
+      "receipt": {
+        "title": "Safety receipt",
+        "previewSubtitle": "Что этот preview запишет, архивирует, пропустит, сверит и пересчитает до любого изменения в БД.",
+        "appliedSubtitle": "Что было применено и завершён ли downstream recompute.",
+        "status": {
+          "blocked": "Заблокировано",
+          "previewReady": "Готово к применению",
+          "appliedComplete": "Применено и пересчитано",
+          "recomputePending": "Применено, recompute ожидает",
+          "recomputeFailed": "Применено, recompute упал",
+          "noWrites": "Нет записей"
+        },
+        "rowsToWrite": "Строк к записи",
+        "rowsCommitted": "Строк записано",
+        "rowsToArchive": "Строк к архивированию",
+        "archiveCalculated": "Scoped reset; точное число считается внутри apply",
+        "reconciliation": "Сверка",
+        "conflicts": "{n} конфликт(ов)",
+        "recompute": "Recompute",
+        "recomputeOk": "успешно",
+        "recomputePending": "ожидает",
+        "recomputeFailed": "ошибка",
+        "recomputeNotRun": "не запускался",
+        "recomputeDetail": "unknown {unknown}, failed {failed}",
+        "affectedCompanies": "Затронутые компании",
+        "affectedPlans": "Затронутые планы",
+        "sectionsDetected": "Найденные разделы",
+        "archiveScope": "Scope reset/archive",
+        "skippedSheets": "Пропущенные листы",
+        "groups": "Группы записи",
+        "none": "нет",
+        "openRiskTerminal": "Risk Terminal",
+        "openIndicatorHealth": "Indicator Health",
+        "openRollback": "Cleanup / rollback"
+      },
       "preview": {
         "title": "Анализ файлов",
         "subtitle": "Проверьте dataType и вероятность по каждому листу. Низкая вероятность (<65%) — AI скорее всего ошибся, проверьте сами или перезалейте файл с более понятным названием листа.",
