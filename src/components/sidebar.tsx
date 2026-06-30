@@ -77,6 +77,8 @@ const navItems: NavItem[] = [
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ]
 
+const topLevelAdminToolHrefs = new Set(["/budgeting/admin/ai-import"])
+
 // Budget sub-navigation groups
 const budgetSubNav = [
   {
@@ -162,9 +164,9 @@ export function Sidebar() {
   // from import/admin workflows.
   const isBudgetingSection = pathname.startsWith("/budgeting")
   const isAdminSection = pathname.startsWith("/budgeting/admin")
-  const isDirectAdminShortcut =
-    pathname === "/budgeting/admin/ai-import" ||
-    pathname.startsWith("/budgeting/admin/ai-import/")
+  const isDirectAdminShortcut = [...topLevelAdminToolHrefs].some(
+    (href) => pathname === href || pathname.startsWith(`${href}/`),
+  )
   // Auto-open on legacy /budgeting (sub-tabs ARE the page's main UI),
   // auto-closed on /budgeting/terminal | /onboarding | /board-deck (the page
   // itself is the destination). User toggle persists for the session.
@@ -319,7 +321,9 @@ export function Sidebar() {
                       <p className="px-2 py-1 text-[9px] font-semibold text-white/40 uppercase tracking-wider">
                         {t2(adminGroup.key as never)}
                       </p>
-                      {adminGroup.tools.map((tool) => {
+                      {adminGroup.tools
+                        .filter((tool) => !topLevelAdminToolHrefs.has(tool.href))
+                        .map((tool) => {
                         const isToolActive =
                           pathname === tool.href || pathname.startsWith(tool.href + "/")
                         return (
