@@ -8,10 +8,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ComposedChart, Line,
 } from "recharts"
 import { TrendingUp, Package, ShoppingCart, DollarSign, ChevronDown, ChevronRight, Upload } from "lucide-react"
+import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
@@ -209,8 +210,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip formatter={((v: number, name: string) => [fmtCurrency(v) + " AZN", name]) as never} />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Tooltip content={<BudgetStackTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
               {productList.map((p, i) => (
                 <Bar key={p.code} dataKey={p.name} stackId="a" fill={COLORS[i % COLORS.length]} />
               ))}

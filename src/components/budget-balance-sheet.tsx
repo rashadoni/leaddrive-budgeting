@@ -2,14 +2,16 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area,
 } from "recharts"
-import { Scale, TrendingUp, Landmark, Wallet, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight } from "lucide-react"
+import { Scale, TrendingUp, Landmark, Wallet, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, Upload } from "lucide-react"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -86,6 +88,7 @@ function getSectionData(lines: BSLine[]) {
 
 export function BudgetBalanceSheet({ planId }: { planId: string }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const orgId = session?.user?.organizationId
   const role = session?.user?.role
   const canEdit = role === "manager" || role === "admin"
@@ -139,10 +142,15 @@ export function BudgetBalanceSheet({ planId }: { planId: string }) {
   if (!data?.all || data.all.length === 0) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-muted-foreground">
+        <CardContent className="p-12 text-center">
           <Scale className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No Balance Sheet data available</p>
-          <p className="text-sm mt-1">Import an Excel file to populate.</p>
+          <p className="font-medium text-foreground">No Balance Sheet rows in this plan</p>
+          <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
+            The selected plan has imported P&L rows, but no balance-sheet rows were written yet. Upload a workbook sheet that AI classifies as Balance Sheet to populate assets, liabilities, and equity.
+          </p>
+          <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
+            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+          </Button>
         </CardContent>
       </Card>
     )

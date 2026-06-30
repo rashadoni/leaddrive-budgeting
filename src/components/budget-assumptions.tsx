@@ -2,15 +2,17 @@
 
 import { useState } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Treemap, Legend,
 } from "recharts"
-import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign } from "lucide-react"
+import { Settings2, Layers, Hash, Search, ChevronDown, ChevronRight, TrendingUp, DollarSign, Upload } from "lucide-react"
 
 /**
  * Sub-44 cont'd — collapsed 3 parallel `Record<string, string>` maps
@@ -146,6 +148,7 @@ function TreemapContent(props: TreemapContentProps) {
 
 export function BudgetAssumptions({ planId }: { planId: string }) {
   const { data: session } = useSession()
+  const router = useRouter()
   const orgId = session?.user?.organizationId
   const [search, setSearch] = useState("")
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
@@ -181,10 +184,15 @@ export function BudgetAssumptions({ planId }: { planId: string }) {
   if (!assumptions || assumptions.length === 0) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-muted-foreground">
+        <CardContent className="p-12 text-center">
           <Settings2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">No assumptions data available</p>
-          <p className="text-sm mt-1">Import an Excel file to populate assumptions.</p>
+          <p className="font-medium text-foreground">No assumptions in this plan</p>
+          <p className="mx-auto mt-1 max-w-xl text-sm text-muted-foreground">
+            Assumptions are budget drivers such as prices, inflation, rates, operational norms, and scenario parameters. The current import did not write assumption rows for this plan.
+          </p>
+          <Button className="mt-5" onClick={() => router.push("/budgeting/admin/ai-import")}>
+            <Upload className="h-4 w-4 mr-1" /> Import Excel data
+          </Button>
         </CardContent>
       </Card>
     )

@@ -8,10 +8,11 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, ComposedChart, Line, AreaChart, Area,
 } from "recharts"
 import { TrendingDown, Factory, Percent, Package, ChevronDown, ChevronRight, Upload } from "lucide-react"
+import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#06b6d4", "#8b5cf6"]
@@ -275,8 +276,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip formatter={((v: number, name: string) => [fmtCurrency(v) + " AZN", name]) as never} />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
+              <Tooltip content={<BudgetStackTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
               {productList.map((p, i) => (
                 <Bar key={p.name} dataKey={p.name} stackId="a" fill={COLORS[i % COLORS.length]} />
               ))}
