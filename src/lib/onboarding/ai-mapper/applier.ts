@@ -444,6 +444,25 @@ export function applyProposal(
     return { error: 'Sheet is empty' };
   }
 
+  // Non-SAP P&L files often use dotted account codes (PLF.04.02.01) where
+  // parent rows carry the real section context. Leaf labels can contain words
+  // like "Sales" inside an expense section ("Sales Commission Fees"), so they
+  // must not freely switch the tracked section.
+  const sourceCodes = new Set(
+    aoa
+      .map((row) => toTrimmedString((row ?? [])[codeCol]))
+      .filter((code) => code !== ''),
+  );
+  const codesWithChildren = new Set<string>();
+  for (const code of sourceCodes) {
+    for (let i = 0; i < code.length; i += 1) {
+      const ch = code[i];
+      if (ch !== '.' && ch !== '-') continue;
+      const parent = code.slice(0, i);
+      if (sourceCodes.has(parent)) codesWithChildren.add(parent);
+    }
+  }
+
   // Header band detection — same heuristic as ai-mapper/extract.ts. Apply
   // could in principle store the header row index in the proposal, but
   // re-detecting here lets us re-apply on a re-uploaded workbook with
@@ -533,7 +552,16 @@ export function applyProposal(
     // then skip) so the rows beneath a "REVENUE"/"COGS"/"EXPENSE" header
     // inherit the right type. No effect on the SAP path below.
     const sectionHit = detectSectionType(label) ?? detectSectionType(code);
-    if (sectionHit) currentSection = sectionHit;
+    if (sectionHit) {
+      const hasNumericValue =
+        monthCols.some((c) => c >= 0 && toNumberOrNull(row[c]) !== null) ||
+        (totalCol >= 0 && toNumberOrNull(row[totalCol]) !== null);
+      const isParentOrHeaderRow =
+        code === '' || !hasNumericValue || codesWithChildren.has(code);
+      if (isParentOrHeaderRow || currentSection === null) {
+        currentSection = sectionHit;
+      }
+    }
 
     if (!code) {
       skipped += 1;

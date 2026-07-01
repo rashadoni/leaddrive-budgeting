@@ -573,6 +573,24 @@ describe('applyProposal — arbitrary (non-SAP) code scheme', () => {
       .reduce((s, l) => s + l.plannedAnnual, 0);
     expect(revAnnual).toBe(100);
   });
+
+  it('does not let leaf labels with "Sales" switch an expense section to revenue', () => {
+    const expenseAoa: (string | number | null)[][] = [
+      ['Code', 'Label', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+      ['PLF.04', 'SALES & MARKETING FUNCTIONS COST', ...months(-10)],
+      ['PLF.04.02', 'Selling Expenses', ...months(-10)],
+      ['PLF.04.02.01', 'Sales Commission Fees', ...months(0)],
+      ['PLF.04.02.02', 'Transportation of Final Goods', ...months(-10)],
+    ];
+    const res = applyProposal(makeWorkbook(expenseAoa), 'Sheet1', buildProposal(cols), XLSX);
+    expect('error' in res).toBe(false);
+    if ('error' in res) return;
+
+    const line = res.lines.find((l) => l.code === 'PLF.04.02.02');
+    expect(line?.accountType).toBe('expense');
+    expect(line?.plannedAnnual).toBe(10);
+    expect(res.parentRollupsUnallocated).toHaveLength(0);
+  });
 });
 
 describe('resolveTypeByPrefix', () => {
