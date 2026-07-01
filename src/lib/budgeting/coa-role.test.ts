@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest"
 import {
   deriveRoleFromCode,
   isContraRevenueCode,
+  pnlSectionFromCode,
   pnlSectionFromRole,
 } from "./coa-role"
 
@@ -126,5 +127,38 @@ describe("pnlSectionFromRole — role → P&L section", () => {
 
   it("unknown → null (out of P&L scope)", () => {
     expect(pnlSectionFromRole("unknown")).toBeNull()
+  })
+})
+
+describe("pnlSectionFromCode — SAP + Workbook imported codes", () => {
+  it("keeps SAP code sections unchanged", () => {
+    expect(pnlSectionFromCode("601-01", "expense")).toBe("revenue")
+    expect(pnlSectionFromCode("701-01", "expense")).toBe("cogs")
+    expect(pnlSectionFromCode("721-02", "expense")).toBe("opex")
+    expect(pnlSectionFromCode("741-01", "expense")).toBe("belowEbitda")
+  })
+
+  it("maps Workbook PLF revenue, COGS, OpEx and below-EBITDA codes", () => {
+    expect(pnlSectionFromCode("PLF.01.02.01", "expense")).toBe("revenue")
+    expect(pnlSectionFromCode("PLF.02.02.01", "expense")).toBe("cogs")
+    expect(pnlSectionFromCode("PLF.04.02.02", "expense")).toBe("opex")
+    expect(pnlSectionFromCode("PLF.05.01.01", "expense")).toBe("opex")
+    expect(pnlSectionFromCode("PLF.07.02.02", "expense")).toBe("revenue")
+    expect(pnlSectionFromCode("PLF.07.03.01", "expense")).toBe("belowEbitda")
+    expect(pnlSectionFromCode("PLF.09.03.09", "expense")).toBe("belowEbitda")
+    expect(pnlSectionFromCode("PLF.12.01.01", "expense")).toBe("opex")
+  })
+
+  it("skips Workbook computed total rows", () => {
+    expect(pnlSectionFromCode("PLF.03", "expense")).toBeNull()
+    expect(pnlSectionFromCode("PLF.08.01", "expense")).toBeNull()
+    expect(pnlSectionFromCode("PLF.10", "expense")).toBeNull()
+  })
+
+  it("falls back to accountType for unknown customer codes", () => {
+    expect(pnlSectionFromCode("CUSTOM-REV", "revenue")).toBe("revenue")
+    expect(pnlSectionFromCode("CUSTOM-COGS", "cogs")).toBe("cogs")
+    expect(pnlSectionFromCode("CUSTOM-EXP", "expense")).toBe("opex")
+    expect(pnlSectionFromCode("CUSTOM-ASSET", "asset")).toBeNull()
   })
 })

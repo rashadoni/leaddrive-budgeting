@@ -302,4 +302,84 @@ describe("GET /api/budgeting/pnl — happy path", () => {
     expect(body.comparison.budget.monthlyRevenue["1"]).toBe(0)
     expect(body.comparison.missingData).toContain("Budget P&L rows are not available for this year.")
   })
+
+  it("classifies Workbook PLF actual-plan lines for Actual vs Budget P&L", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "actual_2026", name: "Actual 2026", year: 2026, kind: "actual" })
+      .mockResolvedValueOnce({ id: "budget_2026", name: "Budget 2026", year: 2026, kind: "budget" })
+    prismaMock.budgetLine.findMany
+      .mockResolvedValueOnce([
+        {
+          companyId: "c1",
+          department: "Revenue from Sales of Glucose",
+          lineType: "revenue",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 1_000,
+          account: { code: "PLF.01.02.01", name: "Revenue from Sales of Glucose", accountType: "revenue" },
+        },
+        {
+          companyId: "c1",
+          department: "Glucose Costs",
+          lineType: "cogs",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 300,
+          account: { code: "PLF.02.02.01", name: "Glucose Costs", accountType: "cogs" },
+        },
+        {
+          companyId: "c1",
+          department: "Staff Salaries",
+          lineType: "expense",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 200,
+          account: { code: "PLF.05.01.01", name: "Staff Salaries", accountType: "expense" },
+        },
+        {
+          companyId: "c1",
+          department: "Depreciation",
+          lineType: "expense",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 50,
+          account: { code: "PLF.09.03.09", name: "Depreciation", accountType: "expense" },
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    const res = await GET(makeRequest("/api/budgeting/pnl?planId=actual_2026"))
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      monthlyActualRevenue: Record<string, number>
+      monthlyActualCogs: Record<string, number>
+      monthlyActualOpex: Record<string, number>
+      monthlyActualBelowEbitda: Record<string, number>
+      sectionActuals: Record<string, number>
+      comparison: {
+        actual: {
+          monthlyRevenue: Record<string, number>
+          monthlyCogs: Record<string, number>
+          monthlyOpex: Record<string, number>
+          monthlyBelowEbitda: Record<string, number>
+        }
+      }
+    }
+    expect(body.monthlyActualRevenue["1"]).toBe(1_000)
+    expect(body.monthlyActualCogs["1"]).toBe(300)
+    expect(body.monthlyActualOpex["1"]).toBe(200)
+    expect(body.monthlyActualBelowEbitda["1"]).toBe(50)
+    expect(body.sectionActuals).toMatchObject({
+      revenue: 1_000,
+      cogs: 300,
+      opex: 200,
+      belowEbitda: 50,
+    })
+    expect(body.comparison.actual.monthlyRevenue["1"]).toBe(1_000)
+    expect(body.comparison.actual.monthlyCogs["1"]).toBe(300)
+    expect(body.comparison.actual.monthlyOpex["1"]).toBe(200)
+    expect(body.comparison.actual.monthlyBelowEbitda["1"]).toBe(50)
+  })
 })

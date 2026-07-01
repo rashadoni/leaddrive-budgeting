@@ -109,3 +109,52 @@ export function pnlSectionFromRole(role: CoARole): PnLSection {
       return null
   }
 }
+
+/**
+ * P&L-section mapper for imported account codes.
+ *
+ * `deriveRoleFromCode` intentionally stays SAP/AAC-specific. The AI import can
+ * also persist customer workbook codes such as `PLF.01.02.01`; reporting must
+ * understand those codes directly, otherwise Actual-vs-Budget silently drops
+ * revenue/COGS and mislabels below-EBITDA rows as OpEx.
+ */
+export function pnlSectionFromCode(
+  code: string,
+  accountType?: string | null,
+): PnLSection {
+  const sapSection = pnlSectionFromRole(deriveRoleFromCode(code))
+  if (sapSection) return sapSection
+
+  if (typeof code === "string") {
+    const c = code.trim().toUpperCase()
+    if (c.startsWith("PLF.")) {
+      if (
+        c === "PLF.03" ||
+        c.startsWith("PLF.03.") ||
+        c === "PLF.08" ||
+        c.startsWith("PLF.08.") ||
+        c === "PLF.10" ||
+        c.startsWith("PLF.10.")
+      ) {
+        return null
+      }
+      if (c.startsWith("PLF.01")) return "revenue"
+      if (c.startsWith("PLF.02")) return "cogs"
+      if (c.startsWith("PLF.04") || c.startsWith("PLF.05")) return "opex"
+      if (c.startsWith("PLF.07.01") || c.startsWith("PLF.07.02")) {
+        return "revenue"
+      }
+      if (c.startsWith("PLF.07.03") || c.startsWith("PLF.07.04")) {
+        return "belowEbitda"
+      }
+      if (c === "PLF.07") return null
+      if (c.startsWith("PLF.09")) return "belowEbitda"
+      if (c.startsWith("PLF.12")) return "opex"
+    }
+  }
+
+  if (accountType === "revenue") return "revenue"
+  if (accountType === "cogs") return "cogs"
+  if (accountType === "expense") return "opex"
+  return null
+}

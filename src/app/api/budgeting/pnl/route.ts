@@ -8,6 +8,7 @@ import { looksLikeCode } from "@/lib/import/keywords"
 import {
   deriveRoleFromCode,
   isContraRevenueCode,
+  pnlSectionFromCode,
   pnlSectionFromRole,
 } from "@/lib/budgeting/coa-role"
 import { isDaCode } from "@/lib/budgeting/da-codes"
@@ -392,8 +393,7 @@ export async function GET(req: NextRequest) {
     // prefix matching. Contra-revenue (602/603) still folds into `revenue`
     // section but with sign-flip — `isContraRevenueCode` is the explicit
     // predicate.
-    const role = deriveRoleFromCode(code)
-    const section = pnlSectionFromRole(role)
+    const section = pnlSectionFromCode(code, a.lineType)
     if (isDaCode(code)) {
       monthlyActualDa[month] += Math.abs(amount)
     }
@@ -517,8 +517,7 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
     const key = `${code}::${name}`
     buckets.byKey[key] = (buckets.byKey[key] || 0) + amount
 
-    const role = deriveRoleFromCode(code)
-    const section = pnlSectionFromRole(role)
+    const section = pnlSectionFromCode(code, line.account.accountType)
     if (isDaCode(code)) buckets.monthlyDa[month] += Math.abs(amount)
 
     if (section === "revenue") {
@@ -529,7 +528,7 @@ function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineCompa
       const cost = Math.abs(amount)
       buckets.monthlyCogs[month] += cost
       buckets.sectionTotals.cogs += cost
-    } else if (section === "opex" || (section === null && line.account.accountType === "expense")) {
+    } else if (section === "opex") {
       const cost = Math.abs(amount)
       buckets.monthlyOpex[month] += cost
       buckets.sectionTotals.opex += cost

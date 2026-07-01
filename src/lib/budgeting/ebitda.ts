@@ -19,7 +19,7 @@
  */
 
 import { isDaCode } from "./da-codes"
-import { deriveRoleFromCode, pnlSectionFromRole } from "./coa-role"
+import { pnlSectionFromCode } from "./coa-role"
 
 /** Already-aggregated P&L section totals (all numbers absolute / cost-as-positive). */
 export interface PnlSectionTotals {
@@ -104,11 +104,10 @@ export function aggregateRowsForEbitda<R extends PnlRowForAggregation>(args: {
     (r) => r.accountType === "expense" && r.total !== 0,
   )
   const opexRows = allExpenseRows.filter((r) => {
-    const section = pnlSectionFromRole(deriveRoleFromCode(r.accountCode))
-    return section === "opex" || section === null
+    return pnlSectionFromCode(r.accountCode, r.accountType) === "opex"
   })
   const belowEbitdaRows = allExpenseRows.filter(
-    (r) => pnlSectionFromRole(deriveRoleFromCode(r.accountCode)) === "belowEbitda",
+    (r) => pnlSectionFromCode(r.accountCode, r.accountType) === "belowEbitda",
   )
   const daRowsInOpex = opexRows.filter((r) => isDaCode(r.accountCode))
   const daRowsInCogs = args.rows.filter(

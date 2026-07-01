@@ -35,6 +35,12 @@ export function CashFlowTab() {
   const { data: alerts = [] } = useCashFlowAlerts(year)
   const resolveAlert = useResolveCashFlowAlert()
   const generateCashFlow = useGenerateCashFlow()
+  const hasCashFlowData = Boolean(
+    cashFlowData &&
+      ((cashFlowData.entries?.length ?? 0) > 0 ||
+        Math.abs(cashFlowData.totalInflows || 0) > 0 ||
+        Math.abs(cashFlowData.totalOutflows || 0) > 0),
+  )
 
   return (
     <div className="space-y-6">
@@ -89,7 +95,7 @@ export function CashFlowTab() {
             />
           )}
 
-          {cashFlowData && cashFlowData.months.length > 0 ? (
+          {cashFlowData && hasCashFlowData ? (
             <>
               <BudgetCashFlowChart
                 months={cashFlowData.months}
