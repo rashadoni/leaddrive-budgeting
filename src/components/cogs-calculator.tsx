@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -13,6 +13,8 @@ import {
 } from "recharts"
 import { TrendingDown, Factory, Percent, Package, ChevronDown, ChevronRight, Upload } from "lucide-react"
 import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
+import { ProductPerformanceComparison } from "@/components/product-performance-comparison"
+import type { ProductVarianceInputLine } from "@/lib/budgeting/product-variance"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#06b6d4", "#8b5cf6"]
@@ -59,6 +61,13 @@ interface CogsResponse {
   details: CogsDetail[]
   source?: "budget_lines"
   fallbackReason?: string
+  comparison?: {
+    budgetLines: CogsLine[]
+    actualLines: CogsLine[]
+    missingData?: string[]
+    budgetSource?: "budget_lines"
+    actualSource?: "budget_lines"
+  }
 }
 
 /** Recharts chart row for monthly stacked bars — `month` is the
@@ -74,7 +83,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
   const { data, isLoading } = useQuery<CogsResponse>({
     queryKey: ["cogs", planId],
     queryFn: async () => {
-      const res = await fetch(`/api/budgeting/cogs?planId=${planId}`, {
+      const res = await fetch(`/api/budgeting/cogs?planId=${planId}&compare=1`, {
         headers: { "x-organization-id": orgId || "" },
       })
       return res.json()
@@ -82,6 +91,14 @@ export function COGSCalculator({ planId }: { planId: string }) {
     enabled: !!planId && !!orgId,
   })
   const fromBudgetLines = data?.source === "budget_lines"
+  const comparisonBudgetLines = useMemo(
+    () => toVarianceLines(data?.comparison?.budgetLines ?? []),
+    [data?.comparison?.budgetLines],
+  )
+  const comparisonActualLines = useMemo(
+    () => toVarianceLines(data?.comparison?.actualLines ?? []),
+    [data?.comparison?.actualLines],
+  )
 
   if (isLoading) {
     return (
@@ -224,6 +241,17 @@ export function COGSCalculator({ planId }: { planId: string }) {
           Showing imported P&L COGS rows because the dedicated COGS product table is empty.
         </div>
       )}
+      <ProductPerformanceComparison
+        title="Actual vs Budget COGS"
+        description="Monthly cost execution and product cost drivers behind the variance."
+        budgetLines={comparisonBudgetLines}
+        actualLines={comparisonActualLines}
+        missingData={data?.comparison?.missingData}
+        amountLabel="COGS"
+        rateVarianceLabel="Unit-cost variance"
+        volumeVarianceLabel="Volume variance"
+        favorable="down"
+      />
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 dark:from-cyan-950/30 dark:to-cyan-900/20 dark:border-cyan-800 p-4">
@@ -271,12 +299,12 @@ export function COGSCalculator({ planId }: { planId: string }) {
         {/* Stacked Bar with Total trend */}
         <div className="lg:col-span-3 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Monthly COGS by Product</h3>
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
             <ComposedChart data={monthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip content={<BudgetStackTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
+              <Tooltip content={<BudgetStackTooltip maxItems={5} />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
               {productList.map((p, i) => (
                 <Bar key={p.name} dataKey={p.name} stackId="a" fill={COLORS[i % COLORS.length]} />
               ))}
@@ -288,7 +316,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
         {/* Donut Chart */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Cost Breakdown</h3>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
             <PieChart>
               <Pie data={donutData} cx="50%" cy="50%" outerRadius={75} innerRadius={45} paddingAngle={2} dataKey="value" stroke="none">
                 {donutData.map((entry, i) => (
@@ -316,7 +344,7 @@ export function COGSCalculator({ planId }: { planId: string }) {
       {/* COGS Trend Area Chart */}
       <div className="rounded-xl border bg-card p-4">
         <h3 className="text-sm font-semibold text-foreground mb-3">COGS Trend</h3>
-        <ResponsiveContainer width="100%" height={180}>
+        <ResponsiveContainer width="100%" height={180} minWidth={0} minHeight={0}>
           <AreaChart data={trendData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
             <XAxis dataKey="month" tick={{ fontSize: 11 }} />
@@ -559,4 +587,14 @@ export function COGSCalculator({ planId }: { planId: string }) {
       </div>
     </div>
   )
+}
+
+function toVarianceLines(lines: CogsLine[]): ProductVarianceInputLine[] {
+  return lines.map((line) => ({
+    productId: line.productLine.id,
+    productName: line.productLine.name,
+    month: line.month,
+    amount: line.totalCost,
+    quantity: line.productionQty,
+  }))
 }

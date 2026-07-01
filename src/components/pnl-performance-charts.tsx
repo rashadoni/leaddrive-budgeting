@@ -114,8 +114,8 @@ export function PnlPerformanceCharts({
           />
         </div>
 
-        <div className="mt-4 h-[300px]">
-          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+        <div className="mt-4 min-w-0">
+          <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
             <ComposedChart data={selectedData} margin={{ top: 8, right: 18, left: 4, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" vertical={false} />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
@@ -160,8 +160,8 @@ export function PnlPerformanceCharts({
         </div>
 
         {hasActuals ? (
-          <div className="mt-4 h-[340px]">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+          <div className="mt-4 min-w-0">
+            <ResponsiveContainer width="100%" height={340} minWidth={0} minHeight={0}>
               <BarChart data={bridge} layout="vertical" margin={{ top: 4, right: 24, left: 10, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted-foreground/20" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={fmtK} />

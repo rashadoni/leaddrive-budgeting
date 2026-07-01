@@ -12,76 +12,135 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
+  const compare = searchParams.get("compare") === "1"
 
+  const current = await loadSalesRows(orgId, planId)
+  if (!compare) {
+    if (current.source) {
+      return NextResponse.json({
+        lines: current.lines,
+        source: current.source,
+        fallbackReason: current.fallbackReason,
+      })
+    }
+    return NextResponse.json(current.lines)
+  }
+
+  const activePlan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId, deletedAt: null },
+    select: { id: true, name: true, year: true, kind: true },
+  })
+  if (!activePlan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+
+  const counterpartKind = activePlan.kind === "budget" ? "actual" : "budget"
+  const counterpartPlan = await prisma.budgetPlan.findFirst({
+    where: { organizationId: orgId, year: activePlan.year, kind: counterpartKind, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, year: true, kind: true },
+  })
+  const counterpart = counterpartPlan ? await loadSalesRows(orgId, counterpartPlan.id) : null
+  const budgetRows = activePlan.kind === "budget" ? current : counterpart
+  const actualRows = activePlan.kind === "actual" ? current : counterpart
+
+  return NextResponse.json({
+    lines: current.lines,
+    source: current.source,
+    fallbackReason: current.fallbackReason,
+    meta: {
+      activePlan,
+      comparisonPlan: counterpartPlan,
+    },
+    comparison: {
+      budgetLines: budgetRows?.lines ?? [],
+      actualLines: actualRows?.lines ?? [],
+      budgetSource: budgetRows?.source,
+      actualSource: actualRows?.source,
+      missingData: [
+        ...(counterpartPlan ? [] : [`No ${counterpartKind} plan exists for ${activePlan.year}.`]),
+        ...((budgetRows?.lines.length ?? 0) > 0 ? [] : ["Budget product rows are not available for this year."]),
+        ...((actualRows?.lines.length ?? 0) > 0 ? [] : ["Actual product rows are not available for this year."]),
+      ],
+    },
+  })
+}
+
+type SalesRows = Awaited<ReturnType<typeof prisma.salesBudgetLine.findMany>>
+type SalesRow = SalesRows[number] | {
+  id: string
+  month: number
+  quantity: number
+  unitPrice: number
+  amount: number
+  productLine: { id: string; code: string; name: string; unit: string }
+  source: "budget_lines"
+}
+
+async function loadSalesRows(orgId: string, planId: string): Promise<{
+  lines: SalesRow[]
+  source?: "budget_lines"
+  fallbackReason?: string
+}> {
   const lines = await prisma.salesBudgetLine.findMany({
     where: { organizationId: orgId, planId },
     include: { productLine: true },
     orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
   })
-  if (lines.length === 0) {
-    const fallbackLines = await prisma.budgetLine.findMany({
-      where: { organizationId: orgId, planId, lineType: "revenue", deletedAt: null },
-      select: {
-        id: true,
-        department: true,
-        plannedAmount: true,
-        unitPrice: true,
-        quantity: true,
-        monthIndex: true,
-        sortOrder: true,
-        account: { select: { id: true, code: true, name: true } },
-      },
-      orderBy: [{ sortOrder: "asc" }],
-    })
-    if (fallbackLines.length > 0) {
-      const buckets = new Map<string, {
-        id: string
-        month: number
-        quantity: number
-        unitPrice: number
-        amount: number
-        productLine: { id: string; code: string; name: string; unit: string }
-        source: "budget_lines"
-      }>()
-      for (const line of fallbackLines) {
-        const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
-        if (month == null) continue
-        const code = line.account.code
-        const name = line.account.name || line.department || code
-        const productId = `budget-line:${line.account.id}:${line.department || ""}`
-        const bucketKey = `${productId}:${month}`
-        const amount = (isContraRevenueCode(code) ? -1 : 1) * (line.plannedAmount || 0)
-        const quantity = line.quantity ?? 0
-        const current = buckets.get(bucketKey)
-        if (current) {
-          current.amount += amount
-          current.quantity += quantity
-          current.unitPrice = current.quantity > 0 ? current.amount / current.quantity : 0
-        } else {
-          buckets.set(bucketKey, {
-            id: `budget-line-revenue:${bucketKey}`,
-            month,
-            quantity,
-            unitPrice: line.unitPrice ?? 0,
-            amount,
-            productLine: {
-              id: productId,
-              code,
-              name,
-              unit: quantity > 0 ? "unit" : "AZN",
-            },
-            source: "budget_lines",
-          })
-        }
-      }
-      return NextResponse.json({
-        lines: Array.from(buckets.values()),
+  if (lines.length > 0) return { lines }
+
+  const fallbackLines = await prisma.budgetLine.findMany({
+    where: { organizationId: orgId, planId, lineType: "revenue", deletedAt: null },
+    select: {
+      id: true,
+      department: true,
+      plannedAmount: true,
+      unitPrice: true,
+      quantity: true,
+      monthIndex: true,
+      sortOrder: true,
+      account: { select: { id: true, code: true, name: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }],
+  })
+  if (fallbackLines.length === 0) return { lines: [] }
+
+  const buckets = new Map<string, Extract<SalesRow, { source: "budget_lines" }>>()
+  for (const line of fallbackLines) {
+    const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
+    if (month == null) continue
+    const code = line.account.code
+    const name = line.account.name || line.department || code
+    const productId = `budget-line:${line.account.id}:${line.department || ""}`
+    const bucketKey = `${productId}:${month}`
+    const amount = (isContraRevenueCode(code) ? -1 : 1) * (line.plannedAmount || 0)
+    const quantity = line.quantity ?? 0
+    const current = buckets.get(bucketKey)
+    if (current) {
+      current.amount += amount
+      current.quantity += quantity
+      current.unitPrice = current.quantity > 0 ? current.amount / current.quantity : 0
+    } else {
+      buckets.set(bucketKey, {
+        id: `budget-line-revenue:${bucketKey}`,
+        month,
+        quantity,
+        unitPrice: line.unitPrice ?? 0,
+        amount,
+        productLine: {
+          id: productId,
+          code,
+          name,
+          unit: quantity > 0 ? "unit" : "AZN",
+        },
         source: "budget_lines",
-        fallbackReason: "sales_budget_lines_empty",
       })
     }
   }
-  return NextResponse.json(lines)
+
+  return {
+    lines: Array.from(buckets.values()),
+    source: "budget_lines",
+    fallbackReason: "sales_budget_lines_empty",
+  }
 }
 
 function resolveBudgetLineMonth(monthIndex: number | null, sortOrder: number): number | null {

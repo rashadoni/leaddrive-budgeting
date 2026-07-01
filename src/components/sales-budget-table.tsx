@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
@@ -13,6 +13,8 @@ import {
 } from "recharts"
 import { TrendingUp, Package, ShoppingCart, DollarSign, ChevronDown, ChevronRight, Upload } from "lucide-react"
 import { BudgetStackTooltip } from "@/components/budget-stack-tooltip"
+import { ProductPerformanceComparison } from "@/components/product-performance-comparison"
+import type { ProductVarianceInputLine } from "@/lib/budgeting/product-variance"
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
@@ -41,6 +43,13 @@ interface SalesResponseEnvelope {
   lines: SalesLine[]
   source?: "budget_lines"
   fallbackReason?: string
+  comparison?: {
+    budgetLines: SalesLine[]
+    actualLines: SalesLine[]
+    missingData?: string[]
+    budgetSource?: "budget_lines"
+    actualSource?: "budget_lines"
+  }
 }
 
 export function SalesBudgetTable({ planId }: { planId: string }) {
@@ -52,7 +61,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["salesBudget", planId],
     queryFn: async () => {
-      const res = await fetch(`/api/budgeting/sales-budget?planId=${planId}`, {
+      const res = await fetch(`/api/budgeting/sales-budget?planId=${planId}&compare=1`, {
         headers: { "x-organization-id": orgId || "" },
       })
       const body = await res.json()
@@ -63,6 +72,14 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
   })
   const lines = data?.lines ?? []
   const fromBudgetLines = data?.source === "budget_lines"
+  const comparisonBudgetLines = useMemo(
+    () => toVarianceLines(data?.comparison?.budgetLines ?? []),
+    [data?.comparison?.budgetLines],
+  )
+  const comparisonActualLines = useMemo(
+    () => toVarianceLines(data?.comparison?.actualLines ?? []),
+    [data?.comparison?.actualLines],
+  )
 
   if (isLoading) {
     return (
@@ -158,6 +175,17 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
           Showing imported P&L revenue rows because the dedicated sales-budget product table is empty.
         </div>
       )}
+      <ProductPerformanceComparison
+        title="Actual vs Budget Revenue"
+        description="Monthly revenue execution and the products driving variance."
+        budgetLines={comparisonBudgetLines}
+        actualLines={comparisonActualLines}
+        missingData={data?.comparison?.missingData}
+        amountLabel="Revenue"
+        rateVarianceLabel="Price variance"
+        volumeVarianceLabel="Volume variance"
+        favorable="up"
+      />
       {/* KPI Strip — Power BI dark scorecards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200 dark:from-indigo-950/30 dark:to-indigo-900/20 dark:border-indigo-800 p-4">
@@ -205,12 +233,12 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
         {/* Stacked Bar with Total trend line */}
         <div className="lg:col-span-3 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Monthly Revenue by Product</h3>
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={300} minWidth={0} minHeight={0}>
             <ComposedChart data={monthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => fmtNum(v)} />
-              <Tooltip content={<BudgetStackTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
+              <Tooltip content={<BudgetStackTooltip maxItems={5} />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.24 }} />
               {productList.map((p, i) => (
                 <Bar key={p.code} dataKey={p.name} stackId="a" fill={COLORS[i % COLORS.length]} />
               ))}
@@ -222,7 +250,7 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
         {/* Donut Chart */}
         <div className="lg:col-span-2 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground mb-3">Revenue Mix</h3>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
             <PieChart>
               <Pie data={pieData} cx="50%" cy="50%" outerRadius={75} innerRadius={45} paddingAngle={2} dataKey="value" stroke="none">
                 {pieData.map((entry, i) => (
@@ -371,4 +399,14 @@ export function SalesBudgetTable({ planId }: { planId: string }) {
       </div>
     </div>
   )
+}
+
+function toVarianceLines(lines: SalesLine[]): ProductVarianceInputLine[] {
+  return lines.map((line) => ({
+    productId: line.productLine.id,
+    productName: line.productLine.name,
+    month: line.month,
+    amount: line.amount,
+    quantity: line.quantity,
+  }))
 }

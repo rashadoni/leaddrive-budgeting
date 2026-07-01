@@ -116,8 +116,8 @@ export function BudgetPlanFactDashboard({ year }: { year: number }) {
           <CardTitle className="text-sm">Revenue: Plan vs Actual</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="min-w-0">
+            <ResponsiveContainer width="100%" height={250} minWidth={0} minHeight={0}>
               <BarChart data={data.monthly} barGap={2}>
                 <CartesianGrid {...GRID_STYLE} />
                 <XAxis dataKey="label" tick={AXIS_TICK} />
@@ -137,8 +137,8 @@ export function BudgetPlanFactDashboard({ year }: { year: number }) {
           <CardTitle className="text-sm">Expenses: Plan vs Actual</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="min-w-0">
+            <ResponsiveContainer width="100%" height={250} minWidth={0} minHeight={0}>
               <BarChart data={data.monthly} barGap={2}>
                 <CartesianGrid {...GRID_STYLE} />
                 <XAxis dataKey="label" tick={AXIS_TICK} />

@@ -128,6 +128,48 @@ describe("GET /api/budgeting/sales-budget", () => {
       }),
     )
   })
+
+  it("compare=1 returns budget and actual product rows for the same year", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "budget-2026", name: "Budget", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce({ id: "actual-2026", name: "Actuals", year: 2026, kind: "actual" })
+    prismaMock.salesBudgetLine.findMany
+      .mockResolvedValueOnce([
+        { id: "b1", month: 1, quantity: 100, unitPrice: 10, amount: 1000, productLine: { id: "p1", code: "GLU", name: "Glucose", unit: "ton" } },
+      ])
+      .mockResolvedValueOnce([
+        { id: "a1", month: 1, quantity: 110, unitPrice: 12, amount: 1320, productLine: { id: "p1", code: "GLU", name: "Glucose", unit: "ton" } },
+      ])
+
+    const res = await GET(makeRequest("/api/budgeting/sales-budget?planId=budget-2026&compare=1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.meta.activePlan.kind).toBe("budget")
+    expect(body.meta.comparisonPlan.kind).toBe("actual")
+    expect(body.comparison.budgetLines).toHaveLength(1)
+    expect(body.comparison.actualLines).toHaveLength(1)
+    expect(body.comparison.missingData).toEqual([])
+  })
+
+  it("compare=1 explains when the matching actual plan is missing", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "budget-2026", name: "Budget", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce(null)
+    prismaMock.salesBudgetLine.findMany.mockResolvedValueOnce([
+      { id: "b1", month: 1, quantity: 100, unitPrice: 10, amount: 1000, productLine: { id: "p1", code: "GLU", name: "Glucose", unit: "ton" } },
+    ])
+
+    const res = await GET(makeRequest("/api/budgeting/sales-budget?planId=budget-2026&compare=1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.comparison.actualLines).toEqual([])
+    expect(body.comparison.missingData).toContain("No actual plan exists for 2026.")
+    expect(body.comparison.missingData).toContain("Actual product rows are not available for this year.")
+  })
 })
 
 describe("POST /api/budgeting/sales-budget", () => {

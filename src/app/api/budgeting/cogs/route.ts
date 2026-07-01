@@ -12,91 +12,163 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const planId = searchParams.get("planId")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
+  const compare = searchParams.get("compare") === "1"
 
+  const current = await loadCogsRows(orgId, planId)
+  if (!compare) {
+    return NextResponse.json({
+      cogsLines: current.cogsLines,
+      components: current.components,
+      details: current.details,
+      source: current.source,
+      fallbackReason: current.fallbackReason,
+    })
+  }
+
+  const activePlan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId, deletedAt: null },
+    select: { id: true, name: true, year: true, kind: true },
+  })
+  if (!activePlan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+
+  const counterpartKind = activePlan.kind === "budget" ? "actual" : "budget"
+  const counterpartPlan = await prisma.budgetPlan.findFirst({
+    where: { organizationId: orgId, year: activePlan.year, kind: counterpartKind, deletedAt: null },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, year: true, kind: true },
+  })
+  const counterpart = counterpartPlan ? await loadCogsRows(orgId, counterpartPlan.id, { includeComponents: false, includeDetails: false }) : null
+  const budgetRows = activePlan.kind === "budget" ? current : counterpart
+  const actualRows = activePlan.kind === "actual" ? current : counterpart
+
+  return NextResponse.json({
+    cogsLines: current.cogsLines,
+    components: current.components,
+    details: current.details,
+    source: current.source,
+    fallbackReason: current.fallbackReason,
+    meta: {
+      activePlan,
+      comparisonPlan: counterpartPlan,
+    },
+    comparison: {
+      budgetLines: budgetRows?.cogsLines ?? [],
+      actualLines: actualRows?.cogsLines ?? [],
+      budgetSource: budgetRows?.source,
+      actualSource: actualRows?.source,
+      missingData: [
+        ...(counterpartPlan ? [] : [`No ${counterpartKind} plan exists for ${activePlan.year}.`]),
+        ...((budgetRows?.cogsLines.length ?? 0) > 0 ? [] : ["Budget COGS product rows are not available for this year."]),
+        ...((actualRows?.cogsLines.length ?? 0) > 0 ? [] : ["Actual COGS product rows are not available for this year."]),
+      ],
+    },
+  })
+}
+
+type CogsRows = Awaited<ReturnType<typeof prisma.cOGSBudgetLine.findMany>>
+type CogsDetails = Awaited<ReturnType<typeof prisma.cOGSCostDetail.findMany>>
+type CogsRow = CogsRows[number] | {
+  id: string
+  productLineId: string
+  productLine: { id: string; name: string }
+  year: number
+  month: number
+  productionQty: number
+  totalCost: number
+  source: "budget_lines"
+}
+
+async function loadCogsRows(
+  orgId: string,
+  planId: string,
+  opts: { includeComponents?: boolean; includeDetails?: boolean } = {},
+): Promise<{
+  cogsLines: CogsRow[]
+  components: unknown[]
+  details: CogsDetails
+  source?: "budget_lines"
+  fallbackReason?: string
+}> {
+  const includeComponents = opts.includeComponents ?? true
+  const includeDetails = opts.includeDetails ?? true
   const [cogsLines, components, details] = await Promise.all([
     prisma.cOGSBudgetLine.findMany({
       where: { organizationId: orgId, planId },
       include: { productLine: true },
       orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
     }),
-    prisma.costComponent.findMany({
-      where: { organizationId: orgId },
-      include: { productLine: true },
-      orderBy: { sortOrder: "asc" },
-    }),
-    prisma.cOGSCostDetail.findMany({
-      where: { organizationId: orgId, planId },
-      orderBy: [{ productLineId: "asc" }, { sortOrder: "asc" }, { month: "asc" }],
-    }),
+    includeComponents
+      ? prisma.costComponent.findMany({
+          where: { organizationId: orgId },
+          include: { productLine: true },
+          orderBy: { sortOrder: "asc" },
+        })
+      : Promise.resolve([]),
+    includeDetails
+      ? prisma.cOGSCostDetail.findMany({
+          where: { organizationId: orgId, planId },
+          orderBy: [{ productLineId: "asc" }, { sortOrder: "asc" }, { month: "asc" }],
+        })
+      : Promise.resolve([]),
   ])
 
-  if (cogsLines.length === 0) {
-    const fallbackLines = await prisma.budgetLine.findMany({
-      where: { organizationId: orgId, planId, lineType: "cogs", deletedAt: null },
-      select: {
-        id: true,
-        department: true,
-        plannedAmount: true,
-        quantity: true,
-        monthIndex: true,
-        sortOrder: true,
-        account: { select: { id: true, code: true, name: true } },
-      },
-      orderBy: [{ sortOrder: "asc" }],
-    })
-    if (fallbackLines.length > 0) {
-      const buckets = new Map<string, {
-        id: string
-        productLineId: string
-        productLine: { id: string; name: string }
-        year: number
-        month: number
-        productionQty: number
-        totalCost: number
-        source: "budget_lines"
-      }>()
-      const plan = await prisma.budgetPlan.findFirst({
-        where: { id: planId, organizationId: orgId },
-        select: { year: true },
-      })
-      for (const line of fallbackLines) {
-        const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
-        if (month == null) continue
-        const productLineId = `budget-line:${line.account.id}:${line.department || ""}`
-        const bucketKey = `${productLineId}:${month}`
-        const current = buckets.get(bucketKey)
-        const totalCost = Math.abs(line.plannedAmount || 0)
-        const productionQty = line.quantity ?? 0
-        if (current) {
-          current.totalCost += totalCost
-          current.productionQty += productionQty
-        } else {
-          buckets.set(bucketKey, {
-            id: `budget-line-cogs:${bucketKey}`,
-            productLineId,
-            productLine: {
-              id: productLineId,
-              name: line.account.name || line.department || line.account.code,
-            },
-            year: plan?.year ?? new Date().getFullYear(),
-            month,
-            productionQty,
-            totalCost,
-            source: "budget_lines",
-          })
-        }
-      }
-      return NextResponse.json({
-        cogsLines: Array.from(buckets.values()),
-        components,
-        details: [],
+  if (cogsLines.length > 0) return { cogsLines, components, details }
+
+  const fallbackLines = await prisma.budgetLine.findMany({
+    where: { organizationId: orgId, planId, lineType: "cogs", deletedAt: null },
+    select: {
+      id: true,
+      department: true,
+      plannedAmount: true,
+      quantity: true,
+      monthIndex: true,
+      sortOrder: true,
+      account: { select: { id: true, code: true, name: true } },
+    },
+    orderBy: [{ sortOrder: "asc" }],
+  })
+  if (fallbackLines.length === 0) return { cogsLines: [], components, details }
+
+  const buckets = new Map<string, Extract<CogsRow, { source: "budget_lines" }>>()
+  const plan = await prisma.budgetPlan.findFirst({
+    where: { id: planId, organizationId: orgId },
+    select: { year: true },
+  })
+  for (const line of fallbackLines) {
+    const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
+    if (month == null) continue
+    const productLineId = `budget-line:${line.account.id}:${line.department || ""}`
+    const bucketKey = `${productLineId}:${month}`
+    const current = buckets.get(bucketKey)
+    const totalCost = Math.abs(line.plannedAmount || 0)
+    const productionQty = line.quantity ?? 0
+    if (current) {
+      current.totalCost += totalCost
+      current.productionQty += productionQty
+    } else {
+      buckets.set(bucketKey, {
+        id: `budget-line-cogs:${bucketKey}`,
+        productLineId,
+        productLine: {
+          id: productLineId,
+          name: line.account.name || line.department || line.account.code,
+        },
+        year: plan?.year ?? new Date().getFullYear(),
+        month,
+        productionQty,
+        totalCost,
         source: "budget_lines",
-        fallbackReason: "cogs_budget_lines_empty",
       })
     }
   }
 
-  return NextResponse.json({ cogsLines, components, details })
+  return {
+    cogsLines: Array.from(buckets.values()),
+    components,
+    details: [],
+    source: "budget_lines",
+    fallbackReason: "cogs_budget_lines_empty",
+  }
 }
 
 function resolveBudgetLineMonth(monthIndex: number | null, sortOrder: number): number | null {

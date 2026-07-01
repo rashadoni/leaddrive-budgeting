@@ -141,6 +141,30 @@ describe("GET /api/budgeting/cogs", () => {
       }),
     )
   })
+
+  it("compare=1 returns budget and actual COGS product rows for the same year", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "budget-2026", name: "Budget", year: 2026, kind: "budget" })
+      .mockResolvedValueOnce({ id: "actual-2026", name: "Actuals", year: 2026, kind: "actual" })
+    prismaMock.cOGSBudgetLine.findMany
+      .mockResolvedValueOnce([
+        { id: "b1", planId: "budget-2026", productLineId: "p1", year: 2026, month: 1, productionQty: 100, totalCost: 800, productLine: { id: "p1", name: "Glucose" } },
+      ])
+      .mockResolvedValueOnce([
+        { id: "a1", planId: "actual-2026", productLineId: "p1", year: 2026, month: 1, productionQty: 110, totalCost: 990, productLine: { id: "p1", name: "Glucose" } },
+      ])
+
+    const res = await GET(makeRequest("/api/budgeting/cogs?planId=budget-2026&compare=1"))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.meta.activePlan.kind).toBe("budget")
+    expect(body.meta.comparisonPlan.kind).toBe("actual")
+    expect(body.comparison.budgetLines).toHaveLength(1)
+    expect(body.comparison.actualLines).toHaveLength(1)
+    expect(body.comparison.missingData).toEqual([])
+  })
 })
 
 describe("POST /api/budgeting/cogs — period lock (Turn LXVIII)", () => {
