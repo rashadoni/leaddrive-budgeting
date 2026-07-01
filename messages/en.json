@@ -3079,6 +3079,42 @@
           "role": "Source/Skip"
         }
       },
+      "doctor": {
+        "title": "Import Doctor",
+        "subtitle": "Explains the current blocker in your language and can fill safe preview-only corrections. Final database writes still require a clean preview and the normal Apply step.",
+        "explain": "Explain",
+        "explainLoading": "Explaining...",
+        "suggest": "Suggest fix",
+        "suggestLoading": "Checking...",
+        "goToProblem": "Go to problem",
+        "applyPreview": "Apply to preview",
+        "rerunPreview": "Rerun preview",
+        "error": "Import Doctor failed: {msg}",
+        "statusPreviewNeeded": "Fix was added to preview controls. Rerun preview before applying.",
+        "statusApplied": "Fix was added to the preview controls. Review it before applying.",
+        "whyBlocked": "Why blocked:",
+        "whatToCheck": "What to check",
+        "safeNextStep": "Safe next step:",
+        "riskLow": "low risk",
+        "riskMedium": "medium risk",
+        "riskHigh": "manual review",
+        "issue": {
+          "crossFileConflict": "{n} cross-file conflict(s) are blocking apply.",
+          "coaReviewRequired": "{n} chart-of-accounts row(s) need a decision.",
+          "routingUncertain": "{n} sheet(s) have risky routing signals.",
+          "reconciliationBlocked": "Reconciliation is red, so the import cannot be applied safely.",
+          "previewStale": "Preview is stale after routing fixes."
+        },
+        "labels": {
+          "importFailed": "Import failed",
+          "crossFileConflict": "Cross-file conflict",
+          "coaReviewRequired": "CoA review",
+          "routingUncertain": "Routing check",
+          "reconciliationBlocked": "Reconciliation",
+          "previewStale": "Preview stale",
+          "manualReview": "Manual review"
+        }
+      },
       "routing": {
         "title": "Entity routing grid — {n} split sheet(s)",
         "description": "BU-column sheets were split before import. Write rows go to the listed company; elimination/unknown blocks are skipped.",

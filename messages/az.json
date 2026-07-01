@@ -3079,6 +3079,42 @@
           "role": "Mənbə/Skip"
         }
       },
+      "doctor": {
+        "title": "Import Doctor",
+        "subtitle": "Cari bloklanmanı saytın dilində izah edir və yalnız preview üçün təhlükəsiz düzəlişləri doldura bilir. Final DB yazısı yenə də təmiz preview və normal Apply addımı tələb edir.",
+        "explain": "İzah et",
+        "explainLoading": "İzah olunur...",
+        "suggest": "Fix təklif et",
+        "suggestLoading": "Yoxlanır...",
+        "goToProblem": "Problemə keç",
+        "applyPreview": "Preview-a tətbiq et",
+        "rerunPreview": "Preview-u yenidən hesabla",
+        "error": "Import Doctor işləmədi: {msg}",
+        "statusPreviewNeeded": "Fix preview controls-a əlavə edildi. Tətbiqdən əvvəl preview-u yenidən hesablayın.",
+        "statusApplied": "Fix preview controls-a əlavə edildi. Tətbiqdən əvvəl yoxlayın.",
+        "whyBlocked": "Niyə bloklanıb:",
+        "whatToCheck": "Nə yoxlanmalı",
+        "safeNextStep": "Təhlükəsiz növbəti addım:",
+        "riskLow": "aşağı risk",
+        "riskMedium": "orta risk",
+        "riskHigh": "manual yoxlama",
+        "issue": {
+          "crossFileConflict": "{n} fayllar arası konflikt apply-ı bloklayır.",
+          "coaReviewRequired": "{n} chart-of-accounts sətri qərar tələb edir.",
+          "routingUncertain": "{n} vərəqdə riskli yönləndirmə siqnalı var.",
+          "reconciliationBlocked": "Reconciliation qırmızıdır, ona görə idxal təhlükəsiz tətbiq edilə bilməz.",
+          "previewStale": "Routing fixes-dən sonra preview köhnəlib."
+        },
+        "labels": {
+          "importFailed": "İdxal xətası",
+          "crossFileConflict": "Fayl konflikti",
+          "coaReviewRequired": "CoA yoxlaması",
+          "routingUncertain": "Routing yoxlaması",
+          "reconciliationBlocked": "Reconciliation",
+          "previewStale": "Preview köhnədir",
+          "manualReview": "Manual yoxlama"
+        }
+      },
       "routing": {
         "title": "Şirkət yönləndirməsi — {n} split vərəq",
         "description": "BU-column vərəqləri importdan əvvəl bölündü. Write sətirləri göstərilən şirkətə gedir; elimination/unknown blokları atlanır.",

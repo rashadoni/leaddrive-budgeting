@@ -985,6 +985,111 @@ describe("MultiFileForm", () => {
     )
   })
 
+  it("Import Doctor applies a suggested sheet fix to preview and reruns with guidedSheetFixes", async () => {
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [
+        {
+          filename: "doctor.xlsx",
+          fileTypeResult: {
+            fileType: "main-financial",
+            confidence: 0.9,
+            reasoning: "x",
+            sheetCounts: {},
+          },
+          classifications: [
+            {
+              sheetName: "PLF CPC",
+              dataType: "PLF",
+              entityCode: null,
+              confidence: 0.58,
+              reasoning: "low entity confidence",
+              planKind: null,
+              role: "source",
+            },
+          ],
+          error: null,
+        },
+      ],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 100,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      proposal: {
+        kind: "sheet_fix",
+        executable: true,
+        title: "Route CPC",
+        rationale: "The sheet name contains CPC.",
+        confidence: 0.92,
+        risk: "low",
+        patch: {
+          filename: "doctor.xlsx",
+          sheetName: "PLF CPC",
+          entityCode: "AZSEKER-CPC",
+          planKind: "actual",
+          role: "source",
+        },
+        requiresPreviewRerun: true,
+      },
+    })
+    mockFetchOnce(200, {
+      ok: true,
+      mode: "preview",
+      perFile: [],
+      conflicts: [],
+      perGroup: [],
+      overallVerdict: "green",
+      llmUsage: { inputTokens: 0, outputTokens: 0, modelName: "x" },
+      durationMs: 80,
+      recompute: { ok: 0, unknown: 0, failed: 0, targets: 0 },
+      warnings: [],
+    })
+
+    render(<MultiFileForm />)
+    fireEvent.change(screen.getByTestId("multi-file-input"), {
+      target: { files: [makeFakeFile("doctor.xlsx")] },
+    })
+    fireEvent.click(screen.getByTestId("btn-analyze"))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("import-doctor-panel")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId("btn-doctor-suggest"))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("import-doctor-fix")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByTestId("btn-doctor-apply-preview"))
+    expect(screen.getByTestId("import-doctor-status")).toBeTruthy()
+    expect((screen.getByTestId("btn-apply") as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(screen.getByTestId("btn-doctor-rerun-preview"))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect((fetchMock.mock.calls[1] as [string, RequestInit])[0]).toBe(
+      "/api/import/ai-auto-multi/doctor/suggest-fix",
+    )
+    const body = (fetchMock.mock.calls[2] as [string, RequestInit])[1]
+      .body as FormData
+    expect(body.get("guidedSheetFixes")).toBe(
+      JSON.stringify([
+        {
+          filename: "doctor.xlsx",
+          sheetName: "PLF CPC",
+          entityCode: "AZSEKER-CPC",
+          planKind: "actual",
+          role: "source",
+        },
+      ]),
+    )
+  })
+
   it("Apply click POSTs with apply=1 + renders per-group results", async () => {
     mockFetchOnce(200, {
       ok: true,

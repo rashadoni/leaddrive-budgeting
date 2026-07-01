@@ -16,7 +16,7 @@
  *  - Total size cap (20 MB) enforced client-side + server-side
  */
 import { useRef, useState, type ChangeEvent, type DragEvent } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 
 interface ConflictOccurrence {
   filename: string
@@ -298,6 +298,82 @@ interface EntityAliasesApiResponse {
   error?: string
 }
 
+interface DoctorIssue {
+  code: string
+  severity: "info" | "warning" | "blocking"
+  message: string
+  location?: Record<string, unknown>
+  evidence?: Record<string, unknown>
+}
+
+interface DoctorExplanation {
+  title: string
+  plainExplanation: string
+  whyBlocked: string
+  whatToCheck: string[]
+  safeNextStep: string
+  needsReimport: boolean
+}
+
+type DoctorFixProposal =
+  | {
+      kind: "sheet_fix"
+      executable: true
+      title: string
+      rationale: string
+      confidence: number
+      risk: "low" | "medium"
+      patch: SheetFix
+      requiresPreviewRerun: true
+    }
+  | {
+      kind: "coa_mapping"
+      executable: true
+      title: string
+      rationale: string
+      confidence: number
+      risk: "low" | "medium"
+      patch: CoaDecision
+      requiresPreviewRerun: true
+    }
+  | {
+      kind: "conflict_resolution"
+      executable: true
+      title: string
+      rationale: string
+      confidence: number
+      risk: "low" | "medium"
+      patch: {
+        key: string
+        resolution: { mode: "pick"; filename: string } | { mode: "skip" }
+      }
+      requiresPreviewRerun: false
+    }
+  | {
+      kind: "manual_review"
+      executable: false
+      title: string
+      rationale: string
+      confidence: number
+      risk: "high"
+      manualSteps: string[]
+      requiresPreviewRerun: false
+    }
+
+interface DoctorExplainResponse {
+  ok: boolean
+  explanation?: DoctorExplanation
+  error?: string
+  code?: string
+}
+
+interface DoctorFixResponse {
+  ok: boolean
+  proposal?: DoctorFixProposal
+  error?: string
+  code?: string
+}
+
 const MAX_FILES = 10
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024
 
@@ -433,6 +509,7 @@ function dataTypeChipClass(dt: string): string {
 
 export function MultiFileForm() {
   const t = useTranslations("adminAiImport.multi")
+  const locale = useLocale()
   const [files, setFiles] = useState<File[]>([])
   const [isProcessing, setIsProcessing] = useState(false)
   const [previewResult, setPreviewResult] =
@@ -456,6 +533,14 @@ export function MultiFileForm() {
   const [isLoadingAliases, setIsLoadingAliases] = useState(false)
   const [isSavingAliases, setIsSavingAliases] = useState(false)
   const [aliasStatus, setAliasStatus] = useState<string | null>(null)
+  const [doctorExplanation, setDoctorExplanation] =
+    useState<DoctorExplanation | null>(null)
+  const [doctorFix, setDoctorFix] = useState<DoctorFixProposal | null>(null)
+  const [doctorLoading, setDoctorLoading] = useState<"explain" | "fix" | null>(
+    null,
+  )
+  const [doctorError, setDoctorError] = useState<string | null>(null)
+  const [doctorStatus, setDoctorStatus] = useState<string | null>(null)
   // Phase 7.M Tier 6 — per-conflict resolution map. Key = conflict key
   // (e.g. "AZSEKER-CPC::PLF.01::2026-01"), value = either
   //   { mode: "pick", filename: <filename to win> }  — use that file's value
@@ -471,6 +556,7 @@ export function MultiFileForm() {
   const applyResultRef = useRef<HTMLDivElement>(null)
   const conflictBannerRef = useRef<HTMLDivElement>(null)
   const errorRef = useRef<HTMLDivElement>(null)
+  const doctorPanelRef = useRef<HTMLDivElement>(null)
 
   const totalBytes = files.reduce((s, f) => s + f.size, 0)
   const overSizeCap = totalBytes > MAX_TOTAL_BYTES
@@ -559,6 +645,252 @@ export function MultiFileForm() {
       (f) => f.workbookProfile && f.classifications.length > 0,
     )
 
+  const primaryDoctorIssue = buildPrimaryDoctorIssue()
+
+  function resetDoctorState(): void {
+    setDoctorExplanation(null)
+    setDoctorFix(null)
+    setDoctorError(null)
+    setDoctorStatus(null)
+    setDoctorLoading(null)
+  }
+
+  function buildPrimaryDoctorIssue(): DoctorIssue | null {
+    if (error) {
+      return {
+        code: "import_failed",
+        severity: "blocking",
+        message: error,
+      }
+    }
+    if (!previewResult) return null
+    if (hasConflicts) {
+      return {
+        code: "cross_file_conflict",
+        severity: "blocking",
+        message: t("doctor.issue.crossFileConflict", {
+          n: previewResult.conflicts.length,
+        }),
+        evidence: { conflicts: previewResult.conflicts.slice(0, 5) },
+      }
+    }
+    if (hasUnresolvedCoaReviews) {
+      return {
+        code: "coa_review_required",
+        severity: "blocking",
+        message: t("doctor.issue.coaReviewRequired", {
+          n: coaReviewItems.length,
+        }),
+        evidence: { reviewItems: coaReviewItems.slice(0, 8) },
+      }
+    }
+    if (hasStaleSheetFixes) {
+      return {
+        code: "preview_stale",
+        severity: "warning",
+        message: t("doctor.issue.previewStale"),
+        evidence: { sheetFixes: sheetFixList },
+      }
+    }
+    if (
+      previewResult.safetyReceipt?.status === "blocked" ||
+      previewResult.overallVerdict === "red"
+    ) {
+      return {
+        code: "reconciliation_blocked",
+        severity: "blocking",
+        message: t("doctor.issue.reconciliationBlocked"),
+        evidence: { safetyReceipt: previewResult.safetyReceipt },
+      }
+    }
+    if (guidedFixItems.length > 0) {
+      return {
+        code: "routing_uncertain",
+        severity: "warning",
+        message: t("doctor.issue.routingUncertain", {
+          n: guidedFixItems.length,
+        }),
+        evidence: { guidedFixItems: guidedFixItems.slice(0, 10) },
+      }
+    }
+    return null
+  }
+
+  function doctorIssueLabel(code: string): string {
+    switch (code) {
+      case "import_failed":
+        return t("doctor.labels.importFailed")
+      case "cross_file_conflict":
+        return t("doctor.labels.crossFileConflict")
+      case "coa_review_required":
+        return t("doctor.labels.coaReviewRequired")
+      case "routing_uncertain":
+        return t("doctor.labels.routingUncertain")
+      case "reconciliation_blocked":
+        return t("doctor.labels.reconciliationBlocked")
+      case "preview_stale":
+        return t("doctor.labels.previewStale")
+      default:
+        return t("doctor.labels.manualReview")
+    }
+  }
+
+  function doctorRiskLabel(risk: DoctorFixProposal["risk"]): string {
+    switch (risk) {
+      case "low":
+        return t("doctor.riskLow")
+      case "medium":
+        return t("doctor.riskMedium")
+      case "high":
+        return t("doctor.riskHigh")
+    }
+  }
+
+  function buildDoctorContext(): Record<string, unknown> {
+    return {
+      error,
+      mode: previewResult?.mode ?? null,
+      overallVerdict: previewResult?.overallVerdict ?? null,
+      warnings: (previewResult?.warnings ?? []).slice(0, 10),
+      safetyReceipt: previewResult?.safetyReceipt
+        ? {
+            status: previewResult.safetyReceipt.status,
+            rows: previewResult.safetyReceipt.rows,
+            affectedCompanies: previewResult.safetyReceipt.affectedCompanies,
+            affectedPlans: previewResult.safetyReceipt.affectedPlans,
+            sectionsDetected: previewResult.safetyReceipt.sectionsDetected,
+            reconciliation: previewResult.safetyReceipt.reconciliation,
+            recompute: previewResult.safetyReceipt.recompute,
+          }
+        : null,
+      conflicts: (previewResult?.conflicts ?? []).slice(0, 8),
+      coaReviewItems: coaReviewItems.slice(0, 12),
+      guidedFixItems: guidedFixItems.slice(0, 16).map((item) => ({
+        filename: item.filename,
+        classification: item.classification,
+      })),
+      selectedCoaDecisions: Object.values(coaDecisions),
+      sheetFixes: sheetFixList,
+      buColumnSplits: buRoutingSplits.slice(0, 8),
+      perFile:
+        previewResult?.perFile.map((file) => ({
+          filename: file.filename,
+          fileType: file.fileTypeResult.fileType,
+          fileTypeConfidence: file.fileTypeResult.confidence,
+          fileTypeReasoning: file.fileTypeResult.reasoning,
+          classifications: file.classifications.slice(0, 40),
+          semanticCoaReviewItems: file.semanticCoa?.reviewItems?.slice(0, 12),
+          error: file.error,
+        })) ?? [],
+    }
+  }
+
+  async function requestDoctorExplanation(): Promise<void> {
+    if (!primaryDoctorIssue) return
+    setDoctorLoading("explain")
+    setDoctorError(null)
+    setDoctorStatus(null)
+    try {
+      const res = await fetch("/api/import/ai-auto-multi/doctor/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locale,
+          issue: primaryDoctorIssue,
+          context: buildDoctorContext(),
+        }),
+      })
+      const data = (await res.json()) as DoctorExplainResponse
+      if (!res.ok || !data.ok || !data.explanation) {
+        throw new Error(data.error ?? data.code ?? `HTTP ${res.status}`)
+      }
+      setDoctorExplanation(data.explanation)
+      setTimeout(
+        () => doctorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        50,
+      )
+    } catch (err) {
+      setDoctorError(
+        t("doctor.error", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+      )
+    } finally {
+      setDoctorLoading(null)
+    }
+  }
+
+  async function requestDoctorFix(): Promise<void> {
+    if (!primaryDoctorIssue) return
+    setDoctorLoading("fix")
+    setDoctorError(null)
+    setDoctorStatus(null)
+    try {
+      const res = await fetch("/api/import/ai-auto-multi/doctor/suggest-fix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          locale,
+          issue: primaryDoctorIssue,
+          context: buildDoctorContext(),
+        }),
+      })
+      const data = (await res.json()) as DoctorFixResponse
+      if (!res.ok || !data.ok || !data.proposal) {
+        throw new Error(data.error ?? data.code ?? `HTTP ${res.status}`)
+      }
+      setDoctorFix(data.proposal)
+      setTimeout(
+        () => doctorPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        50,
+      )
+    } catch (err) {
+      setDoctorError(
+        t("doctor.error", {
+          msg: err instanceof Error ? err.message : String(err),
+        }),
+      )
+    } finally {
+      setDoctorLoading(null)
+    }
+  }
+
+  function applyDoctorFix(): void {
+    if (!doctorFix?.executable) return
+    if (doctorFix.kind === "sheet_fix") {
+      updateSheetFix(doctorFix.patch.filename, doctorFix.patch.sheetName, {
+        entityCode: doctorFix.patch.entityCode,
+        planKind: doctorFix.patch.planKind,
+        role: doctorFix.patch.role,
+      })
+    } else if (doctorFix.kind === "coa_mapping") {
+      const key = coaDecisionKey(
+        doctorFix.patch.filename,
+        doctorFix.patch.sheetName,
+        doctorFix.patch.sourceLabel,
+      )
+      setCoaDecisions((prev) => ({ ...prev, [key]: doctorFix.patch }))
+      setApplyResult(null)
+    } else if (doctorFix.kind === "conflict_resolution") {
+      setResolutions((prev) => ({
+        ...prev,
+        [doctorFix.patch.key]: doctorFix.patch.resolution,
+      }))
+      setApplyResult(null)
+    }
+    setDoctorStatus(
+      doctorFix.requiresPreviewRerun
+        ? t("doctor.statusPreviewNeeded")
+        : t("doctor.statusApplied"),
+    )
+  }
+
+  function scrollToDoctorProblem(): void {
+    const target =
+      errorRef.current ?? conflictBannerRef.current ?? doctorPanelRef.current
+    target?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }
+
   function handleFiles(newFiles: FileList | File[]): void {
     const incoming = Array.from(newFiles).filter((f) =>
       f.name.toLowerCase().endsWith(".xlsx"),
@@ -571,6 +903,7 @@ export function MultiFileForm() {
     setCoaDecisions({})
     setSheetFixes({})
     setPreviewFixSignature("[]")
+    resetDoctorState()
   }
 
   function onDrop(e: DragEvent<HTMLDivElement>): void {
@@ -590,6 +923,7 @@ export function MultiFileForm() {
     setCoaDecisions({})
     setSheetFixes({})
     setPreviewFixSignature("[]")
+    resetDoctorState()
   }
 
   function resetAll(): void {
@@ -604,6 +938,7 @@ export function MultiFileForm() {
     setCoaDecisions({})
     setSheetFixes({})
     setPreviewFixSignature("[]")
+    resetDoctorState()
     if (inputRef.current) inputRef.current.value = ""
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
@@ -691,6 +1026,7 @@ export function MultiFileForm() {
       setAliasesLoaded(true)
       setPreviewResult(null)
       setApplyResult(null)
+      resetDoctorState()
     } catch (err) {
       setAliasStatus(
         t("aliases.error", {
@@ -706,10 +1042,14 @@ export function MultiFileForm() {
     if (files.length === 0) return
     setIsProcessing(true)
     setError(null)
+    setDoctorError(null)
+    setDoctorStatus(null)
     if (apply) {
       setApplyResult(null)
     } else {
       setPreviewResult(null)
+      setDoctorExplanation(null)
+      setDoctorFix(null)
     }
     try {
       const form = new FormData()
@@ -1351,6 +1691,7 @@ export function MultiFileForm() {
               setPreviewResult(null)
               setApplyResult(null)
               setTemplateSaveStatus(null)
+              resetDoctorState()
             }}
           />
           <span>{t("template.useSaved")}</span>
@@ -1392,6 +1733,196 @@ export function MultiFileForm() {
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
           </svg>
           <span>{t("applying")}</span>
+        </div>
+      )}
+
+      {primaryDoctorIssue && (
+        <div
+          ref={doctorPanelRef}
+          className="rounded-lg border border-blue-200 bg-white p-4 text-sm shadow-sm"
+          data-testid="import-doctor-panel"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-semibold text-slate-950">
+                  {t("doctor.title")}
+                </h3>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    primaryDoctorIssue.severity === "blocking"
+                      ? "bg-red-50 text-red-700 ring-1 ring-red-200"
+                      : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                  }`}
+                  data-testid="import-doctor-issue"
+                >
+                  {doctorIssueLabel(primaryDoctorIssue.code)}
+                </span>
+              </div>
+              <p className="mt-1 max-w-[72ch] text-xs text-slate-600">
+                {t("doctor.subtitle")}
+              </p>
+              <p className="mt-2 max-w-[72ch] text-slate-800">
+                {primaryDoctorIssue.message}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void requestDoctorExplanation()}
+                disabled={!!doctorLoading}
+                className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-800 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-blue-100"
+                data-testid="btn-doctor-explain"
+              >
+                {doctorLoading === "explain"
+                  ? t("doctor.explainLoading")
+                  : t("doctor.explain")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void requestDoctorFix()}
+                disabled={!!doctorLoading}
+                className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-800"
+                data-testid="btn-doctor-suggest"
+              >
+                {doctorLoading === "fix"
+                  ? t("doctor.suggestLoading")
+                  : t("doctor.suggest")}
+              </button>
+              <button
+                type="button"
+                onClick={scrollToDoctorProblem}
+                className="rounded border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                data-testid="btn-doctor-go-problem"
+              >
+                {t("doctor.goToProblem")}
+              </button>
+            </div>
+          </div>
+
+          {doctorError && (
+            <div
+              className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+              data-testid="import-doctor-error"
+            >
+              {doctorError}
+            </div>
+          )}
+          {doctorStatus && (
+            <div
+              className="mt-3 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800"
+              data-testid="import-doctor-status"
+            >
+              {doctorStatus}
+            </div>
+          )}
+
+          {doctorExplanation && (
+            <div
+              className="mt-4 grid gap-3 border-t border-slate-100 pt-4 lg:grid-cols-3"
+              data-testid="import-doctor-explanation"
+            >
+              <div className="lg:col-span-2">
+                <h4 className="font-semibold text-slate-950">
+                  {doctorExplanation.title}
+                </h4>
+                <p className="mt-1 text-slate-700">
+                  {doctorExplanation.plainExplanation}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">
+                    {t("doctor.whyBlocked")}
+                  </span>{" "}
+                  {doctorExplanation.whyBlocked}
+                </p>
+              </div>
+              <div className="rounded border border-slate-200 bg-slate-50 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  {t("doctor.whatToCheck")}
+                </div>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
+                  {doctorExplanation.whatToCheck.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <div className="mt-3 border-t border-slate-200 pt-2 text-xs text-slate-700">
+                  <span className="font-medium">
+                    {t("doctor.safeNextStep")}
+                  </span>{" "}
+                  {doctorExplanation.safeNextStep}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {doctorFix && (
+            <div
+              className="mt-4 rounded border border-slate-200 bg-slate-50 p-3"
+              data-testid="import-doctor-fix"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold text-slate-950">
+                      {doctorFix.title}
+                    </h4>
+                    <span className="rounded bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
+                      {Math.round(doctorFix.confidence * 100)}%
+                    </span>
+                    <span className="rounded bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
+                      {doctorRiskLabel(doctorFix.risk)}
+                    </span>
+                  </div>
+                  <p className="mt-1 max-w-[72ch] text-xs text-slate-700">
+                    {doctorFix.rationale}
+                  </p>
+                  {doctorFix.executable ? (
+                    <p className="mt-2 font-mono text-[11px] text-slate-500">
+                      {doctorFix.kind === "sheet_fix"
+                        ? `${doctorFix.patch.filename} / ${doctorFix.patch.sheetName}`
+                        : doctorFix.kind === "coa_mapping"
+                          ? `${doctorFix.patch.filename} / ${doctorFix.patch.sheetName} / ${doctorFix.patch.sourceLabel}`
+                          : doctorFix.patch.key}
+                    </p>
+                  ) : (
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
+                      {doctorFix.manualSteps.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {doctorFix.executable && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={applyDoctorFix}
+                      className="rounded bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
+                      data-testid="btn-doctor-apply-preview"
+                    >
+                      {t("doctor.applyPreview")}
+                    </button>
+                    {doctorFix.requiresPreviewRerun && (
+                      <button
+                        type="button"
+                        disabled={
+                          files.length === 0 ||
+                          isProcessing ||
+                          overSizeCap ||
+                          overCountCap
+                        }
+                        onClick={() => submit(false)}
+                        className="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 hover:bg-slate-50"
+                        data-testid="btn-doctor-rerun-preview"
+                      >
+                        {t("doctor.rerunPreview")}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

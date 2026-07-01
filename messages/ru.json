@@ -3079,6 +3079,42 @@
           "role": "Источник/Skip"
         }
       },
+      "doctor": {
+        "title": "Import Doctor",
+        "subtitle": "Объясняет текущую блокировку на языке сайта и может заполнить безопасные исправления только для preview. Запись в финальную БД всё равно требует чистого preview и обычного Apply.",
+        "explain": "Объяснить",
+        "explainLoading": "Объясняю...",
+        "suggest": "Предложить fix",
+        "suggestLoading": "Проверяю...",
+        "goToProblem": "К проблеме",
+        "applyPreview": "Применить к preview",
+        "rerunPreview": "Пересчитать preview",
+        "error": "Import Doctor не сработал: {msg}",
+        "statusPreviewNeeded": "Fix добавлен в preview-controls. Перед применением пересчитайте preview.",
+        "statusApplied": "Fix добавлен в preview-controls. Проверьте его перед применением.",
+        "whyBlocked": "Почему заблокировано:",
+        "whatToCheck": "Что проверить",
+        "safeNextStep": "Безопасный следующий шаг:",
+        "riskLow": "низкий риск",
+        "riskMedium": "средний риск",
+        "riskHigh": "ручная проверка",
+        "issue": {
+          "crossFileConflict": "{n} конфликт(ов) между файлами блокируют apply.",
+          "coaReviewRequired": "{n} строк(и) плана счетов требуют решения.",
+          "routingUncertain": "{n} лист(ов) имеют рискованную маршрутизацию.",
+          "reconciliationBlocked": "Reconciliation красный, поэтому импорт нельзя безопасно применить.",
+          "previewStale": "Preview устарел после routing fixes."
+        },
+        "labels": {
+          "importFailed": "Ошибка импорта",
+          "crossFileConflict": "Конфликт файлов",
+          "coaReviewRequired": "CoA review",
+          "routingUncertain": "Проверка routing",
+          "reconciliationBlocked": "Reconciliation",
+          "previewStale": "Preview устарел",
+          "manualReview": "Ручная проверка"
+        }
+      },
       "routing": {
         "title": "Маршрутизация компаний — {n} split-лист(ов)",
         "description": "Листы с BU-колонкой разделены до импорта. Write-строки пойдут в указанную компанию; elimination/unknown блоки будут пропущены.",
