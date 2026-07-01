@@ -248,4 +248,58 @@ describe("GET /api/budgeting/pnl — happy path", () => {
       belowEbitda: 50,
     })
   })
+
+  it("uses actual-plan budget lines as Actual vs Budget P&L actuals", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u1", role: "viewer" })
+    prismaMock.budgetPlan.findFirst
+      .mockResolvedValueOnce({ id: "actual_2026", name: "Actual 2026", year: 2026, kind: "actual" })
+      .mockResolvedValueOnce({ id: "budget_2026", name: "Budget 2026", year: 2026, kind: "budget" })
+    prismaMock.budgetLine.findMany
+      .mockResolvedValueOnce([
+        {
+          companyId: "c1",
+          department: "Revenue",
+          lineType: "revenue",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 1_000,
+          account: { code: "601-01", name: "Revenue", accountType: "revenue" },
+        },
+        {
+          companyId: "c1",
+          department: "COGS",
+          lineType: "cogs",
+          sortOrder: 0,
+          monthIndex: 0,
+          plannedAmount: 300,
+          account: { code: "701-01", name: "COGS", accountType: "cogs" },
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    const res = await GET(makeRequest("/api/budgeting/pnl?planId=actual_2026"))
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      hasActuals: boolean
+      monthlyActualRevenue: Record<string, number>
+      monthlyActualCogs: Record<string, number>
+      comparison: {
+        hasActualLines: boolean
+        hasBudgetLines: boolean
+        missingData: string[]
+        actual: { monthlyRevenue: Record<string, number>; monthlyCogs: Record<string, number> }
+        budget: { monthlyRevenue: Record<string, number>; monthlyCogs: Record<string, number> }
+      }
+    }
+    expect(body.hasActuals).toBe(true)
+    expect(body.monthlyActualRevenue["1"]).toBe(1_000)
+    expect(body.monthlyActualCogs["1"]).toBe(300)
+    expect(body.comparison.hasActualLines).toBe(true)
+    expect(body.comparison.hasBudgetLines).toBe(false)
+    expect(body.comparison.actual.monthlyRevenue["1"]).toBe(1_000)
+    expect(body.comparison.actual.monthlyCogs["1"]).toBe(300)
+    expect(body.comparison.budget.monthlyRevenue["1"]).toBe(0)
+    expect(body.comparison.missingData).toContain("Budget P&L rows are not available for this year.")
+  })
 })

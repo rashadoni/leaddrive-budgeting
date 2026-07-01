@@ -34,6 +34,22 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 // Single source of truth: re-use the base shape, narrow parentCode.
 type PnlRow = DrillRow & { parentCode: string | null }
 
+interface PnlComparisonBuckets {
+  monthlyRevenue: Record<number, number>
+  monthlyCogs: Record<number, number>
+  monthlyOpex: Record<number, number>
+  monthlyBelowEbitda: Record<number, number>
+  monthlyDa: Record<number, number>
+  hasRows: boolean
+}
+
+interface PnlComparisonPayload {
+  budget?: PnlComparisonBuckets
+  actual?: PnlComparisonBuckets
+  hasActualLines?: boolean
+  missingData?: string[]
+}
+
 export function BudgetPnlView({ planId, companyId }: { planId: string; companyId?: string | null }) {
   const { data: session } = useSession()
   const orgId = session?.user?.organizationId
@@ -175,6 +191,19 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const monthlyActualBelowEbitda: Record<number, number> = data.monthlyActualBelowEbitda ?? {}
   const monthlyActualDa: Record<number, number> = data.monthlyActualDa ?? {}
   const hasActuals: boolean = Boolean(data.hasActuals)
+  const comparison: PnlComparisonPayload | undefined = data.comparison
+  const comparisonHasActuals = comparison?.hasActualLines ?? hasActuals
+  const comparisonMissingData = comparison?.missingData ?? []
+  const comparisonValue = (
+    side: "budget" | "actual",
+    key: keyof Omit<PnlComparisonBuckets, "hasRows">,
+    month: number,
+    fallback: number,
+  ) => {
+    const bucket = comparison?.[side]
+    if (!bucket) return fallback
+    return bucket[key]?.[month] ?? 0
+  }
 
   // Calculate totals — revenue/cogs already pre-aggregated by the API route.
   // EBITDA + adjacent metrics come from `src/lib/budgeting/ebitda.ts` (single
@@ -319,28 +348,28 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
   const monthlyPerformance: Record<PnlPerformanceMetric, ReturnType<typeof buildPnlPerformancePoint>[]> = {
     revenue: MONTHS.map((month, i) => buildPnlPerformancePoint({
       month,
-      budget: monthlyRevenue?.[i + 1] || 0,
-      actual: monthlyActualRevenue?.[i + 1] || 0,
+      budget: comparisonValue("budget", "monthlyRevenue", i + 1, monthlyRevenue?.[i + 1] || 0),
+      actual: comparisonValue("actual", "monthlyRevenue", i + 1, monthlyActualRevenue?.[i + 1] || 0),
     })),
     cogs: MONTHS.map((month, i) => buildPnlPerformancePoint({
       month,
-      budget: Math.abs(monthlyCogs?.[i + 1] || 0),
-      actual: monthlyActualCogs?.[i + 1] || 0,
+      budget: comparisonValue("budget", "monthlyCogs", i + 1, Math.abs(monthlyCogs?.[i + 1] || 0)),
+      actual: comparisonValue("actual", "monthlyCogs", i + 1, monthlyActualCogs?.[i + 1] || 0),
     })),
     opex: MONTHS.map((month, i) => buildPnlPerformancePoint({
       month,
-      budget: monthlyOpexBudgetRaw[i] || 0,
-      actual: monthlyActualOpex?.[i + 1] || 0,
+      budget: comparisonValue("budget", "monthlyOpex", i + 1, monthlyOpexBudgetRaw[i] || 0),
+      actual: comparisonValue("actual", "monthlyOpex", i + 1, monthlyActualOpex?.[i + 1] || 0),
     })),
     ebitda: MONTHS.map((month, i) => {
-      const revenueBudget = monthlyRevenue?.[i + 1] || 0
-      const cogsBudget = Math.abs(monthlyCogs?.[i + 1] || 0)
-      const opexBudget = monthlyOpexBudgetRaw[i] || 0
-      const daBudget = (monthlyDaInCogsRaw[i] || 0) + (monthlyDaInOpexRaw[i] || 0)
-      const revenueActual = monthlyActualRevenue?.[i + 1] || 0
-      const cogsActual = monthlyActualCogs?.[i + 1] || 0
-      const opexActual = monthlyActualOpex?.[i + 1] || 0
-      const daActual = monthlyActualDa?.[i + 1] || 0
+      const revenueBudget = comparisonValue("budget", "monthlyRevenue", i + 1, monthlyRevenue?.[i + 1] || 0)
+      const cogsBudget = comparisonValue("budget", "monthlyCogs", i + 1, Math.abs(monthlyCogs?.[i + 1] || 0))
+      const opexBudget = comparisonValue("budget", "monthlyOpex", i + 1, monthlyOpexBudgetRaw[i] || 0)
+      const daBudget = comparisonValue("budget", "monthlyDa", i + 1, (monthlyDaInCogsRaw[i] || 0) + (monthlyDaInOpexRaw[i] || 0))
+      const revenueActual = comparisonValue("actual", "monthlyRevenue", i + 1, monthlyActualRevenue?.[i + 1] || 0)
+      const cogsActual = comparisonValue("actual", "monthlyCogs", i + 1, monthlyActualCogs?.[i + 1] || 0)
+      const opexActual = comparisonValue("actual", "monthlyOpex", i + 1, monthlyActualOpex?.[i + 1] || 0)
+      const daActual = comparisonValue("actual", "monthlyDa", i + 1, monthlyActualDa?.[i + 1] || 0)
       return buildPnlPerformancePoint({
         month,
         budget: revenueBudget - cogsBudget - opexBudget + daBudget,
@@ -348,14 +377,14 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       })
     }),
     netProfit: MONTHS.map((month, i) => {
-      const revenueBudget = monthlyRevenue?.[i + 1] || 0
-      const cogsBudget = Math.abs(monthlyCogs?.[i + 1] || 0)
-      const opexBudget = monthlyOpexBudgetRaw[i] || 0
-      const belowBudget = monthlyBelowEbitdaBudgetRaw[i] || 0
-      const revenueActual = monthlyActualRevenue?.[i + 1] || 0
-      const cogsActual = monthlyActualCogs?.[i + 1] || 0
-      const opexActual = monthlyActualOpex?.[i + 1] || 0
-      const belowActual = monthlyActualBelowEbitda?.[i + 1] || 0
+      const revenueBudget = comparisonValue("budget", "monthlyRevenue", i + 1, monthlyRevenue?.[i + 1] || 0)
+      const cogsBudget = comparisonValue("budget", "monthlyCogs", i + 1, Math.abs(monthlyCogs?.[i + 1] || 0))
+      const opexBudget = comparisonValue("budget", "monthlyOpex", i + 1, monthlyOpexBudgetRaw[i] || 0)
+      const belowBudget = comparisonValue("budget", "monthlyBelowEbitda", i + 1, monthlyBelowEbitdaBudgetRaw[i] || 0)
+      const revenueActual = comparisonValue("actual", "monthlyRevenue", i + 1, monthlyActualRevenue?.[i + 1] || 0)
+      const cogsActual = comparisonValue("actual", "monthlyCogs", i + 1, monthlyActualCogs?.[i + 1] || 0)
+      const opexActual = comparisonValue("actual", "monthlyOpex", i + 1, monthlyActualOpex?.[i + 1] || 0)
+      const belowActual = comparisonValue("actual", "monthlyBelowEbitda", i + 1, monthlyActualBelowEbitda?.[i + 1] || 0)
       return buildPnlPerformancePoint({
         month,
         budget: revenueBudget - cogsBudget - opexBudget - belowBudget,
@@ -364,20 +393,24 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
     }),
   }
 
+  const sumSeries = (metric: PnlPerformanceMetric, key: "budget" | "actual") =>
+    monthlyPerformance[metric].reduce((sum, point) => sum + point[key], 0)
+  const sumComparisonMonthly = (side: "budget" | "actual", key: keyof Omit<PnlComparisonBuckets, "hasRows">) =>
+    MONTHS.reduce((sum, _month, index) => sum + comparisonValue(side, key, index + 1, 0), 0)
   const ebitdaBridge = buildEbitdaBridge({
     budget: {
-      revenue: totalRevenue,
-      cogs: totalCogs,
-      opex: totalOpex,
-      da: totalDa,
-      ebitda,
+      revenue: sumSeries("revenue", "budget"),
+      cogs: sumSeries("cogs", "budget"),
+      opex: sumSeries("opex", "budget"),
+      da: sumComparisonMonthly("budget", "monthlyDa"),
+      ebitda: sumSeries("ebitda", "budget"),
     },
     actual: {
-      revenue: sectionActuals.revenue,
-      cogs: sectionActuals.cogs,
-      opex: sectionActuals.opex,
-      da: actualBreakdown.totalDa,
-      ebitda: actualEbitda,
+      revenue: sumSeries("revenue", "actual"),
+      cogs: sumSeries("cogs", "actual"),
+      opex: sumSeries("opex", "actual"),
+      da: sumComparisonMonthly("actual", "monthlyDa"),
+      ebitda: sumSeries("ebitda", "actual"),
     },
   })
 
@@ -617,7 +650,8 @@ export function BudgetPnlView({ planId, companyId }: { planId: string; companyId
       <PnlPerformanceCharts
         monthly={monthlyPerformance}
         bridge={ebitdaBridge}
-        hasActuals={hasActuals}
+        hasActuals={comparisonHasActuals}
+        notices={comparisonMissingData}
       />
 
       {/* Charts Row */}

@@ -35,12 +35,14 @@ interface PnlPerformanceChartsProps {
   monthly: Record<PnlPerformanceMetric, PnlPerformancePoint[]>
   bridge: EbitdaBridgeStep[]
   hasActuals: boolean
+  notices?: string[]
 }
 
 export function PnlPerformanceCharts({
   monthly,
   bridge,
   hasActuals,
+  notices = [],
 }: PnlPerformanceChartsProps) {
   const [metric, setMetric] = useState<PnlPerformanceMetric>("ebitda")
   const activeMetric = METRICS.find((item) => item.key === metric) ?? METRICS[3]
@@ -74,7 +76,13 @@ export function PnlPerformanceCharts({
             <p className="mt-1 text-xs text-muted-foreground">
               Monthly comparison for Revenue, COGS, OPEX, EBITDA and Net Profit.
             </p>
-            {!hasActuals && (
+            {notices.length > 0 ? (
+              <div className="mt-2 space-y-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+                {notices.map((notice) => (
+                  <p key={notice}>{notice}</p>
+                ))}
+              </div>
+            ) : !hasActuals && (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
                 Actual data is not available for this period yet.
               </p>

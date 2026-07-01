@@ -82,10 +82,19 @@ export async function GET(req: NextRequest) {
   // Resolve plan year up-front — we need it to filter actuals by expenseDate.
   const plan = await prisma.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, deletedAt: null },
-    select: { year: true },
+    select: { id: true, name: true, year: true, kind: true },
   })
   if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
   const year = yearOverride ? parseInt(yearOverride) : plan.year
+  const activeKind = plan.kind === "actual" || plan.kind === "budget" ? plan.kind : "legacy"
+  const counterpartKind = activeKind === "actual" ? "budget" : activeKind === "budget" ? "actual" : null
+  const counterpartPlan = counterpartKind
+    ? await prisma.budgetPlan.findFirst({
+        where: { organizationId: orgId, year, kind: counterpartKind, deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, year: true, kind: true },
+      })
+    : null
 
   // Turn 30: per-daughter-company filter (mirrors analytics route).
   // null/undefined → org-wide consolidated; level=2 → single op-co;
@@ -111,9 +120,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const blWhere: { organizationId: string; planId: string; deletedAt: null; companyId?: { in: string[] } } = {
+  const blWhere: { organizationId: string; deletedAt: null; companyId?: { in: string[] } } = {
     organizationId: orgId,
-    planId,
     deletedAt: null,
   }
   // For org-wide queries on a restricted user, narrow to scoped companies.
@@ -146,7 +154,7 @@ export async function GET(req: NextRequest) {
   // entirely from budgetLines + actuals below.)
   const [budgetLines, actuals] = await Promise.all([
     prisma.budgetLine.findMany({
-      where: blWhere,
+      where: { ...blWhere, planId },
       // Narrow select (FK'd account included) so reads prefer canonical
       // code/name from the Chart of Accounts over the denormalised
       // category/department strings — only the columns the aggregation uses.
@@ -171,6 +179,16 @@ export async function GET(req: NextRequest) {
       },
     }),
   ])
+  const counterpartBudgetLines = counterpartPlan
+    ? await prisma.budgetLine.findMany({
+        where: { ...blWhere, planId: counterpartPlan.id },
+        select: BUDGET_LINE_SELECT,
+      })
+    : []
+  const selectedLineComparison = aggregateBudgetLinesForComparison(budgetLines)
+  const counterpartLineComparison = aggregateBudgetLinesForComparison(counterpartBudgetLines)
+  const budgetLineComparison = activeKind === "actual" ? counterpartLineComparison : selectedLineComparison
+  const actualLineComparison = activeKind === "actual" ? selectedLineComparison : counterpartLineComparison
 
   // Monthly totals will be computed from budget_lines after filtering parents
   const monthlyRevenue: Record<number, number> = {}
@@ -395,6 +413,17 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  if (!hasActualRowsForYear && actualLineComparison.hasRows) {
+    copyMonthlyValues(monthlyActualRevenue, actualLineComparison.monthlyRevenue)
+    copyMonthlyValues(monthlyActualCogs, actualLineComparison.monthlyCogs)
+    copyMonthlyValues(monthlyActualOpex, actualLineComparison.monthlyOpex)
+    copyMonthlyValues(monthlyActualBelowEbitda, actualLineComparison.monthlyBelowEbitda)
+    copyMonthlyValues(monthlyActualDa, actualLineComparison.monthlyDa)
+    Object.assign(sectionActuals, actualLineComparison.sectionTotals)
+    Object.assign(actualByKey, actualLineComparison.byKey)
+    hasActualRowsForYear = true
+  }
+
   // Turn 33.5 architect ⚠️: `success: true` here too (mirrors empty
   // short-circuit) — eliminates pnl-INTERNAL envelope asymmetry. Both
   // empty + non-empty paths now share the additive key.
@@ -412,7 +441,120 @@ export async function GET(req: NextRequest) {
     actualByKey,
     actualMonthlyByKey,
     sectionActuals,
+    comparison: {
+      activePlan: plan,
+      comparisonPlan: counterpartPlan,
+      budget: budgetLineComparison,
+      actual: actualLineComparison.hasRows
+        ? actualLineComparison
+        : {
+            monthlyRevenue: monthlyActualRevenue,
+            monthlyCogs: monthlyActualCogs,
+            monthlyOpex: monthlyActualOpex,
+            monthlyBelowEbitda: monthlyActualBelowEbitda,
+            monthlyDa: monthlyActualDa,
+            sectionTotals: sectionActuals,
+            byKey: actualByKey,
+            hasRows: hasActualRowsForYear,
+          },
+      hasBudgetLines: budgetLineComparison.hasRows,
+      hasActualLines: actualLineComparison.hasRows || hasActualRowsForYear,
+      missingData: [
+        ...(counterpartKind && !counterpartPlan ? [`No ${counterpartKind} plan exists for ${year}.`] : []),
+        ...(budgetLineComparison.hasRows ? [] : ["Budget P&L rows are not available for this year."]),
+        ...(actualLineComparison.hasRows || hasActualRowsForYear ? [] : ["Actual P&L rows are not available for this year."]),
+      ],
+    },
     year,
     hasActuals: hasActualRowsForYear,
+  })
+}
+
+type MonthlyMap = Record<number, number>
+
+interface PnlLineComparisonBuckets {
+  monthlyRevenue: MonthlyMap
+  monthlyCogs: MonthlyMap
+  monthlyOpex: MonthlyMap
+  monthlyBelowEbitda: MonthlyMap
+  monthlyDa: MonthlyMap
+  sectionTotals: { revenue: number; cogs: number; opex: number; belowEbitda: number }
+  byKey: Record<string, number>
+  hasRows: boolean
+}
+
+function emptyMonthlyMap(): MonthlyMap {
+  const map: MonthlyMap = {}
+  for (let m = 1; m <= 12; m++) map[m] = 0
+  return map
+}
+
+function copyMonthlyValues(target: MonthlyMap, source: MonthlyMap): void {
+  for (let m = 1; m <= 12; m++) target[m] = source[m] ?? 0
+}
+
+function aggregateBudgetLinesForComparison(lines: BudgetLineRow[]): PnlLineComparisonBuckets {
+  const buckets: PnlLineComparisonBuckets = {
+    monthlyRevenue: emptyMonthlyMap(),
+    monthlyCogs: emptyMonthlyMap(),
+    monthlyOpex: emptyMonthlyMap(),
+    monthlyBelowEbitda: emptyMonthlyMap(),
+    monthlyDa: emptyMonthlyMap(),
+    sectionTotals: { revenue: 0, cogs: 0, opex: 0, belowEbitda: 0 },
+    byKey: {},
+    hasRows: false,
+  }
+  const leafLines = lines.filter((line) => !isParentBudgetLine(line, lines))
+  for (const line of leafLines) {
+    const month = resolveBudgetLineMonth(line.monthIndex, line.sortOrder)
+    if (month == null) continue
+    const code = line.account.code
+    const name = line.account.name || line.department || code
+    const amount = line.plannedAmount || 0
+    if (amount === 0) continue
+
+    buckets.hasRows = true
+    const key = `${code}::${name}`
+    buckets.byKey[key] = (buckets.byKey[key] || 0) + amount
+
+    const role = deriveRoleFromCode(code)
+    const section = pnlSectionFromRole(role)
+    if (isDaCode(code)) buckets.monthlyDa[month] += Math.abs(amount)
+
+    if (section === "revenue") {
+      const signedAmount = isContraRevenueCode(code) ? -amount : amount
+      buckets.monthlyRevenue[month] += signedAmount
+      buckets.sectionTotals.revenue += signedAmount
+    } else if (section === "cogs") {
+      const cost = Math.abs(amount)
+      buckets.monthlyCogs[month] += cost
+      buckets.sectionTotals.cogs += cost
+    } else if (section === "opex" || (section === null && line.account.accountType === "expense")) {
+      const cost = Math.abs(amount)
+      buckets.monthlyOpex[month] += cost
+      buckets.sectionTotals.opex += cost
+    } else if (section === "belowEbitda") {
+      const cost = Math.abs(amount)
+      buckets.monthlyBelowEbitda[month] += cost
+      buckets.sectionTotals.belowEbitda += cost
+    }
+  }
+  return buckets
+}
+
+function resolveBudgetLineMonth(monthIndex: number | null, sortOrder: number): number | null {
+  if (monthIndex != null && monthIndex >= 0 && monthIndex < 12) return monthIndex + 1
+  const fromSort = sortOrder % 100
+  if (fromSort >= 0 && fromSort < 12) return fromSort + 1
+  return null
+}
+
+function isParentBudgetLine(line: BudgetLineRow, allLines: BudgetLineRow[]): boolean {
+  const code = line.account.code
+  if (!code || code.startsWith("ROLLUP-")) return false
+  return allLines.some((candidate) => {
+    if (candidate.companyId !== line.companyId) return false
+    const candidateCode = candidate.account.code
+    return candidateCode !== code && candidateCode.startsWith(`${code}-`)
   })
 }
