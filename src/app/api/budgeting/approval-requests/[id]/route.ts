@@ -43,7 +43,9 @@ import {
   isTerminalStatus,
   type ApprovalRequestAction,
   type PeriodUnlockChange,
+  type TradeCampaignActivateChange,
 } from "@/lib/budgeting/approval-request"
+import { statusAfterDecision } from "@/lib/trade/campaigns"
 import { notifyApprovalReviewed } from "@/lib/budgeting/approval-notifications"
 import type { Prisma } from "@prisma/client"
 
@@ -204,6 +206,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         // anyway — the requester's intent is satisfied.
         appliedAt = now
       }
+    }
+
+    // Phase 9.4 — trade campaign activation. Unlike the budget-line types
+    // (which defer the mutation to their own routes), the campaign status
+    // flip IS the whole change, so it applies inline for all three
+    // actions: approve → approved, reject → rejected, cancel → draft.
+    if (request.requestType === "trade_campaign_activate") {
+      const change = request.proposedChange as unknown as TradeCampaignActivateChange
+      const campaignStatus = statusAfterDecision(action)
+      // Guard: only flip a campaign that is still waiting on THIS request —
+      // protects against a stale request racing a resubmission.
+      const flipped = await tx.tradeCampaign.updateMany({
+        where: {
+          id: change.campaignId,
+          organizationId: session.orgId,
+          status: "pending_approval",
+          deletedAt: null,
+        },
+        data: {
+          status: campaignStatus,
+          approvalRequestId: action === "approve" ? request.id : null,
+        },
+      })
+      if (flipped.count === 1) {
+        if (action === "approve") appliedAt = now
+        if (action === "approve" || action === "reject") {
+          const auditResult = await logAuditEvent(tx, {
+            organizationId: session.orgId,
+            actorUserId: session.userId,
+            event: {
+              action: "trade_campaign_review",
+              entityType: "TradeCampaign",
+              entityId: change.campaignId,
+              metadata: {
+                decision: action === "approve" ? "approved" : "rejected",
+                campaignCode: change.campaignCode,
+                campaignName: change.campaignName,
+                plannedBudgetAmount: change.plannedBudgetAmount,
+              },
+            },
+            context: buildAuditContext({
+              route: `/api/budgeting/approval-requests/[id] (${action})`,
+              userAgent: req.headers.get("user-agent") ?? undefined,
+            }),
+          })
+          if (!auditResult.ok) auditStale = true
+        }
+      }
+      // flipped.count === 0 → campaign was deleted/resubmitted meanwhile;
+      // the request still transitions (reviewer's decision is recorded),
+      // the campaign keeps its newer state.
     }
 
     const updated = await tx.approvalRequest.update({

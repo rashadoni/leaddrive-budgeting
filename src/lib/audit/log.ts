@@ -187,6 +187,19 @@ export type AuditEventInput =
       };
     }
   | {
+      // Phase 9.4 — reviewer decision on a trade campaign activation
+      // request (PATCH /api/budgeting/approval-requests/[id]).
+      action: 'trade_campaign_review';
+      entityType: 'TradeCampaign';
+      entityId: string;
+      metadata: {
+        decision: 'approved' | 'rejected';
+        campaignCode: string;
+        campaignName: string;
+        plannedBudgetAmount: number;
+      };
+    }
+  | {
       action: 'indicator_override_create' | 'indicator_override_update' | 'indicator_override_delete';
       entityType: 'IndicatorDefinition';
       entityId: string;

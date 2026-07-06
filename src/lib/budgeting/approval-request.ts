@@ -117,6 +117,16 @@ export interface PeriodUnlockChange {
   period: string
 }
 
+/** Phase 9.4 — activate a draft trade campaign (finance sign-off). */
+export interface TradeCampaignActivateChange {
+  campaignId: string
+  campaignCode: string
+  campaignName: string
+  plannedBudgetAmount: number
+  startDate: string // ISO yyyy-mm-dd (display convenience for the reviewer)
+  endDate: string
+}
+
 /**
  * Discriminated-union helper — narrows `proposedChange` based on
  * the `requestType` enum. Throws on shape mismatch (the route
@@ -131,6 +141,7 @@ export type ProposedChangeFor<T extends ApprovalRequestType> =
   T extends "budget_actual_update" ? BudgetActualUpdateChange :
   T extends "budget_actual_delete" ? BudgetActualDeleteChange :
   T extends "period_unlock" ? PeriodUnlockChange :
+  T extends "trade_campaign_activate" ? TradeCampaignActivateChange :
   never
 
 /**
@@ -280,6 +291,12 @@ export function isValidProposedChange(
     case "period_unlock":
       // Same regex used by /api/budgeting/period-locks (Turn LXX).
       return typeof obj.period === "string" && /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/.test(obj.period)
+    case "trade_campaign_activate":
+      return (
+        typeof obj.campaignId === "string" &&
+        typeof obj.campaignCode === "string" &&
+        typeof obj.plannedBudgetAmount === "number"
+      )
     default:
       return false
   }

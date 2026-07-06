@@ -4182,6 +4182,44 @@
       "free_goods": "Free goods",
       "posm_merchandising": "POSM",
       "manual": "Manual"
+    },
+    "campaigns": {
+      "title": "Campaigns",
+      "newCampaign": "New campaign",
+      "empty": "No campaigns yet — create the first one.",
+      "loadFailed": "Failed to load campaigns",
+      "fieldName": "Name",
+      "fieldStart": "Start date",
+      "fieldEnd": "End date",
+      "fieldBudget": "Budget (AZN)",
+      "fieldUpliftPct": "Expected uplift %",
+      "fieldChannel": "Channel (scope)",
+      "fieldBrand": "Brand (scope)",
+      "fieldGoal": "Goal",
+      "create": "Create draft",
+      "busy": "Working…",
+      "submit": "Submit for approval",
+      "delete": "Delete",
+      "awaitingApproval": "Awaiting finance approval",
+      "uplift": "uplift",
+      "status": {
+        "draft": "Draft",
+        "pending_approval": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "paused": "Paused",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "scope": {
+        "region": "Region",
+        "channel": "Channel",
+        "rep": "Rep",
+        "outlet": "Outlet",
+        "sku": "SKU",
+        "brand": "Brand",
+        "category": "Category"
+      }
     }
   }
 }

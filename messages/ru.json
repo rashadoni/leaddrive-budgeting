@@ -4182,6 +4182,44 @@
       "free_goods": "Бесплатный товар",
       "posm_merchandising": "POSM",
       "manual": "Вручную"
+    },
+    "campaigns": {
+      "title": "Кампании",
+      "newCampaign": "Новая кампания",
+      "empty": "Кампаний пока нет — создайте первую.",
+      "loadFailed": "Не удалось загрузить кампании",
+      "fieldName": "Название",
+      "fieldStart": "Дата начала",
+      "fieldEnd": "Дата окончания",
+      "fieldBudget": "Бюджет (AZN)",
+      "fieldUpliftPct": "Ожид. прирост %",
+      "fieldChannel": "Канал (охват)",
+      "fieldBrand": "Бренд (охват)",
+      "fieldGoal": "Цель",
+      "create": "Создать черновик",
+      "busy": "Обработка…",
+      "submit": "На согласование",
+      "delete": "Удалить",
+      "awaitingApproval": "Ожидает согласования финансами",
+      "uplift": "прирост",
+      "status": {
+        "draft": "Черновик",
+        "pending_approval": "На согласовании",
+        "approved": "Согласована",
+        "rejected": "Отклонена",
+        "paused": "Пауза",
+        "completed": "Завершена",
+        "cancelled": "Отменена"
+      },
+      "scope": {
+        "region": "Регион",
+        "channel": "Канал",
+        "rep": "Представитель",
+        "outlet": "Точка",
+        "sku": "SKU",
+        "brand": "Бренд",
+        "category": "Категория"
+      }
     }
   }
 }

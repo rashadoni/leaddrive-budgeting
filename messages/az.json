@@ -4182,6 +4182,44 @@
       "free_goods": "Pulsuz mal",
       "posm_merchandising": "POSM",
       "manual": "Əl ilə"
+    },
+    "campaigns": {
+      "title": "Kampaniyalar",
+      "newCampaign": "Yeni kampaniya",
+      "empty": "Hələ kampaniya yoxdur — birincisini yaradın.",
+      "loadFailed": "Kampaniyalar yüklənmədi",
+      "fieldName": "Ad",
+      "fieldStart": "Başlama tarixi",
+      "fieldEnd": "Bitmə tarixi",
+      "fieldBudget": "Büdcə (AZN)",
+      "fieldUpliftPct": "Gözlənilən artım %",
+      "fieldChannel": "Kanal (əhatə)",
+      "fieldBrand": "Brend (əhatə)",
+      "fieldGoal": "Məqsəd",
+      "create": "Qaralama yarat",
+      "busy": "İcra olunur…",
+      "submit": "Təsdiqə göndər",
+      "delete": "Sil",
+      "awaitingApproval": "Maliyyə təsdiqini gözləyir",
+      "uplift": "artım",
+      "status": {
+        "draft": "Qaralama",
+        "pending_approval": "Təsdiqdə",
+        "approved": "Təsdiqlənib",
+        "rejected": "Rədd edilib",
+        "paused": "Pauzada",
+        "completed": "Bitib",
+        "cancelled": "Ləğv edilib"
+      },
+      "scope": {
+        "region": "Bölgə",
+        "channel": "Kanal",
+        "rep": "Nümayəndə",
+        "outlet": "Nöqtə",
+        "sku": "SKU",
+        "brand": "Brend",
+        "category": "Kateqoriya"
+      }
     }
   }
 }

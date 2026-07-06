@@ -88,6 +88,13 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
       }
       return { compact, verbose };
     }
+    case 'trade_campaign_review': {
+      const code = stringField(m, 'campaignCode');
+      const decision = stringField(m, 'decision');
+      const compact = code ?? e.entityType;
+      const verbose = decision ? `${compact} · ${decision}` : compact;
+      return { compact, verbose };
+    }
     case 'trade_import_apply': {
       const kind = stringField(m, 'kind');
       const rows = numberField(m, 'rowCount');

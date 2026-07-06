@@ -766,6 +766,7 @@ enum ApprovalRequestType {
   budget_actual_update
   budget_actual_delete
   period_unlock // request to remove a period lock for one specific change
+  trade_campaign_activate // Phase 9.4 — activate a draft trade campaign (finance sign-off)
 }
 
 model ApprovalRequest {
@@ -1943,6 +1944,7 @@ enum AuditAction {
   import_budget_create // /api/onboarding/import/budget
   import_staging_apply // /api/onboarding/import/staging/[id]/apply
   trade_import_apply // Phase 9.2 — POST /api/trade/master-import mode=apply
+  trade_campaign_review // Phase 9.4 — approve/reject decision on a trade campaign
   import_staging_expired // lazy-flip pending → expired on read
   indicator_override_create
   indicator_override_update
@@ -2331,6 +2333,62 @@ model TradeSpendType {
   @@unique([organizationId, key])
   @@index([organizationId, isActive])
   @@map("trade_spend_types")
+}
+
+enum TradeCampaignStatus {
+  draft
+  pending_approval
+  approved // finance signed off; "running" is derived from the date range
+  rejected // reviewer declined — editable again, can be resubmitted
+  paused
+  completed
+  cancelled
+}
+
+model TradeCampaign {
+  id                        String              @id @default(cuid())
+  organizationId            String
+  code                      String
+  name                      String
+  goal                      String?
+  startDate                 DateTime
+  endDate                   DateTime
+  status                    TradeCampaignStatus @default(draft)
+  plannedBudgetAmount       Float               @default(0)
+  expectedSalesUpliftAmount Float?
+  expectedSalesUpliftPct    Float?
+  // Set when the activation request is approved (trail to ApprovalRequest).
+  approvalRequestId         String?
+  ownerUserId               String?
+  currencyCode              String              @default("AZN")
+  // Phase-2 hooks: roi, claim policy, simulation assumptions.
+  settings                  Json                @default("{}")
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+  deletedAt                 DateTime?
+  deletedBy                 String?
+
+  scopes TradeCampaignScope[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status, startDate, endDate])
+  @@index([organizationId, deletedAt])
+  @@map("trade_campaigns")
+}
+
+model TradeCampaignScope {
+  id             String        @id @default(cuid())
+  organizationId String
+  campaignId     String
+  campaign       TradeCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  scopeType      String // region | channel | rep | outlet | sku | brand | category
+  scopeId        String? // dimension row id (region/channel/rep/outlet/sku)
+  scopeValue     String? // free value (brand/category names)
+  include        Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, campaignId])
+  @@map("trade_campaign_scopes")
 }
 
 model TradeImportBatch {

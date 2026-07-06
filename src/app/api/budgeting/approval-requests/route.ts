@@ -48,6 +48,9 @@ const requestTypeEnum = z.enum([
   "budget_actual_update",
   "budget_actual_delete",
   "period_unlock",
+  // Phase 9.4 — created internally by POST /api/trade/campaigns/[id]/submit;
+  // accepted here too so the generic producer stays complete.
+  "trade_campaign_activate",
 ])
 
 const statusEnum = z.enum(["pending", "approved", "rejected", "cancelled"])
