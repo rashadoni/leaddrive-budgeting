@@ -199,16 +199,39 @@ If FO has an internal CA, ask IT for a cert + key for `budget.fo.az` (or whateve
 
 ## 4. Subsequent updates
 
-Standard flow for code / schema changes:
+> **Reality check (2026-07-06):** the actual prod VM (Hetzner `root@46.225.60.142`)
+> was provisioned as a plain file copy, NOT a git clone, and the repo is private
+> (the VM has no GitHub credentials). The supported update path is therefore
+> **push-based** — the developer machine pushes over SSH; the server never talks
+> to GitHub. Everything below assumes that model.
+
+Standard flow for code / schema changes — one command on the dev machine:
 
 ```bash
-cd /opt/budgetpro
-git pull
-docker compose --env-file .env.production up -d --build
-
-# Watch migrations run on startup
-docker compose logs -f app
+bash deploy/update-prod.sh
 ```
+
+It guards (main + clean tree), backs up the DB, `git push prod main` (server
+worktree updates via `receive.denyCurrentBranch=updateInstead`), stamps
+`.deploy-revision`, rebuilds containers (migrations run in the entrypoint),
+waits for health, prints a smoke line.
+
+One-time setup (dev machine, once per clone; server part once ever):
+
+```bash
+ssh root@46.225.60.142 'cd /opt/budgetpro && git init -b main -q \
+  && git config receive.denyCurrentBranch ignore \
+  && git config --global --add safe.directory /opt/budgetpro'
+git remote add prod ssh://root@46.225.60.142/opt/budgetpro
+git push prod main
+ssh root@46.225.60.142 'cd /opt/budgetpro && git reset --hard main -q \
+  && git config receive.denyCurrentBranch updateInstead'
+```
+
+(`ignore` → first push into the freshly-inited repo; `reset --hard` aligns the
+existing worktree with the pushed branch — untracked files like
+`.env.production` / `backups/` are untouched; `updateInstead` makes every later
+push update the worktree automatically.)
 
 Rollback (in case of broken build):
 
