@@ -171,6 +171,22 @@ export type AuditEventInput =
       };
     }
   | {
+      // Phase 9.2 — POST /api/trade/master-import mode=apply.
+      action: 'trade_import_apply';
+      entityType: 'TradeImportBatch';
+      entityId: string;
+      metadata: {
+        kind: string; // TradeImportKind
+        sourceFile: string;
+        rowCount: number;
+        created: number;
+        updated: number;
+        regionsCreated: number;
+        channelsCreated: number;
+        placeholderRepsCreated: number;
+      };
+    }
+  | {
       action: 'indicator_override_create' | 'indicator_override_update' | 'indicator_override_delete';
       entityType: 'IndicatorDefinition';
       entityId: string;

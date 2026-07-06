@@ -30,6 +30,7 @@ import {
   BookText,
   Bell,
   ChevronDown,
+  Store,
 } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
@@ -67,6 +68,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   { href: "/budgeting/terminal", icon: Activity, labelKey: "riskTerminal" },
   { href: "/budgeting", icon: Calculator, labelKey: "budgeting" },
+  { href: "/budgeting/trade", icon: Store, labelKey: "tradeTower" },
   { href: "/budgeting/board-deck", icon: Presentation, labelKey: "boardDeck" },
   { href: "/budgeting/onboarding", icon: Upload, labelKey: "onboarding" },
   { href: "/budgeting/admin/ai-import", icon: Brain, labelKey: "aiImport", minRole: "admin" },

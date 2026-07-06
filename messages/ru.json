@@ -124,7 +124,8 @@
       "Route & Field": "Маршруты и поле",
       "Settings": "Настройки"
     },
-    "alerts": "Алерты"
+    "alerts": "Алерты",
+    "tradeTower": "Trade Tower"
   },
   "common": {
     "toggleTheme": "Переключить тему",
@@ -4139,5 +4140,48 @@
     "importAnother": "Импортировать ещё файл",
     "appliedTitle": "Импортировано · год {year}",
     "appliedRowsLabel": "записано строк"
+  },
+  "trade": {
+    "metaTitle": "Trade Tower",
+    "pageTitle": "Trade Spend Control Tower",
+    "pageSubtitle": "Контроль трейд-маркетингового бюджета — справочники, кампании, дневной pacing",
+    "regions": "Регионы",
+    "channels": "Каналы",
+    "reps": "Торговые представители",
+    "outlets": "Точки продаж",
+    "skus": "SKU",
+    "spendTypesTitle": "Виды затрат",
+    "seedDefaults": "Создать стандартные виды затрат",
+    "importTitle": "Импорт справочников",
+    "importHint": "Загрузите .xlsx справочник (выгрузка из Mikro/1С). Сначала предпросмотр — запись только после «Применить».",
+    "kindOutlets": "Точки продаж (клиенты)",
+    "kindSkus": "SKU (товары)",
+    "kindReps": "Торговые представители",
+    "chooseFile": "Выберите файл .xlsx",
+    "preview": "Предпросмотр",
+    "apply": "Применить",
+    "busy": "Обработка…",
+    "rowsParsed": "Распознано строк: {count}",
+    "errorsTitle": "Ошибки",
+    "warningsTitle": "Предупреждения",
+    "sampleTitle": "Образец (первые {count} строк)",
+    "applyBlocked": "Исправьте ошибки и загрузите файл заново — применение заблокировано.",
+    "applied": "Применено: создано {created}, обновлено {updated}",
+    "alreadyImported": "Этот файл уже был импортирован — изменений нет.",
+    "recentBatches": "Последние импорты",
+    "batchKind": "Тип",
+    "batchFile": "Файл",
+    "batchStatus": "Статус",
+    "batchRows": "Строк",
+    "batchDate": "Дата",
+    "loadFailed": "Не удалось загрузить данные",
+    "accrual": {
+      "on_invoice": "По счёту",
+      "retro_formula": "Ретро-формула",
+      "payment_actual": "По оплате",
+      "free_goods": "Бесплатный товар",
+      "posm_merchandising": "POSM",
+      "manual": "Вручную"
+    }
   }
 }

@@ -870,6 +870,7 @@ model ProductLine {
   costComponents   CostComponent[]
   cogsBudgetLines  COGSBudgetLine[]
   cogsCostDetails  COGSCostDetail[]
+  tradeSkus        TradeSku[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1941,6 +1942,7 @@ enum AuditAction {
   budget_plan_approve
   import_budget_create // /api/onboarding/import/budget
   import_staging_apply // /api/onboarding/import/staging/[id]/apply
+  trade_import_apply // Phase 9.2 — POST /api/trade/master-import mode=apply
   import_staging_expired // lazy-flip pending → expired on read
   indicator_override_create
   indicator_override_update
@@ -2158,4 +2160,201 @@ model GuideView {
   @@index([organizationId, viewedAt])
   @@index([lang, viewedAt])
   @@map("guide_views")
+}
+
+// ═══════════════════════════════════════════════════
+// PHASE 9: TRADE SPEND CONTROL TOWER (Mars Overseas)
+// Design: docs/TRADE_SPEND_CONTROL_TOWER_PLAN.md
+// Org-scoped operational mart, deliberately separate from the
+// monthly budgeting models (BudgetLine/BudgetActual stay the
+// planning source; trade gets daily grain + its own dimensions).
+// Step 9.1 ships dimensions + spend types + import batch.
+// Ledger/facts/campaigns land in steps 9.3–9.7.
+// ═══════════════════════════════════════════════════
+
+enum TradeAccrualMethod {
+  on_invoice // discount visible on the invoice — accrues automatically at invoice time
+  retro_formula // retro bonus computed by formula from period sales (engine in 9.6)
+  payment_actual // known only when paid (promo payments, listing fees)
+  free_goods // valued at COGS when the goods ship
+  posm_merchandising // POSM/merchandising — actual on posting
+  manual // manually entered adjustment (approval-gated)
+}
+
+enum TradeImportKind {
+  master_outlets
+  master_skus
+  master_reps
+  sales_invoice
+  spend_actual
+  campaign_master
+  allocation
+}
+
+enum TradeImportStatus {
+  preview
+  applied
+  superseded // replaced by a re-sent file covering the same scope
+  failed
+  discarded
+}
+
+model TradeRegion {
+  id             String    @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  parentId       String? // optional hierarchy (zone -> region)
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  outlets   TradeOutlet[]
+  salesReps TradeSalesRep[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, deletedAt])
+  @@map("trade_regions")
+}
+
+model TradeChannel {
+  id             String    @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  channelType    String // modern_trade | traditional | horeca | wholesale
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  outlets   TradeOutlet[]
+  salesReps TradeSalesRep[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, deletedAt])
+  @@map("trade_channels")
+}
+
+model TradeSalesRep {
+  id             String        @id @default(cuid())
+  organizationId String
+  externalCode   String // rep code in the source system (Mikro / 1C / SFA)
+  name           String
+  regionId       String?
+  region         TradeRegion?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  channelId      String?
+  channel        TradeChannel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  outlets TradeOutlet[]
+
+  @@unique([organizationId, externalCode])
+  @@index([organizationId, deletedAt])
+  @@map("trade_sales_reps")
+}
+
+model TradeOutlet {
+  id             String         @id @default(cuid())
+  organizationId String
+  externalCode   String // outlet/customer code in the source system
+  name           String
+  legalName      String?
+  taxId          String?
+  chainCode      String? // modern-trade chain grouping (BRAVO, ARAZ, OBA...)
+  regionId       String
+  region         TradeRegion    @relation(fields: [regionId], references: [id])
+  channelId      String
+  channel        TradeChannel   @relation(fields: [channelId], references: [id])
+  salesRepId     String?
+  salesRep       TradeSalesRep? @relation(fields: [salesRepId], references: [id], onDelete: SetNull)
+  // Optional bridge to the risk-module Counterparty snapshot for top customers.
+  counterpartyId String?
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  @@unique([organizationId, externalCode])
+  @@index([organizationId, regionId, channelId, salesRepId])
+  @@index([organizationId, deletedAt])
+  @@map("trade_outlets")
+}
+
+model TradeSku {
+  id             String       @id @default(cuid())
+  organizationId String
+  externalCode   String // SKU code in the source system
+  barcode        String?
+  name           String
+  brand          String // Pepsi, Mountain Dew, Lay's, Jala...
+  category       String // csd | juice | water | snacks | ...
+  packageSize    String? // "0.5L PET", "1.5L PET", "90g"
+  unit           String       @default("ədəd")
+  // Optional bridge to the monthly planning grain (ProductLine).
+  productLineId  String?
+  productLine    ProductLine? @relation(fields: [productLineId], references: [id], onDelete: SetNull)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  deletedBy      String?
+
+  @@unique([organizationId, externalCode])
+  @@index([organizationId, brand, category])
+  @@index([productLineId])
+  @@index([organizationId, deletedAt])
+  @@map("trade_skus")
+}
+
+model TradeSpendType {
+  id             String             @id @default(cuid())
+  organizationId String
+  key            String // stable key: on_invoice_discount, retro_bonus, ...
+  label          String
+  accrualMethod  TradeAccrualMethod
+  // retro_formula parameters ({ pct, base, period }) — accrual engine in 9.6.
+  formula        Json?
+  sortOrder      Int                @default(0)
+  isActive       Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId, isActive])
+  @@map("trade_spend_types")
+}
+
+model TradeImportBatch {
+  id                String            @id @default(cuid())
+  organizationId    String
+  kind              TradeImportKind
+  sourceSystem      String            @default("file") // file | mikro | 1c (post-migration)
+  sourceFile        String
+  fileHash          String // sha256 of the uploaded bytes — idempotency key
+  // Business date the file covers (sales date for sales_invoice files).
+  sourceDate        DateTime?
+  status            TradeImportStatus @default(preview)
+  rowCount          Int               @default(0)
+  totals            Json              @default("{}") // control sums for reconciliation
+  validation        Json              @default("{}")
+  // Restatement chain: a re-sent file for the same scope supersedes the
+  // previous batch — old batch deactivates, its rows are never deleted.
+  supersedesBatchId String?
+  isActive          Boolean           @default(false)
+  createdBy         String
+  createdAt         DateTime          @default(now())
+  appliedAt         DateTime?
+
+  @@unique([organizationId, kind, sourceSystem, fileHash])
+  @@index([organizationId, kind, sourceDate, isActive])
+  @@map("trade_import_batches")
 }

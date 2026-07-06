@@ -124,7 +124,8 @@
       "Route & Field": "Marşrut & Sahə",
       "Settings": "Parametrlər"
     },
-    "alerts": "Siqnallar"
+    "alerts": "Siqnallar",
+    "tradeTower": "Trade Tower"
   },
   "common": {
     "toggleTheme": "Temanı dəyiş",
@@ -4139,5 +4140,48 @@
     "importAnother": "Daha bir fayl idxal et",
     "appliedTitle": "İdxal edildi · il {year}",
     "appliedRowsLabel": "yazılmış sətirlər"
+  },
+  "trade": {
+    "metaTitle": "Trade Tower",
+    "pageTitle": "Trade Spend Control Tower",
+    "pageSubtitle": "Trade marketing büdcəsinə nəzarət — master data, kampaniyalar, gündəlik pacing",
+    "regions": "Bölgələr",
+    "channels": "Kanallar",
+    "reps": "Satış nümayəndələri",
+    "outlets": "Satış nöqtələri",
+    "skus": "SKU",
+    "spendTypesTitle": "Xərc növləri",
+    "seedDefaults": "Standart xərc növlərini yarat",
+    "importTitle": "Master data importu",
+    "importHint": ".xlsx master siyahısını yükləyin (Mikro/1C export). Əvvəl önizləmə — «Tətbiq et» basılana qədər heç nə yazılmır.",
+    "kindOutlets": "Satış nöqtələri (müştərilər)",
+    "kindSkus": "SKU (məhsullar)",
+    "kindReps": "Satış nümayəndələri",
+    "chooseFile": ".xlsx faylı seçin",
+    "preview": "Önizləmə",
+    "apply": "Tətbiq et",
+    "busy": "İcra olunur…",
+    "rowsParsed": "{count} sətir tanındı",
+    "errorsTitle": "Xətalar",
+    "warningsTitle": "Xəbərdarlıqlar",
+    "sampleTitle": "Nümunə (ilk {count} sətir)",
+    "applyBlocked": "Yuxarıdakı xətaları düzəldib faylı yenidən yükləyin — tətbiq bloklanıb.",
+    "applied": "Tətbiq olundu: {created} yaradıldı, {updated} yeniləndi",
+    "alreadyImported": "Bu fayl artıq import olunub — dəyişiklik yoxdur.",
+    "recentBatches": "Son importlar",
+    "batchKind": "Növ",
+    "batchFile": "Fayl",
+    "batchStatus": "Status",
+    "batchRows": "Sətir",
+    "batchDate": "Tarix",
+    "loadFailed": "Trade məlumatları yüklənmədi",
+    "accrual": {
+      "on_invoice": "Faktura ilə",
+      "retro_formula": "Retro düstur",
+      "payment_actual": "Ödənişlə",
+      "free_goods": "Pulsuz mal",
+      "posm_merchandising": "POSM",
+      "manual": "Əl ilə"
+    }
   }
 }

@@ -75,6 +75,8 @@ const ALL_ACTIONS = [
   "company_status_change",
   // Truth-Infra Phase C.2 — admin reclassified Company.industry.
   "company_industry_change",
+  // Phase 9.2 — trade master-data import applied.
+  "trade_import_apply",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

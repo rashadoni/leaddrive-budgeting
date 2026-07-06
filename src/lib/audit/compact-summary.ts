@@ -88,6 +88,18 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
       }
       return { compact, verbose };
     }
+    case 'trade_import_apply': {
+      const kind = stringField(m, 'kind');
+      const rows = numberField(m, 'rowCount');
+      const created = numberField(m, 'created');
+      const updated = numberField(m, 'updated');
+      const compact = kind ?? e.entityType;
+      const parts = [compact];
+      if (rows !== null) parts.push(`${rows} rows`);
+      if (created !== null) parts.push(`${created} created`);
+      if (updated !== null) parts.push(`${updated} updated`);
+      return { compact, verbose: parts.join(' · ') };
+    }
     case 'import_staging_expired': {
       const triggeredBy = stringField(m, 'triggeredBy');
       const expiresAt = stringField(m, 'expiresAt');

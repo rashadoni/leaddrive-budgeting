@@ -124,7 +124,8 @@
       "Route & Field": "Route & Field",
       "Settings": "Settings"
     },
-    "alerts": "Alerts"
+    "alerts": "Alerts",
+    "tradeTower": "Trade Tower"
   },
   "common": {
     "toggleTheme": "Toggle theme",
@@ -4139,5 +4140,48 @@
     "importAnother": "Import another file",
     "appliedTitle": "Imported · year {year}",
     "appliedRowsLabel": "rows written"
+  },
+  "trade": {
+    "metaTitle": "Trade Tower",
+    "pageTitle": "Trade Spend Control Tower",
+    "pageSubtitle": "Trade marketing budget monitoring — master data, campaigns, daily pacing",
+    "regions": "Regions",
+    "channels": "Channels",
+    "reps": "Sales reps",
+    "outlets": "Outlets",
+    "skus": "SKUs",
+    "spendTypesTitle": "Spend types",
+    "seedDefaults": "Create default spend types",
+    "importTitle": "Master data import",
+    "importHint": "Upload an .xlsx master list (Mikro/1C export). Preview first — nothing is written until you press Apply.",
+    "kindOutlets": "Outlets (customers)",
+    "kindSkus": "SKUs (products)",
+    "kindReps": "Sales reps",
+    "chooseFile": "Choose .xlsx file",
+    "preview": "Preview",
+    "apply": "Apply",
+    "busy": "Working…",
+    "rowsParsed": "{count} rows parsed",
+    "errorsTitle": "Errors",
+    "warningsTitle": "Warnings",
+    "sampleTitle": "Sample (first {count} rows)",
+    "applyBlocked": "Fix the errors above and re-upload — Apply is blocked.",
+    "applied": "Applied: {created} created, {updated} updated",
+    "alreadyImported": "This exact file was already imported — nothing changed.",
+    "recentBatches": "Recent imports",
+    "batchKind": "Kind",
+    "batchFile": "File",
+    "batchStatus": "Status",
+    "batchRows": "Rows",
+    "batchDate": "Date",
+    "loadFailed": "Failed to load trade overview",
+    "accrual": {
+      "on_invoice": "On invoice",
+      "retro_formula": "Retro formula",
+      "payment_actual": "On payment",
+      "free_goods": "Free goods",
+      "posm_merchandising": "POSM",
+      "manual": "Manual"
+    }
   }
 }
