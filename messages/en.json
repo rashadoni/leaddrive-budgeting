@@ -4228,6 +4228,21 @@
       "ack": "Acknowledge",
       "acked": "acknowledged",
       "resolvedRecently": "{count} alert(s) auto-resolved recently"
+    },
+    "budget": {
+      "title": "Trade budget (monthly pools)",
+      "hint": "Budget = % of the monthly sales plan (assumption A3, default 5% — editable per month; click a % or amount to change it, ✎ marks manual overrides that survive re-derivation).",
+      "derive": "Derive from sales plan",
+      "busy": "Working…",
+      "defaultPct": "Default %",
+      "empty": "No pools yet — press \"Derive from sales plan\".",
+      "loadFailed": "Failed to load budget pools",
+      "colMonth": "Month",
+      "colSalesPlan": "Sales plan",
+      "colBudget": "Trade budget",
+      "editPct": "Click to change %",
+      "editAmount": "Click to override amount",
+      "total": "Total"
     }
   }
 }

@@ -4228,6 +4228,21 @@
       "ack": "Qəbul et",
       "acked": "qəbul edilib",
       "resolvedRecently": "Bu yaxınlarda avtomatik bağlanan: {count}"
+    },
+    "budget": {
+      "title": "Trade büdcə (aylıq pullar)",
+      "hint": "Büdcə = aylıq satış planının %-i (A3 fərziyyəsi, standart 5% — ay üzrə dəyişdirilə bilir; %-ə və ya məbləğə klikləyin, ✎ — əl ilə yazılmış məbləğ, yenidən hesablamada qorunur).",
+      "derive": "Satış planından hesabla",
+      "busy": "İcra olunur…",
+      "defaultPct": "Standart %",
+      "empty": "Hələ pul yoxdur — «Satış planından hesabla» düyməsini basın.",
+      "loadFailed": "Büdcə pulları yüklənmədi",
+      "colMonth": "Ay",
+      "colSalesPlan": "Satış planı",
+      "colBudget": "Trade büdcə",
+      "editPct": "%-i dəyişmək üçün klikləyin",
+      "editAmount": "Məbləği əl ilə yazmaq üçün klikləyin",
+      "total": "Cəmi"
     }
   }
 }

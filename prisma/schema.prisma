@@ -2405,6 +2405,33 @@ model TradePacingSnapshot {
   @@map("trade_pacing_snapshots")
 }
 
+// Phase 9.3 — monthly trade budget pool. `salesPlanAmount` is captured
+// from the org's revenue plan at derivation time (source: BudgetLine
+// revenue rows of kind=budget plans — SalesBudgetLine was empty in every
+// real org, deliberate deviation from the original design);
+// budgetAmount = salesPlanAmount × budgetPct unless manually overridden.
+// grainKey aligns with TradePlanDaily / TradePacingSnapshot ("org" v1;
+// "channel:<id>" etc. when finer allocation lands).
+model TradeBudgetPool {
+  id              String   @id @default(cuid())
+  organizationId  String
+  year            Int
+  month           Int // 1-12
+  grainKey        String   @default("org")
+  salesPlanAmount Float    @default(0)
+  budgetPct       Float    @default(5)
+  budgetAmount    Float    @default(0)
+  // true when budgetAmount was set directly — re-derive keeps it.
+  isManualAmount  Boolean  @default(false)
+  currencyCode    String   @default("AZN")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([organizationId, year, month, grainKey])
+  @@index([organizationId, year])
+  @@map("trade_budget_pools")
+}
+
 enum TradeCampaignStatus {
   draft
   pending_approval

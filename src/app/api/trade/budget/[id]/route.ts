@@ -1,0 +1,94 @@
+/**
+ * Trade budget pool item — `PATCH /api/trade/budget/[id]` (Phase 9.3).
+ * { budgetPct } recomputes the amount from the sales base;
+ * { budgetAmount } sets a manual override (survives re-derivation).
+ * TradePlanDaily rows for the month are regenerated to keep pacing honest.
+ */
+import { NextRequest, NextResponse } from "next/server"
+import { z, ZodError } from "zod"
+import { requireRole, isAuthError } from "@/lib/api-auth"
+import { enforceRateLimit } from "@/lib/rate-limit"
+import { prisma } from "@/lib/prisma"
+import { applyPoolPatch } from "@/lib/trade/budget"
+import { spreadMonthlyPlan } from "@/lib/trade/pacing"
+
+const RATE_LIMIT = { name: "trade-budget-patch", max: 30, windowMs: 60_000 }
+
+const patchSchema = z
+  .object({
+    budgetPct: z.number().min(0).max(100).optional(),
+    budgetAmount: z.number().min(0).max(1e12).optional(),
+  })
+  .refine((p) => p.budgetPct !== undefined || p.budgetAmount !== undefined, {
+    message: "budgetPct or budgetAmount required",
+  })
+
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await requireRole(request, "manager")
+  if (isAuthError(session)) return session
+  if (!session.orgId) {
+    return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
+  }
+  const orgId = session.orgId
+  const { id } = await params
+
+  const rateLimitError = enforceRateLimit(`${RATE_LIMIT.name}:${orgId}:${session.userId}`, RATE_LIMIT)
+  if (rateLimitError) return rateLimitError
+
+  let parsed
+  try {
+    parsed = patchSchema.parse(await request.json())
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return NextResponse.json(
+        { ok: false, error: "Validation failed", details: e.flatten().fieldErrors },
+        { status: 400 },
+      )
+    }
+    return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 })
+  }
+
+  const pool = await prisma.tradeBudgetPool.findFirst({
+    where: { id, organizationId: orgId },
+  })
+  if (!pool) {
+    return NextResponse.json({ ok: false, error: "Pool not found" }, { status: 404 })
+  }
+
+  const next = applyPoolPatch(pool, parsed)
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.tradeBudgetPool.update({
+      where: { id },
+      data: next,
+      select: {
+        id: true,
+        year: true,
+        month: true,
+        salesPlanAmount: true,
+        budgetPct: true,
+        budgetAmount: true,
+        isManualAmount: true,
+      },
+    })
+    await tx.tradePlanDaily.deleteMany({
+      where: { organizationId: orgId, year: row.year, month: row.month, grainKey: pool.grainKey },
+    })
+    const salesSpread = spreadMonthlyPlan(row.year, row.month, row.salesPlanAmount)
+    const budgetSpread = spreadMonthlyPlan(row.year, row.month, row.budgetAmount)
+    await tx.tradePlanDaily.createMany({
+      data: salesSpread.map((d, i) => ({
+        organizationId: orgId,
+        date: new Date(Date.UTC(row.year, row.month - 1, d.day)),
+        year: row.year,
+        month: row.month,
+        grainKey: pool.grainKey,
+        plannedSalesAmount: d.amount,
+        plannedTradeBudgetAmount: budgetSpread[i]?.amount ?? 0,
+        workingDayWeight: d.weight,
+      })),
+    })
+    return row
+  })
+
+  return NextResponse.json({ ok: true, pool: updated })
+}

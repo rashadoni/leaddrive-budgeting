@@ -2,6 +2,7 @@ import { getTranslations } from "next-intl/server"
 import { TradeMasterData } from "@/features/trade/components/TradeMasterData"
 import { TradeCampaigns } from "@/features/trade/components/TradeCampaigns"
 import { TradeAlertInbox } from "@/features/trade/components/TradeAlertInbox"
+import { TradeBudget } from "@/features/trade/components/TradeBudget"
 
 export async function generateMetadata() {
   const t = await getTranslations("trade")
@@ -17,6 +18,7 @@ export default async function TradePage() {
         <p className="text-sm text-muted-foreground">{t("pageSubtitle")}</p>
       </header>
       <TradeAlertInbox />
+      <TradeBudget />
       <TradeCampaigns />
       <TradeMasterData />
     </div>
