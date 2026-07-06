@@ -6,6 +6,22 @@ bypass deprecated). Per-table rollout is multi-PR, multi-session.
 
 **Pattern reference:** `docs/RLS_PATTERN_EXAMPLE.md`.
 
+> **Status update 2026-07-06:** the 2026-05-31 BASELINE migration
+> (`00000000000000_init`) already ships `ENABLE ROW LEVEL SECURITY` +
+> `tenant_isolation` for all 56 org-scoped tables that existed then — the
+> per-table queue below is HISTORICAL (superseded by the baseline).
+> Today's gap analysis: the Phase-9 `trade_*` tables (11) were created
+> after the baseline without coverage → closed by migration
+> `20260706183514_rls_trade_tables` (dev: 56 → 67 tables with RLS).
+> **Enforcement caveat:** both dev and prod connect as the `budgetpro`
+> role which is SUPERUSER + BYPASSRLS and owns the tables, so every
+> policy is currently inert defense-in-depth. The enforcement flip
+> (dedicated non-bypass app role + `withOrgScope` coverage of ALL
+> routes, including the new `/api/trade/*` handlers which use plain
+> `prisma` today) is the remaining Stage-3 work — targeted at
+> second-customer (Mars Overseas) onboarding, BEFORE two real tenants
+> share the database.
+
 ## Per-table rollout loop
 
 For each table T:
