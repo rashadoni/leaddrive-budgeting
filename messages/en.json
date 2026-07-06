@@ -4243,6 +4243,56 @@
       "editPct": "Click to change %",
       "editAmount": "Click to override amount",
       "total": "Total"
+    },
+    "spend": {
+      "title": "Spend ledger (Plan / Accrued / Actual)",
+      "hint": "Manual postings until the daily invoice feed ships (9.5) — then on-invoice discounts accrue automatically. Negative amount = credit/correction. Control = accrued for committed types, actual for payment-gated.",
+      "loadFailed": "Failed to load ledger",
+      "totals": {
+        "plan": "Plan",
+        "accrued": "Accrued",
+        "actual": "Actual",
+        "control": "Control"
+      },
+      "kind": {
+        "plan": "Plan",
+        "accrued": "Accrued",
+        "actual": "Actual"
+      },
+      "fieldKind": "Kind",
+      "fieldType": "Spend type",
+      "fieldDate": "Date",
+      "fieldAmount": "Amount (AZN)",
+      "fieldNote": "Note / doc ref",
+      "add": "Post entry",
+      "busy": "Working…",
+      "void": "Void",
+      "colType": "Spend type"
+    },
+    "pacing": {
+      "title": "Daily pacing",
+      "recompute": "Recompute",
+      "empty": "No snapshot yet — derive the budget below, post spend, then press Recompute.",
+      "loadFailed": "Failed to load pacing",
+      "monthElapsed": "Month elapsed",
+      "spendProgress": "Budget spent",
+      "salesProgress": "Sales plan achieved",
+      "awaitingFeed": "awaiting daily feed",
+      "budgetMonth": "Month budget",
+      "controlSpendMtd": "Spent (control, MTD)",
+      "forecastMonthEnd": "Month-end forecast",
+      "asOf": "As of",
+      "risk": {
+        "ok": "On pace",
+        "watch": "Watch",
+        "high": "High risk",
+        "critical": "Critical"
+      },
+      "quality": {
+        "complete": "full data",
+        "partial": "partial data (sales feed pending)",
+        "empty": "no data"
+      }
     }
   }
 }

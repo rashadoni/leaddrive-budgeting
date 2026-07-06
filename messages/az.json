@@ -4243,6 +4243,56 @@
       "editPct": "%-i dəyişmək üçün klikləyin",
       "editAmount": "Məbləği əl ilə yazmaq üçün klikləyin",
       "total": "Cəmi"
+    },
+    "spend": {
+      "title": "Xərc jurnalı (Plan / Hesablanmış / Fakt)",
+      "hint": "Gündəlik faktura feed-i (9.5) işə düşənə qədər yazılışlar əl ilədir — sonra invoice endirimləri avtomatik hesablanacaq. Mənfi məbləğ = düzəliş/kredit. Control = öhdəlikli növlər üçün hesablanmış, ödəniş-bağlı növlər üçün fakt.",
+      "loadFailed": "Jurnal yüklənmədi",
+      "totals": {
+        "plan": "Plan",
+        "accrued": "Hesablanmış",
+        "actual": "Fakt",
+        "control": "Kontrol"
+      },
+      "kind": {
+        "plan": "Plan",
+        "accrued": "Hesablanmış",
+        "actual": "Fakt"
+      },
+      "fieldKind": "Yazılış növü",
+      "fieldType": "Xərc növü",
+      "fieldDate": "Tarix",
+      "fieldAmount": "Məbləğ (AZN)",
+      "fieldNote": "Qeyd / sənəd",
+      "add": "Yaz",
+      "busy": "İcra olunur…",
+      "void": "Ləğv et",
+      "colType": "Xərc növü"
+    },
+    "pacing": {
+      "title": "Gündəlik pacing",
+      "recompute": "Yenidən hesabla",
+      "empty": "Hələ snapshot yoxdur — aşağıda büdcəni hesablayın, xərc yazın və «Yenidən hesabla» basın.",
+      "loadFailed": "Pacing yüklənmədi",
+      "monthElapsed": "Ay keçib",
+      "spendProgress": "Büdcə xərclənib",
+      "salesProgress": "Satış planı icra olunub",
+      "awaitingFeed": "gündəlik feed gözlənilir",
+      "budgetMonth": "Ayın büdcəsi",
+      "controlSpendMtd": "Xərclənib (kontrol, MTD)",
+      "forecastMonthEnd": "Ay sonu proqnozu",
+      "asOf": "Tarixə",
+      "risk": {
+        "ok": "Normadadır",
+        "watch": "Müşahidə",
+        "high": "Yüksək risk",
+        "critical": "Kritik"
+      },
+      "quality": {
+        "complete": "tam data",
+        "partial": "qismən data (satış feed-i gözlənilir)",
+        "empty": "data yoxdur"
+      }
     }
   }
 }

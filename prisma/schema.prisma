@@ -2340,9 +2340,55 @@ model TradeSpendType {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
+  ledgerEntries TradeSpendLedger[]
+
   @@unique([organizationId, key])
   @@index([organizationId, isActive])
   @@map("trade_spend_types")
+}
+
+enum TradeSpendEntryKind {
+  plan
+  accrued
+  actual
+}
+
+// Phase 9.6 — append-only spend ledger: ONE table for plan/accrued/actual
+// postings (UI pivots into three figures). Corrections are voids or
+// negative postings — rows are never deleted. entryGroupKey ties a
+// plan→accrual→actual chain (Phase-2 claim matching hook); importBatchId
+// arrives with the 9.5 invoice adapter (on-invoice auto-accrual).
+model TradeSpendLedger {
+  id             String              @id @default(cuid())
+  organizationId String
+  entryKind      TradeSpendEntryKind
+  spendTypeId    String
+  spendType      TradeSpendType      @relation(fields: [spendTypeId], references: [id])
+  campaignId     String?
+  entryDate      DateTime
+  year           Int
+  month          Int // 1-12
+  // Negative allowed (credit note / correction posting).
+  amount         Float
+  currencyCode   String              @default("AZN")
+  regionId       String?
+  channelId      String?
+  salesRepId     String?
+  outletId       String?
+  skuId          String?
+  // Free-text doc reference / note for manual postings.
+  sourceDocument String?
+  entryGroupKey  String?
+  importBatchId  String?
+  createdBy      String
+  createdAt      DateTime            @default(now())
+  voidedAt       DateTime?
+  voidedBy       String?
+
+  @@index([organizationId, year, month, entryKind])
+  @@index([organizationId, spendTypeId, entryDate])
+  @@index([organizationId, campaignId])
+  @@map("trade_spend_ledger")
 }
 
 enum TradeRiskStatus {
