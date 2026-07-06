@@ -4220,6 +4220,14 @@
         "brand": "Brend",
         "category": "Kateqoriya"
       }
+    },
+    "alerts": {
+      "title": "Alert qutusu",
+      "empty": "Aktiv alert yoxdur — xərcləmə normal tempdədir.",
+      "loadFailed": "Alertlər yüklənmədi",
+      "ack": "Qəbul et",
+      "acked": "qəbul edilib",
+      "resolvedRecently": "Bu yaxınlarda avtomatik bağlanan: {count}"
     }
   }
 }

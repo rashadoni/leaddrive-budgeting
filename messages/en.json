@@ -4220,6 +4220,14 @@
         "brand": "Brand",
         "category": "Category"
       }
+    },
+    "alerts": {
+      "title": "Alert inbox",
+      "empty": "No active alerts — spend is pacing normally.",
+      "loadFailed": "Failed to load alerts",
+      "ack": "Acknowledge",
+      "acked": "acknowledged",
+      "resolvedRecently": "{count} alert(s) auto-resolved recently"
     }
   }
 }

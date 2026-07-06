@@ -1486,21 +1486,31 @@ model Counterparty {
 }
 
 // Alert — triggered events from indicator thresholds, composite rules, or AI briefs.
+// Phase 9.8 (2026-07-06): activated as the trade alert INBOX — `domain`
+// separates trade rows from the (dormant) risk usage; `dedupeKey` gives
+// stable upserts so re-evaluation updates instead of duplicating;
+// `resolvedAt` lets the evaluator auto-close alerts whose condition
+// cleared (distinct from user `acknowledgedAt`).
 model Alert {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  type           String // "indicator"|"composite"|"scenario"|"brief"
-  sourceRef      Json // { companyId?, indicatorId?, ruleId? }
+  type           String // "indicator"|"composite"|"scenario"|"brief"|"trade_pacing"
+  domain         String       @default("risk") // "risk" | "trade"
+  sourceRef      Json // { companyId?, indicatorId?, ruleId?, grainKey?, period? }
   severity       String // "info"|"warn"|"critical"
   title          String
   message        String
+  dedupeKey      String?
   triggeredAt    DateTime     @default(now())
   acknowledgedAt DateTime?
   acknowledgedBy String?
+  resolvedAt     DateTime?
 
+  @@unique([organizationId, dedupeKey])
   @@index([organizationId, triggeredAt])
   @@index([organizationId, acknowledgedAt])
+  @@index([organizationId, domain, resolvedAt])
   @@map("alerts")
 }
 
