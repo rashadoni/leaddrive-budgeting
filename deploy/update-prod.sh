@@ -33,7 +33,9 @@ if [ "$BRANCH" != "main" ]; then
   echo "✗ Deploy only from main (current: $BRANCH)" >&2
   exit 1
 fi
-if ! git diff --quiet || ! git diff --cached --quiet; then
+# Clean-tree guard ignores .claude/ — local harness settings (permission
+# allow-lists) legitimately stay uncommitted on dev machines.
+if [ -n "$(git status --porcelain --untracked-files=no -- ':(exclude).claude')" ]; then
   echo "✗ Working tree not clean — commit or stash first." >&2
   exit 1
 fi
