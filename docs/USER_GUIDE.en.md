@@ -24,6 +24,7 @@
 10. [AI functions — what, where, how much it costs](#10-ai-functions--what-where-how-much-it-costs)
 11. [Audit log](#11-audit-log)
 12. [Self-check checklist](#12-self-check-checklist)
+13. [Trade Tower — trade marketing budget control](#13-trade-tower--trade-marketing-budget-control)
 
 ---
 
@@ -817,6 +818,43 @@ Go through this list **now**, clicking in the live application. If something doe
 - [ ] `ai_morning_brief_run` exists for today
 - [ ] `ai_board_deck_narration_run` exists (generated when Board Deck opens)
 - [ ] `fromCache: true` for repeated requests with same parameters
+
+---
+
+## 13. Trade Tower — trade marketing budget control
+
+**Who it's for:** finance + trade marketing of a distributor. The module answers, every day:
+how much of the trade budget is spent, where the month is heading, and whether a decision is
+needed — without waiting for month-end closing.
+
+**Sections on the page (top to bottom):**
+
+1. **Daily pacing** — the "day-15 picture". Three bars: how much of the month has elapsed,
+   how much of the budget is spent, how much of the sales plan is achieved. The card on the
+   right is the month-end run-rate forecast with a risk chip (On pace / Watch / High /
+   Critical). All math is transparent — every snapshot stores its inputs for hand-checking.
+   Press **Recompute** after posting spend to refresh.
+2. **Alert inbox** — the system opens an alert when the forecast breaches the budget or spend
+   runs ahead of sales, and closes it automatically when the condition clears. **Acknowledge**
+   marks "seen", it does not close the alert.
+3. **Spend ledger** — Plan / Accrued / Actual as three separate figures, plus **Control** —
+   the figure pacing counts against the budget (accrued for on-invoice discounts and retro
+   bonuses, paid-only for promo payments and listing fees). Post entries manually until the
+   daily invoice feed is connected; negative amount = credit/correction; entries are voided,
+   never deleted.
+4. **Trade budget** — monthly pools derived from the sales plan (default 5%, editable per
+   month). Click a % or an amount to change it; a pencil mark means a manual override that
+   survives re-derivation.
+5. **Campaigns** — a campaign card holds the goal, dates, budget, expected uplift and scope
+   (channel/brand/outlets). A draft goes to finance approval; only approved campaigns count
+   as running.
+6. **Master data import** — upload outlet / SKU / sales-rep lists as .xlsx (Mikro/1C export).
+   Always preview first; nothing is written until Apply. Re-uploading the same file is a
+   no-op; a corrected file supersedes the previous batch.
+
+**Typical day:** open Trade Tower → check the risk chip and alerts → if spend runs ahead,
+open the ledger to see which spend type eats the budget → decide (pause a campaign, cut a
+discount) → recompute.
 
 ---
 

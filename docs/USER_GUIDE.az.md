@@ -24,6 +24,7 @@
 10. [AI funksiyaları — nə, harada, nə qədər başa gəlir](#10-ai-funksiyaları--nə-harada-nə-qədər-başa-gəlir)
 11. [Audit jurnalı](#11-audit-jurnalı)
 12. [Özünüyoxlama çek-listi](#12-özünüyoxlama-çek-listi)
+13. [Trade Tower — trade marketing büdcəsinə nəzarət](#13-trade-tower--trade-marketing-büdcəsinə-nəzarət)
 
 ---
 
@@ -818,6 +819,43 @@ Diqqət yetirin — tövsiyə #3 Risk Registry səhifəsindən `subsidy_dependen
 - [ ] Bu gün üçün `ai_morning_brief_run` var
 - [ ] `ai_board_deck_narration_run` var (Board Deck açılanda generasiya olunur)
 - [ ] Eyni parametrlərlə təkrar sorğular üçün `fromCache: true`
+
+---
+
+## 13. Trade Tower — trade marketing büdcəsinə nəzarət
+
+**Kimin üçün:** distributorun maliyyə + trade marketing komandası. Modul hər gün cavab verir:
+trade büdcəsinin nə qədəri xərclənib, ay hara gedir və qərar lazımdırmı — ay bağlanışını
+gözləmədən.
+
+**Səhifənin bölmələri (yuxarıdan aşağı):**
+
+1. **Gündəlik pacing** — «ayın 15-i şəkli». Üç zolaq: ayın nə qədəri keçib, büdcənin nə
+   qədəri xərclənib, satış planının nə qədəri icra olunub. Sağdakı kart — cari templə ay
+   sonu proqnozu və risk çipi (Normadadır / Müşahidə / Yüksək / Kritik). Bütün riyaziyyat
+   şəffafdır — hər snapshot öz giriş rəqəmlərini saxlayır, əl ilə yoxlamaq olur. Xərc
+   yazandan sonra **Yenidən hesabla** basın.
+2. **Alert qutusu** — proqnoz büdcəni aşanda və ya xərcləmə satışdan qabağa düşəndə sistem
+   alert açır, şərt aradan qalxanda özü bağlayır. **Qəbul et** «gördüm» deməkdir, alerti
+   bağlamır.
+3. **Xərc jurnalı** — Plan / Hesablanmış / Fakt üç ayrı rəqəm, üstəgəl **Kontrol** —
+   pacing-in büdcə ilə tutuşdurduğu rəqəm (invoice endirimləri və retro bonuslar üçün
+   hesablama, promo ödənişləri və listing üçün yalnız ödənilən). Gündəlik faktura feed-i
+   qoşulana qədər yazılışlar əl ilədir; mənfi məbləğ = düzəliş; yazılar silinmir, ləğv
+   olunur.
+4. **Trade büdcə** — satış planından aylıq pullar (standart 5%, ay üzrə dəyişdirilir).
+   %-ə və ya məbləğə klikləyib dəyişin; qələm işarəsi — əl ilə yazılmış məbləğ, yenidən
+   hesablamada qorunur.
+5. **Kampaniyalar** — kampaniya kartı: məqsəd, tarixlər, büdcə, gözlənilən artım, əhatə
+   (kanal/brend/nöqtələr). Qaralama maliyyə təsdiqinə gedir; yalnız təsdiqlənmiş kampaniya
+   işlək sayılır.
+6. **Master data importu** — nöqtə / SKU / nümayəndə siyahıları .xlsx ilə yüklənir
+   (Mikro/1C exportu). Həmişə əvvəl önizləmə; yazılış yalnız «Tətbiq et»dən sonra. Eyni
+   faylın təkrar yüklənməsi heç nə etmir; düzəldilmiş fayl əvvəlki partiyanı əvəz edir.
+
+**Tipik gün:** Trade Tower-i aç → risk çipinə və alertlərə bax → xərcləmə qabaqdadırsa,
+jurnalı açıb hansı xərc növünün büdcəni yediyini gör → qərar ver (kampaniyaya pauza,
+endirimə kəsinti) → yenidən hesabla.
 
 ---
 
