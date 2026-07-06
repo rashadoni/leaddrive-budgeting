@@ -551,7 +551,7 @@ Trade Marketing budget monitoring & forecasting: trade budget derived from the s
 - ✅ **9.4** Campaign cards + approval workflow — shipped 2026-07-06 (TradeCampaign + TradeCampaignScope, migration `20260706161331`; lifecycle draft→pending_approval→approved/rejected via existing ApprovalRequest with new `trade_campaign_activate` type + inline apply branch; `trade_campaign_review` AuditAction through full typed registry; campaign cards UI + create form on /budgeting/trade; EN/RU/AZ i18n; live E2E: create→submit→approve→approved+audit row verified, test rows purged)
 - ⬜ **9.5** Daily sales-actual ingestion — invoice adapter, batch restatement, `TradeSalesActualDaily` aggregates
 - ⬜ **9.6** Spend ledger + accrual engine (on-invoice / retro formula / payment / free goods / POSM)
-- ⬜ **9.7** Pacing snapshots — working-day profile, run-rate engine, `/api/trade/pacing`
+- 🟡 **9.7** Pacing snapshots — **engine + models shipped 2026-07-06** (`src/lib/trade/pacing.ts`: weekday-weight profile, `monthWeight`/`elapsedWeight`/`spreadMonthlyPlan`, `computePacing` with transparent run-rate math + `math` audit blob + ok/watch/high/critical classification with overridable thresholds + degraded-data handling, 17 tests; migration `trade_pacing`: `TradeRiskStatus`, `TradePlanDaily`, `TradePacingSnapshot`). Remaining: `/api/trade/pacing` endpoint + snapshot generation — blocked on data sources (9.3 budget pools + 9.5 daily actuals)
 - ⬜ **9.8** Trade alerts — overspend forecast, spend-ahead-of-sales, unplanned spend, unused budget, discount-without-uplift
 - ⬜ **9.9** Drill-down UI + performance pass
 - ⬜ **9.10** Phase-2 hooks only (nullable claim/deduction refs) — claim matching / ROI / what-if are Phase 2, NOT MVP

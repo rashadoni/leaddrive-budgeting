@@ -2335,6 +2335,66 @@ model TradeSpendType {
   @@map("trade_spend_types")
 }
 
+enum TradeRiskStatus {
+  ok
+  watch
+  high
+  critical
+}
+
+// Phase 9.7 — materialized daily plan (monthly SalesBudgetLine total ×
+// working-day weights via spreadMonthlyPlan). Regenerated wholesale per
+// (org, month, grain) whenever the monthly plan or the weight profile
+// changes — rows are derived data, never hand-edited.
+model TradePlanDaily {
+  id                       String   @id @default(cuid())
+  organizationId           String
+  date                     DateTime
+  year                     Int
+  month                    Int // 1-12
+  // Aggregation grain: "org" for the v1 whole-company view; finer grains
+  // ("channel:<id>", "region:<id>", "campaign:<id>") arrive with 9.3
+  // allocations.
+  grainKey                 String
+  plannedSalesAmount       Float    @default(0)
+  plannedTradeBudgetAmount Float    @default(0)
+  workingDayWeight         Float    @default(1)
+  generatedAt              DateTime @default(now())
+
+  @@unique([organizationId, date, grainKey])
+  @@index([organizationId, year, month])
+  @@map("trade_plan_daily")
+}
+
+// Phase 9.7 — persisted pacing snapshot per (org, as-of day, grain).
+// `math` stores every input + intermediate of computePacing so finance
+// can audit the run-rate arithmetic by hand (no-AI contract).
+model TradePacingSnapshot {
+  id                     String          @id @default(cuid())
+  organizationId         String
+  asOfDate               DateTime
+  period                 String // "YYYY-MM"
+  grainKey               String
+  campaignId             String?
+  salesPlanMtd           Float           @default(0)
+  salesActualMtd         Float           @default(0)
+  budgetMonth            Float           @default(0)
+  controlSpendMtd        Float           @default(0)
+  accruedSpendMtd        Float           @default(0)
+  actualSpendMtd         Float           @default(0)
+  forecastSalesMonth     Float?
+  forecastSpendMonth     Float?
+  forecastBudgetVariance Float?
+  forecastSalesGap       Float?
+  riskStatus             TradeRiskStatus
+  math                   Json            @default("{}")
+  generatedAt            DateTime        @default(now())
+
+  @@unique([organizationId, asOfDate, period, grainKey])
+  @@index([organizationId, period, riskStatus])
+  @@map("trade_pacing_snapshots")
+}
+
 enum TradeCampaignStatus {
   draft
   pending_approval
