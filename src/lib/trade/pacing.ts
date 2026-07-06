@@ -142,6 +142,13 @@ export interface PacingResult {
   riskStatus: TradeRiskStatus;
   /** "empty" = no plan AND no budget; "partial" = one of them missing. */
   dataQuality: "complete" | "partial" | "empty";
+  /**
+   * T3 (audit §1.5) — true when a sales plan exists but zero actuals were
+   * fed (the 9.5 daily feed is not connected). While pending, the pace
+   * gap is EXCLUDED from risk classification — a chip that is always
+   * yellow trains users to ignore chips.
+   */
+  salesFeedPending: boolean;
   /** Every input + intermediate, persisted for hand-audit. */
   math: Record<string, number | null>;
 }
@@ -183,11 +190,12 @@ export function computePacing(input: PacingInput): PacingResult {
   const hasBudget = input.budgetMonth > 0;
   const dataQuality: PacingResult["dataQuality"] =
     hasPlan && hasBudget ? "complete" : hasPlan || hasBudget ? "partial" : "empty";
+  const salesFeedPending = hasPlan && input.salesActualMtd === 0;
 
   let riskStatus: TradeRiskStatus = "ok";
   if (dataQuality !== "empty") {
     const overrun = forecastBudgetVariancePct ?? -Infinity;
-    const gap = paceGapPp ?? -Infinity;
+    const gap = salesFeedPending ? -Infinity : (paceGapPp ?? -Infinity);
     if (overrun >= thresholds.overrunPctCritical || gap >= thresholds.paceGapPpCritical) {
       riskStatus = "critical";
     } else if (overrun >= thresholds.overrunPctHigh || gap >= thresholds.paceGapPpHigh) {
@@ -212,6 +220,7 @@ export function computePacing(input: PacingInput): PacingResult {
     paceGapPp,
     riskStatus,
     dataQuality,
+    salesFeedPending,
     math: {
       year: input.year,
       month: input.month,

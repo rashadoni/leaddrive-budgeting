@@ -19,7 +19,17 @@ interface PacingResult {
   forecastBudgetVariancePct: number | null;
   riskStatus: "ok" | "watch" | "high" | "critical";
   dataQuality: "complete" | "partial" | "empty";
+  salesFeedPending?: boolean;
   math: Record<string, number | null>;
+}
+
+interface SpendCascade {
+  budget: number;
+  committed: number;
+  accrued: number;
+  actual: number;
+  control: number;
+  available: number;
 }
 
 const RISK_CLASSES: Record<string, string> = {
@@ -35,6 +45,7 @@ const fmt = (n: number | null | undefined) =>
 export function TradePacing() {
   const t = useTranslations("trade.pacing");
   const [result, setResult] = useState<PacingResult | null>(null);
+  const [cascade, setCascade] = useState<SpendCascade | null>(null);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +57,7 @@ export function TradePacing() {
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       setResult(data.result);
+      setCascade(data.cascade ?? null);
       setAsOf(data.snapshot?.asOfDate ?? null);
       setLoaded(true);
     } catch {
@@ -68,6 +80,7 @@ export function TradePacing() {
         return;
       }
       setResult(data.result);
+      setCascade(data.cascade ?? null);
       setAsOf(new Date().toISOString());
     } finally {
       setBusy(false);
@@ -172,9 +185,27 @@ export function TradePacing() {
             </div>
           </div>
 
+          {cascade && (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              {(["budget", "committed", "accrued", "actual", "available"] as const).map((k) => (
+                <div key={k} className="rounded-md border p-2">
+                  <div className="text-[10px] text-muted-foreground">{t(`cascade.${k}`)}</div>
+                  <div
+                    className={`text-sm font-semibold tabular-nums ${
+                      k === "available" && cascade.available < 0 ? "text-rose-600" : ""
+                    }`}
+                  >
+                    {fmt(cascade[k])}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {asOf && (
             <p className="text-[10px] text-muted-foreground">
-              {t("asOf")}: {new Date(asOf).toLocaleString()} · {t(`quality.${result.dataQuality}`)}
+              {t("asOf")}: {new Date(asOf).toLocaleString()} ·{" "}
+              {result.salesFeedPending ? t("feedPending") : t(`quality.${result.dataQuality}`)}
             </p>
           )}
         </div>

@@ -70,8 +70,10 @@ export function evaluatePacingAlerts(
     });
   }
 
-  // 2. Spend running ahead of sales.
-  const gap = r.paceGapPp;
+  // 2. Spend running ahead of sales. Skipped while the sales feed is
+  //    pending (T3, audit §1.5) — the gap would compare spend against a
+  //    fake 0% sales progress and false-alarm.
+  const gap = r.salesFeedPending ? null : r.paceGapPp;
   if (gap != null && gap >= thresholds.paceGapPpHigh) {
     const critical = gap >= thresholds.paceGapPpCritical;
     out.push({

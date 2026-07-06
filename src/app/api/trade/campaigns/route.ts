@@ -14,6 +14,7 @@ import {
   campaignCreateSchema,
   campaignCodeFromName,
 } from "@/lib/trade/campaigns"
+import { rollupCampaignSpend } from "@/lib/trade/ledger"
 
 const RATE_LIMIT = { name: "trade-campaigns-post", max: 30, windowMs: 60_000 }
 
@@ -51,7 +52,28 @@ export async function GET(request: NextRequest) {
     take: 100,
     select: CAMPAIGN_SELECT,
   })
-  return NextResponse.json({ ok: true, campaigns })
+
+  // T1 (audit §1.2) — per-campaign spend rollup from campaign-tagged
+  // ledger postings, so the card answers spent/remaining, not just plan.
+  const ledger = await prisma.tradeSpendLedger.findMany({
+    where: {
+      organizationId: session.orgId,
+      voidedAt: null,
+      campaignId: { in: campaigns.map((c) => c.id) },
+    },
+    select: {
+      campaignId: true,
+      entryKind: true,
+      amount: true,
+      spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
+    },
+  })
+  const rollups = rollupCampaignSpend(ledger)
+  const withSpend = campaigns.map((c) => {
+    const spend = rollups.get(c.id) ?? { committed: 0, accrued: 0, actual: 0, control: 0 }
+    return { ...c, spend: { ...spend, remaining: Math.round((c.plannedBudgetAmount - spend.control) * 100) / 100 } }
+  })
+  return NextResponse.json({ ok: true, campaigns: withSpend })
 }
 
 export async function POST(request: NextRequest) {

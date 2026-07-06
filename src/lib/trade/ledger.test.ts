@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { spendEntrySchema, summarizeLedger, type LedgerEntryForSummary } from "./ledger";
+import {
+  buildSpendCascade,
+  rollupCampaignSpend,
+  spendEntrySchema,
+  summarizeLedger,
+  type LedgerEntryForSummary,
+} from "./ledger";
 
 const TYPES = {
   onInvoice: { id: "t1", key: "on_invoice_discount", label: "Faktura endirimi", accrualMethod: "on_invoice" as const },
@@ -74,5 +80,37 @@ describe("summarizeLedger", () => {
 
   it("empty ledger → zero totals", () => {
     expect(summarizeLedger([]).totals).toEqual({ plan: 0, accrued: 0, actual: 0, control: 0 });
+  });
+});
+
+describe("rollupCampaignSpend (T1)", () => {
+  it("groups campaign-tagged entries and computes control per method", () => {
+    const rollup = rollupCampaignSpend([
+      { ...entry("plan", 100_000, TYPES.promo), campaignId: "c1" },
+      { ...entry("actual", 30_000, TYPES.promo), campaignId: "c1" },
+      { ...entry("accrued", 20_000, TYPES.onInvoice), campaignId: "c1" },
+      { ...entry("actual", 9_999, TYPES.promo), campaignId: null }, // untagged — ignored
+    ]);
+    expect(rollup.get("c1")).toEqual({
+      committed: 100_000,
+      accrued: 20_000,
+      actual: 30_000,
+      control: 50_000, // 20k accrued on-invoice + 30k paid promo
+    });
+    expect(rollup.size).toBe(1);
+  });
+});
+
+describe("buildSpendCascade (T2)", () => {
+  it("available = budget - max(committed, control)", () => {
+    const c = buildSpendCascade(500_000, { plan: 200_000, accrued: 120_000, actual: 30_000, control: 150_000 });
+    expect(c.available).toBe(300_000); // committed 200k > control 150k
+    const c2 = buildSpendCascade(500_000, { plan: 100_000, accrued: 120_000, actual: 60_000, control: 180_000 });
+    expect(c2.available).toBe(320_000); // control overtook commitments
+  });
+
+  it("goes negative on over-commitment (shown red in UI)", () => {
+    const c = buildSpendCascade(100_000, { plan: 130_000, accrued: 0, actual: 0, control: 0 });
+    expect(c.available).toBe(-30_000);
   });
 });

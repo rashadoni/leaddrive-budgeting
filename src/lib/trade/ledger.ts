@@ -52,6 +52,72 @@ export interface LedgerSummary {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+export interface CampaignSpendRollup {
+  /** plan postings tied to the campaign — money "spoken for". */
+  committed: number;
+  accrued: number;
+  actual: number;
+  /** the figure counted against the campaign budget (per accrual method). */
+  control: number;
+}
+
+/**
+ * Per-campaign spend rollup from campaign-tagged ledger entries
+ * (T1, audit §1.2 — the card must answer spent/remaining, not just plan).
+ */
+export function rollupCampaignSpend(
+  entries: readonly (LedgerEntryForSummary & { campaignId: string | null })[]
+): Map<string, CampaignSpendRollup> {
+  const byCampaign = new Map<string, (typeof entries)[number][]>();
+  for (const e of entries) {
+    if (!e.campaignId) continue;
+    const list = byCampaign.get(e.campaignId) ?? [];
+    list.push(e);
+    byCampaign.set(e.campaignId, list);
+  }
+  const out = new Map<string, CampaignSpendRollup>();
+  for (const [campaignId, list] of byCampaign) {
+    const s = summarizeLedger(list);
+    out.set(campaignId, {
+      committed: s.totals.plan,
+      accrued: s.totals.accrued,
+      actual: s.totals.actual,
+      control: s.totals.control,
+    });
+  }
+  return out;
+}
+
+export interface SpendCascade {
+  budget: number;
+  /** plan postings — money spoken for (campaign commitments). */
+  committed: number;
+  accrued: number;
+  actual: number;
+  /** the control figure (per accrual method). */
+  control: number;
+  /**
+   * budget − max(committed, control): committed money is spoken for even
+   * before it accrues; once real spend overtakes commitments, spend rules.
+   */
+  available: number;
+}
+
+/** T2 (audit §1.3) — the TPM cascade in one object. */
+export function buildSpendCascade(
+  budget: number,
+  totals: LedgerSummary["totals"]
+): SpendCascade {
+  return {
+    budget: round2(budget),
+    committed: totals.plan,
+    accrued: totals.accrued,
+    actual: totals.actual,
+    control: totals.control,
+    available: round2(budget - Math.max(totals.plan, totals.control)),
+  };
+}
+
 export function summarizeLedger(entries: readonly LedgerEntryForSummary[]): LedgerSummary {
   const byId = new Map<string, SpendTypeSummary>();
   for (const e of entries) {

@@ -4219,7 +4219,11 @@
         "sku": "SKU",
         "brand": "Brand",
         "category": "Category"
-      }
+      },
+      "spent": "Spent",
+      "remaining": "Remaining",
+      "committed": "Committed",
+      "overBudget": "Over budget by {amount}"
     },
     "alerts": {
       "title": "Alert inbox",
@@ -4267,7 +4271,8 @@
       "add": "Post entry",
       "busy": "Working…",
       "void": "Void",
-      "colType": "Spend type"
+      "colType": "Spend type",
+      "fieldCampaign": "Campaign"
     },
     "pacing": {
       "title": "Daily pacing",
@@ -4292,6 +4297,14 @@
         "complete": "full data",
         "partial": "partial data (sales feed pending)",
         "empty": "no data"
+      },
+      "feedPending": "sales feed pending — pace gap excluded from risk",
+      "cascade": {
+        "budget": "Budget",
+        "committed": "Committed",
+        "accrued": "Accrued",
+        "actual": "Actual",
+        "available": "Available"
       }
     }
   }

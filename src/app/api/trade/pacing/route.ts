@@ -14,7 +14,7 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { computePacing, type PacingInput } from "@/lib/trade/pacing"
-import { summarizeLedger } from "@/lib/trade/ledger"
+import { summarizeLedger, buildSpendCascade, type SpendCascade } from "@/lib/trade/ledger"
 import {
   evaluatePacingAlerts,
   pacingAlertScopeKeys,
@@ -33,7 +33,11 @@ function parsePeriod(raw: string | null): { year: number; month: number; period:
   return { year, month, period: `${year}-${String(month).padStart(2, "0")}` }
 }
 
-async function buildInput(orgId: string, year: number, month: number): Promise<PacingInput> {
+async function buildInput(
+  orgId: string,
+  year: number,
+  month: number,
+): Promise<{ input: PacingInput; cascade: SpendCascade }> {
   const now = new Date()
   const isCurrentMonth = now.getUTCFullYear() === year && now.getUTCMonth() + 1 === month
   const asOfDay = isCurrentMonth ? now.getUTCDate() : new Date(Date.UTC(year, month, 0)).getUTCDate()
@@ -53,18 +57,23 @@ async function buildInput(orgId: string, year: number, month: number): Promise<P
     },
   })
   const { totals } = summarizeLedger(entries)
+  const budgetMonth = pool?.budgetAmount ?? 0
 
   return {
-    year,
-    month,
-    asOfDay,
-    salesPlanMonth: pool?.salesPlanAmount ?? 0,
-    // 9.5 pending: daily sales actuals land with the invoice adapter.
-    salesActualMtd: 0,
-    budgetMonth: pool?.budgetAmount ?? 0,
-    controlSpendMtd: totals.control,
-    accruedSpendMtd: totals.accrued,
-    actualSpendMtd: totals.actual,
+    input: {
+      year,
+      month,
+      asOfDay,
+      salesPlanMonth: pool?.salesPlanAmount ?? 0,
+      // 9.5 pending: daily sales actuals land with the invoice adapter.
+      salesActualMtd: 0,
+      budgetMonth,
+      controlSpendMtd: totals.control,
+      accruedSpendMtd: totals.accrued,
+      actualSpendMtd: totals.actual,
+    },
+    // T2 (audit §1.3) — the TPM cascade next to the pacing numbers.
+    cascade: buildSpendCascade(budgetMonth, totals),
   }
 }
 
@@ -76,12 +85,14 @@ export async function GET(request: NextRequest) {
   }
   const { period } = parsePeriod(request.nextUrl.searchParams.get("period"))
 
+  const { year, month } = parsePeriod(request.nextUrl.searchParams.get("period"))
   const snapshot = await prisma.tradePacingSnapshot.findFirst({
     where: { organizationId: session.orgId, period, grainKey: GRAIN },
     orderBy: { asOfDate: "desc" },
   })
+  const { cascade } = await buildInput(session.orgId, year, month)
   if (!snapshot) {
-    return NextResponse.json({ ok: true, period, snapshot: null, result: null })
+    return NextResponse.json({ ok: true, period, snapshot: null, result: null, cascade })
   }
   const result = computePacing(snapshot.math as unknown as PacingInput)
   return NextResponse.json({
@@ -89,6 +100,7 @@ export async function GET(request: NextRequest) {
     period,
     snapshot: { asOfDate: snapshot.asOfDate, generatedAt: snapshot.generatedAt },
     result,
+    cascade,
   })
 }
 
@@ -104,7 +116,7 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError
 
   const { year, month, period } = parsePeriod(request.nextUrl.searchParams.get("period"))
-  const input = await buildInput(orgId, year, month)
+  const { input, cascade } = await buildInput(orgId, year, month)
   const result = computePacing(input)
   const asOfDate = new Date(Date.UTC(year, month - 1, input.asOfDay))
 
@@ -152,15 +164,11 @@ export async function POST(request: NextRequest) {
     },
   })
 
-  // Alert sync. While salesActualMtd is the 9.5 placeholder (no daily
-  // sales feed yet), the pace-gap rule would compare spend against a
-  // fake 0% sales progress and false-alarm — suppress it until real
-  // actuals exist. Budget-only rules (overspend forecast, unused
-  // budget) stay live; scopeKeys stay full so stale gap alerts resolve.
-  const candidates = evaluatePacingAlerts(period, GRAIN, result).filter(
-    (c) => c.ruleId !== "trade_spend_ahead_of_sales" || input.salesActualMtd > 0,
-  )
+  // Alert sync — the evaluator itself skips the pace-gap rule while
+  // result.salesFeedPending (T3); scopeKeys stay full so stale gap
+  // alerts auto-resolve.
+  const candidates = evaluatePacingAlerts(period, GRAIN, result)
   const sync = await syncTradeAlerts(prisma.alert, orgId, candidates, pacingAlertScopeKeys(period, GRAIN))
 
-  return NextResponse.json({ ok: true, period, result, alerts: sync })
+  return NextResponse.json({ ok: true, period, result, cascade, alerts: sync })
 }

@@ -13,6 +13,8 @@ import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { spendEntrySchema, summarizeLedger } from "@/lib/trade/ledger"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 const RATE_LIMIT = { name: "trade-spend-post", max: 60, windowMs: 60_000 }
 
@@ -24,6 +26,7 @@ const ENTRY_SELECT = {
   currencyCode: true,
   sourceDocument: true,
   campaignId: true,
+  createdBy: true,
   createdAt: true,
   voidedAt: true,
   spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
@@ -46,11 +49,23 @@ export async function GET(request: NextRequest) {
     select: ENTRY_SELECT,
   })
 
+  // T5 (audit §1.9) — accountability: resolve poster names for the UI.
+  const userIds = [...new Set(entries.map((e) => e.createdBy))]
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true, email: true },
+  })
+  const nameById = new Map(users.map((u) => [u.id, u.name || u.email]))
+  const withNames = entries.map((e) => ({
+    ...e,
+    createdByName: nameById.get(e.createdBy) ?? e.createdBy,
+  }))
+
   return NextResponse.json({
     ok: true,
     year,
     month,
-    entries,
+    entries: withNames,
     summary: summarizeLedger(entries),
   })
 }
@@ -98,6 +113,23 @@ export async function POST(request: NextRequest) {
   }
 
   const entryDate = new Date(parsed.entryDate + "T00:00:00Z")
+
+  // T4 (audit §1.4) — a posting into a CFO-locked period gets 423, same
+  // contract as every other financial mutation on the platform.
+  const lock = await findFirstActiveLockInPeriods(
+    prisma,
+    orgId,
+    containingPeriodKeys(entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1),
+  )
+  if (lock) {
+    return lockedResponse(lock, {
+      prisma,
+      orgId,
+      userId: session.userId,
+      route: "POST /api/trade/spend",
+    })
+  }
+
   const entry = await prisma.tradeSpendLedger.create({
     data: {
       organizationId: orgId,

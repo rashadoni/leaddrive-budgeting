@@ -4219,7 +4219,11 @@
         "sku": "SKU",
         "brand": "Brend",
         "category": "Kateqoriya"
-      }
+      },
+      "spent": "Xərclənib",
+      "remaining": "Qalıb",
+      "committed": "Öhdəliklər",
+      "overBudget": "Aşım: {amount}"
     },
     "alerts": {
       "title": "Alert qutusu",
@@ -4267,7 +4271,8 @@
       "add": "Yaz",
       "busy": "İcra olunur…",
       "void": "Ləğv et",
-      "colType": "Xərc növü"
+      "colType": "Xərc növü",
+      "fieldCampaign": "Kampaniya"
     },
     "pacing": {
       "title": "Gündəlik pacing",
@@ -4292,6 +4297,14 @@
         "complete": "tam data",
         "partial": "qismən data (satış feed-i gözlənilir)",
         "empty": "data yoxdur"
+      },
+      "feedPending": "satış feed-i qoşulmayıb — pace gap riskdən çıxarılıb",
+      "cascade": {
+        "budget": "Büdcə",
+        "committed": "Öhdəliklər",
+        "accrued": "Hesablanmış",
+        "actual": "Fakt",
+        "available": "Əlçatan"
       }
     }
   }

@@ -5,6 +5,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { prisma } from "@/lib/prisma"
+import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
+import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(request, "manager")
@@ -13,6 +15,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ ok: false, error: "User has no organization" }, { status: 403 })
   }
   const { id } = await params
+
+  // T4 (audit §1.4) — voiding a posting in a locked period changes that
+  // period's totals just like a new posting would → same 423 gate.
+  const target = await prisma.tradeSpendLedger.findFirst({
+    where: { id, organizationId: session.orgId },
+    select: { year: true, month: true },
+  })
+  if (target) {
+    const lock = await findFirstActiveLockInPeriods(
+      prisma,
+      session.orgId,
+      containingPeriodKeys(target.year, target.month),
+    )
+    if (lock) {
+      return lockedResponse(lock, {
+        prisma,
+        orgId: session.orgId,
+        userId: session.userId,
+        route: "POST /api/trade/spend/[id]/void",
+      })
+    }
+  }
 
   const voided = await prisma.tradeSpendLedger.updateMany({
     where: { id, organizationId: session.orgId, voidedAt: null },

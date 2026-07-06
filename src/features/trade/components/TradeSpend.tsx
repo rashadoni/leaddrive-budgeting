@@ -20,6 +20,7 @@ interface Entry {
   entryDate: string;
   amount: number;
   sourceDocument: string | null;
+  createdByName?: string;
   spendType: SpendType;
 }
 
@@ -37,26 +38,33 @@ interface Summary {
 
 const fmt = (n: number) => n.toLocaleString("az-AZ", { maximumFractionDigits: 0 });
 
-const EMPTY_FORM = { entryKind: "actual", spendTypeId: "", entryDate: "", amount: "", note: "" };
+const EMPTY_FORM = { entryKind: "actual", spendTypeId: "", entryDate: "", amount: "", note: "", campaignId: "" };
 
 export function TradeSpend() {
   const t = useTranslations("trade.spend");
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [types, setTypes] = useState<SpendType[]>([]);
+  const [campaigns, setCampaigns] = useState<{ id: string; code: string; name: string }[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [spend, overview] = await Promise.all([
+      const [spend, overview, camps] = await Promise.all([
         fetch("/api/trade/spend").then((r) => r.json()),
         fetch("/api/trade/overview").then((r) => r.json()),
+        fetch("/api/trade/campaigns").then((r) => r.json()),
       ]);
       setEntries(spend.entries as Entry[]);
       setSummary(spend.summary as Summary);
       setTypes((overview.spendTypes as SpendType[]).filter((s: SpendType & { isActive?: boolean }) => s.isActive !== false));
+      setCampaigns(
+        (camps.campaigns as { id: string; code: string; name: string; status: string }[]).filter(
+          (c) => c.status === "approved" || c.status === "pending_approval" || c.status === "draft",
+        ),
+      );
     } catch {
       setError(t("loadFailed"));
     }
@@ -79,6 +87,7 @@ export function TradeSpend() {
           entryDate: form.entryDate,
           amount: Number(form.amount),
           ...(form.note.trim() ? { note: form.note.trim() } : {}),
+          ...(form.campaignId ? { campaignId: form.campaignId } : {}),
         }),
       });
       const data = await res.json();
@@ -172,6 +181,21 @@ export function TradeSpend() {
             className="w-32 rounded-md border bg-background px-2 py-1.5 text-sm"
           />
         </label>
+        <label className="flex flex-col gap-1 text-xs">
+          {t("fieldCampaign")}
+          <select
+            value={form.campaignId}
+            onChange={(e) => setForm({ ...form, campaignId: e.target.value })}
+            className="min-w-36 rounded-md border bg-background px-2 py-1.5 text-sm"
+          >
+            <option value="">—</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex min-w-40 flex-1 flex-col gap-1 text-xs">
           {t("fieldNote")}
           <input
@@ -224,6 +248,7 @@ export function TradeSpend() {
               <span className="truncate">
                 {e.entryDate.slice(0, 10)} · {t(`kind.${e.entryKind}`)} · {e.spendType.label}
                 {e.sourceDocument && <span className="text-muted-foreground"> · {e.sourceDocument}</span>}
+                {e.createdByName && <span className="text-muted-foreground"> · {e.createdByName}</span>}
               </span>
               <span className="flex items-center gap-2">
                 <span className="tabular-nums font-medium">{fmt(e.amount)}</span>

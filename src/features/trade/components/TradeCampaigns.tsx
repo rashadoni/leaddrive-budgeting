@@ -29,6 +29,7 @@ interface Campaign {
   expectedSalesUpliftPct: number | null;
   currencyCode: string;
   scopes: CampaignScope[];
+  spend: { committed: number; accrued: number; actual: number; control: number; remaining: number };
 }
 
 const STATUS_CLASSES: Record<string, string> = {
@@ -269,6 +270,37 @@ export function TradeCampaigns() {
                   </span>
                 )}
               </div>
+              {c.plannedBudgetAmount > 0 && (
+                <div className="mt-2">
+                  <div className="mb-1 flex justify-between text-[10px] text-muted-foreground">
+                    <span>
+                      {t("spent")}: <span className="font-medium tabular-nums">{fmtAmount(c.spend.control, c.currencyCode)}</span>
+                    </span>
+                    <span>
+                      {c.spend.remaining >= 0 ? (
+                        <>
+                          {t("remaining")}: <span className="font-medium tabular-nums">{fmtAmount(c.spend.remaining, c.currencyCode)}</span>
+                        </>
+                      ) : (
+                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 font-semibold text-rose-800">
+                          {t("overBudget", { amount: fmtAmount(-c.spend.remaining, c.currencyCode) })}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-1.5 rounded-full ${c.spend.control > c.plannedBudgetAmount ? "bg-rose-500" : "bg-emerald-500"}`}
+                      style={{ width: `${Math.min((c.spend.control / c.plannedBudgetAmount) * 100, 100)}%` }}
+                    />
+                  </div>
+                  {c.spend.committed > 0 && (
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      {t("committed")}: <span className="tabular-nums">{fmtAmount(c.spend.committed, c.currencyCode)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
               {c.goal && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{c.goal}</p>}
               {c.scopes.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">

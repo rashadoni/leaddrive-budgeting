@@ -176,3 +176,36 @@ describe("computePacing — degraded data", () => {
     expect(r.riskStatus).toBe("ok");
   });
 });
+
+describe("salesFeedPending (T3, audit §1.5)", () => {
+  const base = {
+    year: 2026,
+    month: 9,
+    asOfDay: 15,
+    salesPlanMonth: 1_000_000,
+    salesActualMtd: 0, // feed not connected
+    budgetMonth: 100_000,
+    accruedSpendMtd: 0,
+    actualSpendMtd: 0,
+    weights: UNIFORM,
+  };
+
+  it("pace gap does NOT drive risk while the feed is pending", () => {
+    // 50% spend at 50% elapsed, on budget — gap vs fake 0% sales would be 50pp.
+    const r = computePacing({ ...base, controlSpendMtd: 50_000 });
+    expect(r.salesFeedPending).toBe(true);
+    expect(r.riskStatus).toBe("ok");
+  });
+
+  it("overrun still drives risk while pending", () => {
+    const r = computePacing({ ...base, controlSpendMtd: 80_000 });
+    expect(r.salesFeedPending).toBe(true);
+    expect(r.riskStatus).toBe("critical"); // 160% run-rate
+  });
+
+  it("real actuals re-enable the gap", () => {
+    const r = computePacing({ ...base, salesActualMtd: 200_000, controlSpendMtd: 50_000 });
+    expect(r.salesFeedPending).toBe(false);
+    expect(r.riskStatus).toBe("critical"); // 30pp gap
+  });
+});
