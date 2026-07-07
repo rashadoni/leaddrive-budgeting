@@ -57,11 +57,11 @@ export async function GET(request: NextRequest) {
   const channelIds = [...new Set(entries.map((e) => e.channelId).filter((v): v is string => !!v))]
   const [users, channels] = await Promise.all([
     prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { id: { in: userIds }, organizationId: session.orgId },
       select: { id: true, name: true, email: true },
     }),
     prisma.tradeChannel.findMany({
-      where: { id: { in: channelIds } },
+      where: { id: { in: channelIds }, organizationId: session.orgId },
       select: { id: true, name: true },
     }),
   ])
@@ -117,10 +117,26 @@ export async function POST(request: NextRequest) {
   if (parsed.campaignId) {
     const campaign = await prisma.tradeCampaign.findFirst({
       where: { id: parsed.campaignId, organizationId: orgId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, status: true },
     })
     if (!campaign) {
       return NextResponse.json({ ok: false, error: "Campaign not found" }, { status: 404 })
+    }
+    // Codex review #2 — real money (accrued/actual) only against an
+    // APPROVED campaign; plan postings (commitments) may reference a
+    // campaign still moving through approval.
+    const allowed =
+      parsed.entryKind === "plan"
+        ? ["draft", "pending_approval", "approved"]
+        : ["approved"]
+    if (!allowed.includes(campaign.status)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Campaign in status "${campaign.status}" cannot take ${parsed.entryKind} postings`,
+        },
+        { status: 409 },
+      )
     }
   }
   if (parsed.channelId) {

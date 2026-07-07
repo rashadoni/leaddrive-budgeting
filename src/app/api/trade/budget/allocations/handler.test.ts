@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock, lockMock } = vi.hoisted(() => {
+const { prismaMock, lockMock, recomputeMock } = vi.hoisted(() => {
   const prismaMock = {
     tradeBudgetPool: { findUnique: vi.fn(), findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     tradeChannel: { findMany: vi.fn() },
@@ -15,7 +15,7 @@ const { prismaMock, lockMock } = vi.hoisted(() => {
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)),
   }
-  return { prismaMock, lockMock: vi.fn().mockResolvedValue(null) }
+  return { prismaMock, lockMock: vi.fn().mockResolvedValue(null), recomputeMock: vi.fn() }
 })
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
@@ -23,6 +23,11 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/budgeting/period-lock", async (importOriginal) => ({
   ...(await importOriginal<object>()),
   findFirstActiveLockInPeriods: lockMock,
+}))
+// Codex review #3 — a new split triggers a pacing recompute (unit-tested
+// separately; mocked here).
+vi.mock("@/lib/trade/pacing-recompute", () => ({
+  recomputeTradePacing: recomputeMock,
 }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
@@ -44,6 +49,7 @@ beforeEach(() => {
   prismaMock.tradePlanDaily.deleteMany.mockReset().mockResolvedValue({ count: 0 })
   prismaMock.tradePlanDaily.createMany.mockReset().mockResolvedValue({ count: 31 })
   lockMock.mockReset().mockResolvedValue(null)
+  recomputeMock.mockReset().mockResolvedValue({})
 })
 
 describe("PUT /api/trade/budget/allocations", () => {

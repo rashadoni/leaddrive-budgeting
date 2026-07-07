@@ -70,23 +70,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    if (parsed.scopes) {
-      await tx.tradeCampaignScope.deleteMany({ where: { campaignId: id, organizationId: orgId } })
-      if (parsed.scopes.length > 0) {
-        await tx.tradeCampaignScope.createMany({
-          data: parsed.scopes.map((s) => ({
-            organizationId: orgId,
-            campaignId: id,
-            scopeType: s.scopeType,
-            scopeId: s.scopeId ?? null,
-            scopeValue: s.scopeValue ?? null,
-            include: s.include,
-          })),
-        })
-      }
-    }
-    return tx.tradeCampaign.update({
-      where: { id },
+    // Codex review #6 — the editability pre-check above can go stale
+    // between read and write (e.g. submit-for-approval racing this PATCH).
+    // The write itself re-asserts org + not-deleted + editable status; the
+    // scope replace runs after, only for the winner.
+    const claimed = await tx.tradeCampaign.updateMany({
+      where: { id, organizationId: orgId, deletedAt: null, status: { in: ["draft", "rejected"] } },
       data: {
         ...(parsed.name !== undefined ? { name: parsed.name } : {}),
         ...(parsed.goal !== undefined ? { goal: parsed.goal } : {}),
@@ -102,9 +91,34 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           ? { expectedSalesUpliftPct: parsed.expectedSalesUpliftPct }
           : {}),
       },
+    })
+    if (claimed.count === 0) return null
+    if (parsed.scopes) {
+      await tx.tradeCampaignScope.deleteMany({ where: { campaignId: id, organizationId: orgId } })
+      if (parsed.scopes.length > 0) {
+        await tx.tradeCampaignScope.createMany({
+          data: parsed.scopes.map((s) => ({
+            organizationId: orgId,
+            campaignId: id,
+            scopeType: s.scopeType,
+            scopeId: s.scopeId ?? null,
+            scopeValue: s.scopeValue ?? null,
+            include: s.include,
+          })),
+        })
+      }
+    }
+    return tx.tradeCampaign.findFirst({
+      where: { id, organizationId: orgId },
       select: { id: true, code: true, status: true, updatedAt: true },
     })
   })
+  if (!updated) {
+    return NextResponse.json(
+      { ok: false, error: "Campaign changed concurrently and is no longer editable" },
+      { status: 409 },
+    )
+  }
 
   return NextResponse.json({ ok: true, campaign: updated })
 }
@@ -131,9 +145,34 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     )
   }
 
-  await prisma.tradeCampaign.update({
-    where: { id },
+  // Codex review #2 — a campaign with ledger postings is financial
+  // history; void the entries first, then delete.
+  const ledgerRefs = await prisma.tradeSpendLedger.count({
+    where: { organizationId: session.orgId, campaignId: id, voidedAt: null },
+  })
+  if (ledgerRefs > 0) {
+    return NextResponse.json(
+      { ok: false, error: `Campaign has ${ledgerRefs} spend entries — void them before deleting` },
+      { status: 409 },
+    )
+  }
+
+  // Codex review #6 — soft-delete re-asserts org/editable/not-deleted in
+  // the write itself (the pre-check can go stale under concurrency).
+  const deleted = await prisma.tradeCampaign.updateMany({
+    where: {
+      id,
+      organizationId: session.orgId,
+      deletedAt: null,
+      status: { in: ["draft", "rejected"] },
+    },
     data: { deletedAt: new Date(), deletedBy: session.userId },
   })
+  if (deleted.count === 0) {
+    return NextResponse.json(
+      { ok: false, error: "Campaign changed concurrently and can no longer be deleted" },
+      { status: 409 },
+    )
+  }
   return NextResponse.json({ ok: true })
 }

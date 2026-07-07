@@ -77,8 +77,8 @@ describe("syncTradeAlerts", () => {
       calls,
       delegate: {
         findMany: async () => open.map((o) => ({ messageKey: null, ...o })),
-        create: async (args: { data: Record<string, unknown> }) => {
-          calls.created.push(args.data);
+        upsert: async (args: { create: Record<string, unknown> }) => {
+          calls.created.push(args.create);
           return {};
         },
         update: async (args: unknown) => {

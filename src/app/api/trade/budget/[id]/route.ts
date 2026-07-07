@@ -13,6 +13,8 @@ import { applyPoolPatch } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { rebaseChannelPools } from "@/lib/trade/pool-sync"
+import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
 
 const RATE_LIMIT = { name: "trade-budget-patch", max: 30, windowMs: 60_000 }
 
@@ -113,8 +115,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         workingDayWeight: d.weight,
       })),
     })
+    // Codex review #4 — channel pools follow the org pool.
+    await rebaseChannelPools(tx, orgId, row.year, row.month, row.budgetAmount)
     return row
   })
+
+  // Codex review #3 — the dashboard must reflect the new budget now.
+  await recomputeTradePacing(prisma, orgId, updated.year, updated.month)
 
   return NextResponse.json({ ok: true, pool: updated })
 }

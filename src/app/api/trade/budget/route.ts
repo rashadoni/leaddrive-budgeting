@@ -19,6 +19,8 @@ import { planPoolUpserts } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
 import { parseLockedPeriods, findLockForPeriod } from "@/lib/budgeting/period-lock"
 import { containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
+import { rebaseChannelPools } from "@/lib/trade/pool-sync"
+import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
 
 const RATE_LIMIT = { name: "trade-budget-derive", max: 20, windowMs: 60_000 }
 
@@ -164,6 +166,8 @@ export async function POST(request: NextRequest) {
           workingDayWeight: d.weight,
         })),
       })
+      // Codex review #4 — channel pools follow the org pool.
+      await rebaseChannelPools(tx, orgId, year, u.month, u.budgetAmount)
     }
     return tx.tradeBudgetPool.findMany({
       where: { organizationId: orgId, year, grainKey: "org" },
@@ -171,6 +175,18 @@ export async function POST(request: NextRequest) {
       select: POOL_SELECT,
     })
   })
+
+  // Codex review #3 — budget changes must refresh pacing snapshots +
+  // alerts, not wait for the next spend posting. Current month first
+  // (the visible dashboard), then any other touched months.
+  const now = new Date()
+  const currentMonth = now.getUTCFullYear() === year ? now.getUTCMonth() + 1 : null
+  const touched = [...upserts.map((u) => u.month)].sort(
+    (a, b) => (a === currentMonth ? -1 : b === currentMonth ? 1 : a - b),
+  )
+  for (const m of touched) {
+    await recomputeTradePacing(prisma, orgId, year, m)
+  }
 
   return NextResponse.json({
     ok: true,

@@ -14,6 +14,7 @@ const { prismaMock, auditMock, notifyReviewedMock } = vi.hoisted(() => ({
     approvalRequest: {
       findFirst: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     organization: {
       findUnique: vi.fn(),
@@ -67,6 +68,9 @@ beforeEach(() => {
   prismaMock.approvalRequest.update.mockReset().mockImplementation(({ data }: any) =>
     Promise.resolve({ id: "req1", ...data }),
   )
+  // Codex trade-review #1 — the status transition is a guarded updateMany
+  // (concurrency claim); count=1 means this reviewer won.
+  prismaMock.approvalRequest.updateMany.mockReset().mockResolvedValue({ count: 1 })
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({
     id: ORG_ID,
     lockedPeriods: [{ period: "2026-Q1", lockedAt: "x", lockedBy: "y", reason: "Q1 close" }],
@@ -172,11 +176,14 @@ describe("PATCH approve/reject — manager-only authorization", () => {
       paramsFor("req1"),
     )
     expect(res.status).toBe(200)
-    // ApprovalRequest updated to approved+applied
+    // ApprovalRequest transitioned via the guarded updateMany (Codex #1)…
+    const claimArg = prismaMock.approvalRequest.updateMany.mock.calls[0][0]
+    expect(claimArg.where).toEqual({ id: "req1", organizationId: ORG_ID, status: "pending" })
+    expect(claimArg.data.status).toBe("approved")
+    expect(claimArg.data.reviewedBy).toBe("u_admin")
+    // …then appliedAt stamped separately.
     const updateArg = prismaMock.approvalRequest.update.mock.calls[0][0]
-    expect(updateArg.data.status).toBe("approved")
     expect(updateArg.data.appliedAt).toBeInstanceOf(Date)
-    expect(updateArg.data.reviewedBy).toBe("u_admin")
     // Lock removed
     expect(prismaMock.organization.update).toHaveBeenCalledTimes(1)
     const orgUpdateArg = prismaMock.organization.update.mock.calls[0][0]
@@ -207,7 +214,7 @@ describe("PATCH approve/reject — manager-only authorization", () => {
       paramsFor("req1"),
     )
     expect(res.status).toBe(200)
-    expect(prismaMock.approvalRequest.update.mock.calls[0][0].data.status).toBe("rejected")
+    expect(prismaMock.approvalRequest.updateMany.mock.calls[0][0].data.status).toBe("rejected")
     // Reject does NOT touch the lock
     expect(prismaMock.organization.update).not.toHaveBeenCalled()
     expect(auditMock).not.toHaveBeenCalled()
@@ -225,7 +232,7 @@ describe("PATCH cancel — requester-only (or admin)", () => {
       paramsFor("req1"),
     )
     expect(res.status).toBe(200)
-    expect(prismaMock.approvalRequest.update.mock.calls[0][0].data.status).toBe("cancelled")
+    expect(prismaMock.approvalRequest.updateMany.mock.calls[0][0].data.status).toBe("cancelled")
   })
 
   it("non-requester non-admin viewer CANNOT cancel", async () => {
@@ -251,7 +258,7 @@ describe("PATCH cancel — requester-only (or admin)", () => {
       paramsFor("req1"),
     )
     expect(res.status).toBe(200)
-    expect(prismaMock.approvalRequest.update.mock.calls[0][0].data.status).toBe("cancelled")
+    expect(prismaMock.approvalRequest.updateMany.mock.calls[0][0].data.status).toBe("cancelled")
   })
 })
 
@@ -317,11 +324,28 @@ describe("PATCH approve period_unlock — race-on-stale-lock branch (LXXI follow
       paramsFor("req1"),
     )
     expect(res.status).toBe(200)
+    expect(prismaMock.approvalRequest.updateMany.mock.calls[0][0].data.status).toBe("approved")
     const updateArg = prismaMock.approvalRequest.update.mock.calls[0][0]
-    expect(updateArg.data.status).toBe("approved")
     expect(updateArg.data.appliedAt).toBeInstanceOf(Date) // intent satisfied
     expect(prismaMock.organization.update).not.toHaveBeenCalled() // nothing to remove
     expect(auditMock).not.toHaveBeenCalled() // no audit for no-op apply
+  })
+
+  it("returns 409 when a concurrent reviewer already claimed the transition (Codex #1)", async () => {
+    await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "manager" })
+    prismaMock.approvalRequest.updateMany.mockResolvedValue({ count: 0 })
+    const res = await PATCH(
+      makeRequest("/api/budgeting/approval-requests/req1", {
+        method: "PATCH",
+        json: { action: "approve" },
+      }),
+      paramsFor("req1"),
+    )
+    expect(res.status).toBe(409)
+    // Loser applies NO side effects: no unlock, no audit, no appliedAt stamp.
+    expect(prismaMock.organization.update).not.toHaveBeenCalled()
+    expect(auditMock).not.toHaveBeenCalled()
+    expect(prismaMock.approvalRequest.update).not.toHaveBeenCalled()
   })
 })
 

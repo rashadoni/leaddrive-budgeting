@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
   })
   const campaignName = new Map(campaigns.map((c) => [c.id, c.name]))
   const users = await prisma.user.findMany({
-    where: { id: { in: [...new Set(entries.map((e) => e.createdBy))] } },
+    where: { id: { in: [...new Set(entries.map((e) => e.createdBy))] }, organizationId: session.orgId },
     select: { id: true, name: true, email: true },
   })
   const userName = new Map(users.map((u) => [u.id, u.name || u.email]))

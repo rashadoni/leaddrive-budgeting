@@ -147,11 +147,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     updated: typeof request
     auditStale: boolean
     orgNotFound: boolean
+    // Codex trade-review #1 — a concurrent reviewer already transitioned
+    // this request; the loser gets 409 instead of overwriting the state.
+    conflict: boolean
   }
   const txResult = await withOrgScope<TxResult>(session.orgId, async (tx) => {
     let appliedAt: Date | null = null
     let auditStale = false
     let orgNotFound = false
+
+    // Codex trade-review #1 — claim the transition FIRST, guarded by the
+    // status we validated outside the tx. Two racing reviewers both pass
+    // the pre-check; only the one whose updateMany matches wins, and all
+    // apply side effects below run only for the winner.
+    const claimed = await tx.approvalRequest.updateMany({
+      where: { id, organizationId: session.orgId, status: request.status },
+      data: {
+        status: newStatus,
+        reviewedBy: action === "cancel" ? null : session.userId,
+        reviewedAt: action === "cancel" ? null : now,
+        reviewComment: parsed.comment ?? null,
+      },
+    })
+    if (claimed.count === 0) {
+      return { updated: request, auditStale, orgNotFound, conflict: true }
+    }
 
     if (action === "approve" && request.requestType === "period_unlock") {
       const change = request.proposedChange as unknown as PeriodUnlockChange
@@ -161,7 +181,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       })
       if (!org) {
         orgNotFound = true
-        return { updated: request, auditStale, orgNotFound }
+        return { updated: request, auditStale, orgNotFound, conflict: false }
       }
       const currentLocks = parseLockedPeriods(org.lockedPeriods)
       const removedLock = findLockForPeriod(currentLocks, change.period)
@@ -259,19 +279,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // the campaign keeps its newer state.
     }
 
+    // Status/reviewer fields were claimed above; stamp appliedAt separately.
     const updated = await tx.approvalRequest.update({
       where: { id },
-      data: {
-        status: newStatus,
-        reviewedBy: action === "cancel" ? null : session.userId,
-        reviewedAt: action === "cancel" ? null : now,
-        reviewComment: parsed.comment ?? null,
-        appliedAt,
-      },
+      data: { appliedAt },
     })
-    return { updated, auditStale, orgNotFound }
+    return { updated, auditStale, orgNotFound, conflict: false }
   })
 
+  if (txResult.conflict) {
+    return NextResponse.json(
+      { error: "Request was reviewed concurrently — reload to see the outcome" },
+      { status: 409 },
+    )
+  }
   if (txResult.orgNotFound) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 })
   }

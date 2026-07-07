@@ -154,7 +154,43 @@ interface AlertDelegate {
   }): Promise<
     { id: string; dedupeKey: string | null; severity: string; message: string; messageKey: string | null }[]
   >;
-  create(args: { data: Record<string, unknown> }): Promise<unknown>;
+  /**
+   * Codex review #5 — upsert on the (organizationId, dedupeKey) unique
+   * instead of read-then-create: closes BOTH the concurrent-recompute
+   * race (P2002 after the ledger write committed) AND the re-trigger
+   * breaker — a RESOLVED row keeps its dedupeKey, so a plain create
+   * would collide the next time the same condition fires.
+   */
+  upsert(args: {
+    where: { organizationId_dedupeKey: { organizationId: string; dedupeKey: string } };
+    // Concrete shapes (not Record<string, unknown>) — they must be
+    // assignable to Prisma's Alert create/update inputs for the real
+    // delegate to satisfy this interface.
+    create: {
+      organizationId: string;
+      type: string;
+      domain: string;
+      sourceRef: { period: string; grainKey: string; ruleId: string };
+      severity: string;
+      title: string;
+      message: string;
+      messageKey: string;
+      messageParams: Record<string, string>;
+      dedupeKey: string;
+    };
+    update: {
+      severity: string;
+      title: string;
+      message: string;
+      messageKey: string;
+      messageParams: Record<string, string>;
+      sourceRef: { period: string; grainKey: string; ruleId: string };
+      resolvedAt: null;
+      acknowledgedAt: null;
+      acknowledgedBy: null;
+      triggeredAt: Date;
+    };
+  }): Promise<unknown>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
   updateMany(args: {
     where: { organizationId: string; domain: string; resolvedAt: null; dedupeKey: { in: string[] } };
@@ -209,8 +245,13 @@ export async function syncTradeAlerts(
         result.updated += 1;
       }
     } else {
-      await alerts.create({
-        data: {
+      // Not open — either brand-new or a previously RESOLVED row holding
+      // the same dedupeKey. Upsert re-arms the resolved row (re-open,
+      // un-acknowledge, fresh trigger time) and survives concurrent
+      // recomputes racing on the unique key.
+      await alerts.upsert({
+        where: { organizationId_dedupeKey: { organizationId, dedupeKey: c.dedupeKey } },
+        create: {
           organizationId,
           type: "trade_pacing",
           domain: "trade",
@@ -221,6 +262,18 @@ export async function syncTradeAlerts(
           messageKey: c.messageKey,
           messageParams: c.messageParams,
           dedupeKey: c.dedupeKey,
+        },
+        update: {
+          severity: c.severity,
+          title: c.title,
+          message: c.message,
+          messageKey: c.messageKey,
+          messageParams: c.messageParams,
+          sourceRef: c.sourceRef,
+          resolvedAt: null,
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          triggeredAt: now,
         },
       });
       result.created += 1;

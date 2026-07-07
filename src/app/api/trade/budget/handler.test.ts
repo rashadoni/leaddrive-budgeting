@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-const { prismaMock } = vi.hoisted(() => {
+const { prismaMock, recomputeMock, rebaseMock } = vi.hoisted(() => {
   const prismaMock = {
     tradeBudgetPool: { findMany: vi.fn(), upsert: vi.fn() },
     tradePlanDaily: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -15,11 +15,19 @@ const { prismaMock } = vi.hoisted(() => {
     organization: { findUnique: vi.fn() },
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock)),
   }
-  return { prismaMock }
+  return { prismaMock, recomputeMock: vi.fn(), rebaseMock: vi.fn() }
 })
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Codex review #3/#4 — derive now rebases channel pools + recomputes
+// pacing; both are units with their own tests, mocked out here.
+vi.mock("@/lib/trade/pacing-recompute", () => ({
+  recomputeTradePacing: recomputeMock,
+}))
+vi.mock("@/lib/trade/pool-sync", () => ({
+  rebaseChannelPools: rebaseMock,
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"
@@ -36,6 +44,8 @@ beforeEach(() => {
     { monthIndex: 1, _sum: { plannedAmount: 1_000_000 } },
   ])
   prismaMock.organization.findUnique.mockReset().mockResolvedValue({ lockedPeriods: null })
+  recomputeMock.mockReset().mockResolvedValue({})
+  rebaseMock.mockReset().mockResolvedValue(undefined)
 })
 
 describe("POST /api/trade/budget (derive)", () => {
@@ -60,6 +70,10 @@ describe("POST /api/trade/budget (derive)", () => {
     )
     // pacing feed regenerated per month
     expect(prismaMock.tradePlanDaily.createMany).toHaveBeenCalledTimes(2)
+    // Codex #4 — channel pools rebased for every derived month
+    expect(rebaseMock).toHaveBeenCalledTimes(2)
+    // Codex #3 — pacing snapshots refreshed for every touched month
+    expect(recomputeMock).toHaveBeenCalledTimes(2)
   })
 
   it("skips CFO-locked months and reports them (R2)", async () => {

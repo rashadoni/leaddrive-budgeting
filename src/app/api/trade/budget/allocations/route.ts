@@ -19,6 +19,7 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { planChannelAllocations, CHANNEL_GRAIN_PREFIX } from "@/lib/trade/budget"
 import { spreadMonthlyPlan } from "@/lib/trade/pacing"
+import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 
@@ -170,6 +171,9 @@ export async function PUT(request: NextRequest) {
       })
     }
   })
+
+  // Codex review #3 — a new split changes channel-grain risk right away.
+  await recomputeTradePacing(prisma, orgId, year, month)
 
   const pools = await prisma.tradeBudgetPool.findMany({
     where: { organizationId: orgId, year, month, grainKey: { startsWith: CHANNEL_GRAIN_PREFIX } },

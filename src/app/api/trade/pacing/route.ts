@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     .map((g) => parseChannelGrain(g))
     .filter((v): v is string => !!v)
   const channelRows = await prisma.tradeChannel.findMany({
-    where: { id: { in: channelIds } },
+    where: { id: { in: channelIds }, organizationId: session.orgId },
     select: { id: true, name: true },
   })
   const channelName = new Map(channelRows.map((c) => [c.id, c.name]))
