@@ -25,7 +25,7 @@ import { z, ZodError } from "zod"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { getPredictiveBreaches } from "@/lib/risk/breach-persist"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
 
@@ -65,41 +65,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid query" }, { status: 400 })
   }
 
-  const breaches = await getPredictiveBreaches(session.orgId, {
-    period: parsed.period,
-    minConfidenceBand: parsed.minConfidenceBand,
-  })
-
   // Phase 7.F sub-group RBAC — filter breaches by allowed companies.
   const scope = await getCompanyScope(session.orgId, session.userId, session.role)
-  const scoped = scope.ids != null
-    ? breaches.filter((b) => scope.ids!.has(b.companyId))
-    : breaches
 
-  // Strip organizationId from response — caller already knows their own org.
-  const sanitized = scoped.map(({ organizationId: _o, ...rest }) => rest)
+  // Stage 3 RLS — the breach read (via getPredictiveBreaches, tx threaded)
+  // + the company name-resolution read in one org-scoped tx.
+  const enriched = await withOrgScope(session.orgId, async (tx) => {
+    const breaches = await getPredictiveBreaches(
+      session.orgId,
+      { period: parsed.period, minConfidenceBand: parsed.minConfidenceBand },
+      { prisma: tx },
+    )
+    const scoped = scope.ids != null
+      ? breaches.filter((b) => scope.ids!.has(b.companyId))
+      : breaches
 
-  // Resolve companyId → code + name for display (saves the client a join) AND
-  // DROP forecasts whose company no longer exists — `predictive_breaches` can
-  // retain orphaned rows (stale / mock `cmock…` companyIds) that would otherwise
-  // surface as raw cuids and inflate the count with non-real data (2026-06-01).
-  const uniqueIds = [...new Set(sanitized.map((b) => b.companyId))]
-  const companyRows = uniqueIds.length > 0
-    ? await prisma.company.findMany({
-        where: { id: { in: uniqueIds } },
-        select: { id: true, code: true, name: true },
-      })
-    : []
-  const byId = new Map(
-    companyRows.map((c: { id: string; code: string; name: string }) => [c.id, c]),
-  )
-  const enriched = sanitized
-    .filter((b) => byId.has(b.companyId)) // real companies only — no orphan/mock rows
-    .map((b) => ({
-      ...b,
-      companyCode: byId.get(b.companyId)!.code,
-      companyName: byId.get(b.companyId)!.name,
-    }))
+    // Strip organizationId from response — caller already knows their own org.
+    const sanitized = scoped.map(({ organizationId: _o, ...rest }) => rest)
+
+    // Resolve companyId → code + name for display (saves the client a join) AND
+    // DROP forecasts whose company no longer exists — `predictive_breaches` can
+    // retain orphaned rows (stale / mock `cmock…` companyIds) that would otherwise
+    // surface as raw cuids and inflate the count with non-real data (2026-06-01).
+    const uniqueIds = [...new Set(sanitized.map((b) => b.companyId))]
+    const companyRows = uniqueIds.length > 0
+      ? await tx.company.findMany({
+          where: { id: { in: uniqueIds } },
+          select: { id: true, code: true, name: true },
+        })
+      : []
+    const byId = new Map(
+      companyRows.map((c: { id: string; code: string; name: string }) => [c.id, c]),
+    )
+    return sanitized
+      .filter((b) => byId.has(b.companyId)) // real companies only — no orphan/mock rows
+      .map((b) => ({
+        ...b,
+        companyCode: byId.get(b.companyId)!.code,
+        companyName: byId.get(b.companyId)!.name,
+      }))
+  })
 
   return NextResponse.json({
     breaches: enriched,

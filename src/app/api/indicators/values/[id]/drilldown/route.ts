@@ -19,7 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { parsePeriod } from "@/lib/risk/periods"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
@@ -43,8 +43,9 @@ export async function GET(
     return NextResponse.json({ error: "Invalid indicator-value id" }, { status: 400 })
   }
 
-  // Org-scoped fetch. 404 on either missing OR cross-tenant.
-  const iv = await prisma.indicatorValue.findFirst({
+  // Org-scoped fetch. 404 on either missing OR cross-tenant. Stage 3 RLS — tx.
+  const iv = await withOrgScope(orgId, (tx) =>
+    tx.indicatorValue.findFirst({
     where: { id: ivId, organizationId: orgId },
     select: {
       id: true,
@@ -71,7 +72,8 @@ export async function GET(
         },
       },
     },
-  })
+    }),
+  )
   if (!iv) {
     return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
   }
@@ -108,7 +110,8 @@ export async function GET(
     monthRange = { gte: startMonth, lte: startMonth + 2 }
   }
 
-  const rows = await prisma.budgetLine.findMany({
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.budgetLine.findMany({
     where: {
       organizationId: orgId,
       companyId: iv.companyId,
@@ -153,7 +156,8 @@ export async function GET(
     // Cap at 500 lines so a deeply itemized company doesn't blow up
     // the response. The UI also paginates client-side.
     take: 500,
-  })
+    }),
+  )
 
   // Compute summary by accountType (the dimension the resolver cares
   // about: revenue / cogs / expense). Mirrors the resolver's grouping

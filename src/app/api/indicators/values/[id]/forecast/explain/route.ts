@@ -21,8 +21,14 @@
  * organizationId (404 on mismatch — never leak existence).
  */
 
+// rls-scan-ignore: AI Forecast Explainer (manager+, maxDuration 30). Mirror of
+// /explain — the IndicatorValue read feeds a per-org Anthropic key lookup and
+// an LLM call (runForecastExplainer) that can't live inside one 5s interactive
+// withOrgScope tx. Read-only for tenant data (only write is a fire-and-forget
+// audit on the global client) + orgId-scoped in code, so it runs on the
+// BYPASSRLS `prismaAdmin` client.
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { aiErrorBody } from "@/lib/ai/ai-error";
 import { getCompanyScope } from "@/lib/rbac/company-scope";

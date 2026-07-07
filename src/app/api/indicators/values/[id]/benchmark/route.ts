@@ -14,7 +14,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import {
@@ -51,8 +52,9 @@ export async function GET(
     return NextResponse.json({ error: "Invalid id" }, { status: 400 })
   }
 
-  // Resolve own IV → company + indicator + period.
-  const ownIv = await prisma.indicatorValue.findFirst({
+  // Resolve own IV → company + indicator + period. Stage 3 RLS — scope tx.
+  const ownIv = await withOrgScope(orgId, (tx) =>
+    tx.indicatorValue.findFirst({
     where: { id: ivId, organizationId: orgId },
     select: {
       id: true,
@@ -62,7 +64,8 @@ export async function GET(
       indicator: { select: { code: true, direction: true, unit: true } },
       company: { select: { id: true, code: true, name: true, industry: true } },
     },
-  })
+    }),
+  )
   if (!ownIv) {
     return NextResponse.json({ error: "Indicator value not found" }, { status: 404 })
   }
@@ -100,27 +103,29 @@ export async function GET(
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     // Per-user own series still must reflect THIS user's company —
     // fetch own series fresh (cheap), reuse cohort medians.
-    const ownSeries = await fetchSeries(orgId, ownIv.companyId, ownIv.indicatorId, periods)
+    const ownSeries = await withOrgScope(orgId, (tx) =>
+      fetchSeries(tx, orgId, ownIv.companyId, ownIv.indicatorId, periods),
+    )
     const cohort = (cached.data as { cohortIds: string[] }).cohortIds
     return NextResponse.json(buildResponse(ownIv, ownSeries, cached.data as CachedCohort, periods, cohort.length))
   }
 
   // Fetch own series + cohort companies (same industry, NOT including own).
-  const cohortCompanies = await prisma.company.findMany({
-    where: {
-      organizationId: orgId,
-      industry,
-      isActive: true,
-      id: { not: ownIv.companyId },
-    },
-    select: { id: true, code: true },
-  })
-  type CR = (typeof cohortCompanies)[number]
-  const cohortIds = (cohortCompanies as CR[]).map((c) => c.id)
-
-  const [ownSeries, cohortRows] = await Promise.all([
-    fetchSeries(orgId, ownIv.companyId, ownIv.indicatorId, periods),
-    prisma.indicatorValue.findMany({
+  // Stage 3 RLS — cohort lookup + own series + cohort IV rows in one scope tx
+  // (the Promise.all reads become sequential inside the interactive tx).
+  const { cohortIds, ownSeries, cohortRows } = await withOrgScope(orgId, async (tx) => {
+    const cohortCompanies = await tx.company.findMany({
+      where: {
+        organizationId: orgId,
+        industry,
+        isActive: true,
+        id: { not: ownIv.companyId },
+      },
+      select: { id: true, code: true },
+    })
+    const cohortIds = cohortCompanies.map((c) => c.id)
+    const ownSeries = await fetchSeries(tx, orgId, ownIv.companyId, ownIv.indicatorId, periods)
+    const cohortRows = await tx.indicatorValue.findMany({
       where: {
         organizationId: orgId,
         indicatorId: ownIv.indicatorId,
@@ -128,8 +133,9 @@ export async function GET(
         period: { in: periods },
       },
       select: { companyId: true, period: true, value: true, status: true },
-    }),
-  ])
+    })
+    return { cohortIds, ownSeries, cohortRows }
+  })
   type IR = (typeof cohortRows)[number]
   const cohortByCompany = new Map<string, Map<string, number>>()
   for (const r of cohortRows as IR[]) {
@@ -219,12 +225,13 @@ function buildResponse(
 }
 
 async function fetchSeries(
+  db: Prisma.TransactionClient,
   orgId: string,
   companyId: string,
   indicatorId: string,
   periods: string[],
 ): Promise<PeerSeriesPoint[]> {
-  const rows = await prisma.indicatorValue.findMany({
+  const rows = await db.indicatorValue.findMany({
     where: {
       organizationId: orgId,
       companyId,

@@ -147,6 +147,25 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 4 — indicators domain (112 wrapped).** Clean-wrapped:
+  breaches (getPredictiveBreaches now takes a tx via `opts.prisma` — its type
+  loosened to `PrismaClient | Prisma.TransactionClient` — plus company name read
+  in one scope tx), status-summary (groupBy; added the missing !orgId 403 guard),
+  alerts/events (keyset findMany; added !orgId guard), values/resolve (company +
+  indicatorDefinition + IndicatorValue in scope; the indicator_definitions RLS
+  policy explicitly allows organizationId IS NULL, so the global-seed lookup
+  still resolves under the app role), values/[id]/benchmark (ownIv + cohort +
+  own/cohort series in scope; `fetchSeries` gained a `db: Prisma.TransactionClient`
+  first param; Promise.all → sequential inside tx), values/[id]/drilldown (IV +
+  budgetLine reads in two scope txns). `rls-scan-ignore` #5 **matrix/preview**
+  (editor ad-hoc scenario preview, maxDuration 30, concurrency-8 recomputeIndicator
+  loop over createPrismaDataSource, NO writes → prismaAdmin), #6 **values/[id]/
+  explain** and #7 **values/[id]/forecast/explain** (AI Variance/Forecast Explainer,
+  maxDuration 30, per-org Anthropic key lookup + LLM call can't fit one tx;
+  read-only tenant data, fire-forget audit on global client → prismaAdmin). 6
+  handler tests gained the withOrgScope mock (breaches + status-summary converted
+  to hoisted prismaMock). Scan: 112 wrapped / 26 clean / 7 opted-out / 34 unwrapped.
+  Gates: tsc 0; full vitest 6298; RLS leak 10/10.
 - 2026-07-07 — **S3 wave 3 — scenarios + operational-facts + indicator-disclosures
   (106 wrapped).** Clean-wrapped: scenarios (list/create), scenarios/[id]
   (GET/PATCH/DELETE — lookup+mutate in one scope tx, null→404), scenarios/signals

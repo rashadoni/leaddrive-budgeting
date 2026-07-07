@@ -12,21 +12,27 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: {
     indicatorValue: {
       groupBy: vi.fn(),
     },
   },
 }))
 
+vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Stage 3 RLS — hand the mock straight to the scope callback.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prismaMock),
+}))
+
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET } from "./route"
-import { prisma } from "@/lib/prisma"
 
 const ORG = "org_demo"
-const groupBy = prisma.indicatorValue.groupBy as unknown as ReturnType<typeof vi.fn>
+const groupBy = prismaMock.indicatorValue.groupBy as unknown as ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   groupBy.mockReset()

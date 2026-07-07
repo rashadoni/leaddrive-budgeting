@@ -27,7 +27,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { parsePeriod, PeriodParseError } from '@/lib/risk/periods';
 
@@ -55,6 +55,9 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth(request);
   if (isAuthError(auth)) return auth;
   const { orgId } = auth;
+  if (!orgId) {
+    return NextResponse.json({ error: 'User has no organization' }, { status: 403 });
+  }
 
   const { searchParams } = new URL(request.url);
 
@@ -139,24 +142,26 @@ export async function GET(request: NextRequest) {
   }
 
   // Fetch limit+1 to detect `hasMore` without a separate count query.
-  const rows = await prisma.alertEvent.findMany({
-    where,
-    select: {
-      id: true,
-      period: true,
-      ruleId: true,
-      ruleName: true,
-      severity: true,
-      message: true,
-      messageKey: true,
-      messageParams: true,
-      affectedCompanyIds: true,
-      affectedIndicatorCodes: true,
-      emittedAt: true,
-    },
-    orderBy: [{ emittedAt: 'desc' }, { id: 'desc' }],
-    take: limit + 1,
-  });
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.alertEvent.findMany({
+      where,
+      select: {
+        id: true,
+        period: true,
+        ruleId: true,
+        ruleName: true,
+        severity: true,
+        message: true,
+        messageKey: true,
+        messageParams: true,
+        affectedCompanyIds: true,
+        affectedIndicatorCodes: true,
+        emittedAt: true,
+      },
+      orderBy: [{ emittedAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    }),
+  );
 
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;

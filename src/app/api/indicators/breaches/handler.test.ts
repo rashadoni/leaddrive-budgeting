@@ -6,9 +6,8 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest"
 
-vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: {
     // Phase 7.F sub-group RBAC — getCompanyScope reads user row.
     user: { findFirst: vi.fn().mockResolvedValue({ allowedSubGroupIds: [] }) },
     // Breach route resolves companyId → code + name AND drops rows whose
@@ -20,6 +19,16 @@ vi.mock("@/lib/prisma", () => ({
       { id: "co_c", code: "CO-C", name: "Company C" },
     ]) },
   },
+}))
+
+vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Stage 3 RLS — hand the mock straight to the scope callback. getPredictiveBreaches
+// receives this tx; it lacks `predictiveBreach`, so getPredictiveBreaches falls
+// back to its in-memory store (as it did before, when the mock lacked it too).
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prismaMock),
 }))
 
 import { mockSession, makeRequest } from "@/test/api-harness"

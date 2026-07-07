@@ -23,7 +23,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const PERIOD_REGEX = /^\d{4}(-Q[1-4]|-(0[1-9]|1[0-2]))?$/
 
@@ -60,50 +60,54 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Invalid query" }, { status: 400 })
   }
 
-  // Step 1: Resolve company by code (org-scoped)
-  const company = await prisma.company.findFirst({
-    where: { organizationId: session.orgId, code: parsed.company },
-    select: { id: true },
-  })
+  const orgId = session.orgId
+
+  // Step 1: Resolve company by code (org-scoped). Stage 3 RLS — scope tx.
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { organizationId: orgId, code: parsed.company },
+      select: { id: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
   // Phase 7.F sub-group RBAC.
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(company.id)) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  // Step 2: Resolve indicator by code (org-specific override OR global seed)
-  // Match either: organizationId=session.orgId OR organizationId=null (global)
-  const indicator = await prisma.indicatorDefinition.findFirst({
-    where: {
-      code: parsed.indicator,
-      OR: [
-        { organizationId: session.orgId },
-        { organizationId: null },
-      ],
-    },
-    select: { id: true },
-    // Org-specific overrides take priority
-    orderBy: { organizationId: { sort: "asc", nulls: "last" } },
+  // Steps 2 + 3 — indicator lookup + IndicatorValue in one org-scoped tx.
+  // The indicator_definitions RLS policy explicitly allows organizationId
+  // IS NULL, so the global-seed row stays readable under the app role.
+  const { indicator, iv } = await withOrgScope(orgId, async (tx) => {
+    const indicator = await tx.indicatorDefinition.findFirst({
+      where: {
+        code: parsed.indicator,
+        OR: [{ organizationId: orgId }, { organizationId: null }],
+      },
+      select: { id: true },
+      // Org-specific overrides take priority
+      orderBy: { organizationId: { sort: "asc", nulls: "last" } },
+    })
+    if (!indicator) return { indicator: null, iv: null }
+    const iv = await tx.indicatorValue.findUnique({
+      where: {
+        companyId_indicatorId_period: {
+          companyId: company.id,
+          indicatorId: indicator.id,
+          period: parsed.period,
+        },
+      },
+      select: { id: true },
+    })
+    return { indicator, iv }
   })
   if (!indicator) {
     return NextResponse.json({ error: "Indicator not found" }, { status: 404 })
   }
-
-  // Step 3: Find IndicatorValue
-  const iv = await prisma.indicatorValue.findUnique({
-    where: {
-      companyId_indicatorId_period: {
-        companyId: company.id,
-        indicatorId: indicator.id,
-        period: parsed.period,
-      },
-    },
-    select: { id: true },
-  })
   if (!iv) {
     return NextResponse.json(
       { error: "No IndicatorValue for this (company, indicator, period)" },

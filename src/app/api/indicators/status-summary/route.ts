@@ -18,7 +18,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { currentBakuYear, parsePeriod, PeriodParseError } from "@/lib/risk/periods"
 
@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
   const session = await requireAuth(req)
   if (isAuthError(session)) return session
   const { orgId } = session
+  if (!orgId) {
+    return NextResponse.json({ error: "User has no organization" }, { status: 403 })
+  }
 
   const periodParam = req.nextUrl.searchParams.get("period") ?? currentBakuYear()
   try {
@@ -37,11 +40,13 @@ export async function GET(req: NextRequest) {
     throw e
   }
 
-  const counts = await prisma.indicatorValue.groupBy({
-    by: ["status"],
-    where: { organizationId: orgId, period: periodParam },
-    _count: { _all: true },
-  })
+  const counts = await withOrgScope(orgId, (tx) =>
+    tx.indicatorValue.groupBy({
+      by: ["status"],
+      where: { organizationId: orgId, period: periodParam },
+      _count: { _all: true },
+    }),
+  )
 
   const summary = { period: periodParam, green: 0, amber: 0, red: 0, unknown: 0, total: 0 }
   for (const c of counts) {

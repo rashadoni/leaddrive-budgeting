@@ -24,8 +24,14 @@
  * Rate limit: 5/min/user — preview is interactive, not bulk.
  */
 
+// rls-scan-ignore: editor-only ad-hoc scenario PREVIEW (maxDuration 30). It
+// runs a concurrency-8 recomputeIndicator loop over a `createPrismaDataSource`
+// data source (issues many reads over seconds) with NO DB writes — too heavy
+// for one 5s interactive withOrgScope tx. Read-only + orgId-scoped in code, so
+// it runs on the BYPASSRLS `prismaAdmin` client (also passed into
+// createPrismaDataSource, so the simulator reads are admin too).
 import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { prismaAdmin as prisma } from '@/lib/db/prisma-admin'
 import { requireRole, isAuthError } from '@/lib/api-auth'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { getCompanyScope } from '@/lib/rbac/company-scope'

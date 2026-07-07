@@ -48,7 +48,9 @@ export function getBreachMemorySize(): number {
 export async function getPredictiveBreaches(
   orgId: string,
   filter: { period?: string; minConfidenceBand?: "low" | "medium" | "high" } = {},
-  opts: { prisma?: typeof defaultPrisma } = {},
+  // Stage 3 RLS — accept a scope tx client so the route can run this read
+  // inside withOrgScope (the SET LOCAL app.organization_id applies).
+  opts: { prisma?: typeof defaultPrisma | Prisma.TransactionClient } = {},
 ): Promise<Array<ForecastedBreach & { organizationId: string; computedAt: Date }>> {
   const prisma = opts.prisma ?? defaultPrisma
   const minBandRank: Record<"low" | "medium" | "high", number> = { low: 0, medium: 1, high: 2 }
