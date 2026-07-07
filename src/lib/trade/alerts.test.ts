@@ -69,12 +69,14 @@ describe("evaluatePacingAlerts", () => {
 });
 
 describe("syncTradeAlerts", () => {
-  function mockDelegate(open: { id: string; dedupeKey: string; severity: string; message: string }[]) {
+  function mockDelegate(
+    open: { id: string; dedupeKey: string; severity: string; message: string; messageKey?: string | null }[],
+  ) {
     const calls = { created: [] as unknown[], updated: [] as unknown[], resolvedKeys: [] as string[] };
     return {
       calls,
       delegate: {
-        findMany: async () => open,
+        findMany: async () => open.map((o) => ({ messageKey: null, ...o })),
         create: async (args: { data: Record<string, unknown> }) => {
           calls.created.push(args.data);
           return {};
@@ -99,6 +101,8 @@ describe("syncTradeAlerts", () => {
     severity: "warn",
     title: "t",
     message: "m",
+    messageKey: "trade_overspend_forecast",
+    messageParams: { overrunPct: "10", period: "2026-09", scope: "org" },
     dedupeKey: "trade:trade_overspend_forecast:2026-09:org",
     sourceRef: { period: "2026-09", grainKey: "org", ruleId: "trade_overspend_forecast" },
   };
@@ -122,7 +126,7 @@ describe("syncTradeAlerts", () => {
 
   it("is a no-op when nothing changed", async () => {
     const { delegate, calls } = mockDelegate([
-      { id: "a1", dedupeKey: candidate.dedupeKey, severity: "warn", message: "m" },
+      { id: "a1", dedupeKey: candidate.dedupeKey, severity: "warn", message: "m", messageKey: candidate.messageKey },
     ]);
     const res = await syncTradeAlerts(delegate, "org1", [candidate], scope);
     expect(res).toEqual({ created: 0, updated: 0, resolved: 0 });
@@ -138,5 +142,14 @@ describe("syncTradeAlerts", () => {
     const res = await syncTradeAlerts(delegate, "org1", [], scope);
     expect(res.resolved).toBe(1);
     expect(calls.resolvedKeys).toEqual([staleKey]);
+  });
+
+  it("backfills messageKey on pre-i18n rows (R5 self-heal)", async () => {
+    const { delegate, calls } = mockDelegate([
+      { id: "a1", dedupeKey: candidate.dedupeKey, severity: "warn", message: "m", messageKey: null },
+    ]);
+    const res = await syncTradeAlerts(delegate, "org1", [candidate], scope);
+    expect(res).toEqual({ created: 0, updated: 1, resolved: 0 });
+    expect(calls.updated).toHaveLength(1);
   });
 });

@@ -1499,8 +1499,13 @@ model Alert {
   domain         String       @default("risk") // "risk" | "trade"
   sourceRef      Json // { companyId?, indicatorId?, ruleId?, grainKey?, period? }
   severity       String // "info"|"warn"|"critical"
-  title          String
-  message        String
+  title          String // EN fallback — always populated
+  message        String // EN fallback — always populated
+  // R5 (2026-07-07) — i18n: UI renders trade.alertRules.<key>.{title,message}
+  // with messageParams (pre-formatted strings); EN columns above stay the
+  // fallback + email-digest source. Mirrors AlertEvent's messageKey pattern.
+  messageKey     String?
+  messageParams  Json?
   dedupeKey      String?
   triggeredAt    DateTime     @default(now())
   acknowledgedAt DateTime?

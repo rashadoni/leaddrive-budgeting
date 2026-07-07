@@ -4329,6 +4329,20 @@
       "spend": "Журнал затрат",
       "budget": "Бюджет",
       "master": "Справочники"
+    },
+    "alertRules": {
+      "trade_overspend_forecast": {
+        "title": "Прогноз перерасхода бюджета: +{overrunPct}%",
+        "message": "При текущем темпе расход к концу месяца достигнет {forecast} при бюджете {budget} (+{overrunPct}%, перерасход {over}). Период {period}, охват: {scope}."
+      },
+      "trade_spend_ahead_of_sales": {
+        "title": "Расход опережает продажи на {gapPp} п.п.",
+        "message": "Потрачено {spendPct}% trade-бюджета, при этом план продаж выполнен лишь на {salesPct}%. Период {period}, охват: {scope}."
+      },
+      "trade_unused_budget": {
+        "title": "Неиспользованный бюджет: потрачено {spendPct}% при {elapsedPct}% месяца",
+        "message": "Расход заметно отстаёт от темпа месяца — возможна экономия или неисполненные кампании. Период {period}, охват: {scope}."
+      }
     }
   }
 }

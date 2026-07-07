@@ -13,6 +13,8 @@ interface TradeAlert {
   severity: "info" | "warn" | "critical";
   title: string;
   message: string;
+  messageKey: string | null;
+  messageParams: Record<string, string> | null;
   triggeredAt: string;
   acknowledgedAt: string | null;
   resolvedAt: string | null;
@@ -26,6 +28,22 @@ const SEVERITY_DOT: Record<string, string> = {
 
 export function TradeAlertInbox() {
   const t = useTranslations("trade.alerts");
+  const tr = useTranslations("trade.alertRules");
+
+  // R5 — render localized when the alert carries a messageKey; the stored
+  // EN strings stay the fallback (pre-R5 rows, unknown keys).
+  const localized = (a: TradeAlert): { title: string; message: string } => {
+    if (!a.messageKey) return { title: a.title, message: a.message };
+    try {
+      const params = a.messageParams ?? {};
+      return {
+        title: tr(`${a.messageKey}.title`, params),
+        message: tr(`${a.messageKey}.message`, params),
+      };
+    } catch {
+      return { title: a.title, message: a.message };
+    }
+  };
   const [open, setOpen] = useState<TradeAlert[] | null>(null);
   const [resolvedCount, setResolvedCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -81,8 +99,8 @@ export function TradeAlertInbox() {
             <li key={a.id} className="flex items-start gap-2 rounded-md border p-2">
               <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEVERITY_DOT[a.severity]}`} />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{a.title}</div>
-                <p className="text-xs text-muted-foreground">{a.message}</p>
+                <div className="text-sm font-medium">{localized(a).title}</div>
+                <p className="text-xs text-muted-foreground">{localized(a).message}</p>
                 <div className="mt-0.5 text-[10px] text-muted-foreground">
                   {new Date(a.triggeredAt).toLocaleString()}
                   {a.acknowledgedAt && <span className="ml-2">✓ {t("acked")}</span>}

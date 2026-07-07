@@ -16,8 +16,13 @@ export type TradeAlertSeverity = "info" | "warn" | "critical";
 export interface TradeAlertCandidate {
   ruleId: "trade_overspend_forecast" | "trade_spend_ahead_of_sales" | "trade_unused_budget";
   severity: TradeAlertSeverity;
+  /** EN fallback strings — the digest email and non-i18n consumers. */
   title: string;
   message: string;
+  /** R5 — i18n: UI renders trade.alertRules.<ruleId>.{title,message}. */
+  messageKey: string;
+  /** Pre-formatted display strings (numbers already localized-ish). */
+  messageParams: Record<string, string>;
   /** Stable identity: trade:<rule>:<period>:<grainKey>. */
   dedupeKey: string;
   sourceRef: { period: string; grainKey: string; ruleId: string };
@@ -59,14 +64,24 @@ export function evaluatePacingAlerts(
   const overrun = r.forecastBudgetVariancePct;
   if (overrun != null && overrun >= thresholds.overrunPctHigh) {
     const critical = overrun >= thresholds.overrunPctCritical;
+    const params = {
+      overrunPct: String(overrun),
+      forecast: fmt(r.forecastSpendMonth ?? 0),
+      budget: fmt(r.math.budgetMonth ?? 0),
+      over: fmt(r.forecastBudgetVariance ?? 0),
+      period,
+      scope: label,
+    };
     out.push({
       ruleId: "trade_overspend_forecast",
       severity: critical ? "critical" : "warn",
       title: `Budget overrun forecast: +${overrun}%`,
       message:
-        `At the current pace, month-end trade spend reaches ${fmt(r.forecastSpendMonth ?? 0)} ` +
-        `against a budget of ${fmt(r.math.budgetMonth ?? 0)} ` +
-        `(+${overrun}%, ${fmt(r.forecastBudgetVariance ?? 0)} over). Period ${period}, scope ${label}.`,
+        `At the current pace, month-end trade spend reaches ${params.forecast} ` +
+        `against a budget of ${params.budget} ` +
+        `(+${overrun}%, ${params.over} over). Period ${period}, scope ${label}.`,
+      messageKey: "trade_overspend_forecast",
+      messageParams: params,
       dedupeKey: key("trade_overspend_forecast", period, grainKey),
       sourceRef: ref("trade_overspend_forecast"),
     });
@@ -78,14 +93,23 @@ export function evaluatePacingAlerts(
   const gap = r.salesFeedPending ? null : r.paceGapPp;
   if (gap != null && gap >= thresholds.paceGapPpHigh) {
     const critical = gap >= thresholds.paceGapPpCritical;
+    const params = {
+      gapPp: String(gap),
+      spendPct: String(r.spendProgressPct ?? 0),
+      salesPct: String(r.salesProgressPct ?? 0),
+      period,
+      scope: label,
+    };
     out.push({
       ruleId: "trade_spend_ahead_of_sales",
       severity: critical ? "critical" : "warn",
       title: `Spend ahead of sales by ${gap}pp`,
       message:
-        `${r.spendProgressPct}% of the trade budget is spent while only ` +
-        `${r.salesProgressPct}% of the month's sales plan is achieved. ` +
+        `${params.spendPct}% of the trade budget is spent while only ` +
+        `${params.salesPct}% of the month's sales plan is achieved. ` +
         `Period ${period}, scope ${label}.`,
+      messageKey: "trade_spend_ahead_of_sales",
+      messageParams: params,
       dedupeKey: key("trade_spend_ahead_of_sales", period, grainKey),
       sourceRef: ref("trade_spend_ahead_of_sales"),
     });
@@ -98,13 +122,21 @@ export function evaluatePacingAlerts(
     r.spendProgressPct != null &&
     r.spendProgressPct < r.elapsedShare * 100 - 20
   ) {
+    const params = {
+      spendPct: String(r.spendProgressPct),
+      elapsedPct: String(Math.round(r.elapsedShare * 100)),
+      period,
+      scope: label,
+    };
     out.push({
       ruleId: "trade_unused_budget",
       severity: "info",
-      title: `Unused trade budget: ${r.spendProgressPct}% spent at ${Math.round(r.elapsedShare * 100)}% of month`,
+      title: `Unused trade budget: ${params.spendPct}% spent at ${params.elapsedPct}% of month`,
       message:
         `Spend is running well behind the month's pace — potential savings or ` +
         `unexecuted campaigns. Period ${period}, scope ${label}.`,
+      messageKey: "trade_unused_budget",
+      messageParams: params,
       dedupeKey: key("trade_unused_budget", period, grainKey),
       sourceRef: ref("trade_unused_budget"),
     });
@@ -118,8 +150,10 @@ export function evaluatePacingAlerts(
 interface AlertDelegate {
   findMany(args: {
     where: { organizationId: string; domain: string; resolvedAt: null; dedupeKey: { in: string[] } };
-    select: { id: true; dedupeKey: true; severity: true; message: true };
-  }): Promise<{ id: string; dedupeKey: string | null; severity: string; message: string }[]>;
+    select: { id: true; dedupeKey: true; severity: true; message: true; messageKey: true };
+  }): Promise<
+    { id: string; dedupeKey: string | null; severity: string; message: string; messageKey: string | null }[]
+  >;
   create(args: { data: Record<string, unknown> }): Promise<unknown>;
   update(args: { where: { id: string }; data: Record<string, unknown> }): Promise<unknown>;
   updateMany(args: {
@@ -151,7 +185,7 @@ export async function syncTradeAlerts(
 
   const open = await alerts.findMany({
     where: { organizationId, domain: "trade", resolvedAt: null, dedupeKey: { in: scopeKeys } },
-    select: { id: true, dedupeKey: true, severity: true, message: true },
+    select: { id: true, dedupeKey: true, severity: true, message: true, messageKey: true },
   });
   const openByKey = new Map(open.map((a) => [a.dedupeKey ?? "", a]));
   const candidateKeys = new Set(candidates.map((c) => c.dedupeKey));
@@ -159,10 +193,18 @@ export async function syncTradeAlerts(
   for (const c of candidates) {
     const existing = openByKey.get(c.dedupeKey);
     if (existing) {
-      if (existing.severity !== c.severity || existing.message !== c.message) {
+      // Third clause = R5 self-heal: pre-i18n rows gain their messageKey
+      // on the next evaluation round.
+      if (existing.severity !== c.severity || existing.message !== c.message || !existing.messageKey) {
         await alerts.update({
           where: { id: existing.id },
-          data: { severity: c.severity, message: c.message, title: c.title },
+          data: {
+            severity: c.severity,
+            message: c.message,
+            title: c.title,
+            messageKey: c.messageKey,
+            messageParams: c.messageParams,
+          },
         });
         result.updated += 1;
       }
@@ -176,6 +218,8 @@ export async function syncTradeAlerts(
           severity: c.severity,
           title: c.title,
           message: c.message,
+          messageKey: c.messageKey,
+          messageParams: c.messageParams,
           dedupeKey: c.dedupeKey,
         },
       });

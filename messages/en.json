@@ -4329,6 +4329,20 @@
       "spend": "Spend ledger",
       "budget": "Budget",
       "master": "Master data"
+    },
+    "alertRules": {
+      "trade_overspend_forecast": {
+        "title": "Budget overrun forecast: +{overrunPct}%",
+        "message": "At the current pace, month-end trade spend reaches {forecast} against a budget of {budget} (+{overrunPct}%, {over} over). Period {period}, scope {scope}."
+      },
+      "trade_spend_ahead_of_sales": {
+        "title": "Spend ahead of sales by {gapPp}pp",
+        "message": "{spendPct}% of the trade budget is spent while only {salesPct}% of the month's sales plan is achieved. Period {period}, scope {scope}."
+      },
+      "trade_unused_budget": {
+        "title": "Unused trade budget: {spendPct}% spent at {elapsedPct}% of month",
+        "message": "Spend is running well behind the month's pace — potential savings or unexecuted campaigns. Period {period}, scope {scope}."
+      }
     }
   }
 }

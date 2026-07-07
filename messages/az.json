@@ -4329,6 +4329,20 @@
       "spend": "Xərc jurnalı",
       "budget": "Büdcə",
       "master": "Master data"
+    },
+    "alertRules": {
+      "trade_overspend_forecast": {
+        "title": "Büdcə aşımı proqnozu: +{overrunPct}%",
+        "message": "Cari templə ay sonunda xərc {forecast} çatacaq, büdcə isə {budget}-dir (+{overrunPct}%, aşım {over}). Dövr {period}, əhatə: {scope}."
+      },
+      "trade_spend_ahead_of_sales": {
+        "title": "Xərcləmə satışdan {gapPp} b.n. qabaqdadır",
+        "message": "Trade büdcəsinin {spendPct}%-i xərclənib, satış planının isə yalnız {salesPct}%-i icra olunub. Dövr {period}, əhatə: {scope}."
+      },
+      "trade_unused_budget": {
+        "title": "İstifadə olunmayan büdcə: ayın {elapsedPct}%-ində {spendPct}% xərclənib",
+        "message": "Xərcləmə ayın tempindən xeyli geri qalır — qənaət və ya icra olunmamış kampaniyalar ola bilər. Dövr {period}, əhatə: {scope}."
+      }
     }
   }
 }

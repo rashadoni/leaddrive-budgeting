@@ -11,6 +11,8 @@ const ALERT_SELECT = {
   severity: true,
   title: true,
   message: true,
+  messageKey: true,
+  messageParams: true,
   sourceRef: true,
   triggeredAt: true,
   acknowledgedAt: true,
