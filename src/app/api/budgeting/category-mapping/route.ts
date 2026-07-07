@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 const categoryMappingSchema = z.object({
   integrationId: z.string().min(1).max(100),
@@ -18,31 +18,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "integrationId required" }, { status: 400 })
   }
 
-  const integration = await prisma.accountingIntegration.findFirst({
-    where: { id: integrationId, organizationId: orgId },
-    select: { categoryMapping: true, name: true },
+  // Stage 3 RLS — both reads in one org-scoped tx.
+  const result = await withOrgScope(orgId, async (tx) => {
+    const integration = await tx.accountingIntegration.findFirst({
+      where: { id: integrationId, organizationId: orgId },
+      select: { categoryMapping: true, name: true },
+    })
+    if (!integration) return null
+    const costTypes = await tx.budgetCostType.findMany({
+      where: { organizationId: orgId },
+      select: { id: true, key: true, label: true },
+      orderBy: { label: "asc" },
+    })
+    return { integration, costTypes }
   })
 
-  if (!integration) {
+  if (!result) {
     return NextResponse.json({ error: "Integration not found" }, { status: 404 })
   }
 
-  // Also return available budget cost types for mapping targets.
-  // Phase 8 D3 (2026-05-29) — BudgetCostType has `key` + `label` (no
-  // `name`/`code`/`lineType`). The prior select referenced 3 columns
-  // that don't exist on the model, so Prisma would throw "Unknown field"
-  // at runtime — masked by `prisma: any`. (No production caller fetches
-  // this endpoint today, so it never surfaced.) Map to the real fields.
-  const costTypes = await prisma.budgetCostType.findMany({
-    where: { organizationId: orgId },
-    select: { id: true, key: true, label: true },
-    orderBy: { label: "asc" },
-  })
-
   return NextResponse.json({
-    mapping: integration.categoryMapping,
-    integrationName: integration.name,
-    costTypes,
+    mapping: result.integration.categoryMapping,
+    integrationName: result.integration.name,
+    costTypes: result.costTypes,
   })
 }
 
@@ -70,10 +68,12 @@ export async function POST(req: NextRequest) {
 
   const { integrationId, mapping } = data
 
-  const updated = await prisma.accountingIntegration.updateMany({
-    where: { id: integrationId, organizationId: orgId },
-    data: { categoryMapping: mapping },
-  })
+  const updated = await withOrgScope(orgId, (tx) =>
+    tx.accountingIntegration.updateMany({
+      where: { id: integrationId, organizationId: orgId },
+      data: { categoryMapping: mapping },
+    }),
+  )
 
   if (updated.count === 0) {
     return NextResponse.json({ error: "Integration not found" }, { status: 404 })

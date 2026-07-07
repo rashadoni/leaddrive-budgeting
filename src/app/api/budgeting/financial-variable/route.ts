@@ -20,7 +20,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+// Stage 3 RLS — `prisma` kept for lockedResponse's 423-audit + the two
+// fire-and-forget `void logAuditEvent` calls (must outlive the tx).
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getLogger } from "@/lib/log"
 import { logAuditEvent } from "@/lib/audit/log"
@@ -86,13 +89,20 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  // Stage 3 RLS — company check, lock, dup-guard, plan/account/BS writes in
+  // one org-scoped tx. Returns either a NextResponse (early exit) or the
+  // written payload; the heavy recomputeAfterDataChange runs AFTER commit.
+  const outcome = await withOrgScope(orgId, async (tx): Promise<
+    | { response: NextResponse }
+    | { row: { id: string; companyId: string | null; year: number; month: number; amount: number }; existing: boolean; companyCode: string | null; planId: string; accountId: string }
+  > => {
   // Cross-tenant guard — the company must belong to the caller's org.
-  const company = await prisma.company.findFirst({
+  const company = await tx.company.findFirst({
     where: { id: body.companyId, organizationId: orgId },
     select: { id: true, code: true },
   })
   if (!company) {
-    return NextResponse.json({ error: "Company not found" }, { status: 404 })
+    return { response: NextResponse.json({ error: "Company not found" }, { status: 404 }) }
   }
 
   // Period-lock guard — a BalanceSheetLine is a financial-statement row that
@@ -102,26 +112,30 @@ export async function POST(req: NextRequest) {
   // period → 423, no write. (Without this a manager could silently overwrite
   // inventory on a CFO-locked, audited year.)
   const lock = await findFirstActiveLockInPeriods(
-    prisma,
+    tx,
     orgId,
     containingPeriodKeys(body.year, 12),
   )
   if (lock) {
-    return lockedResponse(lock, {
-      prisma,
-      orgId,
-      userId: session.userId,
-      route: "POST /api/budgeting/financial-variable",
-    })
+    return {
+      response: lockedResponse(lock, {
+        prisma,
+        orgId,
+        userId: session.userId,
+        route: "POST /api/budgeting/financial-variable",
+      }),
+    }
   }
 
   // ── Pure validation → reject (hard bound) ───────────────────────────
   const check = validateFinancialValue(rule, body.value)
   if (!check.ok) {
-    return NextResponse.json(
-      { error: "Validation failed", errors: check.errors },
-      { status: 400 },
-    )
+    return {
+      response: NextResponse.json(
+        { error: "Validation failed", errors: check.errors },
+        { status: 400 },
+      ),
+    }
   }
 
   // ── Double-count guard (soft confirm) ───────────────────────────────
@@ -137,7 +151,7 @@ export async function POST(req: NextRequest) {
   // variables; today every variable is one.)
   const warnings = [...check.warnings]
   if (rule.model === "balanceSheetLine") {
-    const currentAssets = await prisma.balanceSheetLine.findMany({
+    const currentAssets = await tx.balanceSheetLine.findMany({
       where: {
         organizationId: orgId,
         companyId: body.companyId,
@@ -167,14 +181,14 @@ export async function POST(req: NextRequest) {
 
   const requiresConfirm = !body.forceConfirm && warnings.length > 0
   if (requiresConfirm) {
-    return NextResponse.json({ requiresConfirm: true, warnings }, { status: 200 })
+    return { response: NextResponse.json({ requiresConfirm: true, warnings }, { status: 200 }) }
   }
 
   // ── Find-or-create the year's actual plan ───────────────────────────
   // Plans are org-level (companyId lives on the lines). One kind="actual"
   // plan per org+year holds every company's actual lines; reuse it. Create a
   // minimal one only when the year has no actuals at all.
-  let plan = await prisma.budgetPlan.findFirst({
+  let plan = await tx.budgetPlan.findFirst({
     where: { organizationId: orgId, year: body.year, kind: "actual", deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true },
@@ -184,7 +198,7 @@ export async function POST(req: NextRequest) {
     // status), so this is correctness-safe — and honest. Do NOT stamp
     // "approved" on a plan no human approved (that would mislead a
     // provenance reviewer). Audited below so the auto-creation is traceable.
-    plan = await prisma.budgetPlan.create({
+    plan = await tx.budgetPlan.create({
       data: {
         organizationId: orgId,
         name: `${body.year} Actuals`,
@@ -220,7 +234,7 @@ export async function POST(req: NextRequest) {
   // ── Find-or-create the canonical CoA for this variable ──────────────
   // The resolver matches on account.name (not code), so the name must satisfy
   // the matcher; the code is the stable find-or-create key (org-unique).
-  const account = await prisma.chartOfAccount.upsert({
+  const account = await tx.chartOfAccount.upsert({
     where: { organizationId_code: { organizationId: orgId, code: rule.accountCode } },
     update: {},
     create: {
@@ -235,7 +249,7 @@ export async function POST(req: NextRequest) {
   // ── Upsert the balance-sheet row (year-end snapshot) ────────────────
   // No DB-level unique tuple → findFirst then update/create, mirroring the
   // edit-in-place semantic of /api/operational-facts.
-  const existing = await prisma.balanceSheetLine.findFirst({
+  const existing = await tx.balanceSheetLine.findFirst({
     where: {
       organizationId: orgId,
       companyId: body.companyId,
@@ -249,7 +263,7 @@ export async function POST(req: NextRequest) {
   })
 
   const row = existing
-    ? await prisma.balanceSheetLine.update({
+    ? await tx.balanceSheetLine.update({
         where: { id: existing.id },
         data: {
           amount: body.value,
@@ -257,7 +271,7 @@ export async function POST(req: NextRequest) {
         },
         select: { id: true, companyId: true, year: true, month: true, amount: true },
       })
-    : await prisma.balanceSheetLine.create({
+    : await tx.balanceSheetLine.create({
         data: {
           organizationId: orgId,
           planId: plan.id,
@@ -273,7 +287,7 @@ export async function POST(req: NextRequest) {
         select: { id: true, companyId: true, year: true, month: true, amount: true },
       })
 
-  // Audit — fire-and-forget; a failure must not roll back the write.
+  // Audit — fire-and-forget on the global client (must outlive this tx).
   void logAuditEvent(prisma, {
     organizationId: orgId,
     actorUserId: session.userId,
@@ -303,13 +317,18 @@ export async function POST(req: NextRequest) {
     })
   })
 
+  return { row, existing: !!existing, companyCode: company.code, planId: plan.id, accountId: account.id }
+  })
+
+  if ("response" in outcome) return outcome.response
+
   // Recompute the company's indicators for the year so the dependent indicator
-  // (e.g. FP_INVENTORY_TURNS) reflects the new figure immediately. Best-effort
-  // + serverless-safe synchronous (see helper).
+  // (e.g. FP_INVENTORY_TURNS) reflects the new figure immediately. Runs AFTER
+  // the write tx commits — it's heavy indicator work, never inside the tx.
   const recompute = await recomputeAfterDataChange(orgId, body.companyId, body.year)
 
   return NextResponse.json(
-    { row, recompute, unlocks: rule.unlocksIndicators },
-    { status: existing ? 200 : 201 },
+    { row: outcome.row, recompute, unlocks: rule.unlocksIndicators },
+    { status: outcome.existing ? 200 : 201 },
   )
 }

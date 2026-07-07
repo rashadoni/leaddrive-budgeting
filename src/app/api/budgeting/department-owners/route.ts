@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getSession, isAuthError } from "@/lib/api-auth"
 
 const assignOwnerSchema = z.object({
@@ -17,14 +17,16 @@ export async function GET(req: NextRequest) {
 
   const { orgId } = session
 
-  const owners = await prisma.budgetDepartmentOwner.findMany({
-    where: { organizationId: orgId },
-    include: {
-      budgetDept: { select: { id: true, key: true, label: true } },
-      user: { select: { id: true, name: true, email: true, role: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  })
+  const owners = await withOrgScope(orgId, (tx) =>
+    tx.budgetDepartmentOwner.findMany({
+      where: { organizationId: orgId },
+      include: {
+        budgetDept: { select: { id: true, key: true, label: true } },
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+  )
 
   return NextResponse.json(owners)
 }
@@ -57,31 +59,34 @@ export async function POST(req: NextRequest) {
   }
 
   const { departmentId, userId, canEdit, canApprove } = data
+  const orgId = session.orgId
 
-  const owner = await prisma.budgetDepartmentOwner.upsert({
-    where: {
-      organizationId_departmentId_userId: {
-        organizationId: session.orgId,
+  const owner = await withOrgScope(orgId, (tx) =>
+    tx.budgetDepartmentOwner.upsert({
+      where: {
+        organizationId_departmentId_userId: {
+          organizationId: orgId,
+          departmentId,
+          userId,
+        },
+      },
+      update: {
+        canEdit: canEdit ?? true,
+        canApprove: canApprove ?? false,
+      },
+      create: {
+        organizationId: orgId,
         departmentId,
         userId,
+        canEdit: canEdit ?? true,
+        canApprove: canApprove ?? false,
       },
-    },
-    update: {
-      canEdit: canEdit ?? true,
-      canApprove: canApprove ?? false,
-    },
-    create: {
-      organizationId: session.orgId,
-      departmentId,
-      userId,
-      canEdit: canEdit ?? true,
-      canApprove: canApprove ?? false,
-    },
-    include: {
-      budgetDept: { select: { id: true, key: true, label: true } },
-      user: { select: { id: true, name: true, email: true, role: true } },
-    },
-  })
+      include: {
+        budgetDept: { select: { id: true, key: true, label: true } },
+        user: { select: { id: true, name: true, email: true, role: true } },
+      },
+    }),
+  )
 
   return NextResponse.json(owner, { status: 201 })
 }
@@ -102,9 +107,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "id is required" }, { status: 400 })
   }
 
-  await prisma.budgetDepartmentOwner.deleteMany({
-    where: { id, organizationId: session.orgId },
-  })
+  await withOrgScope(session.orgId, (tx) =>
+    tx.budgetDepartmentOwner.deleteMany({
+      where: { id, organizationId: session.orgId },
+    }),
+  )
 
   return NextResponse.json({ success: true })
 }
