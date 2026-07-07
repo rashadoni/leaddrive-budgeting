@@ -30,7 +30,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { withOrgScope } from "@/lib/db/with-org-scope";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { intelItemToDTO } from "@/lib/intel/types";
 
@@ -54,33 +54,31 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid intel id" }, { status: 400 });
   }
 
-  const existing = await prisma.intelItem.findFirst({
-    where: { id, organizationId: orgId },
+  // Stage 3 RLS — lookup + dedup-append update in one org-scoped tx. The
+  // idempotent no-op path returns the unchanged row (no write).
+  const result = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.intelItem.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!existing) return { item: null };
+    // Idempotent: if already dismissed, return unchanged.
+    if (existing.dismissedBy.includes(userId)) return { item: existing };
+    // Set the deduped array. Prisma's `push` operator would also work
+    // (atomic Postgres `array_append`) but doesn't dedup — re-dismiss
+    // races could leave a duplicate. The set-deduped approach converges
+    // to the same final array regardless of write order.
+    const updated = await tx.intelItem.update({
+      where: { id },
+      data: { dismissedBy: { set: [...existing.dismissedBy, userId] } },
+    });
+    return { item: updated };
   });
-  if (!existing) {
+  if (!result.item) {
     return NextResponse.json({ error: "Intel item not found" }, { status: 404 });
   }
 
-  // Idempotent: if already dismissed, return unchanged. Skips the DB
-  // round-trip in the common case where a user re-clicks dismiss.
-  if (existing.dismissedBy.includes(userId)) {
-    return NextResponse.json(
-      { item: intelItemToDTO(existing, userId) },
-      { status: 200, headers: { "Cache-Control": "private, no-store" } },
-    );
-  }
-
-  // Set the deduped array. Prisma's `push` operator would also work
-  // (atomic Postgres `array_append`) but doesn't dedup — re-dismiss
-  // races could leave a duplicate. The set-deduped approach above
-  // converges to the same final array regardless of write order.
-  const updated = await prisma.intelItem.update({
-    where: { id },
-    data: { dismissedBy: { set: [...existing.dismissedBy, userId] } },
-  });
-
   return NextResponse.json(
-    { item: intelItemToDTO(updated, userId) },
+    { item: intelItemToDTO(result.item, userId) },
     { status: 200, headers: { "Cache-Control": "private, no-store" } },
   );
 }

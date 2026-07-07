@@ -21,7 +21,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z, ZodError } from "zod";
-import { prisma } from "@/lib/prisma";
+import { withOrgScope } from "@/lib/db/with-org-scope";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { intelItemToDTO } from "@/lib/intel/types";
 
@@ -67,23 +67,24 @@ export async function POST(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  // Ownership check FIRST — `updateMany` would let a cross-tenant id
-  // succeed silently with `count: 0`. We want an explicit 404 on miss
-  // (mirrors the variance-explainer pattern at
-  // `src/app/api/indicators/values/[id]/explain/route.ts:106-138`).
-  const existing = await prisma.intelItem.findFirst({
-    where: { id, organizationId: orgId },
+  // Stage 3 RLS — ownership check + update in one org-scoped tx. The
+  // findFirst-then-update (not updateMany) still yields an explicit 404 on
+  // a cross-tenant/missing id rather than a silent count:0.
+  const updated = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.intelItem.findFirst({
+      where: { id, organizationId: orgId },
+    });
+    if (!existing) return null;
+    // Idempotent on no-op — Prisma still emits the UPDATE but the row is
+    // unchanged. Acceptable; no-op pins are rare in practice.
+    return tx.intelItem.update({
+      where: { id },
+      data: { isPinned: parsed.pinned },
+    });
   });
-  if (!existing) {
+  if (!updated) {
     return NextResponse.json({ error: "Intel item not found" }, { status: 404 });
   }
-
-  // Idempotent on no-op — Prisma still emits the UPDATE but the row is
-  // unchanged. Acceptable; no-op pins are rare in practice.
-  const updated = await prisma.intelItem.update({
-    where: { id },
-    data: { isPinned: parsed.pinned },
-  });
 
   return NextResponse.json(
     { item: intelItemToDTO(updated, session.userId) },

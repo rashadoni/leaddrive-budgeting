@@ -14,7 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 
 const QuerySchema = z.object({
@@ -56,12 +56,14 @@ export async function GET(req: NextRequest) {
   if (parsed.data.metric) where.metric = parsed.data.metric
 
   try {
-    const rows = await prisma.intelDataPoint.findMany({
-      where,
-      orderBy: { datetime: "asc" },
-      take: parsed.data.limit,
-      select: { metric: true, datetime: true, value: true, unit: true },
-    })
+    const rows = await withOrgScope(session.orgId, (tx) =>
+      tx.intelDataPoint.findMany({
+        where,
+        orderBy: { datetime: "asc" },
+        take: parsed.data.limit,
+        select: { metric: true, datetime: true, value: true, unit: true },
+      }),
+    )
     return NextResponse.json({ rows })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

@@ -26,6 +26,11 @@ const { prismaMock, hasAnthropicKeyMock, runMorningBriefMock, logAuditEventMock,
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+// Stage 3 RLS — hand the mock straight to the scope callback.
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+    fn(prismaMock),
+}))
 vi.mock("@/lib/ai/client", () => ({ hasAnthropicKey: hasAnthropicKeyMock }))
 vi.mock("@/lib/intel/morning-brief", () => ({
   runMorningBrief: runMorningBriefMock,

@@ -19,7 +19,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createHash } from "node:crypto"
+// Stage 3 RLS — `prisma` kept for the awaited audit write; the enrichment
+// read below runs inside withOrgScope, the LLM call after.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
@@ -222,12 +225,14 @@ export async function POST(request: NextRequest) {
     ...shaped.topMovers.map((m) => m.companyCode),
   ])
   if (referencedCodes.size > 0) {
-    const rows = await prisma.company.findMany({
-      where: { organizationId: orgId, code: { in: [...referencedCodes] } },
-      // Phase 7.N wiring: include `settings` so we can surface
-      // qualitative riskTags to the LLM narrative.
-      select: { code: true, name: true, industry: true, settings: true },
-    })
+    const rows = await withOrgScope(orgId, (tx) =>
+      tx.company.findMany({
+        where: { organizationId: orgId, code: { in: [...referencedCodes] } },
+        // Phase 7.N wiring: include `settings` so we can surface
+        // qualitative riskTags to the LLM narrative.
+        select: { code: true, name: true, industry: true, settings: true },
+      }),
+    )
     const companies: Record<string, {
       name: string
       industry: string | null

@@ -24,7 +24,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit write; the
+// company read below runs inside withOrgScope, the crawler (runIntelCrawl,
+// which manages its own DB writes) after.
 import { prisma } from "@/lib/prisma";
+import { withOrgScope } from "@/lib/db/with-org-scope";
 import { requireRole, isAuthError } from "@/lib/api-auth";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { hasAnthropicKey } from "@/lib/ai/client";
@@ -75,10 +79,12 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError;
 
   const companies: Array<{ code: string; industry: string | null }> =
-    await prisma.company.findMany({
-      where: { organizationId: orgId, isActive: true },
-      select: { code: true, industry: true },
-    });
+    await withOrgScope(orgId, (tx) =>
+      tx.company.findMany({
+        where: { organizationId: orgId, isActive: true },
+        select: { code: true, industry: true },
+      }),
+    );
 
   // Distinct, non-null derivations. Set preserves insertion order for
   // industries (irrelevant — the LLM doesn't depend on order — but

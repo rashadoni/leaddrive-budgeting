@@ -36,7 +36,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { IntelItem } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { intelItemToDTO } from '@/lib/intel/types';
 
@@ -176,14 +176,16 @@ export async function GET(request: NextRequest) {
     where.NOT = { dismissedBy: { has: userId } };
   }
 
-  const rows = await prisma.intelItem.findMany({
-    where,
-    orderBy: [
-      { fetchedAt: 'desc' },
-      { id: 'desc' },
-    ],
-    take: limit + 1,
-  });
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.intelItem.findMany({
+      where,
+      orderBy: [
+        { fetchedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limit + 1,
+    }),
+  );
 
   const hasMore = rows.length > limit;
   const slice = hasMore ? rows.slice(0, limit) : rows;

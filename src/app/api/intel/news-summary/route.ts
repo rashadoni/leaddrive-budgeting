@@ -13,7 +13,10 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { createHash } from "node:crypto"
+// Stage 3 RLS — `prisma` kept for the fire-and-forget audit write; the item
+// + scope-company reads below run inside withOrgScope, the LLM call after.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { enforceRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasAnthropicKey } from "@/lib/ai/client"
@@ -80,28 +83,30 @@ export async function GET(request: NextRequest) {
     ? (url.searchParams.get("language") as NewsSummaryLanguage)
     : "en"
 
-  // Fetch recent intel items (org-scoped).
+  // Fetch recent intel items (org-scoped). Stage 3 RLS — scope tx.
   const since = new Date(Date.now() - ITEMS_LOOKBACK_HOURS * 60 * 60 * 1000)
-  const items = await prisma.intelItem.findMany({
-    where: {
-      organizationId: orgId,
-      fetchedAt: { gte: since },
-      relevanceScore: { gte: 0.4 },
-    },
-    select: {
-      id: true,
-      title: true,
-      summary: true,
-      url: true,
-      sourceLabel: true,
-      relevanceScore: true,
-      industryTags: true,
-      companyTags: true,
-      publishedAt: true,
-    },
-    orderBy: [{ relevanceScore: "desc" }, { fetchedAt: "desc" }],
-    take: MAX_ITEMS_TO_LLM,
-  })
+  const items = await withOrgScope(orgId, (tx) =>
+    tx.intelItem.findMany({
+      where: {
+        organizationId: orgId,
+        fetchedAt: { gte: since },
+        relevanceScore: { gte: 0.4 },
+      },
+      select: {
+        id: true,
+        title: true,
+        summary: true,
+        url: true,
+        sourceLabel: true,
+        relevanceScore: true,
+        industryTags: true,
+        companyTags: true,
+        publishedAt: true,
+      },
+      orderBy: [{ relevanceScore: "desc" }, { fetchedAt: "desc" }],
+      take: MAX_ITEMS_TO_LLM,
+    }),
+  )
 
   // Phase 7.F sub-group RBAC — drop items whose companyTags only point
   // outside the user's scope. Items with no companyTags (pure macro) pass
@@ -111,10 +116,12 @@ export async function GET(request: NextRequest) {
   if (scope.ids != null) {
     // Resolve company codes → ids for the user's scope companies, since
     // companyTags carry codes (AAC, ATL) not ids.
-    const scopeCompanies = await prisma.company.findMany({
-      where: { id: { in: Array.from(scope.ids) }, organizationId: orgId },
-      select: { code: true },
-    })
+    const scopeCompanies = await withOrgScope(orgId, (tx) =>
+      tx.company.findMany({
+        where: { id: { in: Array.from(scope.ids!) }, organizationId: orgId },
+        select: { code: true },
+      }),
+    )
     type C = (typeof scopeCompanies)[number]
     const allowedCodes = new Set(
       (scopeCompanies as C[]).map((c) => c.code),

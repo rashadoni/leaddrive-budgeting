@@ -147,6 +147,19 @@ per RLS_RUNBOOK §1.
 
 ## Progress log
 
+- 2026-07-07 — **S3 wave 5 — intel domain (119 wrapped, NO new opt-outs).**
+  Clean-wrapped: intel (keyset findMany), intel/[id]/dismiss (findFirst +
+  dedup-append update atomic; idempotent no-op returns unchanged row),
+  intel/[id]/pin (findFirst + update atomic; still explicit 404 on cross-tenant),
+  intel/data-points (findMany inside the existing try/catch — a missing-table
+  throw still degrades to `{rows:[], stale:true}`). The three AI routes are
+  PARTIAL wraps (not opt-outs): morning-brief (company enrichment read scoped;
+  runMorningBrief LLM + awaited audit after), news-summary (intelItem +
+  scope-company reads scoped; runNewsSummary + fire-forget audit after), refresh
+  (active-company read scoped; runIntelCrawl crawler — manages its own writes —
+  + fire-forget audit after). Audits stay on the global client. 7 handler tests
+  gained the withOrgScope mock. Scan: 119 wrapped / 26 clean / 7 opted-out / 27
+  unwrapped. Gates: tsc 0; full vitest 6298; RLS leak 10/10.
 - 2026-07-07 — **S3 wave 4 — indicators domain (112 wrapped).** Clean-wrapped:
   breaches (getPredictiveBreaches now takes a tx via `opts.prisma` — its type
   loosened to `PrismaClient | Prisma.TransactionClient` — plus company name read
