@@ -34,6 +34,9 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { DELETE } from "./route"
@@ -102,13 +105,18 @@ describe("DELETE /api/budgeting/plans/[id]/purge", () => {
     )
   })
 
-  it("200 happy path fires $transaction with cascade deletes", async () => {
+  it("200 happy path runs the cascade deletes sequentially in the scope tx", async () => {
     await mockSession({ orgId: ORG_ID, userId: "u_admin", role: "admin" })
     const res = await DELETE(
       makeRequest("/api/budgeting/plans/p1/purge", { method: "DELETE" }),
       { params: Promise.resolve({ id: "p1" }) },
     )
     expect(res.status).toBe(200)
-    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1)
+    // Stage 3 RLS — the former $transaction([array]) is now a sequential
+    // deleteMany chain inside withOrgScope, ending with the plan delete.
+    expect(prismaMock.budgetForecastEntry.deleteMany).toHaveBeenCalledWith({ where: { planId: "p1" } })
+    expect(prismaMock.budgetLine.deleteMany).toHaveBeenCalledWith({ where: { planId: "p1" } })
+    expect(prismaMock.budgetChangeLog.deleteMany).toHaveBeenCalledWith({ where: { planId: "p1" } })
+    expect(prismaMock.budgetPlan.delete).toHaveBeenCalledWith({ where: { id: "p1" } })
   })
 })

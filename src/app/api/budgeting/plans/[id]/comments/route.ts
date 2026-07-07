@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z, ZodError } from "zod"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getSession } from "@/lib/api-auth"
 
 const commentSchema = z.object({
@@ -18,10 +18,13 @@ export async function GET(
 
   const { id: planId } = await params
 
-  const comments = await prisma.budgetApprovalComment.findMany({
-    where: { planId, organizationId: session.orgId },
-    orderBy: { createdAt: "asc" },
-  })
+  const orgId = session.orgId
+  const comments = await withOrgScope(orgId, (tx) =>
+    tx.budgetApprovalComment.findMany({
+      where: { planId, organizationId: orgId },
+      orderBy: { createdAt: "asc" },
+    }),
+  )
 
   return NextResponse.json(comments)
 }
@@ -54,25 +57,29 @@ export async function POST(
   }
 
   const { comment, status } = data
+  const orgId = session.orgId
 
-  // Verify plan exists and belongs to org
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: session.orgId },
+  const created = await withOrgScope(orgId, async (tx) => {
+    // Verify plan exists and belongs to org
+    const plan = await tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId },
+    })
+    if (!plan) return null
+
+    return tx.budgetApprovalComment.create({
+      data: {
+        organizationId: orgId,
+        planId,
+        userId: session.userId,
+        userName: session.name,
+        status: status || "comment",
+        comment,
+      },
+    })
   })
-  if (!plan) {
+  if (!created) {
     return NextResponse.json({ error: "Plan not found" }, { status: 404 })
   }
-
-  const created = await prisma.budgetApprovalComment.create({
-    data: {
-      organizationId: session.orgId,
-      planId,
-      userId: session.userId,
-      userName: session.name,
-      status: status || "comment",
-      comment,
-    },
-  })
 
   return NextResponse.json(created, { status: 201 })
 }

@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 
 export async function GET(
@@ -41,62 +41,61 @@ export async function GET(
     return NextResponse.json({ error: "Invalid plan id" }, { status: 400 })
   }
 
-  // Cross-tenant guard — confirm the plan belongs to caller's org
-  // before leaking BudgetLine companyIds.
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id, organizationId: session.orgId, deletedAt: null },
-    select: { id: true },
+  const orgId = session.orgId
+  // Stage 3 RLS — plan guard + line/company reads in one org-scoped tx.
+  const result = await withOrgScope(orgId, async (tx) => {
+    // Cross-tenant guard — confirm the plan belongs to caller's org
+    // before leaking BudgetLine companyIds.
+    const plan = await tx.budgetPlan.findFirst({
+      where: { id, organizationId: orgId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!plan) return null
+
+    // Distinct companyIds across the plan's BudgetLines. `companyId` is
+    // nullable on the model (legacy lines) — drop nulls.
+    const rows = await tx.budgetLine.findMany({
+      where: {
+        organizationId: orgId,
+        planId: id,
+        companyId: { not: null },
+        deletedAt: null,
+      },
+      distinct: ["companyId"],
+      select: { companyId: true },
+    })
+
+    const leafIds = rows
+      .map((r: { companyId: string | null }) => r.companyId)
+      .filter((v: string | null): v is string => typeof v === "string")
+
+    // Walk up the parentCompanyId chain to include every ancestor.
+    let parentIds: string[] = []
+    if (leafIds.length > 0) {
+      const cos = await tx.company.findMany({
+        where: { organizationId: orgId, id: { in: leafIds } },
+        select: { parentCompanyId: true },
+      })
+      parentIds = cos
+        .map((c: { parentCompanyId: string | null }) => c.parentCompanyId)
+        .filter((v: string | null): v is string => typeof v === "string")
+    }
+    // Grandparent hop (holding level above sub-group).
+    let grandparentIds: string[] = []
+    if (parentIds.length > 0) {
+      const cos = await tx.company.findMany({
+        where: { organizationId: orgId, id: { in: parentIds } },
+        select: { parentCompanyId: true },
+      })
+      grandparentIds = cos
+        .map((c: { parentCompanyId: string | null }) => c.parentCompanyId)
+        .filter((v: string | null): v is string => typeof v === "string")
+    }
+
+    return Array.from(new Set([...leafIds, ...parentIds, ...grandparentIds]))
   })
-  if (!plan) {
+  if (!result) {
     return NextResponse.json({ error: "Plan not found" }, { status: 404 })
   }
-
-  // Distinct companyIds across the plan's BudgetLines. `companyId` is
-  // nullable on the model (legacy lines from before the company
-  // refactor) — we drop nulls because a "no-company" line can't
-  // anchor a dropdown row.
-  const rows = await prisma.budgetLine.findMany({
-    where: {
-      organizationId: session.orgId,
-      planId: id,
-      companyId: { not: null },
-      deletedAt: null,
-    },
-    distinct: ["companyId"],
-    select: { companyId: true },
-  })
-
-  const leafIds = rows
-    .map((r: { companyId: string | null }) => r.companyId)
-    .filter((v: string | null): v is string => typeof v === "string")
-
-  // Walk up the parentCompanyId chain to include every ancestor.
-  // Two hops covers the holding tree depth today (level=1 sub-groups
-  // → level=2 ops). Doing it as one findMany scoped to the org keeps
-  // the call O(1).
-  let parentIds: string[] = []
-  if (leafIds.length > 0) {
-    const cos = await prisma.company.findMany({
-      where: { organizationId: session.orgId, id: { in: leafIds } },
-      select: { parentCompanyId: true },
-    })
-    parentIds = cos
-      .map((c: { parentCompanyId: string | null }) => c.parentCompanyId)
-      .filter((v: string | null): v is string => typeof v === "string")
-  }
-  // Grandparent hop (holding level above sub-group) — guards against
-  // future 3-level tree without forcing recursion.
-  let grandparentIds: string[] = []
-  if (parentIds.length > 0) {
-    const cos = await prisma.company.findMany({
-      where: { organizationId: session.orgId, id: { in: parentIds } },
-      select: { parentCompanyId: true },
-    })
-    grandparentIds = cos
-      .map((c: { parentCompanyId: string | null }) => c.parentCompanyId)
-      .filter((v: string | null): v is string => typeof v === "string")
-  }
-
-  const all = Array.from(new Set([...leafIds, ...parentIds, ...grandparentIds]))
-  return NextResponse.json({ companyIds: all })
+  return NextResponse.json({ companyIds: result })
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 interface DiffLine {
   category: string
@@ -28,10 +28,11 @@ export async function GET(
     return NextResponse.json({ error: "compareWith query parameter required" }, { status: 400 })
   }
 
-  const [linesA, linesB] = await Promise.all([
-    prisma.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
-    prisma.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } }),
-  ])
+  const { linesA, linesB } = await withOrgScope(orgId, async (tx) => {
+    const linesA = await tx.budgetLine.findMany({ where: { planId: planIdA, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
+    const linesB = await tx.budgetLine.findMany({ where: { planId: planIdB, organizationId: orgId, deletedAt: null }, include: { account: { select: { code: true, name: true } } } })
+    return { linesA, linesB }
+  })
 
   // Build maps by composite key: account.code + department + lineType
   const keyFn = (l: any) => `${l.account?.code ?? ""}||${l.department || ""}||${l.lineType}`

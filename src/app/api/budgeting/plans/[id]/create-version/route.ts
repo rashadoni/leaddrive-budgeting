@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { requireRole } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { getActivePeriodLock, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 
@@ -26,8 +28,14 @@ export async function POST(
   const { id: planId } = await params
   const { orgId, userId } = session
 
+  // Stage 3 RLS — read, lock check, snapshot, clone-plan + clone-lines in
+  // one org-scoped tx (30s: the clone loop is bounded by the plan's line
+  // count).
+  return withOrgScope(
+    orgId,
+    async (tx) => {
   // Find original plan
-  const plan: PlanWithLines | null = await prisma.budgetPlan.findFirst({
+  const plan: PlanWithLines | null = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
     // deletedAt:null (2026-05-31): clone/snapshot only LIVE lines — without it,
     // archived (soft-deleted) budget lines get copied into the new version and
@@ -39,7 +47,7 @@ export async function POST(
   // Phase 7.G Turn LXIX architect Round-1 ⚠️ closure — period-lock guard
   // (create-version writes snapshotData on the existing plan AND clones
   // it as a new versioned plan, both into the period container).
-  const lock = await getActivePeriodLock(prisma, orgId, derivePeriodKey(plan))
+  const lock = await getActivePeriodLock(tx, orgId, derivePeriodKey(plan))
   if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/plans/[id]/create-version" })
 
   // Snapshot current plan state
@@ -63,7 +71,7 @@ export async function POST(
   }
 
   // Save snapshot to current plan
-  await prisma.budgetPlan.update({
+  await tx.budgetPlan.update({
     where: { id: planId },
     data: { snapshotData: snapshot },
   })
@@ -74,7 +82,7 @@ export async function POST(
   const currentVersion = plan.version || 1
 
   // Clone plan with incremented version
-  const newPlan = await prisma.budgetPlan.create({
+  const newPlan = await tx.budgetPlan.create({
     data: {
       organizationId: orgId,
       name: plan.name,
@@ -92,7 +100,7 @@ export async function POST(
 
   // Clone all lines
   for (const line of plan.lines) {
-    await prisma.budgetLine.create({
+    await tx.budgetLine.create({
       data: {
         organizationId: orgId,
         planId: newPlan.id,
@@ -119,4 +127,7 @@ export async function POST(
   }
 
   return NextResponse.json({ success: true, data: newPlan }, { status: 201 })
+    },
+    { timeoutMs: 30_000 },
+  )
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 // GET — list all versions in the chain for a plan
 export async function GET(
@@ -12,36 +12,36 @@ export async function GET(
 
   const { id: planId } = await params
 
-  // Find the plan to get the root
-  const plan = await prisma.budgetPlan.findFirst({
-    where: { id: planId, organizationId: orgId },
-  })
-  if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
+  const versions = await withOrgScope(orgId, async (tx) => {
+    // Find the plan to get the root
+    const plan = await tx.budgetPlan.findFirst({
+      where: { id: planId, organizationId: orgId },
+    })
+    if (!plan) return null
 
-  const rootId = (plan as any).amendmentOf || plan.id
+    const rootId = (plan as any).amendmentOf || plan.id
 
-  // Find all plans in the version chain
-  const versions = await prisma.budgetPlan.findMany({
-    where: {
-      organizationId: orgId,
-      OR: [
-        { id: rootId },
-        { amendmentOf: rootId },
-      ],
-    },
-    select: {
-      id: true,
-      name: true,
-      status: true,
-      version: true,
-      versionLabel: true,
-      amendmentOf: true,
-      createdAt: true,
-      approvedAt: true,
-      approvedBy: true,
-    },
-    orderBy: { version: "asc" },
+    // Find all plans in the version chain
+    return tx.budgetPlan.findMany({
+      where: {
+        organizationId: orgId,
+        OR: [{ id: rootId }, { amendmentOf: rootId }],
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        version: true,
+        versionLabel: true,
+        amendmentOf: true,
+        createdAt: true,
+        approvedAt: true,
+        approvedBy: true,
+      },
+      orderBy: { version: "asc" },
+    })
   })
+  if (!versions) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   return NextResponse.json(versions)
 }
