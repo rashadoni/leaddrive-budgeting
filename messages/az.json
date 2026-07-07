@@ -4322,6 +4322,13 @@
     },
     "calendar": {
       "title": "Promo-təqvim"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "campaigns": "Kampaniyalar",
+      "spend": "Xərc jurnalı",
+      "budget": "Büdcə",
+      "master": "Master data"
     }
   }
 }

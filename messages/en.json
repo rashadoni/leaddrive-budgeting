@@ -4322,6 +4322,13 @@
     },
     "calendar": {
       "title": "Promo calendar"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "campaigns": "Campaigns",
+      "spend": "Spend ledger",
+      "budget": "Budget",
+      "master": "Master data"
     }
   }
 }
