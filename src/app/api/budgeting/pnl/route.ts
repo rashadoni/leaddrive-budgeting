@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { Prisma } from "@prisma/client"
 import { getSession } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { resolveCompanyFilter } from "@/lib/budgeting/company-filter"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { looksLikeCode } from "@/lib/import/keywords"
@@ -80,8 +80,12 @@ export async function GET(req: NextRequest) {
   const yearOverride = searchParams.get("year")
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
 
+  // Stage 3 RLS — the whole aggregation reads run in one org-scoped tx.
+  // getCompanyScope resolves via prismaAdmin (auth-adjacent) so it stays
+  // outside the tx contract; every model read below uses `tx`.
+  return withOrgScope(orgId, async (tx) => {
   // Resolve plan year up-front — we need it to filter actuals by expenseDate.
-  const plan = await prisma.budgetPlan.findFirst({
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, deletedAt: null },
     select: { id: true, name: true, year: true, kind: true },
   })
@@ -90,7 +94,7 @@ export async function GET(req: NextRequest) {
   const activeKind = plan.kind === "actual" || plan.kind === "budget" ? plan.kind : "legacy"
   const counterpartKind = activeKind === "actual" ? "budget" : activeKind === "budget" ? "actual" : null
   const counterpartPlan = counterpartKind
-    ? await prisma.budgetPlan.findFirst({
+    ? await tx.budgetPlan.findFirst({
         where: { organizationId: orgId, year, kind: counterpartKind, deletedAt: null },
         orderBy: { createdAt: "asc" },
         select: { id: true, name: true, year: true, kind: true },
@@ -101,7 +105,7 @@ export async function GET(req: NextRequest) {
   // null/undefined → org-wide consolidated; level=2 → single op-co;
   // level=1 → expand to children. Cross-tenant id → 404.
   const companyIdParam = searchParams.get("companyId")
-  const companyFilter = await resolveCompanyFilter(prisma, orgId, companyIdParam)
+  const companyFilter = await resolveCompanyFilter(tx, orgId, companyIdParam)
   if (companyFilter.kind === "not_found") {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
@@ -153,35 +157,33 @@ export async function GET(req: NextRequest) {
   // + cOGSBudgetLine here with a productLine join, but their results were never
   // read — two dead per-request queries removed 2026-06-29; the P&L is built
   // entirely from budgetLines + actuals below.)
-  const [budgetLines, actuals] = await Promise.all([
-    prisma.budgetLine.findMany({
-      where: { ...blWhere, planId },
-      // Narrow select (FK'd account included) so reads prefer canonical
-      // code/name from the Chart of Accounts over the denormalised
-      // category/department strings — only the columns the aggregation uses.
-      select: BUDGET_LINE_SELECT,
-    }),
-    prisma.budgetActual.findMany({
-      // Turn 35: per-company filter applies to actuals too. Pre-Turn-35
-      // actuals lacked companyId column → filter was silently global,
-      // making per-daughter-company drilldown show org-wide actuals
-      // against per-company plan (nonsense variance %). companyId
-      // populated by Turn-35+ seed/import paths; legacy nullable
-      // actuals fall through global aggregation.
-      where: companyFilter.kind === "single"
-        ? { organizationId: orgId, planId, companyId: { in: companyFilter.companyIds } }
-        : { organizationId: orgId, planId },
-      select: {
-        category: true,
-        department: true,
-        lineType: true,
-        actualAmount: true,
-        expenseDate: true,
-      },
-    }),
-  ])
+  const budgetLines = await tx.budgetLine.findMany({
+    where: { ...blWhere, planId },
+    // Narrow select (FK'd account included) so reads prefer canonical
+    // code/name from the Chart of Accounts over the denormalised
+    // category/department strings — only the columns the aggregation uses.
+    select: BUDGET_LINE_SELECT,
+  })
+  const actuals = await tx.budgetActual.findMany({
+    // Turn 35: per-company filter applies to actuals too. Pre-Turn-35
+    // actuals lacked companyId column → filter was silently global,
+    // making per-daughter-company drilldown show org-wide actuals
+    // against per-company plan (nonsense variance %). companyId
+    // populated by Turn-35+ seed/import paths; legacy nullable
+    // actuals fall through global aggregation.
+    where: companyFilter.kind === "single"
+      ? { organizationId: orgId, planId, companyId: { in: companyFilter.companyIds } }
+      : { organizationId: orgId, planId },
+    select: {
+      category: true,
+      department: true,
+      lineType: true,
+      actualAmount: true,
+      expenseDate: true,
+    },
+  })
   const counterpartBudgetLines = counterpartPlan
-    ? await prisma.budgetLine.findMany({
+    ? await tx.budgetLine.findMany({
         where: { ...blWhere, planId: counterpartPlan.id },
         select: BUDGET_LINE_SELECT,
       })
@@ -467,6 +469,7 @@ export async function GET(req: NextRequest) {
     },
     year,
     hasActuals: hasActualRowsForYear,
+  })
   })
 }
 

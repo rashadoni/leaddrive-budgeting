@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getOrgId } from "@/lib/api-auth"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 
 /**
  * Lightweight per-org tab-availability probe used by the sidebar to hide
@@ -22,6 +22,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
+  // Stage 3 RLS — the presence probe runs in one org-scoped tx. Queries
+  // are issued sequentially (an interactive tx serializes on one
+  // connection; the prior Promise.all parallelism doesn't apply).
   const [
     budgetLines,
     budgetRevenueLines,
@@ -34,22 +37,24 @@ export async function GET(req: NextRequest) {
     salesForecast,
     expenseForecast,
     rolling,
-  ] = await Promise.all([
+  ] = await withOrgScope(orgId, async (tx) => {
     // deletedAt:null on the 3 soft-delete tables (BudgetLine, BalanceSheetLine,
     // CashFlowEntry) so the tab-availability presence check reflects LIVE rows,
     // not archived ones (2026-05-31). The other tables have no soft-delete column.
-    prisma.budgetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
-    prisma.budgetLine.count({ where: { organizationId: orgId, lineType: "revenue", deletedAt: null } }),
-    prisma.budgetLine.count({ where: { organizationId: orgId, lineType: "cogs", deletedAt: null } }),
-    prisma.salesBudgetLine.count({ where: { organizationId: orgId } }),
-    prisma.cOGSBudgetLine.count({ where: { organizationId: orgId } }),
-    prisma.balanceSheetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
-    prisma.cashFlowEntry.count({ where: { organizationId: orgId, deletedAt: null } }),
-    prisma.budgetAssumption.count({ where: { organizationId: orgId } }),
-    prisma.salesForecast.count({ where: { organizationId: orgId } }),
-    prisma.expenseForecast.count({ where: { organizationId: orgId } }),
-    prisma.rollingForecastMonth.count({ where: { organizationId: orgId } }),
-  ])
+    return [
+      await tx.budgetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
+      await tx.budgetLine.count({ where: { organizationId: orgId, lineType: "revenue", deletedAt: null } }),
+      await tx.budgetLine.count({ where: { organizationId: orgId, lineType: "cogs", deletedAt: null } }),
+      await tx.salesBudgetLine.count({ where: { organizationId: orgId } }),
+      await tx.cOGSBudgetLine.count({ where: { organizationId: orgId } }),
+      await tx.balanceSheetLine.count({ where: { organizationId: orgId, deletedAt: null } }),
+      await tx.cashFlowEntry.count({ where: { organizationId: orgId, deletedAt: null } }),
+      await tx.budgetAssumption.count({ where: { organizationId: orgId } }),
+      await tx.salesForecast.count({ where: { organizationId: orgId } }),
+      await tx.expenseForecast.count({ where: { organizationId: orgId } }),
+      await tx.rollingForecastMonth.count({ where: { organizationId: orgId } }),
+    ] as const
+  })
 
   return NextResponse.json(
     {

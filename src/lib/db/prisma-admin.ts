@@ -30,6 +30,13 @@ let warned = false
 
 export function getPrismaAdmin(): typeof defaultPrisma {
   if (cached) return cached
+  // Stage 3 RLS — unit tests mock `@/lib/prisma`; hand them the mocked
+  // client instead of spinning a real DATABASE_URL_ADMIN connection just
+  // because the runner's env carries it (mirrors prisma-app.ts).
+  if (process.env.NODE_ENV === "test" || process.env.VITEST) {
+    cached = defaultPrisma
+    return cached
+  }
   const adminUrl = process.env.DATABASE_URL_ADMIN
   if (!adminUrl) {
     if (!warned) {

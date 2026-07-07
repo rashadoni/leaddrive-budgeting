@@ -17,7 +17,13 @@
  * a sub-group reassignment surfaces immediately on the next call).
  */
 
-import { prisma } from "@/lib/prisma"
+// Stage 3 RLS — RBAC scope resolution is auth-adjacent (it reads the
+// caller's own user record + their allowed companies to compute access)
+// and runs BEFORE a route opens its withOrgScope tx. It uses the
+// BYPASSRLS admin client with explicit organizationId filters, mirroring
+// the session/auth path, so every consuming route keeps working after the
+// Stage-3 env-flip without threading a tx through this shared helper.
+import { prismaAdmin as prisma } from "@/lib/db/prisma-admin"
 
 export interface CompanyScope {
   /** Null = unrestricted; Set = explicit allow-list. */

@@ -28,6 +28,9 @@ const { prismaMock } = vi.hoisted(() => ({
 
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }))
 vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }))
+vi.mock("@/lib/db/with-org-scope", () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
+}))
 
 import { mockSession, makeRequest } from "@/test/api-harness"
 import { GET, POST } from "./route"

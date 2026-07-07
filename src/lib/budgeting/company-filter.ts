@@ -23,7 +23,7 @@
  * guessed/copied companyIds.
  */
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 
 export type CompanyFilterResult =
   | { kind: "all" }
@@ -31,7 +31,9 @@ export type CompanyFilterResult =
   | { kind: "not_found" };
 
 export async function resolveCompanyFilter(
-  prisma: PrismaClient,
+  // Stage 3 RLS — accept a TransactionClient so callers wrapped in
+  // withOrgScope thread their tx (only model delegates used below).
+  prisma: PrismaClient | Prisma.TransactionClient,
   orgId: string,
   companyId: string | null | undefined,
 ): Promise<CompanyFilterResult> {

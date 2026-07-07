@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
+import type { Prisma } from "@prisma/client"
 import { getOrgId, getSession } from "@/lib/api-auth"
+// Stage 3 RLS — `prisma` kept ONLY for lockedResponse's 423-audit + the
+// Awaited<ReturnType<...>> row-type helpers below; data access rides tx.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { findFirstActiveLockInPeriods, derivePeriodKey } from "@/lib/budgeting/period-lock"
 import { lockedResponse } from "@/lib/budgeting/period-lock-http"
 import { resolveAccountId } from "@/lib/budgeting/chart-of-accounts"
+
+type Db = Prisma.TransactionClient
 
 export async function GET(req: NextRequest) {
   const orgId = await getOrgId(req)
@@ -14,7 +20,9 @@ export async function GET(req: NextRequest) {
   if (!planId) return NextResponse.json({ error: "planId required" }, { status: 400 })
   const compare = searchParams.get("compare") === "1"
 
-  const current = await loadCogsRows(orgId, planId)
+  // Stage 3 RLS — all COGS reads in one org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+  const current = await loadCogsRows(tx, orgId, planId)
   if (!compare) {
     return NextResponse.json({
       cogsLines: current.cogsLines,
@@ -25,19 +33,19 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const activePlan = await prisma.budgetPlan.findFirst({
+  const activePlan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId, deletedAt: null },
     select: { id: true, name: true, year: true, kind: true },
   })
   if (!activePlan) return NextResponse.json({ error: "Plan not found" }, { status: 404 })
 
   const counterpartKind = activePlan.kind === "budget" ? "actual" : "budget"
-  const counterpartPlan = await prisma.budgetPlan.findFirst({
+  const counterpartPlan = await tx.budgetPlan.findFirst({
     where: { organizationId: orgId, year: activePlan.year, kind: counterpartKind, deletedAt: null },
     orderBy: { createdAt: "asc" },
     select: { id: true, name: true, year: true, kind: true },
   })
-  const counterpart = counterpartPlan ? await loadCogsRows(orgId, counterpartPlan.id, { includeComponents: false, includeDetails: false }) : null
+  const counterpart = counterpartPlan ? await loadCogsRows(tx, orgId, counterpartPlan.id, { includeComponents: false, includeDetails: false }) : null
   const budgetRows = activePlan.kind === "budget" ? current : counterpart
   const actualRows = activePlan.kind === "actual" ? current : counterpart
 
@@ -63,6 +71,7 @@ export async function GET(req: NextRequest) {
       ],
     },
   })
+  })
 }
 
 type CogsRows = Awaited<ReturnType<typeof prisma.cOGSBudgetLine.findMany>>
@@ -79,6 +88,7 @@ type CogsRow = CogsRows[number] | {
 }
 
 async function loadCogsRows(
+  tx: Db,
   orgId: string,
   planId: string,
   opts: { includeComponents?: boolean; includeDetails?: boolean } = {},
@@ -91,30 +101,28 @@ async function loadCogsRows(
 }> {
   const includeComponents = opts.includeComponents ?? true
   const includeDetails = opts.includeDetails ?? true
-  const [cogsLines, components, details] = await Promise.all([
-    prisma.cOGSBudgetLine.findMany({
-      where: { organizationId: orgId, planId },
-      include: { productLine: true },
-      orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
-    }),
-    includeComponents
-      ? prisma.costComponent.findMany({
-          where: { organizationId: orgId },
-          include: { productLine: true },
-          orderBy: { sortOrder: "asc" },
-        })
-      : Promise.resolve([]),
-    includeDetails
-      ? prisma.cOGSCostDetail.findMany({
-          where: { organizationId: orgId, planId },
-          orderBy: [{ productLineId: "asc" }, { sortOrder: "asc" }, { month: "asc" }],
-        })
-      : Promise.resolve([]),
-  ])
+  const cogsLines = await tx.cOGSBudgetLine.findMany({
+    where: { organizationId: orgId, planId },
+    include: { productLine: true },
+    orderBy: [{ productLine: { sortOrder: "asc" } }, { month: "asc" }],
+  })
+  const components = includeComponents
+    ? await tx.costComponent.findMany({
+        where: { organizationId: orgId },
+        include: { productLine: true },
+        orderBy: { sortOrder: "asc" },
+      })
+    : []
+  const details = includeDetails
+    ? await tx.cOGSCostDetail.findMany({
+        where: { organizationId: orgId, planId },
+        orderBy: [{ productLineId: "asc" }, { sortOrder: "asc" }, { month: "asc" }],
+      })
+    : []
 
   if (cogsLines.length > 0) return { cogsLines, components, details }
 
-  const fallbackLines = await prisma.budgetLine.findMany({
+  const fallbackLines = await tx.budgetLine.findMany({
     where: { organizationId: orgId, planId, lineType: "cogs", deletedAt: null },
     select: {
       id: true,
@@ -130,7 +138,7 @@ async function loadCogsRows(
   if (fallbackLines.length === 0) return { cogsLines: [], components, details }
 
   const buckets = new Map<string, Extract<CogsRow, { source: "budget_lines" }>>()
-  const plan = await prisma.budgetPlan.findFirst({
+  const plan = await tx.budgetPlan.findFirst({
     where: { id: planId, organizationId: orgId },
     select: { year: true },
   })
@@ -186,107 +194,111 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const items: any[] = Array.isArray(body) ? body : [body]
 
-  // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Period-lock guard. cogs
-  // mutations span N rows, possibly across N plans; gather unique planIds,
-  // load their period fields, derive keys, then single-org-read multi-key
-  // check. Reject the whole batch if any period locked (atomic intent).
-  const uniquePlanIds = Array.from(
-    new Set(items.map((i) => i?.planId).filter((id): id is string => typeof id === "string" && id.length > 0)),
-  )
-  if (uniquePlanIds.length > 0) {
-    const ownedPlans = await prisma.budgetPlan.findMany({
-      where: { id: { in: uniquePlanIds }, organizationId: orgId },
-      select: { id: true, periodType: true, year: true, month: true, quarter: true },
-    })
-    if (ownedPlans.length !== uniquePlanIds.length) {
-      return NextResponse.json({ error: "One or more plans not found in this organization" }, { status: 404 })
-    }
-    const uniquePeriodKeys: string[] = Array.from(
-      new Set(
-        ownedPlans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
-          derivePeriodKey(p),
-        ),
-      ),
-    )
-    const lock = await findFirstActiveLockInPeriods(prisma, orgId, uniquePeriodKeys)
-    if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cogs" })
-  }
+  // Stage 3 RLS — lock check, FK resolution and the whole upsert batch in
+  // one org-scoped tx (bounded item count; batches are per product×month).
+  return withOrgScope(
+    orgId,
+    async (tx) => {
+      // Phase 7.G Turn LXVIII (Phase 4.2 fan-out). Period-lock guard. cogs
+      // mutations span N rows, possibly across N plans; gather unique planIds,
+      // load their period fields, derive keys, then single-org-read multi-key
+      // check. Reject the whole batch if any period locked (atomic intent).
+      const uniquePlanIds = Array.from(
+        new Set(items.map((i) => i?.planId).filter((id): id is string => typeof id === "string" && id.length > 0)),
+      )
+      if (uniquePlanIds.length > 0) {
+        const ownedPlans = await tx.budgetPlan.findMany({
+          where: { id: { in: uniquePlanIds }, organizationId: orgId },
+          select: { id: true, periodType: true, year: true, month: true, quarter: true },
+        })
+        if (ownedPlans.length !== uniquePlanIds.length) {
+          return NextResponse.json({ error: "One or more plans not found in this organization" }, { status: 404 })
+        }
+        const uniquePeriodKeys: string[] = Array.from(
+          new Set(
+            ownedPlans.map((p: { periodType: string | null; year: number; month: number | null; quarter: number | null }) =>
+              derivePeriodKey(p),
+            ),
+          ),
+        )
+        const lock = await findFirstActiveLockInPeriods(tx, orgId, uniquePeriodKeys)
+        if (lock) return lockedResponse(lock, { prisma, orgId, userId, route: "POST /api/budgeting/cogs" })
+      }
 
-  // Phase 8 D3 final (2026-05-29) — COGSBudgetLine.accountId is a REQUIRED
-  // ChartOfAccount FK since Phase 2.1 dropped the legacy `accountCode`
-  // String column. Resolve every item's FK up front and reject the batch
-  // when any code is free-text / unmatched: a COGS line cannot exist
-  // without an account. The retired `prisma: any` masked two runtime
-  // breaks here — a null `accountId` hit the NOT NULL FK, and writing the
-  // dropped `accountCode` (or spreading it via `...item`) threw a
-  // PrismaClientValidationError on a column the model no longer has.
-  const cogsItems: Array<Record<string, unknown>> = Array.isArray(body) ? body : [body]
-  const resolved = await Promise.all(
-    cogsItems.map(async (item) => ({
-      item,
-      accountId: await resolveAccountId(prisma, orgId, (item.accountCode as string) ?? ""),
-    })),
-  )
-  const unmatched = resolved.filter((r) => !r.accountId)
-  if (unmatched.length > 0) {
-    return NextResponse.json(
-      {
-        error: "Unmatched account codes — every COGS line needs a Chart-of-Accounts code",
-        codes: unmatched.map((r) => (r.item.accountCode as string) ?? "(missing)"),
-      },
-      { status: 400 },
-    )
-  }
+      // Phase 8 D3 final — COGSBudgetLine.accountId is a REQUIRED
+      // ChartOfAccount FK. Resolve every item's FK up front and reject the
+      // batch when any code is free-text / unmatched.
+      const cogsItems: Array<Record<string, unknown>> = Array.isArray(body) ? body : [body]
+      const resolved = await Promise.all(
+        cogsItems.map(async (item) => ({
+          item,
+          accountId: await resolveAccountId(tx, orgId, (item.accountCode as string) ?? ""),
+        })),
+      )
+      const unmatched = resolved.filter((r) => !r.accountId)
+      if (unmatched.length > 0) {
+        return NextResponse.json(
+          {
+            error: "Unmatched account codes — every COGS line needs a Chart-of-Accounts code",
+            codes: unmatched.map((r) => (r.item.accountCode as string) ?? "(missing)"),
+          },
+          { status: 400 },
+        )
+      }
 
-  if (Array.isArray(body)) {
-    const results = await Promise.all(
-      resolved.map(({ item, accountId }) =>
-        prisma.cOGSBudgetLine.upsert({
-          where: {
-            planId_productLineId_year_month: {
-              planId: item.planId as string,
-              productLineId: item.productLineId as string,
-              year: item.year as number,
-              month: item.month as number,
-            },
-          },
-          update: {
-            productionQty: item.productionQty as number | undefined,
-            totalCost: item.totalCost as number | undefined,
-            notes: item.notes as string | undefined,
-            accountId: accountId!,
-          },
-          create: {
-            organizationId: orgId,
-            planId: item.planId as string,
-            productLineId: item.productLineId as string,
-            accountId: accountId!,
-            year: item.year as number,
-            month: item.month as number,
-            productionQty: item.productionQty as number | undefined,
-            totalCost: item.totalCost as number | undefined,
-            notes: item.notes as string | undefined,
-          },
-        }),
-      ),
-    )
-    return NextResponse.json(results, { status: 201 })
-  }
+      if (Array.isArray(body)) {
+        const results = []
+        for (const { item, accountId } of resolved) {
+          results.push(
+            await tx.cOGSBudgetLine.upsert({
+              where: {
+                planId_productLineId_year_month: {
+                  planId: item.planId as string,
+                  productLineId: item.productLineId as string,
+                  year: item.year as number,
+                  month: item.month as number,
+                },
+              },
+              update: {
+                productionQty: item.productionQty as number | undefined,
+                totalCost: item.totalCost as number | undefined,
+                notes: item.notes as string | undefined,
+                accountId: accountId!,
+              },
+              create: {
+                organizationId: orgId,
+                planId: item.planId as string,
+                productLineId: item.productLineId as string,
+                accountId: accountId!,
+                year: item.year as number,
+                month: item.month as number,
+                productionQty: item.productionQty as number | undefined,
+                totalCost: item.totalCost as number | undefined,
+                notes: item.notes as string | undefined,
+              },
+            }),
+          )
+        }
+        return NextResponse.json(results, { status: 201 })
+      }
 
-  // Single-create path — accountId guaranteed resolved by the gate above.
-  const { item, accountId } = resolved[0]
-  const line = await prisma.cOGSBudgetLine.create({
-    data: {
-      organizationId: orgId,
-      planId: item.planId as string,
-      productLineId: item.productLineId as string,
-      accountId: accountId!,
-      year: item.year as number,
-      month: item.month as number,
-      productionQty: item.productionQty as number | undefined,
-      totalCost: item.totalCost as number | undefined,
-      notes: item.notes as string | undefined,
+      // Single-create path — accountId guaranteed resolved by the gate above.
+      const { item, accountId } = resolved[0]
+      const line = await tx.cOGSBudgetLine.create({
+        data: {
+          organizationId: orgId,
+          planId: item.planId as string,
+          productLineId: item.productLineId as string,
+          accountId: accountId!,
+          year: item.year as number,
+          month: item.month as number,
+          productionQty: item.productionQty as number | undefined,
+          totalCost: item.totalCost as number | undefined,
+          notes: item.notes as string | undefined,
+        },
+      })
+      return NextResponse.json(line, { status: 201 })
     },
-  })
-  return NextResponse.json(line, { status: 201 })
+    { timeoutMs: 15_000 },
+  )
 }
