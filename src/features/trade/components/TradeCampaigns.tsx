@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Megaphone, Plus } from "lucide-react";
+import { formatApiError } from "../lib/status-error";
 import { SkeletonBlock } from "./SkeletonBlock";
 import { TradeCalendar } from "./TradeCalendar";
 
@@ -57,6 +58,7 @@ const EMPTY_FORM = {
 
 export function TradeCampaigns() {
   const t = useTranslations("trade.campaigns");
+  const tErr = useTranslations("trade.errors");
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -104,7 +106,7 @@ export function TradeCampaigns() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(String(data.error ?? res.status));
+        setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
         return;
       }
       setForm(EMPTY_FORM);
@@ -126,7 +128,7 @@ export function TradeCampaigns() {
             : await fetch(`/api/trade/campaigns/${campaign.id}`, { method: "DELETE" });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setError(String(data.error ?? res.status));
+          setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
           return;
         }
         void load();

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Gauge, RefreshCw } from "lucide-react";
+import { formatApiError } from "../lib/status-error";
 import { SkeletonBlock } from "./SkeletonBlock";
 
 interface PacingResult {
@@ -45,6 +46,7 @@ const fmt = (n: number | null | undefined) =>
 
 export function TradePacing() {
   const t = useTranslations("trade.pacing");
+  const tErr = useTranslations("trade.errors");
   const [result, setResult] = useState<PacingResult | null>(null);
   const [cascade, setCascade] = useState<SpendCascade | null>(null);
   const [channels, setChannels] = useState<{ grainKey: string; name: string; result: PacingResult }[]>([]);
@@ -79,7 +81,7 @@ export function TradePacing() {
       const res = await fetch("/api/trade/pacing", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        setError(String(data.error ?? res.status));
+        setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
         return;
       }
       setResult(data.result);

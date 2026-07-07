@@ -1960,6 +1960,7 @@ enum AuditAction {
   import_staging_apply // /api/onboarding/import/staging/[id]/apply
   trade_import_apply // Phase 9.2 — POST /api/trade/master-import mode=apply
   trade_campaign_review // Phase 9.4 — approve/reject decision on a trade campaign
+  trade_spend_entry // R8 — manual ledger posting or void (metadata.op)
   import_staging_expired // lazy-flip pending → expired on read
   indicator_override_create
   indicator_override_update

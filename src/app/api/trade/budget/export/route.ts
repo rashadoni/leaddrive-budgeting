@@ -21,8 +21,16 @@ export async function GET(request: NextRequest) {
     orderBy: { month: "asc" },
   })
 
+  const lang = (["en", "ru", "az"].includes(request.nextUrl.searchParams.get("lang") ?? "")
+    ? request.nextUrl.searchParams.get("lang")
+    : "en") as "en" | "ru" | "az"
+  const H: Record<string, string[]> = {
+    en: ["Month", "Sales plan", "Budget %", "Trade budget", "Manual override", "Currency", "TOTAL"],
+    ru: ["Месяц", "План продаж", "Бюджет %", "Trade-бюджет", "Ручное переопределение", "Валюта", "ИТОГО"],
+    az: ["Ay", "Satış planı", "Büdcə %", "Trade büdcə", "Əl ilə yazılmış", "Valyuta", "CƏMİ"],
+  }
   const aoa: Array<Array<string | number>> = [
-    ["Month", "Sales plan", "Budget %", "Trade budget", "Manual override", "Currency"],
+    H[lang].slice(0, 6),
     ...pools.map((p) => [
       `${year}-${String(p.month).padStart(2, "0")}`,
       p.salesPlanAmount,
@@ -35,7 +43,7 @@ export async function GET(request: NextRequest) {
   const totalSales = pools.reduce((s, p) => s + p.salesPlanAmount, 0)
   const totalBudget = pools.reduce((s, p) => s + p.budgetAmount, 0)
   aoa.push([
-    "TOTAL",
+    H[lang][6],
     Math.round(totalSales * 100) / 100,
     totalSales > 0 ? Math.round((totalBudget / totalSales) * 10000) / 100 : 0,
     Math.round(totalBudget * 100) / 100,

@@ -88,6 +88,17 @@ export function summarizeAuditEvent(e: AuditEventLike): AuditSummary {
       }
       return { compact, verbose };
     }
+    case 'trade_spend_entry': {
+      const op = stringField(m, 'op');
+      const kind = stringField(m, 'entryKind');
+      const amount = numberField(m, 'amount');
+      const typeKey = stringField(m, 'spendTypeKey');
+      const compact = op ? `${op} · ${kind ?? ''}`.trim() : e.entityType;
+      const parts = [compact];
+      if (amount !== null) parts.push(String(amount));
+      if (typeKey) parts.push(typeKey);
+      return { compact, verbose: parts.join(' · ') };
+    }
     case 'trade_campaign_review': {
       const code = stringField(m, 'campaignCode');
       const decision = stringField(m, 'decision');

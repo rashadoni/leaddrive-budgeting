@@ -200,6 +200,22 @@ export type AuditEventInput =
       };
     }
   | {
+      // R8 — manual ledger posting or void (POST /api/trade/spend,
+      // POST /api/trade/spend/[id]/void).
+      action: 'trade_spend_entry';
+      entityType: 'TradeSpendLedger';
+      entityId: string;
+      metadata: {
+        op: 'post' | 'void';
+        entryKind: string;
+        amount: number;
+        spendTypeKey: string;
+        entryDate: string; // ISO yyyy-mm-dd
+        campaignId?: string;
+        channelId?: string;
+      };
+    }
+  | {
       action: 'indicator_override_create' | 'indicator_override_update' | 'indicator_override_delete';
       entityType: 'IndicatorDefinition';
       entityId: string;

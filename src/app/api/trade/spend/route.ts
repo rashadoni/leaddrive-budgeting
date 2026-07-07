@@ -16,6 +16,7 @@ import { spendEntrySchema, summarizeLedger } from "@/lib/trade/ledger"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
+import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 
 const RATE_LIMIT = { name: "trade-spend-post", max: 60, windowMs: 60_000 }
 
@@ -108,7 +109,7 @@ export async function POST(request: NextRequest) {
   // Spend type + optional campaign must belong to this org.
   const spendType = await prisma.tradeSpendType.findFirst({
     where: { id: parsed.spendTypeId, organizationId: orgId, isActive: true },
-    select: { id: true },
+    select: { id: true, key: true },
   })
   if (!spendType) {
     return NextResponse.json({ ok: false, error: "Spend type not found" }, { status: 404 })
@@ -170,6 +171,31 @@ export async function POST(request: NextRequest) {
   // R1 — the dashboard must never show yesterday's picture: recompute
   // pacing snapshots + alerts for the affected month in the same request.
   await recomputeTradePacing(prisma, orgId, entryDate.getUTCFullYear(), entryDate.getUTCMonth() + 1)
+
+  // R8 — every manual posting leaves an audit-trail row (best-effort,
+  // never reverses the write; platform contract).
+  await logAuditEvent(prisma, {
+    organizationId: orgId,
+    actorUserId: session.userId,
+    event: {
+      action: "trade_spend_entry",
+      entityType: "TradeSpendLedger",
+      entityId: entry.id,
+      metadata: {
+        op: "post",
+        entryKind: parsed.entryKind,
+        amount: parsed.amount,
+        spendTypeKey: spendType.key,
+        entryDate: parsed.entryDate,
+        ...(parsed.campaignId ? { campaignId: parsed.campaignId } : {}),
+        ...(parsed.channelId ? { channelId: parsed.channelId } : {}),
+      },
+    },
+    context: buildAuditContext({
+      route: "POST /api/trade/spend",
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    }),
+  })
 
   return NextResponse.json({ ok: true, entry }, { status: 201 })
 }

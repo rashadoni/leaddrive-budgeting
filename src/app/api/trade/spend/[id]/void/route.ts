@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma"
 import { findFirstActiveLockInPeriods } from "@/lib/budgeting/period-lock"
 import { lockedResponse, containingPeriodKeys } from "@/lib/budgeting/period-lock-http"
 import { recomputeTradePacing } from "@/lib/trade/pacing-recompute"
+import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireRole(request, "manager")
@@ -21,7 +22,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // period's totals just like a new posting would → same 423 gate.
   const target = await prisma.tradeSpendLedger.findFirst({
     where: { id, organizationId: session.orgId },
-    select: { year: true, month: true },
+    select: {
+      year: true,
+      month: true,
+      entryKind: true,
+      amount: true,
+      entryDate: true,
+      campaignId: true,
+      channelId: true,
+      spendType: { select: { key: true } },
+    },
   })
   if (target) {
     const lock = await findFirstActiveLockInPeriods(
@@ -50,6 +60,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   // R1 — voids change the month's totals; refresh snapshots + alerts.
   if (target) {
     await recomputeTradePacing(prisma, session.orgId, target.year, target.month)
+
+    // R8 — void is a period mutation; it gets its own trail row.
+    await logAuditEvent(prisma, {
+      organizationId: session.orgId,
+      actorUserId: session.userId,
+      event: {
+        action: "trade_spend_entry",
+        entityType: "TradeSpendLedger",
+        entityId: id,
+        metadata: {
+          op: "void",
+          entryKind: target.entryKind,
+          amount: target.amount,
+          spendTypeKey: target.spendType.key,
+          entryDate: target.entryDate.toISOString().slice(0, 10),
+          ...(target.campaignId ? { campaignId: target.campaignId } : {}),
+          ...(target.channelId ? { channelId: target.channelId } : {}),
+        },
+      },
+      context: buildAuditContext({
+        route: "POST /api/trade/spend/[id]/void",
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      }),
+    })
   }
   return NextResponse.json({ ok: true })
 }

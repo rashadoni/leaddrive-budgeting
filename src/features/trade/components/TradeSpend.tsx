@@ -4,8 +4,9 @@
 // spend type, manual posting form, recent entries with void.
 
 import { useCallback, useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Download, ReceiptText } from "lucide-react";
+import { formatApiError } from "../lib/status-error";
 
 interface SpendType {
   id: string;
@@ -52,6 +53,8 @@ const emptyForm = () => ({
 
 export function TradeSpend() {
   const t = useTranslations("trade.spend");
+  const tErr = useTranslations("trade.errors");
+  const locale = useLocale();
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [types, setTypes] = useState<SpendType[]>([]);
@@ -105,7 +108,7 @@ export function TradeSpend() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(String(data.error ?? res.status));
+        setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
         return;
       }
       setForm(emptyForm());
@@ -137,7 +140,7 @@ export function TradeSpend() {
           <ReceiptText className="h-4 w-4" /> {t("title")}
         </h2>
         <a
-          href="/api/trade/spend/export"
+          href={`/api/trade/spend/export?lang=${locale}`}
           className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
         >
           <Download className="h-3 w-3" /> XLSX

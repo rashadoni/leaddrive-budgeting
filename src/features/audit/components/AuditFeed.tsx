@@ -79,6 +79,8 @@ const ALL_ACTIONS = [
   "trade_import_apply",
   // Phase 9.4 — trade campaign approve/reject decision.
   "trade_campaign_review",
+  // R8 — manual ledger posting or void.
+  "trade_spend_entry",
 ] as const satisfies readonly AuditAction[]
 // Superset check: any Prisma AuditAction missing from ALL_ACTIONS makes
 // `Exclude` non-empty → assignment fails tsc. Closes Turn-W ⚠️ #2.

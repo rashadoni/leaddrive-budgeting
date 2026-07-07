@@ -4344,6 +4344,13 @@
         "title": "İstifadə olunmayan büdcə: ayın {elapsedPct}%-ində {spendPct}% xərclənib",
         "message": "Xərcləmə ayın tempindən xeyli geri qalır — qənaət və ya icra olunmamış kampaniyalar ola bilər. Dövr {period}, əhatə: {scope}."
       }
+    },
+    "errors": {
+      "locked": "Bu dövr maliyyə tərəfindən bağlanıb",
+      "forbidden": "Bu əməliyyat üçün icazəniz yoxdur",
+      "conflict": "Məlumat dəyişib — yeniləyib təkrar edin",
+      "validation": "Daxil edilən dəyərləri yoxlayın",
+      "generic": "Xəta baş verdi — yenidən cəhd edin"
     }
   }
 }

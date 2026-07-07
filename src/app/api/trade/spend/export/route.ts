@@ -51,8 +51,22 @@ export async function GET(request: NextRequest) {
   })
   const userName = new Map(users.map((u) => [u.id, u.name || u.email]))
 
+  // R9 — localized headers (?lang=en|ru|az; body labels stay data-driven).
+  const lang = (["en", "ru", "az"].includes(request.nextUrl.searchParams.get("lang") ?? "")
+    ? request.nextUrl.searchParams.get("lang")
+    : "en") as "en" | "ru" | "az"
+  const H: Record<string, string[]> = {
+    en: ["Date", "Kind", "Spend type", "Accrual method", "Channel", "Campaign", "Amount", "Currency", "Note", "Posted by"],
+    ru: ["Дата", "Тип записи", "Вид затрат", "Метод начисления", "Канал", "Кампания", "Сумма", "Валюта", "Примечание", "Провёл"],
+    az: ["Tarix", "Yazılış növü", "Xərc növü", "Hesablama metodu", "Kanal", "Kampaniya", "Məbləğ", "Valyuta", "Qeyd", "Yazan"],
+  }
+  const HS: Record<string, string[]> = {
+    en: ["Spend type", "Accrual method", "Plan", "Accrued", "Actual", "Control", "TOTAL"],
+    ru: ["Вид затрат", "Метод начисления", "План", "Начислено", "Факт", "Контроль", "ИТОГО"],
+    az: ["Xərc növü", "Hesablama metodu", "Plan", "Hesablanmış", "Fakt", "Kontrol", "CƏMİ"],
+  }
   const entriesAoa: Array<Array<string | number>> = [
-    ["Date", "Kind", "Spend type", "Accrual method", "Channel", "Campaign", "Amount", "Currency", "Note", "Posted by"],
+    H[lang],
     ...entries.map((e) => [
       e.entryDate.toISOString().slice(0, 10),
       e.entryKind,
@@ -69,9 +83,9 @@ export async function GET(request: NextRequest) {
 
   const { byType, totals } = summarizeLedger(entries)
   const summaryAoa: Array<Array<string | number>> = [
-    ["Spend type", "Accrual method", "Plan", "Accrued", "Actual", "Control"],
+    HS[lang].slice(0, 6),
     ...byType.map((r) => [r.label, r.accrualMethod, r.plan, r.accrued, r.actual, r.control]),
-    ["TOTAL", "", totals.plan, totals.accrued, totals.actual, totals.control],
+    [HS[lang][6], "", totals.plan, totals.accrued, totals.actual, totals.control],
   ]
 
   const wb = XLSX.utils.book_new()

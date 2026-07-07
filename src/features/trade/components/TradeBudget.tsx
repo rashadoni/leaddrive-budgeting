@@ -5,8 +5,9 @@
 // sales plan (default 5%) — editable, pending Mars Overseas confirmation.
 
 import { useCallback, useEffect, useState } from "react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Download, Wallet } from "lucide-react";
+import { formatApiError } from "../lib/status-error";
 import { SkeletonBlock } from "./SkeletonBlock";
 
 interface Pool {
@@ -23,6 +24,8 @@ const fmt = (n: number) => n.toLocaleString("az-AZ", { maximumFractionDigits: 0 
 
 export function TradeBudget() {
   const t = useTranslations("trade.budget");
+  const tErr = useTranslations("trade.errors");
+  const locale = useLocale();
   const now = new Date();
   const [year, setYear] = useState(now.getUTCFullYear());
   const [pools, setPools] = useState<Pool[] | null>(null);
@@ -89,7 +92,7 @@ export function TradeBudget() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(String(data.error ?? res.status));
+        setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
         return;
       }
       void loadSplit();
@@ -109,7 +112,7 @@ export function TradeBudget() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(String(data.error ?? res.status));
+        setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
         return;
       }
       setPools(data.pools as Pool[]);
@@ -130,7 +133,7 @@ export function TradeBudget() {
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setError(String(data.error ?? res.status));
+          setError(formatApiError(tErr, res.status, data.error ? String(data.error) : null));
           return;
         }
         void load();
@@ -165,7 +168,7 @@ export function TradeBudget() {
         </h2>
         <div className="flex items-center gap-2 text-sm">
           <a
-            href={`/api/trade/budget/export?year=${year}`}
+            href={`/api/trade/budget/export?year=${year}&lang=${locale}`}
             className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
           >
             <Download className="h-3 w-3" /> XLSX

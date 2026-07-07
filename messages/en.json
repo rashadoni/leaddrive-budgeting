@@ -4344,6 +4344,13 @@
         "title": "Unused trade budget: {spendPct}% spent at {elapsedPct}% of month",
         "message": "Spend is running well behind the month's pace — potential savings or unexecuted campaigns. Period {period}, scope {scope}."
       }
+    },
+    "errors": {
+      "locked": "This period is locked by finance",
+      "forbidden": "You don't have permission for this action",
+      "conflict": "The data changed meanwhile — reload and retry",
+      "validation": "Check the entered values",
+      "generic": "Something went wrong — try again"
     }
   }
 }
