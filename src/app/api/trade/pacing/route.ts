@@ -15,6 +15,7 @@ import { enforceRateLimit } from "@/lib/rate-limit"
 import { prisma } from "@/lib/prisma"
 import { computePacing, type PacingInput } from "@/lib/trade/pacing"
 import { summarizeLedger, buildSpendCascade, type SpendCascade } from "@/lib/trade/ledger"
+import { CHANNEL_GRAIN_PREFIX, parseChannelGrain } from "@/lib/trade/budget"
 import {
   evaluatePacingAlerts,
   pacingAlertScopeKeys,
@@ -37,6 +38,7 @@ async function buildInput(
   orgId: string,
   year: number,
   month: number,
+  grainKey: string = GRAIN,
 ): Promise<{ input: PacingInput; cascade: SpendCascade }> {
   const now = new Date()
   const isCurrentMonth = now.getUTCFullYear() === year && now.getUTCMonth() + 1 === month
@@ -44,12 +46,23 @@ async function buildInput(
   const asOf = new Date(Date.UTC(year, month - 1, asOfDay, 23, 59, 59))
 
   const pool = await prisma.tradeBudgetPool.findUnique({
-    where: { organizationId_year_month_grainKey: { organizationId: orgId, year, month, grainKey: GRAIN } },
+    where: { organizationId_year_month_grainKey: { organizationId: orgId, year, month, grainKey } },
     select: { salesPlanAmount: true, budgetAmount: true },
   })
 
+  // Channel grain paces only channel-attributed spend; unattributed
+  // spend counts in the org grain alone (Codex T9 rule — never silently
+  // pushed into a channel).
+  const channelId = parseChannelGrain(grainKey)
   const entries = await prisma.tradeSpendLedger.findMany({
-    where: { organizationId: orgId, year, month, voidedAt: null, entryDate: { lte: asOf } },
+    where: {
+      organizationId: orgId,
+      year,
+      month,
+      voidedAt: null,
+      entryDate: { lte: asOf },
+      ...(channelId ? { channelId } : {}),
+    },
     select: {
       entryKind: true,
       amount: true,
@@ -91,8 +104,37 @@ export async function GET(request: NextRequest) {
     orderBy: { asOfDate: "desc" },
   })
   const { cascade } = await buildInput(session.orgId, year, month)
+
+  // T9 — latest channel snapshots for the period, names resolved.
+  const channelSnaps = await prisma.tradePacingSnapshot.findMany({
+    where: {
+      organizationId: session.orgId,
+      period,
+      grainKey: { startsWith: CHANNEL_GRAIN_PREFIX },
+    },
+    orderBy: { asOfDate: "desc" },
+  })
+  const latestByGrain = new Map<string, (typeof channelSnaps)[number]>()
+  for (const s of channelSnaps) {
+    if (!latestByGrain.has(s.grainKey)) latestByGrain.set(s.grainKey, s)
+  }
+  const channelIds = [...latestByGrain.keys()]
+    .map((g) => parseChannelGrain(g))
+    .filter((v): v is string => !!v)
+  const channelRows = await prisma.tradeChannel.findMany({
+    where: { id: { in: channelIds } },
+    select: { id: true, name: true },
+  })
+  const channelName = new Map(channelRows.map((c) => [c.id, c.name]))
+  const channels = [...latestByGrain.entries()].map(([grainKey, snap]) => ({
+    grainKey,
+    channelId: parseChannelGrain(grainKey),
+    name: channelName.get(parseChannelGrain(grainKey) ?? "") ?? grainKey,
+    result: computePacing(snap.math as unknown as PacingInput),
+  }))
+
   if (!snapshot) {
-    return NextResponse.json({ ok: true, period, snapshot: null, result: null, cascade })
+    return NextResponse.json({ ok: true, period, snapshot: null, result: null, cascade, channels })
   }
   const result = computePacing(snapshot.math as unknown as PacingInput)
   return NextResponse.json({
@@ -101,6 +143,7 @@ export async function GET(request: NextRequest) {
     snapshot: { asOfDate: snapshot.asOfDate, generatedAt: snapshot.generatedAt },
     result,
     cascade,
+    channels,
   })
 }
 
@@ -116,59 +159,82 @@ export async function POST(request: NextRequest) {
   if (rateLimitError) return rateLimitError
 
   const { year, month, period } = parsePeriod(request.nextUrl.searchParams.get("period"))
-  const { input, cascade } = await buildInput(orgId, year, month)
-  const result = computePacing(input)
-  const asOfDate = new Date(Date.UTC(year, month - 1, input.asOfDay))
 
-  await prisma.tradePacingSnapshot.upsert({
-    where: {
-      organizationId_asOfDate_period_grainKey: {
-        organizationId: orgId,
-        asOfDate,
-        period,
-        grainKey: GRAIN,
+  async function recomputeGrain(grainKey: string) {
+    const { input, cascade } = await buildInput(orgId, year, month, grainKey)
+    const result = computePacing(input)
+    const asOfDate = new Date(Date.UTC(year, month - 1, input.asOfDay))
+    const fields = {
+      salesPlanMtd: result.salesPlanMtd,
+      salesActualMtd: input.salesActualMtd,
+      budgetMonth: input.budgetMonth,
+      controlSpendMtd: input.controlSpendMtd,
+      accruedSpendMtd: input.accruedSpendMtd,
+      actualSpendMtd: input.actualSpendMtd,
+      forecastSalesMonth: result.forecastSalesMonth,
+      forecastSpendMonth: result.forecastSpendMonth,
+      forecastBudgetVariance: result.forecastBudgetVariance,
+      forecastSalesGap: result.forecastSalesGap,
+      riskStatus: result.riskStatus,
+      math: input as unknown as object,
+    }
+    await prisma.tradePacingSnapshot.upsert({
+      where: {
+        organizationId_asOfDate_period_grainKey: { organizationId: orgId, asOfDate, period, grainKey },
       },
-    },
-    create: {
-      organizationId: orgId,
-      asOfDate,
-      period,
-      grainKey: GRAIN,
-      salesPlanMtd: result.salesPlanMtd,
-      salesActualMtd: input.salesActualMtd,
-      budgetMonth: input.budgetMonth,
-      controlSpendMtd: input.controlSpendMtd,
-      accruedSpendMtd: input.accruedSpendMtd,
-      actualSpendMtd: input.actualSpendMtd,
-      forecastSalesMonth: result.forecastSalesMonth,
-      forecastSpendMonth: result.forecastSpendMonth,
-      forecastBudgetVariance: result.forecastBudgetVariance,
-      forecastSalesGap: result.forecastSalesGap,
-      riskStatus: result.riskStatus,
-      math: input as unknown as object,
-    },
-    update: {
-      salesPlanMtd: result.salesPlanMtd,
-      salesActualMtd: input.salesActualMtd,
-      budgetMonth: input.budgetMonth,
-      controlSpendMtd: input.controlSpendMtd,
-      accruedSpendMtd: input.accruedSpendMtd,
-      actualSpendMtd: input.actualSpendMtd,
-      forecastSalesMonth: result.forecastSalesMonth,
-      forecastSpendMonth: result.forecastSpendMonth,
-      forecastBudgetVariance: result.forecastBudgetVariance,
-      forecastSalesGap: result.forecastSalesGap,
-      riskStatus: result.riskStatus,
-      math: input as unknown as object,
-      generatedAt: new Date(),
-    },
+      create: { organizationId: orgId, asOfDate, period, grainKey, ...fields },
+      update: { ...fields, generatedAt: new Date() },
+    })
+    return { result, cascade }
+  }
+
+  // Org grain first (finance-level risk)…
+  const org = await recomputeGrain(GRAIN)
+  const candidates = evaluatePacingAlerts(period, GRAIN, org.result)
+  const scopeKeys = pacingAlertScopeKeys(period, GRAIN)
+
+  // …then every channel with a budget or attributed spend (T9). Channel
+  // alerts are limited to the overspend rule — channel-level savings show
+  // on the cards, not in the inbox (Codex anti-noise rule).
+  const channelPools = await prisma.tradeBudgetPool.findMany({
+    where: { organizationId: orgId, year, month, grainKey: { startsWith: CHANNEL_GRAIN_PREFIX } },
+    select: { grainKey: true },
   })
+  const spentChannelIds = await prisma.tradeSpendLedger.findMany({
+    where: { organizationId: orgId, year, month, voidedAt: null, channelId: { not: null } },
+    select: { channelId: true },
+    distinct: ["channelId"],
+  })
+  const grains = new Set<string>([
+    ...channelPools.map((p) => p.grainKey),
+    ...spentChannelIds.map((s) => `${CHANNEL_GRAIN_PREFIX}${s.channelId}`),
+  ])
+  const channelRows = await prisma.tradeChannel.findMany({
+    where: { organizationId: orgId },
+    select: { id: true, name: true },
+  })
+  const channelNameById = new Map(channelRows.map((c) => [c.id, c.name]))
+  const channels: Record<string, { result: unknown; cascade: SpendCascade }> = {}
+  for (const grainKey of grains) {
+    const r = await recomputeGrain(grainKey)
+    channels[grainKey] = r
+    const label = channelNameById.get(parseChannelGrain(grainKey) ?? "") ?? grainKey
+    candidates.push(
+      ...evaluatePacingAlerts(period, grainKey, r.result, undefined, label).filter(
+        (c) => c.ruleId === "trade_overspend_forecast",
+      ),
+    )
+    scopeKeys.push(...pacingAlertScopeKeys(period, grainKey))
+  }
 
-  // Alert sync — the evaluator itself skips the pace-gap rule while
-  // result.salesFeedPending (T3); scopeKeys stay full so stale gap
-  // alerts auto-resolve.
-  const candidates = evaluatePacingAlerts(period, GRAIN, result)
-  const sync = await syncTradeAlerts(prisma.alert, orgId, candidates, pacingAlertScopeKeys(period, GRAIN))
+  const sync = await syncTradeAlerts(prisma.alert, orgId, candidates, scopeKeys)
 
-  return NextResponse.json({ ok: true, period, result, cascade, alerts: sync })
+  return NextResponse.json({
+    ok: true,
+    period,
+    result: org.result,
+    cascade: org.cascade,
+    channels,
+    alerts: sync,
+  })
 }

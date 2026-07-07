@@ -54,6 +54,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!pool) {
     return NextResponse.json({ ok: false, error: "Pool not found" }, { status: 404 })
   }
+  // T9 guard — channel-grain rows have salesPlanAmount=0 and carry the
+  // ALLOCATION % in budgetPct; patching them here would zero the amount.
+  // They change only through PUT /api/trade/budget/allocations.
+  if (pool.grainKey !== "org") {
+    return NextResponse.json(
+      { ok: false, error: "Channel pools are managed via /api/trade/budget/allocations" },
+      { status: 409 },
+    )
+  }
 
   const next = applyPoolPatch(pool, parsed)
   const updated = await prisma.$transaction(async (tx) => {

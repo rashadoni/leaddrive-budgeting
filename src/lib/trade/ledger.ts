@@ -16,6 +16,9 @@ export const spendEntrySchema = z.object({
   entryKind: z.enum(["plan", "accrued", "actual"]),
   spendTypeId: z.string().min(1),
   campaignId: z.string().min(1).optional(),
+  // T9 — optional channel attribution; unattributed spend paces the org
+  // pool only (never silently pushed into a channel).
+  channelId: z.string().min(1).optional(),
   entryDate: isoDate,
   // Negative = credit/correction posting; zero is meaningless.
   amount: z

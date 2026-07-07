@@ -4246,7 +4246,16 @@
       "colBudget": "Trade budget",
       "editPct": "Click to change %",
       "editAmount": "Click to override amount",
-      "total": "Total"
+      "total": "Total",
+      "split": {
+        "toggle": "Channel split",
+        "title": "Channel allocation",
+        "orgBudget": "Org budget",
+        "allocated": "Allocated",
+        "unallocated": "Unallocated",
+        "noChannels": "No channels yet — import outlet master data first.",
+        "save": "Save split"
+      }
     },
     "spend": {
       "title": "Spend ledger (Plan / Accrued / Actual)",
@@ -4272,7 +4281,8 @@
       "busy": "Working…",
       "void": "Void",
       "colType": "Spend type",
-      "fieldCampaign": "Campaign"
+      "fieldCampaign": "Campaign",
+      "fieldChannel": "Channel"
     },
     "pacing": {
       "title": "Daily pacing",
@@ -4305,7 +4315,10 @@
         "accrued": "Accrued",
         "actual": "Actual",
         "available": "Available"
-      }
+      },
+      "byChannel": "By channel",
+      "controlShort": "Spent",
+      "forecastShort": "Forecast"
     },
     "calendar": {
       "title": "Promo calendar"

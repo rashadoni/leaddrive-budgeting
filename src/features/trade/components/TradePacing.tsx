@@ -46,6 +46,7 @@ export function TradePacing() {
   const t = useTranslations("trade.pacing");
   const [result, setResult] = useState<PacingResult | null>(null);
   const [cascade, setCascade] = useState<SpendCascade | null>(null);
+  const [channels, setChannels] = useState<{ grainKey: string; name: string; result: PacingResult }[]>([]);
   const [asOf, setAsOf] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +59,7 @@ export function TradePacing() {
       const data = await res.json();
       setResult(data.result);
       setCascade(data.cascade ?? null);
+      setChannels((data.channels ?? []) as { grainKey: string; name: string; result: PacingResult }[]);
       setAsOf(data.snapshot?.asOfDate ?? null);
       setLoaded(true);
     } catch {
@@ -81,6 +83,7 @@ export function TradePacing() {
       }
       setResult(data.result);
       setCascade(data.cascade ?? null);
+      await load();
       setAsOf(new Date().toISOString());
     } finally {
       setBusy(false);
@@ -199,6 +202,52 @@ export function TradePacing() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {channels.length > 0 && (
+            <div>
+              <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">{t("byChannel")}</h3>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {channels.map((c) => (
+                  <div key={c.grainKey} className="rounded-md border p-2">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-semibold">{c.name}</span>
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${RISK_CLASSES[c.result.riskStatus]}`}
+                      >
+                        {t(`risk.${c.result.riskStatus}`)}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
+                      <div>
+                        {t("cascade.budget")}
+                        <div className="text-xs font-medium tabular-nums text-foreground">
+                          {fmt(c.result.math.budgetMonth)}
+                        </div>
+                      </div>
+                      <div>
+                        {t("controlShort")}
+                        <div className="text-xs font-medium tabular-nums text-foreground">
+                          {fmt(c.result.math.controlSpendMtd)}
+                        </div>
+                      </div>
+                      <div>
+                        {t("forecastShort")}
+                        <div
+                          className={`text-xs font-medium tabular-nums ${
+                            (c.result.forecastBudgetVariancePct ?? 0) > 0 ? "text-rose-600" : "text-foreground"
+                          }`}
+                        >
+                          {c.result.forecastBudgetVariancePct != null
+                            ? `${c.result.forecastBudgetVariancePct > 0 ? "+" : ""}${c.result.forecastBudgetVariancePct}%`
+                            : "—"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

@@ -47,7 +47,9 @@ export function evaluatePacingAlerts(
   period: string, // "YYYY-MM"
   grainKey: string,
   r: PacingResult,
-  thresholds: PacingThresholds = DEFAULT_PACING_THRESHOLDS
+  thresholds: PacingThresholds = DEFAULT_PACING_THRESHOLDS,
+  /** Human label for messages (channel name); dedupe still keys on grainKey. */
+  label: string = grainKey
 ): TradeAlertCandidate[] {
   if (r.dataQuality === "empty") return [];
   const out: TradeAlertCandidate[] = [];
@@ -64,7 +66,7 @@ export function evaluatePacingAlerts(
       message:
         `At the current pace, month-end trade spend reaches ${fmt(r.forecastSpendMonth ?? 0)} ` +
         `against a budget of ${fmt(r.math.budgetMonth ?? 0)} ` +
-        `(+${overrun}%, ${fmt(r.forecastBudgetVariance ?? 0)} over). Period ${period}, scope ${grainKey}.`,
+        `(+${overrun}%, ${fmt(r.forecastBudgetVariance ?? 0)} over). Period ${period}, scope ${label}.`,
       dedupeKey: key("trade_overspend_forecast", period, grainKey),
       sourceRef: ref("trade_overspend_forecast"),
     });
@@ -83,7 +85,7 @@ export function evaluatePacingAlerts(
       message:
         `${r.spendProgressPct}% of the trade budget is spent while only ` +
         `${r.salesProgressPct}% of the month's sales plan is achieved. ` +
-        `Period ${period}, scope ${grainKey}.`,
+        `Period ${period}, scope ${label}.`,
       dedupeKey: key("trade_spend_ahead_of_sales", period, grainKey),
       sourceRef: ref("trade_spend_ahead_of_sales"),
     });
@@ -102,7 +104,7 @@ export function evaluatePacingAlerts(
       title: `Unused trade budget: ${r.spendProgressPct}% spent at ${Math.round(r.elapsedShare * 100)}% of month`,
       message:
         `Spend is running well behind the month's pace — potential savings or ` +
-        `unexecuted campaigns. Period ${period}, scope ${grainKey}.`,
+        `unexecuted campaigns. Period ${period}, scope ${label}.`,
       dedupeKey: key("trade_unused_budget", period, grainKey),
       sourceRef: ref("trade_unused_budget"),
     });

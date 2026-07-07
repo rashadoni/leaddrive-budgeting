@@ -260,6 +260,50 @@ async function seed(orgId: string): Promise<void> {
   });
   const budgetMonth = pool?.budgetAmount ?? 0;
 
+  // 3b. T9 — channel split of the current month (50/30/20).
+  const splitPct: Array<[string, number]> = [
+    ["MODERN_TRADE", 50],
+    ["ENENEVI", 30],
+    ["HORECA", 20],
+  ];
+  for (const [code, pct] of splitPct) {
+    const chId = channelId.get(code);
+    if (!chId) continue;
+    const grainKey = `channel:${chId}`;
+    const amount = Math.round(((budgetMonth * pct) / 100) * 100) / 100;
+    await prisma.tradeBudgetPool.upsert({
+      where: {
+        organizationId_year_month_grainKey: { organizationId: orgId, year, month, grainKey },
+      },
+      create: {
+        organizationId: orgId,
+        year,
+        month,
+        grainKey,
+        salesPlanAmount: 0,
+        budgetPct: pct, // allocation % while no channel sales plan exists
+        budgetAmount: amount,
+      },
+      update: { budgetPct: pct, budgetAmount: amount },
+    });
+    await prisma.tradePlanDaily.deleteMany({
+      where: { organizationId: orgId, year, month, grainKey },
+    });
+    const spread = spreadMonthlyPlan(year, month, amount);
+    await prisma.tradePlanDaily.createMany({
+      data: spread.map((d) => ({
+        organizationId: orgId,
+        date: new Date(Date.UTC(year, month - 1, d.day)),
+        year,
+        month,
+        grainKey,
+        plannedSalesAmount: 0,
+        plannedTradeBudgetAmount: d.amount,
+        workingDayWeight: d.weight,
+      })),
+    });
+  }
+
   // 4. Campaigns: one approved & running, one draft.
   const monthStr = String(month).padStart(2, "0");
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -322,6 +366,8 @@ async function seed(orgId: string): Promise<void> {
   const listing = typeByKey.get("listing_fee")!;
   const posm = typeByKey.get("posm")!;
   const d = (dd: number) => new Date(Date.UTC(year, month - 1, Math.min(Math.max(dd, 1), day)));
+  const mtChannel = channelId.get("MODERN_TRADE") ?? null;
+  const horecaChannel = channelId.get("HORECA") ?? null;
   const entries: {
     kind: "plan" | "accrued" | "actual";
     typeId: string;
@@ -329,15 +375,16 @@ async function seed(orgId: string): Promise<void> {
     amount: number;
     note: string;
     campaignId?: string;
+    channelId?: string | null;
   }[] = [
-    { kind: "plan", typeId: promo.id, date: d(1), amount: Math.round(budgetMonth * 0.4), note: "DEMO — Yay Promo plan", campaignId: campaign?.id },
-    { kind: "accrued", typeId: onInvoice.id, date: d(3), amount: Math.round(targetControl * 0.3), note: "DEMO — həftə 1 invoice endirimləri" },
-    { kind: "accrued", typeId: onInvoice.id, date: d(10), amount: Math.round(targetControl * 0.25), note: "DEMO — həftə 2 invoice endirimləri" },
+    { kind: "plan", typeId: promo.id, date: d(1), amount: Math.round(budgetMonth * 0.4), note: "DEMO — Yay Promo plan", campaignId: campaign?.id, channelId: mtChannel },
+    { kind: "accrued", typeId: onInvoice.id, date: d(3), amount: Math.round(targetControl * 0.3), note: "DEMO — həftə 1 invoice endirimləri", channelId: mtChannel },
+    { kind: "accrued", typeId: onInvoice.id, date: d(10), amount: Math.round(targetControl * 0.25), note: "DEMO — həftə 2 invoice endirimləri", channelId: mtChannel },
     { kind: "accrued", typeId: onInvoice.id, date: d(17), amount: Math.round(targetControl * 0.2), note: "DEMO — həftə 3 invoice endirimləri" },
-    { kind: "accrued", typeId: onInvoice.id, date: d(11), amount: -Math.round(targetControl * 0.03), note: "DEMO — kredit-nota düzəlişi" },
-    { kind: "actual", typeId: promo.id, date: d(8), amount: Math.round(targetControl * 0.18), note: "DEMO — Yay Promo ödənişi", campaignId: campaign?.id },
-    { kind: "actual", typeId: listing.id, date: d(5), amount: Math.round(targetControl * 0.06), note: "DEMO — Bravo listing haqqı" },
-    { kind: "actual", typeId: posm.id, date: d(14), amount: Math.round(targetControl * 0.04), note: "DEMO — soyuducu quraşdırma" },
+    { kind: "accrued", typeId: onInvoice.id, date: d(11), amount: -Math.round(targetControl * 0.03), note: "DEMO — kredit-nota düzəlişi", channelId: mtChannel },
+    { kind: "actual", typeId: promo.id, date: d(8), amount: Math.round(targetControl * 0.18), note: "DEMO — Yay Promo ödənişi", campaignId: campaign?.id, channelId: mtChannel },
+    { kind: "actual", typeId: listing.id, date: d(5), amount: Math.round(targetControl * 0.06), note: "DEMO — Bravo listing haqqı", channelId: mtChannel },
+    { kind: "actual", typeId: posm.id, date: d(14), amount: Math.round(targetControl * 0.04), note: "DEMO — soyuducu quraşdırma", channelId: horecaChannel },
   ];
   for (const e of entries) {
     await prisma.tradeSpendLedger.create({
@@ -346,6 +393,7 @@ async function seed(orgId: string): Promise<void> {
         entryKind: e.kind,
         spendTypeId: e.typeId,
         campaignId: e.campaignId ?? null,
+        channelId: e.channelId ?? null,
         entryDate: e.date,
         year,
         month,

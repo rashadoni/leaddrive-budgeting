@@ -21,6 +21,7 @@ interface Entry {
   amount: number;
   sourceDocument: string | null;
   createdByName?: string;
+  channelName?: string | null;
   spendType: SpendType;
 }
 
@@ -38,7 +39,7 @@ interface Summary {
 
 const fmt = (n: number) => n.toLocaleString("az-AZ", { maximumFractionDigits: 0 });
 
-const EMPTY_FORM = { entryKind: "actual", spendTypeId: "", entryDate: "", amount: "", note: "", campaignId: "" };
+const EMPTY_FORM = { entryKind: "actual", spendTypeId: "", entryDate: "", amount: "", note: "", campaignId: "", channelId: "" };
 
 export function TradeSpend() {
   const t = useTranslations("trade.spend");
@@ -46,6 +47,7 @@ export function TradeSpend() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [types, setTypes] = useState<SpendType[]>([]);
   const [campaigns, setCampaigns] = useState<{ id: string; code: string; name: string }[]>([]);
+  const [channelOptions, setChannelOptions] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export function TradeSpend() {
       setEntries(spend.entries as Entry[]);
       setSummary(spend.summary as Summary);
       setTypes((overview.spendTypes as SpendType[]).filter((s: SpendType & { isActive?: boolean }) => s.isActive !== false));
+      setChannelOptions((overview.channels ?? []) as { id: string; name: string }[]);
       setCampaigns(
         (camps.campaigns as { id: string; code: string; name: string; status: string }[]).filter(
           (c) => c.status === "approved" || c.status === "pending_approval" || c.status === "draft",
@@ -88,6 +91,7 @@ export function TradeSpend() {
           amount: Number(form.amount),
           ...(form.note.trim() ? { note: form.note.trim() } : {}),
           ...(form.campaignId ? { campaignId: form.campaignId } : {}),
+          ...(form.channelId ? { channelId: form.channelId } : {}),
         }),
       });
       const data = await res.json();
@@ -190,6 +194,21 @@ export function TradeSpend() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
+          {t("fieldChannel")}
+          <select
+            value={form.channelId}
+            onChange={(e) => setForm({ ...form, channelId: e.target.value })}
+            className="min-w-32 rounded-md border bg-background px-2 py-1.5 text-sm"
+          >
+            <option value="">—</option>
+            {channelOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
           {t("fieldCampaign")}
           <select
             value={form.campaignId}
@@ -255,6 +274,7 @@ export function TradeSpend() {
             <li key={e.id} className="flex items-center justify-between gap-2 text-xs">
               <span className="truncate">
                 {e.entryDate.slice(0, 10)} · {t(`kind.${e.entryKind}`)} · {e.spendType.label}
+                {e.channelName && <span className="text-sky-700"> · {e.channelName}</span>}
                 {e.sourceDocument && <span className="text-muted-foreground"> · {e.sourceDocument}</span>}
                 {e.createdByName && <span className="text-muted-foreground"> · {e.createdByName}</span>}
               </span>

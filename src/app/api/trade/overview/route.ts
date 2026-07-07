@@ -17,9 +17,13 @@ export async function GET(request: NextRequest) {
   const orgId = session.orgId
   const live = { organizationId: orgId, deletedAt: null } as const
 
-  const [regions, channels, reps, outlets, skus, spendTypes, batches] = await Promise.all([
+  const [regions, channelRows, reps, outlets, skus, spendTypes, batches] = await Promise.all([
     prisma.tradeRegion.count({ where: live }),
-    prisma.tradeChannel.count({ where: live }),
+    prisma.tradeChannel.findMany({
+      where: { ...live, isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, code: true, name: true, channelType: true },
+    }),
     prisma.tradeSalesRep.count({ where: live }),
     prisma.tradeOutlet.count({ where: live }),
     prisma.tradeSku.count({ where: live }),
@@ -47,8 +51,9 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    counts: { regions, channels, reps, outlets, skus, spendTypes: spendTypes.length },
+    counts: { regions, channels: channelRows.length, reps, outlets, skus, spendTypes: spendTypes.length },
     spendTypes,
+    channels: channelRows,
     batches,
   })
 }

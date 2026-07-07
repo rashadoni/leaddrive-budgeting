@@ -4246,7 +4246,16 @@
       "colBudget": "Trade büdcə",
       "editPct": "%-i dəyişmək üçün klikləyin",
       "editAmount": "Məbləği əl ilə yazmaq üçün klikləyin",
-      "total": "Cəmi"
+      "total": "Cəmi",
+      "split": {
+        "toggle": "Kanal bölgüsü",
+        "title": "Kanal allokasiyası",
+        "orgBudget": "Org büdcəsi",
+        "allocated": "Bölünüb",
+        "unallocated": "Bölünməyib",
+        "noChannels": "Hələ kanal yoxdur — əvvəl nöqtə master-datasını import edin.",
+        "save": "Yadda saxla"
+      }
     },
     "spend": {
       "title": "Xərc jurnalı (Plan / Hesablanmış / Fakt)",
@@ -4272,7 +4281,8 @@
       "busy": "İcra olunur…",
       "void": "Ləğv et",
       "colType": "Xərc növü",
-      "fieldCampaign": "Kampaniya"
+      "fieldCampaign": "Kampaniya",
+      "fieldChannel": "Kanal"
     },
     "pacing": {
       "title": "Gündəlik pacing",
@@ -4305,7 +4315,10 @@
         "accrued": "Hesablanmış",
         "actual": "Fakt",
         "available": "Əlçatan"
-      }
+      },
+      "byChannel": "Kanallar üzrə",
+      "controlShort": "Xərclənib",
+      "forecastShort": "Proqnoz"
     },
     "calendar": {
       "title": "Promo-təqvim"

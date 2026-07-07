@@ -26,6 +26,7 @@ const ENTRY_SELECT = {
   currencyCode: true,
   sourceDocument: true,
   campaignId: true,
+  channelId: true,
   createdBy: true,
   createdAt: true,
   voidedAt: true,
@@ -51,14 +52,23 @@ export async function GET(request: NextRequest) {
 
   // T5 (audit §1.9) — accountability: resolve poster names for the UI.
   const userIds = [...new Set(entries.map((e) => e.createdBy))]
-  const users = await prisma.user.findMany({
-    where: { id: { in: userIds } },
-    select: { id: true, name: true, email: true },
-  })
+  const channelIds = [...new Set(entries.map((e) => e.channelId).filter((v): v is string => !!v))]
+  const [users, channels] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    }),
+    prisma.tradeChannel.findMany({
+      where: { id: { in: channelIds } },
+      select: { id: true, name: true },
+    }),
+  ])
   const nameById = new Map(users.map((u) => [u.id, u.name || u.email]))
+  const channelNameById = new Map(channels.map((c) => [c.id, c.name]))
   const withNames = entries.map((e) => ({
     ...e,
     createdByName: nameById.get(e.createdBy) ?? e.createdBy,
+    channelName: e.channelId ? (channelNameById.get(e.channelId) ?? null) : null,
   }))
 
   return NextResponse.json({
@@ -111,6 +121,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "Campaign not found" }, { status: 404 })
     }
   }
+  if (parsed.channelId) {
+    const channel = await prisma.tradeChannel.findFirst({
+      where: { id: parsed.channelId, organizationId: orgId, deletedAt: null },
+      select: { id: true },
+    })
+    if (!channel) {
+      return NextResponse.json({ ok: false, error: "Channel not found" }, { status: 404 })
+    }
+  }
 
   const entryDate = new Date(parsed.entryDate + "T00:00:00Z")
 
@@ -136,6 +155,7 @@ export async function POST(request: NextRequest) {
       entryKind: parsed.entryKind,
       spendTypeId: parsed.spendTypeId,
       campaignId: parsed.campaignId ?? null,
+      channelId: parsed.channelId ?? null,
       entryDate,
       year: entryDate.getUTCFullYear(),
       month: entryDate.getUTCMonth() + 1,

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { applyPoolPatch, planPoolUpserts } from "./budget";
+import {
+  applyPoolPatch,
+  formatChannelGrain,
+  parseChannelGrain,
+  planChannelAllocations,
+  planPoolUpserts,
+} from "./budget";
 
 const sales = new Map<number, number>([
   [1, 2_000_000],
@@ -75,5 +81,60 @@ describe("applyPoolPatch", () => {
       budgetAmount: 100_000,
       isManualAmount: false,
     });
+  });
+});
+
+describe("channel allocations (T9)", () => {
+  const CHANNELS = new Set(["ch1", "ch2", "ch3"]);
+
+  it("plans rows from pct of the org budget, skipping zero rows", () => {
+    const { plans, errors } = planChannelAllocations(
+      500_000,
+      [
+        { channelId: "ch1", allocationPct: 50 },
+        { channelId: "ch2", allocationPct: 30 },
+        { channelId: "ch3", allocationPct: 0 },
+      ],
+      CHANNELS
+    );
+    expect(errors).toEqual([]);
+    expect(plans).toEqual([
+      { channelId: "ch1", grainKey: "channel:ch1", allocationPct: 50, budgetAmount: 250_000 },
+      { channelId: "ch2", grainKey: "channel:ch2", allocationPct: 30, budgetAmount: 150_000 },
+    ]);
+  });
+
+  it("rejects duplicates, unknown channels, bad pct and >100 sums", () => {
+    const dup = planChannelAllocations(100, [
+      { channelId: "ch1", allocationPct: 10 },
+      { channelId: "ch1", allocationPct: 10 },
+    ], CHANNELS);
+    expect(dup.errors.map((e) => e.code)).toContain("duplicate_channel");
+
+    const unknown = planChannelAllocations(100, [{ channelId: "nope", allocationPct: 10 }], CHANNELS);
+    expect(unknown.errors.map((e) => e.code)).toContain("unknown_channel");
+
+    const range = planChannelAllocations(100, [{ channelId: "ch1", allocationPct: 120 }], CHANNELS);
+    expect(range.errors.map((e) => e.code)).toContain("pct_out_of_range");
+
+    const over = planChannelAllocations(100, [
+      { channelId: "ch1", allocationPct: 60 },
+      { channelId: "ch2", allocationPct: 45 },
+    ], CHANNELS);
+    expect(over.errors.map((e) => e.code)).toContain("sum_exceeds_100");
+  });
+
+  it("tolerates floating 100% sums", () => {
+    const { errors } = planChannelAllocations(100, [
+      { channelId: "ch1", allocationPct: 33.34 },
+      { channelId: "ch2", allocationPct: 33.33 },
+      { channelId: "ch3", allocationPct: 33.33 },
+    ], CHANNELS);
+    expect(errors).toEqual([]);
+  });
+
+  it("grain helpers round-trip", () => {
+    expect(parseChannelGrain(formatChannelGrain("abc"))).toBe("abc");
+    expect(parseChannelGrain("org")).toBeNull();
   });
 });

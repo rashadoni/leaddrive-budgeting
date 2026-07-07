@@ -32,8 +32,14 @@ export async function GET(request: NextRequest) {
       createdBy: true,
       spendType: { select: { id: true, key: true, label: true, accrualMethod: true } },
       campaignId: true,
+      channelId: true,
     },
   })
+  const channels = await prisma.tradeChannel.findMany({
+    where: { organizationId: session.orgId },
+    select: { id: true, name: true },
+  })
+  const channelNameById = new Map(channels.map((c) => [c.id, c.name]))
   const campaigns = await prisma.tradeCampaign.findMany({
     where: { organizationId: session.orgId, id: { in: [...new Set(entries.map((e) => e.campaignId).filter((v): v is string => !!v))] } },
     select: { id: true, name: true },
@@ -46,12 +52,13 @@ export async function GET(request: NextRequest) {
   const userName = new Map(users.map((u) => [u.id, u.name || u.email]))
 
   const entriesAoa: Array<Array<string | number>> = [
-    ["Date", "Kind", "Spend type", "Accrual method", "Campaign", "Amount", "Currency", "Note", "Posted by"],
+    ["Date", "Kind", "Spend type", "Accrual method", "Channel", "Campaign", "Amount", "Currency", "Note", "Posted by"],
     ...entries.map((e) => [
       e.entryDate.toISOString().slice(0, 10),
       e.entryKind,
       e.spendType.label,
       e.spendType.accrualMethod,
+      e.channelId ? (channelNameById.get(e.channelId) ?? "") : "",
       e.campaignId ? (campaignName.get(e.campaignId) ?? "") : "",
       e.amount,
       e.currencyCode,

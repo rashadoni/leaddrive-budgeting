@@ -65,6 +65,86 @@ export function planPoolUpserts(
   return out;
 }
 
+// ── T9: channel allocation (Codex-designed, 2026-07-07) ─────────────────
+// Channel budgets live as TradeBudgetPool rows with grainKey
+// "channel:<id>". While no channel-level sales plan exists,
+// salesPlanAmount stays 0 and budgetPct carries the ALLOCATION % of the
+// org pool (exposed to the API/UI as allocationPct). When real channel
+// plans arrive (Mars answers / 9.5), salesPlanAmount fills in and pct
+// reverts to its normal budget-% meaning without a schema change.
+
+export const CHANNEL_GRAIN_PREFIX = "channel:";
+
+export function formatChannelGrain(channelId: string): string {
+  return `${CHANNEL_GRAIN_PREFIX}${channelId}`;
+}
+
+export function parseChannelGrain(grainKey: string): string | null {
+  return grainKey.startsWith(CHANNEL_GRAIN_PREFIX)
+    ? grainKey.slice(CHANNEL_GRAIN_PREFIX.length)
+    : null;
+}
+
+export interface ChannelAllocationInput {
+  channelId: string;
+  allocationPct: number;
+}
+
+export interface ChannelAllocationPlan {
+  channelId: string;
+  grainKey: string;
+  allocationPct: number;
+  budgetAmount: number;
+}
+
+export interface AllocationValidationError {
+  code: "duplicate_channel" | "unknown_channel" | "pct_out_of_range" | "sum_exceeds_100";
+  detail: string;
+}
+
+/**
+ * Validate + plan the channel allocation rows for one month.
+ * Amounts derive from pct × org budget so a later org re-derive can
+ * rebase channel amounts from the stored percentage.
+ */
+export function planChannelAllocations(
+  orgBudgetAmount: number,
+  allocations: readonly ChannelAllocationInput[],
+  validChannelIds: ReadonlySet<string>
+): { plans: ChannelAllocationPlan[]; errors: AllocationValidationError[] } {
+  const errors: AllocationValidationError[] = [];
+  const seen = new Set<string>();
+  for (const a of allocations) {
+    if (seen.has(a.channelId)) {
+      errors.push({ code: "duplicate_channel", detail: a.channelId });
+    }
+    seen.add(a.channelId);
+    if (!validChannelIds.has(a.channelId)) {
+      errors.push({ code: "unknown_channel", detail: a.channelId });
+    }
+    if (!Number.isFinite(a.allocationPct) || a.allocationPct < 0 || a.allocationPct > 100) {
+      errors.push({ code: "pct_out_of_range", detail: `${a.channelId}: ${a.allocationPct}` });
+    }
+  }
+  const sum = allocations.reduce((s, a) => s + a.allocationPct, 0);
+  if (sum > 100.01) {
+    errors.push({ code: "sum_exceeds_100", detail: `sum=${Math.round(sum * 100) / 100}` });
+  }
+  if (errors.length > 0) return { plans: [], errors };
+
+  return {
+    plans: allocations
+      .filter((a) => a.allocationPct > 0)
+      .map((a) => ({
+        channelId: a.channelId,
+        grainKey: formatChannelGrain(a.channelId),
+        allocationPct: a.allocationPct,
+        budgetAmount: round2((orgBudgetAmount * a.allocationPct) / 100),
+      })),
+    errors: [],
+  };
+}
+
 /** Recompute a pool after a PATCH: pct change recalculates the amount; amount change flips manual. */
 export function applyPoolPatch(
   pool: { salesPlanAmount: number; budgetPct: number; budgetAmount: number; isManualAmount: boolean },
