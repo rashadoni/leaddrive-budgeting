@@ -60,6 +60,9 @@ vi.mock('@/lib/auth', () => ({
 
 vi.mock('@/lib/prisma', () => ({
   prisma: prismaMock,
+}))
+vi.mock('@/lib/db/with-org-scope', () => ({
+  withOrgScope: async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => fn(prismaMock),
 }));
 
 // Rate limiter is in-memory and process-global; reset its bucket

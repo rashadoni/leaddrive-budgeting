@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 
@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
-  const rows = await prisma.budgetLine.findMany({
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.budgetLine.findMany({
     where: {
       organizationId: orgId,
       companyId,
@@ -85,7 +86,8 @@ export async function GET(request: NextRequest) {
       currencyCode: true,
       exchangeRate: true,
     },
-  })
+    }),
+  )
 
   // Bucket by month. There can be >1 line per month (e.g. multiple
   // department entries under the same CoA account) — sum them.

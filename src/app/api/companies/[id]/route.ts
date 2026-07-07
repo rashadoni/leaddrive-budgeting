@@ -33,7 +33,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/prisma';
+import { withOrgScope } from '@/lib/db/with-org-scope';
 import { requireRole, isAuthError } from '@/lib/api-auth';
 import { enforceRateLimit } from '@/lib/rate-limit';
 import { logAuditEvent, buildAuditContext } from '@/lib/audit/log';
@@ -82,11 +82,13 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  // Tenant-scoped lookup — 404 (not 403) if the id belongs to another org,
-  // matching the pattern in /api/onboarding/import/staging/[id] so we don't
-  // leak existence of cross-tenant ids.
-  const existing = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
+  const orgId = session.orgId;
+  // Stage 3 RLS — read, update and the awaited audit emissions in one
+  // org-scoped tx.
+  return withOrgScope(orgId, async (tx) => {
+  // Tenant-scoped lookup — 404 (not 403) if the id belongs to another org.
+  const existing = await tx.company.findFirst({
+    where: { id, organizationId: orgId },
     select: { id: true, code: true, role: true, status: true, industry: true },
   });
   if (!existing) {
@@ -118,7 +120,7 @@ export async function PATCH(
   if (statusChanged) updateData.status = parsed.value.status;
   if (industryChanged) updateData.industry = parsed.value.industry;
 
-  const updated = await prisma.company.update({
+  const updated = await tx.company.update({
     where: { id: existing.id },
     // `industry` is a relation-backed scalar FK (industryRef), so it is only
     // settable through the Unchecked update input. Cast bridges the hand-built
@@ -145,7 +147,7 @@ export async function PATCH(
       });
       auditStale = true;
     } else {
-      const auditResult = await logAuditEvent(prisma, {
+      const auditResult = await logAuditEvent(tx, {
         organizationId: session.orgId,
         actorUserId: session.userId,
         event: {
@@ -173,7 +175,7 @@ export async function PATCH(
       });
       auditStale = true;
     } else {
-      const auditResult = await logAuditEvent(prisma, {
+      const auditResult = await logAuditEvent(tx, {
         organizationId: session.orgId,
         actorUserId: session.userId,
         event: {
@@ -205,7 +207,7 @@ export async function PATCH(
       });
       auditStale = true;
     } else {
-      const auditResult = await logAuditEvent(prisma, {
+      const auditResult = await logAuditEvent(tx, {
         organizationId: session.orgId,
         actorUserId: session.userId,
         event: {
@@ -225,4 +227,5 @@ export async function PATCH(
   }
 
   return NextResponse.json(auditStale ? { ...updated, auditStale } : updated);
+  });
 }

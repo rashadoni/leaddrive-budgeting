@@ -28,7 +28,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
@@ -49,16 +49,19 @@ export async function GET(
     )
   }
   const { id } = await params
+  const orgId = session.orgId
 
-  const company = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: { id: true, code: true, industry: true, settings: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, code: true, industry: true, settings: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
-  // Sub-group scope check
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  // Sub-group scope check (getCompanyScope uses prismaAdmin, self-contained).
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(id)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -85,22 +88,25 @@ export async function PATCH(
   }
 
   const { id } = await params
+  const orgId = session.orgId
 
-  const company = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: {
-      id: true,
-      code: true,
-      industry: true,
-      settings: true,
-    },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id, organizationId: orgId },
+      select: {
+        id: true,
+        code: true,
+        industry: true,
+        settings: true,
+      },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  // Sub-group RBAC.
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  // Sub-group RBAC (getCompanyScope uses prismaAdmin, self-contained).
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(id)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -135,31 +141,32 @@ export async function PATCH(
   const previous = (company.settings as Record<string, unknown> | null) ?? null
   const keysChanged = computeKeysChanged(previous, validated)
 
-  // Wholesale replace.
-  await prisma.company.update({
-    where: { id: company.id },
-    data: { settings: validated as never },
-  })
-
-  const auditResult = await logAuditEvent(prisma, {
-    organizationId: session.orgId,
-    actorUserId: session.userId,
-    event: {
-      action: "company_settings_update",
-      entityType: "Company",
-      entityId: company.id,
-      metadata: {
-        companyCode: company.code,
-        industry: company.industry,
-        keysChanged,
-        before: previous,
-        after: validated,
+  // Stage 3 RLS — wholesale-replace + awaited audit in one org-scoped tx.
+  const auditResult = await withOrgScope(orgId, async (tx) => {
+    await tx.company.update({
+      where: { id: company.id },
+      data: { settings: validated as never },
+    })
+    return logAuditEvent(tx, {
+      organizationId: orgId,
+      actorUserId: session.userId,
+      event: {
+        action: "company_settings_update",
+        entityType: "Company",
+        entityId: company.id,
+        metadata: {
+          companyCode: company.code,
+          industry: company.industry,
+          keysChanged,
+          before: previous,
+          after: validated,
+        },
       },
-    },
-    context: buildAuditContext({
-      route: "/api/companies/[id]/settings",
-      userAgent: req.headers.get("user-agent") ?? undefined,
-    }),
+      context: buildAuditContext({
+        route: "/api/companies/[id]/settings",
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      }),
+    })
   })
 
   return NextResponse.json({

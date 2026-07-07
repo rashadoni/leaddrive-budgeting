@@ -24,7 +24,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 
 /** All audit actions emitted by AI routes. Update whenever a new
@@ -85,16 +85,19 @@ export async function GET(req: NextRequest) {
     metadata: unknown
     createdAt: Date
   }> = []
+  const orgId = session.orgId
   try {
-    rows = await prisma.auditEvent.findMany({
-      where: {
-        organizationId: session.orgId,
-        actorUserId: session.userId,
-        action: { in: [...AI_AUDIT_ACTIONS] },
-        createdAt: { gte: monthStart },
-      },
-      select: { metadata: true, createdAt: true },
-    })
+    rows = await withOrgScope(orgId, (tx) =>
+      tx.auditEvent.findMany({
+        where: {
+          organizationId: orgId,
+          actorUserId: session.userId,
+          action: { in: [...AI_AUDIT_ACTIONS] },
+          createdAt: { gte: monthStart },
+        },
+        select: { metadata: true, createdAt: true },
+      }),
+    )
   } catch {
     // Audit table missing or transient failure — degrade to zeros rather
     // than 500ing on the chip. Chip is informational; the budget enforcement

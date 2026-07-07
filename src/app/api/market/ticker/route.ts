@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 
 interface TickerEntry {
@@ -48,8 +48,11 @@ export async function GET(request: NextRequest) {
 
   const entries: TickerEntry[] = []
 
+  // Stage 3 RLS — FX + intel reads in one org-scoped tx; ticker assembly
+  // (pure) stays in the closure.
+  return withOrgScope(orgId, async (tx) => {
   // ---- FX rates ----
-  const currencies = await prisma.currency.findMany({
+  const currencies = await tx.currency.findMany({
     where: { organizationId: orgId, isActive: true, isBase: false },
     select: { code: true, exchangeRate: true, symbol: true },
   })
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
   type PrevRow = { currencyCode: string; rate: number }
   const prevByCurrency = new Map<string, number>()
   if (currencies.length > 0) {
-    const prevRows = await prisma.$queryRaw<PrevRow[]>`
+    const prevRows = await tx.$queryRaw<PrevRow[]>`
       SELECT DISTINCT ON ("currencyCode") "currencyCode", "rate"
       FROM "currency_rate_history"
       WHERE "organizationId" = ${orgId}
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
 
   // ---- Commodity / macro from IntelDataPoint (if table exists) ----
   try {
-    const points = await prisma.intelDataPoint.findMany({
+    const points = await tx.intelDataPoint.findMany({
       where: {
         organizationId: orgId,
         metric: { in: [...COMMODITY_METRICS] },
@@ -113,4 +116,5 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({ entries, generatedAt: new Date().toISOString() })
+  })
 }

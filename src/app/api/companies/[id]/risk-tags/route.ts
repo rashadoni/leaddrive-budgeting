@@ -20,7 +20,9 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
+// Stage 3 RLS — `prisma` kept ONLY for the fire-and-forget audit below.
 import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import { getLogger } from "@/lib/log"
@@ -60,16 +62,19 @@ export async function PATCH(
   if (rateLimitError) return rateLimitError
 
   const { id } = await params
+  const orgId = session.orgId
 
-  const company = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: { id: true, code: true, industry: true, settings: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id, organizationId: orgId },
+      select: { id: true, code: true, industry: true, settings: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(id)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -87,13 +92,17 @@ export async function PATCH(
   const current = (company.settings as Record<string, unknown> | null) ?? {}
   const updated = { ...current, riskTags: body.riskTags }
 
-  await prisma.company.update({
-    where: { id },
-    data: { settings: updated },
-  })
+  // Stage 3 RLS — merge-update in the org-scoped tx.
+  await withOrgScope(orgId, (tx) =>
+    tx.company.update({
+      where: { id },
+      data: { settings: updated },
+    }),
+  )
 
+  // Audit is fire-and-forget → stays on the global client (outlives any tx).
   void logAuditEvent(prisma, {
-    organizationId: session.orgId,
+    organizationId: orgId,
     actorUserId: session.userId,
     event: {
       action: "company_settings_update",
@@ -131,10 +140,13 @@ export async function GET(
   }
 
   const { id } = await params
-  const company = await prisma.company.findFirst({
-    where: { id, organizationId: session.orgId },
-    select: { settings: true },
-  })
+  const orgId = session.orgId
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id, organizationId: orgId },
+      select: { settings: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }

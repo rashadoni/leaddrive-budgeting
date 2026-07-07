@@ -23,7 +23,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, requireRole, isAuthError } from "@/lib/api-auth"
 import { logAuditEvent, buildAuditContext } from "@/lib/audit/log"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
@@ -46,19 +46,22 @@ export async function GET(
   }
 
   const { id: companyId } = await params
+  const orgId = session.orgId
 
   // Tenant scope first — 404 (not 403) for cross-tenant to avoid leaking
   // company existence; same pattern as PATCH /api/companies/[id].
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: session.orgId },
-    select: { id: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, organizationId: orgId },
+      select: { id: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  // Sub-group RBAC — managers with allowedSubGroupIds can only see scoped companies.
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  // Sub-group RBAC (getCompanyScope uses prismaAdmin, self-contained).
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(companyId)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -75,9 +78,10 @@ export async function GET(
     )
   }
 
-  const rows = await prisma.clientReconciliation.findMany({
+  const rows = await withOrgScope(orgId, (tx) =>
+    tx.clientReconciliation.findMany({
     where: {
-      organizationId: session.orgId,
+      organizationId: orgId,
       companyId,
       ...(parsed.data.period ? { period: parsed.data.period } : {}),
       ...(parsed.data.indicatorKey ? { indicatorKey: parsed.data.indicatorKey } : {}),
@@ -96,7 +100,8 @@ export async function GET(
       submittedAt: true,
       updatedAt: true,
     },
-  })
+    }),
+  )
 
   return NextResponse.json({ rows })
 }
@@ -114,16 +119,19 @@ export async function POST(
   }
 
   const { id: companyId } = await params
+  const orgId = session.orgId
 
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: session.orgId },
-    select: { id: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, organizationId: orgId },
+      select: { id: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(companyId)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -141,8 +149,10 @@ export async function POST(
     )
   }
 
+  // Stage 3 RLS — upsert + awaited audit in one org-scoped tx.
+  const { row, auditResult, existing } = await withOrgScope(orgId, async (tx) => {
   // Upsert by composite unique key (companyId × period × indicatorKey).
-  const existing = await prisma.clientReconciliation.findUnique({
+  const existing = await tx.clientReconciliation.findUnique({
     where: {
       companyId_period_indicatorKey: {
         companyId,
@@ -154,7 +164,7 @@ export async function POST(
   })
 
   const row = existing
-    ? await prisma.clientReconciliation.update({
+    ? await tx.clientReconciliation.update({
         where: { id: existing.id },
         data: {
           value: body.value,
@@ -175,9 +185,9 @@ export async function POST(
           updatedAt: true,
         },
       })
-    : await prisma.clientReconciliation.create({
+    : await tx.clientReconciliation.create({
         data: {
-          organizationId: session.orgId,
+          organizationId: orgId,
           companyId,
           period: body.period,
           indicatorKey: body.indicatorKey,
@@ -200,8 +210,8 @@ export async function POST(
         },
       })
 
-  const auditResult = await logAuditEvent(prisma, {
-    organizationId: session.orgId,
+  const auditResult = await logAuditEvent(tx, {
+    organizationId: orgId,
     actorUserId: session.userId,
     event: {
       action: "client_reconciliation_submit",
@@ -221,6 +231,8 @@ export async function POST(
       route: "/api/companies/[id]/reconciliation",
       userAgent: req.headers.get("user-agent") ?? undefined,
     }),
+  })
+    return { row, auditResult, existing }
   })
 
   return NextResponse.json(
@@ -242,16 +254,19 @@ export async function DELETE(
   }
 
   const { id: companyId } = await params
+  const orgId = session.orgId
 
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: session.orgId },
-    select: { id: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, organizationId: orgId },
+      select: { id: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(companyId)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
@@ -267,49 +282,55 @@ export async function DELETE(
     )
   }
 
-  const existing = await prisma.clientReconciliation.findFirst({
-    where: {
-      id: parsed.data.reconciliationId,
-      organizationId: session.orgId,
-      companyId,
-    },
-    select: {
-      id: true,
-      period: true,
-      indicatorKey: true,
-      value: true,
-      currency: true,
-    },
+  // Stage 3 RLS — lookup, delete + awaited audit in one org-scoped tx.
+  const result = await withOrgScope(orgId, async (tx) => {
+    const existing = await tx.clientReconciliation.findFirst({
+      where: {
+        id: parsed.data.reconciliationId,
+        organizationId: orgId,
+        companyId,
+      },
+      select: {
+        id: true,
+        period: true,
+        indicatorKey: true,
+        value: true,
+        currency: true,
+      },
+    })
+    if (!existing) return { notFound: true as const }
+
+    await tx.clientReconciliation.delete({ where: { id: existing.id } })
+
+    const auditResult = await logAuditEvent(tx, {
+      organizationId: orgId,
+      actorUserId: session.userId,
+      event: {
+        action: "client_reconciliation_delete",
+        entityType: "ClientReconciliation",
+        entityId: existing.id,
+        metadata: {
+          companyId,
+          period: existing.period,
+          indicatorKey: existing.indicatorKey,
+          deletedValue: existing.value,
+          currency: existing.currency,
+        },
+      },
+      context: buildAuditContext({
+        route: "/api/companies/[id]/reconciliation",
+        userAgent: req.headers.get("user-agent") ?? undefined,
+      }),
+    })
+    return { auditResult }
   })
-  if (!existing) {
+
+  if ("notFound" in result) {
     return NextResponse.json({ error: "Reconciliation not found" }, { status: 404 })
   }
 
-  await prisma.clientReconciliation.delete({ where: { id: existing.id } })
-
-  const auditResult = await logAuditEvent(prisma, {
-    organizationId: session.orgId,
-    actorUserId: session.userId,
-    event: {
-      action: "client_reconciliation_delete",
-      entityType: "ClientReconciliation",
-      entityId: existing.id,
-      metadata: {
-        companyId,
-        period: existing.period,
-        indicatorKey: existing.indicatorKey,
-        deletedValue: existing.value,
-        currency: existing.currency,
-      },
-    },
-    context: buildAuditContext({
-      route: "/api/companies/[id]/reconciliation",
-      userAgent: req.headers.get("user-agent") ?? undefined,
-    }),
-  })
-
   return NextResponse.json({
     ok: true,
-    ...(auditResult.ok ? {} : { auditStale: true }),
+    ...(result.auditResult.ok ? {} : { auditStale: true }),
   })
 }

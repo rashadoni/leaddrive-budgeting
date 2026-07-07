@@ -23,7 +23,7 @@
  * uses this to size forward-rate hedges.
  */
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireRole, isAuthError } from "@/lib/api-auth"
 
 export async function GET(request: NextRequest) {
@@ -41,15 +41,17 @@ export async function GET(request: NextRequest) {
     yearRaw && Number.isInteger(Number(yearRaw)) ? Number(yearRaw) : new Date().getUTCFullYear()
   const companyId = companyIdRaw && companyIdRaw.trim() !== "" ? companyIdRaw : null
 
-  const lines = await prisma.budgetLine.findMany({
-    where: {
-      organizationId: orgId,
-      plan: { is: { year } },
-      deletedAt: null,
-      ...(companyId ? { companyId } : {}),
-    },
-    select: { lineType: true, plannedAmount: true, currencyCode: true },
-  })
+  const lines = await withOrgScope(orgId, (tx) =>
+    tx.budgetLine.findMany({
+      where: {
+        organizationId: orgId,
+        plan: { is: { year } },
+        deletedAt: null,
+        ...(companyId ? { companyId } : {}),
+      },
+      select: { lineType: true, plannedAmount: true, currencyCode: true },
+    }),
+  )
 
   // Aggregate. currencyCode null = base (AZN) per import convention.
   type LineType = "revenue" | "cogs" | "expense"

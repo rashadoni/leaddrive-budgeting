@@ -15,7 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { withOrgScope } from "@/lib/db/with-org-scope"
 import { requireAuth, isAuthError } from "@/lib/api-auth"
 import { getCompanyScope } from "@/lib/rbac/company-scope"
 import {
@@ -36,25 +36,31 @@ export async function GET(
   }
 
   const { id: companyId } = await params
+  const orgId = session.orgId
 
   // Tenant scope first — 404 (not 403) for cross-tenant to avoid leaking existence.
-  const company = await prisma.company.findFirst({
-    where: { id: companyId, organizationId: session.orgId },
-    select: { id: true, code: true, name: true },
-  })
+  const company = await withOrgScope(orgId, (tx) =>
+    tx.company.findFirst({
+      where: { id: companyId, organizationId: orgId },
+      select: { id: true, code: true, name: true },
+    }),
+  )
   if (!company) {
     return NextResponse.json({ error: "Company not found" }, { status: 404 })
   }
 
-  // Sub-group RBAC — managers restricted to a sub-group can't probe others.
-  const scope = await getCompanyScope(session.orgId, session.userId, session.role)
+  // Sub-group RBAC (getCompanyScope uses prismaAdmin, self-contained).
+  const scope = await getCompanyScope(orgId, session.userId, session.role)
   if (scope.ids != null && !scope.ids.has(companyId)) {
     return NextResponse.json({ error: "Access denied to this company" }, { status: 403 })
   }
 
+  // Stage 3 RLS — the two statement reads run in one org-scoped tx; the
+  // pure IFRS aggregation (small arrays) stays in the closure.
+  return withOrgScope(orgId, async (tx) => {
   // ── Balance sheet: load all (non-deleted), keep only the latest period ──
-  const allBsLines = await prisma.balanceSheetLine.findMany({
-    where: { companyId, organizationId: session.orgId, deletedAt: null },
+  const allBsLines = await tx.balanceSheetLine.findMany({
+    where: { companyId, organizationId: orgId, deletedAt: null },
     select: {
       lineType: true,
       amount: true,
@@ -92,8 +98,8 @@ export async function GET(
   }
 
   // ── Income statement: budget lines joined to the chart of accounts ──
-  const plLines = await prisma.budgetLine.findMany({
-    where: { companyId, organizationId: session.orgId, deletedAt: null },
+  const plLines = await tx.budgetLine.findMany({
+    where: { companyId, organizationId: orgId, deletedAt: null },
     select: {
       plannedAmount: true,
       accountId: true,
@@ -126,5 +132,6 @@ export async function GET(
     company: { id: company.id, code: company.code, name: company.name },
     period,
     report,
+  })
   })
 }
