@@ -52,6 +52,14 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # R4 (audit round 2) — bearer for /api/cron/* (trade-digest crontab).
       CRON_SECRET: ${CRON_SECRET:-}
+      # RLS Stage 3 (S6) — RLS-enforced app role + BYPASSRLS admin role.
+      # Empty until the roles are provisioned on this host (runbook §1 +
+      # scripts/sql/create-app-role.sql); prisma-app/prisma-admin fall
+      # back to DATABASE_URL when unset, so this passthrough is inert
+      # until the .env values exist. DATABASE_URL itself stays on the
+      # superuser: the docker-entrypoint migration step needs it.
+      DATABASE_URL_APP: ${DATABASE_URL_APP:-}
+      DATABASE_URL_ADMIN: ${DATABASE_URL_ADMIN:-}
       NODE_ENV: production
     expose:
       - "3000"
